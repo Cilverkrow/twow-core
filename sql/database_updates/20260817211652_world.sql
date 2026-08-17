@@ -56,9 +56,15 @@ INSERT INTO `gossip_scripts` (`id`, `delay`, `priority`, `command`, `datalong`, 
 (6229805, 0, 0, 22, 14, 3, 'Cutpurse Warren threat: become hostile and attack'),
 (6229805, 0, 1, 26, 0, 0, 'Cutpurse Warren threat: attack the player');
 
--- Handover option leads to the follow-up menu with the threat choice.
+-- Paid branch: create the quest item after validating money and inventory
+-- (SCRIPT_COMMAND_CREATE_ITEM datalong3 = copper cost, data_flags 8 = validate).
+INSERT INTO `gossip_scripts` (`id`, `delay`, `priority`, `command`, `datalong`, `datalong2`, `datalong3`, `data_flags`, `comments`) VALUES
+(6229806, 0, 0, 17, 41606, 1, 2000, 8, 'Cutpurse Warren deal: charge 20 silver and create the donated-books crate');
+
+-- Handover option leads to the follow-up menu with the pay/threat choices.
 INSERT INTO `gossip_menu_option` (`menu_id`, `id`, `option_icon`, `option_text`, `option_broadcast_text`, `option_id`, `npc_option_npcflag`, `action_menu_id`, `action_poi_id`, `action_script_id`, `box_coded`, `box_money`, `box_text`, `box_broadcast_text`, `condition_id`) VALUES
 (62298, 0, 7, 'Hand over the crate with donations from Stormwind!', 6229801, 1, 1, 30348, 0, 0, 0, 0, '', 0, 4163602),
+(30348, 0, 6, 'Take it and get out of Northwind <Pay 20 silver>', 0, 1, 1, -1, 0, 6229806, 0, 0, '', 0, 4163602),
 (30348, 1, 7, 'As if! Today you''ll draw your last breath!', 0, 1, 1, -1, 0, 6229805, 0, 0, '', 0, 4163602)
 ON DUPLICATE KEY UPDATE `option_text`=VALUES(`option_text`), `action_menu_id`=VALUES(`action_menu_id`), `action_script_id`=VALUES(`action_script_id`), `condition_id`=VALUES(`condition_id`);
 -- FILE: 05-messenger-of-northwind-reports.sql
@@ -232,25 +238,12 @@ ON DUPLICATE KEY UPDATE `option_text`=VALUES(`option_text`), `action_menu_id`=VA
 
 UPDATE `quest_template` SET `ReqCreatureOrGOId1` = 62265 WHERE `entry` = 41684;
 -- ==============================================
--- FILE: 13-warren-confirmed-buy.sql
+-- FILE: 13-gossip-buy-cleanup.sql
 -- ==============================================
--- Confirmed-buy for the crate: quest 41839 "The Warren Deal" reuses the
--- in-DB "pay at completion" mechanic (RewOrReqMoney < 0) - the client
--- pops the "Pay 20 silver?" dialog at turn-in and the server deducts the
--- money on completion. Gated by the same one-time condition via
--- quest_template.RequiredCondition, so it only appears while quest 41636
--- is active and the crate is not already owned.
+-- The crate purchase is pure gossip (handover -> pay/threat options,
+-- section 02); no quest is involved. Remove the quest-based variant if
+-- it was applied from an earlier revision.
 
-INSERT INTO `quest_template`
-(`entry`, `Method`, `ZoneOrSort`, `MinLevel`, `QuestLevel`, `Type`, `RequiredRaces`, `RequiredCondition`, `RewOrReqMoney`, `RewItemId1`, `RewItemCount1`, `Title`, `RequestItemsText`, `OfferRewardText`)
-VALUES
-(41839, 2, 5581, 25, 31, 0, 589, 4163602, -2000, 41606, 1,
- 'The Warren Deal',
- 'Pay Cutpurse Warren 20 silver for the Crate of Donated Books.',
- 'Pleasure doing business. Now get out of my sight.')
-ON DUPLICATE KEY UPDATE `Method`=VALUES(`Method`), `RequiredCondition`=VALUES(`RequiredCondition`), `RewOrReqMoney`=VALUES(`RewOrReqMoney`), `RewItemId1`=VALUES(`RewItemId1`), `RewItemCount1`=VALUES(`RewItemCount1`);
-
-INSERT INTO `creature_questrelation` (`id`, `quest`) VALUES (62298, 41839)
-ON DUPLICATE KEY UPDATE `quest`=VALUES(`quest`);
-INSERT INTO `creature_involvedrelation` (`id`, `quest`) VALUES (62298, 41839)
-ON DUPLICATE KEY UPDATE `quest`=VALUES(`quest`);
+DELETE FROM `creature_involvedrelation` WHERE `quest` = 41839;
+DELETE FROM `creature_questrelation` WHERE `quest` = 41839;
+DELETE FROM `quest_template` WHERE `entry` = 41839;
