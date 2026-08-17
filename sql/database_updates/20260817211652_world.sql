@@ -425,3 +425,22 @@ UPDATE `gossip_menu_option` SET `action_menu_id` = 30358 WHERE `menu_id` = 62301
 UPDATE `page_text` SET `next_page` = `entry` + 1 WHERE `entry` BETWEEN 50734 AND 50746;
 UPDATE `page_text` SET `next_page` = `entry` + 1 WHERE `entry` BETWEEN 50748 AND 50756;
 
+
+-- ==============================================
+-- FILE: 11-sara-comb.sql
+-- ==============================================
+-- Sara Flenning's corpse (62490) only displayed a description text with
+-- no interaction, so Sara's Comb (41695) could not be obtained for
+-- quest 41648 (Deathcap And Widow's Frill). Add a "search the body"
+-- gossip option that creates the comb, gated behind the active quest.
+-- The item is unique (max_count = 1), so no one-time condition is needed.
+
+INSERT INTO `conditions` (`condition_entry`, `type`, `value1`, `value2`, `value3`, `value4`, `flags`) VALUES
+(41648, 9, 41648, 1, 0, 0, 0)
+ON DUPLICATE KEY UPDATE `type`=VALUES(`type`), `value1`=VALUES(`value1`), `value2`=VALUES(`value2`), `flags`=VALUES(`flags`);
+
+INSERT INTO `gossip_scripts` (`id`, `delay`, `priority`, `command`, `datalong`, `datalong2`, `comments`) VALUES
+(62490, 0, 0, 17, 41695, 1, 'Sara Flenning corpse - Quest 41648: give Sara''s Comb');
+
+INSERT INTO `gossip_menu_option` (`menu_id`, `id`, `option_icon`, `option_text`, `option_broadcast_text`, `option_id`, `npc_option_npcflag`, `action_menu_id`, `action_poi_id`, `action_script_id`, `box_coded`, `box_money`, `box_text`, `box_broadcast_text`, `condition_id`) VALUES
+(62490, 0, 0, 'Search the body for anything useful.', 0, 1, 1, -1, 0, 62490, 0, 0, '', 0, 41648);
