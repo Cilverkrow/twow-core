@@ -1,6 +1,11 @@
+-- Northwind quest fixes (PR #390) - single consolidated migration.
+-- Sections: gossip quest credit (41643, 41768, 41637), the Cutpurse
+-- Warren crate deal (41636), lore book page chains, and the Sara's
+-- Comb / Shadow's Vision objectives (41648, 41684). Idempotent:
+-- safe to re-apply.
+
 -- ==============================================
 -- FILE: 01-empty-houses-quest-credit.sql
--- GENERATED: 20260817211652
 -- ==============================================
 DELETE FROM `gossip_scripts` WHERE `id` IN (62489, 62153, 62154);
 
@@ -20,15 +25,17 @@ UPDATE `gossip_menu_option` SET `action_script_id` = 62153, `condition_id` = 416
 UPDATE `gossip_menu_option` SET `condition_id` = 41768                             WHERE `menu_id` = 62153 AND `id` = 1;
 UPDATE `gossip_menu_option` SET `action_script_id` = 62154, `condition_id` = 41643 WHERE `menu_id` = 62154 AND `id` = 0;
 UPDATE `gossip_menu_option` SET `condition_id` = 41768                             WHERE `menu_id` = 62164 AND `id` = 0;
+
 -- ==============================================
 -- FILE: 02-cutpurse-warren-deal.sql
 -- ==============================================
 -- Cutpurse Warren (62298): the donated-books crate for quest 41636 is
--- obtained either by buying it (confirmed-buy quest 41839, section 13)
--- or by threatening Warren. Both choices are one-time for the player,
--- gated behind an AND condition (quest 41636 active AND crate not owned).
--- The temporary vendor-backed workaround and the earlier silent
--- script-based charge are removed.
+-- obtained by paying 20 silver or by threatening Warren. The pay option
+-- charges via SCRIPT_COMMAND_CREATE_ITEM (datalong3 = copper cost,
+-- data_flags 8 = validate money and inventory) and creates the crate;
+-- the threat option turns Warren hostile. Both choices are one-time for
+-- the player, gated behind an AND condition (quest 41636 active AND
+-- crate not owned). The temporary vendor-backed workaround is removed.
 
 -- Clear legacy auto-increment rows with the same definition first:
 -- condition_entry is AUTO_INCREMENT and (type,value1,value2,flags,value3,value4)
@@ -67,8 +74,9 @@ INSERT INTO `gossip_menu_option` (`menu_id`, `id`, `option_icon`, `option_text`,
 (30348, 0, 6, 'Take it and get out of Northwind <Pay 20 silver>', 0, 1, 1, -1, 0, 6229806, 0, 0, '', 0, 4163602),
 (30348, 1, 7, 'As if! Today you''ll draw your last breath!', 0, 1, 1, -1, 0, 6229805, 0, 0, '', 0, 4163602)
 ON DUPLICATE KEY UPDATE `option_text`=VALUES(`option_text`), `action_menu_id`=VALUES(`action_menu_id`), `action_script_id`=VALUES(`action_script_id`), `condition_id`=VALUES(`condition_id`);
--- FILE: 05-messenger-of-northwind-reports.sql
--- GENERATED: 20260817211652
+
+-- ==============================================
+-- FILE: 03-messenger-of-northwind-reports.sql
 -- ==============================================
 -- Northwind: The Messenger of Northwind (41768) report handover.
 -- Sir Amberwood (62164) and Bailiff Lancaster (62153) both display their
@@ -90,8 +98,7 @@ UPDATE `gossip_menu_option` SET `action_script_id` = 6216401 WHERE `menu_id` = 6
 UPDATE `gossip_menu_option` SET `action_script_id` = 6215301, `action_menu_id` = -1 WHERE `menu_id` = 62153 AND `id` = 1;
 
 -- ==============================================
--- FILE: 06-school-assistance-credit.sql
--- GENERATED: 20260817211652
+-- FILE: 04-school-assistance-credit.sql
 -- ==============================================
 -- Northwind: School Assistance (41637) quiz credit.
 -- Lloyd, Ellie, Randolph and Tio display their quiz dialogue and
@@ -120,8 +127,7 @@ UPDATE `gossip_menu_option` SET `action_script_id` = 62302, `condition_id` = 416
 UPDATE `gossip_menu_option` SET `action_script_id` = 62303, `condition_id` = 41637 WHERE `menu_id` = 62303 AND `id` = 2;
 
 -- ==============================================
--- FILE: 07-randolph-menu-cleanup.sql
--- GENERATED: 20260817211652
+-- FILE: 05-randolph-menu-cleanup.sql
 -- ==============================================
 -- Northwind: remove duplicate quiz options from Randolph's menu (62302).
 -- The menu contained authoring leftovers: a second "Barathen Wrynn."
@@ -133,8 +139,7 @@ UPDATE `gossip_menu_option` SET `action_script_id` = 62303, `condition_id` = 416
 DELETE FROM `gossip_menu_option` WHERE `menu_id` = 62302 AND `id` IN (3, 4);
 
 -- ==============================================
--- FILE: 08-quiz-answer-feedback.sql
--- GENERATED: 20260817211652
+-- FILE: 06-quiz-answer-feedback.sql
 -- ==============================================
 -- Northwind: School Assistance (41637) quiz answer feedback.
 -- Wrong answers were silent (no reply, window stayed open). Wire every
@@ -161,8 +166,7 @@ ON DUPLICATE KEY UPDATE `text_id`=VALUES(`text_id`);
 UPDATE `gossip_menu_option` SET `action_menu_id` = 30356 WHERE `menu_id` = 62303 AND `id` = 2;
 
 -- ==============================================
--- FILE: 09-quiz-gating-ellie-reply.sql
--- GENERATED: 20260817211652
+-- FILE: 07-quiz-gating-ellie-reply.sql
 -- ==============================================
 -- Northwind: School Assistance (41637) quiz polish.
 -- 1) Gate every quiz option behind the active-quest condition so the
@@ -191,8 +195,7 @@ ON DUPLICATE KEY UPDATE `text_id`=VALUES(`text_id`);
 UPDATE `gossip_menu_option` SET `action_menu_id` = 30358 WHERE `menu_id` = 62301 AND `id` = 2;
 
 -- ==============================================
--- FILE: 10-balor-book-pages.sql
--- GENERATED: 20260817211652
+-- FILE: 08-balor-book-pages.sql
 -- ==============================================
 -- Northwind: link the Balor lore book pages.
 -- The Siege of Balor (GO 2020127) and The Founding of Balor (GO 2020128)
@@ -204,9 +207,8 @@ UPDATE `gossip_menu_option` SET `action_menu_id` = 30358 WHERE `menu_id` = 62301
 UPDATE `page_text` SET `next_page` = `entry` + 1 WHERE `entry` BETWEEN 50734 AND 50746;
 UPDATE `page_text` SET `next_page` = `entry` + 1 WHERE `entry` BETWEEN 50748 AND 50756;
 
-
 -- ==============================================
--- FILE: 11-sara-comb.sql
+-- FILE: 09-sara-comb.sql
 -- ==============================================
 -- Sara Flenning's corpse (62490) only displayed a description text with
 -- no interaction, so Sara's Comb (41695) could not be obtained for
@@ -226,7 +228,7 @@ INSERT INTO `gossip_menu_option` (`menu_id`, `id`, `option_icon`, `option_text`,
 ON DUPLICATE KEY UPDATE `option_text`=VALUES(`option_text`), `action_menu_id`=VALUES(`action_menu_id`), `action_script_id`=VALUES(`action_script_id`), `condition_id`=VALUES(`condition_id`);
 
 -- ==============================================
--- FILE: 12-shadow-vision-credit.sql
+-- FILE: 10-shadow-vision-credit.sql
 -- ==============================================
 -- Quest 41684 (Shadow's Vision) objective "Perpetrators found" pointed at
 -- dummy trigger 60071 that nothing ever credited (the Stormreaver Tracker
@@ -237,8 +239,9 @@ ON DUPLICATE KEY UPDATE `option_text`=VALUES(`option_text`), `action_menu_id`=VA
 -- is untouched.
 
 UPDATE `quest_template` SET `ReqCreatureOrGOId1` = 62265 WHERE `entry` = 41684;
+
 -- ==============================================
--- FILE: 13-gossip-buy-cleanup.sql
+-- FILE: 11-gossip-buy-cleanup.sql
 -- ==============================================
 -- The crate purchase is pure gossip (handover -> pay/threat options,
 -- section 02); no quest is involved. Remove the quest-based variant if
@@ -247,3 +250,4 @@ UPDATE `quest_template` SET `ReqCreatureOrGOId1` = 62265 WHERE `entry` = 41684;
 DELETE FROM `creature_involvedrelation` WHERE `quest` = 41839;
 DELETE FROM `creature_questrelation` WHERE `quest` = 41839;
 DELETE FROM `quest_template` WHERE `entry` = 41839;
+
