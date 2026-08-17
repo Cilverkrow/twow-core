@@ -444,3 +444,16 @@ INSERT INTO `gossip_scripts` (`id`, `delay`, `priority`, `command`, `datalong`, 
 
 INSERT INTO `gossip_menu_option` (`menu_id`, `id`, `option_icon`, `option_text`, `option_broadcast_text`, `option_id`, `npc_option_npcflag`, `action_menu_id`, `action_poi_id`, `action_script_id`, `box_coded`, `box_money`, `box_text`, `box_broadcast_text`, `condition_id`) VALUES
 (62490, 0, 0, 'Search the body for anything useful.', 0, 1, 1, -1, 0, 62490, 0, 0, '', 0, 41648);
+
+-- ==============================================
+-- FILE: 12-shadow-vision-credit.sql
+-- ==============================================
+-- Quest 41684 (Shadow's Vision) objective "Perpetrators found" pointed at
+-- dummy trigger 60071 that nothing ever credited (the Stormreaver Tracker
+-- has ai_name EventAI but no events). Point the objective at the tracker
+-- itself (62265) so the engine awards native kill credit; the custom
+-- objective label comes from quest_template.ObjectiveText1 and is
+-- unchanged, and the missive drop (creature_loot_template 41747, -100%)
+-- is untouched.
+
+UPDATE `quest_template` SET `ReqCreatureOrGOId1` = 62265 WHERE `entry` = 41684;
