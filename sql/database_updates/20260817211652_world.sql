@@ -20,280 +20,47 @@ UPDATE `gossip_menu_option` SET `action_script_id` = 62153, `condition_id` = 416
 UPDATE `gossip_menu_option` SET `condition_id` = 41768                             WHERE `menu_id` = 62153 AND `id` = 1;
 UPDATE `gossip_menu_option` SET `action_script_id` = 62154, `condition_id` = 41643 WHERE `menu_id` = 62154 AND `id` = 0;
 UPDATE `gossip_menu_option` SET `condition_id` = 41768                             WHERE `menu_id` = 62164 AND `id` = 0;
-
 -- ==============================================
--- FILE: 02-cutpurse-paid-deal.sql
--- GENERATED: 20260817211652
+-- FILE: 02-cutpurse-warren-deal.sql
 -- ==============================================
--- Northwind: make the Cutpurse Warren deal a paid gossip action.
--- SCRIPT_COMMAND_CREATE_ITEM datalong3 is the optional copper cost.
+-- Cutpurse Warren (62298): the donated-books crate for quest 41636 is
+-- obtained either by buying it (confirmed-buy quest 41839, section 13)
+-- or by threatening Warren. Both choices are one-time for the player,
+-- gated behind an AND condition (quest 41636 active AND crate not owned).
+-- The temporary vendor-backed workaround and the earlier silent
+-- script-based charge are removed.
 
--- Remove the temporary vendor-backed workaround, if it was applied locally.
-DELETE FROM `gossip_menu_option`
-WHERE `menu_id` = 30348 AND `id` = 0;
+-- Clear legacy auto-increment rows with the same definition first:
+-- condition_entry is AUTO_INCREMENT and (type,value1,value2,flags,value3,value4)
+-- is unique, so an ON DUPLICATE UPDATE would "absorb" pre-existing rows
+-- created under different ids instead of creating the explicit ones.
+DELETE FROM `conditions` WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1 AND `flags` = 0;
+DELETE FROM `conditions` WHERE `type` = 2 AND `value1` = 41606 AND `value2` = 1 AND `flags` = 1;
+DELETE FROM `conditions` WHERE `type` = -1 AND `value1` IN (1678804, 41636) AND `value2` IN (1678815, 4163601);
 
-DELETE FROM `npc_vendor`
-WHERE `entry` = 62298 AND `item` = 41606;
+INSERT INTO `conditions` (`condition_entry`, `type`, `value1`, `value2`, `value3`, `value4`, `flags`) VALUES
+(41636, 9, 41636, 1, 0, 0, 0),
+(4163601, 2, 41606, 1, 0, 0, 1),
+(4163602, -1, 41636, 4163601, 0, 0, 0)
+ON DUPLICATE KEY UPDATE `type`=VALUES(`type`), `value1`=VALUES(`value1`), `value2`=VALUES(`value2`), `value3`=VALUES(`value3`), `value4`=VALUES(`value4`), `flags`=VALUES(`flags`);
 
-UPDATE `creature_template`
-SET `npc_flags` = `npc_flags` & ~128
-WHERE `entry` = 62298;
+DELETE FROM `npc_vendor` WHERE `entry` = 62298 AND `item` = 41606;
+UPDATE `creature_template` SET `npc_flags` = `npc_flags` & ~128 WHERE `entry` = 62298;
+UPDATE `item_template` SET `buy_price` = 0 WHERE `entry` = 41606 AND `buy_price` = 2000;
 
-UPDATE `item_template`
-SET `buy_price` = 0
-WHERE `entry` = 41606 AND `buy_price` = 2000;
-
--- The deal is available only while the prerequisite quest is active.
-INSERT INTO `conditions` (`type`, `value1`, `value2`, `value3`, `value4`, `flags`)
-SELECT 9, 41636, 1, 0, 0, 0 FROM DUAL
-WHERE NOT EXISTS (
-    SELECT 1 FROM `conditions`
-    WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-);
+DELETE FROM `gossip_scripts` WHERE `id` IN (6229805, 6229806);
+DELETE FROM `gossip_menu_option` WHERE `menu_id` IN (62298, 30348);
 
 -- Threat branch: close gossip, become temporarily hostile, then attack.
-INSERT INTO `gossip_scripts`
-    (`id`, `delay`, `priority`, `command`, `datalong`, `datalong2`, `comments`)
-SELECT 6229805, 0, 0, 22, 14, 3,
-       'Cutpurse Warren threat: become hostile and attack'
-FROM DUAL
-WHERE NOT EXISTS (
-    SELECT 1 FROM `gossip_scripts`
-    WHERE `id` = 6229805 AND `command` = 22
-);
+INSERT INTO `gossip_scripts` (`id`, `delay`, `priority`, `command`, `datalong`, `datalong2`, `comments`) VALUES
+(6229805, 0, 0, 22, 14, 3, 'Cutpurse Warren threat: become hostile and attack'),
+(6229805, 0, 1, 26, 0, 0, 'Cutpurse Warren threat: attack the player');
 
-INSERT INTO `gossip_scripts`
-    (`id`, `delay`, `priority`, `command`, `datalong`, `datalong2`, `comments`)
-SELECT 6229805, 0, 1, 26, 0, 0,
-       'Cutpurse Warren threat: attack the player'
-FROM DUAL
-WHERE NOT EXISTS (
-    SELECT 1 FROM `gossip_scripts`
-    WHERE `id` = 6229805 AND `command` = 26
-);
-
--- Paid branch: create the quest item only after validating inventory and 20 silver.
-INSERT INTO `gossip_scripts`
-    (`id`, `delay`, `priority`, `command`, `datalong`, `datalong2`, `datalong3`, `data_flags`, `comments`)
-SELECT 6229806, 0, 0, 17, 41606, 1, 2000, 8,
-       'Cutpurse Warren deal: charge 20 silver and create the donated-books crate'
-FROM DUAL
-WHERE NOT EXISTS (
-    SELECT 1 FROM `gossip_scripts`
-    WHERE `id` = 6229806 AND `command` = 17
-);
-
-UPDATE `gossip_menu_option`
-SET `action_menu_id` = -1,
-    `action_script_id` = 6229805
-WHERE `menu_id` = 62298 AND `id` = 1;
-
-INSERT INTO `gossip_menu_option`
-    (`menu_id`, `id`, `option_icon`, `option_text`, `option_broadcast_text`,
-     `option_id`, `npc_option_npcflag`, `action_menu_id`, `action_poi_id`,
-     `action_script_id`, `box_coded`, `box_money`, `box_text`,
-     `box_broadcast_text`, `condition_id`)
-SELECT 30348, 0, 6, 'Take it and get out of Northwind <Pay 20 silver>', 0,
-       1, 1, -1, 0,
-       6229806, 0, 0, '',
-       0,
-       (SELECT `condition_entry` FROM `conditions`
-        WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-        ORDER BY `condition_entry` DESC LIMIT 1)
-FROM DUAL;
-
--- ==============================================
--- FILE: 03-cutpurse-one-time-choice.sql
--- GENERATED: 20260817211652
--- ==============================================
--- Cutpurse Warren: make the choice one-time for the player.
--- Reuse the existing condition system: quest 41636 is active/incomplete
--- and the donated-books crate is not already in the player's inventory.
-
-INSERT INTO `conditions`
-(`type`, `value1`, `value2`, `value3`, `value4`, `flags`)
-SELECT 2, 41606, 1, 0, 0, 1
-FROM DUAL
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM `conditions`
-    WHERE `type` = 2
-      AND `value1` = 41606
-      AND `value2` = 1
-      AND `value3` = 0
-      AND `value4` = 0
-      AND `flags` = 1
-);
-
-INSERT INTO `conditions`
-(`type`, `value1`, `value2`, `value3`, `value4`, `flags`)
-SELECT -1,
-       (SELECT `condition_entry`
-        FROM `conditions`
-        WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-        ORDER BY `condition_entry` DESC LIMIT 1),
-       (SELECT `condition_entry`
-        FROM `conditions`
-        WHERE `type` = 2 AND `value1` = 41606 AND `value2` = 1 AND `flags` = 1
-        ORDER BY `condition_entry` DESC LIMIT 1),
-       0, 0, 0
-FROM DUAL
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM `conditions`
-    WHERE `type` = -1
-      AND `value1` = (SELECT `condition_entry`
-                      FROM `conditions`
-                      WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-                      ORDER BY `condition_entry` DESC LIMIT 1)
-      AND `value2` = (SELECT `condition_entry`
-                      FROM `conditions`
-                      WHERE `type` = 2 AND `value1` = 41606 AND `value2` = 1 AND `flags` = 1
-                      ORDER BY `condition_entry` DESC LIMIT 1)
-      AND `value3` = 0
-      AND `value4` = 0
-      AND `flags` = 0
-);
-
--- Hide both initial choices after the crate has been obtained.
-UPDATE `gossip_menu_option`
-SET `condition_id` = (
-    SELECT `condition_entry`
-    FROM `conditions`
-    WHERE `type` = -1
-      AND `value1` = (SELECT `condition_entry`
-                      FROM `conditions`
-                      WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-                      ORDER BY `condition_entry` DESC LIMIT 1)
-      AND `value2` = (SELECT `condition_entry`
-                      FROM `conditions`
-                      WHERE `type` = 2 AND `value1` = 41606 AND `value2` = 1 AND `flags` = 1
-                      ORDER BY `condition_entry` DESC LIMIT 1)
-      AND `value3` = 0
-      AND `value4` = 0
-      AND `flags` = 0
-    ORDER BY `condition_entry` DESC LIMIT 1
-)
-WHERE `menu_id` = 62298 AND `id` IN (0, 1);
-
--- Also prevent a stale second-page click from charging or creating another crate.
-UPDATE `gossip_menu_option`
-SET `condition_id` = (
-    SELECT `condition_entry`
-    FROM `conditions`
-    WHERE `type` = -1
-      AND `value1` = (SELECT `condition_entry`
-                      FROM `conditions`
-                      WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-                      ORDER BY `condition_entry` DESC LIMIT 1)
-      AND `value2` = (SELECT `condition_entry`
-                      FROM `conditions`
-                      WHERE `type` = 2 AND `value1` = 41606 AND `value2` = 1 AND `flags` = 1
-                      ORDER BY `condition_entry` DESC LIMIT 1)
-      AND `value3` = 0
-      AND `value4` = 0
-      AND `flags` = 0
-    ORDER BY `condition_entry` DESC LIMIT 1
-)
-WHERE `menu_id` = 30348 AND `id` = 0;
-
-UPDATE `gossip_scripts`
-SET `condition_id` = (
-    SELECT `condition_entry`
-    FROM `conditions`
-    WHERE `type` = -1
-      AND `value1` = (SELECT `condition_entry`
-                      FROM `conditions`
-                      WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-                      ORDER BY `condition_entry` DESC LIMIT 1)
-      AND `value2` = (SELECT `condition_entry`
-                      FROM `conditions`
-                      WHERE `type` = 2 AND `value1` = 41606 AND `value2` = 1 AND `flags` = 1
-                      ORDER BY `condition_entry` DESC LIMIT 1)
-      AND `value3` = 0
-      AND `value4` = 0
-      AND `flags` = 0
-    ORDER BY `condition_entry` DESC LIMIT 1
-)
-WHERE `id` = 6229806 AND `command` = 17;
-
--- ==============================================
--- FILE: 04-cutpurse-threat-followup.sql
--- GENERATED: 20260817211652
--- ==============================================
--- Cutpurse Warren: show the payment/threat choices only after the
--- player selects the initial crate handover option.
-
--- Remove the threat choice from the first gossip menu.
-DELETE FROM `gossip_menu_option`
-WHERE `menu_id` = 62298 AND `id` = 1;
-
--- Add the threat choice beside the payment choice in the follow-up menu.
-UPDATE `gossip_menu_option`
-SET `option_icon` = 7,
-    `option_text` = 'As if! Today you''ll draw your last breath!',
-    `option_broadcast_text` = 0,
-    `option_id` = 1,
-    `npc_option_npcflag` = 1,
-    `action_menu_id` = -1,
-    `action_poi_id` = 0,
-    `action_script_id` = 6229805,
-    `box_coded` = 0,
-    `box_money` = 0,
-    `box_text` = '',
-    `box_broadcast_text` = 0,
-    `condition_id` = (
-        SELECT `condition_entry`
-        FROM `conditions`
-        WHERE `type` = -1
-          AND `value1` = (SELECT `condition_entry`
-                          FROM `conditions`
-                          WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-                          ORDER BY `condition_entry` DESC LIMIT 1)
-          AND `value2` = (SELECT `condition_entry`
-                          FROM `conditions`
-                          WHERE `type` = 2 AND `value1` = 41606 AND `value2` = 1 AND `flags` = 1
-                          ORDER BY `condition_entry` DESC LIMIT 1)
-          AND `value3` = 0
-          AND `value4` = 0
-          AND `flags` = 0
-        ORDER BY `condition_entry` DESC LIMIT 1
-    )
-WHERE `menu_id` = 30348 AND `id` = 1;
-
-INSERT INTO `gossip_menu_option`
-    (`menu_id`, `id`, `option_icon`, `option_text`, `option_broadcast_text`,
-     `option_id`, `npc_option_npcflag`, `action_menu_id`, `action_poi_id`,
-     `action_script_id`, `box_coded`, `box_money`, `box_text`,
-     `box_broadcast_text`, `condition_id`)
-SELECT 30348, 1, 7, 'As if! Today you''ll draw your last breath!', 0,
-       1, 1, -1, 0,
-       6229805, 0, 0, '', 0,
-       (
-           SELECT `condition_entry`
-           FROM `conditions`
-           WHERE `type` = -1
-             AND `value1` = (SELECT `condition_entry`
-                             FROM `conditions`
-                             WHERE `type` = 9 AND `value1` = 41636 AND `value2` = 1
-                             ORDER BY `condition_entry` DESC LIMIT 1)
-             AND `value2` = (SELECT `condition_entry`
-                             FROM `conditions`
-                             WHERE `type` = 2 AND `value1` = 41606 AND `value2` = 1 AND `flags` = 1
-                             ORDER BY `condition_entry` DESC LIMIT 1)
-             AND `value3` = 0
-             AND `value4` = 0
-             AND `flags` = 0
-           ORDER BY `condition_entry` DESC LIMIT 1
-       )
-FROM DUAL
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM `gossip_menu_option`
-    WHERE `menu_id` = 30348 AND `id` = 1
-);
-
--- ==============================================
+-- Handover option leads to the follow-up menu with the threat choice.
+INSERT INTO `gossip_menu_option` (`menu_id`, `id`, `option_icon`, `option_text`, `option_broadcast_text`, `option_id`, `npc_option_npcflag`, `action_menu_id`, `action_poi_id`, `action_script_id`, `box_coded`, `box_money`, `box_text`, `box_broadcast_text`, `condition_id`) VALUES
+(62298, 0, 7, 'Hand over the crate with donations from Stormwind!', 6229801, 1, 1, 30348, 0, 0, 0, 0, '', 0, 4163602),
+(30348, 1, 7, 'As if! Today you''ll draw your last breath!', 0, 1, 1, -1, 0, 6229805, 0, 0, '', 0, 4163602)
+ON DUPLICATE KEY UPDATE `option_text`=VALUES(`option_text`), `action_menu_id`=VALUES(`action_menu_id`), `action_script_id`=VALUES(`action_script_id`), `condition_id`=VALUES(`condition_id`);
 -- FILE: 05-messenger-of-northwind-reports.sql
 -- GENERATED: 20260817211652
 -- ==============================================
@@ -376,11 +143,14 @@ UPDATE `gossip_menu_option` SET `action_menu_id` = 30355 WHERE `menu_id` = 62302
 UPDATE `gossip_menu_option` SET `action_menu_id` = 30355 WHERE `menu_id` = 62303 AND `id` IN (0, 1);
 
 INSERT INTO `broadcast_text` (`entry`, `male_text`, `female_text`, `chat_type`, `sound_id`, `language_id`, `emote_id1`, `emote_id2`, `emote_id3`, `emote_delay1`, `emote_delay2`, `emote_delay3`)
-VALUES (6230306, 'Yes, it was the Prestor family! Thank you for reminding me!', 'Yes, it was the Prestor family! Thank you for reminding me!', 0, 0, 0, 0, 0, 0, 0, 0, 0);
+VALUES (6230306, 'Yes, it was the Prestor family! Thank you for reminding me!', 'Yes, it was the Prestor family! Thank you for reminding me!', 0, 0, 0, 0, 0, 0, 0, 0, 0)
+ON DUPLICATE KEY UPDATE `male_text`=VALUES(`male_text`), `female_text`=VALUES(`female_text`);
 
-INSERT INTO `npc_text` (`ID`, `BroadcastTextID0`) VALUES (6230304, 6230306);
+INSERT INTO `npc_text` (`ID`, `BroadcastTextID0`) VALUES (6230304, 6230306)
+ON DUPLICATE KEY UPDATE `BroadcastTextID0`=VALUES(`BroadcastTextID0`);
 
-INSERT INTO `gossip_menu` (`entry`, `text_id`) VALUES (30356, 6230304);
+INSERT INTO `gossip_menu` (`entry`, `text_id`) VALUES (30356, 6230304)
+ON DUPLICATE KEY UPDATE `text_id`=VALUES(`text_id`);
 
 UPDATE `gossip_menu_option` SET `action_menu_id` = 30356 WHERE `menu_id` = 62303 AND `id` = 2;
 
@@ -403,11 +173,14 @@ UPDATE `gossip_menu_option` SET `condition_id` = 41637 WHERE `menu_id` = 62302 A
 UPDATE `gossip_menu_option` SET `condition_id` = 41637 WHERE `menu_id` = 62303 AND `id` IN (0, 1);
 
 INSERT INTO `broadcast_text` (`entry`, `male_text`, `female_text`, `chat_type`, `sound_id`, `language_id`, `emote_id1`, `emote_id2`, `emote_id3`, `emote_delay1`, `emote_delay2`, `emote_delay3`)
-VALUES (6230106, 'Hehe, you''re funny!', 'Hehe, you''re funny!', 0, 0, 0, 0, 0, 0, 0, 0, 0);
+VALUES (6230106, 'Hehe, you''re funny!', 'Hehe, you''re funny!', 0, 0, 0, 0, 0, 0, 0, 0, 0)
+ON DUPLICATE KEY UPDATE `male_text`=VALUES(`male_text`), `female_text`=VALUES(`female_text`);
 
-INSERT INTO `npc_text` (`ID`, `BroadcastTextID0`) VALUES (6230104, 6230106);
+INSERT INTO `npc_text` (`ID`, `BroadcastTextID0`) VALUES (6230104, 6230106)
+ON DUPLICATE KEY UPDATE `BroadcastTextID0`=VALUES(`BroadcastTextID0`);
 
-INSERT INTO `gossip_menu` (`entry`, `text_id`) VALUES (30358, 6230104);
+INSERT INTO `gossip_menu` (`entry`, `text_id`) VALUES (30358, 6230104)
+ON DUPLICATE KEY UPDATE `text_id`=VALUES(`text_id`);
 
 UPDATE `gossip_menu_option` SET `action_menu_id` = 30358 WHERE `menu_id` = 62301 AND `id` = 2;
 
@@ -443,7 +216,8 @@ INSERT INTO `gossip_scripts` (`id`, `delay`, `priority`, `command`, `datalong`, 
 (62490, 0, 0, 17, 41695, 1, 'Sara Flenning corpse - Quest 41648: give Sara''s Comb');
 
 INSERT INTO `gossip_menu_option` (`menu_id`, `id`, `option_icon`, `option_text`, `option_broadcast_text`, `option_id`, `npc_option_npcflag`, `action_menu_id`, `action_poi_id`, `action_script_id`, `box_coded`, `box_money`, `box_text`, `box_broadcast_text`, `condition_id`) VALUES
-(62490, 0, 0, 'Search the body for anything useful.', 0, 1, 1, -1, 0, 62490, 0, 0, '', 0, 41648);
+(62490, 0, 0, 'Search the body for anything useful.', 0, 1, 1, -1, 0, 62490, 0, 0, '', 0, 41648)
+ON DUPLICATE KEY UPDATE `option_text`=VALUES(`option_text`), `action_menu_id`=VALUES(`action_menu_id`), `action_script_id`=VALUES(`action_script_id`), `condition_id`=VALUES(`condition_id`);
 
 -- ==============================================
 -- FILE: 12-shadow-vision-credit.sql
@@ -457,3 +231,26 @@ INSERT INTO `gossip_menu_option` (`menu_id`, `id`, `option_icon`, `option_text`,
 -- is untouched.
 
 UPDATE `quest_template` SET `ReqCreatureOrGOId1` = 62265 WHERE `entry` = 41684;
+-- ==============================================
+-- FILE: 13-warren-confirmed-buy.sql
+-- ==============================================
+-- Confirmed-buy for the crate: quest 41839 "The Warren Deal" reuses the
+-- in-DB "pay at completion" mechanic (RewOrReqMoney < 0) - the client
+-- pops the "Pay 20 silver?" dialog at turn-in and the server deducts the
+-- money on completion. Gated by the same one-time condition via
+-- quest_template.RequiredCondition, so it only appears while quest 41636
+-- is active and the crate is not already owned.
+
+INSERT INTO `quest_template`
+(`entry`, `Method`, `ZoneOrSort`, `MinLevel`, `QuestLevel`, `Type`, `RequiredRaces`, `RequiredCondition`, `RewOrReqMoney`, `RewItemId1`, `RewItemCount1`, `Title`, `RequestItemsText`, `OfferRewardText`)
+VALUES
+(41839, 2, 5581, 25, 31, 0, 589, 4163602, -2000, 41606, 1,
+ 'The Warren Deal',
+ 'Pay Cutpurse Warren 20 silver for the Crate of Donated Books.',
+ 'Pleasure doing business. Now get out of my sight.')
+ON DUPLICATE KEY UPDATE `Method`=VALUES(`Method`), `RequiredCondition`=VALUES(`RequiredCondition`), `RewOrReqMoney`=VALUES(`RewOrReqMoney`), `RewItemId1`=VALUES(`RewItemId1`), `RewItemCount1`=VALUES(`RewItemCount1`);
+
+INSERT INTO `creature_questrelation` (`id`, `quest`) VALUES (62298, 41839)
+ON DUPLICATE KEY UPDATE `quest`=VALUES(`quest`);
+INSERT INTO `creature_involvedrelation` (`id`, `quest`) VALUES (62298, 41839)
+ON DUPLICATE KEY UPDATE `quest`=VALUES(`quest`);
