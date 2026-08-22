@@ -6,10 +6,17 @@ submodule is pinned to commit `1b06f28ff3a00054d915d824c725fb4283fee74d`, the
 revision shared by the maintained VMaNGOS and cMaNGOS integrations when this
 port was prepared.
 
-The host side targets Eluna's VMaNGOS API (`ELUNA_VMANGOS`) and the vanilla
-client expansion (`ELUNA_EXPANSION=0`). Do not replace those definitions with
-the generic MaNGOS adapter: this repository has Turtle-specific stores,
-timers, GUID handling, script objects, and gameplay extensions.
+This repository remains a custom Turtle WoW MaNGOS core; it is not VMaNGOS.
+The host selects Eluna's VMaNGOS compatibility backend (`ELUNA_VMANGOS`) and
+the vanilla client expansion (`ELUNA_EXPANSION=0`) because that backend most
+closely matches this fork's classic API surface. Eluna's `ELUNA_MANGOS`
+backend targets a different MaNGOS API generation and expects headers and
+revision definitions this tree does not provide.
+
+The backend macro normally makes Eluna report the core name as `vMaNGOS`.
+Turtle's custom-method layer overrides `GetCoreName()` to return `MaNGOS` and
+`GetCoreVersion()` to return this repository's revision hash. The backend is
+an implementation detail, not the server's identity.
 
 ## Checkout
 
@@ -89,8 +96,10 @@ The integration includes:
   battleground, weather, and game-event dispatch;
 - creature, gameobject, item, gossip, quest, area-trigger, summon, and dummy
   spell-effect dispatch;
-- Eluna object event processors and the VMaNGOS method bindings required by
-  the pinned engine revision.
+- Eluna object event processors and the compatibility-backend method bindings
+  required by the pinned engine revision; and
+- a host-side `SpellInfo` compatibility layer backed by Turtle's canonical
+  `spell_template` records.
 
 ## Verification checklist
 
@@ -112,8 +121,15 @@ world databases and is intentionally not encoded into CTest.
 Treat an Eluna revision change as an API update, not a routine dependency bump.
 Move the submodule deliberately, record the new commit in the parent repository,
 then repeat the complete verification checklist above. In particular, review
-the VMaNGOS bindings for changed method signatures or newly registered userdata
-before adapting Turtle-specific core types.
+the selected compatibility backend for changed method signatures or newly
+registered userdata before adapting Turtle-specific core types.
+
+No file inside the Eluna submodule is patched or renamed. Compatibility headers
+and custom methods live in the host tree. The MSVC parameter-name workaround is
+applied to a generated build-directory copy, and becomes a no-op if upstream
+removes that spelling. The SpellInfo fallback checks the registered Lua API at
+startup, so a future native upstream implementation takes precedence instead of
+being registered twice.
 
 ```sh
 git -C src/modules/Eluna fetch origin
@@ -143,15 +159,35 @@ MaNGOS 1.12 maps or DBC files are not a valid substitute for this fork's
 custom data.
 
 The live Aura smoke script created an unsaved, timed creature, applied spell
-1126 (Mark of the Wild), and exercised the pinned VMaNGOS Aura API against
+1126 (Mark of the Wild), and exercised the pinned Eluna Aura API against
 real server userdata: aura creation and lookup, identity/caster/owner
-accessors, duration and stack mutation, and removal. Its success marker was
-`ELUNA_AURA_SMOKE_PASSED`; the temporary creature left no persistent row.
+accessors, duration and stack mutation, SpellInfo lookup, and removal. Its
+success markers include `ELUNA_CORE_IDENTITY_SMOKE_PASSED`,
+`ELUNA_AURA_SMOKE_PASSED`, and
+`ELUNA_SPELLINFO_SMOKE_PASSED`. It also looks up Turtle's custom Mercenary
+aura (spell 61000) and emits `ELUNA_TURTLE_SPELLINFO_SMOKE_PASSED` after
+checking its database-backed effect fields. The temporary creature leaves no
+persistent row.
 
-## Known Aura compatibility limit
+## SpellInfo compatibility adaptation
 
-The current online Aura index lists `Aura:GetSpellInfo`, but the pinned
-VMaNGOS adapter does not register the `SpellInfo` userdata layer or that Aura
-method. The smoke test reports this as
-`ELUNA_AURA_GETSPELLINFO_UNAVAILABLE_VMANGOS`; the other twelve documented
-Aura methods are exercised directly.
+Eluna already defines an `ElunaSpellInfo` value wrapper for non-Trinity cores,
+but upstream only registers the wrapper and its Lua methods for Trinity-family
+builds. The custom-method extension in `src/game/Eluna/CustomMethods.h`
+registers it for this Turtle WoW MaNGOS port without modifying the pinned
+submodule. It supplies `Aura:GetSpellInfo`, `Spell:GetSpellInfo`, the global
+`GetSpellInfo(spellId)`, and the stable vanilla-compatible portion of the
+documented SpellInfo API.
+
+The returned object references the immutable `SpellEntry` owned by
+`SpellMgr`. In this fork those entries are populated from the world
+database's `spell_template` table, so Lua sees Turtle's custom spell rows and
+SQL-adjusted values rather than an unrelated stock DBC snapshot. Indexed
+effect access is restricted to vanilla's three effect slots, with a Lua
+argument error for an out-of-range index.
+
+Methods that depend on post-vanilla fields or Trinity-only systems are not
+registered. Examples include extended attribute words 5-7, rune costs,
+`AuraEffect`, 96-bit effect class masks, and Trinity's structured target and
+immunity helpers. This is an intentional capability boundary rather than
+returning fabricated values.

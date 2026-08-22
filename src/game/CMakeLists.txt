@@ -508,7 +508,10 @@ if(USE_ANTICHEAT)
 endif()
 
 if(BUILD_ELUNA)
-  list(APPEND game_SRCS ElunaScriptBridge.cpp)
+  list(APPEND game_SRCS
+    ElunaScriptBridge.cpp
+    Eluna/CustomMethods.h
+  )
 
   file(GLOB ELUNA_SRCS CONFIGURE_DEPENDS
     ${CMAKE_SOURCE_DIR}/src/modules/Eluna/*.cpp
@@ -531,12 +534,15 @@ if(BUILD_ELUNA)
       COPYONLY
     )
     file(READ ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks/HookHelpers.h ELUNA_HOOK_HELPERS)
-    string(REPLACE "size_t... Is" "size_t... ReturnIndices" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
-    string(REPLACE "index_sequence<Is...>" "index_sequence<ReturnIndices...>" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
-    string(REPLACE "tuple_element_t<Is," "tuple_element_t<ReturnIndices," ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
-    string(REPLACE "static_cast<int>(Is)" "static_cast<int>(ReturnIndices)" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
-    string(REPLACE "std::get<Is>" "std::get<ReturnIndices>" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
-    string(REPLACE "indices[Is]" "indices[ReturnIndices]" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
+    string(FIND "${ELUNA_HOOK_HELPERS}" "size_t... Is" ELUNA_MSVC_RENAME_POSITION)
+    if(NOT ELUNA_MSVC_RENAME_POSITION EQUAL -1)
+      string(REPLACE "size_t... Is" "size_t... ReturnIndices" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
+      string(REPLACE "index_sequence<Is...>" "index_sequence<ReturnIndices...>" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
+      string(REPLACE "tuple_element_t<Is," "tuple_element_t<ReturnIndices," ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
+      string(REPLACE "static_cast<int>(Is)" "static_cast<int>(ReturnIndices)" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
+      string(REPLACE "std::get<Is>" "std::get<ReturnIndices>" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
+      string(REPLACE "indices[Is]" "indices[ReturnIndices]" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
+    endif()
     file(WRITE ${ELUNA_MSVC_SOURCE_DIR}/HookHelpers.h "${ELUNA_HOOK_HELPERS}")
     list(REMOVE_ITEM ELUNA_SRCS ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks/SpellHooks.cpp)
     list(APPEND ELUNA_SRCS ${ELUNA_MSVC_SOURCE_DIR}/SpellHooks.cpp)
@@ -669,8 +675,10 @@ if(BUILD_ELUNA)
     ENABLE_ELUNA
     ELUNA_EXPANSION=0
     ELUNA_VMANGOS
+    ELUNA_USE_CUSTOM_METHODS
   )
   target_include_directories(game PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Eluna
     ${CMAKE_SOURCE_DIR}/src/modules/Eluna
     ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks
     ${CMAKE_SOURCE_DIR}/src/modules/Eluna/methods/VMangos

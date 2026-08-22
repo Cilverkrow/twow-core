@@ -1,4 +1,5 @@
 local AURA_SPELL_ID = 1126 -- Mark of the Wild (Rank 1), effect index 0 is an aura.
+local TURTLE_SPELL_ID = 61000 -- Mercenary, a Turtle spell_template-only aura.
 local TEST_CREATURE_ENTRY = 6 -- Kobold Vermin.
 
 local function expect(condition, message)
@@ -9,6 +10,11 @@ end
 
 local function runAuraSmoke()
     PrintInfo('ELUNA_AURA_SMOKE_STARTED')
+
+    expect(GetCoreName() == 'MaNGOS', 'GetCoreName misidentified the Turtle MaNGOS core')
+    local coreVersion = GetCoreVersion()
+    expect(type(coreVersion) == 'string' and #coreVersion > 0, 'GetCoreVersion returned no revision')
+    PrintInfo('ELUNA_CORE_IDENTITY_SMOKE_PASSED')
 
     -- Unsaved and timed: this object never touches the creature table and is
     -- removed automatically even if a later assertion fails.
@@ -45,17 +51,38 @@ local function runAuraSmoke()
     expect(aura:GetStackAmount() == 2, 'SetStackAmount did not persist')
     expect(aura:GetDuration() <= aura:GetMaxDuration(), 'stack reset exceeded max duration')
 
-    if aura.GetSpellInfo == nil then
-        PrintInfo('ELUNA_AURA_GETSPELLINFO_UNAVAILABLE_VMANGOS')
-    else
-        expect(aura:GetSpellInfo() ~= nil, 'GetSpellInfo returned nil')
-    end
+    local spellInfo = aura:GetSpellInfo()
+    expect(spellInfo ~= nil, 'Aura:GetSpellInfo returned nil')
+    expect(spellInfo:GetId() == AURA_SPELL_ID, 'SpellInfo:GetId returned the wrong spell')
+    expect(spellInfo:GetSchoolMask() > 0, 'SpellInfo:GetSchoolMask returned no school')
+    expect(spellInfo:GetDuration() > 0, 'SpellInfo:GetDuration returned no duration')
+    expect(type(spellInfo:GetAttributes()) == 'number', 'SpellInfo:GetAttributes did not return a number')
+    expect(spellInfo:GetEffectType(0) > 0, 'SpellInfo:GetEffectType returned no first effect')
+    local auraType = spellInfo:GetEffectApplyAuraName(0)
+    expect(auraType > 0, 'SpellInfo:GetEffectApplyAuraName returned no aura')
+    expect(spellInfo:HasAura(auraType), 'SpellInfo:HasAura did not find its first aura effect')
+
+    local globalSpellInfo = GetSpellInfo(AURA_SPELL_ID)
+    expect(globalSpellInfo ~= nil, 'global GetSpellInfo returned nil')
+    expect(globalSpellInfo:GetId() == spellInfo:GetId(), 'global GetSpellInfo returned the wrong spell')
+
+    local turtleSpellInfo = GetSpellInfo(TURTLE_SPELL_ID)
+    expect(turtleSpellInfo ~= nil, 'Turtle custom SpellInfo returned nil')
+    expect(turtleSpellInfo:GetId() == TURTLE_SPELL_ID, 'Turtle custom SpellInfo returned the wrong spell')
+    expect(turtleSpellInfo:GetEffectType(0) == 6, 'Turtle custom spell did not expose spell_template effect1')
+    expect(turtleSpellInfo:GetEffectApplyAuraName(0) == 72, 'Turtle custom spell did not expose spell_template aura1')
+
+    local validIndex = pcall(function() spellInfo:GetEffectType(3) end)
+    expect(not validIndex, 'SpellInfo accepted an out-of-range vanilla effect index')
 
     aura:Remove()
     expect(not creature:HasAura(AURA_SPELL_ID), 'Aura:Remove left the aura applied')
+    expect(spellInfo:GetId() == AURA_SPELL_ID, 'SpellInfo became invalid when its source Aura was removed')
     creature:DespawnOrUnsummon(0)
 
     PrintInfo('ELUNA_AURA_SMOKE_PASSED')
+    PrintInfo('ELUNA_SPELLINFO_SMOKE_PASSED')
+    PrintInfo('ELUNA_TURTLE_SPELLINFO_SMOKE_PASSED')
 end
 
 local function onWorldStartup()

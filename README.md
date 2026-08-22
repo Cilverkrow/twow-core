@@ -143,7 +143,7 @@ Additions will be added as the core code reaches feature completion
 - **Leech** - Basic toggleable leech system designed for solo play, found in mangosd.conf
 - **Additional Talent Points** - Mostly used for testing, found in tw_char.characters
 - **[Playerbots][20]** *(this fork)* - Integrated from [r-o-sh's branch](https://github.com/r-o-sh/tortoise-wow/tree/playerbots-integration-gh). Not an experiment: ~1000 of them run permanently and the fork is built around them. Upstream still lists this as planned.
-- **[Eluna][19]** *(this branch)* - Integrated as a pinned submodule using the VMaNGOS API adapter, with a build-time switch (`BUILD_ELUNA`) and runtime switch (`Eluna.Enabled`). See `docs/ELUNA.md`.
+- **[Eluna][19]** *(this branch)* - Integrated as a pinned submodule using Eluna's VMaNGOS compatibility backend. The server remains the custom Turtle WoW MaNGOS core. Includes a build-time switch (`BUILD_ELUNA`) and runtime switch (`Eluna.Enabled`). See `docs/ELUNA.md`.
 
 ## Operating Systems
 
