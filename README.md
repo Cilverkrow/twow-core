@@ -107,8 +107,8 @@ Two are deliberately manual, in `sql/tools/`, because both depend on per-server 
 
 - Release builds on MSVC ship debug symbols, so a crash dump is readable
 - Eluna is integrated as a pinned Git submodule, built by default, and controlled at
-  runtime by `Eluna.Enabled`. See `docs/ELUNA.md` for the build, configuration,
-  architecture, local test environment, and verification notes
+  runtime by `Eluna.Enabled`. See `docs/ELUNA.md` for checkout, configuration,
+  architecture, compatibility, and update guidance
 - `INSTALL-LINUX.md` and `INSTALL-WINDOWS.md` are start-to-finish walkthroughs, including
   the OpenSSL 3 legacy provider, the database procedure that actually works, and reading a
   crash dump
@@ -143,7 +143,7 @@ Additions will be added as the core code reaches feature completion
 - **Leech** - Basic toggleable leech system designed for solo play, found in mangosd.conf
 - **Additional Talent Points** - Mostly used for testing, found in tw_char.characters
 - **[Playerbots][20]** *(this fork)* - Integrated from [r-o-sh's branch](https://github.com/r-o-sh/tortoise-wow/tree/playerbots-integration-gh). Not an experiment: ~1000 of them run permanently and the fork is built around them. Upstream still lists this as planned.
-- **[Eluna][19]** *(this branch)* - Integrated as a pinned submodule using Eluna's VMaNGOS compatibility backend. The server remains the custom Turtle WoW MaNGOS core. Includes a build-time switch (`BUILD_ELUNA`) and runtime switch (`Eluna.Enabled`). See `docs/ELUNA.md`.
+- **[Eluna][19]** *(this branch)* - Lua scripting through a pinned submodule. The custom Turtle WoW MaNGOS core uses Eluna's VMaNGOS compatibility backend without becoming a VMaNGOS core. Enable it at build time with `BUILD_ELUNA` and at runtime with `Eluna.Enabled`; see `docs/ELUNA.md`.
 
 ## Operating Systems
 

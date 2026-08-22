@@ -41,7 +41,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 `ELUNA_LUA_VERSION` accepts `lua51`, `lua52`, `lua53`, or `lua54`. Lua source
 archives are downloaded from lua.org with pinned SHA-256 checksums and linked
-statically. `BUILD_ELUNA_TESTS=ON` builds a small runtime smoke test. Use
+statically. `BUILD_ELUNA_TESTS=ON` builds a small runtime linkage test. Use
 `BUILD_ELUNA=OFF` for a core-only regression build.
 
 `BUILD_ELUNA` is the compile-time switch; `Eluna.Enabled` is the independent
@@ -113,8 +113,8 @@ Before merging an Eluna update:
    no errors in `ElunaErrors.log`, load a small login hook, and exercise
    `.reload eluna`.
 
-A live realm smoke test requires the local authentication, character, and
-world databases and is intentionally not encoded into CTest.
+Realm databases, client data, credentials, generated configuration, and
+operator-specific integration scripts remain outside version control.
 
 ## Updating the submodule
 
@@ -136,38 +136,6 @@ git -C src/modules/Eluna fetch origin
 git -C src/modules/Eluna checkout <reviewed-commit>
 git add src/modules/Eluna
 ```
-
-## Local Turtle WoW realm smoke test
-
-The integration was verified on Windows with an isolated, loopback-only test
-realm. The local environment is deliberately not tracked. It used:
-
-- a portable x64 MariaDB 12.3.3 instance on `127.0.0.1:3310`;
-- `realmd` on `127.0.0.1:3724` and `mangosd` on `127.0.0.1:8090`;
-- an x64 ACE prefix supplied through `ACE_ROOT`;
-- all 190 world dumps from `sql/base`, followed by the canonical world and
-  character migrations under `sql/database_updates`;
-- maps, vmaps, and DBC files from the matching Turtle WoW client in the
-  repository-level, ignored `data` directory; and
-- generated server configs with `Eluna.Enabled = 1` and a local
-  `lua_scripts` directory.
-
-Copy the required ACE and MariaDB runtime DLLs beside the Release server
-binaries before starting the realm. Keep the portable database, credentials,
-generated configs, client data, logs, and runtime scripts outside Git. Stock
-MaNGOS 1.12 maps or DBC files are not a valid substitute for this fork's
-custom data.
-
-The live Aura smoke script created an unsaved, timed creature, applied spell
-1126 (Mark of the Wild), and exercised the pinned Eluna Aura API against
-real server userdata: aura creation and lookup, identity/caster/owner
-accessors, duration and stack mutation, SpellInfo lookup, and removal. Its
-success markers include `ELUNA_CORE_IDENTITY_SMOKE_PASSED`,
-`ELUNA_AURA_SMOKE_PASSED`, and
-`ELUNA_SPELLINFO_SMOKE_PASSED`. It also looks up Turtle's custom Mercenary
-aura (spell 61000) and emits `ELUNA_TURTLE_SPELLINFO_SMOKE_PASSED` after
-checking its database-backed effect fields. The temporary creature leaves no
-persistent row.
 
 ## SpellInfo compatibility adaptation
 
