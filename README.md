@@ -106,10 +106,13 @@ Two are deliberately manual, in `sql/tools/`, because both depend on per-server 
 ### Build and documentation
 
 - Release builds on MSVC ship debug symbols, so a crash dump is readable
+- Eluna is integrated as a pinned Git submodule, built by default, and controlled at
+  runtime by `Eluna.Enabled`. See `docs/ELUNA.md` for the build, configuration,
+  architecture, local test environment, and verification notes
 - `INSTALL-LINUX.md` and `INSTALL-WINDOWS.md` are start-to-finish walkthroughs, including
   the OpenSSL 3 legacy provider, the database procedure that actually works, and reading a
   crash dump
-- The **world database is in this repository** — `sql/base` holds 186 files, 131 MB, plus
+- The **world database is in this repository** — `sql/base` holds 190 files, 131 MB, plus
   the migrations under `sql/database_updates`. Only client data (maps, DBC, vmaps, mmaps)
   has to be extracted from a game client, with the tools under `tools/`
 
@@ -140,10 +143,7 @@ Additions will be added as the core code reaches feature completion
 - **Leech** - Basic toggleable leech system designed for solo play, found in mangosd.conf
 - **Additional Talent Points** - Mostly used for testing, found in tw_char.characters
 - **[Playerbots][20]** *(this fork)* - Integrated from [r-o-sh's branch](https://github.com/r-o-sh/tortoise-wow/tree/playerbots-integration-gh). Not an experiment: ~1000 of them run permanently and the fork is built around them. Upstream still lists this as planned.
-
-#### Planned Additions
-
-- **[Eluna][19]** - The WoW lua engine
+- **[Eluna][19]** *(this branch)* - Integrated as a pinned submodule using the VMaNGOS API adapter, with a build-time switch (`BUILD_ELUNA`) and runtime switch (`Eluna.Enabled`). See `docs/ELUNA.md`.
 
 ## Operating Systems
 
