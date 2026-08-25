@@ -1545,21 +1545,24 @@ void DcTestRunJob::SweepPartyGeometry()
 
                     float const bz = bot->GetPositionZ();
                     // Boss-band rescue first (see the header note above).
-                    if (bz > bossFloorZ + 25.0f)
-                        LOG_INFO("playerbots.dungeonclear",
-                                 "TESTRUN {} deck-tripwire: {} bz={:.1f} bossZ={:.1f} haveFloor={} teleporting={}",
-                                 _record.runId, bot->GetName(), bz, bossFloorZ,
-                                 haveBossFloor ? 1 : 0, bot->IsBeingTeleported() ? 1 : 0);
-                    if (haveBossFloor && bz > bossFloorZ + 25.0f && !bot->IsBeingTeleported())
+                    //
+                    // 80 yards, not 25. The phantom deck sits ~200y over the
+                    // mine, but the mine ITSELF is 40y tall - Cookie stands at
+                    // Z 17, Rhahk'Zor at Z 54, and the custom Voss wing at Z 54
+                    // hangs 35y over Gilnid's foundry floor at Z 19. At 25y this
+                    // rescue therefore fired on parties that were exactly where
+                    // they belonged and dropped them a storey, 444 times in one
+                    // evening: a vertical teleport that skipped the climb and
+                    // wrote a jump into the route recording. The gap between
+                    // "wrong deck" and "other floor of the same mine" is what
+                    // the threshold has to name, and 80y names it.
+                    float const DECK_BAND = 80.0f;
+                    if (haveBossFloor && bz > bossFloorZ + DECK_BAND && !bot->IsBeingTeleported())
                     {
                         NavmeshSnap::Result const floorHit = NavmeshSnap::SnapColumn(
                             botMap, bot->GetPositionX(), bot->GetPositionY(),
                             bossFloorZ, /*halfHeight*/ 40.0f, /*radius*/ 8.0f);
-                        LOG_INFO("playerbots.dungeonclear",
-                                 "TESTRUN {} deck-tripwire: {} band snap ok={} hitZ={:.1f}",
-                                 _record.runId, bot->GetName(), floorHit.ok ? 1 : 0,
-                                 floorHit.ok ? floorHit.z : 0.0f);
-                        if (floorHit.ok && bz - floorHit.z > 25.0f)
+                        if (floorHit.ok && bz - floorHit.z > DECK_BAND)
                         {
                             bot->GetMotionMaster()->Clear();
                             bot->NearTeleportTo(floorHit.x, floorHit.y, floorHit.z,
@@ -1567,9 +1570,9 @@ void DcTestRunJob::SweepPartyGeometry()
                                                 /*casting*/ false, /*vehicle*/ false,
                                                 /*withPet*/ true);
                             LOG_INFO("playerbots.dungeonclear",
-                                     "TESTRUN {} altitude sanity: {} floor-banded {:.0f}y "
+                                     "TESTRUN {} altitude sanity: {} floor-banded {}y "
                                      "down off the phantom deck",
-                                     _record.runId, bot->GetName(), bz - floorHit.z);
+                                     _record.runId, bot->GetName(), int(bz - floorHit.z));
                             continue;
                         }
                     }
@@ -1583,8 +1586,8 @@ void DcTestRunJob::SweepPartyGeometry()
                                             /*casting*/ false, /*vehicle*/ false,
                                             /*withPet*/ true);
                         LOG_INFO("playerbots.dungeonclear",
-                                 "TESTRUN {} altitude sanity: {} column-snapped {:.0f}y onto the mesh",
-                                 _record.runId, bot->GetName(), std::fabs(column.z - bz));
+                                 "TESTRUN {} altitude sanity: {} column-snapped {}y onto the mesh",
+                                 _record.runId, bot->GetName(), int(std::fabs(column.z - bz)));
                     }
                 }
             }

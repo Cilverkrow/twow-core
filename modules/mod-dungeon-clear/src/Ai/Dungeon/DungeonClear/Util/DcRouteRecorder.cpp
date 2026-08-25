@@ -179,7 +179,14 @@ namespace DcRouteRecorder
             // perfectly good legs thrown away. A teleport moves you ACROSS
             // the map, so judge on the horizontal component alone.
             float const flatJump = std::sqrt(dx * dx + dy * dy);
-            if (flatJump > 25.0f)
+            // 60yd, not 25: sampling rides the world tick, and with ten
+            // groups running the tick stretches - a gliding bot covers 25-28yd
+            // between two samples without anything unusual happening. Those
+            // values clustered just above the old threshold and were throwing
+            // away sound legs. A real displacement is much larger (a corpse
+            // run or a rescue moves you across the instance), so judge well
+            // above what walking can produce.
+            if (flatJump > 60.0f)
             {
                 LOG_INFO("playerbots.dungeonclear",
                          "[DC-ROUTE] discarded a teleported leg for {} (sideways jump of {}yd)",
