@@ -29,6 +29,18 @@ namespace
     {
         uint32 mapId = 0;
         std::vector<Sample3> pts;
+        // Whose walk this is. A leg must be ONE body's path; two bodies
+        // sampling into the same vector produce a route that zigzags between
+        // them by however far apart the party happens to walk.
+        ObjectGuid owner;
+        // Set while the owner is dead, cleared when it is back at the point
+        // where the recording broke off. See Sample().
+        bool awaitingReturn = false;
+        // Last position seen for the owner, ALIVE or DEAD. Used at boss time
+        // to tell a recording that ran to the kill from one that stopped
+        // halfway.
+        Sample3 lastSeen{};
+        bool haveLastSeen = false;
     };
 
     std::mutex g_mutex;
@@ -45,6 +57,17 @@ namespace
     // A leg shorter than this is not worth an anchor route (the boss was
     // already next door and the router handles that trivially).
     constexpr float kMinLegLength = 40.0f;
+    // How close the resurrected owner has to get to the last recorded point
+    // before recording resumes. The corpse run retraces ground that is
+    // already in the leg, so nothing is lost by ignoring it.
+    constexpr float kRejoinRadius = 20.0f;
+    // Two samples this close together are the same spot; everything walked
+    // between them was a loop. Twice the sample step, so ordinary corridor
+    // wobble is not mistaken for a return.
+    constexpr float kLoopRadius = 8.0f;
+    // How close the recording has to end to where the boss actually died for
+    // the leg to count as complete.
+    constexpr float kFinishRadius = 40.0f;
     // Vertical granularity: a stairway anchored every 3y keeps its shape
     // without turning a flat corridor into a chain of stops.
     constexpr float kAnchorRise = 3.0f;
@@ -57,6 +80,40 @@ namespace
     }
 
     // Douglas-Peucker-lite: keep a point whenever the running distance since
+    // Collapse loops. A recorded leg holds every yard the leader walked,
+    // including the ones it walked twice - back for a drink, back for a
+    // straggler, back around a pull that went sideways. Those repeats are
+    // what pushed the leg to Jared Voss to 1300-1900yd for 130yd of
+    // distance and got every single recording thrown out as wandering.
+    //
+    // The rule is purely geometric: if a later sample stands within
+    // kLoopRadius of an earlier one, the leader was back where it had been,
+    // so everything in between was a detour and can go. Both ends are ground
+    // it actually stood on, so nothing is invented - only the going-around
+    // is dropped. Always cut to the LAST such return, or a route that passes
+    // one junction three times keeps two of the three passes.
+    std::vector<Sample3> CutLoops(std::vector<Sample3> const& pts)
+    {
+        std::vector<Sample3> out;
+        out.reserve(pts.size());
+        std::size_t i = 0;
+        while (i < pts.size())
+        {
+            out.push_back(pts[i]);
+            std::size_t jump = i;
+            for (std::size_t j = pts.size(); j > i + 1; --j)
+            {
+                if (Dist2D(pts[i], pts[j - 1]) <= kLoopRadius)
+                {
+                    jump = j - 1;
+                    break;
+                }
+            }
+            i = (jump > i) ? jump + 1 : i + 1;
+        }
+        return out;
+    }
+
     // the last kept anchor exceeds kAnchorStep, or the direction turns sharply
     // (so corners survive even when they fall between two spacing marks).
     std::vector<Sample3> Thin(std::vector<Sample3> const& pts)
@@ -140,6 +197,35 @@ namespace DcRouteRecorder
         std::lock_guard<std::mutex> lock(g_mutex);
         Leg& leg = g_legs[map->GetInstanceId()];
         leg.mapId = map->GetId();
+
+        // One body per leg (see Leg::owner).
+        if (leg.owner.IsEmpty())
+            leg.owner = leader->GetObjectGuid();
+        else if (leg.owner != leader->GetObjectGuid())
+            return;
+
+        leg.lastSeen = now;
+        leg.haveLastSeen = true;
+
+        // A dead leader is not walking. Releasing the spirit puts it at the
+        // instance graveyard - in the Deadmines that is 249yd from the
+        // foundry floor, and every single group's leg to Gilnid was thrown
+        // out for a "sideways jump" of 237-267yd because the release was
+        // recorded as a step. Stop sampling until it is alive AND back where
+        // the recording broke off; the corpse run retraces ground the leg
+        // already holds.
+        if (!leader->IsAlive())
+        {
+            leg.awaitingReturn = true;
+            return;
+        }
+        if (leg.awaitingReturn)
+        {
+            if (!leg.pts.empty() && Dist2D(leg.pts.back(), now) > kRejoinRadius)
+                return;
+            leg.awaitingReturn = false;
+        }
+
         if (leg.pts.empty() || Dist2D(leg.pts.back(), now) >= kSampleStep)
             leg.pts.push_back(now);
     }
@@ -151,6 +237,8 @@ namespace DcRouteRecorder
 
         std::vector<Sample3> pts;
         uint32 mapId = map->GetId();
+        Sample3 lastSeen{};
+        bool haveLastSeen = false;
         {
             std::lock_guard<std::mutex> lock(g_mutex);
             auto it = g_legs.find(map->GetInstanceId());
@@ -158,6 +246,10 @@ namespace DcRouteRecorder
                 return;
             pts.swap(it->second.pts);          // leg closed; next boss starts fresh
             mapId = it->second.mapId ? it->second.mapId : mapId;
+            lastSeen = it->second.lastSeen;
+            haveLastSeen = it->second.haveLastSeen;
+            it->second.owner.Clear();          // next leg is up for grabs again
+            it->second.awaitingReturn = false;
         }
 
         // Reject legs that contain a TELEPORT. Sampling is every ~4yd, so a
@@ -195,9 +287,23 @@ namespace DcRouteRecorder
             }
         }
 
-        std::vector<Sample3> const anchors = Thin(pts);
+        std::vector<Sample3> const anchors = Thin(CutLoops(pts));
         if (anchors.size() < 3)
             return;
+
+        // The recording has to reach the kill. If the leader died on the way
+        // and never came back, the leg ends somewhere in the middle - and
+        // since Build() appends the boss as a final straight-line goal after
+        // the last anchor, adopting such a route would send every later group
+        // walking from that midpoint into whatever wall lies between.
+        if (haveLastSeen && Dist2D(anchors.back(), lastSeen) > kFinishRadius)
+        {
+            LOG_INFO("playerbots.dungeonclear",
+                     "[DC-ROUTE] discarded an incomplete leg for {} (recording stops {}yd "
+                     "short of the kill)",
+                     bossName, static_cast<uint32>(Dist2D(anchors.back(), lastSeen)));
+            return;
+        }
 
         float length = 0.0f;
         for (size_t i = 1; i < anchors.size(); ++i)
