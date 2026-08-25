@@ -311,6 +311,14 @@ namespace DcRouteRecorder
         if (length < kMinLegLength)
             return;
 
+        std::ostringstream path;
+        path << OutputDir() << "/Route_" << mapId << "_" << bossEntry << ".cpp";
+        bool haveRouteAlready = false;
+        {
+            std::ifstream probe(path.str().c_str());
+            haveRouteAlready = probe.is_open();
+        }
+
         // Reject wandering. A leg is only worth keeping if it roughly tracks
         // the way to the boss; a party that searched half the dungeon
         // produces a technically valid but useless route - and since Advance
@@ -323,10 +331,26 @@ namespace DcRouteRecorder
             float const straight = Dist2D(anchors.front(), anchors.back());
             if (straight > 1.0f && length > straight * 6.0f)
             {
+                // ... but only when there is something better to fall back
+                // on. With no route on disk the choice is not "detour or
+                // short way", it is "detour or search the dungeon again",
+                // and the detour wins: every anchor in it is ground the
+                // leader actually walked. Live: the Masterpiece Harvester
+                // sits 53yd from where its leg starts and takes 805yd of
+                // real corridor to reach, so the guard alone would have left
+                // that boss without a route forever. Shortest-wins replaces
+                // this the moment a group does better.
+                if (haveRouteAlready)
+                {
+                    LOG_INFO("playerbots.dungeonclear",
+                             "[DC-ROUTE] discarded a wandering leg for {}: {}yd walked for {}yd of distance",
+                             bossName, static_cast<uint32>(length), static_cast<uint32>(straight));
+                    return;
+                }
                 LOG_INFO("playerbots.dungeonclear",
-                         "[DC-ROUTE] discarded a wandering leg for {}: {}yd walked for {}yd of distance",
+                         "[DC-ROUTE] taking a long leg for {} for now ({}yd walked for {}yd of "
+                         "distance) — nothing better exists yet",
                          bossName, static_cast<uint32>(length), static_cast<uint32>(straight));
-                return;
             }
         }
 
@@ -334,8 +358,6 @@ namespace DcRouteRecorder
         // in the same shape as the authored routes, so committing it is all it
         // takes to ship the route with the module.
         std::string const ident = SanitizeIdent(bossName);
-        std::ostringstream path;
-        path << OutputDir() << "/Route_" << mapId << "_" << bossEntry << ".cpp";
 
         // Keep the SHORTEST route. The generated header carries the leg's
         // length ("... N anchors over Xyd."), so a previous recording can be
