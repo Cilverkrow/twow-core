@@ -4,6 +4,7 @@
  */
 
 #include "DcRouteRecorder.h"
+#include "Ai/Dungeon/DungeonClear/Data/DungeonClearRouteRegistry.h"
 
 #include "Map.h"
 #include "Player.h"
@@ -426,6 +427,21 @@ namespace DcRouteRecorder
         out << "        });\n}\n";
         out.close();
         std::rename(tmpPath.c_str(), finalPath.c_str());
+
+        // Sofort eintragen, nicht erst beim naechsten Hochfahren. Zehn
+        // Gruppen laufen denselben Dungeon; was eine findet, sollen die
+        // anderen neun in derselben Minute benutzen. Live in Wailing
+        // Caverns: eine Gruppe schrieb den Weg zu Verdan auf, und elfmal
+        // meldeten andere im selben Zeitraum "Verdan unerreichbar", weil
+        // die Datei zwar dalag, aber niemand sie las.
+        {
+            std::vector<WaypointHint> hints;
+            hints.reserve(anchors.size());
+            for (Sample3 const& a : anchors)
+                hints.push_back(WaypointHint{a.x, a.y, a.z, 0, 0, 6.0f});
+            DungeonClearRouteRegistry::Register(mapId, DUNGEON_DIFFICULTY_NORMAL, bossEntry,
+                                                std::move(hints));
+        }
 
         // Runtime twin: same anchors, one "x y z" per line, plus the leg
         // length in the header so the shortest-wins comparison works on it

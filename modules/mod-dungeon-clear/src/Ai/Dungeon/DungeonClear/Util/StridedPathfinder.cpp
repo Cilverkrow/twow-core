@@ -285,9 +285,10 @@ StridedPathfinder::Result StridedPathfinder::Build(Player* bot, uint32 mapId, ui
     if (bossEntry)
     {
         Difficulty const difficulty = map->GetDifficulty();
-        if (std::vector<WaypointHint> const* hints = DungeonClearRouteRegistry::Get(mapId, difficulty, bossEntry))
+        std::vector<WaypointHint> hintStore;
+        if (DungeonClearRouteRegistry::TryGet(mapId, difficulty, bossEntry, hintStore))
         {
-            for (WaypointHint const& h : *hints)
+            for (WaypointHint const& h : hintStore)
             {
                 NavmeshSnap::Result const snapped = NavmeshSnap::Snap(map, h.x, h.y, h.z, STRIDE_SNAP_RADIUS);
                 if (!snapped.ok)
