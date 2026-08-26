@@ -56,9 +56,10 @@ inline constexpr DcBossOrderRow DC_BOSS_ORDER_1121[] = {
     { 43, 3653, 2 },  // Kresh            (298yd)
     { 43, 3669, 3 },  // Lord Cobrahn     (897yd)
     { 43, 3670, 4 },  // Lord Pythas      (1193yd)
-    { 43, 61965, 5 }, // Vangros          (Turtle custom, western water — no corridor
-                      //                   from the entrance, same pocket as Skum)
-    { 43, 3674, 6 },  // Skum             (western water)
+    { 43, 3674, 5 },  // Skum             (western water; 360yd on from Pythas)
+    { 43, 61965, 6 }, // Vangros          (Turtle custom, 693yd on from SKUM - and no
+                      //                   corridor at all from Pythas, which is why he
+                      //                   comes after Skum and not before)
     { 43, 61968, 7 }, // Zandara Windhoof (Turtle custom, 1229yd)
     //  key 8 (index 7) is the drop-to-Serpentis objective — see
     //  WailingCavernsEvents.cpp. Everything below it is only reachable from
