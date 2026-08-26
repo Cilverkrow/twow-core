@@ -66,6 +66,14 @@ namespace
     // between them was a loop. Twice the sample step, so ordinary corridor
     // wobble is not mistaken for a return.
     constexpr float kLoopRadius = 8.0f;
+    // ...and the same FLOOR. Wailing Caverns stacks its tunnels: two points
+    // eight yards apart seen from above can be two different tubes, one over
+    // the other. Cutting between those splices a route that walks into rock,
+    // and since anchors are walked in a straight line with no pathfinding in
+    // between, the party simply grinds against the wall (live: 319 "stuck
+    // ladder" reports, nine of ten groups frozen at 0/8). Four yards allows a
+    // ramp or a step, not a storey.
+    constexpr float kLoopRise = 4.0f;
     // How close the recording has to end to where the boss actually died for
     // the leg to count as complete.
     constexpr float kFinishRadius = 40.0f;
@@ -104,7 +112,8 @@ namespace
             std::size_t jump = i;
             for (std::size_t j = pts.size(); j > i + 1; --j)
             {
-                if (Dist2D(pts[i], pts[j - 1]) <= kLoopRadius)
+                if (Dist2D(pts[i], pts[j - 1]) <= kLoopRadius &&
+                    std::fabs(pts[i].z - pts[j - 1].z) <= kLoopRise)
                 {
                     jump = j - 1;
                     break;
@@ -222,7 +231,11 @@ namespace DcRouteRecorder
         }
         if (leg.awaitingReturn)
         {
-            if (!leg.pts.empty() && Dist2D(leg.pts.back(), now) > kRejoinRadius)
+            // Height counts here too: standing directly above the point where
+            // the recording broke off is not standing on it.
+            if (!leg.pts.empty() &&
+                (Dist2D(leg.pts.back(), now) > kRejoinRadius ||
+                 std::fabs(leg.pts.back().z - now.z) > kLoopRise))
                 return;
             leg.awaitingReturn = false;
         }
