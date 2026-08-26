@@ -4,6 +4,8 @@
  */
 
 #include "DcStrategyGate.h"
+#include <set>
+#include <mutex>
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
 
 #include "Map.h"
@@ -55,10 +57,41 @@ namespace
     }
 }
 
+namespace
+{
+    // Cross-thread mailbox for follow-strip requests (see RequestFollowStrip).
+    std::mutex g_followStripMutex;
+    std::set<ObjectGuid> g_followStripWanted;
+}
+
 namespace DcStrategyGate
 {
+    void RequestFollowStrip(ObjectGuid guid)
+    {
+        if (guid.IsEmpty())
+            return;
+        std::lock_guard<std::mutex> lock(g_followStripMutex);
+        g_followStripWanted.insert(guid);
+    }
+
     void Reconcile(Player* bot)
     {
+        // Drain the mailbox first: this function runs on the bot's own map
+        // thread, the only place ChangeStrategy is safe.
+        if (bot)
+        {
+            bool wanted = false;
+            {
+                std::lock_guard<std::mutex> lock(g_followStripMutex);
+                wanted = g_followStripWanted.erase(bot->GetObjectGuid()) > 0;
+            }
+            if (wanted)
+                if (PlayerbotAI* stripAI = GET_PLAYERBOT_AI(bot))
+                {
+                    stripAI->ChangeStrategy("-follow", BOT_STATE_NON_COMBAT);
+                    stripAI->ChangeStrategy("-follow", BOT_STATE_COMBAT);
+                }
+        }
         if (!bot)
             return;
 

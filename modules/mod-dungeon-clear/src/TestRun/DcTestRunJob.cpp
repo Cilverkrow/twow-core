@@ -244,8 +244,11 @@ void DcTestRunJob::ReassertMaster()
         // stock follow-master back. Re-strip it on the repair path exactly as
         // Grouping does, so a reinstated GM master can never start a bot jogging
         // toward the invisible driver parked outside the instance.
-        botAI->ChangeStrategy("-follow", BOT_STATE_NON_COMBAT);
-        botAI->ChangeStrategy("-follow", BOT_STATE_COMBAT);
+        // NOT here: this runs in the world tick, and ChangeStrategy rebuilds
+        // the engine's trigger list under a bot that is walking it on its own
+        // map thread (two SIGSEGV in NextAction::clone). Hand it to the gate,
+        // which applies it in the bot's own update.
+        DcStrategyGate::RequestFollowStrip(bot->GetObjectGuid());
     }
 }
 
@@ -1177,8 +1180,9 @@ void DcTestRunJob::TickGrouping()
                 {
                     if (gm)
                         botAI->SetMaster(gm);
-                    botAI->ChangeStrategy("-follow", BOT_STATE_NON_COMBAT);
-                    botAI->ChangeStrategy("-follow", BOT_STATE_COMBAT);
+                    // Same reason as the repair path above: requested here,
+                    // carried out on the bot's own thread.
+                    DcStrategyGate::RequestFollowStrip(bot->GetObjectGuid());
                 }
 
         EnterStage(Stage::Teleporting);
