@@ -114,6 +114,9 @@ void DungeonClearRouteRegistry::Register(uint32 mapId, Difficulty difficulty, ui
 
 bool DungeonClearRouteRegistry::Has(uint32 mapId, Difficulty difficulty, uint32 bossEntry)
 {
+    // Seed BEFORE taking the lock: seeding registers, and Register() takes
+    // this same lock.
+    SeedAuthoredRoutes();
     std::lock_guard<std::mutex> lock(RegistryLock());
     auto const it = Store().find(Key{mapId, difficulty, bossEntry});
     return it != Store().end() && !it->second.empty();
@@ -122,6 +125,8 @@ bool DungeonClearRouteRegistry::Has(uint32 mapId, Difficulty difficulty, uint32 
 bool DungeonClearRouteRegistry::TryGet(uint32 mapId, Difficulty difficulty, uint32 bossEntry,
                                        std::vector<WaypointHint>& out)
 {
+    // Same order as Has(): seed first, lock second.
+    SeedAuthoredRoutes();
     std::lock_guard<std::mutex> lock(RegistryLock());
     auto const it = Store().find(Key{mapId, difficulty, bossEntry});
     if (it == Store().end() || it->second.empty())
