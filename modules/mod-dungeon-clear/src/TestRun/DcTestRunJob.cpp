@@ -948,7 +948,10 @@ void DcTestRunJob::TickProvisioning(bool& provisionBudget)
     // drinks for classes without mana.
     factory.AddFood();   // public wrapper for InitFood
 
-    botAI->ResetStrategies();
+    // Not inline: provisioning ticks in the world thread and this bot is
+    // already logged in and thinking on its map thread. ResetStrategies
+    // rebuilds the trigger list, which is what tore NextAction::clone apart.
+    DcStrategyGate::RequestStrategyReset(bot->GetObjectGuid());
 
     DcTestRunRecord::CompEntry entry;
     entry.name = bot->GetName();
@@ -1046,7 +1049,8 @@ void DcTestRunJob::TickProvisioningRoster()
             return;  // transient — retry next tick; the stage timeout bounds it
 
         UndoUnwantedGuild(bot, slot);
-        botAI->ResetStrategies();
+        // Same reason as in TickProvisioning: off the world thread.
+        DcStrategyGate::RequestStrategyReset(bot->GetObjectGuid());
 
         // What the character's talents actually say, next to what the human
         // marked it as. A wrong marking is human error at roster time and the run
