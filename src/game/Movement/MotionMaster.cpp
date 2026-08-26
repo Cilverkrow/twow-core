@@ -859,9 +859,11 @@ void MotionMaster::MoveJump(float x, float y, float z, float horizontalSpeed, fl
     // player does anyway: step off and come down.
     //
     // Launched exactly like MotionMaster::MovePath below: MoveSplineInit
-    // directly, no generator. This core has no EffectMovementGenerator, and
-    // the spline itself is the truth here (see the port note in the
-    // dungeon-clear module's DcMovement.cpp).
+    // directly. No generator is needed because the one caller tests
+    // isMoving() to see the jump through - MoveFall does mutate an
+    // EffectMovementGenerator, because ITS caller reads the generator type.
+    // (An earlier version of this comment claimed the core has no such
+    // generator; it does, in PointMovementGenerator.h.)
     if (!m_owner->IsStopped())
         m_owner->StopMoving();
 
@@ -869,6 +871,41 @@ void MotionMaster::MoveJump(float x, float y, float z, float horizontalSpeed, fl
     init.MoveTo(x, y, z);
     init.SetVelocity(horizontalSpeed > 0.0f ? horizontalSpeed : m_owner->GetSpeed(MOVE_RUN));
     init.Launch();
+}
+
+bool MotionMaster::MoveFall()
+{
+    // Was `return false;` in the header, so every caller's drop silently did
+    // nothing. Live consequence: the Wailing Caverns hole-drop logged
+    // "DropInHole: MoveFall from ..." 12415 times for a single bot while the
+    // party stood over the open shaft for the rest of the run.
+    Map* map = m_owner->GetMap();
+    if (!map)
+        return false;
+
+    float const x = m_owner->GetPositionX();
+    float const y = m_owner->GetPositionY();
+    float const z = m_owner->GetPositionZ();
+
+    // Straight down, vmap included, and far enough for a real shaft - the
+    // Wailing Caverns one is some seventy yards deep, well past the default
+    // search distance. The caller has already parked the unit over the open
+    // mouth, so the first floor found is the bottom and not a ledge.
+    float const ground = map->GetHeight(x, y, z, /*vmap*/ true, 300.0f);
+    if (ground <= INVALID_HEIGHT || z - ground < 1.0f)
+        return false;
+
+    Movement::MoveSplineInit init(*m_owner, "MotionMaster::MoveFall");
+    init.MoveTo(x, y, ground);          // same x/y: no horizontal travel, so
+    init.SetFall();                     // the descent cannot clip a wall
+    init.Launch();
+
+    // The caller tells "still falling" apart from "landed" by the generator
+    // type (EFFECT_MOTION_TYPE), deliberately not by MOVEMENTFLAG_FALLING -
+    // a server-side bot never clears that flag and would read as falling
+    // forever. So give it the generator to look at.
+    Mutate(new EffectMovementGenerator(0));
+    return true;
 }
 
 void MotionMaster::MoveCharge(Unit* target, uint32 delay, bool triggerAutoAttack)
