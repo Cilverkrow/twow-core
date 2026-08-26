@@ -40,6 +40,24 @@ struct DcBossOrderRow
 };
 
 inline constexpr DcBossOrderRow DC_BOSS_ORDER_1121[] = {
+    // Wailing Caverns (map 43). Without these rows the map got no order at
+    // all and the indices fell out in build order - Verdan 0, so the party
+    // went for him FIRST. He is the one boss with no navmesh path from the
+    // entrance (measured with tools/meshprobe.cpp: no complete corridor from
+    // (-158,132,-74), and the only start that has one is Lord Serpentis's
+    // shelf, 69yd away). Verdan sits BEHIND the drop, so every run opened by
+    // searching 1100-1600yd for a boss it could not reach until somebody
+    // stumbled into him.
+    //
+    // The keys leave room for the event objectives, which carry their own:
+    // the drop to Serpentis is 5 and the hole-drop/escort are 7 (see
+    // WailingCavernsEvents.cpp), so Verdan takes 7 (index 6) and Mutanus 8.
+    { 43, 3669, 1 },  // Lord Cobrahn
+    { 43, 3670, 2 },  // Lord Pythas
+    { 43, 3674, 3 },  // Skum
+    { 43, 5775, 7 },  // Verdan the Everliving — only reachable off Serpentis's shelf
+    { 43, 3654, 8 },  // Mutanus the Devourer (summoned at the end of the escort)
+
     // The Deadmines (map 36): Rhahk'Zor -> Sneed's Shredder (Sneed rides it)
     // -> Gilnid -> Mr. Smite -> Captain Greenskin -> VanCleef -> Cookie.
     { 36,  644, 1 },  // Rhahk'Zor (opens the first door)
