@@ -4,6 +4,7 @@
  */
 
 #include "StridedPathfinder.h"
+#include <limits>
 
 #include <algorithm>
 #include <cmath>
@@ -288,6 +289,44 @@ StridedPathfinder::Result StridedPathfinder::Build(Player* bot, uint32 mapId, ui
         std::vector<WaypointHint> hintStore;
         if (DungeonClearRouteRegistry::TryGet(mapId, difficulty, bossEntry, hintStore))
         {
+            // JOIN THE ROUTE WHERE WE STAND. A route is keyed by boss, but it
+            // only describes the walk it was recorded on. Change what comes
+            // before that boss and the anchors point the wrong way: live, a
+            // party 62yd from Verdan followed his route from the days when he
+            // was the FIRST boss and it walked them back toward the entrance -
+            // "route=ok/39seg dev=314.5 dist=62.7", seven minutes of that
+            // until the watchdog killed the run.
+            //
+            // Anchors before the nearest one are ground already behind us, so
+            // start there. And if even the nearest anchor is a long way off,
+            // this route belongs to a different approach entirely: skip it and
+            // let the router have the leg (the recorder then learns the real
+            // one from whoever gets through).
+            std::size_t joinAt = 0;
+            float joinDist = std::numeric_limits<float>::max();
+            for (std::size_t i = 0; i < hintStore.size(); ++i)
+            {
+                float const d = bot->GetExactDist(hintStore[i].x, hintStore[i].y, hintStore[i].z);
+                if (d < joinDist)
+                {
+                    joinDist = d;
+                    joinAt = i;
+                }
+            }
+            constexpr float kRouteJoinRadius = 100.0f;
+            if (joinDist > kRouteJoinRadius)
+            {
+                LOG_INFO("playerbots",
+                         "[dungeon-clear] route for map {} boss {} starts {}yd away from here "
+                         "— that is somebody else's approach, ignoring it",
+                         mapId, bossEntry, static_cast<uint32>(joinDist));
+                hintStore.clear();
+            }
+            else if (joinAt > 0)
+            {
+                hintStore.erase(hintStore.begin(), hintStore.begin() + joinAt);
+            }
+
             for (WaypointHint const& h : hintStore)
             {
                 NavmeshSnap::Result const snapped = NavmeshSnap::Snap(map, h.x, h.y, h.z, STRIDE_SNAP_RADIUS);
