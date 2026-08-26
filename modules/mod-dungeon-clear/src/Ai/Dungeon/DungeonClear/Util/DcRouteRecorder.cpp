@@ -244,6 +244,18 @@ namespace DcRouteRecorder
             leg.pts.push_back(now);
     }
 
+    void DiscardRoute(uint32 mapId, uint32 bossEntry)
+    {
+        std::string const base = OutputDir() + "/Route_" + std::to_string(mapId) + "_" +
+                                 std::to_string(bossEntry);
+        for (char const* ext : { ".route", ".cpp" })
+        {
+            std::string const from = base + ext;
+            std::string const to = from + ".bad";
+            std::rename(from.c_str(), to.c_str());   // absent file: nothing happens
+        }
+    }
+
     void OnBossKilled(Map* map, uint32 bossEntry, std::string const& bossName)
     {
         if (!map)

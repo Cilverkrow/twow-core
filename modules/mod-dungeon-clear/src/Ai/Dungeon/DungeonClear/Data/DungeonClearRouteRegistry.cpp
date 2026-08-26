@@ -112,6 +112,13 @@ void DungeonClearRouteRegistry::Register(uint32 mapId, Difficulty difficulty, ui
     Store()[Key{mapId, difficulty, bossEntry}] = std::move(hints);
 }
 
+bool DungeonClearRouteRegistry::Forget(uint32 mapId, Difficulty difficulty, uint32 bossEntry)
+{
+    SeedAuthoredRoutes();
+    std::lock_guard<std::mutex> lock(RegistryLock());
+    return Store().erase(Key{mapId, difficulty, bossEntry}) > 0;
+}
+
 bool DungeonClearRouteRegistry::Has(uint32 mapId, Difficulty difficulty, uint32 bossEntry)
 {
     // Seed BEFORE taking the lock: seeding registers, and Register() takes

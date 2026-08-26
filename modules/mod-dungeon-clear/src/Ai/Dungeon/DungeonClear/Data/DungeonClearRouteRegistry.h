@@ -43,6 +43,9 @@ public:
     // do not need the anchors copied.
     static bool Has(uint32 mapId, Difficulty difficulty, uint32 bossEntry);
 
+    // Drop a route that has proven unwalkable. Returns true if one was there.
+    static bool Forget(uint32 mapId, Difficulty difficulty, uint32 bossEntry);
+
 private:
     struct Key
     {

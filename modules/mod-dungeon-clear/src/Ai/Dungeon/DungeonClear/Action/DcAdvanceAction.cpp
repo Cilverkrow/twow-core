@@ -42,6 +42,7 @@
 #include "Ai/Dungeon/DungeonClear/Util/DungeonClearApproachIo.h"
 #include "Ai/Dungeon/DungeonClear/Settings/DcSettings.h"
 #include "Ai/Dungeon/DungeonClear/Data/DungeonClearRouteRegistry.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcRouteRecorder.h"
 #include "Ai/Dungeon/DungeonClear/Data/DungeonEventRegistry.h"
 #include "Ai/Dungeon/DungeonClear/Overrides/ObjectiveHookRegistry.h"
 #include "Ai/Dungeon/DungeonClear/Util/DungeonEventExecutor.h"
@@ -1044,6 +1045,26 @@ DungeonClearAdvanceAction::Step DungeonClearAdvanceAction::DoStuckRecover(Advanc
                      bot->GetName(), appr.nudgeAttempts, DC_MAX_NUDGE_ATTEMPTS, next->name);
             DcStatusPublisher::SendAddonMessage(botAI, "CHAT\tRepathing around " + next->name + " \xe2\x80\x94 nudging onto the navmesh.");
             return Step::ReturnTrue;
+        }
+        // Before giving up: was this route a REGISTERED one? Anchors are
+        // walked in a straight line with no pathfinding between them, so a
+        // single anchor behind a wall blocks everything past it and no amount
+        // of nudging helps. Drop the route and let the router have the leg;
+        // the recorder can learn it again from whoever gets through.
+        if (Map* stuckMap = bot->FindMap())
+        {
+            if (DungeonClearRouteRegistry::Forget(next->mapId, stuckMap->GetDifficulty(),
+                                                  next->entry))
+            {
+                DcRouteRecorder::DiscardRoute(next->mapId, next->entry);
+                LOG_INFO("playerbots.dungeonclear",
+                         "[DC:{}] stuck ladder exhausted near {} on a recorded route "
+                         "-> dropped that route, replanning without it",
+                         bot->GetName(), next->name);
+                appr.nudgeAttempts = 0;
+                appr.longPathExpiresMs = 0;
+                return Step::ReturnTrue;
+            }
         }
         LOG_INFO("playerbots.dungeonclear",
                  "[DC:{}] stuck ladder exhausted near {} ({} nudge(s) bought no ground) -> stalling",
