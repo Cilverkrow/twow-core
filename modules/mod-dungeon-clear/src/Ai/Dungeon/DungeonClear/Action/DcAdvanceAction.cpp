@@ -670,6 +670,22 @@ DungeonClearAdvanceAction::Step DungeonClearAdvanceAction::TryLootYield(AdvanceS
     // relevance, above the loot pipeline — means stock can't re-pick a skipped
     // corpse this tick, so the flags below and the timeout's give-up stay in
     // sync and the yield doesn't re-arm on something we just abandoned.
+    // Nothing to wait for when this party is not allowed to loot at all.
+    // The gate strips the stock "loot" strategy for a clear (DcStrategyGate),
+    // and the yield below arms on VALUES - HasAvailableLoot / CanLoot - not on
+    // whether anybody is going to act on them. Leaving it armed made things
+    // strictly worse than before the strip: previously someone took the loot
+    // and the yield released early, afterwards nobody did and every corpse
+    // burned the full fifteen seconds (89 timeouts in ten minutes, against 88
+    // in twenty-three before). The yield exists so the party does not walk off
+    // without a member standing at a corpse; with no loot strategy in play,
+    // that member cannot exist.
+    if (!botAI->HasStrategy("loot", BOT_STATE_NON_COMBAT))
+    {
+        context->GetValue<DcApproachState&>(DcKey::ApproachState)->Get().lootYieldStartMs = 0;
+        return Step::Continue;
+    }
+
     DcLootPolicy::StripSkippedLoot(botAI);
     // Proactively skip a corpse with nothing takeable for us (un-finishable
     // group-roll/reserved loot, or below DungeonClear.LootMinQuality) BEFORE we
