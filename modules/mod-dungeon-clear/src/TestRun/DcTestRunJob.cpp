@@ -59,7 +59,12 @@ namespace
     // "bots did not finish logging in" setup failures under parallel load -
     // the logins were not failing, just still in line.
     constexpr uint32 SPAWN_TIMEOUT_MS = 180 * 1000;
-    constexpr uint32 PROVISION_TIMEOUT_MS = 60 * 1000;
+    // 180s, not 60. Provisioning gives every bot its level, talents, gear,
+    // food and ammo; under an AddressSanitizer build the whole server runs
+    // two to three times slower and six of eight groups timed out here at
+    // ~70s while doing nothing wrong. The window only bounds a setup that
+    // has genuinely wedged, so a generous one costs nothing.
+    constexpr uint32 PROVISION_TIMEOUT_MS = 180 * 1000;
     constexpr uint32 GROUP_TIMEOUT_MS = 30 * 1000;
     // Covers BOTH teleport waves (leader, then the rest — see TickTeleporting),
     // and the stage clock does not restart between them.
