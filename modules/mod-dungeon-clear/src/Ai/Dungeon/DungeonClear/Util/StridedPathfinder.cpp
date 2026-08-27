@@ -313,7 +313,13 @@ StridedPathfinder::Result StridedPathfinder::Build(Player* bot, uint32 mapId, ui
                     joinAt = i;
                 }
             }
-            constexpr float kRouteJoinRadius = 100.0f;
+            // 150, not 100: at 100 the guard was throwing away routes the
+            // party could perfectly well have joined - live, "boss 3653 starts
+            // 107yd away", 3669 at 113 and 127. It then searched by hand for a
+            // leg it already knew, which is exactly the walking time the route
+            // was there to save. A route pointing the wrong way is still
+            // hundreds of yards off, so the guard keeps its teeth.
+            constexpr float kRouteJoinRadius = 150.0f;
             if (joinDist > kRouteJoinRadius)
             {
                 LOG_INFO("playerbots",
