@@ -10,3 +10,8 @@
 *.bak
 *.bak.*
 *.bak-*
+
+# Routen, die der Rekorder selbst verworfen hat (DcRouteRecorder::
+# DiscardRoute benennt .route/.cpp in .bad um, wenn die Stuck-Leiter auf
+# einer aufgezeichneten Route auslief). Ausschuss, kein Repo-Inhalt.
+*.bad

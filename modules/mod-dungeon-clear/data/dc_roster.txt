@@ -72,3 +72,26 @@ order 47 4420 4      # Overlord Ramtusk
 order 47 62503 5     # Rotthorn                (Turtle custom)
 order 47 4422 6      # Agathelos the Raging
 order 47 4421 7      # Charlga Razorflank      (end boss)
+
+# --- Blackfathom Deeps (map 48): Old Serra'kis moved to the end -----------
+# Owner's call, and the run data backs it: groups reach Serra'kis, kill him,
+# and then hang 19 yards BELOW Twilight Lord Kelris in the water - 706 stuck
+# reports at (-790.5, -162.2, -44.8) while Kelris sits at -25.8. The mesh does
+# offer a way up (107 polygons) but no single query finds it, and the learned
+# Kelris route starts at the same depth so it does not help either.
+#
+# Serra'kis is the underwater boss. Fought LAST, the dive is the final step and
+# nobody has to climb back out afterwards. This sidesteps the problem rather
+# than solving it - the climb out of water stays broken and is worth fixing on
+# its own, in Wailing Caverns too.
+#
+# Key 7 is deliberately skipped: it belongs to the Fires of Aku'mai objective,
+# which is compiled in with that index and now sorts between Kelris and
+# Aku'mai, exactly where it has to be.
+order 48 4887 1      # Ghamoo-ra
+order 48 4831 2      # Lady Sarevess
+order 48 6243 3      # Gelihast
+order 48 62530 4     # Velthelaxx the Defiler
+order 48 4832 5      # Twilight Lord Kelris
+order 48 4829 8      # Aku'mai
+order 48 4830 9      # Old Serra'kis  (underwater, deliberately last)

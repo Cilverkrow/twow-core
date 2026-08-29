@@ -45,6 +45,7 @@
 
 #include "ScriptMgr.h"
 #include "Ai/Dungeon/DungeonClear/Data/BossSpawnIndex.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcLeaderSignal.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcEncounterMask.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRouteRecorder.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
@@ -607,7 +608,30 @@ public:
 
     void OnUnitDeath(Unit* unit, Unit* /*killer*/) override
     {
-        if (!unit || !unit->IsCreature())
+        if (!unit)
+            return;
+
+        // Bot deaths, counted. Nothing logged one until now: the only line in the
+        // whole module carrying the word "died" is the post-combat rez notice, so
+        // any tally built on it counts RESURRECTIONS - a body nobody picks up, a
+        // wipe, or a death out of combat leaves no trace at all. Role comes from
+        // the leader flag because the strategy names cannot supply it: only feral
+        // tanks carry a "tank <spec>" marker, and the "protection" strings on a
+        // paladin are its blessings, not its spec.
+        if (unit->IsPlayer())
+        {
+            Player* const dead = unit->ToPlayer();
+            Map* const pmap = dead ? dead->FindMap() : nullptr;
+            if (dead && pmap && pmap->IsDungeon() && GET_PLAYERBOT_AI(dead))
+                LOG_INFO("playerbots.dungeonclear",
+                         "[DC-DEATH] {} class={} level={} role={} map={} instance={}",
+                         dead->GetName(), uint32(dead->getClass()), uint32(dead->GetLevel()),
+                         DcLeaderSignal::IsDungeonClearLeader(dead) ? "tank" : "other",
+                         pmap->GetId(), pmap->GetInstanceId());
+            return;
+        }
+
+        if (!unit->IsCreature())
             return;
         Map* map = unit->FindMap();
         if (!map || !map->IsDungeon())
