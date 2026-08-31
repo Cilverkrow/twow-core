@@ -1966,6 +1966,9 @@ void LoadPlayerEggLoot();
 
     CheckEggExploit();
 
+    sLog.outString("Loading script names...");
+    sScriptMgr.LoadScriptNames();
+
     if (getConfig(CONFIG_BOOL_LOAD_SPELLS_FROM_SQL))
     {
         sLog.outString("Loading spells from `spell_template`...");
@@ -2002,8 +2005,6 @@ void LoadPlayerEggLoot();
 
     sLog.outString("Loading chat channels...");
     sObjectMgr.LoadChatChannels();
-    sLog.outString("Loading script names...");
-    sScriptMgr.LoadScriptNames();
     // No LoadSpells() here any more: spell loading moved into the
     // LoadSpellsFromSql switch further up (CONFIG_BOOL_LOAD_SPELLS_FROM_SQL).
     // Calling it here as well would load them a second time.
