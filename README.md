@@ -46,6 +46,48 @@ Fixes made while running them:
 | Custom strategies | `+custom::learned` is in the default strategy list, so every bot asked the database twice on every rebuild for action lines that ten characters out of a thousand actually have. The cache meant to prevent that is written by no code path in the tree. Results are remembered now, the empty ones included |
 | Stability | The bot logger passed finished text to `vfprintf` as a format string; any bot name containing `%` aborted the server on MSVC |
 
+### Automated dungeon clearing
+
+`modules/mod-dungeon-clear/` drives a bot party through an instance on its own:
+navigate, pull, fight, loot, move on. It exists because a thousand bots that
+never enter a dungeon only exercise half the server, and because clearing one
+end to end is the hardest thing to ask of bot navigation.
+
+**Rosters are data.** Which creatures count as bosses, and in what order, comes
+from `data/dc_roster.txt` and is applied with `.reload config` — no rebuild:
+
+```
+credit <entry> [<entry> ...]     add creature entries to the credit list
+order  <mapId> <entry> <index>   place an entry in that map's order
+drop   <entry> [<entry> ...]     take entries out again
+```
+
+`drop` exists for rares. A rare in the credit list becomes a required kill, and
+the party then waits for something that is usually not in the instance at all.
+
+**Routes are recorded, not written.** When a boss dies, the path the party
+actually walked is stored as an anchor route under `src/Routes/`, and every
+later run follows it instead of recomputing. A route the stuck-recovery ladder
+runs out on is discarded and relearned by whoever gets through next. A route
+that must not be touched again — a ledge with deep water either side, say —
+takes the word `pinned` in its file header and is then exempt from both
+replacement and discard.
+
+Legs between anchors are pathed rather than walked in a straight line. That
+sounds like a detail and is not: anchors sit 15–20 yards apart, and a chord
+across a curve leaves any strip narrower than the error.
+
+**Set-pieces are declarative.** Where a dungeon needs more than navigation —
+lighting the four Fires of Aku'mai in order, each followed by a wave — the
+sequence is a list of steps (`MoveTo`, `UseGameObject`, `Gossip`, `WaitForSpawn`,
+`WaitForGameObjectState`, `KillCreature`, `ClearRadius`) in
+`Data/Events/`.
+
+**Runs are reproducible.** `.dc test start <dungeon> [seed=N]` starts a
+monitored run; the party composition is drawn from that seed and written into
+the log, so a comp that trips a bug can be replayed exactly. The panel draws
+where every bot stands, one point per bot per second.
+
 ### Server features
 
 All off by default, all in `mangosd.conf`:
