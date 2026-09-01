@@ -1639,6 +1639,14 @@ class ScriptMgr
         typedef std::unordered_map<int32, CreatureEscortData> EscortDataMap;
 
         AreaTriggerScriptMap    m_AreaTriggerScripts;
+
+    public:
+        // Read-only view for modules that need the candidate list itself
+        // (mod-dungeon-clear's areatrigger relay walks every scripted trigger
+        // once at startup). Same pattern as ObjectMgr::GetAllCreatureData.
+        AreaTriggerScriptMap const& GetAllAreaTriggerScripts() const { return m_AreaTriggerScripts; }
+
+    private:
         EventIdScriptMap        m_EventIdScripts;
 
         ScriptNameMap           m_scriptNames;
@@ -1915,6 +1923,16 @@ template<class TScript> typename ScriptRegistry<TScript>::ScriptMap ScriptRegist
 template<class TScript> typename ScriptRegistry<TScript>::AfterDatabaseLoadScriptList ScriptRegistry<TScript>::AfterDatabaseLoadScripts;
 template<class TScript> typename ScriptRegistry<TScript>::EnabledHooksList ScriptRegistry<TScript>::EnabledHooks;
 template<class TScript> uint32 ScriptRegistry<TScript>::_scriptIdCounter = 0;
+
+// Questions the core asks of whatever module drives simulated characters.
+// Deliberately not named after any one module: the playerbots tree answers
+// these today, a second population module would answer the same names.
+class Player;
+bool Script_IsAIControlled(Player const* player);
+bool Script_IsMachineDriven(Player const* player);
+bool Script_HasAIFollowers(Player const* player);
+uint8 Script_GetAllowedRoles(Player const* player);
+void Script_SetForcedRole(Player* player, uint8 role);
 
 uint32 GetAreaTriggerScriptId(uint32 triggerId);
 uint32 GetEventIdScriptId(uint32 eventId);
