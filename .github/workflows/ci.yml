@@ -24,10 +24,18 @@ name: CI
 # on push so the branch everything merges into always has a result of its own.
 # workflow_dispatch is there for re-running a build after a runner-side failure
 # that has nothing to do with the commit.
+#
+# upstream-tracking is in the push list for the freshness job below, NOT for the
+# build: that branch is a mirror of somebody else's code and building it proves
+# nothing about this fork. The build job is gated on the ref for exactly that
+# reason. schedule is there because staleness is the one failure that arrives
+# without anybody pushing anything.
 on:
   push:
-    branches: [main]
+    branches: [main, upstream-tracking]
   pull_request:
+  schedule:
+    - cron: '17 6 * * 1'
   workflow_dispatch:
 
 # Every run gets its own concurrency group, and nothing is ever cancelled.
@@ -46,8 +54,119 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The second job in this file, and the comment at the top still means what it
+  # says: one BUILD, one toolchain. This one compiles nothing. It exists because
+  # ADR-0026 stated the upstream branch in prose, prose is not executable, and an
+  # agent merged a dead branch anyway -- hours of work against six commits that
+  # are older than our own fork point. The rule now lives where code can check
+  # it, in UPSTREAM.lock, and this is the code that checks it.
+  #
+  # Deliberately not `needs:`-chained to the build. A wrong upstream ref and a
+  # broken compile are independent facts and both are worth knowing in the same
+  # run; making this a gate would just hide the build result behind it.
+  upstream-freshness:
+    name: Upstream ref is the one we claim to track
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert UPSTREAM.lock against the real upstream
+        env:
+          # A pull request builds a merge commit whose first parent is the base
+          # branch, so origin/<tracking branch> is not necessarily fetched by the
+          # checkout. Fetched explicitly below rather than assumed.
+          TRACKING_REMOTE: origin
+        run: |
+          set -euo pipefail
+
+          field() {
+            # awk rather than sed: every line in UPSTREAM.lock is `key = value`
+            # with whitespace around the `=`, which awk's default field splitting
+            # reads directly -- no regex full of backslashes to be mangled on its
+            # way through YAML and two shells.
+            awk -v k="$1" '$1 == k && $2 == "=" { print $3; exit }' UPSTREAM.lock
+          }
+
+          UPSTREAM_URL=$(field upstream_url)
+          UPSTREAM_BRANCH=$(field upstream_branch)
+          FORK_POINT=$(field fork_point)
+          TRACK_BRANCH=$(field upstream_tracking_branch)
+          TRACK_COMMIT=$(field upstream_tracking_commit)
+          MAX_DRIFT=$(field max_drift_commits)
+
+          for v in UPSTREAM_URL UPSTREAM_BRANCH FORK_POINT TRACK_BRANCH TRACK_COMMIT MAX_DRIFT; do
+            if [ -z "${!v}" ]; then
+              echo "::error file=UPSTREAM.lock::$v is missing from UPSTREAM.lock"
+              exit 1
+            fi
+          done
+
+          echo "upstream        : $UPSTREAM_URL"
+          echo "branch          : $UPSTREAM_BRANCH"
+          echo "fork point      : $FORK_POINT"
+          echo "tracking branch : $TRACK_BRANCH"
+          echo "tracking commit : $TRACK_COMMIT"
+          echo "max drift       : $MAX_DRIFT"
+
+          git remote add upstream "$UPSTREAM_URL" 2>/dev/null ||             git remote set-url upstream "$UPSTREAM_URL"
+          git fetch --quiet upstream "+refs/heads/$UPSTREAM_BRANCH:refs/remotes/upstream/$UPSTREAM_BRANCH"
+          git fetch --quiet "$TRACKING_REMOTE" "+refs/heads/$TRACK_BRANCH:refs/remotes/origin/$TRACK_BRANCH" || {
+            echo "::error file=UPSTREAM.lock::branch '$TRACK_BRANCH' does not exist on $TRACKING_REMOTE"
+            exit 1
+          }
+
+          TIP=$(git rev-parse "refs/remotes/upstream/$UPSTREAM_BRANCH")
+          HEAD_OF_TRACKING=$(git rev-parse "refs/remotes/origin/$TRACK_BRANCH")
+          echo "live tip        : $TIP"
+          echo "$TRACK_BRANCH is: $HEAD_OF_TRACKING"
+
+          status=0
+
+          # 1. The branch and the record agree.
+          if [ "$HEAD_OF_TRACKING" != "$TRACK_COMMIT" ]; then
+            echo "::error file=UPSTREAM.lock::$TRACK_BRANCH is at $HEAD_OF_TRACKING but UPSTREAM.lock records $TRACK_COMMIT. Move the branch and the record together."
+            status=1
+          fi
+
+          # 2. The recorded commit is on the branch we claim to track. This is the
+          #    assertion the task asked for, and on its own it is weaker than it
+          #    looks -- see 3.
+          if ! git merge-base --is-ancestor "$TRACK_COMMIT" "$TIP"; then
+            echo "::error file=UPSTREAM.lock::$TRACK_COMMIT is NOT an ancestor of $UPSTREAM_BRANCH ($TIP). It is not on the branch this fork tracks."
+            status=1
+          fi
+
+          # 3. ...and it is newer than our own fork point. Every dead upstream
+          #    branch (main, dev, 1181dev, challenges, shop, 1181-rogue-fixes) is
+          #    an ancestor of the live branch and would sail through check 2; what
+          #    gives them away is that they are all older than 61a8269.
+          if ! git merge-base --is-ancestor "$FORK_POINT" "$TRACK_COMMIT"; then
+            echo "::error file=UPSTREAM.lock::$TRACK_COMMIT is behind this fork's own fork point $FORK_POINT -- that is the signature of one of upstream's dead branches, not of the branch we track."
+            status=1
+          fi
+
+          # 4. Staleness, as distinct from wrongness.
+          if git merge-base --is-ancestor "$TRACK_COMMIT" "$TIP"; then
+            DRIFT=$(git rev-list --count "$TRACK_COMMIT..$TIP")
+            echo "drift           : $DRIFT commits behind $UPSTREAM_BRANCH"
+            if [ "$DRIFT" -gt "$MAX_DRIFT" ]; then
+              echo "::error file=UPSTREAM.lock::tracked commit is $DRIFT commits behind $UPSTREAM_BRANCH (limit $MAX_DRIFT). Fetch upstream, move $TRACK_BRANCH, update UPSTREAM.lock."
+              status=1
+            elif [ "$DRIFT" -gt 0 ]; then
+              echo "::notice::tracked commit is $DRIFT commits behind $UPSTREAM_BRANCH (limit $MAX_DRIFT)."
+            fi
+          fi
+
+          [ "$status" -eq 0 ] && echo "UPSTREAM.lock agrees with $UPSTREAM_URL $UPSTREAM_BRANCH"
+          exit $status
+
   build:
     name: Build core (Debian trixie)
+    # Nothing to prove by compiling somebody else's mirror branch.
+    if: github.ref_name != 'upstream-tracking'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 

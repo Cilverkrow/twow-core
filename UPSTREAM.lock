@@ -18,8 +18,47 @@ fork_point      = 61a8269151721f6467eddb05e7bed37704d0fc0b
 # warden .cr/.key binaries filter-repo removed and this repository still has.
 former_recorded_base = db5fb2a197f05611ad9d243568122c6be466ab8a  # twow-repo hash, not upstream
 
-# Upstream tip when this fork was created, and how far ahead it already was.
-# Recorded so the size of the first merge is a known quantity rather than a
-# surprise. Most of it is the Eluna Lua engine vendoring.
+# Upstream tip when this fork was created. Historical only: it is the answer to
+# "how big was the gap on day one", not to "what are we tracking now". Every
+# "we are N behind" figure computed against this line is wrong by construction,
+# and at least one has been.
 upstream_tip_at_fork      = be3e6cdd47680c1308251e115164eb3d9eecc6f7
-upstream_commits_ahead    = 379
+
+# ---------------------------------------------------------------------------
+# What we track, and what CI asserts about it.
+#
+# The branch above is not decoration. Shyalya's `main`, `dev`, `1181dev`,
+# `challenges`, `shop` and `1181-rogue-fixes` are all ANCESTORS OF OUR FORK
+# POINT -- dead branches, every one of them behind the code we already have.
+# Merging any of them is a no-op at best. That has been attempted once, from a
+# prose instruction in ADR-0026 that named the right branch and was read as if
+# it named any branch. Prose did not stop it, so this file is checked by CI
+# instead: see the `upstream-freshness` job in .github/workflows/ci.yml.
+#
+# upstream_tracking_branch is the local mirror branch. upstream_tracking_commit
+# is what it must point at. CI asserts, in this order:
+#
+#   1. origin/<upstream_tracking_branch> == upstream_tracking_commit
+#        -- the branch was moved without updating this file, or vice versa.
+#   2. upstream_tracking_commit is an ancestor of upstream/<upstream_branch>
+#        -- the commit is not on the branch we claim to track at all.
+#   3. fork_point is an ancestor of upstream_tracking_commit
+#        -- this is the dead-branch trap. Assertion 2 alone does NOT catch it:
+#           every dead branch listed above IS an ancestor of the live branch,
+#           so an ancestor test passes happily on all six of them. What
+#           separates them is that they are all OLDER than our fork point,
+#           and a commit we are genuinely tracking never is.
+#   4. upstream_tracking_commit is at most `max_drift_commits` behind the live
+#        branch tip -- staleness, as opposed to wrongness.
+#
+# Updating this pair is the whole ceremony for "we have looked at upstream":
+# move the branch, put the same hash here, let CI agree.
+upstream_tracking_branch  = upstream-tracking
+upstream_tracking_commit  = c26434d524fd301395be52b4fbf21de0c1031b6b
+
+# How far behind upstream/playerbots-integration-gh the tracked commit may fall
+# before CI fails. Not zero: upstream pushes most days, and a check that goes
+# red on every unrelated pull request the moment somebody else commits is a
+# check that gets switched off. Not unbounded either -- be3e6cd sat here for
+# the life of the fork and was 385 commits stale by the time anyone measured.
+max_drift_commits         = 50
