@@ -44,16 +44,28 @@
 
 struct AreaTriggerEntry
 {
+    // Anonymous unions carry the AzerothCore field names on the same storage,
+    // the way WorldLocation in SharedDefines.h does. Layout unchanged - the DBC
+    // loader fills by offset and must not see the struct move.
     uint32    id;                                           // 0
-    uint32    mapid;                                        // 1
+    union { uint32 mapid;           uint32 map;         };  // 1
     float     x;                                            // 2
     float     y;                                            // 3
     float     z;                                            // 4
     float     radius;                                       // 5
-    float     box_x;                                        // 6 extent x edge
-    float     box_y;                                        // 7 extent y edge
-    float     box_z;                                        // 8 extent z edge
-    float     box_orientation;                              // 9 extent rotation by about z axis
+    union { float box_x;            float width;       };  // 6 extent x edge
+    union { float box_y;            float length;      };  // 7 extent y edge
+    union { float box_z;            float height;      };  // 8 extent z edge
+    union { float box_orientation;  float orientation; };  // 9 extent rotation by about z axis
+    // cmangos AreaTriggerEntry has teleport-destination fields.
+    // Penqle stores teleport targets in a separate AreaTriggerTeleport table; bot uses these as
+    // simple sentinel zeroes (no teleport). Stubs are 0; real impl deferred to
+    uint32    target_mapId = 0;
+    float     target_X = 0.0f;
+    float     target_Y = 0.0f;
+    float     target_Z = 0.0f;
+    float     target_Orientation = 0.0f;
+    uint32    conditionId = 0;
 };
 
 struct AuctionHouseEntry
@@ -90,13 +102,15 @@ struct BankBagSlotPricesEntry
 
 struct ChatChannelsEntry
 {
-    uint32 id;
+    union { uint32 id; uint32 ChannelID; };
     uint32 flags;
     uint32 factionGroup;
     std::string name[8];
     uint32 nameFlags;
     std::string shortcut[8];
     uint32 shortcutFlags;
+    // bot accesses pattern[locale]. Stub uses array of c_str()s.
+    char const* pattern[8] = { "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s" };
 };
 
 struct ChrClassesEntry
@@ -319,6 +333,8 @@ struct FactionEntry
     {
         return reputationListID >= 0;
     }
+    // cmangos's HasReputation alias.
+    bool HasReputation() const { return CanHaveReputation(); }
 };
 
 struct FactionTemplateEntry
@@ -326,9 +342,11 @@ struct FactionTemplateEntry
     uint32      ID;                                         // 0
     uint32      faction;                                    // 1
     uint32      factionFlags;                               // 2 specific flags for that faction
-    uint32      ourMask;                                    // 3 if mask set (see FactionMasks) then faction included in masked team
-    uint32      friendlyMask;                               // 4 if mask set (see FactionMasks) then faction friendly to masked team
-    uint32      hostileMask;                                // 5 if mask set (see FactionMasks) then faction hostile to masked team
+    // bot uses cmangos names: factionGroupMask = ourMask,
+    // friendGroupMask = friendlyMask, enemyGroupMask = hostileMask.
+    union { uint32  ourMask;       uint32 factionGroupMask; };
+    union { uint32  friendlyMask;  uint32 friendGroupMask; };
+    union { uint32  hostileMask;   uint32 enemyGroupMask; };
     uint32      enemyFaction[4];                            // 6-9
     uint32      friendFaction[4];                           // 10-13
     //-------------------------------------------------------  end structure
@@ -384,6 +402,18 @@ struct GameObjectDisplayInfoEntry
     uint32      Displayid;                                  // 0        m_ID
     char* filename;                                         // 1        m_modelName
                                                             // 2-11     m_Sound
+    // The geo box arrived with the 2.x client; the 1.12 DBC carries sounds and
+    // nothing else, so there is no data to load. Class-level zeros keep ported
+    // door-width checks compiling; their effect degrades from "segment crosses
+    // the door's box" to "segment passes within the pad of the door's origin",
+    // which still catches a path through the door and misses only grazes along
+    // an unusually wide one.
+    static constexpr float minX = 0.0f;
+    static constexpr float minY = 0.0f;
+    static constexpr float minZ = 0.0f;
+    static constexpr float maxX = 0.0f;
+    static constexpr float maxY = 0.0f;
+    static constexpr float maxZ = 0.0f;
 };
 
 // All Gt* DBC store data for 100 levels, some by 100 per class/race
@@ -567,7 +597,13 @@ struct SpellRangeEntry
     uint32    ID;                                           // 0        m_ID
     float     minRange;                                     // 1        m_rangeMin
     float     maxRange;                                     // 2        m_rangeMax
-    //uint32  Flags;                                        // 3        m_flags
+    // bot reads ->Flags & SPELL_RANGE_FLAG_MELEE/RANGED.
+    // Penqle's DBC format string doesn't load Flags (it's marked 'x' = skipped), and adding
+    // a real field would grow sizeof(SpellRangeEntry) past the format string's 12 bytes,
+    // failing the DBCStorage size assertion. Use static constexpr so `entry->Flags` syntax
+    // works (resolves to the class-level constant, value 0) without growing the struct.
+    // Bot's bitwise check returns 0 — falls through to default melee/ranged classification.
+    static constexpr uint32 Flags = 0;
     //char*  Name[8];                                       // 4-11     m_displayName_lang
     //uint32 NameFlags;                                     // 12 string flags
     //char*  ShortName[8];                                  // 13-20    m_displayNameShort_lang
@@ -803,6 +839,8 @@ struct TaxiPathNodePtr
     TaxiPathNodeEntry const* i_ptr;
 
     operator TaxiPathNodeEntry const& () const { return *i_ptr; }
+    // bot uses p->mapid pointer-style.
+    TaxiPathNodeEntry const* operator->() const { return i_ptr; }
 };
 
 typedef Path<TaxiPathNodePtr,TaxiPathNodeEntry const> TaxiPathNodeList;
