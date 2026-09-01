@@ -1,14 +1,28 @@
 /samples/
 /data/
 /build/
+/build-*/
+/bin/
 /.vscode/
 *.kate-swp
 *.exe
+/src/shared/revision.h
+/database/
+
+# Local backup copies made before editing (never meant to be committed)
+*.bak
+*.bak.*
+*.bak-*
+
+# Routen, die der Rekorder selbst verworfen hat (DcRouteRecorder::
+# DiscardRoute benennt .route/.cpp in .bad um, wenn die Stuck-Leiter auf
+# einer aufgezeichneten Route auslief). Ausschuss, kein Repo-Inhalt.
+*.bad
 
 # Written into the workspace by .github/workflows/ci.yml, and by anyone
-# reproducing that workflow locally: the teed configure output the standalone
-# assertion greps, the ccache directory the cache action restores, and the two
-# binaries copied out of the container-private build directory for upload.
+# reproducing that workflow locally: the teed configure output, the ccache
+# directory the cache action restores, and the two binaries copied out of the
+# container-private build directory for upload.
 /configure.log
 /.ccache/
 /out/

@@ -18,7 +18,7 @@
 # Needs to link against mangos_worldd.lib
 if(WIN32)
   include_directories(
-    ${TW_CORE_ROOT}/dep/include # For Win32
+    ${CMAKE_SOURCE_DIR}/dep/include # For Win32
   )
 endif()
 

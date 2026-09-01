@@ -148,6 +148,7 @@ enum eScriptCommand
     SCRIPT_COMMAND_CREATE_ITEM              = 17,           // source = Player (from provided source or target)
                                                             // datalong = item_id
                                                             // datalong2 = amount
+                                                            // datalong3 = optional money cost in copper
     SCRIPT_COMMAND_DESPAWN_CREATURE         = 18,           // source = Creature
                                                             // datalong = despawn_delay
                                                             // datalong2 = respawn_delay
@@ -674,6 +675,7 @@ struct ScriptInfo
         {
             uint32 itemId;                                  // datalong
             uint32 amount;                                  // datalong2
+            uint32 moneyCost;                               // datalong3; optional copper cost
         } createItem;
 
         struct                                              // SCRIPT_COMMAND_DESPAWN_CREATURE (18)
@@ -1430,7 +1432,9 @@ struct AuraScript
     virtual int32 OnDurationCalculate(WorldObject const* /*caster*/, Unit const* /*target*/, int32 duration) { return duration; }
     virtual void OnBeforeApply(Aura* /*aura*/, bool /*apply*/) {}
     virtual void OnAfterApply(Aura* /*aura*/, bool /*apply*/) {}
+    virtual void OnCharmStateChanged(Aura* /*aura*/, Unit* /*caster*/, Unit* /*target*/, bool /*apply*/) {}
     virtual void OnAfterShapeshift(Aura* /*aura*/, ShapeshiftForm /*oldForm*/, ShapeshiftForm /*newForm*/) {}
+    virtual void OnCastSpeedChanged(Aura* /*aura*/) {}
     virtual void OnDispel(SpellAuraHolder* /*holder*/, Unit* /*target*/, Spell* /*dispelSpell*/, uint32 /*dispelCount*/) {}
     virtual std::optional<SpellProcEventTriggerCheck> OnCheckProc(Unit const* /*owner*/, Unit* /*victim*/, SpellAuraHolder* /*holder*/, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procExtra*/, WeaponAttackType /*attType*/, bool /*isVictim*/) { return std::nullopt; }
     virtual std::optional<SpellAuraProcResult> OnProc(Unit* /*owner*/, Unit* /*victim*/, uint32 /*amount*/, int32 /*originalAmount*/, Aura* /*triggeredByAura*/, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) { return std::nullopt; }
