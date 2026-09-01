@@ -1,6 +1,8 @@
 // std::regex used to arrive through botpch.h (line 57). The module build has
 // no per-module precompiled header - the aggregate `modules` target compiles
 // two modules' sources - so a use has to name its own header.
+#include <set>
+#include <mutex>
 #include <regex>
 
 #include "playerbot/playerbot.h"
@@ -231,8 +233,45 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(QueryResult* /*dummy*/, SqlQu
     OnBotLogin(bot);
 }
 
+// Every live holder: the singleton RandomPlayerbotMgr plus one PlayerbotMgr per
+// session. A destroyed Player has to be cleared from all of them, and there was
+// no way to enumerate them before.
+namespace
+{
+    std::mutex& HolderRegistryLock()
+    {
+        static std::mutex instance;
+        return instance;
+    }
+    std::set<PlayerbotHolder*>& HolderRegistry()
+    {
+        static std::set<PlayerbotHolder*> instance;
+        return instance;
+    }
+}
+
+void PlayerbotHolder::NotePlayerDestroyed(Player const* player)
+{
+    if (!player)
+        return;
+    uint32 const guid = player->GetGUIDLow();
+    std::lock_guard<std::mutex> lock(HolderRegistryLock());
+    for (PlayerbotHolder* holder : HolderRegistry())
+    {
+        auto const it = holder->playerBots.find(guid);
+        // Only when it is THIS Player. A slot already refilled by a new login
+        // on the same guid must not be cleared.
+        if (it != holder->playerBots.end() && it->second == player)
+            it->second = nullptr;   // tombstone; Cleanup() sweeps it later
+    }
+}
+
 PlayerbotHolder::PlayerbotHolder() : PlayerbotAIBase()
 {
+    {
+        std::lock_guard<std::mutex> lock(HolderRegistryLock());
+        HolderRegistry().insert(this);
+    }
     m_holderHandlers["list"] = &PlayerbotHolder::HandleList;
     m_holderHandlers["help"] = &PlayerbotHolder::HandleHelp;
     m_holderHandlers["reload"] = &PlayerbotHolder::HandleReload;
@@ -301,6 +340,10 @@ PlayerbotHolder::PlayerbotHolder() : PlayerbotAIBase()
 
 PlayerbotHolder::~PlayerbotHolder()
 {
+    {
+        std::lock_guard<std::mutex> lock(HolderRegistryLock());
+        HolderRegistry().erase(this);
+    }
 }
 
 void PlayerbotHolder::ForEachPlayerbot(std::function<void(Player*)> callback) const
@@ -3262,4 +3305,13 @@ std::list<std::string> PlayerbotHolder::HandleSpoof(Player* master, const std::s
     
     messages.push_back("Spoof set to: " + playerName + " (" + std::to_string(guid.GetCounter()) + ")");
     return messages;
+}
+
+
+// Core -> module seam, same shape as the BotActionLog_ probes: the core calls
+// this unconditionally from Player::~Player and PlayerbotStubs.cpp supplies an
+// empty body for BUILD_PLAYERBOTS=OFF builds.
+void Playerbot_OnPlayerDestroyed(Player const* player)
+{
+    PlayerbotHolder::NotePlayerDestroyed(player);
 }
