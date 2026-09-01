@@ -16,8 +16,8 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 set(ZLIB_PUBLIC_HDRS
-    ${CMAKE_SOURCE_DIR}/dep/windows/include/zlib/zconf.h
-    ${CMAKE_SOURCE_DIR}/dep/windows/include/zlib/zlib.h
+    ${TW_CORE_ROOT}/dep/windows/include/zlib/zconf.h
+    ${TW_CORE_ROOT}/dep/windows/include/zlib/zlib.h
 )
 set(ZLIB_PRIVATE_HDRS
     crc32.h
@@ -50,7 +50,7 @@ set(ZLIB_SRCS
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/dep/windows/include/zlib
+  ${TW_CORE_ROOT}/dep/windows/include/zlib
 )
 
 add_library(zlib STATIC

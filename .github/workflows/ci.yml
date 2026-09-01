@@ -1,0 +1,249 @@
+# The only workflow in this repository, and deliberately so.
+#
+# twow-core is a fork whose entire purpose is to be reviewable and to send fixes
+# back to Penqle. Until this file existed, nothing here could be checked: the
+# repository's own first pull request had to record "a full local
+# configure/build was unavailable because twow-core currently has no CI
+# workflow" in its verification section. A fork that cannot compile itself
+# cannot honestly claim that any of its 33 candidate upstream fixes are correct.
+#
+# One workflow, one job, on purpose. The sibling repository twow-repo grew to 19
+# job entries across several workflow files, each with its own slightly
+# different toolchain, and consolidating them back down to 5 cost a day. There
+# is exactly one thing worth asserting about this repository -- that the core
+# compiles and links standalone -- so there is exactly one job that asserts it.
+
+name: CI
+
+# push on main only, plus pull_request. Not `push: branches: ['**']`, which was
+# the first thing tried here: with a pull request open, every push fires both
+# events and the same commit is built twice on two runners for forty minutes.
+# Watching eight runs of this job queue up behind four pushes is what made the
+# duplication obvious. Branch work is reviewed through a pull request in this
+# repository anyway, so pull_request is the trigger that matters; main is built
+# on push so the branch everything merges into always has a result of its own.
+# workflow_dispatch is there for re-running a build after a runner-side failure
+# that has nothing to do with the commit.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Every run gets its own concurrency group, and nothing is ever cancelled.
+#
+# cancel-in-progress: false is not a preference here, it is what makes the
+# ccache below work at all. actions/cache writes the cache in a POST step, which
+# runs only if the job reaches the end of its lifecycle; a cancelled job is torn
+# down before that, so the cache is never saved. In twow-repo a shared group
+# with cancel-in-progress: true meant every push cancelled its predecessor, the
+# post step never ran once, and a full day of builds were cold from scratch --
+# with the cache key being computed and looked up correctly and missing every
+# single time, which is why it took so long to see. Including github.run_id
+# keeps two pushes to the same ref from colliding as well.
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build core (Debian trixie)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, so cmake/revision.h.cmake resolves a real hash instead
+          # of the "unknown 1970-01-01 (Archived)" fallback. That fallback is a
+          # deliberate feature for source archives with no .git, but a CI build
+          # reporting 1970 as its revision cannot be matched to the commit that
+          # produced it.
+          fetch-depth: 0
+
+      # Space this build genuinely needs: mangosd links to 750 MB with
+      # DEBUG_SYMBOLS=ON, on top of a ~20 GB object tree, and /build lives on the
+      # container filesystem which is the same / as the runner's.
+      #
+      # How much headroom there actually is varies by runner, and the honest
+      # answer is that on the runner this job first ran on there was plenty --
+      # 145 GB total, 104 GB free after the reclaim. That is why the df is
+      # printed before AND after rather than just after: the numbers in a comment
+      # go stale, the ones in the log are from the machine that ran the build. If
+      # a future run shows the reclaim freeing nothing on a runner with room to
+      # spare, this step can go.
+      #
+      # It stays for now because it costs seconds, the four directories are
+      # preinstalled toolchains no C++ build here touches, and the failure it
+      # guards against -- "no space left on device" forty minutes into a link --
+      # reads like a compiler failure and is not one.
+      - name: Reclaim runner disk
+        run: |
+          echo "before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          echo "after:";  df -h /
+
+      # CCACHE_SLOPPINESS in the docker run below is what makes this cache worth
+      # having at all, and it is not obvious enough to leave unexplained.
+      #
+      # USE_PCH defaults ON, and src/game and src/scripts -- which are most of
+      # the build -- use target_precompile_headers(). ccache refuses to cache any
+      # compilation that consumes a precompiled header unless it is told to be
+      # sloppy about it. Measured on this tree, without the setting:
+      #
+      #   Cacheable calls:   128 / 687 (18.63%)
+      #   Uncacheable calls: 559 / 687 (81.37%)
+      #     Could not use precompiled header: 559 / 561 (99.64%)
+      #
+      # and with it, 276 / 276 (100%). That is not a tuning improvement; it is
+      # the difference between caching a fifth of the build and caching all of
+      # it. A ccache that quietly declines four fifths of the work is the same
+      # category of failure as the cancel-in-progress bug -- every step reports
+      # success and nothing is being cached.
+      #
+      # Both sloppiness flags were checked here rather than assumed safe.
+      # time_macros makes ccache ignore __DATE__ and __TIME__, and neither macro
+      # appears anywhere in this tree: the build's version string comes from
+      # revision.h, which CMake generates and ccache then hashes as an ordinary
+      # source file, so no stale timestamp can be baked into a cached object.
+      # pch_defines means ccache will not notice a macro changing inside the
+      # precompiled header itself, and that exposure is bounded by CI building a
+      # fresh checkout every run with a cache that rotates per run.
+      #
+      # Deliberately NOT keyed on a hashFiles() of this workflow, which is the
+      # obvious thing to reach for and is wrong here twice over. ccache already
+      # hashes the compiler binary, the preprocessed source and the full command
+      # line into every entry, so a changed package list or build type produces
+      # different hashes and misses on its own -- a workflow-file key buys no
+      # safety ccache does not already provide. What it does buy is a completely
+      # cold build every time somebody edits a comment in this file, which is how
+      # a cache ends up quietly never helping.
+      #
+      # The key is therefore write-once per run, and the restore-keys prefixes do
+      # the actual work: a new branch falls back to the same branch's last cache,
+      # then to any cache on this runner OS. That fallback is the difference
+      # between a five-minute incremental and a cold build on every branch's
+      # first push.
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-trixie-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-trixie-${{ github.ref_name }}-
+            ccache-trixie-
+
+      # The compiler is Debian trixie's, not the runner's.
+      #
+      # This is the toolchain the project actually builds with, so pinning it
+      # makes a green tick mean something: the GCC, ACE and Boost versions are
+      # the ones a maintainer reproduces locally from the same image, rather than
+      # whatever ubuntu-latest happens to ship this month.
+      #
+      # Driven with `docker run` rather than the job-level `container:` key,
+      # because a container job's steps cannot see the runner's own filesystem
+      # and the disk-reclaim step above has to run on the host to be worth
+      # anything. Bind-mounting the workspace and the ccache directory gets the
+      # same hermetic toolchain without giving that up.
+      #
+      # ca-certificates in the package list is not padding. It is absent from
+      # debian:trixie's base image, and without it every https call made from
+      # inside the container -- git over https, CMake's FetchContent, curl --
+      # fails with a certificate verification error that names TLS and never
+      # names the missing package. That misdiagnosis cost two separate debugging
+      # sessions in twow-repo. It stays in this list whether or not today's build
+      # appears to need it.
+      - name: Configure and build
+        run: |
+          mkdir -p "${{ github.workspace }}/.ccache"
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            -v "${{ github.workspace }}/.ccache:/ccache" \
+            -e CCACHE_DIR=/ccache \
+            -e CCACHE_MAXSIZE=2G \
+            -e CCACHE_SLOPPINESS=pch_defines,time_macros \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -w /src \
+            debian:trixie \
+            bash -eo pipefail -c '
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential cmake ninja-build git ccache python3 ca-certificates \
+                libace-dev default-libmysqlclient-dev libssl-dev zlib1g-dev libbz2-dev \
+                libboost-dev libboost-thread-dev libboost-filesystem-dev \
+                libboost-system-dev libboost-stacktrace-dev
+
+              # The checkout is bind-mounted from the host, so its owning uid does
+              # not match root inside the container and git refuses to read it.
+              # CMake shells out to `git rev-parse` for the revision header, and a
+              # refusal there produces the 1970 fallback silently rather than an
+              # error, so this has to be set before configure runs.
+              git config --global --add safe.directory /src
+
+              ccache --zero-stats
+
+              # No -D here names a module, a module directory, or the module
+              # framework: this command line IS the acceptance test. The core has
+              # to configure knowing nothing about the platform that will later
+              # attach to it, and the "Host extensions: none (standalone core)"
+              # line asserted in the next step is the core saying so itself.
+              cmake -S /src -B /build -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                2>&1 | tee /src/configure.log
+
+              cmake --build /build --target mangosd realmd -j "$(nproc)"
+
+              ccache --show-stats
+
+              # /build is deliberately NOT on the bind mount: writing a multi-
+              # gigabyte object tree through the mount is several times slower
+              # than writing it to the container filesystem. That makes it
+              # container-private, so the two binaries have to be copied out for
+              # the upload step to see them.
+              #
+              # Stripped on the way out. DEBUG_SYMBOLS defaults to ON, which
+              # makes mangosd 750 MB and realmd 12 MB; stripped they are 21 MB
+              # and 0.8 MB. Both figures are measured from this exact build, not
+              # estimated. Uploading 750 MB on every push to every branch is
+              # minutes of artifact transfer and a private-repo storage bill, for
+              # a binary nobody is going to attach a debugger to -- this job
+              # exists to prove the core compiles and links, and a stripped
+              # binary proves the link just as well. Anyone who wants the symbols
+              # builds locally from the same image.
+              mkdir -p /src/out
+              cp /build/src/mangosd/mangosd /build/src/realmd/realmd /src/out/
+              strip /src/out/mangosd /src/out/realmd
+              ls -la /src/out/
+            '
+
+      # The property the extension seam exists to create, asserted rather than
+      # assumed. If a later change reintroduces a modules/ path into the core --
+      # which is exactly how the separation was lost the first time -- the build
+      # still succeeds and this step is the only thing that notices.
+      - name: Assert the core does not know the platform exists
+        run: |
+          grep -q 'Host extensions       : none (standalone core)' configure.log \
+            || { echo "::error::configure did not report a standalone core"; exit 1; }
+
+          if [ -d modules ]; then
+            echo "::error::modules/ is back in the core tree; it belongs to twow-repo"
+            exit 1
+          fi
+
+          # Comments may mention modules/ -- several of them explain why the
+          # directory is gone -- so this looks at CMake code only, with comment
+          # lines stripped first.
+          if grep -rn --include=CMakeLists.txt --include='*.cmake' -- 'modules/' . \
+               | grep -v ':[0-9]*:[[:space:]]*#' ; then
+            echo "::error::the core's build files reference modules/"
+            exit 1
+          fi
+          echo "core builds with no reference to modules/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-binaries
+          path: out/
+          retention-days: 7

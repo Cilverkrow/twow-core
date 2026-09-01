@@ -17,7 +17,7 @@
 cmake_minimum_required(VERSION 2.6...3.20)
 project (MANGOS_MAP_EXTRACTOR)
 
-include_directories(${CMAKE_SOURCE_DIR}/dep/libmpq)
+include_directories(${TW_CORE_ROOT}/dep/libmpq)
 include_directories(loadlib)
 include_directories(
      ../../src/game/Maps
