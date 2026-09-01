@@ -68,7 +68,7 @@
 #include "LFTMgr.h"
 #include "AutoBroadCastMgr.h"
 #include "Transports/TransportMgr.h"
-#include "PlayerBotMgr.h"
+// PlayerBotMgr.h removed — Penqle stub binned for cmangos port
 #include "ZoneScriptMgr.h"
 #include "CharacterDatabaseCache.h"
 #include "CreatureGroups.h"
@@ -193,6 +193,25 @@ World::~World()
 {
 }
 
+// return Penqle's existing sLFGMgr.
+LFGQueue& World::GetLFGQueue()
+{
+    return sLFGMgr;
+}
+
+// World::GetGraveyardManager stub returns empty map (Penqle uses multimap).
+// GetGraveyardMap() is templated in the header; only its instance is created here.
+World::WorldGraveyardManagerStub& World::GetGraveyardManager()
+{
+    static WorldGraveyardManagerStub s;
+    return s;
+}
+
+uint32 World::GetCurrentMSTime() const
+{
+    return WorldTimer::getMSTime();
+}
+
 void World::Shutdown()
 {
     ScriptRegistry<WorldScript>::ForEachEnabledHook(WORLDHOOK_ON_SHUTDOWN, [](WorldScript* script)
@@ -219,6 +238,12 @@ AccountDataWrapper::~AccountDataWrapper()
 
 void World::InternalShutdown()
 {
+	// ProcessAsyncPackets() iterates m_sessions on its own thread with no lock,
+	// so it must be joined before the deletion loop below starts erasing entries
+	// out from under it.
+	if (m_asyncPacketsThread.joinable())
+	    m_asyncPacketsThread.join();
+
 	///- Empty the kicked session set
 	while (!m_sessions.empty())
 	{
@@ -249,9 +274,6 @@ void World::InternalShutdown()
 
     if (m_autoPDumpThread.joinable())
         m_autoPDumpThread.join();
-
-    if (m_asyncPacketsThread.joinable())
-        m_asyncPacketsThread.join();
 
     if (m_shopThread.joinable())
         m_shopThread.join();
@@ -736,8 +758,6 @@ void World::LoadConfigSettingsCommonPart(bool reload)
     sLog.outString("VMap support included. LineOfSight: %i | getHeight: %i | indoorCheck: %i.", enableLOS, enableHeight, getConfig(CONFIG_BOOL_VMAP_INDOOR_CHECK) ? 1 : 0);
     sLog.outString("MMap pathfinding %sabled.", getConfig(CONFIG_BOOL_MMAP_ENABLED) ? "en" : "dis");
 
-    sPlayerBotMgr.LoadConfig();
-
     sLog.outString("Anticrash: 0x%x rearm after %u seconds.", getConfig(CONFIG_UINT32_ANTICRASH_OPTIONS), getConfig(CONFIG_UINT32_ANTICRASH_REARM_TIMER) / 1000);
     sLog.outString("Pathfinding: [%s]", getConfig(CONFIG_BOOL_MMAP_ENABLED) ? "Enabled" : "Disabled");
 
@@ -1038,6 +1058,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_CLEAN_CHARACTER_DB, "CleanCharacterDB", true);
     setConfig(CONFIG_BOOL_GRID_UNLOAD, "GridUnload", true);
     setConfig(CONFIG_BOOL_CLEANUP_TERRAIN, "CleanupTerrain", true);
+    setConfig(CONFIG_BOOL_MMAP_TILE_UNLOAD, "MMapTileUnload", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
     setConfigMinMax(CONFIG_UINT32_MIN_LEVEL_STAT_SAVE, "PlayerSave.Stats.MinLevel", 0, 0, MAX_LEVEL);
     setConfig(CONFIG_BOOL_STATS_SAVE_ONLY_ON_LOGOUT, "PlayerSave.Stats.SaveOnlyOnLogout", true);
@@ -1067,6 +1088,16 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_ADD_FRIEND,          "AllowTwoSide.AddFriend", false);
 
     setConfig(CONFIG_FLOAT_MAX_FACTION_IMBALANCE, "MaxFactionImbalance", 0.1f);
+    setConfig(CONFIG_FLOAT_SCALAR_MIN_5MAN_HP,  "ScalarMin5ManHP",  0.6f);
+    setConfig(CONFIG_FLOAT_SCALAR_MIN_5MAN_DMG, "ScalarMin5ManDMG", 0.4f);
+    setConfig(CONFIG_FLOAT_SCALAR_MIN_10MAN_HP,  "ScalarMin10ManHP",  0.6f);
+    setConfig(CONFIG_FLOAT_SCALAR_MIN_10MAN_DMG, "ScalarMin10ManDMG", 0.4f);
+    setConfig(CONFIG_FLOAT_SCALAR_MIN_20MAN_HP,  "ScalarMin20ManHP",  0.6f);
+    setConfig(CONFIG_FLOAT_SCALAR_MIN_20MAN_DMG, "ScalarMin20ManDMG", 0.4f);
+    setConfig(CONFIG_FLOAT_SCALAR_MIN_40MAN_HP,  "ScalarMin40ManHP",  0.6f);
+    setConfig(CONFIG_FLOAT_SCALAR_MIN_40MAN_DMG, "ScalarMin40ManDMG", 0.4f);
+
+    setConfig(CONFIG_BOOL_AUTOSCALER_ENABLE, "AutoScalerEnable", false);
 
     setConfig(CONFIG_UINT32_STRICT_PLAYER_NAMES,  "StrictPlayerNames",  0);
     setConfig(CONFIG_UINT32_STRICT_CHARTER_NAMES, "StrictCharterNames", 0);
@@ -1485,6 +1516,11 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_UINT32_AUTO_PDUMP_DELETE_AFTER_DAYS, "AutoPDump.DeleteAfterDays", 60);
 
     setConfig(CONFIG_BOOL_PERFORMANCE_ENABLE, "Perf.Enable", true);
+    setConfig(CONFIG_BOOL_LFT_BOTFILL_ENABLE, "LFT.BotFill.Enable", false);
+    setConfig(CONFIG_UINT32_LFT_BOTFILL_DELAY, "LFT.BotFill.DelaySeconds", 90);
+    setConfig(CONFIG_UINT32_LFT_BOTFILL_LEVEL_BELOW, "LFT.BotFill.LevelRangeBelow", 2);
+    setConfig(CONFIG_UINT32_LFT_BOTFILL_LEVEL_BELOW_HEALER, "LFT.BotFill.LevelRangeBelowHealer", 4);
+    setConfig(CONFIG_UINT32_LFT_BOTFILL_LEVEL_ABOVE, "LFT.BotFill.LevelRangeAbove", 6);
 
     setConfig(CONFIG_UINT32_PERFORMANCE_REPORT_INTERVAL, "Perf.ReportInterval", 600);
     setConfig(CONFIG_UINT32_MAX_GOLD_TRANSFERRED, "Transfer.MaxGold", 300000);
@@ -2300,8 +2336,9 @@ void LoadPlayerEggLoot();
 	sObjectMgr.LoadPlayerPhaseFromDb();
     sLog.outString("Caching player pets...");
 	sCharacterDatabaseCache.LoadAll();
-    sLog.outString("Loading player bot manager...");
-	sPlayerBotMgr.Load();
+    // Penqle's "Loading player bot manager... / sPlayerBotMgr.Load()" removed.
+    // cmangos's RandomPlayerbotMgr is instantiated by InitPlayerbotsAtStartup(), called near
+    // the end of this function.
     sLog.outString("Loading faction change reputations...");
 	sObjectMgr.LoadFactionChangeReputations();
     sLog.outString("Loading faction change spells...");
@@ -2394,6 +2431,26 @@ void LoadPlayerEggLoot();
             honorUpdateFile << "0";
     }
 
+    // Initialize bot config + managers. InitPlayerbotsAtStartup (HostHooks.cpp) loads
+    // aiplayerbot.conf, instantiates sPlayerbotAIConfig / sRandomPlayerbotMgr / sAhBot, and runs
+    // PlayerbotAIConfig::Initialize() — which builds the equipment cache (RandomItemMgr::Init →
+    // BuildEquipCache, scans sItemStorage) and validates the premade talent specs (LoadTalentSpecs,
+    // reads Talent.dbc). It MUST run after LoadDBCStores() and LoadItemPrototypes() above, otherwise
+    // those caches build against empty data on first boot. No-op if AiPlayerbot.Enabled = 0.
+    // The module registers its hook objects here; the work it used to do in
+    // FinalizePlayerbotsPostPlayerInfo() now runs from WorldScript::OnStartup
+    // just below, which is the same point in the sequence.
+    InitPlayerbotsAtStartup();
+
+    // Moved here from the tail of DetectDBCLang(). That helper runs right after
+    // LoadDBCStores() and well before LoadItemPrototypes(), so a module doing any
+    // item work in OnStartup saw empty caches. Here it sits at the end of world
+    // setup, still inside the loading-time measurement, which is where
+    // AzerothCore fires it.
+    ScriptRegistry<WorldScript>::ForEachEnabledHook(WORLDHOOK_ON_STARTUP, [](WorldScript* script)
+    {
+        script->OnStartup();
+    });
     sLog.outString("Current content phase is set to %u.", GetContentPhase() + 1);
     uint32 uStartInterval = WorldTimer::getMSTimeDiff(uStartTime, WorldTimer::getMSTime());
     sLog.outString("World server is up and running! Loading time: %i minutes %i seconds", uStartInterval / 60000, (uStartInterval % 60000) / 1000);
@@ -2440,10 +2497,6 @@ void World::DetectDBCLang()
     m_defaultDbcLocale = LocaleConstant(default_locale);
 
     sLog.outString("Using %s DBC locale as default.", localeNames[m_defaultDbcLocale]);
-    ScriptRegistry<WorldScript>::ForEachEnabledHook(WORLDHOOK_ON_STARTUP, [](WorldScript* script)
-    {
-        script->OnStartup();
-    });
     
 }
 
@@ -2460,8 +2513,11 @@ void World::ProcessAsyncPackets()
         do
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        } while (!m_canProcessAsyncPackets);
-        
+        } while (!m_canProcessAsyncPackets && !sWorld.IsStopped());
+
+        if (sWorld.IsStopped())
+            break;
+
         for (auto const& itr : m_sessions)
         {
             WorldSession* pSession = itr.second;
@@ -2486,14 +2542,11 @@ void TotalMoneyCallback(QueryResult* result, uint32 money)
 }
 
 
+
 /// Update the World !
 void World::Update(uint32 diff)
 {
     XScopeStatTimer ScopeStatTimer(sPerfMonitor.WorldTick);
-    ScriptRegistry<WorldScript>::ForEachEnabledHook(WORLDHOOK_ON_UPDATE, [&](WorldScript* script)
-    {
-        script->OnUpdate(diff);
-    });
 
     ///- Update the different timers
     for (auto& timer : m_timers)
@@ -2575,6 +2628,7 @@ void World::Update(uint32 diff)
     sGuardMgr.Update(diff);
     sZoneScriptMgr.Update(diff);
     sDynamicVisMgr.UpdateVisibility(diff);
+
 
     ///- Update groups with offline leaders
     if (m_timers[WUPDATE_GROUPS].Passed())
@@ -2699,10 +2753,17 @@ void World::Update(uint32 diff)
     else
         m_MaintenanceTimeChecker -= diff;
 
-    //Update PlayerBotMgr
-    sPlayerBotMgr.Update(diff);
+    // PlayerBotMgr update removed — Penqle stub binned. cmangos's
+    // sRandomPlayerbotMgr.UpdateAI(diff) runs from the bot module WorldScript::OnUpdate.
+
     // Update AutoBroadcast
     sAutoBroadCastMgr.Update(diff);
+
+    // AutoWorldBuff lived here inline. It is modules/mod-worldbuff now.
+
+    // AutoDonationPoints lived here inline. It is modules/mod-donation now,
+    // driven by WORLDHOOK_ON_UPDATE, which this function already dispatches.
+
     // Update liste des ban si besoin
     sAccountMgr.Update(diff);
 
@@ -2738,6 +2799,15 @@ void World::Update(uint32 diff)
             sWorld.ShutdownServ(900, SHUTDOWN_MASK_RESTART, SHUTDOWN_EXIT_CODE);
         }
     }
+
+    // Moved here from the head of this function. Firing first meant a module
+    // acted before UpdateSessions, sMapMgr, sBattleGroundMgr and sLFTMgr had
+    // run, so it saw the previous tick. This is where AzerothCore fires it, and
+    // where the bot tick used to sit.
+    ScriptRegistry<WorldScript>::ForEachEnabledHook(WORLDHOOK_ON_UPDATE, [&](WorldScript* script)
+    {
+        script->OnUpdate(diff);
+    });
 }
 
 /// Send a packet to all players (except self if mentioned)

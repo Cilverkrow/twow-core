@@ -67,11 +67,14 @@
 #include "MovementPacketSender.h"
 #include "TWDebuff/TWDebuff.hpp"
 
+#include "Autoscaling/AutoScaler.hpp"
+
 #include <math.h>
 #include <optional>
 #include <stdarg.h>
 #include "SuspiciousStatisticMgr.h"
 #include "PerfStats.h"
+#include "AccountMgr.h"   // Leech restrictions: spotting RNDBOT accounts by name
 
 float baseMoveSpeed[MAX_MOVE_TYPE] =
 {
@@ -392,6 +395,28 @@ void Unit::Update(uint32 update_diff, uint32 p_time)
     m_lastDamageTaken += p_time;
     if (m_lastDamageTaken > 60000)
         m_damageTakenHistory.clear();
+}
+
+// bot uses cmangos's IsInTeam(team) on Unit*.
+// Penqle only has Player::GetTeam(); for non-players default to Alliance team membership.
+bool Unit::IsInTeam(uint32 team, bool /*allowFFA*/) const
+{
+    if (Player const* p = ToPlayer())
+        return p->GetTeam() == team;
+    // Non-player units (creatures, totems, pets) — bot's PVP filters apply this to "enemy player" checks;
+    // treat as Alliance by default (the same fallback cmangos uses for non-team units).
+    return team == ALLIANCE;
+}
+
+// overload: same-team check between two units.
+bool Unit::IsInTeam(Unit const* other, bool allowFFA) const
+{
+    if (!other) return false;
+    Player const* p = ToPlayer();
+    Player const* o = other->ToPlayer();
+    if (p && o) return p->GetTeam() == o->GetTeam();
+    // If either is non-player, fall through to Alliance default.
+    return true;
 }
 
 bool Unit::UsesPvPCombatTimer() const
@@ -719,6 +744,24 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
     if (pVictim && pVictim->IsPlayer() && pVictim->ToPlayer()->m_disableGeneralDamage == true)
         return 0;
 
+    // bot logging suite — hook damage events.
+    // Wrapper checks attacker AND victim for bot AI; non-bot ↔ non-bot
+    // case is two cheap pointer-null-checks. Sampled 1/5 to avoid spam
+    // in heavy-DoT raid scenarios.
+    {
+        extern void BotActionLog_LogDamage(Unit* attacker, Unit* victim, uint32 damage, uint32 spellId, const char* damageType);
+        const char* dt = "?";
+        switch (damagetype) {
+            case DIRECT_DAMAGE: dt = "DIRECT"; break;
+            case SPELL_DIRECT_DAMAGE: dt = "SPELL_DIRECT"; break;
+            case DOT: dt = "DOT"; break;
+            case HEAL: dt = "HEAL"; break;
+            case NODAMAGE: dt = "NODAMAGE"; break;
+            case SELF_DAMAGE: dt = "SELF"; break;
+        }
+        BotActionLog_LogDamage(this, pVictim, damage, spellProto ? spellProto->Id : 0, dt);
+    }
+
     if (pVictim)
     {
         ScriptRegistry<UnitScript>::ForEachEnabledHook(UNITHOOK_ON_DAMAGE, [&](UnitScript* script)
@@ -879,6 +922,18 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
             damage *= 0.5f;
     }
 
+    // Leech lived here inline. It is modules/mod-leech now, driven by the
+    // hook below.
+    //
+    // The dispatch is here, not at the OnDamage site further up, because this
+    // is where `damage` is final: between the two points the core applies the
+    // hardcore pet scaling and the pet avoidance halving, and a consumer that
+    // scales off damage dealt needs the number that actually lands.
+    ScriptRegistry<UnitScript>::ForEachEnabledHook(UNITHOOK_ON_DAMAGE_APPLIED, [&](UnitScript* script)
+    {
+        script->OnDamageApplied(this, pVictim, damage);
+    });
+
     if (health <= damage && pVictim->GetInvincibilityHpThreshold() == 0)
     {
         if (auto player = pVictim->ToPlayer(); player && player->IsHardcore() && sWorld.HitsDiffThreshold())
@@ -933,18 +988,28 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
                 pVictim->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_DIRECT_DAMAGE);
         }
 
-        if (!pVictim->IsPlayer() && addThreat)
+        // Split on what the victim is, and only then on whether threat applies.
+        // Written as "!IsPlayer() && addThreat", the else branch caught every
+        // creature hit without threat as well and handed it to the player-only
+        // code below, which casts pVictim to Player*. Crash of 2026-08-08: a
+        // periodic tick on a creature reached DurabilityPointLossForEquipSlot,
+        // and Object::GetUInt32Value threw on the resulting nonsense - the same
+        // pointer appeared as Player in one frame and Creature in another.
+        if (!pVictim->IsPlayer())
         {
-            float threat = damage * sSpellMgr.GetSpellThreatMultiplier(spellProto);
-
-            if (spell && !spell->m_addThreat)
+            if (addThreat)
             {
-                // empty on purpose.
+                float threat = damage * sSpellMgr.GetSpellThreatMultiplier(spellProto);
+
+                if (spell && !spell->m_addThreat)
+                {
+                    // empty on purpose.
+                }
+                else
+                    pVictim->AddThreat(this, threat, (cleanDamage && cleanDamage->hitOutCome == MELEE_HIT_CRIT), damageSchoolMask, spellProto);
             }
-            else
-                pVictim->AddThreat(this, threat, (cleanDamage && cleanDamage->hitOutCome == MELEE_HIT_CRIT), damageSchoolMask, spellProto);
         }
-        else                                                // victim is a player
+        else                                                // victim really is a player
         {
             // Rage from damage received
             if (this != pVictim && pVictim->GetPowerType() == POWER_RAGE)
@@ -1058,7 +1123,7 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
             pVictim->RemoveAura(PLAINSRUNNING_FIRST_TICK, EFFECT_INDEX_0);
             pVictim->RemoveAura(PLAINSRUNNING_FIRST_TICK, EFFECT_INDEX_1);
         }
-        else if (pVictim->HasAura(PLAINSRUNNING_SPELL)) 
+        else if (pVictim->HasAura(PLAINSRUNNING_SPELL))
         {
             pVictim->RemoveAura(PLAINSRUNNING_SPELL, EFFECT_INDEX_0);
             pVictim->RemoveAura(PLAINSRUNNING_SPELL, EFFECT_INDEX_1);
@@ -1207,7 +1272,10 @@ void Unit::Kill(Unit* pVictim, SpellEntry const *spellProto, bool durabilityLoss
                     loot->FillLoot(lootid, LootTemplates_Creature, looter, false, false, pCreatureVictim);
                 }
             }
-            loot->GenerateMoneyLoot(pCreatureVictim->GetGoldMin(), pCreatureVictim->GetGoldMax());
+            if (pCreatureVictim->GetMap()->IsDungeon())
+                sAutoScaler->GenerateScaledMoneyLoot(pCreatureVictim, loot);
+            else
+                loot->GenerateMoneyLoot(pCreatureVictim->GetGoldMin(), pCreatureVictim->GetGoldMax());
         }
 
         if (pGroupTap)
@@ -3555,6 +3623,18 @@ bool Unit::AddSpellAuraHolder(SpellAuraHolder *holder)
 {
     SpellEntry const* aurSpellInfo = holder->GetSpellProto();
 
+    // aura-attempt hook. Logged BEFORE any
+    // early-returns (refresh, stack, dead target, debuff-limit, etc.) so the bot
+    // log captures every aura that any code path tries to put on a bot — even
+    // those that get rejected or merged into an existing holder. This was needed
+    // to debug a self-applied Bash 25515 that was invisible to the post-success
+    // hook below (refreshes never reach it). Logged with tag AURA_ATTEMPT so it's
+    // distinguishable from the AURA_APPLY tag that fires on confirmed first-apply.
+    {
+        extern void BotActionLog_LogAuraAttempt(Unit* target, uint32 spellId, int32 durationMs, uint64 casterGuidRaw);
+        BotActionLog_LogAuraAttempt(this, holder->GetId(), holder->GetAuraMaxDuration(), holder->GetCasterGuid().GetRawValue());
+    }
+
     // ghost spell check, allow apply any auras at player loading in ghost mode (will be cleanup after load)
     if (!IsAlive() && !aurSpellInfo->IsDeathPersistentSpell() && !aurSpellInfo->CanTargetDeadTarget() &&
         (!IsPlayer() || !((Player*)this)->GetSession()->PlayerLoading()))
@@ -3772,6 +3852,15 @@ bool Unit::AddSpellAuraHolder(SpellAuraHolder *holder)
     }
     // When we call _AddSpellAuraHolder, we must have a free aura slot
     holder->_AddSpellAuraHolder();
+
+    // bot logging suite — hook aura applies. The
+    // wrapper checks if `this` is a bot Player; non-bots cost only the
+    // GetPlayerbotAI() null check. Resolves at final mangosd link.
+    {
+        extern void BotActionLog_LogAuraApply(Unit* target, uint32 spellId, int32 durationMs, uint64 casterGuidRaw);
+        int32 durMs = holder->GetAuraMaxDuration();
+        BotActionLog_LogAuraApply(this, holder->GetId(), durMs, holder->GetCasterGuid().GetRawValue());
+    }
 
     return true;
 }
@@ -4347,6 +4436,13 @@ void Unit::DeleteAuraHolder(SpellAuraHolder *holder)
 
 void Unit::RemoveSpellAuraHolder(SpellAuraHolder *holder, AuraRemoveMode mode)
 {
+    // bot logging suite — hook aura removes. Logged
+    // BEFORE the holder is destroyed so the caster GUID is still valid.
+    {
+        extern void BotActionLog_LogAuraRemove(Unit* target, uint32 spellId, uint64 casterGuidRaw);
+        BotActionLog_LogAuraRemove(this, holder->GetId(), holder->GetCasterGuid().GetRawValue());
+    }
+
     // Statue unsummoned at holder remove
     Totem* statue = nullptr;
     WorldObject* caster = holder->GetRealCaster();
@@ -11675,6 +11771,28 @@ void Unit::RestoreMovement()
     }
 }
 
+// bot passes SpellEntry; forward to spell_id version.
+void Unit::RemoveSpellCooldown(SpellEntry const& spellInfo, bool update)
+{
+    RemoveSpellCooldown(spellInfo.Id, update);
+}
+
+// bot calls unit->GetAttackDistance(target) on a Unit*.
+// Penqle implements this only on Creature. Forward when we are a Creature, else return a default.
+float Unit::GetAttackDistance(Unit const* target) const
+{
+    if (GetTypeId() == TYPEID_UNIT)
+        return ((Creature const*)this)->GetAttackDistance(target);
+    return 20.0f; // reasonable default for non-creature attackers
+}
+
+// GetCreator returns the unit that summoned this one.
+Unit* Unit::GetCreator() const
+{
+    ObjectGuid const& guid = GetCreatorGuid();
+    return guid.IsEmpty() ? nullptr : ObjectAccessor::GetUnit(*this, guid);
+}
+
 /** Spell cooldown management system. Shared by Players, Creatures, Pets, ... */
 void Unit::RemoveSpellCooldown(uint32 spell_id, bool update)
 {
@@ -11933,3 +12051,6 @@ float Unit::GetScaleForDisplayId(uint32 displayId)
 
     return DEFAULT_OBJECT_SCALE;
 }
+
+// See the declaration: AzerothCore spelling of IsDead.
+bool Unit::isDead() const { return IsDead(); }
