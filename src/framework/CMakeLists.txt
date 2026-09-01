@@ -15,7 +15,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-# include(${CMAKE_SOURCE_DIR}/dep/tbb/tbbinclude.cmake)
+# include(${TW_CORE_ROOT}/dep/tbb/tbbinclude.cmake)
 
 set (framework_SRCS 
 	Dynamic/FactoryHolder.h
@@ -97,7 +97,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${TBB_INCLUDE_DIRS}
   ${ACE_INCLUDE_DIR}
-  ${CMAKE_SOURCE_DIR}/src/shared
+  ${TW_CORE_ROOT}/src/shared
 )
 
 if(WIN32)

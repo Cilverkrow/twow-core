@@ -38,7 +38,7 @@ set (libMPQ_SRCS
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/dep/include/bzip2
+  ${TW_CORE_ROOT}/dep/include/bzip2
 )
 
 add_library(libmpq STATIC
@@ -52,7 +52,7 @@ if(UNIX)
     target_link_libraries(libmpq ${ZLIB_LIBRARIES})
   endif(ZLIB_FOUND)
 else()
-  include_directories(${CMAKE_SOURCE_DIR}/dep/windows/include/zlib)
+  include_directories(${TW_CORE_ROOT}/dep/windows/include/zlib)
   if(MINGW)
     target_link_libraries(libmpq zlib)
   endif()

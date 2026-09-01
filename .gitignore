@@ -4,3 +4,11 @@
 /.vscode/
 *.kate-swp
 *.exe
+
+# Written into the workspace by .github/workflows/ci.yml, and by anyone
+# reproducing that workflow locally: the teed configure output the standalone
+# assertion greps, the ccache directory the cache action restores, and the two
+# binaries copied out of the container-private build directory for upload.
+/configure.log
+/.ccache/
+/out/
