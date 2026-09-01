@@ -552,7 +552,6 @@ include_directories(
   ${TW_CORE_ROOT}/src/shared
   ${TW_CORE_BINARY_DIR}
   ${TW_CORE_BINARY_DIR}/src/shared
-  ${MYSQL_INCLUDE_DIR}
   ${TBB_INCLUDE_DIRS}
   ${ACE_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
