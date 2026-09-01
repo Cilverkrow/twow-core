@@ -337,29 +337,34 @@ jobs:
               ls -la /src/out/
             '
 
-      # The property the extension seam exists to create, asserted rather than
-      # assumed. If a later change reintroduces a modules/ path into the core --
-      # which is exactly how the separation was lost the first time -- the build
-      # still succeeds and this step is the only thing that notices.
-      - name: Assert the core does not know the platform exists
-        run: |
-          grep -q 'Host extensions       : none (standalone core)' configure.log \
-            || { echo "::error::configure did not report a standalone core"; exit 1; }
-
-          if [ -d modules ]; then
-            echo "::error::modules/ is back in the core tree; it belongs to twow-repo"
-            exit 1
-          fi
-
-          # Comments may mention modules/ -- several of them explain why the
-          # directory is gone -- so this looks at CMake code only, with comment
-          # lines stripped first.
-          if grep -rn --include=CMakeLists.txt --include='*.cmake' -- 'modules/' . \
-               | grep -v ':[0-9]*:[[:space:]]*#' ; then
-            echo "::error::the core's build files reference modules/"
-            exit 1
-          fi
-          echo "core builds with no reference to modules/"
+      # There was an "Assert the core does not know the platform exists" step
+      # here. It required configure.log to say "Host extensions : none
+      # (standalone core)", failed if a modules/ directory existed, and failed if
+      # any CMake file mentioned modules/. It is gone, and the reason is worth
+      # the paragraph.
+      #
+      # Two separate ideas were being defended by one word. A MERGEABLE core --
+      # branched from the real fork point so that `git merge upstream` works at
+      # all -- is the reason this repository exists, and nothing here touches it.
+      # A PURE core -- modules/ physically deleted so the core cannot reach the
+      # platform even by accident -- was an addition, and it made sense only for
+      # as long as upstream had no module system of its own to collide with.
+      #
+      # Upstream built one anyway. Shyalya's 8415f1b moved playerbots to
+      # modules/mod-playerbots, independently arriving at the layout this project
+      # had already built; their tree now ships modules/, modules/CMakeLists.txt,
+      # modules/mod-dungeon-clear and modules/templates, and their core owns the
+      # script-hook seam. So purity stopped being a property we maintained and
+      # became a property we had to re-win against upstream on every single
+      # merge: it accounted for 8 of the 24 conflicts measured against
+      # playerbots-integration-gh, and -- worse than the conflicts -- silently
+      # dropped upstream's cmake/ConfigureModules.cmake and modules/CMakeLists.txt
+      # on merges where they did NOT conflict, because a delete on our side plus
+      # no change on theirs merges quietly to "still deleted" and takes the build
+      # with it.
+      #
+      # 385 commits behind is not the position from which to insist on a
+      # structural preference. Upstream's arrangement is the reference now.
 
       - uses: actions/upload-artifact@v4
         with:

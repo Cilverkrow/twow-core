@@ -57,14 +57,26 @@ upstream in its current shape.
 
 ## Before the first upstream merge
 
-Read `UPSTREAM.lock`. Two things are already known and neither is small:
+Read `UPSTREAM.lock`. Three things are already known and none of them is small:
 
-- Upstream is **379 commits ahead** of the fork point — 1,178 files, +851k lines,
-  most of it vendoring the Eluna Lua engine.
-- Upstream now carries **its own copy of the bot tree** at `src/modules/PlayerBots`,
-  the path this project vacated by promoting it to `modules/mod-playerbots` in
-  `twow-repo`. Two divergent copies of ike3's tree is a collision that needs a
-  decision, not a merge strategy.
+- Upstream is several hundred commits ahead of the fork point. The exact figure
+  deliberately does **not** appear here any more: this file said **379** for the
+  life of the fork, that number was measured against `be3e6cd`, and `be3e6cd`
+  stopped being upstream's tip 385 commits ago. A count written into prose goes
+  stale in silence. The `upstream-freshness` CI job measures it against the live
+  branch on every run instead.
+- The branch is `playerbots-integration-gh`, and only that branch. Upstream's
+  `main`, `dev`, `1181dev`, `challenges`, `shop` and `1181-rogue-fixes` are all
+  **ancestors of this fork's own fork point** — merging any of them is a no-op
+  against code we already have. That has been attempted once already, which is
+  why the rule now lives in `UPSTREAM.lock` where CI reads it.
+- Upstream **independently built the module system.** Their `8415f1b` moved
+  playerbots to `modules/mod-playerbots`, arriving at the same layout this
+  project had built for itself; their tree now ships `modules/`,
+  `modules/CMakeLists.txt`, `modules/mod-dungeon-clear` and `modules/templates`,
+  and their core owns the script-hook seam (`ScriptObjects.h`, `ModuleSlots.h`,
+  `PlayerbotStubs.cpp`). This is convergence, not collision — and it means
+  upstream's arrangement, not ours, is the reference for anything structural.
 
 ## Getting set up
 
@@ -85,43 +97,51 @@ one.
 
 ## Building
 
-The core builds standalone. `cmake -S . -B build && cmake --build build --target
-mangosd realmd` produces both servers from this repository alone, with no
-`modules/` directory, no module framework, and no reference to `twow-repo`
-anywhere in the build. `.github/workflows/ci.yml` does exactly that on every
-push, and asserts the standalone property rather than assuming it.
+`cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+--target mangosd realmd` produces both servers. `.github/workflows/ci.yml` does
+exactly that on every push, on `debian:trixie`, which is the toolchain this
+project actually ships from.
 
-That was not true until the extension seam landed. `cmake/ConfigureModules.cmake`
-and the module framework used to live in this repository's root `CMakeLists.txt`,
-and two of the core's own directories — `src/game` and `src/mangosd` — called
-`GetModuleEffectiveLinkage("mod-playerbots")`, so the core could not configure
-without a module framework loaded and knew one particular downstream module by
-name while it was at it. All of that is `twow-repo`'s now.
+### The pure core is superseded. The mergeable core is not.
 
-What replaced it is three variables and one target, all defaulting to "nothing is
-attached":
+This section used to claim something stronger: that the core built with **no
+`modules/` directory at all**, and that CI asserted it. That property is gone on
+purpose, and the distinction it collapsed is worth keeping straight, because two
+different ideas were travelling under one word.
 
-| | |
-|---|---|
-| `TW_EXT_SOURCE_MODULES_DIR` | source directory `AutoUpdater.cpp` scans for per-module SQL |
-| `TW_EXT_MODULE_CONFIG_LIST` | extra `.conf` files `Config.cpp` reloads |
-| `TW_EXT_ENABLED_MODULES` | module names `AutoUpdater.cpp` filters its SQL run on |
-| `tw_core_extensions` | an `INTERFACE` library linked into `mangosd`, for a host to populate |
+A **mergeable** core — branched from the real fork point, sharing upstream's
+history, so `git merge upstream/playerbots-integration-gh` is an ordinary
+operation — is the entire reason this repository exists. Nothing here touches it,
+and nothing should.
 
-Plus two options, `TW_EXTERNAL_MODULE_LOADER` and `TW_EXTERNAL_PLAYERBOT_HOOKS`,
-that tell the core somebody else is defining symbols it references —
-`AddModulesScripts()` and the eleven playerbot host hooks. Both default OFF, and
-the core compiles its own no-op stubs, which is what makes the standalone link
-resolve. None of those names mentions a module, a module directory, or a module
-framework: the core cannot tell whether what it is linking is `twow-repo`'s
-`modules/` or something else entirely.
+A **pure** core — `modules/` physically deleted, so the core could not reach the
+platform even by accident — was an addition on top of that, and it was a
+reasonable one for exactly as long as upstream had no module system of its own.
 
-A standalone configure prints:
+Upstream built one anyway (`8415f1b`, see above). From that point on, purity was
+no longer a property we maintained; it was a property we had to re-win against
+upstream on every merge. Measured against `playerbots-integration-gh`, it
+accounted for **8 of the 24 conflicts** — and the conflicts were the visible
+half. The quiet half is worse: our deletion of `cmake/ConfigureModules.cmake` and
+`modules/CMakeLists.txt` versus upstream's *unmodified* copies merges to "still
+deleted" with no conflict at all, taking upstream's build with it, and reports
+success while doing so.
 
-```
--- Host extensions       : none (standalone core)
-```
+Being 385 commits behind is not a position from which to insist on a structural
+preference. `modules/` and `cmake/ConfigureModules.cmake` are back, upstream's
+build arrangement is the reference, and the CI step that asserted the standalone
+property has been removed along with the property.
+
+What survives from the extension seam is whatever the merged tree genuinely uses
+— `TW_EXT_SOURCE_MODULES_DIR`, `TW_EXT_MODULE_CONFIG_LIST`,
+`TW_EXT_ENABLED_MODULES`, `tw_core_extensions`, `TW_EXTERNAL_MODULE_LOADER` and
+`TW_EXTERNAL_PLAYERBOT_HOOKS` — and no more than that. Where upstream's
+`CMakeLists.txt` already answers a question, upstream's answer wins.
 
 Deciding how `twow-repo` consumes this repository — submodule, subtree, or
 pinned checkout — is still open. The platform half of the split sits on
 `twow-repo`'s `wip/core-submodule` branch and has not landed.
+
+`docs/adr/ADR-0020-two-repo-upstream-split.md` lives in `twow-repo`, not here.
+Its pure-core rationale is superseded by this section; the record on that side
+needs the same correction.
