@@ -146,8 +146,20 @@ jobs:
               # than writing it to the container filesystem. That makes it
               # container-private, so the two binaries have to be copied out for
               # the upload step to see them.
+              #
+              # Stripped on the way out. DEBUG_SYMBOLS defaults to ON, which
+              # makes mangosd 750 MB and realmd 12 MB; stripped they are 21 MB
+              # and 0.8 MB. Both figures are measured from this exact build, not
+              # estimated. Uploading 750 MB on every push to every branch is
+              # minutes of artifact transfer and a private-repo storage bill, for
+              # a binary nobody is going to attach a debugger to -- this job
+              # exists to prove the core compiles and links, and a stripped
+              # binary proves the link just as well. Anyone who wants the symbols
+              # builds locally from the same image.
               mkdir -p /src/out
               cp /build/src/mangosd/mangosd /build/src/realmd/realmd /src/out/
+              strip /src/out/mangosd /src/out/realmd
+              ls -la /src/out/
             '
 
       # The property the extension seam exists to create, asserted rather than
