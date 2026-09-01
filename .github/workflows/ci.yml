@@ -15,9 +15,18 @@
 
 name: CI
 
+# push on main only, plus pull_request. Not `push: branches: ['**']`, which was
+# the first thing tried here: with a pull request open, every push fires both
+# events and the same commit is built twice on two runners for forty minutes.
+# Watching eight runs of this job queue up behind four pushes is what made the
+# duplication obvious. Branch work is reviewed through a pull request in this
+# repository anyway, so pull_request is the trigger that matters; main is built
+# on push so the branch everything merges into always has a result of its own.
+# workflow_dispatch is there for re-running a build after a runner-side failure
+# that has nothing to do with the commit.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
