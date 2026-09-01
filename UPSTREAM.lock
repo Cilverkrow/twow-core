@@ -33,7 +33,10 @@ upstream_tip_at_fork      = be3e6cdd47680c1308251e115164eb3d9eecc6f7
 # Merging any of them is a no-op at best. That has been attempted once, from a
 # prose instruction in ADR-0026 that named the right branch and was read as if
 # it named any branch. Prose did not stop it, so this file is checked by CI
-# instead: see the `upstream-freshness` job in .github/workflows/ci.yml.
+# instead: see the `upstream-freshness` job in .github/workflows/ci.yml. It runs
+# on every pull request and weekly. Not on a push to upstream-tracking -- GitHub
+# reads the workflow from the ref being pushed, and that ref is a verbatim mirror
+# of upstream with no workflow in it.
 #
 # upstream_tracking_branch is the local mirror branch. upstream_tracking_commit
 # is what it must point at. CI asserts, in this order:

@@ -29,14 +29,19 @@ name: CI
 # workflow_dispatch is there for re-running a build after a runner-side failure
 # that has nothing to do with the commit.
 #
-# upstream-tracking is in the push list for the freshness job below, NOT for the
-# build: that branch is a mirror of somebody else's code and building it proves
-# nothing about this fork. The build job is gated on the ref for exactly that
-# reason. schedule is there because staleness is the one failure that arrives
-# without anybody pushing anything.
+# upstream-tracking is deliberately NOT in the push list, though it was for one
+# revision of this file. A push to that branch cannot run this workflow: GitHub
+# reads the workflow file from the ref being pushed, and that ref is a verbatim
+# mirror of upstream, which has no .github/workflows/ci.yml. Listing the branch
+# looked like coverage and was decoration -- confirmed by watching a push to it
+# start only the MSVC-Portabilität workflow, which does exist at that ref.
+#
+# The freshness job below reads origin/upstream-tracking live, so pull_request
+# and the weekly schedule cover it for real. schedule is there because staleness
+# is the one failure that arrives without anybody pushing anything.
 on:
   push:
-    branches: [main, upstream-tracking]
+    branches: [main]
   pull_request:
   schedule:
     - cron: '17 6 * * 1'
@@ -176,8 +181,6 @@ jobs:
 
   build:
     name: Build core (Debian trixie)
-    # Nothing to prove by compiling somebody else's mirror branch.
-    if: github.ref_name != 'upstream-tracking'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
