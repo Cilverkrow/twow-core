@@ -50,6 +50,27 @@ option(ENABLE_PROFILING "(Windows only) Enable Optick integration, which allows 
 option(ENABLE_LSAN "Enables Leak Sanitizer" OFF)
 # Allow enabling official Turtle addon support
 option(ALLOW_TURTLE_ADDONS "Allow Turtle addons" ON)
+option(BUILD_PERSISTENT_ROSTER_ADAPTER_TESTS "Build the isolated persistent-roster real database adapter test" OFF)
+
+# Unit tests. OFF by default so a normal server build pays nothing for them:
+# no googletest download, no extra targets, no CTest machinery. `include(CTest)`
+# would otherwise declare BUILD_TESTING itself with a default of ON, which is
+# why the option is declared here first - the later declaration inside CTest is
+# a no-op once the cache entry exists.
+option(BUILD_TESTING "Build the unit test suites (googletest is fetched when ON)" OFF)
+
+# Target CPU baseline for GCC/Clang -march. The historical value was "native",
+# which bakes the build host's exact CPU into the binary: fine for a hand-built
+# server, fatal for a container image or a CI artifact that has to run somewhere
+# else (illegal instruction at startup, no warning). x86-64-v2 is the portable
+# floor the upstream Docker images already target. Set "native" back for a
+# host-only build, or an empty string to omit -march entirely.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+  set(TW_ARCH_DEFAULT "x86-64-v2")
+else()
+  set(TW_ARCH_DEFAULT "")
+endif()
+set(TW_ARCH "${TW_ARCH_DEFAULT}" CACHE STRING "Value passed to -march= on GCC/Clang; empty omits the flag")
 
 ConfigureModuleBuildOptions()
 
@@ -87,6 +108,7 @@ if(USE_LIBCURL)
   find_package(CURL REQUIRED)
   #add_definitions(-D_HAS_AUTO_PTR_ETC) # for VS2017 ACE support, won't do any harm to other compilers
   #set(CMAKE_CXX_STANDARD 17)
+
   #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
 endif()
 
@@ -100,12 +122,66 @@ endif()
 
 # Giperion: Enable C++17
 set(CMAKE_CXX_STANDARD 17)
+
+# Detour: virtual query filters. Off, dtQueryFilter::getCost is non-virtual and
+# a derived filter (mod-dungeon-clear routes around no-go zones with one) would
+# compile against the base and silently never be called - paths would ignore
+# every zone the filter exists to avoid. Global on purpose: every translation
+# unit that includes DetourNavMeshQuery.h must agree on the class layout, or
+# this is an ODR break. Costs a virtual call per polygon test in all
+# pathfinding; AzerothCore ships with exactly this on.
+add_definitions(-DDT_VIRTUAL_QUERYFILTER=1)
+
 if(MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
 endif(MSVC)
 if(NOT MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+# The Detour virtual-filter switch rides the same flags line the C++ standard
+# does: add_definitions provably does not survive to the subdirectory targets
+# in this tree (checked in flags.make), this line provably does.
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDT_VIRTUAL_QUERYFILTER=1")
 endif()
+# ---------------------------------------------------------------------------
+# Testing
+#
+# include(CTest) is what writes DartConfiguration.tcl and calls enable_testing()
+# in the TOP-LEVEL directory - without a top-level enable_testing() `ctest` in
+# the build root discovers nothing, no matter how many add_test() calls the
+# subdirectories make. It is guarded because CTest also adds a Nightly/Experimental
+# target set that a server build has no use for.
+#
+# googletest is fetched rather than found: no distro ships a version this tree
+# can rely on, and the projects that vendor it (AzerothCore upstream, from which
+# the mod-dungeon-clear suite came) assume the gtest/gmock CMake targets exist.
+# Pinned to an exact tag on purpose - `master`, as the Tracy block above uses,
+# makes the test result depend on the day it was configured.
+#
+# Placed here, after CMAKE_CXX_STANDARD and CMAKE_CXX_FLAGS are settled but
+# before the DEFINITIONS directory property is set below, so googletest compiles
+# as C++17 without inheriting the server's DO_MYSQL/WIN32/SYSCONFDIR defines.
+if(BUILD_TESTING)
+  include(CTest)
+
+  # Do not install gtest/gmock headers and libraries into the server's prefix.
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
+  if(MSVC)
+    # The core is built against the shared CRT; googletest defaults to the
+    # static one and the mismatch is a link error, not a warning.
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  endif()
+
+  FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.16.0
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+  )
+  FetchContent_MakeAvailable(googletest)
+endif()
+
 # Giperion: Set Edit and Continue by default for all windows debug builds
 if(MSVC AND NOT USE_ADDRESS_SANITIZER)
 	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /ZI")
@@ -271,9 +347,29 @@ if(WIN32)
   set(MYSQL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/windows/include/mysql)
   set(MYSQL_LIBRARY ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libmySQL.lib)
   set(MYSQL_DEBUG_LIBRARY ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libmySQL.lib)
-  set(OPENSSL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/windows/include/openssl)
-  set(OPENSSL_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libcrypto.lib)
-  set(OPENSSL_DEBUG_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto.lib)
+  # The bundled OpenSSL is 1.1.1, headers and import libraries together, and it
+  # works as long as nothing else puts OpenSSL headers on the search path. That
+  # stops being true the moment ACE or Boost come from vcpkg: its shared include
+  # root carries OpenSSL 3.x, which shadows the bundled headers because
+  # ACE_INCLUDE_DIR is listed before dep/include-windows in src/game and
+  # src/shared. Compiling against 3.x while still linking 1.1.1 leaves exactly
+  # OSSL_PROVIDER_load and SSL_get1_peer_certificate unresolved - both of them
+  # guarded by version in the code, so they are only referenced when the headers
+  # say 3.x.
+  #
+  # Hence: let the builder point at their own OpenSSL. The code itself is happy
+  # with either version. Passing nothing keeps the bundled copy, as before.
+  if(NOT OPENSSL_INCLUDE_DIR)
+    set(OPENSSL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/windows/include/openssl)
+  endif()
+  if(NOT OPENSSL_LIBRARIES)
+    set(OPENSSL_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libcrypto.lib)
+    # Remembered so the install step knows whether to ship the matching runtime.
+    set(USING_BUNDLED_OPENSSL TRUE)
+  endif()
+  if(NOT OPENSSL_DEBUG_LIBRARIES)
+    set(OPENSSL_DEBUG_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto.lib)
+  endif()
   set(ZLIB_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/dep/windows/include/zlib)
 
   set(OPTICK_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/include/optick)
@@ -454,7 +550,12 @@ if(UNIX)
     #set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} -fsanitize=unsigned-integer-overflow")
   endif()
 
-  set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} --no-warnings -fexceptions -fnon-call-exceptions -march=native -O3 -pipe ")
+  # --no-warnings was here and hid every diagnostic the compiler produced, which
+  # is the opposite of what CI needs. Warnings are on; nothing is -Werror yet.
+  set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} -fexceptions -fnon-call-exceptions -O3 -pipe ")
+  if(TW_ARCH)
+    set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} -march=${TW_ARCH} ")
+  endif()
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if(PROFILE_GENERATE)
       set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} -fprofile-generate")
@@ -492,6 +593,19 @@ if(MSVC)
   #endif()
   
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
+
+  # Release builds carry debug information too. The server installs a crash
+  # handler that writes a minidump, and without a .pdb every frame in it is a
+  # bare address - the one file meant to explain a crash explains nothing.
+  # /OPT:REF and /OPT:ICF are here because /DEBUG turns them off by default;
+  # with them the generated binary is the same as before, there is simply a
+  # .pdb beside it.
+  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+  foreach(_linker EXE SHARED MODULE)
+    set(CMAKE_${_linker}_LINKER_FLAGS_RELEASE
+        "${CMAKE_${_linker}_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+  endforeach()
 endif()
 
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
@@ -514,6 +628,36 @@ if(WIN32)
     DESTINATION ${LIBS_DIR}
     CONFIGURATIONS Debug
   )
+
+  # libeay32.dll above is the OpenSSL 1.0 runtime, but what actually gets linked
+  # is libssl.lib and libcrypto.lib - the 1.1 import libraries, whose runtime is
+  # named libssl-1_1[-x64].dll and libcrypto-1_1[-x64].dll. Both sit in the same
+  # directory; the wrong pair was simply picked, so a freshly installed server
+  # could not find its OpenSSL at all. Shipped only when the bundled copy is in
+  # use - anyone pointing OPENSSL_LIBRARIES at their own build brings their own.
+  if(USING_BUNDLED_OPENSSL)
+    if(DEP_ARCH STREQUAL "x64")
+      set(BUNDLED_SSL_SUFFIX "-x64")
+    else()
+      set(BUNDLED_SSL_SUFFIX "")
+    endif()
+    install(
+      FILES
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libssl-1_1${BUNDLED_SSL_SUFFIX}.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libcrypto-1_1${BUNDLED_SSL_SUFFIX}.dll
+      DESTINATION ${LIBS_DIR}
+      CONFIGURATIONS Release
+      OPTIONAL
+    )
+    install(
+      FILES
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libssl-1_1${BUNDLED_SSL_SUFFIX}.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto-1_1${BUNDLED_SSL_SUFFIX}.dll
+      DESTINATION ${LIBS_DIR}
+      CONFIGURATIONS Debug
+      OPTIONAL
+    )
+  endif()
   if(PLATFORM MATCHES X86)
     # Copy dll's Windows needs
     install(
@@ -620,7 +764,19 @@ if(TARGET mangosd)
   endif()
 endif()
 
-
 if (USE_EXTRACTORS OR USE_REALMMERGE)
     add_subdirectory(tools)
+endif()
+
+# ---------------------------------------------------------------------------
+# Test suites that live beside a module but must not be tied to it.
+#
+# modules/<name>/<name>.cmake is only included when that module's linkage is not
+# "disabled", so putting the test targets there made them un-buildable in the
+# default configuration - exactly the configuration CI wants to run tests in.
+# The suite is source-level: it compiles the module's own .cpp files directly,
+# so it needs the sources on disk, not the `modules` library.
+if(BUILD_TESTING)
+  include("${CMAKE_SOURCE_DIR}/modules/mod-dungeon-clear/tests.cmake")
+  include("${CMAKE_SOURCE_DIR}/modules/mod-playerbots/tests.cmake")
 endif()

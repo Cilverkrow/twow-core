@@ -58,6 +58,7 @@
 #include "LFGMgr.h"
 #include "Geometry.h"
 #include "CreatureGroups.h"
+#include "Autoscaling/AutoScaler.hpp"
 #include "Logging/DatabaseLogger.hpp"
 #include "PerfStats.h"
 
@@ -88,6 +89,12 @@ Map::~Map()
     m_weatherSystem = nullptr;
 
     --PerfStats::g_totalMaps;
+}
+
+// stub graveyard manager forwards to sObjectMgr.
+WorldSafeLocsEntry const* Map::GraveyardManagerStub::GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team) const
+{
+    return sObjectMgr.GetClosestGraveYard(x, y, z, MapId, team);
 }
 
 void Map::LoadMapAndVMap(int gx, int gy)
@@ -2111,6 +2118,9 @@ bool DungeonMap::Add(Player *player)
     if (IsRaid())
         ChatHandler(player).SendSysMessage("There is a grace period of 10 minutes allowing you to trade raid loot to others in case its wrongly assigned.");
 
+    //everything checked and added. scale now.
+    sAutoScaler->Scale(this);
+
     return true;
 }
 
@@ -2220,6 +2230,9 @@ void DungeonMap::Remove(Player *player, bool remove)
         m_unloadTimer = m_unloadWhenEmpty ? MIN_UNLOAD_DELAY : std::max(sWorld.getConfig(CONFIG_UINT32_INSTANCE_UNLOAD_DELAY), (uint32)MIN_UNLOAD_DELAY);
 
     Map::Remove(player, remove);
+
+    if (m_mapRefManager.getSize() > 0)
+        sAutoScaler->Scale(this);
 
     // for normal instances schedule the reset after all players have left
     SetResetSchedule(true);
@@ -3692,4 +3705,19 @@ Creature* Map::LoadCreatureSpawnWithGroup(uint32 leaderDbGuid, bool delaySpawn)
     }
 
     return pLeader;
+}
+
+
+// See the declarations in Map.h: the pass-through to the movemap manager for
+// module code that reaches the navmesh through the map.
+#include "Maps/MoveMap.h"
+
+dtNavMesh const* Map::MapCollisionData::MMapDataAccess::GetNavMesh() const
+{
+    return MMAP::MMapFactory::createOrGetMMapManager()->GetNavMesh(mapId);
+}
+
+dtNavMeshQuery const* Map::MapCollisionData::MMapDataAccess::GetNavMeshQuery() const
+{
+    return MMAP::MMapFactory::createOrGetMMapManager()->GetNavMeshQuery(mapId);
 }

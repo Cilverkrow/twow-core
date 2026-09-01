@@ -103,6 +103,28 @@ UseProcessors = 0
 
 ProcessPriority = 1
 
+# AiPlayerbot.ConfigFile. Where to read the bot settings from.
+#     Empty means: look next to this file, and if that fails fall back to the
+#     path compiled in at build time. Set it when the two live apart, which is
+#     easy to end up with when the server runs out of its build directory.
+
+AiPlayerbot.ConfigFile = ""
+
+# Malloc.ArenaMax. Caps how many malloc arenas glibc may create. (Linux only)
+#     glibc gives each thread its own arena, up to eight per core - 64 on an
+#     eight core machine. Every arena holds on to what it frees, so a workload
+#     that allocates constantly across many threads scatters its freed memory
+#     and returns little of it. The symptom is a resident size climbing steadily
+#     at a constant player count while nothing leaks.
+#     Measured with a thousand bots: capping at 4 took RSS after nine and a half
+#     hours from 13.4 GB to 9.9 GB, and growth from ~810 MB/h to 483, with no
+#     cost to the world tick. Fewer arenas do mean more contention, so measure
+#     rather than assume.
+#     0 leaves glibc alone. Worth setting on a server with many bots, pointless
+#     on a small one.
+
+Malloc.ArenaMax = 0
+
 # Compression. Compression level for update packages sent to client. (1-9)
 
 Compression = 1
@@ -156,6 +178,17 @@ GridUnload = 0
 # CleanupTerrain. Enable / Disable CleanupTerrain.
 
 CleanupTerrain = 1
+
+#    MMapTileUnload
+#        Remove navmesh tiles from the mesh again at runtime.
+#        dtNavMesh::removeTile zeroes tile->polys, and dtNavMeshQuery reads it
+#        through getTileAndPolyByRefUnsafe without validating - any polyRef
+#        that outlives the removal resolves to nullptr + index and takes the
+#        server down. Left off, tiles stay loaded: that costs memory but
+#        cannot go wrong.
+#        Default: 0 (off)
+
+MMapTileUnload = 0
 
 # GridCleanUpDelay. Grid clean up delay.
 
@@ -1077,6 +1110,10 @@ WhisperRestriction = 0
 # SayMinLevel. Minimum level to /say in chat.
 
 SayMinLevel = 1
+
+# Chat.MinLevel. Minimum level to use general/trade/LFG channels.
+
+Chat.MinLevel = 1
 
 # SayEmoteMinLevel. Minimum level to /emote in chat.
 
@@ -2023,6 +2060,15 @@ BeginnersGuilds = 1
 BeginnersGuildHorde = 126
 BeginnersGuildAlliance = 126
 
+# --- Fork additions (see README About this fork) ---
+
+# AutoWorldBuff moved to modules/mod-worldbuff. Its settings live in
+# modules/mod_worldbuff.conf - see modules/README.md.
+
+# AutoDonationPoints moved to modules/mod-donation. Its settings live in
+# modules/mod_donation.conf, which the module installs and the server loads
+# alongside this file - see modules/README.md.
+
 # AutoBroadcast.Timer. Print broadcast messages in players chat.
 
 AutoBroadcast.Timer = 2400000
@@ -2119,3 +2165,68 @@ Perf.Enable = 1
 
 # Report to logs DB. Time in seconds
 Perf.ReportInterval = 600
+
+
+# Leech Module
+# Leech moved to modules/mod-leech. Its settings live in
+# modules/mod_leech.conf - see modules/README.md.
+
+# SoloDungeonRepopAlive moved to modules/mod-solo-dungeon. Its settings live
+# in modules/mod_solo_dungeon.conf - see modules/README.md.
+
+# GuildBank.NpcEntries*. Which creatures count as guild vault keepers - a player
+# has to stand next to one of them for guild bank actions to be accepted.
+# Previously 80917/80918 were hardcoded, so only Stormwind and Orgrimmar worked.
+# Turtle places decorative vault keepers in the other capitals that were never
+# wired up; they are listed here.
+#   62008 Faredin (Darnassus), 62009 Lorien (gnome bank), 62011 Golgan (Ironforge)
+#   62010 Gewana (Thunder Bluff), 62012 Arthur (Undercity)
+# They also need gossip_menu_id set, see sql/guildbank_trigger.sql.
+GuildBank.NpcEntriesAlliance = 80917
+GuildBank.NpcEntriesHorde = 80918
+
+# LFT.BotFill. Fills a waiting player's dungeon queue with random bots.
+#
+# Bots are put into the same queue real players sit in, so the existing matcher
+# handles roles, faction, hardcore and group building. Getting to the dungeon is
+# not automated: the party leader types "summon" in party chat.
+#
+#   DelaySeconds  how long a real player waits before bots are added. Filling
+#                 instantly would mean nobody ever waits for a human again.
+#   LevelRangeBelow / LevelRangeAbove
+#                 how far under or over the waiting player a bot's level may
+#                 sit. Not the same number on both sides: a bot a few levels
+#                 above still hits, holds threat and survives, while one below
+#                 misses and dies - and the group sets off believing it has a
+#                 tank. The instance names the client sends carry no level
+#                 information, so the player is the reference.
+#
+# Real players always take priority: when one joins the queue, every bot that is
+# not already part of an offer is dropped again. An offer already sent out is
+# left alone rather than breaking a group mid-formation.
+#   LevelRangeBelowHealer
+#                 the same limit for a healer, which can afford to be further
+#                 under the group: it keeps its distance and is not the one
+#                 being hit. Healers are also the scarcer half of the shortage,
+#                 so a tighter bound here costs groups that would otherwise
+#                 have formed.
+LFT.BotFill.Enable = 0
+LFT.BotFill.DelaySeconds = 60
+LFT.BotFill.LevelRangeBelow = 2
+LFT.BotFill.LevelRangeBelowHealer = 4
+LFT.BotFill.LevelRangeAbove = 6
+
+
+# AutoScaler.Enable. Enable or disable instance auto-scaling. 0 = off, 1 = on.
+AutoScalerEnable = 0
+
+# AutoScaler scalar clamp values for instances of different sizes.
+# 
+ScalarMin5ManHP = 0.6
+ScalarMin5ManDMG = 0.4
+ScalarMin10ManHP = 0.3
+ScalarMin10ManDMG = 0.3
+ScalarMin20ManHP = 0.1
+ScalarMin20ManDMG = 0.1
+ScalarMin40ManHP = 0.01
+ScalarMin40ManDMG = 0.01

@@ -63,7 +63,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/game/Movement/spline
   ${CMAKE_SOURCE_DIR}/src/game/Objects
   ${CMAKE_SOURCE_DIR}/src/game/OutdoorPvP
-  ${CMAKE_SOURCE_DIR}/src/game/PlayerBots
+  # PlayerBots include dir removed - Penqle stub binned
   ${CMAKE_SOURCE_DIR}/src/game/Protocol
   ${CMAKE_SOURCE_DIR}/src/game/Spells
   ${CMAKE_SOURCE_DIR}/src/game/Threat
@@ -125,9 +125,37 @@ if(USE_DISCORD_BOT)
   )
 endif()
 
+# The bot library is not named here any more. It is modules/mod-playerbots, and
+# the root CMakeLists links `modules` into this executable, which carries every
+# enabled module's target with it.
+
 target_link_libraries(${EXECUTABLE_NAME}
     libdeflate
 )
+
+# Boost lib search path for playerbots' transitive boost references.
+# Boost's prebuilt Windows binaries live under lib64-msvc-<toolset> (or
+# BOOST_LIBRARYDIR if the user set it explicitly).
+GetModuleEffectiveLinkage("mod-playerbots" TW_PLAYERBOTS_LINKAGE)
+if(WIN32 AND NOT TW_PLAYERBOTS_LINKAGE STREQUAL "disabled")
+    if(DEFINED ENV{BOOST_LIBRARYDIR})
+        target_link_directories(${EXECUTABLE_NAME} PRIVATE "$ENV{BOOST_LIBRARYDIR}")
+    elseif(DEFINED ENV{BOOST_ROOT})
+        # Map MSVC toolset version (e.g. 1930) to Boost's lib dir suffix
+        # ("14.3"). Falls back to 14.3 (matches Boost 1.86 prebuilt) if the
+        # heuristic doesn't resolve.
+        if(MSVC_TOOLSET_VERSION GREATER_EQUAL 143)
+            set(_boost_lib_suffix "14.3")
+        elseif(MSVC_TOOLSET_VERSION GREATER_EQUAL 142)
+            set(_boost_lib_suffix "14.2")
+        elseif(MSVC_TOOLSET_VERSION GREATER_EQUAL 141)
+            set(_boost_lib_suffix "14.1")
+        else()
+            set(_boost_lib_suffix "14.3")
+        endif()
+        target_link_directories(${EXECUTABLE_NAME} PRIVATE "$ENV{BOOST_ROOT}/lib64-msvc-${_boost_lib_suffix}")
+    endif()
+endif()
 
 
 if(WIN32)
@@ -184,5 +212,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mangosd.conf.dist.in ${CMAKE_CURRENT_
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/mangosd.conf.dist DESTINATION ${CONF_DIR})
 
 if(WIN32 AND MSVC)
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/\${BUILD_TYPE}/${EXECUTABLE_NAME}.pdb DESTINATION ${BIN_DIR} CONFIGURATIONS Debug)
+  # Every configuration, not just Debug: a Release minidump needs the symbols
+  # just as much, and RelWithDebInfo produced a .pdb that never got installed.
+  install(FILES $<TARGET_PDB_FILE:${EXECUTABLE_NAME}> DESTINATION ${BIN_DIR} OPTIONAL)
 endif()

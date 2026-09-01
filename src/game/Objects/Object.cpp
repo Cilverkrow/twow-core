@@ -57,6 +57,8 @@
 #include "MovementBroadcaster.h"
 #include "PlayerBroadcaster.h"
 
+#include "Autoscaling/AutoScaler.hpp"
+
 ////////////////////////////////////////////////////////////
 // Methods of class MovementInfo
 
@@ -314,6 +316,10 @@ void Object::SendCreateUpdateToPlayer(Player* player)
     BuildCreateUpdateBlockForPlayer(&upd, player);
     upd.Send(player->GetSession());
 }
+
+// cmangos compat: vendored bot module calls IsFriend/IsEnemy on WorldObject*.
+bool WorldObject::IsFriend(WorldObject const* target) const { return target && IsFriendlyTo(target); }
+bool WorldObject::IsEnemy(WorldObject const* target) const { return target && IsHostileTo(target); }
 
 void WorldObject::DirectSendPublicValueUpdate(uint32 index, uint32 count)
 {
@@ -2182,6 +2188,15 @@ Creature *Map::SummonCreature(uint32 entry, float x, float y, float z, float ang
     if (pCreature->IsLinkingEventTrigger())
         GetCreatureLinkingHolder()->DoCreatureLinkingEvent(LINKING_EVENT_RESPAWN, pCreature);
 
+    // Scaling: apply to all dungeon/raid instances
+    if (pCreature->GetMap()->IsDungeon())
+    {
+        uint32 playerCount = pCreature->GetMap()->GetPlayersCountExceptGMs();
+        uint32 maxCount = ((DungeonMap*)pCreature->GetMap())->GetMaxPlayers();
+        if (playerCount > 0)
+            sAutoScaler->ScaleCreature(pCreature, playerCount, maxCount, pCreature->GetMap());
+    }
+
     // return the creature therewith the summoner has access to it
     return pCreature;
 }
@@ -2238,6 +2253,15 @@ Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, floa
 
     pCreature->SetWorldMask(GetWorldMask());
     // return the creature therewith the summoner has access to it
+
+    // Scaling: apply to all dungeon/raid instances
+    if (pCreature->GetMap()->IsDungeon())
+    {
+        uint32 playerCount = pCreature->GetMap()->GetPlayersCountExceptGMs();
+        uint32 maxCount = ((DungeonMap*)pCreature->GetMap())->GetMaxPlayers();
+        if (playerCount > 0)
+            sAutoScaler->ScaleCreature(pCreature, playerCount, maxCount, pCreature->GetMap());
+    }
 
     if (attach)
         IncrementSummonCounter();
@@ -3807,7 +3831,7 @@ float WorldObject::MeleeSpellMissChance(Unit* pVictim, WeaponAttackType attType,
                     hitChance += owner->m_modSpellHitChance * aura->GetModifier()->m_amount / 100.0f;
             }
         }
-    } 
+    }
 
     // There is some code in 1.12 that explicitly adds a modifier that causes the first 1% of +hit gained from
     // talents or gear to be ignored against monsters with more than 10 Defense Skill above the attacking players Weapon Skill.

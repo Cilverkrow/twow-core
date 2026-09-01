@@ -27,10 +27,11 @@
 #include "Policies/ThreadingModel.h"
 #include <ace/TSS_T.h>
 #include "SqlPreparedStatement.h"
-#include <memory>
-#include <thread>
-#include <optional>
 #include <atomic>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <thread>
 
 class SqlTransaction;
 class SqlResultQueue;
@@ -60,6 +61,7 @@ class SqlConnection
         //public methods for making requests
         virtual bool Execute(const char *sql) = 0;
         virtual bool ExecuteMultiline(const char* sql) = 0;
+        virtual uint64 AffectedRows() const { return 0; }
 
         //escape string generation
         virtual unsigned long escape_string(char *to, const char *from, unsigned long length) { strncpy(to,from,length); return length; }
@@ -238,6 +240,7 @@ class Database
         bool RollbackTransaction();
         //for sync transaction execution
         bool CommitTransactionDirect();
+        bool DirectTransaction(std::function<bool(SqlConnection&)> const& body, bool* rollbackSucceeded = nullptr);
 
         //PREPARED STATEMENT API
 

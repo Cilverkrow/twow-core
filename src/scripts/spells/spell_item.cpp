@@ -987,6 +987,71 @@ struct spell_jewel_of_wild_magics : public SpellScript
     }
 };
 
+// Embrace of the Viper, five piece bonus. The aura procs on any damage taken,
+// at 100% chance, so on its own it healed on every single hit. Its description
+// carries the rule the data never did: "When your health drops below 35%, you
+// rapidly heal ... This effect can trigger only once every 3 min."
+//
+// The three minutes come from spell_proc_event; only the health gate needs code.
+//
+// It has to account for the damage of the hit that is proccing it. Procs run
+// first and damage second - Unit::AttackerStateUpdate calls ProcDamageAndSpell
+// and only then DealMeleeDamage - so on the blow that takes you under the
+// threshold your health here is still the health you had before it. Reading it
+// as it stands would refuse exactly the moment the bonus exists for.
+//
+// That rules out OnCheckProc, which is not given the damage. Checking in OnProc
+// instead costs nothing: HandleProcTriggerSpellAuraProc tests the cooldown
+// before casting and only sets it afterwards, so turning a proc down here never
+// spends it. Returning std::nullopt means "no opinion" and lets the default
+// handler cast 44069 and start the three minutes.
+// Embrace of the Viper, six pieces: the serpent bites. The set already turns
+// cat form into Cobrahn's serpent; the venom belongs to the same shape, so out
+// of cat form there is nothing there to do the biting.
+//
+// Spell 744 is the poison the Deviate Adders use in Wailing Caverns, where this
+// set drops: nature damage every three seconds for thirty, and it carries the
+// poison dispel type so it can be cured. Reusing it rather than inventing an id
+// is deliberate - the client resolves name, icon and tooltip from its own
+// Spell.dbc and would show nothing at all for an id it does not have.
+//
+// The chance lives in procChance on 44085; only the form test needs code.
+struct spell_item_viper_venom : public AuraScript
+{
+    static constexpr uint32 SPELL_DEVIATE_POISON = 744;
+
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*damage*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) override
+    {
+        if (!owner || !victim || !victim->IsAlive())
+            return SPELL_AURA_PROC_FAILED;
+
+        if (owner->GetShapeshiftForm() != FORM_CAT)
+            return SPELL_AURA_PROC_FAILED;
+
+        owner->CastSpell(victim, SPELL_DEVIATE_POISON, true, nullptr, aura);
+        return SPELL_AURA_PROC_OK;
+    }
+};
+
+struct spell_item_wild_regeneration : public AuraScript
+{
+    static constexpr float HEALTH_THRESHOLD = 0.35f;
+
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* /*victim*/, uint32 damage, int32 /*originalAmount*/, Aura* /*aura*/, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) override
+    {
+        if (!owner)
+            return SPELL_AURA_PROC_FAILED;
+
+        uint32 const health = owner->GetHealth();
+        uint32 const remaining = damage >= health ? 0 : health - damage;
+
+        if (float(remaining) >= float(owner->GetMaxHealth()) * HEALTH_THRESHOLD)
+            return SPELL_AURA_PROC_FAILED;
+
+        return std::nullopt;
+    }
+};
+
 struct spell_loop_of_infused_renewal : public AuraScript
 {
     std::optional<SpellProcEventTriggerCheck> OnCheckProc(Unit const* /*owner*/, Unit* /*victim*/, SpellAuraHolder* /*holder*/, SpellEntry const* procSpell, uint32 /*procFlag*/, uint32 /*procExtra*/, WeaponAttackType /*attType*/, bool /*isVictim*/) override
@@ -1097,6 +1162,8 @@ void AddSC_item_spell_scripts()
     RegisterSpellScript("spell_goblin_jumper_cables", &GetSpellScript<spell_goblin_jumper_cables>);
     RegisterSpellScript("spell_goblin_jumper_cables_xl", &GetSpellScript<spell_goblin_jumper_cables_xl>);
     RegisterSpellScript("spell_jewel_of_wild_magics", &GetSpellScript<spell_jewel_of_wild_magics>);
+    RegisterAuraScript("spell_item_viper_venom", &GetAuraScript<spell_item_viper_venom>);
+    RegisterAuraScript("spell_item_wild_regeneration", &GetAuraScript<spell_item_wild_regeneration>);
     RegisterAuraScript("spell_loop_of_infused_renewal", &GetAuraScript<spell_loop_of_infused_renewal>);
     RegisterSpellScript("spell_sayges_dark_fortune", &GetSpellScript<spell_sayges_dark_fortune>);
 }
