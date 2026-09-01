@@ -2041,6 +2041,7 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
     if (!tank || !tankAI)
     {
         obs.leaderMissing = true;
+        obs.leaderGoneFromWorld = !tank;
     }
     else
     {
@@ -2345,7 +2346,10 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
         case DcTestRun::Verdict::FailAborted:
         {
             std::lock_guard<std::mutex> lock(_obsMutex);
-            failReason = obs.leaderMissing ? "leader tank vanished"
+            failReason = obs.leaderMissing
+                             ? (obs.leaderGoneFromWorld
+                                    ? "leader tank left the world (logged out or removed)"
+                                    : "leader tank lost its bot AI (still online)")
                          : (_abortReason.empty() ? "aborted" : _abortReason);
             break;
         }
