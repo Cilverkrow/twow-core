@@ -40,16 +40,22 @@ upstream_tip_at_fork      = be3e6cdd47680c1308251e115164eb3d9eecc6f7
 #
 #   1. origin/<upstream_tracking_branch> == upstream_tracking_commit
 #        -- the branch was moved without updating this file, or vice versa.
-#   2. upstream_tracking_commit is an ancestor of upstream/<upstream_branch>
-#        -- the commit is not on the branch we claim to track at all.
-#   3. fork_point is an ancestor of upstream_tracking_commit
+#   2. origin/<upstream_tracking_branch> is an ancestor of
+#      upstream/<upstream_branch>
+#        -- the ref is not on the branch we claim to track at all.
+#   3. fork_point is an ancestor of origin/<upstream_tracking_branch>
 #        -- this is the dead-branch trap. Assertion 2 alone does NOT catch it:
 #           every dead branch listed above IS an ancestor of the live branch,
 #           so an ancestor test passes happily on all six of them. What
 #           separates them is that they are all OLDER than our fork point,
 #           and a commit we are genuinely tracking never is.
-#   4. upstream_tracking_commit is at most `max_drift_commits` behind the live
-#        branch tip -- staleness, as opposed to wrongness.
+#   4. origin/<upstream_tracking_branch> is at most `max_drift_commits` behind
+#      the live branch tip -- staleness, as opposed to wrongness.
+#
+# 2, 3 and 4 measure the BRANCH, not the string recorded here. Measuring the
+# recorded value makes them unreachable in the case that matters: move the
+# branch to a dead one and leave this file alone, and check 1 fires while 2-4
+# sit there approving a commit nothing points at. Seen happen, then fixed.
 #
 # Updating this pair is the whole ceremony for "we have looked at upstream":
 # move the branch, put the same hash here, let CI agree.
