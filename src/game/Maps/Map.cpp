@@ -20,6 +20,7 @@
  */
 
 #include "Map.h"
+#include <shared_mutex>
 #include "MapManager.h"
 #include "Player.h"
 #include "GridNotifiers.h"
@@ -62,8 +63,23 @@
 #include "Logging/DatabaseLogger.hpp"
 #include "PerfStats.h"
 
+#ifdef ENABLE_ELUNA
+#include "LuaEngine.h"
+#include "ElunaConfig.h"
+#endif
+
 Map::~Map()
 {
+#ifdef ENABLE_ELUNA
+    if (Eluna* eluna = GetEluna())
+    {
+        eluna->OnDestroy(this);
+        if (Instanceable())
+            eluna->FreeInstanceId(GetInstanceId());
+    }
+    sElunaMgr->Destroy(m_elunaInfo);
+#endif
+
     UnloadAll(true);
 
     if (!m_scriptSchedule.empty())
@@ -147,15 +163,38 @@ Map::Map(uint32 id, time_t expiry, uint32 InstanceId)
 
     if (IsContinent())
     {
-        m_motionThreads.reset(new ThreadPool(sWorld.getConfig(CONFIG_UINT32_CONTINENTS_MOTIONUPDATE_THREADS), "MotionUpdate"));
-        m_objectThreads.reset(new ThreadPool(std::max((int)sWorld.getConfig(CONFIG_UINT32_MAP_OBJECTSUPDATE_THREADS) -1,0), "ObjectUpdate"));
-        m_visibilityThreads.reset(new ThreadPool(std::max((int)sWorld.getConfig(CONFIG_UINT32_MAP_VISIBILITYUPDATE_THREADS) -1,0), "Visibility"));
+        int motionThreads = sWorld.getConfig(CONFIG_UINT32_CONTINENTS_MOTIONUPDATE_THREADS);
+        int objectThreads = std::max((int)sWorld.getConfig(CONFIG_UINT32_MAP_OBJECTSUPDATE_THREADS) - 1, 0);
+        int visibilityThreads = std::max((int)sWorld.getConfig(CONFIG_UINT32_MAP_VISIBILITYUPDATE_THREADS) - 1, 0);
+#ifdef ENABLE_ELUNA
+        if (sElunaConfig->IsElunaEnabled() && (motionThreads || objectThreads || visibilityThreads))
+        {
+            ELUNA_LOG_ERROR("Map %u has parallel object updates configured; disabling them because its Lua state is single-threaded", id);
+            motionThreads = 0;
+            objectThreads = 0;
+            visibilityThreads = 0;
+        }
+#endif
+        m_motionThreads.reset(new ThreadPool(motionThreads, "MotionUpdate"));
+        m_objectThreads.reset(new ThreadPool(objectThreads, "ObjectUpdate"));
+        m_visibilityThreads.reset(new ThreadPool(visibilityThreads, "Visibility"));
         m_cellThreads.reset(new ThreadPool(std::max((int)sWorld.getConfig(CONFIG_UINT32_MTCELLS_THREADS) - 1, 0), "CellUpdate"));
         m_visibilityThreads->start<ThreadPool::MySQL<ThreadPool::MultiQueue>>();
         m_cellThreads->start();
         m_motionThreads->start();
         m_objectThreads->start<ThreadPool::MySQL<ThreadPool::MultiQueue>>();
     }
+
+#ifdef ENABLE_ELUNA
+    if (sElunaConfig->IsElunaEnabled() && sElunaConfig->ShouldMapLoadEluna(id))
+    {
+        m_elunaInfo = { ElunaInfoKey::MakeKey(GetId(), GetInstanceId()) };
+        sElunaMgr->Create(this, m_elunaInfo);
+    }
+
+    if (Eluna* eluna = GetEluna())
+        eluna->OnCreate(this);
+#endif
 
     ++PerfStats::g_totalMaps;
 }
@@ -407,12 +446,22 @@ bool Map::Add(Player *player)
     // one could stay invisible from the other until re-zoning.
     // Inspired from the TrinityCore way.
     if (player->IsBeingTeleportedFar())
+    {
+        std::unique_lock<std::shared_mutex> lock(player->m_visibleGUIDs_lock);
         player->m_visibleGUIDs.clear();
+    }
     NGridType* grid = getNGrid(cell.GridX(), cell.GridY());
     player->GetViewPoint().Event_AddedToWorld(&(*grid)(cell.CellX(), cell.CellY()));
     player->SetIsNewObject(true);
     UpdateObjectVisibility(player, cell, p);
     player->SetIsNewObject(false);
+
+#ifdef ENABLE_ELUNA
+    if (Eluna* eluna = player->GetEluna())
+        eluna->OnMapChanged(player);
+    if (Eluna* eluna = GetEluna())
+        eluna->OnPlayerEnter(this, player);
+#endif
 
     if (i_data)
         i_data->OnPlayerEnter(player);
@@ -427,11 +476,26 @@ bool Map::Add(Player *player)
 
 void Map::ExistingPlayerLogin(Player* player)
 {
-    // Reset visibility list
-    for (ObjectGuidSet::const_iterator it = player->m_visibleGUIDs.begin(); it != player->m_visibleGUIDs.end(); ++it)
+    // Reset visibility list.
+    //
+    // Copy under the shared lock and walk the COPY: RemoveListener takes the
+    // broadcaster's own lock, and holding the visibility lock across it would
+    // invert the lock order against every reader. Both the read and the clear
+    // were unguarded before - a concurrent find() in Player::IsInVisibleList,
+    // hashing against a set another thread was erasing from, is what killed
+    // the World thread in crash_2026-08-31_11-01-01.
+    ObjectGuidSet visibleCopy;
+    {
+        std::shared_lock<std::shared_mutex> lock(player->m_visibleGUIDs_lock);
+        visibleCopy = player->m_visibleGUIDs;
+    }
+    for (ObjectGuidSet::const_iterator it = visibleCopy.begin(); it != visibleCopy.end(); ++it)
         if (Player* other = GetPlayer(*it))
             other->m_broadcaster->RemoveListener(player);
-    player->m_visibleGUIDs.clear();
+    {
+        std::unique_lock<std::shared_mutex> lock(player->m_visibleGUIDs_lock);
+        player->m_visibleGUIDs.clear();
+    }
 
     SendInitTransports(player);
     SendInitSelf(player);
@@ -962,6 +1026,14 @@ void Map::Update(uint32 t_diff)
 
     ScriptsProcess();
 
+#ifdef ENABLE_ELUNA
+    if (Eluna* eluna = GetEluna())
+    {
+        eluna->UpdateEluna(t_diff);
+        eluna->OnMapUpdate(this, t_diff);
+    }
+#endif
+
     if (i_data)
         i_data->Update(t_diff);
 
@@ -1141,6 +1213,11 @@ void ScriptedEvent::SendEventToAllTargets(uint32 uiData)
 
 void Map::Remove(Player *player, bool remove)
 {
+#ifdef ENABLE_ELUNA
+    if (Eluna* eluna = GetEluna())
+        eluna->OnPlayerLeave(this, player);
+#endif
+
     ScriptRegistry<AllMapScript>::ForEach([&](AllMapScript* script)
     {
         script->OnPlayerLeaveAll(this, player);
@@ -1203,7 +1280,13 @@ void Map::Remove(Player *player, bool remove)
     RemoveUnitFromMovementUpdate(player);
     player->m_needUpdateVisibility = false;
 
-    for (ObjectGuidSet::const_iterator it = player->m_visibleGUIDs.begin(); it != player->m_visibleGUIDs.end(); ++it)
+    // Same copy-then-walk as ExistingPlayerLogin, and for the same reason.
+    ObjectGuidSet visibleCopy;
+    {
+        std::shared_lock<std::shared_mutex> lock(player->m_visibleGUIDs_lock);
+        visibleCopy = player->m_visibleGUIDs;
+    }
+    for (ObjectGuidSet::const_iterator it = visibleCopy.begin(); it != visibleCopy.end(); ++it)
         if (Player* other = GetPlayer(*it))
             other->m_broadcaster->RemoveListener(player);
 
@@ -1608,6 +1691,10 @@ void Map::UpdateActiveObjectVisibility(Player* player, ObjectGuidSet& visibleGui
 // Support for compressed data packet
 void Map::UpdateActiveObjectVisibility(Player *player, ObjectGuidSet &visibleGuids, UpdateData &data, std::set<WorldObject*> &visibleNow)
 {
+    // Belt and braces beside the Camera guard: m_activeNonPlayers holds raw
+    // pointers, and UnloadAll invalidates them as it goes. See Camera.cpp.
+    if (m_unloading)
+        return;
     for (const auto obj : m_activeNonPlayers)
     {
         if (obj->IsInWorld())
@@ -1694,6 +1781,16 @@ inline void Map::setNGrid(NGridType *grid, uint32 x, uint32 y)
 void Map::AddObjectToRemoveList(WorldObject *obj)
 {
     MANGOS_ASSERT(obj->GetMapId() == GetId() && obj->GetInstanceId() == GetInstanceId());
+
+#ifdef ENABLE_ELUNA
+    if (Eluna* eluna = GetEluna())
+    {
+        if (Creature* creature = obj->ToCreature())
+            eluna->OnRemove(creature);
+        else if (GameObject* gameObject = obj->ToGameObject())
+            eluna->OnRemove(gameObject);
+    }
+#endif
 
     obj->CleanupsBeforeDelete();                            // remove or simplify at least cross referenced links
     std::unique_lock<std::mutex> lock(i_objectsToRemove_lock);
@@ -1908,14 +2005,26 @@ void Map::CreateInstanceData(bool load)
     if (i_data)
         return;
 
-    if (!i_mapEntry->scriptId)
+    bool isElunaAI = false;
+#ifdef ENABLE_ELUNA
+    if (Eluna* eluna = GetEluna())
+    {
+        i_data = eluna->GetInstanceData(this);
+        isElunaAI = i_data != nullptr;
+    }
+#endif
+
+    if (!i_mapEntry->scriptId && !isElunaAI)
         return;
 
     i_script_id = i_mapEntry->scriptId;
 
-    i_data = sScriptMgr.CreateInstanceData(this);
-    if (!i_data)
-        return;
+    if (!isElunaAI)
+    {
+        i_data = sScriptMgr.CreateInstanceData(this);
+        if (!i_data)
+            return;
+    }
 
     if (load)
     {

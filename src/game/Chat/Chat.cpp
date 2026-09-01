@@ -39,8 +39,15 @@
 #include "GameEventMgr.h"
 #include "HardcodedEvents.h"
 #include "ScriptObjects.h"
+#ifdef ENABLE_ELUNA
+#include "LuaEngine.h"
+#endif
 
 #include <vector>
+
+#if defined(_MSC_VER) || defined(_WIN32)
+#define strtok_r strtok_s
+#endif
 
 ChatCommand * ChatHandler::getCommandTable()
 {
@@ -1695,6 +1702,11 @@ void ChatHandler::ExecuteCommand(const char* text)
         }
         case CHAT_COMMAND_UNKNOWN_SUBCOMMAND:
         {
+#ifdef ENABLE_ELUNA
+            if (Eluna* e = sWorld.GetEluna())
+                if (!e->OnCommand(m_session ? m_session->GetPlayer() : nullptr, fullcmd.c_str()))
+                    return;
+#endif
             SendSysMessage(LANG_NO_SUBCMD);
             ShowHelpForCommand(command->ChildCommands, text);
             SetSentErrorMessage(true);
@@ -1702,6 +1714,11 @@ void ChatHandler::ExecuteCommand(const char* text)
         }
         case CHAT_COMMAND_UNKNOWN:
         {
+#ifdef ENABLE_ELUNA
+            if (Eluna* e = sWorld.GetEluna())
+                if (!e->OnCommand(m_session ? m_session->GetPlayer() : nullptr, fullcmd.c_str()))
+                    return;
+#endif
             SendSysMessage(LANG_NO_CMD);
             SetSentErrorMessage(true);
             break;
@@ -2589,9 +2606,16 @@ char* ChatHandler::ExtractLiteralArg(char** args, char const* lit /*= nullptr*/)
         return arg;
     }
 
-    char* name = strtok(head, " ");
+    // strtok_r, not strtok: strtok keeps its position in a static, process-wide
+    // pointer, so the second call below resumes wherever the LAST caller left
+    // off - on any thread. This function runs out of every bot's reaction
+    // engine (SpellIdValue -> extractSpellId), i.e. from several map threads at
+    // once, over short-lived std::strings. AddressSanitizer caught exactly
+    // that: strtok reading a buffer another thread had already freed.
+    char* saveptr = nullptr;
+    char* name = strtok_r(head, " ", &saveptr);
 
-    char* tail = strtok(nullptr, "");
+    char* tail = strtok_r(nullptr, "", &saveptr);
 
     *args = tail ? tail : (char*)"";                        // *args don't must be nullptr
 

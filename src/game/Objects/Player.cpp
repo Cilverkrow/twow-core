@@ -113,6 +113,9 @@ namespace ai { namespace botdiag {
 #include "events/event_wareffort.h"
 #include "Logging/DatabaseLogger.hpp"
 #include "PerfStats.h"
+#ifdef ENABLE_ELUNA
+#include "LuaEngine.h"
+#endif
 #include "PlayerDump.h"
 #include "Shop/ShopMgr.h"
 
@@ -844,11 +847,24 @@ Player::Player(WorldSession *session) : Unit(),
     ++PerfStats::g_totalPlayers;
 }
 
+// Implemented by mod-playerbots (PlayerbotMgr.cpp); PlayerbotStubs.cpp supplies
+// an empty body when BUILD_PLAYERBOTS=OFF. Same core->module seam as the
+// BotActionLog_ probes.
+void Playerbot_OnPlayerDestroyed(Player const* player);
+
 Player::~Player()
 {
     // Clear all pointers to this player in all zone scripts
     if (m_uint32Values)
         sZoneScriptMgr.OnPlayerGettingDestroyed(this);
+
+    // Same idea, for the bot holders' guid->Player maps. Without it an entry
+    // outlives its Player and every 'if (bot)' check downstream passes on freed
+    // memory - crash_2026-09-01_08-26-40 (IsFreeAltBot, this=0x0) and _14-34-37
+    // (AllowActivity, this=0x6ecf766476c57200). Clearing at the point of
+    // destruction is the one test that cannot mistake a Player between maps for
+    // a destroyed one, which is exactly what the earlier guard got wrong.
+    Playerbot_OnPlayerDestroyed(this);
 
     DeletePacketBroadcaster();
     RemoveAI();
@@ -1271,6 +1287,12 @@ uint32 Player::EnvironmentalDamage(EnvironmentalDamageType type, uint32 damage)
     SendEnvironmentalDamageLog(type, damage, absorb, resist);
 
     damage = DealDamage(this, damage, nullptr, SELF_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, nullptr, false);
+
+#ifdef ENABLE_ELUNA
+    if (!IsAlive())
+        if (Eluna* e = GetEluna())
+            e->OnPlayerKilledByEnvironment(this, type);
+#endif
 
     // DealDamage not apply item durability loss at self damage
     // Confirmed on classic that dying from lava, fatigue and
@@ -5906,6 +5928,11 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness, bool for
     // update visibility of player for nearby cameras
     UpdateObjectVisibility();
 
+#ifdef ENABLE_ELUNA
+    if (Eluna* e = GetEluna())
+        e->OnResurrect(this);
+#endif
+
     if (!applySickness)
         return;
 
@@ -6520,6 +6547,55 @@ void Player::RepopAtGraveyard()
     }))
         return;
 
+    // Solo dungeon resurrection: a player who dies ALONE inside an instance is
+    // brought back alive just inside the entrance instead of having to walk
+    // back as a ghost - solo there is nobody who could resurrect them.
+    //
+    // The target is the instance ENTRANCE trigger, not a graveyard: instance
+    // graveyards sit outside the instance (that is what the corpse run is for),
+    // so resurrecting at one would drop the player out of the dungeon.
+    //
+    // Deliberately solo only - with a group present someone can resurrect, and
+    // this would be a free pass. Map::IsDungeon() covers raids and excludes
+    // battlegrounds, which are their own map type.
+    // Bots get this regardless of the config and regardless of a group: they
+    // cannot walk back in through an instance portal (LfgTeleportAction is
+    // MANGOSBOT_TWO only), so a wipe would strand them as ghosts at the outdoor
+    // graveyard for good and the group would be over. Not a perk - the only way
+    // back to the party.
+    // "Solo" means nobody who could resurrect you: no group, or a group whose
+    // only other members are bots. After a wipe a bot party is no more help
+    // than an empty one, and releasing the spirit already means you chose not
+    // to wait for a resurrection.
+    bool noHumanHelp = !GetGroup();
+    if (!noHumanHelp)
+    {
+        noHumanHelp = true;
+        for (GroupReference* itr = GetGroup()->GetFirstMember(); itr; itr = itr->next())
+        {
+            Player* member = itr->getSource();
+            if (member && member != this && !Script_IsAIControlled(member))
+            {
+                noHumanHelp = false;
+                break;
+            }
+        }
+    }
+
+    bool const repopAtEntrance =
+        (sWorld.getConfig(CONFIG_BOOL_SOLO_DUNGEON_REPOP_ALIVE) && noHumanHelp) ||
+        Script_IsAIControlled(this);
+
+    if (!IsAlive() && repopAtEntrance && GetMap() && GetMap()->IsDungeon())
+    {
+        if (AreaTriggerTeleport const* entrance = sObjectMgr.GetMapEntranceTrigger(GetMapId()))
+        {
+            ResurrectPlayer(1.0f);
+            SpawnCorpseBones();
+            TeleportTo(entrance->destination, TeleOptions);
+            return;
+        }
+    }
     if (BattleGround *bg = GetBattleGround())
     {
         ClosestGrave = bg->GetClosestGraveYard(this);
@@ -6975,6 +7051,10 @@ bool Player::UpdateSkillPro(uint16 SkillId, int32 Chance, uint32 step)
         SetUInt32Value(valueIndex, MAKE_SKILL_VALUE(new_value, MaxValue));
         if (itr->second.uState != SKILL_NEW)
             itr->second.uState = SKILL_CHANGED;
+#ifdef ENABLE_ELUNA
+        if (Eluna* e = GetEluna())
+            e->OnSkillChange(this, SkillId, new_value);
+#endif
         DEBUG_LOG("Player::UpdateSkillPro Chance=%3.1f%% taken", Chance / 10.0);
         return true;
     }
@@ -8023,6 +8103,9 @@ void Player::RewardReputation(Unit *pVictim, float rate)
     // World of Warcraft Client Patch 1.10.0 (2006-03-28)
     // - Pets no longer modify your reputation if you kill them.
     if (pVictim->IsPet())
+        return;
+
+    if (static_cast<Creature*>(pVictim)->IsReputationGainDisabled())
         return;
 
     ReputationOnKillEntry const* Rep = sObjectMgr.GetReputationOnKillEntry(((Creature*)pVictim)->GetEntry());
@@ -12263,6 +12346,11 @@ Item* Player::StoreNewItem(ItemPosCountVec const& dest, uint32 item, bool update
         if (randomPropertyId)
             pItem->SetItemRandomProperties(randomPropertyId);
         pItem = StoreItem(dest, pItem, update);
+#ifdef ENABLE_ELUNA
+        if (pItem)
+            if (Eluna* e = GetEluna())
+                e->OnAdd(this, pItem);
+#endif
     }
     return pItem;
 }
@@ -15887,6 +15975,11 @@ void Player::SetQuestStatus(uint32 quest_id, QuestStatus status)
 
         UpdateForQuestWorldObjects();
     }
+
+#ifdef ENABLE_ELUNA
+    if (Eluna* e = GetEluna())
+        e->OnQuestStatusChanged(this, quest_id, status);
+#endif
 }
 
 void Player::AdjustQuestReqItemCount(Quest const* pQuest, QuestStatusData& questStatusData)
@@ -24593,7 +24686,17 @@ void Player::HandleStealthedUnitsDetection()
                     if (i_player->m_broadcaster)
                         i_player->m_broadcaster->AddListener(this);
 
-                m_visibleGUIDs.insert(stealthedUnit->GetObjectGuid());
+                // LOCKED. Every other writer of m_visibleGUIDs takes the
+                // unique_lock; these two in the stealth sweep did not, and a
+                // reader on another thread holding the shared_lock then died
+                // inside _Hashtable::find - four times on 2026-08-29, always
+                // from Group::UpdatePlayerOutOfRange. A reader's lock is worth
+                // nothing while a writer ignores it. Narrow on purpose: the
+                // send below must not run under a write lock.
+                {
+                    std::unique_lock<std::shared_mutex> lock(m_visibleGUIDs_lock);
+                    m_visibleGUIDs.insert(stealthedUnit->GetObjectGuid());
+                }
                 stealthedUnit->SendCreateUpdateToPlayer(this);
             }
         }
@@ -24607,7 +24710,10 @@ void Player::HandleStealthedUnitsDetection()
                     if (i_player->m_broadcaster)
                         i_player->m_broadcaster->RemoveListener(this);
 
-                m_visibleGUIDs.erase(stealthedUnit->GetObjectGuid());
+                {
+                    std::unique_lock<std::shared_mutex> lock(m_visibleGUIDs_lock);
+                    m_visibleGUIDs.erase(stealthedUnit->GetObjectGuid());
+                }
             }
         }
     }

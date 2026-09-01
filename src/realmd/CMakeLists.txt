@@ -40,10 +40,10 @@ if(WIN32)
 endif()
 
 include_directories(
-  ${TW_CORE_ROOT}/src/shared
-  ${TW_CORE_ROOT}/src/framework
-  ${TW_CORE_BINARY_DIR}
-  ${TW_CORE_BINARY_DIR}/src/shared
+  ${CMAKE_SOURCE_DIR}/src/shared
+  ${CMAKE_SOURCE_DIR}/src/framework
+  ${CMAKE_BINARY_DIR}
+  ${CMAKE_BINARY_DIR}/src/shared
   ${MYSQL_INCLUDE_DIR}
   ${ACE_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
@@ -51,7 +51,7 @@ include_directories(
 
 if(WIN32)
   include_directories(
-    ${TW_CORE_ROOT}/dep/include-windows
+    ${CMAKE_SOURCE_DIR}/dep/include-windows
   )
 endif()
 

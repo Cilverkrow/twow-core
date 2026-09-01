@@ -193,17 +193,18 @@ source_group("DiscordBot"
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${TW_CORE_ROOT}/dep/include
-  ${TW_CORE_ROOT}/dep/libdeflate
-  ${TW_CORE_ROOT}/src/framework
-  ${TW_CORE_BINARY_DIR}
+  ${CMAKE_SOURCE_DIR}/dep/include
+  ${CMAKE_SOURCE_DIR}/dep/libdeflate
+  ${CMAKE_SOURCE_DIR}/src/framework
+  ${CMAKE_BINARY_DIR}
   ${ACE_INCLUDE_DIR}
+  ${MYSQL_INCLUDE_DIR} 
   ${OPENSSL_INCLUDE_DIR}
 )
 
 if(WIN32)
   include_directories(
-    ${TW_CORE_ROOT}/dep/include-windows
+    ${CMAKE_SOURCE_DIR}/dep/include-windows
   )
 endif()
 
@@ -211,11 +212,18 @@ add_library(shared STATIC
   ${shared_SRCS}
 )
 
-# QueryResultMysql.h is a public shared header, so every target that consumes
-# shared's headers must compile with the same MySQL include directory.
+# QueryResultMysql.h is a public header of this library, so every target that
+# consumes shared's headers must compile with the same MySQL include directory.
+# Upstream reaches the same result by repeating ${MYSQL_INCLUDE_DIR} in each
+# consumer's own include_directories(); this states it once, as a usage
+# requirement, so a new consumer does not have to remember. (twow-core #138.)
 target_include_directories(shared PUBLIC
   ${MYSQL_INCLUDE_DIR}
 )
+
+if(BUILD_ELUNA)
+  target_compile_definitions(shared PUBLIC ENABLE_ELUNA)
+endif()
 
 if(USE_DISCORD_BOT)
     target_link_libraries(shared PUBLIC

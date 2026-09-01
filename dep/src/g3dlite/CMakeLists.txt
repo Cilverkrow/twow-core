@@ -65,9 +65,9 @@ set(g3dlite_SRCS
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${TW_CORE_ROOT}/dep/include
-  ${TW_CORE_ROOT}/dep/include/g3dlite
-  ${TW_CORE_ROOT}/dep/src/libseh
+  ${CMAKE_SOURCE_DIR}/dep/include
+  ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
+  ${CMAKE_SOURCE_DIR}/dep/src/libseh
 )
 
 add_library(g3dlite STATIC
@@ -77,7 +77,7 @@ add_library(g3dlite STATIC
 SET_TARGET_PROPERTIES (g3dlite PROPERTIES FOLDER "3rd Party")
 
 if(WIN32)
-  include_directories(${TW_CORE_ROOT}/dep/windows/include/zlib)
+  include_directories(${CMAKE_SOURCE_DIR}/dep/windows/include/zlib)
   if(MINGW)
     target_link_libraries(g3dlite zlib libseh)
   else()

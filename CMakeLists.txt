@@ -27,68 +27,12 @@ if(${CMAKE_VERSION} VERSION_GREATER "3.11")
   cmake_policy(SET CMP0074 NEW)
 endif()
 
-# Where the core tree is, independent of who is driving the build.
-#
-# This file is the top-level project when somebody builds twow-core on its own,
-# and a subdirectory (`core/`) when twow-repo builds the platform around it. In
-# the second case CMAKE_SOURCE_DIR is the PLATFORM root, so every
-# ${TW_CORE_ROOT}/src and ${TW_CORE_ROOT}/dep in this tree would resolve
-# one directory too high and the configure would die on a missing find_package
-# module long before anything explained why. TW_CORE_ROOT means the same thing
-# in both cases; it is what the rest of the core, and the platform's modules,
-# name core paths with.
-#
-# CACHE INTERNAL rather than a plain set(): twow-repo's modules/ is a SIBLING
-# directory, not a child of this one, so it never inherits ordinary variables
-# from here. FORCE is implied by INTERNAL, which is what re-resolves the path if
-# the tree is moved.
-set(TW_CORE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" CACHE INTERNAL "Absolute path to the twow-core tree")
-set(TW_CORE_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}" CACHE INTERNAL "Build directory corresponding to TW_CORE_ROOT")
+set(CMAKE_MODULE_PATH
+  ${CMAKE_MODULE_PATH}
+  ${CMAKE_SOURCE_DIR}/cmake
+)
 
-# Appended, never assigned: when the platform drives the build it has already
-# put its own cmake/ on this path, and overwriting it would lose the module
-# framework's ConfigureModules.cmake.
-list(APPEND CMAKE_MODULE_PATH "${TW_CORE_ROOT}/cmake")
-
-# ---------------------------------------------------------------------------
-# The extension seam.
-#
-# The core configures, builds and runs with nothing attached to it. That is the
-# property this block exists to preserve, and the one the module framework used
-# to destroy by living in this file. Everything a host platform (twow-repo)
-# wants to inject arrives through the variables below, each defaulting to "there
-# is nothing there". None of them names a module, a module directory, or the
-# module framework: the core cannot tell whether what it is linking is
-# twow-repo's modules/ or something else entirely.
-#
-#   TW_EXT_SOURCE_MODULES_DIR   source-tree directory AutoUpdater.cpp scans for
-#                               per-module SQL (unset: it scans nothing)
-#   TW_EXT_MODULE_CONFIG_LIST   extra .conf files Config.cpp reloads
-#   TW_EXT_ENABLED_MODULES      names AutoUpdater.cpp filters its SQL run on
-#
-# ...and one target:
-#
-#   tw_core_extensions          an INTERFACE library linked into mangosd. A host
-#                               populates it; standalone it is empty and
-#                               contributes nothing to the link line.
-#
-# The three variables are read while src/shared is configured, so they have to
-# arrive before add_subdirectory(src) below -- which is fine, because all three
-# are answerable by looking at a directory, with no target anywhere involved.
-# Anything the host can only know once its own targets exist rides the INTERFACE
-# target instead: the generated loader, the dynamic-module manifest
-# DynamicModules.cpp dlopens at startup, and on Windows a Boost link directory.
-# DynamicModules.cpp already #ifndef-guards each of those macros, so a core with
-# nothing attached simply gets the empty defaults.
-#
-# An INTERFACE target rather than a "list of extra libraries" cache variable,
-# because a bare library list carries no usage requirements, and what the host
-# needs to push is not only libraries. Each of those would otherwise have needed
-# a companion variable, all of them order-dependent on being set before this
-# file reaches add_subdirectory(src). An INTERFACE target is the one thing CMake
-# already has for "requirements a consumer inherits", and it can be populated
-# from another directory after this one has been processed.
-add_library(tw_core_extensions INTERFACE)
+include(ConfigureModules)
 
 set(SUPPORTED_CLIENT_BUILD "CLIENT_BUILD_1_12_1" CACHE STRING "Client version the core will support")
 option(USE_STD_MALLOC "Use standard malloc instead of TBB" ON)
@@ -96,6 +40,21 @@ option(TBB_DEBUG "Use TBB debug librairies" OFF)
 option(USE_ANTICHEAT "Use anticheat" ON)
 option(USE_DISCORD_BOT "Use Discord Bot" OFF)
 option(USE_SCRIPTS "Compile scripts" ON)
+option(BUILD_ELUNA "Build the Eluna Lua scripting engine" ON)
+option(BUILD_ELUNA_TESTS "Build the Eluna Lua runtime smoke test" ON)
+set(ELUNA_LUA_VERSION "lua52" CACHE STRING "Lua runtime used by Eluna (lua51, lua52, lua53, or lua54)")
+set_property(CACHE ELUNA_LUA_VERSION PROPERTY STRINGS lua51 lua52 lua53 lua54)
+
+if(BUILD_ELUNA)
+  if(NOT EXISTS "${CMAKE_SOURCE_DIR}/src/modules/Eluna/LuaEngine.h")
+    message(FATAL_ERROR
+      "Eluna submodule is missing. Run: git submodule update --init --recursive src/modules/Eluna")
+  endif()
+  if(BUILD_ELUNA_TESTS)
+    enable_testing()
+  endif()
+endif()
+set(MODULES "disabled" CACHE STRING "Module build mode: disabled, static, dynamic, or default.")
 option(USE_EXTRACTORS "Compile extractors" OFF)
 option(USE_TRACY "Use Tracy Profiling" OFF)
 option(USE_LIBCURL "Compile with libcurl for email support" OFF)
@@ -105,39 +64,13 @@ option(ENABLE_PROFILING "(Windows only) Enable Optick integration, which allows 
 option(ENABLE_LSAN "Enables Leak Sanitizer" OFF)
 # Allow enabling official Turtle addon support
 option(ALLOW_TURTLE_ADDONS "Allow Turtle addons" ON)
-option(BUILD_PERSISTENT_ROSTER_ADAPTER_TESTS "Build the isolated persistent-roster real database adapter test" OFF)
+# Build cmangos/playerbots — bot AI vendored under src/modules/PlayerBots/.
+# When ON, mangosd links the bot subsystem; runtime activation is gated by
+# AiPlayerbot.Enabled in aiplayerbot.conf.
+option(BUILD_PLAYERBOTS "Build the cmangos/playerbots subsystem" OFF)
 
-# Two symbols the core references but does not always define. Both default to
-# "the core supplies its own", which is what makes a standalone build link.
-#
-# TW_EXTERNAL_MODULE_LOADER: mangosd calls AddModulesScripts() once at startup.
-# With nothing attached, ModulesScriptLoaderStub.cpp defines it as a no-op; a
-# host that generates a real loader turns this ON so the two definitions do not
-# collide at link time.
-#
-# TW_EXTERNAL_PLAYERBOT_HOOKS: game.a calls eleven free functions the playerbot
-# tree defines -- World::InitPlayerbotsAtStartup(), four chat command handlers,
-# and six BotActionLog_* probes compiled into Unit.cpp and Spell.cpp. With
-# nothing attached, PlayerbotStubs.cpp supplies no-ops. This used to be spelled
-# `GetModuleEffectiveLinkage("mod-playerbots" ...)` in src/game/CMakeLists.txt,
-# which required the core to know both that a module framework existed and what
-# one particular module of somebody else's was called.
-option(TW_EXTERNAL_MODULE_LOADER "AddModulesScripts() is defined outside the core; do not compile the no-op" OFF)
-option(TW_EXTERNAL_PLAYERBOT_HOOKS "The playerbot host-hook symbols are defined outside the core; do not compile the stubs" OFF)
-
-# Unit tests. OFF by default so a normal server build pays nothing for them:
-# no googletest download, no extra targets, no CTest machinery. `include(CTest)`
-# would otherwise declare BUILD_TESTING itself with a default of ON, which is
-# why the option is declared here first - the later declaration inside CTest is
-# a no-op once the cache entry exists.
-option(BUILD_TESTING "Build the unit test suites (googletest is fetched when ON)" OFF)
-
-# Target CPU baseline for GCC/Clang -march. The historical value was "native",
-# which bakes the build host's exact CPU into the binary: fine for a hand-built
-# server, fatal for a container image or a CI artifact that has to run somewhere
-# else (illegal instruction at startup, no warning). x86-64-v2 is the portable
-# floor the upstream Docker images already target. Set "native" back for a
-# host-only build, or an empty string to omit -march entirely.
+# Target CPU baseline for GCC/Clang -march; consumed near the BUILD_ADDITIONAL_FLAGS
+# block below, where upstream hardcodes `native`.
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
   set(TW_ARCH_DEFAULT "x86-64-v2")
 else()
@@ -145,6 +78,7 @@ else()
 endif()
 set(TW_ARCH "${TW_ARCH_DEFAULT}" CACHE STRING "Value passed to -march= on GCC/Clang; empty omits the flag")
 
+ConfigureModuleBuildOptions()
 
 if(UNIX)
   option(DEBUG_SYMBOLS "Include Debug Symbols" ON)
@@ -195,52 +129,25 @@ endif()
 # Giperion: Enable C++17
 set(CMAKE_CXX_STANDARD 17)
 
+# Detour: virtual query filters. Off, dtQueryFilter::getCost is non-virtual and
+# a derived filter (mod-dungeon-clear routes around no-go zones with one) would
+# compile against the base and silently never be called - paths would ignore
+# every zone the filter exists to avoid. Global on purpose: every translation
+# unit that includes DetourNavMeshQuery.h must agree on the class layout, or
+# this is an ODR break. Costs a virtual call per polygon test in all
+# pathfinding; AzerothCore ships with exactly this on.
+add_definitions(-DDT_VIRTUAL_QUERYFILTER=1)
+
 if(MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
 endif(MSVC)
 if(NOT MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+# The Detour virtual-filter switch rides the same flags line the C++ standard
+# does: add_definitions provably does not survive to the subdirectory targets
+# in this tree (checked in flags.make), this line provably does.
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDT_VIRTUAL_QUERYFILTER=1")
 endif()
-# ---------------------------------------------------------------------------
-# Testing
-#
-# include(CTest) is what writes DartConfiguration.tcl and calls enable_testing()
-# in the TOP-LEVEL directory - without a top-level enable_testing() `ctest` in
-# the build root discovers nothing, no matter how many add_test() calls the
-# subdirectories make. It is guarded because CTest also adds a Nightly/Experimental
-# target set that a server build has no use for.
-#
-# googletest is fetched rather than found: no distro ships a version this tree
-# can rely on, and the projects that vendor it (AzerothCore upstream, from which
-# the mod-dungeon-clear suite came) assume the gtest/gmock CMake targets exist.
-# Pinned to an exact tag on purpose - `master`, as the Tracy block above uses,
-# makes the test result depend on the day it was configured.
-#
-# Placed here, after CMAKE_CXX_STANDARD and CMAKE_CXX_FLAGS are settled but
-# before the DEFINITIONS directory property is set below, so googletest compiles
-# as C++17 without inheriting the server's DO_MYSQL/WIN32/SYSCONFDIR defines.
-if(BUILD_TESTING)
-  include(CTest)
-
-  # Do not install gtest/gmock headers and libraries into the server's prefix.
-  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-  set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
-  if(MSVC)
-    # The core is built against the shared CRT; googletest defaults to the
-    # static one and the mismatch is a link error, not a warning.
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-  endif()
-
-  FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.16.0
-    GIT_SHALLOW TRUE
-    GIT_PROGRESS TRUE
-  )
-  FetchContent_MakeAvailable(googletest)
-endif()
-
 # Giperion: Set Edit and Continue by default for all windows debug builds
 if(MSVC AND NOT USE_ADDRESS_SANITIZER)
 	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /ZI")
@@ -403,9 +310,9 @@ endif()
 
 # Win32 delifered packages
 if(WIN32)
-  set(MYSQL_INCLUDE_DIR ${TW_CORE_ROOT}/dep/windows/include/mysql)
-  set(MYSQL_LIBRARY ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_release/libmySQL.lib)
-  set(MYSQL_DEBUG_LIBRARY ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_debug/libmySQL.lib)
+  set(MYSQL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/windows/include/mysql)
+  set(MYSQL_LIBRARY ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libmySQL.lib)
+  set(MYSQL_DEBUG_LIBRARY ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libmySQL.lib)
   # The bundled OpenSSL is 1.1.1, headers and import libraries together, and it
   # works as long as nothing else puts OpenSSL headers on the search path. That
   # stops being true the moment ACE or Boost come from vcpkg: its shared include
@@ -419,20 +326,20 @@ if(WIN32)
   # Hence: let the builder point at their own OpenSSL. The code itself is happy
   # with either version. Passing nothing keeps the bundled copy, as before.
   if(NOT OPENSSL_INCLUDE_DIR)
-    set(OPENSSL_INCLUDE_DIR ${TW_CORE_ROOT}/dep/windows/include/openssl)
+    set(OPENSSL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/windows/include/openssl)
   endif()
   if(NOT OPENSSL_LIBRARIES)
-    set(OPENSSL_LIBRARIES ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_release/libssl.lib ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_release/libcrypto.lib)
+    set(OPENSSL_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libcrypto.lib)
     # Remembered so the install step knows whether to ship the matching runtime.
     set(USING_BUNDLED_OPENSSL TRUE)
   endif()
   if(NOT OPENSSL_DEBUG_LIBRARIES)
-    set(OPENSSL_DEBUG_LIBRARIES ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_debug/libssl.lib ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto.lib)
+    set(OPENSSL_DEBUG_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto.lib)
   endif()
-  set(ZLIB_INCLUDE_DIRS ${TW_CORE_ROOT}/dep/windows/include/zlib)
+  set(ZLIB_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/dep/windows/include/zlib)
 
-  set(OPTICK_INCLUDE_DIR ${TW_CORE_ROOT}/dep/include/optick)
-  set(OPTICK_LIBRARY ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_release/OptickCore.lib)
+  set(OPTICK_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/include/optick)
+  set(OPTICK_LIBRARY ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/OptickCore.lib)
 endif()
 
 # *nix-specific packages
@@ -460,7 +367,7 @@ if(NOT GIT_EXECUTABLE)
 else()
   execute_process(
     COMMAND ${GIT_EXECUTABLE} rev-parse --short=20 HEAD
-    WORKING_DIRECTORY "${TW_CORE_ROOT}"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     OUTPUT_VARIABLE rev_hash
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET
@@ -468,7 +375,7 @@ else()
 
   execute_process(
     COMMAND ${GIT_EXECUTABLE} show -s --format=%ci
-    WORKING_DIRECTORY "${TW_CORE_ROOT}"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     OUTPUT_VARIABLE rev_date
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET
@@ -483,25 +390,8 @@ else()
     set(rev_hash "unknown")
   endif()
   
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/revision.h.cmake ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/revision.h)
 endif()
-
-# revision.h is generated, never written back into the checkout, so a source
-# tree stays clean no matter how many build directories point at it.
-#
-# Spelled with TW_CORE_ROOT/TW_CORE_BINARY_DIR rather than the CMAKE_CURRENT_*
-# pair it arrived as. At this line the two are the same directory, so this is
-# not a fix -- it is so the generated header's location is named the same way
-# as the include paths that have to find it. src/shared, src/game, src/mangosd,
-# src/realmd and src/scripts all put ${TW_CORE_BINARY_DIR} on their include
-# path; had those said CMAKE_BINARY_DIR while this said CMAKE_CURRENT_BINARY_DIR,
-# the two would silently name different directories the moment twow-repo builds
-# this tree as a subdirectory, and the symptom would be a missing revision.h
-# rather than anything pointing at the cause.
-#
-# Outside the Git-detection branch on purpose: an archived or Git-less tree
-# falls through to the "unknown"/1970 defaults above and still gets a header,
-# instead of failing to compile on a missing include.
-configure_file(${TW_CORE_ROOT}/cmake/revision.h.cmake ${TW_CORE_BINARY_DIR}/revision.h)
 
 message(STATUS "")
 message(STATUS "Core revision: ${rev_hash} ${rev_date} ")
@@ -560,10 +450,31 @@ else()
   message(STATUS "Build scripts         : No")
 endif()
 
-if(TW_EXT_ENABLED_MODULES)
-  message(STATUS "Host extensions       : ${TW_EXT_ENABLED_MODULES}")
+if(BUILD_ELUNA)
+  message(STATUS "Build Eluna           : Yes (Lua ${ELUNA_LUA_VERSION})")
 else()
-  message(STATUS "Host extensions       : none (standalone core)")
+  message(STATUS "Build Eluna           : No")
+endif()
+
+if(MODULES_MODULE_LIST)
+  message(STATUS "Build modules         : ${MODULES}")
+  foreach(SOURCE_MODULE ${MODULES_MODULE_LIST})
+    ModuleNameToVariable("${SOURCE_MODULE}" MODULE_VARIABLE)
+    if("${${MODULE_VARIABLE}}" STREQUAL "default")
+      set(MODULE_EFFECTIVE_LINKAGE "${MODULES_DEFAULT_LINKAGE}")
+    else()
+      set(MODULE_EFFECTIVE_LINKAGE "${${MODULE_VARIABLE}}")
+    endif()
+    message(STATUS "  ${SOURCE_MODULE}: ${MODULE_EFFECTIVE_LINKAGE} (${MODULE_VARIABLE}=${${MODULE_VARIABLE}})")
+  endforeach()
+else()
+  message(STATUS "Build modules         : ${MODULES} (no modules found)")
+endif()
+
+if(MODULES_DYNAMIC_LINKING_REQUIRED)
+  message(STATUS "Module dynamic linking: Required")
+else()
+  message(STATUS "Module dynamic linking: Not required")
 endif()
 
 if(USE_DISCORD_BOT)
@@ -611,9 +522,14 @@ if(UNIX)
     #set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} -fsanitize=unsigned-integer-overflow")
   endif()
 
-  # --no-warnings was here and hid every diagnostic the compiler produced, which
-  # is the opposite of what CI needs. Warnings are on; nothing is -Werror yet.
-  set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} -fexceptions -fnon-call-exceptions -O3 -pipe ")
+  # -march was `native` here. That bakes the BUILD HOST's exact CPU into the
+  # binary: fine for a server compiled on the machine it runs on, fatal for a
+  # container image or the CI artifact this repository uploads, which dies with
+  # an illegal instruction on the first unsupported opcode and says nothing
+  # about why. x86-64-v2 is the portable floor the upstream Docker images
+  # already target. Set TW_ARCH=native back for a host-only build, or to an
+  # empty string to omit -march entirely.
+  set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} --no-warnings -fexceptions -fnon-call-exceptions -O3 -pipe ")
   if(TW_ARCH)
     set(BUILD_ADDITIONAL_FLAGS "${BUILD_ADDITIONAL_FLAGS} -march=${TW_ARCH} ")
   endif()
@@ -677,15 +593,15 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 if(WIN32)
   install(
     FILES
-      ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_release/libeay32.dll
-      ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_release/libmySQL.dll
+      ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libeay32.dll
+      ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libmySQL.dll
     DESTINATION ${LIBS_DIR}
     CONFIGURATIONS Release
   )
   install(
     FILES
-      ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_debug/libeay32.dll
-      ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_debug/libmySQL.dll
+      ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libeay32.dll
+      ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libmySQL.dll
     DESTINATION ${LIBS_DIR}
     CONFIGURATIONS Debug
   )
@@ -704,16 +620,16 @@ if(WIN32)
     endif()
     install(
       FILES
-        ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_release/libssl-1_1${BUNDLED_SSL_SUFFIX}.dll
-        ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_release/libcrypto-1_1${BUNDLED_SSL_SUFFIX}.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libssl-1_1${BUNDLED_SSL_SUFFIX}.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libcrypto-1_1${BUNDLED_SSL_SUFFIX}.dll
       DESTINATION ${LIBS_DIR}
       CONFIGURATIONS Release
       OPTIONAL
     )
     install(
       FILES
-        ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_debug/libssl-1_1${BUNDLED_SSL_SUFFIX}.dll
-        ${TW_CORE_ROOT}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto-1_1${BUNDLED_SSL_SUFFIX}.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libssl-1_1${BUNDLED_SSL_SUFFIX}.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto-1_1${BUNDLED_SSL_SUFFIX}.dll
       DESTINATION ${LIBS_DIR}
       CONFIGURATIONS Debug
       OPTIONAL
@@ -723,13 +639,13 @@ if(WIN32)
     # Copy dll's Windows needs
     install(
       FILES
-        ${TW_CORE_ROOT}/dep/windows/lib/win32_release/dbghelp.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/win32_release/dbghelp.dll
       DESTINATION ${LIBS_DIR}
       CONFIGURATIONS Release
     )
     install(
       FILES
-        ${TW_CORE_ROOT}/dep/windows/lib/win32_debug/dbghelp.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/win32_debug/dbghelp.dll
       DESTINATION ${LIBS_DIR}
       CONFIGURATIONS Debug
     )
@@ -750,15 +666,8 @@ endif()
 set(DEFINITIONS
   ${DEFINITIONS}
   DO_MYSQL
+  TW_SOURCE_MODULES_DIR="${CMAKE_SOURCE_DIR}/modules"
 )
-
-# AutoUpdater.cpp walks this directory for per-module SQL when the server is
-# running out of a source tree rather than an install. Left undefined here on
-# purpose: a core with nothing attached has no such directory, and the #ifdef in
-# AutoUpdater.cpp already handles the definition being absent.
-if(TW_EXT_SOURCE_MODULES_DIR)
-  set(DEFINITIONS ${DEFINITIONS} TW_SOURCE_MODULES_DIR="${TW_EXT_SOURCE_MODULES_DIR}")
-endif()
 
 if(WIN32)
   set(DEFINITIONS ${DEFINITIONS} WIN32 _WIN32)
@@ -767,16 +676,12 @@ else()
   set(DEFINITIONS ${DEFINITIONS} SYSCONFDIR="${CONF_DIR}/")
 endif()
 
-# Config.cpp reloads these alongside mangosd.conf; AutoUpdater.cpp uses the
-# enabled-module names to decide which SQL directories are in play. Both are
-# comma-separated because a compile definition cannot carry a CMake list, and
-# both are empty strings in a standalone build, which is what the #ifndef
-# fallbacks in those two files already expect.
-string(REPLACE ";" "," TW_MODULE_CONFIG_LIST_CSV "${TW_EXT_MODULE_CONFIG_LIST}")
+if(TW_MODULE_CONFIG_LIST)
+  string(REPLACE ";" "," TW_MODULE_CONFIG_LIST_CSV "${TW_MODULE_CONFIG_LIST}")
+else()
+  set(TW_MODULE_CONFIG_LIST_CSV "")
+endif()
 set(DEFINITIONS ${DEFINITIONS} TW_MODULE_CONFIG_LIST="${TW_MODULE_CONFIG_LIST_CSV}")
-
-string(REPLACE ";" "," TW_ENABLED_MODULES_CSV "${TW_EXT_ENABLED_MODULES}")
-set(DEFINITIONS ${DEFINITIONS} TW_ENABLED_MODULES="${TW_ENABLED_MODULES_CSV}")
 
 if(USE_STD_MALLOC)
   set(DEFINITIONS ${DEFINITIONS} USE_STANDARD_MALLOC)
@@ -800,61 +705,47 @@ message(STATUS "Build flags (DEBUG)   : ${CMAKE_CXX_FLAGS_DEBUG}")
 
 add_subdirectory(src)
 add_subdirectory(dep)
+add_subdirectory(modules)
 
-# The seam itself. Empty in a standalone build; a host fills it in after this
-# directory has been processed, which is legal because an INTERFACE target's
-# usage requirements are read at generate time rather than at this line.
-#
-# What the host puts here is its generated loader library plus the three
-# TW_DYNAMIC_MODULES* macros DynamicModules.cpp reads -- which library names to
-# dlopen, where to look for them, and the build directive each loaded library
-# must agree with. All three are the host's bookkeeping about its own artifacts,
-# so the core never spells them; DynamicModules.cpp #ifndef-defaults each to the
-# empty string, which is precisely "load nothing".
-target_link_libraries(mangosd tw_core_extensions)
-
-# ---------------------------------------------------------------------------
-# What a host build needs back out of this file.
-#
-# add_subdirectory() hands the parent nothing back: everything below is computed
-# in THIS directory's scope, and a host's own code (twow-repo's modules/) is a
-# SIBLING of core/ rather than a child, so it inherits none of it. Everything a
-# host needs that is already a cache entry -- ACE_INCLUDE_DIR, MYSQL_INCLUDE_DIR,
-# OPENSSL_*, USE_PCH, TW_CORE_ROOT -- is visible without help and is not
-# repeated here.
-#
-# The compile settings are not a convenience. Code that links `game` compiles
-# core headers, and those headers read DO_MYSQL, SYSCONFDIR and the WIN32 pair.
-# Detour publishes DT_VIRTUAL_QUERYFILTER itself as a PUBLIC target requirement,
-# so all direct and transitive Detour header consumers use the same class layout.
-#
-# Guarded rather than left to run unconditionally: PARENT_SCOPE in a top-level
-# directory is harmless, but CMake warns about it once per line, and twelve
-# warnings nobody can act on is how the real ones come to be skimmed past.
-if(NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-set(BIN_DIR "${BIN_DIR}" PARENT_SCOPE)
-set(CONF_DIR "${CONF_DIR}" PARENT_SCOPE)
-set(LIBS_DIR "${LIBS_DIR}" PARENT_SCOPE)
-set(DEP_ARCH "${DEP_ARCH}" PARENT_SCOPE)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" PARENT_SCOPE)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}" PARENT_SCOPE)
-
-set(TW_CORE_DEFINITIONS ${DEFINITIONS} PARENT_SCOPE)
-set(TW_CORE_DEFINITIONS_DEBUG ${DEFINITIONS_DEBUG} PARENT_SCOPE)
-set(TW_CORE_DEFINITIONS_RELEASE ${DEFINITIONS_RELEASE} PARENT_SCOPE)
-set(CMAKE_CXX_STANDARD ${CMAKE_CXX_STANDARD} PARENT_SCOPE)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" PARENT_SCOPE)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" PARENT_SCOPE)
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}" PARENT_SCOPE)
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}" PARENT_SCOPE)
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}" PARENT_SCOPE)
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" PARENT_SCOPE)
+if(TARGET mangosd AND TARGET modules)
+  target_link_libraries(mangosd modules)
 endif()
+
+if(TARGET mangosd AND WORLDSERVER_DYNAMIC_MODULES_DEPENDENCIES)
+  add_dependencies(mangosd ${WORLDSERVER_DYNAMIC_MODULES_DEPENDENCIES})
+endif()
+
+if(TARGET mangosd)
+  if(WORLDSERVER_DYNAMIC_MODULES)
+    string(REPLACE ";" "," TW_DYNAMIC_MODULES_CSV "${WORLDSERVER_DYNAMIC_MODULES}")
+  else()
+    set(TW_DYNAMIC_MODULES_CSV "")
+  endif()
+
+  if(WORLDSERVER_ENABLED_MODULES)
+    string(REPLACE ";" "," TW_ENABLED_MODULES_CSV "${WORLDSERVER_ENABLED_MODULES}")
+  else()
+    set(TW_ENABLED_MODULES_CSV "")
+  endif()
+
+  target_compile_definitions(mangosd
+    PRIVATE
+      TW_DYNAMIC_MODULES="${TW_DYNAMIC_MODULES_CSV}"
+      TW_MODULES_BUILD_DIRECTIVE="${CMAKE_BUILD_TYPE}"
+      TW_DYNAMIC_MODULES_INSTALL_DIR="${MODULES_INSTALL_RUNTIME_DIR}")
+
+  if(TARGET shared)
+    target_compile_definitions(shared
+      PRIVATE
+        TW_ENABLED_MODULES="${TW_ENABLED_MODULES_CSV}")
+  endif()
+endif()
+
+# cmangos/playerbots is a MODULE now: modules/mod-playerbots.
+# Its build lives in that module's own CMakeLists.txt and
+# mod-playerbots.cmake. BUILD_PLAYERBOTS still switches it on and off,
+# and still gates src/game/PlayerbotStubs.cpp.
 
 if (USE_EXTRACTORS OR USE_REALMMERGE)
     add_subdirectory(tools)
 endif()
-
-# The two module test suites that used to be included here are twow-repo's.
-# They compile module sources directly, so they belong to whoever owns modules/,
-# and the platform root includes them under the same BUILD_TESTING guard.

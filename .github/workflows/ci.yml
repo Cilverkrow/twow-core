@@ -7,11 +7,15 @@
 # workflow" in its verification section. A fork that cannot compile itself
 # cannot honestly claim that any of its 33 candidate upstream fixes are correct.
 #
-# One workflow, one job, on purpose. The sibling repository twow-repo grew to 19
-# job entries across several workflow files, each with its own slightly
+# One workflow, one BUILD, on purpose. The sibling repository twow-repo grew to
+# 19 job entries across several workflow files, each with its own slightly
 # different toolchain, and consolidating them back down to 5 cost a day. There
-# is exactly one thing worth asserting about this repository -- that the core
-# compiles and links standalone -- so there is exactly one job that asserts it.
+# is exactly one thing worth compiling here -- that the core builds and links --
+# so there is exactly one job that compiles it.
+#
+# The second job, upstream-freshness, compiles nothing and is not a second
+# toolchain. It asserts that UPSTREAM.lock still describes the branch this fork
+# actually tracks; see the comment above it.
 
 name: CI
 
@@ -179,6 +183,12 @@ jobs:
           # reporting 1970 as its revision cannot be matched to the commit that
           # produced it.
           fetch-depth: 0
+
+          # src/modules/Eluna is a submodule (ElunaLuaEngine/Eluna) and the
+          # root CMakeLists FATAL_ERRORs when LuaEngine.h is absent, because
+          # BUILD_ELUNA defaults ON. A checkout without this configures for
+          # about a second and then stops with "Eluna submodule is missing".
+          submodules: recursive
 
       # Space this build genuinely needs: mangosd links to 750 MB with
       # DEBUG_SYMBOLS=ON, on top of a ~20 GB object tree, and /build lives on the
