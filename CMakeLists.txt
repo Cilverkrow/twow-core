@@ -424,8 +424,9 @@ else()
     set(rev_hash "unknown")
   endif()
   
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/revision.h.cmake ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/revision.h)
 endif()
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/revision.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/revision.h)
 
 message(STATUS "")
 message(STATUS "Core revision: ${rev_hash} ${rev_date} ")
