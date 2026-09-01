@@ -63,20 +63,28 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
           df -h /
 
-      # Keyed on this workflow file, because this file is what fixes the compiler
-      # and the flag set -- change the package list or the build type and the old
-      # objects are not reusable anyway. The restore-keys prefixes let a new
-      # branch start from main's cache rather than from nothing, which is the
-      # difference between a five-minute incremental and a cold build on the
-      # first push of every branch.
+      # Deliberately NOT keyed on a hashFiles() of this workflow, which is the
+      # obvious thing to reach for and is wrong here twice over. ccache already
+      # hashes the compiler binary, the preprocessed source and the full command
+      # line into every entry, so a changed package list or build type produces
+      # different hashes and misses on its own -- a workflow-file key buys no
+      # safety ccache does not already provide. What it does buy is a completely
+      # cold build every time somebody edits a comment in this file, which is how
+      # a cache ends up quietly never helping.
+      #
+      # The key is therefore write-once per run, and the restore-keys prefixes do
+      # the actual work: a new branch falls back to the same branch's last cache,
+      # then to any cache on this runner OS. That fallback is the difference
+      # between a five-minute incremental and a cold build on every branch's
+      # first push.
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-trixie-${{ hashFiles('.github/workflows/ci.yml') }}-${{ github.ref_name }}-${{ github.run_id }}
+          key: ccache-trixie-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: |
-            ccache-trixie-${{ hashFiles('.github/workflows/ci.yml') }}-${{ github.ref_name }}-
-            ccache-trixie-${{ hashFiles('.github/workflows/ci.yml') }}-
+            ccache-trixie-${{ github.ref_name }}-
+            ccache-trixie-
 
       # The compiler is Debian trixie's, not the runner's.
       #
