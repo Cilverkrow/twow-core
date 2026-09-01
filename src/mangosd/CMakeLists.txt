@@ -136,9 +136,10 @@ if(USE_DISCORD_BOT)
   )
 endif()
 
-# The bot library is not named here any more. It is modules/mod-playerbots, and
-# the root CMakeLists links `modules` into this executable, which carries every
-# enabled module's target with it.
+# The bot library is not named here any more, and neither is any other module.
+# The root CMakeLists links the tw_core_extensions INTERFACE target into this
+# executable; whatever a host attached to that target arrives on this link line
+# through it. Standalone, that target is empty and contributes nothing.
 
 target_link_libraries(${EXECUTABLE_NAME}
     libdeflate
