@@ -1,3 +1,8 @@
+// std::regex used to arrive through botpch.h (line 57). The module build has
+// no per-module precompiled header - the aggregate `modules` target compiles
+// two modules' sources - so a use has to name its own header.
+#include <regex>
+
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "PlayerbotDbStore.h"
@@ -305,19 +310,8 @@ void PlayerbotHolder::ForEachPlayerbot(std::function<void(Player*)> callback) co
         Player* bot = itr.second;
         if (!bot)
             continue;
-        // The SAME stale-entry guard GetPlayerBot got, because this loop walks
-        // the map directly and so went straight past it. A Player destroyed
-        // outside DisablePlayerBot leaves a non-null entry, `if (bot)` passes on
-        // freed memory, and the callback dereferences it - live,
-        // crash_2026-09-01_14-34-37: LogPlayerLocation's callback reached
-        // PlayerbotAI::AllowActivity with this=0x6ecf766476c57200, which is not
-        // an address at all.
-        //
-        // Verified by GUID from the map KEY, never through the suspect pointer.
-        // 26 call sites share this loop, so the check belongs here rather than
-        // in each of them.
-        if (sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, itr.first), false) != bot)
-            continue;
+        // See GetPlayerBot above: the GUID cross-check that used to sit here
+        // was an outage, not a fix.
         callback(bot);
     }
 }
@@ -622,26 +616,20 @@ void PlayerbotHolder::DisablePlayerBot(uint32 guid, bool logOutPlayer)
 Player* PlayerbotHolder::GetPlayerBot(uint32 playerGuid) const
 {
     PlayerBotMap::const_iterator it = playerBots.find(playerGuid);
+    // NO GUID CROSS-CHECK HERE. One was added on 2026-09-01 to reject entries
+    // whose Player had been destroyed, and it was measured a total outage: a
+    // Player mid-teleport is briefly not findable through sObjectMgr, so the
+    // check threw away perfectly live bots. 89 bosses died in the two hours
+    // before it and ZERO in the three after, with 188 "tank did not arrive at
+    // the dungeon entrance" and 84 "bot vanished before teleport" - the log
+    // naming the exact window the check was wrong about.
+    //
+    // The stale-pointer crash it aimed at (crash_2026-09-01_08-26-40 and
+    // _14-34-37) is real and still open. The fix has to be a validity test that
+    // does not confuse "between maps" with "destroyed" - the entry's own
+    // lifecycle, not a second registry's opinion of it.
     Player* const held = (it == playerBots.end()) ? nullptr : it->second;
     if (!held)
-        return nullptr;
-
-    // The map can hold a STALE pointer. Logout normally leaves a tombstone
-    // (playerBots[guid] = nullptr, swept later by Cleanup), but a Player
-    // destroyed outside DisablePlayerBot leaves its entry pointing at freed
-    // memory - and every caller's `if (player)` check then passes on it.
-    //
-    // That is a real crash, four times over: RandomPlayerbotMgr::ProcessBot
-    // reads the pointer and hands it to IsFreeAltBot, which dereferences it for
-    // GetGUIDLow. crash_2026-09-01_08-26-40 and _08-27-36, and the pair at
-    // 03:51:35/03:52:11 on 2026-08-31, are all ObjectGuid::GetHigh with
-    // this=0x0 on that exact line.
-    //
-    // Cross-check against the authoritative lookup BY GUID - never through the
-    // suspect pointer, since dereferencing it is the bug. A mismatch means the
-    // entry outlived its Player, so report it as gone; the entry itself is left
-    // for Cleanup rather than mutated from a const getter.
-    if (sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, playerGuid), false) != held)
         return nullptr;
 
     return held;
