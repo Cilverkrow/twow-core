@@ -191,7 +191,8 @@ if(TORTOISE_MODULE_CMAKE_PHASE STREQUAL "POST_TARGETS")
       ${CMAKE_CURRENT_LIST_DIR}/src
       ${CMAKE_CURRENT_LIST_DIR}/src/compat)
 
-  target_link_libraries(modules PUBLIC playerbots)
+  # playerbots used to be its own library; both modules share the `modules`
+  # target now, so there is nothing left to link against.
 
   target_compile_options(modules PRIVATE
     -include ${CMAKE_CURRENT_LIST_DIR}/src/AcCompat.h)
