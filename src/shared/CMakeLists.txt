@@ -198,7 +198,6 @@ include_directories(
   ${TW_CORE_ROOT}/src/framework
   ${TW_CORE_BINARY_DIR}
   ${ACE_INCLUDE_DIR}
-  ${MYSQL_INCLUDE_DIR} 
   ${OPENSSL_INCLUDE_DIR}
 )
 
@@ -210,6 +209,12 @@ endif()
 
 add_library(shared STATIC
   ${shared_SRCS}
+)
+
+# QueryResultMysql.h is a public shared header, so every target that consumes
+# shared's headers must compile with the same MySQL include directory.
+target_include_directories(shared PUBLIC
+  ${MYSQL_INCLUDE_DIR}
 )
 
 if(USE_DISCORD_BOT)
