@@ -23,10 +23,18 @@ This codebase contains, derives from, or has historical lineage through work fro
 The module system includes files and behavior derived from or modeled after AzerothCore's module system.
 Files with direct AzerothCore-derived content include their own file-level attribution and license notices.
 
-Relevant AzerothCore sources:
+Relevant AzerothCore sources. This is a license notice rather than a summary, so
+it names where each file actually is: the module framework moved to `twow-repo`
+when the core was made to build standalone, and only the declaration the core
+itself calls stayed behind.
 
-- `src/cmake/macros/ConfigureModules.cmake`
-- `modules/ModulesScriptLoader.h`
+Still in this repository:
+
+- `src/shared/ModulesScriptLoader.h` (was `modules/ModulesScriptLoader.h`)
+
+Moved to `twow-repo`, and attributed there:
+
+- `cmake/ConfigureModules.cmake` (listed here as `src/cmake/macros/ConfigureModules.cmake`, a path this fork never had)
 - `modules/ModulesLoader.cpp.in.cmake`
 
 ## vMaNGOS Spell and Aura Script System
