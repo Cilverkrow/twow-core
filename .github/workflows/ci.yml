@@ -1,0 +1,181 @@
+# The only workflow in this repository, and deliberately so.
+#
+# twow-core is a fork whose entire purpose is to be reviewable and to send fixes
+# back to Penqle. Until this file existed, nothing here could be checked: the
+# repository's own first pull request had to record "a full local
+# configure/build was unavailable because twow-core currently has no CI
+# workflow" in its verification section. A fork that cannot compile itself
+# cannot honestly claim that any of its 33 candidate upstream fixes are correct.
+#
+# One workflow, one job, on purpose. The sibling repository twow-repo grew to 19
+# job entries across several workflow files, each with its own slightly
+# different toolchain, and consolidating them back down to 5 cost a day. There
+# is exactly one thing worth asserting about this repository -- that the core
+# compiles and links standalone -- so there is exactly one job that asserts it.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# Every run gets its own concurrency group, and nothing is ever cancelled.
+#
+# cancel-in-progress: false is not a preference here, it is what makes the
+# ccache below work at all. actions/cache writes the cache in a POST step, which
+# runs only if the job reaches the end of its lifecycle; a cancelled job is torn
+# down before that, so the cache is never saved. In twow-repo a shared group
+# with cancel-in-progress: true meant every push cancelled its predecessor, the
+# post step never ran once, and a full day of builds were cold from scratch --
+# with the cache key being computed and looked up correctly and missing every
+# single time, which is why it took so long to see. Including github.run_id
+# keeps two pushes to the same ref from colliding as well.
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build core (Debian trixie)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, so cmake/revision.h.cmake resolves a real hash instead
+          # of the "unknown 1970-01-01 (Archived)" fallback. That fallback is a
+          # deliberate feature for source archives with no .git, but a CI build
+          # reporting 1970 as its revision cannot be matched to the commit that
+          # produced it.
+          fetch-depth: 0
+
+      # A GitHub-hosted runner ships with roughly 14 GB free on /, and this build
+      # does not fit in it: the object tree plus a mangosd carrying debug symbols
+      # exceeds that on its own. These four directories are large preinstalled
+      # toolchains that nothing in a C++ build here touches. Removing them is the
+      # difference between a build and a "no space left on device" forty minutes
+      # in, which reads like a compiler failure and is not one.
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      # Keyed on this workflow file, because this file is what fixes the compiler
+      # and the flag set -- change the package list or the build type and the old
+      # objects are not reusable anyway. The restore-keys prefixes let a new
+      # branch start from main's cache rather than from nothing, which is the
+      # difference between a five-minute incremental and a cold build on the
+      # first push of every branch.
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-trixie-${{ hashFiles('.github/workflows/ci.yml') }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-trixie-${{ hashFiles('.github/workflows/ci.yml') }}-${{ github.ref_name }}-
+            ccache-trixie-${{ hashFiles('.github/workflows/ci.yml') }}-
+
+      # The compiler is Debian trixie's, not the runner's.
+      #
+      # This is the toolchain the project actually builds with, so pinning it
+      # makes a green tick mean something: the GCC, ACE and Boost versions are
+      # the ones a maintainer reproduces locally from the same image, rather than
+      # whatever ubuntu-latest happens to ship this month.
+      #
+      # Driven with `docker run` rather than the job-level `container:` key,
+      # because a container job's steps cannot see the runner's own filesystem
+      # and the disk-reclaim step above has to run on the host to be worth
+      # anything. Bind-mounting the workspace and the ccache directory gets the
+      # same hermetic toolchain without giving that up.
+      #
+      # ca-certificates in the package list is not padding. It is absent from
+      # debian:trixie's base image, and without it every https call made from
+      # inside the container -- git over https, CMake's FetchContent, curl --
+      # fails with a certificate verification error that names TLS and never
+      # names the missing package. That misdiagnosis cost two separate debugging
+      # sessions in twow-repo. It stays in this list whether or not today's build
+      # appears to need it.
+      - name: Configure and build
+        run: |
+          mkdir -p "${{ github.workspace }}/.ccache"
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            -v "${{ github.workspace }}/.ccache:/ccache" \
+            -e CCACHE_DIR=/ccache \
+            -e CCACHE_MAXSIZE=2G \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -w /src \
+            debian:trixie \
+            bash -eo pipefail -c '
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential cmake ninja-build git ccache python3 ca-certificates \
+                libace-dev default-libmysqlclient-dev libssl-dev zlib1g-dev libbz2-dev \
+                libboost-dev libboost-thread-dev libboost-filesystem-dev \
+                libboost-system-dev libboost-stacktrace-dev
+
+              # The checkout is bind-mounted from the host, so its owning uid does
+              # not match root inside the container and git refuses to read it.
+              # CMake shells out to `git rev-parse` for the revision header, and a
+              # refusal there produces the 1970 fallback silently rather than an
+              # error, so this has to be set before configure runs.
+              git config --global --add safe.directory /src
+
+              ccache --zero-stats
+
+              # No -D here names a module, a module directory, or the module
+              # framework: this command line IS the acceptance test. The core has
+              # to configure knowing nothing about the platform that will later
+              # attach to it, and the "Host extensions: none (standalone core)"
+              # line asserted in the next step is the core saying so itself.
+              cmake -S /src -B /build -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                2>&1 | tee /src/configure.log
+
+              cmake --build /build --target mangosd realmd -j "$(nproc)"
+
+              ccache --show-stats
+
+              # /build is deliberately NOT on the bind mount: writing a multi-
+              # gigabyte object tree through the mount is several times slower
+              # than writing it to the container filesystem. That makes it
+              # container-private, so the two binaries have to be copied out for
+              # the upload step to see them.
+              mkdir -p /src/out
+              cp /build/src/mangosd/mangosd /build/src/realmd/realmd /src/out/
+            '
+
+      # The property the extension seam exists to create, asserted rather than
+      # assumed. If a later change reintroduces a modules/ path into the core --
+      # which is exactly how the separation was lost the first time -- the build
+      # still succeeds and this step is the only thing that notices.
+      - name: Assert the core does not know the platform exists
+        run: |
+          grep -q 'Host extensions       : none (standalone core)' configure.log \
+            || { echo "::error::configure did not report a standalone core"; exit 1; }
+
+          if [ -d modules ]; then
+            echo "::error::modules/ is back in the core tree; it belongs to twow-repo"
+            exit 1
+          fi
+
+          # Comments may mention modules/ -- several of them explain why the
+          # directory is gone -- so this looks at CMake code only, with comment
+          # lines stripped first.
+          if grep -rn --include=CMakeLists.txt --include='*.cmake' -- 'modules/' . \
+               | grep -v ':[0-9]*:[[:space:]]*#' ; then
+            echo "::error::the core's build files reference modules/"
+            exit 1
+          fi
+          echo "core builds with no reference to modules/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-binaries
+          path: out/
+          retention-days: 7
