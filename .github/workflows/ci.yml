@@ -61,17 +61,55 @@ jobs:
           # produced it.
           fetch-depth: 0
 
-      # A GitHub-hosted runner ships with roughly 14 GB free on /, and this build
-      # does not fit in it: the object tree plus a mangosd carrying debug symbols
-      # exceeds that on its own. These four directories are large preinstalled
-      # toolchains that nothing in a C++ build here touches. Removing them is the
-      # difference between a build and a "no space left on device" forty minutes
-      # in, which reads like a compiler failure and is not one.
+      # Space this build genuinely needs: mangosd links to 750 MB with
+      # DEBUG_SYMBOLS=ON, on top of a ~20 GB object tree, and /build lives on the
+      # container filesystem which is the same / as the runner's.
+      #
+      # How much headroom there actually is varies by runner, and the honest
+      # answer is that on the runner this job first ran on there was plenty --
+      # 145 GB total, 104 GB free after the reclaim. That is why the df is
+      # printed before AND after rather than just after: the numbers in a comment
+      # go stale, the ones in the log are from the machine that ran the build. If
+      # a future run shows the reclaim freeing nothing on a runner with room to
+      # spare, this step can go.
+      #
+      # It stays for now because it costs seconds, the four directories are
+      # preinstalled toolchains no C++ build here touches, and the failure it
+      # guards against -- "no space left on device" forty minutes into a link --
+      # reads like a compiler failure and is not one.
       - name: Reclaim runner disk
         run: |
+          echo "before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
-          df -h /
+          echo "after:";  df -h /
 
+      # CCACHE_SLOPPINESS in the docker run below is what makes this cache worth
+      # having at all, and it is not obvious enough to leave unexplained.
+      #
+      # USE_PCH defaults ON, and src/game and src/scripts -- which are most of
+      # the build -- use target_precompile_headers(). ccache refuses to cache any
+      # compilation that consumes a precompiled header unless it is told to be
+      # sloppy about it. Measured on this tree, without the setting:
+      #
+      #   Cacheable calls:   128 / 687 (18.63%)
+      #   Uncacheable calls: 559 / 687 (81.37%)
+      #     Could not use precompiled header: 559 / 561 (99.64%)
+      #
+      # and with it, 276 / 276 (100%). That is not a tuning improvement; it is
+      # the difference between caching a fifth of the build and caching all of
+      # it. A ccache that quietly declines four fifths of the work is the same
+      # category of failure as the cancel-in-progress bug -- every step reports
+      # success and nothing is being cached.
+      #
+      # Both sloppiness flags were checked here rather than assumed safe.
+      # time_macros makes ccache ignore __DATE__ and __TIME__, and neither macro
+      # appears anywhere in this tree: the build's version string comes from
+      # revision.h, which CMake generates and ccache then hashes as an ordinary
+      # source file, so no stale timestamp can be baked into a cached object.
+      # pch_defines means ccache will not notice a macro changing inside the
+      # precompiled header itself, and that exposure is bounded by CI building a
+      # fresh checkout every run with a cache that rotates per run.
+      #
       # Deliberately NOT keyed on a hashFiles() of this workflow, which is the
       # obvious thing to reach for and is wrong here twice over. ccache already
       # hashes the compiler binary, the preprocessed source and the full command
@@ -123,6 +161,7 @@ jobs:
             -v "${{ github.workspace }}/.ccache:/ccache" \
             -e CCACHE_DIR=/ccache \
             -e CCACHE_MAXSIZE=2G \
+            -e CCACHE_SLOPPINESS=pch_defines,time_macros \
             -e DEBIAN_FRONTEND=noninteractive \
             -w /src \
             debian:trixie \
