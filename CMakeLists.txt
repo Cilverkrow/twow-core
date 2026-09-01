@@ -498,7 +498,23 @@ else()
   
 endif()
 
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/revision.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/revision.h)
+# revision.h is generated, never written back into the checkout, so a source
+# tree stays clean no matter how many build directories point at it.
+#
+# Spelled with TW_CORE_ROOT/TW_CORE_BINARY_DIR rather than the CMAKE_CURRENT_*
+# pair it arrived as. At this line the two are the same directory, so this is
+# not a fix -- it is so the generated header's location is named the same way
+# as the include paths that have to find it. src/shared, src/game, src/mangosd,
+# src/realmd and src/scripts all put ${TW_CORE_BINARY_DIR} on their include
+# path; had those said CMAKE_BINARY_DIR while this said CMAKE_CURRENT_BINARY_DIR,
+# the two would silently name different directories the moment twow-repo builds
+# this tree as a subdirectory, and the symptom would be a missing revision.h
+# rather than anything pointing at the cause.
+#
+# Outside the Git-detection branch on purpose: an archived or Git-less tree
+# falls through to the "unknown"/1970 defaults above and still gets a header,
+# instead of failing to compile on a missing include.
+configure_file(${TW_CORE_ROOT}/cmake/revision.h.cmake ${TW_CORE_BINARY_DIR}/revision.h)
 
 message(STATUS "")
 message(STATUS "Core revision: ${rev_hash} ${rev_date} ")
