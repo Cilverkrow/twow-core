@@ -195,24 +195,11 @@ endif()
 # Giperion: Enable C++17
 set(CMAKE_CXX_STANDARD 17)
 
-# Detour: virtual query filters. Off, dtQueryFilter::getCost is non-virtual and
-# a derived filter (mod-dungeon-clear routes around no-go zones with one) would
-# compile against the base and silently never be called - paths would ignore
-# every zone the filter exists to avoid. Global on purpose: every translation
-# unit that includes DetourNavMeshQuery.h must agree on the class layout, or
-# this is an ODR break. Costs a virtual call per polygon test in all
-# pathfinding; AzerothCore ships with exactly this on.
-add_definitions(-DDT_VIRTUAL_QUERYFILTER=1)
-
 if(MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
 endif(MSVC)
 if(NOT MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-# The Detour virtual-filter switch rides the same flags line the C++ standard
-# does: add_definitions provably does not survive to the subdirectory targets
-# in this tree (checked in flags.make), this line provably does.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDT_VIRTUAL_QUERYFILTER=1")
 endif()
 # ---------------------------------------------------------------------------
 # Testing
@@ -837,11 +824,9 @@ target_link_libraries(mangosd tw_core_extensions)
 # repeated here.
 #
 # The compile settings are not a convenience. Code that links `game` compiles
-# core headers, and those headers read DO_MYSQL, SYSCONFDIR and the WIN32 pair;
-# DT_VIRTUAL_QUERYFILTER decides whether dtQueryFilter::getCost is virtual, so a
-# translation unit that disagrees about it is an ODR violation with no
-# diagnostic. Directory properties do not cross to a sibling directory, so a
-# host has to re-apply these at its own root before adding its code.
+# core headers, and those headers read DO_MYSQL, SYSCONFDIR and the WIN32 pair.
+# Detour publishes DT_VIRTUAL_QUERYFILTER itself as a PUBLIC target requirement,
+# so all direct and transitive Detour header consumers use the same class layout.
 #
 # Guarded rather than left to run unconditionally: PARENT_SCOPE in a top-level
 # directory is harmless, but CMake warns about it once per line, and twelve
@@ -854,7 +839,7 @@ set(DEP_ARCH "${DEP_ARCH}" PARENT_SCOPE)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" PARENT_SCOPE)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}" PARENT_SCOPE)
 
-set(TW_CORE_DEFINITIONS ${DEFINITIONS} DT_VIRTUAL_QUERYFILTER=1 PARENT_SCOPE)
+set(TW_CORE_DEFINITIONS ${DEFINITIONS} PARENT_SCOPE)
 set(TW_CORE_DEFINITIONS_DEBUG ${DEFINITIONS_DEBUG} PARENT_SCOPE)
 set(TW_CORE_DEFINITIONS_RELEASE ${DEFINITIONS_RELEASE} PARENT_SCOPE)
 set(CMAKE_CXX_STANDARD ${CMAKE_CXX_STANDARD} PARENT_SCOPE)

@@ -28,5 +28,6 @@ set(Detour_STAT_SRCS
 )
 
 add_library(Detour STATIC ${Detour_STAT_SRCS})
+target_compile_definitions(Detour PUBLIC DT_VIRTUAL_QUERYFILTER=1)
 
 SET_TARGET_PROPERTIES (Detour PROPERTIES FOLDER "3rd Party")
