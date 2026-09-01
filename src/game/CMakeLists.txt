@@ -448,12 +448,12 @@ endif()
 # Used in game ScriptMgr
 if(USE_SCRIPTS)
   list(APPEND game_SRCS
-      ${CMAKE_SOURCE_DIR}/src/scripts/ScriptLoader.cpp
-      ${CMAKE_SOURCE_DIR}/src/scripts/ScriptLoader.h
+      ${TW_CORE_ROOT}/src/scripts/ScriptLoader.cpp
+      ${TW_CORE_ROOT}/src/scripts/ScriptLoader.h
   )
 else()
   list(APPEND game_SRCS
-      ${CMAKE_SOURCE_DIR}/src/scripts/ScriptLoader.h
+      ${TW_CORE_ROOT}/src/scripts/ScriptLoader.h
   )
 endif()
 
@@ -541,17 +541,17 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/Threat
   ${CMAKE_CURRENT_SOURCE_DIR}/Transports
   ${CMAKE_CURRENT_SOURCE_DIR}/vmap
-  ${CMAKE_SOURCE_DIR}/src/scripts
-  ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
-  ${CMAKE_SOURCE_DIR}/dep/recastnavigation/Detour
-  ${CMAKE_SOURCE_DIR}/dep/recastnavigation
-  ${CMAKE_SOURCE_DIR}/dep/include
-  ${CMAKE_SOURCE_DIR}/dep/libdeflate
-  ${CMAKE_SOURCE_DIR}/src/framework
-  ${CMAKE_SOURCE_DIR}/src/framework/Network
-  ${CMAKE_SOURCE_DIR}/src/shared
-  ${CMAKE_BINARY_DIR}
-  ${CMAKE_BINARY_DIR}/src/shared
+  ${TW_CORE_ROOT}/src/scripts
+  ${TW_CORE_ROOT}/dep/include/g3dlite
+  ${TW_CORE_ROOT}/dep/recastnavigation/Detour
+  ${TW_CORE_ROOT}/dep/recastnavigation
+  ${TW_CORE_ROOT}/dep/include
+  ${TW_CORE_ROOT}/dep/libdeflate
+  ${TW_CORE_ROOT}/src/framework
+  ${TW_CORE_ROOT}/src/framework/Network
+  ${TW_CORE_ROOT}/src/shared
+  ${TW_CORE_BINARY_DIR}
+  ${TW_CORE_BINARY_DIR}/src/shared
   ${MYSQL_INCLUDE_DIR}
   ${TBB_INCLUDE_DIRS}
   ${ACE_INCLUDE_DIR}
@@ -560,7 +560,7 @@ include_directories(
 
 if(WIN32)
   include_directories(
-    ${CMAKE_SOURCE_DIR}/dep/include-windows
+    ${TW_CORE_ROOT}/dep/include-windows
   )
 endif()
 
@@ -612,11 +612,13 @@ source_group("HttpApi"
 # mod-playerbots is built these resolve to the real thing; when it is not, the
 # link needs no-ops, which is what PlayerbotStubs.cpp is.
 #
-# Keyed on the module's effective linkage. This used to read `if(NOT
-# BUILD_PLAYERBOTS)`, an option that no longer exists: the bot tree is
-# modules/mod-playerbots now, enabled or disabled like any other module.
-GetModuleEffectiveLinkage("mod-playerbots" TW_PLAYERBOTS_LINKAGE)
-if(TW_PLAYERBOTS_LINKAGE STREQUAL "disabled")
+# Keyed on a plain core option, not on a module's linkage. This read
+# `GetModuleEffectiveLinkage("mod-playerbots" ...)`, a function that exists only
+# once a module framework has been included -- so the core could not configure
+# at all without one, and knew a particular module by name while it was at it.
+# What the core actually needs to know is narrower and framework-free: is
+# somebody else defining these eleven symbols?
+if(NOT TW_EXTERNAL_PLAYERBOT_HOOKS)
     list(APPEND game_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/PlayerbotStubs.cpp)
 endif()
 

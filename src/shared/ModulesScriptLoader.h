@@ -20,6 +20,18 @@
 #ifndef _MODULES_SCRIPT_LOADER_H_
 #define _MODULES_SCRIPT_LOADER_H_
 
+// The core's entire C++ surface for host extensions: one function, called once
+// from DynamicModules.cpp at startup, whose job is to register scripts with
+// ScriptMgr before the world loads.
+//
+// It lives in the core rather than in the host because the core is the side
+// that CALLS it. A declaration kept only in twow-repo would leave the two
+// repositories agreeing on this signature by convention instead of by
+// compilation, and the failure mode of disagreeing is an undefined symbol at
+// the very end of a 25-minute link.
+//
+// src/mangosd/ModulesScriptLoaderStub.cpp defines it as a no-op unless
+// TW_EXTERNAL_MODULE_LOADER says a host has generated a real one.
 void AddModulesScripts();
 
 #endif

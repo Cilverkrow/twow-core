@@ -193,10 +193,10 @@ source_group("DiscordBot"
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/dep/include
-  ${CMAKE_SOURCE_DIR}/dep/libdeflate
-  ${CMAKE_SOURCE_DIR}/src/framework
-  ${CMAKE_BINARY_DIR}
+  ${TW_CORE_ROOT}/dep/include
+  ${TW_CORE_ROOT}/dep/libdeflate
+  ${TW_CORE_ROOT}/src/framework
+  ${TW_CORE_BINARY_DIR}
   ${ACE_INCLUDE_DIR}
   ${MYSQL_INCLUDE_DIR} 
   ${OPENSSL_INCLUDE_DIR}
@@ -204,7 +204,7 @@ include_directories(
 
 if(WIN32)
   include_directories(
-    ${CMAKE_SOURCE_DIR}/dep/include-windows
+    ${TW_CORE_ROOT}/dep/include-windows
   )
 endif()
 

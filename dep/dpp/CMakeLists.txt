@@ -17,7 +17,7 @@ target_include_directories(dpp
 if(WIN32)
   target_include_directories(dpp
   PUBLIC
-    ${CMAKE_SOURCE_DIR}/dep/include-windows
+    ${TW_CORE_ROOT}/dep/include-windows
   )
 endif()
 
@@ -28,7 +28,7 @@ if(UNIX)
     target_link_libraries(dpp PUBLIC ${ZLIB_LIBRARIES} optimized ${OPENSSL_LIBRARIES})
   endif(ZLIB_FOUND)
 else()
-  include_directories(${CMAKE_SOURCE_DIR}/dep/windows/include/zlib)
+  include_directories(${TW_CORE_ROOT}/dep/windows/include/zlib)
   if(MINGW)
     target_link_libraries(dpp PUBLIC zlib optimized ${OPENSSL_LIBRARIES})
   endif()

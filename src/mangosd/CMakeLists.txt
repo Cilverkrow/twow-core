@@ -30,6 +30,17 @@ set (EXECUTABLE_SRCS
 )
 
 
+# With nothing attached to the extension seam, AddModulesScripts() -- which
+# DynamicModules.cpp calls unconditionally at startup -- has no definition
+# anywhere and mangosd does not link. This supplies an empty one. A host that
+# generates a real loader sets TW_EXTERNAL_MODULE_LOADER and the two do not
+# collide.
+if(NOT TW_EXTERNAL_MODULE_LOADER)
+  list(APPEND EXECUTABLE_SRCS
+    ModulesScriptLoaderStub.cpp
+  )
+endif()
+
 if(WIN32)
   list(APPEND EXECUTABLE_SRCS
     mangosd.rc
@@ -39,38 +50,38 @@ if(WIN32)
 endif()
 
 include_directories(
-  ${CMAKE_SOURCE_DIR}/src/shared
-  ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
-  ${CMAKE_SOURCE_DIR}/src/framework
-  ${CMAKE_SOURCE_DIR}/src/framework/Network
-  ${CMAKE_SOURCE_DIR}/src/game
-  ${CMAKE_SOURCE_DIR}/src/game/AI
-  ${CMAKE_SOURCE_DIR}/src/game/Anticheat
-  ${CMAKE_SOURCE_DIR}/src/game/AuctionHouse
-  ${CMAKE_SOURCE_DIR}/src/game/Battlegrounds
-  ${CMAKE_SOURCE_DIR}/src/game/Chat
-  ${CMAKE_SOURCE_DIR}/src/game/Commands
-  ${CMAKE_SOURCE_DIR}/src/game/Database
-  ${CMAKE_SOURCE_DIR}/src/game/Group
-  ${CMAKE_SOURCE_DIR}/src/game/Guild
-  ${CMAKE_SOURCE_DIR}/src/game/Handlers
-  ${CMAKE_SOURCE_DIR}/src/game/LFG
-  ${CMAKE_SOURCE_DIR}/src/game/Mail
-  ${CMAKE_SOURCE_DIR}/src/game/MapNodes
-  ${CMAKE_SOURCE_DIR}/src/game/Maps
-  ${CMAKE_SOURCE_DIR}/src/game/Maps/Pool
-  ${CMAKE_SOURCE_DIR}/src/game/Movement
-  ${CMAKE_SOURCE_DIR}/src/game/Movement/spline
-  ${CMAKE_SOURCE_DIR}/src/game/Objects
-  ${CMAKE_SOURCE_DIR}/src/game/OutdoorPvP
+  ${TW_CORE_ROOT}/src/shared
+  ${TW_CORE_ROOT}/dep/include/g3dlite
+  ${TW_CORE_ROOT}/src/framework
+  ${TW_CORE_ROOT}/src/framework/Network
+  ${TW_CORE_ROOT}/src/game
+  ${TW_CORE_ROOT}/src/game/AI
+  ${TW_CORE_ROOT}/src/game/Anticheat
+  ${TW_CORE_ROOT}/src/game/AuctionHouse
+  ${TW_CORE_ROOT}/src/game/Battlegrounds
+  ${TW_CORE_ROOT}/src/game/Chat
+  ${TW_CORE_ROOT}/src/game/Commands
+  ${TW_CORE_ROOT}/src/game/Database
+  ${TW_CORE_ROOT}/src/game/Group
+  ${TW_CORE_ROOT}/src/game/Guild
+  ${TW_CORE_ROOT}/src/game/Handlers
+  ${TW_CORE_ROOT}/src/game/LFG
+  ${TW_CORE_ROOT}/src/game/Mail
+  ${TW_CORE_ROOT}/src/game/MapNodes
+  ${TW_CORE_ROOT}/src/game/Maps
+  ${TW_CORE_ROOT}/src/game/Maps/Pool
+  ${TW_CORE_ROOT}/src/game/Movement
+  ${TW_CORE_ROOT}/src/game/Movement/spline
+  ${TW_CORE_ROOT}/src/game/Objects
+  ${TW_CORE_ROOT}/src/game/OutdoorPvP
   # PlayerBots include dir removed - Penqle stub binned
-  ${CMAKE_SOURCE_DIR}/src/game/Protocol
-  ${CMAKE_SOURCE_DIR}/src/game/Spells
-  ${CMAKE_SOURCE_DIR}/src/game/Threat
-  ${CMAKE_SOURCE_DIR}/src/game/Transports
-  ${CMAKE_SOURCE_DIR}/src/game/vmap
-  ${CMAKE_BINARY_DIR}/src/shared
-  ${CMAKE_BINARY_DIR}
+  ${TW_CORE_ROOT}/src/game/Protocol
+  ${TW_CORE_ROOT}/src/game/Spells
+  ${TW_CORE_ROOT}/src/game/Threat
+  ${TW_CORE_ROOT}/src/game/Transports
+  ${TW_CORE_ROOT}/src/game/vmap
+  ${TW_CORE_BINARY_DIR}/src/shared
+  ${TW_CORE_BINARY_DIR}
   ${ACE_INCLUDE_DIR}
   ${MYSQL_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
@@ -78,7 +89,7 @@ include_directories(
 
 if(WIN32)
   include_directories(
-    ${CMAKE_SOURCE_DIR}/dep/include-windows
+    ${TW_CORE_ROOT}/dep/include-windows
   )
 endif()
 
@@ -133,29 +144,14 @@ target_link_libraries(${EXECUTABLE_NAME}
     libdeflate
 )
 
-# Boost lib search path for playerbots' transitive boost references.
-# Boost's prebuilt Windows binaries live under lib64-msvc-<toolset> (or
-# BOOST_LIBRARYDIR if the user set it explicitly).
-GetModuleEffectiveLinkage("mod-playerbots" TW_PLAYERBOTS_LINKAGE)
-if(WIN32 AND NOT TW_PLAYERBOTS_LINKAGE STREQUAL "disabled")
-    if(DEFINED ENV{BOOST_LIBRARYDIR})
-        target_link_directories(${EXECUTABLE_NAME} PRIVATE "$ENV{BOOST_LIBRARYDIR}")
-    elseif(DEFINED ENV{BOOST_ROOT})
-        # Map MSVC toolset version (e.g. 1930) to Boost's lib dir suffix
-        # ("14.3"). Falls back to 14.3 (matches Boost 1.86 prebuilt) if the
-        # heuristic doesn't resolve.
-        if(MSVC_TOOLSET_VERSION GREATER_EQUAL 143)
-            set(_boost_lib_suffix "14.3")
-        elseif(MSVC_TOOLSET_VERSION GREATER_EQUAL 142)
-            set(_boost_lib_suffix "14.2")
-        elseif(MSVC_TOOLSET_VERSION GREATER_EQUAL 141)
-            set(_boost_lib_suffix "14.1")
-        else()
-            set(_boost_lib_suffix "14.3")
-        endif()
-        target_link_directories(${EXECUTABLE_NAME} PRIVATE "$ENV{BOOST_ROOT}/lib64-msvc-${_boost_lib_suffix}")
-    endif()
-endif()
+# The Windows Boost link-directory hunt that used to sit here has moved to
+# modules/mod-playerbots/mod-playerbots.cmake in twow-repo. It was here only
+# because the unresolved Boost references arrive at this executable's link line,
+# but the reason they arrive is that one module drags them in -- and asking
+# `GetModuleEffectiveLinkage("mod-playerbots")` from the core meant the core
+# could not configure without the module framework loaded. The module puts the
+# directory on its own target now, and it reaches this link line through the
+# link chain instead.
 
 
 if(WIN32)
