@@ -51,6 +51,15 @@ endif()
 
 include_directories(
   ${TW_CORE_ROOT}/src/shared
+  # Main.cpp includes "ScriptLoader.h" to hand AddScripts to ScriptMgr, and that
+  # header is src/scripts/ScriptLoader.h. Until the module framework was removed
+  # this path reached mangosd by accident: the root linked the `modules` target
+  # in, and that target published MODULES_COMMON_INCLUDES -- which listed
+  # src/scripts -- as PUBLIC usage requirements. So the core compiled only
+  # because a module framework happened to be attached, which is the exact
+  # dependency the seam exists to break. Listed explicitly now; it is the core's
+  # own directory and nothing outside the core is named.
+  ${TW_CORE_ROOT}/src/scripts
   ${TW_CORE_ROOT}/dep/include/g3dlite
   ${TW_CORE_ROOT}/src/framework
   ${TW_CORE_ROOT}/src/framework/Network
