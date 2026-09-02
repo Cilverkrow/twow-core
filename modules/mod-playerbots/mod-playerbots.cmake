@@ -13,9 +13,13 @@ set(PB_ROOT "${CMAKE_SOURCE_DIR}/modules/mod-playerbots")
 find_package(Boost 1.70 REQUIRED COMPONENTS thread filesystem system)
 
 # Both linkage modes: the static path folds this module into `modules`, the
-# dynamic path would give it `mod_mod-playerbots`. Applying to whichever exists
-# keeps one file correct for both.
-foreach(PB_TARGET modules mod_mod-playerbots)
+# dynamic path gives it a target of its own. That target is `mod_mod_playerbots`
+# with UNDERSCORES - the module system replaces the hyphens in `mod-playerbots`.
+# I had written `mod_mod-playerbots` here, which matches nothing, so the dynamic
+# build silently received no defines, no shim and no Boost and died in
+# WorldPosition.h on `'discrete_distribution' is not a member of 'std'`. Both
+# spellings are listed because a target that does not exist is skipped anyway.
+foreach(PB_TARGET modules mod_mod_playerbots mod_mod-playerbots)
   if(NOT TARGET ${PB_TARGET})
     continue()
   endif()
