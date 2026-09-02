@@ -275,7 +275,7 @@ void Creature::AddToWorld()
     // (AllCreatureScript has no per-hook registry; ForEach walks all scripts.)
     if (!bWasInWorld && IsInWorld())
     {
-        ScriptRegistry<AllCreatureScript>::ForEach([&](AllCreatureScript* script)
+        ScriptRegistry<AllCreatureScript>::ForEachEnabledHook(ALLCREATUREHOOK_ON_CREATURE_ADD_WORLD, [&](AllCreatureScript* script)
         {
             script->OnCreatureAddWorld(this);
         });
@@ -287,7 +287,7 @@ void Creature::RemoveFromWorld()
     ///- Remove the creature from the accessor
     if (IsInWorld())
     {
-        ScriptRegistry<AllCreatureScript>::ForEach([&](AllCreatureScript* script)
+        ScriptRegistry<AllCreatureScript>::ForEachEnabledHook(ALLCREATUREHOOK_ON_CREATURE_REMOVE_WORLD, [&](AllCreatureScript* script)
         {
             script->OnCreatureRemoveWorld(this);
         });
@@ -717,7 +717,7 @@ void Creature::Update(uint32 update_diff, uint32 diff)
     update_diff *= sWorld.GetTimeRate();
     diff *= sWorld.GetTimeRate();
 
-    ScriptRegistry<AllCreatureScript>::ForEach([&](AllCreatureScript* script)
+    ScriptRegistry<AllCreatureScript>::ForEachEnabledHook(ALLCREATUREHOOK_ON_ALL_CREATURE_UPDATE, [&](AllCreatureScript* script)
     {
         script->OnAllCreatureUpdate(this, update_diff);
     });
