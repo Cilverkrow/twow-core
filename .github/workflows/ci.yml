@@ -7,13 +7,22 @@
 # workflow" in its verification section. A fork that cannot compile itself
 # cannot honestly claim that any of its 33 candidate upstream fixes are correct.
 #
-# One workflow, one BUILD, on purpose. The sibling repository twow-repo grew to
-# 19 job entries across several workflow files, each with its own slightly
-# different toolchain, and consolidating them back down to 5 cost a day. There
-# is exactly one thing worth compiling here -- that the core builds and links --
-# so there is exactly one job that compiles it.
+# One workflow, one PROPERTY per compiler, on purpose. The sibling repository
+# twow-repo grew to 19 job entries across several workflow files, each with its
+# own slightly different toolchain, and consolidating them back down to 5 cost a
+# day. There is exactly one thing worth compiling here -- that the core builds
+# and links -- so each compile job asserts that and nothing else.
 #
-# The second job, upstream-freshness, compiles nothing and is not a second
+# There are TWO compile jobs, and the second is not a duplicate of the first.
+# `build` is GCC on Debian trixie: the toolchain that actually ships, and the
+# complete gate. `windows-msvc` is cl.exe: it exists because this tree carries
+# source that only MSVC can reject, and until it was added nothing anywhere
+# compiled that source with a Microsoft compiler. Windows is a supported compile
+# target for twow-core -- twow-repo, which is Linux-only, has its own
+# windows-compile job gated off, and this is where that verification now lives.
+# The comment block above the job says which fixes it covers and why GCC cannot.
+#
+# The third job, upstream-freshness, compiles nothing and is not a third
 # toolchain. It asserts that UPSTREAM.lock still describes the branch this fork
 # actually tracks; see the comment above it.
 
@@ -391,3 +400,354 @@ jobs:
           name: server-binaries
           path: out/
           retention-days: 7
+
+  # --------------------------------------------------------------- MSVC
+  #
+  # The first job in this repository's history that puts a Microsoft compiler
+  # anywhere near this tree.
+  #
+  # WHY IT EXISTS. The core carries fixes that exist solely for MSVC and that
+  # nothing verified until now:
+  #
+  #   * src/game/SharedDefines.h - TW_PI. MSVC's <math.h> defines M_PI only if
+  #     _USE_MATH_DEFINES was defined before the FIRST include of that header,
+  #     and <cmath> is #pragma once, so a TU that reached it earlier through
+  #     <algorithm> or G3D has already missed the window. The observed failure
+  #     was four "'M_PI': undeclared identifier" in src/game/Commands/Commands.cpp.
+  #   * src/game/WorldSession.{h,cpp} - QueuePacket(std::unique_ptr<WorldPacket>)
+  #     is defined out of line because MSVC instantiates default_delete eagerly
+  #     on a type the header only forward-declares. GCC defers far enough to get
+  #     away with the inline version.
+  #
+  # Both are ordinary C++ that GCC accepts, so the Debian job above cannot fail
+  # on either of them. Only a compile with cl.exe can, and there was none.
+  #
+  # A third fix was expected here and is NOT in this repository: the
+  # strtok_r -> strtok_s shim from twow-repo PR #8. "grep -rn strtok_r src/"
+  # returns nothing in twow-core - neither the call nor the shim. That fix lives
+  # in twow-repo's modules/, which is what msvc-portability.yml's static checker
+  # covers, and it is out of this job's reach by construction.
+  #
+  # WHY IT LIVES HERE AND NOT IN twow-repo. twow-repo is private, so hosted
+  # runners are metered there and its windows-compile job has never once
+  # executed. twow-core is public: GitHub-hosted runners, Windows included, are
+  # free. The gated job in twow-repo's ci.yml was read before this was written
+  # and its vcpkg cache-key reasoning is reused below; the rest of it is not,
+  # for the reasons each step gives.
+  #
+  # A CORRECTION THIS JOB IS EVIDENCE FOR. twow-repo's ci.yml carries the claim
+  # "A clean clone CANNOT link on Windows - dep/windows/lib and mangosd.ico are
+  # pinned external inputs kept out of Git (ADR-0019)". In this repository that
+  # is false and has been for some time: "git ls-files dep/windows/lib" lists 36
+  # tracked files (the MySQL and OpenSSL import libraries and their DLLs, win32
+  # and x64, debug and release) and src/mangosd/mangosd.ico is tracked at 16958
+  # bytes. The "Prove the clean checkout is self-sufficient" step below asserts
+  # exactly that against the checkout this job is given, so the claim is now
+  # checked on every run rather than repeated.
+  windows-msvc:
+    name: Build core (MSVC, windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    env:
+      # Written once, used twice - to install and to key the cache. Spelling the
+      # package list out in two places is how a cache outlives the dependency set
+      # it was built for and starts handing back the wrong ACE.
+      #
+      # ACE is the ONLY thing vcpkg is asked for. That is a measured claim, not
+      # an assumption:
+      #   MySQL, OpenSSL  - the root CMakeLists points WIN32 builds at
+      #                     dep/windows/{include,lib}, which are in Git.
+      #   zlib, bz2       - built from source out of dep/src/.
+      #   Boost           - "grep -rn boost/ src/" finds zero includes in the
+      #                     standalone core. Boost arrives only through
+      #                     twow-repo's mod-playerbots, which is not here. The
+      #                     twow-repo reference job installs four boost-* ports
+      #                     this build has no use for.
+      # ACE has no vendored copy and no other source, so it is the one port.
+      VCPKG_TRIPLET: x64-windows
+      VCPKG_PACKAGES: ace
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-cache
+
+    steps:
+      # Must precede checkout: core.longpaths is read when the working tree is
+      # written. This is Git's own 260-character MAX_PATH limit, not the
+      # filesystem's, and one new deep path would otherwise break every Windows
+      # run with an error that names a filename and not the cause.
+      - name: Allow long paths
+        run: git config --system core.longpaths true
+
+      # fetch-depth 0 for the same reason as the Debian job - cmake/revision.h.cmake
+      # shells out to git and falls back to "unknown 1970-01-01 (Archived)"
+      # silently when it cannot resolve a hash.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # Ninja ships in the Visual Studio installation on the hosted images, but
+      # whether it is on PATH has changed between image releases. Checking and
+      # falling back costs seconds; discovering it is missing inside "cmake -G
+      # Ninja" costs a confusing error about a generator.
+      - name: Ensure Ninja
+        shell: pwsh
+        run: |
+          if (Get-Command ninja -ErrorAction SilentlyContinue) {
+            Write-Host "ninja: $(ninja --version)"
+          } else {
+            Write-Host "ninja not on PATH - installing"
+            choco install ninja --no-progress -y
+          }
+
+      # ADR-0019's premise, checked rather than recited. See the block above the
+      # job for why: twow-repo's ci.yml still asserts the opposite in a comment,
+      # and that comment has been steering decisions.
+      - name: Prove the clean checkout is self-sufficient
+        shell: pwsh
+        run: |
+          $missing = @()
+          $required = @(
+            'dep/windows/lib/x64_release/libmySQL.lib',
+            'dep/windows/lib/x64_release/libssl.lib',
+            'dep/windows/lib/x64_release/libcrypto.lib',
+            'dep/windows/include/mysql/mysql.h',
+            'dep/windows/include/openssl/ssl.h',
+            'dep/windows/include/zlib/zlib.h',
+            'src/mangosd/mangosd.ico'
+          )
+          foreach ($p in $required) {
+            if (Test-Path $p) {
+              Write-Host ("present: {0} ({1} bytes)" -f $p, (Get-Item $p).Length)
+            } else {
+              $missing += $p
+              Write-Host "::error file=$p::required Windows input is not in this checkout"
+            }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Error "$($missing.Count) tracked Windows input(s) missing - a clean clone cannot build Windows"
+            exit 1
+          }
+
+      # The compiler has to be in the cache key. A vcpkg binary package built by
+      # a different MSVC toolset is not a cache miss, it is a wrong answer.
+      # VCToolsVersion is that toolset's build number and msvc-dev-cmd exports
+      # it; asking cl.exe for its banner instead would mean capturing a native
+      # command's stderr, which PowerShell 5.1 turns into an error record.
+      - name: Record what the cache is keyed on
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci, $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          $toolset = if ($env:VCToolsVersion) { $env:VCToolsVersion } else { 'unknown-toolset' }
+          $sdk     = if ($env:WindowsSDKVersion) { $env:WindowsSDKVersion } else { 'unknown-sdk' }
+          $vcpkgVersion = (vcpkg version) -join ' '
+          @(
+            "toolset=$toolset"
+            "sdk=$sdk"
+            "vcpkg=$vcpkgVersion"
+            "triplet=$env:VCPKG_TRIPLET"
+            "packages=$env:VCPKG_PACKAGES"
+          ) | Set-Content -Encoding utf8 .ci/msvc-cache-key.txt
+          Get-Content .ci/msvc-cache-key.txt
+
+      # No restore-keys and no run-id suffix. A vcpkg binary package is either
+      # the one this exact toolset and package list asked for or it is useless,
+      # so an inexact hit would only mean rebuilding ACE with extra steps. On an
+      # exact hit actions/cache skips the save, which is why this entry does not
+      # grow on every push.
+      #
+      # A MISS IS STILL A CORRECT BUILD, not a skipped one: vcpkg builds ACE
+      # from source when the binary cache has nothing, which is the ~19 minutes
+      # measured locally. Nothing below is conditional on the cache having hit.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: msvc-vcpkg-${{ hashFiles('.ci/msvc-cache-key.txt') }}
+
+      # vcpkg's binary caching is on by default and writes to
+      # VCPKG_DEFAULT_BINARY_CACHE, so the env var above is the whole
+      # configuration. The package list comes from the same variable the cache
+      # key was built from, so the two cannot disagree.
+      - name: Install ACE
+        shell: pwsh
+        run: |
+          $pkgs = ($env:VCPKG_PACKAGES -split ' +') | ForEach-Object { $_ + ':' + $env:VCPKG_TRIPLET }
+          Write-Host "vcpkg install $($pkgs -join ' ')"
+          vcpkg install @pkgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The OpenSSL trap, resolved rather than risked.
+      #
+      # The root CMakeLists puts ACE_INCLUDE_DIR ahead of OPENSSL_INCLUDE_DIR on
+      # src/game's and src/shared's include path. vcpkg installs every port into
+      # ONE shared include root, so if anything in that root ships OpenSSL
+      # headers they shadow the bundled 1.1.1 headers in dep/windows/include -
+      # and the build then compiles against 3.x while linking 1.1.1. The symptom
+      # is exactly two unresolved symbols, OSSL_PROVIDER_load and
+      # SSL_get1_peer_certificate, both of them version-guarded in the source and
+      # therefore only referenced when the headers claim 3.x. That is a link
+      # error that names OpenSSL nowhere.
+      #
+      # So: look, decide, and say which was chosen. If vcpkg brought OpenSSL in
+      # (today ACE's default features do not, but that is a port's decision and
+      # not ours), point the build at that copy so headers and import libraries
+      # are the same version - which is the remedy the root CMakeLists documents.
+      # Otherwise keep the bundled copy. Neither branch can silently mismatch.
+      - name: Choose an OpenSSL
+        shell: pwsh
+        run: |
+          $inst = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed/$env:VCPKG_TRIPLET"
+          Write-Host "vcpkg installed prefix: $inst"
+          "ACE_ROOT=$inst" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if (Test-Path (Join-Path $inst 'include/openssl/opensslv.h')) {
+            Write-Host "vcpkg's include root carries OpenSSL headers - using vcpkg's OpenSSL for headers AND libraries."
+            "TW_OPENSSL_INCLUDE_DIR=$inst/include" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "TW_OPENSSL_LIBRARIES=$inst/lib/libssl.lib;$inst/lib/libcrypto.lib" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          } else {
+            Write-Host "vcpkg's include root has no OpenSSL - keeping the bundled 1.1.1 in dep/windows."
+            "TW_OPENSSL_INCLUDE_DIR=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "TW_OPENSSL_LIBRARIES=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          Get-ChildItem (Join-Path $inst 'lib') -Filter '*.lib' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+
+      # ACE_ROOT rather than the vcpkg toolchain file. cmake/FindACE.cmake's
+      # WIN32 branch searches ${ACE_ROOT} and $ENV{ACE_ROOT} explicitly, so this
+      # is the search path the module was written for; the toolchain file would
+      # work too, by way of CMAKE_PREFIX_PATH, but it also drops vcpkg's shared
+      # prefix in front of every other find_package in the tree for no benefit
+      # here - ACE is the only port installed.
+      #
+      # NO sccache, deliberately, and this is the one place this job diverges
+      # from twow-repo's reference version. That job turns USE_PCH off (sccache
+      # refuses any TU compiled with /Yu) and MSVC_SEPARATE_PDB off (it refuses
+      # /Zi too), and its own comment concedes a COLD build is then slower than
+      # no cache at all. Two things make that trade worse here:
+      #   * MSVC_SEPARATE_PDB does not exist in twow-core. The root CMakeLists
+      #     appends /Zi to CMAKE_CXX_FLAGS_RELEASE unconditionally for MSVC, so
+      #     there is no supported way to switch it off from the command line and
+      #     sccache would decline every single translation unit while reporting
+      #     success.
+      #   * This job LINKS. Building objects that a shipped configuration would
+      #     never produce, in order to make a cache work, weakens the only
+      #     assertion the job makes.
+      # The expensive dependency is ACE and that IS cached, above. If the compile
+      # itself turns out to dominate, the answer is a cheaper trigger (see the
+      # note at the end of this job), not a cache that only works on a build
+      # nobody ships.
+      - name: Configure
+        shell: pwsh
+        run: |
+          $cmakeArgs = @(
+            '-S', '.', '-B', 'build', '-G', 'Ninja',
+            '-DCMAKE_BUILD_TYPE=Release',
+            "-DACE_ROOT=$env:ACE_ROOT"
+          )
+          if ($env:TW_OPENSSL_INCLUDE_DIR) {
+            $cmakeArgs += "-DOPENSSL_INCLUDE_DIR=$env:TW_OPENSSL_INCLUDE_DIR"
+            $cmakeArgs += "-DOPENSSL_LIBRARIES=$env:TW_OPENSSL_LIBRARIES"
+          }
+          Write-Host "cmake $($cmakeArgs -join ' ')"
+          cmake @cmakeArgs | Tee-Object -FilePath configure-msvc.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The same standalone-core assertion the Debian job makes, on the same
+      # configure output. A Windows-only regression that reintroduced a modules/
+      # path would otherwise be invisible until twow-repo built it.
+      - name: Assert the core does not know the platform exists
+        shell: pwsh
+        run: |
+          if (-not (Select-String -Path configure-msvc.log -SimpleMatch 'Host extensions       : none (standalone core)' -Quiet)) {
+            Write-Error "configure did not report a standalone core"
+            exit 1
+          }
+          Write-Host "standalone core confirmed"
+
+      # mangosd and realmd - the same two targets the Debian job builds, so a
+      # green tick here means the same thing it means there.
+      #
+      # Whether the SERVER links on Windows is genuinely unknown at the time this
+      # was written. The only local Windows build anyone has done on this tree
+      # compiled and linked the four extractors and their libraries and stopped
+      # before ever attempting mangosd or realmd. If this step fails, the failure
+      # IS the finding and the job stays red until it is fixed. It is not
+      # continue-on-error and must not become one.
+      - name: Build mangosd and realmd
+        shell: pwsh
+        run: |
+          Write-Host "free space before:"
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Used } |
+            Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}} | Out-String | Write-Host
+          cmake --build build --target mangosd realmd --parallel
+          $rc = $LASTEXITCODE
+          Write-Host "free space after:"
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Used } |
+            Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}} | Out-String | Write-Host
+          if ($rc -ne 0) { exit $rc }
+
+      # The point of the whole job, asserted rather than assumed.
+      #
+      # "The build was green" does not establish that the MSVC-only fixes were
+      # compiled - a target rename, a source-list edit or a configure that
+      # quietly dropped src/game would all leave a green job that proved nothing.
+      # These are the two translation units that carry the fixes, named
+      # individually. WorldSession.cpp holds the out-of-line QueuePacket, and
+      # Commands.cpp is the file whose four "'M_PI': undeclared identifier"
+      # errors caused TW_PI to exist; TW_PI itself is referenced only from
+      # constexpr functions inside SharedDefines.h, which every TU that includes
+      # that header parses and checks in full.
+      - name: Confirm the MSVC-only fixes were actually compiled
+        if: always()
+        shell: pwsh
+        run: |
+          $wanted = [ordered]@{
+            'WorldSession.cpp.obj' = 'src/game/WorldSession.cpp - out-of-line QueuePacket(unique_ptr)'
+            'Commands.cpp.obj'     = 'src/game/Commands/Commands.cpp - includes SharedDefines.h / TW_PI'
+          }
+          $objs = Get-ChildItem build -Recurse -Filter *.obj -ErrorAction SilentlyContinue
+          Write-Host "$($objs.Count) object files in the build tree"
+          $fail = $false
+          foreach ($name in $wanted.Keys) {
+            $hit = $objs | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+            if ($hit) {
+              Write-Host ("compiled: {0} -> {1}" -f $wanted[$name], $hit.FullName)
+            } else {
+              Write-Host "::error::$name was never compiled - $($wanted[$name]) is NOT covered by this job"
+              $fail = $true
+            }
+          }
+          if ($fail) { exit 1 }
+
+      - name: Confirm the executables linked
+        shell: pwsh
+        run: |
+          $fail = $false
+          $roots = @('build', 'bin') | Where-Object { Test-Path $_ }
+          foreach ($exe in @('mangosd.exe', 'realmd.exe')) {
+            $hit = Get-ChildItem $roots -Recurse -Filter $exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($hit) {
+              Write-Host ("linked: {0} ({1:N1} MB) at {2}" -f $exe, ($hit.Length/1MB), $hit.FullName)
+            } else {
+              Write-Host "::error::$exe was not produced"
+              $fail = $true
+            }
+          }
+          if ($fail) { exit 1 }
+
+      # Nothing is uploaded. A Windows binary out of this job has no consumer -
+      # the deployment platform is Linux and Docker - and the .pdb files /Zi
+      # produces are large. The link succeeding is the whole result; the bytes
+      # are not wanted.
+      #
+      # TRIGGER, LEFT AS IT IS ON PURPOSE. This job runs wherever the Debian job
+      # runs: pushes to main, every pull request, and workflow_dispatch. That is
+      # the most expensive of the three options considered (the others being
+      # pull-request-only and nightly), and it is deliberately a starting point
+      # rather than an answer: nobody has a measurement of what a warm MSVC build
+      # of this tree costs, because this is the first one. The run timings this
+      # job produces ARE that measurement. If the warm number is large enough to
+      # hurt, moving it to pull_request only - or to a nightly schedule - is a
+      # one-line change, and it should be made on the numbers rather than ahead
+      # of them.
