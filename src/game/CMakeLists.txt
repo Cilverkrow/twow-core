@@ -550,6 +550,34 @@ if(BUILD_ELUNA)
     list(APPEND ELUNA_SRCS ${ELUNA_MSVC_SOURCE_DIR}/SpellHooks.cpp)
   endif()
 
+  # Eluna's hooks/Hooks.h declares `uint8 id;` and `enum RegisterTypes : uint8`
+  # while including nothing that declares uint8: its one include is guarded by
+  # ELUNA_CMANGOS, and we define ELUNA_VMANGOS. Every hooks/*.cpp opens with
+  # `#include "Hooks.h"` before LuaEngine.h, so those translation units only
+  # ever compiled because a precompiled header force-included Common.h ahead of
+  # them. MSVC with the Ninja generator gets no precompiled header at all --
+  # USE_PCH_OLD defaults ON for MSVC and routes to ADD_NATIVE_PRECOMPILED_HEADER,
+  # whose non-Visual-Studio branch has a commented-out body -- and the same is
+  # true of any build configured with -DUSE_PCH=OFF. Both fail here.
+  #
+  # src/modules/Eluna is a pinned submodule of a repository we do not own, so
+  # the include cannot be added where it belongs. Force-including Common.h for
+  # Eluna's own sources restores, explicitly and scoped to those files, exactly
+  # what the precompiled header was doing for them implicitly. It is
+  # deliberately NOT applied to our own sources: their missing declarations are
+  # fixed in the headers instead.
+  if(MSVC)
+    set(ELUNA_FORCE_COMMON_H "/FI${TW_CORE_ROOT}/src/shared/Common.h")
+  else()
+    set(ELUNA_FORCE_COMMON_H "-include" "${TW_CORE_ROOT}/src/shared/Common.h")
+  endif()
+  foreach(eluna_src IN LISTS ELUNA_SRCS)
+    if(eluna_src MATCHES "\.cpp$")
+      set_property(SOURCE ${eluna_src} APPEND PROPERTY
+        COMPILE_OPTIONS ${ELUNA_FORCE_COMMON_H})
+    endif()
+  endforeach()
+
   list(APPEND game_SRCS ${ELUNA_SRCS})
 endif()
 
