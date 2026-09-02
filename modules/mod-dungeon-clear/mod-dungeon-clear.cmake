@@ -209,6 +209,17 @@ if(TORTOISE_MODULE_CMAKE_PHASE STREQUAL "POST_TARGETS")
   # playerbots used to be its own library; both modules share the `modules`
   # target now, so there is nothing left to link against.
 
-  target_compile_options(modules PRIVATE
-    -include ${CMAKE_CURRENT_LIST_DIR}/src/AcCompat.h)
+  # AcCompat.h has to be forced ahead of every translation unit: NONE of this
+  # module's 234 sources include it, and 47 of them use the LOG_* macros that
+  # only exist there. The flag for that is compiler-specific, and getting it
+  # wrong is silent - MSVC does not know `-include`, drops it with at most a
+  # D9002, and every one of those 47 files then fails on undefined macros.
+  # Reported from a Windows build on 2026-09-02 with both modules static.
+  if(MSVC)
+    target_compile_options(modules PRIVATE
+      "/FI${CMAKE_CURRENT_LIST_DIR}/src/AcCompat.h")
+  else()
+    target_compile_options(modules PRIVATE
+      -include ${CMAKE_CURRENT_LIST_DIR}/src/AcCompat.h)
+  endif()
 endif()

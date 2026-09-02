@@ -13,9 +13,13 @@ set(PB_ROOT "${CMAKE_SOURCE_DIR}/modules/mod-playerbots")
 find_package(Boost 1.70 REQUIRED COMPONENTS thread filesystem system)
 
 # Both linkage modes: the static path folds this module into `modules`, the
-# dynamic path would give it `mod_mod-playerbots`. Applying to whichever exists
-# keeps one file correct for both.
-foreach(PB_TARGET modules mod_mod-playerbots)
+# dynamic path gives it a target of its own. That target is `mod_mod_playerbots`
+# with UNDERSCORES - the module system replaces the hyphens in `mod-playerbots`.
+# I had written `mod_mod-playerbots` here, which matches nothing, so the dynamic
+# build silently received no defines, no shim and no Boost and died in
+# WorldPosition.h on `'discrete_distribution' is not a member of 'std'`. Both
+# spellings are listed because a target that does not exist is skipped anyway.
+foreach(PB_TARGET modules mod_mod_playerbots mod_mod-playerbots)
   if(NOT TARGET ${PB_TARGET})
     continue()
   endif()
@@ -26,6 +30,19 @@ foreach(PB_TARGET modules mod_mod-playerbots)
   #                     spell ranges. MANGOSBOT_ONE for TBC, _TWO for WotLK.
   #   ENABLE_PLAYERBOTS - the vendor tree's own on/off wall.
   target_compile_definitions(${PB_TARGET} PRIVATE CMANGOS MANGOSBOT_ZERO ENABLE_PLAYERBOTS)
+
+  # The vendored sources were built with botpch.h. Besides speeding up their
+  # build, it is their common compatibility boundary: cmangos-compat-shim.h
+  # maps CMaNGOS names used throughout the bot sources to this core's API.
+  # The aggregate module target used after the move had no PCH, so every one
+  # of those declarations silently disappeared from the translation units.
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.16")
+    target_precompile_headers(${PB_TARGET} PRIVATE "${PB_ROOT}/botpch.h")
+  elseif(MSVC)
+    target_compile_options(${PB_TARGET} PRIVATE "/FI${PB_ROOT}/botpch.h")
+  else()
+    target_compile_options(${PB_TARGET} PRIVATE "-include${PB_ROOT}/botpch.h")
+  endif()
 
   target_link_libraries(${PB_TARGET}
     PRIVATE Boost::thread
@@ -71,6 +88,7 @@ foreach(PB_TARGET modules mod_mod-playerbots)
     ${CMAKE_SOURCE_DIR}/src/game/Handlers
     ${CMAKE_SOURCE_DIR}/src/game/LFG
     ${CMAKE_SOURCE_DIR}/src/game/Mail
+    ${CMAKE_SOURCE_DIR}/src/game/MapNodes
     ${CMAKE_SOURCE_DIR}/src/game/Maps
     ${CMAKE_SOURCE_DIR}/src/game/Maps/Pool
     ${CMAKE_SOURCE_DIR}/src/game/Movement
