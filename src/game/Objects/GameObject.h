@@ -663,6 +663,9 @@ enum LootState
     GO_JUST_DEACTIVATED
 };
 
+// GetGroupLootRecipient() returns Group*, and this header never declares it.
+// It was only ever in scope through the precompiled header's ObjectMgr.h.
+class Group;
 class Unit;
 class GameObjectAI;
 class GameObjectModel;
