@@ -567,9 +567,13 @@ if(BUILD_ELUNA)
   # deliberately NOT applied to our own sources: their missing declarations are
   # fixed in the headers instead.
   if(MSVC)
-    set(ELUNA_FORCE_COMMON_H "/FI${TW_CORE_ROOT}/src/shared/Common.h")
+    set(ELUNA_FORCE_COMMON_H  "/FI${TW_CORE_ROOT}/src/shared/Common.h")
+    set(ELUNA_FORCE_OBJECTMGR "/FI${TW_CORE_ROOT}/src/game/ObjectMgr.h")
+    set(ELUNA_FORCE_MAPMGR    "/FI${TW_CORE_ROOT}/src/game/Maps/MapManager.h")
   else()
-    set(ELUNA_FORCE_COMMON_H "-include" "${TW_CORE_ROOT}/src/shared/Common.h")
+    set(ELUNA_FORCE_COMMON_H  "-include" "${TW_CORE_ROOT}/src/shared/Common.h")
+    set(ELUNA_FORCE_OBJECTMGR "-include" "${TW_CORE_ROOT}/src/game/ObjectMgr.h")
+    set(ELUNA_FORCE_MAPMGR    "-include" "${TW_CORE_ROOT}/src/game/Maps/MapManager.h")
   endif()
   foreach(eluna_src IN LISTS ELUNA_SRCS)
     if(eluna_src MATCHES "\.cpp$")
@@ -577,6 +581,21 @@ if(BUILD_ELUNA)
         COMPILE_OPTIONS ${ELUNA_FORCE_COMMON_H})
     endif()
   endforeach()
+
+  # Two of Eluna's sources reach past Common.h for singletons they also never
+  # include. ElunaUtility.cpp names sObjectMgr -- `extern ObjectMgr sObjectMgr`
+  # in src/game/ObjectMgr.h -- inside its `#if defined ELUNA_VMANGOS` branch, so
+  # only a VMaNGOS build reaches the line at all. ElunaLoader.cpp names sMapMgr,
+  # which is a macro in src/game/Maps/MapManager.h. Same defect and same reason
+  # it stayed invisible: the precompiled header lists both headers.
+  #
+  # Named per file rather than folded into the blanket force-include above, so
+  # this stays a statement about which third-party file needs which header
+  # instead of a second precompiled header by another name.
+  set_property(SOURCE ${TW_CORE_ROOT}/src/modules/Eluna/ElunaUtility.cpp APPEND
+    PROPERTY COMPILE_OPTIONS ${ELUNA_FORCE_OBJECTMGR})
+  set_property(SOURCE ${TW_CORE_ROOT}/src/modules/Eluna/ElunaLoader.cpp APPEND
+    PROPERTY COMPILE_OPTIONS ${ELUNA_FORCE_MAPMGR})
 
   list(APPEND game_SRCS ${ELUNA_SRCS})
 endif()
