@@ -1,0 +1,26 @@
+# What must NOT be excluded here is more important than what is.
+#
+# .git STAYS IN THE CONTEXT. cmake/revision.h.cmake shells out to git for the
+# commit hash and falls back to "unknown 1970-01-01 (Archived)" when there is no
+# repository -- silently, because that fallback exists for source tarballs. An
+# `.git` line in this file is the easy way to ship an image that cannot say
+# which commit built it, and nothing fails to warn you.
+#
+# The rest is the local build tree. A developer's build/ directory is the object
+# tree -- around 20 GB with DEBUG_SYMBOLS on -- and without these lines every
+# byte of it is tarred up and sent to the daemon before the first RUN, on a
+# build that is going to discard it and compile from scratch anyway.
+build/
+build-*/
+out/
+stage/
+.ccache/
+configure.log
+
+# Editor and OS noise. Harmless in the image, but each one is a context change
+# that invalidates the COPY layer and every layer after it.
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
