@@ -767,7 +767,18 @@ jobs:
           Write-Host "free space before:"
           Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Used } |
             Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}} | Out-String | Write-Host
-          cmake --build build --target mangosd realmd --parallel
+          # -k 0 - keep going after a failure instead of stopping at the first.
+          #
+          # Ninja's default is to stop, which is right for a developer's inner
+          # loop and wrong for a job like this one: every red run then reports
+          # exactly ONE broken translation unit, and finding out whether there
+          # are two more or two hundred costs a full push-and-wait per error.
+          # Run 33654643574 stopped on the first one. With -k 0 a single run is
+          # an inventory: every TU cl.exe rejects appears in the same log, and
+          # the coverage step below can still say which of the two MSVC-only
+          # fixes were reached. The job is no less red - ninja still exits
+          # non-zero and the link still does not happen.
+          cmake --build build --target mangosd realmd --parallel -- -k 0
           $rc = $LASTEXITCODE
           Write-Host "free space after:"
           Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Used } |
