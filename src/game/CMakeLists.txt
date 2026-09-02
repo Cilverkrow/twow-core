@@ -41,7 +41,6 @@ set (game_SRCS
     ObjectMgr.cpp
     ObjectPosSelector.cpp
     PlayerDump.cpp
-    ModuleSlots.cpp
     QuestDef.cpp
     ReputationMgr.cpp
     ScriptObjects.h
