@@ -144,3 +144,30 @@ order 816 62070 8     # Overlord Blackheart
 order 816 62038 9     # Elder Hollowblood
 order 816 62072 10    # Searistrasz
 order 816 62037 11    # Zuluhed the Whacked
+
+# --- Scarlet Monastery (189) -----------------------------------------------
+# Four isolated wings; the order is global per map but the wing filter shows a
+# party only its own wing, so what matters is the sequence WITHIN each wing.
+#
+# Walked and dictated by the server owner 2026-09-02. Three Turtle-custom
+# bosses were missing entirely - the auto-derived list never carried them, and
+# an `order` line credits an entry as well, which is what gives them their
+# kill-bit (index-1) so they can ever count as done:
+#     61972 Duke Dreadmoore              61.7x trash health, single spawn
+#     61983 Brother Wystan               12.7x
+#     61982 Armory Quartermaster Daghelm 16.3x
+#
+# Cathedral: Fairbanks first, then the Mograine/Whitemane fight. Whitemane is
+# listed again here after being removed in code for years - see
+# ScarletMonasteryEvents.cpp for why that removal went away.
+order 189 3983  1     # Interrogator Vishas            Graveyard
+order 189 61972 2     # Duke Dreadmoore                Graveyard  (Turtle custom)
+order 189 4543  3     # Bloodmage Thalnos              Graveyard
+order 189 3974  4     # Houndmaster Loksey             Library
+order 189 61983 5     # Brother Wystan                 Library    (Turtle custom)
+order 189 6487  6     # Arcanist Doan                  Library
+order 189 61982 7     # Armory Quartermaster Daghelm   Armory     (Turtle custom)
+order 189 3975  8     # Herod                          Armory
+order 189 4542  9     # High Inquisitor Fairbanks      Cathedral
+order 189 3976  10    # Scarlet Commander Mograine     Cathedral
+order 189 3977  11    # High Inquisitor Whitemane      Cathedral

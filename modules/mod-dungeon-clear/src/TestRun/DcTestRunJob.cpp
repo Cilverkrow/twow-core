@@ -2040,8 +2040,37 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
 
     if (!tank || !tankAI)
     {
-        obs.leaderMissing = true;
-        obs.leaderGoneFromWorld = !tank;
+        // A tank BETWEEN MAPS is not a lost tank. FindTank uses
+        // ObjectAccessor::FindPlayer, which returns null for a Player whose
+        // IsInWorld() is false - and that is precisely the state a teleport
+        // passes through. So an ordinary map change read as "the leader
+        // vanished" and killed the run.
+        //
+        // Measured 2026-09-02: 37 Dragonmaw runs died overnight on "leader tank
+        // left the world" while the destruction probe (DC-BOTLIFE, fired from
+        // Player::~Player for any bot still under run protection) reported
+        // ZERO. Nothing was ever destroyed; every one of them was this false
+        // alarm. It is the same mistake a guard of mine made the day before,
+        // from the other direction - asking a registry whether a pointer is
+        // good, when the honest answer during a teleport is "not right now".
+        //
+        // Only FindPlayerNotInWorld coming back empty means the Player is
+        // really gone. A transient absence is left alone: the no-progress
+        // watchdog already ends a run that stops getting anywhere, so this
+        // check does not have to be the safety net as well.
+        Player* const tankAnywhere = ObjectAccessor::FindPlayerNotInWorld(_tankGuid);
+        if (!tankAnywhere)
+        {
+            obs.leaderMissing = true;
+            obs.leaderGoneFromWorld = true;
+        }
+        else if (!GET_PLAYERBOT_AI(tankAnywhere))
+        {
+            // Present but without its AI - a real fault, and a different one.
+            obs.leaderMissing = true;
+            obs.leaderGoneFromWorld = false;
+        }
+        // else: in transit between maps. Say nothing and let the run continue.
     }
     else
     {
