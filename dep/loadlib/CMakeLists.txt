@@ -18,8 +18,8 @@ add_library (loadlib loadlib.cpp  adt.cpp  wdt.cpp)
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${TW_CORE_ROOT}/dep
-  ${TW_CORE_ROOT}/dep/include
+  ${CMAKE_SOURCE_DIR}/dep
+  ${CMAKE_SOURCE_DIR}/dep/include
 )
 
 # link loadlib with zlib

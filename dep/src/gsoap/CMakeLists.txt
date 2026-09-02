@@ -23,7 +23,7 @@ set (gsoap_SRCS
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${TW_CORE_ROOT}/dep/include/gsoap
+  ${CMAKE_SOURCE_DIR}/dep/include/gsoap
 )
 
 add_library(gsoap STATIC
