@@ -484,6 +484,14 @@ jobs:
         with:
           fetch-depth: 0
 
+          # Same reason the Debian job needs it: src/modules/Eluna is a
+          # submodule and the root CMakeLists FATAL_ERRORs at line 81 when
+          # LuaEngine.h is absent, because BUILD_ELUNA defaults ON. Leaving it
+          # out cost run 33652876715 - which had already spent 5.5 minutes
+          # building ACE - a three-second configure and the message "Eluna
+          # submodule is missing".
+          submodules: recursive
+
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -561,8 +569,19 @@ jobs:
       # A MISS IS STILL A CORRECT BUILD, not a skipped one: vcpkg builds ACE
       # from source when the binary cache has nothing, which is the ~19 minutes
       # measured locally. Nothing below is conditional on the cache having hit.
+      #
+      # restore/save as two steps rather than one actions/cache, because
+      # actions/cache's combined form saves in a post step that DOES NOT RUN
+      # when the job fails. That is precisely backwards for this job: ACE is the
+      # 5.5-minute part, it succeeds long before anything interesting can go
+      # wrong, and the runs where the compile fails are exactly the runs that
+      # will be repeated. Run 33652876715 built ACE, failed in `Configure`
+      # seconds later, and threw the ACE away. The save below is if: always()
+      # and sits directly after the install, so what was paid for is kept
+      # whatever the rest of the job does.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v4
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: .vcpkg-cache
           key: msvc-vcpkg-${{ hashFiles('.ci/msvc-cache-key.txt') }}
@@ -609,6 +628,15 @@ jobs:
           Write-Host "installing $($pkgs.Count) port(s): $($pkgs -join ', ')"
           & $vcpkgExe install --vcpkg-root $vcpkgRoot @pkgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Skipped on an exact hit - there is nothing new to write, and actions/cache
+      # would reject the duplicate key anyway.
+      - name: Save the vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-cache
+          key: msvc-vcpkg-${{ hashFiles('.ci/msvc-cache-key.txt') }}
 
       # The OpenSSL trap, resolved rather than risked.
       #
