@@ -13,12 +13,28 @@
 set(MODULE_LINKAGE_VALUES disabled static dynamic default)
 
 function(GetModulesBasePath variable)
-  set(${variable} "${CMAKE_SOURCE_DIR}/modules" PARENT_SCOPE)
+  set(${variable} "${TW_MODULES_DIR}" PARENT_SCOPE)
 endfunction()
 
 function(GetPathToModuleSource module variable)
   GetModulesBasePath(MODULE_BASE_PATH)
   set(${variable} "${MODULE_BASE_PATH}/${module}/src" PARENT_SCOPE)
+endfunction()
+
+# Resolves what a module's linkage actually is, folding the "default" sentinel
+# into the tree-wide MODULES setting. src/game needs it to decide whether to
+# compile PlayerbotStubs.cpp: the stubs and the real module define the same
+# eleven symbols, so getting this wrong is a duplicate-symbol link failure in
+# one direction and eleven undefined ones in the other. Asking
+# `if(NOT BUILD_PLAYERBOTS)` cannot answer it -- that option says nothing about
+# a module's linkage.
+function(GetModuleEffectiveLinkage module variable)
+  ModuleNameToVariable("${module}" MODULE_VARIABLE)
+  if("${${MODULE_VARIABLE}}" STREQUAL "default" OR "${${MODULE_VARIABLE}}" STREQUAL "")
+    set(${variable} "${MODULES_DEFAULT_LINKAGE}" PARENT_SCOPE)
+  else()
+    set(${variable} "${${MODULE_VARIABLE}}" PARENT_SCOPE)
+  endif()
 endfunction()
 
 function(ModuleNameToVariable module variable)
@@ -35,8 +51,13 @@ function(GetModuleSourceList variable)
     return()
   endif()
 
+  # CONFIGURE_DEPENDS so that CREATING a module directory re-triggers configure.
+  # Without it a newly added module is silently not in the build until somebody
+  # happens to re-run cmake, and the symptom is a missing Add<name>Scripts()
+  # link error a long way from the cause.
   file(GLOB LOCAL_MODULE_LIST RELATIVE
     "${MODULE_BASE_PATH}"
+    CONFIGURE_DEPENDS
     "${MODULE_BASE_PATH}/*")
 
   set(MODULE_SOURCE_LIST)
@@ -289,7 +310,7 @@ function(GetModuleConfigList variable)
 
     if(NOT MODULE_LINKAGE STREQUAL "disabled")
       file(GLOB MODULE_CONFIG_DIST_FILES CONFIGURE_DEPENDS
-        "${CMAKE_SOURCE_DIR}/modules/${SOURCE_MODULE}/conf/*.conf.dist")
+        "${TW_MODULES_DIR}/${SOURCE_MODULE}/conf/*.conf.dist")
 
       foreach(MODULE_CONFIG_DIST_FILE ${MODULE_CONFIG_DIST_FILES})
         get_filename_component(MODULE_CONFIG_FILE_NAME "${MODULE_CONFIG_DIST_FILE}" NAME)

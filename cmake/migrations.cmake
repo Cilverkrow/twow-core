@@ -1,6 +1,6 @@
 file(GLOB migrations
-    RELATIVE "${CMAKE_SOURCE_DIR}/sql/migrations"
-    "${CMAKE_SOURCE_DIR}/sql/migrations/*.sql"
+    RELATIVE "${TW_CORE_ROOT}/sql/migrations"
+    "${TW_CORE_ROOT}/sql/migrations/*.sql"
 )
 
 foreach(migration ${migrations})

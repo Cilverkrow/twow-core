@@ -41,6 +41,7 @@ set (game_SRCS
     ObjectMgr.cpp
     ObjectPosSelector.cpp
     PlayerDump.cpp
+    ModuleSlots.cpp
     QuestDef.cpp
     ReputationMgr.cpp
     ScriptObjects.h
@@ -248,6 +249,7 @@ set (game_SRCS
     ObjectMgr.h
     ObjectPosSelector.h
     PlayerDump.h
+    ModuleSlots.h
     PerformanceMonitor.h
     QuestDef.h
     ReputationMgr.h
@@ -446,12 +448,12 @@ endif()
 # Used in game ScriptMgr
 if(USE_SCRIPTS)
   list(APPEND game_SRCS
-      ${CMAKE_SOURCE_DIR}/src/scripts/ScriptLoader.cpp
-      ${CMAKE_SOURCE_DIR}/src/scripts/ScriptLoader.h
+      ${TW_CORE_ROOT}/src/scripts/ScriptLoader.cpp
+      ${TW_CORE_ROOT}/src/scripts/ScriptLoader.h
   )
 else()
   list(APPEND game_SRCS
-      ${CMAKE_SOURCE_DIR}/src/scripts/ScriptLoader.h
+      ${TW_CORE_ROOT}/src/scripts/ScriptLoader.h
   )
 endif()
 
@@ -514,12 +516,12 @@ if(BUILD_ELUNA)
   )
 
   file(GLOB ELUNA_SRCS CONFIGURE_DEPENDS
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna/*.cpp
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna/*.h
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks/*.cpp
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks/*.h
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna/methods/*.cpp
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna/methods/VMangos/*.h
+    ${TW_CORE_ROOT}/src/modules/Eluna/*.cpp
+    ${TW_CORE_ROOT}/src/modules/Eluna/*.h
+    ${TW_CORE_ROOT}/src/modules/Eluna/hooks/*.cpp
+    ${TW_CORE_ROOT}/src/modules/Eluna/hooks/*.h
+    ${TW_CORE_ROOT}/src/modules/Eluna/methods/*.cpp
+    ${TW_CORE_ROOT}/src/modules/Eluna/methods/VMangos/*.h
   )
 
   if(MSVC)
@@ -529,11 +531,11 @@ if(BUILD_ELUNA)
     set(ELUNA_MSVC_SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/eluna-msvc)
     file(MAKE_DIRECTORY ${ELUNA_MSVC_SOURCE_DIR})
     configure_file(
-      ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks/SpellHooks.cpp
+      ${TW_CORE_ROOT}/src/modules/Eluna/hooks/SpellHooks.cpp
       ${ELUNA_MSVC_SOURCE_DIR}/SpellHooks.cpp
       COPYONLY
     )
-    file(READ ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks/HookHelpers.h ELUNA_HOOK_HELPERS)
+    file(READ ${TW_CORE_ROOT}/src/modules/Eluna/hooks/HookHelpers.h ELUNA_HOOK_HELPERS)
     string(FIND "${ELUNA_HOOK_HELPERS}" "size_t... Is" ELUNA_MSVC_RENAME_POSITION)
     if(NOT ELUNA_MSVC_RENAME_POSITION EQUAL -1)
       string(REPLACE "size_t... Is" "size_t... ReturnIndices" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
@@ -544,7 +546,7 @@ if(BUILD_ELUNA)
       string(REPLACE "indices[Is]" "indices[ReturnIndices]" ELUNA_HOOK_HELPERS "${ELUNA_HOOK_HELPERS}")
     endif()
     file(WRITE ${ELUNA_MSVC_SOURCE_DIR}/HookHelpers.h "${ELUNA_HOOK_HELPERS}")
-    list(REMOVE_ITEM ELUNA_SRCS ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks/SpellHooks.cpp)
+    list(REMOVE_ITEM ELUNA_SRCS ${TW_CORE_ROOT}/src/modules/Eluna/hooks/SpellHooks.cpp)
     list(APPEND ELUNA_SRCS ${ELUNA_MSVC_SOURCE_DIR}/SpellHooks.cpp)
   endif()
 
@@ -583,15 +585,15 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/Threat
   ${CMAKE_CURRENT_SOURCE_DIR}/Transports
   ${CMAKE_CURRENT_SOURCE_DIR}/vmap
-  ${CMAKE_SOURCE_DIR}/src/scripts
-  ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
-  ${CMAKE_SOURCE_DIR}/dep/recastnavigation/Detour
-  ${CMAKE_SOURCE_DIR}/dep/recastnavigation
-  ${CMAKE_SOURCE_DIR}/dep/include
-  ${CMAKE_SOURCE_DIR}/dep/libdeflate
-  ${CMAKE_SOURCE_DIR}/src/framework
-  ${CMAKE_SOURCE_DIR}/src/framework/Network
-  ${CMAKE_SOURCE_DIR}/src/shared
+  ${TW_CORE_ROOT}/src/scripts
+  ${TW_CORE_ROOT}/dep/include/g3dlite
+  ${TW_CORE_ROOT}/dep/recastnavigation/Detour
+  ${TW_CORE_ROOT}/dep/recastnavigation
+  ${TW_CORE_ROOT}/dep/include
+  ${TW_CORE_ROOT}/dep/libdeflate
+  ${TW_CORE_ROOT}/src/framework
+  ${TW_CORE_ROOT}/src/framework/Network
+  ${TW_CORE_ROOT}/src/shared
   ${CMAKE_BINARY_DIR}
   ${CMAKE_BINARY_DIR}/src/shared
   ${MYSQL_INCLUDE_DIR}
@@ -602,7 +604,7 @@ include_directories(
 
 if(WIN32)
   include_directories(
-    ${CMAKE_SOURCE_DIR}/dep/include-windows
+    ${TW_CORE_ROOT}/dep/include-windows
   )
 endif()
 
@@ -650,10 +652,22 @@ if(BUILD_ELUNA)
 endif()
 
 
-# playerbots host-hook stubs for non-bot builds.
-# When BUILD_PLAYERBOTS=OFF, the host-hook call sites need stub implementations.
-# With BUILD_PLAYERBOTS=ON, real implementations are in playerbots.lib.
-if(NOT BUILD_PLAYERBOTS)
+# playerbots host-hook stubs for builds without the bot module.
+#
+# The core calls eleven free functions the playerbots tree defines --
+# World::InitPlayerbotsAtStartup(), four chat command handlers, and six
+# BotActionLog_* diagnostic probes in Unit.cpp and Spell.cpp. When
+# mod-playerbots is built these resolve to the real thing; when it is not, the
+# link needs no-ops, which is what PlayerbotStubs.cpp is.
+#
+# Keyed on the MODULE's effective linkage, not on BUILD_PLAYERBOTS. The bot
+# tree is modules/mod-playerbots, enabled or disabled like any other module,
+# and BUILD_PLAYERBOTS says nothing about whether it was built: with
+# -DMODULES=static and BUILD_PLAYERBOTS left at its OFF default, the old test
+# compiled the stubs alongside the real definitions and the link failed on
+# eleven duplicate symbols.
+GetModuleEffectiveLinkage("mod-playerbots" TW_PLAYERBOTS_LINKAGE)
+if(TW_PLAYERBOTS_LINKAGE STREQUAL "disabled")
     list(APPEND game_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/PlayerbotStubs.cpp)
 endif()
 
@@ -679,13 +693,13 @@ if(BUILD_ELUNA)
   )
   target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Eluna
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna/hooks
-    ${CMAKE_SOURCE_DIR}/src/modules/Eluna/methods/VMangos
+    ${TW_CORE_ROOT}/src/modules/Eluna
+    ${TW_CORE_ROOT}/src/modules/Eluna/hooks
+    ${TW_CORE_ROOT}/src/modules/Eluna/methods/VMangos
   )
 
   install(
-    DIRECTORY ${CMAKE_SOURCE_DIR}/src/modules/Eluna/extensions
+    DIRECTORY ${TW_CORE_ROOT}/src/modules/Eluna/extensions
     DESTINATION ${BIN_DIR}/lua_scripts
   )
 endif()

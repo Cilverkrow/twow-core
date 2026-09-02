@@ -25,7 +25,7 @@ include_directories(${ACE_INCLUDE_DIR})
 
 if(WIN32)
   include_directories(
-    ${CMAKE_SOURCE_DIR}/dep/windows/include
+    ${TW_CORE_ROOT}/dep/windows/include
   )
 endif()
 

@@ -39,42 +39,42 @@ if(WIN32)
 endif()
 
 include_directories(
-  ${CMAKE_SOURCE_DIR}/src/shared
+  ${TW_CORE_ROOT}/src/shared
   # Main.cpp includes "ScriptLoader.h", which is src/scripts/ScriptLoader.h.
   # That path reaches this target anyway through the `modules` library's PUBLIC
   # usage requirements, which means mangosd compiles only for as long as a
   # module framework happens to be attached. Named explicitly so it does not
   # depend on that. It is the core's own directory; nothing outside is named.
-  ${CMAKE_SOURCE_DIR}/src/scripts
-  ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
-  ${CMAKE_SOURCE_DIR}/src/framework
-  ${CMAKE_SOURCE_DIR}/src/framework/Network
-  ${CMAKE_SOURCE_DIR}/src/game
-  ${CMAKE_SOURCE_DIR}/src/game/AI
-  ${CMAKE_SOURCE_DIR}/src/game/Anticheat
-  ${CMAKE_SOURCE_DIR}/src/game/AuctionHouse
-  ${CMAKE_SOURCE_DIR}/src/game/Battlegrounds
-  ${CMAKE_SOURCE_DIR}/src/game/Chat
-  ${CMAKE_SOURCE_DIR}/src/game/Commands
-  ${CMAKE_SOURCE_DIR}/src/game/Database
-  ${CMAKE_SOURCE_DIR}/src/game/Group
-  ${CMAKE_SOURCE_DIR}/src/game/Guild
-  ${CMAKE_SOURCE_DIR}/src/game/Handlers
-  ${CMAKE_SOURCE_DIR}/src/game/LFG
-  ${CMAKE_SOURCE_DIR}/src/game/Mail
-  ${CMAKE_SOURCE_DIR}/src/game/MapNodes
-  ${CMAKE_SOURCE_DIR}/src/game/Maps
-  ${CMAKE_SOURCE_DIR}/src/game/Maps/Pool
-  ${CMAKE_SOURCE_DIR}/src/game/Movement
-  ${CMAKE_SOURCE_DIR}/src/game/Movement/spline
-  ${CMAKE_SOURCE_DIR}/src/game/Objects
-  ${CMAKE_SOURCE_DIR}/src/game/OutdoorPvP
+  ${TW_CORE_ROOT}/src/scripts
+  ${TW_CORE_ROOT}/dep/include/g3dlite
+  ${TW_CORE_ROOT}/src/framework
+  ${TW_CORE_ROOT}/src/framework/Network
+  ${TW_CORE_ROOT}/src/game
+  ${TW_CORE_ROOT}/src/game/AI
+  ${TW_CORE_ROOT}/src/game/Anticheat
+  ${TW_CORE_ROOT}/src/game/AuctionHouse
+  ${TW_CORE_ROOT}/src/game/Battlegrounds
+  ${TW_CORE_ROOT}/src/game/Chat
+  ${TW_CORE_ROOT}/src/game/Commands
+  ${TW_CORE_ROOT}/src/game/Database
+  ${TW_CORE_ROOT}/src/game/Group
+  ${TW_CORE_ROOT}/src/game/Guild
+  ${TW_CORE_ROOT}/src/game/Handlers
+  ${TW_CORE_ROOT}/src/game/LFG
+  ${TW_CORE_ROOT}/src/game/Mail
+  ${TW_CORE_ROOT}/src/game/MapNodes
+  ${TW_CORE_ROOT}/src/game/Maps
+  ${TW_CORE_ROOT}/src/game/Maps/Pool
+  ${TW_CORE_ROOT}/src/game/Movement
+  ${TW_CORE_ROOT}/src/game/Movement/spline
+  ${TW_CORE_ROOT}/src/game/Objects
+  ${TW_CORE_ROOT}/src/game/OutdoorPvP
   # PlayerBots include dir removed - Penqle stub binned
-  ${CMAKE_SOURCE_DIR}/src/game/Protocol
-  ${CMAKE_SOURCE_DIR}/src/game/Spells
-  ${CMAKE_SOURCE_DIR}/src/game/Threat
-  ${CMAKE_SOURCE_DIR}/src/game/Transports
-  ${CMAKE_SOURCE_DIR}/src/game/vmap
+  ${TW_CORE_ROOT}/src/game/Protocol
+  ${TW_CORE_ROOT}/src/game/Spells
+  ${TW_CORE_ROOT}/src/game/Threat
+  ${TW_CORE_ROOT}/src/game/Transports
+  ${TW_CORE_ROOT}/src/game/vmap
   ${CMAKE_BINARY_DIR}/src/shared
   ${CMAKE_BINARY_DIR}
   ${ACE_INCLUDE_DIR}
@@ -84,7 +84,7 @@ include_directories(
 
 if(WIN32)
   include_directories(
-    ${CMAKE_SOURCE_DIR}/dep/include-windows
+    ${TW_CORE_ROOT}/dep/include-windows
   )
 endif()
 
