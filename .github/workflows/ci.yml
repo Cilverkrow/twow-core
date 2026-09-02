@@ -571,12 +571,43 @@ jobs:
       # VCPKG_DEFAULT_BINARY_CACHE, so the env var above is the whole
       # configuration. The package list comes from the same variable the cache
       # key was built from, so the two cannot disagree.
+      # Two things here were learned the hard way, both from run 33652440649.
+      #
+      # @($...) around the port list, not a bare pipeline. `... | ForEach-Object`
+      # over a ONE-element list returns a scalar String, and splatting a String
+      # into a native command with @ passes it one CHARACTER at a time. vcpkg
+      # duly received `a`, `c`, `e`, `:`, `x` ... and reported
+      # "error: expected a port name here" with the caret under a colon - a
+      # message that describes the fourth character of the argument and names
+      # nothing that would lead you back to the splat. @() forces an array, and
+      # the failure cannot come back if VCPKG_PACKAGES grows a second port
+      # either, which is what would have hidden it.
+      #
+      # --vcpkg-root, because two vcpkgs are installed on this image and they
+      # disagree. ilammy/msvc-dev-cmd exports VCPKG_ROOT pointing at Visual
+      # Studio's private copy (VC\vcpkg), while the vcpkg on PATH is the
+      # standalone C:\vcpkg. vcpkg noticed and said so - "using detected vcpkg
+      # root C:\vcpkg and ignoring mismatched VCPKG_ROOT" - and carried on, but
+      # a warning that the tool is ignoring the environment is not something to
+      # build a cached dependency on top of. The root is taken from the exe that
+      # is actually going to run and then passed to it explicitly, and the same
+      # value is what the next step derives the installed prefix from, so the
+      # ACE that gets installed and the ACE that gets found cannot be different
+      # ACEs.
       - name: Install ACE
         shell: pwsh
         run: |
-          $pkgs = ($env:VCPKG_PACKAGES -split ' +') | ForEach-Object { $_ + ':' + $env:VCPKG_TRIPLET }
-          Write-Host "vcpkg install $($pkgs -join ' ')"
-          vcpkg install @pkgs
+          $vcpkgExe  = (Get-Command vcpkg).Source
+          $vcpkgRoot = Split-Path -Parent $vcpkgExe
+          Write-Host "vcpkg: $vcpkgExe (root $vcpkgRoot)"
+          "TW_VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $pkgs = @(
+            $env:VCPKG_PACKAGES -split '\s+' |
+              Where-Object { $_ } |
+              ForEach-Object { "${_}:$env:VCPKG_TRIPLET" }
+          )
+          Write-Host "installing $($pkgs.Count) port(s): $($pkgs -join ', ')"
+          & $vcpkgExe install --vcpkg-root $vcpkgRoot @pkgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # The OpenSSL trap, resolved rather than risked.
@@ -599,7 +630,7 @@ jobs:
       - name: Choose an OpenSSL
         shell: pwsh
         run: |
-          $inst = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed/$env:VCPKG_TRIPLET"
+          $inst = Join-Path $env:TW_VCPKG_ROOT "installed/$env:VCPKG_TRIPLET"
           Write-Host "vcpkg installed prefix: $inst"
           "ACE_ROOT=$inst" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           if (Test-Path (Join-Path $inst 'include/openssl/opensslv.h')) {
@@ -621,22 +652,35 @@ jobs:
       # here - ACE is the only port installed.
       #
       # NO sccache, deliberately, and this is the one place this job diverges
-      # from twow-repo's reference version. That job turns USE_PCH off (sccache
-      # refuses any TU compiled with /Yu) and MSVC_SEPARATE_PDB off (it refuses
-      # /Zi too), and its own comment concedes a COLD build is then slower than
-      # no cache at all. Two things make that trade worse here:
+      # from twow-repo's reference version. That job disables two things to make
+      # sccache work - USE_PCH (sccache refuses any TU compiled with /Yu) and
+      # MSVC_SEPARATE_PDB (it refuses /Zi too) - and its own comment concedes a
+      # COLD build is then slower than no cache at all. Neither lever is
+      # available here on the same terms:
       #   * MSVC_SEPARATE_PDB does not exist in twow-core. The root CMakeLists
-      #     appends /Zi to CMAKE_CXX_FLAGS_RELEASE unconditionally for MSVC, so
-      #     there is no supported way to switch it off from the command line and
-      #     sccache would decline every single translation unit while reporting
-      #     success.
-      #   * This job LINKS. Building objects that a shipped configuration would
-      #     never produce, in order to make a cache work, weakens the only
+      #     appends /Zi to CMAKE_CXX_FLAGS_RELEASE unconditionally for MSVC,
+      #     with no option guarding it, so there is no way to switch it off from
+      #     a command line and sccache would decline every single translation
+      #     unit while the job reported success - the exact failure shape this
+      #     repository has twice been bitten by.
+      #   * This job LINKS. Building objects that no shipped configuration would
+      #     ever produce, in order to make a cache work, weakens the only
       #     assertion the job makes.
-      # The expensive dependency is ACE and that IS cached, above. If the compile
-      # itself turns out to dominate, the answer is a cheaper trigger (see the
-      # note at the end of this job), not a cache that only works on a build
-      # nobody ships.
+      # The expensive dependency is ACE and that IS cached, above.
+      #
+      # AND A MEASUREMENT TO TAKE, not a claim: this build gets NO precompiled
+      # headers, despite USE_PCH defaulting ON. USE_PCH_OLD also defaults ON
+      # under MSVC, which routes src/game and src/scripts through
+      # cmake/FindPCHSupport.cmake's ADD_NATIVE_PRECOMPILED_HEADER - and that
+      # macro only does anything when CMAKE_GENERATOR matches "Visual Studio*"
+      # or Xcode. With Ninja it falls through to a branch whose entire body is a
+      # commented-out line, so it silently does nothing. If the compile time this
+      # job reports is the problem, -DUSE_PCH_OLD=OFF is the first lever: it
+      # switches both directories onto target_precompile_headers(), which is the
+      # path the Debian job already builds through every day. It is deliberately
+      # NOT set on the first run - the point of that run is to find out whether
+      # this tree compiles and links with cl.exe at all, and adding an untested
+      # variable to the same experiment is how a result stops meaning anything.
       - name: Configure
         shell: pwsh
         run: |
@@ -675,6 +719,7 @@ jobs:
       # IS the finding and the job stays red until it is fixed. It is not
       # continue-on-error and must not become one.
       - name: Build mangosd and realmd
+        id: build
         shell: pwsh
         run: |
           Write-Host "free space before:"
@@ -698,8 +743,15 @@ jobs:
       # errors caused TW_PI to exist; TW_PI itself is referenced only from
       # constexpr functions inside SharedDefines.h, which every TU that includes
       # that header parses and checks in full.
+      # always(), so a FAILED build still reports which of the two translation
+      # units it got to - that is the difference between "MSVC rejects
+      # WorldSession.cpp" and "MSVC never reached it". Gated on the build step
+      # having actually run, though: when the job dies earlier (a bad vcpkg
+      # invocation, say) this step would otherwise add a second, louder error
+      # about object files that were never going to exist, on top of the real
+      # one. That happened on the first run and it buried the actual cause.
       - name: Confirm the MSVC-only fixes were actually compiled
-        if: always()
+        if: always() && steps.build.conclusion != 'skipped'
         shell: pwsh
         run: |
           $wanted = [ordered]@{
