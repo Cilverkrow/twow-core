@@ -1910,12 +1910,17 @@ float constexpr TW_PI = 3.14159265358979323846f;
 // core is the only version of itself. The type exists because Map::GetDifficulty
 // returns it and ported code compares against it; the heroic value is named so
 // those comparisons compile, and nothing here ever reports it.
-enum Difficulty : uint8
-{
-    DUNGEON_DIFFICULTY_NORMAL = 0,
-    DUNGEON_DIFFICULTY_HEROIC = 1,
-    MAX_DUNGEON_DIFFICULTY    = 1
-};
+// NOT an enum, however much it looks like one. Eluna's LuaEngine.h declares
+// `typedef int Difficulty;` under ELUNA_EXPANSION == EXP_CLASSIC, which is what
+// this core builds with, and two different declarations of the same name is a
+// hard error the moment any translation unit sees both -- ScriptMgr.cpp does,
+// through the precompiled header on one side and LuaEngine.h on the other:
+// "conflicting declaration 'typedef int Difficulty'". It was an enum here once;
+// that predates the Eluna integration and cannot come back while Eluna is built.
+typedef int Difficulty;
+constexpr Difficulty DUNGEON_DIFFICULTY_NORMAL = 0;
+constexpr Difficulty DUNGEON_DIFFICULTY_HEROIC = 1;
+constexpr Difficulty MAX_DUNGEON_DIFFICULTY = 1;
 
 struct Position
 {
