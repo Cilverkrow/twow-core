@@ -171,3 +171,19 @@ order 189 3975  8     # Herod                          Armory
 order 189 4542  9     # High Inquisitor Fairbanks      Cathedral
 order 189 3976  10    # Scarlet Commander Mograine     Cathedral
 order 189 3977  11    # High Inquisitor Whitemane      Cathedral
+
+# --- Windhorn Canyon (map 820), Turtle custom -------------------------------
+# Boss order read off the in-game Atlas by the server owner on 2026-09-02.
+# Grand Elder Skystrider (62837) is NOT here: he is a FRIENDLY NPC, confirmed
+# by the owner - the green name in the Atlas listing. Champion Rotag (62785)
+# is not here either: Bonespeaker Narlgom summons him mid-fight
+# (SPELL_SUMMON_ROTAG, see windhorn_canyon.h), so he is an add, not a target.
+# The seven below are the only single-spawn 9.9-15.3k creatures on the map;
+# everything else sits at 5.3k or below with multiple spawns.
+order 820 62779 1     # Pathun Duskhide            St 25
+order 820 62778 2     # Ahgk'tos the Pure          St 24
+order 820 62783 3     # Ambassador Vortalus        St 26
+order 820 62784 4     # Walgan Bloodcaller         St 27
+order 820 62780 5     # Bonespeaker Narlgom        St 27
+order 820 62781 6     # Prophet Stormhoof          St 28
+order 820 62782 7     # Chieftain Shalk Blackwind  St 29
