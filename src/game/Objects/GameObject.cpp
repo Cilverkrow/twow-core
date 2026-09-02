@@ -177,7 +177,7 @@ void GameObject::AddToWorld()
         AIM_Initialize();
 
     if (!wasInWorld && IsInWorld())
-        ScriptRegistry<AllGameObjectScript>::ForEach([&](AllGameObjectScript* script)
+        ScriptRegistry<AllGameObjectScript>::ForEachEnabledHook(ALLGAMEOBJECTHOOK_ON_GAMEOBJECT_ADD_WORLD, [&](AllGameObjectScript* script)
         {
             script->OnGameObjectAddWorld(this);
         });
@@ -205,7 +205,7 @@ void GameObject::RemoveFromWorld()
     ///- Remove the gameobject from the accessor
     if (IsInWorld())
     {
-        ScriptRegistry<AllGameObjectScript>::ForEach([&](AllGameObjectScript* script)
+        ScriptRegistry<AllGameObjectScript>::ForEachEnabledHook(ALLGAMEOBJECTHOOK_ON_GAMEOBJECT_REMOVE_WORLD, [&](AllGameObjectScript* script)
         {
             script->OnGameObjectRemoveWorld(this);
         });
@@ -381,7 +381,7 @@ void GameObject::Update(uint32 update_diff, uint32 /*p_time*/)
     if (i_AI)
         i_AI->UpdateAI(update_diff);
 
-    ScriptRegistry<AllGameObjectScript>::ForEach([&](AllGameObjectScript* script)
+    ScriptRegistry<AllGameObjectScript>::ForEachEnabledHook(ALLGAMEOBJECTHOOK_ON_GAMEOBJECT_UPDATE, [&](AllGameObjectScript* script)
     {
         script->OnGameObjectUpdate(this, update_diff);
     });
