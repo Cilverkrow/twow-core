@@ -32,6 +32,18 @@ void RegisterScarletMonasteryEvents(std::vector<DungeonEvent>& out)
                       .Conditional(&DcRoomAggroPreClearCondition)
                       .KillCreature(/*room trash*/ 0)
                       .Build());
+
+    // KEIN Tuer-Ereignis fuer die Kathedrale. Eines stand hier am 2026-09-02
+    // und wurde am selben Tag wieder entfernt: die Secret Door (GO 97700) vor
+    // High Inquisitor Fairbanks oeffnet die GENERISCHE Tuerbehandlung des
+    // Moduls von selbst -
+    //     blocking-door: flagged 'Secret Door' (97700) 0.9yd from bot
+    //     door-blocked:  opening 'Secret Door' as a player would (entitled)
+    // - und zwar dieselbe Logik, die nebenbei auch die Chapel Door aufmacht.
+    //
+    // Das Ereignis hat nie gefeuert (0 Ausfuehrungen, Fackel 97701 nie benutzt)
+    // und der Fluegel wurde trotzdem 3 von 3 geraeumt. Wer hier wieder eines
+    // einbaut, sollte zuerst pruefen, ob die Tuer nicht laengst aufgeht.
 }
 
 // --- roster patch (relocated from BossRosterRegistry) --------------------
@@ -56,6 +68,7 @@ void RegisterScarletMonasteryRoster(std::vector<BossRosterPatch>& t)
     // no longer needed. Re-adding Mograine here as well would duplicate him:
     // DcRosterFile feeds BossSpawnIndex, which is the `base` this patch is
     // applied ON TOP of.
+    //
     (void)t;
 }
 
