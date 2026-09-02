@@ -1,0 +1,10 @@
+# Narrowly scoped on purpose: this repository has no line-ending policy of its
+# own, and imposing one here would renormalise thousands of files.
+#
+# These two are checked out with LF regardless of core.autocrlf because the
+# Docker build is the only consumer that reads them and it reads them as a
+# shell script would. On a Windows checkout with autocrlf=true they would
+# otherwise arrive with CRLF, and every backslash line-continuation in the
+# Dockerfile would carry a trailing carriage return into the RUN command.
+Dockerfile text eol=lf
+.dockerignore text eol=lf
