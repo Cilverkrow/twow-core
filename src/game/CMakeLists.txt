@@ -550,6 +550,53 @@ if(BUILD_ELUNA)
     list(APPEND ELUNA_SRCS ${ELUNA_MSVC_SOURCE_DIR}/SpellHooks.cpp)
   endif()
 
+  # Eluna's hooks/Hooks.h declares `uint8 id;` and `enum RegisterTypes : uint8`
+  # while including nothing that declares uint8: its one include is guarded by
+  # ELUNA_CMANGOS, and we define ELUNA_VMANGOS. Every hooks/*.cpp opens with
+  # `#include "Hooks.h"` before LuaEngine.h, so those translation units only
+  # ever compiled because a precompiled header force-included Common.h ahead of
+  # them. MSVC with the Ninja generator gets no precompiled header at all --
+  # USE_PCH_OLD defaults ON for MSVC and routes to ADD_NATIVE_PRECOMPILED_HEADER,
+  # whose non-Visual-Studio branch has a commented-out body -- and the same is
+  # true of any build configured with -DUSE_PCH=OFF. Both fail here.
+  #
+  # src/modules/Eluna is a pinned submodule of a repository we do not own, so
+  # the include cannot be added where it belongs. Force-including Common.h for
+  # Eluna's own sources restores, explicitly and scoped to those files, exactly
+  # what the precompiled header was doing for them implicitly. It is
+  # deliberately NOT applied to our own sources: their missing declarations are
+  # fixed in the headers instead.
+  if(MSVC)
+    set(ELUNA_FORCE_COMMON_H  "/FI${TW_CORE_ROOT}/src/shared/Common.h")
+    set(ELUNA_FORCE_OBJECTMGR "/FI${TW_CORE_ROOT}/src/game/ObjectMgr.h")
+    set(ELUNA_FORCE_MAPMGR    "/FI${TW_CORE_ROOT}/src/game/Maps/MapManager.h")
+  else()
+    set(ELUNA_FORCE_COMMON_H  "-include" "${TW_CORE_ROOT}/src/shared/Common.h")
+    set(ELUNA_FORCE_OBJECTMGR "-include" "${TW_CORE_ROOT}/src/game/ObjectMgr.h")
+    set(ELUNA_FORCE_MAPMGR    "-include" "${TW_CORE_ROOT}/src/game/Maps/MapManager.h")
+  endif()
+  foreach(eluna_src IN LISTS ELUNA_SRCS)
+    if(eluna_src MATCHES "\.cpp$")
+      set_property(SOURCE ${eluna_src} APPEND PROPERTY
+        COMPILE_OPTIONS ${ELUNA_FORCE_COMMON_H})
+    endif()
+  endforeach()
+
+  # Two of Eluna's sources reach past Common.h for singletons they also never
+  # include. ElunaUtility.cpp names sObjectMgr -- `extern ObjectMgr sObjectMgr`
+  # in src/game/ObjectMgr.h -- inside its `#if defined ELUNA_VMANGOS` branch, so
+  # only a VMaNGOS build reaches the line at all. ElunaLoader.cpp names sMapMgr,
+  # which is a macro in src/game/Maps/MapManager.h. Same defect and same reason
+  # it stayed invisible: the precompiled header lists both headers.
+  #
+  # Named per file rather than folded into the blanket force-include above, so
+  # this stays a statement about which third-party file needs which header
+  # instead of a second precompiled header by another name.
+  set_property(SOURCE ${TW_CORE_ROOT}/src/modules/Eluna/ElunaUtility.cpp APPEND
+    PROPERTY COMPILE_OPTIONS ${ELUNA_FORCE_OBJECTMGR})
+  set_property(SOURCE ${TW_CORE_ROOT}/src/modules/Eluna/ElunaLoader.cpp APPEND
+    PROPERTY COMPILE_OPTIONS ${ELUNA_FORCE_MAPMGR})
+
   list(APPEND game_SRCS ${ELUNA_SRCS})
 endif()
 
