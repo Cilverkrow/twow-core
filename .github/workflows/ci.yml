@@ -725,17 +725,31 @@ jobs:
           cmake @cmakeArgs | Tee-Object -FilePath configure-msvc.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      # The same standalone-core assertion the Debian job makes, on the same
-      # configure output. A Windows-only regression that reintroduced a modules/
-      # path would otherwise be invisible until twow-repo built it.
-      - name: Assert the core does not know the platform exists
+      # NOT the "Host extensions : none (standalone core)" assertion the Debian
+      # job used to make. That step was written here by copying it, and run
+      # 33653835107 failed on it after a completely successful configure - the
+      # line no longer exists. It was deliberately deleted from this file along
+      # with the purity policy it enforced, for the reasons the long comment in
+      # the Debian job still gives: upstream built a module system of its own,
+      # and re-winning "modules/ does not exist" on every merge was silently
+      # dropping upstream's ConfigureModules.cmake. Reinstating the assertion on
+      # the Windows side would have quietly reinstated the policy.
+      #
+      # What is asserted instead is the thing that is still true and still worth
+      # checking: this configure attached nothing. MODULES defaults to
+      # "disabled", and if a future change made the core pull a module in by
+      # default, the Windows build would be the first place it showed up as a
+      # link error with no explanation.
+      - name: Assert the core configured with nothing attached
         shell: pwsh
         run: |
-          if (-not (Select-String -Path configure-msvc.log -SimpleMatch 'Host extensions       : none (standalone core)' -Quiet)) {
-            Write-Error "configure did not report a standalone core"
+          if (-not (Select-String -Path configure-msvc.log -SimpleMatch 'Build modules         : disabled' -Quiet)) {
+            Write-Host "::error::configure did not report 'Build modules: disabled' - the core did not configure standalone"
+            Write-Host "--- configure-msvc.log ---"
+            Get-Content configure-msvc.log | Select-String -SimpleMatch '-- ' | ForEach-Object { $_.Line }
             exit 1
           }
-          Write-Host "standalone core confirmed"
+          Write-Host "core configured standalone (no modules attached)"
 
       # mangosd and realmd - the same two targets the Debian job builds, so a
       # green tick here means the same thing it means there.
