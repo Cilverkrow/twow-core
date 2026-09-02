@@ -754,12 +754,35 @@ jobs:
       # mangosd and realmd - the same two targets the Debian job builds, so a
       # green tick here means the same thing it means there.
       #
-      # Whether the SERVER links on Windows is genuinely unknown at the time this
-      # was written. The only local Windows build anyone has done on this tree
-      # compiled and linked the four extractors and their libraries and stopped
-      # before ever attempting mangosd or realmd. If this step fails, the failure
-      # IS the finding and the job stays red until it is fixed. It is not
-      # continue-on-error and must not become one.
+      # WHAT THIS STEP HAS ALREADY ESTABLISHED (run 33655093266, the first full
+      # MSVC pass over this tree in the repository's history):
+      #
+      #   * realmd.exe LINKS on Windows. "[766/775] Linking CXX executable
+      #     bin/realmd.exe", no error LNK anywhere in the log. That was an open
+      #     question - the only previous local Windows build stopped after the
+      #     extractors and never attempted either daemon.
+      #   * mangosd.exe does not, and the reason is not mangosd: 735 of 775
+      #     objects built, and every failure is one of 27 translation units in
+      #     the `game` library.
+      #   * All 27 are missing-declaration errors, and they share one cause. On
+      #     Linux, target_precompile_headers() force-includes ObjectMgr.h,
+      #     Common.h and SharedDefines.h into EVERY game translation unit, so
+      #     headers that depend on a name they never declare are never compiled
+      #     in isolation. Three examples, each cascading into dozens of
+      #     downstream errors in the same TU:
+      #       GameObject.h(835)  Group* GetGroupLootRecipient() - GameObject.h
+      #                          never declares Group; ObjectMgr.h does.
+      #       SpellAuras.h(223)  AuraRemoveMode - declared in
+      #                          Objects/UnitDefines.h, reached via ObjectMgr.h.
+      #       Eluna Hooks.h(17)  uint8 - declared in shared/Common.h.
+      #     The right fix is the forward declarations and includes those headers
+      #     are missing. It is NOT to give this job the same precompiled header,
+      #     which would restore the mask rather than remove it - see the note on
+      #     USE_PCH_OLD above, and take that decision deliberately if the cost of
+      #     this job is judged too high to carry while the 27 are fixed.
+      #
+      # If this step fails, the failure IS the finding and the job stays red
+      # until it is fixed. It is not continue-on-error and must not become one.
       - name: Build mangosd and realmd
         id: build
         shell: pwsh
@@ -846,13 +869,22 @@ jobs:
       # produces are large. The link succeeding is the whole result; the bytes
       # are not wanted.
       #
-      # TRIGGER, LEFT AS IT IS ON PURPOSE. This job runs wherever the Debian job
-      # runs: pushes to main, every pull request, and workflow_dispatch. That is
-      # the most expensive of the three options considered (the others being
-      # pull-request-only and nightly), and it is deliberately a starting point
-      # rather than an answer: nobody has a measurement of what a warm MSVC build
-      # of this tree costs, because this is the first one. The run timings this
-      # job produces ARE that measurement. If the warm number is large enough to
-      # hurt, moving it to pull_request only - or to a nightly schedule - is a
-      # one-line change, and it should be made on the numbers rather than ahead
-      # of them.
+      # TRIGGER, AND THE NUMBERS IT SHOULD BE DECIDED ON. This job runs wherever
+      # the Debian job runs: pushes to main, every pull request, and
+      # workflow_dispatch. Measured on run 33655093266:
+      #
+      #   whole job, warm vcpkg cache      32m 20s
+      #     of which the compile itself    31m 20s
+      #     of which ACE (cache hit)           17s
+      #   ACE on a cache MISS (run 33653835107)   5m 45s, so cold is ~38m
+      #   the Debian job on the same commit        ~3m 30s
+      #
+      # Roughly ten times the Linux job, and that 31 minutes is for a build that
+      # gets no precompiled headers and does not reach the mangosd link - a
+      # green one is longer, not shorter. Running that on every push and every
+      # pull request is a real cost, and this file is not the place to decide
+      # alone whether it is worth paying. The alternatives are pull_request only,
+      # or the nightly slot; either is a one-line change. Left on the broad
+      # trigger for now so the numbers keep coming in from real runs rather than
+      # from a single measurement, and so a Windows break is caught next to the
+      # commit that caused it while the 27 known failures are being worked on.
