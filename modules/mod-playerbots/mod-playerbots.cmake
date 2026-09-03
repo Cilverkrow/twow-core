@@ -29,7 +29,34 @@ foreach(PB_TARGET modules mod_mod_playerbots mod_mod-playerbots)
   #   MANGOSBOT_ZERO  - Classic (1.12). Switches level caps, talent trees,
   #                     spell ranges. MANGOSBOT_ONE for TBC, _TWO for WotLK.
   #   ENABLE_PLAYERBOTS - the vendor tree's own on/off wall.
-  target_compile_definitions(${PB_TARGET} PRIVATE CMANGOS MANGOSBOT_ZERO ENABLE_PLAYERBOTS)
+  #
+  # PUBLIC, not PRIVATE, and this is a bug fix rather than tidying.
+  #
+  # mod-dungeon-clear includes sixteen of this module's headers and therefore
+  # compiled them with none of the three macros defined. That is not merely "two
+  # views of the same type" -- it produces undefined behaviour, because the
+  # vendored code is written as:
+  #
+  #     bool UnitIsDead(Unit *unit)
+  #     {
+  #     #ifdef MANGOS
+  #         return unit->IsDead();
+  #     #endif
+  #     #ifdef CMANGOS
+  #         return unit->IsDead();
+  #     #endif
+  #     }
+  #
+  # With neither macro set the body has no return statement at all, and falling
+  # off the end of a non-void function is UB -- GCC plants a ud2 there. The
+  # REF-005 warning inventory found 357 -Wreturn-type emissions in
+  # ServerFacade.h alone, roughly one per dungeon-clear translation unit, which
+  # is what pointed at this.
+  #
+  # These macros are a usage requirement of the library, not a private detail:
+  # anything compiling these headers must compile them the same way this module
+  # does. PUBLIC is what says that.
+  target_compile_definitions(${PB_TARGET} PUBLIC CMANGOS MANGOSBOT_ZERO ENABLE_PLAYERBOTS)
 
   # The vendored sources were built with botpch.h. Besides speeding up their
   # build, it is their common compatibility boundary: cmangos-compat-shim.h
