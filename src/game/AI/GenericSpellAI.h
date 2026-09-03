@@ -4,6 +4,12 @@
 
 #pragma once
 
+// ScriptedAI is the base of GenericSpellMob below, and brings CreatureAI,
+// SpellEntry and the integer typedefs with it. This header declared none of
+// them and compiled only because every translation unit that reached it
+// happened to include them first.
+#include "AI/ScriptedAI.h"
+
 #define DEFAULT_MIN_CD 10000
 #define DEFAULT_MAX_CD 20000
 #define DEFAULT_TARGET GENERIC_TARGET_AUTO
