@@ -788,6 +788,22 @@ message(STATUS "Build flags (DEBUG)   : ${CMAKE_CXX_FLAGS_DEBUG}")
 
 add_subdirectory(src)
 add_subdirectory(dep)
+
+# DetourNavMeshQuery.h changes its public class layout when this definition is
+# absent, so every header consumer must inherit it from the Detour target. Keep
+# this assertion outside the vendored dependency tree: an upstream refresh that
+# drops the target usage requirement must fail during configuration.
+get_target_property(TW_DETOUR_INTERFACE_DEFINITIONS
+  Detour INTERFACE_COMPILE_DEFINITIONS)
+list(FIND TW_DETOUR_INTERFACE_DEFINITIONS
+  "DT_VIRTUAL_QUERYFILTER=1" TW_DETOUR_VIRTUAL_FILTER_INDEX)
+if(TW_DETOUR_VIRTUAL_FILTER_INDEX EQUAL -1)
+  message(FATAL_ERROR
+    "Detour must export DT_VIRTUAL_QUERYFILTER=1 as a PUBLIC compile definition")
+endif()
+unset(TW_DETOUR_INTERFACE_DEFINITIONS)
+unset(TW_DETOUR_VIRTUAL_FILTER_INDEX)
+
 # Out-of-tree when a platform supplies its own; add_subdirectory needs an
 # explicit binary directory in that case.
 add_subdirectory("${TW_MODULES_DIR}" "${CMAKE_BINARY_DIR}/modules")
