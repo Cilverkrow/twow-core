@@ -171,6 +171,12 @@ add_definitions(-DDT_VIRTUAL_QUERYFILTER=1)
 
 if(MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
+# Same reason as the NOT-MSVC block below, and it was missing here. With
+# only the add_definitions above - which this tree has already been shown
+# not to carry into subdirectory targets - dtQueryFilter::getCost stays
+# NON-virtual on Windows and DcRouteFilter's `override` finds nothing to
+# override (error C3668). Reported from a Windows build 2026-09-02.
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DDT_VIRTUAL_QUERYFILTER=1")
 endif(MSVC)
 if(NOT MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
