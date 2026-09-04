@@ -249,7 +249,7 @@ class PlayerbotPlayerScript : public PlayerScript
 
             float const playerInterestRange = WorldPosition(const_cast<Player*>(player)).getVisibilityDistance() +
                 sPlayerbotAIConfig.reactDistance;
-            if (ai->HasRealPlayerMaster() || ai->HasPlayerNearby(playerInterestRange) || player->GetTransport())
+            if (ai->HasRealPlayerMaster() || ai->HasPlayerNearby(playerInterestRange))
                 return true;
 
             if (Group* group = const_cast<Player*>(player)->GetGroup())
