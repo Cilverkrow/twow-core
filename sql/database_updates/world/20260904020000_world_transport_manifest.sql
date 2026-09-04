@@ -1,20 +1,21 @@
 -- Canonical 1.18.1 moving-transport manifest. Safe to replay.
--- The period column is descriptive; the core calculates the authoritative
--- period from TaxiPathNode.dbc and validates it while loading.
+-- Moving-object transport GUIDs use the template entry, matching the Vanilla
+-- client protocol and the working CMaNGOS/vMaNGOS implementations. The period
+-- column documents the period calculated from the released 1.18.1 DBC path.
 INSERT INTO `transports` (`guid`, `entry`, `name`, `period`) VALUES
-(1,  20808,  'Ratchet and Booty Bay',                         363740),
-(14, 20809,  'Spadowprey Village and Moonhoof Village',      355277),
-(2,  176244, 'Teldrassil and Auberdine',                     316341),
-(3,  176231, 'Menethil Harbor and Theramore Isle',           329159),
-(9,  181646, 'Stormwind and Auberdine',                      234460),
-(5,  177233, 'Forgotten Coast and Feathermoon Stronghold',   316916),
-(6,  164871, 'Orgrimmar and Undercity',                      356175),
-(7,  175080, 'Grom''Gol Base Camp and Orgrimmar',            303309),
-(8,  176495, 'Grom''Gol Base Camp and Undercity',            332878),
-(10, 190549, 'Orgrimmar and Thunder Bluff',                  566367),
-(11, 190550, 'Sparkwater Port and Revantusk Village',        244960),
-(12, 190552, 'Orgrimmar and Kargath',                        373728),
-(13, 176250, 'Alah''Thalas and Auberdine',                   300917)
+(20808,  20808,  'Ratchet and Booty Bay',                         363740),
+(20809,  20809,  'Spadowprey Village and Moonhoof Village',      355277),
+(176244, 176244, 'Teldrassil and Auberdine',                     316341),
+(176231, 176231, 'Menethil Harbor and Theramore Isle',           329159),
+(181646, 181646, 'Stormwind and Auberdine',                      234460),
+(177233, 177233, 'Forgotten Coast and Feathermoon Stronghold',   316916),
+(164871, 164871, 'Orgrimmar and Undercity',                      356175),
+(175080, 175080, 'Grom''Gol Base Camp and Orgrimmar',            303309),
+(176495, 176495, 'Grom''Gol Base Camp and Undercity',            332878),
+(190549, 190549, 'Orgrimmar and Thunder Bluff',                  566367),
+(190550, 190550, 'Sparkwater Port and Revantusk Village',        244960),
+(190552, 190552, 'Orgrimmar and Kargath',                        373728),
+(176250, 176250, 'Alah''Thalas and Auberdine',                   300917)
 ON DUPLICATE KEY UPDATE
     `guid` = VALUES(`guid`),
     `name` = VALUES(`name`),

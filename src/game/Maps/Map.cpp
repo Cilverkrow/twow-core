@@ -1773,6 +1773,11 @@ void Map::SendInitTransports(Player * player)
             itr->BuildCreateUpdateBlockForPlayer(&transData, player);
         }
     }
+
+    if (player->GetSession() && player->GetSession()->GetSecurity() > SEC_PLAYER)
+        sLog.outString("Transport visibility: sending %u moving transport(s) to GM %s on map %u instance %u.",
+            uint32(_transports.size()), player->GetName(), GetId(), GetInstanceId());
+
     transData.Send(player->GetSession(), hasTransport);
 }
 

@@ -417,7 +417,7 @@ bool TransportMgr::GeneratePath(GameObjectInfo const* goInfo, TransportTemplate*
     return true;
 }
 
-Transport* TransportMgr::CreateTransport(uint32 entry, uint32 guid /*= 0*/)
+Transport* TransportMgr::CreateTransport(uint32 entry)
 {
     TransportTemplate const* tInfo = GetTransportTemplate(entry);
     if (!tInfo)
@@ -452,8 +452,11 @@ Transport* TransportMgr::CreateTransport(uint32 entry, uint32 guid /*= 0*/)
 
     // initialize the gameobject base
     // HIGHGUID_MO_TRANSPORT
-    uint32 guidLow = guid ? guid : sObjectMgr.GenerateStaticGameObjectLowGuid();
-    if (!trans->Create(guidLow, entry, mapId, x, y, z, o, 255))
+    // The MO-transport low GUID is its template entry in the Vanilla protocol.
+    // CMaNGOS and vMaNGOS both use this identity. The fork's separate 1..N
+    // manifest GUIDs produced create blocks clients could not associate with
+    // their TaxiPath/GameObjectDisplayInfo records.
+    if (!trans->Create(entry, entry, mapId, x, y, z, o, 255))
     {
         delete trans;
         return nullptr;
@@ -469,20 +472,26 @@ Transport* TransportMgr::CreateTransport(uint32 entry, uint32 guid /*= 0*/)
         }
     }
 
-    // Add transport to all continent instances.
-    sMapMgr.GetOrCreateContinentInstances(mapId, trans, trans->m_maps);
-    for (auto const& pMap : trans->m_maps)
-    {
-        trans->SetMap(pMap);
-        trans->GetMap()->Add<Transport>(trans);
-    }
-
-    // set the instance at these coordinates as the main one
+    // A moving transport has exactly one owning map/continent partition at a
+    // time. Sharing one WorldObject across several map update threads corrupts
+    // its map identity and visibility state.
     uint32 newInstanceId = sMapMgr.GetContinentInstanceId(mapId, x, y);
     trans->SetLocationInstanceId(newInstanceId);
     Map* newMap = sMapMgr.CreateMap(mapId, trans);
+    if (!newMap)
+    {
+        sLog.outError("Transport %u (%s) could not create owning map %u instance %u.",
+            entry, trans->GetName(), mapId, newInstanceId);
+        delete trans;
+        return nullptr;
+    }
     trans->SetMap(newMap);
-    MANGOS_ASSERT(trans->m_maps.find(newMap) != trans->m_maps.end());
+    trans->m_maps.insert(newMap);
+    newMap->Add<Transport>(trans);
+
+    sLog.outString("Transport runtime: entry/guid %u, display %u, path %u, map %u:%u, period %u ms, flags 0x%02X.",
+        entry, trans->GetDisplayId(), trans->GetGOInfo()->moTransport.taxiPathId,
+        mapId, newInstanceId, trans->GetPeriod(), uint32(trans->m_updateFlag));
     
     return trans;
 }
@@ -494,7 +503,7 @@ void TransportMgr::SpawnContinentTransports()
 
     uint32 oldMSTime = WorldTimer::getMSTime();
 
-    QueryResult* result = WorldDatabase.Query("SELECT guid, entry FROM transports");
+    QueryResult* result = WorldDatabase.Query("SELECT entry FROM transports ORDER BY entry");
 
     uint32 count = 0;
     if (result)
@@ -502,14 +511,13 @@ void TransportMgr::SpawnContinentTransports()
         do
         {
             Field* fields = result->Fetch();
-            uint32 guid = fields[0].GetUInt32();
-            uint32 entry = fields[1].GetUInt32();
+            uint32 entry = fields[0].GetUInt32();
 
             if (TransportTemplate const* tInfo = GetTransportTemplate(entry))
             {
                 if (!tInfo->inInstance)
                 {
-                    if (Transport* pTransport = CreateTransport(entry, guid))
+                    if (Transport* pTransport = CreateTransport(entry))
                     {
                         ++count;
                         m_shipTransports.insert(pTransport);
@@ -517,7 +525,7 @@ void TransportMgr::SpawnContinentTransports()
                 }
             }
             else
-                sLog.outErrorDb("Transport spawn guid %u entry %u has no usable generated path.", guid, entry);
+                sLog.outErrorDb("Transport spawn entry %u has no usable generated path.", entry);
         }
         while (result->NextRow());
         delete result;
