@@ -262,10 +262,10 @@ class PlayerbotPlayerScript : public PlayerScript
                 }
             }
 
-            return player->IsInCombat() ||
-                player->InBattleGround() || player->InBattleGroundQueue() ||
-                player->IsTaxiFlying() || player->IsBeingTeleported() ||
-                player->HasScheduledEvent();
+            // Immediate gameplay state is checked cheaply by Map every pass.
+            // This hook is intentionally limited to the expensive module-level
+            // relationships that Map caches for a short interval.
+            return false;
         }
 
         // Was Player::UpdatePlayerbotHooks(diff).
