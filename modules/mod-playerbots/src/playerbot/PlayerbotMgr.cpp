@@ -58,14 +58,6 @@ namespace {
     std::map<SqlQueryHolder*, PendingBotLogin> m_pendingBotLogins;
 }
 
-void PlayerbotHolder::RegisterPendingBotLogin(SqlQueryHolder* holder, uint32 guidLow, uint32 masterAccountId)
-{
-    if (!holder)
-        return;
-
-    m_pendingBotLogins[holder] = { ObjectGuid(HIGHGUID_PLAYER, guidLow), masterAccountId };
-}
-
 void PlayerbotHolder::AddPlayerBot(uint32 guidLow, uint32 masterAccountId)
 {
     if (!sPlayerbotAIConfig.enabled)
@@ -157,7 +149,7 @@ void PlayerbotHolder::AddPlayerBot(uint32 guidLow, uint32 masterAccountId)
         return;
     }
 
-    RegisterPendingBotLogin(holder, guidLow, masterAccountId);
+    m_pendingBotLogins[holder] = { botGuid, masterAccountId };
 
     // MUST be the Unsafe (main-thread) variant: the plain DelayQueryHolder marks the callback
     // threadSafe and SqlResultQueue::Update farms it out to a 6-thread callback pool, running

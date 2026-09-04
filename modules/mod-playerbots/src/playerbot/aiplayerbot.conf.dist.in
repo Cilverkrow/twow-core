@@ -54,8 +54,8 @@ AiPlayerbot.PreQuests = 0
 AiPlayerbot.RandomBotAutoCreate = 1
 
 # Random bot count
-AiPlayerbot.MinRandomBots = 4000
-AiPlayerbot.MaxRandomBots = 4000
+AiPlayerbot.MinRandomBots = 1000
+AiPlayerbot.MaxRandomBots = 1000
 AiPlayerbot.RandomBotMinLevel = 5
 AiPlayerbot.RandomBotMaxLevel = 60
 
@@ -975,15 +975,6 @@ AiPlayerbot.ReactDelay = 500
 
 # Inactivity delay
 AiPlayerbot.PassiveDelay = 10000
-AiPlayerbot.ValueCacheCleanupInterval = 60000
-AiPlayerbot.FailedActionRetryBase = 250
-AiPlayerbot.FailedActionRetryMax = 2000
-AiPlayerbot.FailedActionCacheTtl = 30000
-AiPlayerbot.FailedActionCacheMaxEntries = 64
-AiPlayerbot.IdleBotUpdateSkip = 4
-AiPlayerbot.IdleBotMaxTimerAdvanceMs = 1000
-AiPlayerbot.Diagnostics.Enabled = 1
-AiPlayerbot.Diagnostics.Interval = 30000
 
 # Minimum delay between repeating actions (chat messages, emotes etc)
 AiPlayerbot.RepeatDelay = 5000
@@ -1078,10 +1069,7 @@ AiPlayerbot.NonCombatStrategies = +grind,+loot,+custom::say,+return,+delayed rol
 
 # Intervals
 AiPlayerbot.RandomBotUpdateInterval = 1000
-AiPlayerbot.RandomBotsMaxLoginsPerInterval = 60
-# Maximum existing random bots whose lifecycle/maintenance state may be
-# processed in one manager pass. Keep this bounded on large populations.
-AiPlayerbot.RandomBotsPerInterval = 60
+AiPlayerbot.RandomBotsMaxLoginsPerInterval = 8
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
 #AiPlayerbot.MinRandomBotInWorldTime = 3600

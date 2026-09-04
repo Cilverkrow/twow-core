@@ -42,8 +42,7 @@ void SqlDelayThread::addSerialOperation(SqlOperation *op)
 
 bool SqlDelayThread::HasAsyncQuery()
 {
-    return !m_priorityQueue.empty_unsafe() || !m_prioritySerialDelayQueue.empty_unsafe() ||
-        !m_serialDelayQueue.empty_unsafe();
+    return !m_serialDelayQueue.empty_unsafe();
 }
 
 void SqlDelayThread::run()
@@ -65,7 +64,7 @@ void SqlDelayThread::run()
     const uint32 pingEveryLoop = m_dbEngine->GetPingIntervall() / loopSleepms;
 
     uint32 loopCounter = 0;
-    while (m_running.load(std::memory_order_acquire))
+    while (m_running)
     {
         // if the running state gets turned off while sleeping
         // empty the queue before exiting
@@ -89,26 +88,13 @@ void SqlDelayThread::run()
 
 void SqlDelayThread::Stop()
 {
-    m_running.store(false, std::memory_order_release);
+    m_running = false;
 }
 
 void SqlDelayThread::ProcessRequests()
 {
     SqlOperation* s = nullptr;
-
-    // Character enumeration and world-entry holders bypass bot-generated DB
-    // backlogs. Priority serial work keeps the same per-account ordering.
-    while (m_prioritySerialDelayQueue.next(s) || m_priorityQueue.next(s))
-    {
-        bool result = s->Execute(m_dbConnection);
-        const auto& callback = s->GetCallback();
-        if (callback)
-            (*callback)(result);
-        delete s;
-    }
-
-    uint32 normalProcessed = 0;
-    while (normalProcessed++ < 64 && m_dbEngine->NextDelayedOperation(s))
+    while (m_dbEngine->NextDelayedOperation(s))
     {
         bool result = s->Execute(m_dbConnection);
         const auto& callback = s->GetCallback();
@@ -118,8 +104,7 @@ void SqlDelayThread::ProcessRequests()
     }
 
     // Process any serial operations for this worker
-    uint32 serialProcessed = 0;
-    while (serialProcessed++ < 64 && m_serialDelayQueue.next(s))
+    while (m_serialDelayQueue.next(s))
     {
         bool result = s->Execute(m_dbConnection);
         const auto& callback = s->GetCallback();

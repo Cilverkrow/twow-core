@@ -9,7 +9,6 @@
 #include <list>
 #include <vector>
 #include <cstddef>
-#include <atomic>
 
 class MovementBroadcaster;
 class Player;
@@ -52,8 +51,6 @@ public:
 
     static uint32 num_bcaster_created;
     static uint32 num_bcaster_deleted;
-    static uint64 ConsumeCoalescedPackets();
-    static uint64 ConsumeDroppedPackets();
 
     void ChangeSocket(WorldSocket* new_socket);
     void FreeAtLogout();
@@ -69,10 +66,6 @@ public:
     void SetInstanceId(uint32 id) { instanceId = id; }
 
     friend class MovementBroadcaster;
-
-private:
-    static std::atomic<uint64> s_coalescedPackets;
-    static std::atomic<uint64> s_droppedPackets;
 };
 
 #endif

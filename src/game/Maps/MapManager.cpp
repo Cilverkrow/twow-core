@@ -385,19 +385,13 @@ void MapManager::Update(uint32 diff)
     i_maxContinentThread = continentsIdx;
     i_continentUpdateFinished.store(0);
 
-    size_t const continentWorkerCount = std::min<size_t>(
-        continentsUpdaters.size(),
-        sWorld.getConfig(CONFIG_UINT32_MAPUPDATE_CONTINENT_UPDATE_THREADS));
-
-    if (continentWorkerCount && (!m_continentThreads || m_continentThreads->size() != continentWorkerCount))
+    if (!m_continentThreads || m_continentThreads->size() < continentsUpdaters.size())
     {
-        m_continentThreads.reset(new ThreadPool(continentWorkerCount, "ContinentUpdate"));
+        m_continentThreads.reset(new ThreadPool(continentsUpdaters.size(), "ContinentUpdate"));
         m_continentThreads->start<>();
     }
-    std::future<void> continents;
-    if (m_continentThreads)
-        continents = m_continentThreads->processWorkload(std::move(continentsUpdaters),
-                                                          ThreadPool::Callable());
+    std::future<void> continents = m_continentThreads->processWorkload(std::move(continentsUpdaters),
+                                                                       ThreadPool::Callable());
 
     std::chrono::high_resolution_clock::time_point start;
     do {

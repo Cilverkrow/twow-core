@@ -162,7 +162,7 @@ private:
         int id;
         std::string Name;
         ErrorHandling errorHandling;
-        std::atomic<bool> busy{false};
+        volatile bool busy = false;
         ThreadPool *pool;
         std::thread thread;
         Callable pre, post;
@@ -195,7 +195,7 @@ private:
     using workers_t = std::vector<std::unique_ptr<worker>>;
 
     std::string Name;
-    std::atomic<Status> m_status{Status::STOPPED};
+    Status m_status = Status::STOPPED;
     ErrorHandling m_errorHandling;
     size_t m_size;
     std::shared_mutex m_mutex;

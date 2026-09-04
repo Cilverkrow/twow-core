@@ -32,8 +32,7 @@ public:
     static void NotePlayerDestroyed(Player const* player);
 
     void AddPlayerBot(uint32 guid, uint32 masterAccountId);
-    void RegisterPendingBotLogin(SqlQueryHolder* holder, uint32 guid, uint32 masterAccountId);
-    void HandlePlayerBotLoginCallback(QueryResult * dummy, SqlQueryHolder * holder);
+	void HandlePlayerBotLoginCallback(QueryResult * dummy, SqlQueryHolder * holder);
 
     void LogoutPlayerBot(uint32 guid, bool allowInstant = true, bool forDelete = false);
     void DisablePlayerBot(uint32 guid, bool logOutPlayer = true);
