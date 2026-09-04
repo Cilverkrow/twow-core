@@ -1069,6 +1069,7 @@ class WorldSession
         std::unordered_map<uint32, std::pair<uint32, uint32>> m_requeuePacketCount;
         // m_bot field removed — Penqle stub binned (cmangos port).
         uint32 m_lastReceivedPacketTime;
+        uint32 m_lastGameplayDelayReportMs = 0;
         ClientIdentifiersMap _clientIdentifiers;
         std::string     _clientHash;
         ClientOSType    m_clientOS;
