@@ -379,6 +379,7 @@ class Map : public GridRefManager<NGridType>
         inline void UpdateActiveCellsAsynch(uint32 now, uint32 diff);
         inline void UpdateActiveCellsCallback(uint32 diff, uint32 now, uint32 threadId, uint32 totalThreads, uint32 step);
         inline void UpdateCells(uint32 diff);
+        bool ShouldUpdateBotCells(Player const* player) const;
         void UpdateSync(const uint32);
         void UpdatePlayers();
         void DoUpdate(uint32 maxDiff);
@@ -909,6 +910,7 @@ class Map : public GridRefManager<NGridType>
         uint32 _lastPlayerLeftTime = 0;
         uint32 _lastPlayersUpdate;
         uint32 _inactivePlayersSkippedUpdates = 0;
+        uint32 _botCellUpdatePhase = 0;
         uint32 _lastCellsUpdate;
 
         int8 _updateIdx;

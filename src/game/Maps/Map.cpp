@@ -33,6 +33,7 @@
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "ScriptObjects.h"
+#include "ScriptMgr.h"
 #include "World.h"
 #include "Group.h"
 #include "MapRefManager.h"
@@ -765,7 +766,11 @@ inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)
 
     // Mark all cells that need update
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
-        MarkCellsAroundObject(m_mapRefIter->getSource());
+    {
+        Player* player = m_mapRefIter->getSource();
+        if (ShouldUpdateBotCells(player))
+            MarkCellsAroundObject(player);
+    }
 
     for (m_activeNonPlayersIter = m_activeNonPlayers.begin(); m_activeNonPlayersIter != m_activeNonPlayers.end(); ++m_activeNonPlayersIter)
         MarkCellsAroundObject(*m_activeNonPlayersIter);
@@ -792,7 +797,8 @@ inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
     {
         Player* plr = m_mapRefIter->getSource();
-        UpdateCellsAroundObject(now, diff, plr);
+        if (ShouldUpdateBotCells(plr))
+            UpdateCellsAroundObject(now, diff, plr);
     }
 
     // non-player active objects
@@ -816,6 +822,10 @@ inline void Map::UpdateCells(uint32 map_diff)
         return;
     _lastCellsUpdate = now;
 
+    uint32 const cellStride = IsContinent() ?
+        std::max<uint32>(1, sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES) + 1) : 1;
+    _botCellUpdatePhase = (_botCellUpdatePhase + 1) % cellStride;
+
     /// update active cells around players and active objects
     if (IsContinent() && m_cellThreads->status() == ThreadPool::Status::READY)
         UpdateActiveCellsAsynch(now, diff);
@@ -832,6 +842,20 @@ inline void Map::UpdateCells(uint32 map_diff)
         m_motionThreads->processWorkload().wait();
     }
     unitsMvtUpdate.clear();
+}
+
+bool Map::ShouldUpdateBotCells(Player const* player) const
+{
+    if (!player || !player->IsInWorld())
+        return false;
+
+    if (!IsContinent() || !Script_IsMachineDriven(player) || player->IsInCombat() ||
+        player->HasScheduledEvent() || player->GetSession()->HasRecentPacket(PACKET_PROCESS_SPELLS))
+        return true;
+
+    uint32 const stride = std::max<uint32>(1,
+        sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES) + 1);
+    return (player->GetGUIDLow() % stride) == _botCellUpdatePhase;
 }
 
 
@@ -892,16 +916,18 @@ void Map::UpdatePlayers()
     if (diff < sWorld.getConfig(CONFIG_UINT32_MAPUPDATE_UPDATE_PLAYERS_DIFF))
         return;
 
-    ++_inactivePlayersSkippedUpdates;
-    bool updateInactivePlayers = _inactivePlayersSkippedUpdates > sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES);
-    if (!IsContinent())
-        updateInactivePlayers = true;
+    uint32 const inactiveStride = IsContinent() ?
+        std::max<uint32>(1, sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES) + 1) : 1;
+    _inactivePlayersSkippedUpdates = (_inactivePlayersSkippedUpdates + 1) % inactiveStride;
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
     {
         Player* plr = m_mapRefIter->getSource();
         if (!plr || !plr->IsInWorld())
             continue;
-        if (!updateInactivePlayers && (!plr->IsInCombat() && !plr->GetSession()->HasRecentPacket(PACKET_PROCESS_SPELLS) && !plr->HasScheduledEvent()))
+        bool const activePlayer = plr->IsInCombat() ||
+            plr->GetSession()->HasRecentPacket(PACKET_PROCESS_SPELLS) || plr->HasScheduledEvent();
+        bool const dueInactiveUpdate = (plr->GetGUIDLow() % inactiveStride) == _inactivePlayersSkippedUpdates;
+        if (!activePlayer && !dueInactiveUpdate)
         {
             plr->AddSkippedUpdateTime(diff);
             continue;
@@ -910,8 +936,6 @@ void Map::UpdatePlayers()
         helper.UpdateRealTime(now, diff + plr->GetSkippedUpdateTime());
         plr->ResetSkippedUpdateTime();
     }
-    if (updateInactivePlayers)
-        _inactivePlayersSkippedUpdates = 0;
     _lastPlayersUpdate = now;
 }
 
