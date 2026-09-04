@@ -1546,7 +1546,8 @@ end
 -- empty — it self-terminates the moment a real list arrives and never becomes a
 -- steady poll. RedrawBossList preserves the scroll offset.
 local bossEnsureElapsed = 0
-local function OnUpdateHandler(self, elap)
+local function OnUpdateHandler()
+    local self, elap = this, arg1  -- 1.12: Handler bekommen keine Argumente
     if not frame:IsVisible() then return end
     if table.getn(bosses) > 0 then return end  -- populated: the server pushes updates from here
 
@@ -2330,7 +2331,7 @@ minimapButton:RegisterForDrag("LeftButton")
 local mmOverlay = minimapButton:CreateTexture(nil, "OVERLAY")
 mmOverlay:SetWidth(53); mmOverlay:SetHeight(53)  -- 1.12: kein SetSize
 mmOverlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-mmOverlay:SetPoint("TOPLEFT")
+mmOverlay:SetPoint("TOPLEFT", mmOverlay:GetParent(), "TOPLEFT", 0, 0)  -- 1.12: nur die volle Form
 
 local mmIcon = minimapButton:CreateTexture(nil, "BACKGROUND")
 mmIcon:SetWidth(20); mmIcon:SetHeight(20)  -- 1.12: kein SetSize
