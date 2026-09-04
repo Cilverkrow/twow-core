@@ -173,7 +173,7 @@ AutoRestart.HourMax = 6
 
 # GridUnload. Unload grids. (If you have lot memory you can disable it to speed up player move to new grids second time)
 
-GridUnload = 0
+GridUnload = 1
 
 # CleanupTerrain. Enable / Disable CleanupTerrain.
 
@@ -188,7 +188,7 @@ CleanupTerrain = 1
 #        cannot go wrong.
 #        Default: 0 (off)
 
-MMapTileUnload = 0
+MMapTileUnload = 1
 
 # GridCleanUpDelay. Grid clean up delay.
 
@@ -204,7 +204,7 @@ ChangeWeatherInterval = 1200000
 
 # PlayerSave.Interval. Player save interval.
 
-PlayerSave.Interval = 60000
+PlayerSave.Interval = 900000
 
 # PlayerSave.Stats.MinLevel. Minimum level for saving character stats for external usage in database.
 
@@ -1704,8 +1704,8 @@ Visibility.GroupMode = 0
 
 # Visibility.Distance. Visibility distance for different ingame object in different maps. (Max 533)
 
-Visibility.Distance.Continents = 250
-Visibility.Distance.Instances = 250
+Visibility.Distance.Continents = 100
+Visibility.Distance.Instances = 170
 Visibility.Distance.BG = 533
 
 # Visibility.Distance.Continents.Min. If bad performance, visibilityDistance may be reduced.

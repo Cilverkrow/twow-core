@@ -143,6 +143,10 @@ bool PlayerbotAIConfig::Initialize()
     dispelAuraDuration = config.GetIntDefault("AiPlayerbot.DispelAuraDuration", 2000);
     reactDelay = (uint32) config.GetIntDefault("AiPlayerbot.ReactDelay", 100);
     passiveDelay = (uint32) config.GetIntDefault("AiPlayerbot.PassiveDelay", 4000);
+    valueCacheCleanupInterval = (uint32) std::max<int32>(1000,
+        config.GetIntDefault("AiPlayerbot.ValueCacheCleanupInterval", 60000));
+    memoryTelemetryInterval = (uint32) std::max<int32>(10000,
+        config.GetIntDefault("AiPlayerbot.MemoryTelemetryInterval", 60000));
     repeatDelay = (uint32) config.GetIntDefault("AiPlayerbot.RepeatDelay", 5000);
     errorDelay = (uint32) config.GetIntDefault("AiPlayerbot.ErrorDelay", 5000);
     rpgDelay = (uint32) config.GetIntDefault("AiPlayerbot.RpgDelay", 3000);

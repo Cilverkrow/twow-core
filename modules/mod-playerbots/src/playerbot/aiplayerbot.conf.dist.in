@@ -110,7 +110,7 @@ AiPlayerbot.RandomBotArenaTeamCount = 20
 AiPlayerbot.DeleteRandomBotArenaTeams = 0
 
 # Maps to teleport random bots
-AiPlayerbot.RandomBotMaps = 0,1,530,571
+AiPlayerbot.RandomBotMaps = 0,1
 
 # Min and max intervals for random teleports, in seconds (default: 2hrs and 48hrs)
 # The comment above was right and the values below were not: they had drifted to
@@ -975,6 +975,8 @@ AiPlayerbot.ReactDelay = 500
 
 # Inactivity delay
 AiPlayerbot.PassiveDelay = 10000
+AiPlayerbot.ValueCacheCleanupInterval = 60000
+AiPlayerbot.MemoryTelemetryInterval = 60000
 
 # Minimum delay between repeating actions (chat messages, emotes etc)
 AiPlayerbot.RepeatDelay = 5000

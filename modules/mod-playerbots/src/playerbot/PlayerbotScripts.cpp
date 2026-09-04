@@ -268,7 +268,10 @@ class PlayerbotPlayerScript : public PlayerScript
                 // context/strategy checks from every map pass while preserving
                 // full responsiveness for real-player-controlled and active bots.
                 if (!playerCritical && ai->GetAIInternalUpdateDelay() > diff)
+                {
                     ai->AdvanceMinimalUpdateDelay(diff);
+                    ai->CleanupExpiredValuesIfDue();
+                }
                 else
                     ai->UpdateAI(diff);
             }

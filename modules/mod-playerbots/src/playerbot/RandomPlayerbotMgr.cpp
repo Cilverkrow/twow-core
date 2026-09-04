@@ -665,6 +665,50 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         playersLevel = sPlayerbotAIConfig.syncLevelNoPlayer;
 
     ScaleBotActivity();
+
+    // Record private process memory and live per-bot cache size at a low
+    // frequency. This distinguishes normal world/grid residency from AI cache
+    // growth during long 4k-bot soaks without enabling the high-overhead
+    // MEMORY_MONITOR instrumentation.
+    static uint32 lastMemoryTelemetry = 0;
+    uint32 const telemetryNow = WorldTimer::getMSTime();
+    if (!lastMemoryTelemetry ||
+        WorldTimer::getMSTimeDiff(lastMemoryTelemetry, telemetryNow) >= sPlayerbotAIConfig.memoryTelemetryInterval)
+    {
+        uint64 cachedValues = 0;
+        uint64 cachedActions = 0;
+        uint64 cachedTriggers = 0;
+        uint64 cachedStrategies = 0;
+        ForEachPlayerbot([&](Player* player)
+        {
+            PlayerbotAI* ai = GetBotAI(player);
+            AiObjectContext* context = ai ? ai->GetAiObjectContext() : nullptr;
+            if (!context)
+                return;
+
+            cachedValues += context->GetCreatedValueCount();
+            cachedActions += context->GetCreatedActionCount();
+            cachedTriggers += context->GetCreatedTriggerCount();
+            cachedStrategies += context->GetCreatedStrategyCount();
+        });
+
+        uint64 privateBytes = 0;
+#if PLATFORM == PLATFORM_WINDOWS
+        PROCESS_MEMORY_COUNTERS_EX counters = {};
+        if (GetProcessMemoryInfo(GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)))
+            privateBytes = counters.PrivateUsage;
+#endif
+        sLog.outString("PLAYERBOT_MEMORY bots=%u private_mb=%.2f values=%llu actions=%llu triggers=%llu strategies=%llu expired_values_released=%llu",
+            GetPlayerbotsAmount(), privateBytes / (1024.0 * 1024.0),
+            static_cast<unsigned long long>(cachedValues),
+            static_cast<unsigned long long>(cachedActions),
+            static_cast<unsigned long long>(cachedTriggers),
+            static_cast<unsigned long long>(cachedStrategies),
+            static_cast<unsigned long long>(AiObjectContext::GetExpiredValuesReleased()));
+        lastMemoryTelemetry = telemetryNow;
+    }
+
     if (sPlayerbotAIConfig.asyncBotLogin)
     {
         auto pmo = sPerformanceMonitor.start(PERF_MON_RNDBOT, "AsyncBotLogin");

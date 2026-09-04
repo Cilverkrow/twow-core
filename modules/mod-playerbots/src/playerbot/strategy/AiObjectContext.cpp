@@ -16,6 +16,13 @@
 
 using namespace ai;
 
+std::atomic<uint64> AiObjectContext::expiredValuesReleased{0};
+
+uint64 AiObjectContext::GetExpiredValuesReleased()
+{
+    return expiredValuesReleased.load(std::memory_order_relaxed);
+}
+
 AiObjectContext::AiObjectContext(PlayerbotAI* ai) : PlayerbotAIAware(ai)
 {
     strategyContexts.Add(new StrategyContext());
@@ -53,7 +60,7 @@ void AiObjectContext::ClearValues(std::string findName)
     }
 }
 
-void AiObjectContext::ClearExpiredValues(std::string findName, uint32 interval)
+size_t AiObjectContext::ClearExpiredValues(std::string findName, uint32 interval)
 {
     std::vector<std::string> namesToErase;
     std::set<std::string> names = valueContexts.GetCreated();
@@ -77,6 +84,9 @@ void AiObjectContext::ClearExpiredValues(std::string findName, uint32 interval)
     {
         valueContexts.Erase(name);
     }
+
+    expiredValuesReleased.fetch_add(namesToErase.size(), std::memory_order_relaxed);
+    return namesToErase.size();
 }
 
 

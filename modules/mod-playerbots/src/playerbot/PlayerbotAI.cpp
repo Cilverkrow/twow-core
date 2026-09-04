@@ -272,6 +272,23 @@ void PlayerbotAI::RevalidateMasterPointer()
     }
 }
 
+void PlayerbotAI::CleanupExpiredValuesIfDue()
+{
+    if (!aiObjectContext || !bot || !sPlayerbotAIConfig.valueCacheCleanupInterval)
+        return;
+
+    uint32 const now = WorldTimer::getMSTime();
+    uint32 const interval = sPlayerbotAIConfig.valueCacheCleanupInterval;
+    if (!lastValueCacheCleanupMs)
+        lastValueCacheCleanupMs = now - (bot->GetGUIDLow() % interval);
+
+    if (WorldTimer::getMSTimeDiff(lastValueCacheCleanupMs, now) < interval)
+        return;
+
+    aiObjectContext->ClearExpiredValues();
+    lastValueCacheCleanupMs = now;
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     AiObjectContext* context = aiObjectContext;
@@ -299,6 +316,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         aiInternalUpdateDelay = 0;
         isWaiting = false;
     }
+
+    CleanupExpiredValuesIfDue();
 
     // cancel logout in combat
     if (bot->IsStunnedByLogout() || bot->GetSession()->isLogingOut())
