@@ -244,7 +244,25 @@ class PlayerbotPlayerScript : public PlayerScript
                 return false;
 
             PlayerbotAI* ai = GetBotAI(const_cast<Player*>(player));
-            return (ai && ai->HasRealPlayerMaster()) || player->IsInCombat() ||
+            if (!ai)
+                return false;
+
+            float const playerInterestRange = WorldPosition(const_cast<Player*>(player)).getVisibilityDistance() +
+                sPlayerbotAIConfig.reactDistance;
+            if (ai->HasRealPlayerMaster() || ai->HasPlayerNearby(playerInterestRange) || player->GetTransport())
+                return true;
+
+            if (Group* group = const_cast<Player*>(player)->GetGroup())
+            {
+                for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                {
+                    Player* member = ref->getSource();
+                    if (member && member != player && member->IsInWorld() && !GetBotAI(member))
+                        return true;
+                }
+            }
+
+            return player->IsInCombat() ||
                 player->InBattleGround() || player->InBattleGroundQueue() ||
                 player->IsTaxiFlying() || player->IsBeingTeleported() ||
                 player->HasScheduledEvent();
