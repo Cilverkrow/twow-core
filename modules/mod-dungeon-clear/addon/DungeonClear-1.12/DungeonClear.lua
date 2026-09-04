@@ -1059,8 +1059,11 @@ scrollFrame:SetPoint("TOPLEFT", scrollContainer, "TOPLEFT", 8, -8)
 scrollFrame:SetPoint("BOTTOMRIGHT", scrollContainer, "BOTTOMRIGHT", -28, 8) -- leave room for the scrollbar
 scrollFrame:EnableMouseWheel(true)
 scrollFrame:SetScript("OnVerticalScroll", function()
-    local self, offset = this, arg1  -- 1.12: Handler bekommen keine Argumente
-    FauxScrollFrame_OnVerticalScroll(self, offset, ROW_HEIGHT, RedrawBossList)
+    -- 1.12: FauxScrollFrame_OnVerticalScroll(itemHeight, updateFunction) - the
+    -- FrameXML reads the frame from `this` and the scroll value from `arg1`
+    -- itself. The 3.x form passed the frame first, which landed a table in
+    -- itemHeight (BugGrabber, 2026-09-04: "arithmetic on local itemHeight").
+    FauxScrollFrame_OnVerticalScroll(ROW_HEIGHT, RedrawBossList)
 end)
 scrollFrame:SetScript("OnMouseWheel", function()
     local self, delta = this, arg1  -- 1.12: Handler bekommen keine Argumente
