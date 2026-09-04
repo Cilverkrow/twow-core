@@ -125,12 +125,8 @@ public:
         {
             Player* pPlayer = itr.second;
 
-            // Random Playerbots use headless WorldSessions. Letting them fill
-            // the 50-row client limit makes /who appear empty or useless on
-            // bot-heavy realms (the total can still report 1000+ matches).
-            // A real player in the world always has a live client socket.
             WorldSession* targetSession = pPlayer ? pPlayer->GetSession() : nullptr;
-            if (!targetSession || !targetSession->GetSocket())
+            if (!targetSession)
                 continue;
 
             if (security == SEC_PLAYER)
