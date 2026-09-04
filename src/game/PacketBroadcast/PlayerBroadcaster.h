@@ -20,6 +20,13 @@ class PlayerBroadcaster final
         WorldPacket packet;
         bool sendToSelf;
         ObjectGuid except;
+        uint64 sequence;
+    };
+
+    struct ListenerData
+    {
+        std::shared_ptr<PlayerBroadcaster> broadcaster;
+        uint64 firstSequence;
     };
 
     const std::size_t MAX_QUEUE_SIZE;
@@ -27,10 +34,11 @@ class PlayerBroadcaster final
     WorldSocket* m_socket;
     ObjectGuid m_self;
 
-    std::map<ObjectGuid, std::shared_ptr<PlayerBroadcaster> > m_listeners;
+    std::map<ObjectGuid, ListenerData> m_listeners;
     std::vector<BroadcastData> m_queue;
     std::mutex m_listeners_lock;
     std::mutex m_queue_lock;
+    uint64 m_nextSequence;
 
     void ProcessQueue(uint32& num_packets);
     void SendPacket(const WorldPacket& packet);

@@ -2226,6 +2226,7 @@ class Player final: public Unit
         void UpdateVisibilityOf(WorldObject const* viewPoint, WorldObject* target);
         template<class T>
         void UpdateVisibilityOf(WorldObject const* viewPoint, T* target, UpdateData& data, std::set<WorldObject*>& visibleNow);
+        void ActivateBroadcastListeners(std::set<WorldObject*> const& visibleNow);
 
         Camera& GetCamera() { return m_camera; }
         // AzerothCore spellings over this core's Camera. apply=true binds the

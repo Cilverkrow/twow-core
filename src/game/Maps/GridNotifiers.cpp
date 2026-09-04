@@ -124,6 +124,11 @@ VisibleNotifier::Notify()
         // send create/outofrange packet to player (except player create updates that already sent using SendUpdateToPlayer)
         i_data.Send(player.GetSession());
 
+        // The async movement broadcaster must not target newly visible players
+        // until their batched create blocks are ahead of every movement packet
+        // on this socket.
+        player.ActivateBroadcastListeners(i_visibleNow);
+
         // send out of range to other players if need
         ObjectGuidSet const& oor = i_data.GetOutOfRangeGUIDs();
         for (const auto& iter : oor)

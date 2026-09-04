@@ -1696,7 +1696,10 @@ void Map::UpdateActiveObjectVisibility(Player *player)
     UpdateActiveObjectVisibility(player, guids, data, visibleNow);
 
     if (data.HasData())
+    {
         data.Send(player->GetSession());
+        player->ActivateBroadcastListeners(visibleNow);
+    }
 }
 
 // Not compressed
@@ -1765,6 +1768,16 @@ void Map::SendInitTransports(Player * player)
     // Hack to send out transports
     UpdateData transData;
     bool hasTransport = false;
+
+    // Moving-transport routes are supplied by gameobject_template and cached
+    // persistently by the Vanilla client in gameobjectcache.wdb. Custom client
+    // updates and database migrations can change a transport's TaxiPath id,
+    // leaving an otherwise valid client animating an obsolete route forever.
+    // Invalidate these small template records before the create blocks so the
+    // client requests the authoritative definition for every active vessel.
+    for (const auto itr : _transports)
+        sWorld.SendGameObjectStatsInvalidate(itr->GetEntry(), player->GetSession());
+
     for (const auto itr : _transports)
     {
         if (itr != player->GetTransport())

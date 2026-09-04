@@ -21108,17 +21108,6 @@ inline void UpdateVisibilityOf_helper(ObjectGuidSet& s64, GameObject* target)
 }
 
 template<class T>
-void AddBroadcastListener(T* target, Player* me)
-{
-}
-template<>
-void AddBroadcastListener(Player* target, Player* me)
-{
-    if (target->m_broadcaster)
-        target->m_broadcaster->AddListener(me);
-}
-
-template<class T>
 void RemoveBroadcastListener(T* target, Player* me)
 {
 }
@@ -21127,6 +21116,17 @@ void RemoveBroadcastListener(Player* target, Player* me)
 {
     if (target->m_broadcaster)
         target->m_broadcaster->RemoveListener(me);
+}
+
+void Player::ActivateBroadcastListeners(std::set<WorldObject*> const& visibleNow)
+{
+    // The caller sends the complete create/out-of-range UpdateData first.  Only
+    // then may the async movement broadcaster target this client; otherwise a
+    // busy player or bot can deliver SMSG_MONSTER_MOVE ahead of its create block.
+    for (WorldObject* object : visibleNow)
+        if (Player* target = object ? object->ToPlayer() : nullptr)
+            if (target->m_broadcaster)
+                target->m_broadcaster->AddListener(this);
 }
 
 template<class T>
@@ -21162,7 +21162,6 @@ void Player::UpdateVisibilityOf(WorldObject const* viewPoint, T* target, UpdateD
             UpdateVisibilityOf_helper(m_visibleGUIDs, target);
             lock.unlock();
 
-            AddBroadcastListener(target, this);
             DEBUG_FILTER_LOG(LOG_FILTER_VISIBILITY_CHANGES, "%s is visible now for %s. Distance = %f", target->GetGuidStr().c_str(), GetGuidStr().c_str(), GetDistance(target));
         }
     }
@@ -24274,6 +24273,10 @@ void Player::RefreshVisiblePlayersForClient()
 
     for (const ObjectGuid& guid : players)
     {
+        if (Player* target = GetMap()->GetPlayer(guid))
+            if (target->m_broadcaster)
+                target->m_broadcaster->RemoveListener(this);
+
         WorldPacket data(SMSG_DESTROY_OBJECT, 8);
         data << guid;
         GetSession()->SendPacket(&data);
@@ -24672,10 +24675,6 @@ void Player::HandleStealthedUnitsDetection()
         {
             if (!IsInVisibleList_Unsafe(stealthedUnit))
             {
-                if (Player* i_player = stealthedUnit->ToPlayer())
-                    if (i_player->m_broadcaster)
-                        i_player->m_broadcaster->AddListener(this);
-
                 // LOCKED. Every other writer of m_visibleGUIDs takes the
                 // unique_lock; these two in the stealth sweep did not, and a
                 // reader on another thread holding the shared_lock then died
@@ -24688,6 +24687,12 @@ void Player::HandleStealthedUnitsDetection()
                     m_visibleGUIDs.insert(stealthedUnit->GetObjectGuid());
                 }
                 stealthedUnit->SendCreateUpdateToPlayer(this);
+
+                // Do not expose this socket to the asynchronous movement queue
+                // until the object's create block has been queued first.
+                if (Player* i_player = stealthedUnit->ToPlayer())
+                    if (i_player->m_broadcaster)
+                        i_player->m_broadcaster->AddListener(this);
             }
         }
         else

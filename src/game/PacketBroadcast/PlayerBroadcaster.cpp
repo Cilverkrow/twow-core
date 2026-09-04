@@ -7,7 +7,7 @@ uint32 PlayerBroadcaster::num_bcaster_created = 0;
 uint32 PlayerBroadcaster::num_bcaster_deleted = 0;
 
 PlayerBroadcaster::PlayerBroadcaster(WorldSocket* w_socket, const ObjectGuid& self, std::size_t max_queue) :
-    MAX_QUEUE_SIZE(max_queue), m_socket(w_socket), m_self(self), instanceId(0), lastUpdatePackets(0)
+    MAX_QUEUE_SIZE(max_queue), m_socket(w_socket), m_self(self), m_nextSequence(0), instanceId(0), lastUpdatePackets(0)
 {
     if (m_socket)
         m_socket->AddReference();
@@ -33,8 +33,20 @@ void PlayerBroadcaster::AddListener(Player const* player)
     if (player->GetObjectGuid() == m_self)
         return;
 
-    const std::lock_guard<std::mutex> guard(m_listeners_lock);
-    m_listeners[player->GetObjectGuid()] = player->m_broadcaster;
+    std::shared_ptr<PlayerBroadcaster> listener = player->m_broadcaster;
+    if (!listener)
+        return;
+
+    // The listener's create block has already been queued to its socket before
+    // this function is called.  Hold both locks so the activation boundary is
+    // atomic with respect to QueuePacket and ProcessQueue: packets generated
+    // before that create block must never be replayed to the new listener.
+    const std::scoped_lock guard{ m_queue_lock, m_listeners_lock };
+    auto itr = m_listeners.find(player->GetObjectGuid());
+    if (itr != m_listeners.end() && itr->second.broadcaster == listener)
+        return;
+
+    m_listeners[player->GetObjectGuid()] = { listener, m_nextSequence + 1 };
 }
 
 void PlayerBroadcaster::RemoveListener(Player const* player)
@@ -78,7 +90,10 @@ void PlayerBroadcaster::ProcessQueue(uint32& num_packets)
             if (itr.first == data.except)
                 continue;
 
-            itr.second->SendPacket(data.packet);
+            if (data.sequence < itr.second.firstSequence)
+                continue;
+
+            itr.second.broadcaster->SendPacket(data.packet);
         }
     }
 }
@@ -91,6 +106,7 @@ void PlayerBroadcaster::QueuePacket(WorldPacket packet, bool self, ObjectGuid ex
     data.except = except;
 
     std::scoped_lock guard(m_queue_lock);
+    data.sequence = ++m_nextSequence;
 
     // We need to drop a packet here - if possible
     if (m_queue.size() >= MAX_QUEUE_SIZE)
