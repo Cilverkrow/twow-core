@@ -56,8 +56,23 @@ param (
     [string]$RootPassword = "mangos",
     [string]$DbPassword   = "mangos",
 
-    # Name of the portable MariaDB directory inside server\
+    # Name of the portable MariaDB directory inside server\. Used first when present; if it
+    # is not there the client is looked for on PATH and in the usual install locations.
     [string]$MariaDbFolderName = "mariadb-10.3.39-winx64",
+
+    # Explicit path to the client (mariadb.exe or mysql.exe). Given, it is used or the run
+    # fails - never silently replaced by a discovered one, because connecting to a different
+    # server than intended means dropping databases on the wrong instance.
+    [string]$MariaDbClientPath = "",
+
+    # Connection target. Both empty/0 means "whatever the client defaults to", which is what
+    # the bundled portable server wants; set them for a non-default port or a remote host.
+    [string]$DbHost = "",
+    [int]$DbPort    = 0,
+
+    # How long the preflight waits for the server to start answering. 1.Start mysql.bat
+    # launches mysqld asynchronously, so a run kicked off right after it needs a moment.
+    [int]$DbStartupTimeoutSeconds = 30,
 
     # Source to build. Point these at a fork or a topic branch to test one without
     # touching the script: -RepoUrl https://github.com/me/tortoise-wow.git -BranchName my-fix
@@ -282,7 +297,13 @@ function New-MySqlDefaultsFile {
     )
 
     $CredentialPath = Join-Path $env:TEMP ("tw_pipeline_{0}_{1}.cnf" -f $User, [guid]::NewGuid().ToString('N'))
-    $Content        = "[client]`r`nuser=$User`r`npassword=$Password`r`n"
+
+    # host/port are written only when asked for. Emitting host=localhost unconditionally is
+    # not a no-op on Windows - it can move the client between TCP and a named pipe - and the
+    # bundled portable server is happiest with the client's own defaults.
+    $Content = "[client]`r`nuser=$User`r`npassword=$Password`r`n"
+    if (-not [string]::IsNullOrWhiteSpace($DbHost)) { $Content += "host=$DbHost`r`n" }
+    if ($DbPort -gt 0)                              { $Content += "port=$DbPort`r`n" }
     [System.IO.File]::WriteAllText($CredentialPath, $Content, (New-Object System.Text.UTF8Encoding($false)))
 
     # The file holds a plaintext credential: strip inherited permissions and grant the
@@ -371,6 +392,183 @@ function Invoke-MySqlFile {
     } finally {
         Remove-Item -Path $FilteredPath -Force -ErrorAction SilentlyContinue
     }
+}
+
+# Finds the MariaDB/MySQL command line client, and the matching dump tool.
+#
+# The testlab's own portable server comes first: it is deliberately self-contained, and a
+# run that silently used a system-wide instance instead would drop tw_world / tw_char /
+# tw_logon / tw_logs on THAT server. Only when the portable copy is absent does this fall
+# back to PATH and the conventional install locations.
+#
+# Both naming generations are handled. MariaDB renamed its client to mariadb.exe in 10.6
+# and newer builds may ship no mysql.exe at all, while the 10.3 portable build in this
+# testlab has only mysql.exe. sql/setup_databases.bat in this repository prefers 'mariadb'
+# and falls back to 'mysql'; the same order is used here. The dump tool is paired from the
+# same directory, mariadb-dump.exe or mysqldump.exe.
+function Resolve-MariaDbClient {
+    param (
+        [string]$Explicit,
+        [string]$PortableBinDir
+    )
+
+    $ClientNames = @("mariadb.exe", "mysql.exe")
+    $DumpNames   = @("mariadb-dump.exe", "mysqldump.exe")
+
+    # Given a directory, return a resolved pair or $null.
+    function Resolve-FromDirectory {
+        param([string]$Directory, [string]$Source)
+
+        if ([string]::IsNullOrWhiteSpace($Directory) -or -not (Test-Path -LiteralPath $Directory)) { return $null }
+
+        foreach ($ClientName in $ClientNames) {
+            $ClientCandidate = Join-Path $Directory $ClientName
+            if (-not (Test-Path -LiteralPath $ClientCandidate)) { continue }
+
+            $DumpCandidate = $null
+            foreach ($DumpName in $DumpNames) {
+                $Probe = Join-Path $Directory $DumpName
+                if (Test-Path -LiteralPath $Probe) { $DumpCandidate = $Probe; break }
+            }
+
+            return @{
+                Client = [System.IO.Path]::GetFullPath($ClientCandidate)
+                Dump   = $DumpCandidate
+                Source = $Source
+            }
+        }
+
+        return $null
+    }
+
+    # 1. An explicit answer is honoured or the run stops - see the parameter comment.
+    if (-not [string]::IsNullOrWhiteSpace($Explicit)) {
+        if (-not (Test-Path -LiteralPath $Explicit)) {
+            Stop-Pipeline -Message "No database client at the -MariaDbClientPath given: $Explicit"
+        }
+
+        $ExplicitDir = Split-Path $Explicit -Parent
+        $Dump = $null
+        foreach ($DumpName in $DumpNames) {
+            $Probe = Join-Path $ExplicitDir $DumpName
+            if (Test-Path -LiteralPath $Probe) { $Dump = $Probe; break }
+        }
+
+        return @{
+            Client = [System.IO.Path]::GetFullPath($Explicit)
+            Dump   = $Dump
+            Source = "-MariaDbClientPath"
+        }
+    }
+
+    # 2. The testlab's own portable server.
+    $Portable = Resolve-FromDirectory -Directory $PortableBinDir -Source "portable server in $MangosInstalationDir\$MariaDbFolderName"
+    if ($Portable) { return $Portable }
+
+    # 3. Whatever is on PATH, in the repository's own order of preference.
+    foreach ($ClientName in $ClientNames) {
+        $OnPath = Get-Command $ClientName -ErrorAction SilentlyContinue
+        if ($OnPath) {
+            $Resolved = Resolve-FromDirectory -Directory (Split-Path $OnPath.Source -Parent) -Source "PATH"
+            if ($Resolved) { return $Resolved }
+        }
+    }
+
+    # 4. Conventional install locations, built from environment variables rather than a
+    #    literal drive letter. Newest first, so a machine with several picks the current one.
+    foreach ($ProgramDir in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if ([string]::IsNullOrWhiteSpace($ProgramDir)) { continue }
+
+        $Installations = Get-ChildItem -Path $ProgramDir -Directory -ErrorAction SilentlyContinue |
+                         Where-Object { $_.Name -match '^(MariaDB|MySQL)' } |
+                         Sort-Object Name -Descending
+
+        foreach ($Installation in $Installations) {
+            # MySQL nests one level deeper: "MySQL\MySQL Server 8.0\bin".
+            $BinDirectories = @((Join-Path $Installation.FullName "bin"))
+            $BinDirectories += (Get-ChildItem -Path $Installation.FullName -Directory -ErrorAction SilentlyContinue |
+                                ForEach-Object { Join-Path $_.FullName "bin" })
+
+            foreach ($BinDirectory in $BinDirectories) {
+                $Resolved = Resolve-FromDirectory -Directory $BinDirectory -Source $Installation.Name
+                if ($Resolved) { return $Resolved }
+            }
+        }
+    }
+
+    Stop-Pipeline -Message ("No MariaDB/MySQL client found. Put a portable MariaDB in " +
+                            "$MangosInstalationDir\$MariaDbFolderName\, or install one and put its bin\ on PATH, " +
+                            "or pass -MariaDbClientPath <path to mariadb.exe or mysql.exe>.")
+}
+
+# Runs a trivial query and reports back rather than aborting, so the caller can tell the
+# failure modes apart. stdout and stderr go to files because PowerShell 5.1 wraps a native
+# command's redirected stderr in ErrorRecords, which makes the text awkward to match on.
+function Test-MariaDbConnection {
+    param (
+        [string]$DefaultsFile
+    )
+
+    $OutFile = Join-Path $env:TEMP ("tw_dbprobe_out_{0}.txt" -f [guid]::NewGuid().ToString('N'))
+    $ErrFile = Join-Path $env:TEMP ("tw_dbprobe_err_{0}.txt" -f [guid]::NewGuid().ToString('N'))
+
+    try {
+        # --connect-timeout bounds each attempt. Without it a dead port costs the client's
+        # own ~2 s TCP timeout per try, and -DbStartupTimeoutSeconds overshot by 3x.
+        $Probe = Start-Process -FilePath $MariaDBPath `
+                               -ArgumentList @("--defaults-extra-file=$DefaultsFile", "--connect-timeout=3", "-e", "SELECT 1;") `
+                               -RedirectStandardOutput $OutFile `
+                               -RedirectStandardError $ErrFile `
+                               -NoNewWindow -PassThru -Wait
+
+        $ErrorText = ""
+        if (Test-Path -LiteralPath $ErrFile) { $ErrorText = (Get-Content -Path $ErrFile -Raw -ErrorAction SilentlyContinue) }
+
+        return @{ ExitCode = $Probe.ExitCode; Error = ("" + $ErrorText).Trim() }
+    } finally {
+        Remove-Item -Path $OutFile, $ErrFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Waits for the server to start answering, then reports what it is.
+#
+# One-shot checking was a race: 1.Start mysql.bat launches mysqld asynchronously, so a run
+# started straight afterwards saw "not answering" from a server that was seconds from ready.
+# Bad credentials are NOT retried - waiting cannot fix a wrong password, and doing so would
+# just turn an instant, clear error into a slow one.
+function Wait-ForMariaDb {
+    param (
+        [int]$TimeoutSeconds
+    )
+
+    $Deadline  = (Get-Date).AddSeconds($TimeoutSeconds)
+    $Announced = $false
+    $LastError = ""
+
+    while ($true) {
+        $Probe = Test-MariaDbConnection -DefaultsFile $script:RootDefaultsFile
+        if ($Probe.ExitCode -eq 0) { return }
+
+        $LastError = $Probe.Error
+
+        if ($LastError -match 'Access denied') {
+            Stop-Pipeline -Message ("MariaDB is running but rejected the 'root' credentials. " +
+                                    "Check -RootPassword. Server said: $LastError")
+        }
+
+        if ((Get-Date) -ge $Deadline) { break }
+
+        if (-not $Announced) {
+            Write-Host " -> Waiting up to $TimeoutSeconds s for MariaDB to accept connections..."
+            $Announced = $true
+        }
+
+        Start-Sleep -Seconds 2
+    }
+
+    Stop-Pipeline -Message ("MariaDB did not answer within $TimeoutSeconds s. Start it first " +
+                            "($MangosInstalationDir\1.Start mysql.bat), or raise -DbStartupTimeoutSeconds. " +
+                            "Last error: $LastError")
 }
 
 # Finds the vcpkg installation instead of assuming where it lives.
@@ -503,7 +701,9 @@ New-PipelineLock
 Write-Host "Single-instance lock acquired: $($script:LockFile) (PID $PID)"
 
 # Define absolute paths based on the workspace root
-$MariaDBPath      = "$ScriptDirectory\$MangosInstalationDir\$MariaDbFolderName\bin\mysql.exe"
+# Resolved just below by Resolve-MariaDbClient; the portable server's bin\ is only the
+# first place it looks.
+$PortableMariaDbBin = "$ScriptDirectory\$MangosInstalationDir\$MariaDbFolderName\bin"
 $SqlBaseDirectory = "$ScriptDirectory\$MangosTortoiseSourceDir\sql\base"
 $CreateDatabasesSql = "$ScriptDirectory\$MangosTortoiseSourceDir\sql\create_databases.sql"
 # Define local build artifacts directories
@@ -511,6 +711,12 @@ $SourceDir  = Join-Path $ScriptDirectory $MangosTortoiseSourceDir
 $BuildDir   = Join-Path $SourceDir $MangosBuildDir
 $InstallDir = Join-Path $ScriptDirectory $MangosInstalationDir # Targeted server binaries directory
 $BackupFolder  = Join-Path $ScriptDirectory $MangosPipelineBackupDir
+
+# Locate the database client before anything needs it (see Resolve-MariaDbClient).
+$MariaDbTools  = Resolve-MariaDbClient -Explicit $MariaDbClientPath -PortableBinDir $PortableMariaDbBin
+$MariaDBPath   = $MariaDbTools.Client
+$MySQLDumpPath = $MariaDbTools.Dump
+Write-Host "Database client: $MariaDBPath (found via: $($MariaDbTools.Source))"
 
 # Materialise the credentials into option files (see New-MySqlDefaultsFile).
 $script:RootDefaultsFile = New-MySqlDefaultsFile -User "root"   -Password $RootPassword
@@ -552,30 +758,26 @@ if (-not (Test-Path -LiteralPath $VcpkgExecutable)) {
 }
 Write-Host " -> vcpkg: $VcpkgExecutable"
 
-if (-not (Test-Path -LiteralPath $MariaDBPath)) {
-    Stop-Pipeline -Message ("MariaDB client not found at $MariaDBPath. Copy a portable MariaDB into " +
-                            "$MangosInstalationDir\ or pass -MariaDbFolderName with the folder you have.")
-}
-Write-Host " -> mysql: $MariaDBPath"
+Write-Host " -> client: $MariaDBPath"
 
-# mysqldump is only reached on the -SkipBotRegen path, but finding out it is missing after
-# the backup was supposed to happen would be far too late.
+# The dump tool is only reached on the -SkipBotRegen path, but finding out it is missing
+# after the backup was supposed to happen would be far too late.
 if ($SkipBotRegen) {
-    $MySQLDumpPath = Join-Path (Split-Path $MariaDBPath -Parent) "mysqldump.exe"
-    if (-not (Test-Path -LiteralPath $MySQLDumpPath)) {
-        Stop-Pipeline -Message "-SkipBotRegen needs mysqldump.exe to back your data up first, and it is missing at: $MySQLDumpPath"
+    if (-not $MySQLDumpPath -or -not (Test-Path -LiteralPath $MySQLDumpPath)) {
+        Stop-Pipeline -Message ("-SkipBotRegen needs mysqldump.exe / mariadb-dump.exe to back your data up first, " +
+                                "and neither is next to $MariaDBPath.")
     }
-    Write-Host " -> mysqldump: $MySQLDumpPath"
+    Write-Host " -> dump tool: $MySQLDumpPath"
 }
 
-# The client has to be running, not merely installed. This is the check that most often
-# saves a run: start server\1.Start mysql.bat first.
-Invoke-MySqlQuery -Query "SELECT 1;" -AllowFailure
-if ($LASTEXITCODE -ne 0) {
-    Stop-Pipeline -Message ("MariaDB is not answering as 'root'. Start it first (server\1.Start mysql.bat) " +
-                            "and check -RootPassword if you changed it from the default.")
-}
-Write-Host " -> MariaDB is up and accepting the root credentials"
+# The server has to be running, not merely installed - and it may still be starting.
+Wait-ForMariaDb -TimeoutSeconds $DbStartupTimeoutSeconds
+
+# Say which server this actually is. The pipeline is about to drop four databases on it, so
+# "which instance am I pointed at" is worth one line in the log.
+$ServerIdentity = & $MariaDBPath "--defaults-extra-file=$($script:RootDefaultsFile)" -N -B `
+                                 -e "SELECT CONCAT(VERSION(), ' on ', @@hostname, ':', @@port);" 2>$null
+Write-Host " -> connected: $ServerIdentity"
 
 # Best effort only: no Visual Studio means CMake has no generator, but vswhere is not
 # guaranteed to be present and its absence proves nothing either way.
@@ -859,15 +1061,11 @@ if (-not [string]::IsNullOrEmpty($applyPatches)) {
 # so tw_char IS wiped further down even with -SkipBotRegen, and only the restore below puts
 # it back. An unnoticed bad dump here therefore means permanent data loss, which is why the
 # result is verified before the pipeline is allowed to touch anything.
-if ($SkipBotRegen -and (Test-Path $MariaDBPath)) {
+if ($SkipBotRegen) {
     Write-PipelineHeader -StepName "(OPTIONAL): Conditional step: export entire database structure and data"
-	Write-Host "Parameter -SkipBotRegen is active. Generating full database dumps via mysqldump..."
+	Write-Host "Parameter -SkipBotRegen is active. Generating full database dumps..."
 
-    # Define the backup dump utility path matching your MariaDB environment
-    $MySQLDumpPath = Join-Path (Split-Path $MariaDBPath -Parent) "mysqldump.exe"
-    if (-not (Test-Path $MySQLDumpPath)) {
-        Stop-Pipeline -Message "-SkipBotRegen requires mysqldump.exe, which is missing at: $MySQLDumpPath"
-    }
+    # $MySQLDumpPath was resolved next to the client and verified in the preflight.
 
     # Ensure a temporary backup directory exists on the disk layout
     New-Item -ItemType Directory -Path $BackupFolder -Force | Out-Null
@@ -945,23 +1143,22 @@ foreach ($Folder in $GeneratedFolders) {
     }
 }
 
-# Drop existing test databases based on the pipeline arguments
+# Drop existing test databases based on the pipeline arguments.
+# The client was resolved and the server proved reachable in the preflight, so there is
+# nothing left to test for here.
 Write-Host "Dropping previous testbed databases..."
-if (Test-Path $MariaDBPath) {
-    # Core infrastructure databases that are ALWAYS dropped and rebuilt
-    Invoke-MySqlQuery -Query "DROP DATABASE IF EXISTS tw_world; DROP DATABASE IF EXISTS tw_logon; DROP DATABASE IF EXISTS tw_logs;" `
-                      -FailureMessage "Could not drop the tw_world / tw_logon / tw_logs databases"
 
-    if (-not $SkipBotRegen) {
-        Write-Host " -> Parameter -SkipBotRegen not active. Dropping characters database..."
-        Invoke-MySqlQuery -Query "DROP DATABASE IF EXISTS tw_char;" -FailureMessage "Could not drop the tw_char database"
-    } else {
-        Write-Host " -> [SKIP] Parameter -SkipBotRegen is active. Retaining existing character and playerbot data." -ForegroundColor Green
-    }
-    Write-Host "[OK] Target databases cleanup sequence completed." -ForegroundColor Green
+# Core infrastructure databases that are ALWAYS dropped and rebuilt
+Invoke-MySqlQuery -Query "DROP DATABASE IF EXISTS tw_world; DROP DATABASE IF EXISTS tw_logon; DROP DATABASE IF EXISTS tw_logs;" `
+                  -FailureMessage "Could not drop the tw_world / tw_logon / tw_logs databases"
+
+if (-not $SkipBotRegen) {
+    Write-Host " -> Parameter -SkipBotRegen not active. Dropping characters database..."
+    Invoke-MySqlQuery -Query "DROP DATABASE IF EXISTS tw_char;" -FailureMessage "Could not drop the tw_char database"
 } else {
-    Stop-Pipeline -Message "Could not locate mysql.exe at the specified path: $MariaDBPath"
+    Write-Host " -> [SKIP] Parameter -SkipBotRegen is active. Retaining existing character and playerbot data." -ForegroundColor Green
 }
+Write-Host "[OK] Target databases cleanup sequence completed." -ForegroundColor Green
 
 # ==============================================================================
 # PIPELINE STEP 05: DATABASE GENERATION AND IMPORTS
@@ -1010,7 +1207,7 @@ Invoke-MySqlQuery -Query $UserQuery -FailureMessage "Could not configure the 'ma
 # ==============================================================================
 # PIPELINE STEP (OPTIONAL): CONDITIONAL RESTORE SECTION (IMPORT FULL DATABASE DUMPS)
 # ==============================================================================
-if ($SkipBotRegen -and (Test-Path $MariaDBPath)) {
+if ($SkipBotRegen) {
     Write-PipelineHeader -StepName "(OPTIONAL): Restoring original character and logon datasets"
     Write-Host "Restoring preserved production databases from mysqldump files..."
 

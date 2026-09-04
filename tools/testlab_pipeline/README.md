@@ -21,7 +21,7 @@ The script automates everything it can, but four things cannot be downloaded for
 | What | Where it goes | Notes |
 |---|---|---|
 | **Client data** | `<testlab>\server\data\` | `dbc`, `maps`, `vmaps`, `mmaps`, extracted from a **Turtle WoW 1.18.1 client, build 7272**. See `INSTALL-WINDOWS.md` §4. |
-| **Portable MariaDB** | `<testlab>\server\mariadb-10.3.39-winx64\` | Any portable MariaDB works — pass `-MariaDbFolderName` if your folder is named differently. It must already be initialised and startable. |
+| **A database** | `<testlab>\server\mariadb-10.3.39-winx64\` | A portable MariaDB is the intended setup — pass `-MariaDbFolderName` if your folder is named differently. It must already be initialised and startable. An installed MariaDB/MySQL works too: with no portable copy present the client is found on `PATH` or in the usual install locations. |
 | **Visual Studio 2022** | — | Workload *Desktop development with C++*. |
 | **CMake ≥ 3.16 and Git** | on `PATH` | — |
 
@@ -104,7 +104,10 @@ branch — every environment-specific value is a parameter.
 | `-VcpkgTriplet` | `x64-windows` | Triplet the dependencies are installed for. |
 | `-RootPassword` | `mangos` | MariaDB `root` password. |
 | `-DbPassword` | `mangos` | Password for the `mangos` service user the script creates. |
-| `-MariaDbFolderName` | `mariadb-10.3.39-winx64` | Portable MariaDB folder name inside `server\`. |
+| `-MariaDbFolderName` | `mariadb-10.3.39-winx64` | Portable MariaDB folder name inside `server\`, tried first. |
+| `-MariaDbClientPath` | *discovered* | Explicit `mariadb.exe` / `mysql.exe`. Left out: the portable server, then `PATH`, then installed MariaDB/MySQL. Given explicitly it is used or the run fails. |
+| `-DbHost` / `-DbPort` | *client default* | Connection target. Leave empty for the bundled portable server. |
+| `-DbStartupTimeoutSeconds` | `30` | How long the preflight waits for the server to start answering. |
 | `-RepoUrl` | Shyalya/tortoise-wow | Source repository to build. |
 | `-BranchName` | `playerbots-integration-gh` | Branch to build — point it at a topic branch to test one. |
 | `-PatchRemoteUrl` | Penqle/tortoise-wow | Remote the `-applyPatches` commits are fetched from. |
@@ -183,6 +186,15 @@ often fails where Linux succeeds:
   wipes the server directory, so every tool and service the run depends on is verified in
   the preflight first. A missing `cmake` used to surface in step 08 — four steps *after*
   the data was gone.
+- **It tells you which database server it is about to wipe.** The client is resolved with
+  the testlab's own portable server first, so a run cannot quietly drop `tw_world` /
+  `tw_char` / `tw_logon` / `tw_logs` on a system-wide instance just because one happened to
+  be on `PATH`. The preflight logs the client path, how it was found, and the server's
+  version, hostname and port.
+- **Waiting, not guessing, on startup.** `1.Start mysql.bat` launches mysqld
+  asynchronously, so the preflight retries for `-DbStartupTimeoutSeconds` instead of
+  failing on the first refused connection. A wrong password is *not* retried — waiting
+  cannot fix it — so bad credentials still fail immediately, with the server's own message.
 - **No absolute paths.** The workspace root is the single anchor, resolved to a full path
   up front, and every other location is a relative segment joined onto it. The testlab
   folder can be renamed, moved or sit on another drive with no edits. (The root is
