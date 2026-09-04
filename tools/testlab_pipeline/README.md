@@ -29,6 +29,46 @@ vcpkg itself is not installed for you either, but the packages inside it are: po
 `-VcpkgDirectory` at your vcpkg checkout and the script installs ACE and the ten Boost
 libraries the playerbots module needs.
 
+## What has to be present
+
+### Files this tool is made of
+
+| File | Required? | Why |
+|---|---|---|
+| `Setup-Testlab.ps1` | **yes** | The pipeline itself. |
+| `dbc_verifier.json` | **yes** | SHA256 manifest step 01 checks the DBC files against. The run stops without it. Not the same file as `tools/dbc_verification/manifest.json`. |
+| `Run-Testlab.bat` | recommended | Launcher that avoids the execution-policy change. The `.ps1` runs fine on its own if your policy already allows it. |
+| `README.md` | no | This document. |
+
+Copy the first three together; the script looks for `dbc_verifier.json` in the workspace
+root first and falls back to its own folder, so either arrangement works.
+
+### What you supply
+
+| Path | Required? | Notes |
+|---|---|---|
+| `server\data\dbc`, `maps`, `vmaps`, `mmaps` | **yes** | Extracted from a **Turtle WoW 1.18.1 client, build 7272**. Every DBC is hash-checked. See `INSTALL-WINDOWS.md` §4. |
+| `server\<portable MariaDB>\` | see notes | The intended setup, and the safest: it is a database nothing else uses. Not needed if you point the script at an installed MariaDB/MySQL instead. |
+
+### Tools on the machine
+
+| Tool | Required? | Checked by the preflight |
+|---|---|---|
+| PowerShell 5.1+ | **yes** | — (it is what runs the script) |
+| Git | **yes** | yes, on `PATH` |
+| CMake 3.16+ | **yes** | yes, on `PATH` |
+| Visual Studio 2022, *Desktop development with C++* | **yes** | best effort, via `vswhere` |
+| vcpkg | **yes** | yes — the ACE and Boost packages inside it are installed for you |
+| MariaDB or MySQL, running | **yes** | yes, including that it answers and accepts the credentials |
+
+Everything above is verified **before** the pipeline drops a single database.
+
+### What the pipeline creates
+
+`tortoise-wow\` (the clone), `server\bin`, `lib`, `etc`, `tools`, `logs`, `honor`, `pdump`,
+`lua_scripts`, the three launcher `.bat` files, and the logs. None of it needs to exist
+beforehand.
+
 ## Folder layout
 
 The script works inside a *testlab root* that holds the source checkout and the server
@@ -45,8 +85,25 @@ side by side:
 │  ├─ bin\  etc\  lib\  ...   <- created by the script
 │  └─ 1.Start mysql.bat …     <- created by the script
 ├─ pipeline_console.log       <- full transcript of every run
-└─ server_build.log           <- compiler output of the last build
+├─ server_build.log           <- compiler output of the last build
+└─ pipeline_running.lock      <- present only while a run is in progress
 ```
+
+## Logging
+
+Everything the pipeline prints — its own messages **and** the output of git, cmake, vcpkg
+and the database client — is written to `pipeline_console.log` in the workspace root as
+well as to the console. No `> log.txt` redirection needed.
+
+`server_build.log` additionally holds just the compiler output of the last build, which is
+the file to open when a build fails.
+
+> This took explicit work: `Start-Transcript` alone records only what passes through
+> PowerShell's own streams. A native command left to write straight to the console, and
+> anything started with `Start-Process`, bypass it entirely — so the log used to contain
+> the pipeline's own messages and almost nothing from the tools it drives. Native calls are
+> now routed back through the pipeline, and the two places that genuinely need
+> `Start-Process` capture their output to files and replay it.
 
 ## Running it
 
@@ -105,6 +162,7 @@ branch — every environment-specific value is a parameter.
 | `-RootPassword` | `mangos` | MariaDB `root` password. |
 | `-DbPassword` | `mangos` | Password for the `mangos` service user the script creates. |
 | `-MariaDbFolderName` | `mariadb-10.3.39-winx64` | Portable MariaDB folder name inside `server\`, tried first. |
+| `-DbFlavor` | `Auto` | `Auto`, `MariaDB` or `MySQL`. Narrows discovery on a machine that has both. |
 | `-MariaDbClientPath` | *discovered* | Explicit `mariadb.exe` / `mysql.exe`. Left out: the portable server, then `PATH`, then installed MariaDB/MySQL. Given explicitly it is used or the run fails. |
 | `-DbHost` / `-DbPort` | *client default* | Connection target. Leave empty for the bundled portable server. |
 | `-DbStartupTimeoutSeconds` | `30` | How long the preflight waits for the server to start answering. |
@@ -121,7 +179,36 @@ branch — every environment-specific value is a parameter.
 ```powershell
 .\Run-Testlab.bat -VcpkgDirectory D:\vcpkg -RootPassword "hunter2" -SkipBotRegen
 .\Run-Testlab.bat -RepoUrl https://github.com/me/tortoise-wow.git -BranchName my-fix
+.\Run-Testlab.bat -DbFlavor MySQL -DbPort 3307
 ```
+
+Full help, including every parameter and more examples:
+
+```powershell
+Get-Help .\Setup-Testlab.ps1 -Full
+Get-Help .\Setup-Testlab.ps1 -Parameter DbFlavor
+```
+
+### MariaDB or MySQL
+
+Either works. MariaDB is what this testlab ships and what the project targets; MySQL 5.7
+and 8 are supported too, and `-DbFlavor` picks a side when both are installed.
+
+Two differences the script already handles, so you do not have to:
+
+- **Client naming.** MariaDB renamed its client to `mariadb.exe` in 10.6, and recent builds
+  ship no `mysql.exe` at all — while the 10.3 portable build here has only `mysql.exe`.
+  Both spellings are accepted, and the dump tool (`mariadb-dump.exe` / `mysqldump.exe`) is
+  paired from the same directory.
+- **User creation.** MySQL 8 removed `GRANT ... IDENTIFIED BY`, which is a syntax error
+  there while MariaDB still accepts it. The script uses `CREATE USER IF NOT EXISTS` plus
+  plain `GRANT`s, which both engines accept.
+
+Logging into a **remote or shared** server works through `-DbHost` / `-DbPort`, but be
+deliberate about it: the pipeline drops `tw_world`, `tw_char`, `tw_logon` and `tw_logs` on
+whatever it connects to. The preflight prints the client, how it was found, and the
+server's version, host and port for exactly this reason — read that line on an unfamiliar
+machine.
 
 ## What a run does
 

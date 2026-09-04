@@ -6,29 +6,98 @@
     vcpkg dependency check, Git synchronization with submodules, CMake/MSBuild compilation,
     directory restructuring, configuration tuning, and automated database generation.
 .PARAMETER SkipBotRegen
-    A switch parameter to bypass the time-consuming process of deleting and regenerating
-    the characters and logon databases. When active, a full backup of 'tw_char' and 'tw_logon'
-    is generated via mysqldump, and restored automatically at the end of the pipeline.
-.EXAMPLE
-    .\Setup-Testlab.ps1
-    Runs the complete clean pipeline, dropping all databases and regenerating bots from scratch.
-.EXAMPLE
-    .\Setup-Testlab.ps1 -SkipBotRegen
-    Runs the fast pipeline. Preserves your existing game accounts, GM characters, and playerbot data.
+    Preserves existing accounts, GM characters and playerbot data. 'tw_char' and 'tw_logon'
+    are dumped before the run and restored at the end; the dump is verified before anything
+    destructive happens, so a failed backup stops the pipeline with the data still intact.
+    Without it every database is dropped and rebuilt from scratch.
 .PARAMETER applyPatches
-    A semicolon-separated string of external git commit hashes to cherry-pick onto the active branch context.
+    Semicolon-separated git commit hashes to cherry-pick onto the branch before building,
+    fetched from -PatchRemoteUrl. Example: "0ee0748;abc1234". Uncommitted local changes are
+    stashed first, never discarded.
+.PARAMETER WorkspaceRoot
+    The testlab root: the folder holding 'server\' and the 'tortoise-wow\' checkout.
+    Defaults to the folder this script sits in. Relative paths are resolved against your
+    current directory. Everything else the pipeline touches is derived from this one path.
+.PARAMETER VcpkgDirectory
+    vcpkg installation providing ACE and Boost. Left empty it is discovered: VCPKG_ROOT,
+    then vcpkg.exe on PATH, then conventional locations. Given explicitly it is used or the
+    run fails - never silently replaced by a discovered one.
+.PARAMETER VcpkgTriplet
+    vcpkg triplet the dependencies are installed for. Defaults to x64-windows; the build
+    itself is always -A x64.
+.PARAMETER RootPassword
+    Password for the database 'root' account, used for schema creation and imports.
+.PARAMETER DbPassword
+    Password for the 'mangos' service account this script creates and the server logs in
+    with. Written to the database, not to any configuration file.
+.PARAMETER DbFlavor
+    Which engine to look for: Auto (default), MariaDB or MySQL. Only narrows discovery -
+    useful on a machine that has both installed.
+.PARAMETER MariaDbFolderName
+    Name of the portable MariaDB directory inside 'server\', tried before PATH and the
+    conventional install locations.
+.PARAMETER MariaDbClientPath
+    Explicit path to mariadb.exe or mysql.exe. Given, it is used or the run fails, because
+    connecting to a different server than intended means dropping databases on the wrong
+    instance.
+.PARAMETER DbHost
+    Host to connect to. Empty (default) means the client's own default, which is what the
+    bundled portable server wants.
+.PARAMETER DbPort
+    Port to connect to. 0 (default) means the client's own default.
+.PARAMETER DbStartupTimeoutSeconds
+    How long the preflight waits for the server to start answering, in seconds. Default 30.
+    'server\1.Start mysql.bat' launches mysqld asynchronously, so a run started right after
+    it needs a moment. A wrong password is never retried.
+.PARAMETER RepoUrl
+    Source repository to clone or pull.
+.PARAMETER BranchName
+    Branch to build. Point it at a topic branch to test one without editing anything.
+.PARAMETER PatchRemoteUrl
+    Remote the -applyPatches commits are fetched from.
+.PARAMETER RealmlistIPAddress
+    Address written into tw_logon.realmlist, and the one your client's realmlist.wtf has to
+    point at.
+.PARAMETER RealmlistPort
+    Port written into tw_logon.realmlist. Must match WorldServerPort in mangosd.conf, which
+    ships as 8090; a mismatch lets login succeed and then hangs the client before character
+    selection.
+.PARAMETER MinRandomBots
+    Lower bound of the playerbot population written into aiplayerbot.conf.
+.PARAMETER MaxRandomBots
+    Upper bound of the playerbot population. The shipped template asks for a thousand, which
+    turns the first start into a long wait for no benefit.
+.PARAMETER RandomBotMinLevel
+    Lowest level random bots are generated at.
+.PARAMETER RandomBotMaxLevel
+    Highest level random bots are generated at.
+.PARAMETER RandomBotAccountsCount
+    Number of bot accounts to create.
 .EXAMPLE
-    .\Setup-Testlab.ps1 -applyPatches "0ee0748"
-    Runs the clean pipeline and dynamically injects the SkillRaceClassInfo DBC Override System hotfix.
+    .\Run-Testlab.bat
+    The normal run: builds everything and rebuilds every database from scratch. Use the .bat
+    rather than the .ps1 so no execution-policy change is needed.
 .EXAMPLE
-    .\Setup-Testlab.ps1 -applyPatches "0ee0748;abc1234" -SkipBotRegen
-    Runs the fast pipeline, applies multiple external commit patches sequentially, and preserves character data.
+    .\Run-Testlab.bat -SkipBotRegen
+    Rebuilds the server but keeps your accounts, GM characters and playerbot data.
 .EXAMPLE
-    .\Setup-Testlab.ps1 -WorkspaceRoot C:\WOW\testlab -VcpkgDirectory D:\vcpkg
-    Runs the script straight out of the repository against a testlab folder elsewhere on disk.
+    .\Run-Testlab.bat -RepoUrl https://github.com/me/tortoise-wow.git -BranchName my-fix
+    Builds a fork or topic branch without editing the script.
+.EXAMPLE
+    .\Run-Testlab.bat -WorkspaceRoot C:\WOW\testlab -VcpkgDirectory D:\vcpkg
+    Runs the script straight out of the repository against a testlab folder elsewhere.
+.EXAMPLE
+    .\Run-Testlab.bat -DbFlavor MySQL -DbPort 3307 -RootPassword "hunter2"
+    Uses an installed MySQL on a non-default port instead of the bundled portable MariaDB.
+.EXAMPLE
+    .\Run-Testlab.bat -applyPatches "0ee0748;abc1234" -SkipBotRegen
+    Cherry-picks two hotfixes onto the branch, then rebuilds while preserving character data.
 .NOTES
     Windows only (PowerShell 5.1+, Visual Studio 2022, CMake). See README.md next to this
     script for the folder layout it expects and what you have to supply yourself.
+
+    Everything printed is also written to 'pipeline_console.log' in the workspace root, and
+    the compiler output additionally to 'server_build.log'. No shell redirection needed.
 #>
 param (
     # Switch to bypass character database drop, playerbot data import, and configuration wipe
@@ -59,6 +128,12 @@ param (
     # Name of the portable MariaDB directory inside server\. Used first when present; if it
     # is not there the client is looked for on PATH and in the usual install locations.
     [string]$MariaDbFolderName = "mariadb-10.3.39-winx64",
+
+    # Which database engine to look for. Auto takes the first client it finds in the search
+    # order; MariaDB or MySQL restricts discovery to that engine's client names, for a
+    # machine that has both installed.
+    [ValidateSet("Auto", "MariaDB", "MySQL")]
+    [string]$DbFlavor = "Auto",
 
     # Explicit path to the client (mariadb.exe or mysql.exe). Given, it is used or the run
     # fails - never silently replaced by a discovered one, because connecting to a different
@@ -275,6 +350,27 @@ function New-PipelineLock {
     $script:LockOwned = $true
 }
 
+# Runs a native command so that its output reaches the transcript as well as the console.
+#
+# Start-Transcript only records what travels through PowerShell's own streams. A native
+# command left to write straight to the console - "git pull", "cmake -B ..." - and anything
+# launched through Start-Process bypass it completely, which is why pipeline_console.log
+# used to contain the pipeline's own messages and almost nothing from the tools it drives.
+# Verified: of Write-Host, a direct native call, a Start-Process child and a piped call,
+# only the first and last were captured.
+#
+# Routing the output through ForEach-Object puts it back in the pipeline, so the transcript
+# sees it and the operator still watches it live. 2>&1 folds stderr in - PowerShell 5.1
+# wraps those lines in ErrorRecords, hence the explicit ToString().
+function Invoke-NativeLogged {
+    param (
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [string[]]$Arguments = @()
+    )
+
+    & $Executable @Arguments 2>&1 | ForEach-Object { Write-Host $_.ToString() }
+}
+
 # Aborts the pipeline when the last native command reported a failure. Native tools
 # (git, cmake, mysql) do NOT raise PowerShell errors - without this check the pipeline
 # happily continues on a failed clone or a failed CMake configure and reports success.
@@ -337,7 +433,7 @@ function Invoke-MySqlQuery {
     $Arguments = @("--defaults-extra-file=$DefaultsFile", "--default-character-set=utf8mb4", "-e", $Query)
     if ($Database) { $Arguments += $Database }
 
-    & $MariaDBPath @Arguments
+    Invoke-NativeLogged -Executable $MariaDBPath -Arguments $Arguments
     if (-not $AllowFailure) { Assert-LastExitCode -Message $FailureMessage }
 }
 
@@ -375,22 +471,37 @@ function Invoke-MySqlFile {
     $Arguments = @("--defaults-extra-file=$DefaultsFile", "--default-character-set=utf8mb4")
     if ($Database) { $Arguments += $Database }
 
+    # Redirecting stdin is the one thing the call operator cannot do, so this stays on
+    # Start-Process - but its output would then bypass the transcript entirely, so stdout
+    # and stderr are captured to files and replayed through Write-Host. That matters: a
+    # failed import's only explanation is the message the client printed.
+    $OutFile = Join-Path $env:TEMP ("tw_import_out_{0}.txt" -f [guid]::NewGuid().ToString('N'))
+    $ErrFile = Join-Path $env:TEMP ("tw_import_err_{0}.txt" -f [guid]::NewGuid().ToString('N'))
+
     try {
-        # Start-Process feeds the file straight into the client's stdin - no per-line
-        # PowerShell pipeline, no re-encoding.
         $ImportProcess = Start-Process -FilePath $MariaDBPath `
                                        -ArgumentList $Arguments `
                                        -RedirectStandardInput $FilteredPath `
+                                       -RedirectStandardOutput $OutFile `
+                                       -RedirectStandardError $ErrFile `
                                        -NoNewWindow `
                                        -PassThru `
                                        -Wait
+
+        foreach ($CapturedFile in @($OutFile, $ErrFile)) {
+            if (Test-Path -LiteralPath $CapturedFile) {
+                Get-Content -Path $CapturedFile -ErrorAction SilentlyContinue |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                    ForEach-Object { Write-Host $_ }
+            }
+        }
 
         if ($ImportProcess.ExitCode -ne 0 -and -not $AllowFailure) {
             Stop-Pipeline -Message "$FailureMessage : $Path (exit code $($ImportProcess.ExitCode))" `
                           -ExitCode $ImportProcess.ExitCode
         }
     } finally {
-        Remove-Item -Path $FilteredPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $FilteredPath, $OutFile, $ErrFile -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -412,8 +523,15 @@ function Resolve-MariaDbClient {
         [string]$PortableBinDir
     )
 
-    $ClientNames = @("mariadb.exe", "mysql.exe")
-    $DumpNames   = @("mariadb-dump.exe", "mysqldump.exe")
+    # -DbFlavor narrows the names when a machine has both engines installed. MariaDB uses
+    # mariadb.exe from 10.6 on (and older builds, like the 10.3 portable one this testlab
+    # ships with, only have mysql.exe), so MariaDB has to accept both spellings; MySQL only
+    # ever ships mysql.exe.
+    switch ($DbFlavor) {
+        "MariaDB" { $ClientNames = @("mariadb.exe", "mysql.exe"); $DumpNames = @("mariadb-dump.exe", "mysqldump.exe") }
+        "MySQL"   { $ClientNames = @("mysql.exe");                $DumpNames = @("mysqldump.exe") }
+        default   { $ClientNames = @("mariadb.exe", "mysql.exe"); $DumpNames = @("mariadb-dump.exe", "mysqldump.exe") }
+    }
 
     # Given a directory, return a resolved pair or $null.
     function Resolve-FromDirectory {
@@ -479,8 +597,14 @@ function Resolve-MariaDbClient {
     foreach ($ProgramDir in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
         if ([string]::IsNullOrWhiteSpace($ProgramDir)) { continue }
 
+        $InstallationPattern = switch ($DbFlavor) {
+            "MariaDB" { '^MariaDB' }
+            "MySQL"   { '^MySQL' }
+            default   { '^(MariaDB|MySQL)' }
+        }
+
         $Installations = Get-ChildItem -Path $ProgramDir -Directory -ErrorAction SilentlyContinue |
-                         Where-Object { $_.Name -match '^(MariaDB|MySQL)' } |
+                         Where-Object { $_.Name -match $InstallationPattern } |
                          Sort-Object Name -Descending
 
         foreach ($Installation in $Installations) {
@@ -910,23 +1034,18 @@ $VcpkgPackages = @(
 
 $VcpkgArguments = @("install") + ($VcpkgPackages | ForEach-Object { "${_}:$VcpkgTriplet" })
 
-# Execute vcpkg inside its own folder without shifting the global pipeline context
-# -NoNewWindow channels the compilation logs directly into the current pipeline frame
-# -Wait forces the pipeline to halt until vcpkg safely evaluates all requirements
-# The argument array is passed straight through - joining it into one string first would
-# break the moment any path or triplet contained a space.
-$VcpkgProcess = Start-Process -FilePath $VcpkgExecutable `
-                              -ArgumentList $VcpkgArguments `
-                              -WorkingDirectory $VcpkgDirectory `
-                              -NoNewWindow `
-                              -PassThru `
-                              -Wait
-
-# Evaluate the final runtime output code delivered by the vcpkg module compiler
-if ($VcpkgProcess.ExitCode -ne 0) {
-    Stop-Pipeline -Message "Vcpkg deployment sequence failed with exit code $($VcpkgProcess.ExitCode). Aborting pipeline." `
-                  -ExitCode $VcpkgProcess.ExitCode
+# vcpkg wants to run from its own directory. Push-Location rather than Start-Process
+# -WorkingDirectory on purpose: a Start-Process child writes straight to the console and
+# its output never reaches the transcript, and vcpkg's output is exactly what you want in
+# the log when a dependency fails to build.
+Push-Location $VcpkgDirectory
+try {
+    Invoke-NativeLogged -Executable $VcpkgExecutable -Arguments $VcpkgArguments
+} finally {
+    Pop-Location
 }
+
+Assert-LastExitCode -Message "Vcpkg deployment sequence failed"
 
 Write-Host "[OK] All required libraries (ACE and Boost modules) are fully verified and deployed." -ForegroundColor Green
 
@@ -941,7 +1060,7 @@ if (-not (Test-Path $SourceDir)) {
     Write-Host "Repository not found. Cloning branch '$BranchName' with all submodules..."
 
     # --recurse-submodules forces Git to automatically clone Eluna and any other nested modules
-    git clone --branch $BranchName --recurse-submodules $RepoUrl $SourceDir
+    Invoke-NativeLogged -Executable "git" -Arguments @("clone", "--branch", $BranchName, "--recurse-submodules", $RepoUrl, $SourceDir)
     Assert-LastExitCode -Message "git clone of '$BranchName' failed"
 
     Write-Host "[OK] Repository and all nested submodules successfully cloned." -ForegroundColor Green
@@ -952,15 +1071,15 @@ if (-not (Test-Path $SourceDir)) {
     Push-Location $SourceDir
 
     # Checkout target branch and pull core engine changes
-    git checkout $BranchName
+    Invoke-NativeLogged -Executable "git" -Arguments @("checkout", $BranchName)
     Assert-LastExitCode -Message "git checkout of '$BranchName' failed"
 
-    git pull
+    Invoke-NativeLogged -Executable "git" -Arguments @("pull")
     Assert-LastExitCode -Message "git pull failed"
 
     Write-Host "Synchronizing and updating git submodules (Eluna engine)..."
     # Update and initialize any new or existing submodules recursively
-    git submodule update --init --recursive
+    Invoke-NativeLogged -Executable "git" -Arguments @("submodule", "update", "--init", "--recursive")
     Assert-LastExitCode -Message "git submodule update failed"
 
     Pop-Location
@@ -1191,11 +1310,19 @@ Get-ChildItem "$SqlBaseDirectory\*.sql" | Sort-Object Name | ForEach-Object {
 Write-PipelineHeader -StepName "06: The 'mangos' user has been configured"
 Write-Host "Configuring database user 'mangos'..."
 
-# Using a PowerShell Here-String (@" ... "@) to send a perfectly formatted SQL block to MariaDB.
-# The password comes from $DbPassword rather than a literal, so changing the variable at the
-# top of this script cannot leave step 13 authenticating with a password that was never set.
+# The password comes from $DbPassword rather than a literal, so changing the parameter
+# cannot leave step 13 authenticating with a password that was never set.
+#
+# Spelled as CREATE USER + ALTER USER + plain GRANTs rather than the shorter
+# "GRANT ... IDENTIFIED BY", which MySQL 8 removed: creating a user implicitly through
+# GRANT is a syntax error there (ERROR 1064), while MariaDB still accepts it. This form
+# works on MariaDB 10.1+ and MySQL 5.7+ alike. ALTER USER follows CREATE USER IF NOT
+# EXISTS so an existing account picks up the current password instead of silently keeping
+# an old one.
 $UserQuery = @"
-GRANT ALL PRIVILEGES ON tw_world.* TO 'mangos'@'localhost' IDENTIFIED BY '$DbPassword';
+CREATE USER IF NOT EXISTS 'mangos'@'localhost' IDENTIFIED BY '$DbPassword';
+ALTER USER 'mangos'@'localhost' IDENTIFIED BY '$DbPassword';
+GRANT ALL PRIVILEGES ON tw_world.* TO 'mangos'@'localhost';
 GRANT ALL PRIVILEGES ON tw_char.* TO 'mangos'@'localhost';
 GRANT ALL PRIVILEGES ON tw_logon.* TO 'mangos'@'localhost';
 GRANT ALL PRIVILEGES ON tw_logs.* TO 'mangos'@'localhost';
@@ -1284,20 +1411,23 @@ if (Test-Path $BuildDir) {
 # BUILD_PLAYERBOTS=ON is required alongside MODULE_MOD_PLAYERBOTS=static: the module's
 # sources compile either way, but mod-playerbots.cmake returns early without it and the
 # module never receives its compile definitions or the botpch.h force-include.
-cmake -B $BuildDir -S $SourceDir -A x64 `
-    "-DCMAKE_INSTALL_PREFIX=$InstallDir" `
-    "-DUSE_EXTRACTORS=ON" `
-    "-DBUILD_MODULES=ON" `
-    "-DBUILD_EXTENSIONS=ON" `
-    "-DBUILD_MODS=ON" `
-    "-DBUILD_PLAYERBOTS=ON" `
-    "-DUSE_PCH=OFF" `
-    "-DUSE_PCH_OLD=OFF" `
-    "-DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON" `
-    "-DMODULE_MOD_PLAYERBOTS=static" `
-    "-DMODULE_MOD_DUNGEON_CLEAR=static" `
-    "-DACE_ROOT=$VcpkgInstalledPath" `
-    "-DBOOST_ROOT=$VcpkgInstalledPath"
+Invoke-NativeLogged -Executable "cmake" -Arguments @(
+    "-B", $BuildDir,
+    "-S", $SourceDir,
+    "-A", "x64",
+    "-DCMAKE_INSTALL_PREFIX=$InstallDir",
+    "-DUSE_EXTRACTORS=ON",
+    "-DBUILD_MODULES=ON",
+    "-DBUILD_EXTENSIONS=ON",
+    "-DBUILD_MODS=ON",
+    "-DBUILD_PLAYERBOTS=ON",
+    "-DUSE_PCH=OFF",
+    "-DUSE_PCH_OLD=OFF",
+    "-DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON",
+    "-DMODULE_MOD_PLAYERBOTS=static",
+    "-DMODULE_MOD_DUNGEON_CLEAR=static",
+    "-DACE_ROOT=$VcpkgInstalledPath",
+    "-DBOOST_ROOT=$VcpkgInstalledPath")
 Assert-LastExitCode -Message "CMake configuration failed - the build was never started"
 
 Write-Host "Compiling server binaries via MSBuild Release configuration..."
@@ -1318,7 +1448,7 @@ Write-PipelineHeader -StepName "09: Installation and directory restructuring"
 Write-Host "Installing compiled modules into production environment..."
 
 # 1. Execute default CMake install into temporary root folder
-cmake --install $BuildDir --config Release
+Invoke-NativeLogged -Executable "cmake" -Arguments @("--install", $BuildDir, "--config", "Release")
 Assert-LastExitCode -Message "CMake install step failed"
 
 # 2. Ensure all structured directories exist
