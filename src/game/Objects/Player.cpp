@@ -24862,6 +24862,14 @@ void Player::MailVagrantModeRewards(uint32 level)
 void Player::MailBoaringModeRewards(uint32 level)
 {
     Item* ToMailItem = Item::CreateItem(40998, 1, this);
+    // CreateItem returns nullptr when the item template is missing - and 40998
+    // is not in every world database (ours, 2026-09-04). The title was already
+    // awarded; do not take the server down over the mail.
+    if (!ToMailItem)
+    {
+        sLog.outError("[Challenge] Boaring reward item 40998 missing from item_template - no mail for %s", GetName());
+        return;
+    }
     ToMailItem->SaveToDB();
 
     MailDraft("Boar's Honor Pack", "Took you long enough! Here's your boar and sword.")
@@ -24872,6 +24880,11 @@ void Player::MailBoaringModeRewards(uint32 level)
 void Player::MailBrewmasterModeRewards()
 {
     Item* reward = Item::CreateItem(GetTeam() == ALLIANCE ? 81234 : 80455, 1, this);
+    if (!reward)
+    {
+        sLog.outError("[Challenge] Brewmaster reward mount missing from item_template - no mail for %s", GetName());
+        return;
+    }
     reward->SaveToDB();
 
     MailDraft("Master of the Brew", "Congratulations on reaching level 60 while walking the Path of the Brewmaster! Accept this Brewfest mount as a reward for your spirited journey.")
