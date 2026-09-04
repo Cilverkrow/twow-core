@@ -117,8 +117,12 @@ bool Transport::Create(uint32 guidlow, uint32 entry, uint32 mapid, float x, floa
     _nextFrame = tInfo->keyFrames.begin();
     _currentFrame = _nextFrame++;
 
-    _pathProgress = time(nullptr) % (tInfo->pathTime / 1000);
-    _pathProgress *= 1000;
+    // Start from a real keyframe instead of creating the object on the first
+    // map while advertising an unrelated epoch-derived point later in the
+    // route. The old mismatch made 1.18 clients discard the initial transport
+    // create and it could remain invisible until a full map transition.
+    // Runtime movement remains driven by the generated millisecond period.
+    _pathProgress = 0;
     SetObjectScale(goinfo->size);
     SetUInt32Value(GAMEOBJECT_FACTION, goinfo->faction);
     SetUInt32Value(GAMEOBJECT_FLAGS, goinfo->flags);

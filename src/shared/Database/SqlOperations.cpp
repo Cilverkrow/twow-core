@@ -102,7 +102,7 @@ bool SqlQuery::Execute(SqlConnection *conn)
     /// execute the query and store the result in the callback
     m_callback->SetResult(conn->Query(m_sql));
     /// add the callback to the sql result queue of the thread it originated from
-    m_queue->add(m_callback);
+    m_queue->Add(m_callback, m_highPriority);
 
     return true;
 }
@@ -110,15 +110,22 @@ bool SqlQuery::Execute(SqlConnection *conn)
 void SqlResultQueue::Update(uint32 timeout)
 {
     uint32 begin = WorldTimer::getMSTime();
+    static int const MAX_CALLBACK_BATCH = 64;
     /// execute the callbacks waiting in the synchronization queue
     MaNGOS::IQueryCallback* callback = NULL;
     int n = 0;
-    while (next(callback))
+    while (n < MAX_CALLBACK_BATCH &&
+        (!timeout || WorldTimer::getMSTimeDiffToNow(begin) < timeout) &&
+        (_priorityWaitingQueries.next(callback) || next(callback)))
     {
         if (!callback->IsThreadSafe())
         {
-            _threadUnsafeWaitingQueries.add(callback);
+            if (callback->IsHighPriority())
+                _priorityThreadUnsafeWaitingQueries.add(callback);
+            else
+                _threadUnsafeWaitingQueries.add(callback);
             ++numUnsafeQueries;
+            ++n;
         }
         else
         {
@@ -132,13 +139,12 @@ void SqlResultQueue::Update(uint32 timeout)
     }
     std::future<void> job = m_callbackThreads->processWorkload();
     MaNGOS::IQueryCallback* s = NULL;
-    while (_threadUnsafeWaitingQueries.next(s))
+    while ((!timeout || WorldTimer::getMSTimeDiffToNow(begin) < timeout) &&
+        (_priorityThreadUnsafeWaitingQueries.next(s) || _threadUnsafeWaitingQueries.next(s)))
     {
         s->Execute();
         delete s;
         --numUnsafeQueries;
-        if (timeout && WorldTimer::getMSTimeDiffToNow(begin) > timeout)
-            break;
     }
 
     if (numUnsafeQueries > 1000) // Bottleneck here
@@ -159,16 +165,25 @@ SqlResultQueue::SqlResultQueue(const char* Name) :
 {
     char PoolName[128];
     sprintf(PoolName, "SqlCallback %s", Name);
-    m_callbackThreads.reset(new ThreadPool(6, PoolName));
+    m_callbackThreads.reset(new ThreadPool(2, PoolName));
     m_callbackThreads->start<SqlResultQueueWorker>();
 }
 
 SqlResultQueue::~SqlResultQueue(){}
 
+void SqlResultQueue::Add(MaNGOS::IQueryCallback* callback, bool highPriority)
+{
+    callback->SetHighPriority(highPriority);
+    if (highPriority)
+        _priorityWaitingQueries.add(callback);
+    else
+        add(callback);
+}
+
 void SqlResultQueue::CancelAll()
 {
     MaNGOS::IQueryCallback* cb;
-    while (next(cb))
+    while (_priorityWaitingQueries.next(cb) || next(cb))
     {
         cb->SetResult(nullptr);
         cb->Execute();
@@ -176,16 +191,19 @@ void SqlResultQueue::CancelAll()
     }
 }
 
-bool SqlQueryHolder::Execute(MaNGOS::IQueryCallback * callback, Database *database, SqlResultQueue *queue)
+bool SqlQueryHolder::Execute(MaNGOS::IQueryCallback * callback, Database *database, SqlResultQueue *queue, bool highPriority)
 {
     if(!callback || !database || !queue)
         return false;
 
     /// delay the execution of the queries, sync them with the delay thread
     /// which will in turn resync on execution (via the queue) and call back
-    SqlQueryHolderEx *holderEx = new SqlQueryHolderEx(this, callback, queue, serialId);
+    SqlQueryHolderEx *holderEx = new SqlQueryHolderEx(this, callback, queue, serialId, highPriority);
 
-    database->AddToSerialDelayQueue(holderEx);
+    if (highPriority)
+        database->AddToPrioritySerialDelayQueue(holderEx);
+    else
+        database->AddToSerialDelayQueue(holderEx);
     return true;
 }
 
@@ -311,7 +329,7 @@ bool SqlQueryHolderEx::Execute(SqlConnection *conn)
     }
 
     /// sync with the caller thread
-    m_queue->add(m_callback);
+    m_queue->Add(m_callback, m_highPriority);
 
     return true;
 }

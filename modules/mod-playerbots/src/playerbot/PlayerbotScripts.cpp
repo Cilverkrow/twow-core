@@ -247,7 +247,18 @@ class PlayerbotPlayerScript : public PlayerScript
             if (PlayerbotAI* ai = GetBotAI(player))
             {
                 SC_PHASE("Player::UpdatePlayerbotHooks/ai.UpdateAI", player->GetName());
-                ai->UpdateAI(diff);
+                bool const playerCritical = ai->IsRealPlayer() || ai->HasRealPlayerMaster() ||
+                    player->IsInCombat() || player->InBattleGround() ||
+                    player->InBattleGroundQueue() || player->IsTaxiFlying();
+
+                // Idle autonomous bots do not need to enter the full AI stack
+                // merely to decrement its timer. This removes thousands of
+                // context/strategy checks from every map pass while preserving
+                // full responsiveness for real-player-controlled and active bots.
+                if (!playerCritical && ai->GetAIInternalUpdateDelay() > diff)
+                    ai->AdvanceMinimalUpdateDelay(diff);
+                else
+                    ai->UpdateAI(diff);
             }
             if (PlayerbotMgr* mgr = GetBotMgr(player))
             {

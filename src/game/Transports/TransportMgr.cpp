@@ -516,10 +516,15 @@ void TransportMgr::SpawnContinentTransports()
                     }
                 }
             }
+            else
+                sLog.outErrorDb("Transport spawn guid %u entry %u has no usable generated path.", guid, entry);
         }
         while (result->NextRow());
         delete result;
     }
+
+    sLog.outString(">> Spawned %u moving boats/zeppelins from %u generated transport templates in %u ms",
+        count, uint32(_transportTemplates.size()), WorldTimer::getMSTimeDiffToNow(oldMSTime));
 }
 
 void TransportMgr::Update(uint32 const diff)

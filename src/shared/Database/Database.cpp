@@ -266,6 +266,19 @@ void Database::ProcessResultQueue(uint32 maxTime)
         m_pResultQueue->Update(maxTime);
 }
 
+size_t Database::GetPendingResultCount() const
+{
+    return m_pResultQueue ? m_pResultQueue->PendingCount() : 0;
+}
+
+size_t Database::GetPendingAsyncOperationCount() const
+{
+    size_t pending = m_delayQueue ? m_delayQueue->size() : 0;
+    for (auto const& worker : m_threadsBodies)
+        pending += worker->PendingCount();
+    return pending;
+}
+
 void Database::escape_string(std::string& str)
 {
     if (str.empty())
@@ -596,6 +609,18 @@ void Database::AddToSerialDelayQueue(SqlOperation *op)
     // executed sequentially, however
     int worker = op->GetSerialId() % m_numAsyncWorkers;
     m_threadsBodies[worker]->addSerialOperation(op);
+}
+
+void Database::AddToPrioritySerialDelayQueue(SqlOperation* op)
+{
+    if (op->GetSerialId() == 0 || m_numAsyncWorkers == 0)
+    {
+        AddToPriorityDelayQueue(op);
+        return;
+    }
+
+    int const worker = op->GetSerialId() % m_numAsyncWorkers;
+    m_threadsBodies[worker]->addPrioritySerialOperation(op);
 }
 
 bool Database::HasAsyncQuery()

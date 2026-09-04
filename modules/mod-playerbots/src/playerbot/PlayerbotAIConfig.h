@@ -183,6 +183,7 @@ public:
     uint32 minRandomBotReviveTime, maxRandomBotReviveTime;
     uint32 minRandomBotPvpTime, maxRandomBotPvpTime;
     uint32 randomBotsMaxLoginsPerInterval;
+    uint32 randomBotLoginDbQueueLimit;
     uint32 randomBotsPerInterval;
     uint32 minRandomBotsPriceChangeInterval, maxRandomBotsPriceChangeInterval;
     //Auction house settings

@@ -467,11 +467,17 @@ void PlayerBotLoginMgr::SendHolders(const BotInfos& queue)
 {  
     CharacterDatabase.AsyncPQuery(&RandomPlayerbotMgr::DatabasePing, sWorld.GetCurrentMSTime(), std::string("CharacterDatabase"), "select 1");
 
+    size_t const pending = CharacterDatabase.GetPendingAsyncOperationCount() +
+        CharacterDatabase.GetPendingResultCount();
+    size_t available = pending < sPlayerbotAIConfig.randomBotLoginDbQueueLimit ?
+        sPlayerbotAIConfig.randomBotLoginDbQueueLimit - pending : 0;
+
     for (auto& info : queue)
     {
-        if (sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") > 100)
+        if (!available || sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") > 100)
             break;
-        info->SendHolder();
+        if (info->SendHolder())
+            --available;
     }
 }
 
@@ -479,11 +485,17 @@ void PlayerBotLoginMgr::SendHolders(BotPool* pool)
 {
     CharacterDatabase.AsyncPQuery(&RandomPlayerbotMgr::DatabasePing, sWorld.GetCurrentMSTime(), std::string("CharacterDatabase"), "select 1");
 
+    size_t const pending = CharacterDatabase.GetPendingAsyncOperationCount() +
+        CharacterDatabase.GetPendingResultCount();
+    size_t available = pending < sPlayerbotAIConfig.randomBotLoginDbQueueLimit ?
+        sPlayerbotAIConfig.randomBotLoginDbQueueLimit - pending : 0;
+
     for (auto& [guid, info] : *pool)
     {
-        if (sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") > 100)
+        if (!available || sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") > 100)
             break;
-        info.SendHolder();
+        if (info.SendHolder())
+            --available;
     }
 }
 

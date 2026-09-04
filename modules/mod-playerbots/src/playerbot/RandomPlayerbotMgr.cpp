@@ -751,6 +751,20 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     }
 
     uint32 maxLogins = sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval;
+    size_t const pendingBotDbWork = CharacterDatabase.GetPendingAsyncOperationCount() +
+        CharacterDatabase.GetPendingResultCount();
+    if (pendingBotDbWork >= sPlayerbotAIConfig.randomBotLoginDbQueueLimit)
+    {
+        maxLogins = 0;
+        Log::Instance().out(LOG_PERFORMANCE, "BOT_LOGIN_BACKPRESSURE pending=%u limit=%u online=%u target=%u",
+            uint32(pendingBotDbWork), sPlayerbotAIConfig.randomBotLoginDbQueueLimit,
+            onlineBotCount, maxAllowedBotCount);
+    }
+    else
+    {
+        maxLogins = std::min<uint32>(maxLogins,
+            sPlayerbotAIConfig.randomBotLoginDbQueueLimit - uint32(pendingBotDbWork));
+    }
 
     //Log in bots
     if (sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") < 10 * IN_MILLISECONDS && !sPlayerbotAIConfig.asyncBotLogin && onlineBotCount < maxAllowedBotCount && maxLogins > 0)
