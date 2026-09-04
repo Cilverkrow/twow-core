@@ -66,6 +66,7 @@ local RedrawBossList
 local currentInstanceKey = nil
 local function GetInstanceKey()
     local inInstance, instanceType = IsInInstance()
+    if inInstance and not instanceType then instanceType = "party" end  -- 1.12: nur EIN Rueckgabewert
     if not inInstance then return nil end
     -- Instance name distinguishes dungeons/raids; the type guards the rare
     -- same-name case. GetInstanceInfo's first return is the localized name.
@@ -1556,6 +1557,7 @@ local function OnUpdateHandler()
     if bossEnsureElapsed >= 2.0 then
         bossEnsureElapsed = 0
         local inInstance, instanceType = IsInInstance()
+        if inInstance and not instanceType then instanceType = "party" end  -- 1.12: nur EIN Rueckgabewert
         if inInstance and (instanceType == "party" or instanceType == "raid") then
             RequestBossList()
         end
@@ -1735,6 +1737,7 @@ eventFrame:SetScript("OnEvent", function()
         OnAddonMessage(prefix, message, channel, sender)
     elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" or (event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE") then
         local inInstance, instanceType = IsInInstance()
+        if inInstance and not instanceType then instanceType = "party" end  -- 1.12: nur EIN Rueckgabewert
 
         -- Did we cross into a *different* instance since the list was built? If
         -- so, drop the stale boss list now. This re-arms the empty-list ensure
