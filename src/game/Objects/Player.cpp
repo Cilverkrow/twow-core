@@ -3723,6 +3723,10 @@ void Player::GiveXP(uint32 xp, Unit* victim)
     if (!IsAlive())
         return;
 
+    if (HasChallenge(CHALLENGE_BREWMASTER) &&
+        GetDrunkenstateByValue(GetDrunkValue()) != DRUNKEN_SMASHED)
+        return;
+
     uint32 level = GetLevel();
 
     if (IsHardcore() && InBattleGround())
@@ -3912,6 +3916,12 @@ void Player::GiveLevel(uint32 level)
 
     if (HasChallenge(CHALLENGE_CRAFTMASTER) && level == PLAYER_MAX_LEVEL)
         AwardTitle(TITLE_CRAFTMASTER);
+
+    if (HasChallenge(CHALLENGE_BREWMASTER) && level == PLAYER_MAX_LEVEL)
+    {
+        AwardTitle(TITLE_BREWMASTER);
+        MailBrewmasterModeRewards();
+    }
 
     if (HasChallenge(CHALLENGE_BOARING_MODE))
     {
@@ -24859,6 +24869,16 @@ void Player::MailBoaringModeRewards(uint32 level)
         .SendMailTo(this, MailSender(MAIL_CREATURE, uint32(16547), MAIL_STATIONERY_DEFAULT), MAIL_CHECK_MASK_COPIED, 0, 30 * DAY);
 }
 
+void Player::MailBrewmasterModeRewards()
+{
+    Item* reward = Item::CreateItem(GetTeam() == ALLIANCE ? 81234 : 80455, 1, this);
+    reward->SaveToDB();
+
+    MailDraft("Master of the Brew", "Congratulations on reaching level 60 while walking the Path of the Brewmaster! Accept this Brewfest mount as a reward for your spirited journey.")
+        .AddItem(reward)
+        .SendMailTo(this, MailSender(MAIL_CREATURE, uint32(16547), MAIL_STATIONERY_DEFAULT), MAIL_CHECK_MASK_COPIED, 0, 30 * DAY);
+}
+
 bool Player::IsCityProtector() { return HasTitle(GetRace()); /*GetByteValue(PLAYER_BYTES_3, 2) == GetRace();*/ }
 bool Player::IsImmortal() { return GetByteValue(PLAYER_BYTES_3, 2) == 52; }
 bool Player::IsScarabLord() { return HasItemCount(21176, 1, 0); }
@@ -25886,6 +25906,12 @@ bool Player::HasEarnedTitle(uint8 titleId)
     case TITLE_CRAFTMASTER:
     {
         if (GetLevel() == PLAYER_MAX_LEVEL && HasChallenge(CHALLENGE_CRAFTMASTER))
+            return true;
+        break;
+    }
+    case TITLE_BREWMASTER:
+    {
+        if (GetLevel() == PLAYER_MAX_LEVEL && HasChallenge(CHALLENGE_BREWMASTER))
             return true;
         break;
     }
