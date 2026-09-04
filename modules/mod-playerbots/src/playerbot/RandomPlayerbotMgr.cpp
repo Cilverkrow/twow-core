@@ -719,14 +719,59 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     uint32 maxAllowedBotCount = GetEventValue(0, "bot_count");
     if (!maxAllowedBotCount || ((uint32)maxAllowedBotCount < sPlayerbotAIConfig.minRandomBots || (uint32)maxAllowedBotCount > sPlayerbotAIConfig.maxRandomBots))
     {
+        uint32 const previousBotCount = maxAllowedBotCount;
         maxAllowedBotCount = urand(sPlayerbotAIConfig.minRandomBots, sPlayerbotAIConfig.maxRandomBots);
         SetEventValue(0, "bot_count", maxAllowedBotCount,
             urand(sPlayerbotAIConfig.randomBotCountChangeMinInterval, sPlayerbotAIConfig.randomBotCountChangeMaxInterval));
+        sLog.outString("PLAYERBOT_POPULATION_TARGET reconciled persisted=%u configured_min=%u configured_max=%u effective=%u",
+            previousBotCount, sPlayerbotAIConfig.minRandomBots,
+            sPlayerbotAIConfig.maxRandomBots, maxAllowedBotCount);
     }
 
-    std::list<uint32> availableBots = GetBots();    
-    uint32 availableBotCount = availableBots.size();
     uint32 onlineBotCount = GetPlayerbotsAmount();
+
+    // The original manager only stopped admitting bots when a target was
+    // lowered; it did not actively converge an already-online population. Drain
+    // the surplus in the same bounded batches used for admission. Prefer free
+    // bots so a bot currently helping a real player is not torn out from under
+    // them. The next manager passes continue until the requested target is met.
+    if (onlineBotCount > maxAllowedBotCount)
+    {
+        uint32 excess = onlineBotCount - maxAllowedBotCount;
+        uint32 logoutBudget = std::max<uint32>(1, sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval);
+        logoutBudget = std::min(logoutBudget, excess);
+
+        std::vector<uint32> logoutCandidates;
+        logoutCandidates.reserve(logoutBudget);
+        ForEachPlayerbot([&](Player* bot)
+        {
+            if (!bot || logoutCandidates.size() >= logoutBudget || IsPinnedBot(bot->GetGUIDLow()))
+                return;
+
+            PlayerbotAI* ai = GetBotAI(bot);
+            if (ai && !ai->HasActivePlayerMaster())
+                logoutCandidates.push_back(bot->GetGUIDLow());
+        });
+
+        for (uint32 guid : logoutCandidates)
+        {
+            SetEventValue(guid, "add", 0, 0);
+            SetEventValue(guid, "login", 0, 0);
+            currentBots.remove(guid);
+            LogoutPlayerBot(guid);
+        }
+
+        if (!logoutCandidates.empty())
+        {
+            onlineBotCount = GetPlayerbotsAmount();
+            sLog.outString("PLAYERBOT_POPULATION_SCALE_DOWN removed=%u online=%u target=%u remaining_surplus=%u",
+                uint32(logoutCandidates.size()), onlineBotCount, maxAllowedBotCount,
+                onlineBotCount > maxAllowedBotCount ? onlineBotCount - maxAllowedBotCount : 0);
+        }
+    }
+
+    std::list<uint32> availableBots = GetBots();
+    uint32 availableBotCount = availableBots.size();
     
     SetAIInternalUpdateDelay(sPlayerbotAIConfig.randomBotUpdateInterval);
 

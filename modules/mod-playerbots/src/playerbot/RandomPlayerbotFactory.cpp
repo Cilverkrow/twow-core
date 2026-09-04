@@ -754,6 +754,12 @@ void RandomPlayerbotFactory::CreateRandomBots()
     sLog.outString("Creating random bot accounts...");
 
     std::vector<std::future<void>> account_creations;
+    // A target in the tens of thousands can require thousands of bot accounts.
+    // Launching one std::async thread per missing account exhausts Windows thread
+    // resources and makes a valid population change look like a hung server.
+    // Keep a small bounded creation window; this affects startup provisioning
+    // only and leaves all bot gameplay/AI scheduling unchanged.
+    constexpr size_t maxConcurrentAccountCreations = 8;
 
     BarGoLink bar(totalAccCount);
     for (uint32 accountNumber = 0; accountNumber < sPlayerbotAIConfig.randomBotAccountCount; ++accountNumber)
@@ -784,6 +790,13 @@ void RandomPlayerbotFactory::CreateRandomBots()
         account_creations.push_back(std::async([accountName, password] {sAccountMgr.CreateAccount(accountName, password); }));
 #endif
 
+        if (account_creations.size() >= maxConcurrentAccountCreations)
+        {
+            for (auto& creation : account_creations)
+                creation.get();
+            account_creations.clear();
+        }
+
         sLog.outDebug("Account %s created for random bots", accountName.c_str());
         bar.step();
     }
@@ -792,7 +805,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
     for (uint32 i = 0; i < account_creations.size(); i++)
     {
         bar3.step();
-        account_creations[i].wait();
+        account_creations[i].get();
     }
 
     //LoginDatabase.PExecute("UPDATE account SET expansion = '%u' where username like '%s%%'", 2, sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
