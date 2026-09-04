@@ -5,32 +5,11 @@
 if not strtrim then
     strtrim = function(s) return (string.gsub(s or "", "^%s*(.-)%s*$", "%1")) end
 end
--- Widget-Methoden, die 1.12 fehlen, auf die vorhandenen abbilden. Alle Objekte
--- einer Art teilen sich in 1.12 eine Metatabelle, darum reicht je ein Muster
--- (dasselbe Verfahren wie pfUI). SetSize kam mit 3.0, SetNormalFontObject
--- hiess in 1.12 SetTextFontObject.
-do
-    local function shim(obj)
-        local mt = obj and getmetatable(obj)
-        local idx = mt and mt.__index
-        if type(idx) ~= "table" then return end
-        if not idx.SetSize then
-            idx.SetSize = function(self, w, h) self:SetWidth(w); self:SetHeight(h) end
-        end
-        if not idx.GetSize then
-            idx.GetSize = function(self) return self:GetWidth(), self:GetHeight() end
-        end
-        if not idx.SetNormalFontObject and idx.SetTextFontObject then
-            idx.SetNormalFontObject = idx.SetTextFontObject
-        end
-        if not idx.SetWordWrap then idx.SetWordWrap = function() end end
-        if not idx.GetStringHeight and idx.GetHeight then idx.GetStringHeight = idx.GetHeight end
-    end
-    local probe = CreateFrame("Frame")
-    shim(probe); shim(probe:CreateTexture()); shim(probe:CreateFontString())
-    shim(CreateFrame("Button")); shim(CreateFrame("CheckButton")); shim(CreateFrame("Slider"))
-    shim(CreateFrame("ScrollFrame")); shim(CreateFrame("EditBox"))
-end
+-- KEIN Widget-Shim mehr. Ein frueherer Block hier legte zum Abtasten der
+-- Metatabellen sechs Probe-Rahmen an, darunter ein Eingabefeld - das hat in
+-- 1.12 Autofokus als Vorgabe und schluckte jede Taste: keine Bewegung, kein
+-- Chat, solange das Addon geladen war (Bericht 2026-09-04). Die fehlenden
+-- Methoden sind seit turtle2 im Text ersetzt.
 
 -- DungeonClear Lua Companion Addon
 -- Drives the C++ mod-dungeon-clear module with a premium UI
