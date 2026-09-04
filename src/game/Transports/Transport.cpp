@@ -39,8 +39,11 @@ Transport::Transport() : GameObject(),
     _transportInfo(nullptr), _isMoving(true), _pendingStop(false),
     _passengerTeleportItr(_passengers.begin()), _pathProgress(0)
 {
-    // the path progress is the only value that seem to matter
-    m_updateFlag = UPDATEFLAG_TRANSPORT;
+    // Preserve GameObject's UPDATEFLAG_ALL | UPDATEFLAG_HAS_POSITION and add
+    // the moving-transport clock. Replacing the inherited flags with only
+    // UPDATEFLAG_TRANSPORT sent path progress without an initial XYZ position,
+    // so 1.18 clients could not place or render any boat/zeppelin.
+    m_updateFlag |= UPDATEFLAG_TRANSPORT;
 }
 
 Transport::~Transport()
