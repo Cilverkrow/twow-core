@@ -43,8 +43,13 @@ param (
     # straight out of a checkout: -WorkspaceRoot C:\WOW\testlab
     [string]$WorkspaceRoot = $PSScriptRoot,
 
-    # vcpkg installation providing ACE and Boost for x64-windows
-    [string]$VcpkgDirectory = "C:\WOW\vcpkg",
+    # vcpkg installation providing ACE and Boost. Left empty it is discovered: VCPKG_ROOT,
+    # then vcpkg.exe on PATH, then a few conventional locations. Give it explicitly only
+    # when you have several and want a particular one.
+    [string]$VcpkgDirectory = "",
+
+    # vcpkg triplet the dependencies are installed for. The build itself is -A x64.
+    [string]$VcpkgTriplet = "x64-windows",
 
     # MariaDB credentials. Defaults match the portable MariaDB this testlab ships with;
     # override them rather than editing the script body.
@@ -52,7 +57,28 @@ param (
     [string]$DbPassword   = "mangos",
 
     # Name of the portable MariaDB directory inside server\
-    [string]$MariaDbFolderName = "mariadb-10.3.39-winx64"
+    [string]$MariaDbFolderName = "mariadb-10.3.39-winx64",
+
+    # Source to build. Point these at a fork or a topic branch to test one without
+    # touching the script: -RepoUrl https://github.com/me/tortoise-wow.git -BranchName my-fix
+    [string]$RepoUrl    = "https://github.com/Shyalya/tortoise-wow.git",
+    [string]$BranchName = "playerbots-integration-gh",
+
+    # Remote the -applyPatches commits are fetched from
+    [string]$PatchRemoteUrl = "https://github.com/Penqle/tortoise-wow.git",
+
+    # Realm registered in tw_logon.realmlist. The port has to match WorldServerPort in
+    # mangosd.conf, which ships as 8090.
+    [string]$RealmlistIPAddress = "127.0.0.1",
+    [int]$RealmlistPort = 8090,
+
+    # Playerbot population for the testlab. The shipped template asks for a thousand bots,
+    # which turns the first start into a long wait for no benefit.
+    [int]$MinRandomBots          = 5,
+    [int]$MaxRandomBots          = 10,
+    [int]$RandomBotMinLevel      = 1,
+    [int]$RandomBotMaxLevel      = 20,
+    [int]$RandomBotAccountsCount = 10
 )
 
 # StrictMode turns a typo'd or never-assigned variable into a hard error instead of an
@@ -347,6 +373,50 @@ function Invoke-MySqlFile {
     }
 }
 
+# Finds the vcpkg installation instead of assuming where it lives.
+#
+# Order of preference: what the caller asked for, then VCPKG_ROOT, then vcpkg.exe on PATH,
+# then a couple of conventional spots. The conventional ones are built from environment
+# variables rather than a literal drive letter, and every candidate has to actually contain
+# vcpkg.exe before it is accepted - so this probes, it never assumes.
+function Resolve-VcpkgDirectory {
+    param (
+        [string]$Explicit
+    )
+
+    # An explicit answer is used or it fails - never quietly replaced by a discovered one.
+    # Building against a different vcpkg than the one that was asked for is the kind of
+    # surprise that costs an evening to notice.
+    if (-not [string]::IsNullOrWhiteSpace($Explicit)) {
+        if (Test-Path -LiteralPath (Join-Path $Explicit "vcpkg.exe")) {
+            return [System.IO.Path]::GetFullPath($Explicit)
+        }
+        Stop-Pipeline -Message "No vcpkg.exe under the -VcpkgDirectory given: $Explicit"
+    }
+
+    $Candidates = New-Object System.Collections.Generic.List[string]
+
+    if (-not [string]::IsNullOrWhiteSpace($env:VCPKG_ROOT)) { $Candidates.Add($env:VCPKG_ROOT) }
+
+    $OnPath = Get-Command "vcpkg.exe" -ErrorAction SilentlyContinue
+    if ($OnPath) { $Candidates.Add((Split-Path $OnPath.Source -Parent)) }
+
+    foreach ($Base in @($env:SystemDrive, $env:USERPROFILE)) {
+        if ([string]::IsNullOrWhiteSpace($Base)) { continue }
+        $Candidates.Add((Join-Path $Base "vcpkg"))
+        $Candidates.Add((Join-Path $Base "WOW\vcpkg"))
+    }
+
+    foreach ($Candidate in $Candidates) {
+        if (Test-Path -LiteralPath (Join-Path $Candidate "vcpkg.exe")) {
+            return [System.IO.Path]::GetFullPath($Candidate)
+        }
+    }
+
+    Stop-Pipeline -Message ("Could not locate vcpkg. Set VCPKG_ROOT, put vcpkg.exe on PATH, " +
+                            "or pass -VcpkgDirectory <path>. Looked in: " + ($Candidates -join "; "))
+}
+
 # Writes one of the server launcher .bat files, but only when it is not already there -
 # these are the operator's entry points and may well have been hand-tuned, so an existing
 # file is always left alone.
@@ -371,22 +441,14 @@ function New-ServerLauncherScript {
     Write-Host " -> Created launcher: $LauncherName" -ForegroundColor Green
 }
 
-# MariaDB credentials and the vcpkg location come in through param() at the top of this
-# script - override them on the command line instead of editing anything down here.
-
-# Repository VARIABLES
-$RepoUrl    = "https://github.com/Shyalya/tortoise-wow.git"
-
-$BranchName = "playerbots-integration-gh"
-
-# PLAYERBOTS TESTLAB SCALING VARIABLES
-$MinRandomBots     = 5
-$MaxRandomBots     = 10
-$RandomBotMinLevel = 1
-$RandomBotMaxLevel = 20
-$RandomBotAccountsCount = 10
+# Credentials, the source to build, the vcpkg location, the realm entry and the bot
+# population all arrive through param() at the top of this script. Override them on the
+# command line - nothing in this file needs editing to run it against a different
+# environment, fork or branch.
 
 # CORE ENGINE SYSTEM DIRECTORIES PARAMETERS
+# Relative segments only. Every one of them is joined onto the workspace root below, so the
+# whole testlab can be moved or renamed without touching anything here.
 $MangosBinDir   = "bin"
 $MangosLibDir   = "lib"
 $MangosEtcDir   = "etc"
@@ -401,19 +463,37 @@ $MangosBuildDir = "build"
 $MangosTortoiseSourceDir = "tortoise-wow"
 $MangosPipelineBackupDir = "pipeline_backups"
 
-# NETWORK PARAMETERS
-$RealmlistIPAddress = "127.0.0.1"
-$RealmlistPort = "8090"
-
 # STEP variable definitions
 Write-PipelineHeader -StepName "00: Starting variable definitions"
 Write-Host "Setting up variables"
-# Everything below hangs off the testlab root (-WorkspaceRoot, default: this script's folder)
-$ScriptDirectory = $WorkspaceRoot
 
-if (-not (Test-Path $ScriptDirectory)) {
-    Stop-Pipeline -Message "Workspace root does not exist: $ScriptDirectory"
+# The workspace root is the single anchor everything else is derived from, so it has to be
+# an absolute path before anything uses it.
+#
+# Not a formality: this script mixes PowerShell cmdlets with .NET file APIs
+# ([System.IO.File]::ReadAllText, StreamWriter, Start-Process -RedirectStandardInput), and
+# .NET keeps its OWN current directory which PowerShell's Set-Location / Push-Location does
+# not update. With a relative root - "-WorkspaceRoot ." or "..\testlab" - the two resolve
+# against different directories, and one of the things resolved that way is the
+# Remove-Item -Recurse over the server folders.
+if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
+    Stop-Pipeline -Message ("Workspace root is empty. \$PSScriptRoot is only set when the script is run as a file, " +
+                            "so pass -WorkspaceRoot explicitly when dot-sourcing or piping this script.")
 }
+
+# GetFullPath's two-argument overload does not exist on .NET Framework (Windows PowerShell
+# 5.1), so a relative root is resolved against the caller's directory by hand first.
+if ([System.IO.Path]::IsPathRooted($WorkspaceRoot)) {
+    $ScriptDirectory = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+} else {
+    $ScriptDirectory = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $WorkspaceRoot))
+}
+
+if (-not (Test-Path -LiteralPath $ScriptDirectory -PathType Container)) {
+    Stop-Pipeline -Message "Workspace root does not exist (or is not a directory): $ScriptDirectory"
+}
+
+Write-Host "Workspace root: $ScriptDirectory"
 
 # Singleton first (the authoritative machine-wide guard), then the descriptive lock file.
 Assert-SingleInstance
@@ -436,8 +516,80 @@ $BackupFolder  = Join-Path $ScriptDirectory $MangosPipelineBackupDir
 $script:RootDefaultsFile = New-MySqlDefaultsFile -User "root"   -Password $RootPassword
 $script:DbDefaultsFile   = New-MySqlDefaultsFile -User "mangos" -Password $DbPassword
 
-# Verify the retrieved path
+# Locate vcpkg (see Resolve-VcpkgDirectory) and derive the installed-packages path from it.
+$VcpkgDirectory     = Resolve-VcpkgDirectory -Explicit $VcpkgDirectory
+$VcpkgExecutable    = Join-Path $VcpkgDirectory "vcpkg.exe"
+$VcpkgInstalledPath = Join-Path $VcpkgDirectory "installed\$VcpkgTriplet"
+Write-Host "vcpkg: $VcpkgDirectory (triplet $VcpkgTriplet)"
+
 Write-Host "[OK] Variables were set up."  -ForegroundColor Green
+
+# ==============================================================================
+# PIPELINE STEP 00b: PREFLIGHT
+# ==============================================================================
+# Everything the run depends on, verified in one place while the testlab is still intact.
+#
+# The ordering matters more than the checks do. Step 04 drops the databases and wipes the
+# server directory; a missing cmake used to surface in step 08, four steps AFTER that, so
+# the failure mode was "your data is gone and the build never started". Anything that can
+# be established up front is established here instead.
+Write-PipelineHeader -StepName "00b: Preflight"
+Write-Host "Verifying the tools and services this run depends on..."
+
+foreach ($Requirement in @(
+        @{ Name = "git";   Hint = "install Git for Windows and make sure it is on PATH" },
+        @{ Name = "cmake"; Hint = "install CMake 3.16 or newer and tick 'add to PATH' in its installer" })) {
+
+    $Found = Get-Command $Requirement.Name -ErrorAction SilentlyContinue
+    if (-not $Found) {
+        Stop-Pipeline -Message "Required tool '$($Requirement.Name)' is not on PATH - $($Requirement.Hint)."
+    }
+    Write-Host " -> $($Requirement.Name): $($Found.Source)"
+}
+
+if (-not (Test-Path -LiteralPath $VcpkgExecutable)) {
+    Stop-Pipeline -Message "Critical component missing: could not locate vcpkg executable at $VcpkgExecutable"
+}
+Write-Host " -> vcpkg: $VcpkgExecutable"
+
+if (-not (Test-Path -LiteralPath $MariaDBPath)) {
+    Stop-Pipeline -Message ("MariaDB client not found at $MariaDBPath. Copy a portable MariaDB into " +
+                            "$MangosInstalationDir\ or pass -MariaDbFolderName with the folder you have.")
+}
+Write-Host " -> mysql: $MariaDBPath"
+
+# mysqldump is only reached on the -SkipBotRegen path, but finding out it is missing after
+# the backup was supposed to happen would be far too late.
+if ($SkipBotRegen) {
+    $MySQLDumpPath = Join-Path (Split-Path $MariaDBPath -Parent) "mysqldump.exe"
+    if (-not (Test-Path -LiteralPath $MySQLDumpPath)) {
+        Stop-Pipeline -Message "-SkipBotRegen needs mysqldump.exe to back your data up first, and it is missing at: $MySQLDumpPath"
+    }
+    Write-Host " -> mysqldump: $MySQLDumpPath"
+}
+
+# The client has to be running, not merely installed. This is the check that most often
+# saves a run: start server\1.Start mysql.bat first.
+Invoke-MySqlQuery -Query "SELECT 1;" -AllowFailure
+if ($LASTEXITCODE -ne 0) {
+    Stop-Pipeline -Message ("MariaDB is not answering as 'root'. Start it first (server\1.Start mysql.bat) " +
+                            "and check -RootPassword if you changed it from the default.")
+}
+Write-Host " -> MariaDB is up and accepting the root credentials"
+
+# Best effort only: no Visual Studio means CMake has no generator, but vswhere is not
+# guaranteed to be present and its absence proves nothing either way.
+$VsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+if (Test-Path -LiteralPath $VsWhere) {
+    $VsInstall = & $VsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
+    if ($VsInstall) {
+        Write-Host " -> Visual Studio C++ toolset: $VsInstall"
+    } else {
+        Write-Warning "No Visual Studio installation with the C++ toolset found. The build in step 08 will fail without it."
+    }
+}
+
+Write-Host "[OK] Preflight passed - the run has everything it needs." -ForegroundColor Green
 
 # ==============================================================================
 # PIPELINE STEP 01: CLIENT DATA INTEGRITY & DBC HASH VERIFICATION
@@ -533,31 +685,28 @@ Write-Host "[OK] All DBC file signatures successfully verified against SHA256 bl
 Write-PipelineHeader -StepName "02: Vcpkg Dependency Check"
 Write-Host "Verifying external C++ library environments via vcpkg toolchain..."
 
-# Define the absolute path to your vcpkg installation directory
-$VcpkgExecutable = Join-Path $VcpkgDirectory "vcpkg.exe"
+# $VcpkgExecutable and $VcpkgInstalledPath were resolved and verified in the preflight.
 
-# Verify that the vcpkg engine exists before triggering package installation
-if (-not (Test-Path $VcpkgExecutable)) {
-    Stop-Pipeline -Message "Critical component missing: Could not locate vcpkg executable at $VcpkgExecutable"
-}
+Write-Host "Starting library deployment (ACE and Boost modules) for $VcpkgTriplet..."
 
-Write-Host "Starting library deployment (ACE and Boost modules) for x64-windows..."
-
-# Build the string array containing all required modules for playerbots integration
-$VcpkgArguments = @(
-    "install",
-    "ace:x64-windows",
-    "boost-algorithm:x64-windows",
-    "boost-asio:x64-windows",
-    "boost-bimap:x64-windows",
-    "boost-bind:x64-windows",
-    "boost-filesystem:x64-windows",
-    "boost-functional:x64-windows",
-    "boost-smart-ptr:x64-windows",
-    "boost-stacktrace:x64-windows",
-    "boost-thread:x64-windows",
-    "boost-system:x64-windows"
+# The packages the playerbots module actually includes. Deliberately not the 'boost'
+# meta-package: that drags in boost-cobalt, which needs C++20 and does not build under
+# Visual Studio 2019.
+$VcpkgPackages = @(
+    "ace",
+    "boost-algorithm",
+    "boost-asio",
+    "boost-bimap",
+    "boost-bind",
+    "boost-filesystem",
+    "boost-functional",
+    "boost-smart-ptr",
+    "boost-stacktrace",
+    "boost-thread",
+    "boost-system"
 )
+
+$VcpkgArguments = @("install") + ($VcpkgPackages | ForEach-Object { "${_}:$VcpkgTriplet" })
 
 # Execute vcpkg inside its own folder without shifting the global pipeline context
 # -NoNewWindow channels the compilation logs directly into the current pipeline frame
@@ -634,7 +783,7 @@ if (-not [string]::IsNullOrEmpty($applyPatches)) {
     # 3. Synchronize remote mapping nodes securely
     #    ('pengle' is the misspelling this script used before - dropped too, so an existing
     #     workspace does not keep a stale duplicate remote around.)
-    $TargetRemoteUrl = "https://github.com/Penqle/tortoise-wow.git"
+    $TargetRemoteUrl = $PatchRemoteUrl
     git remote remove pengle 2>$null
     git remote remove penqle 2>$null
     git remote add penqle $TargetRemoteUrl
@@ -919,7 +1068,7 @@ Write-PipelineHeader -StepName "08: Compilation and Build"
 Write-Host "Initializing project build and compilation sequence..."
 
 # Define local vcpkg absolute paths for dependencies mapping
-$VcpkgInstalledPath = "$VcpkgDirectory\installed\x64-windows" # Adjust to your exact vcpkg route
+# $VcpkgInstalledPath was derived from the resolved vcpkg directory in step 00.
 
 # The build log this step promises the user. Everything MSBuild prints is teed into it, so
 # the "check server_build.log" advice on a failure actually leads somewhere.

@@ -57,43 +57,75 @@ Two ways, both fine:
 ```powershell
 mkdir C:\WOW\testlab
 copy tools\testlab_pipeline\Setup-Testlab.ps1  C:\WOW\testlab\
+copy tools\testlab_pipeline\Run-Testlab.bat    C:\WOW\testlab\
 copy tools\testlab_pipeline\dbc_verifier.json  C:\WOW\testlab\
 cd C:\WOW\testlab
 # put server\data\ and server\mariadb-…\ in place first, then:
-.\Setup-Testlab.ps1
+.\Run-Testlab.bat
 ```
 
 **Run it in place** from a checkout, pointing at a testlab elsewhere:
 
 ```powershell
-.\tools\testlab_pipeline\Setup-Testlab.ps1 -WorkspaceRoot C:\WOW\testlab
+.\tools\testlab_pipeline\Run-Testlab.bat -WorkspaceRoot C:\WOW\testlab
 ```
 
-Start MariaDB (`server\1.Start mysql.bat`) before running — the pipeline needs it up.
+Start MariaDB (`server\1.Start mysql.bat`) before running — the pipeline needs it up, and
+the preflight will stop you if it is not.
+
+### Use `Run-Testlab.bat`, not the `.ps1` directly
+
+`Run-Testlab.bat` launches PowerShell with `-ExecutionPolicy Bypass -NoProfile` and
+forwards every argument. That scope applies to **that one process** — it changes nothing
+permanently, needs no administrator rights, and saves you from running
+`Set-ExecutionPolicy Bypass -Scope Process -Force` by hand each time. It also clears the
+mark-of-the-web Windows attaches to a script that arrived from the internet.
+
+All parameters work through it:
+
+```powershell
+.\Run-Testlab.bat -SkipBotRegen
+.\Run-Testlab.bat -WorkspaceRoot C:\WOW\testlab -VcpkgDirectory D:\vcpkg
+.\Run-Testlab.bat -BranchName my-topic-branch
+```
+
+On failure it keeps the window open, so a double-clicked run does not vanish before the
+error can be read.
 
 ### Parameters
 
+Nothing inside the script needs editing to run it against a different machine, fork or
+branch — every environment-specific value is a parameter.
+
 | Parameter | Default | What it does |
 |---|---|---|
-| `-WorkspaceRoot` | the script's folder | Testlab root, as laid out above. |
-| `-VcpkgDirectory` | `C:\WOW\vcpkg` | vcpkg checkout providing ACE + Boost. |
+| `-WorkspaceRoot` | the script's folder | Testlab root, as laid out above. Relative paths are resolved against your current directory. |
+| `-VcpkgDirectory` | *discovered* | vcpkg providing ACE + Boost. Left out it is found via `VCPKG_ROOT`, then `vcpkg.exe` on `PATH`, then conventional locations. Given explicitly it is used or the run fails — never silently replaced. |
+| `-VcpkgTriplet` | `x64-windows` | Triplet the dependencies are installed for. |
 | `-RootPassword` | `mangos` | MariaDB `root` password. |
 | `-DbPassword` | `mangos` | Password for the `mangos` service user the script creates. |
 | `-MariaDbFolderName` | `mariadb-10.3.39-winx64` | Portable MariaDB folder name inside `server\`. |
+| `-RepoUrl` | Shyalya/tortoise-wow | Source repository to build. |
+| `-BranchName` | `playerbots-integration-gh` | Branch to build — point it at a topic branch to test one. |
+| `-PatchRemoteUrl` | Penqle/tortoise-wow | Remote the `-applyPatches` commits are fetched from. |
+| `-RealmlistIPAddress` / `-RealmlistPort` | `127.0.0.1` / `8090` | Realm entry written to `tw_logon.realmlist`. The port must match `WorldServerPort`. |
+| `-MinRandomBots` / `-MaxRandomBots` | `5` / `10` | Bot population written into `aiplayerbot.conf`. |
+| `-RandomBotMinLevel` / `-RandomBotMaxLevel` | `1` / `20` | Bot level range. |
+| `-RandomBotAccountsCount` | `10` | Number of bot accounts. |
 | `-SkipBotRegen` | off | Keeps existing characters/accounts: dumps `tw_char` + `tw_logon` first and restores them at the end. |
-| `-applyPatches` | — | Semicolon-separated commit hashes to cherry-pick from the Penqle remote, e.g. `-applyPatches "0ee0748;abc1234"`. |
-
-Nothing needs editing inside the script — override on the command line instead:
+| `-applyPatches` | — | Semicolon-separated commit hashes to cherry-pick, e.g. `-applyPatches "0ee0748;abc1234"`. |
 
 ```powershell
-.\Setup-Testlab.ps1 -VcpkgDirectory D:\vcpkg -RootPassword "hunter2" -SkipBotRegen
+.\Run-Testlab.bat -VcpkgDirectory D:\vcpkg -RootPassword "hunter2" -SkipBotRegen
+.\Run-Testlab.bat -RepoUrl https://github.com/me/tortoise-wow.git -BranchName my-fix
 ```
 
 ## What a run does
 
 | Step | |
 |---|---|
-| 00 | Variables, run lock, temporary MariaDB credential files |
+| 00 | Variables, run lock, temporary MariaDB credential files, vcpkg discovery |
+| 00b | **Preflight** — git, cmake, vcpkg, mysql (and mysqldump for `-SkipBotRegen`), MariaDB reachable, VS C++ toolset |
 | 01 | Client data present + every DBC checked against `dbc_verifier.json` |
 | 02 | `vcpkg install` for ACE and Boost |
 | 03 | Clone or pull the source, update submodules; optional cherry-picks |
@@ -146,7 +178,17 @@ often fails where Linux succeeds:
   (readable only by the current user, deleted on exit) rather than `-p<password>`
   arguments, which any local user can read out of the process list.
 - **Uncommitted source changes are stashed, not discarded**, when `-applyPatches` needs a
-  clean tree. Recover them with `git -C tortoise-wow stash pop`.
+  clean tree.
+- **Everything is checked before anything is destroyed.** Step 04 drops the databases and
+  wipes the server directory, so every tool and service the run depends on is verified in
+  the preflight first. A missing `cmake` used to surface in step 08 — four steps *after*
+  the data was gone.
+- **No absolute paths.** The workspace root is the single anchor, resolved to a full path
+  up front, and every other location is a relative segment joined onto it. The testlab
+  folder can be renamed, moved or sit on another drive with no edits. (The root is
+  normalised deliberately: the script mixes PowerShell cmdlets with .NET file APIs, and
+  .NET keeps its own current directory that `Push-Location` does not update — a relative
+  root would make the two disagree, including for the `Remove-Item -Recurse` in step 04.) Recover them with `git -C tortoise-wow stash pop`.
 
 ## Known caveats
 
