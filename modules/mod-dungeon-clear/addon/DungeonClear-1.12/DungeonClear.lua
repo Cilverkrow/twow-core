@@ -1152,7 +1152,7 @@ for i = 1, VISIBLE_ROWS do
     -- while the cursor is over a row.
     row:EnableMouseWheel(true)
     row:SetScript("OnMouseWheel", function()
-        local _, delta = arg1, arg1  -- 1.12: Handler bekommen keine Argumente
+        local _, delta = this, arg1  -- 1.12: Handler bekommen keine Argumente (Rahmen = this)
         local bar = DungeonClearScrollFrameScrollBar
         bar:SetValue(bar:GetValue() - delta * ROW_HEIGHT)
     end)
@@ -1512,7 +1512,8 @@ eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")  -- 1.12: statt GROUP_ROSTER_UPDATE
+eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 -- Corrective only, for the camera state the addon models from its own commands:
@@ -1732,7 +1733,7 @@ eventFrame:SetScript("OnEvent", function()
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, message, channel, sender = arg1, arg2, arg3, arg4
         OnAddonMessage(prefix, message, channel, sender)
-    elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
+    elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" or (event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE") then
         local inInstance, instanceType = IsInInstance()
 
         -- Did we cross into a *different* instance since the list was built? If
@@ -1757,7 +1758,7 @@ eventFrame:SetScript("OnEvent", function()
             local delayFrame = CreateFrame("Frame")
             local delayElapsed = 0
             delayFrame:SetScript("OnUpdate", function()
-                local sf, elap = arg1, arg1  -- 1.12: Handler bekommen keine Argumente
+                local sf, elap = this, arg1  -- 1.12: Handler bekommen keine Argumente (Rahmen = this)
                 delayElapsed = delayElapsed + elap
                 if delayElapsed >= 3.0 then
                     RequestBossList()
