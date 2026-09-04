@@ -238,6 +238,18 @@ class PlayerbotPlayerScript : public PlayerScript
             return !IsRealPlayer(player);
         }
 
+        bool IsUpdateCritical(Player const* player) override
+        {
+            if (!player)
+                return false;
+
+            PlayerbotAI* ai = GetBotAI(const_cast<Player*>(player));
+            return (ai && ai->HasRealPlayerMaster()) || player->IsInCombat() ||
+                player->InBattleGround() || player->InBattleGroundQueue() ||
+                player->IsTaxiFlying() || player->IsBeingTeleported() ||
+                player->HasScheduledEvent();
+        }
+
         // Was Player::UpdatePlayerbotHooks(diff).
         void OnUpdate(Player* player, uint32 diff) override
         {

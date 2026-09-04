@@ -231,10 +231,10 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(QueryResult* /*dummy*/, SqlQu
     Player* bot = botSession->GetPlayer();
     if (!bot || !bot->IsInWorld())
     {
-        sLog.outError("[PlayerBots] HandlePlayerBotLoginCallback: bot %u failed to enter world",
-                      info.botGuid.GetCounter());
-        // botSession leaks here — but only on failure; LogoutPlayerBot would do the cleanup
-        // in the success path normally. Acceptable for smoke testing; fix if needed.
+        // Admission is retried with bounded backoff by PlayerbotLoginMgr. Do
+        // not emit one error per tick here and do not leak the synthetic
+        // session when standard character loading rejects a bot.
+        delete botSession;
         return;
     }
 

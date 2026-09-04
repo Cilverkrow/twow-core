@@ -25,7 +25,7 @@ namespace ahbot
     class AhBot
     {
     public:
-        AhBot() : nextAICheckTime(0), updating(false) {}
+        AhBot() : nextAICheckTime(0), nextHouseIndex(0), updating(false) {}
         virtual ~AhBot();
         static AhBot& instance()
         {
@@ -125,6 +125,7 @@ namespace ahbot
     private:
         AvailableItemsBag availableItems;
         time_t nextAICheckTime;
+        uint32 nextHouseIndex;
         std::map<std::string, double> categoryMultipliers;
         std::map<std::string, uint32> categoryMaxAuctionCount;
         std::map<std::string, uint32> categoryMaxItemAuctionCount;

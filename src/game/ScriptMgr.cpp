@@ -3280,3 +3280,14 @@ bool Script_IsMachineDriven(Player const* player)
         return script->IsMachineDriven(player);
     });
 }
+
+bool Script_IsUpdateCritical(Player const* player)
+{
+    if (!player)
+        return false;
+
+    return ScriptRegistry<PlayerScript>::ForEachEnabledHookWithReturn(PLAYERHOOK_IS_UPDATE_CRITICAL, [&](PlayerScript* script)
+    {
+        return script->IsUpdateCritical(player);
+    });
+}

@@ -50,6 +50,7 @@
 #include <bitset>
 #include <list>
 #include <set>
+#include <unordered_set>
 #include <mutex>
 #include <shared_mutex>
 
@@ -381,7 +382,7 @@ class Map : public GridRefManager<NGridType>
         inline void UpdateCells(uint32 diff);
         bool ShouldUpdateBotCells(Player const* player) const;
         void UpdateSync(const uint32);
-        void UpdatePlayers();
+        void UpdatePlayers(bool responsiveOnly = false);
         void DoUpdate(uint32 maxDiff);
         virtual void Update(uint32);
         void UpdateSessionsMovementAndSpellsIfNeeded();
@@ -557,11 +558,9 @@ class Map : public GridRefManager<NGridType>
             WorldSafeLocsEntry const* GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team) const;
         };
         GraveyardManagerStub& GetGraveyardManager() { static GraveyardManagerStub s; return s; }
-        // HasActiveZone: cmangos has it; Penqle doesn't track active zones. Stub returns true.
-        bool HasActiveZone(uint32 /*zoneId*/) const { return true; }
-        bool HasActiveZones() const { return true; }
-        // HasRealPlayers: cmangos checks if any non-bot players are on the map. Stub returns true.
-        bool HasRealPlayers() const { return true; }
+        bool HasActiveZone(uint32 zoneId) const { return m_realPlayerZones.find(zoneId) != m_realPlayerZones.end(); }
+        bool HasActiveZones() const { return !m_realPlayerZones.empty(); }
+        bool HasRealPlayers() const { return m_hasRealPlayers; }
         // GetTransports: cmangos has Map::GetTransports returning a set/vector.
         // Note: GenericTransport is a typedef in shim; forward-decl as struct avoids "class" keyword conflict.
         //
@@ -909,9 +908,24 @@ class Map : public GridRefManager<NGridType>
         uint32 _lastMapUpdate = 0;
         uint32 _lastPlayerLeftTime = 0;
         uint32 _lastPlayersUpdate;
-        uint32 _inactivePlayersSkippedUpdates = 0;
-        uint32 _botCellUpdatePhase = 0;
+        uint64 _playerUpdateSequence = 0;
+        uint64 _botCellUpdateSequence = 0;
         uint32 _lastCellsUpdate;
+
+        void RefreshRealPlayerActivity();
+        bool IsResponsivePlayer(Player const* player) const;
+        uint32 GetPlayerUpdateStride(Player const* player) const;
+
+        bool m_hasRealPlayers = false;
+        std::unordered_set<uint32> m_realPlayerZones;
+
+        uint32 m_playerPerfReportStart = 0;
+        uint64 m_playerPerfRealUpdates = 0;
+        uint64 m_playerPerfBotUpdates = 0;
+        uint64 m_playerPerfRealMicros = 0;
+        uint64 m_playerPerfBotMicros = 0;
+        uint64 m_playerPerfDeferred = 0;
+        uint64 m_playerPerfHibernated = 0;
 
         int8 _updateIdx;
 

@@ -138,6 +138,8 @@ namespace ai
 		SqlQueryHolder* holder = nullptr;
 		HolderState holderState = HolderState::HOLDER_EMPTY;
 		LoginState loginState = LoginState::BOT_OFFLINE;
+        uint8 loginFailureCount = 0;
+        time_t nextLoginAttempt = 0;
 	};
 
 	class PlayerBotLoginMgr

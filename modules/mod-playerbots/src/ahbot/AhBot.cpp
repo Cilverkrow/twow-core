@@ -62,7 +62,8 @@ void AhBot::Init()
 
     availableItems.Init();
 
-    sLog.outString("[AhBot] Initialization complete. First auction check in %d seconds.", sAhBotConfig.updateInterval);
+    sLog.outString("[AhBot] Initialization complete. Incremental house checks every %u seconds.",
+        std::max<uint32>(1, sAhBotConfig.updateInterval / MAX_AUCTIONS));
 }
 
 AhBot::~AhBot()
@@ -124,8 +125,9 @@ void AhBot::Update()
         return;
     }
 
-    sLog.outString("[AhBot] Scheduling auction check (next after this: in %d seconds)", sAhBotConfig.updateInterval);
-    nextAICheckTime = time(0) + sAhBotConfig.updateInterval;
+    uint32 const sliceInterval = std::max<uint32>(1, sAhBotConfig.updateInterval / MAX_AUCTIONS);
+    sLog.outString("[AhBot] Scheduling incremental auction-house check (next in %u seconds)", sliceInterval);
+    nextAICheckTime = time(0) + sliceInterval;
     activateAhbotThread();
     CleanupPropositions();
 }
@@ -163,32 +165,31 @@ void AhBot::ForceUpdate()
 	sLog.outString("[AhBot] Bidders loaded: %zu total (A=%zu H=%zu N=%zu)",
 		allBidders.size(), bidders[1].size(), bidders[2].size(), bidders[3].size());
 
-	CheckCategoryMultipliers();
+    uint32 const i = nextHouseIndex++ % MAX_AUCTIONS;
+    if (i == 0)
+        CheckCategoryMultipliers();
 
-	int answered = 0, added = 0;
-	for (int i = 0; i < MAX_AUCTIONS; i++)
-	{
-		sLog.outString("[AhBot] --- Checking auction house id=%u ---", auctionIds[i]);
-		InAuctionItemsBag inAuctionItems(auctionIds[i]);
-		inAuctionItems.Init(true);
+    int answered = 0, added = 0;
+    sLog.outString("[AhBot] --- Checking auction house id=%u (incremental %u/%u) ---",
+        auctionIds[i], i + 1, MAX_AUCTIONS);
+    InAuctionItemsBag inAuctionItems(auctionIds[i]);
+    inAuctionItems.Init(true);
 
-		int ahAnswered = 0, ahAdded = 0;
-		for (int j = 0; j < CategoryList::instance.size(); j++)
-		{
-			Category* category = CategoryList::instance[j];
-			ahAnswered += Answer(i, category, &inAuctionItems);
-			ahAdded += AddAuctions(i, category, &inAuctionItems);
-		}
+    int ahAnswered = 0, ahAdded = 0;
+    for (int j = 0; j < CategoryList::instance.size(); j++)
+    {
+        Category* category = CategoryList::instance[j];
+        ahAnswered += Answer(i, category, &inAuctionItems);
+        ahAdded += AddAuctions(i, category, &inAuctionItems);
+    }
 
-		sLog.outString("[AhBot] Auction house id=%u: answered=%d added=%d", auctionIds[i], ahAnswered, ahAdded);
-		answered += ahAnswered;
-		added += ahAdded;
-	}
+    sLog.outString("[AhBot] Auction house id=%u: answered=%d added=%d", auctionIds[i], ahAnswered, ahAdded);
+    answered += ahAnswered;
+    added += ahAdded;
 
 	CleanupHistory();
 
-	sLog.outString("[AhBot] === Check complete: %d answered, %d added. Next check in %d seconds ===",
-		answered, added, sAhBotConfig.updateInterval);
+    sLog.outString("[AhBot] === Incremental check complete: %d answered, %d added ===", answered, added);
     updating = false;
 }
 
@@ -1101,35 +1102,30 @@ bool AhBot::IsBotAuction(uint32 bidder)
 uint32 AhBot::GetRandomBidder(uint32 auctionHouse)
 {
     uint32 faction = factions[auctionHouse];
-    std::vector<uint32> guids = bidders[faction];
+    std::vector<uint32> const& guids = bidders[faction];
     if (guids.empty())
     {
         sLog.outError("[AhBot] GetRandomBidder: no bidders registered for AH %u (faction %u)", auctionHouse, faction);
         return 0;
     }
 
-    std::vector<uint32> online;
-    for (std::vector<uint32>::iterator i = guids.begin(); i != guids.end(); ++i)
+    // LoadRandomBots already validates these rows and builds the per-house
+    // cache. The former code copied and revalidated all ~5,400 bidders for
+    // every single auction operation, turning a random pick into O(N).
+    // Probe a small random sample in case a character was deleted after the
+    // cache was built, then fall back to the configured AH owner.
+    uint32 const first = urand(0, static_cast<uint32>(guids.size() - 1));
+    uint32 const probes = std::min<uint32>(8, static_cast<uint32>(guids.size()));
+    for (uint32 probe = 0; probe < probes; ++probe)
     {
-        uint32 guid = *i;
+        uint32 guid = guids[(first + probe) % guids.size()];
         std::string name;
-        if (!sObjectMgr.GetPlayerNameByGUID(ObjectGuid(HIGHGUID_PLAYER, guid), name))
-        {
-            sLog.outError("[AhBot] GetRandomBidder: GUID %u has no character record (AH %u faction %u) — skipping", guid, auctionHouse, faction);
-            continue;
-        }
-
-        online.push_back(guid);
+        if (sObjectMgr.GetPlayerNameByGUID(ObjectGuid(HIGHGUID_PLAYER, guid), name))
+            return guid;
     }
 
-    if (online.empty())
-    {
-        sLog.outError("[AhBot] GetRandomBidder: all %zu bidder GUID(s) for AH %u failed character lookup", guids.size(), auctionHouse);
-        return 0;
-    }
-
-    int index = urand(0, online.size() - 1);
-    return online[index];
+    sLog.outError("[AhBot] GetRandomBidder: cached bidder sample invalid for AH %u (faction %u)", auctionHouse, faction);
+    return sAhBotConfig.guid ? static_cast<uint32>(sAhBotConfig.guid) : 0;
 }
 
 void AhBot::LoadRandomBots()

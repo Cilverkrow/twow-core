@@ -235,6 +235,8 @@ void PlayerLoginInfo::SetQueue(bool isWanted, LoginSpace& space)
     {
         if (loginState == LoginState::BOT_OFFLINE)
         {
+            if (nextLoginAttempt && time(nullptr) < nextLoginAttempt)
+                return;
             loginState = LoginState::BOT_ON_LOGINQUEUE;
             FillLoginSpace(space, FillStep::NEXT_STEP);
         }
@@ -300,6 +302,8 @@ bool PlayerLoginInfo::LoginBot()
     if (sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, guid), false))
     {
         loginState = LoginState::BOT_ONLINE;
+        loginFailureCount = 0;
+        nextLoginAttempt = 0;
         return false;
     }
 
@@ -315,10 +319,18 @@ bool PlayerLoginInfo::LoginBot()
     if (!player)
     {
         loginState = LoginState::BOT_OFFLINE;
+        ++loginFailureCount;
+        uint32 const backoff = std::min<uint32>(60, 1u << std::min<uint8>(loginFailureCount, 6));
+        nextLoginAttempt = time(nullptr) + backoff;
+        if (loginFailureCount == 1 || (loginFailureCount & (loginFailureCount - 1)) == 0)
+            sLog.outBasic("[PlayerBots] Login failed for bot %u; retry %u in %u seconds",
+                guid, loginFailureCount, backoff);
         return false;
     }
 
     loginState = LoginState::BOT_ONLINE;
+    loginFailureCount = 0;
+    nextLoginAttempt = 0;
 
     Update(player);
 

@@ -134,9 +134,10 @@ Map::Map(uint32 id, time_t expiry, uint32 InstanceId)
       _processingSendObjUpdates(false), _processingUnitsRelocation(false),
       m_updateFinished(false), m_updateDiffMod(0), m_GridActivationDistance(DEFAULT_VISIBILITY_DISTANCE),
       _lastPlayersUpdate(WorldTimer::getMSTime()), _lastMapUpdate(WorldTimer::getMSTime()),
-      _lastCellsUpdate(WorldTimer::getMSTime()), _inactivePlayersSkippedUpdates(0),
+      _lastCellsUpdate(WorldTimer::getMSTime()),
       _objUpdatesThreads(0), _unitRelocationThreads(0), _lastPlayerLeftTime(0),
-      m_lastMvtSpellsUpdate(0), _bonesCleanupTimer(0), m_uiScriptedEventsTimer(1000)
+      m_lastMvtSpellsUpdate(0), _bonesCleanupTimer(0), m_uiScriptedEventsTimer(1000),
+      m_playerPerfReportStart(WorldTimer::getMSTime())
 {
     m_CreatureGuids.Set(sObjectMgr.GetFirstTemporaryCreatureLowGuid());
     m_GameObjectGuids.Set(sObjectMgr.GetFirstTemporaryGameObjectLowGuid());
@@ -822,9 +823,7 @@ inline void Map::UpdateCells(uint32 map_diff)
         return;
     _lastCellsUpdate = now;
 
-    uint32 const cellStride = IsContinent() ?
-        std::max<uint32>(1, sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES) + 1) : 1;
-    _botCellUpdatePhase = (_botCellUpdatePhase + 1) % cellStride;
+    ++_botCellUpdateSequence;
 
     /// update active cells around players and active objects
     if (IsContinent() && m_cellThreads->status() == ThreadPool::Status::READY)
@@ -849,13 +848,46 @@ bool Map::ShouldUpdateBotCells(Player const* player) const
     if (!player || !player->IsInWorld())
         return false;
 
-    if (!IsContinent() || !Script_IsMachineDriven(player) || player->IsInCombat() ||
-        player->HasScheduledEvent() || player->GetSession()->HasRecentPacket(PACKET_PROCESS_SPELLS))
+    if (!IsContinent() || !Script_IsMachineDriven(player) || IsResponsivePlayer(player))
         return true;
 
-    uint32 const stride = std::max<uint32>(1,
-        sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES) + 1);
-    return (player->GetGUIDLow() % stride) == _botCellUpdatePhase;
+    uint32 const stride = GetPlayerUpdateStride(player);
+    return (_botCellUpdateSequence % stride) == (player->GetGUIDLow() % stride);
+}
+
+void Map::RefreshRealPlayerActivity()
+{
+    m_hasRealPlayers = false;
+    m_realPlayerZones.clear();
+
+    for (auto const& ref : m_mapRefManager)
+    {
+        Player const* player = ref.getSource();
+        if (!player || !player->IsInWorld() || Script_IsMachineDriven(player))
+            continue;
+
+        m_hasRealPlayers = true;
+        m_realPlayerZones.insert(player->GetZoneId());
+    }
+}
+
+bool Map::IsResponsivePlayer(Player const* player) const
+{
+    return player && (!Script_IsMachineDriven(player) || Script_IsUpdateCritical(player) ||
+        player->IsInCombat() || player->HasScheduledEvent() ||
+        player->GetSession()->HasRecentPacket(PACKET_PROCESS_SPELLS));
+}
+
+uint32 Map::GetPlayerUpdateStride(Player const* player) const
+{
+    if (!IsContinent() || !Script_IsMachineDriven(player) || IsResponsivePlayer(player))
+        return 1;
+
+    bool const nearRealActivity = m_hasRealPlayers && HasActiveZone(player->GetZoneId());
+    uint32 const skipped = nearRealActivity ?
+        sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES) :
+        sWorld.getConfig(CONFIG_UINT32_HIBERNATED_PLAYERS_SKIP_UPDATES);
+    return std::max<uint32>(1, skipped + 1);
 }
 
 
@@ -908,7 +940,7 @@ void Map::UpdateSessionsMovementAndSpellsIfNeeded()
     m_lastMvtSpellsUpdate = WorldTimer::getMSTime();
 }
 
-void Map::UpdatePlayers()
+void Map::UpdatePlayers(bool responsiveOnly)
 {
     uint32 now = WorldTimer::getMSTime();
     uint32 diff = WorldTimer::getMSTimeDiff(_lastPlayersUpdate, now);
@@ -916,27 +948,65 @@ void Map::UpdatePlayers()
     if (diff < sWorld.getConfig(CONFIG_UINT32_MAPUPDATE_UPDATE_PLAYERS_DIFF))
         return;
 
-    uint32 const inactiveStride = IsContinent() ?
-        std::max<uint32>(1, sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES) + 1) : 1;
-    _inactivePlayersSkippedUpdates = (_inactivePlayersSkippedUpdates + 1) % inactiveStride;
+    if (!responsiveOnly)
+        ++_playerUpdateSequence;
+
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
     {
         Player* plr = m_mapRefIter->getSource();
         if (!plr || !plr->IsInWorld())
             continue;
-        bool const activePlayer = plr->IsInCombat() ||
-            plr->GetSession()->HasRecentPacket(PACKET_PROCESS_SPELLS) || plr->HasScheduledEvent();
-        bool const dueInactiveUpdate = (plr->GetGUIDLow() % inactiveStride) == _inactivePlayersSkippedUpdates;
-        if (!activePlayer && !dueInactiveUpdate)
+        bool const machineDriven = Script_IsMachineDriven(plr);
+        bool const responsive = IsResponsivePlayer(plr);
+        uint32 const stride = GetPlayerUpdateStride(plr);
+        bool const dueUpdate = stride == 1 ||
+            (!responsiveOnly && (_playerUpdateSequence % stride) == (plr->GetGUIDLow() % stride));
+        if ((responsiveOnly && !responsive) || !dueUpdate)
         {
             plr->AddSkippedUpdateTime(diff);
+            ++m_playerPerfDeferred;
+            if (machineDriven && stride > sWorld.getConfig(CONFIG_UINT32_INACTIVE_PLAYERS_SKIP_UPDATES) + 1)
+                ++m_playerPerfHibernated;
             continue;
         }
+
+        auto const updateStart = std::chrono::steady_clock::now();
         WorldObject::UpdateHelper helper(plr);
         helper.UpdateRealTime(now, diff + plr->GetSkippedUpdateTime());
         plr->ResetSkippedUpdateTime();
+        uint64 const elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - updateStart).count();
+        if (machineDriven)
+        {
+            ++m_playerPerfBotUpdates;
+            m_playerPerfBotMicros += elapsed;
+        }
+        else
+        {
+            ++m_playerPerfRealUpdates;
+            m_playerPerfRealMicros += elapsed;
+        }
     }
     _lastPlayersUpdate = now;
+
+    uint32 const reportInterval = sWorld.getConfig(CONFIG_UINT32_PERFLOG_PLAYER_SUMMARY_INTERVAL);
+    if (reportInterval && WorldTimer::getMSTimeDiff(m_playerPerfReportStart, now) >= reportInterval)
+    {
+        // Continents are the 4k-bot hot path. Instance summaries are useful
+        // only while a real player is present; suppress idle-bot instance spam.
+        if (IsContinent() || m_playerPerfRealUpdates)
+            sLog.out(LOG_PERFORMANCE,
+                "PLAYER_UPDATE_SUMMARY map=%u inst=%u real_updates=%llu real_ms=%.2f bot_updates=%llu bot_ms=%.2f deferred=%llu hibernated=%llu",
+                GetId(), GetInstanceId(),
+                static_cast<unsigned long long>(m_playerPerfRealUpdates), m_playerPerfRealMicros / 1000.0,
+                static_cast<unsigned long long>(m_playerPerfBotUpdates), m_playerPerfBotMicros / 1000.0,
+                static_cast<unsigned long long>(m_playerPerfDeferred),
+                static_cast<unsigned long long>(m_playerPerfHibernated));
+        m_playerPerfReportStart = now;
+        m_playerPerfRealUpdates = m_playerPerfBotUpdates = 0;
+        m_playerPerfRealMicros = m_playerPerfBotMicros = 0;
+        m_playerPerfDeferred = m_playerPerfHibernated = 0;
+    }
 }
 
 void Map::DoUpdate(uint32 maxDiff)
@@ -962,6 +1032,7 @@ void Map::DoUpdate(uint32 maxDiff)
 void Map::Update(uint32 t_diff)
 {
     XScopeStatTimer ScopeStatTimer{ UpdateTimer };
+    RefreshRealPlayerActivity();
     ScriptRegistry<AllMapScript>::ForEach([&](AllMapScript* script)
     {
         script->OnMapUpdate(this, t_diff);
@@ -988,7 +1059,7 @@ void Map::Update(uint32 t_diff)
     /// update players at tick
     std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
     UpdateSessionsMovementAndSpellsIfNeeded();
-    UpdatePlayers();
+    UpdatePlayers(false);
     uint32 playersUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - sessionsUpdateTime;
 
     UpdateCells(t_diff);
@@ -1002,7 +1073,7 @@ void Map::Update(uint32 t_diff)
     uint32 visibilityUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - objectsUpdateTime - activeCellsUpdateTime - playersUpdateTime - sessionsUpdateTime;
 
     UpdateSessionsMovementAndSpellsIfNeeded();
-    UpdatePlayers();
+    UpdatePlayers(true);
     uint32 playersUpdateTime2 = WorldTimer::getMSTimeDiffToNow(updateMapTime) - objectsUpdateTime - activeCellsUpdateTime - playersUpdateTime - sessionsUpdateTime - visibilityUpdateTime;
 
     RemoveCorpses();
@@ -1020,7 +1091,7 @@ void Map::Update(uint32 t_diff)
         {
             start = std::chrono::high_resolution_clock::now();
             UpdateSessionsMovementAndSpellsIfNeeded();
-            UpdatePlayers();
+            UpdatePlayers(true);
             ++additionnalUpdateCounts;
         }
         additionnalWaitTime = WorldTimer::getMSTimeDiffToNow(additionnalWaitTime);

@@ -62,6 +62,12 @@ option(USE_REALMMERGE "Compile helper tool for merging character databases" OFF)
 option(USE_ADDRESS_SANITIZER "Enable clang address sanitizer - debug feature that slowing down server, but allow to catch memory corruption" OFF)
 option(ENABLE_PROFILING "(Windows only) Enable Optick integration, which allows to profile CPU and Memory. Also disabling some async code" OFF)
 option(ENABLE_LSAN "Enables Leak Sanitizer" OFF)
+option(ENABLE_LTO "Enable link-time optimization for release builds" ON)
+option(PROFILE_GENERATE "Build an instrumented release binary for profile-guided optimization" OFF)
+option(PROFILE_USE "Optimize a release binary using collected profile data" OFF)
+if(PROFILE_GENERATE AND PROFILE_USE)
+  message(FATAL_ERROR "PROFILE_GENERATE and PROFILE_USE cannot both be enabled")
+endif()
 # Allow enabling official Turtle addon support
 option(ALLOW_TURTLE_ADDONS "Allow Turtle addons" ON)
 # Build cmangos/playerbots — bot AI vendored under src/modules/PlayerBots/.
@@ -418,7 +424,7 @@ endif()
 if(PROFILE_GENERATE)
   message(STATUS "PGO profile           : Generate")
 elseif(PROFILE_USE)
-  message(STATUS "PGO profile           : ${GCC_PROFILE_USE}")
+  message(STATUS "PGO profile           : Use")
 else()
   message(STATUS "PGO profile           : Disabled")
 endif()
@@ -572,9 +578,25 @@ if(MSVC)
   # .pdb beside it.
   set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+
+  if(ENABLE_LTO OR PROFILE_GENERATE OR PROFILE_USE)
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /GL")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL")
+  endif()
+
   foreach(_linker EXE SHARED MODULE)
     set(CMAKE_${_linker}_LINKER_FLAGS_RELEASE
         "${CMAKE_${_linker}_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+    if(PROFILE_GENERATE)
+      set(CMAKE_${_linker}_LINKER_FLAGS_RELEASE
+          "${CMAKE_${_linker}_LINKER_FLAGS_RELEASE} /LTCG:PGINSTRUMENT /GENPROFILE")
+    elseif(PROFILE_USE)
+      set(CMAKE_${_linker}_LINKER_FLAGS_RELEASE
+          "${CMAKE_${_linker}_LINKER_FLAGS_RELEASE} /LTCG:PGOPTIMIZE /USEPROFILE")
+    elseif(ENABLE_LTO)
+      set(CMAKE_${_linker}_LINKER_FLAGS_RELEASE
+          "${CMAKE_${_linker}_LINKER_FLAGS_RELEASE} /LTCG")
+    endif()
   endforeach()
 endif()
 
