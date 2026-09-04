@@ -2141,17 +2141,18 @@ local function CreateSettingRow(key, stype)
         -- ("Common", "Rare", "Epic", …) is clearer than a 0-6 slider.
         local dd = CreateFrame("Frame", "DungeonClearDropdown_" .. key, row, "UIDropDownMenuTemplate")
         dd:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", -6, -2)
-        UIDropDownMenu_SetWidth(dd, 130)
+        UIDropDownMenu_SetWidth(130, dd)  --[[1.12: (width, frame)]]
         local function OnSelect(self)
             local v = self.value
             UIDropDownMenu_SetSelectedValue(dd, v)
-            UIDropDownMenu_SetText(dd, QualityText(v))
+            UIDropDownMenu_SetText(QualityText(v), dd)  --[[1.12: (text, frame)]]
             if row.updating then return end
             DungeonClearDB.settings[key] = v
             row.defBtn:Show()
             SendDcCommand("set", key .. "\t" .. v, true)
         end
-        UIDropDownMenu_Initialize(dd, function(self, level)
+        UIDropDownMenu_Initialize(dd, function()
+        local self, level = this, UIDROPDOWNMENU_MENU_LEVEL  -- 1.12: Init ohne Argumente
             for q = 0, 6 do
                 local entry = UIDropDownMenu_CreateInfo()
                 entry.text = QualityText(q)
@@ -2216,7 +2217,7 @@ local function UpsertSetting(key, value, minV, maxV, stype, overridden)
         local v = math.floor(value + 0.5)
         if v < 0 then v = 0 elseif v > 6 then v = 6 end
         UIDropDownMenu_SetSelectedValue(row.control, v)
-        UIDropDownMenu_SetText(row.control, QualityText(v))
+        UIDropDownMenu_SetText(QualityText(v), row.control)  --[[1.12: (text, frame)]]
     else
         row.control:SetMinMaxValues(minV, maxV)
         row.control:SetValueStep(StepFor(stype))
