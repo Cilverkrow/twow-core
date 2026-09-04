@@ -2142,7 +2142,8 @@ local function CreateSettingRow(key, stype)
         local dd = CreateFrame("Frame", "DungeonClearDropdown_" .. key, row, "UIDropDownMenuTemplate")
         dd:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", -6, -2)
         UIDropDownMenu_SetWidth(130, dd)  --[[1.12: (width, frame)]]
-        local function OnSelect(self)
+        local function OnSelect()
+            local self = this  -- 1.12: Dropdown-Klick ohne Argumente, this = der Eintrag
             local v = self.value
             UIDropDownMenu_SetSelectedValue(dd, v)
             UIDropDownMenu_SetText(QualityText(v), dd)  --[[1.12: (text, frame)]]
