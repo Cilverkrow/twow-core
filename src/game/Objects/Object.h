@@ -439,7 +439,7 @@ class Object
         void BuildOutOfRangeUpdateBlock(UpdateData *data) const;
         void BuildMovementUpdateBlock(UpdateData * data, uint8 flags = 0) const;
 
-        void BuildMovementUpdate(ByteBuffer * data, uint8 updateFlags) const;
+        void BuildMovementUpdate(ByteBuffer * data, uint8 updateFlags, bool includeSpline = true) const;
         void BuildValuesUpdate(uint8 updatetype, ByteBuffer *data, UpdateMask *updateMask, Player *target ) const;
         void BuildUpdateDataForPlayer(Player* pl, UpdateDataMapType& update_players);
 

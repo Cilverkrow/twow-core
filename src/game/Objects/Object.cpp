@@ -307,7 +307,10 @@ void Object::BuildCreateUpdateBlockForPlayer(UpdateData *data, Player *target) c
     buf << GetPackGUID();
     buf << uint8(m_objectTypeId);
     
-    BuildMovementUpdate(&buf, updateFlags);
+    // The 1.12.1/5875 client can crash while evaluating an in-flight spline
+    // carried by an object's initial create block (ERROR #132 at 0x00453885).
+    // Let the next normal movement packet establish the spline instead.
+    BuildMovementUpdate(&buf, updateFlags, false);
 
     UpdateMask updateMask;
     updateMask.SetCount(m_valuesCount);
@@ -424,7 +427,7 @@ void Object::DestroyForPlayer(Player *target) const
     target->GetSession()->SendPacket(&data);
 }
 
-void Object::BuildMovementUpdate(ByteBuffer * data, uint8 updateFlags) const
+void Object::BuildMovementUpdate(ByteBuffer * data, uint8 updateFlags, bool includeSpline) const
 {
     *data << uint8(updateFlags);                            // update flags
 
@@ -434,6 +437,9 @@ void Object::BuildMovementUpdate(ByteBuffer * data, uint8 updateFlags) const
         ASSERT(unit);
         WorldObject const* wobject = (WorldObject*)this;
         MovementInfo m = wobject->m_movementInfo;
+        if (!includeSpline)
+            m.moveFlags &= ~MOVEFLAG_SPLINE_ENABLED;
+
         if (!m.ctime)
         {
             m.stime = WorldTimer::getMSTime() + 1000;
@@ -452,7 +458,7 @@ void Object::BuildMovementUpdate(ByteBuffer * data, uint8 updateFlags) const
             *data << float(unit->GetSpeed(MOVE_SWIM_BACK));
             *data << float(unit->GetSpeed(MOVE_TURN_RATE));
             // Send current movement informations
-            if (unit->m_movementInfo.moveFlags & MOVEFLAG_SPLINE_ENABLED)
+            if (includeSpline && (m.moveFlags & MOVEFLAG_SPLINE_ENABLED))
                 Movement::PacketBuilder::WriteCreate(*(unit->movespline), *data);
         }
         else
