@@ -128,11 +128,15 @@ often fails where Linux succeeds:
 
 ## Safety behaviour
 
-- **Run lock.** `pipeline_running.lock` is written at the start and removed on every exit
-  path. A second run refuses to start while the first is alive (exit code 2). A lock left
-  by a killed run is detected as stale — by checking whether the recorded PID is still a
-  live PowerShell process — and taken over automatically, so it never blocks you
-  permanently.
+- **Single instance per machine.** The pipeline drops databases and wipes the server
+  directory, so two overlapping runs would corrupt the result. A named mutex
+  (`Global\TortoiseWoW-Testlab-Pipeline`, falling back to `Local\` when the account lacks
+  the privilege to create a global object) refuses the second run with exit code 2. The
+  kernel releases it the moment the owning process ends, so a run killed with Ctrl+C or
+  Task Manager cannot lock the testlab out.
+  Beside it, `pipeline_running.lock` records PID, start time, user and machine so you can
+  see *who* is running; a file left behind by a killed run is recognised as stale and taken
+  over automatically.
 - **`-SkipBotRegen` verifies its own backup.** Step 05 imports `create_databases.sql`,
   which carries `DROP TABLE` for every table in `tw_char`, so the character data is
   genuinely dropped and restored rather than left alone. The dump is therefore checked for
@@ -146,13 +150,6 @@ often fails where Linux succeeds:
 
 ## Known caveats
 
-- **`aiplayerbot.conf` placement.** On Windows the bot config path is *relative*
-  (`PlayerbotAIConfig.h`), so mangosd looks for `aiplayerbot.conf` in its working
-  directory — `server\` when started through the generated launcher — while this pipeline
-  writes it to `server\etc\`. If the bots come up with template defaults, or the log says
-  the configuration file could not be opened, copy `etc\aiplayerbot.conf` to `server\`.
-  `ahbot.conf` is resolved through `SYSCONFDIR` and follows a different rule again; see
-  `INSTALL-WINDOWS.md` §6.
 - **Database migrations.** The pipeline points `Database.AutoUpdate.Path` at the
   repository's `sql\database_updates` and leaves the rest to the server's auto-updater.
   `INSTALL-WINDOWS.md` §5 explains when that is not enough and how to apply the migrations

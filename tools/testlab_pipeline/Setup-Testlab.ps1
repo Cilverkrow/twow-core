@@ -73,6 +73,11 @@ $script:DbDefaultsFile   = $null
 $script:LockFile  = $null
 $script:LockOwned = $false
 
+# The singleton handle itself. A named mutex is the authoritative guard - see
+# Assert-SingleInstance - and the lock file beside it only carries the human-readable
+# "who and since when".
+$script:SingletonMutex = $null
+
 # Start recording everything that appears in the PowerShell console window
 Start-Transcript -Path (Join-Path $WorkspaceRoot "pipeline_console.log") -Append -ErrorAction SilentlyContinue
 
@@ -101,6 +106,56 @@ function Remove-PipelineCredentialFiles {
     }
 }
 
+# Releases the singleton mutex. Safe to call when we never acquired one.
+function Remove-PipelineSingleton {
+    if ($script:SingletonMutex) {
+        try { [void]$script:SingletonMutex.ReleaseMutex() } catch { }
+        $script:SingletonMutex.Dispose()
+        $script:SingletonMutex = $null
+    }
+}
+
+# Enforces one pipeline run per machine.
+#
+# The lock file below records who is running and since when, but it cannot be the guard on
+# its own: a run killed with Ctrl+C or Task Manager leaves the file behind, and deciding
+# whether it is stale means guessing from a PID that Windows may already have recycled.
+# A named mutex has no such problem - the kernel drops it the instant the owning process
+# ends, however it ends.
+#
+# "Global\" is the machine-wide namespace, so a run started from another session (a second
+# console, RDP, a scheduled task) is seen as well. Creating an object there needs
+# SeCreateGlobalPrivilege, which an ordinary non-elevated user does not have, so a failure
+# falls back to the per-session "Local\" namespace rather than aborting: the lock file
+# still covers the cross-session case, just with the weaker stale-PID heuristic.
+function Assert-SingleInstance {
+    $CreatedNew = $false
+
+    foreach ($MutexName in @("Global\TortoiseWoW-Testlab-Pipeline", "Local\TortoiseWoW-Testlab-Pipeline")) {
+        try {
+            $script:SingletonMutex = New-Object System.Threading.Mutex($true, $MutexName, [ref]$CreatedNew)
+            break
+        } catch {
+            # Access denied on Global\ (no privilege), or the name already exists with an
+            # ACL we may not open. Try the next namespace.
+            $script:SingletonMutex = $null
+        }
+    }
+
+    if (-not $script:SingletonMutex) {
+        Stop-Pipeline -Message "Could not create the singleton mutex - refusing to run rather than risk a second concurrent pipeline." -ExitCode 2
+    }
+
+    if (-not $CreatedNew) {
+        # Somebody else owns it. Drop our handle without releasing a mutex we never owned.
+        $script:SingletonMutex.Dispose()
+        $script:SingletonMutex = $null
+        Stop-Pipeline -Message ("Another pipeline run is already in progress on this machine. " +
+                                "Only one run may execute at a time - it drops databases and wipes the server directory. " +
+                                "Wait for it to finish, then start again.") -ExitCode 2
+    }
+}
+
 # Removes this run's lock file - but only if this run is the one that created it.
 function Remove-PipelineLock {
     if ($script:LockOwned -and $script:LockFile -and (Test-Path $script:LockFile)) {
@@ -118,6 +173,7 @@ function Stop-Pipeline {
     )
     if ($Message) { Write-Error $Message }
     Remove-PipelineLock
+    Remove-PipelineSingleton
     Remove-PipelineCredentialFiles
     try { Stop-Transcript | Out-Null } catch { }
     exit $ExitCode
@@ -359,11 +415,12 @@ if (-not (Test-Path $ScriptDirectory)) {
     Stop-Pipeline -Message "Workspace root does not exist: $ScriptDirectory"
 }
 
-# Refuse to run on top of a live run, then publish our own marker.
+# Singleton first (the authoritative machine-wide guard), then the descriptive lock file.
+Assert-SingleInstance
 $script:LockFile = Join-Path $ScriptDirectory "pipeline_running.lock"
 Assert-NoConcurrentRun
 New-PipelineLock
-Write-Host "Run lock acquired: $($script:LockFile) (PID $PID)"
+Write-Host "Single-instance lock acquired: $($script:LockFile) (PID $PID)"
 
 # Define absolute paths based on the workspace root
 $MariaDBPath      = "$ScriptDirectory\$MangosInstalationDir\$MariaDbFolderName\bin\mysql.exe"
@@ -1194,9 +1251,10 @@ New-ServerLauncherScript -Path (Join-Path $InstallDir "3.World server.bat") -Con
 
 Write-Host "[OK] Server launcher scripts are in place." -ForegroundColor Green
 
-# Release the run lock, drop the temporary credential files and close the transcript on the
-# success path too.
+# Release the run lock and singleton, drop the temporary credential files and close the
+# transcript on the success path too.
 Remove-PipelineLock
+Remove-PipelineSingleton
 Remove-PipelineCredentialFiles
 Write-Host "[OK] Pipeline execution fully completed! Server environment is ready." -ForegroundColor Green
 try { Stop-Transcript | Out-Null } catch { }
