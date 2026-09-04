@@ -63,7 +63,7 @@ upstream_tip_at_fork      = be3e6cdd47680c1308251e115164eb3d9eecc6f7
 # Updating this pair is the whole ceremony for "we have looked at upstream":
 # move the branch, put the same hash here, let CI agree.
 upstream_tracking_branch  = upstream-tracking
-upstream_tracking_commit  = c26434d524fd301395be52b4fbf21de0c1031b6b
+upstream_tracking_commit  = 3a978d7724bcef7b0b84d19d3929020a1625a01c
 
 # How far behind upstream/playerbots-integration-gh the tracked commit may fall
 # before CI fails. Not zero: upstream pushes most days, and a check that goes
