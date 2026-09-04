@@ -120,12 +120,6 @@ public:
 
         const uint32 zone = sess->GetPlayer()->GetCachedZoneId();
         const bool notInBattleground = !((zone == 2597) || (zone == 3277) || (zone == 3358));
-        // Turtle's 1.18 client can retain stale race/class/level masks when the
-        // unfiltered `/who` command is issued. Treat a request without textual
-        // or zone filters as the intended realm-wide query.
-        const bool plainWhoRequest = wplayer_name.empty() && wguild_name.empty() &&
-                                     zones_count == 0 && str_count == 0;
-
         // TODO: Guard Player map
         HashMapHolder<Player>::MapType& m = sObjectAccessor.GetPlayers();
         for (const auto& itr : m)
@@ -156,7 +150,7 @@ public:
 
             // check if target's level is in level range
             uint32 lvl = pPlayer->GetLevel();
-            if (!plainWhoRequest && (lvl < level_min || lvl > level_max))
+            if (lvl < level_min || lvl > level_max)
                 continue;
 
             // check if target is globally visible for player
@@ -167,12 +161,12 @@ public:
             uint32 class_ = pPlayer->GetClass();
             // Some 1.18 clients send a zero mask for "all". Only constrain
             // the result when an actual mask was supplied.
-            if (!plainWhoRequest && classmask && (class_ >= 32 || !(classmask & (uint32(1) << class_))))
+            if (classmask && (class_ >= 32 || !(classmask & (uint32(1) << class_))))
                 continue;
 
             // check if race matches racemask
             uint32 race = pPlayer->GetRace();
-            if (!plainWhoRequest && racemask && (race >= 32 || !(racemask & (uint32(1) << race))))
+            if (racemask && (race >= 32 || !(racemask & (uint32(1) << race))))
                 continue;
 
             std::string pname = pPlayer->GetName();
