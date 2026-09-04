@@ -23,13 +23,15 @@
 
 #include "SharedDefines.h"
 
-// Declared, not included: every signature below takes them by pointer only, and
-// pulling in Object.h/Map.h here would put two of the heaviest headers in the
-// tree behind a file that only needs the names. Their absence was invisible
-// until a translation unit included this header before anything that declares
-// them -- CustomMerchantMgr.cpp does -- and MSVC then reported four
-// "syntax error: identifier 'WorldObject'" in a header the file had not
-// touched.
+// Without the precompiled header (USE_PCH=OFF - the usual escape from MSVC's
+// PCH size limits) nothing above declares these before ConditionEntry uses
+// them in signatures: 2026-09-04, Windows build of CustomMerchantMgr.cpp,
+// C2061 "WorldObject"; the same on Linux without PCH.
+//
+// We found the same thing independently while making the MSVC job link: pulling
+// in Object.h/Map.h here would put two of the heaviest headers in the tree behind
+// a file that only needs the names, so declaring is right rather than merely
+// cheaper.
 class WorldObject;
 class Map;
 
