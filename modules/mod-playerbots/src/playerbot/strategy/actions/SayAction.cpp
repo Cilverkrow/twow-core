@@ -644,15 +644,18 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
 
                 bool debug = GetBotAI(bot)->HasStrategy("debug llm", BotState::BOT_STATE_NON_COMBAT);
 
-                WorldSession* session = bot->GetSession();
-
                 WorldPacket chatTemplate = GetPacketTemplate(CMSG_MESSAGECHAT, type, bot, player, channelName);
                 WorldPacket emoteTemplate = (type == CHAT_MSG_SAY || type == CHAT_MSG_WHISPER) ? GetPacketTemplate(CMSG_MESSAGECHAT, CHAT_MSG_EMOTE, bot, player) : WorldPacket();
                 WorldPacket systemTemplate = GetPacketTemplate(CMSG_MESSAGECHAT, CHAT_MSG_WHISPER, bot, player);
 
                 futurePackets futPackets = std::async(std::launch::async, ChatReplyAction::GenerateResponsePackets, json, chatTemplate, emoteTemplate, systemTemplate, startPattern, endPattern, deletePattern, splitPattern, debug);
 
-                ai->SendDelayedPacket(session, std::move(futPackets));
+                // LLM-012: SendDelayedPacket no longer takes a WorldSession* --
+                // it re-resolves bot->GetSession() itself once the future is
+                // ready, on the bot's own tick, instead of a detached thread
+                // holding a pointer that logout/shutdown could free out from
+                // under it.
+                ai->SendDelayedPacket(std::move(futPackets));
             }
             else if (player != bot || sPlayerbotAIConfig.llmBotToBotChatChance)
             {

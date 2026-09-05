@@ -1297,6 +1297,11 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
         return;
     }
 
+    // LLM-012: drain any pending async chat-packet futures here, on this
+    // bot's own world-thread tick, rather than off a detached thread. See
+    // UpdateDelayedPackets()/SendDelayedPacket()/ReceiveDelayedPacket().
+    UpdateDelayedPackets(elapsed);
+
     SC_PHASE("UpdateAIInternal.botOutgoingPackets", bot ? bot->GetName() : "(null)");
     botOutgoingPacketHandlers.Handle(helper);
     SC_PHASE("UpdateAIInternal.masterIncomingPackets", bot ? bot->GetName() : "(null)");
@@ -8005,35 +8010,104 @@ std::list<Unit*> PlayerbotAI::GetAllHostileNPCNonPetUnitsAroundWO(WorldObject* w
     return hostileUnitsNonPlayers;
 }
 
-void PlayerbotAI::SendDelayedPacket(WorldSession* session, futurePackets futPackets)
+// LLM-012: no thread, no captured session/handler pointer. The future is
+// just parked in pendingSessionPackets; UpdateDelayedPackets() -- called
+// from this bot's own tick on the world thread -- polls it and re-resolves
+// bot->GetSession() at the moment each packet is actually delivered. See the
+// comment on the declaration in PlayerbotAI.h for what this replaces.
+void PlayerbotAI::SendDelayedPacket(futurePackets futPackets)
 {
-    std::thread t([session, futPacket = std::move(futPackets)]() mutable {
-        for (auto& delayedPacket : futPacket.get())
-        {
-            if (delayedPacket.second)
-                std::this_thread::sleep_for(std::chrono::milliseconds(delayedPacket.second));
-
-            std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(delayedPacket.first));
-            session->QueuePacket(std::move(packetPtr));
-        }
-    });
-
-    t.detach();
+    DelayedPacketBatch batch;
+    batch.futPackets = std::move(futPackets);
+    pendingSessionPackets.push_back(std::move(batch));
 }
 
 void PlayerbotAI::ReceiveDelayedPacket(futurePackets futPackets)
 {
-    PacketHandlingHelper* handler = &botOutgoingPacketHandlers;
-    std::thread t([handler, futPackets = std::move(futPackets)]() mutable {
-        for (auto& delayedPacket : futPackets.get())
-        {            
-            handler->AddPacket(delayedPacket.first);
-            if(delayedPacket.second)
-                std::this_thread::sleep_for(std::chrono::milliseconds(delayedPacket.second));
-        }
-        });
+    DelayedPacketBatch batch;
+    batch.futPackets = std::move(futPackets);
+    pendingReceivePackets.push_back(std::move(batch));
+}
 
-    t.detach();
+template <typename Deliver>
+void PlayerbotAI::DrainDelayedPacketBatches(std::vector<PlayerbotAI::DelayedPacketBatch>& batches, uint32 elapsed, Deliver deliver)
+{
+    for (auto it = batches.begin(); it != batches.end();)
+    {
+        PlayerbotAI::DelayedPacketBatch& batch = *it;
+
+        if (batch.futPackets.valid() && batch.futPackets.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            bool wasEmpty = batch.ready.empty();
+            try
+            {
+                for (auto& delayedPacket : batch.futPackets.get())
+                    batch.ready.push(delayedPacket);
+            }
+            catch (std::exception const& e)
+            {
+                // The async LLM/HTTP task threw. futPackets.get() only rethrows
+                // once (the future is now invalid either way), and we are on
+                // the world thread here -- not a detached thread -- so this
+                // catch is what keeps that exception from taking the whole
+                // process down via std::terminate().
+                sLog.outError("PlayerbotAI: delayed chat packet generation threw: %s", e.what());
+            }
+            catch (...)
+            {
+                sLog.outError("PlayerbotAI: delayed chat packet generation threw an unknown exception");
+            }
+
+            // The original code slept for the *first* packet's own delay
+            // before sending it too (it was inside the same for-loop as every
+            // other packet). Arm the countdown here so that delay is honored
+            // instead of firing the first packet the instant the future
+            // resolves.
+            if (wasEmpty && !batch.ready.empty())
+                batch.pendingDelayMs = batch.ready.front().second;
+        }
+
+        while (!batch.ready.empty() && batch.pendingDelayMs <= 0)
+        {
+            std::pair<WorldPacket, uint32> delayedPacket = std::move(batch.ready.front());
+            batch.ready.pop();
+            deliver(delayedPacket.first);
+            batch.pendingDelayMs = batch.ready.empty() ? 0 : batch.ready.front().second;
+        }
+
+        if (!batch.ready.empty())
+            batch.pendingDelayMs -= (int64)elapsed;
+
+        if (batch.Done())
+            it = batches.erase(it);
+        else
+            ++it;
+    }
+}
+
+void PlayerbotAI::UpdateDelayedPackets(uint32 elapsed)
+{
+    if (!pendingSessionPackets.empty())
+    {
+        DrainDelayedPacketBatches(pendingSessionPackets, elapsed, [this](WorldPacket const& packet)
+        {
+            // WHY re-resolve here rather than trust a stored WorldSession*:
+            // the future backing this batch can take an arbitrary amount of
+            // real time to resolve (LLM/HTTP round trip); by the time it does,
+            // this bot may have logged out or the session may otherwise be
+            // gone. bot->GetSession() is the live pointer, checked every time.
+            if (WorldSession* session = bot ? bot->GetSession() : nullptr)
+                session->QueuePacket(packet);
+        });
+    }
+
+    if (!pendingReceivePackets.empty())
+    {
+        DrainDelayedPacketBatches(pendingReceivePackets, elapsed, [this](WorldPacket const& packet)
+        {
+            botOutgoingPacketHandlers.AddPacket(packet);
+        });
+    }
 }
 
 PlayerbotHolder* PlayerbotAI::GetHolder() const
