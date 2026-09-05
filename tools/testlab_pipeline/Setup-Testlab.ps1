@@ -511,6 +511,24 @@ function Assert-LastExitCode {
     }
 }
 
+# Quotes and escapes one value for a MariaDB option file.
+#
+# The option-file parser is not a plain key=value reader. In an unquoted value it truncates
+# at the first '#' - anywhere in the line, not just at the start - and it expands backslash
+# escape sequences. Both are silent: a root password of 'ab#cd' was read as 'ab' and
+# 'pa\ts' as 'pa<TAB>s', the client answered "Access denied", and Wait-ForMariaDb blamed
+# -RootPassword, which was the one thing that was correct.
+#
+# Verified against the bundled 10.3 client with --print-defaults: quoted this way, '#',
+# '\', '"', ';', "'", '$', spaces and a leading '#' all arrive exactly as written.
+function ConvertTo-OptionFileValue {
+    param (
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value
+    )
+
+    return '"' + ($Value -replace '\\', '\\' -replace '"', '\"') + '"'
+}
+
 # Writes a MariaDB option file holding the credentials, so no password is ever passed on a
 # command line where any local user can read it out of the process list.
 # The file is UTF8 *without* BOM - a BOM makes MariaDB's option parser reject the file.
@@ -525,8 +543,8 @@ function New-MySqlDefaultsFile {
     # host/port are written only when asked for. Emitting host=localhost unconditionally is
     # not a no-op on Windows - it can move the client between TCP and a named pipe - and the
     # bundled portable server is happiest with the client's own defaults.
-    $Content = "[client]`r`nuser=$User`r`npassword=$Password`r`n"
-    if (-not [string]::IsNullOrWhiteSpace($DbHost)) { $Content += "host=$DbHost`r`n" }
+    $Content = "[client]`r`nuser=$(ConvertTo-OptionFileValue $User)`r`npassword=$(ConvertTo-OptionFileValue $Password)`r`n"
+    if (-not [string]::IsNullOrWhiteSpace($DbHost)) { $Content += "host=$(ConvertTo-OptionFileValue $DbHost)`r`n" }
     if ($DbPort -gt 0)                              { $Content += "port=$DbPort`r`n" }
     # Checked, for the reason spelled out in New-PipelineLock: nothing would fail here, the
     # path would be returned as if it held credentials, and every client call afterwards
