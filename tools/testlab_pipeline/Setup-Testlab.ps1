@@ -1901,8 +1901,28 @@ if ($SkipBotRegen) {
         }
     }
 
-    # Remove the temporary backup folder if empty
-    if (Test-Path $BackupFolder) { Remove-Item -Path $BackupFolder -Force -ErrorAction SilentlyContinue }
+    # Remove the temporary backup folder, but only when it really is empty.
+    #
+    # Remove-Item -Force without -Recurse does not quietly skip a non-empty directory: it
+    # raises a confirmation prompt, and -ErrorAction SilentlyContinue suppresses errors, not
+    # prompts. Under Run-Testlab.bat the console is attached, so the run stopped dead at its
+    # last line waiting for a keypress with no timeout. That is reachable whenever the
+    # folder holds a dump this run did not consume - an earlier run under a different
+    # -DbPrefix that aborted after taking its own backup, say.
+    #
+    # Those files are somebody's database dumps, so they are reported and kept rather than
+    # recursively deleted.
+    if (Test-Path $BackupFolder) {
+        $LeftOverBackups = @(Get-ChildItem -LiteralPath $BackupFolder -Force -ErrorAction SilentlyContinue)
+
+        if ($LeftOverBackups.Count -eq 0) {
+            Remove-Item -LiteralPath $BackupFolder -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-Warning ("$BackupFolder still holds $($LeftOverBackups.Count) file(s) from an earlier run, " +
+                           "so it is kept: " + (($LeftOverBackups | Select-Object -First 5 |
+                                                 ForEach-Object { $_.Name }) -join ", "))
+        }
+    }
 }
 
 # ==============================================================================
