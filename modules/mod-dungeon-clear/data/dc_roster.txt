@@ -237,5 +237,10 @@ order 209 7271 3      # Witch Doctor Zum'rah
 order 209 7267 5      # Chief Ukorz Sandscalp     (4 = Temple Summit objective)
 order 209 7795 6      # Hydromancer Velratha      (7 = Sacred Pool objective)
 order 209 62495 10    # Zel'jeb the Ancient       (owner: 8th)
-order 209 62498 11    # Champion Razjal the Quick (owner: Farraki Arena last)
+order 209 62498 13    # Champion Razjal the Quick (owner: Farraki Arena last)
+# Razjal AFTER the Farraki Arena objective (orderOverride 11 in ZulFarrakEvents.cpp;
+# a boss with order N takes key N-1, an objective with override N takes key N, so 13 -> key 12):
+# as boss 10 the party pulled him before the challenge, he is invulnerable until
+# his gossip starts it, and runs died at 8/10 (arch24, 2026-09-05). The arena
+# event kills him as its last step; his bit flips there.
 drop 7604             # Sergeant Bly - dies inside the temple event, not an anchor
