@@ -162,6 +162,7 @@ branch — every environment-specific value is a parameter.
 | `-RootPassword` | `mangos` | Database `root` password, used for schema creation and imports. |
 | `-DbPassword` | `mangos` | Password for the service account the script creates. |
 | `-DbUser` | `mangos` | Service account the server logs in with. |
+| `-DbAccountHost` | *from `-DbHost`* | Host part of that account — the `localhost` in `'mangos'@'localhost'`. `localhost` for a local server, `%` for a remote one. |
 | `-DbPrefix` | `tw_` | Prefix for all four database names — see below. |
 | `-WorldDatabaseName` etc. | *from prefix* | Override a single database name. Also `-CharacterDatabaseName`, `-LoginDatabaseName`, `-LogsDatabaseName`. |
 | `-MariaDbFolderName` | `mariadb-10.3.39-winx64` | Portable MariaDB folder name inside `server\`, tried first. |
@@ -245,6 +246,10 @@ deliberate about it: the pipeline drops `tw_world`, `tw_char`, `tw_logon` and `t
 whatever it connects to. The preflight prints the client, how it was found, and the
 server's version, host and port for exactly this reason — read that line on an unfamiliar
 machine.
+
+On a remote server the service account is created as `'mangos'@'%'`, because the server
+sees this machine arriving from its own address and never as `localhost`. Narrow it with
+`-DbAccountHost "192.168.1.%"` when the network allows it.
 
 ## What a run does
 

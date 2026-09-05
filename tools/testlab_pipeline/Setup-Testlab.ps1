@@ -34,6 +34,8 @@
       Database identity
         -RootPassword             root password           (default: mangos)
         -DbUser  -DbPassword      the server's account    (default: mangos / mangos)
+        -DbAccountHost            where that account may
+                                  connect from            (default: from -DbHost)
         -DbPrefix                 names all four          (default: tw_)
         -WorldDatabaseName  -CharacterDatabaseName
         -LoginDatabaseName  -LogsDatabaseName
@@ -75,6 +77,12 @@
 .PARAMETER DbUser
     Account the server logs in with. Created and granted in step 06, and written into the
     connection strings in mangosd.conf and realmd.conf.
+.PARAMETER DbAccountHost
+    Host part of the service account step 06 creates - the 'localhost' in
+    'mangos'@'localhost'. Empty (default) derives it from -DbHost: 'localhost' for a local
+    server, '%' for a remote one, because a remote server sees this machine arriving from
+    its own address and never as localhost. Set it explicitly to narrow that down, e.g.
+    -DbAccountHost "192.168.1.%".
 .PARAMETER DbPrefix
     Prefix for the four database names, default "tw_". Change it to run several testlabs
     against one database server without them overwriting each other - -DbPrefix "lab2_"
@@ -252,6 +260,9 @@ param (
 
     # Account the server logs in with. Created and granted by step 06.
     [string]$DbUser = "mangos",
+
+    # Host part of that account. Empty derives it from -DbHost; see step 06.
+    [string]$DbAccountHost = "",
 
     # Prefix for the four database names. Change it to run several testlabs against one
     # server without them overwriting each other: -DbPrefix "lab2_" gives lab2_world,
@@ -1817,13 +1828,39 @@ Write-Host "Configuring database user 'mangos'..."
 # works on MariaDB 10.1+ and MySQL 5.7+ alike. ALTER USER follows CREATE USER IF NOT
 # EXISTS so an existing account picks up the current password instead of silently keeping
 # an old one.
+# The host part used to be the literal 'localhost' while -DbHost was honoured everywhere
+# else. Against a remote server that produced an account this machine can never
+# authenticate as: the account was created as mangos@'localhost' ON THE REMOTE SERVER,
+# which then saw the connection arriving from this machine's address and answered
+# "Access denied for user 'mangos'@'<client ip>'" - with all four databases already
+# dropped and rebuilt, and a mangosd.conf that could not have connected either.
+#
+# '%' rather than a guess at this machine's address: which of its addresses the server
+# sees depends on routing, NAT and name resolution, and getting it wrong fails exactly as
+# before. -DbAccountHost narrows it down when that matters.
+$AccountHost = $DbAccountHost
+
+if ([string]::IsNullOrWhiteSpace($AccountHost)) {
+    $LocalDbHosts = @("", "localhost", "127.0.0.1", "::1", ".")
+    if ($LocalDbHosts -contains $DbHost.Trim()) {
+        $AccountHost = "localhost"
+    } else {
+        $AccountHost = "%"
+        Write-Warning ("-DbHost is '$DbHost', so the '$DbUser' account is created as " +
+                       "'$DbUser'@'%' - a local-only account could not be used from this " +
+                       "machine. Pass -DbAccountHost to narrow that down.")
+    }
+}
+
+Write-Host " -> Account host: '$DbUser'@'$AccountHost'"
+
 $UserQuery = @"
-CREATE USER IF NOT EXISTS '$DbUser'@'localhost' IDENTIFIED BY '$DbPassword';
-ALTER USER '$DbUser'@'localhost' IDENTIFIED BY '$DbPassword';
-GRANT ALL PRIVILEGES ON $WorldDatabaseName.* TO '$DbUser'@'localhost';
-GRANT ALL PRIVILEGES ON $CharacterDatabaseName.* TO '$DbUser'@'localhost';
-GRANT ALL PRIVILEGES ON $LoginDatabaseName.* TO '$DbUser'@'localhost';
-GRANT ALL PRIVILEGES ON $LogsDatabaseName.* TO '$DbUser'@'localhost';
+CREATE USER IF NOT EXISTS '$DbUser'@'$AccountHost' IDENTIFIED BY '$DbPassword';
+ALTER USER '$DbUser'@'$AccountHost' IDENTIFIED BY '$DbPassword';
+GRANT ALL PRIVILEGES ON $WorldDatabaseName.* TO '$DbUser'@'$AccountHost';
+GRANT ALL PRIVILEGES ON $CharacterDatabaseName.* TO '$DbUser'@'$AccountHost';
+GRANT ALL PRIVILEGES ON $LoginDatabaseName.* TO '$DbUser'@'$AccountHost';
+GRANT ALL PRIVILEGES ON $LogsDatabaseName.* TO '$DbUser'@'$AccountHost';
 FLUSH PRIVILEGES;
 "@
 
