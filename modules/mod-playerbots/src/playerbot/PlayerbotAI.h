@@ -550,7 +550,22 @@ public:
     std::list<Unit*> GetAllHostileUnitsAroundWO(WorldObject* wo, float distanceAround);
     std::list<Unit*> GetAllHostileNPCNonPetUnitsAroundWO(WorldObject* wo, float distanceAround);
 
-    static void SendDelayedPacket(WorldSession* session, std::future<std::vector<std::pair<WorldPacket, uint32>>> futurePacket);
+    // LLM-012: these used to spawn a detached std::thread that captured a raw
+    // WorldSession*/PlayerbotAI* and, after blocking on the future (plus a
+    // std::this_thread::sleep_for), dereferenced it. Nothing kept the bot's
+    // session (or this AI) alive for the life of that thread: logout deletes
+    // the WorldSession on the world thread (World.cpp RemoveSession), and
+    // shutdown deletes it too, so the detached thread could dereference freed
+    // memory. Worse, futurePacket.get() rethrows whatever the async LLM/HTTP
+    // task threw, and an exception escaping a detached thread's entry
+    // function calls std::terminate() -- taking down the whole worldserver,
+    // not just the bot. Neither function may capture bot/session pointers or
+    // run off the world thread anymore: SendDelayedPacket()/ReceiveDelayedPacket()
+    // now just stash the future, and UpdateDelayedPackets() (called from this
+    // bot's own UpdateAIInternal tick, i.e. the world thread) polls it and
+    // re-resolves bot->GetSession() at delivery time, checking it is still
+    // non-null before touching it.
+    void SendDelayedPacket(std::future<std::vector<std::pair<WorldPacket, uint32>>> futurePacket);
     void ReceiveDelayedPacket(std::future<std::vector<std::pair<WorldPacket, uint32>>> futurePacket);
  public:
     std::vector<Bag*> GetEquippedAnyBags();
@@ -796,6 +811,37 @@ public:
 private:
     bool UpdateAIReaction(uint32 elapsed, bool minimal, bool isStunned);
     void UpdateFaceTarget(uint32 elapsed, bool minimal);
+
+    // LLM-012: holds one async chat-packet batch (see SendDelayedPacket/
+    // ReceiveDelayedPacket above) while it is drained. `futPackets` is the
+    // still-running async result; once ready its packets move into `ready`
+    // and are delivered one at a time, `pendingDelayMs` ticking down between
+    // each, so the drip-feed pacing of the old sleep_for() loop is preserved
+    // without ever blocking the world thread.
+    struct DelayedPacketBatch
+    {
+        std::future<std::vector<std::pair<WorldPacket, uint32>>> futPackets;
+        std::queue<std::pair<WorldPacket, uint32>> ready;
+        int64 pendingDelayMs = 0;
+
+        bool Done() const { return !futPackets.valid() && ready.empty(); }
+    };
+    std::vector<DelayedPacketBatch> pendingSessionPackets;  // -> bot->GetSession()->QueuePacket()
+    std::vector<DelayedPacketBatch> pendingReceivePackets;  // -> botOutgoingPacketHandlers.AddPacket()
+
+    // Drains one set of batches, delivering one ready packet per batch per
+    // tick (once its per-packet delay has elapsed) via `deliver`, and erasing
+    // batches once their future is consumed and their queue is empty.
+    // `deliver` runs on the world thread (only ever called from
+    // UpdateDelayedPackets, itself only called from this bot's own AI tick),
+    // so it may safely re-resolve and dereference the session/handler.
+    template <typename Deliver>
+    static void DrainDelayedPacketBatches(std::vector<DelayedPacketBatch>& batches, uint32 elapsed, Deliver deliver);
+
+    // Drains pendingSessionPackets/pendingReceivePackets. Must only be called
+    // from this bot's own AI tick (world thread) -- see the comment on
+    // SendDelayedPacket/ReceiveDelayedPacket for why.
+    void UpdateDelayedPackets(uint32 elapsed);
 
 protected:
 	Player* bot;
