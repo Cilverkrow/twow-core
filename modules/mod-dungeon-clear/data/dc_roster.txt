@@ -244,3 +244,19 @@ order 209 62498 13    # Champion Razjal the Quick (owner: Farraki Arena last)
 # his gossip starts it, and runs died at 8/10 (arch24, 2026-09-05). The arena
 # event kills him as its last step; his bit flips there.
 drop 7604             # Sergeant Bly - dies inside the temple event, not an anchor
+
+# --- Maraudon (map 349) -------------------------------------------------------
+# Auto-derived roster had six anchors with Princess Theradras (the end boss)
+# at position 4 and no Celebras the Cursed / Rotgrip at all. Full clear order,
+# orange wing first, then across Poison Falls to the purple wing, then the
+# inner caverns; Theradras last. Meshlok stays dropped (30 % rare).
+# Order confirmed by the owner 2026-09-05: Rotgrip last, after Theradras.
+order 349 13282 1     # Noxxion (Foulspore Cavern, orange)
+order 349 12258 2     # Razorlash (Poison Falls)
+order 349 12236 3     # Lord Vyletongue (Wicked Grotto, purple)
+order 349 12225 4     # Celebras the Cursed (Earth Song Falls)
+order 349 12203 5     # Landslide
+order 349 13601 6     # Tinkerer Gizlock
+order 349 12201 7     # Princess Theradras
+order 349 13596 8     # Rotgrip (open water; owner: last, after Theradras)
+keep  13596           # the module removes Rotgrip (open water); owner wants him in, last
