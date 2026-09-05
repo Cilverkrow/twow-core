@@ -899,6 +899,16 @@ endif()
 # mod-playerbots.cmake. BUILD_PLAYERBOTS still switches it on and off,
 # and still gates src/game/PlayerbotStubs.cpp.
 
+# PersistentActiveRoster's own test suites (ADR-0040: moved here with the
+# module). Included directly here, NOT from mod-playerbots.cmake -- that file
+# returns immediately when BUILD_PLAYERBOTS is OFF (its default), which would
+# make these targets un-buildable in exactly the configuration a test run
+# wants. Placed after `shared` and `framework` exist (add_subdirectory(src)
+# above) because the database suite links against them.
+if(BUILD_TESTING)
+  include("${CMAKE_SOURCE_DIR}/modules/mod-playerbots/tests.cmake")
+endif()
+
 if (USE_EXTRACTORS OR USE_REALMMERGE)
     add_subdirectory(tools)
 endif()
