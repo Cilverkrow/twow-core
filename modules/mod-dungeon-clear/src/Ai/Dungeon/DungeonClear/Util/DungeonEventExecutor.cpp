@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include "Ai/Dungeon/DungeonClear/Data/DcGatherPoint.h"
 #include "DungeonEventExecutor.h"
+#include "ScriptMgr.h"
 
 #include <algorithm>
 #include <cmath>
@@ -363,6 +364,29 @@ bool DungeonEventExecutor::SelectGossip(Player* bot, Creature* npc, int32 option
     GossipMenu& menu = bot->PlayerTalkClass->GetGossipMenu();
     // Tortoise port: this menu hands out items by index with no by-id lookup;
     // presence IS the index check.
+    // No menu at all: the NPC has no gossip_menu_id / no gossip_menu_option rows,
+    // but a C++ script with a select handler that starts on ANY option (Zul Farrak
+    // Champion Razjal the Quick 62498 - gossip_menu_id 0 in this world DB, the
+    // 1.18 update assumed menu 62498; 2026-09-05). A client would show an empty
+    // window; the bot goes straight to the handler the option would have reached.
+    if (menu.MenuItemCount() == 0)
+    {
+        static std::unordered_map<uint64, uint32> s_emptySaidAt;
+        uint32 const nowE = getMSTime();
+        uint32& atE = s_emptySaidAt[bot->GetObjectGuid().GetRawValue()];
+        bool const handled = sScriptMgr.OnGossipSelect(bot, npc, /*sender*/ 0u,
+                                                       static_cast<uint32>(option), /*code*/ nullptr);
+        if (!atE || getMSTimeDiff(atE, nowE) > 10000)
+        {
+            atE = nowE;
+            LOG_INFO("playerbots.dungeonclear",
+                     "[dungeon-clear] {} gossip: empty menu on {} (entry {}, gossip_menu_id {}, npcflags {}, {:.1f}yd) -> script select {}",
+                     bot->GetName(), npc->GetName(), npc->GetEntry(), npc->GetDefaultGossipMenuId(),
+                     npc->GetUInt32Value(UNIT_NPC_FLAGS), bot->GetDistance(npc), handled ? "HANDLED" : "not handled");
+        }
+        if (handled)
+            return true;
+    }
     if (menu.MenuItemCount() == 0 ||
         static_cast<uint32>(option) >= menu.MenuItemCount())
         return false;  // menu/option not ready yet — caller retries
