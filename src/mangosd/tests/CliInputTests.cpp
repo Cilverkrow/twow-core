@@ -8,6 +8,9 @@
 
 #include <signal.h>
 #include <fcntl.h>
+#include <cerrno>
+#include <poll.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -366,9 +369,9 @@ void testDescriptorLifetime()
     const int flags = fcntl(pipeInput.readDescriptor, F_GETFL);
     {
         CliInput input(pipeInput.stream);
-        check((fcntl(pipeInput.readDescriptor, F_GETFL) & O_NONBLOCK) != 0, "reads are actually nonblocking");
+        check(fcntl(pipeInput.readDescriptor, F_GETFL) == flags, "original descriptor flags unchanged during reader lifetime");
     }
-    check(fcntl(pipeInput.readDescriptor, F_GETFL) == flags, "original descriptor flags restored");
+    check(fcntl(pipeInput.readDescriptor, F_GETFL) == flags, "original descriptor flags unchanged after reader lifetime");
     CliInput input(pipeInput.stream);
     fclose(pipeInput.stream);
     pipeInput.stream = nullptr;
@@ -406,6 +409,129 @@ void runIsolated(void (*test)(), const char* name)
     int status = 0;
     check(child > 0 && waitpid(child, &status, 0) == child && WIFEXITED(status) && WEXITSTATUS(status) == 0,
           name);
+}
+
+void testInheritedFifoBackpressure()
+{
+    // Linux platform topology: the entrypoint opens one O_RDWR FIFO before
+    // fork, then its writer and the child's stdin inherit the same OFD.
+    // O_RDWR opening a FIFO is not promised as a portable POSIX operation.
+    char directory[] = "/tmp/core35-fifo-XXXXXX";
+    if (!mkdtemp(directory))
+        std::exit(2);
+    const std::string path = std::string(directory) + "/input";
+    if (mkfifo(path.c_str(), 0600) != 0)
+        std::exit(2);
+    const int inherited = open(path.c_str(), O_RDWR | O_CLOEXEC);
+    const int originalFlags = fcntl(inherited, F_GETFL);
+    if (inherited < 0 || originalFlags < 0 || (originalFlags & O_NONBLOCK))
+        std::exit(2);
+
+    // A separate open, NOT dup: fill without changing the inherited writer.
+    const int filler = open(path.c_str(), O_WRONLY | O_NONBLOCK | O_CLOEXEC);
+    if (filler < 0)
+        std::exit(2);
+    char padding[4096];
+    std::memset(padding, 'x', sizeof(padding));
+    std::size_t filled = 0;
+    bool full = false;
+    while (filled <= 1024 * 1024)
+    {
+        const ssize_t count = write(filler, padding, sizeof(padding));
+        if (count > 0)
+            filled += static_cast<std::size_t>(count);
+        else if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        {
+            full = true;
+            break;
+        }
+        else
+            std::exit(2);
+    }
+    close(filler);
+    check(full && filled > 255, "FIFO deliberately filled through independent writer");
+    int ready[2], release[2], started[2], completed[2];
+    if (pipe(ready) || pipe(release) || pipe(started) || pipe(completed))
+        std::exit(2);
+    const pid_t reader = fork();
+    if (reader == 0)
+    {
+        signal(SIGALRM, timeoutHandler);
+        alarm(2);
+        close(ready[0]);
+        close(release[1]);
+        FILE* stream = fdopen(inherited, "r");
+        if (!stream)
+            _exit(2);
+        CliInput input(stream);
+        if (write(ready[1], "r", 1) != 1)
+            _exit(2);
+        char gate;
+        if (read(release[0], &gate, 1) != 1)
+            _exit(2);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+        std::string commands;
+        char buffer[256] = {};
+        while (std::chrono::steady_clock::now() < deadline && commands != "saveall|server shutdown 0|")
+        {
+            const auto result = input.ReadLine(buffer, sizeof(buffer), 50);
+            if (result == CliInputResult::Line)
+                commands += std::string(buffer) + "|";
+            else if (result != CliInputResult::Timeout && result != CliInputResult::Interrupted)
+                _exit(3);
+        }
+        check(commands == "saveall|server shutdown 0|", "backpressure delivers shutdown pair exactly once without padding/suffix");
+        check(input.ReadLine(buffer, sizeof(buffer), 20) == CliInputResult::Timeout,
+              "backpressure leaves no extra command or fragment");
+        _exit(failures ? 1 : 0);
+    }
+    if (reader < 0)
+        std::exit(2);
+    close(ready[1]);
+    close(release[0]);
+    char notification;
+    if (read(ready[0], &notification, 1) != 1)
+        std::exit(2);
+    check(fcntl(inherited, F_GETFL) == originalFlags,
+          "parent O_RDWR writer flags unchanged during child helper lifetime");
+
+    const pid_t writer = fork();
+    if (writer == 0)
+    {
+        signal(SIGALRM, timeoutHandler);
+        alarm(2);
+        close(started[0]);
+        close(completed[0]);
+        if (write(started[1], "s", 1) != 1)
+            _exit(2);
+        // Like the wrapper: a single small write, no retry that could mask EAGAIN.
+        const char commands[] = "\nsaveall\nserver shutdown 0\n";
+        const bool sent = write(inherited, commands, sizeof(commands) - 1) == static_cast<ssize_t>(sizeof(commands) - 1);
+        if (write(completed[1], sent ? "y" : "n", 1) != 1)
+            _exit(2);
+        _exit(sent ? 0 : 1);
+    }
+    if (writer < 0)
+        std::exit(2);
+    close(started[1]);
+    close(completed[1]);
+    if (read(started[0], &notification, 1) != 1)
+        std::exit(2);
+    pollfd completion{completed[0], POLLIN, 0};
+    check(poll(&completion, 1, 50) == 0, "full FIFO blocks shutdown writer instead of returning EAGAIN");
+    if (write(release[1], "g", 1) != 1)
+        std::exit(2);
+    check(read(completed[0], &notification, 1) == 1 && notification == 'y',
+          "blocked shutdown write succeeds after reader release");
+    int status = 0;
+    check(waitpid(writer, &status, 0) == writer && WIFEXITED(status) && WEXITSTATUS(status) == 0,
+          "backpressure writer joins successfully");
+    check(waitpid(reader, &status, 0) == reader && WIFEXITED(status) && WEXITSTATUS(status) == 0,
+          "backpressure reader joins successfully");
+    check(fcntl(inherited, F_GETFL) == originalFlags, "parent writer flags also unchanged after reader exit");
+    for (int descriptor : {inherited, ready[0], release[1], started[0], completed[0]})
+        close(descriptor);
+    check(unlink(path.c_str()) == 0 && rmdir(directory) == 0, "task-local FIFO fixture removed");
 }
 
 void testChildExitAndNoDuplicate()
@@ -476,6 +602,7 @@ int main()
     runIsolated(testInvalidLinesAndArguments, "invalid-input scenario");
     runIsolated(testDescriptorLifetime, "descriptor-lifetime scenario");
     runIsolated(testSplitCrLf, "split-CRLF scenario");
+    runIsolated(testInheritedFifoBackpressure, "inherited-FIFO/backpressure scenario");
 
     if (failures != 0)
     {

@@ -26,26 +26,15 @@ CliInput::CliInput(FILE* stream)
     if (!stream)
         return;
     // Keep our descriptor alive even if Master closes stdin during shutdown.
-    // The duplicate shares O_NONBLOCK with stdin; restore the original flags
-    // on destruction. No other reader may consume this stream concurrently.
+    // dup shares the open file description, including with an inherited FIFO
+    // writer in the parent. Never change its file-status flags (F_SETFL).
     m_descriptor = fcntl(fileno(stream), F_DUPFD_CLOEXEC, 0);
-    if (m_descriptor < 0)
-        return;
-    m_originalFlags = fcntl(m_descriptor, F_GETFL);
-    if (m_originalFlags < 0 || fcntl(m_descriptor, F_SETFL, m_originalFlags | O_NONBLOCK) < 0)
-    {
-        close(m_descriptor);
-        m_descriptor = -1;
-    }
 }
 
 CliInput::~CliInput()
 {
     if (m_descriptor >= 0)
-    {
-        fcntl(m_descriptor, F_SETFL, m_originalFlags);
         close(m_descriptor);
-    }
 }
 
 CliInputResult CliInput::ReadLine(char* buffer, std::size_t bufferSize, unsigned timeoutMilliseconds)
@@ -75,9 +64,13 @@ CliInputResult CliInput::ReadLine(char* buffer, std::size_t bufferSize, unsigned
             return errno == EINTR ? CliInputResult::Interrupted : CliInputResult::Error;
         if (descriptor.revents & POLLNVAL)
             return CliInputResult::Error;
+        if (!(descriptor.revents & (POLLIN | POLLHUP)))
+            return CliInputResult::Error;
 
-        // No stdio read-ahead and no blocking read after readiness. Reading one
-        // byte leaves subsequent complete commands available for the next call.
+        // For the sole-reader pipe/FIFO contract, readable data cannot be
+        // consumed between poll and this one-byte read by another reader.
+        // Unlike fgets, read(1) never waits for the rest of a logical line.
+        // No stdio read-ahead: subsequent commands stay available to poll.
         char byte;
         const ssize_t received = read(m_descriptor, &byte, 1);
         if (received < 0)

@@ -30,6 +30,11 @@ class CliInput
 {
 public:
     // Sole reader of the supplied stream; construct before any stdio reads.
+    // Deadline contract: pipe/FIFO input with no competing readers or external
+    // input-buffer manipulation. poll readiness authorizes a ONE-byte read,
+    // even if the inherited descriptor is blocking. This is not a generic
+    // disk/device/socket I/O deadline or a concurrent-reader abstraction.
+    // File-status flags of the supplied stream are never changed.
     // LF/CRLF terminate a line of at most 255 payload bytes. The output has no
     // terminator and requires MaxLineLength+1 bytes (including the final NUL).
     // Timeout/EINTR preserve fragments. Oversized lines, embedded CR/NUL, and
@@ -44,7 +49,6 @@ public:
 
 private:
     int m_descriptor = -1;
-    int m_originalFlags = -1;
     bool m_endOfFile = false;
     bool m_discarding = false;
     std::array<char, MaxLineLength + 1> m_pending{};
