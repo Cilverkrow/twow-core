@@ -1243,12 +1243,21 @@ Write-Host "Initializing client data integrity verification..."
 $DataRoot     = Join-Path $ScriptDirectory "$MangosInstalationDir\$MangosDataDir"
 # The DBC hash manifest ships next to this script in the repository, but a workspace copy
 # takes precedence so a testlab can pin its own client build without editing the tool.
-$JsonVerifier = Join-Path $ScriptDirectory "dbc_verifier.json"
-$UsingShippedManifest = $false
-if (-not (Test-Path $JsonVerifier)) {
-    $JsonVerifier = Join-Path $PSScriptRoot "dbc_verifier.json"
-    $UsingShippedManifest = $true
-}
+#
+# Which of the two was picked decides how a fingerprint mismatch is treated below, and
+# "does the workspace have one?" is NOT that question: -WorkspaceRoot defaults to this
+# script's own folder, which is exactly where the shipped manifest lives. So on every
+# documented run the shipped copy was found in the workspace, classified as an override,
+# and its mismatch downgraded from an abort to a warning - the enforcing branch could only
+# be reached by pointing -WorkspaceRoot at a directory with no manifest at all. Compare the
+# resolved paths instead of guessing from existence.
+$ShippedVerifier   = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "dbc_verifier.json"))
+$WorkspaceVerifier = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory "dbc_verifier.json"))
+
+$JsonVerifier = if (Test-Path $WorkspaceVerifier) { $WorkspaceVerifier } else { $ShippedVerifier }
+
+# -eq on strings is case-insensitive, which is what a Windows path comparison wants.
+$UsingShippedManifest = ($JsonVerifier -eq $ShippedVerifier)
 
 # 1. Verify existence of required data subdirectories
 $RequiredFolders = @("dbc", "maps", "vmaps", "mmaps")
