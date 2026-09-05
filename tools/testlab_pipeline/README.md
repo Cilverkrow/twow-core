@@ -305,6 +305,14 @@ often fails where Linux succeeds:
   arguments, which any local user can read out of the process list.
 - **Uncommitted source changes are stashed, not discarded**, when `-applyPatches` needs a
   clean tree.
+- **The DBC manifest is checked before it is trusted.** `dbc_verifier.json` describes the
+  last officially released client and is not meant to change, so the script carries its
+  expected fingerprint and refuses to run against a shipped copy that does not match.
+  Without that, a truncated download or a manifest belonging to a different client build
+  would just make step 01 verify the DBCs against the wrong hashes — passing when it should
+  not, or blaming the client instead of the manifest. A **workspace** copy is a deliberate
+  override and is only reported, not refused; if the client is ever updated, run the
+  pipeline, take the hash it prints and put it in `$script:ExpectedDbcManifestChecksum`.
 - **Launchers cannot go stale behind your back.** Each generated `.bat` carries a marker
   line with the version that wrote it and a checksum of its body, so step 15 can tell three
   situations apart: unchanged and current (skipped), written by an older pipeline and never

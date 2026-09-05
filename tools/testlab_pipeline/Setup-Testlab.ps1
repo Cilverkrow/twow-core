@@ -897,18 +897,41 @@ function Resolve-VcpkgDirectory {
 # next run - which is the whole point of the marker below.
 $script:LauncherFormatVersion = 2
 
-# Short, stable fingerprint of a launcher body. Line endings and trailing blank lines are
-# normalised first so a file that only differs in those is still recognised as unchanged.
-function Get-LauncherChecksum {
+# Expected fingerprint of dbc_verifier.json, the manifest step 01 checks every DBC against.
+#
+# That manifest describes the last officially released client, so in practice it does not
+# change - which is exactly why a silent change matters. Nothing else in the run would
+# notice a truncated download, a half-written file or a manifest belonging to a different
+# client build: step 01 would cheerfully verify the DBCs against the wrong hashes and
+# either pass when it should not, or fail in a way that points at the client rather than at
+# the manifest.
+#
+# Normalised (see Get-TextChecksum), not the raw file hash, because git rewrites line
+# endings on checkout depending on core.autocrlf - the two copies are byte-identical here
+# but need not be on a fresh clone elsewhere, and that would be a false alarm.
+#
+# If the client ever is updated: run the pipeline, take the hash it prints, and put it here.
+$script:ExpectedDbcManifestChecksum = "ae690876b46c2287f3331879618dad5227ebc229e7ae55fadc6ec2fd5149af82"
+
+# Stable fingerprint of a piece of text. Line endings and trailing blank lines are
+# normalised first, so a file that differs only in those - which is what git's autocrlf
+# handling produces on a fresh clone - still fingerprints the same.
+#
+# -Length shortens the result: the launcher markers carry 16 characters to stay readable on
+# one line, while the manifest check uses the full digest.
+function Get-TextChecksum {
     param (
-        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [int]$Length = 0
     )
 
     $Normalised = ($Text -replace "`r`n", "`n").TrimEnd()
     $Hasher = [System.Security.Cryptography.SHA256]::Create()
     try {
         $Digest = $Hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Normalised))
-        return ([System.BitConverter]::ToString($Digest) -replace '-', '').ToLower().Substring(0, 16)
+        $Hex    = ([System.BitConverter]::ToString($Digest) -replace '-', '').ToLower()
+        if ($Length -gt 0) { return $Hex.Substring(0, $Length) }
+        return $Hex
     } finally {
         $Hasher.Dispose()
     }
@@ -938,7 +961,7 @@ function New-ServerLauncherScript {
     )
 
     $LauncherName = Split-Path $Path -Leaf
-    $Checksum     = Get-LauncherChecksum -Text $Content
+    $Checksum     = Get-TextChecksum -Text $Content -Length 16
     $MarkerLine   = ":: tortoise-testlab-launcher version=$($script:LauncherFormatVersion) checksum=$Checksum"
     # Trailing newline matters: without it anything later appended to the file lands on the
     # marker line and corrupts it.
@@ -964,7 +987,7 @@ function New-ServerLauncherScript {
         # The body is everything except the marker line.
         $ExistingBody = ($ExistingLines | Where-Object { $_ -notmatch '^::\s*tortoise-testlab-launcher\s' }) -join "`n"
 
-        if ((Get-LauncherChecksum -Text $ExistingBody) -ne $ExistingChecksum) {
+        if ((Get-TextChecksum -Text $ExistingBody -Length 16) -ne $ExistingChecksum) {
             Write-Warning "$LauncherName has been edited since the pipeline wrote it, so it is left untouched."
             return
         }
@@ -1194,8 +1217,10 @@ $DataRoot     = Join-Path $ScriptDirectory "$MangosInstalationDir\$MangosDataDir
 # The DBC hash manifest ships next to this script in the repository, but a workspace copy
 # takes precedence so a testlab can pin its own client build without editing the tool.
 $JsonVerifier = Join-Path $ScriptDirectory "dbc_verifier.json"
+$UsingShippedManifest = $false
 if (-not (Test-Path $JsonVerifier)) {
     $JsonVerifier = Join-Path $PSScriptRoot "dbc_verifier.json"
+    $UsingShippedManifest = $true
 }
 
 # 1. Verify existence of required data subdirectories
@@ -1218,6 +1243,31 @@ Write-Host "[OK] All required data directories (dbc, maps, vmaps, mmaps) are pre
 # 2. Verify SHA256 hashes of DBC files using the local JSON definitions file
 if (-not (Test-Path $JsonVerifier)) {
     Stop-Pipeline -Message "Verification blueprint missing. Could not locate json manifest at: $JsonVerifier"
+}
+
+# Check the manifest itself before trusting anything it says.
+#
+# The shipped copy has to match the recorded fingerprint: it describes the last officially
+# released client and is not meant to drift. A workspace copy is a deliberate override -
+# putting one there is how a testlab pins a different client build - so that one is only
+# reported, not refused.
+$ManifestChecksum = Get-TextChecksum -Text ([System.IO.File]::ReadAllText($JsonVerifier))
+
+if ($ManifestChecksum -ne $script:ExpectedDbcManifestChecksum) {
+    if ($UsingShippedManifest) {
+        Stop-Pipeline -Message ("dbc_verifier.json does not match the fingerprint recorded in this script.`n" +
+                                "  file:     $JsonVerifier`n" +
+                                "  expected: $($script:ExpectedDbcManifestChecksum)`n" +
+                                "  actual:   $ManifestChecksum`n" +
+                                "Either the file is damaged, or the client was updated and the manifest with it - " +
+                                "in which case put the actual hash above into `$script:ExpectedDbcManifestChecksum.")
+    }
+
+    Write-Warning ("Using a workspace dbc_verifier.json that differs from the one shipped with the pipeline " +
+                   "(fingerprint $ManifestChecksum). That is what a workspace copy is for; mentioning it so a " +
+                   "stray file does not go unnoticed.")
+} else {
+    Write-Host " -> Manifest fingerprint verified."
 }
 
 Write-Host "Reading SHA256 blueprint from dbc_verifier.json..."
