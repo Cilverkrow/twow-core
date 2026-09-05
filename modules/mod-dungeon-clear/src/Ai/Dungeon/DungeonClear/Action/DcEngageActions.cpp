@@ -1826,6 +1826,32 @@ bool DcObjectiveArriveAction::Execute(Event& /*event*/)
                 float const search = step.radius > 0.0f ? step.radius : 250.0f;
                 Creature* target =
                     bot->FindNearestCreature(step.creatureEntry, search, /*alive*/ true);
+                // Prefer a HOSTILE instance of the entry over the nearest one.
+                // Uldaman's altar wakes ONE Stone Keeper at a time while the other
+                // three stay stoned (faction 35); the nearest keeper is usually
+                // still stone while the woken one is already beating on a
+                // follower, and waiting on the stone one lets the woken one pick
+                // its own victims (2026-09-05).
+                if (target && !bot->IsHostileTo(target))
+                {
+                    std::list<Creature*> sameEntry;
+                    bot->GetCreatureListWithEntryInGrid(sameEntry, step.creatureEntry, search);
+                    Creature* hostile = nullptr;
+                    float hostileDist = 0.0f;
+                    for (Creature* c : sameEntry)
+                    {
+                        if (!c || !c->IsAlive() || !bot->IsHostileTo(c))
+                            continue;
+                        float const d = bot->GetDistance(c);
+                        if (!hostile || d < hostileDist)
+                        {
+                            hostile = c;
+                            hostileDist = d;
+                        }
+                    }
+                    if (hostile)
+                        target = hostile;
+                }
                 // A friendly, not-yet-hostile instance of the entry (Uldaman's
                 // stoned Stone Keepers, faction 35 until the altar wakes them)
                 // cannot be engaged: EngageDirect on it registers a "first
