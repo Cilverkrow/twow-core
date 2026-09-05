@@ -1718,8 +1718,22 @@ Start-Sleep -Seconds 2
 # Clear previously generated server subdirectories.
 # Only these subdirectories are removed - the server root itself (and the launcher .bat
 # files and the mariadb installation sitting in it) is left untouched.
+#
+# pdump and honor are the exception under -SkipBotRegen. Everything else in this list is
+# put back by cmake --install in step 09; those two are not. They hold operator data the
+# pipeline never produced and cannot restore - character exports written by the in-game
+# ".pdump write" command, and the honor maintenance state mangosd keeps per character -
+# and step 14 only recreates them empty. Wiping them on the one run whose stated purpose
+# is preserving existing accounts, GM characters and playerbot data was silent and
+# unrecoverable data loss.
 Write-Host "Clearing previously generated server directories..."
-$GeneratedFolders = @($BinDir, $EtcDir, $LibDir, $LogsDir, $PdumpDir, $HonorDir, $ToolsDir, $LuaDir)
+$GeneratedFolders = @($BinDir, $EtcDir, $LibDir, $LogsDir, $ToolsDir, $LuaDir)
+
+if ($SkipBotRegen) {
+    Write-Host " -> Keeping pdump and honor (-SkipBotRegen preserves existing data)."
+} else {
+    $GeneratedFolders += @($PdumpDir, $HonorDir)
+}
 foreach ($Folder in $GeneratedFolders) {
     if (Test-Path $Folder) {
         # Recursively remove all contents and the folder itself

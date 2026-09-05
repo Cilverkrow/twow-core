@@ -176,7 +176,7 @@ branch — every environment-specific value is a parameter.
 | `-MinRandomBots` / `-MaxRandomBots` | `5` / `10` | Bot population written into `aiplayerbot.conf`. |
 | `-RandomBotMinLevel` / `-RandomBotMaxLevel` | `1` / `20` | Bot level range. |
 | `-RandomBotAccountsCount` | `10` | Number of bot accounts. |
-| `-SkipBotRegen` | off | Keeps existing characters/accounts: dumps `tw_char` + `tw_logon` first and restores them at the end. |
+| `-SkipBotRegen` | off | Keeps existing characters/accounts: dumps `tw_char` + `tw_logon` first and restores them at the end. Also leaves `server\pdump` and `server\honor` in place. |
 | `-applyPatches` | — | Semicolon-separated commit hashes to cherry-pick, e.g. `-applyPatches "0ee0748;abc1234"`. |
 
 ```powershell
