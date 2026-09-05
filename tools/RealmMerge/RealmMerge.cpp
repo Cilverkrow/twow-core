@@ -23,6 +23,10 @@ DatabaseType CharacterDatabase1;
 DatabaseType CharacterDatabase2;
 std::string g_db1Name;
 std::string g_db2Name;
+// ADR-0039: schema name of DB-2's cv_brain (bot-brain identity mapping), if
+// one was imported alongside DB-2. Left blank when the deployment being
+// merged away never ran the bot-brain -- see UpdateCharacterGuids().
+std::string g_db2BrainName;
 
 enum AtLoginFlags
 {
@@ -179,6 +183,34 @@ bool UpdateCharacterGuids()
     int64 const maxCharGuid2 = *characterGuids.existingKeys2.rbegin();
     int64 const maxCharGuid = std::max(maxCharGuid1, maxCharGuid2);
 
+    // ADR-0039: cv_brain.bot_identity maps a bot's stored v4 UUID to
+    // (realm, guid). That identity is minted once and stored, deliberately
+    // NOT derived from (realm, guid), precisely because this function moves
+    // guid -- a derived id would silently rename the bot and orphan every
+    // memory the brain holds for it, with no repair. If the UPDATE below is
+    // forgotten, brain state stays pointed at the OLD guid after the merge
+    // and permanently attaches to the wrong character: "the worst outcome
+    // available here" per ADR-0039.
+    //
+    // cv_brain is optional -- a deployment that never ran the bot-brain has
+    // no such schema -- so g_db2BrainName is blank unless the operator named
+    // one, and the table is probed for before touching it so an absent
+    // schema/table is a skip with a clear log line, not an aborted merge.
+    // UNIQUE (realm, guid) adds no new collision exposure here: this schema
+    // holds only DB-2's own realm, so shifting every guid by the same
+    // constant offset preserves uniqueness within it exactly as it does for
+    // `characters` above.
+    bool hasBrainIdentity = false;
+    if (!g_db2BrainName.empty())
+    {
+        std::unique_ptr<QueryResult> brainProbe(CharacterDatabase2.PQuery(
+            "SELECT 1 FROM `information_schema`.`tables` WHERE `table_schema` = '%s' AND `table_name` = 'bot_identity'",
+            g_db2BrainName.c_str()));
+        hasBrainIdentity = (brainProbe != nullptr);
+        if (!hasBrainIdentity)
+            sLog.outInfo("- Skipped `%s`.`bot_identity` (table not found; bot-brain not deployed on DB-2)", g_db2BrainName.c_str());
+    }
+
     if (INT32_MAX > int64(maxCharGuid + maxCharGuid2))
     {
         sLog.outInfo("Updating character guids (fast method)...");
@@ -189,6 +221,12 @@ bool UpdateCharacterGuids()
 
         CharacterDatabase2.PExecute("UPDATE `characters` SET `guid` = (`guid` + %u)", maxCharGuid);
         sLog.outInfo("- Updated `characters` table");
+
+        if (hasBrainIdentity)
+        {
+            CharacterDatabase2.PExecute("UPDATE `%s`.`bot_identity` SET `guid` = (`guid` + %u)", g_db2BrainName.c_str(), maxCharGuid);
+            sLog.outInfo("- Updated `%s`.`bot_identity` table", g_db2BrainName.c_str());
+        }
 
         CharacterDatabase2.PExecute("UPDATE `character_action` SET `guid` = (`guid` + %u)", maxCharGuid);
         sLog.outInfo("- Updated `character_action` table");
@@ -372,6 +410,8 @@ bool UpdateCharacterGuids()
                 CharacterDatabase2.PExecute("UPDATE `auction` SET `itemowner` = %u WHERE `itemowner` = %u", newGuid.first, guid);
                 CharacterDatabase2.PExecute("UPDATE `auction` SET `buyguid` = %u WHERE `buyguid` = %u", newGuid.first, guid);
                 CharacterDatabase2.PExecute("UPDATE `characters` SET `guid` = %u WHERE `guid` = %u", newGuid.first, guid);
+                if (hasBrainIdentity)
+                    CharacterDatabase2.PExecute("UPDATE `%s`.`bot_identity` SET `guid` = %u WHERE `guid` = %u", g_db2BrainName.c_str(), newGuid.first, guid);
                 CharacterDatabase2.PExecute("UPDATE `character_action` SET `guid` = %u WHERE `guid` = %u", newGuid.first, guid);
                 CharacterDatabase2.PExecute("UPDATE `character_armory_stats` SET `guid` = %u WHERE `guid` = %u", newGuid.first, guid);
                 CharacterDatabase2.PExecute("UPDATE `character_aura` SET `guid` = %u WHERE `guid` = %u", newGuid.first, guid);
@@ -1522,6 +1562,13 @@ int main(int argc, char* argv[])
         GetChar();
         return 1;
     }
+
+    // ADR-0039: if DB-2's cv_brain (bot-brain identity mapping) was imported
+    // alongside it under its own schema name, its bot_identity.guid needs the
+    // same offset as `characters` below. Leave blank if bot-brain was never
+    // deployed on DB-2 -- see UpdateCharacterGuids().
+    printf("cv_brain Database Name for DB-2 (leave blank if bot-brain is not deployed): ");
+    g_db2BrainName = GetString();
 
     if (!CharacterDatabase1.Initialize("Character db to merge into", (connString + g_db1Name).c_str()))
     {
