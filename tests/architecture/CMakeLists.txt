@@ -1,6 +1,28 @@
 cmake_minimum_required(VERSION 3.16)
 project(TurtleArchitectureTests LANGUAGES C CXX)
 enable_testing()
+
+# Exercise the actual trainer purchase handler with deterministic stand-ins for
+# its native services. This tests dispatch/payment, not the Spell engine itself.
+set(TRAINER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../src/game/Handlers/NPCHandler.cpp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${TRAINER_SOURCE}")
+file(READ "${TRAINER_SOURCE}" trainerSource)
+string(FIND "${trainerSource}" "void WorldSession::HandleTrainerBuySpellOpcode(" trainerStart)
+string(FIND "${trainerSource}" "void WorldSession::HandleGossipHelloOpcode(" trainerEnd)
+if(trainerStart LESS 0 OR trainerEnd LESS trainerStart)
+    message(FATAL_ERROR "Cannot isolate the native trainer handler for its regression test")
+endif()
+math(EXPR trainerLength "${trainerEnd} - ${trainerStart}")
+string(SUBSTRING "${trainerSource}" ${trainerStart} ${trainerLength} trainerHandler)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/TrainerPurchaseHandler.inc" "${trainerHandler}")
+add_executable(TrainerPurchaseTest TrainerPurchaseTest.cpp)
+target_compile_features(TrainerPurchaseTest PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(TrainerPurchaseTest PRIVATE /EHsc)
+endif()
+target_include_directories(TrainerPurchaseTest PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+add_test(NAME TrainerPurchaseTest COMMAND TrainerPurchaseTest)
+
 foreach(test AreaLookupIndexTest IncrementalFilterTest StaticLocationIndexTest TickDiffWindowTest UpstreamIntegrationTest)
     add_executable(${test} ${test}.cpp)
     target_compile_features(${test} PRIVATE cxx_std_17)
