@@ -24,6 +24,7 @@
 #define MANGOS_SPELLAURAS_H
 
 #include "SpellAuraDefines.h"
+#include "UnitDefines.h"
 #include "DBCEnums.h"
 #include "ObjectGuid.h"
 // DiminishingGroup and DiminishingLevels.

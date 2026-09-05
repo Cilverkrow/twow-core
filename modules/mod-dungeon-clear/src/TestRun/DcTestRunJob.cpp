@@ -44,6 +44,8 @@
 #include "Ai/Dungeon/DungeonClear/Data/DungeonBossInfo.h"
 #include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 #include "Ai/Dungeon/DungeonClear/DcValueKeys.h"
+#include "Ai/Dungeon/DungeonClear/Util/DungeonEventExecutor.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcLeaderSignal.h"
 #include "Ai/Dungeon/DungeonClear/Settings/DcSettings.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcTargeting.h"
@@ -1722,7 +1724,19 @@ void DcTestRunJob::TickStarting()
 
     // Retry `dc on` each tick until the enabled flag sticks (roster/context
     // timing) or the stage times out.
-    tankAI->DoSpecificAction("dc on", Event("dc", "", FindGm()), true);
+    bool const dcOnOk = tankAI->DoSpecificAction("dc on", Event("dc", "", FindGm()), true);
+    if (!dcOnOk && (!_dcOnFalseLoggedAt || getMSTimeDiff(_dcOnFalseLoggedAt, getMSTime()) > 10000))
+    {
+        // "dc on did not take" left no trace 3x a night: neither DcRefuse nor the
+        // not-leader branch logged, so the action never ran at all. Name the
+        // state the tank is in when DoSpecificAction says no (2026-09-05).
+        _dcOnFalseLoggedAt = getMSTime();
+        LOG_INFO("playerbots.dungeonclear",
+                 "TESTRUN {} dc on: DoSpecificAction returned false for {} (inWorld {}, map {}, teleporting {}, group {}, dcLeader {}, gm {}, stage {}s)",
+                 _record.runId, tank->GetName(), tank->IsInWorld() ? 1 : 0, tank->GetMapId(),
+                 tank->IsBeingTeleported() ? 1 : 0, tank->GetGroup() ? 1 : 0,
+                 DcLeaderSignal::IsDungeonClearLeader(tank) ? 1 : 0, FindGm() ? 1 : 0, _stageMs / 1000);
+    }
     if (DcRun::Of(ctx).enabled)
     {
         _lastMask = DcEncounterMask::Get(tank->FindMap());
@@ -2151,6 +2165,24 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
                 progressed = true;
             }
             _lastMask = mask;
+        }
+        // A scripted encounter advancing (Zul'Farrak's pyramid phases, a wave
+        // counter) and an event step advancing are HARD progress too. Without
+        // this, a party holding the temple ramp through the waves closed no
+        // distance and flipped no bit for the whole encounter, and the cap
+        // ended five runs mid-event (arch16, 2026-09-05).
+        {
+            uint32 sig = 2166136261u;
+            if (InstanceData* inst = tank->FindMap() ? tank->FindMap()->GetInstanceData() : nullptr)
+                for (uint32 i = 0; i < 10; ++i)
+                    sig = (sig ^ inst->GetData(i)) * 16777619u;
+            if (_lastInstanceDataSig && sig != _lastInstanceDataSig)
+                progressed = true;
+            _lastInstanceDataSig = sig;
+            uint32 const evMs = ctx->GetValue<DungeonEventProgress&>(DcKey::EventProgress)->Get().progressMs;
+            if (_lastEventProgressMs && evMs != _lastEventProgressMs)
+                progressed = true;
+            _lastEventProgressMs = evMs;
         }
         if (anchors > _lastAnchors)
         {
