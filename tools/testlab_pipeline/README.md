@@ -188,9 +188,15 @@ branch — every environment-specific value is a parameter.
 Full help, including every parameter and more examples:
 
 ```powershell
-Get-Help .\Setup-Testlab.ps1 -Full
+Get-Help .\Setup-Testlab.ps1              # description with the parameters grouped by purpose
+Get-Help .\Setup-Testlab.ps1 -Full        # every parameter in detail
 Get-Help .\Setup-Testlab.ps1 -Parameter DbFlavor
+Get-Help .\Setup-Testlab.ps1 -Examples
 ```
+
+PowerShell renders the `SYNTAX` block as one unbroken line and there is no way to format
+it; the grouped list in the description is the readable version. Parameters are named-only,
+so a stray unnamed argument is rejected rather than bound to whatever sits in that position.
 
 ### Several testlabs on one database server
 

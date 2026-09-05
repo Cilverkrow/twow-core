@@ -5,6 +5,48 @@
     This script automates the full deployment workflow, including client data verification,
     vcpkg dependency check, Git synchronization with submodules, CMake/MSBuild compilation,
     directory restructuring, configuration tuning, and automated database generation.
+
+    Every parameter is optional and every default is the one this testlab uses, so a plain
+    run needs no arguments at all. PowerShell renders the SYNTAX block above as one long
+    line whatever the source looks like; the same parameters, grouped by what they do:
+
+      Run mode
+        -SkipBotRegen             keep accounts, characters and playerbot data
+        -applyPatches             "hash1;hash2" to cherry-pick before building
+
+      Where things live
+        -WorkspaceRoot            testlab root            (default: this script's folder)
+        -VcpkgDirectory           vcpkg                   (default: discovered)
+        -VcpkgTriplet             vcpkg triplet           (default: x64-windows)
+
+      What to build
+        -RepoUrl                  repository              (default: Shyalya/tortoise-wow)
+        -BranchName               branch                  (default: playerbots-integration-gh)
+        -PatchRemoteUrl           remote for -applyPatches
+
+      Which database server
+        -DbFlavor                 Auto | MariaDB | MySQL  (default: Auto)
+        -MariaDbFolderName        portable server folder inside server\
+        -MariaDbClientPath        explicit mariadb.exe / mysql.exe
+        -DbHost  -DbPort          connection target       (default: the client's own)
+        -DbStartupTimeoutSeconds  wait for it to start    (default: 30)
+
+      Database identity
+        -RootPassword             root password           (default: mangos)
+        -DbUser  -DbPassword      the server's account    (default: mangos / mangos)
+        -DbPrefix                 names all four          (default: tw_)
+        -WorldDatabaseName  -CharacterDatabaseName
+        -LoginDatabaseName  -LogsDatabaseName
+                                  override one name       (default: from the prefix)
+
+      Realm and bots
+        -RealmlistIPAddress  -RealmlistPort               (default: 127.0.0.1 / 8090)
+        -MinRandomBots  -MaxRandomBots                    (default: 5 / 10)
+        -RandomBotMinLevel  -RandomBotMaxLevel            (default: 1 / 20)
+        -RandomBotAccountsCount                           (default: 10)
+
+    Use "Get-Help .\Setup-Testlab.ps1 -Parameter <name>" for the detail on any one of them,
+    or -Examples for the common combinations.
 .PARAMETER SkipBotRegen
     Preserves existing accounts, GM characters and playerbot data. 'tw_char' and 'tw_logon'
     are dumped before the run and restored at the end; the dump is verified before anything
@@ -118,12 +160,21 @@
     Everything printed is also written to 'pipeline_console.log' in the workspace root, and
     the compiler output additionally to 'server_build.log'. No shell redirection needed.
 #>
+# PositionalBinding=$false: with this many parameters, positional binding is a liability
+# rather than a convenience. It also shortens every entry in the generated SYNTAX block
+# from "[[-Name] <String>]" to "[-Name <String>]" - and without it a stray unnamed argument
+# would silently bind to whichever parameter happens to sit in that position.
+[CmdletBinding(PositionalBinding = $false)]
 param (
+    # ---- run mode ----------------------------------------------------------------------
+
     # Switch to bypass character database drop, playerbot data import, and configuration wipe
     [switch]$SkipBotRegen,
 
 	# Dynamic string sequence containing commit hashes separated by semicolons (e.g. "0ee0748;abc1234")
     [string]$applyPatches,
+
+    # ---- where things live -------------------------------------------------------------
 
     # Testlab root: the folder holding 'server\' and the 'tortoise-wow\' checkout. Defaults to
     # the directory this script sits in, which is the layout you get by copying the script out
@@ -139,8 +190,46 @@ param (
     # vcpkg triplet the dependencies are installed for. The build itself is -A x64.
     [string]$VcpkgTriplet = "x64-windows",
 
-    # MariaDB credentials. Defaults match the portable MariaDB this testlab ships with;
-    # override them rather than editing the script body.
+    # ---- what to build -----------------------------------------------------------------
+
+    # Source to build. Point these at a fork or a topic branch to test one without
+    # touching the script: -RepoUrl https://github.com/me/tortoise-wow.git -BranchName my-fix
+    [string]$RepoUrl    = "https://github.com/Shyalya/tortoise-wow.git",
+    [string]$BranchName = "playerbots-integration-gh",
+
+    # Remote the -applyPatches commits are fetched from
+    [string]$PatchRemoteUrl = "https://github.com/Penqle/tortoise-wow.git",
+
+    # ---- which database server ---------------------------------------------------------
+
+    # Which database engine to look for. Auto takes the first client it finds in the search
+    # order; MariaDB or MySQL restricts discovery to that engine's client names, for a
+    # machine that has both installed.
+    [ValidateSet("Auto", "MariaDB", "MySQL")]
+    [string]$DbFlavor = "Auto",
+
+    # Name of the portable MariaDB directory inside server\. Used first when present; if it
+    # is not there the client is looked for on PATH and in the usual install locations.
+    [string]$MariaDbFolderName = "mariadb-10.3.39-winx64",
+
+    # Explicit path to the client (mariadb.exe or mysql.exe). Given, it is used or the run
+    # fails - never silently replaced by a discovered one, because connecting to a different
+    # server than intended means dropping databases on the wrong instance.
+    [string]$MariaDbClientPath = "",
+
+    # Connection target. Both empty/0 means "whatever the client defaults to", which is what
+    # the bundled portable server wants; set them for a non-default port or a remote host.
+    [string]$DbHost = "",
+    [int]$DbPort    = 0,
+
+    # How long the preflight waits for the server to start answering. 1.Start mysql.bat
+    # launches mysqld asynchronously, so a run kicked off right after it needs a moment.
+    [int]$DbStartupTimeoutSeconds = 30,
+
+    # ---- database identity -------------------------------------------------------------
+
+    # Credentials. Defaults match the portable MariaDB this testlab ships with; override
+    # them rather than editing the script body.
     [string]$RootPassword = "mangos",
     [string]$DbPassword   = "mangos",
 
@@ -159,40 +248,10 @@ param (
     [string]$LoginDatabaseName     = "",
     [string]$LogsDatabaseName      = "",
 
-    # Name of the portable MariaDB directory inside server\. Used first when present; if it
-    # is not there the client is looked for on PATH and in the usual install locations.
-    [string]$MariaDbFolderName = "mariadb-10.3.39-winx64",
+    # ---- realm and bots ----------------------------------------------------------------
 
-    # Which database engine to look for. Auto takes the first client it finds in the search
-    # order; MariaDB or MySQL restricts discovery to that engine's client names, for a
-    # machine that has both installed.
-    [ValidateSet("Auto", "MariaDB", "MySQL")]
-    [string]$DbFlavor = "Auto",
-
-    # Explicit path to the client (mariadb.exe or mysql.exe). Given, it is used or the run
-    # fails - never silently replaced by a discovered one, because connecting to a different
-    # server than intended means dropping databases on the wrong instance.
-    [string]$MariaDbClientPath = "",
-
-    # Connection target. Both empty/0 means "whatever the client defaults to", which is what
-    # the bundled portable server wants; set them for a non-default port or a remote host.
-    [string]$DbHost = "",
-    [int]$DbPort    = 0,
-
-    # How long the preflight waits for the server to start answering. 1.Start mysql.bat
-    # launches mysqld asynchronously, so a run kicked off right after it needs a moment.
-    [int]$DbStartupTimeoutSeconds = 30,
-
-    # Source to build. Point these at a fork or a topic branch to test one without
-    # touching the script: -RepoUrl https://github.com/me/tortoise-wow.git -BranchName my-fix
-    [string]$RepoUrl    = "https://github.com/Shyalya/tortoise-wow.git",
-    [string]$BranchName = "playerbots-integration-gh",
-
-    # Remote the -applyPatches commits are fetched from
-    [string]$PatchRemoteUrl = "https://github.com/Penqle/tortoise-wow.git",
-
-    # Realm registered in tw_logon.realmlist. The port has to match WorldServerPort in
-    # mangosd.conf, which ships as 8090.
+    # Realm registered in the login database's realmlist. The port has to match
+    # WorldServerPort in mangosd.conf, which ships as 8090.
     [string]$RealmlistIPAddress = "127.0.0.1",
     [int]$RealmlistPort = 8090,
 
