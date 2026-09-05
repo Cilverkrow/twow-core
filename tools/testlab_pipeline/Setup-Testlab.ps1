@@ -1263,12 +1263,46 @@ if (-not (Test-Path $SourceDir)) {
     # Move context temporarily to repository folder to execute git updates securely
     Push-Location $SourceDir
 
-    # Checkout target branch and pull core engine changes
-    Invoke-NativeLogged -Executable "git" -Arguments @("checkout", $BranchName)
+    # Make -RepoUrl authoritative for an existing checkout too. Without this it only ever
+    # applied to the first clone: every later run pulled from whatever 'origin' happened to
+    # be, so pointing the pipeline at a fork silently built the original repository instead.
+    Invoke-NativeLogged -Executable "git" -Arguments @("remote", "set-url", "origin", $RepoUrl)
+    Assert-LastExitCode -Message "Could not point 'origin' at $RepoUrl"
+
+    Invoke-NativeLogged -Executable "git" -Arguments @("fetch", "origin", "--prune")
+    Assert-LastExitCode -Message "git fetch from $RepoUrl failed"
+
+    # Refuse to switch branches over uncommitted work rather than letting git's own
+    # "Your local changes would be overwritten by checkout" be the only explanation.
+    # Not stashed automatically: a plain build run has no business moving someone's edits
+    # out from under them, and unlike the -applyPatches path below there is nothing here
+    # that requires a clean tree.
+    $CurrentBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    if ($CurrentBranch -ne $BranchName) {
+        $DirtyFiles = @(git status --porcelain --untracked-files=no)
+        if ($DirtyFiles.Count -gt 0) {
+            Pop-Location
+            Stop-Pipeline -Message ("The source tree has uncommitted changes, so it cannot be switched from " +
+                                    "'$CurrentBranch' to '$BranchName':`n  " + (($DirtyFiles | Select-Object -First 10) -join "`n  ") +
+                                    "`nCommit or stash them in $SourceDir first, or run with -BranchName $CurrentBranch.")
+        }
+    }
+
+    # Check out the branch, creating it from origin when it is not here yet.
+    git rev-parse --verify --quiet "refs/heads/$BranchName" > $null 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Invoke-NativeLogged -Executable "git" -Arguments @("checkout", $BranchName)
+    } else {
+        Invoke-NativeLogged -Executable "git" -Arguments @("checkout", "-b", $BranchName, "--track", "origin/$BranchName")
+    }
     Assert-LastExitCode -Message "git checkout of '$BranchName' failed"
 
-    Invoke-NativeLogged -Executable "git" -Arguments @("pull")
-    Assert-LastExitCode -Message "git pull failed"
+    # Pull the remote and branch by name rather than relying on tracking configuration.
+    # A bare "git pull" needs an upstream, and a branch created locally - or checked out
+    # from a different remote - has none: "There is no tracking information for the current
+    # branch", and the run stopped before it built anything.
+    Invoke-NativeLogged -Executable "git" -Arguments @("pull", "origin", $BranchName)
+    Assert-LastExitCode -Message "git pull of '$BranchName' from $RepoUrl failed"
 
     Write-Host "Synchronizing and updating git submodules (Eluna engine)..."
     # Update and initialize any new or existing submodules recursively
