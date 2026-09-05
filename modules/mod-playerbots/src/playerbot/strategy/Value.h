@@ -7,7 +7,6 @@
 #include "AiObject.h"
 #include "playerbot/GuidPosition.h"
 #include "NamedObjectContext.h"
-#include "IdleResidency.h"
 
 namespace ai
 {
@@ -24,12 +23,6 @@ namespace ai
         virtual bool Expired(uint32 interval) { return false; }
         virtual bool Protected() { return false; }
 
-        void MarkUsed(time_t now = time(nullptr)) { m_residency.Touch(now); }
-        bool UnusedFor(time_t now, uint32 seconds) const
-        {
-            return m_residency.UnusedFor(now, seconds);
-        }
-
         virtual uint32 LastChangeDelay() { return 0; }
 
 #ifdef GenerateBotHelp
@@ -38,8 +31,6 @@ namespace ai
         virtual std::string GetHelpDescription() { return "This is a value."; }
         virtual std::vector<std::string> GetUsedValues() { return {}; }
 #endif 
-    private:
-        IdleResidency m_residency;
     };
 
     template<class T>
@@ -68,7 +59,6 @@ namespace ai
         virtual T Get() override
         {
             time_t now = time(0);
-            this->MarkUsed(now);
             if (!lastCheckTime || (checkInterval < 2 && (now - lastCheckTime > 0.1)) || now - lastCheckTime >= checkInterval / 2)
             {
                 lastCheckTime = now;
@@ -80,12 +70,11 @@ namespace ai
         }
         virtual T LazyGet() override
         {
-            this->MarkUsed();
             if (!lastCheckTime)
                 return Get();
             return value;
         }
-        virtual void Set(T value) override { this->MarkUsed(); this->value = value; }
+        virtual void Set(T value) override { this->value = value; }
         virtual void Update() { }
         virtual void Reset() override { lastCheckTime = 0; }
         virtual bool Expired() override { return Expired(checkInterval / 2); }
@@ -107,7 +96,6 @@ namespace ai
         virtual T Get() override
         {
             time_t now = time(0);
-            this->MarkUsed(now);
             if (!this->lastCheckTime)
             {
                 this->lastCheckTime = now;

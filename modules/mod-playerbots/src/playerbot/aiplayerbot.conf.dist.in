@@ -975,10 +975,6 @@ AiPlayerbot.ReactDelay = 500
 
 # Inactivity delay
 AiPlayerbot.PassiveDelay = 10000
-# Idle-value maintenance period in milliseconds. Sweeps are staggered by bot
-# GUID and inspect at most 16 values per AI pass. Only expired, unprotected,
-# locally owned values unused for this interval are released. Frequently used
-# values retain their objects; their normal calculation refresh is unchanged.
 AiPlayerbot.ValueCacheCleanupInterval = 60000
 AiPlayerbot.MemoryTelemetryInterval = 60000
 

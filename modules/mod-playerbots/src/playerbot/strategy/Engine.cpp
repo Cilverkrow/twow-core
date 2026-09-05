@@ -149,6 +149,10 @@ void Engine::Init()
 
 bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 {
+    Player* const bot = ai->GetBot();
+    if (!bot || !bot->IsInWorld() || bot->IsBeingTeleported())
+        return false;
+    uint64 const mapGeneration = bot->GetMapWorkGeneration();
     LogAction("--- AI Tick ---");
     if (sPlayerbotAIConfig.logValuesPerTick)
         LogValues();
@@ -171,8 +175,16 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
     int iterations = 0;
     int iterationsPerTick = queue.Size() * (minimal ? (uint32)(sPlayerbotAIConfig.iterationsPerTick / 2) : sPlayerbotAIConfig.iterationsPerTick);
     bool hasBasket = false;
-    do 
+    do
     {
+        // An action can teleport the bot. Do not execute its old-map
+        // continuers/prerequisites after that ownership boundary changed.
+        if (!bot->IsInWorld() || bot->IsBeingTeleported() ||
+            bot->GetMapWorkGeneration() != mapGeneration)
+        {
+            reinitPending = true;
+            break;
+        }
         float relevance = 0.0f, oldRelevance = 0.0f; // just for reference
         bool skipPrerequisites = false;
         Event event;
@@ -405,6 +417,8 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
         LogAction("no actions executed");
 
     queue.RemoveExpired();
+    if (bot->GetMapWorkGeneration() != mapGeneration)
+        reinitPending = true;
 
     inDoNextAction = wasInDoNextAction;
     if (!inDoNextAction && reinitPending)

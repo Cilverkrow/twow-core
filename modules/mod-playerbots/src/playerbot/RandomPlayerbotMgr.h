@@ -291,7 +291,8 @@ public:
         uint32 bgBotsCount;
         uint32 playersLevel = 0;
         uint32 botCount = 0;
-        uint32 activeBots = 0;        
+        uint32 activeBots = 0;
+        uint32 maintenanceCursorGuid = 0;
 
         std::unordered_map<uint32, std::vector<std::pair<int32,int32>>> playerBotMoveLog;
         typedef std::unordered_map <uint32, std::list<float>> botPerformanceMetric;

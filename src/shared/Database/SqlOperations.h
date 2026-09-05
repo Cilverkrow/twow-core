@@ -137,7 +137,9 @@ class SqlResultQueue : public LockedQueue<MaNGOS::IQueryCallback* , std::mutex>
         CallbackQueue _priorityThreadUnsafeWaitingQueries;
         CallbackQueue _threadUnsafeWaitingQueries;
         uint32 numUnsafeQueries;
-        std::unique_ptr<ThreadPool> m_callbackThreads;
+    private:
+        unsigned m_priorityBurst = 0;
+        bool nextCallback(MaNGOS::IQueryCallback*& callback, bool priority);
 };
 
 class SqlQuery : public SqlOperation

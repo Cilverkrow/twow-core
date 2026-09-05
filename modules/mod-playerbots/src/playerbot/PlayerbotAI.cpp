@@ -1,5 +1,4 @@
 #include "PlayerbotMgr.h"
-#include "BoundedWork.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/PerformanceMonitor.h"
@@ -281,14 +280,13 @@ void PlayerbotAI::CleanupExpiredValuesIfDue()
     uint32 const now = WorldTimer::getMSTime();
     uint32 const interval = sPlayerbotAIConfig.valueCacheCleanupInterval;
     if (!lastValueCacheCleanupMs)
-        lastValueCacheCleanupMs = now - BoundedWork::Phase(bot->GetGUIDLow(), interval);
+        lastValueCacheCleanupMs = now - (bot->GetGUIDLow() % interval);
 
-    if (WorldTimer::getMSTimeDiff(lastValueCacheCleanupMs, now) >= interval)
-    {
-        aiObjectContext->BeginIdleValueCleanup();
-        lastValueCacheCleanupMs = now;
-    }
-    aiObjectContext->ContinueIdleValueCleanup(std::max<uint32>(1, interval / 1000));
+    if (WorldTimer::getMSTimeDiff(lastValueCacheCleanupMs, now) < interval)
+        return;
+
+    aiObjectContext->ClearExpiredValues();
+    lastValueCacheCleanupMs = now;
 }
 
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)

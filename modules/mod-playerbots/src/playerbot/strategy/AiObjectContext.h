@@ -28,12 +28,7 @@ namespace ai
         virtual std::set<std::string> GetSiblingStrategy(const std::string& name) { return strategyContexts.GetSiblings(name); }
         virtual Trigger* GetTrigger(const std::string& name) { return triggerContexts.GetObject(name, ai); }
         virtual Action* GetAction(const std::string& name) { return actionContexts.GetObject(name, ai); }
-        virtual UntypedValue* GetUntypedValue(const std::string& name)
-        {
-            UntypedValue* value = valueContexts.GetObject(name, ai);
-            if (value) value->MarkUsed();
-            return value;
-        }
+        virtual UntypedValue* GetUntypedValue(const std::string& name) { return valueContexts.GetObject(name, ai); }
 
         template<class T>
         Value<T>* GetValue(const std::string& name)
@@ -104,8 +99,6 @@ namespace ai
         void ClearValues(std::string findName = "");
 
         size_t ClearExpiredValues(std::string findName = "", uint32 interval = 0);
-        void BeginIdleValueCleanup();
-        void ContinueIdleValueCleanup(uint32 idleSeconds, size_t maxChecks = 16);
         static uint64 GetExpiredValuesReleased();
 
         std::string FormatValues(std::string findName = "");
@@ -132,8 +125,6 @@ namespace ai
         std::vector<std::string> performanceStack;
     private:
         static std::atomic<uint64> expiredValuesReleased;
-        std::vector<std::string> m_cleanupNames;
-        size_t m_cleanupPosition = 0;
     protected:
         NamedObjectContextList<Strategy> strategyContexts;
         NamedObjectContextList<Action> actionContexts;

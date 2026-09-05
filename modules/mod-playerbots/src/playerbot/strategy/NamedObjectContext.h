@@ -264,12 +264,6 @@ namespace ai
 
         bool IsCreated(const std::string& name) { return created.find(name) != created.end(); }
 
-        T* FindCreated(const std::string& name) const
-        {
-            auto it = created.find(name);
-            return it == created.end() ? nullptr : it->second;
-        }
-
         std::set<std::string> GetCreated()
         {
             std::set<std::string> keys;
@@ -400,34 +394,6 @@ namespace ai
             for (typename std::list<NamedObjectContext<T>*>::const_iterator i = contexts.begin(); i != contexts.end(); ++i)
                 count += (*i)->GetCreatedCount();
             return count;
-        }
-
-        // Per-bot maintenance must neither create objects nor mutate a shared
-        // context another map worker may be using.
-        std::set<std::string> GetLocalCreated()
-        {
-            std::set<std::string> result;
-            for (auto* context : contexts)
-                if (!context->IsShared())
-                {
-                    auto keys = context->GetCreated();
-                    result.insert(keys.begin(), keys.end());
-                }
-            return result;
-        }
-
-        T* FindLocalCreated(const std::string& name) const
-        {
-            for (auto* context : contexts)
-                if (!context->IsShared())
-                    if (T* value = context->FindCreated(name)) return value;
-            return nullptr;
-        }
-
-        void EraseLocal(const std::string& name)
-        {
-            for (auto* context : contexts)
-                if (!context->IsShared()) context->Erase(name);
         }
 
         void Erase(const std::string& name)

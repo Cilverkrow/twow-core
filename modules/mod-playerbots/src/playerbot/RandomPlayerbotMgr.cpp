@@ -31,6 +31,7 @@
 #include "Guild/GuildMgr.h"
 #include "World/WorldState.h"
 #include "PlayerbotLoginMgr.h"
+#include "ExecutionWatch.h"
 #include "Transports/Transport.h"
 
 #ifndef MANGOSBOT_ZERO
@@ -647,6 +648,7 @@ void RandomPlayerbotMgr::LogPlayerLocation()
 
 void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
+    ExecutionWatch::Set(ExecutionWatch::BotMaintenance);
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
     sMemoryMonitor.LogCount(sConfig.GetStringDefault("LogsDir") + "/" + "memory.csv");
@@ -817,20 +819,22 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     if (time(nullptr) > (OfflineGroupBotsTimer + 5) && players.size())
         AddOfflineGroupBots();
 
-    // Zero historically meant "process every bot in one world tick". That is
-    // tolerable around 1,000 bots but turns a 4,000-bot population into a long
-    // synchronous world-thread stall. Preserve the legacy unlimited behavior
-    // for smaller realms, while applying a fail-safe batch when the configured
-    // population is large. Operators can still choose an explicit batch size.
+    // A population-independent maintenance budget. Raising/lowering the target
+    // must not switch algorithms or repeatedly service only the first accounts.
     uint32 updateBots = sPlayerbotAIConfig.randomBotsPerInterval;
     if (!updateBots)
-        updateBots = maxAllowedBotCount > 1000 ? 64 : UINT32_MAX;
+        updateBots = 64;
+    availableBots.sort();
+    auto resume = std::find_if(availableBots.begin(), availableBots.end(),
+        [this](uint32 guid) { return guid > maintenanceCursorGuid; });
+    availableBots.splice(availableBots.end(), availableBots, availableBots.begin(), resume);
 
     //Update bots
     for (auto bot : availableBots)
     {
         if (GetPlayerBot(bot))
         {
+            maintenanceCursorGuid = bot;
             if (ProcessBot(bot))
                 updateBots--;
 

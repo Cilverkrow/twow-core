@@ -2591,6 +2591,7 @@ bool Player::SwitchInstance(uint32 newInstanceId)
         return false;
 
     Map* oldmap = GetMap();
+    ++m_mapWorkGeneration;
 
     // Leave transport if absent from new instance
     // normally it should have switched before the player
@@ -21641,11 +21642,15 @@ void Player::LearnGameMasterSpells()
 
 void Player::SetSemaphoreTeleportNear(bool semphsetting)
 {
+    if (semphsetting)
+        ++m_mapWorkGeneration;
     mSemaphoreTeleport_Near = semphsetting;
 }
 
 void Player::SetSemaphoreTeleportFar(bool semphsetting)
 {
+    if (semphsetting)
+        ++m_mapWorkGeneration;
     mSemaphoreTeleport_Far = semphsetting;
 }
 

@@ -268,36 +268,41 @@ class PlayerbotPlayerScript : public PlayerScript
             return false;
         }
 
-        // Was Player::UpdatePlayerbotHooks(diff).
+        // Manager bookkeeping remains a gameplay update. Bot AI is dispatched
+        // separately by the owning map, after core Player::Update has settled.
         void OnUpdate(Player* player, uint32 diff) override
         {
             if (!player || !sPlayerbotAIConfig.enabled)
                 return;
 
-            if (PlayerbotAI* ai = GetBotAI(player))
-            {
-                SC_PHASE("Player::UpdatePlayerbotHooks/ai.UpdateAI", player->GetName());
-                bool const playerCritical = ai->IsRealPlayer() || ai->HasRealPlayerMaster() ||
-                    player->IsInCombat() || player->InBattleGround() ||
-                    player->InBattleGroundQueue() || player->IsTaxiFlying();
-
-                // Idle autonomous bots do not need to enter the full AI stack
-                // merely to decrement its timer. This removes thousands of
-                // context/strategy checks from every map pass while preserving
-                // full responsiveness for real-player-controlled and active bots.
-                if (!playerCritical && ai->GetAIInternalUpdateDelay() > diff)
-                {
-                    ai->AdvanceMinimalUpdateDelay(diff);
-                    ai->CleanupExpiredValuesIfDue();
-                }
-                else
-                    ai->UpdateAI(diff);
-            }
             if (PlayerbotMgr* mgr = GetBotMgr(player))
             {
                 SC_PHASE("Player::UpdatePlayerbotHooks/mgr.UpdateAI", player->GetName());
                 mgr->UpdateAI(diff);
             }
+        }
+
+        bool IsAIUpdateDue(Player* player, uint32 diff) override
+        {
+            if (!sPlayerbotAIConfig.enabled)
+                return false;
+            if (PlayerbotAI* ai = GetBotAI(player))
+            {
+                // Consume elapsed time here only when no AI call will run.
+                // Due work leaves the remaining delay for UpdateAI to consume.
+                if (ai->GetAIInternalUpdateDelay() <= diff)
+                    return true;
+                ai->AdvanceMinimalUpdateDelay(diff);
+                return false;
+            }
+            return false;
+        }
+
+        void OnAIUpdate(Player* player, uint32 diff, bool minimal) override
+        {
+            if (sPlayerbotAIConfig.enabled)
+                if (PlayerbotAI* ai = GetBotAI(player))
+                    ai->UpdateAI(diff, minimal);
         }
 };
 
