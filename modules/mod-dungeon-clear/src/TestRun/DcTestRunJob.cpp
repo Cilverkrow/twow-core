@@ -45,6 +45,7 @@
 #include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 #include "Ai/Dungeon/DungeonClear/DcValueKeys.h"
 #include "Ai/Dungeon/DungeonClear/Util/DungeonEventExecutor.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcLeaderSignal.h"
 #include "Ai/Dungeon/DungeonClear/Settings/DcSettings.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcTargeting.h"
@@ -1723,7 +1724,19 @@ void DcTestRunJob::TickStarting()
 
     // Retry `dc on` each tick until the enabled flag sticks (roster/context
     // timing) or the stage times out.
-    tankAI->DoSpecificAction("dc on", Event("dc", "", FindGm()), true);
+    bool const dcOnOk = tankAI->DoSpecificAction("dc on", Event("dc", "", FindGm()), true);
+    if (!dcOnOk && (!_dcOnFalseLoggedAt || getMSTimeDiff(_dcOnFalseLoggedAt, getMSTime()) > 10000))
+    {
+        // "dc on did not take" left no trace 3x a night: neither DcRefuse nor the
+        // not-leader branch logged, so the action never ran at all. Name the
+        // state the tank is in when DoSpecificAction says no (2026-09-05).
+        _dcOnFalseLoggedAt = getMSTime();
+        LOG_INFO("playerbots.dungeonclear",
+                 "TESTRUN {} dc on: DoSpecificAction returned false for {} (inWorld {}, map {}, teleporting {}, group {}, dcLeader {}, gm {}, stage {}s)",
+                 _record.runId, tank->GetName(), tank->IsInWorld() ? 1 : 0, tank->GetMapId(),
+                 tank->IsBeingTeleported() ? 1 : 0, tank->GetGroup() ? 1 : 0,
+                 DcLeaderSignal::IsDungeonClearLeader(tank) ? 1 : 0, FindGm() ? 1 : 0, _stageMs / 1000);
+    }
     if (DcRun::Of(ctx).enabled)
     {
         _lastMask = DcEncounterMask::Get(tank->FindMap());
