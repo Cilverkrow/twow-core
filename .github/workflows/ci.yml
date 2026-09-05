@@ -341,9 +341,68 @@ jobs:
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 2>&1 | tee /src/configure.log
 
-              cmake --build /build --target mangosd realmd -j "$(nproc)"
+              # The default target, not "--target mangosd realmd".
+              #
+              # Naming the two binaries is why this job ran zero tests for its
+              # entire existence. dep/lualib registers eluna.lua-runtime with
+              # add_test(), enable_testing() fires (CMakeLists.txt, under
+              # BUILD_ELUNA_TESTS, which defaults ON), so the test EXISTS in the
+              # build tree after configure -- but eluna_lua_smoke was never on
+              # this command line, so its executable was never compiled and ctest
+              # would have had nothing to launch. Worse, the same omission would
+              # silently swallow every test target added in future: a two-target
+              # build is a permanent opt-out from testing that no green run ever
+              # mentions.
+              #
+              # "all" was chosen over naming eluna_lua_smoke alongside the two
+              # binaries because the naming is what failed, and the cost of not
+              # naming things was measured rather than assumed. Under the settings this job
+              # configuration -- no -D beyond build type and ccache, so
+              # USE_EXTRACTORS and USE_REALMMERGE are OFF and MODULES is
+              # "disabled" -- the default target links exactly the libraries
+              # mangosd and realmd already pull in (shared, framework, game,
+              # scripts, modules, g3dlite, re2, libdeflate, Recast, Detour,
+              # lualib) plus one extra executable: eluna_lua_smoke, a single C
+              # file linked against a liblualib.a the Eluna build produced
+              # anyway.
+              #
+              # Measured, in this same debian:trixie image with the same configure
+              # line: after "--target mangosd realmd" has finished, ninja has
+              # exactly TWO edges left to reach "all" -- compile lua_smoke.c,
+              # link eluna_lua_smoke -- and they took 8 seconds wall clock. Not
+              # an estimate; liblualib.a is already a mangosd dependency, so
+              # nothing else is pulled in. The extractors and RealmMerge, the
+              # only targets in this tree that could make "all" expensive, are
+              # behind USE_EXTRACTORS and USE_REALMMERGE and both default OFF.
+              # If that ever changes, go back to naming targets -- and name the
+              # test targets too -- rather than paying for tools nobody runs here.
+              cmake --build /build -j "$(nproc)"
 
               ccache --show-stats
+
+              # Run the registered tests, and refuse to pass when there are none.
+              #
+              # The count gate is not belt-and-braces, it is the whole point.
+              # ctest exits 0 on an empty test set, which is precisely the state
+              # this job was in for its entire life: green, and having executed
+              # nothing. Adding a bare `ctest` would have made that state
+              # permanent and invisible -- a renamed test target, a
+              # BUILD_ELUNA_TESTS that drifts OFF, an enable_testing() dropped in
+              # an upstream merge, and the job goes on reporting success while
+              # testing zero things. A green run that tested nothing is worse
+              # than a red one, because it gets believed.
+              #
+              # The number is deliberately not pinned to the 1 test of today. Pinning it
+              # turns every new test into a CI failure, which is how a repository
+              # teaches people not to add tests. "At least one" is the floor that
+              # only catches the regression it is aimed at.
+              test_count=$(ctest --test-dir /build -N | sed -n "s/^Total Tests: //p")
+              echo "ctest registered tests: ${test_count:-0}"
+              if [ "${test_count:-0}" -lt 1 ]; then
+                echo "::error::ctest found no tests. The build configured and linked, but nothing was executed, so this run proves only that the code compiles. Check that the test targets were built (this step builds the default target for that reason) and that enable_testing() still fires."
+                exit 1
+              fi
+              ctest --test-dir /build --output-on-failure
 
               # /build is deliberately NOT on the bind mount: writing a multi-
               # gigabyte object tree through the mount is several times slower
@@ -364,6 +423,30 @@ jobs:
               cp /build/src/mangosd/mangosd /build/src/realmd/realmd /src/out/
               strip /src/out/mangosd /src/out/realmd
               ls -la /src/out/
+
+              # Execute the binaries this job ships. Before this line, not one
+              # instruction of either had ever been run in CI: "green" meant they
+              # compiled and linked, and nothing else.
+              #
+              # A successful link is not evidence that a binary starts. A missing
+              # runtime .so, a bad RPATH, a static initialiser that aborts, an
+              # ABI mismatch between the libmysqlclient linked against and the
+              # one loaded -- every one of those links cleanly and dies on exec,
+              # and no other step in this job can tell the two apart.
+              #
+              # --version is the cheapest invocation that proves it, because it
+              # needs no fixtures: ACE_Get_Opt maps the long option to case v,
+              # which printfs _FULLVERSION and returns 0 before any config file
+              # is read or any database is touched (src/mangosd/Main.cpp and
+              # src/realmd/Main.cpp). It must be spelled --version and not -v:
+              # the short options string is ":c:s:", so a bare -v falls through
+              # to the default case and exits 1.
+              #
+              # Run against /src/out -- the stripped binaries that are actually
+              # uploaded -- rather than the originals in /build, so what is
+              # tested is what is published.
+              /src/out/mangosd --version
+              /src/out/realmd --version
             '
 
       # There was an "Assert the core does not know the platform exists" step
@@ -783,6 +866,26 @@ jobs:
       #
       # If this step fails, the failure IS the finding and the job stays red
       # until it is fixed. It is not continue-on-error and must not become one.
+      #
+      # This step deliberately still names the two binaries, where the Debian job
+      # now builds the default target so that ctest has something to run. The
+      # asymmetry is a decision, not an oversight:
+      #
+      #   * This job's subject is cl.exe's opinion of this tree. The one test
+      #     that exists, eluna.lua-runtime, exercises the Lua interpreter's C
+      #     runtime, which is not a question about MSVC portability and is
+      #     already answered once per push by the Debian job.
+      #   * -k 0 means a red build here continues to the end and exits non-zero
+      #     anyway, so a ctest step appended after it would never run on the runs
+      #     where it might have said something new.
+      #   * It could not be verified before merging. There is no MSVC toolchain
+      #     outside this runner, and each attempt costs a 30-minute job. Adding
+      #     an unverified gate to the job with this repository's most fragile
+      #     history buys a plausible failure mode and no coverage.
+      #
+      # Revisit when a test lands that is about Windows. Until then the honest
+      # statement is that Windows compiles and links, and Linux compiles, links,
+      # tests and runs.
       - name: Build mangosd and realmd
         id: build
         shell: pwsh
