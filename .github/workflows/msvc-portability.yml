@@ -57,3 +57,58 @@ jobs:
             echo "::endgroup::"
           done <<< "${{ steps.suchen.outputs.pfade }}"
           exit $status
+
+      # Weitere Modul-Prüfer, nach demselben Muster gesucht: fehlt einer, ist
+      # das kein Fehlschlag, sondern nichts zu tun.
+      #
+      # Diese Prüfer liegen seit jeher in den Modulen und liefen NIRGENDS. Der
+      # einzige Aufrufer war die mitgelieferte upstream-Workflow-Datei des
+      # Moduls, die dieses Repository nicht ausführt. Vorhanden, dokumentiert,
+      # nie ausgeführt.
+      #
+      # gen_routes.py --check: eine aufgezeichnete Route existiert zur Laufzeit
+      # nur, wenn RecordedRoutes.cpp ihre Register-Funktion aufruft. Das Modul
+      # ist eine statische Bibliothek, also verwirft der Linker jede
+      # Übersetzungseinheit, deren einzige Ausgabe eine Funktion ist, die
+      # niemand aufruft - samt ihrer Route, ohne Warnung.
+      #
+      # check_config_reads.py: jeder DungeonClear-Schalter muss über DcSettings
+      # gelesen werden. Ein roher sConfigMgr-Zugriff protokolliert bei JEDEM
+      # Aufruf "Config: Missing property"; laut Kopfzeile des Moduls hat das
+      # Server.log bereits zweimal geflutet.
+      - name: Weitere Modul-Prüfer suchen
+        id: weitere
+        run: |
+          gefunden=""
+          for name in gen_routes.py check_config_reads.py; do
+            treffer=$(find modules -name "$name" -type f | head -20)
+            [ -n "$treffer" ] && gefunden="$gefunden$treffer"$'\n'
+          done
+          if [ -z "$(printf '%s' "$gefunden" | tr -d '[:space:]')" ]; then
+            echo "Keine weiteren Modul-Prüfer gefunden - übersprungen."
+            echo "vorhanden=nein" >> "$GITHUB_OUTPUT"
+          else
+            printf '%s' "$gefunden"
+            echo "vorhanden=ja" >> "$GITHUB_OUTPUT"
+            echo "pfade<<ENDE" >> "$GITHUB_OUTPUT"
+            printf '%s' "$gefunden" >> "$GITHUB_OUTPUT"
+            echo "ENDE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Weitere Modul-Prüfer ausführen
+        if: steps.weitere.outputs.vorhanden == 'ja'
+        run: |
+          status=0
+          while IFS= read -r pruefer; do
+            [ -z "$pruefer" ] && continue
+            # gen_routes.py schreibt ohne Argument die Datei neu; in der CI
+            # darf es nur prüfen.
+            case "$pruefer" in
+              *gen_routes.py) args="--check" ;;
+              *)              args="" ;;
+            esac
+            echo "::group::$pruefer $args"
+            python3 "$pruefer" $args || status=1
+            echo "::endgroup::"
+          done <<< "${{ steps.weitere.outputs.pfade }}"
+          exit $status

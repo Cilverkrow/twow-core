@@ -7,6 +7,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
+#include "PlayerbotDatabaseContract.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -2128,7 +2129,8 @@ void RandomPlayerbotMgr::SyncEventTimers()
     {
         uint32 curTime = time(nullptr);
         uint32 timeDiff = curTime - oldTime;
-        CharacterDatabase.PExecute("UPDATE ai_playerbot_random_bots SET time = time + %u WHERE owner = 0 AND bot <> 0", timeDiff);
+        CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
+            "UPDATE ", " SET time = time + %u WHERE owner = 0 AND bot <> 0").c_str(), timeDiff);
     }
 }
 
@@ -3461,8 +3463,8 @@ std::list<uint32> RandomPlayerbotMgr::GetBots()
 {
     if (!currentBots.empty()) return currentBots;
 
-    auto results = CharacterDatabase.Query(
-            "SELECT bot FROM ai_playerbot_random_bots WHERE owner = 0 AND event = 'add'");
+    auto results = CharacterDatabase.Query(PlayerbotDatabaseContract::EventStoreSql(
+            "SELECT bot FROM ", " WHERE owner = 0 AND event = 'add'").c_str());
 
     if (results)
     {
@@ -3481,8 +3483,8 @@ std::list<uint32> RandomPlayerbotMgr::GetBgBots(uint32 bracket)
 {
     //if (!currentBgBots.empty()) return currentBgBots;
 
-    auto results = CharacterDatabase.PQuery(
-        "SELECT bot FROM ai_playerbot_random_bots WHERE event = 'bg' AND value = '%d'", bracket);
+    auto results = CharacterDatabase.PQuery(PlayerbotDatabaseContract::EventStoreSql(
+        "SELECT bot FROM ", " WHERE event = 'bg' AND value = '%d'").c_str(), bracket);
     std::list<uint32> BgBots;
     if (results)
     {
@@ -3502,7 +3504,8 @@ uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string event)
     // load all events at once on first event load
     if (eventCache[bot].empty())
     {
-        auto results = CharacterDatabase.PQuery("SELECT `event`, `value`, `time`, validIn, `data` FROM ai_playerbot_random_bots WHERE owner = 0 AND bot = '%u'", bot);
+        auto results = CharacterDatabase.PQuery(PlayerbotDatabaseContract::EventStoreSql(
+            "SELECT `event`, `value`, `time`, validIn, `data` FROM ", " WHERE owner = 0 AND bot = '%u'").c_str(), bot);
         if (results)
         {
             do
@@ -3561,20 +3564,23 @@ std::string RandomPlayerbotMgr::GetEventData(uint32 bot, std::string event)
 
 uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string event, uint32 value, uint32 validIn, std::string data)
 {
-    CharacterDatabase.PExecute("DELETE FROM ai_playerbot_random_bots WHERE owner = 0 AND bot = '%u' AND event = '%s'",
+    CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
+            "DELETE FROM ", " WHERE owner = 0 AND bot = '%u' AND event = '%s'").c_str(),
             bot, event.c_str());
     if (value)
     {
         if (data != "")
         {
             CharacterDatabase.PExecute(
-                "INSERT INTO ai_playerbot_random_bots (owner, bot, `time`, validIn, event, `value`, `data`) VALUES ('%u', '%u', '%u', '%u', '%s', '%u', '%s')",
+                PlayerbotDatabaseContract::EventStoreSql(
+                    "INSERT INTO ", " (owner, bot, `time`, validIn, event, `value`, `data`) VALUES ('%u', '%u', '%u', '%u', '%s', '%u', '%s')").c_str(),
                 0, bot, (uint32)time(0), validIn, event.c_str(), value, data.c_str());
         }
         else
         {
             CharacterDatabase.PExecute(
-                "INSERT INTO ai_playerbot_random_bots (owner, bot, `time`, validIn, event, `value`) VALUES ('%u', '%u', '%u', '%u', '%s', '%u')",
+                PlayerbotDatabaseContract::EventStoreSql(
+                    "INSERT INTO ", " (owner, bot, `time`, validIn, event, `value`) VALUES ('%u', '%u', '%u', '%u', '%s', '%u')").c_str(),
                 0, bot, (uint32)time(0), validIn, event.c_str(), value);
         }
     }
@@ -4297,7 +4303,8 @@ void RandomPlayerbotMgr::Remove(Player* bot)
            bot ? bot->GetName() : "(null)");
     uint32 owner = bot->GetGUIDLow();
     SC_LOG("RandomPlayerbotMgr::Remove guid=%u — deleting random_bots row", owner);
-    CharacterDatabase.PExecute("DELETE FROM ai_playerbot_random_bots WHERE owner = 0 AND bot = '%d'", owner);
+    CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
+        "DELETE FROM ", " WHERE owner = 0 AND bot = '%d'").c_str(), owner);
     eventCache[owner].clear();
     SC_LOG("RandomPlayerbotMgr::Remove guid=%u — calling LogoutPlayerBot", owner);
 
@@ -4719,7 +4726,8 @@ std::list<std::string> RandomPlayerbotMgr::HandleRemove(Player* bot)
 std::list<std::string> RandomPlayerbotMgr::HandleConsoleReset(std::string param)
 {
     std::list<std::string> messages;
-    CharacterDatabase.PExecute("delete from ai_playerbot_random_bots where event not in ('temporary')");
+    CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
+        "delete from ", " where event not in ('temporary')").c_str());
     sRandomPlayerbotMgr.eventCache.clear();
     std::string msg = "Random bots were reset for all players. Please restart the Server.";
     messages.push_back(msg);
