@@ -162,6 +162,7 @@ branch — every environment-specific value is a parameter.
 | `-RootPassword` | `mangos` | Database `root` password, used for schema creation and imports. |
 | `-DbPassword` | `mangos` | Password for the service account the script creates. |
 | `-DbUser` | `mangos` | Service account the server logs in with. |
+| `-DbAccountHost` | *from `-DbHost`* | Host part of that account — the `localhost` in `'mangos'@'localhost'`. `localhost` for a local server, `%` for a remote one. |
 | `-DbPrefix` | `tw_` | Prefix for all four database names — see below. |
 | `-WorldDatabaseName` etc. | *from prefix* | Override a single database name. Also `-CharacterDatabaseName`, `-LoginDatabaseName`, `-LogsDatabaseName`. |
 | `-MariaDbFolderName` | `mariadb-10.3.39-winx64` | Portable MariaDB folder name inside `server\`, tried first. |
@@ -176,7 +177,7 @@ branch — every environment-specific value is a parameter.
 | `-MinRandomBots` / `-MaxRandomBots` | `5` / `10` | Bot population written into `aiplayerbot.conf`. |
 | `-RandomBotMinLevel` / `-RandomBotMaxLevel` | `1` / `20` | Bot level range. |
 | `-RandomBotAccountsCount` | `10` | Number of bot accounts. |
-| `-SkipBotRegen` | off | Keeps existing characters/accounts: dumps `tw_char` + `tw_logon` first and restores them at the end. |
+| `-SkipBotRegen` | off | Keeps existing characters/accounts: dumps `tw_char` + `tw_logon` first and restores them at the end. Also leaves `server\pdump` and `server\honor` in place. |
 | `-applyPatches` | — | Semicolon-separated commit hashes to cherry-pick, e.g. `-applyPatches "0ee0748;abc1234"`. |
 
 ```powershell
@@ -246,6 +247,10 @@ whatever it connects to. The preflight prints the client, how it was found, and 
 server's version, host and port for exactly this reason — read that line on an unfamiliar
 machine.
 
+On a remote server the service account is created as `'mangos'@'%'`, because the server
+sees this machine arriving from its own address and never as `localhost`. Narrow it with
+`-DbAccountHost "192.168.1.%"` when the network allows it.
+
 ## What a run does
 
 | Step | |
@@ -268,7 +273,7 @@ machine.
 | 12 | Scale the bot population down in `aiplayerbot.conf` |
 | 13 | Insert the local realm into `tw_logon.realmlist` |
 | 14 | Create `logs\`, `honor\`, `pdump\`, `lua_scripts\` |
-| 15 | Generate the three launcher `.bat` files (only if missing) |
+| 15 | Generate the three launcher `.bat` files, refreshing stale ones |
 
 Afterwards: `server\1.Start mysql.bat`, then `2.Realm server.bat`, then
 `3.World server.bat`. Create your account from the mangosd console with `account create`.
@@ -305,6 +310,20 @@ often fails where Linux succeeds:
   arguments, which any local user can read out of the process list.
 - **Uncommitted source changes are stashed, not discarded**, when `-applyPatches` needs a
   clean tree.
+- **The DBC manifest is checked before it is trusted.** `dbc_verifier.json` describes the
+  last officially released client and is not meant to change, so the script carries its
+  expected fingerprint and refuses to run against a shipped copy that does not match.
+  Without that, a truncated download or a manifest belonging to a different client build
+  would just make step 01 verify the DBCs against the wrong hashes — passing when it should
+  not, or blaming the client instead of the manifest. A **workspace** copy is a deliberate
+  override and is only reported, not refused; if the client is ever updated, run the
+  pipeline, take the hash it prints and put it in `$script:ExpectedDbcManifestChecksum`.
+- **Launchers cannot go stale behind your back.** Each generated `.bat` carries a marker
+  line with the version that wrote it and a checksum of its body, so step 15 can tell three
+  situations apart: unchanged and current (skipped), written by an older pipeline and never
+  edited since (refreshed, so a fix like the MariaDB working-directory one actually reaches
+  a testlab that was set up months ago), and hand-edited or hand-made (left alone, with a
+  warning). Edit them freely — an edited file is never overwritten.
 - **Everything is checked before anything is destroyed.** Step 04 drops the databases and
   wipes the server directory, so every tool and service the run depends on is verified in
   the preflight first. A missing `cmake` used to surface in step 08 — four steps *after*

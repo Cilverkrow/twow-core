@@ -34,6 +34,8 @@
       Database identity
         -RootPassword             root password           (default: mangos)
         -DbUser  -DbPassword      the server's account    (default: mangos / mangos)
+        -DbAccountHost            where that account may
+                                  connect from            (default: from -DbHost)
         -DbPrefix                 names all four          (default: tw_)
         -WorldDatabaseName  -CharacterDatabaseName
         -LoginDatabaseName  -LogsDatabaseName
@@ -75,6 +77,12 @@
 .PARAMETER DbUser
     Account the server logs in with. Created and granted in step 06, and written into the
     connection strings in mangosd.conf and realmd.conf.
+.PARAMETER DbAccountHost
+    Host part of the service account step 06 creates - the 'localhost' in
+    'mangos'@'localhost'. Empty (default) derives it from -DbHost: 'localhost' for a local
+    server, '%' for a remote one, because a remote server sees this machine arriving from
+    its own address and never as localhost. Set it explicitly to narrow that down, e.g.
+    -DbAccountHost "192.168.1.%".
 .PARAMETER DbPrefix
     Prefix for the four database names, default "tw_". Change it to run several testlabs
     against one database server without them overwriting each other - -DbPrefix "lab2_"
@@ -253,6 +261,9 @@ param (
     # Account the server logs in with. Created and granted by step 06.
     [string]$DbUser = "mangos",
 
+    # Host part of that account. Empty derives it from -DbHost; see step 06.
+    [string]$DbAccountHost = "",
+
     # Prefix for the four database names. Change it to run several testlabs against one
     # server without them overwriting each other: -DbPrefix "lab2_" gives lab2_world,
     # lab2_char, lab2_logon and lab2_logs.
@@ -292,6 +303,20 @@ Set-StrictMode -Version Latest
 # The -WorkspaceRoot default, applied here because it cannot be applied in param(): see the
 # comment on that parameter. $PSScriptRoot is correct from this point on.
 if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) { $WorkspaceRoot = $PSScriptRoot }
+
+# Checked here, not beside the rest of the path handling further down, because
+# Start-Transcript below CREATES the directory it is pointed at. A mistyped -WorkspaceRoot
+# was therefore made real on the spot, the existence check further down always passed, and
+# the run carried on to fail at whatever it could not find inside the new empty folder -
+# having left a stray directory and a pipeline_console.log behind.
+#
+# Stop-Pipeline is not defined yet at this point in the file, and nothing has been acquired
+# that would need releasing, so this exits directly.
+if (-not [string]::IsNullOrWhiteSpace($WorkspaceRoot) -and
+    -not (Test-Path -LiteralPath $WorkspaceRoot -PathType Container)) {
+    Write-Error "Workspace root does not exist (or is not a directory): $WorkspaceRoot"
+    exit 2
+}
 
 # Credential files are created in step 00 and removed by Stop-Pipeline / the final cleanup.
 # Declared up front so the cleanup helper can always test them under StrictMode.
@@ -358,6 +383,30 @@ function Remove-PipelineSingleton {
 # SeCreateGlobalPrivilege, which an ordinary non-elevated user does not have, so a failure
 # falls back to the per-session "Local\" namespace rather than aborting: the lock file
 # still covers the cross-session case, just with the weaker stale-PID heuristic.
+# Answers "does a mutex of this name already exist?" without needing full access to it.
+#
+# Assert-SingleInstance needs this to tell two very different causes of the same
+# UnauthorizedAccessException apart. Opening for Synchronize only is the weakest right
+# there is, so it succeeds against objects the constructor cannot touch; and if even that
+# is denied, the object demonstrably exists, which is the answer we were after.
+function Test-NamedMutexExists {
+    param (
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    try {
+        $Existing = [System.Threading.Mutex]::OpenExisting($Name, [System.Security.AccessControl.MutexRights]::Synchronize)
+        $Existing.Dispose()
+        return $true
+    } catch [System.Threading.WaitHandleCannotBeOpenedException] {
+        return $false
+    } catch [System.UnauthorizedAccessException] {
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 function Assert-SingleInstance {
     $CreatedNew = $false
 
@@ -365,9 +414,30 @@ function Assert-SingleInstance {
         try {
             $script:SingletonMutex = New-Object System.Threading.Mutex($true, $MutexName, [ref]$CreatedNew)
             break
+        } catch [System.UnauthorizedAccessException] {
+            # The constructor asks for MUTEX_ALL_ACCESS, so this means one of two opposite
+            # things, and falling back blindly gets one of them badly wrong:
+            #
+            #   the name does not exist  -> no SeCreateGlobalPrivilege. Local\ is the right
+            #                               answer, and the lock file still covers the
+            #                               cross-session case.
+            #   the name DOES exist      -> another run owns it and its object is closed to
+            #                               us (it is elevated and we are not, or it belongs
+            #                               to another user). Falling back to Local\ would
+            #                               create a DIFFERENT kernel object, report
+            #                               CreatedNew, and run a second pipeline against
+            #                               the same databases - and its temp-file sweep
+            #                               would delete the live run's credential files on
+            #                               the way past.
+            if (Test-NamedMutexExists -Name $MutexName) {
+                $script:SingletonMutex = $null
+                Stop-Pipeline -Message ("Another pipeline run already holds '$MutexName', and this session may not " +
+                                        "open it - it was most likely started elevated, or by another user. " +
+                                        "Wait for it to finish, or start this run the same way.") -ExitCode 2
+            }
+
+            $script:SingletonMutex = $null
         } catch {
-            # Access denied on Global\ (no privilege), or the name already exists with an
-            # ACL we may not open. Try the next namespace.
             $script:SingletonMutex = $null
         }
     }
@@ -418,23 +488,79 @@ function Stop-Pipeline {
 function Assert-NoConcurrentRun {
     if (-not (Test-Path $script:LockFile)) { return }
 
+    # An unreadable lock is not a stale lock. ReadAllLines throwing - the file held open by
+    # an editor, an AV scanner or a backup agent, or ACL-denied because the owning run
+    # belongs to another user - is not script-terminating in PowerShell, so $LockData was
+    # simply left empty. That read as "PID 0, never started", and the live run's lock was
+    # announced as stale, deleted, and taken over.
+    $LockLines = @()
+    try {
+        $LockLines = [System.IO.File]::ReadAllLines($script:LockFile)
+    } catch {
+        Stop-Pipeline -Message ("A lock file exists but cannot be read: $($script:LockFile)`n" +
+                                "  $($_.Exception.Message)`n" +
+                                "Refusing to assume it is stale. Close whatever is holding it, or delete it if you " +
+                                "are certain no pipeline is running.") -ExitCode 2
+    }
+
     $LockData = @{}
-    foreach ($Line in [System.IO.File]::ReadAllLines($script:LockFile)) {
+    foreach ($Line in $LockLines) {
         if ($Line -match '^\s*([^=]+?)\s*=\s*(.*)$') { $LockData[$Matches[1]] = $Matches[2] }
     }
 
-    $OwnerPid     = 0
     $OwnerStarted = if ($LockData.ContainsKey('Started')) { $LockData['Started'] } else { 'unknown time' }
-    if ($LockData.ContainsKey('Pid')) { [void][int]::TryParse($LockData['Pid'], [ref]$OwnerPid) }
+
+    # Same reasoning for a lock that carries no PID, which also covers one caught
+    # half-written: File.WriteAllText holds FileShare.Read, so a concurrent read is allowed
+    # and can see the file before the Pid= line has landed.
+    if (-not $LockData.ContainsKey('Pid')) {
+        Stop-Pipeline -Message ("A lock file exists but names no PID: $($script:LockFile)`n" +
+                                "It may belong to a run that is still writing it. Refusing to assume it is stale; " +
+                                "delete it if you are certain no pipeline is running.") -ExitCode 2
+    }
+
+    # A lock written on another machine - a workspace on a network share - says nothing
+    # about any process here, so the PID below would be meaningless.
+    $OwnerMachine = if ($LockData.ContainsKey('Machine')) { $LockData['Machine'] } else { "" }
+    if ($OwnerMachine -and $OwnerMachine -ne $env:COMPUTERNAME) {
+        Stop-Pipeline -Message ("The lock file was written on '$OwnerMachine', not on this machine, so its PID " +
+                                "means nothing here: $($script:LockFile)`n" +
+                                "Wait for that run, or delete the file if you are certain it is gone.") -ExitCode 2
+    }
+
+    $OwnerPid = 0
+    [void][int]::TryParse($LockData['Pid'], [ref]$OwnerPid)
 
     $OwnerAlive = $false
     if ($OwnerPid -gt 0) {
         $OwnerProcess = Get-Process -Id $OwnerPid -ErrorAction SilentlyContinue
-        # Windows recycles PIDs. Only treat it as a live run when the process that holds the
-        # PID is actually a PowerShell host, otherwise an unrelated program inheriting the
-        # number would block the pipeline forever.
+
+        # Windows recycles PIDs. "Is it a PowerShell host?" on its own does not help,
+        # because on a machine where this pipeline is run the most likely program to inherit
+        # a PID is another PowerShell window: a run killed with Ctrl+C, followed by opening
+        # a new console that happened to get the same PID, blocked every later run forever
+        # with "Wait for it to finish" until the file was deleted by hand.
+        #
+        # The lock is written moments after its owner starts, so a process that began after
+        # the lock's own timestamp cannot be the run that wrote it.
         if ($OwnerProcess -and @('powershell', 'pwsh') -contains $OwnerProcess.ProcessName) {
             $OwnerAlive = $true
+
+            $OwnerStartedAt = [datetime]::MinValue
+            $ParsedStart = [datetime]::TryParseExact($OwnerStarted, 'yyyy-MM-dd HH:mm:ss',
+                                                     [System.Globalization.CultureInfo]::InvariantCulture,
+                                                     [System.Globalization.DateTimeStyles]::None,
+                                                     [ref]$OwnerStartedAt)
+            if ($ParsedStart) {
+                try {
+                    # A few seconds of slack: the timestamp has one-second resolution and is
+                    # taken slightly after the process itself started.
+                    if ($OwnerProcess.StartTime -gt $OwnerStartedAt.AddSeconds(5)) { $OwnerAlive = $false }
+                } catch {
+                    # StartTime is not readable for a process owned by another user. Keep
+                    # the cautious answer rather than taking over a possibly live run.
+                }
+            }
         }
     }
 
@@ -460,7 +586,21 @@ function New-PipelineLock {
         "Script=$PSCommandPath"
     ) -join "`r`n"
 
-    [System.IO.File]::WriteAllText($script:LockFile, ($LockContent + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+    # Every write in this script is checked, because an exception thrown by a .NET method
+    # is NOT script-terminating in PowerShell: the statement is abandoned, the error is
+    # printed, and the next line runs as if nothing happened. Unchecked, a failed write
+    # here was followed straight by $script:LockOwned = $true and "Single-instance lock
+    # acquired" - this run then advertised ownership of a file that does not exist, and on
+    # exit Remove-PipelineLock would delete whatever lock file had appeared at that path in
+    # the meantime, which may well be another run's.
+    try {
+        [System.IO.File]::WriteAllText($script:LockFile, ($LockContent + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Stop-Pipeline -Message ("Could not write the run lock file at $($script:LockFile)`n" +
+                                "  $($_.Exception.Message)`n" +
+                                "The workspace has to be writable for the pipeline to guard against a second run.")
+    }
+
     $script:LockOwned = $true
 }
 
@@ -497,6 +637,24 @@ function Assert-LastExitCode {
     }
 }
 
+# Quotes and escapes one value for a MariaDB option file.
+#
+# The option-file parser is not a plain key=value reader. In an unquoted value it truncates
+# at the first '#' - anywhere in the line, not just at the start - and it expands backslash
+# escape sequences. Both are silent: a root password of 'ab#cd' was read as 'ab' and
+# 'pa\ts' as 'pa<TAB>s', the client answered "Access denied", and Wait-ForMariaDb blamed
+# -RootPassword, which was the one thing that was correct.
+#
+# Verified against the bundled 10.3 client with --print-defaults: quoted this way, '#',
+# '\', '"', ';', "'", '$', spaces and a leading '#' all arrive exactly as written.
+function ConvertTo-OptionFileValue {
+    param (
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value
+    )
+
+    return '"' + ($Value -replace '\\', '\\' -replace '"', '\"') + '"'
+}
+
 # Writes a MariaDB option file holding the credentials, so no password is ever passed on a
 # command line where any local user can read it out of the process list.
 # The file is UTF8 *without* BOM - a BOM makes MariaDB's option parser reject the file.
@@ -511,10 +669,18 @@ function New-MySqlDefaultsFile {
     # host/port are written only when asked for. Emitting host=localhost unconditionally is
     # not a no-op on Windows - it can move the client between TCP and a named pipe - and the
     # bundled portable server is happiest with the client's own defaults.
-    $Content = "[client]`r`nuser=$User`r`npassword=$Password`r`n"
-    if (-not [string]::IsNullOrWhiteSpace($DbHost)) { $Content += "host=$DbHost`r`n" }
+    $Content = "[client]`r`nuser=$(ConvertTo-OptionFileValue $User)`r`npassword=$(ConvertTo-OptionFileValue $Password)`r`n"
+    if (-not [string]::IsNullOrWhiteSpace($DbHost)) { $Content += "host=$(ConvertTo-OptionFileValue $DbHost)`r`n" }
     if ($DbPort -gt 0)                              { $Content += "port=$DbPort`r`n" }
-    [System.IO.File]::WriteAllText($CredentialPath, $Content, (New-Object System.Text.UTF8Encoding($false)))
+    # Checked, for the reason spelled out in New-PipelineLock: nothing would fail here, the
+    # path would be returned as if it held credentials, and every client call afterwards
+    # would report "Could not open required defaults file" instead of the real cause.
+    try {
+        [System.IO.File]::WriteAllText($CredentialPath, $Content, (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Stop-Pipeline -Message ("Could not write the temporary credential file at $CredentialPath`n" +
+                                "  $($_.Exception.Message)")
+    }
 
     # The file holds a plaintext credential: strip inherited permissions and grant the
     # current user only.
@@ -602,8 +768,14 @@ function Invoke-MySqlFile {
         $Writer.Dispose()
     }
 
-    $Arguments = @("--defaults-extra-file=$DefaultsFile", "--default-character-set=utf8mb4")
-    if ($Database) { $Arguments += $Database }
+    # The path is quoted by hand. Start-Process joins -ArgumentList with spaces and does NOT
+    # quote an element that contains one, so a %TEMP% under a profile like
+    # "C:\Users\Jan Novak\AppData\Local\Temp" split into --defaults-extra-file=C:\Users\Jan
+    # plus a stray positional argument: the client read no credentials and every import
+    # failed with "Access denied" - after step 04 had already dropped all four databases.
+    # Test-MariaDbConnection quotes correctly, so the preflight could not catch it.
+    $Arguments = @("--defaults-extra-file=`"$DefaultsFile`"", "--default-character-set=utf8mb4")
+    if ($Database) { $Arguments += "`"$Database`"" }
 
     # Redirecting stdin is the one thing the call operator cannot do, so this stays on
     # Start-Process - but its output would then bypass the transcript entirely, so stdout
@@ -892,12 +1064,106 @@ function Resolve-VcpkgDirectory {
                             "or pass -VcpkgDirectory <path>. Looked in: " + ($Candidates -join "; "))
 }
 
-# Writes one of the server launcher .bat files, but only when it is not already there -
-# these are the operator's entry points and may well have been hand-tuned, so an existing
-# file is always left alone.
+# Bumped whenever the generated launcher content changes. An existing launcher that this
+# pipeline wrote at an older version, and that nobody has edited since, is refreshed on the
+# next run - which is the whole point of the marker below.
+$script:LauncherFormatVersion = 3
+
+# The encoding the launcher .bat files are written in.
 #
-# Content is deliberately plain ASCII: .bat files are read by cmd.exe in the OEM code page,
-# so accented characters in a comment would come out as mojibake on a Czech console.
+# ASCII was wrong twice over. It is a LOSSY encoder: every character outside 7-bit ASCII
+# becomes a literal "?" on disk. So -MariaDbFolderName "mariadb-10.3.39-winx64-cestina"
+# with an accent in it produced cd /d "%~dp0mariadb-...-?e?tina\bin" - a launcher that
+# cannot find its own database - and, because the marker checksum was computed from the
+# text BEFORE that substitution, every later run recomputed a different checksum, decided
+# the file had been hand-edited, and refused to repair the file the pipeline had broken
+# itself.
+#
+# cmd.exe reads a .bat in the console's OEM code page, so that is what it is written in.
+# On a Czech machine that is CP852, which represents the accented characters ASCII threw
+# away.
+$script:LauncherEncoding = [System.Text.Encoding]::GetEncoding(
+    [System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
+
+# Expected fingerprint of dbc_verifier.json, the manifest step 01 checks every DBC against.
+#
+# That manifest describes the last officially released client, so in practice it does not
+# change - which is exactly why a silent change matters. Nothing else in the run would
+# notice a truncated download, a half-written file or a manifest belonging to a different
+# client build: step 01 would cheerfully verify the DBCs against the wrong hashes and
+# either pass when it should not, or fail in a way that points at the client rather than at
+# the manifest.
+#
+# Normalised (see Get-TextChecksum), not the raw file hash, because git rewrites line
+# endings on checkout depending on core.autocrlf - the two copies are byte-identical here
+# but need not be on a fresh clone elsewhere, and that would be a false alarm.
+#
+# If the client ever is updated: run the pipeline, take the hash it prints, and put it here.
+$script:ExpectedDbcManifestChecksum = "ae690876b46c2287f3331879618dad5227ebc229e7ae55fadc6ec2fd5149af82"
+
+# Stable fingerprint of a piece of text. Line endings and trailing blank lines are
+# normalised first, so a file that differs only in those - which is what git's autocrlf
+# handling produces on a fresh clone - still fingerprints the same.
+#
+# -Length shortens the result: the launcher markers carry 16 characters to stay readable on
+# one line, while the manifest check uses the full digest.
+function Get-TextChecksum {
+    param (
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [int]$Length = 0
+    )
+
+    $Normalised = ($Text -replace "`r`n", "`n").TrimEnd()
+    $Hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $Digest = $Hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Normalised))
+        $Hex    = ([System.BitConverter]::ToString($Digest) -replace '-', '').ToLower()
+        if ($Length -gt 0) { return $Hex.Substring(0, $Length) }
+        return $Hex
+    } finally {
+        $Hasher.Dispose()
+    }
+}
+
+# Escapes a string so it is safe as the REPLACEMENT operand of -replace.
+#
+# The right-hand side of -replace is not a literal. .NET reads $1, $&, $`, $' and $$ in it
+# as substitution directives, while every replacement value in step 10 is built by string
+# interpolation from paths and credentials the operator supplies. One $ in -DbPassword was
+# enough to silently rewrite the connection string handed to the server: 'pa$$w0rd'
+# reached mangosd.conf as 'pa$w0rd', and 'a$&b' pasted the entire matched config line
+# into the password field. The pipeline still printed "[OK] mangosd.conf updated" and
+# exited 0 - the only symptom was a server that could not log in to its own databases.
+# Paths are affected the same way: a workspace under C:\WOW\$lab would corrupt DataDir.
+#
+# Doubling each $ is what the .NET replacement grammar defines as one literal $. String
+# .Replace is used rather than -replace so this function is not subject to its own hazard.
+function ConvertTo-ReplacementLiteral {
+    param (
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text
+    )
+
+    return $Text.Replace('$', '$$')
+}
+
+# Writes one of the server launcher .bat files.
+#
+# "Skip if it exists" is not enough on its own: these files were written by an earlier
+# version of this pipeline, so a change here - the working-directory fix in the MariaDB
+# launcher, say - would never reach a testlab that had already been set up once, and the
+# operator would keep running a stale script with no sign anything was wrong.
+#
+# But blindly overwriting is worse: these are the operator's entry points and may well have
+# been hand-tuned. So each generated launcher carries a marker line naming the version that
+# wrote it and a checksum of the body, which tells the three cases apart:
+#
+#   marker matches, version current  -> nothing to do
+#   marker matches, version older    -> ours, untouched, and stale: safely refreshed
+#   checksum differs, or no marker   -> hand-made or edited: left alone, reported
+#
+# Content is written in the console's OEM code page, which is what cmd.exe reads a .bat in
+# (see $script:LauncherEncoding). The generated text is plain ASCII apart from whatever the
+# operator's own folder names contribute.
 function New-ServerLauncherScript {
     param (
         [Parameter(Mandatory = $true)][string]$Path,
@@ -906,13 +1172,83 @@ function New-ServerLauncherScript {
 
     $LauncherName = Split-Path $Path -Leaf
 
-    if (Test-Path $Path) {
-        Write-Host " -> [SKIP] Launcher already present, left untouched: $LauncherName"
+    # Checksum what will actually be on disk, not what was handed in. Any encoding is
+    # potentially lossy for some input - even the OEM code page cannot hold, say, Cyrillic
+    # on CP852 - and a checksum taken before the round trip can then never match the file
+    # it describes, which permanently disables the refresh logic below.
+    $EncodedContent = $script:LauncherEncoding.GetString($script:LauncherEncoding.GetBytes($Content))
+    if ($EncodedContent -ne $Content) {
+        Write-Warning ("$LauncherName contains characters the console code page " +
+                       "($($script:LauncherEncoding.WebName)) cannot represent; they were replaced. " +
+                       "Check the paths in it - a folder name is the usual source.")
+        $Content = $EncodedContent
+    }
+
+    $Checksum     = Get-TextChecksum -Text $Content -Length 16
+    $MarkerLine   = ":: tortoise-testlab-launcher version=$($script:LauncherFormatVersion) checksum=$Checksum"
+    # Trailing newline matters: without it anything later appended to the file lands on the
+    # marker line and corrupts it.
+    $FileText     = (($Content.TrimEnd() + "`n" + $MarkerLine + "`n") -replace "`r`n", "`n") -replace "`n", "`r`n"
+
+    if (Test-Path -LiteralPath $Path) {
+        # Read in the same encoding it is written in, or a launcher holding an accented
+        # path would fingerprint differently on the way back in.
+        $Existing      = [System.IO.File]::ReadAllText($Path, $script:LauncherEncoding)
+        $ExistingLines = @($Existing -split "`r?`n")
+        $FoundMarker   = @($ExistingLines | Where-Object { $_ -match '^::\s*tortoise-testlab-launcher\s+version=(\d+)\s+checksum=([0-9a-f]+)' })
+
+        if ($FoundMarker.Count -eq 0) {
+            Write-Warning ("$LauncherName was not written by this pipeline (no version marker), so it is left as it is. " +
+                           "If it stops working after an update, compare it against tools/testlab_pipeline in the repository.")
+            return
+        }
+
+        # -match above populated $Matches from the last line it tested; re-match to be sure
+        # it holds this file's marker rather than whatever was tested last.
+        $null = $FoundMarker[-1] -match '^::\s*tortoise-testlab-launcher\s+version=(\d+)\s+checksum=([0-9a-f]+)'
+        $ExistingVersion  = [int]$Matches[1]
+        $ExistingChecksum = $Matches[2]
+
+        # The body is everything except the marker line.
+        $ExistingBody = ($ExistingLines | Where-Object { $_ -notmatch '^::\s*tortoise-testlab-launcher\s' }) -join "`n"
+
+        if ((Get-TextChecksum -Text $ExistingBody -Length 16) -ne $ExistingChecksum) {
+            Write-Warning "$LauncherName has been edited since the pipeline wrote it, so it is left untouched."
+            return
+        }
+
+        if ($ExistingVersion -eq $script:LauncherFormatVersion -and $ExistingChecksum -eq $Checksum) {
+            Write-Host " -> [SKIP] Launcher is current: $LauncherName"
+            return
+        }
+
+        $Reason = if ($ExistingVersion -ne $script:LauncherFormatVersion) {
+            "version $ExistingVersion -> $($script:LauncherFormatVersion)"
+        } else {
+            "content changed since it was written"
+        }
+
+        # A failed write must not be followed by the success line - see New-PipelineLock.
+        # A read-only or locked launcher used to be reported as refreshed while the stale
+        # file stayed on disk, and the run still exited 0.
+        try {
+            [System.IO.File]::WriteAllText($Path, $FileText, $script:LauncherEncoding)
+        } catch {
+            Write-Warning "Could not refresh $LauncherName ($Reason): $($_.Exception.Message)"
+            return
+        }
+
+        Write-Host " -> Refreshed stale launcher ($Reason): $LauncherName" -ForegroundColor Yellow
         return
     }
 
-    # ASCII + CRLF, the only combination cmd.exe is guaranteed to read back correctly.
-    [System.IO.File]::WriteAllText($Path, ($Content -replace "`r?`n", "`r`n"), [System.Text.Encoding]::ASCII)
+    try {
+        [System.IO.File]::WriteAllText($Path, $FileText, $script:LauncherEncoding)
+    } catch {
+        Write-Warning "Could not create $LauncherName : $($_.Exception.Message)"
+        return
+    }
+
     Write-Host " -> Created launcher: $LauncherName" -ForegroundColor Green
 }
 
@@ -1003,17 +1339,36 @@ Assert-NoConcurrentRun
 New-PipelineLock
 Write-Host "Single-instance lock acquired: $($script:LockFile) (PID $PID)"
 
-# Sweep credential files left by an earlier run before writing new ones.
+# Sweep the temporary files left by an earlier run before writing new ones.
 #
 # Stop-Pipeline removes them on every exit the script controls, but Ctrl+C or Task Manager
 # kills the process outright and nothing gets the chance - leaving a plaintext password in
 # TEMP until something else cleans it up. Observed after an interrupted run on 2026-09-05.
 # Safe to sweep unconditionally: TEMP is per-user, and the singleton acquired above means
 # no other run of this script is alive to own them.
-$StaleCredentials = @(Get-ChildItem -Path $env:TEMP -Filter "tw_pipeline_*.cnf" -File -ErrorAction SilentlyContinue)
-if ($StaleCredentials.Count -gt 0) {
-    Write-Host "Removing $($StaleCredentials.Count) credential file(s) left by an interrupted run."
-    $StaleCredentials | Remove-Item -Force -ErrorAction SilentlyContinue
+#
+# Every pattern this script writes into TEMP is listed, not just the credential files. The
+# filtered SQL copy in particular is a full rewrite of whatever is being imported, so an
+# interrupted world import left several megabytes behind each time, and repeated
+# interruptions during a build session simply accumulated.
+$StaleTempPatterns = @(
+    "tw_pipeline_*.cnf"    # credential option files  (New-MySqlDefaultsFile)
+    "tw_import_*.sql"      # filtered import copies   (Invoke-MySqlFile)
+    "tw_import_out_*.txt"  # captured client output   (Invoke-MySqlFile)
+    "tw_import_err_*.txt"
+    "tw_dbprobe_out_*.txt" # captured probe output    (Test-MariaDbConnection)
+    "tw_dbprobe_err_*.txt"
+)
+
+$StaleTempFiles = @(
+    foreach ($Pattern in $StaleTempPatterns) {
+        Get-ChildItem -Path $env:TEMP -Filter $Pattern -File -ErrorAction SilentlyContinue
+    }
+)
+
+if ($StaleTempFiles.Count -gt 0) {
+    Write-Host "Removing $($StaleTempFiles.Count) temporary file(s) left by an interrupted run."
+    $StaleTempFiles | Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
 
@@ -1120,10 +1475,21 @@ Write-Host "Initializing client data integrity verification..."
 $DataRoot     = Join-Path $ScriptDirectory "$MangosInstalationDir\$MangosDataDir"
 # The DBC hash manifest ships next to this script in the repository, but a workspace copy
 # takes precedence so a testlab can pin its own client build without editing the tool.
-$JsonVerifier = Join-Path $ScriptDirectory "dbc_verifier.json"
-if (-not (Test-Path $JsonVerifier)) {
-    $JsonVerifier = Join-Path $PSScriptRoot "dbc_verifier.json"
-}
+#
+# Which of the two was picked decides how a fingerprint mismatch is treated below, and
+# "does the workspace have one?" is NOT that question: -WorkspaceRoot defaults to this
+# script's own folder, which is exactly where the shipped manifest lives. So on every
+# documented run the shipped copy was found in the workspace, classified as an override,
+# and its mismatch downgraded from an abort to a warning - the enforcing branch could only
+# be reached by pointing -WorkspaceRoot at a directory with no manifest at all. Compare the
+# resolved paths instead of guessing from existence.
+$ShippedVerifier   = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "dbc_verifier.json"))
+$WorkspaceVerifier = [System.IO.Path]::GetFullPath((Join-Path $ScriptDirectory "dbc_verifier.json"))
+
+$JsonVerifier = if (Test-Path $WorkspaceVerifier) { $WorkspaceVerifier } else { $ShippedVerifier }
+
+# -eq on strings is case-insensitive, which is what a Windows path comparison wants.
+$UsingShippedManifest = ($JsonVerifier -eq $ShippedVerifier)
 
 # 1. Verify existence of required data subdirectories
 $RequiredFolders = @("dbc", "maps", "vmaps", "mmaps")
@@ -1147,6 +1513,31 @@ if (-not (Test-Path $JsonVerifier)) {
     Stop-Pipeline -Message "Verification blueprint missing. Could not locate json manifest at: $JsonVerifier"
 }
 
+# Check the manifest itself before trusting anything it says.
+#
+# The shipped copy has to match the recorded fingerprint: it describes the last officially
+# released client and is not meant to drift. A workspace copy is a deliberate override -
+# putting one there is how a testlab pins a different client build - so that one is only
+# reported, not refused.
+$ManifestChecksum = Get-TextChecksum -Text ([System.IO.File]::ReadAllText($JsonVerifier))
+
+if ($ManifestChecksum -ne $script:ExpectedDbcManifestChecksum) {
+    if ($UsingShippedManifest) {
+        Stop-Pipeline -Message ("dbc_verifier.json does not match the fingerprint recorded in this script.`n" +
+                                "  file:     $JsonVerifier`n" +
+                                "  expected: $($script:ExpectedDbcManifestChecksum)`n" +
+                                "  actual:   $ManifestChecksum`n" +
+                                "Either the file is damaged, or the client was updated and the manifest with it - " +
+                                "in which case put the actual hash above into `$script:ExpectedDbcManifestChecksum.")
+    }
+
+    Write-Warning ("Using a workspace dbc_verifier.json that differs from the one shipped with the pipeline " +
+                   "(fingerprint $ManifestChecksum). That is what a workspace copy is for; mentioning it so a " +
+                   "stray file does not go unnoticed.")
+} else {
+    Write-Host " -> Manifest fingerprint verified."
+}
+
 Write-Host "Reading SHA256 blueprint from dbc_verifier.json..."
 
 # Using native .NET file stream engine to completely bypass any Windows PowerShell BOM/Encoding parser bugs
@@ -1165,11 +1556,22 @@ if ($null -eq $DbcManifest) {
     Stop-Pipeline -Message "DBC manifest parsing yielded an empty configuration object. Terminating pipeline execution."
 }
 
+# The null check above is not enough. ConvertFrom-Json "{}" returns a PSCustomObject with
+# no properties, not $null, so a manifest truncated or emptied to "{}" sailed through, the
+# loop below iterated zero times, $HashVerificationPassed stayed $true and the step
+# reported "All DBC file signatures successfully verified" having verified nothing.
+$DbcManifestEntries = @($DbcManifest.psobject.Properties)
+if ($DbcManifestEntries.Count -eq 0) {
+    Stop-Pipeline -Message ("dbc_verifier.json lists no files at all, so there is nothing to verify.`n" +
+                            "  file: $JsonVerifier`n" +
+                            "The shipped manifest carries 158 entries; a file this empty is damaged.")
+}
+
 $HashVerificationPassed = $true
-Write-Host "Verifying DBC file signatures integrity..."
+Write-Host "Verifying $($DbcManifestEntries.Count) DBC file signatures..."
 
 # Iterate through each defined file inside the JSON manifest properties
-foreach ($DbcFile in $DbcManifest.psobject.Properties) {
+foreach ($DbcFile in $DbcManifestEntries) {
     $FileName    = $DbcFile.Name
     $ExpectedHash = $DbcFile.Value
     $FullFilePath = Join-Path (Join-Path $DataRoot "dbc") $FileName
@@ -1196,7 +1598,7 @@ foreach ($DbcFile in $DbcManifest.psobject.Properties) {
 if (-not $HashVerificationPassed) {
     Stop-Pipeline -Message "DBC integrity verification failed. Version mismatch detected against build requirements."
 }
-Write-Host "[OK] All DBC file signatures successfully verified against SHA256 blueprint." -ForegroundColor Green
+Write-Host "[OK] All $($DbcManifestEntries.Count) DBC file signatures successfully verified against SHA256 blueprint." -ForegroundColor Green
 
 # ==============================================================================
 # PIPELINE STEP 02: VCPKG DEPENDENCY CHECK
@@ -1479,8 +1881,22 @@ Start-Sleep -Seconds 2
 # Clear previously generated server subdirectories.
 # Only these subdirectories are removed - the server root itself (and the launcher .bat
 # files and the mariadb installation sitting in it) is left untouched.
+#
+# pdump and honor are the exception under -SkipBotRegen. Everything else in this list is
+# put back by cmake --install in step 09; those two are not. They hold operator data the
+# pipeline never produced and cannot restore - character exports written by the in-game
+# ".pdump write" command, and the honor maintenance state mangosd keeps per character -
+# and step 14 only recreates them empty. Wiping them on the one run whose stated purpose
+# is preserving existing accounts, GM characters and playerbot data was silent and
+# unrecoverable data loss.
 Write-Host "Clearing previously generated server directories..."
-$GeneratedFolders = @($BinDir, $EtcDir, $LibDir, $LogsDir, $PdumpDir, $HonorDir, $ToolsDir, $LuaDir)
+$GeneratedFolders = @($BinDir, $EtcDir, $LibDir, $LogsDir, $ToolsDir, $LuaDir)
+
+if ($SkipBotRegen) {
+    Write-Host " -> Keeping pdump and honor (-SkipBotRegen preserves existing data)."
+} else {
+    $GeneratedFolders += @($PdumpDir, $HonorDir)
+}
 foreach ($Folder in $GeneratedFolders) {
     if (Test-Path $Folder) {
         # Recursively remove all contents and the folder itself
@@ -1546,13 +1962,39 @@ Write-Host "Configuring database user 'mangos'..."
 # works on MariaDB 10.1+ and MySQL 5.7+ alike. ALTER USER follows CREATE USER IF NOT
 # EXISTS so an existing account picks up the current password instead of silently keeping
 # an old one.
+# The host part used to be the literal 'localhost' while -DbHost was honoured everywhere
+# else. Against a remote server that produced an account this machine can never
+# authenticate as: the account was created as mangos@'localhost' ON THE REMOTE SERVER,
+# which then saw the connection arriving from this machine's address and answered
+# "Access denied for user 'mangos'@'<client ip>'" - with all four databases already
+# dropped and rebuilt, and a mangosd.conf that could not have connected either.
+#
+# '%' rather than a guess at this machine's address: which of its addresses the server
+# sees depends on routing, NAT and name resolution, and getting it wrong fails exactly as
+# before. -DbAccountHost narrows it down when that matters.
+$AccountHost = $DbAccountHost
+
+if ([string]::IsNullOrWhiteSpace($AccountHost)) {
+    $LocalDbHosts = @("", "localhost", "127.0.0.1", "::1", ".")
+    if ($LocalDbHosts -contains $DbHost.Trim()) {
+        $AccountHost = "localhost"
+    } else {
+        $AccountHost = "%"
+        Write-Warning ("-DbHost is '$DbHost', so the '$DbUser' account is created as " +
+                       "'$DbUser'@'%' - a local-only account could not be used from this " +
+                       "machine. Pass -DbAccountHost to narrow that down.")
+    }
+}
+
+Write-Host " -> Account host: '$DbUser'@'$AccountHost'"
+
 $UserQuery = @"
-CREATE USER IF NOT EXISTS '$DbUser'@'localhost' IDENTIFIED BY '$DbPassword';
-ALTER USER '$DbUser'@'localhost' IDENTIFIED BY '$DbPassword';
-GRANT ALL PRIVILEGES ON $WorldDatabaseName.* TO '$DbUser'@'localhost';
-GRANT ALL PRIVILEGES ON $CharacterDatabaseName.* TO '$DbUser'@'localhost';
-GRANT ALL PRIVILEGES ON $LoginDatabaseName.* TO '$DbUser'@'localhost';
-GRANT ALL PRIVILEGES ON $LogsDatabaseName.* TO '$DbUser'@'localhost';
+CREATE USER IF NOT EXISTS '$DbUser'@'$AccountHost' IDENTIFIED BY '$DbPassword';
+ALTER USER '$DbUser'@'$AccountHost' IDENTIFIED BY '$DbPassword';
+GRANT ALL PRIVILEGES ON $WorldDatabaseName.* TO '$DbUser'@'$AccountHost';
+GRANT ALL PRIVILEGES ON $CharacterDatabaseName.* TO '$DbUser'@'$AccountHost';
+GRANT ALL PRIVILEGES ON $LoginDatabaseName.* TO '$DbUser'@'$AccountHost';
+GRANT ALL PRIVILEGES ON $LogsDatabaseName.* TO '$DbUser'@'$AccountHost';
 FLUSH PRIVILEGES;
 "@
 
@@ -1593,8 +2035,28 @@ if ($SkipBotRegen) {
         }
     }
 
-    # Remove the temporary backup folder if empty
-    if (Test-Path $BackupFolder) { Remove-Item -Path $BackupFolder -Force -ErrorAction SilentlyContinue }
+    # Remove the temporary backup folder, but only when it really is empty.
+    #
+    # Remove-Item -Force without -Recurse does not quietly skip a non-empty directory: it
+    # raises a confirmation prompt, and -ErrorAction SilentlyContinue suppresses errors, not
+    # prompts. Under Run-Testlab.bat the console is attached, so the run stopped dead at its
+    # last line waiting for a keypress with no timeout. That is reachable whenever the
+    # folder holds a dump this run did not consume - an earlier run under a different
+    # -DbPrefix that aborted after taking its own backup, say.
+    #
+    # Those files are somebody's database dumps, so they are reported and kept rather than
+    # recursively deleted.
+    if (Test-Path $BackupFolder) {
+        $LeftOverBackups = @(Get-ChildItem -LiteralPath $BackupFolder -Force -ErrorAction SilentlyContinue)
+
+        if ($LeftOverBackups.Count -eq 0) {
+            Remove-Item -LiteralPath $BackupFolder -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-Warning ("$BackupFolder still holds $($LeftOverBackups.Count) file(s) from an earlier run, " +
+                           "so it is kept: " + (($LeftOverBackups | Select-Object -First 5 |
+                                                 ForEach-Object { $_.Name }) -join ", "))
+        }
+    }
 }
 
 # ==============================================================================
@@ -1706,19 +2168,44 @@ Get-ChildItem -Path $InstallDir -Filter "*.exe" | ForEach-Object {
 Get-ChildItem -Path $InstallDir -Filter "*.conf.dist" | Move-Item -Destination $EtcDir -Force
 
 # 6. Generate working configuration files from templates (.dist)
-if (Test-Path $EtcDir) {
-    Write-Host "Generating working configuration files from templates inside $MangosInstalationDir/$MangosEtcDir..."
-    Get-ChildItem -Path $EtcDir -Filter "*.conf.dist" | ForEach-Object {
-        # Determine the target filename by stripping '.dist' extension
-        $TargetConfigName = $_.Name -replace '\.dist$', ''
-        $DestinationPath  = Join-Path $EtcDir $TargetConfigName
+Write-Host "Generating working configuration files from templates inside $MangosInstalationDir/$MangosEtcDir..."
+Get-ChildItem -Path $EtcDir -Filter "*.conf.dist" | ForEach-Object {
+    # Determine the target filename by stripping '.dist' extension
+    $TargetConfigName = $_.Name -replace '\.dist$', ''
+    $DestinationPath  = Join-Path $EtcDir $TargetConfigName
 
-        # Copy template to the final configuration file
-        Copy-Item -Path $_.FullName -Destination $DestinationPath -Force
-        Write-Host " -> Generated: $TargetConfigName"
-    }
-    Write-Host "[OK] Configuration files successfully generated." -ForegroundColor Green
+    # Copy template to the final configuration file
+    Copy-Item -Path $_.FullName -Destination $DestinationPath -Force
+    Write-Host " -> Generated: $TargetConfigName"
 }
+
+# 6b. The same again for module configuration, which lands somewhere else entirely.
+#
+# On Windows, CopyModuleConfig (cmake/ConfigureModules.cmake) installs a module's
+# .conf.dist to "<install prefix>\modules" - so server\modules\mod_dungeon_clear.conf.dist.
+# The server, however, reads module configuration from "<config directory>\modules": see
+# Config.cpp, which builds that path from the directory of the file passed to -c, i.e.
+# server\etc\modules. Nothing connected the two, and step 5 above only globs the install
+# root non-recursively, so mod_dungeon_clear.conf was never generated at all and the module
+# silently ran on its built-in defaults.
+$ModuleTemplateDir = Join-Path $InstallDir "modules"
+$ModuleEtcDir      = Join-Path $EtcDir "modules"
+$ModuleTemplates   = @(Get-ChildItem -Path $ModuleTemplateDir -Filter "*.conf.dist" -File -ErrorAction SilentlyContinue)
+
+if ($ModuleTemplates.Count -gt 0) {
+    New-Item -ItemType Directory -Path $ModuleEtcDir -Force | Out-Null
+
+    foreach ($ModuleTemplate in $ModuleTemplates) {
+        $ModuleConfigName = $ModuleTemplate.Name -replace '\.dist$', ''
+
+        # The template is kept beside the generated file, matching what step 5 leaves in etc\.
+        Copy-Item -Path $ModuleTemplate.FullName -Destination (Join-Path $ModuleEtcDir $ModuleTemplate.Name) -Force
+        Copy-Item -Path $ModuleTemplate.FullName -Destination (Join-Path $ModuleEtcDir $ModuleConfigName) -Force
+        Write-Host " -> Generated module config: $MangosEtcDir\modules\$ModuleConfigName"
+    }
+}
+
+Write-Host "[OK] Configuration files successfully generated." -ForegroundColor Green
 
 # 7. Deploy every runtime DLL into $MangosLibDir.
 #
@@ -1795,18 +2282,21 @@ if (Test-Path $MangosdConf) {
     $NewCharacterInfoSetting = "CharacterDatabase.Info = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$CharacterDatabaseName`""
     $NewLogsInfoSetting      = "LogsDatabase.Info = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LogsDatabaseName`""
 
-    # 5. Read content, execute every replacement sequentially, and stream back to file
+    # 5. Read content, execute every replacement sequentially, and stream back to file.
+    #    Every replacement value is plain text, so it goes through
+    #    ConvertTo-ReplacementLiteral - without it a $ in a password, user name, host or
+    #    path is read as a regex substitution directive and silently rewritten.
     (Get-Content $MangosdConf) `
-        -replace $OldUpdatePath, $NewUpdatePath `
-        -replace $OldDataDirPattern, $NewDataDirSetting `
-        -replace $OldLogsDirPattern, $NewLogsDirSetting `
-        -replace $OldHonorDirPattern, $NewHonorDirSetting `
-        -replace $OldPDumpDirPattern, $NewPDumpDirSetting `
-		-replace $OldLuaDirPattern, $NewLuaDirSetting `
-        -replace $OldLoginInfoPattern, $NewLoginInfoSetting `
-        -replace $OldWorldInfoPattern, $NewWorldInfoSetting `
-        -replace $OldCharacterInfoPattern, $NewCharacterInfoSetting `
-        -replace $OldLogsInfoPattern, $NewLogsInfoSetting `
+        -replace $OldUpdatePath, (ConvertTo-ReplacementLiteral $NewUpdatePath) `
+        -replace $OldDataDirPattern, (ConvertTo-ReplacementLiteral $NewDataDirSetting) `
+        -replace $OldLogsDirPattern, (ConvertTo-ReplacementLiteral $NewLogsDirSetting) `
+        -replace $OldHonorDirPattern, (ConvertTo-ReplacementLiteral $NewHonorDirSetting) `
+        -replace $OldPDumpDirPattern, (ConvertTo-ReplacementLiteral $NewPDumpDirSetting) `
+        -replace $OldLuaDirPattern, (ConvertTo-ReplacementLiteral $NewLuaDirSetting) `
+        -replace $OldLoginInfoPattern, (ConvertTo-ReplacementLiteral $NewLoginInfoSetting) `
+        -replace $OldWorldInfoPattern, (ConvertTo-ReplacementLiteral $NewWorldInfoSetting) `
+        -replace $OldCharacterInfoPattern, (ConvertTo-ReplacementLiteral $NewCharacterInfoSetting) `
+        -replace $OldLogsInfoPattern, (ConvertTo-ReplacementLiteral $NewLogsInfoSetting) `
         | Set-Content $MangosdConf
 
     Write-Host "[OK] mangosd.conf updated: directories, and all four database connections." -ForegroundColor Green
@@ -1821,8 +2311,10 @@ if (Test-Path $RealmdConf) {
     $ConfHost = if ([string]::IsNullOrWhiteSpace($DbHost)) { "127.0.0.1" } else { $DbHost }
     $ConfPort = if ($DbPort -gt 0) { $DbPort } else { 3306 }
 
+    $NewRealmdLoginInfoSetting = "LoginDatabaseInfo = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LoginDatabaseName`""
+
     (Get-Content $RealmdConf) `
-        -replace '^LoginDatabaseInfo\s*=\s*".*"', "LoginDatabaseInfo = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LoginDatabaseName`"" `
+        -replace '^LoginDatabaseInfo\s*=\s*".*"', (ConvertTo-ReplacementLiteral $NewRealmdLoginInfoSetting) `
         | Set-Content $RealmdConf
 
     Write-Host "[OK] realmd.conf updated with the login database connection." -ForegroundColor Green
@@ -1961,6 +2453,11 @@ foreach ($Folder in $RequiredRuntimeFolders) {
 Write-PipelineHeader -StepName "15: SERVER LAUNCHER SCRIPTS"
 Write-Host "Verifying server launcher scripts..."
 
+# The port the generated launcher probes and starts mysqld on. -DbPort tells the pipeline
+# where the database is; a launcher that ignored it started the portable server on its
+# built-in default and then reported the wrong port to the operator.
+$LauncherDbPort = if ($DbPort -gt 0) { $DbPort } else { 3306 }
+
 $MysqlLauncherContent = @"
 @echo off
 :: mysqld resolves its datadir RELATIVE to the working directory, so it has to start from
@@ -1980,14 +2477,21 @@ if errorlevel 1 (
 
 :: A second instance cannot bind the port, and its console window closes immediately -
 :: which looks exactly like "the database will not start" when it is in fact already up.
-netstat -ano | findstr /r /c:"LISTENING" | findstr ":3306 " >nul
+::
+:: "/c:" on the second findstr is not optional. Without it the argument is split on
+:: whitespace into separate search strings, the trailing space that anchors the end of the
+:: port is discarded, and the port then matches as a bare substring: MySQL 8's X protocol
+:: on 33060, or a tunnel on 13306, was read as "already running" and mysqld was never
+:: started. With /r /c: the whole thing is one pattern, so both the colon in front and the
+:: space behind have to be there.
+netstat -ano | findstr /r /c:"LISTENING" | findstr /r /c:":$LauncherDbPort " >nul
 if not errorlevel 1 (
-    echo MariaDB is already running on port 3306 - nothing to do.
+    echo MariaDB is already running on port $LauncherDbPort - nothing to do.
     pause
     exit /b 0
 )
 
-start "mysql" mysqld.exe --console
+start "mysql" mysqld.exe --console --port=$LauncherDbPort
 "@
 
 $RealmLauncherContent = @"
