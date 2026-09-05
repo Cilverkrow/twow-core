@@ -65,6 +65,8 @@ open the file, and runs with no bots. Changing the prefix means rebuilding.
 
 ```bash
 cmake --install build
+
+Keep `LoadSpellsFromSql = 1` in `mangosd.conf` (the shipped default since 2026-09-05). Turtle WoW stores its spell changes in the `spell_template` table, not in the client's Spell.dbc; with 0 the Paladin changes and the appearance-changing items break.
 ```
 
 Binaries land in `<prefix>/bin`, configs in `<prefix>/etc`.
