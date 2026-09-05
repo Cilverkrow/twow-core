@@ -937,6 +937,27 @@ function Get-TextChecksum {
     }
 }
 
+# Escapes a string so it is safe as the REPLACEMENT operand of -replace.
+#
+# The right-hand side of -replace is not a literal. .NET reads $1, $&, $`, $' and $$ in it
+# as substitution directives, while every replacement value in step 10 is built by string
+# interpolation from paths and credentials the operator supplies. One $ in -DbPassword was
+# enough to silently rewrite the connection string handed to the server: 'pa$$w0rd'
+# reached mangosd.conf as 'pa$w0rd', and 'a$&b' pasted the entire matched config line
+# into the password field. The pipeline still printed "[OK] mangosd.conf updated" and
+# exited 0 - the only symptom was a server that could not log in to its own databases.
+# Paths are affected the same way: a workspace under C:\WOW\$lab would corrupt DataDir.
+#
+# Doubling each $ is what the .NET replacement grammar defines as one literal $. String
+# .Replace is used rather than -replace so this function is not subject to its own hazard.
+function ConvertTo-ReplacementLiteral {
+    param (
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text
+    )
+
+    return $Text.Replace('$', '$$')
+}
+
 # Writes one of the server launcher .bat files.
 #
 # "Skip if it exists" is not enough on its own: these files were written by an earlier
@@ -1943,18 +1964,21 @@ if (Test-Path $MangosdConf) {
     $NewCharacterInfoSetting = "CharacterDatabase.Info = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$CharacterDatabaseName`""
     $NewLogsInfoSetting      = "LogsDatabase.Info = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LogsDatabaseName`""
 
-    # 5. Read content, execute every replacement sequentially, and stream back to file
+    # 5. Read content, execute every replacement sequentially, and stream back to file.
+    #    Every replacement value is plain text, so it goes through
+    #    ConvertTo-ReplacementLiteral - without it a $ in a password, user name, host or
+    #    path is read as a regex substitution directive and silently rewritten.
     (Get-Content $MangosdConf) `
-        -replace $OldUpdatePath, $NewUpdatePath `
-        -replace $OldDataDirPattern, $NewDataDirSetting `
-        -replace $OldLogsDirPattern, $NewLogsDirSetting `
-        -replace $OldHonorDirPattern, $NewHonorDirSetting `
-        -replace $OldPDumpDirPattern, $NewPDumpDirSetting `
-		-replace $OldLuaDirPattern, $NewLuaDirSetting `
-        -replace $OldLoginInfoPattern, $NewLoginInfoSetting `
-        -replace $OldWorldInfoPattern, $NewWorldInfoSetting `
-        -replace $OldCharacterInfoPattern, $NewCharacterInfoSetting `
-        -replace $OldLogsInfoPattern, $NewLogsInfoSetting `
+        -replace $OldUpdatePath, (ConvertTo-ReplacementLiteral $NewUpdatePath) `
+        -replace $OldDataDirPattern, (ConvertTo-ReplacementLiteral $NewDataDirSetting) `
+        -replace $OldLogsDirPattern, (ConvertTo-ReplacementLiteral $NewLogsDirSetting) `
+        -replace $OldHonorDirPattern, (ConvertTo-ReplacementLiteral $NewHonorDirSetting) `
+        -replace $OldPDumpDirPattern, (ConvertTo-ReplacementLiteral $NewPDumpDirSetting) `
+        -replace $OldLuaDirPattern, (ConvertTo-ReplacementLiteral $NewLuaDirSetting) `
+        -replace $OldLoginInfoPattern, (ConvertTo-ReplacementLiteral $NewLoginInfoSetting) `
+        -replace $OldWorldInfoPattern, (ConvertTo-ReplacementLiteral $NewWorldInfoSetting) `
+        -replace $OldCharacterInfoPattern, (ConvertTo-ReplacementLiteral $NewCharacterInfoSetting) `
+        -replace $OldLogsInfoPattern, (ConvertTo-ReplacementLiteral $NewLogsInfoSetting) `
         | Set-Content $MangosdConf
 
     Write-Host "[OK] mangosd.conf updated: directories, and all four database connections." -ForegroundColor Green
@@ -1969,8 +1993,10 @@ if (Test-Path $RealmdConf) {
     $ConfHost = if ([string]::IsNullOrWhiteSpace($DbHost)) { "127.0.0.1" } else { $DbHost }
     $ConfPort = if ($DbPort -gt 0) { $DbPort } else { 3306 }
 
+    $NewRealmdLoginInfoSetting = "LoginDatabaseInfo = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LoginDatabaseName`""
+
     (Get-Content $RealmdConf) `
-        -replace '^LoginDatabaseInfo\s*=\s*".*"', "LoginDatabaseInfo = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LoginDatabaseName`"" `
+        -replace '^LoginDatabaseInfo\s*=\s*".*"', (ConvertTo-ReplacementLiteral $NewRealmdLoginInfoSetting) `
         | Set-Content $RealmdConf
 
     Write-Host "[OK] realmd.conf updated with the login database connection." -ForegroundColor Green
