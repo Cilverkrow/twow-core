@@ -193,6 +193,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
+    env:
+      # A throwaway credential for the per-run disposable database container
+      # below. It never leaves this job and is never echoed.
+      MARIADB_ROOT_PASSWORD: ci-root
+      CI_DB_CONTAINER: twow-core-ci-mariadb-${{ github.run_id }}-${{ github.run_attempt }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -281,6 +287,59 @@ jobs:
             ccache-trixie-${{ github.ref_name }}-
             ccache-trixie-
 
+      # A run-unique disposable MariaDB, the same way twow-repo's ci.yml runs
+      # persistent_active_roster_database_tests: a plain `docker run -d`
+      # rather than a GitHub Actions `services:` container, because the build
+      # itself also runs inside a nested `docker run` below and a services
+      # container is only reachable from that nested container once both share
+      # the runner's network namespace (see --network host on the build run).
+      # Published on an EPHEMERAL host port -- not the well-known 3306 -- so a
+      # second run queued on the same self-hosted runner cannot collide with
+      # this one.
+      - name: Start the disposable roster database
+        id: rosterdb
+        run: |
+          set -eu
+          docker rm -f "$CI_DB_CONTAINER" 2>/dev/null || true
+          docker run -d --name "$CI_DB_CONTAINER" \
+            --env MARIADB_ROOT_PASSWORD \
+            --publish 127.0.0.1::3306 \
+            --health-cmd='healthcheck.sh --connect --innodb_initialized' \
+            --health-interval=5s --health-timeout=5s --health-retries=20 \
+            mariadb:11.8 >/dev/null
+          health=starting
+          for _ in $(seq 1 60); do
+            health=$(docker inspect -f '{{.State.Health.Status}}' "$CI_DB_CONTAINER")
+            [ "$health" = healthy ] && break
+            [ "$health" = unhealthy ] && break
+            sleep 2
+          done
+          [ "$health" = healthy ] || {
+            echo "::error::disposable roster database did not become healthy: $health"
+            exit 1
+          }
+          endpoint=$(docker port "$CI_DB_CONTAINER" 3306/tcp | head -1)
+          db_port=${endpoint##*:}
+          docker exec --env MYSQL_PWD="$MARIADB_ROOT_PASSWORD" \
+            "$CI_DB_CONTAINER" mariadb -u root \
+            -e 'CREATE DATABASE roster_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;'
+          echo "CI_DB_PORT=$db_port" >> "$GITHUB_ENV"
+          echo "disposable roster database ready on published port $db_port"
+
+      # The adapter suite does not create its own schema; the roster migration
+      # IS the schema. Applied twice on purpose -- forward-only migrations must
+      # be replay-safe, and this is the cheapest place that gets checked at
+      # all. utf8mb4_bin, matching what the roster tables declare.
+      - name: Apply the roster schema (twice, to prove replay safety)
+        run: |
+          set -eu
+          mig=sql/character_updates/20260830230336_ai_playerbot_persistent_active_roster.sql
+          for pass in 1 2; do
+            echo "apply pass $pass"
+            docker exec --env MYSQL_PWD="$MARIADB_ROOT_PASSWORD" -i \
+              "$CI_DB_CONTAINER" mariadb -u root roster_ci < "$mig"
+          done
+
       # The compiler is Debian trixie's, not the runner's.
       #
       # This is the toolchain the project actually builds with, so pinning it
@@ -305,12 +364,15 @@ jobs:
         run: |
           mkdir -p "${{ github.workspace }}/.ccache"
           docker run --rm \
+            --network host \
             -v "${{ github.workspace }}:/src" \
             -v "${{ github.workspace }}/.ccache:/ccache" \
             -e CCACHE_DIR=/ccache \
             -e CCACHE_MAXSIZE=2G \
             -e CCACHE_SLOPPINESS=pch_defines,time_macros \
             -e DEBIAN_FRONTEND=noninteractive \
+            -e CI_DB_PORT \
+            -e MARIADB_ROOT_PASSWORD \
             -w /src \
             debian:trixie \
             bash -eo pipefail -c '
@@ -340,9 +402,16 @@ jobs:
               # it, so with the default OFF the ctest count guard below would find only
               # eluna.lua-runtime, pass its >= 1 check, and report green having
               # silently skipped 615 lines of tests.
+              #
+              # BUILD_PERSISTENT_ROSTER_ADAPTER_TESTS=ON additionally compiles
+              # persistent_active_roster_database_tests against the disposable
+              # database started two steps ago. It is opt-in (see
+              # modules/mod-playerbots/tests.cmake) precisely so a plain
+              # BUILD_TESTING build never requires a live MariaDB.
               cmake -S /src -B /build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DBUILD_TESTING=ON \
+                -DBUILD_PERSISTENT_ROSTER_ADAPTER_TESTS=ON \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 2>&1 | tee /src/configure.log
@@ -385,6 +454,32 @@ jobs:
               cmake --build /build -j "$(nproc)"
 
               ccache --show-stats
+
+              # Run the disposable-database adapter suite directly, rather than
+              # through ctest: it needs the connection string on its own
+              # argv, which ctest has no way to pass to an add_test() command
+              # without baking the disposable port into the CMake cache.
+              # --network host on this container puts it on the same network
+              # namespace as the runner, so 127.0.0.1 here reaches the
+              # roster database container started two steps ago.
+              adapter_bin=/build/adapter-bin/persistent_active_roster_database_tests
+              adapter_log=/src/roster-adapter-tests.log
+              set +e
+              "$adapter_bin" "127.0.0.1;${CI_DB_PORT};root;${MARIADB_ROOT_PASSWORD};roster_ci" \
+                2>&1 | tee "$adapter_log"
+              adapter_rc=${PIPESTATUS[0]}
+              set -e
+              # STAGE=COMPLETE is printed only after the last scenario. Without
+              # this check a crash halfway through could report success with
+              # most of the assertions never reached -- the whole reason this
+              # suite can be trusted at all.
+              if ! grep -q "STAGE=COMPLETE" "$adapter_log"; then
+                echo "::error::the roster adapter suite did not reach STAGE=COMPLETE - it stopped early"
+                adapter_rc=1
+              fi
+              if [ "$adapter_rc" -ne 0 ]; then
+                exit "$adapter_rc"
+              fi
 
               # Run the registered tests, and refuse to pass when there are none.
               #
@@ -483,6 +578,10 @@ jobs:
       #
       # 385 commits behind is not the position from which to insist on a
       # structural preference. Upstream's arrangement is the reference now.
+
+      - name: Remove the disposable roster database
+        if: always()
+        run: docker rm -f "$CI_DB_CONTAINER" 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         with:
