@@ -1829,19 +1829,44 @@ Get-ChildItem -Path $InstallDir -Filter "*.exe" | ForEach-Object {
 Get-ChildItem -Path $InstallDir -Filter "*.conf.dist" | Move-Item -Destination $EtcDir -Force
 
 # 6. Generate working configuration files from templates (.dist)
-if (Test-Path $EtcDir) {
-    Write-Host "Generating working configuration files from templates inside $MangosInstalationDir/$MangosEtcDir..."
-    Get-ChildItem -Path $EtcDir -Filter "*.conf.dist" | ForEach-Object {
-        # Determine the target filename by stripping '.dist' extension
-        $TargetConfigName = $_.Name -replace '\.dist$', ''
-        $DestinationPath  = Join-Path $EtcDir $TargetConfigName
+Write-Host "Generating working configuration files from templates inside $MangosInstalationDir/$MangosEtcDir..."
+Get-ChildItem -Path $EtcDir -Filter "*.conf.dist" | ForEach-Object {
+    # Determine the target filename by stripping '.dist' extension
+    $TargetConfigName = $_.Name -replace '\.dist$', ''
+    $DestinationPath  = Join-Path $EtcDir $TargetConfigName
 
-        # Copy template to the final configuration file
-        Copy-Item -Path $_.FullName -Destination $DestinationPath -Force
-        Write-Host " -> Generated: $TargetConfigName"
-    }
-    Write-Host "[OK] Configuration files successfully generated." -ForegroundColor Green
+    # Copy template to the final configuration file
+    Copy-Item -Path $_.FullName -Destination $DestinationPath -Force
+    Write-Host " -> Generated: $TargetConfigName"
 }
+
+# 6b. The same again for module configuration, which lands somewhere else entirely.
+#
+# On Windows, CopyModuleConfig (cmake/ConfigureModules.cmake) installs a module's
+# .conf.dist to "<install prefix>\modules" - so server\modules\mod_dungeon_clear.conf.dist.
+# The server, however, reads module configuration from "<config directory>\modules": see
+# Config.cpp, which builds that path from the directory of the file passed to -c, i.e.
+# server\etc\modules. Nothing connected the two, and step 5 above only globs the install
+# root non-recursively, so mod_dungeon_clear.conf was never generated at all and the module
+# silently ran on its built-in defaults.
+$ModuleTemplateDir = Join-Path $InstallDir "modules"
+$ModuleEtcDir      = Join-Path $EtcDir "modules"
+$ModuleTemplates   = @(Get-ChildItem -Path $ModuleTemplateDir -Filter "*.conf.dist" -File -ErrorAction SilentlyContinue)
+
+if ($ModuleTemplates.Count -gt 0) {
+    New-Item -ItemType Directory -Path $ModuleEtcDir -Force | Out-Null
+
+    foreach ($ModuleTemplate in $ModuleTemplates) {
+        $ModuleConfigName = $ModuleTemplate.Name -replace '\.dist$', ''
+
+        # The template is kept beside the generated file, matching what step 5 leaves in etc\.
+        Copy-Item -Path $ModuleTemplate.FullName -Destination (Join-Path $ModuleEtcDir $ModuleTemplate.Name) -Force
+        Copy-Item -Path $ModuleTemplate.FullName -Destination (Join-Path $ModuleEtcDir $ModuleConfigName) -Force
+        Write-Host " -> Generated module config: $MangosEtcDir\modules\$ModuleConfigName"
+    }
+}
+
+Write-Host "[OK] Configuration files successfully generated." -ForegroundColor Green
 
 # 7. Deploy every runtime DLL into $MangosLibDir.
 #
