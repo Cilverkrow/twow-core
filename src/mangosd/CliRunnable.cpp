@@ -37,6 +37,7 @@
 #include "Player.h"
 #include "Chat.h"
 #include "Chat/AsyncCommandHandlers.h"
+#include "CliInput.h"
 
 #include <iterator>
 
@@ -493,21 +494,6 @@ bool ChatHandler::HandleAccountCreateCommand(char* args)
 
 
 
-#ifdef linux
-// Non-blocking keypress detector, when return pressed, return 1, else always return 0
-int kb_hit_return()
-{
-    struct timeval tv;
-    fd_set fds;
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-    select(STDIN_FILENO+1, &fds, nullptr, nullptr, &tv);
-    return FD_ISSET(STDIN_FILENO, &fds);
-}
-#endif
-
 /// %Thread start
 void CliRunnable::operator()()
 {
@@ -516,6 +502,10 @@ void CliRunnable::operator()()
     WorldDatabase.ThreadStart();                                // let thread do safe mySQL requests
 
     char commandbuf[256];
+
+#ifndef WIN32
+    CliInput input(stdin);
+#endif
 
     ///- Display the list of available CLI functions then beep
     
@@ -531,36 +521,24 @@ void CliRunnable::operator()()
     while (!World::IsStopped())
     {
         fflush(stdout);
-#ifdef linux
-        while (!kb_hit_return() && !World::IsStopped())
-            // With this, we limit CLI to 10commands/second
-            usleep(100);
-        if (World::IsStopped())
-            break;
-#endif
 #ifndef WIN32
-
-        int retval;
-        do
+        char* command_str = nullptr;
+        switch (input.ReadLine(commandbuf, sizeof(commandbuf), 1000))
         {
-            fd_set rfds;
-            struct timeval tv;
-            tv.tv_sec = 1;
-            tv.tv_usec = 0;
-
-            FD_ZERO(&rfds);
-            FD_SET(0, &rfds);
-
-            retval = select(1, &rfds, nullptr, nullptr, &tv);
-        } while (!retval);
-
-        if (retval == -1)
-        {
-            World::StopNow(SHUTDOWN_EXIT_CODE);
-            break;
+            case CliInputResult::Line:
+                command_str = commandbuf;
+                break;
+            case CliInputResult::Timeout:
+            case CliInputResult::Interrupted:
+                continue;
+            case CliInputResult::EndOfFile:
+            case CliInputResult::Error:
+                World::StopNow(SHUTDOWN_EXIT_CODE);
+                continue;
         }
+#else
+        char* command_str = fgets(commandbuf, sizeof(commandbuf), stdin);
 #endif
-        char *command_str = fgets(commandbuf,sizeof(commandbuf),stdin);
         if (command_str != nullptr)
         {
             for(int x=0;command_str[x];x++)

@@ -335,8 +335,14 @@ jobs:
               # to configure knowing nothing about the platform that will later
               # attach to it, and the "Host extensions: none (standalone core)"
               # line asserted in the next step is the core saying so itself.
+              # BUILD_TESTING=ON, or the test targets this job exists to run are never
+              # compiled. src/mangosd/CMakeLists.txt gates mangosd_cli_input_tests on
+              # it, so with the default OFF the ctest count guard below would find only
+              # eluna.lua-runtime, pass its >= 1 check, and report green having
+              # silently skipped 615 lines of tests.
               cmake -S /src -B /build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_TESTING=ON \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 2>&1 | tee /src/configure.log
