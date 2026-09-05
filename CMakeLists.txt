@@ -695,13 +695,19 @@ set_property(DIRECTORY APPEND PROPERTY
 message(STATUS "Build flags (RELEASE) : ${CMAKE_CXX_FLAGS_RELEASE}")
 message(STATUS "Build flags (DEBUG)   : ${CMAKE_CXX_FLAGS_DEBUG}")
 
-
+if(MSVC)
+    add_compile_definitions(_USE_MATH_DEFINES)
+endif()
 add_subdirectory(src)
 add_subdirectory(dep)
 add_subdirectory(modules)
 
 if(TARGET mangosd AND TARGET modules)
   target_link_libraries(mangosd modules)
+endif()
+
+if(TARGET mangosd AND TARGET modules_playerbots)
+  target_link_libraries(mangosd modules_playerbots)
 endif()
 
 if(TARGET mangosd AND WORLDSERVER_DYNAMIC_MODULES_DEPENDENCIES)
