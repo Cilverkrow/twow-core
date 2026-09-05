@@ -159,13 +159,25 @@
 
     Everything printed is also written to 'pipeline_console.log' in the workspace root, and
     the compiler output additionally to 'server_build.log'. No shell redirection needed.
+.LINK
+    https://github.com/Shyalya/tortoise-wow
+.LINK
+    https://github.com/Shyalya/tortoise-wow/blob/playerbots-integration-gh/INSTALL-WINDOWS.md
+.LINK
+    https://github.com/Shyalya/tortoise-wow/blob/playerbots-integration-gh/INSTALL-LINUX.md
 #>
-# PositionalBinding=$false: with this many parameters, positional binding is a liability
-# rather than a convenience. It also shortens every entry in the generated SYNTAX block
-# from "[[-Name] <String>]" to "[-Name <String>]" - and without it a stray unnamed argument
-# would silently bind to whichever parameter happens to sit in that position.
 [CmdletBinding(PositionalBinding = $false)]
 param (
+    # PositionalBinding=$false above: with this many parameters, positional binding is a
+    # liability rather than a convenience. It also shortens every entry in the generated
+    # SYNTAX block from "[[-Name] <String>]" to "[-Name <String>]" - and without it a stray
+    # unnamed argument would silently bind to whichever parameter sits in that position,
+    # which here is -applyPatches, the one that triggers a cherry-pick.
+    #
+    # (This comment lives inside param() deliberately: line comments left between the help
+    # block and the parameters are absorbed into the last help section - they surfaced
+    # under RELATED LINKS.)
+
     # ---- run mode ----------------------------------------------------------------------
 
     # Switch to bypass character database drop, playerbot data import, and configuration wipe
