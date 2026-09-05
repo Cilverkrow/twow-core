@@ -356,7 +356,7 @@ jobs:
               #
               # "all" was chosen over naming eluna_lua_smoke alongside the two
               # binaries because the naming is what failed, and the cost of not
-              # naming things was measured rather than assumed. Under this job's
+              # naming things was measured rather than assumed. Under the settings this job
               # configuration -- no -D beyond build type and ccache, so
               # USE_EXTRACTORS and USE_REALMMERGE are OFF and MODULES is
               # "disabled" -- the default target links exactly the libraries
@@ -392,7 +392,7 @@ jobs:
               # testing zero things. A green run that tested nothing is worse
               # than a red one, because it gets believed.
               #
-              # The number is deliberately not pinned to today's 1. Pinning it
+              # The number is deliberately not pinned to the 1 test of today. Pinning it
               # turns every new test into a CI failure, which is how a repository
               # teaches people not to add tests. "At least one" is the floor that
               # only catches the regression it is aimed at.
@@ -435,7 +435,7 @@ jobs:
               # and no other step in this job can tell the two apart.
               #
               # --version is the cheapest invocation that proves it, because it
-              # needs no fixtures: ACE_Get_Opt maps the long option to case 'v',
+              # needs no fixtures: ACE_Get_Opt maps the long option to case v,
               # which printfs _FULLVERSION and returns 0 before any config file
               # is read or any database is touched (src/mangosd/Main.cpp and
               # src/realmd/Main.cpp). It must be spelled --version and not -v:
