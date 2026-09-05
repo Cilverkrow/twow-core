@@ -1325,17 +1325,36 @@ Assert-NoConcurrentRun
 New-PipelineLock
 Write-Host "Single-instance lock acquired: $($script:LockFile) (PID $PID)"
 
-# Sweep credential files left by an earlier run before writing new ones.
+# Sweep the temporary files left by an earlier run before writing new ones.
 #
 # Stop-Pipeline removes them on every exit the script controls, but Ctrl+C or Task Manager
 # kills the process outright and nothing gets the chance - leaving a plaintext password in
 # TEMP until something else cleans it up. Observed after an interrupted run on 2026-09-05.
 # Safe to sweep unconditionally: TEMP is per-user, and the singleton acquired above means
 # no other run of this script is alive to own them.
-$StaleCredentials = @(Get-ChildItem -Path $env:TEMP -Filter "tw_pipeline_*.cnf" -File -ErrorAction SilentlyContinue)
-if ($StaleCredentials.Count -gt 0) {
-    Write-Host "Removing $($StaleCredentials.Count) credential file(s) left by an interrupted run."
-    $StaleCredentials | Remove-Item -Force -ErrorAction SilentlyContinue
+#
+# Every pattern this script writes into TEMP is listed, not just the credential files. The
+# filtered SQL copy in particular is a full rewrite of whatever is being imported, so an
+# interrupted world import left several megabytes behind each time, and repeated
+# interruptions during a build session simply accumulated.
+$StaleTempPatterns = @(
+    "tw_pipeline_*.cnf"    # credential option files  (New-MySqlDefaultsFile)
+    "tw_import_*.sql"      # filtered import copies   (Invoke-MySqlFile)
+    "tw_import_out_*.txt"  # captured client output   (Invoke-MySqlFile)
+    "tw_import_err_*.txt"
+    "tw_dbprobe_out_*.txt" # captured probe output    (Test-MariaDbConnection)
+    "tw_dbprobe_err_*.txt"
+)
+
+$StaleTempFiles = @(
+    foreach ($Pattern in $StaleTempPatterns) {
+        Get-ChildItem -Path $env:TEMP -Filter $Pattern -File -ErrorAction SilentlyContinue
+    }
+)
+
+if ($StaleTempFiles.Count -gt 0) {
+    Write-Host "Removing $($StaleTempFiles.Count) temporary file(s) left by an interrupted run."
+    $StaleTempFiles | Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
 
