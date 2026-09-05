@@ -126,6 +126,9 @@ public:
     uint32 autoGearQualityLimit = 0;  // like autoGearScoreLimit: 0 = no cap (mod-dungeon-clear reads it for its test sidecar)
     bool allowGuildBots;
     bool allowMultiAccountAltBots;
+    uint32 pathFailureRetryMs = 3000;
+    uint32 failedActionRetryBase = 250, failedActionRetryMax = 2000;
+    uint32 failedActionCacheTtl = 30000, failedActionCacheMaxEntries = 64;
     uint32 globalCoolDown, reactDelay, maxWaitForMove, expireActionTime, dispelAuraDuration, passiveDelay, repeatDelay,
         errorDelay, rpgDelay, sitDelay, returnDelay, lootDelay, valueCacheCleanupInterval, memoryTelemetryInterval;
     float sightDistance, spellDistance, reactDistance, grindDistance, lootDistance, groupMemberLootDistance, groupMemberLootDistanceWithActiveMaster,

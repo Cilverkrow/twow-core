@@ -340,8 +340,8 @@ class WorldSession
             WORLD_SESSION_STATE_REMOVING = 3,
         };
         WorldSessionState GetState() const { return WORLD_SESSION_STATE_READY; }
-        // HandleBotPackets: cmangos drains the bot's packet queue. Stub no-op.
-        void HandleBotPackets() {}
+        // World-owner only: synthetic sessions have queued actions but no socket.
+        void HandleBotPackets();
         void SendNotification(const char *format,...) ATTR_PRINTF(2,3);
         void SendNotification(int32 string_id,...);
         void SendPetNameInvalid(uint32 error, std::string const& name);
@@ -434,7 +434,7 @@ class WorldSession
          * @brief Returns true iif we can process packets (ie logged in Player, not a bot, etc ...)
          */
         bool CanProcessPackets() const;
-        void ProcessPackets(PacketFilter& updater);
+        void ProcessPackets(PacketFilter& updater, bool botPackets = false, uint32 budgetMs = 0);
 
         /// Handle the authentication waiting queue (to be completed)
         void SendAuthWaitQue(uint32 position);

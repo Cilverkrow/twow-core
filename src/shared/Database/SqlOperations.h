@@ -46,6 +46,7 @@ class SqlOperation
         uint32 GetSerialId() const { return serialId; }
         virtual void OnRemove() { delete this; }
         virtual bool Execute(SqlConnection *conn) = 0;
+        virtual bool IsReadOnly() const { return false; }
         virtual ~SqlOperation() {}
 
         const auto& GetCallback() const { return callback; }
@@ -153,6 +154,7 @@ class SqlQuery : public SqlOperation
             : m_sql(mangos_strdup(sql)), m_callback(callback), m_queue(queue), m_highPriority(highPriority) {}
         ~SqlQuery() { char* tofree = const_cast<char*>(m_sql); delete [] tofree; }
         bool Execute(SqlConnection *conn);
+        bool IsReadOnly() const override { return true; }
         bool m_highPriority;
 };
 
@@ -190,5 +192,6 @@ class SqlQueryHolderEx : public SqlOperation
         SqlQueryHolderEx(SqlQueryHolder *holder, MaNGOS::IQueryCallback * callback, SqlResultQueue * queue, uint32 id, bool highPriority = false)
             : SqlOperation(id), m_holder(holder), m_callback(callback), m_queue(queue), m_highPriority(highPriority) {}
         bool Execute(SqlConnection *conn);
+        bool IsReadOnly() const override { return true; }
 };
 #endif                                                      //__SQLOPERATIONS_H

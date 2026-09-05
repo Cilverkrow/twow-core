@@ -433,7 +433,7 @@ bool AutoLearnSpellAction::IsValidSpell(uint32 spellId)
         spellId != 51505 && // Prevents mage from learning shaman Lave Burst Rank 1
         spellId != 51514;   // Prevents mage from learning shaman Hex
 #endif
-    return isSpellValid;
+    return spellId && sServerFacade.LookupSpellInfo(spellId) && isSpellValid;
 }
 
 bool AutoLearnSpellAction::IsTeachingSpellListedAsSpell(uint32 spellId)

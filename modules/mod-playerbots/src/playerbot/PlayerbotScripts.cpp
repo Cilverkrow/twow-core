@@ -28,6 +28,8 @@
 #include "ahbot/AhBot.h"
 #include "BotDiagnostics.h"
 #include "playerbot/BotSlots.h"
+#include "DetailedWorkDiagnostics.h"
+#include "ExecutionWatch.h"
 
 class PlayerbotWorldScript : public WorldScript
 {
@@ -51,6 +53,16 @@ class PlayerbotWorldScript : public WorldScript
             if (!sPlayerbotAIConfig.enabled)
                 return;
             sRandomPlayerbotMgr.UpdateAI(diff);
+            // ManTech session progression is independent of maintenance's
+            // timer. All packet handlers run here after map owners have joined.
+            sRandomPlayerbotMgr.UpdateSessions(diff);
+            sRandomPlayerbotMgr.UpdateTeleportPlans();
+            for (auto const& entry : sWorld.GetAllSessions())
+                if (Player* player = entry.second->GetPlayer())
+                    if (PlayerbotMgr* mgr = GetBotMgr(player))
+                        mgr->UpdateSessions(diff);
+            DetailedWork::Scope auctionWork(DetailedWork::Auctions);
+            ExecutionWatch::Scope auctionWatch(ExecutionWatch::BotAuctions);
             auctionbot.Update();
         }
 };
@@ -249,7 +261,7 @@ class PlayerbotPlayerScript : public PlayerScript
 
             float const playerInterestRange = WorldPosition(const_cast<Player*>(player)).getVisibilityDistance() +
                 sPlayerbotAIConfig.reactDistance;
-            if (ai->HasRealPlayerMaster() || ai->HasPlayerNearby(playerInterestRange))
+            if (ai->HasPendingTransition() || ai->HasRealPlayerMaster() || ai->HasPlayerNearby(playerInterestRange))
                 return true;
 
             if (Group* group = const_cast<Player*>(player)->GetGroup())
@@ -290,7 +302,7 @@ class PlayerbotPlayerScript : public PlayerScript
             {
                 // Consume elapsed time here only when no AI call will run.
                 // Due work leaves the remaining delay for UpdateAI to consume.
-                if (ai->GetAIInternalUpdateDelay() <= diff)
+                if (ai->HasPendingTransition() || ai->GetAIInternalUpdateDelay() <= diff)
                     return true;
                 ai->AdvanceMinimalUpdateDelay(diff);
                 return false;

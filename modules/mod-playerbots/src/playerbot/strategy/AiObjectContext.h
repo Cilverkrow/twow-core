@@ -75,6 +75,11 @@ namespace ai
         size_t GetCreatedActionCount() const { return actionContexts.GetCreatedCount(); }
         size_t GetCreatedTriggerCount() const { return triggerContexts.GetCreatedCount(); }
         size_t GetCreatedValueCount() const { return valueContexts.GetCreatedCount(); }
+        size_t GetEstimatedCacheBytes() const
+        {
+            return strategyContexts.GetEstimatedCreatedBytes() + actionContexts.GetEstimatedCreatedBytes() +
+                triggerContexts.GetEstimatedCreatedBytes() + valueContexts.GetEstimatedCreatedBytes();
+        }
 
         void GetSupportedStrategies(std::set<std::string>& strategies)
         {

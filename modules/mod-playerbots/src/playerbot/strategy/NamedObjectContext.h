@@ -209,7 +209,11 @@ namespace ai
                 // memory and can grow for the lifetime of the process.
                 T* object = NamedObjectFactory<T>::Create(name, ai);
                 if (object)
+                {
+                    estimatedCreatedBytes += sizeof(typename decltype(created)::value_type) +
+                        3 * sizeof(void*) + name.capacity() + 1 + sizeof(T);
                     created.emplace(std::move(name), object);
+                }
                 return object;
             }
 
@@ -230,12 +234,16 @@ namespace ai
             }
 
             created.clear();
+            estimatedCreatedBytes = 0;
         }
 
         void Erase(const std::string& name)
         {
             if (created.find(name) != created.end())
             {
+                auto const& entry = *created.find(name);
+                estimatedCreatedBytes -= sizeof(typename decltype(created)::value_type) +
+                    3 * sizeof(void*) + entry.first.capacity() + 1 + (entry.second ? sizeof(T) : 0);
                 delete created[name];
                 created.erase(name);
             }
@@ -273,9 +281,11 @@ namespace ai
         }
 
         size_t GetCreatedCount() const { return created.size(); }
+        size_t GetEstimatedCreatedBytes() const { return estimatedCreatedBytes; }
 
     protected:
         std::map<std::string, T*> created;
+        size_t estimatedCreatedBytes = 0;
         bool shared;
         bool supportsSiblings;
     };
@@ -394,6 +404,13 @@ namespace ai
             for (typename std::list<NamedObjectContext<T>*>::const_iterator i = contexts.begin(); i != contexts.end(); ++i)
                 count += (*i)->GetCreatedCount();
             return count;
+        }
+
+        size_t GetEstimatedCreatedBytes() const
+        {
+            size_t bytes = 0;
+            for (auto const* context : contexts) bytes += context->GetEstimatedCreatedBytes();
+            return bytes;
         }
 
         void Erase(const std::string& name)

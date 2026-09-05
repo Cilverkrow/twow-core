@@ -32,6 +32,7 @@ class PlayerBroadcaster final
     const std::size_t MAX_QUEUE_SIZE;
 
     WorldSocket* m_socket;
+    std::mutex m_socket_lock;
     ObjectGuid m_self;
 
     std::map<ObjectGuid, ListenerData> m_listeners;
@@ -45,12 +46,12 @@ class PlayerBroadcaster final
 
     static inline bool CanSkipPacket(uint32 opcode)
     {
-        return (opcode < MSG_MOVE_SET_RUN_SPEED_CHEAT ||
-                (opcode > MSG_MOVE_SET_TURN_RATE &&
-                 opcode != MSG_MOVE_HEARTBEAT));
+        // Only consecutive full movement-state snapshots are replaceable.
+        // Keep starts/stops, spline/transport transitions, speed and ACK packets.
+        return opcode == MSG_MOVE_HEARTBEAT;
     }
 
-    uint32 instanceId;
+    std::atomic<uint32> instanceId;
     uint32 lastUpdatePackets;
 
 public:

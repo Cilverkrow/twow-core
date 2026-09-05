@@ -299,6 +299,9 @@ bool PlayerLoginInfo::LoginBot()
     if (holderState != HolderState::HOLDER_RECEIVED)
         return false;
 
+    if (!sRandomPlayerbotMgr.BackgroundLoginBudget(1))
+        return false; // retain holder and queue state; retry after recovery
+
     if (sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, guid), false))
     {
         loginState = LoginState::BOT_ONLINE;
@@ -483,6 +486,7 @@ void PlayerBotLoginMgr::SendHolders(const BotInfos& queue)
         CharacterDatabase.GetPendingResultCount();
     size_t available = pending < sPlayerbotAIConfig.randomBotLoginDbQueueLimit ?
         sPlayerbotAIConfig.randomBotLoginDbQueueLimit - pending : 0;
+    available = sRandomPlayerbotMgr.BackgroundLoginBudget(uint32(available));
 
     for (auto& info : queue)
     {
@@ -501,6 +505,7 @@ void PlayerBotLoginMgr::SendHolders(BotPool* pool)
         CharacterDatabase.GetPendingResultCount();
     size_t available = pending < sPlayerbotAIConfig.randomBotLoginDbQueueLimit ?
         sPlayerbotAIConfig.randomBotLoginDbQueueLimit - pending : 0;
+    available = sRandomPlayerbotMgr.BackgroundLoginBudget(uint32(available));
 
     for (auto& [guid, info] : *pool)
     {
@@ -736,10 +741,20 @@ BotInfos PlayerBotLoginMgr::FillLoginLogoutQueue(BotPool* pool, const RealPlayer
 
 void PlayerBotLoginMgr::LoginLogoutBots(const BotInfos& queue)
 {
+    uint32 remaining = sRandomPlayerbotMgr.BackgroundLoginBudget(sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval);
     for (auto& info : queue)
     {        
-        if (info->LoginBot())
+        // ManTech 407f4cd5: an async queue is a proposal, not an admission.
+        // Recheck the live target for each completion, including target decreases.
+        if (info->GetLoginState() == LoginState::BOT_ON_LOGINQUEUE &&
+            sRandomPlayerbotMgr.GetPlayerbotsAmount() >= GetMaxOnlineBotCount())
         {
+            info->ResetLoginState();
+            continue;
+        }
+        if (remaining && info->LoginBot())
+        {
+            --remaining;
             onlineBots.push_back(info);
         }
         if (info->LogoutBot())

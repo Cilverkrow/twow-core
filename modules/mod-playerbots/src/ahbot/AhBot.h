@@ -3,6 +3,7 @@
 #include <atomic>
 #include <mutex>
 #include <vector>
+#include <deque>
 #include "Category.h"
 #include "ItemBag.h"
 #include "playerbot/PlayerbotAIBase.h"
@@ -134,8 +135,9 @@ namespace ahbot
         std::set<uint32> allBidders;
         std::atomic<bool> updating;
         std::mutex queuedWorkMutex;
-        std::vector<PendingPurchase> queuedPurchases;
-        std::vector<PendingProposition> queuedPropositions;
+        std::deque<PendingPurchase> queuedPurchases;
+        std::deque<PendingProposition> queuedPropositions;
+        bool preferProposition = false; // world-thread owned; fair between queues
     };
 };
 

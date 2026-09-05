@@ -179,6 +179,11 @@ bool PlayerbotAIConfig::Initialize()
     expireActionTime = config.GetIntDefault("AiPlayerbot.ExpireActionTime", 5000);
     dispelAuraDuration = config.GetIntDefault("AiPlayerbot.DispelAuraDuration", 2000);
     reactDelay = (uint32) config.GetIntDefault("AiPlayerbot.ReactDelay", 100);
+    pathFailureRetryMs = uint32(std::max(250, std::min(30000, config.GetIntDefault("AiPlayerbot.PathFailureRetryMs", 3000))));
+    failedActionRetryBase = uint32(std::clamp(config.GetIntDefault("AiPlayerbot.FailedActionRetryBase", 250), 0, 30000));
+    failedActionRetryMax = uint32(std::clamp(config.GetIntDefault("AiPlayerbot.FailedActionRetryMax", 2000), int(failedActionRetryBase), 30000));
+    failedActionCacheTtl = uint32(std::clamp(config.GetIntDefault("AiPlayerbot.FailedActionCacheTtl", 30000), 1000, 300000));
+    failedActionCacheMaxEntries = uint32(std::max(8, std::min(256, config.GetIntDefault("AiPlayerbot.FailedActionCacheMaxEntries", 64))));
     passiveDelay = (uint32) config.GetIntDefault("AiPlayerbot.PassiveDelay", 4000);
     valueCacheCleanupInterval = (uint32) std::max<int32>(1000,
         config.GetIntDefault("AiPlayerbot.ValueCacheCleanupInterval", 60000));

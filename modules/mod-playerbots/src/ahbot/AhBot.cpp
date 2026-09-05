@@ -1,6 +1,8 @@
 
 #include "Category.h"
 #include <memory>
+#include "DetailedWorkDiagnostics.h"
+#include "WorkSlice.h"
 #include "ItemBag.h"
 #include "ahbot/AhBot.h"
 #include "World.h"
@@ -1306,25 +1308,42 @@ void AhBot::CheckSendMail(uint32 bidder, uint32 price, const AuctionSnapshot& en
 
 void AhBot::RunQueuedWork()
 {
-    std::vector<PendingPurchase> purchases;
-    std::vector<PendingProposition> propositions;
+    // Purchases can perform SQL, mail and inventory work. Draining the entire
+    // producer queue in one world tick stalls all maps and incoming players.
+    // Preserve each queue's FIFO order; alternate queues to avoid starvation.
+    WorkSlice slice(TurtleDiagnostics::Micros(), 4, 5000);
+    while (slice.Take(TurtleDiagnostics::Micros()))
     {
-        std::lock_guard<std::mutex> g(queuedWorkMutex);
-        if (queuedPurchases.empty() && queuedPropositions.empty())
-            return;
-        purchases.swap(queuedPurchases);
-        propositions.swap(queuedPropositions);
+        PendingPurchase purchase{};
+        PendingProposition proposition{};
+        bool doProposition;
+        {
+            std::lock_guard<std::mutex> g(queuedWorkMutex);
+            if (queuedPurchases.empty() && queuedPropositions.empty())
+                return;
+            doProposition = !queuedPropositions.empty() && (preferProposition || queuedPurchases.empty());
+            if (doProposition)
+            {
+                proposition = queuedPropositions.front();
+                queuedPropositions.pop_front();
+            }
+            else
+            {
+                purchase = queuedPurchases.front();
+                queuedPurchases.pop_front();
+            }
+            preferProposition = !doProposition;
+        }
+        if (doProposition)
+            ExecuteProposition(proposition);
+        else
+            ExecutePurchase(purchase);
     }
-
-    for (std::vector<PendingPurchase>::const_iterator i = purchases.begin(); i != purchases.end(); ++i)
-        ExecutePurchase(*i);
-
-    for (std::vector<PendingProposition>::const_iterator i = propositions.begin(); i != propositions.end(); ++i)
-        ExecuteProposition(*i);
 }
 
 void AhBot::ExecutePurchase(const PendingPurchase& p)
 {
+    DetailedWork::Scope work(DetailedWork::AuctionPurchase, p.bidder);
     const AuctionHouseEntry* ahEntry = sAuctionHouseStore.LookupEntry(auctionIds[p.houseIndex]);
     if (!ahEntry)
         return;
@@ -1401,6 +1420,7 @@ void AhBot::ExecutePurchase(const PendingPurchase& p)
 
 void AhBot::ExecuteProposition(const PendingProposition& p)
 {
+    DetailedWork::Scope work(DetailedWork::AuctionProposition, p.bidder);
     Item* item = sAuctionMgr.GetAItem(p.itemGuidLow);
     if (!item || !item->GetProto())
         return;
@@ -1467,6 +1487,7 @@ void AhBot::Dump()
 
 void AhBot::CleanupPropositions()
 {
+    DetailedWork::Scope work(DetailedWork::AuctionCleanup);
     uint32 deliverTime = time(0) - 3600 * 24 * 2;
     auto result = CharacterDatabase.PQuery("select id, receiver from mail where subject like 'AH Proposition%%' and deliver_time <= '%u'", deliverTime);
     std::unique_ptr<QueryResult> result_guard(result);

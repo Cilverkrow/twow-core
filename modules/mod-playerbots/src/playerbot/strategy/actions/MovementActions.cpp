@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "MovementActions.h"
+#include <cmath>
 #include "Movement/MotionMaster.h"
 #include "Movement/MovementGenerator.h"
 #include "playerbot/FleeManager.h"
@@ -1084,7 +1085,7 @@ Unit* MovementAction::GetMover(Player* bot)
 
 bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react, bool noPath, bool ignoreEnemyTargets)
 {
-    if (!endPos.isValid())
+    if (!endPos.isValid() || !std::isfinite(endPos.getX()) || !std::isfinite(endPos.getY()) || !std::isfinite(endPos.getZ()))
         return false;
 
     UpdateMovementState();
@@ -1095,6 +1096,17 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     Unit* mover = GetMover(bot);
 
     LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
+    int32 const destinationCellX = int32(std::floor(endPos.getX() / 8.0f));
+    int32 const destinationCellY = int32(std::floor(endPos.getY() / 8.0f));
+    int32 const destinationCellZ = int32(std::floor(endPos.getZ() / 8.0f));
+    uint32 const generation = ai->GetTransitionGeneration();
+    uint32 const nowMs = WorldTimer::getMSTime();
+    bool const sameFailure = lastMove.failedPathMap == endPos.getMapId() &&
+        lastMove.failedPathInstance == bot->GetInstanceId() && lastMove.failedPathGeneration == generation &&
+        lastMove.failedPathCellX == destinationCellX && lastMove.failedPathCellY == destinationCellY &&
+        lastMove.failedPathCellZ == destinationCellZ;
+    if (sameFailure && int32(lastMove.failedPathRetryUntil - nowMs) > 0) return false;
+    if (!sameFailure) lastMove.clearPathFailure();
 
     bool detailedMove = ai->AllowActivity(DETAILED_MOVE_ACTIVITY, true);
     if (!detailedMove && lastMove.nextTeleport)
@@ -1141,7 +1153,14 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     lastMove.setPath(movePath);
 
     if (movePath.empty())
+    {
+        lastMove.failedPathMap = endPos.getMapId(); lastMove.failedPathInstance = bot->GetInstanceId();
+        lastMove.failedPathCellX = destinationCellX; lastMove.failedPathCellY = destinationCellY;
+        lastMove.failedPathCellZ = destinationCellZ; lastMove.failedPathGeneration = generation;
+        lastMove.failedPathRetryUntil = nowMs + sPlayerbotAIConfig.pathFailureRetryMs;
         return false;
+    }
+    lastMove.clearPathFailure();
 
      
     if (!bot->GetTransport())

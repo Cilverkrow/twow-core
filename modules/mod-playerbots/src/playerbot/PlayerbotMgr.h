@@ -32,6 +32,8 @@ public:
     static void NotePlayerDestroyed(Player const* player);
 
     void AddPlayerBot(uint32 guid, uint32 masterAccountId);
+    uint32 GetPendingBotLoginCount() const;
+    bool HasPendingBotLogin(uint32 guid) const;
     void RegisterPendingBotLogin(SqlQueryHolder* holder, uint32 guid, uint32 masterAccountId);
     void HandlePlayerBotLoginCallback(QueryResult * dummy, SqlQueryHolder * holder);
 
@@ -142,6 +144,7 @@ private:
     std::string HandleBotRandom(Player* bot, Player* master, const std::string param);
 
     PlayerBotMap playerBots;
+    uint32 sessionCursorGuid = 0;
     std::map<std::string, HolderCommandHandler> m_holderHandlers;
     std::map<std::string, BotCommandHandler> m_botCommandHandlers;
     ObjectGuid m_spoofGuid;

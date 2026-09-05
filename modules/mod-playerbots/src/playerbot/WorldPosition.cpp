@@ -259,11 +259,12 @@ std::vector<WorldPosition*> WorldPosition::GetNextPoint(std::vector<WorldPositio
 
     if (points.size() < 2)
     {
-        retVec.push_back(points[0]);
+        if (!points.empty())
+            retVec.push_back(points[0]);
         return retVec;
     }
 
-    retVec = points;
+    retVec = std::move(points);
 
     std::vector<uint32> weights;
 
@@ -297,7 +298,7 @@ std::vector<WorldPosition> WorldPosition::GetNextPoint(std::vector<WorldPosition
         return retVec;
     }
 
-    retVec = points;
+    retVec = std::move(points);
 
 
     std::vector<uint32> weights;

@@ -5,6 +5,15 @@
 [AiPlayerbotConf]
 ConfVersion=2020072501
 
+# ManTech action/path retry safeguards. Cache entries are per engine and bounded.
+# A changed target/event/context is independent; successful actions clear failures.
+# FailedActionRetryBase = 0 disables action failure backoff.
+AiPlayerbot.FailedActionRetryBase = 250
+AiPlayerbot.FailedActionRetryMax = 2000
+AiPlayerbot.FailedActionCacheTtl = 30000
+AiPlayerbot.FailedActionCacheMaxEntries = 64
+AiPlayerbot.PathFailureRetryMs = 3000
+
 # Enable or disable AI Playerbot
 # The bot subsystem is built into mangosd but inert
 # unless this is flipped to 1 + the user knows what they're doing. Flip when you

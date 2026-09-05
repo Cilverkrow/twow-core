@@ -4,6 +4,9 @@
 #include <set>
 #include <mutex>
 #include <regex>
+#include "DetailedWorkDiagnostics.h"
+#include "ExecutionWatch.h"
+#include "WorkSlice.h"
 
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -54,6 +57,7 @@ namespace {
     struct PendingBotLogin {
         ObjectGuid botGuid;
         uint32 masterAccountId;
+        PlayerbotHolder const* owner;
     };
     std::map<SqlQueryHolder*, PendingBotLogin> m_pendingBotLogins;
 }
@@ -63,12 +67,27 @@ void PlayerbotHolder::RegisterPendingBotLogin(SqlQueryHolder* holder, uint32 gui
     if (!holder)
         return;
 
-    m_pendingBotLogins[holder] = { ObjectGuid(HIGHGUID_PLAYER, guidLow), masterAccountId };
+    m_pendingBotLogins[holder] = { ObjectGuid(HIGHGUID_PLAYER, guidLow), masterAccountId, this };
+}
+
+uint32 PlayerbotHolder::GetPendingBotLoginCount() const
+{
+    uint32 count = 0;
+    for (auto const& entry : m_pendingBotLogins)
+        if (entry.second.owner == this) ++count;
+    return count;
+}
+
+bool PlayerbotHolder::HasPendingBotLogin(uint32 guid) const
+{
+    for (auto const& entry : m_pendingBotLogins)
+        if (entry.second.botGuid.GetCounter() == guid) return true;
+    return false;
 }
 
 void PlayerbotHolder::AddPlayerBot(uint32 guidLow, uint32 masterAccountId)
 {
-    if (!sPlayerbotAIConfig.enabled)
+    if (!sPlayerbotAIConfig.enabled || HasPendingBotLogin(guidLow))
         return;
 
     ObjectGuid botGuid(HIGHGUID_PLAYER, guidLow);
@@ -194,6 +213,18 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(QueryResult* /*dummy*/, SqlQu
 
     PendingBotLogin info = it->second;
     m_pendingBotLogins.erase(it);
+
+    if (this == &sRandomPlayerbotMgr && !sPlayerbotAIConfig.asyncBotLogin)
+    {
+        // A failed/rejected completion must not leave a permanent "login" event.
+        sRandomPlayerbotMgr.SetValue(info.botGuid.GetCounter(), "login", 0);
+        uint32 const target = sRandomPlayerbotMgr.GetValue(uint32(0), "bot_count");
+        if (GetPlayerbotsAmount() >= target && !sRandomPlayerbotMgr.IsExternallyManaged(info.botGuid.GetCounter()))
+        {
+            delete holder;
+            return;
+        }
+    }
 
     LoginQueryHolder* lqh = static_cast<LoginQueryHolder*>(holder);
 
@@ -407,7 +438,9 @@ void PlayerbotHolder::UpdateAIInternal(uint32 elapsed, bool minimal)
 
 void PlayerbotHolder::UpdateSessions(uint32 elapsed)
 {
-    ForEachPlayerbot([&](Player* bot)
+    DetailedWork::Scope sessionsWork(DetailedWork::Sessions);
+    ExecutionWatch::Scope sessionsWatch(ExecutionWatch::BotSessions);
+    auto updateOne = [&](Player* bot)
     {
         // Per-iteration diagnostic snapshot. We only emit it for "interesting"
         // states (mid-teleport, ghost, logout-pending) to keep log volume sane —
@@ -434,13 +467,30 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
 
         if (GetBotAI(bot) && bot->IsBeingTeleported())
         {
+            DetailedWork::Scope work(DetailedWork::TeleportAck, bot->GetGUIDLow());
+            ExecutionWatch::Scope watch(ExecutionWatch::BotTeleportAck, 0, 0, bot->GetGUIDLow());
             GetBotAI(bot)->HandleTeleportAck();
         }
         else if (bot->IsInWorld())
         {
-            bot->GetSession()->HandleBotPackets();
+            uint32 const guid = bot->GetGUIDLow();
+            DetailedWork::Scope work(DetailedWork::BotPackets, guid);
+            WorldSession* session = bot->GetSession();
+            session->HandleBotPackets();
+            // Immediate logout destroys Player, but a free-floating session
+            // is not in World::m_sessions and needs an explicit owner cleanup.
+            if (!session->GetPlayer())
+            {
+                if (!session->GetSocket() && sWorld.FindSession(session->GetAccountId()) != session)
+                    delete session;
+                return;
+            }
+            // A queued logout can detach/delete the player. Never dereference
+            // the old pointer after dispatch without checking holder ownership.
+            if (GetPlayerBot(guid) != bot)
+                return;
         }
-        else
+        else if (isGhost)
         {
             // Underlying root-cause fix candidate (ghost branch). Bot has no
             // teleport flag but is also not in world. This is the limbo state
@@ -456,6 +506,8 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
             // *somewhere* in-world. Better than ghost-state forever.
             if (GetBotAI(bot))
             {
+                DetailedWork::Scope work(DetailedWork::GhostRecovery, bot->GetGUIDLow());
+                ExecutionWatch::Scope watch(ExecutionWatch::BotGhostRecovery, 0, 0, bot->GetGUIDLow());
                 SC_LOG("UpdateSessions GHOST RECOVERY bot=%s guid=%u — driving "
                        "TeleportToHomebind to break out of limbo",
                        bot->GetName(), bot->GetGUIDLow());
@@ -463,12 +515,30 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
             }
         }
 
+        if (bot->GetSession()->ShouldLogOut(time(nullptr)))
+        {
+            LogoutPlayerBot(bot->GetGUIDLow());
+            return;
+        }
         if (GetBotAI(bot) && GetBotAI(bot)->GetShouldLogOut() && !bot->IsStunnedByLogout() && !bot->GetSession()->isLogingOut())
         {
             LogoutPlayerBot(bot->GetObjectGuid().GetRawValue());
         }
-    });
+    };
 
+    // A per-session packet limit alone multiplies by the entire population.
+    // Resume by GUID under one holder budget; never retain a Player/iterator
+    // across a handler that can remove it. Companions use their own holder.
+    WorkSlice slice(TurtleDiagnostics::Micros(), 8192, 2000);
+    size_t remaining = playerBots.size();
+    while (remaining-- && !playerBots.empty() && slice.Take(TurtleDiagnostics::Micros()))
+    {
+        auto it = playerBots.upper_bound(sessionCursorGuid);
+        if (it == playerBots.end()) it = playerBots.begin();
+        sessionCursorGuid = it->first;
+        Player* bot = it->second;
+        if (bot) updateOne(bot);
+    }
     Cleanup();
 }
 
@@ -1330,17 +1400,9 @@ void PlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     SetAIInternalUpdateDelay(sPlayerbotAIConfig.reactDelay);
     CheckTellErrors(elapsed);
 
-    // Tick our bots' sessions so any queued bot-only handling fires per
-    // master frame. Most importantly:
-    // HandleTeleportAck for cross-map teleports — without this call, a
-    // bot scheduled for a far-teleport via TeleportTo() stays in
-    // IsBeingTeleported() forever (no client to ACK), its UpdateAI
-    // early-exits, and the bot is effectively frozen on the source map.
-    // This call was defined in PlayerbotHolder but never wired in the
-    // cmangos→Penqle port. Symptom: `.bot add a bot` (alt on different
-    // continent) auto-teleport to master never completes, bot doesn't
-    // appear in /who, can't be invited.
-    UpdateSessions(elapsed);
+    // Sessions are driven by PlayerbotWorldScript, outside map jobs. A
+    // companion's group/guild/quest packets must not mutate world state from
+    // its master's map worker or wait for this manager's react delay.
 }
 
 void PlayerbotMgr::HandleCommand(uint32 type, const std::string& text, uint32 lang, const std::string& to)
