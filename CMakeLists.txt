@@ -50,12 +50,21 @@ set(TW_CORE_ROOT "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
 set(TW_CORE_BINARY_ROOT "${CMAKE_CURRENT_BINARY_DIR}" CACHE INTERNAL
     "Absolute path to the core's own binary root.")
 
-# The modules tree. Defaults to the core's own, so nothing changes for a
-# standalone build; a platform sets this to its own modules/ before
-# add_subdirectory(core) and its copy is the one that is built. There is
-# deliberately no merging of the two - one directory wins, whole.
+# The modules tree. Defaults to the core's own; a platform sets this to its own
+# modules/ before add_subdirectory(core) and that directory is the one built.
+# There is deliberately no merging of the two - one directory wins, whole.
+#
+# That exclusivity used to force a fork: a platform wanting its own modules had
+# to vendor a copy of every module it also wanted, so mod-playerbots and
+# mod-dungeon-clear existed twice and drifted in both directions. It no longer
+# forces anything, because this repository now ships no modules of its own
+# (ADR-0040 in twow-repo). The engine is here; the modules are the platform's.
+#
+# The templates/ and create_module.sh scaffolding stays: the module SYSTEM is an
+# engine feature, and a standalone core is still expected to be able to host a
+# module. What is gone is this repository having opinions about which ones.
 set(TW_MODULES_DIR "${TW_CORE_ROOT}/modules" CACHE PATH
-    "Directory containing the modules to build (defaults to the core's own).")
+    "Directory containing the modules to build (defaults to the core's own, which ships none).")
 # ---------------------------------------------------------------------------
 
 set(CMAKE_MODULE_PATH
@@ -848,10 +857,14 @@ if(TARGET mangosd)
   endif()
 endif()
 
-# cmangos/playerbots is a MODULE now: modules/mod-playerbots.
-# Its build lives in that module's own CMakeLists.txt and
-# mod-playerbots.cmake. BUILD_PLAYERBOTS still switches it on and off,
-# and still gates src/game/PlayerbotStubs.cpp.
+# cmangos/playerbots is a MODULE, and it is NOT in this repository (ADR-0040 in
+# twow-repo). Point TW_MODULES_DIR at a tree that provides mod-playerbots to
+# build it; the platform does exactly that.
+#
+# BUILD_PLAYERBOTS stays here and stays OFF by default, because what it gates on
+# this side is engine code: src/game/PlayerbotStubs.cpp. Turning it ON without a
+# mod-playerbots in TW_MODULES_DIR gives you the stubs and no implementation,
+# which is a coherent configuration - the engine compiles, the bots are absent.
 
 if (USE_EXTRACTORS OR USE_REALMMERGE)
     add_subdirectory(tools)
