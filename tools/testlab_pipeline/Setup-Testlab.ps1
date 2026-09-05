@@ -474,23 +474,79 @@ function Stop-Pipeline {
 function Assert-NoConcurrentRun {
     if (-not (Test-Path $script:LockFile)) { return }
 
+    # An unreadable lock is not a stale lock. ReadAllLines throwing - the file held open by
+    # an editor, an AV scanner or a backup agent, or ACL-denied because the owning run
+    # belongs to another user - is not script-terminating in PowerShell, so $LockData was
+    # simply left empty. That read as "PID 0, never started", and the live run's lock was
+    # announced as stale, deleted, and taken over.
+    $LockLines = @()
+    try {
+        $LockLines = [System.IO.File]::ReadAllLines($script:LockFile)
+    } catch {
+        Stop-Pipeline -Message ("A lock file exists but cannot be read: $($script:LockFile)`n" +
+                                "  $($_.Exception.Message)`n" +
+                                "Refusing to assume it is stale. Close whatever is holding it, or delete it if you " +
+                                "are certain no pipeline is running.") -ExitCode 2
+    }
+
     $LockData = @{}
-    foreach ($Line in [System.IO.File]::ReadAllLines($script:LockFile)) {
+    foreach ($Line in $LockLines) {
         if ($Line -match '^\s*([^=]+?)\s*=\s*(.*)$') { $LockData[$Matches[1]] = $Matches[2] }
     }
 
-    $OwnerPid     = 0
     $OwnerStarted = if ($LockData.ContainsKey('Started')) { $LockData['Started'] } else { 'unknown time' }
-    if ($LockData.ContainsKey('Pid')) { [void][int]::TryParse($LockData['Pid'], [ref]$OwnerPid) }
+
+    # Same reasoning for a lock that carries no PID, which also covers one caught
+    # half-written: File.WriteAllText holds FileShare.Read, so a concurrent read is allowed
+    # and can see the file before the Pid= line has landed.
+    if (-not $LockData.ContainsKey('Pid')) {
+        Stop-Pipeline -Message ("A lock file exists but names no PID: $($script:LockFile)`n" +
+                                "It may belong to a run that is still writing it. Refusing to assume it is stale; " +
+                                "delete it if you are certain no pipeline is running.") -ExitCode 2
+    }
+
+    # A lock written on another machine - a workspace on a network share - says nothing
+    # about any process here, so the PID below would be meaningless.
+    $OwnerMachine = if ($LockData.ContainsKey('Machine')) { $LockData['Machine'] } else { "" }
+    if ($OwnerMachine -and $OwnerMachine -ne $env:COMPUTERNAME) {
+        Stop-Pipeline -Message ("The lock file was written on '$OwnerMachine', not on this machine, so its PID " +
+                                "means nothing here: $($script:LockFile)`n" +
+                                "Wait for that run, or delete the file if you are certain it is gone.") -ExitCode 2
+    }
+
+    $OwnerPid = 0
+    [void][int]::TryParse($LockData['Pid'], [ref]$OwnerPid)
 
     $OwnerAlive = $false
     if ($OwnerPid -gt 0) {
         $OwnerProcess = Get-Process -Id $OwnerPid -ErrorAction SilentlyContinue
-        # Windows recycles PIDs. Only treat it as a live run when the process that holds the
-        # PID is actually a PowerShell host, otherwise an unrelated program inheriting the
-        # number would block the pipeline forever.
+
+        # Windows recycles PIDs. "Is it a PowerShell host?" on its own does not help,
+        # because on a machine where this pipeline is run the most likely program to inherit
+        # a PID is another PowerShell window: a run killed with Ctrl+C, followed by opening
+        # a new console that happened to get the same PID, blocked every later run forever
+        # with "Wait for it to finish" until the file was deleted by hand.
+        #
+        # The lock is written moments after its owner starts, so a process that began after
+        # the lock's own timestamp cannot be the run that wrote it.
         if ($OwnerProcess -and @('powershell', 'pwsh') -contains $OwnerProcess.ProcessName) {
             $OwnerAlive = $true
+
+            $OwnerStartedAt = [datetime]::MinValue
+            $ParsedStart = [datetime]::TryParseExact($OwnerStarted, 'yyyy-MM-dd HH:mm:ss',
+                                                     [System.Globalization.CultureInfo]::InvariantCulture,
+                                                     [System.Globalization.DateTimeStyles]::None,
+                                                     [ref]$OwnerStartedAt)
+            if ($ParsedStart) {
+                try {
+                    # A few seconds of slack: the timestamp has one-second resolution and is
+                    # taken slightly after the process itself started.
+                    if ($OwnerProcess.StartTime -gt $OwnerStartedAt.AddSeconds(5)) { $OwnerAlive = $false }
+                } catch {
+                    # StartTime is not readable for a process owned by another user. Keep
+                    # the cautious answer rather than taking over a possibly live run.
+                }
+            }
         }
     }
 
