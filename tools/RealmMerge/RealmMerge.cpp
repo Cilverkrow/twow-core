@@ -27,6 +27,16 @@ std::string g_db2Name;
 // one was imported alongside DB-2. Left blank when the deployment being
 // merged away never ran the bot-brain -- see UpdateCharacterGuids().
 std::string g_db2BrainName;
+// ADR-0039: the realm id whose rows in that cv_brain belong to DB-2.
+//
+// REQUIRED whenever g_db2BrainName is set, and the reason is the schema's own
+// comment: "BOTH columns are needed: GUIDs are only unique within a realm."
+// One cv_brain serves MANY realms - that is why bot_identity carries a realm
+// column at all. An unscoped `SET guid = guid + offset` would therefore shift
+// every OTHER realm's bots too, pointing their stored memories at characters
+// that were never merged. Silent, and unrecoverable afterwards: nothing in the
+// row records what it used to be.
+uint32 g_db2BrainRealmId = 0;
 
 enum AtLoginFlags
 {
@@ -196,10 +206,16 @@ bool UpdateCharacterGuids()
     // no such schema -- so g_db2BrainName is blank unless the operator named
     // one, and the table is probed for before touching it so an absent
     // schema/table is a skip with a clear log line, not an aborted merge.
-    // UNIQUE (realm, guid) adds no new collision exposure here: this schema
-    // holds only DB-2's own realm, so shifting every guid by the same
-    // constant offset preserves uniqueness within it exactly as it does for
-    // `characters` above.
+    // Every statement below is scoped by `realm`, and that is not defensive
+    // tidiness: one cv_brain serves MANY realms - bot_identity carries a realm
+    // column precisely because guids are only unique within one. An unscoped
+    // shift would move every other realm's bots as well, attaching their
+    // memories to characters that were never part of this merge.
+    //
+    // UNIQUE (realm, guid) is therefore preserved rather than threatened: the
+    // offset applies to exactly one realm's rows, so within that realm it is
+    // the same order-preserving shift `characters` gets above, and no other
+    // realm's pairs are touched at all.
     bool hasBrainIdentity = false;
     if (!g_db2BrainName.empty())
     {
@@ -224,8 +240,9 @@ bool UpdateCharacterGuids()
 
         if (hasBrainIdentity)
         {
-            CharacterDatabase2.PExecute("UPDATE `%s`.`bot_identity` SET `guid` = (`guid` + %u)", g_db2BrainName.c_str(), maxCharGuid);
-            sLog.outInfo("- Updated `%s`.`bot_identity` table", g_db2BrainName.c_str());
+            CharacterDatabase2.PExecute("UPDATE `%s`.`bot_identity` SET `guid` = (`guid` + %u) WHERE `realm` = %u",
+                g_db2BrainName.c_str(), maxCharGuid, g_db2BrainRealmId);
+            sLog.outInfo("- Updated `%s`.`bot_identity` table (realm %u only)", g_db2BrainName.c_str(), g_db2BrainRealmId);
         }
 
         CharacterDatabase2.PExecute("UPDATE `character_action` SET `guid` = (`guid` + %u)", maxCharGuid);
@@ -411,7 +428,8 @@ bool UpdateCharacterGuids()
                 CharacterDatabase2.PExecute("UPDATE `auction` SET `buyguid` = %u WHERE `buyguid` = %u", newGuid.first, guid);
                 CharacterDatabase2.PExecute("UPDATE `characters` SET `guid` = %u WHERE `guid` = %u", newGuid.first, guid);
                 if (hasBrainIdentity)
-                    CharacterDatabase2.PExecute("UPDATE `%s`.`bot_identity` SET `guid` = %u WHERE `guid` = %u", g_db2BrainName.c_str(), newGuid.first, guid);
+                    CharacterDatabase2.PExecute("UPDATE `%s`.`bot_identity` SET `guid` = %u WHERE `guid` = %u AND `realm` = %u",
+                        g_db2BrainName.c_str(), newGuid.first, guid, g_db2BrainRealmId);
                 CharacterDatabase2.PExecute("UPDATE `character_action` SET `guid` = %u WHERE `guid` = %u", newGuid.first, guid);
                 CharacterDatabase2.PExecute("UPDATE `character_armory_stats` SET `guid` = %u WHERE `guid` = %u", newGuid.first, guid);
                 CharacterDatabase2.PExecute("UPDATE `character_aura` SET `guid` = %u WHERE `guid` = %u", newGuid.first, guid);
@@ -1569,6 +1587,18 @@ int main(int argc, char* argv[])
     // deployed on DB-2 -- see UpdateCharacterGuids().
     printf("cv_brain Database Name for DB-2 (leave blank if bot-brain is not deployed): ");
     g_db2BrainName = GetString();
+    if (!g_db2BrainName.empty())
+    {
+        // Required, not optional: without it the UPDATEs below cannot tell
+        // DB-2's bots from every other realm's in the same schema.
+        printf("Realm id whose rows in `%s` belong to DB-2: ", g_db2BrainName.c_str());
+        g_db2BrainRealmId = uint32(atoi(GetString().c_str()));
+        if (!g_db2BrainRealmId)
+        {
+            sLog.outError("A cv_brain schema was named but no realm id was given. Refusing to guess: an unscoped update would corrupt every other realm's bot identities.");
+            return 1;
+        }
+    }
 
     if (!CharacterDatabase1.Initialize("Character db to merge into", (connString + g_db1Name).c_str()))
     {
