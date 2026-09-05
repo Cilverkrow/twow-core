@@ -337,11 +337,15 @@ jobs:
               # line asserted in the next step is the core saying so itself.
               cmake -S /src -B /build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_TESTING=ON \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 2>&1 | tee /src/configure.log
 
-              cmake --build /build --target mangosd realmd -j "$(nproc)"
+              # BUILD_TESTING also fetches googletest v1.16.0 at configure time;
+              # git and ca-certificates above provide its HTTPS dependency path.
+              cmake --build /build --target mangosd realmd mangosd_cli_input_tests -j "$(nproc)"
+              ctest --test-dir /build -R "^mangosd[.]cli_input$" --no-tests=error --output-on-failure
 
               ccache --show-stats
 
