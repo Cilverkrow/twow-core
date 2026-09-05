@@ -116,6 +116,7 @@ if(BUILD_TESTING AND UNIX)
     ${CMAKE_CURRENT_SOURCE_DIR}
   )
   add_test(NAME mangosd.cli_input COMMAND mangosd_cli_input_tests)
+  set_tests_properties(mangosd.cli_input PROPERTIES TIMEOUT 30)
 endif()
 
 if(USE_SCRIPTS)

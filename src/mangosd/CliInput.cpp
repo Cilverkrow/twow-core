@@ -13,47 +13,114 @@
 #if !defined(WIN32)
 
 #include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <limits>
 
-#include <sys/select.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <unistd.h>
 
 CliInput::CliInput(FILE* stream)
-    : m_stream(stream),
-      m_descriptor(stream ? fileno(stream) : -1),
-      m_configured(stream && m_descriptor >= 0 && setvbuf(stream, nullptr, _IONBF, 0) == 0)
 {
+    if (!stream)
+        return;
+    // Keep our descriptor alive even if Master closes stdin during shutdown.
+    // The duplicate shares O_NONBLOCK with stdin; restore the original flags
+    // on destruction. No other reader may consume this stream concurrently.
+    m_descriptor = fcntl(fileno(stream), F_DUPFD_CLOEXEC, 0);
+    if (m_descriptor < 0)
+        return;
+    m_originalFlags = fcntl(m_descriptor, F_GETFL);
+    if (m_originalFlags < 0 || fcntl(m_descriptor, F_SETFL, m_originalFlags | O_NONBLOCK) < 0)
+    {
+        close(m_descriptor);
+        m_descriptor = -1;
+    }
+}
+
+CliInput::~CliInput()
+{
+    if (m_descriptor >= 0)
+    {
+        fcntl(m_descriptor, F_SETFL, m_originalFlags);
+        close(m_descriptor);
+    }
 }
 
 CliInputResult CliInput::ReadLine(char* buffer, std::size_t bufferSize, unsigned timeoutMilliseconds)
 {
-    if (!m_configured || !buffer || bufferSize < 2)
+    if (m_descriptor < 0 || !buffer || bufferSize <= MaxLineLength)
         return CliInputResult::Error;
-
-    fd_set readDescriptors;
-    FD_ZERO(&readDescriptors);
-    FD_SET(m_descriptor, &readDescriptors);
-
-    timeval timeout;
-    timeout.tv_sec = static_cast<long>(timeoutMilliseconds / 1000);
-    timeout.tv_usec = static_cast<long>((timeoutMilliseconds % 1000) * 1000);
-
-    const int ready = select(m_descriptor + 1, &readDescriptors, nullptr, nullptr, &timeout);
-    if (ready == 0)
-        return CliInputResult::Timeout;
-    if (ready < 0)
-        return errno == EINTR ? CliInputResult::Interrupted : CliInputResult::Error;
-
-    errno = 0;
-    if (fgets(buffer, static_cast<int>(bufferSize), m_stream))
-        return CliInputResult::Line;
-    if (feof(m_stream))
+    buffer[0] = '\0';
+    if (m_endOfFile)
         return CliInputResult::EndOfFile;
-    if (errno == EINTR)
+
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(timeoutMilliseconds);
+    for (;;)
     {
-        clearerr(m_stream);
-        return CliInputResult::Interrupted;
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline)
+            return CliInputResult::Timeout;
+        // Round upward so a sub-millisecond remainder cannot cause a spin.
+        const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(deadline - now).count();
+        const int wait = remaining > std::numeric_limits<int>::max() ?
+                         std::numeric_limits<int>::max() : static_cast<int>(remaining);
+        pollfd descriptor{m_descriptor, POLLIN, 0};
+        const int ready = poll(&descriptor, 1, wait);
+        if (ready == 0)
+            return CliInputResult::Timeout;
+        if (ready < 0)
+            return errno == EINTR ? CliInputResult::Interrupted : CliInputResult::Error;
+        if (descriptor.revents & POLLNVAL)
+            return CliInputResult::Error;
+
+        // No stdio read-ahead and no blocking read after readiness. Reading one
+        // byte leaves subsequent complete commands available for the next call.
+        char byte;
+        const ssize_t received = read(m_descriptor, &byte, 1);
+        if (received < 0)
+        {
+            if (errno == EINTR)
+                return CliInputResult::Interrupted;
+            if ((errno == EAGAIN || errno == EWOULDBLOCK) && !(descriptor.revents & POLLERR))
+                continue;
+            return CliInputResult::Error;
+        }
+        if (received == 0)
+        {
+            m_length = 0;
+            m_discarding = false;
+            m_endOfFile = true;
+            return CliInputResult::EndOfFile;
+        }
+        if (byte == '\n')
+        {
+            if (m_discarding)
+            {
+                m_discarding = false;
+                m_length = 0;
+                continue;
+            }
+            if (m_length && m_pending[m_length - 1] == '\r')
+                --m_length;
+            std::memcpy(buffer, m_pending.data(), m_length);
+            buffer[m_length] = '\0';
+            m_length = 0;
+            return CliInputResult::Line;
+        }
+        if (m_discarding)
+            continue;
+        if (byte == '\0' || (m_length && m_pending[m_length - 1] == '\r') ||
+            (m_length >= MaxLineLength && !(m_length == MaxLineLength && byte == '\r')))
+        {
+            m_discarding = true;
+            m_length = 0;
+            continue;
+        }
+        m_pending[m_length++] = byte;
     }
-    return CliInputResult::Error;
 }
 
 #endif
