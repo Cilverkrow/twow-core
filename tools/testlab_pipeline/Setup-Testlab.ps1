@@ -460,7 +460,21 @@ function New-PipelineLock {
         "Script=$PSCommandPath"
     ) -join "`r`n"
 
-    [System.IO.File]::WriteAllText($script:LockFile, ($LockContent + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+    # Every write in this script is checked, because an exception thrown by a .NET method
+    # is NOT script-terminating in PowerShell: the statement is abandoned, the error is
+    # printed, and the next line runs as if nothing happened. Unchecked, a failed write
+    # here was followed straight by $script:LockOwned = $true and "Single-instance lock
+    # acquired" - this run then advertised ownership of a file that does not exist, and on
+    # exit Remove-PipelineLock would delete whatever lock file had appeared at that path in
+    # the meantime, which may well be another run's.
+    try {
+        [System.IO.File]::WriteAllText($script:LockFile, ($LockContent + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Stop-Pipeline -Message ("Could not write the run lock file at $($script:LockFile)`n" +
+                                "  $($_.Exception.Message)`n" +
+                                "The workspace has to be writable for the pipeline to guard against a second run.")
+    }
+
     $script:LockOwned = $true
 }
 
@@ -514,7 +528,15 @@ function New-MySqlDefaultsFile {
     $Content = "[client]`r`nuser=$User`r`npassword=$Password`r`n"
     if (-not [string]::IsNullOrWhiteSpace($DbHost)) { $Content += "host=$DbHost`r`n" }
     if ($DbPort -gt 0)                              { $Content += "port=$DbPort`r`n" }
-    [System.IO.File]::WriteAllText($CredentialPath, $Content, (New-Object System.Text.UTF8Encoding($false)))
+    # Checked, for the reason spelled out in New-PipelineLock: nothing would fail here, the
+    # path would be returned as if it held credentials, and every client call afterwards
+    # would report "Could not open required defaults file" instead of the real cause.
+    try {
+        [System.IO.File]::WriteAllText($CredentialPath, $Content, (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Stop-Pipeline -Message ("Could not write the temporary credential file at $CredentialPath`n" +
+                                "  $($_.Exception.Message)")
+    }
 
     # The file holds a plaintext credential: strip inherited permissions and grant the
     # current user only.
@@ -1062,12 +1084,27 @@ function New-ServerLauncherScript {
             "content changed since it was written"
         }
 
-        [System.IO.File]::WriteAllText($Path, $FileText, $script:LauncherEncoding)
+        # A failed write must not be followed by the success line - see New-PipelineLock.
+        # A read-only or locked launcher used to be reported as refreshed while the stale
+        # file stayed on disk, and the run still exited 0.
+        try {
+            [System.IO.File]::WriteAllText($Path, $FileText, $script:LauncherEncoding)
+        } catch {
+            Write-Warning "Could not refresh $LauncherName ($Reason): $($_.Exception.Message)"
+            return
+        }
+
         Write-Host " -> Refreshed stale launcher ($Reason): $LauncherName" -ForegroundColor Yellow
         return
     }
 
-    [System.IO.File]::WriteAllText($Path, $FileText, $script:LauncherEncoding)
+    try {
+        [System.IO.File]::WriteAllText($Path, $FileText, $script:LauncherEncoding)
+    } catch {
+        Write-Warning "Could not create $LauncherName : $($_.Exception.Message)"
+        return
+    }
+
     Write-Host " -> Created launcher: $LauncherName" -ForegroundColor Green
 }
 
