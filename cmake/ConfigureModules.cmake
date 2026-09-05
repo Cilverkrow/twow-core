@@ -12,13 +12,49 @@
 
 set(MODULE_LINKAGE_VALUES disabled static dynamic default)
 
+# TW_MODULE_ROOTS is a LIST of directories searched for modules; TW_MODULES_DIR
+# is the first of them and remains the directory whose CMakeLists.txt drives the
+# module build. The two were one thing until modules had to come from more than
+# one repository at once.
+#
+# Why a list. Discovery used to be exclusive - one directory won, whole - so a
+# platform that wanted its own modules had to vendor a COPY of every module it
+# also wanted, including ones this repository tracks from upstream. That is how
+# mod-playerbots and mod-dungeon-clear came to exist twice and drift in both
+# directions, and why upstream's work on them had to be hand-carried instead of
+# merged. The build system was forcing the fork. See ADR-0040 in twow-repo.
 function(GetModulesBasePath variable)
-  set(${variable} "${TW_MODULES_DIR}" PARENT_SCOPE)
+  list(GET TW_MODULE_ROOTS 0 FIRST_ROOT)
+  set(${variable} "${FIRST_ROOT}" PARENT_SCOPE)
 endfunction()
 
+# Resolves a module name to its src/ directory, searching the roots in order.
+# When no root provides it, returns a path under the first root so a caller's
+# error message names somewhere plausible instead of an empty string; callers
+# already test the result with IS_DIRECTORY.
 function(GetPathToModuleSource module variable)
-  GetModulesBasePath(MODULE_BASE_PATH)
-  set(${variable} "${MODULE_BASE_PATH}/${module}/src" PARENT_SCOPE)
+  foreach(MODULE_ROOT ${TW_MODULE_ROOTS})
+    if(IS_DIRECTORY "${MODULE_ROOT}/${module}/src")
+      set(${variable} "${MODULE_ROOT}/${module}/src" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  list(GET TW_MODULE_ROOTS 0 FIRST_ROOT)
+  set(${variable} "${FIRST_ROOT}/${module}/src" PARENT_SCOPE)
+endfunction()
+
+# Resolves a module name to its own directory, not its src/. Needed wherever a
+# module's conf/, sql/ or data/ is wanted - spellings like
+# "${TW_MODULES_DIR}/${module}" are wrong the moment there is more than one root.
+function(GetPathToModule module variable)
+  foreach(MODULE_ROOT ${TW_MODULE_ROOTS})
+    if(IS_DIRECTORY "${MODULE_ROOT}/${module}")
+      set(${variable} "${MODULE_ROOT}/${module}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  list(GET TW_MODULE_ROOTS 0 FIRST_ROOT)
+  set(${variable} "${FIRST_ROOT}/${module}" PARENT_SCOPE)
 endfunction()
 
 # Resolves what a module's linkage actually is, folding the "default" sentinel
@@ -44,28 +80,38 @@ function(ModuleNameToVariable module variable)
 endfunction()
 
 function(GetModuleSourceList variable)
-  GetModulesBasePath(MODULE_BASE_PATH)
-
-  if(NOT IS_DIRECTORY "${MODULE_BASE_PATH}")
-    set(${variable} "" PARENT_SCOPE)
-    return()
-  endif()
-
-  # CONFIGURE_DEPENDS so that CREATING a module directory re-triggers configure.
-  # Without it a newly added module is silently not in the build until somebody
-  # happens to re-run cmake, and the symptom is a missing Add<name>Scripts()
-  # link error a long way from the cause.
-  file(GLOB LOCAL_MODULE_LIST RELATIVE
-    "${MODULE_BASE_PATH}"
-    CONFIGURE_DEPENDS
-    "${MODULE_BASE_PATH}/*")
-
   set(MODULE_SOURCE_LIST)
-  foreach(SOURCE_MODULE ${LOCAL_MODULE_LIST})
-    GetPathToModuleSource("${SOURCE_MODULE}" MODULE_SOURCE_PATH)
-    if(IS_DIRECTORY "${MODULE_SOURCE_PATH}")
-      list(APPEND MODULE_SOURCE_LIST "${SOURCE_MODULE}")
+
+  foreach(MODULE_ROOT ${TW_MODULE_ROOTS})
+    if(NOT IS_DIRECTORY "${MODULE_ROOT}")
+      continue()
     endif()
+
+    # CONFIGURE_DEPENDS so that CREATING a module directory re-triggers
+    # configure. Without it a newly added module is silently not in the build
+    # until somebody happens to re-run cmake, and the symptom is a missing
+    # Add<name>Scripts() link error a long way from the cause.
+    file(GLOB LOCAL_MODULE_LIST RELATIVE
+      "${MODULE_ROOT}"
+      CONFIGURE_DEPENDS
+      "${MODULE_ROOT}/*")
+
+    foreach(SOURCE_MODULE ${LOCAL_MODULE_LIST})
+      if(NOT IS_DIRECTORY "${MODULE_ROOT}/${SOURCE_MODULE}/src")
+        continue()
+      endif()
+      if("${SOURCE_MODULE}" IN_LIST MODULE_SOURCE_LIST)
+        # An earlier root already provided it. Say so rather than resolve it
+        # silently: two roots offering the same module means one is a stale
+        # copy, and choosing quietly is how it stays stale.
+        GetPathToModule("${SOURCE_MODULE}" WINNING_PATH)
+        message(WARNING
+          "module '${SOURCE_MODULE}' is provided by more than one root; using "
+          "${WINNING_PATH} and ignoring ${MODULE_ROOT}/${SOURCE_MODULE}")
+        continue()
+      endif()
+      list(APPEND MODULE_SOURCE_LIST "${SOURCE_MODULE}")
+    endforeach()
   endforeach()
 
   list(SORT MODULE_SOURCE_LIST)
@@ -309,8 +355,9 @@ function(GetModuleConfigList variable)
     endif()
 
     if(NOT MODULE_LINKAGE STREQUAL "disabled")
+      GetPathToModule("${SOURCE_MODULE}" MODULE_DIR)
       file(GLOB MODULE_CONFIG_DIST_FILES CONFIGURE_DEPENDS
-        "${TW_MODULES_DIR}/${SOURCE_MODULE}/conf/*.conf.dist")
+        "${MODULE_DIR}/conf/*.conf.dist")
 
       foreach(MODULE_CONFIG_DIST_FILE ${MODULE_CONFIG_DIST_FILES})
         get_filename_component(MODULE_CONFIG_FILE_NAME "${MODULE_CONFIG_DIST_FILE}" NAME)
