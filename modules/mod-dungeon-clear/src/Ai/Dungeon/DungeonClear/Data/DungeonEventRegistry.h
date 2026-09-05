@@ -223,6 +223,10 @@ struct EventStep
     uint32 hookId{0};        // Custom -> ObjectiveHookRegistry; on a garrison MoveTo,
                              // the hook to re-run each tick WHILE it holds (see
                              // EventBuilder::WhileHolding). 0 => none.
+    // Garrison MoveTo only. > 0: while the hold waits on its gate, the tank
+    // engages the nearest hostile within this radius of the hold point (see
+    // EventBuilder::EngageWhileHolding). The gate alone still ends the step.
+    float holdEngageRadius{0.0f};
 
     // --- EscortCreature only ----------------------------------------------
     // The escortee (creatureEntry) is the NPC to protect; `radius` is the grid
@@ -516,6 +520,10 @@ public:
     // bosses are already dead by the time the party drops combat).
     EventBuilder& MoveToHoldUntilInstanceData(float x, float y, float z, float radius,
                                               uint32 dataId, uint32 minValue);
+    // Fight while the PRECEDING garrison holds: engage any hostile within
+    // `radius` of the hold point. For wave encounters whose trolls go for a
+    // friendly NPC band, never for the party (Zul'Farrak's temple stairs).
+    EventBuilder& EngageWhileHolding(float radius);
     // Garrison variant gated on the InstanceScript PERSISTENT-data store: hold at
     // (x,y,z) until GetPersistentData(dataId) >= minValue. Use it when the map's
     // counter lives in the persistent vector and the script never overrides GetData

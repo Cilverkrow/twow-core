@@ -193,6 +193,13 @@ EventBuilder& EventBuilder::WhileHolding(uint32 hookId)
     return *this;
 }
 
+EventBuilder& EventBuilder::EngageWhileHolding(float radius)
+{
+    if (!_ev.steps.empty())
+        _ev.steps.back().holdEngageRadius = radius;
+    return *this;
+}
+
 EventBuilder& EventBuilder::UseGO(uint32 goEntry, float searchRadius,
                                   float x, float y, float z)
 {
