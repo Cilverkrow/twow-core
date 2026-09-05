@@ -19,7 +19,7 @@ find_package(Boost 1.70 REQUIRED COMPONENTS thread filesystem system)
 # build silently received no defines, no shim and no Boost and died in
 # WorldPosition.h on `'discrete_distribution' is not a member of 'std'`. Both
 # spellings are listed because a target that does not exist is skipped anyway.
-foreach(PB_TARGET modules mod_mod_playerbots mod_mod-playerbots)
+foreach(PB_TARGET modules modules_playerbots mod_mod_playerbots mod_mod-playerbots)
   if(NOT TARGET ${PB_TARGET})
     continue()
   endif()

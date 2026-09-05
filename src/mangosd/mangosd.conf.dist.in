@@ -655,10 +655,14 @@ DBC.Locale = 255
 LoadLocales = 1
 
 # LoadSpellsFromSql
-#    Load spell data from the world database `spell_template` table instead of Spell.dbc. Mostly here for future developers iterating on this project
-#    Default: 0 - False
+#    Load spell data from the world database `spell_template` table (1) instead of the
+#    client's Spell.dbc (0). Turtle WoW keeps its server-side spell changes ONLY in
+#    spell_template - the 1.18 Paladin changes, the appearance-changing items and every
+#    custom spell. With 0 those spells come out wrong or missing (reported 2026-09-05).
+#    Leave this at 1 unless you are debugging the DBC loader itself.
+#    Default: 1 - True
 
-LoadSpellsFromSql = 0
+LoadSpellsFromSql = 1
 
 # StrictPlayerNames. Limit player name to language specific symbols set, not allow create characters, 
 # and set rename request and disconnect at not allowed symbols name.
