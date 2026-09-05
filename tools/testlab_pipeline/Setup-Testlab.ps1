@@ -369,6 +369,30 @@ function Remove-PipelineSingleton {
 # SeCreateGlobalPrivilege, which an ordinary non-elevated user does not have, so a failure
 # falls back to the per-session "Local\" namespace rather than aborting: the lock file
 # still covers the cross-session case, just with the weaker stale-PID heuristic.
+# Answers "does a mutex of this name already exist?" without needing full access to it.
+#
+# Assert-SingleInstance needs this to tell two very different causes of the same
+# UnauthorizedAccessException apart. Opening for Synchronize only is the weakest right
+# there is, so it succeeds against objects the constructor cannot touch; and if even that
+# is denied, the object demonstrably exists, which is the answer we were after.
+function Test-NamedMutexExists {
+    param (
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    try {
+        $Existing = [System.Threading.Mutex]::OpenExisting($Name, [System.Security.AccessControl.MutexRights]::Synchronize)
+        $Existing.Dispose()
+        return $true
+    } catch [System.Threading.WaitHandleCannotBeOpenedException] {
+        return $false
+    } catch [System.UnauthorizedAccessException] {
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 function Assert-SingleInstance {
     $CreatedNew = $false
 
@@ -376,9 +400,30 @@ function Assert-SingleInstance {
         try {
             $script:SingletonMutex = New-Object System.Threading.Mutex($true, $MutexName, [ref]$CreatedNew)
             break
+        } catch [System.UnauthorizedAccessException] {
+            # The constructor asks for MUTEX_ALL_ACCESS, so this means one of two opposite
+            # things, and falling back blindly gets one of them badly wrong:
+            #
+            #   the name does not exist  -> no SeCreateGlobalPrivilege. Local\ is the right
+            #                               answer, and the lock file still covers the
+            #                               cross-session case.
+            #   the name DOES exist      -> another run owns it and its object is closed to
+            #                               us (it is elevated and we are not, or it belongs
+            #                               to another user). Falling back to Local\ would
+            #                               create a DIFFERENT kernel object, report
+            #                               CreatedNew, and run a second pipeline against
+            #                               the same databases - and its temp-file sweep
+            #                               would delete the live run's credential files on
+            #                               the way past.
+            if (Test-NamedMutexExists -Name $MutexName) {
+                $script:SingletonMutex = $null
+                Stop-Pipeline -Message ("Another pipeline run already holds '$MutexName', and this session may not " +
+                                        "open it - it was most likely started elevated, or by another user. " +
+                                        "Wait for it to finish, or start this run the same way.") -ExitCode 2
+            }
+
+            $script:SingletonMutex = $null
         } catch {
-            # Access denied on Global\ (no privilege), or the name already exists with an
-            # ACL we may not open. Try the next namespace.
             $script:SingletonMutex = $null
         }
     }
