@@ -170,9 +170,14 @@ namespace
     constexpr uint32 ZF_RAZJAL  = 62498;
     constexpr uint32 ZF_KATHZEN = 62496;
     constexpr uint32 ZF_JUTHZA  = 62497;
-    constexpr float  ZF_ARENA_X = 1512.21f;   // Razjal's channel spot (farraki_arena.cpp)
-    constexpr float  ZF_ARENA_Y = 1016.05f;
-    constexpr float  ZF_ARENA_Z = 11.68f;
+    // Where Razjal STANDS while idle (observed 2026-09-05: leaders next to him
+    // at 1484.5/1011.5/12.0). His channel spot (1512.21, 1016.05, 11.68) is
+    // 28yd away; anchored there the leader sat at 12-16yd from him, HopTo
+    // never closed the gap against the arrive hold, and the gossip step
+    // (5yd) stalled in every run that reached the arena.
+    constexpr float  ZF_ARENA_X = 1485.0f;
+    constexpr float  ZF_ARENA_Y = 1011.5f;
+    constexpr float  ZF_ARENA_Z = 12.0f;
     constexpr uint32 ZF_ARENA_TIMEOUT = 900000;  // 15 min for three fights
     // Comfortably beyond boss engage range so the event fires as soon as boss-nav
     // parks the tank at him, before the engage loop settles into its deadlock —
@@ -367,7 +372,7 @@ void RegisterZulFarrakRoster(std::vector<BossRosterPatch>& t)
             MakeObjective(OBJ(3), /*encounterIndex*/ 10, 209,
                           "Farraki Arena (Razjal's challenge)",
                           ZF_ARENA_X, ZF_ARENA_Y, ZF_ARENA_Z,
-                          /*arriveRadius*/ 15.0f, /*gateEntry*/ 0,
+                          /*arriveRadius*/ 6.0f, /*gateEntry*/ 0,
                           /*hook*/ 0, /*eventId*/ 4, /*orderOverride*/ 11),
         };
         t.push_back(std::move(p));
