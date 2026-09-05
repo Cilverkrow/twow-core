@@ -1324,11 +1324,22 @@ if ($null -eq $DbcManifest) {
     Stop-Pipeline -Message "DBC manifest parsing yielded an empty configuration object. Terminating pipeline execution."
 }
 
+# The null check above is not enough. ConvertFrom-Json "{}" returns a PSCustomObject with
+# no properties, not $null, so a manifest truncated or emptied to "{}" sailed through, the
+# loop below iterated zero times, $HashVerificationPassed stayed $true and the step
+# reported "All DBC file signatures successfully verified" having verified nothing.
+$DbcManifestEntries = @($DbcManifest.psobject.Properties)
+if ($DbcManifestEntries.Count -eq 0) {
+    Stop-Pipeline -Message ("dbc_verifier.json lists no files at all, so there is nothing to verify.`n" +
+                            "  file: $JsonVerifier`n" +
+                            "The shipped manifest carries 158 entries; a file this empty is damaged.")
+}
+
 $HashVerificationPassed = $true
-Write-Host "Verifying DBC file signatures integrity..."
+Write-Host "Verifying $($DbcManifestEntries.Count) DBC file signatures..."
 
 # Iterate through each defined file inside the JSON manifest properties
-foreach ($DbcFile in $DbcManifest.psobject.Properties) {
+foreach ($DbcFile in $DbcManifestEntries) {
     $FileName    = $DbcFile.Name
     $ExpectedHash = $DbcFile.Value
     $FullFilePath = Join-Path (Join-Path $DataRoot "dbc") $FileName
@@ -1355,7 +1366,7 @@ foreach ($DbcFile in $DbcManifest.psobject.Properties) {
 if (-not $HashVerificationPassed) {
     Stop-Pipeline -Message "DBC integrity verification failed. Version mismatch detected against build requirements."
 }
-Write-Host "[OK] All DBC file signatures successfully verified against SHA256 blueprint." -ForegroundColor Green
+Write-Host "[OK] All $($DbcManifestEntries.Count) DBC file signatures successfully verified against SHA256 blueprint." -ForegroundColor Green
 
 # ==============================================================================
 # PIPELINE STEP 02: VCPKG DEPENDENCY CHECK
