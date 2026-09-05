@@ -33,8 +33,10 @@ exception specifications, and ACE 6.x still uses them — its headers bury
 ```bash
 git clone --recursive -b playerbots-integration-gh https://github.com/Shyalya/tortoise-wow.git
 cd tortoise-wow
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/turtle -DBUILD_PLAYERBOTS=ON -DUSE_EXTRACTORS=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/turtle -DBUILD_PLAYERBOTS=ON -DMODULES=static -DUSE_EXTRACTORS=ON
 cmake --build build -j$(nproc)
+
+`-DMODULES=static` builds mod-playerbots and mod-dungeon-clear into the server. Since 2026-09-05 `-DBUILD_PLAYERBOTS=ON` switches it on by itself when it was left at `disabled`; without the modules the link stops at undefined playerbot hooks (`World::InitPlayerbotsAtStartup`, `BotActionLog_*`, `ChatHandler::HandlePlayerbotCommand`).
 ```
 
 **`BUILD_PLAYERBOTS` defaults to `OFF`.** Leave it out and you get a server with

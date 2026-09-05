@@ -68,6 +68,17 @@ option(ALLOW_TURTLE_ADDONS "Allow Turtle addons" ON)
 # When ON, mangosd links the bot subsystem; runtime activation is gated by
 # AiPlayerbot.Enabled in aiplayerbot.conf.
 option(BUILD_PLAYERBOTS "Build the cmangos/playerbots subsystem" OFF)
+# BUILD_PLAYERBOTS without any module build leaves the host's playerbot hooks
+# undefined at link time: PlayerbotStubs.cpp is only compiled when the
+# subsystem is OFF, and the real World::InitPlayerbotsAtStartup, the .bot /
+# .ahbot / .perfmon chat handlers and BotActionLog_* live in
+# modules/mod-playerbots. A from-scratch Linux build with the documented cmake
+# line (no -DMODULES) died exactly there (2026-09-05). The subsystem IS a
+# module, so switch the module build on for it.
+if(BUILD_PLAYERBOTS AND MODULES STREQUAL "disabled")
+  message(STATUS "BUILD_PLAYERBOTS=ON: MODULES was 'disabled' -> using 'static' (mod-playerbots is a module)")
+  set(MODULES "static" CACHE STRING "Module build mode: disabled, static, dynamic, or default." FORCE)
+endif()
 
 ConfigureModuleBuildOptions()
 
