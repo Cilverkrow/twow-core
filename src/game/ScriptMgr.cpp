@@ -2348,7 +2348,14 @@ bool ScriptMgr::OnProcessEvent(uint32 eventId, Object* pSource, Object* pTarget,
         else
             script->OnStop(eventId);
 
-        return true;
+        // Only a database-bound script HANDLES the event. A non-bound one is an
+        // observer - the Eluna bridge sits at registry id 0, which is exactly
+        // what GetEventIdScriptId() returns for every event WITHOUT a
+        // scripted_event_id row - and reporting "handled" here kept the DB
+        // event_scripts from ever running: Zul Farrak gong 141832, event 2488,
+        // Gahzrilla never summoned (2026-09-05).
+        if (script->IsDatabaseBound())
+            return true;
     }
 
     return false;
