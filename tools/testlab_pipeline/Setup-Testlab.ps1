@@ -192,7 +192,12 @@ param (
     # the directory this script sits in, which is the layout you get by copying the script out
     # of the repository into an empty working folder. Point it elsewhere to run the script
     # straight out of a checkout: -WorkspaceRoot C:\WOW\testlab
-    [string]$WorkspaceRoot = $PSScriptRoot,
+    # Deliberately defaulted in the body rather than here. $PSScriptRoot is empty while an
+    # advanced script's parameter defaults are being evaluated - [CmdletBinding()] above is
+    # what makes this script advanced - even though it holds the right path everywhere
+    # else. Written as "= $PSScriptRoot" this silently became "", and the run died in
+    # Start-Transcript before printing anything useful.
+    [string]$WorkspaceRoot = "",
 
     # vcpkg installation providing ACE and Boost. Left empty it is discovered: VCPKG_ROOT,
     # then vcpkg.exe on PATH, then a few conventional locations. Give it explicitly only
@@ -283,6 +288,10 @@ param (
 Set-StrictMode -Version Latest
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# The -WorkspaceRoot default, applied here because it cannot be applied in param(): see the
+# comment on that parameter. $PSScriptRoot is correct from this point on.
+if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) { $WorkspaceRoot = $PSScriptRoot }
 
 # Credential files are created in step 00 and removed by Stop-Pipeline / the final cleanup.
 # Declared up front so the cleanup helper can always test them under StrictMode.
@@ -924,8 +933,10 @@ Write-Host "Setting up variables"
 # against different directories, and one of the things resolved that way is the
 # Remove-Item -Recurse over the server folders.
 if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
-    Stop-Pipeline -Message ("Workspace root is empty. \$PSScriptRoot is only set when the script is run as a file, " +
-                            "so pass -WorkspaceRoot explicitly when dot-sourcing or piping this script.")
+    # Single-quoted: PowerShell escapes with a backtick, not a backslash, so "\$PSScriptRoot"
+    # printed the expanded path instead of the variable name.
+    Stop-Pipeline -Message ('Workspace root is empty and $PSScriptRoot gave nothing to fall back on. ' +
+                            'Pass -WorkspaceRoot explicitly when dot-sourcing or piping this script.')
 }
 
 # GetFullPath's two-argument overload does not exist on .NET Framework (Windows PowerShell
@@ -972,6 +983,20 @@ $script:LockFile = Join-Path $ScriptDirectory "pipeline_running.lock"
 Assert-NoConcurrentRun
 New-PipelineLock
 Write-Host "Single-instance lock acquired: $($script:LockFile) (PID $PID)"
+
+# Sweep credential files left by an earlier run before writing new ones.
+#
+# Stop-Pipeline removes them on every exit the script controls, but Ctrl+C or Task Manager
+# kills the process outright and nothing gets the chance - leaving a plaintext password in
+# TEMP until something else cleans it up. Observed after an interrupted run on 2026-09-05.
+# Safe to sweep unconditionally: TEMP is per-user, and the singleton acquired above means
+# no other run of this script is alive to own them.
+$StaleCredentials = @(Get-ChildItem -Path $env:TEMP -Filter "tw_pipeline_*.cnf" -File -ErrorAction SilentlyContinue)
+if ($StaleCredentials.Count -gt 0) {
+    Write-Host "Removing $($StaleCredentials.Count) credential file(s) left by an interrupted run."
+    $StaleCredentials | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
 
 # Define absolute paths based on the workspace root
 # Resolved just below by Resolve-MariaDbClient; the portable server's bin\ is only the
