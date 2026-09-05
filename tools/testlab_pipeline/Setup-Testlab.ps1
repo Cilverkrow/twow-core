@@ -602,8 +602,14 @@ function Invoke-MySqlFile {
         $Writer.Dispose()
     }
 
-    $Arguments = @("--defaults-extra-file=$DefaultsFile", "--default-character-set=utf8mb4")
-    if ($Database) { $Arguments += $Database }
+    # The path is quoted by hand. Start-Process joins -ArgumentList with spaces and does NOT
+    # quote an element that contains one, so a %TEMP% under a profile like
+    # "C:\Users\Jan Novak\AppData\Local\Temp" split into --defaults-extra-file=C:\Users\Jan
+    # plus a stray positional argument: the client read no credentials and every import
+    # failed with "Access denied" - after step 04 had already dropped all four databases.
+    # Test-MariaDbConnection quotes correctly, so the preflight could not catch it.
+    $Arguments = @("--defaults-extra-file=`"$DefaultsFile`"", "--default-character-set=utf8mb4")
+    if ($Database) { $Arguments += "`"$Database`"" }
 
     # Redirecting stdin is the one thing the call operator cannot do, so this stays on
     # Start-Process - but its output would then bypass the transcript entirely, so stdout
