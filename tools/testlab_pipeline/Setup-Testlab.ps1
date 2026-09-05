@@ -773,8 +773,15 @@ function Test-MariaDbConnection {
     try {
         # --connect-timeout bounds each attempt. Without it a dead port costs the client's
         # own ~2 s TCP timeout per try, and -DbStartupTimeoutSeconds overshot by 3x.
+        #
+        # The statement is quoted by hand. Start-Process joins -ArgumentList with spaces and
+        # does NOT quote an element that contains one, so "SELECT 1;" arrived as two
+        # arguments: the client took SELECT as the statement and "1;" as a database name and
+        # answered "ERROR 1049 (42000): Unknown database '1;'" - from a server that was up
+        # and answering the whole time. Probing a dead port never showed it, because the
+        # connection fails before the arguments are parsed.
         $Probe = Start-Process -FilePath $MariaDBPath `
-                               -ArgumentList @("--defaults-extra-file=$DefaultsFile", "--connect-timeout=3", "-e", "SELECT 1;") `
+                               -ArgumentList @("--defaults-extra-file=`"$DefaultsFile`"", "--connect-timeout=3", "-e", "`"SELECT 1`"") `
                                -RedirectStandardOutput $OutFile `
                                -RedirectStandardError $ErrFile `
                                -NoNewWindow -PassThru -Wait
@@ -809,9 +816,21 @@ function Wait-ForMariaDb {
 
         $LastError = $Probe.Error
 
-        if ($LastError -match 'Access denied') {
-            Stop-Pipeline -Message ("MariaDB is running but rejected the 'root' credentials. " +
-                                    "Check -RootPassword. Server said: $LastError")
+        # Only a connection-level failure is worth waiting out. Anything else means the
+        # server answered - it is up, and retrying for another half minute just delays a
+        # report of a problem that will not fix itself. ERROR 2002/2003 (and the "Can't
+        # connect" text) are the not-listening-yet cases; 1045 is a bad password, 1049 a
+        # bad database name, and so on.
+        $IsStillStarting = $LastError -match "Can't connect|ERROR 200[23]"
+
+        if (-not $IsStillStarting -and -not [string]::IsNullOrWhiteSpace($LastError)) {
+            if ($LastError -match 'Access denied') {
+                Stop-Pipeline -Message ("The database server is running but rejected the 'root' credentials. " +
+                                        "Check -RootPassword. Server said: $LastError")
+            }
+
+            Stop-Pipeline -Message ("The database server is running but refused the connection check. " +
+                                    "Server said: $LastError")
         }
 
         if ((Get-Date) -ge $Deadline) { break }
