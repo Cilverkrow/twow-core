@@ -55,7 +55,25 @@ set(TW_CORE_BINARY_ROOT "${CMAKE_CURRENT_BINARY_DIR}" CACHE INTERNAL
 # add_subdirectory(core) and its copy is the one that is built. There is
 # deliberately no merging of the two - one directory wins, whole.
 set(TW_MODULES_DIR "${TW_CORE_ROOT}/modules" CACHE PATH
-    "Directory containing the modules to build (defaults to the core's own).")
+    "Directory whose CMakeLists.txt drives the module build (the core's own).")
+
+# Every directory searched for modules, in order. TW_MODULES_DIR is always the
+# first; a platform APPENDS its own rather than replacing it.
+#
+# Discovery used to be exclusive - one directory won, whole - which meant a
+# platform wanting its own modules had to vendor a COPY of every module it also
+# wanted, upstream-tracked ones included. That is how mod-playerbots and
+# mod-dungeon-clear came to exist in two repositories and drift in both
+# directions. See ADR-0040 in twow-repo.
+#
+#   -DTW_MODULE_ROOTS="/path/to/core/modules;/path/to/platform/modules"
+set(TW_MODULE_ROOTS "${TW_MODULES_DIR}" CACHE STRING
+    "Directories searched for modules, in order; first match wins.")
+
+# TW_MODULES_DIR is searched, and searched first, whatever a caller passed.
+if(NOT "${TW_MODULES_DIR}" IN_LIST TW_MODULE_ROOTS)
+  list(INSERT TW_MODULE_ROOTS 0 "${TW_MODULES_DIR}")
+endif()
 # ---------------------------------------------------------------------------
 
 set(CMAKE_MODULE_PATH
@@ -736,12 +754,23 @@ if(XCODE)
 endif()
 
 
+# The module roots the AutoUpdater walks at runtime, joined with '|'.
+#
+# NOT ';'. A CMake list is already semicolon-separated, so embedding one in the
+# DEFINITIONS list below would split it into two bogus definitions rather than
+# one definition holding two paths. '|' is not legal in a Windows path and is
+# vanishingly rare in a source path elsewhere; the C++ side splits on it.
+#
+# A single root produces a string containing no separator at all, so the old
+# single-directory shape still works unchanged.
+string(REPLACE ";" "|" TW_SOURCE_MODULE_ROOTS "${TW_MODULE_ROOTS}")
+
 # Add definitions for all build types
 # Don't place this above 'dep' subdirectory! Because of defines build will crash.
 set(DEFINITIONS
   ${DEFINITIONS}
   DO_MYSQL
-  TW_SOURCE_MODULES_DIR="${TW_MODULES_DIR}"
+  TW_SOURCE_MODULES_DIR="${TW_SOURCE_MODULE_ROOTS}"
 )
 
 if(WIN32)

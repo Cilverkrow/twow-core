@@ -517,11 +517,33 @@ namespace DBUpdater
         auto worldUpdateFolder = sConfig.GetStringDefault("Database.AutoUpdate.WorldUpdateName", "World");
         bool sortByName = sConfig.GetBoolDefault("Database.AutoUpdate.SortByName", false);
         path folderPath{ pathString };
+        // Module roots to walk for SQL. More than one since modules can come
+        // from more than one repository - the engine's own and a platform's -
+        // and the build joins them with '|' rather than ';' because ';' would
+        // have split the compile definition itself into two definitions.
+        //
+        // A single root contains no separator, so the historical
+        // single-directory value parses to a one-element list unchanged.
+        std::vector<path> modulePaths;
 #ifdef TW_SOURCE_MODULES_DIR
-        path modulesPath{ TW_SOURCE_MODULES_DIR };
-#else
-        path modulesPath{ "modules" };
+        {
+            std::string const roots{ TW_SOURCE_MODULES_DIR };
+            std::string::size_type start = 0;
+            while (start <= roots.size())
+            {
+                std::string::size_type const sep = roots.find('|', start);
+                std::string const one = roots.substr(start,
+                    sep == std::string::npos ? std::string::npos : sep - start);
+                if (!one.empty())
+                    modulePaths.emplace_back(one);
+                if (sep == std::string::npos)
+                    break;
+                start = sep + 1;
+            }
+        }
 #endif
+        if (modulePaths.empty())
+            modulePaths.emplace_back("modules");
 
 
         directory_entry logonUpdatePath{ folderPath / authUpdateFolder };
@@ -537,14 +559,22 @@ namespace DBUpdater
         if (!ProcessTargetUpdates(worldUpdatePath, &WorldDatabase, false, sortByName))
             return false;
 
-        if (!ProcessModuleUpdates(modulesPath, authUpdateFolder, &LoginDatabase, sortByName))
-            return false;
+        // Every root, in the order the build listed them. A root that does not
+        // exist on disk is not an error: ProcessModuleUpdates already tolerates
+        // a missing directory, and a deployment that ships only the engine's
+        // modules should not fail because a platform root was configured at
+        // build time and is absent at run time.
+        for (path const& modulesPath : modulePaths)
+        {
+            if (!ProcessModuleUpdates(modulesPath, authUpdateFolder, &LoginDatabase, sortByName))
+                return false;
 
-        if (!ProcessModuleUpdates(modulesPath, charUpdateFolder, &CharacterDatabase, sortByName))
-            return false;
+            if (!ProcessModuleUpdates(modulesPath, charUpdateFolder, &CharacterDatabase, sortByName))
+                return false;
 
-        if (!ProcessModuleUpdates(modulesPath, worldUpdateFolder, &WorldDatabase, sortByName))
-            return false;
+            if (!ProcessModuleUpdates(modulesPath, worldUpdateFolder, &WorldDatabase, sortByName))
+                return false;
+        }
 
 
         
