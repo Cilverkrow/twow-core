@@ -44,6 +44,7 @@
 #include "Ai/Dungeon/DungeonClear/Data/DungeonBossInfo.h"
 #include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 #include "Ai/Dungeon/DungeonClear/DcValueKeys.h"
+#include "Ai/Dungeon/DungeonClear/Util/DungeonEventExecutor.h"
 #include "Ai/Dungeon/DungeonClear/Settings/DcSettings.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcTargeting.h"
@@ -2151,6 +2152,24 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
                 progressed = true;
             }
             _lastMask = mask;
+        }
+        // A scripted encounter advancing (Zul'Farrak's pyramid phases, a wave
+        // counter) and an event step advancing are HARD progress too. Without
+        // this, a party holding the temple ramp through the waves closed no
+        // distance and flipped no bit for the whole encounter, and the cap
+        // ended five runs mid-event (arch16, 2026-09-05).
+        {
+            uint32 sig = 2166136261u;
+            if (InstanceData* inst = tank->FindMap() ? tank->FindMap()->GetInstanceData() : nullptr)
+                for (uint32 i = 0; i < 10; ++i)
+                    sig = (sig ^ inst->GetData(i)) * 16777619u;
+            if (_lastInstanceDataSig && sig != _lastInstanceDataSig)
+                progressed = true;
+            _lastInstanceDataSig = sig;
+            uint32 const evMs = ctx->GetValue<DungeonEventProgress&>(DcKey::EventProgress)->Get().progressMs;
+            if (_lastEventProgressMs && evMs != _lastEventProgressMs)
+                progressed = true;
+            _lastEventProgressMs = evMs;
         }
         if (anchors > _lastAnchors)
         {

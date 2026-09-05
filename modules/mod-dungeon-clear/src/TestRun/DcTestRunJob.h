@@ -349,6 +349,8 @@ private:
     std::size_t _lastAnchors = 0;
     uint32 _sinceProgressMs = 0;
     uint32 _sinceHardProgressMs{0};  // since mask/anchor/distance progress (combat churn excluded)
+    uint32 _lastInstanceDataSig{0};   // fold of InstanceData::GetData(0..9): a scripted encounter advancing is progress
+    uint32 _lastEventProgressMs{0};   // DungeonEventProgress::progressMs of the tank: an event step advancing is progress
 
     // One-shot live freeze dump, fired partway INTO the no-progress window
     // rather than at teardown. Teardown is too late for the question it answers:

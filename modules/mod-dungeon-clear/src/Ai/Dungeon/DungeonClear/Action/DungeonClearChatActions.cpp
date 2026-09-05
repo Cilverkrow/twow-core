@@ -51,10 +51,12 @@ namespace
     {
         botAI->TellError(why);
 
-        Player* master = botAI->GetMaster();
-        if (!master || GET_PLAYERBOT_AI(master))
-            LOG_WARN("playerbots.dungeonclear", "DC command refused for {}: {}",
-                     bot ? bot->GetName() : "<unknown>", why);
+        // Always in the journal, whoever the master is. With a human GM as
+        // master the refusal used to go only to that GM's chat, and the
+        // harness could report "dc on did not take (look for 'DC command
+        // refused')" three times a night with nothing to look at (2026-09-05).
+        LOG_INFO("playerbots.dungeonclear", "DC command refused for {}: {}",
+                 bot ? bot->GetName() : "<unknown>", why);
     }
 
     bool IsAuthorized(Player* bot, Event const& event)
