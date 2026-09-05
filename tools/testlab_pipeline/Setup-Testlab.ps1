@@ -1962,7 +1962,31 @@ Write-PipelineHeader -StepName "15: SERVER LAUNCHER SCRIPTS"
 Write-Host "Verifying server launcher scripts..."
 
 $MysqlLauncherContent = @"
-cd $MariaDbFolderName\bin
+@echo off
+:: mysqld resolves its datadir RELATIVE to the working directory, so it has to start from
+:: its own bin folder - launched from anywhere else it dies with
+:: "Can't change dir to ...\..\data\ (Errcode: 2)".
+::
+:: "cd /d %~dp0..." rather than a bare "cd <folder>": %~dp0 is this file's own directory,
+:: so the launcher works whatever directory it is started from - a bare relative cd only
+:: worked when the shell happened to sit in the server folder - and /d also crosses drives.
+cd /d "%~dp0$MariaDbFolderName\bin"
+if errorlevel 1 (
+    echo Could not enter "%~dp0$MariaDbFolderName\bin".
+    echo Is the portable MariaDB in place, and is its folder still named "${MariaDbFolderName}"?
+    pause
+    exit /b 1
+)
+
+:: A second instance cannot bind the port, and its console window closes immediately -
+:: which looks exactly like "the database will not start" when it is in fact already up.
+netstat -ano | findstr /r /c:"LISTENING" | findstr ":3306 " >nul
+if not errorlevel 1 (
+    echo MariaDB is already running on port 3306 - nothing to do.
+    pause
+    exit /b 0
+)
+
 start "mysql" mysqld.exe --console
 "@
 
