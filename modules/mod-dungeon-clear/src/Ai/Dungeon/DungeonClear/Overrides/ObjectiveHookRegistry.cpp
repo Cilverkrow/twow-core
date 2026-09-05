@@ -212,11 +212,21 @@ namespace
             return ObjectiveArriveResult::Done;
 
         zumrah->SetFaction(ZF_ZUMRAH_FACTION_HOSTILE);
+        // ...and make him come: at 18-23yd the flipped faction alone does not
+        // aggro him, and the party's target list only carries units already in
+        // combat, so both sides stood and looked at each other until the cap
+        // (arch19, 2026-09-05: 7 wakes, 3 kills; arch16: 10/10 with 81 joins).
+        bool attacked = false;
+        if (zumrah->AI())
+        {
+            zumrah->AI()->AttackStart(bot);
+            attacked = zumrah->GetVictim() != nullptr;
+        }
         LOG_INFO("playerbots.dungeonclear",
-                 "DungeonClear: ZulFarrak — set Zum'rah ({}) faction {} -> {} for {} "
-                 "(area trigger 962 never fires for an all-bot party)",
+                 "DungeonClear: ZulFarrak — set Zum'rah ({}) faction {} -> {} for {} at {:.0f}yd, "
+                 "AttackStart -> victim {} (area trigger 962 never fires for an all-bot party)",
                  ZF_ZUMRAH, ZF_ZUMRAH_FACTION_FRIENDLY, ZF_ZUMRAH_FACTION_HOSTILE,
-                 bot->GetName());
+                 bot->GetName(), bot->GetDistance(zumrah), attacked ? "set" : "NONE");
         return ObjectiveArriveResult::Done;
     }
 

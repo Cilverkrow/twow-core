@@ -285,8 +285,9 @@ uint32 GetChatPacketProcessingType(ChatPacketHeader* header)
     return PACKET_PROCESS_WORLD;
 }
 
-/// Bot-side convenience overload: the bot wraps packets in unique_ptr. Defined
-/// here rather than in the header because destroying the parameter instantiates
+/// Bot-side convenience overload: the bot wraps packets in unique_ptr. Takes
+/// ownership and forwards to the raw-pointer overload. Defined here rather than
+/// in the header because destroying the parameter instantiates
 /// default_delete<WorldPacket>, which needs the complete type.
 void WorldSession::QueuePacket(std::unique_ptr<WorldPacket> new_packet)
 {

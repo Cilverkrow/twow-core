@@ -1482,7 +1482,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
 
     setConfig(CONFIG_BOOL_ITEM_LOG_RESTORE_QUEST_ITEMS, "ItemRestoreLog.QuestItems", false);
     setConfig(CONFIG_BOOL_LOAD_LOCALES, "LoadLocales", true);
-    setConfig(CONFIG_BOOL_LOAD_SPELLS_FROM_SQL, "LoadSpellsFromSql", false);
+    setConfig(CONFIG_BOOL_LOAD_SPELLS_FROM_SQL, "LoadSpellsFromSql", true);
 
     setConfig(CONFIG_BOOL_ENABLE_FACTION_BALANCE, "FactionBalance.Enable", false);
     setConfig(CONFIG_BOOL_BLOCK_ALL_HANZI, "Hanzi.BlockAll", false);
