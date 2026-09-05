@@ -249,8 +249,23 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(QueryResult* /*dummy*/, SqlQu
     {
         sLog.outError("[PlayerBots] HandlePlayerBotLoginCallback: bot %u failed to enter world",
                       info.botGuid.GetCounter());
-        // botSession leaks here — but only on failure; LogoutPlayerBot would do the cleanup
-        // in the success path normally. Acceptable for smoke testing; fix if needed.
+        // Ownership: this bot session was allocated with `new` just above and, per the
+        // comment at its allocation site, is deliberately NOT passed through
+        // sWorld.AddSession — grep confirms WorldSession::HandlePlayerLogin (and everything
+        // it calls on every failure branch: the double-login guard, the hijack-account kick,
+        // the already-ingame kick, and the LoadFromDB failure) never registers `this` in
+        // sWorld's session map and never deletes `this` itself; it only ever frees the
+        // LoginQueryHolder and, on some branches, the half-built Player. So the caller here
+        // is still the sole owner of botSession. `bot` (botSession->GetPlayer()) is null on
+        // every one of those branches, so `delete botSession` is a plain empty-session free.
+        // The remaining case — bot non-null but !IsInWorld() (e.g. GetMap()->Add failed and
+        // a delayed homebind teleport is pending) — still has _player attached, and
+        // WorldSession's destructor calls LogoutPlayer(true) whenever _player is set, which
+        // is exactly the teardown LogoutPlayerBot's success path runs explicitly before its
+        // own `delete botWorldSessionPtr`. So one delete here matches that path for both
+        // sub-cases and is not a double-free: nothing else is holding a pointer to this
+        // session.
+        delete botSession;
         if (this == &sRandomPlayerbotMgr && sPlayerbotAIConfig.persistentActiveRosterEnabled)
             sRandomPlayerbotMgr.OnPlayerLoginError(info.botGuid.GetCounter());
         return;
