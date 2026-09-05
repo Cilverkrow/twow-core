@@ -483,7 +483,18 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
 
         if (GetBotAI(bot) && GetBotAI(bot)->GetShouldLogOut() && !bot->IsStunnedByLogout() && !bot->GetSession()->isLogingOut())
         {
-            LogoutPlayerBot(bot->GetObjectGuid().GetRawValue());
+            // allowMasterLogoutOrShutdown = true. GetShouldLogOut() is only set
+            // by a master asking this bot to log out, which is precisely what
+            // that flag exists to permit.
+            //
+            // Passing the default false here is a live bug, not a theoretical
+            // one: UpdateSessions runs EVERY TICK, and the roster guard rejects
+            // an ordinary logout of any roster member - which is the normal,
+            // healthy state of a persistent bot. The flag is never cleared
+            // except by a completed logout, so the bot could never leave and
+            // every tick would log "ordinary logout rejected" forever. See
+            // twow-repo issue #104 (BOT-08).
+            LogoutPlayerBot(bot->GetObjectGuid().GetRawValue(), true, false, true);
         }
     });
 
