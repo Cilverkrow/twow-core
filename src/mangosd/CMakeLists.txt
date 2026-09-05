@@ -18,10 +18,12 @@
 set(EXECUTABLE_NAME mangosd)
 set (EXECUTABLE_SRCS 
 	CliRunnable.h
+	CliInput.h
 	DynamicModules.h
 	Master.h
 	WorldRunnable.h
 	CliRunnable.cpp
+	CliInput.cpp
 	DynamicModules.cpp
 	Main.cpp
 	Master.cpp
@@ -104,6 +106,17 @@ set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "${DEFINITIONS}")
 add_executable(${EXECUTABLE_NAME}
   ${EXECUTABLE_SRCS}
 )
+
+if(BUILD_TESTING AND UNIX)
+  add_executable(mangosd_cli_input_tests
+    tests/CliInputTests.cpp
+    CliInput.cpp
+  )
+  target_include_directories(mangosd_cli_input_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  )
+  add_test(NAME mangosd.cli_input COMMAND mangosd_cli_input_tests)
+endif()
 
 if(USE_SCRIPTS)
   target_link_libraries(${EXECUTABLE_NAME}
