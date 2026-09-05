@@ -3723,6 +3723,10 @@ void Player::GiveXP(uint32 xp, Unit* victim)
     if (!IsAlive())
         return;
 
+    if (HasChallenge(CHALLENGE_BREWMASTER) &&
+        GetDrunkenstateByValue(GetDrunkValue()) != DRUNKEN_SMASHED)
+        return;
+
     uint32 level = GetLevel();
 
     if (IsHardcore() && InBattleGround())
@@ -3908,6 +3912,15 @@ void Player::GiveLevel(uint32 level)
             AwardTitle(TITLE_THE_WANDERER);
             MailVagrantModeRewards(level);
         }
+    }
+
+    if (HasChallenge(CHALLENGE_CRAFTMASTER) && level == PLAYER_MAX_LEVEL)
+        AwardTitle(TITLE_CRAFTMASTER);
+
+    if (HasChallenge(CHALLENGE_BREWMASTER) && level == PLAYER_MAX_LEVEL)
+    {
+        AwardTitle(TITLE_BREWMASTER);
+        MailBrewmasterModeRewards();
     }
 
     if (HasChallenge(CHALLENGE_BOARING_MODE))
@@ -11883,6 +11896,14 @@ InventoryResult Player::CanEquipItem(uint8 slot, uint16 &dest, ItemPrototype con
 
             if (IsInCombat() && pProto->Class == ITEM_CLASS_WEAPON && m_weaponChangeTimer != 0)
                 return EQUIP_ERR_CANT_DO_RIGHT_NOW;         // maybe exist better err
+
+            if (HasChallenge(CHALLENGE_CRAFTMASTER) && GetLevel() < PLAYER_MAX_LEVEL &&
+                pProto->InventoryType != INVTYPE_TABARD &&
+                (!pItem || pItem->GetGuidValue(ITEM_FIELD_CREATOR) != GetObjectGuid()))
+            {
+                GetSession()->SendNotification("You can only equip items you crafted yourself in the Traveling Craftmaster challenge.");
+                return EQUIP_ERR_CANT_DO_RIGHT_NOW;
+            }
 
             if (HasChallenge(CHALLENGE_VAGRANT_MODE) && GetLevel() < PLAYER_MAX_LEVEL)
             {
@@ -24851,10 +24872,33 @@ void Player::MailVagrantModeRewards(uint32 level)
 void Player::MailBoaringModeRewards(uint32 level)
 {
     Item* ToMailItem = Item::CreateItem(40998, 1, this);
+    // CreateItem returns nullptr when the item template is missing - and 40998
+    // is not in every world database (ours, 2026-09-04). The title was already
+    // awarded; do not take the server down over the mail.
+    if (!ToMailItem)
+    {
+        sLog.outError("[Challenge] Boaring reward item 40998 missing from item_template - no mail for %s", GetName());
+        return;
+    }
     ToMailItem->SaveToDB();
 
     MailDraft("Boar's Honor Pack", "Took you long enough! Here's your boar and sword.")
         .AddItem(ToMailItem)
+        .SendMailTo(this, MailSender(MAIL_CREATURE, uint32(16547), MAIL_STATIONERY_DEFAULT), MAIL_CHECK_MASK_COPIED, 0, 30 * DAY);
+}
+
+void Player::MailBrewmasterModeRewards()
+{
+    Item* reward = Item::CreateItem(GetTeam() == ALLIANCE ? 81234 : 80455, 1, this);
+    if (!reward)
+    {
+        sLog.outError("[Challenge] Brewmaster reward mount missing from item_template - no mail for %s", GetName());
+        return;
+    }
+    reward->SaveToDB();
+
+    MailDraft("Master of the Brew", "Congratulations on reaching level 60 while walking the Path of the Brewmaster! Accept this Brewfest mount as a reward for your spirited journey.")
+        .AddItem(reward)
         .SendMailTo(this, MailSender(MAIL_CREATURE, uint32(16547), MAIL_STATIONERY_DEFAULT), MAIL_CHECK_MASK_COPIED, 0, 30 * DAY);
 }
 
@@ -25879,6 +25923,18 @@ bool Player::HasEarnedTitle(uint8 titleId)
     case TITLE_THE_WANDERER:
     {
         if (GetLevel() == PLAYER_MAX_LEVEL && HasChallenge(CHALLENGE_VAGRANT_MODE))
+            return true;
+        break;
+    }
+    case TITLE_CRAFTMASTER:
+    {
+        if (GetLevel() == PLAYER_MAX_LEVEL && HasChallenge(CHALLENGE_CRAFTMASTER))
+            return true;
+        break;
+    }
+    case TITLE_BREWMASTER:
+    {
+        if (GetLevel() == PLAYER_MAX_LEVEL && HasChallenge(CHALLENGE_BREWMASTER))
             return true;
         break;
     }

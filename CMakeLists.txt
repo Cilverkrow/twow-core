@@ -99,6 +99,17 @@ option(ALLOW_TURTLE_ADDONS "Allow Turtle addons" ON)
 # When ON, mangosd links the bot subsystem; runtime activation is gated by
 # AiPlayerbot.Enabled in aiplayerbot.conf.
 option(BUILD_PLAYERBOTS "Build the cmangos/playerbots subsystem" OFF)
+# BUILD_PLAYERBOTS without any module build leaves the host's playerbot hooks
+# undefined at link time: PlayerbotStubs.cpp is only compiled when the
+# subsystem is OFF, and the real World::InitPlayerbotsAtStartup, the .bot /
+# .ahbot / .perfmon chat handlers and BotActionLog_* live in
+# modules/mod-playerbots. A from-scratch Linux build with the documented cmake
+# line (no -DMODULES) died exactly there (2026-09-05). The subsystem IS a
+# module, so switch the module build on for it.
+if(BUILD_PLAYERBOTS AND MODULES STREQUAL "disabled")
+  message(STATUS "BUILD_PLAYERBOTS=ON: MODULES was 'disabled' -> using 'static' (mod-playerbots is a module)")
+  set(MODULES "static" CACHE STRING "Module build mode: disabled, static, dynamic, or default." FORCE)
+endif()
 
 # Target CPU baseline for GCC/Clang -march; consumed near the BUILD_ADDITIONAL_FLAGS
 # block below, where upstream hardcodes `native`.
@@ -791,7 +802,9 @@ set(TW_CORE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE INTERNAL
 message(STATUS "Build flags (RELEASE) : ${CMAKE_CXX_FLAGS_RELEASE}")
 message(STATUS "Build flags (DEBUG)   : ${CMAKE_CXX_FLAGS_DEBUG}")
 
-
+if(MSVC)
+    add_compile_definitions(_USE_MATH_DEFINES)
+endif()
 add_subdirectory(src)
 add_subdirectory(dep)
 
@@ -816,6 +829,10 @@ add_subdirectory("${TW_MODULES_DIR}" "${CMAKE_BINARY_DIR}/modules")
 
 if(TARGET mangosd AND TARGET modules)
   target_link_libraries(mangosd modules)
+endif()
+
+if(TARGET mangosd AND TARGET modules_playerbots)
+  target_link_libraries(mangosd modules_playerbots)
 endif()
 
 if(TARGET mangosd AND WORLDSERVER_DYNAMIC_MODULES_DEPENDENCIES)

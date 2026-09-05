@@ -5,6 +5,10 @@
 
 #include <unordered_map>
 #include "Ai/Dungeon/DungeonClear/Util/NavmeshSnap.h"
+#include "CellImpl.h"
+#include "Ai/Dungeon/DungeonClear/Data/DcNeverTargetRegistry.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 #include "DungeonClearActions.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcEncounterMask.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
@@ -1793,6 +1797,152 @@ bool DcObjectiveArriveAction::Execute(Event& /*event*/)
             // ends up camped with a full group and an empty-mana tank. Same fix,
             // and the same Yield/Hold pair, as the UseItemOnGO branch below.
             //
+            // A garrison that must FIGHT while it holds (Zul'Farrak's temple
+            // ramp): the wave trolls go for Bly's freed band on the stairs, never
+            // for the party, so a party that only holds never enters combat,
+            // IsWaveAllDead() never reads true and the pyramid phase sat at
+            // WAVE_1 until the harness cap (arch15, 2026-09-05). Engage the
+            // nearest hostile inside the hold's engage radius; the instance-data
+            // gate alone still ends the step.
+            if (step.kind == EventStepKind::MoveTo && step.holdEngageRadius > 0.0f &&
+                (step.instanceDataId >= 0 || step.persistentDataId >= 0))
+            {
+                // Explicit 25 yd floor band: the ramp hold sits 11 yd under the
+                // stairs top and 20 yd over the wave spawns at the foot.
+                Unit* holdTarget = DcTargeting::NearestHostileNearPoint(
+                        bot, context, step.x, step.y, step.z, step.holdEngageRadius,
+                        /*zBand*/ 25.0f, &step.entryFilter);
+                {
+                    // One line / 10 s per leader either way: arch16 (2026-09-05)
+                    // left five parties idle at the ramp with no way to tell
+                    // whether this branch found nothing or was never reached.
+                    static std::unordered_map<uint64, uint32> s_holdSaidAt;
+                    uint32 const nowH = getMSTime();
+                    uint32& atH = s_holdSaidAt[bot->GetObjectGuid().GetRawValue()];
+                    if (!atH || getMSTimeDiff(atH, nowH) > 10000)
+                    {
+                        atH = nowH;
+                        LOG_INFO("playerbots.dungeonclear",
+                                 "[DC:{}] hold-engage: {} (far targets {}, radius {:.0f} around ({:.0f},{:.0f},{:.0f}))",
+                                 bot->GetName(),
+                                 holdTarget ? std::string("engaging ") + holdTarget->GetName() + " at " +
+                                                  std::to_string(int(bot->GetDistance(holdTarget))) + "yd"
+                                            : std::string("no hostile in reach"),
+                                 context->GetValue<GuidVector>(DcKey::FarTargets)->Get().size(),
+                                 step.holdEngageRadius, step.x, step.y, step.z);
+                        if (!holdTarget)
+                        {
+                            // What IS there? The far-targets list read 0 for 260
+                            // ticks at the Zul'Farrak ramp with the waves in full
+                            // swing (arch17). Name the nearest creatures and why
+                            // the list does not hold them.
+                            std::list<Creature*> nearby;
+                            Acore::AnyUnitInObjectRangeCheck check(bot, step.holdEngageRadius);
+                            Acore::CreatureListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, nearby, check);
+                            Cell::VisitObjects(bot, searcher, step.holdEngageRadius);
+                            Player* const me = bot;
+                            nearby.sort([me](Creature* a, Creature* b) { return me->GetDistance(a) < me->GetDistance(b); });
+                            uint32 shown = 0;
+                            std::string what;
+                            for (Creature* c : nearby)
+                            {
+                                if (!c || !c->IsAlive() || c->IsPet() || c->IsTotem())
+                                    continue;
+                                if (shown++ >= 5)
+                                    break;
+                                what += fmt::format(" | {}({}) {:.0f}yd dz{:.0f} fac{} hostile={} friendly={} combat={} see={}",
+                                                    c->GetName(), c->GetEntry(), bot->GetDistance(c),
+                                                    c->GetPositionZ() - bot->GetPositionZ(), c->GetFactionTemplateId(),
+                                                    bot->IsHostileTo(c) ? 1 : 0, bot->IsFriendlyTo(c) ? 1 : 0,
+                                                    c->IsInCombat() ? 1 : 0, bot->CanSeeInWorld(c) ? 1 : 0);
+                            }
+                            LOG_INFO("playerbots.dungeonclear", "[DC:{}] hold-engage: nearby ({} alive):{}",
+                                     bot->GetName(), nearby.size(), what.empty() ? " none" : what);
+                        }
+                    }
+                }
+                // Fallback: the far-targets list does not carry the wave adds
+                // (arch18: Sandfury Slave/Acolyte, faction 37, hostile, visible,
+                // 0 in the list). Take the nearest attackable hostile creature
+                // around the hold point straight from the grid.
+                if (!holdTarget)
+                {
+                    std::list<Creature*> around;
+                    Acore::AnyUnitInObjectRangeCheck aroundCheck(bot, step.holdEngageRadius + 30.0f);
+                    Acore::CreatureListSearcher<Acore::AnyUnitInObjectRangeCheck> aroundSearcher(bot, around, aroundCheck);
+                    Cell::VisitObjects(bot, aroundSearcher, step.holdEngageRadius + 30.0f);
+                    float bestD2 = step.holdEngageRadius * step.holdEngageRadius;
+                    uint32 rejectedAttack = 0, rejectedReach = 0;
+                    Creature* nearestUnreachable = nullptr;
+                    float nearestUnreachableD2 = bestD2;
+                    for (Creature* c : around)
+                    {
+                        if (!c || !c->IsAlive() || c->IsPet() || c->IsTotem() || c->IsCritter())
+                            continue;
+                        if (!bot->IsHostileTo(c))
+                            continue;
+                        if (std::fabs(c->GetPositionZ() - step.z) > 25.0f)
+                            continue;
+                        float const ddx = c->GetPositionX() - step.x, ddy = c->GetPositionY() - step.y;
+                        float const d2 = ddx * ddx + ddy * ddy;
+                        if (d2 > bestD2)
+                            continue;
+                        if (DcNeverTargetRegistry::IsNeverTarget(bot->GetMapId(), c->GetEntry()))
+                            continue;
+                        if (!bot->IsValidAttackTarget(c))
+                        {
+                            ++rejectedAttack;
+                            continue;
+                        }
+                        if (!DcEngageGeometry::IsEngageReachable(bot, c, /*requireDirect*/ false))
+                        {
+                            ++rejectedReach;
+                            if (d2 < nearestUnreachableD2)
+                            {
+                                nearestUnreachable = c;
+                                nearestUnreachableD2 = d2;
+                            }
+                            continue;
+                        }
+                        holdTarget = c;
+                        bestD2 = d2;
+                    }
+                    // The path test said no for every hostile in reach. On the
+                    // Zul'Farrak stairs that was the whole wave: the adds waited
+                    // 40yd down at the foot (dz -24), the party had just walked
+                    // up those same stairs, and the hold sat out the encounter
+                    // (arch20: 7 of 10 waves never died). Go for the nearest one
+                    // anyway - EngageDirect paths for itself and a real dead end
+                    // shows up as a stall, not as a silent hold.
+                    bool unreachableAnyway = false;
+                    if (!holdTarget && nearestUnreachable)
+                    {
+                        holdTarget = nearestUnreachable;
+                        unreachableAnyway = true;
+                    }
+                    static std::unordered_map<uint64, uint32> s_fallbackSaidAt;
+                    uint32 const nowF = getMSTime();
+                    uint32& atF = s_fallbackSaidAt[bot->GetObjectGuid().GetRawValue()];
+                    bool const sayF = !atF || getMSTimeDiff(atF, nowF) > 10000;
+                    if (sayF)
+                        atF = nowF;
+                    if (sayF && (holdTarget || rejectedAttack || rejectedReach))
+                        LOG_INFO("playerbots.dungeonclear",
+                                 "[DC:{}] hold-engage fallback: {}{} (rejected: not attackable {}, unreachable {})",
+                                 bot->GetName(),
+                                 holdTarget ? std::string("engaging ") + holdTarget->GetName() + " at " +
+                                                  std::to_string(int(bot->GetDistance(holdTarget))) + "yd"
+                                            : std::string("nothing"),
+                                 unreachableAnyway ? " despite the path test" : "",
+                                 rejectedAttack, rejectedReach);
+                }
+                if (holdTarget)
+                {
+                    DcMovement::ResolveEscortConflict(bot);
+                    SetPhase(context, "objective");
+                    return EngageDirect(holdTarget);
+                }
+            }
             // Only once ARRIVED: while still walking in, the move is the work.
             // Excluded when the garrison carries a WhileHolding hook (the Ring of
             // Law): there the hold's per-tick hook is the only thing that notices
@@ -1826,6 +1976,32 @@ bool DcObjectiveArriveAction::Execute(Event& /*event*/)
                 float const search = step.radius > 0.0f ? step.radius : 250.0f;
                 Creature* target =
                     bot->FindNearestCreature(step.creatureEntry, search, /*alive*/ true);
+                // Prefer a HOSTILE instance of the entry over the nearest one.
+                // Uldaman's altar wakes ONE Stone Keeper at a time while the other
+                // three stay stoned (faction 35); the nearest keeper is usually
+                // still stone while the woken one is already beating on a
+                // follower, and waiting on the stone one lets the woken one pick
+                // its own victims (2026-09-05).
+                if (target && !bot->IsHostileTo(target))
+                {
+                    std::list<Creature*> sameEntry;
+                    bot->GetCreatureListWithEntryInGrid(sameEntry, step.creatureEntry, search);
+                    Creature* hostile = nullptr;
+                    float hostileDist = 0.0f;
+                    for (Creature* c : sameEntry)
+                    {
+                        if (!c || !c->IsAlive() || !bot->IsHostileTo(c))
+                            continue;
+                        float const d = bot->GetDistance(c);
+                        if (!hostile || d < hostileDist)
+                        {
+                            hostile = c;
+                            hostileDist = d;
+                        }
+                    }
+                    if (hostile)
+                        target = hostile;
+                }
                 // A friendly, not-yet-hostile instance of the entry (Uldaman's
                 // stoned Stone Keepers, faction 35 until the altar wakes them)
                 // cannot be engaged: EngageDirect on it registers a "first
