@@ -20,6 +20,7 @@
  */
 
 #include "Object.h"
+#include "DetailedWorkDiagnostics.h"
 #include <shared_mutex>
 #include "SharedDefines.h"
 #include "WorldPacket.h"
@@ -1979,6 +1980,21 @@ void WorldObject::SendObjectMessageToSet(WorldPacket *data, bool self, WorldObje
 
 void WorldObject::SendMovementMessageToSet(WorldPacket data, bool self, WorldObject const* except)
 {
+    DetailedWork::Scope deliveryWork(DetailedWork::MovementDelivery, GetGUIDLow());
+    if (IsCreature())
+    {
+        if (!IsInWorld())
+            return;
+        // CMaNGOS sends NPC movement to its existing observers instead of
+        // searching camera cells again for each spline packet. Bot sessions
+        // still receive their normal SendPacket hooks. Transport gameobjects
+        // and the native player broadcaster retain their own delivery paths.
+        for (ObjectGuid guid : m_movementViewers.Snapshot())
+            if (Player* viewer = GetMap()->GetPlayer(guid))
+                if (viewer != except && viewer->IsInWorld() && viewer->IsInVisibleList(this))
+                    viewer->GetSession()->SendPacket(&data);
+        return;
+    }
     if (!IsPlayer() || !sWorld.GetBroadcaster()->IsEnabled())
         SendObjectMessageToSet(&data, true, except);
     else
@@ -2049,6 +2065,8 @@ bool WorldObject::isWithinVisibilityDistanceOf(Unit const* viewer, WorldObject c
 void WorldObject::SetMap(Map * map)
 {
     MANGOS_ASSERT(map);
+    if (m_currMap != map)
+        m_movementViewers.Clear();
     m_currMap = map;
     //lets save current map's Id/instanceId
     m_mapId = map->GetId();
@@ -2767,6 +2785,7 @@ void WorldObject::DestroyForNearbyPlayers()
         {
             std::unique_lock<std::shared_mutex> lock(plr->m_visibleGUIDs_lock);
             plr->m_visibleGUIDs.erase(GetGUID());
+            RemoveMovementViewer(plr->GetObjectGuid());
         }
 
         if (ToPlayer() && ToPlayer()->m_broadcaster)
