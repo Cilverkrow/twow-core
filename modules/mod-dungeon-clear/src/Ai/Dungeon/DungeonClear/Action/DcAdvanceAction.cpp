@@ -1124,7 +1124,7 @@ DungeonClearAdvanceAction::Step DungeonClearAdvanceAction::DoStuckRecover(Advanc
         if (Map* stuckMap = bot->FindMap())
         {
             if (DungeonClearRouteRegistry::Forget(next->mapId, stuckMap->GetDifficulty(),
-                                                  next->entry))
+                                                  next->entry, stuckMap->GetInstanceId()))
             {
                 DcRouteRecorder::DiscardRoute(next->mapId, next->entry);
                 LOG_INFO("playerbots.dungeonclear",
