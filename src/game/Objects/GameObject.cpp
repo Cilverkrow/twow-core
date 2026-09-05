@@ -1669,8 +1669,16 @@ void GameObject::Use(Unit* user)
                 {
                     DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "Goober ScriptStart id %u for GO entry %u (GUID %u).", info->goober.eventId, GetEntry(), GetGUIDLow());
 
-                    if (!sScriptMgr.OnProcessEvent(info->goober.eventId, player, this, true))
+                    bool const handledByScript = sScriptMgr.OnProcessEvent(info->goober.eventId, player, this, true);
+                    if (!handledByScript)
                         GetMap()->ScriptsStart(sEventScripts, info->goober.eventId, player->GetObjectGuid(), GetObjectGuid());
+                    // INFO, deliberately: a bot party rang Zul'Farrak's gong (141832, event
+                    // 2488) and Gahz'rilla never appeared, with nothing between the click and
+                    // the summon visible in the journal (2026-09-05).
+                    sLog.outInfo("[GO] goober %u (%s) used by %s -> event %u %s, lootState %u, cooldownTime %u",
+                                 GetEntry(), GetName(), player->GetName(), info->goober.eventId,
+                                 handledByScript ? "handled by a C++ script" : "started as a DB event script",
+                                 uint32(getLootState()), uint32(m_cooldownTime));
                 }
                 else
                     GetMap()->ScriptsStart(sGameObjectScripts, GetGUIDLow(), user->GetObjectGuid(), GetObjectGuid());

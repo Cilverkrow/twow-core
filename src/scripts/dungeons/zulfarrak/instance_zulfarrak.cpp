@@ -183,6 +183,9 @@ public:
                 RazjalGUID = pCreature->GetGUID();
                 break;
             case NPC_GAHZRILLA:
+                sLog.outInfo("[ZF] Gahz'rilla created at (%.1f,%.1f,%.1f), encounter state %u",
+                             pCreature->GetPositionX(), pCreature->GetPositionY(), pCreature->GetPositionZ(),
+                             GahzRillaEncounter);
                 if (GahzRillaEncounter >= IN_PROGRESS)
                     pCreature->DisappearAndDie();
                 else
