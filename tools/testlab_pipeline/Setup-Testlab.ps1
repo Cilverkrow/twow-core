@@ -892,9 +892,42 @@ function Resolve-VcpkgDirectory {
                             "or pass -VcpkgDirectory <path>. Looked in: " + ($Candidates -join "; "))
 }
 
-# Writes one of the server launcher .bat files, but only when it is not already there -
-# these are the operator's entry points and may well have been hand-tuned, so an existing
-# file is always left alone.
+# Bumped whenever the generated launcher content changes. An existing launcher that this
+# pipeline wrote at an older version, and that nobody has edited since, is refreshed on the
+# next run - which is the whole point of the marker below.
+$script:LauncherFormatVersion = 2
+
+# Short, stable fingerprint of a launcher body. Line endings and trailing blank lines are
+# normalised first so a file that only differs in those is still recognised as unchanged.
+function Get-LauncherChecksum {
+    param (
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text
+    )
+
+    $Normalised = ($Text -replace "`r`n", "`n").TrimEnd()
+    $Hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $Digest = $Hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Normalised))
+        return ([System.BitConverter]::ToString($Digest) -replace '-', '').ToLower().Substring(0, 16)
+    } finally {
+        $Hasher.Dispose()
+    }
+}
+
+# Writes one of the server launcher .bat files.
+#
+# "Skip if it exists" is not enough on its own: these files were written by an earlier
+# version of this pipeline, so a change here - the working-directory fix in the MariaDB
+# launcher, say - would never reach a testlab that had already been set up once, and the
+# operator would keep running a stale script with no sign anything was wrong.
+#
+# But blindly overwriting is worse: these are the operator's entry points and may well have
+# been hand-tuned. So each generated launcher carries a marker line naming the version that
+# wrote it and a checksum of the body, which tells the three cases apart:
+#
+#   marker matches, version current  -> nothing to do
+#   marker matches, version older    -> ours, untouched, and stale: safely refreshed
+#   checksum differs, or no marker   -> hand-made or edited: left alone, reported
 #
 # Content is deliberately plain ASCII: .bat files are read by cmd.exe in the OEM code page,
 # so accented characters in a comment would come out as mojibake on a Czech console.
@@ -905,14 +938,54 @@ function New-ServerLauncherScript {
     )
 
     $LauncherName = Split-Path $Path -Leaf
+    $Checksum     = Get-LauncherChecksum -Text $Content
+    $MarkerLine   = ":: tortoise-testlab-launcher version=$($script:LauncherFormatVersion) checksum=$Checksum"
+    # Trailing newline matters: without it anything later appended to the file lands on the
+    # marker line and corrupts it.
+    $FileText     = (($Content.TrimEnd() + "`n" + $MarkerLine + "`n") -replace "`r`n", "`n") -replace "`n", "`r`n"
 
-    if (Test-Path $Path) {
-        Write-Host " -> [SKIP] Launcher already present, left untouched: $LauncherName"
+    if (Test-Path -LiteralPath $Path) {
+        $Existing      = [System.IO.File]::ReadAllText($Path)
+        $ExistingLines = @($Existing -split "`r?`n")
+        $FoundMarker   = @($ExistingLines | Where-Object { $_ -match '^::\s*tortoise-testlab-launcher\s+version=(\d+)\s+checksum=([0-9a-f]+)' })
+
+        if ($FoundMarker.Count -eq 0) {
+            Write-Warning ("$LauncherName was not written by this pipeline (no version marker), so it is left as it is. " +
+                           "If it stops working after an update, compare it against tools/testlab_pipeline in the repository.")
+            return
+        }
+
+        # -match above populated $Matches from the last line it tested; re-match to be sure
+        # it holds this file's marker rather than whatever was tested last.
+        $null = $FoundMarker[-1] -match '^::\s*tortoise-testlab-launcher\s+version=(\d+)\s+checksum=([0-9a-f]+)'
+        $ExistingVersion  = [int]$Matches[1]
+        $ExistingChecksum = $Matches[2]
+
+        # The body is everything except the marker line.
+        $ExistingBody = ($ExistingLines | Where-Object { $_ -notmatch '^::\s*tortoise-testlab-launcher\s' }) -join "`n"
+
+        if ((Get-LauncherChecksum -Text $ExistingBody) -ne $ExistingChecksum) {
+            Write-Warning "$LauncherName has been edited since the pipeline wrote it, so it is left untouched."
+            return
+        }
+
+        if ($ExistingVersion -eq $script:LauncherFormatVersion -and $ExistingChecksum -eq $Checksum) {
+            Write-Host " -> [SKIP] Launcher is current: $LauncherName"
+            return
+        }
+
+        $Reason = if ($ExistingVersion -ne $script:LauncherFormatVersion) {
+            "version $ExistingVersion -> $($script:LauncherFormatVersion)"
+        } else {
+            "content changed since it was written"
+        }
+
+        [System.IO.File]::WriteAllText($Path, $FileText, [System.Text.Encoding]::ASCII)
+        Write-Host " -> Refreshed stale launcher ($Reason): $LauncherName" -ForegroundColor Yellow
         return
     }
 
-    # ASCII + CRLF, the only combination cmd.exe is guaranteed to read back correctly.
-    [System.IO.File]::WriteAllText($Path, ($Content -replace "`r?`n", "`r`n"), [System.Text.Encoding]::ASCII)
+    [System.IO.File]::WriteAllText($Path, $FileText, [System.Text.Encoding]::ASCII)
     Write-Host " -> Created launcher: $LauncherName" -ForegroundColor Green
 }
 

@@ -268,7 +268,7 @@ machine.
 | 12 | Scale the bot population down in `aiplayerbot.conf` |
 | 13 | Insert the local realm into `tw_logon.realmlist` |
 | 14 | Create `logs\`, `honor\`, `pdump\`, `lua_scripts\` |
-| 15 | Generate the three launcher `.bat` files (only if missing) |
+| 15 | Generate the three launcher `.bat` files, refreshing stale ones |
 
 Afterwards: `server\1.Start mysql.bat`, then `2.Realm server.bat`, then
 `3.World server.bat`. Create your account from the mangosd console with `account create`.
@@ -305,6 +305,12 @@ often fails where Linux succeeds:
   arguments, which any local user can read out of the process list.
 - **Uncommitted source changes are stashed, not discarded**, when `-applyPatches` needs a
   clean tree.
+- **Launchers cannot go stale behind your back.** Each generated `.bat` carries a marker
+  line with the version that wrote it and a checksum of its body, so step 15 can tell three
+  situations apart: unchanged and current (skipped), written by an older pipeline and never
+  edited since (refreshed, so a fix like the MariaDB working-directory one actually reaches
+  a testlab that was set up months ago), and hand-edited or hand-made (left alone, with a
+  warning). Edit them freely — an edited file is never overwritten.
 - **Everything is checked before anything is destroyed.** Step 04 drops the databases and
   wipes the server directory, so every tool and service the run depends on is verified in
   the preflight first. A missing `cmake` used to surface in step 08 — four steps *after*
