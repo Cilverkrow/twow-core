@@ -40,6 +40,12 @@ EventBuilder& EventBuilder::Conditional(EventCondition condition)
     return *this;
 }
 
+EventBuilder& EventBuilder::CompletedWhen(EventCondition completed)
+{
+    _ev.completedWhen = std::move(completed);
+    return *this;
+}
+
 EventBuilder& EventBuilder::Optional()
 {
     _ev.required = false;
@@ -184,6 +190,13 @@ EventBuilder& EventBuilder::WhileHolding(uint32 hookId)
 {
     if (!_ev.steps.empty())
         _ev.steps.back().hookId = hookId;
+    return *this;
+}
+
+EventBuilder& EventBuilder::EngageWhileHolding(float radius)
+{
+    if (!_ev.steps.empty())
+        _ev.steps.back().holdEngageRadius = radius;
     return *this;
 }
 

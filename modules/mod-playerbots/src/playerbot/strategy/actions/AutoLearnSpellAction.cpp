@@ -39,8 +39,7 @@ void AutoLearnSpellAction::LearnSpells(std::ostringstream* out)
     if (sPlayerbotAIConfig.autoLearnQuestSpells)
         LearnQuestSpells(out);
 
-    if (sPlayerbotAIConfig.autoLearnTrainerSpells)
-        LearnTrainerSpells(out);
+    CatchUpTrainerSpells(out);
 
 #ifdef MANGOSBOT_ZERO
     if (sPlayerbotAIConfig.autoLearnDroppedSpells)
@@ -62,11 +61,27 @@ void AutoLearnSpellAction::LearnSpells(std::ostringstream* out)
     }
 }
 
-void AutoLearnSpellAction::LearnTrainerSpells(std::ostringstream* out)
+void AutoLearnSpellAction::CatchUpTrainerSpells(std::ostringstream* out)
 {
+    if (!sPlayerbotAIConfig.autoLearnTrainerSpells)
+        return;
     bot->learnDefaultSpells();
+    auto const entries = sObjectMgr.GetBotTrainerEntries(bot->getClass());
+    // Preserve upstream's prerequisite catch-up without scanning every creature
+    // template for every pass and every login in a 6,000-bot population.
+    for (int pass = 0; pass < 6; ++pass)
+    {
+        size_t const before = bot->GetSpellMap().size();
+        LearnTrainerSpells(out, entries);
+        if (bot->GetSpellMap().size() == before)
+            break;
+    }
+}
 
-    for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
+void AutoLearnSpellAction::LearnTrainerSpells(std::ostringstream* out, std::vector<uint32> const& entries)
+{
+    std::set<std::pair<uint32, uint32>> visited;
+    for (uint32 id : entries)
     {
         CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id);
         if (!co)
@@ -86,6 +101,9 @@ void AutoLearnSpellAction::LearnTrainerSpells(std::ostringstream* out)
         uint32 trainerId = co->TrainerTemplateId;
         if (!trainerId)
             trainerId = co->Entry;
+        // Many NPCs share a trainer spell list; teach each list once per pass.
+        if (!visited.emplace(co->TrainerType, trainerId).second)
+            continue;
 
         TrainerSpellData const* trainer_spells = sObjectMgr.GetNpcTrainerTemplateSpells(trainerId);
         if (!trainer_spells)
@@ -312,7 +330,7 @@ bool AutoLearnSpellAction::LearnSpell(uint32 spellId, std::ostringstream* out)
             return false;
         if (!learned && !bot->HasSpell(spellId)) {
             bot->learnSpell(spellId, false);
-            *out << formatSpell(proto) << ", ";
+            if (out) *out << formatSpell(proto) << ", ";
 
             learned = bot->HasSpell(spellId);
         }
@@ -340,7 +358,7 @@ bool AutoLearnSpellAction::LearnSpellFromSpell(uint32 spellId, std::ostringstrea
                 {
                     bot->learnSpell(learnedSpell, false);
                     SpellEntry const* spellInfo = sServerFacade.LookupSpellInfo(learnedSpell);
-                    *out << formatSpell(spellInfo) << ", ";
+                    if (out && spellInfo) *out << formatSpell(spellInfo) << ", ";
                     learned = true;
                 }
             }

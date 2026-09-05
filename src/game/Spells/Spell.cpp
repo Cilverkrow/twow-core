@@ -3681,6 +3681,12 @@ SpellCastResult Spell::prepare(Aura* triggeredByAura, uint32 chance)
 
 void Spell::cancel()
 {
+    // Player-cast, object-originated = a summoning ritual's spell (the altar).
+    // The caster check keeps battleground flag spells (cast BY the object) out.
+    if (m_originalCasterGUID.IsGameObject() && m_caster && m_caster->IsPlayer())
+        sLog.outInfo("[GO] spell %u for %s cancelled in state %u by caster %s",
+                     m_spellInfo->Id, m_originalCasterGUID.GetString().c_str(), uint32(m_spellState),
+                     m_caster ? m_caster->GetName() : "?");
     if (m_spellState == SPELL_STATE_FINISHED)
         return;
 
@@ -4250,8 +4256,15 @@ void Spell::update(uint32 difftime)
             // triggered spell
             if (pGo->GetGoType() == GAMEOBJECT_TYPE_SUMMONING_RITUAL &&
                 m_spellInfo->Id == pInfo->summoningRitual.spellId &&
-                // too many helpers cancelled
-                (pGo->GetUniqueUseCount() < pInfo->summoningRitual.reqParticipants ||
+                // too many helpers cancelled. Only for a summoner's own, temporary
+                // ritual (warlock portal): a PERSISTENT world altar with no owner
+                // (Uldaman's Altar of the Keepers / of Archaedas, 130511 / 133234)
+                // fires on the third click and must not depend on the clickers
+                // keeping their channel visual up for the 5 s cast - bot clickers
+                // drop it within ~200 ms and every ritual was cancelled in the
+                // same second it completed (19 of 19 on 2026-09-04).
+                ((!pInfo->summoningRitual.ritualPersistent &&
+                  pGo->GetUniqueUseCount() < pInfo->summoningRitual.reqParticipants) ||
                 // the warlock cancelled
                 (!pInfo->summoningRitual.ritualPersistent && !pGo->GetOwner())))
             {
@@ -4463,6 +4476,14 @@ void Spell::HandleAddTargetTriggerAuras()
 
 void Spell::finish(bool ok)
 {
+    // Rituals: the altar spell (a real cast with cast time, e.g. Uldaman's
+    // 11568) is fired through GameObject::Use with the object as original
+    // caster. With bot parties it completed and nothing followed; name the
+    // cast that ended without its effects (2026-09-04).
+    if (!ok && m_originalCasterGUID.IsGameObject() && m_caster && m_caster->IsPlayer())
+        sLog.outInfo("[GO] spell %u for %s ended without effect: state %u, caster %s, casttime %d",
+                     m_spellInfo->Id, m_originalCasterGUID.GetString().c_str(), uint32(m_spellState),
+                     m_caster ? m_caster->GetName() : "?", m_casttime);
     m_successCast = ok;
 
     if (!m_caster)

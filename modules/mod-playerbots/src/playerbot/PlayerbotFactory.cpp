@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/strategy/actions/AutoLearnSpellAction.h"
 #include "playerbot/PlayerbotFactory.h"
 #include "playerbot/PerformanceMonitor.h"
 
@@ -257,6 +258,18 @@ void PlayerbotFactory::Randomize(bool incremental, bool syncWithMaster)
     sLog.outDetail("Initializing spells (step 2)...");
     InitAvailableSpells();
     InitSpecialSpells();
+    // Trainer spells, HERE and synchronously. On this core the cmangos helpers
+    // InitAvailableSpells leans on (learnClassLevelSpells) are compatibility
+    // stubs, so the only teacher is the "auto learn spell" trainer scan - and
+    // that used to run only off the SMSG_LEVELUP_INFO packet. Prepare() sets a
+    // random level with SetLevel, which sends no such packet: a freshly rolled
+    // random bot never got its trainer spells at all, while a bot levelled
+    // later through GiveLevel did. Reported 2026-09-04: 274 of 406 paladins
+    // without any trainer-taught Holy Light rank, the rest fine, both created
+    // minutes apart in the same pass. Runs after talents so spec-dependent
+    // ranks resolve; gated exactly like the level-up path.
+    if (ai && sPlayerbotAIConfig.autoLearnTrainerSpells)
+        AutoLearnSpellAction(ai).CatchUpTrainerSpells();
     pmo.reset();
 
     if (isRealRandomBot)

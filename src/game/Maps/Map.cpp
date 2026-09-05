@@ -1022,14 +1022,26 @@ inline void Map::UpdateCells(uint32 map_diff)
     /// update active cells around players and active objects
     UpdateDiscoveredCells(now, diff);
 
-    if (IsContinent() && m_motionThreads->status() == ThreadPool::Status::READY && !unitsMvtUpdate.empty())
+    if (IsContinent() && !unitsMvtUpdate.empty())
     {
-        for (auto it = unitsMvtUpdate.begin(); it != unitsMvtUpdate.end(); it++)
-            m_motionThreads << [it,diff](){
-                 if ((*it)->IsInWorld())
-                    (*it)->GetMotionMaster()->UpdateMotionAsync(diff);
-            };
-        m_motionThreads->processWorkload().get();
+        if (m_motionThreads->status() == ThreadPool::Status::READY)
+        {
+            for (auto it = unitsMvtUpdate.begin(); it != unitsMvtUpdate.end(); it++)
+                m_motionThreads << [it,diff](){
+                     if ((*it)->IsInWorld())
+                        (*it)->GetMotionMaster()->UpdateMotionAsync(diff);
+                };
+            // Keep ManTech's exception propagation and join before clearing.
+            m_motionThreads->processWorkload().get();
+        }
+        else
+        {
+            // Eluna disables parallel object updates, but units still reach this
+            // queue because the configured motion-thread count remains nonzero.
+            for (Unit* unit : unitsMvtUpdate)
+                if (unit->IsInWorld())
+                    unit->GetMotionMaster()->UpdateMotionAsync(diff);
+        }
     }
     unitsMvtUpdate.clear();
 }

@@ -44,11 +44,21 @@
 #include "Ai/Dungeon/DungeonClear/Data/DungeonBossInfo.h"
 #include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 #include "Ai/Dungeon/DungeonClear/DcValueKeys.h"
+#include "Ai/Dungeon/DungeonClear/Util/DungeonEventExecutor.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcLeaderSignal.h"
 #include "Ai/Dungeon/DungeonClear/Settings/DcSettings.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcTargeting.h"
 #include "TestRun/DcDiagSnapshot.h"
 #include "TestRun/DcTestComp.h"
+
+// Characters that took a claim, were handed to AddPlayerBot and never entered
+// the world. The claim walks the player cache in guid order, so the first
+// eligible character of a class is picked run after run; when that one cannot
+// log in, every run needing the class fails identically. Live 2026-09-04
+// 08:22-09:52: guid 886 "failed to enter world" 7 times, 7 of 18 ladder starts
+// lost at spawning_bots. Session-local on purpose - a restart re-tries it.
+static std::unordered_set<uint32> g_loginFailedGuids;
 
 namespace
 {
@@ -370,6 +380,8 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
             // (until a future re-roll picks them - a small window relative
             // to a run's minutes, and _reservedGuids covers run-vs-run).
             if (rotationGuids.count(cacheEntry.first))
+                continue;
+            if (g_loginFailedGuids.count(cacheEntry.first))
                 continue;
             if ((Player::TeamForRace(uint8(data->uiRace)) == ALLIANCE) != isAlliance)
                 continue;
@@ -807,6 +819,17 @@ void DcTestRunJob::TickSpawning()
             FailSetup("roster characters did not finish logging in (" + missing +
                       ") — logged in as a real player, or a login failure (see server log)");
             return;
+        }
+        for (Slot const& slot : _slots)
+        {
+            Player* bot = ObjectAccessor::FindPlayer(slot.guid);
+            if (bot && bot->IsInWorld() && GET_PLAYERBOT_AI(bot))
+                continue;
+            if (slot.guid && g_loginFailedGuids.insert(slot.guid.GetCounter()).second)
+                LOG_INFO("playerbots.dungeonclear",
+                         "TESTRUN {} guid {} ({} slot) never entered the world — excluded from "
+                         "claims until restart; check the character row (map, position, online flag)",
+                         _record.runId, slot.guid.GetCounter(), slot.role);
         }
         FailSetup("bots did not finish logging in (addclass pool empty, "
                   "maxAddedBots cap, or login failure — see server log)");
@@ -1701,7 +1724,19 @@ void DcTestRunJob::TickStarting()
 
     // Retry `dc on` each tick until the enabled flag sticks (roster/context
     // timing) or the stage times out.
-    tankAI->DoSpecificAction("dc on", Event("dc", "", FindGm()), true);
+    bool const dcOnOk = tankAI->DoSpecificAction("dc on", Event("dc", "", FindGm()), true);
+    if (!dcOnOk && (!_dcOnFalseLoggedAt || getMSTimeDiff(_dcOnFalseLoggedAt, getMSTime()) > 10000))
+    {
+        // "dc on did not take" left no trace 3x a night: neither DcRefuse nor the
+        // not-leader branch logged, so the action never ran at all. Name the
+        // state the tank is in when DoSpecificAction says no (2026-09-05).
+        _dcOnFalseLoggedAt = getMSTime();
+        LOG_INFO("playerbots.dungeonclear",
+                 "TESTRUN {} dc on: DoSpecificAction returned false for {} (inWorld {}, map {}, teleporting {}, group {}, dcLeader {}, gm {}, stage {}s)",
+                 _record.runId, tank->GetName(), tank->IsInWorld() ? 1 : 0, tank->GetMapId(),
+                 tank->IsBeingTeleported() ? 1 : 0, tank->GetGroup() ? 1 : 0,
+                 DcLeaderSignal::IsDungeonClearLeader(tank) ? 1 : 0, FindGm() ? 1 : 0, _stageMs / 1000);
+    }
     if (DcRun::Of(ctx).enabled)
     {
         _lastMask = DcEncounterMask::Get(tank->FindMap());
@@ -2131,6 +2166,24 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
             }
             _lastMask = mask;
         }
+        // A scripted encounter advancing (Zul'Farrak's pyramid phases, a wave
+        // counter) and an event step advancing are HARD progress too. Without
+        // this, a party holding the temple ramp through the waves closed no
+        // distance and flipped no bit for the whole encounter, and the cap
+        // ended five runs mid-event (arch16, 2026-09-05).
+        {
+            uint32 sig = 2166136261u;
+            if (InstanceData* inst = tank->FindMap() ? tank->FindMap()->GetInstanceData() : nullptr)
+                for (uint32 i = 0; i < 10; ++i)
+                    sig = (sig ^ inst->GetData(i)) * 16777619u;
+            if (_lastInstanceDataSig && sig != _lastInstanceDataSig)
+                progressed = true;
+            _lastInstanceDataSig = sig;
+            uint32 const evMs = ctx->GetValue<DungeonEventProgress&>(DcKey::EventProgress)->Get().progressMs;
+            if (_lastEventProgressMs && evMs != _lastEventProgressMs)
+                progressed = true;
+            _lastEventProgressMs = evMs;
+        }
         if (anchors > _lastAnchors)
         {
             for (std::size_t i = _lastAnchors; i < anchors; ++i)
@@ -2192,8 +2245,7 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
             fold(mv ? mv->GetObjectGuid().GetCounter() : 0u);
             fold(mv ? static_cast<uint32>(mv->GetHealthPct()) : 0u);
         }
-        if (partySig != _lastPartyCombatSig)
-            progressed = true;
+        bool const combatChurn = partySig != _lastPartyCombatSig;
         _lastPartyCombatSig = partySig;
 
         // Sampled every monitor step while somebody is still standing, so the
@@ -2221,6 +2273,21 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
             }
         }
 
+        // Combat churn (members' combat state / victim / victim health) counts
+        // as progress only for a bounded stretch after the last HARD progress
+        // (a kill-bit, a cleared anchor, closing distance). Unbounded, a party
+        // locked in a fight it cannot finish never trips the watchdog: on
+        // 2026-09-04 08:22-09:58 six of nine ladder slots sat in Uldaman's
+        // keeper hall for 60-96 minutes (~1200 "first contact: Stone Keeper"
+        // lines per tank per 14 min), no boss and no objective for over an
+        // hour, and the 420s no-progress limit never fired once.
+        if (progressed)
+            _sinceHardProgressMs = 0;
+        else
+            _sinceHardProgressMs += dt;
+        if (!progressed && combatChurn && _limits.noProgressMs &&
+            _sinceHardProgressMs < 3 * _limits.noProgressMs)
+            progressed = true;
         if (progressed)
         {
             _sinceProgressMs = 0;

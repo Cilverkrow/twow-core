@@ -4,6 +4,11 @@
  */
 
 #include "DungeonClearActions.h"
+#include <unordered_map>
+#include "BoundedBotThrottle.h"
+#include "ArchitectureDiagnostics.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcLeaderSignal.h"
+#include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 
 #include <algorithm>
 #include <cmath>
@@ -526,7 +531,63 @@ bool DungeonClearFollowTankAction::Execute(Event& /*event*/)
             bool const crumbAhead =
                 gotCrumb && bot->GetExactDist(&trailPoint) > kTrailArrival;
             if (!gotCrumb)
+            {
                 trailOutcome = "no reachable crumb at lag behind the tank";
+                // The tank's trail was wiped by a sanctioned geometry snap and
+                // this follower stands on the far side of that gap. Walk to
+                // where the tank stood and take the same snap (Zul'Farrak's
+                // pyramid deck, 2026-09-05: followers 100-670yd behind, "cannot
+                // follow", the run held for them until the cap).
+                if (Player* leader = DcLeaderSignal::FindLeaderTank(bot))
+                    if (leader->IsInWorld() && leader->FindMap() == bot->FindMap())
+                    if (PlayerbotAI* leaderAI = GET_PLAYERBOT_AI(leader))
+                        if (AiObjectContext* lctx = leaderAI->GetAiObjectContext())
+                        {
+                            DcPullContext const& lpc =
+                                lctx->GetValue<DcPullContext&>(DcKey::PullContext)->Get();
+                            if (lpc.geometrySnapMs &&
+                                getMSTimeDiff(lpc.geometrySnapMs, getMSTime()) < 20u * 60u * 1000u &&
+                                leader->GetMapId() == bot->GetMapId() && toTank > 30.0f)
+                            {
+                                static BoundedBotThrottle s_snapSaidAt;
+                                uint32 const nowS = getMSTime();
+                                float const dFrom = bot->GetExactDist(&lpc.geometrySnapFrom);
+                                if (dFrom <= 4.0f)
+                                {
+                                    bot->GetMotionMaster()->Clear();
+                                    bot->NearTeleportTo(lpc.geometrySnapTo.GetPositionX(),
+                                                        lpc.geometrySnapTo.GetPositionY(),
+                                                        lpc.geometrySnapTo.GetPositionZ(),
+                                                        bot->GetOrientation(),
+                                                        /*casting*/ false, /*vehicle*/ false, /*withPet*/ true);
+                                    LOG_INFO("playerbots.dungeonclear",
+                                             "[DC:{}] follow-tank: replayed the tank geometry snap ({:.0f}y) "
+                                             "at ({:.0f},{:.0f},{:.0f})",
+                                             bot->GetName(),
+                                             std::fabs(lpc.geometrySnapFrom.GetPositionZ() -
+                                                       lpc.geometrySnapTo.GetPositionZ()),
+                                             lpc.geometrySnapFrom.GetPositionX(),
+                                             lpc.geometrySnapFrom.GetPositionY(),
+                                             lpc.geometrySnapFrom.GetPositionZ());
+                                    return true;
+                                }
+                                if (DcMoveTo(bot->GetMapId(), lpc.geometrySnapFrom.GetPositionX(),
+                                             lpc.geometrySnapFrom.GetPositionY(),
+                                             lpc.geometrySnapFrom.GetPositionZ()))
+                                {
+                                    if (TurtleDiagnostics::enabled.load(std::memory_order_relaxed) &&
+                                        s_snapSaidAt.Allow(bot->GetObjectGuid().GetRawValue(), nowS, 10000))
+                                    {
+                                        LOG_INFO("playerbots.dungeonclear",
+                                                 "[DC:{}] follow-tank: no reachable crumb ({:.0f}yd behind) "
+                                                 "-> walking to the tank snap point {:.0f}yd away",
+                                                 bot->GetName(), toTank, dFrom);
+                                    }
+                                    return true;
+                                }
+                            }
+                        }
+            }
             else if (!crumbAhead)
                 trailOutcome = "already standing on the lag crumb";
             if (crumbAhead)
@@ -1843,4 +1904,59 @@ bool DungeonClearRezPartyAction::Execute(Event& /*event*/)
                   bot->GetName(), rezAction, target->GetName(),
                   cast ? "started" : "not possible yet");
     return cast;
+}
+
+bool DungeonClearGatherAtPointAction::Execute(Event& /*event*/)
+{
+    DcGatherPoint gp;
+    if (!DcLeaderSignal::GetLeaderGatherPoint(bot, gp))
+        return false;
+    float const dist = bot->GetDistance(gp.x, gp.y, gp.z);
+    if (dist <= gp.radius)
+    {
+        // Arrived: stand still and own the tick, so follow-tank cannot pull
+        // the bot back into formation while the leader is still counting
+        // clicks. Per-tick Hold does not spam stop packets (DcMovement).
+        static BoundedBotThrottle s_arrivedSaidAt;
+        uint32 const nowA = getMSTime();
+        if (TurtleDiagnostics::enabled.load(std::memory_order_relaxed) &&
+            s_arrivedSaidAt.Allow(bot->GetObjectGuid().GetRawValue(), nowA, 10000))
+        {
+            LOG_INFO("playerbots.dungeonclear",
+                     "[DC:{}] gather: holding {:.1f}yd from the gather point", bot->GetName(), dist);
+        }
+        DcMovement::StopBot(bot, DcMovement::Stop::Hold);
+        return true;
+    }
+    // One point move per approach, not one per tick: a restarted spline every
+    // tick is what the executor's forced MovePoint experiment paid for. Re-issue
+    // only when the bot is standing (arrived somewhere else, or was stopped) or
+    // every 3 s as a safety net against a swallowed move.
+    static BoundedBotThrottle s_issuedAt; // gameplay retry state, NOT diagnostic
+    uint32 const now = getMSTime();
+    if (!s_issuedAt.Allow(bot->GetObjectGuid().GetRawValue(), now, 3000, !bot->isMoving()))
+        return true;
+    // Spread the party around the object instead of stacking five bots on one
+    // spot: a fixed per-bot bearing, 2 yd out - still well inside the 5 yd a
+    // click needs.
+    float const bearing = static_cast<float>(bot->GetObjectGuid().GetCounter() % 8) * 0.7853982f;
+    // 4 yd out, not 2: the gather point is the OBJECT's centre, and a ritual
+    // altar has a solid model around it. A point inside the model makes the
+    // path end at the model's edge - outside the old 3.5 yd arrival radius -
+    // so the follower never "arrived", re-issued its move every 3 s and
+    // drifted in and out of the 5 yd click range (arch10, 2026-09-04: 65
+    // walk-ins, the core's distinct-user count never above 2). 4 yd is
+    // outside any altar model and still inside DC_EVENT_GO_USE_RANGE.
+    // 3 yd, not 4: at 4 the holds landed at 3.7-4.4 yd and the clicks at
+    // 4.6-5.0 yd - on the edge of DC_EVENT_GO_USE_RANGE (arch11, 2026-09-04).
+    float const off = std::min(gp.radius - 0.5f, 3.0f);
+    float const tx = gp.x + std::cos(bearing) * off;
+    float const ty = gp.y + std::sin(bearing) * off;
+    bot->GetMotionMaster()->Clear();
+    bot->GetMotionMaster()->MovePoint(0, tx, ty, gp.z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f,
+                                      /*generatePath*/ true, false);
+    LOG_INFO("playerbots.dungeonclear",
+             "[DC:{}] gather: {:.0f}yd from the leader's gather point -> walking in",
+             bot->GetName(), dist);
+    return true;
 }

@@ -1118,6 +1118,30 @@ void ObjectMgr::LoadCreatureTemplates()
         LoadCreatureInfo(fields);
         
     } while (result->NextRow());
+
+    // Bind scripts the DB did not: the Farraki Arena trio (Zul Farrak 1.18) has
+    // its script_name rows in update 20260626153218, which a realm may not have
+    // applied - then Razjal is a friendly NPC without AI or gossip and the arena
+    // can never start (2026-09-05). Only touches rows with NO script of their own.
+    struct FallbackCreatureScript { uint32 entry; char const* script; };
+    static FallbackCreatureScript const kFallbackCreatureScripts[] =
+    {
+        { 62496, "npc_kathzen_the_brutal" },
+        { 62497, "npc_juthza_the_cunning" },
+        { 62498, "npc_champion_razjal_the_quick" },
+    };
+    for (FallbackCreatureScript const& fb : kFallbackCreatureScripts)
+    {
+        CreatureInfo* info = const_cast<CreatureInfo*>(GetCreatureTemplate(fb.entry));
+        if (!info || info->script_id)
+            continue;
+        uint32 const scriptId = sScriptMgr.GetScriptId(fb.script);
+        if (!scriptId)
+            continue;
+        info->script_id = scriptId;
+        sLog.outInfo("BindFallbackCreatureScripts: creature %u (%s) had no script in the DB -> bound %s",
+                     fb.entry, info->name.c_str(), fb.script);
+    }
 }
 
 void ObjectMgr::LoadCreatureTemplate(uint32 entry)
@@ -1225,6 +1249,12 @@ void ObjectMgr::LoadCreatureInfo(Field* fields)
     pInfo->phase_quest_id = fields[78].GetUInt32();
     pInfo->script_id = sScriptMgr.GetScriptId(fields[79].GetString());
     CheckCreatureTemplate(pInfo.get());
+    // Refresh on both initial loading and single-template reloads. Class-zero
+    // non-trainers cannot match a player class and need not enter this index.
+    bool const commonTrainer = pInfo->trainer_type == TRAINER_TYPE_TRADESKILLS;
+    bool const classTrainer = (pInfo->trainer_type == TRAINER_TYPE_CLASS ||
+        pInfo->trainer_type == TRAINER_TYPE_PETS) && pInfo->trainer_class != 0;
+    m_botTrainerIndex.Update(entry, pInfo->trainer_class, commonTrainer, commonTrainer || classTrainer);
 }
 
 template <class T>

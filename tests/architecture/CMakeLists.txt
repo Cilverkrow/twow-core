@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(TurtleArchitectureTests LANGUAGES C CXX)
 enable_testing()
-foreach(test AreaLookupIndexTest IncrementalFilterTest StaticLocationIndexTest TickDiffWindowTest)
+foreach(test AreaLookupIndexTest IncrementalFilterTest StaticLocationIndexTest TickDiffWindowTest UpstreamIntegrationTest)
     add_executable(${test} ${test}.cpp)
     target_compile_features(${test} PRIVATE cxx_std_17)
     target_include_directories(${test} PRIVATE ../../src/shared)

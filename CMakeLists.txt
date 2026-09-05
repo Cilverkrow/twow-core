@@ -74,6 +74,23 @@ option(ALLOW_TURTLE_ADDONS "Allow Turtle addons" ON)
 # When ON, mangosd links the bot subsystem; runtime activation is gated by
 # AiPlayerbot.Enabled in aiplayerbot.conf.
 option(BUILD_PLAYERBOTS "Build the cmangos/playerbots subsystem" OFF)
+# BUILD_PLAYERBOTS without any module build leaves the host's playerbot hooks
+# undefined at link time: PlayerbotStubs.cpp is only compiled when the
+# subsystem is OFF, and the real World::InitPlayerbotsAtStartup, the .bot /
+# .ahbot / .perfmon chat handlers and BotActionLog_* live in
+# modules/mod-playerbots. A from-scratch Linux build with the documented cmake
+# line (no -DMODULES) died exactly there (2026-09-05). The subsystem IS a
+# module, so switch the module build on for it.
+if(BUILD_PLAYERBOTS AND MODULES STREQUAL "disabled")
+  # Enable ONLY the requested subsystem, not every optional module. Changing
+  # MODULES globally also activates DungeonClear and adds a mandatory config
+  # file to existing deployments that previously ran just mod-playerbots.
+  if(NOT DEFINED MODULE_MOD_PLAYERBOTS OR MODULE_MOD_PLAYERBOTS STREQUAL "default")
+    set(MODULE_MOD_PLAYERBOTS "static" CACHE STRING "Build mode for mod-playerbots" FORCE)
+  elseif(MODULE_MOD_PLAYERBOTS STREQUAL "disabled")
+    message(FATAL_ERROR "BUILD_PLAYERBOTS=ON conflicts with MODULE_MOD_PLAYERBOTS=disabled")
+  endif()
+endif()
 
 ConfigureModuleBuildOptions()
 
@@ -717,13 +734,19 @@ set_property(DIRECTORY APPEND PROPERTY
 message(STATUS "Build flags (RELEASE) : ${CMAKE_CXX_FLAGS_RELEASE}")
 message(STATUS "Build flags (DEBUG)   : ${CMAKE_CXX_FLAGS_DEBUG}")
 
-
+if(MSVC)
+    add_compile_definitions(_USE_MATH_DEFINES)
+endif()
 add_subdirectory(src)
 add_subdirectory(dep)
 add_subdirectory(modules)
 
 if(TARGET mangosd AND TARGET modules)
   target_link_libraries(mangosd modules)
+endif()
+
+if(TARGET mangosd AND TARGET modules_playerbots)
+  target_link_libraries(mangosd modules_playerbots)
 endif()
 
 if(TARGET mangosd AND WORLDSERVER_DYNAMIC_MODULES_DEPENDENCIES)

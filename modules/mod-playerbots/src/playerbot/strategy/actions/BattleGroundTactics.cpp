@@ -1,5 +1,7 @@
 
 #include "playerbot/playerbot.h"
+#include "BoundedBotThrottle.h"
+#include "ArchitectureDiagnostics.h"
 #include "playerbot/strategy/values/PositionValue.h"
 #include "MovementActions.h"
 #include "Battlegrounds/BattleGround.h"
@@ -4497,15 +4499,37 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
         if (f == vFlagIds.end())
             continue;
 
+        // Arathi Basin banners only: say WHY a banner in reach is skipped, once per
+        // 10 s per bot. A tester saw both teams circling one node without ever
+        // capturing (2026-09-05); the skip reasons below were invisible.
+        auto abSay = [&](char const* why)
+        {
+            if (bgType != BATTLEGROUND_AB || !TurtleDiagnostics::enabled.load(std::memory_order_relaxed))
+                return;
+            static BoundedBotThrottle s_abSaidAt;
+            uint32 const nowAb = WorldTimer::getMSTime();
+            if (!s_abSaidAt.Allow(bot->GetGUIDLow(), nowAb, 10000))
+                return;
+            sLog.outInfo("[BG:AB] banner %u (%s) %.1fyd from %s: %s (spawned %u, inUse %u, state %u, inCombat %u)",
+                         go->GetEntry(), go->GetName(), bot->GetDistance(go), bot->GetName(), why,
+                         sServerFacade.isSpawned(go) ? 1u : 0u, go->IsInUse() ? 1u : 0u, uint32(go->GetGoState()),
+                         bot->IsInCombat() ? 1u : 0u);
+        };
         if (!sServerFacade.isSpawned(go) || go->IsInUse() || go->GetGoState() != GO_STATE_READY)
+        {
+            abSay("skipped: not spawned / in use / not READY");
             continue;
+        }
 
         // Test the cheap side first: CanInteract logs a core error when the bot
         // is out of range, so with the operands the other way round every
         // Warsong bot produced one per tick regardless of distance - 15000+ a
         // session - while only the continue was ever gated on bgType.
         if (bgType != BATTLEGROUND_WS && !bot->CanInteract(go))
+        {
+            abSay("skipped: CanInteract false (out of interact distance / dead / lost control)");
             continue;
+        }
         
         if (flagRange)
             if (!bot->IsWithinDistInMap(go, flagRange))
@@ -4548,6 +4572,9 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
             Spell *spell = new Spell(bot, spellInfo, false);
             spell->m_targets.setGOTarget(go);
             spell->SpellStart(&spell->m_targets);
+            if (bgType == BATTLEGROUND_AB && TurtleDiagnostics::enabled.load(std::memory_order_relaxed))
+                sLog.outInfo("[BG:AB] %s casts the banner spell on %u (%s) at %.1fyd, spell state %u",
+                             bot->GetName(), go->GetEntry(), go->GetName(), bot->GetDistance(go), uint32(spell->getState()));
             ai->WaitForSpellCast(spell);
 
             //WorldPacket data(CMSG_GAMEOBJ_USE);

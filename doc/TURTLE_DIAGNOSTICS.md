@@ -254,6 +254,31 @@ content/data replacements are deliberately not part of this execution-model port
 | TD15 | Random path, spline launch, compression, movement delivery | Which part of moving NPCs remains expensive? | The four `DetailedWork` kinds/names/scopes; keep workspace reuse and viewer index |
 | TD16 | Human login stages and client active-mover signal | Where does the character loading-screen delay occur? | `LoginQueryHolder` request timestamp/accessors; `CharacterHandler.cpp` stage lambda/calls; `MovementHandler.cpp` client-signal logging |
 | TD17 | Watchdog phase breadcrumbs, thread/map/GUID slots | Where was execution when progress stopped? | `ExecutionWatch.h` phase scopes/setters and diagnostic dump integration in `Master.cpp`; preserve ordinary watchdog/crash reporting |
+| TD18 | Upstream dungeon-clear / Arathi banner troubleshooting | Why did an altar, follower, encounter or banner interaction stall? | Diagnostic throttle/log sites in `DcEngageActions.cpp`, `DcFollowerActions.cpp`, `DungeonEventExecutor.cpp`, `BattleGroundTactics.cpp`; keep gather movement retry state and the actual gameplay fixes |
+
+TD18 integration (upstream 0f6b92d9): repeated per-bot diagnostic throttles now
+use `BoundedBotThrottle`, bounded to 65,536 IDs per site and synchronized across
+map workers. Those diagnostic checks are gated by `Diagnostics.Architecture.Enabled`;
+their original per-site 1/5/10/30-second intervals remain independent of the summary
+interval. `DcFollowerActions::s_issuedAt` is **gameplay retry state**, not tracing:
+keep it enabled when diagnostics are off and retain it during diagnostic removal.
+The trainer index and prerequisite catch-up are gameplay/performance code, not probes.
+
+Upstream also added ordinary INFO event lifecycle and test-run logs in GameObject,
+Spell, Uldaman/ZulFarrak scripts and the DungeonClear module. These are not all
+controlled by the architecture switch. Include `[GO]`, `[DC-DIAG]`, `TESTRUN`,
+gather/snap and pyramid/keeper messages in the eventual logging cleanup; preserve
+missing-template errors, event execution, retry decisions and test verdict logic.
+Never remove a surrounding gameplay block just to remove its log message.
+
+Deployment boundary for the 2026-09-05 upstream integration: production currently
+links mod-playerbots, not mod-dungeon-clear. Keep MODULES=disabled with
+MODULE_MOD_PLAYERBOTS=static; the corrected playerbot build gate does not change
+the global module selection. DungeonClear source updates and TD18 DC probes are
+integrated but not active in this production candidate. Enabling that optional
+automation later requires its own build, module config, roster/route packaging
+and gameplay/load acceptance. The live explicit LoadSpellsFromSql=0 is also
+preserved; adopting upstream's new default is not an implicit production migration.
 
 Controls: `Diagnostics.Architecture.Enabled` and `Diagnostics.Architecture.IntervalMs`. Disable after collecting a matched loading and steady-state run. Histogram percentiles are approximate bucket upper bounds; nested timings are inclusive and must not be added together. Elapsed time is not CPU utilization.
 
