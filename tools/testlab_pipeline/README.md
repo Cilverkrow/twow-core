@@ -159,8 +159,11 @@ branch — every environment-specific value is a parameter.
 | `-WorkspaceRoot` | the script's folder | Testlab root, as laid out above. Relative paths are resolved against your current directory. |
 | `-VcpkgDirectory` | *discovered* | vcpkg providing ACE + Boost. Left out it is found via `VCPKG_ROOT`, then `vcpkg.exe` on `PATH`, then conventional locations. Given explicitly it is used or the run fails — never silently replaced. |
 | `-VcpkgTriplet` | `x64-windows` | Triplet the dependencies are installed for. |
-| `-RootPassword` | `mangos` | MariaDB `root` password. |
-| `-DbPassword` | `mangos` | Password for the `mangos` service user the script creates. |
+| `-RootPassword` | `mangos` | Database `root` password, used for schema creation and imports. |
+| `-DbPassword` | `mangos` | Password for the service account the script creates. |
+| `-DbUser` | `mangos` | Service account the server logs in with. |
+| `-DbPrefix` | `tw_` | Prefix for all four database names — see below. |
+| `-WorldDatabaseName` etc. | *from prefix* | Override a single database name. Also `-CharacterDatabaseName`, `-LoginDatabaseName`, `-LogsDatabaseName`. |
 | `-MariaDbFolderName` | `mariadb-10.3.39-winx64` | Portable MariaDB folder name inside `server\`, tried first. |
 | `-DbFlavor` | `Auto` | `Auto`, `MariaDB` or `MySQL`. Narrows discovery on a machine that has both. |
 | `-MariaDbClientPath` | *discovered* | Explicit `mariadb.exe` / `mysql.exe`. Left out: the portable server, then `PATH`, then installed MariaDB/MySQL. Given explicitly it is used or the run fails. |
@@ -188,6 +191,33 @@ Full help, including every parameter and more examples:
 Get-Help .\Setup-Testlab.ps1 -Full
 Get-Help .\Setup-Testlab.ps1 -Parameter DbFlavor
 ```
+
+### Several testlabs on one database server
+
+The four databases are named from `-DbPrefix`, so a second testlab needs one flag:
+
+```powershell
+.\Run-Testlab.bat -WorkspaceRoot C:\WOW\lab2 -DbPrefix "lab2_" -RealmlistPort 8091
+```
+
+That gives `lab2_world`, `lab2_char`, `lab2_logon` and `lab2_logs` alongside the default
+`tw_*` set, untouched. Individual names can be overridden with `-WorldDatabaseName` and its
+three siblings when one database has to sit outside the scheme.
+
+Renaming reaches everywhere it has to. `create_databases.sql` names the stock databases in
+its `CREATE DATABASE` and `USE` statements, so it is rewritten as it is imported; and the
+server has to be told, so the pipeline writes all four `*.Info` connection strings into
+`mangosd.conf` and the one in `realmd.conf`.
+
+> Writing those connection strings fixes a bug that predates the prefix. The shipped
+> templates hard-code `127.0.0.1;3306;mangos;mangos;tw_*` and nothing rewrote them, so
+> `-DbPassword`, `-DbUser`, `-DbHost` and `-DbPort` changed what the *pipeline* connected
+> with while the *server* was still told the template's values. Anything but the defaults
+> produced a server that could not log in to its own databases. All five lines now come
+> from the settings actually in use.
+
+Give each testlab its own `-RealmlistPort` and set `WorldServerPort` in its `mangosd.conf`
+to match, or the second realm will hand clients a port nobody is listening on.
 
 ### MariaDB or MySQL
 

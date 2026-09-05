@@ -30,6 +30,22 @@
 .PARAMETER DbPassword
     Password for the 'mangos' service account this script creates and the server logs in
     with. Written to the database, not to any configuration file.
+.PARAMETER DbUser
+    Account the server logs in with. Created and granted in step 06, and written into the
+    connection strings in mangosd.conf and realmd.conf.
+.PARAMETER DbPrefix
+    Prefix for the four database names, default "tw_". Change it to run several testlabs
+    against one database server without them overwriting each other - -DbPrefix "lab2_"
+    gives lab2_world, lab2_char, lab2_logon and lab2_logs. The schema is renamed on import
+    and the server's connection strings are written to match.
+.PARAMETER WorldDatabaseName
+    Overrides the world database name. Empty (default) means "<prefix>world".
+.PARAMETER CharacterDatabaseName
+    Overrides the characters database name. Empty (default) means "<prefix>char".
+.PARAMETER LoginDatabaseName
+    Overrides the login/realm database name. Empty (default) means "<prefix>logon".
+.PARAMETER LogsDatabaseName
+    Overrides the logs database name. Empty (default) means "<prefix>logs".
 .PARAMETER DbFlavor
     Which engine to look for: Auto (default), MariaDB or MySQL. Only narrows discovery -
     useful on a machine that has both installed.
@@ -92,6 +108,9 @@
 .EXAMPLE
     .\Run-Testlab.bat -applyPatches "0ee0748;abc1234" -SkipBotRegen
     Cherry-picks two hotfixes onto the branch, then rebuilds while preserving character data.
+.EXAMPLE
+    .\Run-Testlab.bat -WorkspaceRoot C:\WOW\lab2 -DbPrefix "lab2_" -RealmlistPort 8091
+    A second, independent testlab on the same machine and the same database server.
 .NOTES
     Windows only (PowerShell 5.1+, Visual Studio 2022, CMake). See README.md next to this
     script for the folder layout it expects and what you have to supply yourself.
@@ -124,6 +143,21 @@ param (
     # override them rather than editing the script body.
     [string]$RootPassword = "mangos",
     [string]$DbPassword   = "mangos",
+
+    # Account the server logs in with. Created and granted by step 06.
+    [string]$DbUser = "mangos",
+
+    # Prefix for the four database names. Change it to run several testlabs against one
+    # server without them overwriting each other: -DbPrefix "lab2_" gives lab2_world,
+    # lab2_char, lab2_logon and lab2_logs.
+    [string]$DbPrefix = "tw_",
+
+    # Individual database names. Empty means "<prefix>world" and so on; set one only to
+    # break out of the prefix scheme for a single database.
+    [string]$WorldDatabaseName     = "",
+    [string]$CharacterDatabaseName = "",
+    [string]$LoginDatabaseName     = "",
+    [string]$LogsDatabaseName      = "",
 
     # Name of the portable MariaDB directory inside server\. Used first when present; if it
     # is not there the client is looked for on PATH and in the usual install locations.
@@ -453,7 +487,12 @@ function Invoke-MySqlFile {
         [string]$Database,
         [string]$DefaultsFile,
         [string]$FailureMessage = "MariaDB import failed",
-        [switch]$AllowFailure
+        [switch]$AllowFailure,
+
+        # Rewrites backticked database identifiers on the way through - used for
+        # create_databases.sql, whose CREATE DATABASE and USE statements name the stock
+        # tw_* databases directly.
+        [System.Collections.IDictionary]$RenameDatabases
     )
 
     if (-not $DefaultsFile) { $DefaultsFile = $script:RootDefaultsFile }
@@ -462,7 +501,22 @@ function Invoke-MySqlFile {
     $Writer = New-Object System.IO.StreamWriter($FilteredPath, $false, (New-Object System.Text.UTF8Encoding($false)))
     try {
         foreach ($Line in [System.IO.File]::ReadLines($Path)) {
-            if ($Line -notmatch 'sandbox mode') { $Writer.WriteLine($Line) }
+            if ($Line -match 'sandbox mode') { continue }
+
+            if ($RenameDatabases) {
+                # Only the backticked form is touched. Every CREATE DATABASE and USE in
+                # create_databases.sql is backticked; the one bare occurrence is a comment
+                # header, which is left alone rather than risking a substring match inside
+                # table data.
+                foreach ($StockName in $RenameDatabases.Keys) {
+                    $NewName = $RenameDatabases[$StockName]
+                    if ($NewName -ne $StockName) {
+                        $Line = $Line.Replace("``$StockName``", "``$NewName``")
+                    }
+                }
+            }
+
+            $Writer.WriteLine($Line)
         }
     } finally {
         $Writer.Dispose()
@@ -817,6 +871,30 @@ if (-not (Test-Path -LiteralPath $ScriptDirectory -PathType Container)) {
 
 Write-Host "Workspace root: $ScriptDirectory"
 
+# The four database names, from the prefix unless one was named explicitly.
+if ([string]::IsNullOrWhiteSpace($WorldDatabaseName))     { $WorldDatabaseName     = "${DbPrefix}world" }
+if ([string]::IsNullOrWhiteSpace($CharacterDatabaseName)) { $CharacterDatabaseName = "${DbPrefix}char" }
+if ([string]::IsNullOrWhiteSpace($LoginDatabaseName))     { $LoginDatabaseName     = "${DbPrefix}logon" }
+if ([string]::IsNullOrWhiteSpace($LogsDatabaseName))      { $LogsDatabaseName      = "${DbPrefix}logs" }
+
+# create_databases.sql hard-codes the stock tw_* names in CREATE DATABASE and USE
+# statements, and the shipped configs point the server at the same four. Renaming therefore
+# has to reach both: this map rewrites the schema on import (see Invoke-MySqlFile), and
+# step 10 writes the matching connection strings into mangosd.conf and realmd.conf.
+$DatabaseNameMap = [ordered]@{
+    "tw_world" = $WorldDatabaseName
+    "tw_char"  = $CharacterDatabaseName
+    "tw_logon" = $LoginDatabaseName
+    "tw_logs"  = $LogsDatabaseName
+}
+
+$DatabasesAreRenamed = $false
+foreach ($StockName in $DatabaseNameMap.Keys) {
+    if ($DatabaseNameMap[$StockName] -ne $StockName) { $DatabasesAreRenamed = $true }
+}
+
+Write-Host "Databases: $WorldDatabaseName, $CharacterDatabaseName, $LoginDatabaseName, $LogsDatabaseName (user '$DbUser')"
+
 # Singleton first (the authoritative machine-wide guard), then the descriptive lock file.
 Assert-SingleInstance
 $script:LockFile = Join-Path $ScriptDirectory "pipeline_running.lock"
@@ -844,7 +922,7 @@ Write-Host "Database client: $MariaDBPath (found via: $($MariaDbTools.Source))"
 
 # Materialise the credentials into option files (see New-MySqlDefaultsFile).
 $script:RootDefaultsFile = New-MySqlDefaultsFile -User "root"   -Password $RootPassword
-$script:DbDefaultsFile   = New-MySqlDefaultsFile -User "mangos" -Password $DbPassword
+$script:DbDefaultsFile   = New-MySqlDefaultsFile -User $DbUser -Password $DbPassword
 
 # Locate vcpkg (see Resolve-VcpkgDirectory) and derive the installed-packages path from it.
 $VcpkgDirectory     = Resolve-VcpkgDirectory -Explicit $VcpkgDirectory
@@ -1189,7 +1267,7 @@ if ($SkipBotRegen) {
     # Ensure a temporary backup directory exists on the disk layout
     New-Item -ItemType Directory -Path $BackupFolder -Force | Out-Null
 
-    $TargetDbs = @("tw_char", "tw_logon")
+    $TargetDbs = @($CharacterDatabaseName, $LoginDatabaseName)
 
     foreach ($DbName in $TargetDbs) {
         $BackupFile = Join-Path $BackupFolder "${DbName}_backup.sql"
@@ -1268,12 +1346,12 @@ foreach ($Folder in $GeneratedFolders) {
 Write-Host "Dropping previous testbed databases..."
 
 # Core infrastructure databases that are ALWAYS dropped and rebuilt
-Invoke-MySqlQuery -Query "DROP DATABASE IF EXISTS tw_world; DROP DATABASE IF EXISTS tw_logon; DROP DATABASE IF EXISTS tw_logs;" `
-                  -FailureMessage "Could not drop the tw_world / tw_logon / tw_logs databases"
+Invoke-MySqlQuery -Query "DROP DATABASE IF EXISTS $WorldDatabaseName; DROP DATABASE IF EXISTS $LoginDatabaseName; DROP DATABASE IF EXISTS $LogsDatabaseName;" `
+                  -FailureMessage "Could not drop the $WorldDatabaseName / $LoginDatabaseName / $LogsDatabaseName databases"
 
 if (-not $SkipBotRegen) {
     Write-Host " -> Parameter -SkipBotRegen not active. Dropping characters database..."
-    Invoke-MySqlQuery -Query "DROP DATABASE IF EXISTS tw_char;" -FailureMessage "Could not drop the tw_char database"
+    Invoke-MySqlQuery -Query "DROP DATABASE IF EXISTS $CharacterDatabaseName;" -FailureMessage "Could not drop the $CharacterDatabaseName database"
 } else {
     Write-Host " -> [SKIP] Parameter -SkipBotRegen is active. Retaining existing character and playerbot data." -ForegroundColor Green
 }
@@ -1291,7 +1369,7 @@ if (-not (Test-Path $CreateDatabasesSql)) {
 }
 
 Write-Host "Creating databases..."
-Invoke-MySqlFile -Path $CreateDatabasesSql -FailureMessage "Importing create_databases.sql failed"
+Invoke-MySqlFile -Path $CreateDatabasesSql -RenameDatabases $DatabaseNameMap -FailureMessage "Importing create_databases.sql failed"
 
 # Bulk import all base world SQL files with safety filters enabled
 if (-not (Test-Path $SqlBaseDirectory)) {
@@ -1301,7 +1379,7 @@ if (-not (Test-Path $SqlBaseDirectory)) {
 Write-Host "Importing base world SQL files..."
 Get-ChildItem "$SqlBaseDirectory\*.sql" | Sort-Object Name | ForEach-Object {
     Write-Host "Importing: $($_.Name)"
-    Invoke-MySqlFile -Path $_.FullName -Database "tw_world" -FailureMessage "Importing a base world SQL file failed"
+    Invoke-MySqlFile -Path $_.FullName -Database $WorldDatabaseName -FailureMessage "Importing a base world SQL file failed"
 }
 
 # ==============================================================================
@@ -1320,12 +1398,12 @@ Write-Host "Configuring database user 'mangos'..."
 # EXISTS so an existing account picks up the current password instead of silently keeping
 # an old one.
 $UserQuery = @"
-CREATE USER IF NOT EXISTS 'mangos'@'localhost' IDENTIFIED BY '$DbPassword';
-ALTER USER 'mangos'@'localhost' IDENTIFIED BY '$DbPassword';
-GRANT ALL PRIVILEGES ON tw_world.* TO 'mangos'@'localhost';
-GRANT ALL PRIVILEGES ON tw_char.* TO 'mangos'@'localhost';
-GRANT ALL PRIVILEGES ON tw_logon.* TO 'mangos'@'localhost';
-GRANT ALL PRIVILEGES ON tw_logs.* TO 'mangos'@'localhost';
+CREATE USER IF NOT EXISTS '$DbUser'@'localhost' IDENTIFIED BY '$DbPassword';
+ALTER USER '$DbUser'@'localhost' IDENTIFIED BY '$DbPassword';
+GRANT ALL PRIVILEGES ON $WorldDatabaseName.* TO '$DbUser'@'localhost';
+GRANT ALL PRIVILEGES ON $CharacterDatabaseName.* TO '$DbUser'@'localhost';
+GRANT ALL PRIVILEGES ON $LoginDatabaseName.* TO '$DbUser'@'localhost';
+GRANT ALL PRIVILEGES ON $LogsDatabaseName.* TO '$DbUser'@'localhost';
 FLUSH PRIVILEGES;
 "@
 
@@ -1338,7 +1416,7 @@ if ($SkipBotRegen) {
     Write-PipelineHeader -StepName "(OPTIONAL): Restoring original character and logon datasets"
     Write-Host "Restoring preserved production databases from mysqldump files..."
 
-    $TargetDbs    = @("tw_char", "tw_logon")
+    $TargetDbs    = @($CharacterDatabaseName, $LoginDatabaseName)
 
     foreach ($DbName in $TargetDbs) {
         $BackupFile = Join-Path $BackupFolder "${DbName}_backup.sql"
@@ -1378,7 +1456,7 @@ Write-Host "Applying database hotfixes for Honor Maintenance system..."
 # We dynamically clone the structure of character_inventory to ensure compatibility
 # and prevent mangosd.exe from crashing due to the missing copy table artifact.
 $HonorHotfixQuery = @"
-    USE tw_char;
+    USE $CharacterDatabaseName;
     CREATE TABLE IF NOT EXISTS character_inventory_copy LIKE character_inventory;
 "@
 
@@ -1546,7 +1624,29 @@ if (Test-Path $MangosdConf) {
     $NewPDumpDirSetting  = "PDumpDir = `"$MangosPDumpDir`""
     $NewLuaDirSetting   = "Eluna.ScriptPath = `"$MangosLuaDir`""
 
-    # 4. Read content, execute all 6 replacements sequentially, and stream back to file
+    # 4. Database connection strings, in the "host;port;user;password;database" form the
+    #    server parses.
+    #
+    #    The shipped templates hard-code 127.0.0.1;3306;mangos;mangos;tw_* and nothing used
+    #    to rewrite them. That was wrong in three ways at once even before the databases
+    #    became renameable: -DbPassword, -DbUser, -DbHost and -DbPort all changed what the
+    #    pipeline connected with while the server kept being told the template's values, so
+    #    anything but the defaults produced a server that could not log in to its own
+    #    databases. All four lines are now written from the settings actually in use.
+    $ConfHost = if ([string]::IsNullOrWhiteSpace($DbHost)) { "127.0.0.1" } else { $DbHost }
+    $ConfPort = if ($DbPort -gt 0) { $DbPort } else { 3306 }
+
+    $OldLoginInfoPattern     = '^LoginDatabase\.Info\s*=\s*".*"'
+    $OldWorldInfoPattern     = '^WorldDatabase\.Info\s*=\s*".*"'
+    $OldCharacterInfoPattern = '^CharacterDatabase\.Info\s*=\s*".*"'
+    $OldLogsInfoPattern      = '^LogsDatabase\.Info\s*=\s*".*"'
+
+    $NewLoginInfoSetting     = "LoginDatabase.Info = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LoginDatabaseName`""
+    $NewWorldInfoSetting     = "WorldDatabase.Info = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$WorldDatabaseName`""
+    $NewCharacterInfoSetting = "CharacterDatabase.Info = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$CharacterDatabaseName`""
+    $NewLogsInfoSetting      = "LogsDatabase.Info = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LogsDatabaseName`""
+
+    # 5. Read content, execute every replacement sequentially, and stream back to file
     (Get-Content $MangosdConf) `
         -replace $OldUpdatePath, $NewUpdatePath `
         -replace $OldDataDirPattern, $NewDataDirSetting `
@@ -1554,11 +1654,31 @@ if (Test-Path $MangosdConf) {
         -replace $OldHonorDirPattern, $NewHonorDirSetting `
         -replace $OldPDumpDirPattern, $NewPDumpDirSetting `
 		-replace $OldLuaDirPattern, $NewLuaDirSetting `
+        -replace $OldLoginInfoPattern, $NewLoginInfoSetting `
+        -replace $OldWorldInfoPattern, $NewWorldInfoSetting `
+        -replace $OldCharacterInfoPattern, $NewCharacterInfoSetting `
+        -replace $OldLogsInfoPattern, $NewLogsInfoSetting `
         | Set-Content $MangosdConf
 
-    Write-Host "[OK] mangosd.conf successfully updated with all production layout directories." -ForegroundColor Green
+    Write-Host "[OK] mangosd.conf updated: directories, and all four database connections." -ForegroundColor Green
 } else {
     Stop-Pipeline -Message "Configuration injection failed: Could not locate mangosd.conf inside $MangosEtcDir"
+}
+
+# realmd reads only the login database, and spells the key without the dot.
+$RealmdConf = Join-Path $EtcDir "realmd.conf"
+
+if (Test-Path $RealmdConf) {
+    $ConfHost = if ([string]::IsNullOrWhiteSpace($DbHost)) { "127.0.0.1" } else { $DbHost }
+    $ConfPort = if ($DbPort -gt 0) { $DbPort } else { 3306 }
+
+    (Get-Content $RealmdConf) `
+        -replace '^LoginDatabaseInfo\s*=\s*".*"', "LoginDatabaseInfo = `"$ConfHost;$ConfPort;$DbUser;$DbPassword;$LoginDatabaseName`"" `
+        | Set-Content $RealmdConf
+
+    Write-Host "[OK] realmd.conf updated with the login database connection." -ForegroundColor Green
+} else {
+    Stop-Pipeline -Message "Configuration injection failed: Could not locate realmd.conf inside $MangosEtcDir"
 }
 
 # ==============================================================================
@@ -1576,7 +1696,7 @@ $CharSqlPath     = Join-Path $PlayerBotSqlDir "characters"
 if (Test-Path $WorldSqlPath) {
     Get-ChildItem (Join-Path $WorldSqlPath "*.sql"), (Join-Path $ClassicSqlPath "*.sql") -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Host "Importing PlayerBot World: $($_.Name)"
-        Invoke-MySqlFile -Path $_.FullName -Database "tw_world" -FailureMessage "Importing a PlayerBot world SQL file failed"
+        Invoke-MySqlFile -Path $_.FullName -Database $WorldDatabaseName -FailureMessage "Importing a PlayerBot world SQL file failed"
     }
 } else {
     Write-Warning "PlayerBot world SQL directory not found at: $WorldSqlPath"
@@ -1588,7 +1708,7 @@ if ($SkipBotRegen) {
 } elseif (Test-Path $CharSqlPath) {
     Get-ChildItem (Join-Path $CharSqlPath "*.sql") | ForEach-Object {
         Write-Host "Importing PlayerBot Characters: $($_.Name)"
-        Invoke-MySqlFile -Path $_.FullName -Database "tw_char" -FailureMessage "Importing a PlayerBot characters SQL file failed"
+        Invoke-MySqlFile -Path $_.FullName -Database $CharacterDatabaseName -FailureMessage "Importing a PlayerBot characters SQL file failed"
     }
 } else {
     Write-Warning "PlayerBot characters SQL directory not found at: $CharSqlPath"
@@ -1649,9 +1769,9 @@ $RealmlistQuery = @"
 "@
 
 Invoke-MySqlQuery -Query $RealmlistQuery `
-                  -Database "tw_logon" `
+                  -Database $LoginDatabaseName `
                   -DefaultsFile $script:DbDefaultsFile `
-                  -FailureMessage "Could not register the local realm in tw_logon.realmlist"
+                  -FailureMessage "Could not register the local realm in $LoginDatabaseName.realmlist"
 
 Write-Host "[OK] Realmlist points at ${RealmlistIPAddress}:$RealmlistPort." -ForegroundColor Green
 
