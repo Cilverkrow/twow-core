@@ -903,6 +903,22 @@ function Resolve-VcpkgDirectory {
 # next run - which is the whole point of the marker below.
 $script:LauncherFormatVersion = 2
 
+# The encoding the launcher .bat files are written in.
+#
+# ASCII was wrong twice over. It is a LOSSY encoder: every character outside 7-bit ASCII
+# becomes a literal "?" on disk. So -MariaDbFolderName "mariadb-10.3.39-winx64-cestina"
+# with an accent in it produced cd /d "%~dp0mariadb-...-?e?tina\bin" - a launcher that
+# cannot find its own database - and, because the marker checksum was computed from the
+# text BEFORE that substitution, every later run recomputed a different checksum, decided
+# the file had been hand-edited, and refused to repair the file the pipeline had broken
+# itself.
+#
+# cmd.exe reads a .bat in the console's OEM code page, so that is what it is written in.
+# On a Czech machine that is CP852, which represents the accented characters ASCII threw
+# away.
+$script:LauncherEncoding = [System.Text.Encoding]::GetEncoding(
+    [System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
+
 # Expected fingerprint of dbc_verifier.json, the manifest step 01 checks every DBC against.
 #
 # That manifest describes the last officially released client, so in practice it does not
@@ -979,8 +995,9 @@ function ConvertTo-ReplacementLiteral {
 #   marker matches, version older    -> ours, untouched, and stale: safely refreshed
 #   checksum differs, or no marker   -> hand-made or edited: left alone, reported
 #
-# Content is deliberately plain ASCII: .bat files are read by cmd.exe in the OEM code page,
-# so accented characters in a comment would come out as mojibake on a Czech console.
+# Content is written in the console's OEM code page, which is what cmd.exe reads a .bat in
+# (see $script:LauncherEncoding). The generated text is plain ASCII apart from whatever the
+# operator's own folder names contribute.
 function New-ServerLauncherScript {
     param (
         [Parameter(Mandatory = $true)][string]$Path,
@@ -988,6 +1005,19 @@ function New-ServerLauncherScript {
     )
 
     $LauncherName = Split-Path $Path -Leaf
+
+    # Checksum what will actually be on disk, not what was handed in. Any encoding is
+    # potentially lossy for some input - even the OEM code page cannot hold, say, Cyrillic
+    # on CP852 - and a checksum taken before the round trip can then never match the file
+    # it describes, which permanently disables the refresh logic below.
+    $EncodedContent = $script:LauncherEncoding.GetString($script:LauncherEncoding.GetBytes($Content))
+    if ($EncodedContent -ne $Content) {
+        Write-Warning ("$LauncherName contains characters the console code page " +
+                       "($($script:LauncherEncoding.WebName)) cannot represent; they were replaced. " +
+                       "Check the paths in it - a folder name is the usual source.")
+        $Content = $EncodedContent
+    }
+
     $Checksum     = Get-TextChecksum -Text $Content -Length 16
     $MarkerLine   = ":: tortoise-testlab-launcher version=$($script:LauncherFormatVersion) checksum=$Checksum"
     # Trailing newline matters: without it anything later appended to the file lands on the
@@ -995,7 +1025,9 @@ function New-ServerLauncherScript {
     $FileText     = (($Content.TrimEnd() + "`n" + $MarkerLine + "`n") -replace "`r`n", "`n") -replace "`n", "`r`n"
 
     if (Test-Path -LiteralPath $Path) {
-        $Existing      = [System.IO.File]::ReadAllText($Path)
+        # Read in the same encoding it is written in, or a launcher holding an accented
+        # path would fingerprint differently on the way back in.
+        $Existing      = [System.IO.File]::ReadAllText($Path, $script:LauncherEncoding)
         $ExistingLines = @($Existing -split "`r?`n")
         $FoundMarker   = @($ExistingLines | Where-Object { $_ -match '^::\s*tortoise-testlab-launcher\s+version=(\d+)\s+checksum=([0-9a-f]+)' })
 
@@ -1030,12 +1062,12 @@ function New-ServerLauncherScript {
             "content changed since it was written"
         }
 
-        [System.IO.File]::WriteAllText($Path, $FileText, [System.Text.Encoding]::ASCII)
+        [System.IO.File]::WriteAllText($Path, $FileText, $script:LauncherEncoding)
         Write-Host " -> Refreshed stale launcher ($Reason): $LauncherName" -ForegroundColor Yellow
         return
     }
 
-    [System.IO.File]::WriteAllText($Path, $FileText, [System.Text.Encoding]::ASCII)
+    [System.IO.File]::WriteAllText($Path, $FileText, $script:LauncherEncoding)
     Write-Host " -> Created launcher: $LauncherName" -ForegroundColor Green
 }
 
