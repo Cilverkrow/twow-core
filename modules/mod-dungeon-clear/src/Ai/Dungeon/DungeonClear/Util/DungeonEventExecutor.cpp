@@ -539,11 +539,22 @@ StepResult DungeonEventExecutor::RunStep(Player* bot, AiObjectContext* context,
             // INFO, not DEBUG: whether the ritual altar ever saw its clicks is the
             // one fact three measurement windows on 2026-09-04 could not answer
             // from the journal. uniqueUses is the core's own distinct-user count
-            // for a SUMMONING_RITUAL (0 for every other GO type).
-            LOG_INFO("playerbots.dungeonclear",
-                     "[dungeon-clear] {} event-step Use GO {} '{}' -> uniqueUses={} state={}",
-                     bot->GetName(), go->GetObjectGuid().ToString(), go->GetName(),
-                     go->GetUniqueUseCount(), static_cast<int>(go->GetGoState()));
+            // for a SUMMONING_RITUAL (0 for every other GO type). Once per
+            // second per leader: the step re-clicks every tick while Running,
+            // which wrote ~20 lines/s per leader at the Uldaman altar (2026-09-05).
+            {
+                static std::unordered_map<uint64, uint32> s_useSaidAt;
+                uint32 const nowU = getMSTime();
+                uint32& atU = s_useSaidAt[bot->GetObjectGuid().GetRawValue()];
+                if (!atU || getMSTimeDiff(atU, nowU) >= 1000)
+                {
+                    atU = nowU;
+                    LOG_INFO("playerbots.dungeonclear",
+                             "[dungeon-clear] {} event-step Use GO {} '{}' -> uniqueUses={} state={}",
+                             bot->GetName(), go->GetObjectGuid().ToString(), go->GetName(),
+                             go->GetUniqueUseCount(), static_cast<int>(go->GetGoState()));
+                }
+            }
 
             // A SUMMONING_RITUAL (GO type 18) does not fire on one click. The core
             // records DISTINCT users and bails out while there are too few:
@@ -617,10 +628,19 @@ StepResult DungeonEventExecutor::RunStep(Player* bot, AiObjectContext* context,
                         }
                         go->Use(member);
                         ++clicked;
-                        LOG_INFO("playerbots.dungeonclear",
-                                 "[dungeon-clear] {} ritual click by {} at {:.1f}yd -> uniqueUses={}",
-                                 bot->GetName(), member->GetName(), member->GetDistance(go),
-                                 go->GetUniqueUseCount());
+                        {
+                            static std::unordered_map<uint64, uint32> s_clickSaidAt;
+                            uint32 const nowC = getMSTime();
+                            uint32& atC = s_clickSaidAt[member->GetObjectGuid().GetRawValue()];
+                            if (!atC || getMSTimeDiff(atC, nowC) >= 1000)
+                            {
+                                atC = nowC;
+                                LOG_INFO("playerbots.dungeonclear",
+                                         "[dungeon-clear] {} ritual click by {} at {:.1f}yd -> uniqueUses={}",
+                                         bot->GetName(), member->GetName(), member->GetDistance(go),
+                                         go->GetUniqueUseCount());
+                            }
+                        }
                     }
                 }
                 // Done only once the ritual ACTUALLY fired. The core flips the GO
@@ -638,7 +658,7 @@ StepResult DungeonEventExecutor::RunStep(Player* bot, AiObjectContext* context,
                     gather.x = go->GetPositionX();
                     gather.y = go->GetPositionY();
                     gather.z = go->GetPositionZ();
-                    gather.radius = 4.5f;   // followers park 4 yd out (outside the altar model), inside DC_EVENT_GO_USE_RANGE (5)
+                    gather.radius = 3.5f;   // followers park 4 yd out (outside the altar model), inside DC_EVENT_GO_USE_RANGE (5)
                     gather.reach = DC_EVENT_GO_GATHER_RANGE;
                     gather.untilMs = getMSTime() + 8000;  // refreshed every tick while Running
                 }
@@ -1485,6 +1505,19 @@ void DungeonEventExecutor::SweepCompletedConditionalEvents(Player* bot,
         }
         else if (seenDue.count(lk))
         {
+            // An event that says how completion looks is only latched when it
+            // looks like that. Otherwise the flicker is forgotten (seenDue
+            // reset) and the event is simply not due until its condition
+            // reads true again.
+            if (ev->completedWhen && !ev->completedWhen(bot, context))
+            {
+                seenDue.erase(lk);
+                LOG_INFO("playerbots.dungeonclear",
+                         "[DC:{}] conditional event '{}' (id {}) went not-due without "
+                         "completing -> NOT latched, stays pending",
+                         bot->GetName(), ev->name, ev->id);
+                continue;
+            }
             // Was due, now isn't, and the executor never latched it: its gating
             // condition WAS the latch (e.g. a Stratholme ziggurat whose instance
             // data flips 1 -> 2 the instant the Ash'ari Crystal topples, mid-

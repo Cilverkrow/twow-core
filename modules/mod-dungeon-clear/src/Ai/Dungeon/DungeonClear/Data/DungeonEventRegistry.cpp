@@ -40,6 +40,12 @@ EventBuilder& EventBuilder::Conditional(EventCondition condition)
     return *this;
 }
 
+EventBuilder& EventBuilder::CompletedWhen(EventCondition completed)
+{
+    _ev.completedWhen = std::move(completed);
+    return *this;
+}
+
 EventBuilder& EventBuilder::Optional()
 {
     _ev.required = false;

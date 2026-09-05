@@ -309,6 +309,13 @@ struct DungeonEvent
     EventActivation activation{EventActivation::Anchored};
     uint32 orderIndex{0};    // Anchored: the objective's encounter slot (doc only)
     EventCondition condition{};  // Conditional: the per-tick activation predicate
+    // Conditional only, optional. When set, a due -> not-due transition of
+    // `condition` counts as COMPLETION only while this reads true. Without it
+    // any flicker of the activation predicate (the seal scanning out of range
+    // while the tank chases trash, the boss briefly not found) latches the
+    // event done before it ever ran: Uldaman 2026-09-04, 42 latches, 33
+    // keystone clicks, 8 runs idle at the shut seal.
+    EventCondition completedWhen{};
 
     // Difficulty gate. A HeroicOnly event never fires (and never surfaces in the
     // panel) on a normal run, and vice versa. For an ANCHORED event the primary
@@ -450,6 +457,8 @@ public:
 
     EventBuilder& Anchored(uint32 orderIndex);
     EventBuilder& Conditional(EventCondition condition);
+    // See DungeonEvent::completedWhen.
+    EventBuilder& CompletedWhen(EventCondition completed);
     EventBuilder& Optional();
     EventBuilder& Repeatable();
     EventBuilder& Persistent();

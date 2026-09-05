@@ -1891,7 +1891,9 @@ bool DungeonClearGatherAtPointAction::Execute(Event& /*event*/)
     // drifted in and out of the 5 yd click range (arch10, 2026-09-04: 65
     // walk-ins, the core's distinct-user count never above 2). 4 yd is
     // outside any altar model and still inside DC_EVENT_GO_USE_RANGE.
-    float const off = std::min(gp.radius - 0.5f, 4.0f);
+    // 3 yd, not 4: at 4 the holds landed at 3.7-4.4 yd and the clicks at
+    // 4.6-5.0 yd - on the edge of DC_EVENT_GO_USE_RANGE (arch11, 2026-09-04).
+    float const off = std::min(gp.radius - 0.5f, 3.0f);
     float const tx = gp.x + std::cos(bearing) * off;
     float const ty = gp.y + std::sin(bearing) * off;
     bot->GetMotionMaster()->Clear();
