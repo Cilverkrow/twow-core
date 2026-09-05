@@ -4452,7 +4452,18 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
     case BATTLEGROUND_IC:
 #endif
     {
-        closeObjects = *context->GetValue<std::list<ObjectGuid> >("closest game objects static los");
+        // Ground-level static rays can hide banners on raised AB platforms.
+        // Keep native range, banner eligibility and capture-spell checks below.
+        {
+            std::list<ObjectGuid> const noLos =
+                *context->GetValue<std::list<ObjectGuid> >("nearest game objects no los");
+            for (ObjectGuid const& guid : noLos)
+            {
+                GameObject* go = ai->GetGameObject(guid);
+                if (go && bot->IsWithinDistInMap(go, INTERACTION_DISTANCE))
+                    closeObjects.push_back(guid);
+            }
+        }
         closePlayers = *context->GetValue<std::list<ObjectGuid> >("closest friendly players");
         flagRange = INTERACTION_DISTANCE;
         break;

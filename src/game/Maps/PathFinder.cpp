@@ -82,6 +82,14 @@ void PathInfo::setPathLengthLimit(float dist)
 
 bool PathInfo::calculate(float destX, float destY, float destZ, bool forceDest, bool offsets)
 {
+    // The map/instance compatibility constructor has no Unit owner.
+    if (!m_sourceUnit)
+    {
+        m_type = PATHFIND_NOPATH;
+        m_pathPoints.clear();
+        return false;
+    }
+
     float x, y, z;
     m_sourceUnit->GetSafePosition(x, y, z, m_transport);
 
@@ -90,6 +98,14 @@ bool PathInfo::calculate(float destX, float destY, float destZ, bool forceDest, 
 
 bool PathInfo::calculate(Vector3 const& start, Vector3 dest, bool forceDest, bool offsets)
 {
+    // NOPATH, not INCOMPLETE: callers may inspect the last point of partial paths.
+    if (!m_sourceUnit)
+    {
+        m_type = PATHFIND_NOPATH;
+        m_pathPoints.clear();
+        return false;
+    }
+
     TurtleDiagnostics::Scope diagnosticPath(TurtleDiagnostics::Path);
     // A m_navMeshQuery object is not thread safe, but a same PathInfo can be shared between threads.
     // So need to get a new one.

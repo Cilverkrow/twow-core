@@ -2,6 +2,41 @@ cmake_minimum_required(VERSION 3.16)
 project(TurtleArchitectureTests LANGUAGES C CXX)
 enable_testing()
 
+function(extract_native_fragment source start end output)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
+    file(READ "${source}" body)
+    string(FIND "${body}" "${start}" first)
+    if(first LESS 0)
+        message(FATAL_ERROR "Cannot find native regression start: ${output}")
+    endif()
+    string(SUBSTRING "${body}" ${first} -1 body)
+    string(FIND "${body}" "${end}" length)
+    if(length LESS 0)
+        message(FATAL_ERROR "Cannot extract native regression fragment: ${output}")
+    endif()
+    string(SUBSTRING "${body}" 0 ${length} fragment)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${output}" "${fragment}")
+endfunction()
+set(CORE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+set(TRAVEL_ROOT "${CORE_ROOT}/modules/mod-playerbots/src/playerbot")
+extract_native_fragment("${CORE_ROOT}/src/game/Maps/PathFinder.cpp"
+    "bool PathInfo::calculate(float" "bool PathInfo::calculate(Vector3" ForkPathFloat.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/Maps/PathFinder.cpp"
+    "bool PathInfo::calculate(Vector3" "    TurtleDiagnostics::Scope diagnosticPath" ForkPathVectorPrefix.inc)
+extract_native_fragment("${TRAVEL_ROOT}/BroadcastHelper.cpp"
+    "bool BroadcastHelper::BroadcastToChannelWithGlobalChance(" "    for (const auto& pair : toChannels)" ForkBroadcastPrefix.inc)
+extract_native_fragment("${TRAVEL_ROOT}/strategy/values/StatsValues.cpp"
+    "bool PetIsDeadValue::Calculate()" "bool PetIsHappyValue::Calculate()" ForkPetDead.inc)
+extract_native_fragment("${TRAVEL_ROOT}/strategy/actions/BattleGroundTactics.cpp"
+    "        // Ground-level static rays" "        closePlayers =" ForkBannerCandidates.inc)
+add_executable(ForkIntegrationTest ForkIntegrationTest.cpp)
+target_compile_features(ForkIntegrationTest PRIVATE cxx_std_17)
+target_include_directories(ForkIntegrationTest PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+if(MSVC)
+    target_compile_options(ForkIntegrationTest PRIVATE /EHsc)
+endif()
+add_test(NAME ForkIntegrationTest COMMAND ForkIntegrationTest)
+
 # Exercise the actual trainer purchase handler with deterministic stand-ins for
 # its native services. This tests dispatch/payment, not the Spell engine itself.
 set(TRAINER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../src/game/Handlers/NPCHandler.cpp")
