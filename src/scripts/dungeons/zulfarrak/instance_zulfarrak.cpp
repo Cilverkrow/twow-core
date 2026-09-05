@@ -250,6 +250,7 @@ public:
         switch (type)
         {
             case EVENT_PYRAMID:
+                sLog.outInfo("[ZF] pyramid phase %u -> %u", PyramidPhase, data);
                 PyramidPhase = data;
                 break;
             case EVENT_END_DOOR:
