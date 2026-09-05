@@ -31,11 +31,12 @@ public:
     // merely mid-teleport, stopping the whole run system for three hours.
     static void NotePlayerDestroyed(Player const* player);
 
-    void AddPlayerBot(uint32 guid, uint32 masterAccountId);
+    bool AddPlayerBot(uint32 guid, uint32 masterAccountId);
 	void HandlePlayerBotLoginCallback(QueryResult * dummy, SqlQueryHolder * holder);
 
-    void LogoutPlayerBot(uint32 guid, bool allowInstant = true, bool forDelete = false);
-    void DisablePlayerBot(uint32 guid, bool logOutPlayer = true);
+    void LogoutPlayerBot(uint32 guid, bool allowInstant = true, bool forDelete = false,
+        bool allowMasterLogoutOrShutdown = false);
+    void DisablePlayerBot(uint32 guid, bool logOutPlayer = true, bool allowRosterLogoutCleanup = false);
     Player* GetPlayerBot (uint32 guid) const;
 
     virtual void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
