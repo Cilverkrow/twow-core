@@ -220,6 +220,10 @@ public:
     int32 gearProgressionSystemItems[MAX_GEAR_PROGRESSION_LEVEL][MAX_CLASSES][4][SLOT_EMPTY];
     std::string commandPrefix, commandSeparator;
     std::string randomBotAccountPrefix;
+    // Table (optionally schema-qualified) backing the playerbot event store.
+    // Defaults to the historical inline name in the character database;
+    // see PlayerbotDatabaseContract.h for how it is used.
+    std::string eventStoreTable;
     // Character names that stay online and are never teleported away.
     // Resolved to guids by RandomPlayerbotMgr, which has the database.
     std::list<std::string> pinnedBotNames;
