@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "Action.h"
 #include "AiObjectContext.h"
+#include "WorkMetrics.h"
 #include "NamedObjectContext.h"
 #include "StrategyContext.h"
 #include "triggers/TriggerContext.h"
@@ -89,6 +90,41 @@ size_t AiObjectContext::ClearExpiredValues(std::string findName, uint32 interval
     return namesToErase.size();
 }
 
+
+void AiObjectContext::BeginIdleValueCleanup()
+{
+    if (m_cleanupPosition < m_cleanupNames.size()) return;
+    WorkMetrics::Probe cost(WorkMetrics::ValueCleanup);
+    auto names = valueContexts.GetLocalCreated();
+    m_cleanupNames.assign(names.begin(), names.end());
+    m_cleanupPosition = 0;
+}
+
+void AiObjectContext::ContinueIdleValueCleanup(uint32 idleSeconds, size_t maxChecks)
+{
+    if (m_cleanupPosition >= m_cleanupNames.size()) return;
+    WorkMetrics::Probe cost(WorkMetrics::ValueCleanup);
+    time_t const now = time(nullptr);
+    size_t released = 0;
+    while (maxChecks-- && m_cleanupPosition < m_cleanupNames.size())
+    {
+        auto const& name = m_cleanupNames[m_cleanupPosition++];
+        // Do not create a value removed since the snapshot, or mark a sweep as
+        // a gameplay access. Recalculation expiry is not object-lifetime expiry.
+        UntypedValue* value = valueContexts.FindLocalCreated(name);
+        if (value && !value->Protected() && value->UnusedFor(now, idleSeconds) && value->Expired())
+        {
+            valueContexts.EraseLocal(name);
+            ++released;
+        }
+    }
+    expiredValuesReleased.fetch_add(released, std::memory_order_relaxed);
+    if (m_cleanupPosition == m_cleanupNames.size())
+    {
+        m_cleanupNames.clear();
+        m_cleanupPosition = 0;
+    }
+}
 
 std::string AiObjectContext::FormatValues(std::string findName)
 {

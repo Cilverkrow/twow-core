@@ -129,11 +129,7 @@ class Database
         virtual void HaltDelayThread();
 
         /// Synchronous DB queries
-        inline QueryResult* Query(const char *sql)
-        {
-            SqlConnection::Lock guard(getQueryConnection());
-            return guard->Query(sql);
-        }
+        QueryResult* Query(const char *sql);
 
         inline std::shared_ptr<QueryNamedResult> QueryNamed(const char *sql)
         {
