@@ -1714,6 +1714,21 @@ void ScriptMgr::LoadScriptNames()
         delete result;
     }
 
+    // Scripts that ship in this binary but whose creature_template.script_name
+    // rows live in world-DB updates a realm may not have applied. Without the
+    // name here RegisterSelf() reports "not assigned in database" and the
+    // script is dropped; with it the script registers and LoadCreatureTemplates
+    // binds it to the entry when the DB row carries no script (see there).
+    // Zul Farrak Farraki Arena, update 20260626153218 (2026-09-05).
+    static char const* const kFallbackScriptNames[] =
+    {
+        "npc_champion_razjal_the_quick",
+        "npc_kathzen_the_brutal",
+        "npc_juthza_the_cunning",
+    };
+    for (char const* fallback : kFallbackScriptNames)
+        m_scriptNames.emplace_back(fallback);
+
     std::sort(m_scriptNames.begin(), m_scriptNames.end());
     m_scriptNames.erase(std::unique(m_scriptNames.begin(), m_scriptNames.end()), m_scriptNames.end());
 }
