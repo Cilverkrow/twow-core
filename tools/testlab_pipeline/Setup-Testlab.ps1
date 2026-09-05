@@ -952,7 +952,7 @@ function Resolve-VcpkgDirectory {
 # Bumped whenever the generated launcher content changes. An existing launcher that this
 # pipeline wrote at an older version, and that nobody has edited since, is refreshed on the
 # next run - which is the whole point of the marker below.
-$script:LauncherFormatVersion = 2
+$script:LauncherFormatVersion = 3
 
 # The encoding the launcher .bat files are written in.
 #
@@ -2319,6 +2319,11 @@ foreach ($Folder in $RequiredRuntimeFolders) {
 Write-PipelineHeader -StepName "15: SERVER LAUNCHER SCRIPTS"
 Write-Host "Verifying server launcher scripts..."
 
+# The port the generated launcher probes and starts mysqld on. -DbPort tells the pipeline
+# where the database is; a launcher that ignored it started the portable server on its
+# built-in default and then reported the wrong port to the operator.
+$LauncherDbPort = if ($DbPort -gt 0) { $DbPort } else { 3306 }
+
 $MysqlLauncherContent = @"
 @echo off
 :: mysqld resolves its datadir RELATIVE to the working directory, so it has to start from
@@ -2338,14 +2343,21 @@ if errorlevel 1 (
 
 :: A second instance cannot bind the port, and its console window closes immediately -
 :: which looks exactly like "the database will not start" when it is in fact already up.
-netstat -ano | findstr /r /c:"LISTENING" | findstr ":3306 " >nul
+::
+:: "/c:" on the second findstr is not optional. Without it the argument is split on
+:: whitespace into separate search strings, the trailing space that anchors the end of the
+:: port is discarded, and the port then matches as a bare substring: MySQL 8's X protocol
+:: on 33060, or a tunnel on 13306, was read as "already running" and mysqld was never
+:: started. With /r /c: the whole thing is one pattern, so both the colon in front and the
+:: space behind have to be there.
+netstat -ano | findstr /r /c:"LISTENING" | findstr /r /c:":$LauncherDbPort " >nul
 if not errorlevel 1 (
-    echo MariaDB is already running on port 3306 - nothing to do.
+    echo MariaDB is already running on port $LauncherDbPort - nothing to do.
     pause
     exit /b 0
 )
 
-start "mysql" mysqld.exe --console
+start "mysql" mysqld.exe --console --port=$LauncherDbPort
 "@
 
 $RealmLauncherContent = @"
