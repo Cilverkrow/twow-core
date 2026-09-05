@@ -71,9 +71,16 @@ namespace
     // grabs them first. Coords interpolate the staircase (head y1263/z41.5 ->
     // bottom y1228/z~10, verified from initBlyCrewMember + the PRE_WAVE_3 NPC
     // moves); a generous arrive radius tolerates the per-step z of the stairs.
-    constexpr float ZF_RAMP_X = 1886.0f;
-    constexpr float ZF_RAMP_Y = 1250.0f;
-    constexpr float ZF_RAMP_Z = 30.0f;
+    // Hold at the FOOT of the temple stairs, not on the ramp. The wave adds
+    // spawn at the foot (x 1873-1898, y 1204-1225, z 8.9) and the ones that
+    // never walk up wait there; from the ramp (z 30) neither the party's path
+    // test nor EngageDirect reached them, so IsWaveAllDead() stayed false in
+    // 7 of 9 instances (arch20-22, 2026-09-05). Bly's band comes down to
+    // (1887, 1228, 10) for wave 3 and the two temple bosses spawn at the foot,
+    // so everything the party has to touch happens here.
+    constexpr float ZF_RAMP_X = 1887.0f;
+    constexpr float ZF_RAMP_Y = 1216.0f;
+    constexpr float ZF_RAMP_Z = 9.5f;
 
     // The wave sequence (cages open -> wave 3 / bosses spawn) runs several
     // minutes; a generous timeout keeps the long survive-the-waves wait from
@@ -194,7 +201,7 @@ void RegisterZulFarrakEvents(std::vector<DungeonEvent>& out)
                       //    WAVE_3 (bosses spawned); gated on the monotonic phase
                       //    rather than "boss alive" so a fight straight through
                       //    wave 3 can't leave it waiting on an already-dead boss.
-                      .MoveToHoldUntilInstanceData(ZF_RAMP_X, ZF_RAMP_Y, ZF_RAMP_Z, /*radius*/ 10.0f,
+                      .MoveToHoldUntilInstanceData(ZF_RAMP_X, ZF_RAMP_Y, ZF_RAMP_Z, /*radius*/ 12.0f,
                                                    ZF_DATA_PYRAMID, ZF_PHASE_WAVE_3)
                           .Timeout(ZF_WAVES_TIMEOUT)
                           // The waves go for Bly's band on the stairs (13yd up

@@ -1873,6 +1873,8 @@ bool DcObjectiveArriveAction::Execute(Event& /*event*/)
                     Cell::VisitObjects(bot, aroundSearcher, step.holdEngageRadius + 30.0f);
                     float bestD2 = step.holdEngageRadius * step.holdEngageRadius;
                     uint32 rejectedAttack = 0, rejectedReach = 0;
+                    Creature* nearestUnreachable = nullptr;
+                    float nearestUnreachableD2 = bestD2;
                     for (Creature* c : around)
                     {
                         if (!c || !c->IsAlive() || c->IsPet() || c->IsTotem() || c->IsCritter())
@@ -1895,18 +1897,43 @@ bool DcObjectiveArriveAction::Execute(Event& /*event*/)
                         if (!DcEngageGeometry::IsEngageReachable(bot, c, /*requireDirect*/ false))
                         {
                             ++rejectedReach;
+                            if (d2 < nearestUnreachableD2)
+                            {
+                                nearestUnreachable = c;
+                                nearestUnreachableD2 = d2;
+                            }
                             continue;
                         }
                         holdTarget = c;
                         bestD2 = d2;
                     }
-                    if (holdTarget || rejectedAttack || rejectedReach)
+                    // The path test said no for every hostile in reach. On the
+                    // Zul'Farrak stairs that was the whole wave: the adds waited
+                    // 40yd down at the foot (dz -24), the party had just walked
+                    // up those same stairs, and the hold sat out the encounter
+                    // (arch20: 7 of 10 waves never died). Go for the nearest one
+                    // anyway - EngageDirect paths for itself and a real dead end
+                    // shows up as a stall, not as a silent hold.
+                    bool unreachableAnyway = false;
+                    if (!holdTarget && nearestUnreachable)
+                    {
+                        holdTarget = nearestUnreachable;
+                        unreachableAnyway = true;
+                    }
+                    static std::unordered_map<uint64, uint32> s_fallbackSaidAt;
+                    uint32 const nowF = getMSTime();
+                    uint32& atF = s_fallbackSaidAt[bot->GetObjectGuid().GetRawValue()];
+                    bool const sayF = !atF || getMSTimeDiff(atF, nowF) > 10000;
+                    if (sayF)
+                        atF = nowF;
+                    if (sayF && (holdTarget || rejectedAttack || rejectedReach))
                         LOG_INFO("playerbots.dungeonclear",
-                                 "[DC:{}] hold-engage fallback: {} (rejected: not attackable {}, unreachable {})",
+                                 "[DC:{}] hold-engage fallback: {}{} (rejected: not attackable {}, unreachable {})",
                                  bot->GetName(),
                                  holdTarget ? std::string("engaging ") + holdTarget->GetName() + " at " +
                                                   std::to_string(int(bot->GetDistance(holdTarget))) + "yd"
                                             : std::string("nothing"),
+                                 unreachableAnyway ? " despite the path test" : "",
                                  rejectedAttack, rejectedReach);
                 }
                 if (holdTarget)
