@@ -304,6 +304,20 @@ Set-StrictMode -Version Latest
 # comment on that parameter. $PSScriptRoot is correct from this point on.
 if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) { $WorkspaceRoot = $PSScriptRoot }
 
+# Checked here, not beside the rest of the path handling further down, because
+# Start-Transcript below CREATES the directory it is pointed at. A mistyped -WorkspaceRoot
+# was therefore made real on the spot, the existence check further down always passed, and
+# the run carried on to fail at whatever it could not find inside the new empty folder -
+# having left a stray directory and a pipeline_console.log behind.
+#
+# Stop-Pipeline is not defined yet at this point in the file, and nothing has been acquired
+# that would need releasing, so this exits directly.
+if (-not [string]::IsNullOrWhiteSpace($WorkspaceRoot) -and
+    -not (Test-Path -LiteralPath $WorkspaceRoot -PathType Container)) {
+    Write-Error "Workspace root does not exist (or is not a directory): $WorkspaceRoot"
+    exit 2
+}
+
 # Credential files are created in step 00 and removed by Stop-Pipeline / the final cleanup.
 # Declared up front so the cleanup helper can always test them under StrictMode.
 $script:RootDefaultsFile = $null
