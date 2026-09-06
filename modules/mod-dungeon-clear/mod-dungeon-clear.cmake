@@ -134,6 +134,54 @@ if(TORTOISE_MODULE_CMAKE_PHASE STREQUAL "POST_TARGETS")
       "which 47 of them require.")
   endif()
 
+  # The vendored playerbots headers this module includes are #ifdef'd on
+  # CMANGOS / MANGOSBOT_ZERO / ENABLE_PLAYERBOTS, and WITHOUT them the bodies
+  # vanish rather than failing to compile. ServerFacade.h is the clearest case:
+  #
+  #     bool UnitIsDead(Unit *unit)
+  #     {
+  #     #ifdef MANGOS
+  #         return unit->IsDead();
+  #     #endif
+  #     #ifdef CMANGOS
+  #         return unit->IsDead();
+  #     #endif
+  #     }
+  #
+  # With neither macro defined that function has no return statement at all --
+  # falling off the end of a non-void function, undefined behaviour, and GCC
+  # plants a ud2. 39 files under this module include such headers.
+  #
+  # mod-playerbots.cmake sets the three macros PUBLIC, but only on the targets
+  # in its own foreach: `modules`, `modules_playerbots`, `mod_mod_playerbots`.
+  # In core that is enough, because this module's sources land in `modules`.
+  # Under a consumer that gives every module its own static library, this
+  # module's target is mod_mod_dungeon_clear -- in none of those lists -- and
+  # this file has no target_link_libraries to inherit them through. Its own
+  # comment records why that link was dropped ("both modules share the
+  # `modules` target now, so there is nothing left to link against"), which is
+  # true here and false there.
+  #
+  # So: link the playerbots target when it is a DIFFERENT target, which carries
+  # the macros and its include dirs the way a dependency should; and define
+  # them directly otherwise, which also covers -DMODULE_MOD_PLAYERBOTS=disabled,
+  # where this module still compiles and still needs the headers to have
+  # bodies.
+  GetModuleProjectName("mod-playerbots" DC_PB_MODULE_TARGET)
+  set(DC_PB_TARGET "")
+  foreach(DC_PB_CANDIDATE ${DC_PB_MODULE_TARGET} modules_playerbots)
+    if(TARGET ${DC_PB_CANDIDATE} AND NOT DC_PB_CANDIDATE STREQUAL DC_TARGET)
+      set(DC_PB_TARGET ${DC_PB_CANDIDATE})
+      break()
+    endif()
+  endforeach()
+  if(DC_PB_TARGET)
+    target_link_libraries(${DC_TARGET} PUBLIC ${DC_PB_TARGET})
+  endif()
+  # Unconditional, and idempotent where the link already supplied them: a
+  # duplicate -D of the same macro is harmless, whereas its absence is UB.
+  target_compile_definitions(${DC_TARGET} PUBLIC CMANGOS MANGOSBOT_ZERO ENABLE_PLAYERBOTS)
+
   target_include_directories(${DC_TARGET}
     PUBLIC
       ${DC_PLAYERBOTS_ROOT}
