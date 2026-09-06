@@ -276,15 +276,19 @@ void PlayerbotAI::RevalidateMasterPointer()
 
 void PlayerbotAI::CleanupExpiredValuesIfDue()
 {
-    if (!aiObjectContext || !bot || !sPlayerbotAIConfig.valueCacheCleanupInterval)
+    if (!aiObjectContext || !bot)
         return;
 
     uint32 const now = WorldTimer::getMSTime();
     uint32 const interval = sPlayerbotAIConfig.valueCacheCleanupInterval;
-    if (!lastValueCacheCleanupMs)
+    bool const requested = valueCacheCleanupRequested.exchange(false, std::memory_order_acq_rel);
+    if (!interval && !requested)
+        return;
+
+    if (interval && !lastValueCacheCleanupMs)
         lastValueCacheCleanupMs = now - (bot->GetGUIDLow() % interval);
 
-    if (WorldTimer::getMSTimeDiff(lastValueCacheCleanupMs, now) < interval)
+    if (!requested && WorldTimer::getMSTimeDiff(lastValueCacheCleanupMs, now) < interval)
         return;
 
     aiObjectContext->ClearExpiredValues();
@@ -1399,7 +1403,6 @@ void PlayerbotAI::HandleTeleportAck()
 
 void PlayerbotAI::Reset(bool full)
 {
-    spellCapabilityCache.clear();
     AiObjectContext* context = aiObjectContext;
 
     if (bot->IsTaxiFlying())
@@ -1447,7 +1450,12 @@ void PlayerbotAI::Reset(bool full)
         target->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         target->SetExpireIn(1000);
 
-        *AI_VALUE(FutureDestinations*, "future travel destinations") = FutureDestinations();
+        // Releasing an unfinished std::async future joins its worker. Invalidate
+        // the target above, but retain pending ownership until the search ends.
+        // Request actions must not replace it while pending either.
+        FutureDestinations* future = AI_VALUE(FutureDestinations*, "future travel destinations");
+        if (!IsTravelSearchPending(*future))
+            *future = FutureDestinations();
         RESET_AI_VALUE2(std::string, "manual string", "future travel purpose");
         RESET_AI_VALUE2(int, "manual int", "future travel relevance");
 
@@ -4442,20 +4450,10 @@ bool PlayerbotAI::HasSpell(uint32 spellid) const
     Pet* pet = bot->GetPet();
     if (pet && pet->HasSpell(spellid))
         return true;
-    // ManTech Arch 3 capability cache. Pet spells remain live; the bounded
-    // one-second cache is invalidated by level/spell-count/talent changes.
-    uint32 const now = WorldTimer::getMSTime();
-    uint32 const signature = (uint32(bot->GetLevel()) << 24) ^
-        (uint32(bot->GetSpellMap().size()) << 8) ^ bot->GetFreeTalentPoints();
-    auto cached = spellCapabilityCache.find(spellid);
-    if (cached != spellCapabilityCache.end() && cached->second.signature == signature &&
-        int32(cached->second.expiresAtMs - now) > 0)
-        return cached->second.known;
-    bool const known = bot->HasSpell(spellid);
-    if (spellCapabilityCache.size() >= 256)
-        spellCapabilityCache.clear();
-    spellCapabilityCache[spellid] = {signature, now + 1000, known};
-    return known;
+    // Native HasSpell is already an unordered-map lookup and includes removed
+    // and disabled state. A second cache cannot safely infer its revision from
+    // spell count, level or talent points, and costs another lookup/allocation.
+    return bot->HasSpell(spellid);
 }
 
 SpellCastResult PlayerbotAI::CheckSpellTargetAlignment(SpellEntry const* spellInfo, Unit* target)

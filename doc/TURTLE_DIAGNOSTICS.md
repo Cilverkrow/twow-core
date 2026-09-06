@@ -2,6 +2,12 @@
 
 Purpose: explain server-side action latency at the configured population without logging every bot action. This is an instrumentation/removal inventory, not a claim of live performance validation.
 
+Current contract review: see `docs/CORE_COMPATIBILITY_AUDIT_2026-09-05.md` and
+`docs/CORE_SYSTEMS_GUIDE.md` at baseline `b2d5a854`. Historical port coverage below
+does not certify runtime behavior or exact native equivalence. In particular,
+the capability cache uses a short-lived fingerprint, not a full spellbook
+revision, and disabling summary logs does not eliminate ExecutionWatch costs.
+
 ## September 5 baseline and remaining movement port
 
 Baseline commit: `3833da48e4c3d2b1ef7e905c6027257d1135d1f8`, branch
@@ -55,7 +61,7 @@ are not claims of byte-for-byte code identity or measured performance parity.
 | Arch 3 core (`52270e962`) | Baseline: cell fallback/drain, adaptive idle budget/recovery/age promotion, memory admission guards, spline validation, watchdog/phase diagnostics and warning aggregation. Turtle retains facing/stop/custom spline cases. |
 | AI cache/retry work (`185b1f44`, `9e354d93`, `34a09916`, `014f532c`) | Baseline: map-owned cleanup, bounded failed-retry cache, lazy cache accounting and cancellation/retry control. |
 | Portal transitions (`0081875b`, `2ec313e4`, `f7086751`, `e7326160`) | Baseline: deferred urgent-transition request, deduplication, generation guards and owner-thread execution. |
-| Arch 3 bot capabilities/actions (`74372022`, `407f4cd5`) | Baseline: spellbook-revision capability cache, admission counting including pending work, trainer/loot/target/movement guards. Native Turtle spell content retained. |
+| Arch 3 bot capabilities/actions (`74372022`, `407f4cd5`) | Baseline: short-lived spell-capability fingerprint cache (not a true revision; see audit A4), admission counting including pending work, trainer/loot/target/movement guards. Native Turtle spell content retained. |
 | Summon direction / stale graveyard (`811d6f1e`, `394afced`) | Baseline: explicit bot-to-requester summon, no implicit human hearthstone use, stale corpse/map guards. |
 | World-thread maintenance and service work | Baseline: resumable teleport filtering, static area index, weighted selection, occupancy snapshot, bounded auction completion and synthetic packet draining. These adapt the reference ownership model rather than copying its synchronous stalls. |
 | NPC movement recipient lookup | This follow-up: inverse visibility GUID index instead of repeated camera-cell traversal. |
@@ -586,3 +592,127 @@ animation report is part of that validation, not a reason to change spell
 durations or globally discard elapsed simulation time.
 
 Remove/disable temporary measurements only after the implicated code is fixed and the same workload shows improved action latency, stable population, and no regression in combat, loot, instances, transports, trainers, and bot following. Preserve ordinary crash/error logging and lightweight stall breadcrumbs. A successful build/unit test is not this live acceptance test.
+
+## 2026-09-05 audit correction instrumentation impact
+
+Stall follow-up adds one ordinary error message, `Playerbot travel search failed
+for bot ...`, only when consuming an exceptional async result. It is not a
+per-tick probe, has no new counter/timer/storage, and should remain as normal
+error reporting. Each failed future is consumed once; repeated failed searches
+can produce repeated errors and should be investigated, not silently suppressed.
+Existing stall breadcrumbs remain diagnostic-only. The retained pending future
+and scoped permit release are lifecycle corrections, not temporary diagnostics.
+The historical stall has no captured process stack; passing regression tests
+does not prove its exact cause or guarantee that another blocking path is absent.
+
+No new runtime probes or log streams were added by the audit fixes. The generic
+failed-action cache and redundant spell-capability cache were removed, including
+their storage/pruning and failure-cache atomics. Existing telemetry field names
+remain for compatibility but report zero for the retired caches. This is not a
+disabled diagnostic hiding active cache work. The four old failed-action cache/
+retry configuration settings are ignored; path-specific retry settings remain.
+
+The new tests/audit collectors run outside the server and add no production tick
+work. Existing ExecutionWatch clocks/atomics and other TD probes remain and still
+require their own overhead/cleanup evaluation. The candidate has not been
+profiled at 6,000 bots. See `docs/AUDIT_FIXES_2026-09-05.md` for remaining gates.
+
+Aura/loot follow-up adds no runtime logging, counters or timed probes. Four
+native aura-list slots per Unit and the corresponding native calculation hooks
+are functional state, not temporary diagnostics. Skill-index lookup is gated
+on a nonempty skill-cast aura list. Their total runtime/memory effect has not
+been profiled. Source/DBC/DB audit outputs and fragment tests run externally.
+
+## 2026-09-05 CMaNGOS bot behavior integration
+
+Supersedes the retired-retry paragraph above: the existing retry config keys
+now control a bounded CMaNGOS cache for autonomous NONCOMBAT Execute failures,
+after native prerequisites/usefulness/possible checks. Combat, reactions,
+high-priority actions, explicit packet/owner events, real-player AI and bots
+following real players are excluded. Movement, resources, reset and transitions
+invalidate it. Impossible predicates are never suppressed (that gauge is zero).
+
+The existing failure/cache telemetry getters now return actual relaxed-atomic
+counts, including expiry/eviction. No new log stream, per-action print or timer
+was added. FailedActionRetryBase=0 or FailedActionRetryMax=0 disables caching;
+empty caches skip key construction and pruning. Cache bounds default to 64
+entries per engine and 30s TTL, with a default 2s maximum retry delay. State and
+counters are functional retry/measurement overhead, not free when enabled.
+This has not yet been profiled with the new build at 6,000 bots.
+
+BotRetryIntegrationTest and BotTaxiIntegrationTest exercise extracted native
+functions with deterministic stand-ins. Both suites passed Release and ASAN;
+they are not a live route, encounter or per-class combat certification.
+
+The subsequent RPG movement correction adds no logs, timers, permanent per-bot
+cache or diagnostic counters. The occupancy tally is local to target selection
+and replaces repeated scans; its lifetime ends with the call. BotRpgMovementTest
+runs externally. Candidate inspection restores the temporary next-action value
+so the existing debug command cannot leave proximity checks overridden.
+
+## 2026-09-05 Southshore area behavior trace (temporary)
+
+`AiPlayerbot.BehaviorTrace=1` enables `TW_BOT_BEHAVIOR` in the existing core
+performance log. Map/X/Y/Radius select the area (default map 0, -800/-530,
+200 yards; instance 0 only). This is independent of EnableActionLog/BotLogFile.
+It does not enable the old global per-bot action/aura files or console spam.
+
+Limits are fixed: 12 GUID-only slots, 8 accepted lines per bot per second,
+8,000 accepted lines per process and ten minutes from the first eligible event.
+Slots not seen for 30 seconds can be replaced; named bots need not be chased.
+An END marker records completion on the next eligible call. Each record has
+a sequence and cumulative suppression count: this is sampled evidence, not a
+complete event transcript. The limit is process-wide and starts over on restart.
+
+Hooks: Engine terminal action messages, RPG selection/cancellation/next-action,
+RPG approach rejection/movement results, and shared taxi activation rejection.
+Snapshots include position, motion, combat/AFK/taxi flags, master GUID, RPG
+target GUID/entry/coordinates, next RPG action, travel state/entry, path size,
+next waypoint and final destination. No player account credentials are recorded.
+Manual AI values are read on their existing owner; no action/trigger is run by
+the trace and no entity pointer is stored across calls.
+
+Overhead: disabled is a boolean gate (Engine also gates before calling); enabled
+checks map/radius, then a small mutex-protected 12-slot limiter. Only admitted
+records read manual state/format/write. After completion an atomic gate prevents
+further sampling work. Logging cost is not zero or yet benchmarked live.
+To disable, set BehaviorTrace=0 and restart; removal sites are BotDiagnostics.h/
+.cpp, Engine.cpp, ChooseRpgTargetAction.cpp, MoveToRpgTargetAction.cpp,
+RpgSubActions.cpp, MovementActions.cpp, PlayerbotAIConfig.h/.cpp and the template.
+BoundedBotTrace.h and BoundedBotTraceTest are diagnostics-only support.
+Do not remove the unrelated behavior fixes when retiring these hooks.
+
+26/26 tests passed in the normal and ASAN builds, including caps, slot turnover,
+rate limits, timeout and clock wrap. Native taxi/RPG fragment tests run with
+no-op diagnostic hooks; full compilation checks their production wiring.
+Live trace output and the underlying repeated-travel cause remain to validate.
+
+## 2026-09-05 Southshore trace result and retirement
+
+The bounded trace completed normally: 7,185 records were admitted and 17,771
+were suppressed before the ten-minute cutoff. It repeatedly captured valid
+Southshore travel paths reaching the flight-master position, followed by
+`taxi_reject: no matching interactable flight master` and native travel-target
+failure/cooldown. The production configuration is to return to
+`AiPlayerbot.BehaviorTrace=0`; the compiled bounded facility remains dormant for
+future targeted runs.
+
+Taxi service discovery now uses the core's live
+`Player::FindNearestInteractableNpcWithFlag` grid query at interaction time,
+then verifies that NPC resolves to the requested source node. It no longer
+depends on the generic cached `nearest npcs` AI value after a long route. Native
+interaction, faction, learned-node, endpoint, cost and activation checks remain
+in force.
+
+A crash dump from the same run established a separate heap-corruption fault in
+expired AI-value cleanup. The manager pass was erasing a bot's context map while
+the map worker evaluated it. Cleanup is now requested atomically and executed
+only inside that bot's serialized `UpdateAI` path. Named context maps also use
+the same recursive-mutex protection as the established CMaNGOS implementation,
+and predicate inspection plus erase is one locked transaction. This is a
+functional safety correction, not temporary diagnostic overhead.
+
+Release and AddressSanitizer architecture suites pass 26/26, and the complete
+optimized Windows world server links successfully. Live 6,000-bot stability and
+Southshore route behavior still require production observation; no server was
+started by the build process.

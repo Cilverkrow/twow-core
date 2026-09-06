@@ -5002,6 +5002,10 @@ uint32 WorldObject::SpellDamageBonusDone(Unit* pVictim, SpellEntry const* spellP
 
     uint32 creatureTypeMask = pVictim->GetCreatureTypeMask();
 
+    // Native periodic-damage bonus: school mask from the aura, DOT only.
+    if (pUnit && damagetype == DOT)
+        DoneTotalMod *= pUnit->GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_PERIODIC_DAMAGE_PERCENT_DONE, spellProto->GetSpellSchoolMask());
+
     // Add pct bonus from spell damage versus
     if (pUnit)
         DoneTotalMod *= pUnit->GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_DONE_VERSUS, creatureTypeMask);

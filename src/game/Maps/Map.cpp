@@ -1424,7 +1424,9 @@ void Map::UpdatePlayerAI(bool responsiveOnly)
         if (!interactive && IsContinent() && immediate &&
             !IsStaggeredMapWorkDue(_playerUpdateSequence, player->GetGUIDLow(), m_autonomousActiveStride))
             continue;
-        uint32 const elapsed = std::min<uint32>(immediate ? 500 : sWorld.getConfig(CONFIG_UINT32_MAP_IDLE_AI_ADVANCE), player->ConsumeAIElapsed(now));
+        // Snapshot without consuming: a due request can miss this tick's budget.
+        // Its unchanged clock must carry that elapsed time into the next pass.
+        uint32 const elapsed = std::min<uint32>(immediate ? 500 : sWorld.getConfig(CONFIG_UINT32_MAP_IDLE_AI_ADVANCE), player->GetAIElapsed(now));
         Request request{player->GetObjectGuid(), {GetId(), GetInstanceId(), player->GetMapWorkGeneration()},
             elapsed};
         if (immediate)
@@ -1437,8 +1439,14 @@ void Map::UpdatePlayerAI(bool responsiveOnly)
             request.dueAge = player->BackgroundAIDueAge(now);
             background.push_back(request);
         }
+        else
+        {
+            // The native module advanced its not-yet-due delay, so that sample
+            // has been accounted for even though no AI execution is required.
+            player->ConsumeAIElapsed(now);
+        }
     }
-    auto execute = [this](Request const& request)
+    auto execute = [this, now](Request const& request)
     {
         Player* player = GetPlayer(request.guid);
         if (!player || player->FindMap() != this || player->IsBeingTeleported() ||
@@ -1449,6 +1457,8 @@ void Map::UpdatePlayerAI(bool responsiveOnly)
             return;
         }
         ExecutionWatch::Set(ExecutionWatch::BotAI, GetId(), GetInstanceId(), player->GetGUIDLow());
+        // Only admitted, still-valid work consumes the snapshot's clock.
+        player->ConsumeAIElapsed(now);
         player->ClearBackgroundAIDueAge();
         Script_UpdateAI(player, request.elapsed, false);
         ++m_aiUpdates;

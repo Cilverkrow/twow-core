@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/BotDiagnostics.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "MovementActions.h"
 #include <cmath>
@@ -271,18 +272,38 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
 
     Creature* unit = nullptr;
 
-    if (needNpc)
+    // Turtle validates both endpoints in the native activation method (not
+    // just in the client opcode as CMaNGOS does). Discover only a legitimate
+    // source at its interactable flight master; never bypass player checks.
+    TaxiNodesEntry const* fromNode = sTaxiNodesStore.LookupEntry(tEntry->from);
+    TaxiNodesEntry const* toNode = sTaxiNodesStore.LookupEntry(tEntry->to);
+    uint32 const factionIndex = bot->GetTeam() == ALLIANCE ? 1 : 0;
+    if (!fromNode || !toNode || !fromNode->MountCreatureID[factionIndex] ||
+        !toNode->MountCreatureID[factionIndex])
     {
-        std::list<ObjectGuid> npcs = AI_VALUE(std::list<ObjectGuid>, "nearest npcs");
-        for (std::list<ObjectGuid>::iterator i = npcs.begin(); i != npcs.end(); i++)
-        {
-            unit = bot->GetNPCIfCanInteractWith(*i, UNIT_NPC_FLAG_FLIGHTMASTER);
-            if (unit)
-                break;
-        }
+        ai::botdiag::TraceBehavior(ai, "taxi_reject", "endpoint or faction mount missing");
+        return false;
+    }
+    if (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(tEntry->to))
+    {
+        ai::botdiag::TraceBehavior(ai, "taxi_reject", "destination not learned");
+        return false;
+    }
+
+    if (needNpc || (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(tEntry->from)))
+    {
+        // Service interactions must use the live grid state. The generic
+        // "nearest npcs" AI value is intentionally cached and can be stale by
+        // the time a long travel path reaches its flight master, which made
+        // bots repeatedly approach and abandon valid nodes such as Southshore.
+        unit = bot->FindNearestInteractableNpcWithFlag(UNIT_NPC_FLAG_FLIGHTMASTER);
+        if (unit && sObjectMgr.GetNearestTaxiNode(unit->GetPositionX(), unit->GetPositionY(),
+            unit->GetPositionZ(), unit->GetMapId(), bot->GetTeam()) != tEntry->from)
+            unit = nullptr;
 
         if (!unit)
         {
+            ai::botdiag::TraceBehavior(ai, "taxi_reject", "no matching interactable flight master");
             return false;
         }
 
@@ -292,6 +313,12 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
 
             unit->SetFacingTo(unit->GetAngle(bot));
         }
+    }
+
+    if (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(tEntry->from))
+    {
+        ai::botdiag::TraceBehavior(ai, "taxi_reject", "source not learned after discovery");
+        return false;
     }
 
     uint32 botMoney = bot->GetMoney();
@@ -305,6 +332,7 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
     ai->Unmount();
 
     bool goTaxi = bot->ActivateTaxiPathTo({tEntry->from, tEntry->to}, unit, 1);
+    ai::botdiag::TraceBehavior(ai, "taxi_activate", goTaxi ? "accepted" : "native activation rejected");
 
     if (!goTaxi)
         bot->SetMoney(botMoney);
@@ -551,7 +579,8 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
             return true;
         }
 
-        bool didTaxi = UseTaxi(ai, nextStep->entry, false);
+        if (!UseTaxi(ai, nextStep->entry, false))
+            return false; // Retain this leg; nextTeleport already bounds retries.
 
         for (auto& step : path)
         {

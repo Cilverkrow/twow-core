@@ -2158,9 +2158,13 @@ class Player final: public Unit
         bool IsBeingTeleportedFar() const { return mSemaphoreTeleport_Far; }
         void SetSemaphoreTeleportNear(bool semphsetting);
         uint64 GetMapWorkGeneration() const { return m_mapWorkGeneration; }
+        uint32 GetAIElapsed(uint32 now) const
+        {
+            return m_lastAIUpdateMs ? now - m_lastAIUpdateMs : 0;
+        }
         uint32 ConsumeAIElapsed(uint32 now)
         {
-            uint32 const diff = m_lastAIUpdateMs ? now - m_lastAIUpdateMs : 0;
+            uint32 const diff = GetAIElapsed(now);
             m_lastAIUpdateMs = now;
             return diff;
         }

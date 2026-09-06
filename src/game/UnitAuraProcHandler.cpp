@@ -266,6 +266,10 @@ pAuraProcHandler AuraProcHandler[TOTAL_AURAS] =
     &Unit::HandleModBlockDamagePercentAuraProc,             //224 SPELL_AURA_MOD_BLOCK_DAMAGE_PERCENT
     &Unit::HandleNULLProc,                                  //225 SPELL_AURA_MOD_GATHERING_ITEM_CHANCE
     &Unit::HandleModRageFromDamageDealtAuraProc,            //226 SPELL_AURA_MOD_RAGE_FROM_DAMAGE_DEALT
+    &Unit::HandleNULLProc,                                  //227 SPELL_AURA_MOD_ATTACKING_RAGE_PERCENT
+    &Unit::HandleNULLProc,                                  //228 SPELL_AURA_MOD_SKILL_CAST_TIME
+    &Unit::HandleNULLProc,                                  //229 SPELL_AURA_MOD_PERIODIC_DAMAGE_PERCENT_DONE
+    &Unit::HandleNULLProc,                                  //230 SPELL_AURA_MOD_CHAIN_DAMAGE_PERCENT_TAKEN
 };
 
 // Fonctions Nostalrius

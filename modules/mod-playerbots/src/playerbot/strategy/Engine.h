@@ -130,13 +130,24 @@ namespace ai
         void PruneActionFailures(uint32 now, bool enforceLimit = false);
         void ClearActionFailures();
         static void UpdateActionFailureCachePeak(uint64 value);
-
+        bool AllowBackgroundRetry(Action* action, Event& event) const;
+        void RefreshFailureContext();
         struct FailureState
         {
             uint32 failures = 0;
             uint32 retryAfter = 0;
             uint32 lastFailure = 0;
         };
+        std::unordered_map<std::string, FailureState> actionFailures;
+        uint32 lastActionFailurePrune = 0;
+        float failureX = 0, failureY = 0, failureZ = 0;
+        uint32 failureMoney = 0, failureHealth = 0, failurePower = 0;
+        static std::atomic<uint64> suppressedImpossibleActions;
+        static std::atomic<uint64> suppressedFailedActions;
+        static std::atomic<uint64> actionFailureCacheEntries;
+        static std::atomic<uint64> actionFailureCachePeakEntries;
+        static std::atomic<uint64> expiredActionFailureEntries;
+        static std::atomic<uint64> evictedActionFailureEntries;
         // Cheap change-detector for the attached strategy set. A strategy
         // change that leaves the token unchanged is a no-op and must not call
         // Init(), because Init() -> Reset() empties the action queue.
@@ -176,14 +187,6 @@ namespace ai
         // DoNextAction re-inits once the walk is over.
         bool inDoNextAction = false;
         bool reinitPending = false;
-        std::unordered_map<std::string, FailureState> actionFailures;
-        uint32 lastActionFailurePrune = 0;
-        static std::atomic<uint64> suppressedImpossibleActions;
-        static std::atomic<uint64> suppressedFailedActions;
-        static std::atomic<uint64> actionFailureCacheEntries;
-        static std::atomic<uint64> actionFailureCachePeakEntries;
-        static std::atomic<uint64> expiredActionFailureEntries;
-        static std::atomic<uint64> evictedActionFailureEntries;
 
     public:
 		bool testMode;

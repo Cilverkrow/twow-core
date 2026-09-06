@@ -3111,6 +3111,11 @@ void Player::RewardRage(uint32 damage, bool attacker)
 
     addRage *= sWorld.getConfig(CONFIG_FLOAT_RATE_POWER_RAGE_INCOME);
 
+    // Native 1.18.1 aura 227 modifies generated attacking rage, not rage from
+    // incoming damage or the separate damage-to-rage proc (aura 226).
+    if (attacker)
+        addRage *= GetTotalAuraMultiplier(SPELL_AURA_MOD_ATTACKING_RAGE_PERCENT);
+
     ModifyPower(POWER_RAGE, uint32(addRage * 10));
 }
 
@@ -16667,7 +16672,7 @@ void Player::SendPushToPartyResponse(Player *pPlayer, uint8 msg) const
     }
 }
 
-void Player::SendQuestUpdateAddItem(Quest const* pQuest, uint32 item_idx, uint32 current, uint32 count)
+void Player::SendQuestUpdateAddItem(Quest const* pQuest, uint32 item_idx, uint32 /*current*/, uint32 count)
 {
     DEBUG_LOG("WORLD: Sent SMSG_QUESTUPDATE_ADD_ITEM");
     WorldPacket data(SMSG_QUESTUPDATE_ADD_ITEM, (4 + 4));
@@ -16675,10 +16680,10 @@ void Player::SendQuestUpdateAddItem(Quest const* pQuest, uint32 item_idx, uint32
     data << count;
     GetSession()->SendPacket(&data);
 
-    // Update player field and fire UNIT_QUEST_LOG_CHANGED for self
-    uint16 slot = FindQuestSlot(pQuest->GetQuestId());
-    if (slot < MAX_QUEST_LOG_SIZE)
-        SetQuestSlotCounter(slot + pQuest->GetReqCreatureOrGOcount(), uint8(item_idx), uint8(current + count));
+    // ItemAddedQuestCheck already updates/persists m_itemcount. The packet
+    // updates the quest watcher; packed quest-log counters belong to creature/
+    // GO objectives, not items. Writing slot + objective count corrupts another
+    // quest (or fields beyond the quest log when this is the last slot).
 }
 
 void Player::SendQuestUpdateAddCreatureOrGo(Quest const* pQuest, ObjectGuid guid, uint32 creatureOrGO_idx, uint32 count)

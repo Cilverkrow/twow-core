@@ -2607,11 +2607,13 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
         if (player->GetGroup() || player->IsTaxiFlying())
             return false;
 
-        //Clean up expired values
+        // Request cleanup on the bot's serialized update path. Deleting value
+        // objects from this manager pass races the map worker that evaluates
+        // those same values and can corrupt the context's std::map.
         if (ai && !ai->HasStrategy("debug", BotState::BOT_STATE_NON_COMBAT))
         {
             DetailedWork::Scope cleanup(DetailedWork::BotCacheCleanup, bot);
-            ai->GetAiObjectContext()->ClearExpiredValues();
+            ai->RequestValueCacheCleanup();
         }
 
         //Randomize/teleport bot

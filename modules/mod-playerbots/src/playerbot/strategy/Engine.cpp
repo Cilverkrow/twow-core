@@ -7,6 +7,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/BotActionLog.h"
+#include "playerbot/BotDiagnostics.h"
 
 #ifdef BUILD_ELUNA
 #include "LuaEngine/LuaEngine.h"
@@ -14,7 +15,6 @@
 
 using namespace ai;
 
-// ManTech bounded action retry cache; no gameplay-specific actions replaced.
 std::atomic<uint64> Engine::suppressedImpossibleActions{0};
 std::atomic<uint64> Engine::suppressedFailedActions{0};
 std::atomic<uint64> Engine::actionFailureCacheEntries{0};
@@ -69,12 +69,17 @@ std::string Engine::GetFailureKey(Action* action, const Event& event, ActionResu
         out << target->GetObjectGuid().GetRawValue();
     else
         out << 0;
+    // RPG actions commonly expose self as GetTarget; distinguish their actual
+    // destination as well, without keeping an NPC/player pointer in the cache.
+    out << '|' << static_cast<ObjectGuid>(aiObjectContext->GetValue<GuidPosition>("rpg target")->Get()).GetRawValue();
     out << '|' << static_cast<uint32>(reason);
     return out.str();
 }
 
 bool Engine::IsFailureBackedOff(Action* action, const Event& event, ActionResult reason) const
 {
+    if (actionFailures.empty())
+        return false;
     auto existing = actionFailures.find(GetFailureKey(action, event, reason));
     if (existing == actionFailures.end())
         return false;
@@ -135,6 +140,8 @@ void Engine::RecordFailure(Action* action, const Event& event, ActionResult reas
 
 void Engine::ClearFailures(Action* action, const Event& event)
 {
+    if (actionFailures.empty())
+        return;
     const size_t removed = actionFailures.erase(GetFailureKey(action, event, ACTION_RESULT_IMPOSSIBLE)) +
         actionFailures.erase(GetFailureKey(action, event, ACTION_RESULT_FAILED));
     if (removed)
@@ -181,6 +188,32 @@ void Engine::ClearActionFailures()
         actionFailureCacheEntries.fetch_sub(removed, std::memory_order_relaxed);
     }
     lastActionFailurePrune = 0;
+}
+
+bool Engine::AllowBackgroundRetry(Action* action, Event& event) const
+{
+    Player* const bot = ai->GetBot();
+    return sPlayerbotAIConfig.failedActionRetryBase && sPlayerbotAIConfig.failedActionRetryMax &&
+        state == BotState::BOT_STATE_NON_COMBAT && bot->IsAlive() && !bot->IsInCombat() &&
+        !ai->HasRealPlayerMaster() && !ai->IsRealPlayer() && !action->IsReaction() &&
+        !event.getOwner() && event.getPacket().empty() &&
+        action->getRelevance() < ACTION_HIGH;
+}
+
+void Engine::RefreshFailureContext()
+{
+    Player* const bot = ai->GetBot();
+    uint32 const power = bot->GetPower(bot->GetPowerType());
+    // Do not carry a failed execution across physical/resource recovery. Map
+    // and strategy transitions also clear this cache through native Reset().
+    if (!sPlayerbotAIConfig.failedActionRetryBase || !sPlayerbotAIConfig.failedActionRetryMax ||
+        bot->IsInCombat() || ai->HasRealPlayerMaster() ||
+        failureX != bot->GetPositionX() || failureY != bot->GetPositionY() || failureZ != bot->GetPositionZ() ||
+        failureMoney != bot->GetMoney() || failureHealth != bot->GetHealth() || failurePower != power)
+        ClearActionFailures();
+    failureX = bot->GetPositionX(); failureY = bot->GetPositionY(); failureZ = bot->GetPositionZ();
+    failureMoney = bot->GetMoney(); failureHealth = bot->GetHealth(); failurePower = power;
+    PruneActionFailures(WorldTimer::getMSTime());
 }
 
 Engine::Engine(PlayerbotAI* ai, AiObjectContext *factory, BotState state) : PlayerbotAIAware(ai), aiObjectContext(factory), state(state)
@@ -324,7 +357,6 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
         return false;
     uint64 const mapGeneration = bot->GetMapWorkGeneration();
     uint32 const transitionGeneration = ai->GetTransitionGeneration();
-    PruneActionFailures(WorldTimer::getMSTime());
     LogAction("--- AI Tick ---");
     if (sPlayerbotAIConfig.logValuesPerTick)
         LogValues();
@@ -339,6 +371,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
     time_t currentTime = time(0);
     aiObjectContext->Update();
+    RefreshFailureContext();
     ProcessTriggers(minimal);
     PushDefaultActions();
 
@@ -438,13 +471,6 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
                 if (isUseful)
                 {
-                    bool const impossibleBackoff = IsFailureBackedOff(action, event, ACTION_RESULT_IMPOSSIBLE);
-                    if (impossibleBackoff || IsFailureBackedOff(action, event, ACTION_RESULT_FAILED))
-                    {
-                        (impossibleBackoff ? suppressedImpossibleActions : suppressedFailedActions).fetch_add(1, std::memory_order_relaxed);
-                        delete actionNode;
-                        continue;
-                    }
                     if (std::find(modifiedActions.begin(), modifiedActions.end(), action) == modifiedActions.end())
                     {
                         for (std::list<Multiplier*>::iterator i = multipliers.begin(); i != multipliers.end(); i++)
@@ -485,6 +511,19 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
                     if (isPossible && relevance)
                     {
+                        // Unlike the old broad cache, never skip usefulness,
+                        // prerequisites or isPossible. Explicit commands and
+                        // combat/reaction/player-following actions stay native.
+                        bool const allowRetry = AllowBackgroundRetry(action, event);
+                        if (!allowRetry)
+                            ClearFailures(action, event);
+                        if (allowRetry && IsFailureBackedOff(action, event, ACTION_RESULT_FAILED))
+                        {
+                            suppressedFailedActions.fetch_add(1, std::memory_order_relaxed);
+                            MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt");
+                            delete actionNode;
+                            continue;
+                        }
                         auto pmo4 = sPerformanceMonitor.start(PERF_MON_ACTION, "Execute", ai);
                         actionExecuted = ListenAndExecute(action, event);
                         pmo4.reset();
@@ -506,13 +545,17 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         }
                         else
                         {
-                            RecordFailure(action, event, ACTION_RESULT_FAILED);
                             LogAction("A:%s - FAILED", action->getName().c_str());
+                            if (allowRetry && bot->IsInWorld() && !bot->IsBeingTeleported() &&
+                                bot->GetMapWorkGeneration() == mapGeneration &&
+                                ai->GetTransitionGeneration() == transitionGeneration && !ai->HasPendingTransition())
+                                RecordFailure(action, event, ACTION_RESULT_FAILED);
                             MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt");
                         }
                     }
                     else
                     {
+                        ClearFailures(action, event); // Observe newly possible actions immediately.
                         if (sPlayerbotAIConfig.CanLogAction(ai,actionNode->getName(), false, ""))
                         {
                             std::ostringstream out;
@@ -535,7 +578,6 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                                 ai->GetBot()->Say(out.str(), (ai->GetBot()->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH));
                             }
                         }
-                        RecordFailure(action, event, ACTION_RESULT_IMPOSSIBLE);
                         LogAction("A:%s - IMPOSSIBLE", action->getName().c_str());
                         MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt");
                     }
@@ -565,6 +607,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         }
                     }
                     lastRelevance = relevance;
+                    ClearFailures(action, event);
                     LogAction("A:%s - USELESS", action->getName().c_str());
                 }
             }
@@ -1073,6 +1116,8 @@ void Engine::LogAction(const char* format, ...)
     va_start(ap, format);
     vsprintf(buf, format, ap);
     va_end(ap);
+    if (sPlayerbotAIConfig.behaviorTrace && buf[0] == 'A' && buf[1] == ':' && !strstr(buf, "USELESS"))
+        ai::botdiag::TraceBehavior(ai, "action", buf);
     lastAction += "|";
     lastAction += buf;
     if (lastAction.size() > 512)

@@ -5,13 +5,16 @@
 [AiPlayerbotConf]
 ConfVersion=2020072501
 
-# ManTech action/path retry safeguards. Cache entries are per engine and bounded.
-# A changed target/event/context is independent; successful actions clear failures.
-# FailedActionRetryBase = 0 disables action failure backoff.
+# Autonomous noncombat execution-failure retries (milliseconds). Native
+# usefulness/prerequisites/possible checks ALWAYS run; combat, reactions,
+# explicit commands and human-led bots are not delayed by this cache.
+# Set either retry value to 0 to disable. Cache is per engine, bounded and
+# cleared on movement/resource recovery, reset and map/strategy transitions.
 AiPlayerbot.FailedActionRetryBase = 250
 AiPlayerbot.FailedActionRetryMax = 2000
 AiPlayerbot.FailedActionCacheTtl = 30000
 AiPlayerbot.FailedActionCacheMaxEntries = 64
+# Existing native movement failure retry remains a separate path-level check.
 AiPlayerbot.PathFailureRetryMs = 3000
 
 # Enable or disable AI Playerbot
@@ -5067,3 +5070,14 @@ AiPlayerbot.HealDistance = 30
 # The same for battlegrounds, where tighter is better. Previously this was a hard
 # halving of the value above, which tied the two together for no good reason.
 AiPlayerbot.HealDistanceBg = 25
+
+# Temporary bounded area behavior diagnostic (disabled by default).
+# At most 12 bots concurrently, 8 lines/bot/second, 8000 total lines and
+# 10 minutes after the first eligible bot event. Output: TW_BOT_BEHAVIOR
+# in the core performance log. Inactive sample slots rotate after 30 seconds.
+# Does not enable global EnableActionLog or alter bot activity/decisions.
+AiPlayerbot.BehaviorTrace = 0
+AiPlayerbot.BehaviorTraceMap = 0
+AiPlayerbot.BehaviorTraceX = -800
+AiPlayerbot.BehaviorTraceY = -530
+AiPlayerbot.BehaviorTraceRadius = 200

@@ -930,12 +930,6 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
     else if (IsPlayer() && ToPlayer()->IsHardcore() && pVictim->IsCreature() && (pVictim->GetEntry() == 89 || GetEntry() == 14385))
         damage *= 10;
 
-    if (HasSpell(46023) || HasSpell(46024)) // Passive : AVOIDANCE for Pets.
-    {
-        if (spellProto && (spellProto->IsAreaOfEffectSpell() || spellProto->HasAreaAuraEffect()))
-            damage *= 0.5f;
-    }
-
     if (damage > 0 && sWorld.getConfig(CONFIG_BOOL_LEECH_ENABLE))
     {
         Unit* owner = GetOwner();
@@ -5881,6 +5875,9 @@ uint32 Unit::SpellDamageBonusTaken(WorldObject* pCaster, SpellEntry const* spell
     takenTotalMod *= GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_PERCENT_TAKEN, schoolMask);
     if (spellProto->IsAreaOfEffectSpell())
         takenTotalMod *= GetTotalAuraMultiplier(SPELL_AURA_MOD_AOE_DAMAGE_PERCENT_TAKEN);
+    // Native chain avoidance is school-filtered and applies to the recipient.
+    if (spellProto->EffectChainTarget[effectIndex] > 1)
+        takenTotalMod *= GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_CHAIN_DAMAGE_PERCENT_TAKEN, schoolMask);
     if (damagetype == DOT)
         takenTotalMod *= GetTotalAuraMultiplier(SPELL_AURA_MOD_PERIODIC_DAMAGE_PERCENT_TAKEN);
 
@@ -6441,6 +6438,9 @@ uint32 Unit::MeleeDamageBonusTaken(WorldObject* pCaster, uint32 pdamage, WeaponA
     TakenPercent *= GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_PERCENT_TAKEN, schoolMask);
     if (spellProto && spellProto->IsAreaOfEffectSpell())
         TakenPercent *= GetTotalAuraMultiplier(SPELL_AURA_MOD_AOE_DAMAGE_PERCENT_TAKEN);
+    // Weapon-based chain spells use the same recipient-side aura contract.
+    if (spellProto && spellProto->EffectChainTarget[effectIndex] > 1)
+        TakenPercent *= GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_CHAIN_DAMAGE_PERCENT_TAKEN, schoolMask);
     if (spellProto && damagetype == DOT)
         TakenPercent *= GetTotalAuraMultiplier(SPELL_AURA_MOD_PERIODIC_DAMAGE_PERCENT_TAKEN);
 

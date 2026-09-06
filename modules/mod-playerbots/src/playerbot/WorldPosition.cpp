@@ -1166,11 +1166,12 @@ bool WorldPosition::ClosestCorrectPoint(float maxRange, float maxHeight, uint32 
 
     dtNavMeshQuery const* query = mmap->GetNavMeshQuery(getMapId(), instanceId);
 
-    MANGOS_ASSERT(query && query->getAttachedNavMesh());
+    if (!query || !query->getAttachedNavMesh())
+        return false;
 
     float curPoint[VERTEX_SIZE] = {coord_y, coord_z, coord_x };
     float extend[VERTEX_SIZE] = { maxRange, maxHeight, maxRange };
-    float newPoint[VERTEX_SIZE];
+    float newPoint[VERTEX_SIZE] = {};
 
     dtQueryFilter filter;
     dtPolyRef polyRef = INVALID_POLYREF;
@@ -1187,11 +1188,16 @@ bool WorldPosition::ClosestCorrectPoint(float maxRange, float maxHeight, uint32 
 
     dtStatus dtResult = query->findNearestPoly(curPoint, extend, &filter, &polyRef, newPoint);
 
+    // A failed query need not write a point. Preserve the caller's position.
+    if (!dtStatusSucceed(dtResult) || polyRef == INVALID_POLYREF ||
+        !std::isfinite(newPoint[0]) || !std::isfinite(newPoint[1]) || !std::isfinite(newPoint[2]))
+        return false;
+
     coord_y = newPoint[0];
     coord_z = newPoint[1];
     coord_x = newPoint[2];
 
-    return dtStatusSucceed(dtResult) && polyRef != INVALID_POLYREF;
+    return true;
 }
 
 bool WorldPosition::GetReachableRandomPointOnGround(const Player* bot, const float radius, const bool randomRange) 

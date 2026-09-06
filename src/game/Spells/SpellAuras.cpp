@@ -295,6 +295,10 @@ pAuraHandler AuraHandler[TOTAL_AURAS] =
     &Aura::HandleNoImmediateEffect,                         //224 SPELL_AURA_MOD_BLOCK_DAMAGE_PERCENT implemented in Unit::CalculateAbsorbResistBlock
     &Aura::HandleNoImmediateEffect,                         //225 SPELL_AURA_MOD_GATHERING_ITEM_CHANCE
     &Aura::HandleNoImmediateEffect,                         //226 SPELL_AURA_MOD_RAGE_FROM_DAMAGE_DEALT implemented in Unit::HandleModRageFromDamageDealtAuraProc
+    &Aura::HandleNoImmediateEffect,                         //227 attacking rage: Player::RewardRage
+    &Aura::HandleNoImmediateEffect,                         //228 skill cast time: SpellEntry::GetCastTime
+    &Aura::HandleNoImmediateEffect,                         //229 periodic damage done: WorldObject::SpellDamageBonusDone
+    &Aura::HandleNoImmediateEffect,                         //230 chain damage taken: native spell/melee damage-taken paths
 };
 
 static AuraType const frozenAuraTypes[] = { SPELL_AURA_MOD_ROOT, SPELL_AURA_MOD_STUN, SPELL_AURA_NONE };

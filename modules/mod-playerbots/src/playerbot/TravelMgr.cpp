@@ -2730,6 +2730,11 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
 PartitionedTravelList TravelMgr::GetPartitions(const WorldPosition& center, const std::vector<uint32>& distancePartitions, const PlayerTravelInfo& info, uint32 purposeFlag, const std::vector<int32>& entries, bool onlyPossible, float maxDistance) const
 {
     sTravelMgr.GetPartitionsLock();
+    // Return the native worker permit even if destination lookup/allocation throws.
+    struct PartitionPermitRelease
+    {
+        ~PartitionPermitRelease() { sTravelMgr.GetPartitionsLock(false); }
+    } permitRelease;
 
     PartitionedTravelList pointMap;
     DestinationList destinations = GetDestinations(info, purposeFlag, entries, onlyPossible, maxDistance);
@@ -2794,8 +2799,6 @@ PartitionedTravelList TravelMgr::GetPartitions(const WorldPosition& center, cons
         sLog.outBasic("PARTPROBE: level %u, %u taker destinations, none survived - %u had no partition, %u no usable point; points rejected: %u by level, %u by distance (max allowed %.0f, farthest seen %u)",
             info.GetLevel(), probeTotal, probeNoPartition, probeNoPoint,
             probeRejectLevel, probeRejectDistance, maxDistance, probeFarthest);
-
-    sTravelMgr.GetPartitionsLock(false);
 
     return pointMap;
 }

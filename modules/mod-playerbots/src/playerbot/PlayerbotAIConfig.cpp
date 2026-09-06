@@ -179,11 +179,15 @@ bool PlayerbotAIConfig::Initialize()
     expireActionTime = config.GetIntDefault("AiPlayerbot.ExpireActionTime", 5000);
     dispelAuraDuration = config.GetIntDefault("AiPlayerbot.DispelAuraDuration", 2000);
     reactDelay = (uint32) config.GetIntDefault("AiPlayerbot.ReactDelay", 100);
+    // CMaNGOS bounded retries, applied only to autonomous noncombat Execute
+    // failures AFTER native prerequisites/eligibility have been evaluated.
+    failedActionRetryBase = uint32(std::max(0, std::min(2000, config.GetIntDefault("AiPlayerbot.FailedActionRetryBase", 250))));
+    failedActionRetryMax = uint32(std::max(0, std::min(10000, config.GetIntDefault("AiPlayerbot.FailedActionRetryMax", 2000))));
+    if (failedActionRetryBase && failedActionRetryMax)
+        failedActionRetryMax = std::max(failedActionRetryBase, failedActionRetryMax);
+    failedActionCacheTtl = uint32(std::max(1000, std::min(300000, config.GetIntDefault("AiPlayerbot.FailedActionCacheTtl", 30000))));
+    failedActionCacheMaxEntries = uint32(std::max(1, std::min(256, config.GetIntDefault("AiPlayerbot.FailedActionCacheMaxEntries", 64))));
     pathFailureRetryMs = uint32(std::max(250, std::min(30000, config.GetIntDefault("AiPlayerbot.PathFailureRetryMs", 3000))));
-    failedActionRetryBase = uint32(std::clamp(config.GetIntDefault("AiPlayerbot.FailedActionRetryBase", 250), 0, 30000));
-    failedActionRetryMax = uint32(std::clamp(config.GetIntDefault("AiPlayerbot.FailedActionRetryMax", 2000), int(failedActionRetryBase), 30000));
-    failedActionCacheTtl = uint32(std::clamp(config.GetIntDefault("AiPlayerbot.FailedActionCacheTtl", 30000), 1000, 300000));
-    failedActionCacheMaxEntries = uint32(std::max(8, std::min(256, config.GetIntDefault("AiPlayerbot.FailedActionCacheMaxEntries", 64))));
     passiveDelay = (uint32) config.GetIntDefault("AiPlayerbot.PassiveDelay", 4000);
     valueCacheCleanupInterval = (uint32) std::max<int32>(1000,
         config.GetIntDefault("AiPlayerbot.ValueCacheCleanupInterval", 60000));
@@ -676,6 +680,11 @@ bool PlayerbotAIConfig::Initialize()
     inviteChat = config.GetBoolDefault("AiPlayerbot.InviteChat", true);
     botsSilent = config.GetBoolDefault("AiPlayerbot.BotsSilent", false);
     enableActionLog = config.GetBoolDefault("AiPlayerbot.EnableActionLog", false);
+    behaviorTrace = config.GetBoolDefault("AiPlayerbot.BehaviorTrace", false);
+    behaviorTraceMap = config.GetIntDefault("AiPlayerbot.BehaviorTraceMap", 0);
+    behaviorTraceX = config.GetFloatDefault("AiPlayerbot.BehaviorTraceX", -800.0f);
+    behaviorTraceY = config.GetFloatDefault("AiPlayerbot.BehaviorTraceY", -530.0f);
+    behaviorTraceRadius = std::max(1.0f, std::min(500.0f, config.GetFloatDefault("AiPlayerbot.BehaviorTraceRadius", 200.0f)));
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");

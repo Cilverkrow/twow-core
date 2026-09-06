@@ -5,6 +5,7 @@
 #include <set>
 #include <list>
 #include <map>
+#include <mutex>
 
 namespace ai
 {
@@ -200,6 +201,7 @@ namespace ai
 
         T* Create(std::string name, PlayerbotAI* ai)
         {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
             auto const existing = created.find(name);
             if (existing == created.end())
             {
@@ -227,6 +229,7 @@ namespace ai
 
         void Clear()
         {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
             for (typename std::map<std::string, T*>::iterator i = created.begin(); i != created.end(); i++)
             {
                 if (i->second)
@@ -239,18 +242,44 @@ namespace ai
 
         void Erase(const std::string& name)
         {
-            if (created.find(name) != created.end())
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
+            typename std::map<std::string, T*>::iterator existing = created.find(name);
+            if (existing != created.end())
             {
-                auto const& entry = *created.find(name);
+                auto const& entry = *existing;
                 estimatedCreatedBytes -= sizeof(typename decltype(created)::value_type) +
                     3 * sizeof(void*) + entry.first.capacity() + 1 + (entry.second ? sizeof(T) : 0);
-                delete created[name];
-                created.erase(name);
+                delete entry.second;
+                created.erase(existing);
             }
+        }
+
+        template <typename Predicate>
+        size_t EraseIf(Predicate predicate)
+        {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
+            size_t erased = 0;
+            for (auto existing = created.begin(); existing != created.end();)
+            {
+                if (!predicate(existing->first, existing->second))
+                {
+                    ++existing;
+                    continue;
+                }
+
+                estimatedCreatedBytes -= sizeof(typename decltype(created)::value_type) +
+                    3 * sizeof(void*) + existing->first.capacity() + 1 +
+                    (existing->second ? sizeof(T) : 0);
+                delete existing->second;
+                existing = created.erase(existing);
+                ++erased;
+            }
+            return erased;
         }
 
         void Update()
         {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
             for (typename std::map<std::string, T*>::iterator i = created.begin(); i != created.end(); i++)
             {
                 if (i->second)
@@ -260,6 +289,7 @@ namespace ai
 
         void Reset()
         {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
             for (typename std::map<std::string, T*>::iterator i = created.begin(); i != created.end(); i++)
             {
                 if (i->second)
@@ -270,21 +300,36 @@ namespace ai
         bool IsShared() { return shared; }
         bool IsSupportsSiblings() { return supportsSiblings; }
 
-        bool IsCreated(const std::string& name) { return created.find(name) != created.end(); }
+        bool IsCreated(const std::string& name)
+        {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
+            return created.find(name) != created.end();
+        }
 
         std::set<std::string> GetCreated()
         {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
             std::set<std::string> keys;
             for (typename std::map<std::string, T*>::iterator it = created.begin(); it != created.end(); it++)
                 keys.insert(it->first);
             return keys;
         }
 
-        size_t GetCreatedCount() const { return created.size(); }
-        size_t GetEstimatedCreatedBytes() const { return estimatedCreatedBytes; }
+        size_t GetCreatedCount() const
+        {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
+            return created.size();
+        }
+
+        size_t GetEstimatedCreatedBytes() const
+        {
+            std::lock_guard<std::recursive_mutex> lock(createdMutex);
+            return estimatedCreatedBytes;
+        }
 
     protected:
         std::map<std::string, T*> created;
+        mutable std::recursive_mutex createdMutex;
         size_t estimatedCreatedBytes = 0;
         bool shared;
         bool supportsSiblings;
@@ -419,6 +464,15 @@ namespace ai
             {
                 (*i)->Erase(name);
             }
+        }
+
+        template <typename Predicate>
+        size_t EraseIf(Predicate predicate)
+        {
+            size_t erased = 0;
+            for (typename std::list<NamedObjectContext<T>*>::iterator i = contexts.begin(); i != contexts.end(); ++i)
+                erased += (*i)->EraseIf(predicate);
+            return erased;
         }
 
     private:

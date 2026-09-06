@@ -29,6 +29,12 @@ public:
     explicit PlayerbotChatHandler(Player* pMasterPlayer) : ChatHandler(pMasterPlayer->GetSession()) {}
     void sysmessage(std::string str) { SendSysMessage(str.c_str()); }
     uint32 extractQuestId(std::string str);
+    uint32 extractCreatureId(std::string str)
+    {
+        char* source = &str[0];
+        uint32 id = 0;
+        return !str.empty() && ExtractUint32KeyFromLink(&source, "Hcreature_entry", id) ? id : 0;
+    }
     uint32 extractSpellId(std::string str)
     {
         char* source = (char*)str.c_str();
@@ -366,6 +372,7 @@ public:
 
     virtual void UpdateAI(uint32 elapsed, bool minimal = false);
     void CleanupExpiredValuesIfDue();
+    void RequestValueCacheCleanup() { valueCacheCleanupRequested.store(true, std::memory_order_release); }
 
     void HandleCommands();
 private:
@@ -499,7 +506,8 @@ public:
 
     bool HasSpell(std::string name) const;
     bool HasSpell(uint32 spellid) const;
-    size_t GetSpellCapabilityCacheSize() const { return spellCapabilityCache.size(); }
+    // Retain the diagnostic accessor/field for existing telemetry consumers.
+    size_t GetSpellCapabilityCacheSize() const { return 0; }
     bool HasAura(uint32 spellId, Unit* player, bool checkOwner = false);
     Aura* GetAura(uint32 spellId, Unit* player, bool checkOwner = false);
     Aura* GetAura(std::string spellName, Unit* player, bool checkOwner = false);
@@ -869,12 +877,7 @@ protected:
     bool fallAfterJump;
     uint32 faceTargetUpdateDelay;
     uint32 lastValueCacheCleanupMs = 0;
-    struct SpellCapability
-    {
-        uint32 signature, expiresAtMs;
-        bool known;
-    };
-    mutable std::unordered_map<uint32, SpellCapability> spellCapabilityCache;
+    std::atomic<bool> valueCacheCleanupRequested{false};
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;

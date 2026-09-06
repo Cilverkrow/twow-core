@@ -293,6 +293,9 @@ public:
     // log files (logs/bots/<name>_acc<id>_<timestamp>.log) are emitted. Default
     // off so production servers don't pay disk I/O / branch overhead.
     bool enableActionLog;
+    bool behaviorTrace = false;
+    uint32 behaviorTraceMap = 0;
+    float behaviorTraceX = -800.0f, behaviorTraceY = -530.0f, behaviorTraceRadius = 200.0f;
     // Filename (relative to LogsDir) for the bot subsystem log. When set,
     // all sLog calls from bot .cpp files are redirected there instead of
     // writing to the main server log. Default: "bots.log". Empty = disabled.
