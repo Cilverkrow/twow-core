@@ -8,3 +8,7 @@
 # Dockerfile would carry a trailing carriage return into the RUN command.
 Dockerfile text eol=lf
 .dockerignore text eol=lf
+
+# A shebang only works if the file is checked out with LF, and this repo has
+# core.autocrlf users; without this the script fails to run on their machines.
+sql/touch_migration.sh text eol=lf
