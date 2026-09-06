@@ -84,7 +84,18 @@ public:
 #ifdef CMANGOS
 void AhbotThread()
 {
-    auctionbot.ForceUpdate();
+    try
+    {
+        auctionbot.ForceUpdate();
+    }
+    catch (...)
+    {
+        // An escaping exception on a detached thread is std::terminate for the
+        // whole worldserver, and the body runs database queries that can throw.
+        // Swallow it silently: the auction pass is simply skipped. We do not
+        // log here because the logging subsystem is not guaranteed thread-safe
+        // off the world thread.
+    }
 }
 #endif
 

@@ -4356,8 +4356,21 @@ bool DebugAction::HandleSaveNode(Event& event, Player* requester, const std::str
 
 bool DebugAction::HandleLoadNode(Event& event, Player* requester, const std::string& text)
 {
-    std::thread t([] {if (sTravelNodeMap.removeNodes())
-        sTravelNodeMap.loadNodeStore(); });
+    std::thread t([]
+    {
+        try
+        {
+            if (sTravelNodeMap.removeNodes())
+                sTravelNodeMap.loadNodeStore();
+        }
+        catch (...)
+        {
+            // An escaping exception on a detached thread is std::terminate for
+            // the whole worldserver. Swallow it silently: the node store is
+            // simply left as it is. We do not log here because the logging
+            // subsystem is not guaranteed thread-safe off the world thread.
+        }
+    });
 
     t.detach();
 

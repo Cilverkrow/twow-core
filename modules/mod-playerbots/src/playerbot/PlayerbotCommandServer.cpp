@@ -54,6 +54,12 @@ void session(socket_ptr sock)
     {
         sLog.outError("%s",e.what());
     }
+    catch (...)
+    {
+        // Anything outside the std::exception hierarchy would escape this
+        // detached connection thread and std::terminate the whole worldserver.
+        sLog.outError("Playerbot command server: connection thread threw a non-standard exception");
+    }
 }
 
 void server(boost::asio::io_context& io_context, short port)
@@ -84,6 +90,12 @@ void Run()
     catch (std::exception& e)
     {
         sLog.outError("%s",e.what());
+    }
+    catch (...)
+    {
+        // Anything outside the std::exception hierarchy would escape this
+        // detached listener thread and std::terminate the whole worldserver.
+        sLog.outError("Playerbot command server: listener thread threw a non-standard exception");
     }
 }
 

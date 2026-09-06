@@ -76,7 +76,17 @@ public:
 #ifdef CMANGOS
 void PrintStatsThread(uint32 requesterGuid)
 {
-    sRandomPlayerbotMgr.PrintStats(requesterGuid);
+    try
+    {
+        sRandomPlayerbotMgr.PrintStats(requesterGuid);
+    }
+    catch (...)
+    {
+        // An escaping exception on a detached thread is std::terminate for the
+        // whole worldserver. Swallow it silently: the requester simply gets no
+        // stats. We do not log here because the logging subsystem is not
+        // guaranteed thread-safe off the world thread.
+    }
 }
 #endif
 
@@ -106,18 +116,6 @@ void CheckBgQueueThread()
 }
 #endif
 
-void activateCheckBgQueueThread()
-{
-#ifdef MANGOS
-    CheckBgQueueThread *thread = new CheckBgQueueThread();
-    thread->activate();
-#endif
-#ifdef CMANGOS
-    boost::thread t(CheckBgQueueThread);
-    t.detach();
-#endif
-}
-
 #ifdef MANGOS
 class CheckLfgQueueThread : public ACE_Task <ACE_MT_SYNCH>
 {
@@ -132,18 +130,6 @@ void CheckLfgQueueThread()
 }
 #endif
 
-void activateCheckLfgQueueThread()
-{
-#ifdef MANGOS
-    CheckLfgQueueThread *thread = new CheckLfgQueueThread();
-    thread->activate();
-#endif
-#ifdef CMANGOS
-    boost::thread t(CheckLfgQueueThread);
-    t.detach();
-#endif
-}
-
 #ifdef MANGOS
 class CheckPlayersThread : public ACE_Task <ACE_MT_SYNCH>
 {
@@ -157,18 +143,6 @@ void CheckPlayersThread()
     sRandomPlayerbotMgr.CheckPlayers();
 }
 #endif
-
-void activateCheckPlayersThread()
-{
-#ifdef MANGOS
-    CheckPlayersThread *thread = new CheckPlayersThread();
-    thread->activate();
-#endif
-#ifdef CMANGOS
-    boost::thread t(CheckPlayersThread);
-    t.detach();
-#endif
-}
 
 class botPIDImpl
 {
@@ -5148,7 +5122,20 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCleanMap(std::string par
             continue;
 
         uint32 mapId = sMapStore.LookupEntry(i)->MapID;
-        boost::thread t([mapId]() {WorldPosition::unloadMapAndVMaps(mapId); });
+        boost::thread t([mapId]()
+        {
+            try
+            {
+                WorldPosition::unloadMapAndVMaps(mapId);
+            }
+            catch (...)
+            {
+                // An escaping exception on a detached thread is std::terminate
+                // for the whole worldserver. Swallow it silently: that one map
+                // simply stays loaded. We do not log here because the logging
+                // subsystem is not guaranteed thread-safe off the world thread.
+            }
+        });
         t.detach();
     }
 
