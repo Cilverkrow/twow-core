@@ -32,7 +32,11 @@
 # express this: CMake escapes "NAME=" into -DNAME="" (verified), which is a value
 # of "" and warns just the same.
 if (MSVC)
-    foreach (DC_MATH_TARGET modules mod_mod-dungeon-clear)
+    # mod_mod_dungeon_clear, with underscores: GetModuleProjectName lowercases
+    # and maps every non-alphanumeric character to '_', so the hyphenated
+    # spelling this used to carry matched no target at all. Same mistake core
+    # already found and fixed in mod-playerbots.cmake.
+    foreach (DC_MATH_TARGET modules mod_mod_dungeon_clear)
         if (TARGET ${DC_MATH_TARGET})
             target_compile_options(${DC_MATH_TARGET} PRIVATE /D_USE_MATH_DEFINES=)
         endif()
@@ -96,7 +100,41 @@ endif()
 if(TORTOISE_MODULE_CMAKE_PHASE STREQUAL "POST_TARGETS")
   GetPathToModule("mod-playerbots" DC_PLAYERBOTS_ROOT)
 
-  target_include_directories(modules
+  # Configure the target that actually holds THIS module's sources, rather than
+  # the literal `modules`.
+  #
+  # Core builds static modules into one shared `modules` archive, so here the
+  # answer usually IS `modules`. A consumer may instead give every module its
+  # own static library -- and at least one does, with a CI check named "Modules
+  # do not mutate the shared target" whose comment records that mod-dungeon-clear
+  # was once the exception that forced it to exist.
+  #
+  # Under that layout the old code was wrong twice over: this module's 234
+  # sources compile into mod_mod_dungeon_clear, which never received the
+  # playerbots include dirs or the AcCompat.h force-include (47 of them use
+  # LOG_* macros that exist only in that header), while the shared loader
+  # received 25 PUBLIC include dirs it has no use for.
+  #
+  # Preferring the per-module target fixes both: core is unchanged, because
+  # there the per-module target does not exist and the loop falls through to
+  # `modules`; and a per-module layout is configured correctly without the
+  # shared target being touched at all.
+  GetModuleProjectName("mod-dungeon-clear" DC_MODULE_TARGET)
+  set(DC_TARGET "")
+  foreach(DC_CANDIDATE ${DC_MODULE_TARGET} modules)
+    if(TARGET ${DC_CANDIDATE})
+      set(DC_TARGET ${DC_CANDIDATE})
+      break()
+    endif()
+  endforeach()
+  if(NOT DC_TARGET)
+    message(FATAL_ERROR
+      "mod-dungeon-clear: neither ${DC_MODULE_TARGET} nor modules exists at "
+      "POST_TARGETS. The module's sources would compile without AcCompat.h, "
+      "which 47 of them require.")
+  endif()
+
+  target_include_directories(${DC_TARGET}
     PUBLIC
       ${DC_PLAYERBOTS_ROOT}
       ${DC_PLAYERBOTS_ROOT}/src
@@ -142,10 +180,10 @@ if(TORTOISE_MODULE_CMAKE_PHASE STREQUAL "POST_TARGETS")
   # mod-playerbots its own `modules_playerbots` static library (see
   # modules/CMakeLists.txt), so there is only one /FI claim on `modules` again.
   if(MSVC)
-    target_compile_options(modules PRIVATE
+    target_compile_options(${DC_TARGET} PRIVATE
       "/FI${CMAKE_CURRENT_LIST_DIR}/src/AcCompat.h")
   else()
-    target_compile_options(modules PRIVATE
+    target_compile_options(${DC_TARGET} PRIVATE
       -include ${CMAKE_CURRENT_LIST_DIR}/src/AcCompat.h)
   endif()
 endif()
