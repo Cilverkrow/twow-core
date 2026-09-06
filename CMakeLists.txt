@@ -907,6 +907,9 @@ endif()
 # above) because the database suite links against them.
 if(BUILD_TESTING)
   include("${CMAKE_SOURCE_DIR}/modules/mod-playerbots/tests.cmake")
+  # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
+  # skipped for a disabled module and read twice per configure otherwise.
+  include("${CMAKE_SOURCE_DIR}/modules/mod-dungeon-clear/tests.cmake")
 endif()
 
 if (USE_EXTRACTORS OR USE_REALMMERGE)
