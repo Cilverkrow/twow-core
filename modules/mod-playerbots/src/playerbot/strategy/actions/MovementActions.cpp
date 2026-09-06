@@ -292,14 +292,37 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
 
     if (needNpc || (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(tEntry->from)))
     {
-        // Service interactions must use the live grid state. The generic
-        // "nearest npcs" AI value is intentionally cached and can be stale by
-        // the time a long travel path reaches its flight master, which made
-        // bots repeatedly approach and abandon valid nodes such as Southshore.
-        unit = bot->FindNearestInteractableNpcWithFlag(UNIT_NPC_FLAG_FLIGHTMASTER);
-        if (unit && sObjectMgr.GetNearestTaxiNode(unit->GetPositionX(), unit->GetPositionY(),
-            unit->GetPositionZ(), unit->GetMapId(), bot->GetTeam()) != tEntry->from)
-            unit = nullptr;
+        // Resolve the exact interactable flight master from the AI's nearby
+        // object GUIDs first.  This is the established playerbot interaction
+        // path and, unlike a generic grid search, also sees creatures kept in
+        // the map's world-object container.  The latter distinction matters
+        // at busy hubs: Southshore's Darla was interactable by GUID while
+        // FindNearestInteractableNpcWithFlag repeatedly returned null, leaving
+        // bots queued at the node and retrying the same long travel leg.
+        std::list<ObjectGuid> npcs = AI_VALUE(std::list<ObjectGuid>, "nearest npcs");
+        for (ObjectGuid const& guid : npcs)
+        {
+            Creature* candidate = bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_FLIGHTMASTER);
+            if (!candidate)
+                continue;
+
+            if (sObjectMgr.GetNearestTaxiNode(candidate->GetPositionX(), candidate->GetPositionY(),
+                candidate->GetPositionZ(), candidate->GetMapId(), bot->GetTeam()) != tEntry->from)
+                continue;
+
+            unit = candidate;
+            break;
+        }
+
+        // Retain the live spatial lookup as a fallback for callers that have
+        // not populated the nearby-NPC value yet.
+        if (!unit)
+        {
+            unit = bot->FindNearestInteractableNpcWithFlag(UNIT_NPC_FLAG_FLIGHTMASTER);
+            if (unit && sObjectMgr.GetNearestTaxiNode(unit->GetPositionX(), unit->GetPositionY(),
+                unit->GetPositionZ(), unit->GetMapId(), bot->GetTeam()) != tEntry->from)
+                unit = nullptr;
+        }
 
         if (!unit)
         {

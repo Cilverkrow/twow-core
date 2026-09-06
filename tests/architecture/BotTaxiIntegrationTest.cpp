@@ -55,7 +55,14 @@ bool minimal(PlayerbotAI* ai,LastMove& lastMove){
 int main(){
     sTaxiPathStore.rows[1]={};sTaxiNodesStore.rows[1]={};sTaxiNodesStore.rows[2]={};
     PlayerbotAI ai; ai.bot.m_taxi.known={2};
-    CHECK(MovementAction::UseTaxi(&ai,1,false)); CHECK(ai.bot.liveLookups==1); CHECK(ai.bot.session.learns==1); CHECK(ai.bot.money==90);
+    // The established nearby-GUID interaction path must win when it can see
+    // the source flight master. This is the Southshore/Darla regression.
+    CHECK(MovementAction::UseTaxi(&ai,1,false)); CHECK(ai.bot.liveLookups==0); CHECK(ai.bot.session.learns==1); CHECK(ai.bot.money==90);
+    // Callers that have not populated nearby NPCs still get the spatial
+    // fallback and can discover the source node.
+    taxiNpcs.clear(); ai.bot.m_taxi.known={2};
+    CHECK(MovementAction::UseTaxi(&ai,1,false)); CHECK(ai.bot.liveLookups==1); CHECK(ai.bot.session.learns==2);
+    taxiNpcs={1};
     ai.bot.m_taxi.known={2};ai.bot.npc.interactable=false;int calls=ai.bot.activates;
     CHECK(!MovementAction::UseTaxi(&ai,1,false));CHECK(ai.bot.activates==calls);
     ai.bot.npc.interactable=true;ai.bot.npc.node=3;
