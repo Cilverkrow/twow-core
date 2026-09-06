@@ -66,7 +66,15 @@ set(DC_MOD_PATH "${CMAKE_CURRENT_LIST_DIR}")
 # headers they do reach are leaves, so this costs an include path, not a link
 # edge. Keep in step with modules/CMakeLists.txt if that list changes.
 set(DC_TEST_CORE_INCLUDES
-    ${TW_MODULES_DIR}
+    # The modules tree itself, mirroring MODULES_COMMON_INCLUDES' leading
+    # ${CMAKE_CURRENT_SOURCE_DIR}. Spelled ${TW_CORE_ROOT}/modules rather than
+    # ${TW_MODULES_DIR}: the sources compiled below are core's own copies
+    # (DC_MOD_PATH is this file's directory), so the sibling modules they could
+    # reach are core's. TW_MODULES_DIR is whatever tree drives the module build,
+    # which a consuming platform points at its own modules/ -- a directory that
+    # need not contain mod-playerbots at all. Identical to TW_MODULES_DIR's
+    # default for a standalone core build.
+    ${TW_CORE_ROOT}/modules
     ${TW_CORE_ROOT}/src/scripts
     ${TW_CORE_ROOT}/src/shared
     ${TW_CORE_ROOT}/src/framework

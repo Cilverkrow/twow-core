@@ -1,9 +1,36 @@
-# Included from modules/CMakeLists.txt AFTER the module targets exist.
-if(NOT BUILD_PLAYERBOTS)
-  return()
-endif()
+# Included from modules/CMakeLists.txt, once in the DISCOVERY phase and once
+# AFTER the module targets exist (POST_TARGETS).
+#
+# There is deliberately no `if(NOT BUILD_PLAYERBOTS) return()` here any more.
+# modules/CMakeLists.txt includes this file ONLY for a module whose effective
+# linkage is not "disabled" -- so by the time it is read, the bot sources are
+# already being compiled into `modules_playerbots` (or into a shared library).
+# The guard could therefore never prevent the build; all it could do was skip
+# the wiring of a module that was being built anyway, which is precisely what
+# it did for `-DMODULES=static` with BUILD_PLAYERBOTS left at its OFF default:
+# no CMANGOS / MANGOSBOT_ZERO / ENABLE_PLAYERBOTS, no botpch.h force-include,
+# no Boost. That is not a disabled subsystem, it is a broken one -- the vendored
+# #ifdef ladders fall off the end of non-void functions (see the PUBLIC note
+# below) and cmangos-compat-shim.h never reaches a translation unit.
+#
+# src/game already made exactly this move for PlayerbotStubs.cpp: it asks
+# GetModuleEffectiveLinkage("mod-playerbots") rather than BUILD_PLAYERBOTS,
+# because "was the option set" and "was the module built" are different
+# questions and only the second one decides whether the eleven host hooks need
+# stubbing. This file was still asking the first, and a consumer that enables
+# the module without knowing about core's option -- a platform repository
+# consuming core with add_subdirectory() -- got the broken half.
+#
+# BUILD_PLAYERBOTS keeps its meaning for the standalone core: it is the
+# convenience switch that turns the module build on (root CMakeLists.txt flips
+# MODULES to "static" for it) and it still drives mangosd's Windows Boost
+# library search path. It is no longer a second, weaker gate on the wiring.
 
-set(PB_ROOT "${CMAKE_SOURCE_DIR}/modules/mod-playerbots")
+# CMAKE_CURRENT_LIST_DIR: this file's own directory, whichever module root it
+# was found under, and whoever is the top-level project. The old spelling
+# ${CMAKE_SOURCE_DIR}/modules/mod-playerbots is the same path only while the
+# core IS the whole project.
+set(PB_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 
 # Boost. The vendored sources reach for it directly (TravelNode's mmap scan uses
 # boost::filesystem::directory_iterator) and botpch.h used to carry the headers;
@@ -105,50 +132,54 @@ foreach(PB_TARGET modules modules_playerbots mod_mod_playerbots mod_mod-playerbo
   # after the move failed on mod-dungeon-clear (not on a bot source) with
   # "Config.h: No such file or directory". Recovered verbatim from the removed
   # root-CMakeLists block; duplicates with the common list are harmless.
+  #
+  # The core dirs are rooted at TW_CORE_ROOT for the same reason PB_ROOT is
+  # CMAKE_CURRENT_LIST_DIR: CMAKE_SOURCE_DIR names the TOP-LEVEL project, which
+  # is the platform's root as soon as the core is an add_subdirectory().
   target_include_directories(${PB_TARGET} PUBLIC
     ${PB_ROOT}
     ${PB_ROOT}/src
     ${PB_ROOT}/src/playerbot
     ${PB_ROOT}/src/ahbot
     ${PB_ROOT}/src/cmangos-compat-stubs
-    ${CMAKE_SOURCE_DIR}/dep/include/g
-    ${CMAKE_SOURCE_DIR}/src/framework
-    ${CMAKE_SOURCE_DIR}/src/framework/Network
-    ${CMAKE_SOURCE_DIR}/src/game
-    ${CMAKE_SOURCE_DIR}/src/game/AI
-    ${CMAKE_SOURCE_DIR}/src/game/AuctionHouse
-    ${CMAKE_SOURCE_DIR}/src/game/Battlegrounds
-    ${CMAKE_SOURCE_DIR}/src/game/Chat
-    ${CMAKE_SOURCE_DIR}/src/game/Commands
-    ${CMAKE_SOURCE_DIR}/src/game/Database
-    ${CMAKE_SOURCE_DIR}/src/game/Group
-    ${CMAKE_SOURCE_DIR}/src/game/Guild
-    ${CMAKE_SOURCE_DIR}/src/game/Handlers
-    ${CMAKE_SOURCE_DIR}/src/game/LFG
-    ${CMAKE_SOURCE_DIR}/src/game/Mail
-    ${CMAKE_SOURCE_DIR}/src/game/MapNodes
-    ${CMAKE_SOURCE_DIR}/src/game/Maps
-    ${CMAKE_SOURCE_DIR}/src/game/Maps/Pool
-    ${CMAKE_SOURCE_DIR}/src/game/Movement
-    ${CMAKE_SOURCE_DIR}/src/game/Movement/spline
-    ${CMAKE_SOURCE_DIR}/src/game/Objects
-    ${CMAKE_SOURCE_DIR}/src/game/OutdoorPvP
-    ${CMAKE_SOURCE_DIR}/src/game/PacketBroadcast
-    ${CMAKE_SOURCE_DIR}/src/game/Protocol
-    ${CMAKE_SOURCE_DIR}/src/game/Spells
-    ${CMAKE_SOURCE_DIR}/src/game/Threat
-    ${CMAKE_SOURCE_DIR}/src/game/Transports
-    ${CMAKE_SOURCE_DIR}/src/game/vmap
-    ${CMAKE_SOURCE_DIR}/src/shared
-    ${CMAKE_SOURCE_DIR}/src/shared/Config
-    ${CMAKE_SOURCE_DIR}/src/shared/Database
-    ${CMAKE_SOURCE_DIR}/src/shared/Log
-    ${CMAKE_SOURCE_DIR}/src/shared/Util)
+    ${TW_CORE_ROOT}/dep/include/g
+    ${TW_CORE_ROOT}/src/framework
+    ${TW_CORE_ROOT}/src/framework/Network
+    ${TW_CORE_ROOT}/src/game
+    ${TW_CORE_ROOT}/src/game/AI
+    ${TW_CORE_ROOT}/src/game/AuctionHouse
+    ${TW_CORE_ROOT}/src/game/Battlegrounds
+    ${TW_CORE_ROOT}/src/game/Chat
+    ${TW_CORE_ROOT}/src/game/Commands
+    ${TW_CORE_ROOT}/src/game/Database
+    ${TW_CORE_ROOT}/src/game/Group
+    ${TW_CORE_ROOT}/src/game/Guild
+    ${TW_CORE_ROOT}/src/game/Handlers
+    ${TW_CORE_ROOT}/src/game/LFG
+    ${TW_CORE_ROOT}/src/game/Mail
+    ${TW_CORE_ROOT}/src/game/MapNodes
+    ${TW_CORE_ROOT}/src/game/Maps
+    ${TW_CORE_ROOT}/src/game/Maps/Pool
+    ${TW_CORE_ROOT}/src/game/Movement
+    ${TW_CORE_ROOT}/src/game/Movement/spline
+    ${TW_CORE_ROOT}/src/game/Objects
+    ${TW_CORE_ROOT}/src/game/OutdoorPvP
+    ${TW_CORE_ROOT}/src/game/PacketBroadcast
+    ${TW_CORE_ROOT}/src/game/Protocol
+    ${TW_CORE_ROOT}/src/game/Spells
+    ${TW_CORE_ROOT}/src/game/Threat
+    ${TW_CORE_ROOT}/src/game/Transports
+    ${TW_CORE_ROOT}/src/game/vmap
+    ${TW_CORE_ROOT}/src/shared
+    ${TW_CORE_ROOT}/src/shared/Config
+    ${TW_CORE_ROOT}/src/shared/Database
+    ${TW_CORE_ROOT}/src/shared/Log
+    ${TW_CORE_ROOT}/src/shared/Util)
 
   if(WIN32)
     target_include_directories(${PB_TARGET} PUBLIC
-      ${CMAKE_SOURCE_DIR}/dep/windows/include
-      ${CMAKE_SOURCE_DIR}/dep/windows/include/mysql)
+      ${TW_CORE_ROOT}/dep/windows/include
+      ${TW_CORE_ROOT}/dep/windows/include/mysql)
   endif()
 endforeach()
 
@@ -157,10 +188,13 @@ endforeach()
 # vanilla is the default, because this project is called TurtleWoW and matched
 # none of the named cases - which is why aiplayerbot.conf.dist was never
 # generated at all before that was fixed.
-if(${CMAKE_PROJECT_NAME} MATCHES "TBC")
+# PROJECT_NAME, not CMAKE_PROJECT_NAME: the latter is the TOP-LEVEL project's
+# name, which is the consuming platform's under add_subdirectory(). Identical
+# for a standalone core build.
+if(${PROJECT_NAME} MATCHES "TBC")
   configure_file(${PB_ROOT}/src/playerbot/aiplayerbot.conf.dist.in.tbc
                  ${CMAKE_BINARY_DIR}/aiplayerbot.conf.dist)
-elseif(${CMAKE_PROJECT_NAME} MATCHES "WoTLK")
+elseif(${PROJECT_NAME} MATCHES "WoTLK")
   configure_file(${PB_ROOT}/src/playerbot/aiplayerbot.conf.dist.in.wotlk
                  ${CMAKE_BINARY_DIR}/aiplayerbot.conf.dist)
 else()
