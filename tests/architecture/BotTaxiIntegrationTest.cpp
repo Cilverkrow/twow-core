@@ -38,7 +38,7 @@ struct PlayerbotAI {
 };
 std::list<ObjectGuid> taxiNpcs{1};
 #define AI_VALUE(type,name) ::taxiNpcs
-class MovementAction {public:static bool UseTaxi(PlayerbotAI*,uint32,bool);};
+class MovementAction {public:static bool UseTaxi(PlayerbotAI*,uint32,bool,Creature* sourceNpc=nullptr);};
 namespace ai { namespace botdiag { void TraceBehavior(PlayerbotAI*, const char*, const char*) {} } }
 #include "BotTaxiUse.inc"
 enum class PathNodeType {NODE_FLIGHTPATH,NODE_WALK};
@@ -58,10 +58,14 @@ int main(){
     // The established nearby-GUID interaction path must win when it can see
     // the source flight master. This is the Southshore/Darla regression.
     CHECK(MovementAction::UseTaxi(&ai,1,false)); CHECK(ai.bot.liveLookups==0); CHECK(ai.bot.session.learns==1); CHECK(ai.bot.money==90);
+    // RPG taxi hands the already-validated target NPC through to activation;
+    // it must not depend on a second nearby-NPC cache lookup.
+    taxiNpcs.clear(); ai.bot.m_taxi.known={2}; int lookups=ai.bot.liveLookups;
+    CHECK(MovementAction::UseTaxi(&ai,1,true,&ai.bot.npc)); CHECK(ai.bot.liveLookups==lookups);
     // Callers that have not populated nearby NPCs still get the spatial
     // fallback and can discover the source node.
     taxiNpcs.clear(); ai.bot.m_taxi.known={2};
-    CHECK(MovementAction::UseTaxi(&ai,1,false)); CHECK(ai.bot.liveLookups==1); CHECK(ai.bot.session.learns==2);
+    CHECK(MovementAction::UseTaxi(&ai,1,false)); CHECK(ai.bot.liveLookups==1); CHECK(ai.bot.session.learns==3);
     taxiNpcs={1};
     ai.bot.m_taxi.known={2};ai.bot.npc.interactable=false;int calls=ai.bot.activates;
     CHECK(!MovementAction::UseTaxi(&ai,1,false));CHECK(ai.bot.activates==calls);

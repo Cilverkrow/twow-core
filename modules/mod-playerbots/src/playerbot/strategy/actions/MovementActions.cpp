@@ -253,7 +253,7 @@ bool MovementAction::FlyDirect(const WorldPosition &startPosition, const WorldPo
 #endif
 }
 
-bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
+bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc, Creature* sourceNpc)
 {
     AiObjectContext* context = ai->GetAiObjectContext();
     Player* bot = ai->GetBot();
@@ -270,7 +270,7 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
         return goClick;
     }
 
-    Creature* unit = nullptr;
+    Creature* unit = sourceNpc;
 
     // Turtle validates both endpoints in the native activation method (not
     // just in the client opcode as CMaNGOS does). Discover only a legitimate
@@ -292,6 +292,13 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
 
     if (needNpc || (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(tEntry->from)))
     {
+        // RPG taxi already resolved the precise NPC from its target GUID. Keep
+        // that established interaction result instead of discarding it and
+        // performing a second, cache-dependent lookup at a crowded hub.
+        if (unit && sObjectMgr.GetNearestTaxiNode(unit->GetPositionX(), unit->GetPositionY(),
+            unit->GetPositionZ(), unit->GetMapId(), bot->GetTeam()) != tEntry->from)
+            unit = nullptr;
+
         // Resolve the exact interactable flight master from the AI's nearby
         // object GUIDs first.  This is the established playerbot interaction
         // path and, unlike a generic grid search, also sees creatures kept in
@@ -302,6 +309,9 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
         std::list<ObjectGuid> npcs = AI_VALUE(std::list<ObjectGuid>, "nearest npcs");
         for (ObjectGuid const& guid : npcs)
         {
+            if (unit)
+                break;
+
             Creature* candidate = bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_FLIGHTMASTER);
             if (!candidate)
                 continue;

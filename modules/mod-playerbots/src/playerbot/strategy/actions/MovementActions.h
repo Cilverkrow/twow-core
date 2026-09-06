@@ -28,7 +28,8 @@ namespace ai
         MovementAction(PlayerbotAI* ai, std::string name) : Action(ai, name) {}
 
         static bool MinimalMove(PlayerbotAI* ai);
-        static bool UseTaxi(PlayerbotAI* ai, uint32 entry = 0, bool needNpc = true);
+        static bool UseTaxi(PlayerbotAI* ai, uint32 entry = 0, bool needNpc = true,
+            Creature* sourceNpc = nullptr);
         static bool UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport);
     protected:
         static bool MoveOnTransport(PlayerbotAI* ai, GenericTransport* transport, bool doTeleport);

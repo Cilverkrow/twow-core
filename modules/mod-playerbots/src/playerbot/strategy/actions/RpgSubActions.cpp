@@ -219,7 +219,7 @@ bool RpgTaxiAction::Execute(Event& event)
     // eligibility/discovery adapter as purposeful travel. Restore funds on
     // rejection too; the former early return leaked the temporary credit.
     bot->SetMoney(uint32(std::min<uint64>(uint64(money) + entry->price, UINT32_MAX)));
-    bool const activated = MovementAction::UseTaxi(ai, path, true);
+    bool const activated = MovementAction::UseTaxi(ai, path, true, flightMaster);
     bot->SetMoney(money);
     if (!activated)
     {
