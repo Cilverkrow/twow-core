@@ -33,43 +33,53 @@ endif()
 
 set(MODULES_INSTALL_RUNTIME_DIR "${LIBS_DIR}/modules")
 
+# Rooted at TW_CORE_ROOT, not CMAKE_SOURCE_DIR. CMAKE_SOURCE_DIR is the
+# TOP-LEVEL source directory, so under a platform that consumes the core with
+# add_subdirectory() every one of these pointed into the PLATFORM, which holds
+# no src/ and no dep/ -- every module translation unit then failed on the first
+# core header it included. TW_CORE_ROOT is "this directory, whoever is on top"
+# and is identical to CMAKE_SOURCE_DIR when the core is built standalone.
+#
+# CMAKE_CURRENT_SOURCE_DIR stays: this file IS the modules tree that drives the
+# build (TW_MODULES_DIR), and that is what the entry means -- the core's own
+# modules/ is not necessarily it.
 set(MODULES_COMMON_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/src/scripts
-  ${CMAKE_SOURCE_DIR}/src/shared
-  ${CMAKE_SOURCE_DIR}/src/framework
-  ${CMAKE_SOURCE_DIR}/src/framework/Network
-  ${CMAKE_SOURCE_DIR}/src/game
-  ${CMAKE_SOURCE_DIR}/src/game/AI
-  ${CMAKE_SOURCE_DIR}/src/game/Anticheat
-  ${CMAKE_SOURCE_DIR}/src/game/AuctionHouse
-  ${CMAKE_SOURCE_DIR}/src/game/Battlegrounds
-  ${CMAKE_SOURCE_DIR}/src/game/Chat
-  ${CMAKE_SOURCE_DIR}/src/game/Commands
-  ${CMAKE_SOURCE_DIR}/src/game/Database
-  ${CMAKE_SOURCE_DIR}/src/game/Group
-  ${CMAKE_SOURCE_DIR}/src/game/Guild
-  ${CMAKE_SOURCE_DIR}/src/game/Handlers
-  ${CMAKE_SOURCE_DIR}/src/game/LFG
-  ${CMAKE_SOURCE_DIR}/src/game/Mail
-  ${CMAKE_SOURCE_DIR}/src/game/Maps
-  ${CMAKE_SOURCE_DIR}/src/game/Maps/Pool
-  ${CMAKE_SOURCE_DIR}/src/game/Movement
-  ${CMAKE_SOURCE_DIR}/src/game/Movement/spline
-  ${CMAKE_SOURCE_DIR}/src/game/Objects
-  ${CMAKE_SOURCE_DIR}/src/game/OutdoorPvP
-  ${CMAKE_SOURCE_DIR}/src/game/PlayerBots
-  ${CMAKE_SOURCE_DIR}/src/game/Protocol
-  ${CMAKE_SOURCE_DIR}/src/game/Spells
-  ${CMAKE_SOURCE_DIR}/src/game/Threat
-  ${CMAKE_SOURCE_DIR}/src/game/Transports
-  ${CMAKE_SOURCE_DIR}/src/game/vmap
-  ${CMAKE_SOURCE_DIR}/dep/include
-  ${CMAKE_SOURCE_DIR}/dep/recastnavigation
-  ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
-  ${CMAKE_SOURCE_DIR}/dep/recastnavigation/Detour/Include
+  ${TW_CORE_ROOT}/src/scripts
+  ${TW_CORE_ROOT}/src/shared
+  ${TW_CORE_ROOT}/src/framework
+  ${TW_CORE_ROOT}/src/framework/Network
+  ${TW_CORE_ROOT}/src/game
+  ${TW_CORE_ROOT}/src/game/AI
+  ${TW_CORE_ROOT}/src/game/Anticheat
+  ${TW_CORE_ROOT}/src/game/AuctionHouse
+  ${TW_CORE_ROOT}/src/game/Battlegrounds
+  ${TW_CORE_ROOT}/src/game/Chat
+  ${TW_CORE_ROOT}/src/game/Commands
+  ${TW_CORE_ROOT}/src/game/Database
+  ${TW_CORE_ROOT}/src/game/Group
+  ${TW_CORE_ROOT}/src/game/Guild
+  ${TW_CORE_ROOT}/src/game/Handlers
+  ${TW_CORE_ROOT}/src/game/LFG
+  ${TW_CORE_ROOT}/src/game/Mail
+  ${TW_CORE_ROOT}/src/game/Maps
+  ${TW_CORE_ROOT}/src/game/Maps/Pool
+  ${TW_CORE_ROOT}/src/game/Movement
+  ${TW_CORE_ROOT}/src/game/Movement/spline
+  ${TW_CORE_ROOT}/src/game/Objects
+  ${TW_CORE_ROOT}/src/game/OutdoorPvP
+  ${TW_CORE_ROOT}/src/game/PlayerBots
+  ${TW_CORE_ROOT}/src/game/Protocol
+  ${TW_CORE_ROOT}/src/game/Spells
+  ${TW_CORE_ROOT}/src/game/Threat
+  ${TW_CORE_ROOT}/src/game/Transports
+  ${TW_CORE_ROOT}/src/game/vmap
+  ${TW_CORE_ROOT}/dep/include
+  ${TW_CORE_ROOT}/dep/recastnavigation
+  ${TW_CORE_ROOT}/dep/include/g3dlite
+  ${TW_CORE_ROOT}/dep/recastnavigation/Detour/Include
   ${CMAKE_BINARY_DIR}
-  ${CMAKE_BINARY_DIR}/src/shared
+  ${TW_CORE_BINARY_ROOT}/src/shared
   ${TBB_INCLUDE_DIRS}
   ${ACE_INCLUDE_DIR}
   ${MYSQL_INCLUDE_DIR}

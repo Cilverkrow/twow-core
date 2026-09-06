@@ -2,9 +2,11 @@
 # PlayerBot event store.
 #
 # Included directly from the ROOT CMakeLists under BUILD_TESTING, NOT from
-# mod-playerbots.cmake. mod-playerbots.cmake returns immediately when
-# BUILD_PLAYERBOTS is OFF (its default here), which would make these targets
-# un-buildable in exactly the configuration a test run wants. The suites are
+# mod-playerbots.cmake. modules/CMakeLists.txt reads that file only for a module
+# whose linkage is not "disabled", and MODULES defaults to "disabled" -- so
+# suites declared there would be un-buildable in exactly the configuration a
+# test run wants (it is also read twice per configure, once per phase, which
+# would declare every target twice). The suites are
 # source-level -- they compile the module's own .cpp/.h files directly, not the
 # `modules`/`modules_playerbots` library -- so they need the sources on disk and
 # nothing about the vendored bot tree's own build.
@@ -23,7 +25,14 @@
 # This mirrors twow-repo's modules/mod-playerbots/tests.cmake, which carried
 # these suites before the module moved into core (ADR-0040).
 
-set(PB_MODULE_DIR "${CMAKE_SOURCE_DIR}/modules/mod-playerbots")
+# This file's own directory. CMAKE_CURRENT_LIST_DIR is the directory of the
+# file being processed, not of the file that include()d it, so this resolves to
+# modules/mod-playerbots even though the include comes from the root
+# CMakeLists.txt. The old ${CMAKE_SOURCE_DIR}/modules/mod-playerbots is the same
+# path only while the core is the top-level project; under a platform that
+# consumes it with add_subdirectory() it names the PLATFORM's modules tree, and
+# every add_executable() below would list source files that are not there.
+set(PB_MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 option(BUILD_PLAYERBOT_EVENT_STORE_ADAPTER_TESTS
   "Build the isolated PlayerBot event-store database adapter test" OFF)

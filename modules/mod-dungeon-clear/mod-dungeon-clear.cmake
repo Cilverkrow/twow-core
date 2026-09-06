@@ -54,11 +54,12 @@ endif()
 # themselves. That is now true here too - but the paths still have to be stated,
 # and they have to be stated HERE rather than inherited.
 #
-# Why: mod-playerbots contributes its include paths only when BUILD_PLAYERBOTS
-# is ON, and that option defaults to OFF. AcCompat.h below is force-included
-# into every dungeon-clear translation unit and pulls cmangos-compat-shim.h out
-# of the bot tree unconditionally, so a default-options build of THIS module
-# needs the bot tree on its compile line whether or not the bots are built.
+# Why: mod-playerbots contributes its include paths only when it is itself
+# enabled, and a build can enable this module with -DMODULE_MOD_PLAYERBOTS=
+# disabled. AcCompat.h below is force-included into every dungeon-clear
+# translation unit and pulls cmangos-compat-shim.h out of the bot tree
+# unconditionally, so a build of THIS module needs the bot tree on its compile
+# line whether or not the bots are built.
 #
 # These paths pointed at src/modules/PlayerBots until the bots moved into the
 # module system on 2026-09-01, and the move did not update them. The directory
@@ -75,32 +76,51 @@ endif()
 # could edit.
 # ---------------------------------------------------------------------------
 
+# Where mod-playerbots is on disk. GetPathToModule searches TW_MODULE_ROOTS in
+# order, so it finds the module wherever it actually lives, and -- unlike the
+# hardcoded "<CMAKE_SOURCE_DIR>/modules/mod-playerbots" spelling it replaces --
+# it does not assume the core is the top-level project. Under a platform that
+# consumes the core with add_subdirectory(), CMAKE_SOURCE_DIR is the PLATFORM
+# root and every one of the paths below pointed at a directory with no
+# mod-playerbots in it; the first dungeon-clear translation unit then died on
+#   AcCompat.h:72: fatal error: cmangos-compat-shim.h: No such file or directory
+# -- the same failure the note above records from a different cause.
+#
+# Still spelled out as include directories rather than inherited from the
+# playerbots target. `modules_playerbots` carries all of these PUBLIC, but it
+# only EXISTS when mod-playerbots' linkage is static; a build with
+# -DMODULE_MOD_PLAYERBOTS=disabled still compiles this module, and AcCompat.h
+# still force-includes cmangos-compat-shim.h out of the bot tree. The paths have
+# to be independent of whether the bots are built, which is what a link edge
+# cannot be.
 if(TORTOISE_MODULE_CMAKE_PHASE STREQUAL "POST_TARGETS")
+  GetPathToModule("mod-playerbots" DC_PLAYERBOTS_ROOT)
+
   target_include_directories(modules
     PUBLIC
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/cmangos-compat-stubs
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/actions
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/triggers
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/values
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/generic
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/deathknight
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/druid
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/hunter
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/mage
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/paladin
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/priest
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/rogue
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/shaman
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/warlock
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/playerbot/strategy/warrior
-      ${CMAKE_SOURCE_DIR}/modules/mod-playerbots/src/ahbot
-      ${CMAKE_SOURCE_DIR}/src/game/MapNodes
-      ${CMAKE_SOURCE_DIR}/src/framework/Network
-      ${CMAKE_SOURCE_DIR}/dep/recastnavigation
+      ${DC_PLAYERBOTS_ROOT}
+      ${DC_PLAYERBOTS_ROOT}/src
+      ${DC_PLAYERBOTS_ROOT}/src/cmangos-compat-stubs
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/actions
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/triggers
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/values
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/generic
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/deathknight
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/druid
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/hunter
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/mage
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/paladin
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/priest
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/rogue
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/shaman
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/warlock
+      ${DC_PLAYERBOTS_ROOT}/src/playerbot/strategy/warrior
+      ${DC_PLAYERBOTS_ROOT}/src/ahbot
+      ${TW_CORE_ROOT}/src/game/MapNodes
+      ${TW_CORE_ROOT}/src/framework/Network
+      ${TW_CORE_ROOT}/dep/recastnavigation
       ${CMAKE_CURRENT_LIST_DIR}/src
       ${CMAKE_CURRENT_LIST_DIR}/src/compat)
 
