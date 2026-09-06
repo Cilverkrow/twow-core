@@ -1,17 +1,32 @@
-# Test suites for the PersistentActiveRoster subsystem in mod-playerbots.
+# Test suites for mod-playerbots: the PersistentActiveRoster subsystem and the
+# PlayerBot event store.
 #
 # Included directly from the ROOT CMakeLists under BUILD_TESTING, NOT from
 # mod-playerbots.cmake. mod-playerbots.cmake returns immediately when
 # BUILD_PLAYERBOTS is OFF (its default here), which would make these targets
-# un-buildable in exactly the configuration a test run wants. Both suites are
-# source-level -- they compile PersistentActiveRoster's own .cpp files
-# directly, not the `modules`/`modules_playerbots` library -- so they need the
-# sources on disk and nothing about the vendored bot tree's own build.
+# un-buildable in exactly the configuration a test run wants. The suites are
+# source-level -- they compile the module's own .cpp/.h files directly, not the
+# `modules`/`modules_playerbots` library -- so they need the sources on disk and
+# nothing about the vendored bot tree's own build.
+#
+# Registered here, in order:
+#
+#   persistent_active_roster              unit, always built
+#   playerbot_legacy_event_write_guard    source scan, no build step
+#   playerbot_event_store_contract        unit, always built
+#   persistent_active_roster_database_tests       opt-in, needs MariaDB, no add_test
+#   playerbot_event_store_database_tests          opt-in, needs MariaDB, no add_test
+#
+# The two adapter suites take their connection string on argv and so cannot be
+# add_test()ed; CI invokes them out of ${CMAKE_BINARY_DIR}/adapter-bin directly.
 #
 # This mirrors twow-repo's modules/mod-playerbots/tests.cmake, which carried
-# these same two suites before the module moved into core (ADR-0040).
+# these suites before the module moved into core (ADR-0040).
 
 set(PB_MODULE_DIR "${CMAKE_SOURCE_DIR}/modules/mod-playerbots")
+
+option(BUILD_PLAYERBOT_EVENT_STORE_ADAPTER_TESTS
+  "Build the isolated PlayerBot event-store database adapter test" OFF)
 
 # --------------------------------------------------------------------------
 # persistent_active_roster_tests -- the roster serialiser's unit suite.
@@ -64,6 +79,57 @@ set_target_properties(persistent_active_roster_tests PROPERTIES
 
 add_test(NAME persistent_active_roster
   COMMAND persistent_active_roster_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# --------------------------------------------------------------------------
+# playerbot_legacy_event_write_guard -- a source scan, not a compiled target.
+#
+# It greps every .cpp/.h under the module for a write statement naming the
+# event-store table literally instead of going through
+# ai::PlayerbotDatabaseContract. Nothing else in the tree catches that: a
+# hardcoded table name compiles cleanly, links cleanly, and then quietly
+# ignores AiPlayerbot.EventStoreTable forever.
+#
+# Registered with `cmake -P` rather than an executable so it costs no build
+# time and runs on every ctest invocation, including a configure-only checkout.
+# The script FATAL_ERRORs on a hit, and cmake -P exits non-zero on
+# FATAL_ERROR, which is what ctest reads. See t/check_playerbot_legacy_writes.cmake
+# for what it deliberately does not scan and why.
+# --------------------------------------------------------------------------
+
+add_test(NAME playerbot_legacy_event_write_guard
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/check_playerbot_legacy_writes.cmake")
+
+# --------------------------------------------------------------------------
+# playerbot_event_store_contract_tests -- the unit suite for the three SQL
+# builders in PlayerbotDatabaseContract.h. Same hand-rolled-assertion shape as
+# the roster unit suite, and like it, cheap enough to be unconditional: one
+# translation unit, header-only code under test, no database, no OpenSSL.
+#
+# t/stubs comes FIRST on the include path and ${PB_MODULE_DIR}/src is
+# deliberately absent. PlayerbotDatabaseContract.h includes
+# "playerbot/PlayerbotAIConfig.h", which is reachable only through
+# ${PB_MODULE_DIR}/src -- so with src/playerbot alone on the path the real
+# config header cannot be found at all, and t/stubs/playerbot supplies the
+# minimal test double instead. That is not shadowing: there is exactly one
+# candidate. Compiling the real one would mean compiling PlayerbotAIConfig.cpp
+# and the whole module behind it.
+# --------------------------------------------------------------------------
+
+add_executable(playerbot_event_store_contract_tests
+  "${PB_MODULE_DIR}/t/playerbot_event_store_contract_tests.cpp")
+
+target_include_directories(playerbot_event_store_contract_tests PRIVATE
+  "${PB_MODULE_DIR}/t/stubs"
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(playerbot_event_store_contract_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME playerbot_event_store_contract
+  COMMAND playerbot_event_store_contract_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # --------------------------------------------------------------------------
@@ -129,6 +195,86 @@ else()
 endif()
 
 set_target_properties(persistent_active_roster_database_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/adapter-bin")
+
+endif()
+
+# --------------------------------------------------------------------------
+# playerbot_event_store_database_tests -- the event-store contract against a
+# live MariaDB: 4000 queued writes to one row, 6400 across 64 rows, one precise
+# delete, and InnoDB's deadlock counter checked before and after. Opt-in behind
+# its own option for the same reason the roster adapter suite is: a plain
+# BUILD_TESTING build must never require a running database.
+#
+# Separate from BUILD_PERSISTENT_ROSTER_ADAPTER_TESTS on purpose. The two
+# suites need different schemas -- the roster one needs the roster migration,
+# this one needs ai_playerbot_random_bots with a UNIQUE key over
+# (owner, bot, event) -- so a CI job can enable one without being forced to
+# provision the other. See the SCHEMA PRECONDITION note at the top of
+# t/playerbot_event_store_database_tests.cpp: core's shipped schema declares
+# that index NON-unique, and the suite refuses to run rather than reporting a
+# meaningless failure.
+#
+# Its connection string arrives on argv, exactly as the roster adapter suite's
+# does, which is why neither is registered with add_test(): ctest has no way to
+# pass a disposable port to an add_test() command without baking it into the
+# CMake cache. Both land in adapter-bin/ for a CI step to invoke directly.
+# --------------------------------------------------------------------------
+
+if(BUILD_PLAYERBOT_EVENT_STORE_ADAPTER_TESTS)
+
+add_executable(playerbot_event_store_database_tests
+  "${PB_MODULE_DIR}/t/playerbot_event_store_database_tests.cpp")
+
+# t/stubs first, and no ${PB_MODULE_DIR}/src -- the same arrangement as the
+# contract suite above, and for the same reason.
+target_include_directories(playerbot_event_store_database_tests PRIVATE
+  "${PB_MODULE_DIR}/t/stubs"
+  "${PB_MODULE_DIR}/src/playerbot"
+  "${TW_CORE_ROOT}/src/shared"
+  "${TW_CORE_ROOT}/src/framework"
+  "${TW_CORE_BINARY_ROOT}/src/shared"
+  "${CMAKE_BINARY_DIR}"
+  ${ACE_INCLUDE_DIR}
+  ${MYSQL_INCLUDE_DIR}
+  ${OPENSSL_INCLUDE_DIR})
+
+# The bundled Windows headers must not be on the include path elsewhere: they
+# shadow the system OpenSSL and MySQL headers that ${OPENSSL_INCLUDE_DIR} and
+# ${MYSQL_INCLUDE_DIR} already point at.
+if(WIN32)
+  target_include_directories(playerbot_event_store_database_tests PRIVATE
+    "${TW_CORE_ROOT}/dep/include-windows"
+    "${TW_CORE_ROOT}/dep/windows/include")
+endif()
+
+target_link_libraries(playerbot_event_store_database_tests PRIVATE
+  shared
+  framework
+  ${ACE_LIBRARIES})
+
+if(WIN32)
+  # Separate debug/release import libraries are a Windows arrangement.
+  # Elsewhere MYSQL_DEBUG_LIBRARY and OPENSSL_DEBUG_LIBRARIES are empty, and a
+  # `debug` keyword followed by nothing is a hard CMake error:
+  #   The "debug" argument must be followed by a library.
+  target_link_libraries(playerbot_event_store_database_tests PRIVATE
+    optimized ${MYSQL_LIBRARY}
+    optimized ${OPENSSL_LIBRARIES}
+    debug ${MYSQL_DEBUG_LIBRARY}
+    debug ${OPENSSL_DEBUG_LIBRARIES}
+    ws2_32)
+else()
+  # libcrypto by name, for the same reason the two suites above need it:
+  # `shared` calls into it, and with --as-needed a static library contributes
+  # nothing the final link has not already asked for.
+  target_link_libraries(playerbot_event_store_database_tests PRIVATE
+    ${MYSQL_LIBRARY}
+    ${OPENSSL_LIBRARIES}
+    ${TW_OPENSSL_CRYPTO_LIBRARY})
+endif()
+
+set_target_properties(playerbot_event_store_database_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/adapter-bin")
 
 endif()
