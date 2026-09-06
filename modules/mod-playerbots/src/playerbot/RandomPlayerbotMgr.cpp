@@ -3778,29 +3778,106 @@ std::string RandomPlayerbotMgr::GetEventData(uint32 bot, std::string event)
     return data;
 }
 
+// One event write is one statement inside one transaction, serialized against
+// every other write to the same (owner, bot, event).
+//
+// The DELETE-then-INSERT pair this replaced was neither atomic nor ordered.
+// Two worker threads writing the same key could interleave as DELETE(A),
+// DELETE(B), INSERT(B), INSERT(A) and leave the older value winning; a crash
+// between the two statements dropped the row entirely; and two INSERTs that
+// both landed after both DELETEs left two rows for one key that nothing ever
+// cleaned up.
+//
+// Two separate mechanisms are at work here and they cover different ground.
+// EventWriteSerialId hashes (owner, bot, event) into a serialization slot, so
+// concurrent writes to one bot's one event are ordered while writes to other
+// bots or other events still run in parallel. That is a per-key lock inside
+// this process only: it says nothing about a second mangosd, a migration, or
+// somebody at a mysql prompt. The UNIQUE KEY uq_owner_bot_event added by
+// sql/database_updates/character/20260906120000_ai_playerbot_random_bots_unique_event_key.sql
+// is what makes a duplicate row impossible against any writer at all, and it
+// is what turns EventUpsertSql's ON DUPLICATE KEY UPDATE into an upsert rather
+// than a plain append. Neither mechanism substitutes for the other.
 uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string event, uint32 value, uint32 validIn, std::string data)
 {
-    CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
-            "DELETE FROM ", " WHERE owner = 0 AND bot = '%u' AND event = '%s'").c_str(),
+    if (event.empty())
+    {
+        sLog.outError("[PlayerBotEventStore] Refusing to write an empty event key for bot %u.", bot);
+        return 0;
+    }
+
+    bool const ownsTransaction = !CharacterDatabase.InTransaction();
+    if (ownsTransaction && !CharacterDatabase.BeginTransaction(
+        PlayerbotDatabaseContract::EventWriteSerialId(0, bot, event)))
+    {
+        sLog.outError("[PlayerBotEventStore] Failed to open the serialized write for bot %u event %s.",
             bot, event.c_str());
+        return 0;
+    }
+
+    // The statement ids are deliberately local rather than function-static.
+    // Database::CreateStatement only consults the format string while the id is
+    // uninitialized, so a static id would bind permanently to whichever table
+    // name AiPlayerbot.EventStoreTable held on the very first write. Every other
+    // event-store query in this file rebuilds its SQL from the config on each
+    // call, and a .reload config that repointed the table would otherwise leave
+    // this one write path still writing to the old table. A fresh id costs one
+    // registry lookup and keeps the config-driven table name honest.
+    bool queued = false;
     if (value)
     {
-        if (data != "")
+        uint32 const changedAt = (uint32)time(0);
+        if (data.empty())
         {
-            CharacterDatabase.PExecute(
-                PlayerbotDatabaseContract::EventStoreSql(
-                    "INSERT INTO ", " (owner, bot, `time`, validIn, event, `value`, `data`) VALUES ('%u', '%u', '%u', '%u', '%s', '%u', '%s')").c_str(),
-                0, bot, (uint32)time(0), validIn, event.c_str(), value, data.c_str());
+            SqlStatementID upsertWithoutData;
+            SqlStatement statement = CharacterDatabase.CreateStatement(
+                upsertWithoutData, PlayerbotDatabaseContract::EventUpsertSql(false).c_str());
+            queued = statement.PExecute(bot, changedAt, validIn, event.c_str(), value);
         }
         else
         {
-            CharacterDatabase.PExecute(
-                PlayerbotDatabaseContract::EventStoreSql(
-                    "INSERT INTO ", " (owner, bot, `time`, validIn, event, `value`) VALUES ('%u', '%u', '%u', '%u', '%s', '%u')").c_str(),
-                0, bot, (uint32)time(0), validIn, event.c_str(), value);
+            SqlStatementID upsertWithData;
+            SqlStatement statement = CharacterDatabase.CreateStatement(
+                upsertWithData, PlayerbotDatabaseContract::EventUpsertSql(true).c_str());
+            queued = statement.PExecute(bot, changedAt, validIn, event.c_str(), value, data.c_str());
+        }
+    }
+    else
+    {
+        SqlStatementID deleteEvent;
+        SqlStatement statement = CharacterDatabase.CreateStatement(
+            deleteEvent, PlayerbotDatabaseContract::EventDeleteSql().c_str());
+        queued = statement.PExecute(uint32(0), bot, event.c_str());
+    }
+
+    if (!queued)
+    {
+        if (ownsTransaction)
+            CharacterDatabase.RollbackTransaction();
+        sLog.outError("[PlayerBotEventStore] Failed to queue the write for bot %u event %s.",
+            bot, event.c_str());
+        return 0;
+    }
+
+    if (ownsTransaction)
+    {
+        std::function<void(bool)> completion = [bot, event](bool success)
+        {
+            if (!success)
+                sLog.outError("[PlayerBotEventStore] Database write failed for bot %u event %s.",
+                    bot, event.c_str());
+        };
+        if (!CharacterDatabase.CommitTransaction(&completion))
+        {
+            CharacterDatabase.RollbackTransaction();
+            sLog.outError("[PlayerBotEventStore] Failed to commit the serialized write for bot %u event %s.",
+                bot, event.c_str());
+            return 0;
         }
     }
 
+    // Only reached once the write is on its way, so a rejected write leaves the
+    // cache agreeing with the table rather than inventing a value nothing stored.
     CachedEvent e(value, (uint32)time(0), validIn, data);
     eventCache[bot][event] = e;
     return value;
