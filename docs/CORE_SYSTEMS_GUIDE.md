@@ -131,6 +131,10 @@ Knowing that a service touches `SPELL_EFFECT_LEARN_SPELL` is only the start. The
   avoids a destructive graph/account reset when derived costs are stale. A*
   retains one native graph and applies a stable, bounded per-party preference
   to comparable edges so large populations do not all select one corridor.
+  Destination/point ordering is also seeded by party, purpose and coarse
+  position rather than wall-clock timing. Short water crossings retain native
+  swim timing; sustained swims receive a bounded safety cost so roads, taxis
+  and transports win when available without making a required swim impossible.
   `TravelRoutePolicyTest` covers time units, determinism and the preference
   bound; live validation still requires observing route distribution, taxi
   completion and ordinary player travel at the configured population.

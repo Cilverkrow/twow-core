@@ -15,8 +15,14 @@ int main()
     CHECK(std::fabs(corrected / 0.594183f - 112.5f) < 0.1f);
     CHECK(ai::GetTaxiTravelTime(0.0f) == 0.0f);
 
-    CHECK(std::fabs(ai::GetWalkTravelTime(800.0f, 400.0f, 8.0f, 4.0f) - 200.0f) < 0.01f);
+    CHECK(std::fabs(ai::GetWalkTravelTime(800.0f, 80.0f, 8.0f, 4.0f) - 120.0f) < 0.01f);
+    CHECK(std::fabs(ai::GetWalkTravelTime(800.0f, 400.0f, 8.0f, 4.0f) - 410.0f) < 0.01f);
     CHECK(ai::GetWalkTravelTime(0.0f, 0.0f, 0.0f, 0.0f) == 0.0f);
+
+    std::uint32_t const selection = ai::GetStableTravelSelectionSeed(100, 4, 0, -715.146f, -512.134f);
+    CHECK(selection == ai::GetStableTravelSelectionSeed(100, 4, 0, -715.146f, -512.134f));
+    CHECK(selection != ai::GetStableTravelSelectionSeed(101, 4, 0, -715.146f, -512.134f));
+    CHECK(selection != ai::GetStableTravelSelectionSeed(100, 8, 0, -715.146f, -512.134f));
 
     float const first = ai::GetStableRouteCostMultiplier(100, 0, -715.146f, -512.134f,
         0, 282.096f, -2001.28f);

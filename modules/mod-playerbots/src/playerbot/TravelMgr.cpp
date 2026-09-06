@@ -6,6 +6,7 @@
 #include "playerbot/strategy/values/TravelValues.h"
 #include "Maps/PathFinder.h"
 #include "TravelNode.h"
+#include "TravelRoutePolicy.h"
 #include "PlayerbotAI.h"
 #include "BotTests.h"
 #include "ObjectAccessor.h"
@@ -25,6 +26,9 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player)
 
     team = player->GetTeam();
     level = player->GetLevel();
+    identitySeed = player->GetGUIDLow();
+    if (Group* group = player->GetGroup())
+        identitySeed = group->GetLeaderGuid().GetCounter();
     currentSkill[SKILL_MINING] = player->GetSkillValue(SKILL_MINING);
     currentSkill[SKILL_HERBALISM] = player->GetSkillValue(SKILL_HERBALISM);
     currentSkill[SKILL_FISHING] = player->GetSkillValue(SKILL_FISHING);
@@ -2747,7 +2751,8 @@ PartitionedTravelList TravelMgr::GetPartitions(const WorldPosition& center, cons
 
 
 
-    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+    unsigned seed = GetStableTravelSelectionSeed(info.GetIdentitySeed(), purposeFlag,
+        center.getMapId(), center.getX(), center.getY());
     std::shuffle(destinations.begin(), destinations.end(), std::default_random_engine(seed));
 
     // TEMPORARY counters. Quest takers are offered to a bot and nothing comes
@@ -2772,7 +2777,9 @@ PartitionedTravelList TravelMgr::GetPartitions(const WorldPosition& center, cons
 
         MANGOS_ASSERT(pointRange.second.size());
         std::vector<WorldPosition*> points = pointRange.second;
-        std::shuffle(points.begin(), points.end(), std::default_random_engine(seed));
+        unsigned const pointSeed = MixTravelRouteSeed(seed ^
+            static_cast<uint32>(dest->GetEntry()));
+        std::shuffle(points.begin(), points.end(), std::default_random_engine(pointSeed));
 
         for (auto& position : points)
         {
