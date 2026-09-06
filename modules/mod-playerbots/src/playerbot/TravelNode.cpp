@@ -6,6 +6,7 @@
 #include "TravelRoutePolicy.h"
 #include "playerbot/TravelMgr.h"
 
+#include <cmath>
 #include <iomanip>
 #include <regex>
 
@@ -91,7 +92,8 @@ void TravelNodePath::calculateCost(bool distanceOnly)
 
             if (lastPoint && point.getMapId() == lastPoint.getMapId())
             {
-                if (!distanceOnly && (point.isVmapLoaded() && point.isInWater()) || (lastPoint.isVmapLoaded() && lastPoint.isInWater()))
+                if (!distanceOnly && ((point.isVmapLoaded() && point.isInWater()) ||
+                    (lastPoint.isVmapLoaded() && lastPoint.isInWater())))
                     swimDistance += point.distance(lastPoint);
 
                 distance += point.distance(lastPoint);
@@ -106,6 +108,46 @@ void TravelNodePath::calculateCost(bool distanceOnly)
     catch (...)
     {
     }
+}
+
+// Refresh only the geometric fields that are derived from persisted path
+// points. The hostile-creature annotations remain intact. Reading terrain
+// directly avoids loading every MMAP tile as a side effect of this startup
+// normalization.
+bool TravelNodePath::recalculateGeometry()
+{
+    float refreshedDistance = 0.1f;
+    float refreshedSwimDistance = 0.0f;
+    WorldPosition lastPoint;
+
+    for (WorldPosition const& point : path)
+    {
+        if (lastPoint && point.getMapId() == lastPoint.getMapId())
+        {
+            float const segmentDistance = point.distance(lastPoint);
+            if (std::isfinite(segmentDistance) && segmentDistance >= 0.0f)
+            {
+                TerrainInfo const* terrain = sTerrainMgr.LoadTerrain(point.getMapId());
+                bool const pointInWater = terrain &&
+                    terrain->IsInWater(point.getX(), point.getY(), point.getZ());
+                bool const lastPointInWater = terrain &&
+                    terrain->IsInWater(lastPoint.getX(), lastPoint.getY(), lastPoint.getZ());
+
+                refreshedDistance += segmentDistance;
+                if (pointInWater || lastPointInWater)
+                    refreshedSwimDistance += segmentDistance;
+            }
+        }
+
+        lastPoint = point;
+    }
+
+    refreshedSwimDistance = std::min(refreshedSwimDistance, refreshedDistance);
+    bool const changed = std::fabs(distance - refreshedDistance) > 0.1f ||
+        std::fabs(swimDistance - refreshedSwimDistance) > 0.1f;
+    distance = refreshedDistance;
+    swimDistance = refreshedSwimDistance;
+    return changed;
 }
 
 //The cost to travel this path. 
@@ -219,7 +261,7 @@ float TravelNodePath::getCost(Unit* unit, uint32 cGold)
     if (getPathType() != TravelNodePathType::walk)
         timeCost = extraCost * modifier;
     else
-        timeCost = (runDistance / speed + swimDistance / swimSpeed) * modifier;
+        timeCost = GetWalkTravelTime(runDistance, swimDistance, speed, swimSpeed) * modifier;
 
     return timeCost;
 }
@@ -3598,6 +3640,27 @@ void TravelNodeMap::loadNodeStore()
                 path.setPath(newPath);
             }
         }
+
+        // Persisted walk geometry can outlive route/pathfinder corrections.
+        // Rebuild distance and water exposure from the actual stored points so
+        // A* does not keep selecting stale shortcuts through water.
+        uint32 normalizedWalkPaths = 0;
+        uint32 walkPathsWithSwimming = 0;
+        for (auto& node : getNodes())
+        {
+            for (auto& [endNode, path] : *node->getPaths())
+            {
+                if (path.getPathType() != TravelNodePathType::walk || path.getPath().size() < 2)
+                    continue;
+
+                if (path.recalculateGeometry())
+                    ++normalizedWalkPaths;
+                if (path.getSwimDistance() > 0.1f)
+                    ++walkPathsWithSwimming;
+            }
+        }
+        sLog.outString(">> Normalized %u playerbot walk-path geometries; %u paths include swimming.",
+            normalizedWalkPaths, walkPathsWithSwimming);
 
         // Older graph dumps generated taxi time with a 3600 yd/s divisor,
         // underpricing every flight by exactly 112.5x. Rebuild from the stored

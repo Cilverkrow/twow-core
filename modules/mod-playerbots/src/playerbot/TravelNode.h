@@ -102,6 +102,7 @@ namespace ai
         void setPathObject(uint64 pathObject1) { pathObject = pathObject1; }
 
         void calculateCost(bool distanceOnly = false);
+        bool recalculateGeometry();
 
         float getCost(Unit* unit = nullptr, uint32 cGold = 0);
         uint32 getPrice();

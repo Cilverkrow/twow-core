@@ -15,6 +15,16 @@ namespace ai
         return pathDistance > 0.0f ? pathDistance / PLAYERBOT_TAXI_SPEED : 0.0f;
     }
 
+    inline float GetWalkTravelTime(float runDistance, float swimDistance,
+        float runSpeed, float swimSpeed)
+    {
+        float const runTime = runDistance > 0.0f && runSpeed > 0.0f
+            ? runDistance / runSpeed : 0.0f;
+        float const swimTime = swimDistance > 0.0f && swimSpeed > 0.0f
+            ? swimDistance / swimSpeed : 0.0f;
+        return runTime + swimTime;
+    }
+
     inline std::uint32_t MixTravelRouteSeed(std::uint32_t value)
     {
         value ^= value >> 16;
@@ -25,9 +35,10 @@ namespace ai
         return value;
     }
 
-    // Give independent parties slightly different preferences between
-    // otherwise comparable graph edges. The small bound preserves sensible
-    // routes, while avoiding a single deterministic corridor for every bot.
+    // Give independent parties different preferences between otherwise
+    // comparable graph edges. A 25% ceiling keeps clearly inferior routes out
+    // while allowing alternate roads and hubs to win for some parties instead
+    // of converging the entire random-bot population on one corridor.
     inline float GetStableRouteCostMultiplier(std::uint32_t partySeed,
         std::uint32_t fromMap, float fromX, float fromY,
         std::uint32_t toMap, float toX, float toY)
@@ -46,6 +57,6 @@ namespace ai
         seed ^= MixTravelRouteSeed(quantize(toX) + 0x165667b1u);
         seed ^= MixTravelRouteSeed(quantize(toY) + 0xd3a2646cu);
 
-        return 1.0f + 0.08f * static_cast<float>(seed % 1024u) / 1023.0f;
+        return 1.0f + 0.25f * static_cast<float>(seed % 1024u) / 1023.0f;
     }
 }
