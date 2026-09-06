@@ -9,6 +9,7 @@
 #include "playerbot/strategy/values/PossibleRpgTargetsValue.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/TravelMgr.h"
+#include "StableTargetPosition.h"
 
 using namespace ai;
 
@@ -144,22 +145,29 @@ bool MoveToRpgTargetAction::Execute(Event& event)
 
     float angle;
     float distance = 1.0f;
-    
-    if (bot->IsWithinLOS(x, y, z, true))
+
+    // Static service NPCs and game objects need one stable approach point per
+    // bot. Re-rolling the angle whenever movement stopped caused the visible
+    // queue-shaped oscillation at flight masters and other town services.
+    bool const movingUnit = unit && unit->IsMoving();
+    if (!movingUnit)
     {
-        if (!unit || !unit->IsMoving())
-            angle = wo->GetAngle(bot) + (M_PI * irand(-25, 25) / 100.0); //Closest 45 degrees towards the target
-        else if (!unit->HasInArc(bot))
+        StableTargetOffset const offset = GetStableTargetOffset(
+            bot->GetGUIDLow(), guidP.GetCounter(), x, y);
+        angle = offset.angle;
+        distance = offset.scale;
+    }
+    else if (bot->IsWithinLOS(x, y, z, true))
+    {
+        if (!unit->HasInArc(bot))
             angle = wo->GetOrientation() + (M_PI * irand(-10, 10) / 100.0); //20 degrees infront of target (leading it's movement)
         else
             angle = wo->GetAngle(bot); //Current approuch angle.
 
         if (guidP.sqDistance2d(bot) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
             distance = sqrt(guidP.sqDistance2d(bot)); //Stay at this distance.
-        else if(unit || !urand(0, 5)) //Stay futher away from npc's and sometimes gameobjects (for large hitbox objects).
-            distance = frand(0.5, 1);
         else
-            distance = frand(0, 0.5);
+            distance = frand(0.5, 1);
     }
     else
         angle = 2 * M_PI * urand(0, 100) / 100.0; //A circle around the target.

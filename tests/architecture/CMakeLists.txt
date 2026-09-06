@@ -43,6 +43,13 @@ if(MSVC)
 endif()
 add_test(NAME BotRpgMovementTest COMMAND BotRpgMovementTest)
 set_tests_properties(BotRpgMovementTest PROPERTIES TIMEOUT 20)
+add_executable(StableTargetPositionTest StableTargetPositionTest.cpp)
+target_compile_features(StableTargetPositionTest PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(StableTargetPositionTest PRIVATE /EHsc)
+endif()
+add_test(NAME StableTargetPositionTest COMMAND StableTargetPositionTest)
+set_tests_properties(StableTargetPositionTest PROPERTIES TIMEOUT 20)
 extract_native_fragment("${TRAVEL_ROOT}/strategy/Engine.cpp"
     "void Engine::UpdateActionFailureCachePeak(" "std::string Engine::GetFailureKey(" BotRetryPeak.inc)
 extract_native_fragment("${TRAVEL_ROOT}/strategy/Engine.cpp"
