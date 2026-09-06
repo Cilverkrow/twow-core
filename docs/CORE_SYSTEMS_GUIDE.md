@@ -19,6 +19,15 @@ Useful searches: `rg -n 'SymbolName' src modules tests`, literal `script_name` i
 
 ## Execution and ownership map
 
+Bot startup provisioning (`RandomPlayerbotFactory::CreateRandomBots`) must keep
+account-creation futures separate from character-save futures. `get()` consumes
+a future; waiting on it again throws `std::future_error`. Drain and clear both
+bounded eight-task windows before advancing phases. Keep native `SaveToDB`,
+cache registration with the session attached, and subsequent player/session
+cleanup in that order. `BotCreationLifecycleTest` executes the production loops
+with real futures and mock account/player services; it is not a realm startup
+or database-persistence test.
+
 | Boundary | Current source entry points | Contract to preserve |
 | --- | --- | --- |
 | World lifecycle | [World.cpp](../src/game/World.cpp), `World::Update` at 2731 | Global services, transports, session/result processing and map orchestration are separate phases. World-thread maintenance must not mutate a map concurrently with its owner. |
@@ -87,6 +96,17 @@ Knowing that a service touches `SPELL_EFFECT_LEARN_SPELL` is only the start. The
 
 ## Evidence maintenance
 
+- September 6 bot dispatch: `MovementAction::DispatchMovement` must choose one
+  native movement path. Direct/free-flying/single-point requests use MovePoint;
+  generated multi-point requests use MovePath after hazard avoidance, with no
+  stale point generator underneath. Preserve the first route vertex when
+  MoveSplineInit replaces vertex zero with the live position, and pass walking
+  mode through Turtle's explicit walk argument. Empty requests do not interrupt
+  existing motion. BotMovementDispatchTest executes the real dispatcher,
+  MovePath and point initialize/update bodies with deterministic unit/spline
+  services. It covers double launches, options, walking, short/empty paths,
+  hazard-point retention and point speed reinitialization, not full live trips.
+
 - [Bot technology integration](BOT_TECH_INTEGRATION_2026-09-05.md) adapts the
   CMaNGOS bounded retry engine after native eligibility, excluding combat and
   human-directed activity. Do not move retry admission ahead of prerequisites.
@@ -105,6 +125,20 @@ Knowing that a service touches `SPELL_EFFECT_LEARN_SPELL` is only the start. The
   core performance log with bounded, rotating GUID samples. It must never run
   target-selection triggers, change masters or enable global verbose logging.
   Controls, limits and removal sites are in TURTLE_DIAGNOSTICS.md.
+  A Unit owns a MoveSpline before its first path is initialized: check native
+  `Initialized()` before reading Duration()/length-dependent data. Trace callers
+  must handle absent/fresh/cleared paths without changing the movement API's
+  contract. BotTraceSnapshotTest covers the full enabled snapshot body with
+  checked spline storage; limiter-only tests cannot establish snapshot safety.
+  The September 6 taxi-specific extension reports requested path/from/to and
+  probes the nearest flagged flight master within 20 yards only after trace
+  admission. It visits both native object containers, including unavailable
+  NPCs, without loading grids, and asks CanInteractWithNPC for its optional
+  rejection explanation. The predicate's original checks, order and bool
+  result remain unchanged; the probe never supplies a new NPC or changes
+  eligibility for gameplay. An activation logs route IDs without probing its
+  post-taxi state. NpcInteractionTraceTest exercises the native predicate and
+  formatter with deterministic map/DBC/reputation services, not a live flight.
 
 - Selected fork adaptations are recorded in
   [SELECTED_FORK_INTEGRATION_2026-09-05.md](SELECTED_FORK_INTEGRATION_2026-09-05.md).
@@ -138,6 +172,21 @@ Knowing that a service touches `SPELL_EFFECT_LEARN_SPELL` is only the start. The
   `TravelRoutePolicyTest` covers time units, determinism and the preference
   bound; live validation still requires observing route distribution, taxi
   completion and ordinary player travel at the configured population.
+
+- September 6 flight-ID contract: persisted `flightPath` objects are identifiers
+  in the currently loaded native TaxiPath DBC, not stable across client/data
+  layouts. The compat `sTaxiNodesStore` reads ObjectMgr's DB-backed taxi nodes;
+  `sTaxiPathStore` and path geometry come from `DataDir/dbc`. The SQL `taxipath`
+  mirror can be empty and is not the runtime authority. On a complete cached
+  graph, `generateAll()` now calls the existing `generateTaxiPaths()` before
+  coverage warming. Partial/full generation already calls it and must not call
+  it twice. Refresh both IDs and geometry through `setPathTo`, retaining native
+  cost/eligibility rules. Do not dirty `hasToSave` solely for this startup pass,
+  rewrite all cached geometry in SQL, reset bots, or bypass NPC source checks.
+  Native point arrays can contain null holes: generation skips incomplete data
+  with a startup count. It does not remove arbitrary cached/custom links when
+  native data is missing. `BotTaxiCacheRefreshTest` executes these production
+  boundaries; see the bot integration ledger for the all-270 live-data audit.
 
 - Custom aura types 227–230 are native non-immediate modifiers. Registration
   must cover both `AuraHandler` and `AuraProcHandler` and the `TOTAL_AURAS`

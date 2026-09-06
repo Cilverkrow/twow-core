@@ -27,6 +27,78 @@ function(extract_native_fragment source start end output)
 endfunction()
 set(CORE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 set(TRAVEL_ROOT "${CORE_ROOT}/modules/mod-playerbots/src/playerbot")
+extract_native_fragment("${TRAVEL_ROOT}/TravelNode.cpp"
+    "void TravelNodeMap::generateTaxiPaths()" "void TravelNodeMap::removeLowNodes()" NativeTaxiGeneration.inc)
+extract_native_fragment("${TRAVEL_ROOT}/TravelNode.cpp"
+    "void TravelNodeMap::generateAll()" "void TravelNodeMap::printMap()" NativeTravelGeneration.inc)
+extract_native_fragment("${TRAVEL_ROOT}/TravelNode.h"
+    "        TravelNodePath* setPathTo(" "        bool hasCompletePathTo(" NativeTravelSetPath.inc)
+extract_native_fragment("${TRAVEL_ROOT}/TravelNode.h"
+    "        void setPathAndCost(" "        //void setPortal(" NativeTravelSetCost.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/Database/DBCStructure.h"
+    "struct TaxiPathNodePtr" "typedef Path<TaxiPathNodePtr" NativeTaxiNodePtr.inc)
+add_executable(BotTaxiCacheRefreshTest BotTaxiCacheRefreshTest.cpp)
+target_compile_features(BotTaxiCacheRefreshTest PRIVATE cxx_std_17)
+target_include_directories(BotTaxiCacheRefreshTest PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+if(MSVC)
+    target_compile_options(BotTaxiCacheRefreshTest PRIVATE /EHsc)
+endif()
+add_test(NAME BotTaxiCacheRefreshTest COMMAND BotTaxiCacheRefreshTest)
+set_tests_properties(BotTaxiCacheRefreshTest PROPERTIES TIMEOUT 20)
+extract_native_fragment("${TRAVEL_ROOT}/BotDiagnostics.cpp"
+    "    void TraceBehavior(" "\n}}" BotTraceBody.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/Movement/spline/MoveSpline.h"
+    "int32 Duration() const" "int32 Duration(int first" BotNativeSplineDuration.inc)
+add_executable(BotTraceSnapshotTest BotTraceSnapshotTest.cpp)
+target_compile_features(BotTraceSnapshotTest PRIVATE cxx_std_17)
+target_include_directories(BotTraceSnapshotTest PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${CORE_ROOT}/src/shared")
+if(MSVC)
+    target_compile_options(BotTraceSnapshotTest PRIVATE /EHsc)
+endif()
+add_test(NAME BotTraceSnapshotTest COMMAND BotTraceSnapshotTest)
+set_tests_properties(BotTraceSnapshotTest PROPERTIES TIMEOUT 20)
+extract_native_fragment("${CORE_ROOT}/src/game/Objects/Player.cpp"
+    "bool Player::CanInteractWithNPC(" "GameObject* Player::GetGameObjectIfCanInteractWith(" NativeNpcInteraction.inc)
+extract_native_fragment("${TRAVEL_ROOT}/BotDiagnostics.cpp"
+    "    class DiagnosticFlightMasterCheck" "    void TraceBehavior(" TaxiInteractionTrace.inc)
+add_executable(NpcInteractionTraceTest NpcInteractionTraceTest.cpp)
+target_compile_features(NpcInteractionTraceTest PRIVATE cxx_std_17)
+target_include_directories(NpcInteractionTraceTest PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+if(MSVC)
+    target_compile_options(NpcInteractionTraceTest PRIVATE /EHsc)
+endif()
+add_test(NAME NpcInteractionTraceTest COMMAND NpcInteractionTraceTest)
+set_tests_properties(NpcInteractionTraceTest PROPERTIES TIMEOUT 20)
+extract_native_fragment("${TRAVEL_ROOT}/strategy/actions/MovementActions.cpp"
+    "void MovementAction::DispatchMovement(" "Unit* MovementAction::GetMover(" BotMoveDispatch.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/Movement/MotionMaster.cpp"
+    "void MotionMaster::MovePath(" "void MotionMaster::MoveWaypointAsDefault(" BotNativeMovePath.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/Movement/PointMovementGenerator.cpp"
+    "template<class T>\nvoid PointMovementGenerator<T>::Initialize(" "template<class T>\nvoid PointMovementGenerator<T>::Finalize(" BotNativePointInit.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/Movement/PointMovementGenerator.cpp"
+    "template<class T>\nbool PointMovementGenerator<T>::Update(" "template<>\nvoid PointMovementGenerator<Player>::MovementInform(" BotNativePointUpdate.inc)
+add_executable(BotMovementDispatchTest BotMovementDispatchTest.cpp)
+target_compile_features(BotMovementDispatchTest PRIVATE cxx_std_17)
+target_compile_definitions(BotMovementDispatchTest PRIVATE MANGOSBOT_ZERO)
+target_include_directories(BotMovementDispatchTest PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+if(MSVC)
+    target_compile_options(BotMovementDispatchTest PRIVATE /EHsc)
+endif()
+add_test(NAME BotMovementDispatchTest COMMAND BotMovementDispatchTest)
+set_tests_properties(BotMovementDispatchTest PROPERTIES TIMEOUT 20)
+extract_native_fragment("${TRAVEL_ROOT}/RandomPlayerbotFactory.cpp"
+    "    std::vector<std::future<void>> account_creations;" "    //LoginDatabase.PExecute" BotAccountCreation.inc)
+extract_native_fragment("${TRAVEL_ROOT}/RandomPlayerbotFactory.cpp"
+    "    std::vector<std::future<void>> bot_creations;" "    std::vector<Player*> players;" BotCreationSaves.inc)
+add_executable(BotCreationLifecycleTest BotCreationLifecycleTest.cpp)
+target_compile_features(BotCreationLifecycleTest PRIVATE cxx_std_17)
+target_compile_definitions(BotCreationLifecycleTest PRIVATE MANGOSBOT_ZERO)
+target_include_directories(BotCreationLifecycleTest PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+if(MSVC)
+    target_compile_options(BotCreationLifecycleTest PRIVATE /EHsc)
+endif()
+add_test(NAME BotCreationLifecycleTest COMMAND BotCreationLifecycleTest)
+set_tests_properties(BotCreationLifecycleTest PROPERTIES TIMEOUT 60)
 extract_native_fragment("${TRAVEL_ROOT}/WorldPosition.cpp"
     "bool WorldPosition::ClosestCorrectPoint(" "bool WorldPosition::GetReachableRandomPointOnGround(" BotRpgPoint.inc)
 extract_native_fragment("${TRAVEL_ROOT}/strategy/actions/ChooseRpgTargetAction.cpp"

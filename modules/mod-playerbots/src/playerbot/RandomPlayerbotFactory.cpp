@@ -807,6 +807,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
         bar3.step();
         account_creations[i].get();
     }
+    account_creations.clear();
 
     //LoginDatabase.PExecute("UPDATE account SET expansion = '%u' where username like '%s%%'", 2, sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
 
@@ -1024,19 +1025,33 @@ void RandomPlayerbotFactory::CreateRandomBots()
     }
 
     std::vector<std::future<void>> bot_creations;
+    // Character saves have their own futures: account get() has already
+    // consumed those states. Bound startup saves just like account creation,
+    // and join each batch before any player/session can be destroyed below.
+    constexpr size_t maxConcurrentBotSaves = 8;
 
     BarGoLink bar2(sObjectAccessor.GetPlayers().size());
     for (auto pl : sObjectAccessor.GetPlayers())
     {
         Player* player = pl.second;
-        account_creations.push_back(std::async([player] {player->SaveToDB(); }));
+        bot_creations.push_back(std::async([player] {player->SaveToDB(); }));
+        if (bot_creations.size() >= maxConcurrentBotSaves)
+        {
+            for (auto& creation : bot_creations)
+            {
+                creation.get();
+                bar2.step();
+            }
+            bot_creations.clear();
+        }
     }
 
-    for (uint32 i = 0; i < account_creations.size(); i++)
+    for (auto& creation : bot_creations)
     {
+        creation.get();
         bar2.step();
-        account_creations[i].wait();
     }
+    bot_creations.clear();
 
     std::vector<Player*> players;
 

@@ -654,12 +654,18 @@ so the existing debug command cannot leave proximity checks overridden.
 
 `AiPlayerbot.BehaviorTrace=1` enables `TW_BOT_BEHAVIOR` in the existing core
 performance log. Map/X/Y/Radius select the area (default map 0, -800/-530,
-200 yards; instance 0 only). This is independent of EnableActionLog/BotLogFile.
+200 yards; instance 0 only for enrolling a new sample). Sampled GUIDs continue
+to be observed after leaving that area or changing maps/instances. This is
+independent of EnableActionLog/BotLogFile.
 It does not enable the old global per-bot action/aura files or console spam.
 
 Limits are fixed: 12 GUID-only slots, 8 accepted lines per bot per second,
 8,000 accepted lines per process and ten minutes from the first eligible event.
 Slots not seen for 30 seconds can be replaced; named bots need not be chased.
+One of the eight per-second slots is reserved for a periodic position/spline
+sample (at most one every five seconds). Generic engine-action text is also
+limited to one every five seconds per sampled bot. Other event records share
+the remaining seven slots; the 8,000-line/ten-minute caps still apply.
 An END marker records completion on the next eligible call. Each record has
 a sequence and cumulative suppression count: this is sampled evidence, not a
 complete event transcript. The limit is process-wide and starts over on restart.
@@ -669,15 +675,27 @@ RPG approach rejection/movement results, and shared taxi activation rejection.
 Snapshots include position, motion, combat/AFK/taxi flags, master GUID, RPG
 target GUID/entry/coordinates, next RPG action, travel state/entry, path size,
 next waypoint and final destination. No player account credentials are recorded.
+September 6 adds an AI-owner entry hook for periodic progress, including during
+taxi flight or action waits: monotonic tick, instance, enrollment-area flag,
+level, group leader, travel purpose/goal, next leg type/entry, spline ID,
+elapsed/duration/finalized state/endpoint, target lifetime and retry counts.
+Spline timing is read only when the native `MoveSpline::Initialized()` check
+passes. A freshly allocated or cleared spline is recorded with zero timing
+and `spline_initialized=0`, not treated as a completed valid trip. A non-null
+MoveSpline pointer alone does not satisfy Duration()'s storage precondition.
+GUID + ordered ticks + goal/purpose changes let the log reader reconstruct
+sampled journeys; gaps and the END marker must not be treated as arrivals.
 Manual AI values are read on their existing owner; no action/trigger is run by
 the trace and no entity pointer is stored across calls.
 
 Overhead: disabled is a boolean gate (Engine also gates before calling); enabled
-checks map/radius, then a small mutex-protected 12-slot limiter. Only admitted
+checks eligibility and a small mutex-protected 12-slot limiter. Retaining bots
+outside the area means enabled calls outside the area also check that limiter;
+unsampled remote bots cannot enroll. Only admitted
 records read manual state/format/write. After completion an atomic gate prevents
 further sampling work. Logging cost is not zero or yet benchmarked live.
 To disable, set BehaviorTrace=0 and restart; removal sites are BotDiagnostics.h/
-.cpp, Engine.cpp, ChooseRpgTargetAction.cpp, MoveToRpgTargetAction.cpp,
+.cpp, PlayerbotAI.cpp, Engine.cpp, ChooseRpgTargetAction.cpp, MoveToRpgTargetAction.cpp,
 RpgSubActions.cpp, MovementActions.cpp, PlayerbotAIConfig.h/.cpp and the template.
 BoundedBotTrace.h and BoundedBotTraceTest are diagnostics-only support.
 Do not remove the unrelated behavior fixes when retiring these hooks.
@@ -686,6 +704,24 @@ Do not remove the unrelated behavior fixes when retiring these hooks.
 rate limits, timeout and clock wrap. Native taxi/RPG fragment tests run with
 no-op diagnostic hooks; full compilation checks their production wiring.
 Live trace output and the underlying repeated-travel cause remain to validate.
+
+### September 6: enabled-snapshot startup crash
+
+The extended trace introduced an unchecked `MoveSpline::Duration()` read for
+newly loaded bots before their first movement. Dump `crash_20260906_024603.dmp`
+from executable SHA256 `02D7A8BA06B4657427B1AAD086880859E1C97C4673B5BEB3229AAB7A170EA8CD`
+faulted at RVA `0x5e4e91`, inside TraceBehavior. The fault instruction reads
+`[rax+rcx*4]` with both registers zero, matching the empty spline-length array
+indexed by the native Duration() method. This was introduced by diagnostics,
+not a user account-reset mistake or proof that the movement correction failed.
+
+The caller now guards native initialization before any spline snapshot reads;
+the shared movement API is unchanged. `BotTraceSnapshotTest` executes the
+complete enabled trace body and native Duration() accessor with checked
+stand-in storage. It failed before the guard, then passed for absent, fresh,
+active, completed, cleared, and transferred bot snapshots, plus disabled and
+ineligible admission. Earlier limiter/dispatch tests did not cover this enabled
+snapshot boundary. Full realm startup remains a separate user-run validation.
 
 ## 2026-09-05 Southshore trace result and retirement
 
@@ -716,3 +752,108 @@ Release and AddressSanitizer architecture suites pass 26/26, and the complete
 optimized Windows world server links successfully. Live 6,000-bot stability and
 Southshore route behavior still require production observation; no server was
 started by the build process.
+
+## September 6: exact NPC-interaction rejection trace
+
+The 02:56 startup's bounded sample ended at 03:08:17 with 2,768 records and
+983,078 suppressed attempts. Of these, 85 records report no matching flight
+master. The prior summary message alone cannot distinguish failed discovery,
+native interaction rejection or a mismatched requested source node.
+
+The next diagnostic build forwards the real UseTaxi path ID into TraceBehavior.
+Only an admitted taxi-rejection record runs an additional 20-yard raw
+flight-master search through Cell::VisitAllObjects (no grid loading). It reports
+taxi_path, taxi_from, taxi_to, taxi_probe, npc_guid, npc_entry, npc_node,
+npc_source_match, npc_distance, npc_alive, npc_combat, npc_flags,
+npc_interactable and npc_reject. The probe includes dead/unavailable flagged
+NPCs so rejection is observable. It uses the native CanInteractWithNPC predicate
+with an optional const-string reason output; no copied eligibility rules,
+mutation or NPC substitution occurs. Activation records retain path IDs but
+do not probe the post-activation NPC state. Probe observations describe the
+nearest flagged NPC at trace time, not the earlier cached candidate list.
+
+Interpretation: npc_reject identifies the first native failure. An interactable
+NPC with npc_source_match=0 indicates the nearby service is not the requested
+source. An interactable matching NPC after a failed gameplay lookup points to
+the discovery path. npc_missing means no flagged NPC was found within the probe
+radius, not proof that the creature has no database spawn.
+
+This retains BehaviorTrace's 12 slots, 8 records/bot/second, 8,000 records and
+10-minute process cap. Formatting/scanning occurs after admission, never when
+disabled or expired. Additional scan/format cost is bounded but unbenchmarked;
+the optional native reason argument also adds unmeasured small branch/call
+overhead for ordinary interaction checks. Disable with BehaviorTrace=0 at the
+next coordinated restart. Removal sites: the taxiPath argument/calls,
+DiagnosticFlightMasterCheck and DescribeTaxiInteraction in BotDiagnostics.cpp,
+and the optional reason output in Player.h/Player.cpp. The tests identify the
+added diagnostic contract; no functional flight or destination change is part
+of this update.
+
+Release architecture tests passed 32/32. NpcInteractionTraceTest covers every
+native predicate exit, default/no-reason equivalence, 4,096 combined failure
+states, unavailable/missing NPCs, source mismatch, both mock map containers,
+range and malformed-path snapshots. BotTraceSnapshotTest verifies fresh-spline
+safety and that disabled/expired/rate-rejected snapshots do not run the probe.
+These two tests and BotTaxiIntegrationTest also passed AddressSanitizer.
+The full optimized world executable and PDB linked successfully at local
+05:41 on September 6. The formatted snapshot also passed the AddressSanitizer
+recheck. No mangosd/realmd process was started. Deployment and the subsequent
+live rejection capture remain pending the user's shutdown confirmation;
+production files, configuration and database were not changed by this build.
+
+Deployment follow-up: after the user confirmed shutdown, exclusively opened
+and overwrote only the share's mangosd.exe/PDB and verified SHA-256 against the
+tested local artifacts. EXE: F5FFFF3C165F792DF4405E9ADF7DC94ED72C5A98E3487A8D1FB42EC670859EC7.
+PDB: CB7C167ABBED940506399F357102B9EC3C9FA6761D5143BC9F1CC389D968EE11.
+Both production configs were hash-verified unchanged; BehaviorTrace remains 1
+for the Southshore sample, bot count remains 6,000 and account deletion is off.
+No DB writes or server start were performed. Runtime rejection evidence from
+this new build is still pending the user's next startup.
+
+### Live result and flight-cache correction
+
+The 03:45:06 startup produced the needed evidence: interactable Darla at node
+14 while bots request path 272 (native source 71/destination 5). The full
+read-only audit found all 270 bundled flight edges using mismatched IDs; all
+have unique current replacements and complete native geometry. See
+BOT_TECH_INTEGRATION_2026-09-05.md for the source provenance and audit limits.
+
+The functional startup refresh adds one bounded summary in TravelNode.cpp:
+`Refreshed N bot taxi links from native data (C corrected cached IDs, I incomplete paths skipped)`.
+With the audited, unchanged production data, expect N=270, C=270, I=0 on the
+first and subsequent startups (SQL is intentionally not rewritten). This is
+one startup graph pass, not a per-tick scan; wall-clock cost is unmeasured until
+the next startup. The bounded BehaviorTrace remains unchanged for validation
+of the actual flight activations and progress, then should be disabled at a
+coordinated restart. Do not remove the functional startup refresh when removing
+temporary diagnostics.
+
+The new executable is SHA256
+`655B9E4BCBD0D77ACAB08A3732479F15AC9FB087D7412CC36EBDBB10D8BA61C8`;
+its matching PDB is
+`7700575960D7F081DF4F04BF0C6DA59DA1F4A113B1187C6FFD2D4A27DA9B58B2`.
+No mangosd/realmd process was started during building/tests. The user confirmed
+shutdown before replacement; deployment verification is pending below.
+
+Deployment completed after shutdown confirmation: replaced only mangosd.exe
+and its matching PDB on `\\10.0.0.109\turtle`, with exclusive destination
+handles and exact SHA-256 verification against the hashes above. The world
+port was not listening. Both production config hashes remained unchanged;
+no DB writes, bot resets, backups or server starts occurred. The final Release
+suite passed 33/33, including the captured source-mismatch adapter case; both
+taxi tests passed AddressSanitizer. Source indexes were regenerated without DB
+refresh. The user's next startup/flight observation remains the live acceptance
+step, not a completed gameplay validation.
+
+Live acceptance follow-up, session `server_2026-09-06_04-21-25.log`: at
+04:22:54 the native startup summary reports 270 refreshed links, 270 corrected
+cached IDs, zero incomplete paths skipped. The user observed bot departures
+from the Southshore flight master. The new-run bounded sample through 04:26:22
+contains 524 behavior records, six accepted taxi activations and zero taxi
+rejections. Paths 17 (14->6), 99 (14->7) and 101 (14->16) are represented.
+Silnorion subsequently has taxi=0, spline_done=1 and position near Refuge Pointe;
+Morence has taxi=0, spline_done=1 near Menethil. Melias shows advancing flight
+time/position toward Ironforge. This verifies actual departures, progress and
+two completed flight legs, not merely an activation return code. It does not
+certify every route, all bot destinations or full-population crowd distribution.
+Checks were read-only against production; the bounded trace remains unchanged.

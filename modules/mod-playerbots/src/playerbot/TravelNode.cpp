@@ -3031,6 +3031,9 @@ void TravelNodeMap::generateHelperNodes()
 
 void TravelNodeMap::generateTaxiPaths()
 {
+    uint32 generated = 0;
+    uint32 correctedIds = 0;
+    uint32 incomplete = 0;
     for (uint32 i = 0; i < sTaxiPathStore.GetNumRows(); ++i)
     {
         TaxiPathEntry const* taxiPath = sTaxiPathStore.LookupEntry(i);
@@ -3048,19 +3051,29 @@ void TravelNodeMap::generateTaxiPaths()
         if (!endTaxiNode)
             continue;
 
-        TaxiPathNodeList const& nodes = sTaxiPathNodesByPath[taxiPath->ID];
-
-        if (nodes.empty())
-            continue;
-
         WorldPosition startPos(startTaxiNode->map_id, startTaxiNode->x, startTaxiNode->y, startTaxiNode->z);
         WorldPosition endPos(endTaxiNode->map_id, endTaxiNode->x, endTaxiNode->y, endTaxiNode->z);
 
         TravelNode* startNode = sTravelNodeMap.getNode(startPos, nullptr, 15.0f);
         TravelNode* endNode = sTravelNodeMap.getNode(endPos, nullptr, 15.0f);
 
-        if (!startNode || !endNode)
+        if (!startNode || !endNode || startNode == endNode)
             continue;
+
+        // DBC path indexes can be sparse. Never dereference a missing point
+        // when refreshing a loaded graph (or generating one for the first time).
+        if (taxiPath->ID >= sTaxiPathNodesByPath.size())
+        {
+            ++incomplete;
+            continue;
+        }
+        TaxiPathNodeList const& nodes = sTaxiPathNodesByPath[taxiPath->ID];
+        if (nodes.empty() || std::any_of(nodes.begin(), nodes.end(),
+            [](TaxiPathNodePtr const& node) { return !node.i_ptr; }))
+        {
+            ++incomplete;
+            continue;
+        }
 
         std::vector<WorldPosition> ppath;
 
@@ -3073,11 +3086,22 @@ void TravelNodeMap::generateTaxiPaths()
         if (endNode->fDist(ppath.back()) > 0.1f)
             ppath.push_back(*endNode->getPosition());
 
-        TravelNodePath travelPath(0.1f, 0.0f, (uint8)TravelNodePathType::flightPath, i, true);
+        if (startNode->hasPathTo(endNode))
+        {
+            TravelNodePath* cached = startNode->getPathTo(endNode);
+            if (cached->getPathType() == TravelNodePathType::flightPath &&
+                cached->getPathObject() != taxiPath->ID)
+                ++correctedIds;
+        }
+
+        TravelNodePath travelPath(0.1f, 0.0f, (uint8)TravelNodePathType::flightPath, taxiPath->ID, true);
         travelPath.setPathAndCost(ppath, PLAYERBOT_TAXI_ROUTE_DIVISOR);
 
         startNode->setPathTo(endNode, travelPath);
+        ++generated;
     }
+    sLog.outString(">> Refreshed %u bot taxi links from native data (%u corrected cached IDs, %u incomplete paths skipped).",
+        generated, correctedIds, incomplete);
 }
 
 void TravelNodeMap::removeLowNodes()
@@ -3258,6 +3282,14 @@ void TravelNodeMap::generateAll()
         hasToGen = false;
         hasToFullGen = false;
         hasToSave = true;
+    }
+    else
+    {
+        // The bundled graph can use flight IDs from a different DBC layout.
+        // Refresh native IDs AND geometry before coverage/route queries, not
+        // only when generating walking paths. This does not dirty the SQL cache
+        // or reset bots; the small native flight pass runs once per startup.
+        generateTaxiPaths();
     }
 
     sLog.outString("-Calculating coverage"); //This prevents crashes when bots from multiple maps try to calculate this on the fly.

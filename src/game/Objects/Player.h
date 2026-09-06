@@ -2834,7 +2834,8 @@ class Player final: public Unit
         bool CanInteractWithQuestGiver(Object* questGiver) const;
         Creature* FindNearestInteractableNpcWithFlag(uint32 npcFlags) const;
         Creature* GetNPCIfCanInteractWith(ObjectGuid guid, uint32 npcflagmask) const;
-        bool CanInteractWithNPC(Creature const* pCreature, uint32 npcflagmask) const;
+        // Optional read-only explanation of the same native eligibility checks.
+        bool CanInteractWithNPC(Creature const* pCreature, uint32 npcflagmask, char const** failureReason = nullptr) const;
         GameObject* GetGameObjectIfCanInteractWith(ObjectGuid guid, uint32 gameobject_type = MAX_GAMEOBJECT_TYPE) const;
         bool CanInteractWithGameObject(GameObject const* pGo, uint32 gameobject_type = MAX_GAMEOBJECT_TYPE) const;
         bool CanSeeHealthOf(Unit const* pTarget) const;

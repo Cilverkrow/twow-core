@@ -9,7 +9,7 @@ int main()
     CHECK(!trace.Take(0,0));
     for(uint32_t i=1;i<=12;++i) CHECK(trace.Take(0,i));
     CHECK(!trace.Take(0,13));
-    for(int i=1;i<8;++i) CHECK(trace.Take(0,1));
+    for(int i=1;i<7;++i) CHECK(trace.Take(0,1));
     CHECK(!trace.Take(0,1));
     CHECK(trace.Take(1000,1));
     CHECK(!trace.Take(29999,13));
@@ -30,5 +30,20 @@ int main()
     uint32_t start=std::numeric_limits<uint32_t>::max()-50;
     CHECK(wrap.Take(start,1));CHECK(wrap.Take(start+1000,1));
     CHECK(!wrap.Take(start+600000,1)&&wrap.Finished());
+    BoundedBotTrace journey;
+    CHECK(!journey.Take(1,42,false,true)); // No sampling of unrelated remote bots.
+    CHECK(journey.Take(100,42,true,true));
+    CHECK(!journey.Take(101,42,false,true));
+    CHECK(journey.Take(5100,42,false,true)); // Follow the same bot outside the hub.
+    CHECK(journey.Take(5100,42,false,false,true));
+    CHECK(!journey.Take(5101,42,false,false,true)); // Generic action quota.
+    for(uint32_t t=10100;t<60100;t+=5000) CHECK(journey.Take(t,42,false,true));
+    CHECK(!journey.Take(60100,43,false,true));
+    BoundedBotTrace reserved;
+    for(int i=0;i<7;++i) CHECK(reserved.Take(0,1));
+    CHECK(!reserved.Take(0,1));
+    CHECK(reserved.Take(0,1,true,true)); // Events cannot starve the physical sample.
+    CHECK(!reserved.Take(1,1,true,true));
+    CHECK(!reserved.Take(1,1));
     std::cout<<"Bounded bot trace caps, turnover, rate limit, timeout and clock wrap passed\n";
 }

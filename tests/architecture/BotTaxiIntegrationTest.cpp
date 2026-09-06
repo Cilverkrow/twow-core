@@ -39,7 +39,7 @@ struct PlayerbotAI {
 std::list<ObjectGuid> taxiNpcs{1};
 #define AI_VALUE(type,name) ::taxiNpcs
 class MovementAction {public:static bool UseTaxi(PlayerbotAI*,uint32,bool,Creature* sourceNpc=nullptr);};
-namespace ai { namespace botdiag { void TraceBehavior(PlayerbotAI*, const char*, const char*) {} } }
+namespace ai { namespace botdiag { void TraceBehavior(PlayerbotAI*, const char*, const char*, uint32 = 0) {} } }
 #include "BotTaxiUse.inc"
 enum class PathNodeType {NODE_FLIGHTPATH,NODE_WALK};
 struct Step {PathNodeType type=PathNodeType::NODE_FLIGHTPATH;uint32 entry=1;Point point;};
@@ -85,5 +85,13 @@ int main(){
     ai.bot.cheat=true;ai.bot.m_taxi.known.clear();CHECK(MovementAction::UseTaxi(&ai,1,false));
     sTaxiNodesStore.rows.erase(2);CHECK(!MovementAction::UseTaxi(&ai,1,false));
     ai.click=true;CHECK(MovementAction::UseTaxi(&ai,999,false));
+    // Captured live mismatch: the old cached 272 is 71->5, not Southshore.
+    // Correcting the graph to native 99 (14->7) must satisfy the existing
+    // source/knowledge checks without weakening or bypassing the adapter.
+    PlayerbotAI shore; shore.bot.npc.node=14; shore.bot.m_taxi.known={14,7,71,5};
+    for (uint32 id : {14u,7u,71u,5u}) sTaxiNodesStore.rows[id]={};
+    sTaxiPathStore.rows[272]={71,5,10}; sTaxiPathStore.rows[99]={14,7,10};
+    CHECK(!MovementAction::UseTaxi(&shore,272,true)); CHECK(shore.bot.activates==0);
+    CHECK(MovementAction::UseTaxi(&shore,99,true)); CHECK(shore.bot.activates==1);
     std::cout<<"Native bot taxi adapter and failed-leg retention passed\n";
 }

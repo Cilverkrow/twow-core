@@ -281,12 +281,12 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc, Creatu
     if (!fromNode || !toNode || !fromNode->MountCreatureID[factionIndex] ||
         !toNode->MountCreatureID[factionIndex])
     {
-        ai::botdiag::TraceBehavior(ai, "taxi_reject", "endpoint or faction mount missing");
+        ai::botdiag::TraceBehavior(ai, "taxi_reject", "endpoint or faction mount missing", entry);
         return false;
     }
     if (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(tEntry->to))
     {
-        ai::botdiag::TraceBehavior(ai, "taxi_reject", "destination not learned");
+        ai::botdiag::TraceBehavior(ai, "taxi_reject", "destination not learned", entry);
         return false;
     }
 
@@ -336,7 +336,7 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc, Creatu
 
         if (!unit)
         {
-            ai::botdiag::TraceBehavior(ai, "taxi_reject", "no matching interactable flight master");
+            ai::botdiag::TraceBehavior(ai, "taxi_reject", "no matching interactable flight master", entry);
             return false;
         }
 
@@ -350,7 +350,7 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc, Creatu
 
     if (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(tEntry->from))
     {
-        ai::botdiag::TraceBehavior(ai, "taxi_reject", "source not learned after discovery");
+        ai::botdiag::TraceBehavior(ai, "taxi_reject", "source not learned after discovery", entry);
         return false;
     }
 
@@ -365,7 +365,7 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc, Creatu
     ai->Unmount();
 
     bool goTaxi = bot->ActivateTaxiPathTo({tEntry->from, tEntry->to}, unit, 1);
-    ai::botdiag::TraceBehavior(ai, "taxi_activate", goTaxi ? "accepted" : "native activation rejected");
+    ai::botdiag::TraceBehavior(ai, "taxi_activate", goTaxi ? "accepted" : "native activation rejected", entry);
 
     if (!goTaxi)
         bot->SetMoney(botMoney);
@@ -1027,6 +1027,10 @@ void MovementAction::UpdateFlyingState(
 
 void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bool masterWalking)
 {
+    std::vector<WorldPosition> path = movePath.getPointPath();
+    if (path.empty())
+        return;
+
     MotionMaster& mm = *bot->GetMotionMaster();
 
     mm.Clear();
@@ -1037,9 +1041,10 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
         moveMode = FORCED_MOVEMENT_FLIGHT;
 #endif
 
-    std::vector<WorldPosition> path = movePath.getPointPath();
-
-    if (!generatePath || !bot->IsFreeFlying())
+    // Direct movement and precomputed paths are alternatives. Launching a
+    // point generator and then replacing only its spline leaves that generator
+    // able to restart a different trajectory on a later speed change.
+    if (!generatePath || bot->IsFreeFlying() || path.size() < 2)
     {
         WorldPosition movePosition = path.back();
 
@@ -1067,16 +1072,14 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
 #endif
     }
 
-    GeneratePathAvoidingHazards(path);
-
-    std::vector<G3D::Vector3> pointPath = WorldPosition().toPointsArray(path);
-    float size = WorldPosition().getPathLength(path);
-
-    bool usePath = true;
-
-    if (usePath)
+    else
     {
-        bool normalizeZ = true;
+        // MoveSplineInit::Launch replaces vertex zero with the live position.
+        // Preserve the first route vertex when the clipped path starts ahead.
+        if (path.front().distance(bot) > 0.01f)
+            path.insert(path.begin(), WorldPosition(bot));
+        GeneratePathAvoidingHazards(path);
+        std::vector<G3D::Vector3> pointPath = WorldPosition().toPointsArray(path);
 
         for (auto& p : pointPath)
         {
@@ -1088,39 +1091,13 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
         }
 
 #ifndef MANGOSBOT_TWO
-        mm.MovePath(pointPath, moveMode, false, false);
+        // Turtle's compatibility MovePath reads its walk argument, not moveMode.
+        mm.MovePath(pointPath, moveMode, false, masterWalking);
 #else
         mm.MovePath(pointPath, moveMode, false);
 #endif
     }
-    else
-    {
-        WorldPosition movePosition = path.back();
-
-#ifdef MANGOSBOT_ZERO
-        // Tortoise's MovePoint signature is (id, x, y, z, options, speed, orientation),
-        // NOT cmangos's (id, x, y, z, ForcedMovement, bool generatePath). The ported call
-        // below used to pass `moveMode` into `options` and the `generatePath` bool into the
-        // `speed` float — so generatePath==true set the velocity to 1.0 yd/s, making bots
-        // crawl slower than walking. Translate the intent into proper MoveOptions instead and
-        // leave speed at its default so it is derived from the run/walk movement flags.
-        uint32 moveOptions = (moveMode == FORCED_MOVEMENT_WALK) ? MOVE_WALK_MODE : MOVE_RUN_MODE;
-        if (generatePath)
-            moveOptions |= MOVE_PATHFINDING;
-        mm.MovePoint(movePosition.getMapId(),
-            movePosition.getX(),
-            movePosition.getY(),
-            movePosition.getZ(),
-            moveOptions);
-#else
-        mm.MovePoint(movePosition.getMapId(),
-            Position(movePosition.getX(), movePosition.getY(), movePosition.getZ(), 0.f),
-            moveMode,
-            bot->IsFlying() ? bot->GetSpeed(MOVE_FLIGHT) : 0.f,
-            bot->IsFlying());
-#endif
-    }
-    WaitForReach(size);
+    WaitForReach(WorldPosition().getPathLength(path));
 }
 
 

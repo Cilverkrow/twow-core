@@ -3386,64 +3386,73 @@ void Player::RecallPvPGear()
     }
 }
 
-bool Player::CanInteractWithNPC(Creature const* pCreature, uint32 npcflagmask) const
+bool Player::CanInteractWithNPC(Creature const* pCreature, uint32 npcflagmask, char const** failureReason) const
 {
-    if (!pCreature)
+    if (failureReason)
+        *failureReason = "accepted";
+    auto reject = [failureReason](char const* reason)
+    {
+        if (failureReason)
+            *failureReason = reason;
         return false;
+    };
+
+    if (!pCreature)
+        return reject("npc_missing");
 
     // some basic checks
     if (!IsInWorld() || IsTaxiFlying())
-        return false;
+        return reject("player_not_in_world_or_on_taxi");
 
     // not in interactive state
     if (HasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL))
-        return false;
+        return reject("player_cannot_react");
 
     // appropriate npc type
     if (npcflagmask && !pCreature->HasFlag(UNIT_NPC_FLAGS, npcflagmask))
-        return false;
+        return reject("npc_service_flag_missing");
 
     if (npcflagmask == UNIT_NPC_FLAG_STABLEMASTER)
     {
         if (GetClass() != CLASS_HUNTER)
-            return false;
+            return reject("stable_requires_hunter");
     }
 
     if (!pCreature->IsAlive())
-        return false;
+        return reject("npc_dead");
 
     if (IsAlive() && pCreature->IsInvisibleForAlive())
-        return false;
+        return reject("npc_invisible_for_alive");
 
     if (!IsAlive() && !pCreature->HasTypeFlag(CREATURE_TYPEFLAGS_GHOST_VISIBLE))
-        return false;
+        return reject("npc_not_ghost_visible");
 
     // not allow interaction under control, but allow with own pets
     if (pCreature->GetCharmerGuid())
-        return false;
+        return reject("npc_charmed");
 
     // not enemy
    if (pCreature->IsHostileTo(this))
-        return false;
+        return reject("npc_hostile");
 
     // combat check
     if (pCreature->IsInCombat())
-        return false;
+        return reject("npc_in_combat");
 
     // not interactable
     if (pCreature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE))
-        return false;
+        return reject("npc_not_selectable");
 
     // not unfriendly
     if (FactionTemplateEntry const* factionTemplate = sObjectMgr.GetFactionTemplateEntry(pCreature->GetFactionTemplateId()))
         if (factionTemplate->faction)
             if (FactionEntry const* faction = sObjectMgr.GetFactionEntry(factionTemplate->faction))
                 if (faction->reputationListID >= 0 && GetReputationMgr().GetRank(faction) <= REP_UNFRIENDLY)
-                    return false;
+                    return reject("reputation_unfriendly");
 
     // not too far
     if (!pCreature->IsWithinDistInMap(this, INTERACTION_DISTANCE))
-        return false;
+        return reject("npc_out_of_range_or_map");
 
     return true;
 }
