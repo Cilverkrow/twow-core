@@ -127,7 +127,7 @@ Knowing that a service touches `SPELL_EFFECT_LEARN_SPELL` is only the start. The
 - The playerbot node graph persists links, point geometry and derived costs in
   `ai_playerbot_travelnode*`. Runtime loading now recomputes walk distance and
   water exposure from those stored points while retaining creature-risk data,
-  and normalizes taxi time to the native 32-yard/second flight generator. This
+  and restores the original/upstream 3,600-divisor taxi route preference. This
   avoids a destructive graph/account reset when derived costs are stale. A*
   retains one native graph and applies a stable, bounded per-party preference
   to comparable edges so large populations do not all select one corridor.

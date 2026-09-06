@@ -10,12 +10,13 @@
 int main()
 {
     float const southshoreAerieDistance = 2139.057f;
-    float const corrected = ai::GetTaxiTravelTime(southshoreAerieDistance);
-    CHECK(std::fabs(corrected - 66.8455f) < 0.01f);
-    CHECK(std::fabs(corrected / 0.594183f - 112.5f) < 0.1f);
-    CHECK(ai::GetTaxiTravelTime(0.0f) == 0.0f);
+    float const corrected = ai::GetTaxiRouteCost(southshoreAerieDistance);
+    CHECK(std::fabs(corrected - 0.594183f) < 0.01f);
+    CHECK(ai::GetTaxiRouteCost(0.0f) == 0.0f);
 
     CHECK(std::fabs(ai::GetWalkTravelTime(800.0f, 80.0f, 8.0f, 4.0f) - 120.0f) < 0.01f);
+    CHECK(ai::GetTaxiRouteCost(southshoreAerieDistance) <
+        ai::GetWalkTravelTime(southshoreAerieDistance, 0.0f, 8.0f, 4.0f));
     CHECK(std::fabs(ai::GetWalkTravelTime(800.0f, 400.0f, 8.0f, 4.0f) - 410.0f) < 0.01f);
     CHECK(ai::GetWalkTravelTime(0.0f, 0.0f, 0.0f, 0.0f) == 0.0f);
 

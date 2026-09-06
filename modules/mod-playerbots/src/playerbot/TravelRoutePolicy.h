@@ -6,14 +6,15 @@
 
 namespace ai
 {
-    // FlightPathMovementGenerator moves players at 32 yards/second. Keeping
-    // route estimates in the same units as walking prevents A* from treating
-    // every taxi hop as virtually free.
-    constexpr float PLAYERBOT_TAXI_SPEED = 32.0f;
+    // This is deliberately a route preference, not the spline's physical
+    // speed. The original Turtle implementation and current upstream
+    // playerbots both divide taxi-path length by (450 * 8): long-distance bots
+    // should strongly prefer an available taxi over walking or ocean swimming.
+    constexpr float PLAYERBOT_TAXI_ROUTE_DIVISOR = 450.0f * 8.0f;
 
-    inline float GetTaxiTravelTime(float pathDistance)
+    inline float GetTaxiRouteCost(float pathDistance)
     {
-        return pathDistance > 0.0f ? pathDistance / PLAYERBOT_TAXI_SPEED : 0.0f;
+        return pathDistance > 0.0f ? pathDistance / PLAYERBOT_TAXI_ROUTE_DIVISOR : 0.0f;
     }
 
     inline float GetWalkTravelTime(float runDistance, float swimDistance,

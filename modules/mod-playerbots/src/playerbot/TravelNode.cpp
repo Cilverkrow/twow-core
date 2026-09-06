@@ -3074,7 +3074,7 @@ void TravelNodeMap::generateTaxiPaths()
             ppath.push_back(*endNode->getPosition());
 
         TravelNodePath travelPath(0.1f, 0.0f, (uint8)TravelNodePathType::flightPath, i, true);
-        travelPath.setPathAndCost(ppath, PLAYERBOT_TAXI_SPEED);
+        travelPath.setPathAndCost(ppath, PLAYERBOT_TAXI_ROUTE_DIVISOR);
 
         startNode->setPathTo(endNode, travelPath);
     }
@@ -3662,10 +3662,9 @@ void TravelNodeMap::loadNodeStore()
         sLog.outString(">> Normalized %u playerbot walk-path geometries; %u paths include swimming.",
             normalizedWalkPaths, walkPathsWithSwimming);
 
-        // Older graph dumps generated taxi time with a 3600 yd/s divisor,
-        // underpricing every flight by exactly 112.5x. Rebuild from the stored
-        // spline using the native FlightPathMovementGenerator speed. This also
-        // makes existing databases correct without a destructive graph rebuild.
+        // Restore the native playerbot taxi preference from the loaded spline.
+        // This is intentionally much cheaper than physical flight duration so
+        // roads and ocean shortcuts do not displace an available taxi route.
         uint32 normalizedFlightPaths = 0;
         for (auto& node : getNodes())
         {
@@ -3674,11 +3673,11 @@ void TravelNodeMap::loadNodeStore()
                 if (path.getPathType() != TravelNodePathType::flightPath || path.getPath().size() < 2)
                     continue;
 
-                path.setPathAndCost(path.getPath(), PLAYERBOT_TAXI_SPEED);
+                path.setPathAndCost(path.getPath(), PLAYERBOT_TAXI_ROUTE_DIVISOR);
                 ++normalizedFlightPaths;
             }
         }
-        sLog.outString(">> Normalized %u playerbot flight-path costs to native taxi speed.", normalizedFlightPaths);
+        sLog.outString(">> Normalized %u playerbot flight-path costs to native route preference.", normalizedFlightPaths);
     }
 }
 
