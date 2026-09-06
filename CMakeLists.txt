@@ -905,11 +905,34 @@ endif()
 # make these targets un-buildable in exactly the configuration a test run
 # wants. Placed after `shared` and `framework` exist (add_subdirectory(src)
 # above) because the database suite links against them.
-if(BUILD_TESTING)
-  include("${CMAKE_SOURCE_DIR}/modules/mod-playerbots/tests.cmake")
+#
+# Two conditions, and both are load-bearing.
+#
+# TW_CORE_ROOT, not CMAKE_SOURCE_DIR. CMAKE_SOURCE_DIR is the TOP-LEVEL source
+# dir, so in a platform build it points at the platform, and these lines then
+# included the PLATFORM's tests.cmake from inside core's scope. The platform
+# includes the same file again from its own root, and configure died with
+#   add_executable cannot create target "persistent_active_roster_tests"
+#   because another target with the same name already exists. The existing
+#   target is an executable created in source directory "/src/core".
+# One file, included twice, under two different scopes. TW_CORE_ROOT is "this
+# directory, whoever is on top" -- exactly what its own declaration promises --
+# and is what every other path here already uses.
+#
+# Top-level only. Even correctly rooted, a consumer that supplies its own
+# modules supplies their tests: the platform forces TW_MODULES_DIR at its own
+# modules/ and registers these same target NAMES from its own copies. Two
+# definitions of persistent_active_roster_tests collide no matter which file
+# each came from. So core wires its module suites when it is the project being
+# built, and stays out of the way when it is a subdirectory of something that
+# has already made that choice. When the platform's copies are deleted
+# (twow-repo #203) it will include core's tests.cmake explicitly, and this
+# guard is what makes that a deliberate act rather than a double registration.
+if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
+  include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
   # skipped for a disabled module and read twice per configure otherwise.
-  include("${CMAKE_SOURCE_DIR}/modules/mod-dungeon-clear/tests.cmake")
+  include("${TW_CORE_ROOT}/modules/mod-dungeon-clear/tests.cmake")
 endif()
 
 if (USE_EXTRACTORS OR USE_REALMMERGE)
