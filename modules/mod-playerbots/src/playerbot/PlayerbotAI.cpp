@@ -2567,6 +2567,19 @@ void PlayerbotAI::DoNextAction(bool min)
             {
                 std::string defaultMovementStrategy = GetDefaultMovementStrategy();
                 ChangeStrategy("+" + defaultMovementStrategy, BotState::BOT_STATE_NON_COMBAT);
+
+                // A bot that joins another bot's group must stop executing its
+                // old personal journey. Keeping that target while assigning the
+                // bounded "wander" strategy creates a permanent contradiction:
+                // the target remains active, but CanFreeMoveTo rejects every
+                // step outside the 50-yard wander radius. Clear it so the native
+                // group-target chooser can copy the leader's destination.
+                if (group && !group->IsLeader(bot->GetObjectGuid()))
+                {
+                    TravelTarget* travelTarget = GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
+                    if (travelTarget && !travelTarget->IsForced() && !travelTarget->IsGroupCopy())
+                        sTravelMgr.SetNullTravelTarget(travelTarget);
+                }
             }
 
             if (GetMaster() == GetGroupMaster())
@@ -6909,7 +6922,8 @@ std::string PlayerbotAI::BotStateToString(BotState state)
 std::string PlayerbotAI::GetDefaultMovementStrategy()
 {
     // Player master -> follow
-    if (HasActivePlayerMaster())
+    if (HasActivePlayerMaster() ||
+        (bot->GetGroup() && !bot->GetGroup()->IsLeader(bot->GetObjectGuid())))
         return "follow";
 
     // Bot/no master -> wander

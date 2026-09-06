@@ -489,6 +489,12 @@ bool RpgTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info) c
     if (!IsPossible(info))
         return false;   
 
+    // Taxi-cheat bots already use flight masters as route graph transitions.
+    // Sending them to one as an ambient roleplay destination adds a second,
+    // purposeless source of flight-master crowds and random taxi rides.
+    if (HasNpcFlag(UNIT_NPC_FLAG_FLIGHTMASTER) && bot->isTaxiCheater())
+        return false;
+
     //Once the target rpged with it is added to the ignore list. We can now move on.
     std::set<ObjectGuid>& ignoreList = AI_VALUE(std::set<ObjectGuid>&,"ignore rpg target");
 

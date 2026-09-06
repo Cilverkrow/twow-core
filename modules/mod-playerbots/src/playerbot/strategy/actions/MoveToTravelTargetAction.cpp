@@ -234,6 +234,7 @@ bool MoveToTravelTargetAction::isUseful()
 
     if (bot->GetGroup() && !bot->GetGroup()->IsLeader(bot->GetObjectGuid()))
         if (ai->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) ||
+            ai->HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT) ||
             ai->HasStrategy("stay", BotState::BOT_STATE_NON_COMBAT) ||
             ai->HasStrategy("guard", BotState::BOT_STATE_NON_COMBAT))
             if (!travelTarget->IsForced())

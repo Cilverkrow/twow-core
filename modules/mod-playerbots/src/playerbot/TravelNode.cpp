@@ -3,6 +3,7 @@
 #include <boost/filesystem.hpp>
 
 #include "TravelNode.h"
+#include "TravelRoutePolicy.h"
 #include "playerbot/TravelMgr.h"
 
 #include <iomanip>
@@ -1685,6 +1686,19 @@ TravelNodeRoute TravelNodeMap::getRoute(TravelNode* start, TravelNode* goal, Uni
             if (linkCost <= 0)
                 continue;
 
+            if (bot)
+            {
+                uint32 routeSeed = bot->GetGUIDLow();
+                if (Group* group = bot->GetGroup())
+                    routeSeed = group->GetLeaderGuid().GetCounter();
+
+                WorldPosition const* from = currentNode->dataNode->getPosition();
+                WorldPosition const* to = linkNode->getPosition();
+                linkCost *= GetStableRouteCostMultiplier(routeSeed,
+                    from->getMapId(), from->getX(), from->getY(),
+                    to->getMapId(), to->getX(), to->getY());
+            }
+
             childNode = &m_stubs.insert(std::make_pair(linkNode, TravelNodeStub(linkNode))).first->second;
 
             g = currentNode->m_g + linkCost; // stance from start + distance between the two nodes
@@ -3017,10 +3031,8 @@ void TravelNodeMap::generateTaxiPaths()
         if (endNode->fDist(ppath.back()) > 0.1f)
             ppath.push_back(*endNode->getPosition());
 
-        float totalTime = startPos.getPathLength(ppath) / (450 * 8.0f);
-
-        TravelNodePath travelPath(0.1f, totalTime, (uint8)TravelNodePathType::flightPath, i, true);
-        travelPath.setPath(ppath);
+        TravelNodePath travelPath(0.1f, 0.0f, (uint8)TravelNodePathType::flightPath, i, true);
+        travelPath.setPathAndCost(ppath, PLAYERBOT_TAXI_SPEED);
 
         startNode->setPathTo(endNode, travelPath);
     }
@@ -3586,6 +3598,24 @@ void TravelNodeMap::loadNodeStore()
                 path.setPath(newPath);
             }
         }
+
+        // Older graph dumps generated taxi time with a 3600 yd/s divisor,
+        // underpricing every flight by exactly 112.5x. Rebuild from the stored
+        // spline using the native FlightPathMovementGenerator speed. This also
+        // makes existing databases correct without a destructive graph rebuild.
+        uint32 normalizedFlightPaths = 0;
+        for (auto& node : getNodes())
+        {
+            for (auto& [endNode, path] : *node->getPaths())
+            {
+                if (path.getPathType() != TravelNodePathType::flightPath || path.getPath().size() < 2)
+                    continue;
+
+                path.setPathAndCost(path.getPath(), PLAYERBOT_TAXI_SPEED);
+                ++normalizedFlightPaths;
+            }
+        }
+        sLog.outString(">> Normalized %u playerbot flight-path costs to native taxi speed.", normalizedFlightPaths);
     }
 }
 

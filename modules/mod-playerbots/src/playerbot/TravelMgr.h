@@ -178,7 +178,7 @@ namespace ai
 		virtual GameObjectInfo const* GetGoInfo() const { return goInfo; }
 		virtual CreatureInfo const* GetCreatureInfo() const { return creatureInfo; }
 		virtual TravelDestinationPurpose GetPurpose() const override { return purpose; }
-		bool HasNpcFlag(uint32 flag) { if(GetCreatureInfo() && (GetCreatureInfo()->NpcFlags & flag)) return true; return false; }
+        bool HasNpcFlag(uint32 flag) const { if(GetCreatureInfo() && (GetCreatureInfo()->NpcFlags & flag)) return true; return false; }
 
 		virtual std::string GetShortName() const override;
 	private:

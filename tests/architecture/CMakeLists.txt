@@ -50,6 +50,13 @@ if(MSVC)
 endif()
 add_test(NAME StableTargetPositionTest COMMAND StableTargetPositionTest)
 set_tests_properties(StableTargetPositionTest PROPERTIES TIMEOUT 20)
+add_executable(TravelRoutePolicyTest TravelRoutePolicyTest.cpp)
+target_compile_features(TravelRoutePolicyTest PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(TravelRoutePolicyTest PRIVATE /EHsc)
+endif()
+add_test(NAME TravelRoutePolicyTest COMMAND TravelRoutePolicyTest)
+set_tests_properties(TravelRoutePolicyTest PROPERTIES TIMEOUT 20)
 extract_native_fragment("${TRAVEL_ROOT}/strategy/Engine.cpp"
     "void Engine::UpdateActionFailureCachePeak(" "std::string Engine::GetFailureKey(" BotRetryPeak.inc)
 extract_native_fragment("${TRAVEL_ROOT}/strategy/Engine.cpp"
