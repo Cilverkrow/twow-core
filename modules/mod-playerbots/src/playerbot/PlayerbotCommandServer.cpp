@@ -3,7 +3,9 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
 #include "PlayerbotCommandServer.h"
+#include "WorldThreadCommandQueue.h"
 #include <cstdlib>
+#include <future>
 #include <iostream>
 
 INSTANTIATE_SINGLETON_1(PlayerbotCommandServer);
@@ -45,7 +47,21 @@ void session(socket_ptr sock)
     {
         std::string buffer, request;
         while (ReadLine(sock, &buffer, &request)) {
-            std::string response = sRandomPlayerbotMgr.HandleRemoteCommand(request) + "\n";
+            // This is a connection thread, not the world thread. Resolving the
+            // bot guid here and dereferencing the Player* / PlayerbotAI* it yields
+            // was a use-after-free the moment the world despawned that bot on the
+            // same tick. Post the bytes instead and let the world thread answer.
+            std::future<std::string> pending = sRandomPlayerbotMgr.PostRemoteCommand(request);
+
+            // Bounded, because the world thread may already be shutting down and
+            // will then never drain the queue again. Without this the connection
+            // thread parks forever on a promise nobody is left to fulfil.
+            std::string response;
+            if (pending.wait_for(WorldThreadCommandQueue::WaiterTimeout) == std::future_status::ready)
+                response = pending.get() + "\n";
+            else
+                response = "timeout\n";
+
             boost::asio::write(*sock, boost::asio::buffer(response.c_str(), response.size()));
             request = "";
         }
@@ -69,7 +85,16 @@ void server(boost::asio::io_context& io_context, short port)
     {
         socket_ptr sock(new tcp::socket(io_context));
         a.accept(*sock);
+        // One DETACHED thread per connection. ~boost::thread already detached it
+        // implicitly when `t` left scope, which made this an undeclared detached
+        // thread that no audit of detach() call sites would ever find. Saying it
+        // out loud documents the situation; it does not fix it. There is still no
+        // stop path: the listener thread is itself detached in Start(), the accept
+        // loop below is unconditional, and nothing joins or cancels any of this at
+        // shutdown. Converting the acceptor to asio async with a real stop token is
+        // a separate change.
         boost::thread t(boost::bind(session, sock));
+        t.detach();
     }
 }
 

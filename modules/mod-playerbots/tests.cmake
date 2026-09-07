@@ -16,6 +16,7 @@
 #   persistent_active_roster              unit, always built
 #   playerbot_legacy_event_write_guard    source scan, no build step
 #   playerbot_event_store_contract        unit, always built
+#   world_thread_command_queue            unit, always built
 #   persistent_active_roster_database_tests       opt-in, needs MariaDB, no add_test
 #   playerbot_event_store_database_tests          opt-in, needs MariaDB, no add_test
 #
@@ -139,6 +140,42 @@ set_target_properties(playerbot_event_store_contract_tests PROPERTIES
 
 add_test(NAME playerbot_event_store_contract
   COMMAND playerbot_event_store_contract_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# --------------------------------------------------------------------------
+# world_thread_command_queue_tests -- the unit suite for the hand-off that
+# keeps PlayerbotCommandServer connection threads out of the world's object
+# graph (twow-repo issue #202). Same hand-rolled-assertion shape as the two
+# suites above: a plain main() returning non-zero on failure, no gtest, no
+# database, no OpenSSL.
+#
+# Two translation units and no stubs directory, which is the whole point of
+# the design: WorldThreadCommandQueue.{h,cpp} name no game header and no
+# playerbot header, so they compile standalone with src/playerbot on the path
+# and nothing of the bot tree behind them. If a future edit reaches for a
+# Player* or a PlayerbotAI* in there, this target stops building -- which is
+# exactly the guard wanted, because that pointer is the bug.
+# --------------------------------------------------------------------------
+
+add_executable(world_thread_command_queue_tests
+  "${PB_MODULE_DIR}/t/world_thread_command_queue_tests.cpp"
+  "${PB_MODULE_DIR}/src/playerbot/WorldThreadCommandQueue.cpp")
+
+target_include_directories(world_thread_command_queue_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+# std::thread and std::promise. Unlike the other unit suites this one starts
+# threads, and on GCC/libstdc++ that needs -pthread at both compile and link
+# time or std::thread's constructor throws system_error at runtime. The two
+# suites above link no threading library because they start no threads.
+find_package(Threads REQUIRED)
+target_link_libraries(world_thread_command_queue_tests PRIVATE Threads::Threads)
+
+set_target_properties(world_thread_command_queue_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME world_thread_command_queue
+  COMMAND world_thread_command_queue_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # --------------------------------------------------------------------------

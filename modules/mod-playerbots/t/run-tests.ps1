@@ -1,6 +1,7 @@
 # Local Windows runner for the mod-playerbots test suites that need no database:
-# persistent_active_roster_tests, playerbot_event_store_contract_tests and the
-# playerbot_legacy_event_write_guard ctest.
+# persistent_active_roster_tests, playerbot_event_store_contract_tests,
+# world_thread_command_queue_tests and the playerbot_legacy_event_write_guard
+# ctest.
 #
 # Ported from twow-repo, with three platform-only assumptions corrected:
 #
@@ -66,6 +67,7 @@ function Invoke-Clean([string]$file,[string[]]$arguments) {
 Invoke-Clean $cmake @('-S',$source,'-B',$build,'-G','Visual Studio 17 2022','-A','x64','-DBUILD_TESTING=ON',("-DCMAKE_PREFIX_PATH="+$VcpkgPrefixPath)) | Out-Null
 Invoke-Clean $cmake @('--build',$build,'--config','Release','--target','persistent_active_roster_tests','--parallel','2') | Out-Null
 Invoke-Clean $cmake @('--build',$build,'--config','Release','--target','playerbot_event_store_contract_tests','--parallel','2') | Out-Null
+Invoke-Clean $cmake @('--build',$build,'--config','Release','--target','world_thread_command_queue_tests','--parallel','2') | Out-Null
 
 # ctest exits 0 on an empty test set, so the count is checked before the run --
 # the same reason core's CI checks it. A green run that tested nothing is worse
