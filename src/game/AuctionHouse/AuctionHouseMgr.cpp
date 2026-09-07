@@ -549,6 +549,14 @@ void AuctionHouseMgr::LoadAuctions()
             continue;
         }
 
+        // Same fields, same reason, for auctions restored from the database. pItem is
+        // non-null here: the check immediately above deletes the auction otherwise, and
+        // LoadAuctionItems() has already run (World.cpp calls it first), so the item map
+        // is populated. Without this every auction that survived a restart reported a
+        // stack size of one no matter what was actually listed.
+        auction->itemCount = pItem->GetCount();
+        auction->itemRandomPropertyId = pItem->GetItemRandomPropertyId();
+
         auction->auctionHouseEntry = sAuctionHouseStore.LookupEntry(houseid);
 
         if (!houseid)
