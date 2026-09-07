@@ -1344,6 +1344,20 @@ AiPlayerbot.LLMDefaultPromptsFile = llm_character_card.txt
 # AiPlayerbot.LLMResponseStartPattern = ("content":\s*")
 
 # Enable the alternative asynchronous login system.
+# NOT compatible with AiPlayerbot.PersistentActiveRoster.Enabled = 1 - the server
+# refuses to start with both on. This flag selects PlayerbotLoginMgr in place of
+# RandomPlayerbotMgr's own login loop, and three known defects sit behind it:
+#  1. PlayerbotLoginMgr is entirely roster-unaware. Its LogoutBot() takes the
+#     default for the roster gate - right for population rotation, harmless today
+#     only because the roster branch of UpdateAIInternal returns before the async
+#     manager is ever reached. Run both and logins wedge: LogoutBot() returns false
+#     with loginState stuck at BOT_ON_LOGOUTQUEUE after the slot was already freed.
+#  2. GetClassRaceBucketSize read the probability array in fixed mode (fixed in
+#     core #59; inert until now only because AsyncBotLogin = 0 picks the legacy
+#     manager).
+#  3. An unsigned underflow on an explicit zero entry in RandomPlayerbotFactory
+#     (fixed in core #59, inert for the same reason).
+# Leave at 0 unless you are testing the async path itself.
 AiPlayerbot.AsyncBotLogin = 0
 
 # Enables the versioned, ordered GUID roster stored in the Character DB.
