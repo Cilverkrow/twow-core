@@ -578,7 +578,7 @@ AiPlayerbot.ClassRaceProb.11.6 = 34    # Tauren druid chance
 # a different rate? Regenerate, or the server rejects every entry with
 # "spec is for a higher level":
 #
-#   tools/talents/build_premade_specs.py --dbc <dbc dir> --rate <your rate>
+#   modules/mod-playerbots/tools/build_premade_specs.py --dbc <dbc dir> --rate <your rate>
 
 # --- class 1 ---
 AiPlayerbot.PremadeSpecName.1.0 = fury

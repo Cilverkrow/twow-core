@@ -15,6 +15,7 @@
 #
 #   persistent_active_roster              unit, always built
 #   playerbot_legacy_event_write_guard    source scan, no build step
+#   premade_specs_rate2                   Python unit, no DBC dependency
 #   playerbot_event_store_contract        unit, always built
 #   world_thread_command_queue            unit, always built
 #   persistent_active_roster_database_tests       opt-in, needs MariaDB, no add_test
@@ -34,6 +35,8 @@
 # consumes it with add_subdirectory() it names the PLATFORM's modules tree, and
 # every add_executable() below would list source files that are not there.
 set(PB_MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 option(BUILD_PLAYERBOT_EVENT_STORE_ADAPTER_TESTS
   "Build the isolated PlayerBot event-store database adapter test" OFF)
@@ -111,6 +114,19 @@ add_test(NAME playerbot_legacy_event_write_guard
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
     -P "${PB_MODULE_DIR}/t/check_playerbot_legacy_writes.cmake")
+
+# --------------------------------------------------------------------------
+# premade_specs_rate2 -- deterministic unit coverage for the generated
+# higher-rate talent paths. The live Turtle DBC verification remains an
+# explicit generator invocation because DBC assets are not a source artifact.
+# --------------------------------------------------------------------------
+
+add_test(NAME premade_specs_rate2
+  COMMAND "${Python3_EXECUTABLE}"
+    "${PB_MODULE_DIR}/t/premade_specs_rate2_tests.py")
+
+set_tests_properties(premade_specs_rate2 PROPERTIES
+  ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 
 # --------------------------------------------------------------------------
 # playerbot_event_store_contract_tests -- the unit suite for the three SQL
