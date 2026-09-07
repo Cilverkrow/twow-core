@@ -929,6 +929,25 @@ endif()
 # (twow-repo #203) it will include core's tests.cmake explicitly, and this
 # guard is what makes that a deliberate act rather than a double registration.
 if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
+  # sql_update_dirs_reachable -- a tree scan, not a compiled target.
+  #
+  # It checks that every directory under sql/ holding .sql files is either one
+  # the DB auto-updater actually reads (derived from Database.AutoUpdate.Path /
+  # AuthUpdateName / CharUpdateName / WorldUpdateName in mangosd.conf.dist.in)
+  # or on an allowlist whose every entry names its reader. Nothing else catches
+  # a migration filed in a directory no deployment path walks: it parses, it
+  # reviews cleanly, and it is simply never applied. sql/character_updates/ sat
+  # that way for months.
+  #
+  # Registered with `cmake -P` rather than an executable so it costs no build
+  # time and runs on every ctest invocation, including a configure-only
+  # checkout. The script FATAL_ERRORs on an orphan, and cmake -P exits non-zero
+  # on FATAL_ERROR, which is what ctest reads.
+  add_test(NAME sql_update_dirs_reachable
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_sql_update_dirs_reachable.cmake")
+
   include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
   # skipped for a disabled module and read twice per configure otherwise.

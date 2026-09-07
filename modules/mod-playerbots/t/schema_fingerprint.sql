@@ -16,7 +16,7 @@
 --
 -- Ported unchanged from twow-repo. The four table names it names all exist in
 -- core, created by
--- sql/character_updates/20260830230336_ai_playerbot_persistent_active_roster.sql.
+-- sql/database_updates/character/20260830230336_ai_playerbot_persistent_active_roster.sql.
 SELECT `line` FROM (
 SELECT CONCAT('TABLE\t',t.TABLE_NAME,'\t',COALESCE(t.ENGINE,''),'\t',COALESCE(t.TABLE_COLLATION,'')) line
 FROM information_schema.TABLES t WHERE t.TABLE_SCHEMA=DATABASE() AND t.TABLE_NAME IN

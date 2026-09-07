@@ -29,7 +29,7 @@
 // EventUpsertSql is INSERT ... ON DUPLICATE KEY UPDATE, which collapses
 // repeated writes only if a UNIQUE key covers (owner, bot, event). Core's
 // shipped schema (modules/mod-playerbots/sql/characters/
-// ai_playerbot_random_bots.sql, plus sql/character_updates/
+// ai_playerbot_random_bots.sql, plus sql/database_updates/character/
 // 20260708055500_ai_playerbot_random_bots_index.sql) declares
 // idx_owner_bot_event as a NON-unique index. Against that schema the upsert
 // never collapses: 4000 writes make 4000 rows.

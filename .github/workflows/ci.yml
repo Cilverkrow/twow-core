@@ -333,7 +333,7 @@ jobs:
       - name: Apply the roster schema (twice, to prove replay safety)
         run: |
           set -eu
-          mig=sql/character_updates/20260830230336_ai_playerbot_persistent_active_roster.sql
+          mig=sql/database_updates/character/20260830230336_ai_playerbot_persistent_active_roster.sql
           for pass in 1 2; do
             echo "apply pass $pass"
             docker exec --env MYSQL_PWD="$MARIADB_ROOT_PASSWORD" -i \
