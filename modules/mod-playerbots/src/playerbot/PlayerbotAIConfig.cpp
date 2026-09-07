@@ -2,6 +2,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include "BotLog.h"
 #include "RandomPlayerbotFactory.h"
@@ -132,6 +133,28 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outString("AI Playerbot is Disabled in aiplayerbot.conf");
         return false;
+    }
+
+    // The bots path through mmaps unconditionally: WorldPosition::ClosestCorrectPoint
+    // asserts on the navmesh query rather than falling back the way the core does
+    // (GridMap.cpp gates its navmesh use, which is why mmap.enabled = 0 works for
+    // everything else). With mmap.enabled = 0 the worldserver therefore gets all the
+    // way through DBC, template and vendor loading and then dies at world load on
+    // "query && query->getAttachedNavMesh()" - an abort that names neither mmaps nor
+    // the setting that caused it. Refuse here instead, where the operator can still
+    // read which two keys disagree. Config is safe to read at this point:
+    // World::SetInitialWorldSettings() runs LoadConfigSettings() (which sets
+    // CONFIG_BOOL_MMAP_ENABLED from mmap.enabled) long before it calls
+    // InitPlayerbotsAtStartup(), our only caller.
+    if (!sWorld.getConfig(CONFIG_BOOL_MMAP_ENABLED))
+    {
+        sLog.outError("AiPlayerbot.Enabled = 1 requires mmap.enabled = 1, but mmap.enabled is 0.");
+        sLog.outError("The bots need movement maps to path; with them off the world aborts later");
+        sLog.outError("in startup on 'query && query->getAttachedNavMesh()' instead of running.");
+        sLog.outError("Set mmap.enabled = 1 in mangosd.conf and install the generated mmaps into");
+        sLog.outError("DataDir, or set AiPlayerbot.Enabled = 0 in aiplayerbot.conf to run without bots.");
+        Log::WaitBeforeContinueIfNeed();
+        exit(1);
     }
 
     ConfigAccess* configA = reinterpret_cast<ConfigAccess*>(&config);
