@@ -141,6 +141,25 @@ void AhBot::Update()
     CleanupPropositions();
 }
 
+namespace
+{
+    // ForceUpdate() runs on a detached thread whose catch (...) swallows
+    // anything that escapes, and its body issues CharacterDatabase queries from
+    // start to finish. Clearing `updating` by hand on every return means a
+    // single throw leaves it stuck at true for the life of the process:
+    // AhBot::Update() then logs "previous check still running" every tick and
+    // never schedules another pass, so the auction house is silently dead until
+    // a restart. Clear it from a destructor instead, so stack unwinding does it
+    // too.
+    struct UpdatingGuard
+    {
+        explicit UpdatingGuard(std::atomic<bool>& flag) : m_flag(flag) {}
+        ~UpdatingGuard() { m_flag = false; }
+
+        std::atomic<bool>& m_flag;
+    };
+}
+
 void AhBot::ForceUpdate()
 {
 	if (!sAhBotConfig.enabled)
@@ -156,6 +175,9 @@ void AhBot::ForceUpdate()
 		return;
 	}
 
+	// Cleared however we leave this function, exceptions included.
+	UpdatingGuard updatingGuard(updating);
+
 	sLog.outString("[AhBot] === Auction check starting ===");
 
 	if (!allBidders.size())
@@ -167,7 +189,6 @@ void AhBot::ForceUpdate()
 	if (!allBidders.size())
 	{
 		sLog.outError("[AhBot] No bidders available — cannot post or answer auctions. Check that AhBot.GUID is set to a valid character GUID in ahbot.conf.");
-		updating = false;
 		return;
 	}
 
@@ -200,7 +221,6 @@ void AhBot::ForceUpdate()
 
 	sLog.outString("[AhBot] === Check complete: %d answered, %d added. Next check in %d seconds ===",
 		answered, added, sAhBotConfig.updateInterval);
-    updating = false;
 }
 
 struct SortByPricePredicate
@@ -740,48 +760,30 @@ int AhBot::AddAuction(int auction, Category* category, ItemPrototype const* prot
     uint32 bidPrice = PricingStrategy::RoundPrice(stackCount * price);
     uint32 buyoutPrice = PricingStrategy::RoundPrice(stackCount * urand(price, 4 * price / 3));
 
-    Item* item = Item::CreateItem(proto->ItemId, stackCount);
-    if (!item)
-        return 0;
-
-    uint32 randomPropertyId = Item::GenerateItemRandomPropertyId(proto->ItemId);
-    if (randomPropertyId)
-        item->SetItemRandomProperties(randomPropertyId);
-    item->ClearUpdateMask(false);
-
     AuctionHouseEntry const* ahEntry = sAuctionHouseStore.LookupEntry(auctionIds[auction]);
     if (!ahEntry)
         return 0;
 
-    AuctionHouseObject* auctionHouse = sAuctionMgr.GetAuctionsMap(ahEntry);
+    // Do not create the item or the auction here. This runs on the bot thread,
+    // and Item::CreateItem, GenerateItemRandomPropertyId, GenerateAuctionID and
+    // the insert into the live AuctionHouseObject all mutate global game state
+    // owned by the world thread - two threads inside GenerateAuctionID() come
+    // back with the same auction id. Record the decision; the world thread
+    // executes it from AhBot::Update().
+    PendingListing listing;
+    listing.itemId      = proto->ItemId;
+    listing.stackCount  = stackCount;
+    listing.owner       = owner;
+    listing.bidPrice    = bidPrice;
+    listing.buyoutPrice = buyoutPrice;
+    listing.auctionTime = uint32(urand(8, 24) * HOUR * sWorld.getConfig(CONFIG_FLOAT_RATE_AUCTION_TIME));
+    listing.houseIndex  = auction;
+    {
+        std::lock_guard<std::mutex> g(queuedWorkMutex);
+        queuedListings.push_back(listing);
+    }
 
-    uint32 auction_time = uint32(urand(8, 24) * HOUR * sWorld.getConfig(CONFIG_FLOAT_RATE_AUCTION_TIME));
-
-    AuctionEntry* auctionEntry = new AuctionEntry;
-    auctionEntry->Id = sObjectMgr.GenerateAuctionID();
-    auctionEntry->itemGuidLow = item->GetObjectGuid().GetCounter();
-    auctionEntry->itemTemplate = item->GetEntry();
-    auctionEntry->itemCount = item->GetCount();
-    auctionEntry->itemRandomPropertyId = item->GetItemRandomPropertyId();
-    auctionEntry->owner = owner;
-    auctionEntry->startbid = bidPrice;
-    auctionEntry->bidder = 0;
-    auctionEntry->bid = 0;
-    auctionEntry->buyout = buyoutPrice;
-    auctionEntry->expireTime = time(nullptr) + auction_time;
-    //auctionEntry->moneyDeliveryTime = 0;
-    auctionEntry->deposit = 0;
-    auctionEntry->auctionHouseEntry = ahEntry;
-
-    auctionHouse->AddAuction(auctionEntry);
-
-
-    sAuctionMgr.AddAItem(item);
-
-    item->SaveToDB();
-    auctionEntry->SaveToDB();
-
-    sLog.outString("[AhBot] Listed: %dx %s on AH %u for %ug%us..%ug%us (owner: %s guid=%u)",
+    sLog.outString("[AhBot] Queued listing: %dx %s on AH %u for %ug%us..%ug%us (owner: %s guid=%u)",
         stackCount, proto->Name1.c_str(), auctionIds[auction],
         bidPrice / 10000, (bidPrice % 10000) / 100,
         buyoutPrice / 10000, (buyoutPrice % 10000) / 100,
@@ -1323,12 +1325,14 @@ void AhBot::RunQueuedWork()
 {
     std::vector<PendingPurchase> purchases;
     std::vector<PendingProposition> propositions;
+    std::vector<PendingListing> listings;
     {
         std::lock_guard<std::mutex> g(queuedWorkMutex);
-        if (queuedPurchases.empty() && queuedPropositions.empty())
+        if (queuedPurchases.empty() && queuedPropositions.empty() && queuedListings.empty())
             return;
         purchases.swap(queuedPurchases);
         propositions.swap(queuedPropositions);
+        listings.swap(queuedListings);
     }
 
     for (std::vector<PendingPurchase>::const_iterator i = purchases.begin(); i != purchases.end(); ++i)
@@ -1336,6 +1340,9 @@ void AhBot::RunQueuedWork()
 
     for (std::vector<PendingProposition>::const_iterator i = propositions.begin(); i != propositions.end(); ++i)
         ExecuteProposition(*i);
+
+    for (std::vector<PendingListing>::const_iterator i = listings.begin(); i != listings.end(); ++i)
+        ExecuteListing(*i);
 }
 
 void AhBot::ExecutePurchase(const PendingPurchase& p)
@@ -1440,6 +1447,73 @@ void AhBot::ExecuteProposition(const PendingProposition& p)
     draft.SendMailTo(MailReceiver(receiverGuid), MailSender(MAIL_NORMAL, p.bidder));
 
     SetTime("entry", p.auctionId, p.houseId, AHBOT_SENDMAIL, p.expireTime);
+}
+
+void AhBot::ExecuteListing(const PendingListing& p)
+{
+    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(p.itemId);
+    if (!proto)
+        return;
+
+    const AuctionHouseEntry* ahEntry = sAuctionHouseStore.LookupEntry(auctionIds[p.houseIndex]);
+    if (!ahEntry)
+        return;
+
+    AuctionHouseObject* auctionHouse = sAuctionMgr.GetAuctionsMap(ahEntry);
+    if (!auctionHouse)
+        return;
+
+    std::string name;
+    if (!sObjectMgr.GetPlayerNameByGUID(ObjectGuid(HIGHGUID_PLAYER, p.owner), name))
+        return;
+
+    Item* item = Item::CreateItem(proto->ItemId, p.stackCount);
+    if (!item)
+        return;
+
+    uint32 randomPropertyId = Item::GenerateItemRandomPropertyId(proto->ItemId);
+    if (randomPropertyId)
+        item->SetItemRandomProperties(randomPropertyId);
+    item->ClearUpdateMask(false);
+
+    // Same reasoning as ExecutePurchase above: hold the auctions lock across the
+    // whole build-and-publish sequence rather than letting
+    // AuctionHouseObject::AddAuction take it for its own instant. The mutex is
+    // recursive precisely so callers can wrap a larger critical section around
+    // it, and the new entry must not become reachable through the map before
+    // its item is registered with sAuctionMgr - anything scanning in between
+    // finds an auction whose item does not exist and treats the listing as
+    // broken.
+    AuctionHouseObject::Guard g(auctionHouse->GetLock());
+
+    AuctionEntry* auctionEntry = new AuctionEntry;
+    auctionEntry->Id = sObjectMgr.GenerateAuctionID();
+    auctionEntry->itemGuidLow = item->GetObjectGuid().GetCounter();
+    auctionEntry->itemTemplate = item->GetEntry();
+    auctionEntry->itemCount = item->GetCount();
+    auctionEntry->itemRandomPropertyId = item->GetItemRandomPropertyId();
+    auctionEntry->owner = p.owner;
+    auctionEntry->startbid = p.bidPrice;
+    auctionEntry->bidder = 0;
+    auctionEntry->bid = 0;
+    auctionEntry->buyout = p.buyoutPrice;
+    auctionEntry->expireTime = time(nullptr) + p.auctionTime;
+    //auctionEntry->moneyDeliveryTime = 0;
+    auctionEntry->deposit = 0;
+    auctionEntry->auctionHouseEntry = ahEntry;
+
+    auctionHouse->AddAuction(auctionEntry);
+
+    sAuctionMgr.AddAItem(item);
+
+    item->SaveToDB();
+    auctionEntry->SaveToDB();
+
+    sLog.outString("[AhBot] Listed: %dx %s on AH %u for %ug%us..%ug%us (owner: %s guid=%u)",
+        p.stackCount, proto->Name1.c_str(), auctionIds[p.houseIndex],
+        p.bidPrice / 10000, (p.bidPrice % 10000) / 100,
+        p.buyoutPrice / 10000, (p.buyoutPrice % 10000) / 100,
+        name.c_str(), p.owner);
 }
 
 void AhBot::Dump()
