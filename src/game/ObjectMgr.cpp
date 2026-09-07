@@ -1249,6 +1249,12 @@ void ObjectMgr::LoadCreatureInfo(Field* fields)
     pInfo->phase_quest_id = fields[78].GetUInt32();
     pInfo->script_id = sScriptMgr.GetScriptId(fields[79].GetString());
     CheckCreatureTemplate(pInfo.get());
+    // Refresh on both initial loading and single-template reloads. Class-zero
+    // non-trainers cannot match a player class and need not enter this index.
+    bool const commonTrainer = pInfo->trainer_type == TRAINER_TYPE_TRADESKILLS;
+    bool const classTrainer = (pInfo->trainer_type == TRAINER_TYPE_CLASS ||
+        pInfo->trainer_type == TRAINER_TYPE_PETS) && pInfo->trainer_class != 0;
+    m_botTrainerIndex.Update(entry, pInfo->trainer_class, commonTrainer, commonTrainer || classTrainer);
 }
 
 template <class T>
@@ -2560,8 +2566,14 @@ void ObjectMgr::LoadItemPrototypes()
 
                 if (proto->Spells[j].SpellCategory > 0)
                 {
+                    // An item's spell category is a free-form grouping key for shared
+                    // cooldowns: the value is only ever used as a map key by
+                    // Unit::HasSpellCategoryCooldown, never looked up in SpellCategory.dbc
+                    // (this is that store's only reader in the whole core). A category the
+                    // DBC does not list still works, so this is a note, not a fault - the
+                    // value is deliberately left in place rather than cleared.
                     if (!sSpellCategoryStore.LookupEntry(proto->Spells[j].SpellCategory))
-                        sLog.outErrorDb("Item (Entry: %u) has wrong (not existing) spell category in spellcategory_%d (%u)", i, j + 1, proto->Spells[j].SpellCategory);
+                        sLog.outDetail("Item (Entry: %u) has spell category in spellcategory_%d (%u) that is not listed in SpellCategory.dbc", i, j + 1, proto->Spells[j].SpellCategory);
                 }
             }
         }
@@ -9396,9 +9408,8 @@ void ObjectMgr::LoadAreaTemplate()
 {
     sAreaStorage.Load();
 
-    for (auto itr = sAreaStorage.begin<AreaEntry>(); itr != sAreaStorage.end<AreaEntry>() ; ++itr)
-        if (itr->IsZone() && itr->MapId != 0 && itr->MapId != 1)
-            sAreaFlagByMapId.insert(AreaFlagByMapId::value_type(itr->MapId, itr->ExploreFlag));
+    // World initialization only: immutable indexed reads once map workers run.
+    AreaEntry::RebuildLookupIndex();
 }
 
 void ObjectMgr::LoadAreaLocales()
