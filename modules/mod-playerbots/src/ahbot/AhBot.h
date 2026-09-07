@@ -114,9 +114,28 @@ namespace ahbot
             time_t expireTime;
         };
 
+        // Listing an item is the same problem seen from the other side:
+        // Item::CreateItem, GenerateItemRandomPropertyId,
+        // sObjectMgr.GenerateAuctionID() and the insert into the live
+        // AuctionHouseObject all mutate global game state the world thread
+        // owns. Two threads inside GenerateAuctionID() hand back the same
+        // auction id. The bot thread only does the pricing and records what it
+        // wants listed; ExecuteListing() builds the objects.
+        struct PendingListing
+        {
+            uint32 itemId;
+            uint32 stackCount;
+            uint32 owner;
+            uint32 bidPrice;
+            uint32 buyoutPrice;
+            uint32 auctionTime;
+            int    houseIndex;      // index into auctionIds[]
+        };
+
         void RunQueuedWork();                                   // world thread only
         void ExecutePurchase(const PendingPurchase& p);         // world thread only
         void ExecuteProposition(const PendingProposition& p);   // world thread only
+        void ExecuteListing(const PendingListing& p);            // world thread only
 
         static uint32 auctionIds[MAX_AUCTIONS];
         static uint32 auctioneers[MAX_AUCTIONS];
@@ -135,6 +154,7 @@ namespace ahbot
         std::mutex queuedWorkMutex;
         std::vector<PendingPurchase> queuedPurchases;
         std::vector<PendingProposition> queuedPropositions;
+        std::vector<PendingListing> queuedListings;
     };
 };
 
