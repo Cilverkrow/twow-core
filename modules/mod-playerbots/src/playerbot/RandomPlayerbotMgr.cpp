@@ -67,42 +67,6 @@ INSTANTIATE_SINGLETON_1(RandomPlayerbotMgr);
 #endif
 
 #ifdef MANGOS
-class PrintStatsThread: public ACE_Task <ACE_MT_SYNCH>
-{
-public:
-    int svc(void) { sRandomPlayerbotMgr.PrintStats(); return 0; }
-};
-#endif
-#ifdef CMANGOS
-void PrintStatsThread(uint32 requesterGuid)
-{
-    try
-    {
-        sRandomPlayerbotMgr.PrintStats(requesterGuid);
-    }
-    catch (...)
-    {
-        // An escaping exception on a detached thread is std::terminate for the
-        // whole worldserver. Swallow it silently: the requester simply gets no
-        // stats. We do not log here because the logging subsystem is not
-        // guaranteed thread-safe off the world thread.
-    }
-}
-#endif
-
-void activatePrintStatsThread(uint32 requesterGuid)
-{
-#ifdef MANGOS
-    PrintStatsThread *thread = new PrintStatsThread();
-    thread->activate();
-#endif
-#ifdef CMANGOS
-    boost::thread t(PrintStatsThread, requesterGuid);
-    t.detach();
-#endif
-}
-
-#ifdef MANGOS
 class CheckBgQueueThread : public ACE_Task <ACE_MT_SYNCH>
 {
 public:
@@ -4282,6 +4246,12 @@ Player* RandomPlayerbotMgr::GetPlayer(uint32 playerGuid)
 
 void RandomPlayerbotMgr::PrintStats(uint32 requesterGuid)
 {
+    // World thread only: the walk below dereferences live Player* objects and
+    // writes AI context caches, neither of which is safe off the world thread.
+    std::chrono::steady_clock::time_point printStatsStarted = std::chrono::steady_clock::now();
+
+    // A single resolve is enough: nothing between here and the end of the function
+    // yields, so the requester cannot be logged out underneath us.
     Player* requester = GetPlayer(requesterGuid);
     std::stringstream ss; ss << GetPlayerbotsAmount() << " Random Bots online";
     sLog.outString("%s", ss.str().c_str());
@@ -4525,6 +4495,12 @@ void RandomPlayerbotMgr::PrintStats(uint32 requesterGuid)
     ss.str(""); ss << "    Idling: " << stateCount[(uint8)TravelState::TRAVEL_STATE_IDLE];
     sLog.outString("%s", ss.str().c_str());
     if (requester) { requester->SendMessageToPlayer(ss.str()); }
+
+    // This walk now happens inside a world tick and its cost scales with the bot
+    // count, so log what it actually cost instead of assuming it is negligible.
+    uint32 printStatsElapsedMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - printStatsStarted).count();
+    sLog.outString("PrintStats took %u ms on the world thread for %u bots", printStatsElapsedMs, GetPlayerbotsAmount());
 }
 
 double RandomPlayerbotMgr::GetBuyMultiplier(Player* bot)
@@ -5136,8 +5112,15 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleStats(std::string param)
     std::string msg = "Stats requested.";
     messages.push_back(msg);
 
+    // PrintStats walks every live bot and touches AI contexts, so it runs here on
+    // the world thread rather than on a worker. This handler is only ever reached
+    // from ChatHandler::ParseCommands, i.e. either an in-game GM command or
+    // World::ProcessCliCommands, both of which run inside World::Update.
     ObjectGuid guid = ObjectGuid(uint64(std::stoull(param)));
-    activatePrintStatsThread(guid);
+    // GetPlayer() indexes the `players` map, which is keyed by GetGUIDLow(), so the
+    // low GUID is what it wants - not the raw value ObjectGuid::operator uint64()
+    // would silently narrow into the uint32 parameter.
+    PrintStats(guid.GetCounter());
     return messages;
 }
 
