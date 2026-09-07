@@ -83,8 +83,16 @@ struct AuctionEntry
     uint32 deposit;                                         // deposit can be calculated only when creating auction
     AuctionHouseEntry const* auctionHouseEntry;             // in AuctionHouse.dbc
 
-    // bot accesses itemRandomPropertyId / itemCount on AuctionEntry.
-    // Penqle stores these on the Item, not on AuctionEntry. Stub fields are 0/1
+    // The AH bot reads itemRandomPropertyId / itemCount from an AuctionSnapshot on
+    // its own thread, where dereferencing the Item would be a use-after-free, so
+    // AuctionEntry carries them even though Penqle stores them on the Item.
+    //
+    // Every site that creates an AuctionEntry populates both from the Item, on the
+    // world thread: AuctionHouseMgr::LoadAuctions (restored from the database),
+    // AuctionHouseHandler (a player lists an item) and AhBot (the bot lists one).
+    // The initialisers below are a floor, not the value - they were once the only
+    // thing setting these, which made every auction the bot did not create itself
+    // read as a stack of exactly one, silently and with no way to notice.
     //
     int32 itemRandomPropertyId = 0;
     uint32 itemCount = 1;

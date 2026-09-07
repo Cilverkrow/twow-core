@@ -245,18 +245,22 @@ std::vector<AuctionSnapshot> AhBot::LoadAuctions(const std::vector<AuctionSnapsh
         if (IsBotAuction(entry.owner) || IsBotAuction(entry.bidder))
             continue;
 
-        Item *item = sAuctionMgr.GetAItem(entry.itemGuidLow);
-        if (!item)
+        // LLM-012 / BOT-10: the snapshot is the whole point. This runs on the bot
+        // thread, where the Item the auction refers to can be freed by the world
+        // thread between the snapshot and this read. Everything wanted here -- the
+        // prototype and the stack size -- is already copied into the snapshot.
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(entry.itemTemplate);
+        if (!proto)
             continue;
 
-        if (!category->Contains(item->GetProto()))
+        if (!category->Contains(proto))
             continue;
 
-        uint32 price = category->GetPricingStrategy()->GetBuyPrice(item->GetProto(), auctionIds[auction]);
-        if (!price || !item->GetCount())
+        uint32 price = category->GetPricingStrategy()->GetBuyPrice(proto, auctionIds[auction]);
+        if (!price || !entry.itemCount)
         {
             sLog.outDetail("%s (x%d) in auction %d: price cannot be determined",
-                    item->GetProto()->Name1.c_str(), item->GetCount(), auctionIds[auction]);
+                    proto->Name1.c_str(), entry.itemCount, auctionIds[auction]);
             continue;
         }
 
@@ -266,7 +270,7 @@ std::vector<AuctionSnapshot> AhBot::LoadAuctions(const std::vector<AuctionSnapsh
     return entries;
 }
 
-void AhBot::FindMinPrice(const std::vector<AuctionSnapshot>& auctionEntryMap, const AuctionSnapshot& entry, Item*& item, uint32* minBid,
+void AhBot::FindMinPrice(const std::vector<AuctionSnapshot>& auctionEntryMap, const AuctionSnapshot& entry, ItemPrototype const* proto, uint32 itemCount, uint32* minBid,
         uint32* minBuyout)
 {
     *minBid = 0;
@@ -278,13 +282,13 @@ void AhBot::FindMinPrice(const std::vector<AuctionSnapshot>& auctionEntryMap, co
         if (other.owner == entry.owner)
             continue;
 
-        Item *otherItem = sAuctionMgr.GetAItem(other.itemGuidLow);
-        if (!otherItem || !otherItem->GetCount() || !otherItem->GetProto() || otherItem->GetProto()->ItemId != item->GetProto()->ItemId)
+        ItemPrototype const* otherProto = sObjectMgr.GetItemPrototype(other.itemTemplate);
+        if (!otherProto || !other.itemCount || otherProto->ItemId != proto->ItemId)
             continue;
 
-        uint32 startbid = other.startbid / otherItem->GetCount() * item->GetCount();
-        uint32 bid = other.bid / otherItem->GetCount() * item->GetCount();
-        uint32 buyout = other.buyout / otherItem->GetCount() * item->GetCount();
+        uint32 startbid = other.startbid / other.itemCount * itemCount;
+        uint32 bid = other.bid / other.itemCount * itemCount;
+        uint32 buyout = other.buyout / other.itemCount * itemCount;
 
         if (!bid && startbid && (!*minBid || *minBid > startbid))
             *minBid = startbid;
@@ -449,24 +453,25 @@ int AhBot::Answer(int auction, Category* category, ItemBag* inAuctionItems)
             continue;
         }
 
-        Item *item = sAuctionMgr.GetAItem(snap.itemGuidLow);
-        if (!item || !item->GetCount())
+        // Same reason as LoadAuctions: bot thread, so read the prototype and the
+        // stack size from the snapshot rather than dereferencing a live Item.
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(snap.itemTemplate);
+        if (!proto || !snap.itemCount)
         {
-            sLog.outString("[AhBot] Skipping entry %u from real player (guid=%u account=%u): item not found in aitem map",
+            sLog.outString("[AhBot] Skipping entry %u from real player (guid=%u account=%u): unknown item template or empty stack",
                     snap.Id, owner, account);
             continue;
         }
 
-        const ItemPrototype* proto = item->GetProto();
         sLog.outString("[AhBot] Evaluating %s (x%d) entry=%u from real player (guid=%u account=%u) AH=%u startbid=%u buyout=%u",
-                proto->Name1.c_str(), item->GetCount(), snap.Id, owner, account, auctionIds[auction],
+                proto->Name1.c_str(), snap.itemCount, snap.Id, owner, account, auctionIds[auction],
                 snap.startbid, snap.buyout);
 
         std::vector<uint32> items = availableItems.Get(category);
         if (std::find(items.begin(), items.end(), proto->ItemId) == items.end())
         {
             sLog.outString("[AhBot] SKIP %s (x%d): not in bot's available item pool for category %s",
-                    proto->Name1.c_str(), item->GetCount(), category->GetName().c_str());
+                    proto->Name1.c_str(), snap.itemCount, category->GetName().c_str());
             continue;
         }
 
@@ -475,14 +480,14 @@ int AhBot::Answer(int auction, Category* category, ItemBag* inAuctionItems)
         if (maxAnswerCount && answerCount > maxAnswerCount)
         {
             sLog.outString("[AhBot] SKIP %s (x%d): already answered %u times (max=%u) within interval",
-                    proto->Name1.c_str(), item->GetCount(), answerCount, maxAnswerCount);
+                    proto->Name1.c_str(), snap.itemCount, answerCount, maxAnswerCount);
             continue;
         }
 
         if (proto->RequiredLevel > sAhBotConfig.maxRequiredLevel || proto->ItemLevel > sAhBotConfig.maxItemLevel)
         {
             sLog.outString("[AhBot] SKIP %s (x%d): reqLevel=%u itemLevel=%u exceeds max (reqLevel<=%u itemLevel<=%u)",
-                    proto->Name1.c_str(), item->GetCount(),
+                    proto->Name1.c_str(), snap.itemCount,
                     proto->RequiredLevel, proto->ItemLevel,
                     sAhBotConfig.maxRequiredLevel, sAhBotConfig.maxItemLevel);
             continue;
@@ -493,12 +498,12 @@ int AhBot::Answer(int auction, Category* category, ItemBag* inAuctionItems)
         if (!price)
         {
             sLog.outString("[AhBot] SKIP %s (x%d): buy price is 0 (%s)",
-                    proto->Name1.c_str(), item->GetCount(), priceExplain.str().c_str());
+                    proto->Name1.c_str(), snap.itemCount, priceExplain.str().c_str());
             continue;
         }
 
-        uint32 bidPrice = item->GetCount() * price;
-        uint32 buyoutPrice = item->GetCount() * urand(price, 4 * price / 3);
+        uint32 bidPrice = snap.itemCount * price;
+        uint32 buyoutPrice = snap.itemCount * urand(price, 4 * price / 3);
 
         uint32 curPrice = snap.bid;
         if (!curPrice) curPrice = snap.startbid;
@@ -514,7 +519,7 @@ int AhBot::Answer(int auction, Category* category, ItemBag* inAuctionItems)
         if (curPrice > buyoutPrice)
         {
             sLog.outString("[AhBot] SKIP %s (x%d): listing price %u > bot max price %u (price/unit=%u)",
-                    proto->Name1.c_str(), item->GetCount(), curPrice, buyoutPrice, price);
+                    proto->Name1.c_str(), snap.itemCount, curPrice, buyoutPrice, price);
             CheckSendMail(bidder, buyoutPrice, snap);
             continue;
         }
@@ -522,24 +527,24 @@ int AhBot::Answer(int auction, Category* category, ItemBag* inAuctionItems)
         if (availableMoney < (int64)curPrice)
         {
             sLog.outString("[AhBot] SKIP %s (x%d): listing price %u > available money %ld",
-                    proto->Name1.c_str(), item->GetCount(), curPrice, availableMoney);
+                    proto->Name1.c_str(), snap.itemCount, curPrice, availableMoney);
             continue;
         }
 
         uint32 minBid = 0, minBuyout = 0;
-        FindMinPrice(auctionEntryMap, snap, item, &minBid, &minBuyout);
+        FindMinPrice(auctionEntryMap, snap, proto, snap.itemCount, &minBid, &minBuyout);
 
         if (minBid && snap.bid && minBid < snap.bid)
         {
             sLog.outString("[AhBot] SKIP %s (x%d): current bid %u > cheaper listing %u (minBid)",
-                    proto->Name1.c_str(), item->GetCount(), snap.bid, minBid);
+                    proto->Name1.c_str(), snap.itemCount, snap.bid, minBid);
             continue;
         }
 
         if (minBid && snap.startbid && minBid < snap.startbid)
         {
             sLog.outString("[AhBot] SKIP %s (x%d): startbid %u > cheaper listing %u (minBid)",
-                    proto->Name1.c_str(), item->GetCount(), snap.startbid, minBid);
+                    proto->Name1.c_str(), snap.itemCount, snap.startbid, minBid);
             CheckSendMail(bidder, minBid, snap);
             continue;
         }
@@ -549,7 +554,7 @@ int AhBot::Answer(int auction, Category* category, ItemBag* inAuctionItems)
         if (time(0) < buytime)
         {
             sLog.outString("[AhBot] SKIP %s (x%d): buy delay not expired, will act in %ld seconds",
-                    proto->Name1.c_str(), item->GetCount(), (long)(buytime - time(0)));
+                    proto->Name1.c_str(), snap.itemCount, (long)(buytime - time(0)));
             continue;
         }
 
@@ -572,7 +577,7 @@ int AhBot::Answer(int auction, Category* category, ItemBag* inAuctionItems)
         availableMoney -= curPrice;
 
         sLog.outString("[AhBot] Queued buy: %dx %s on AH %u for %u (bidder guid=%u)",
-                item->GetCount(), proto->Name1.c_str(), auctionIds[auction], pending.bidAmount, bidder);
+                snap.itemCount, proto->Name1.c_str(), auctionIds[auction], pending.bidAmount, bidder);
 
         answered++;
     }

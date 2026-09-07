@@ -407,6 +407,13 @@ void WorldSession::HandleAuctionSellItem(WorldPacket & recv_data)
     AH->Id = sObjectMgr.GenerateAuctionID();
     AH->itemGuidLow = it->GetObjectGuid().GetCounter();
     AH->itemTemplate = it->GetEntry();
+    // Copy the stack size and the random suffix off the item now, on the world
+    // thread, while `it` is known good. AuctionEntry carries these because the
+    // AH bot reads them from an AuctionSnapshot on its own thread, where
+    // dereferencing the Item would be a use-after-free. Leaving them at their
+    // defaults made every player listing look like a stack of exactly one.
+    AH->itemCount = it->GetCount();
+    AH->itemRandomPropertyId = it->GetItemRandomPropertyId();
     AH->owner = pl->GetGUIDLow();
     AH->ownerAccount = pl->GetSession()->GetAccountId();
     AH->startbid = bid;

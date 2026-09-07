@@ -73,7 +73,7 @@ namespace ahbot
         // underneath it. See the comment on AuctionSnapshot in AuctionHouseMgr.h.
         std::vector<AuctionSnapshot> LoadAuctions(const std::vector<AuctionSnapshot>& auctionEntryMap, Category*& category,
                 int& auction);
-        void FindMinPrice(const std::vector<AuctionSnapshot>& auctionEntryMap, const AuctionSnapshot& entry, Item*& item, uint32* minBid,
+        void FindMinPrice(const std::vector<AuctionSnapshot>& auctionEntryMap, const AuctionSnapshot& entry, ItemPrototype const* proto, uint32 itemCount, uint32* minBid,
                 uint32* minBuyout);
         uint32 GetBuyTime(uint32 entry, uint32 itemId, uint32 auctionHouse, Category*& category, double priceLevel);
         uint32 GetTime(std::string category, uint32 id, uint32 auctionHouse, uint32 type);
