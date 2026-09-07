@@ -18,9 +18,9 @@ Two things it takes care of that are easy to get wrong:
   order, it would spend its first points in the secondary tree. A feral druid
   built to tank would start out as a balance caster. Each build therefore gets
   an entry every five levels, filled along a learning order: main tree first by
-  row and column, then the rest. Every intermediate level from 10 through 60 is
-  validated for newly added paths; historical paths retain their emitted
-  five-level snapshots byte-for-byte.
+  row and column, then the rest. Every intermediate level from 10 through 60
+  is validated when using a higher rate; the Rate 1 output remains byte-for-
+  byte compatible with the shipped configuration.
 
   Talent rate. The points a level grants are (level - 9) * Rate.Talent, so the
   links depend on the rate the server runs. Generated for the wrong one, every
@@ -250,6 +250,58 @@ def prefix(entries, target, main_tree, budget):
     return ranks
 
 
+def extend_target(entries, target, main_tree, desired, spell_ids):
+    """Fill a Rate-1 target deterministically for higher talent rates.
+
+    The accepted target remains untouched at Rate 1.  For an additive higher
+    rate, finish the selected main tree first, then visit the other trees in
+    ascending Turtle TalentTab page order.  A rank is retained only when the
+    same DBC checks used for emitted prefixes accept it.
+    """
+    ranks = dict(target)
+    order = ([entry for entry in entries if entry['page'] == main_tree] +
+             [entry for page in (0, 1, 2) if page != main_tree
+              for entry in entries if entry['page'] == page])
+    while sum(ranks.values()) < desired:
+        added = False
+        for entry in order:
+            current = ranks.get(entry['id'], 0)
+            if current >= entry['maxRank']:
+                continue
+            candidate = dict(ranks)
+            candidate[entry['id']] = current + 1
+            if not check(entries, candidate, desired, spell_ids, True):
+                ranks = candidate
+                added = True
+                break
+        if not added:
+            break
+    return ranks
+
+
+def legal_prefix(entries, target, main_tree, budget, spell_ids):
+    """Return the deterministic, DBC-legal Rate-2 prefix of a target."""
+    ranks = {}
+    order = ([entry for entry in entries if entry['page'] == main_tree] +
+             [entry for page in (0, 1, 2) if page != main_tree
+              for entry in entries if entry['page'] == page])
+    while sum(ranks.values()) < budget:
+        added = False
+        for entry in order:
+            current = ranks.get(entry['id'], 0)
+            if current >= target.get(entry['id'], 0):
+                continue
+            candidate = dict(ranks)
+            candidate[entry['id']] = current + 1
+            if not check(entries, candidate, budget, spell_ids, True):
+                ranks = candidate
+                added = True
+                break
+        if not added:
+            break
+    return ranks
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -291,7 +343,7 @@ def main():
                 failures += 1
                 continue
 
-            strict_prerequisites = (cls, name) in NEW_PATHS
+            strict_prerequisites = ((cls, name) in NEW_PATHS or args.rate > 1)
             problem = check(entries, target, sum(target.values()), spell_ids,
                             strict_prerequisites)
             if problem:
@@ -321,13 +373,27 @@ def main():
                     failures += 1
                     continue
 
+            desired = int((60 - 9) * args.rate)
+            active_target = target
+            if args.rate > 1:
+                active_target = extend_target(entries, target, main_tree,
+                                              desired, spell_ids)
+                if sum(active_target.values()) != desired:
+                    print('  BROKEN  class %d %s: only %d of %d legal points' %
+                          (cls, name, sum(active_target.values()), desired),
+                          file=sys.stderr)
+                    failures += 1
+                    continue
+
             previous = {}
             prefixes = {}
-            validation_levels = (VALIDATION_LEVELS if (cls, name) in NEW_PATHS
-                                 else LEVELS)
+            validation_levels = (VALIDATION_LEVELS if args.rate > 1 or
+                                 (cls, name) in NEW_PATHS else LEVELS)
             for level in validation_levels:
                 budget = int((level - 9) * args.rate)
-                ranks = prefix(entries, target, main_tree, budget)
+                ranks = (legal_prefix(entries, active_target, main_tree,
+                                      budget, spell_ids) if args.rate > 1 else
+                         prefix(entries, active_target, main_tree, budget))
                 problem = check(entries, ranks, budget, spell_ids,
                                 strict_prerequisites)
                 if problem:
@@ -335,7 +401,7 @@ def main():
                           (cls, name, level, problem), file=sys.stderr)
                     failures += 1
                     break
-                expected_points = min(budget, sum(target.values()))
+                expected_points = min(budget, sum(active_target.values()))
                 if sum(ranks.values()) != expected_points:
                     print('  BROKEN  class %d %s at level %d: %d of %d points spent' %
                           (cls, name, level, sum(ranks.values()), expected_points),
@@ -360,11 +426,11 @@ def main():
                                (cls, index, level,
                                 build_link(entries, prefixes[level])))
 
-                full = sum(target.values())
-                at_sixty = sum(prefix(entries, target, main_tree,
+                full = sum(active_target.values())
+                at_sixty = sum(prefix(entries, active_target, main_tree,
                                       int((60 - 9) * args.rate)).values())
-                coverage = ('levels 10-60' if (cls, name) in NEW_PATHS
-                            else 'emitted snapshots')
+                coverage = ('levels 10-60' if args.rate > 1 or
+                            (cls, name) in NEW_PATHS else 'emitted snapshots')
                 print('  class %-2d %-14s main tree %d, %2d of %d points at level 60; %s'
                       % (cls, name, main_tree, at_sixty, full, coverage),
                       file=sys.stderr)
