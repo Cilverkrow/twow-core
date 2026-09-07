@@ -386,6 +386,40 @@ bool PlayerbotAIConfig::Initialize()
     asyncBotLogin = config.GetBoolDefault("AiPlayerbot.AsyncBotLogin", false);
     persistentActiveRosterEnabled = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.Enabled", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
+
+    // AsyncBotLogin = 1 swaps RandomPlayerbotMgr's own login loop for PlayerBotLoginMgr,
+    // which is entirely roster-unaware: PlayerBotLoginMgr::PlayerLoginInfo::LogoutBot reaches
+    // DisablePlayerBot with allowRosterLogoutCleanup at its default false - right for
+    // population rotation, and safe today only because that code never runs.
+    // RandomPlayerbotMgr::UpdateAIInternal takes the persistent-roster branch and returns
+    // before sPlayerBotLoginMgr.Update() is ever reached. Run both and the async path tries to
+    // log out roster bots it must not touch: PersistentRosterDestructiveMutationAllowed refuses
+    // the logout for a roster member, the player stays in world, and LogoutBot() returns false
+    // with loginState stuck at BOT_ON_LOGOUTQUEUE after EmptyLoginSpace already freed the slot
+    // - logins wedge and the log floods, on every update tick.
+    //
+    // Two further defects sit behind the same flag and were only ever inert because
+    // AsyncBotLogin = 0 selects the legacy manager: GetClassRaceBucketSize reading the
+    // probability array in fixed mode, and the unsigned underflow on an explicit zero entry in
+    // RandomPlayerbotFactory (both fixed in core #59).
+    //
+    // Refuse here, where the operator can still read which two keys disagree. Today the pair
+    // fails closed later and quietly: ai::roster::Service::Start() returns
+    // ASYNC_LOGIN_UNSUPPORTED, admission stays shut, and the server runs with no bots at all
+    // and one line of explanation buried in the world log. Both values are read immediately
+    // above, so neither is stale. MaintenanceMode is deliberately not part of the condition: it
+    // only closes admission within roster-enabled operation and an operator clears it later, so
+    // a config that passed in maintenance would wedge the moment maintenance ended.
+    if (asyncBotLogin && persistentActiveRosterEnabled)
+    {
+        sLog.outError("AiPlayerbot.AsyncBotLogin = 1 and AiPlayerbot.PersistentActiveRoster.Enabled = 1");
+        sLog.outError("cannot both be on. PlayerbotLoginMgr, the manager AsyncBotLogin selects, has no");
+        sLog.outError("roster awareness at all, so enabling both wedges bot logins.");
+        sLog.outError("Set one of the two to 0 in aiplayerbot.conf.");
+        Log::WaitBeforeContinueIfNeed();
+        exit(1);
+    }
+
     preloadHolders = config.GetBoolDefault("AiPlayerbot.PreloadHolders", false);
     
     freeRoomForNonSpareBots = config.GetIntDefault("AiPlayerbot.FreeRoomForNonSpareBots", 1);
