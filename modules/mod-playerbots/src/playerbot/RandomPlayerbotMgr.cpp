@@ -4583,7 +4583,27 @@ uint32 RandomPlayerbotMgr::GetTradeDiscount(Player* bot, Player* master)
     return GetEventValue(botId, name.str());
 }
 
-std::string RandomPlayerbotMgr::HandleRemoteCommand(std::string request)
+std::future<std::string> RandomPlayerbotMgr::PostRemoteCommand(std::string request)
+{
+    return m_remoteCommandQueue.Post(std::move(request));
+}
+
+void RandomPlayerbotMgr::RunQueuedRemoteCommands()
+{
+    // The handler is passed in here rather than stored in the queue, which is
+    // what keeps WorldThreadCommandQueue free of every game and playerbot
+    // header. This is the one place the two sides meet, and it is on the
+    // world thread.
+    m_remoteCommandQueue.Drain(WorldThreadCommandQueue::MaxCommandsPerTick,
+        [this](std::string const& request) { return HandleRemoteCommandOnWorldThread(request); });
+}
+
+// WORLD THREAD ONLY - the name says so because the body below resolves a guid
+// to a Player* and a PlayerbotAI* and dereferences them. Reached from a
+// network thread this was a use-after-free whenever the world despawned the
+// bot on the same tick; it is correct exactly because RunQueuedRemoteCommands()
+// is the only thing that calls it now. The body itself is unchanged.
+std::string RandomPlayerbotMgr::HandleRemoteCommandOnWorldThread(std::string request)
 {
     std::string::iterator pos = find(request.begin(), request.end(), ',');
     if (pos == request.end())

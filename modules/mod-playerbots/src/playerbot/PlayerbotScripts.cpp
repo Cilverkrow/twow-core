@@ -53,6 +53,20 @@ class PlayerbotWorldScript : public WorldScript
         {
             if (!sPlayerbotAIConfig.enabled)
                 return;
+
+            // Remote admin commands, handed over by PlayerbotCommandServer
+            // connection threads. This is the world thread, which is the whole
+            // point: the handler resolves a bot guid to a Player* and its
+            // PlayerbotAI, and only here does the world own those objects.
+            //
+            // It has to be HERE and not in RandomPlayerbotMgr::UpdateAIInternal.
+            // PlayerbotAIBase::UpdateAI returns early on !CanUpdateAIInternal(),
+            // so a drain placed there would inherit the AI update throttle and
+            // answer a waiter only once per bot update interval - long enough to
+            // trip the waiter timeout on an otherwise healthy server. AhBot
+            // documents the same trap above its own nextAICheckTime early-out.
+            sRandomPlayerbotMgr.RunQueuedRemoteCommands();
+
             sRandomPlayerbotMgr.UpdateAI(diff);
             auctionbot.Update();
         }

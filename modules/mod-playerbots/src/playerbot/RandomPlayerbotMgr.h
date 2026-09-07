@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include "PlayerbotAIBase.h"
 #include "PlayerbotMgr.h"
+#include "WorldThreadCommandQueue.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "WorldPosition.h"
 #include <map>
@@ -114,7 +115,16 @@ public:
         void ResolvePinnedBots();
     public:
         void HandleCommand(uint32 type, const std::string& text, Player& fromPlayer, std::string channelName = "", Team team = TEAM_BOTH_ALLOWED, uint32 lang = LANG_UNIVERSAL, const std::string& to = "");
-        std::string HandleRemoteCommand(std::string request);
+        // WORLD THREAD ONLY. Resolves a bot guid to a Player* and its
+        // PlayerbotAI and dereferences both, so it may only run where
+        // the world owns those objects. Off-thread callers go through
+        // PostRemoteCommand() instead.
+        std::string HandleRemoteCommandOnWorldThread(std::string request);
+        // Callable from ANY thread. Hands the request to the world thread
+        // and returns a future for its reply; see WorldThreadCommandQueue.
+        std::future<std::string> PostRemoteCommand(std::string request);
+        // WORLD THREAD ONLY. Runs this tick's share of the queue above.
+        void RunQueuedRemoteCommands();
         void OnPlayerLogout(Player* player);
         void OnPlayerLogin(Player* player);
         void OnPlayerLoginError(uint32 bot);
@@ -183,6 +193,10 @@ public:
         bool arenaTeamsDeleted, guildsDeleted = false;
 
         std::mutex m_ahActionMutex;
+
+        // Remote admin commands posted by PlayerbotCommandServer connection
+        // threads, drained on the world thread by RunQueuedRemoteCommands().
+        WorldThreadCommandQueue m_remoteCommandQueue;
 
         const std::vector<AuctionEntry>& GetAhPrices(uint32 itemId) {
             static const std::vector<AuctionEntry> emptyVector; // Avoid returning dangling refs
