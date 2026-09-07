@@ -331,3 +331,34 @@ if(MSVC)
 endif()
 add_test(NAME NavMeshLifetimeTest COMMAND NavMeshLifetimeTest)
 set_tests_properties(NavMeshLifetimeTest PROPERTIES TIMEOUT 90)
+
+# --- AuctionBot / market tests (PR #34, appended to the ManTech suite) ---
+set(AHBOT_ROOT "${CORE_ROOT}/modules/mod-playerbots/src/ahbot")
+extract_native_fragment("${TRAVEL_ROOT}/PlayerbotAI.cpp"
+  "bool ChatHandler::HandleAhBotCommand(char* args)" "float PlayerbotAI::GetRange" NativeAhBotChatDispatch.inc)
+extract_native_fragment("${AHBOT_ROOT}/AhBot.cpp"
+  "bool AhBot::HandleAhBotCommand(ChatHandler* handler, char const* args)" "uint32 AhBot::auctionIds" NativeAhBotModuleDispatch.inc)
+extract_native_fragment("${AHBOT_ROOT}/AhBot.h"
+  "namespace ahbot" "#define auctionbot" NativeMarketDeclarations.inc)
+extract_native_fragment("${AHBOT_ROOT}/AhBot.cpp"
+  "bool ReadNumbers(" "bool QueryIds(" NativeMarketParser.inc)
+extract_native_fragment("${AHBOT_ROOT}/AhBot.cpp"
+  "bool AhBot::IsBotOwner(" "void AhBot::Status(" NativeMarketWork.inc)
+extract_native_fragment("${AHBOT_ROOT}/AhBot.cpp"
+  "bool AhBot::HandleCommand(" "// End market command implementation." NativeMarketCommands.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/AuctionHouse/AuctionHouseMgr.cpp"
+  "void AuctionHouseObject::ExpireAuction(" "void AuctionHouseObject::Update()" NativeMarketExpiry.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/AuctionHouse/AuctionHouseMgr.cpp"
+  "void AuctionHouseMgr::SendAuctionOutbiddedMail(" "void AuctionHouseObject::BuildListBidderItems(" NativeMarketRefund.inc)
+extract_native_fragment("${CORE_ROOT}/src/game/AuctionHouse/AuctionHouseMgr.cpp"
+  "std::vector<AuctionSnapshot> AuctionHouseObject::GetAuctionsSnapshotPage(" "AuctionHouseMgr::AuctionHouseMgr()" NativeMarketPage.inc)
+foreach(test AhBotChatDispatchTest AhBotMarketTest AuctionSettlementTest)
+  add_executable(${test} ${test}.cpp)
+  target_compile_features(${test} PRIVATE cxx_std_17)
+  target_include_directories(${test} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${AHBOT_ROOT}" "${CORE_ROOT}/src/shared")
+  if(MSVC)
+    target_compile_options(${test} PRIVATE /EHsc)
+  endif()
+  add_test(NAME ${test} COMMAND ${test})
+  set_tests_properties(${test} PROPERTIES TIMEOUT 30)
+endforeach()
