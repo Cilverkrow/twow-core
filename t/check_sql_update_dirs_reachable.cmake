@@ -1,3 +1,11 @@
+# `cmake -P` runs this as a script, so no project() call sets policies for us
+# and CMP0057 defaults to OLD -- under which `if(x IN_LIST list)` is not an
+# operator at all but three unknown arguments, and the script dies with
+# "Unknown arguments specified" rather than doing its job. That is exactly how
+# this failed its first CI run while passing locally on a newer cmake.
+cmake_minimum_required(VERSION 3.16)
+cmake_policy(SET CMP0057 NEW)
+
 # Registered as the ctest `sql_update_dirs_reachable`. Run with
 #   cmake -DTW_CORE_ROOT=<repo root> -P this-file
 #
