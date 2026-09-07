@@ -1966,6 +1966,13 @@ Start-Sleep -Seconds 2
 # Only these subdirectories are removed - the server root itself (and the launcher .bat
 # files and the mariadb installation sitting in it) is left untouched.
 #
+# modules\ is cmake --install's own raw drop point for a module's .conf.dist (see step 09
+# point 6b) - not the etc\modules\ the server actually reads from, which lives inside
+# $EtcDir and is already covered by that entry. It carries no operator data, so unlike
+# pdump/honor it is cleared unconditionally: left in place, a module removed or renamed
+# between builds would leave its old .conf.dist here forever, and step 09 would keep
+# copying that stale file into etc\modules\ on every run after $EtcDir was wiped clean.
+#
 # pdump and honor are the exception under -SkipBotRegen. Everything else in this list is
 # put back by cmake --install in step 09; those two are not. They hold operator data the
 # pipeline never produced and cannot restore - character exports written by the in-game
@@ -1980,7 +1987,7 @@ if ($DatabaseOnly) {
     Write-Host " -> Keeping the server folders as they are (-DatabaseOnly)."
 } else {
     Write-Host "Clearing previously generated server directories..."
-    $GeneratedFolders = @($BinDir, $EtcDir, $LibDir, $LogsDir, $ToolsDir, $LuaDir)
+    $GeneratedFolders = @($BinDir, $EtcDir, $LibDir, $LogsDir, $ToolsDir, $LuaDir, (Join-Path $InstallDir "modules"))
 
     if ($SkipBotRegen) {
         Write-Host " -> Keeping pdump and honor (-SkipBotRegen preserves existing data)."
