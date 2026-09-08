@@ -408,7 +408,30 @@ jobs:
               # database started two steps ago. It is opt-in (see
               # modules/mod-playerbots/tests.cmake) precisely so a plain
               # BUILD_TESTING build never requires a live MariaDB.
+              #
+              # MODULES=static, because this repository OWNS mod-playerbots and
+              # mod-dungeon-clear (ADR-0040) and until now compiled neither. MODULES
+              # defaults to "disabled" and nothing passed the flag, so a green tick
+              # here meant "the engine compiles" and said nothing at all about the
+              # ~780 module source files living in this same tree.
+              #
+              # Not hypothetical: PR #78 merged green here and then failed to compile
+              # in the platform, because GetProfessionPair was private and the only
+              # build that ever compiled its caller was in another repository. The
+              # author of a module change got a green tick from the repository that
+              # owns the module, for a change that did not build.
+              #
+              # It costs roughly 780 more translation units, and that is the correct
+              # trade. The alternative is what we had: module changes verified only
+              # when a submodule bump elsewhere picks them up -- later, and in the
+              # wrong place.
+              #
+              # The "core configured standalone" assertion that used to follow this
+              # build was already removed (see the note below it), so nothing here
+              # contradicts a claim this job still makes. The MSVC job keeps its own
+              # standalone assertion and is deliberately untouched.
               cmake -S /src -B /build -G Ninja \
+                -DMODULES=static \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DBUILD_TESTING=ON \
                 -DBUILD_PERSISTENT_ROSTER_ADAPTER_TESTS=ON \
