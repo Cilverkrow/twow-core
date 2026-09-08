@@ -943,7 +943,27 @@ void PlayerbotHolder::OnBotLogin(Player * const bot)
         else
             GetBotAI(bot)->SetPlayerFriend(false);
 
-        if (sPlayerbotAIConfig.instantRandomize && !sPlayerbotAIConfig.disableRandomLevels && !bot->GetTotalPlayedTime())
+        // The fourth place DisableRandomLevels suppressed initialisation, and the
+        // one that runs at login. The other three were fixed earlier
+        // (PlayerbotFactory::Randomize, RandomPlayerbotMgr::RandomizeFirst and
+        // ::Refresh); this gate was missed because it reads as being about the
+        // level roll and is not.
+        //
+        // InstaRandomize is a two-line wrapper: it calls Randomize and then
+        // teleports if the bot is above the start level. Randomize now handles
+        // DisableRandomLevels correctly by itself -- it skips the level ROLL and
+        // still teaches spells, skills, professions, talents, mounts and
+        // reputations -- so refusing to call it here just means a freshly created
+        // bot logs in with nothing and waits for the scheduled randomize instead.
+        //
+        // That wait is not short. MinRandomBotRandomizeTime defaults to SIX HOURS
+        // and the maximum to twenty-four, so a bot created with this flag set is
+        // inert for most of a day. On a realm that restarts, it is inert again.
+        //
+        // Measured in CI on the first run of the bot-initialisation smoke check,
+        // which is what found this: after twelve minutes of uptime, 1 of 20
+        // roster bots had any spell, 0 had a profession and 0 were above level 1.
+        if (sPlayerbotAIConfig.instantRandomize && !bot->GetTotalPlayedTime())
         {
             sRandomPlayerbotMgr.InstaRandomize(bot);
         }
