@@ -3986,33 +3986,48 @@ void PlayerbotFactory::InitTradeSkills()
             firstSkills.push_back(SKILL_ENGINEERING);
             secondSkills.push_back(SKILL_LEATHERWORKING);
             break;
+        // The cloth classes had no mapping at all, so they fell through to the
+        // generic pool below -- which contains no cloth profession either.
+        // Tailoring and Enchanting appear in tradeSkills[] and were reachable
+        // from nowhere: no bot on the realm could ever hold either.
+        case CLASS_MAGE:
+        case CLASS_PRIEST:
+        case CLASS_WARLOCK:
+            firstSkills.push_back(SKILL_TAILORING);
+            firstSkills.push_back(SKILL_HERBALISM);
+            secondSkills.push_back(SKILL_ENCHANTING);
+            secondSkills.push_back(SKILL_ALCHEMY);
+            break;
         }
 
         if (firstSkills.empty() || secondSkills.empty())
         {
-            switch (urand(0, 6))
+            // This was `switch (urand(0, 6))` with cases 0-3. urand's upper
+            // bound is inclusive, so three of its seven outcomes matched no case
+            // and left both skills at 0 -- and SetRandomSkill(0) below does not
+            // no-op, it writes a skill row with id 0. Roughly two in seven bots
+            // reaching this path came away with no professions.
+            //
+            // Seven pairs, which is very likely what the original 0-6 range was
+            // reaching for, indexed off the table's own size so the two cannot
+            // drift apart again.
+            static uint16 const genericPairs[][2] =
             {
-            case 0:
-                firstSkill = SKILL_HERBALISM;
-                secondSkill = SKILL_ALCHEMY;
-                break;
-            case 1:
-                firstSkill = SKILL_HERBALISM;
-                secondSkill = SKILL_MINING;
-                break;
-            case 2:
-                firstSkill = SKILL_MINING;
-                secondSkill = SKILL_SKINNING;
-                break;
-            case 3:
-#ifdef MANGOSBOT_ZERO
-                firstSkill = SKILL_HERBALISM;
-                secondSkill = SKILL_SKINNING;
-#else
-                firstSkill = SKILL_JEWELCRAFTING;
-                secondSkill = SKILL_MINING;
+                { SKILL_HERBALISM,  SKILL_ALCHEMY       },
+                { SKILL_HERBALISM,  SKILL_MINING        },
+                { SKILL_MINING,     SKILL_SKINNING      },
+                { SKILL_HERBALISM,  SKILL_SKINNING      },
+                { SKILL_MINING,     SKILL_BLACKSMITHING },
+                { SKILL_SKINNING,   SKILL_LEATHERWORKING},
+                { SKILL_TAILORING,  SKILL_ENCHANTING    },
+#ifndef MANGOSBOT_ZERO
+                { SKILL_JEWELCRAFTING, SKILL_MINING     },
 #endif
-            }
+            };
+
+            uint32 const pick = urand(0, uint32(sizeof(genericPairs) / sizeof(genericPairs[0])) - 1);
+            firstSkill = genericPairs[pick][0];
+            secondSkill = genericPairs[pick][1];
         }
         else
         {
@@ -4322,6 +4337,11 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
 #endif
 	}
 #endif
+
+    // Belt and braces after the id-0 defect above: an unset skill id is not a
+    // skill, and SetSkill would happily store it.
+    if (!id)
+        return;
 
     uint32 value = urand(maxValue - level, maxValue);
     uint32 curValue = bot->GetSkillValue(id);
