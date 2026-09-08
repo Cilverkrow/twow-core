@@ -638,6 +638,11 @@ jobs:
     timeout-minutes: 120
 
     env:
+      # Overridable per repository (Settings -> Secrets and variables -> Actions
+      # -> Variables). Empty means Z7. See the Configure step for why.
+      MSVC_DEBUG_INFO: ${{ vars.MSVC_DEBUG_INFO }}
+      SCCACHE_DIR: ${{ github.workspace }}\.sccache
+      SCCACHE_CACHE_SIZE: 2G
       # Written once, used twice - to install and to key the cache. Spelling the
       # package list out in two places is how a cache outlives the dependency set
       # it was built for and starts handing back the wrong ACE.
@@ -867,44 +872,102 @@ jobs:
       # prefix in front of every other find_package in the tree for no benefit
       # here - ACE is the only port installed.
       #
-      # NO sccache, deliberately, and this is the one place this job diverges
-      # from twow-repo's reference version. That job disables two things to make
-      # sccache work - USE_PCH (sccache refuses any TU compiled with /Yu) and
-      # MSVC_SEPARATE_PDB (it refuses /Zi too) - and its own comment concedes a
-      # COLD build is then slower than no cache at all. Neither lever is
-      # available here on the same terms:
-      #   * MSVC_SEPARATE_PDB does not exist in twow-core. The root CMakeLists
-      #     appends /Zi to CMAKE_CXX_FLAGS_RELEASE unconditionally for MSVC,
-      #     with no option guarding it, so there is no way to switch it off from
-      #     a command line and sccache would decline every single translation
-      #     unit while the job reported success - the exact failure shape this
-      #     repository has twice been bitten by.
-      #   * This job LINKS. Building objects that no shipped configuration would
-      #     ever produce, in order to make a cache work, weakens the only
-      #     assertion the job makes.
-      # The expensive dependency is ACE and that IS cached, above.
+      # sccache IS used now, and the reason it was not is worth keeping because
+      # it was correct at the time and stopped being correct for one reason.
       #
-      # AND A MEASUREMENT TO TAKE, not a claim: this build gets NO precompiled
-      # headers, despite USE_PCH defaulting ON. USE_PCH_OLD also defaults ON
-      # under MSVC, which routes src/game and src/scripts through
-      # cmake/FindPCHSupport.cmake's ADD_NATIVE_PRECOMPILED_HEADER - and that
-      # macro only does anything when CMAKE_GENERATOR matches "Visual Studio*"
-      # or Xcode. With Ninja it falls through to a branch whose entire body is a
-      # commented-out line, so it silently does nothing. If the compile time this
-      # job reports is the problem, -DUSE_PCH_OLD=OFF is the first lever: it
-      # switches both directories onto target_precompile_headers(), which is the
-      # path the Debian job already builds through every day. It is deliberately
-      # NOT set on the first run - the point of that run is to find out whether
-      # this tree compiles and links with cl.exe at all, and adding an untested
-      # variable to the same experiment is how a result stops meaning anything.
+      # The old note said: sccache refuses /Yu and /Zi; twow-repo disables
+      # USE_PCH and MSVC_SEPARATE_PDB to get around that; MSVC_SEPARATE_PDB does
+      # not exist in twow-core, /Zi is appended unconditionally, so sccache would
+      # decline every translation unit while the job reported success. All true.
+      #
+      # What changed is that the missing option now exists. MSVC_DEBUG_INFO
+      # (CMakeLists.txt) selects Zi, Z7 or OFF, and /Z7 carries the same debug
+      # information INSIDE each .obj rather than in a shared PDB the compiler
+      # appends to. A cached object therefore still contains its debug info, and
+      # the linker still emits a full PDB because /DEBUG is on the link line. The
+      # backtrace survives; only the container changes.
+      #
+      # So the trade the old note described -- cache or crash diagnosis -- was
+      # never a real one. It looked real because nothing offered /Z7.
+      #
+      # USE_PCH is off here, and that IS a genuine trade: sccache refuses /Yu and
+      # there is no /Z7 equivalent for precompiled headers. PCH helps a cold build
+      # once; the cache helps every warm one, and this job overwhelmingly
+      # recompiles a tree that barely changed. Note USE_PCH_OLD defaults ON under
+      # MSVC and routes through a macro that only works for Visual Studio and
+      # Xcode generators, so under Ninja PCH has been silently doing nothing
+      # anyway -- OFF makes the intent explicit rather than relying on that.
+      #
+      # This job still LINKS, and that assertion is unweakened: /Z7 changes where
+      # debug info lives, not what is produced.
+      # sccache, and its cache, both skipped when MSVC_DEBUG_INFO=Zi -- with /Zi
+      # sccache declines every translation unit, so installing it would buy
+      # nothing and the empty cache entry would be noise.
+      - name: Install sccache
+        if: ${{ vars.MSVC_DEBUG_INFO != 'Zi' }}
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      # Restore and save as two steps, not one actions/cache.
+      #
+      # actions/cache's combined form saves in a POST step, and a POST step does
+      # not run when the job is cancelled or fails early -- the same trap the
+      # concurrency comment at the top of this file describes, which cost this
+      # project a day of cold builds. Saving explicitly with if: always() means a
+      # build that fails LATE still contributes everything it compiled, which is
+      # most of the value on a red run.
+      - name: Restore the sccache cache
+        if: ${{ vars.MSVC_DEBUG_INFO != 'Zi' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}\.sccache
+          key: sccache-msvc-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            sccache-msvc-${{ github.ref_name }}-
+            sccache-msvc-
+
       - name: Configure
         shell: pwsh
         run: |
+          # MSVC_DEBUG_INFO is the switch, and it is a repository variable so it
+          # can be flipped without editing this file:
+          #
+          #   vars.MSVC_DEBUG_INFO unset -> Z7  (what CI wants: cacheable, and
+          #                                      the backtrace is kept)
+          #   set to Zi                  -> the historical separate-PDB build;
+          #                                  sccache then declines every TU
+          #   set to OFF                 -> no debug info at all
+          #
+          # Z7 rather than OFF deliberately. sccache refuses /Zi because a cache
+          # hit would skip appending to the shared PDB and leave holes in it --
+          # but /Z7 puts the same information inside each .obj, so caching
+          # preserves it exactly and the linker still emits a full PDB. There was
+          # never a reason to give up the backtrace to get a cache; the option
+          # just did not exist.
+          $dbg = if ($env:MSVC_DEBUG_INFO) { $env:MSVC_DEBUG_INFO } else { 'Z7' }
+          Write-Host "MSVC_DEBUG_INFO=$dbg"
+
           $cmakeArgs = @(
             '-S', '.', '-B', 'build', '-G', 'Ninja',
             '-DCMAKE_BUILD_TYPE=Release',
+            "-DMSVC_DEBUG_INFO=$dbg",
+            # sccache refuses /Yu as well as /Zi, so a compiler cache and
+            # precompiled headers are mutually exclusive here. This job takes the
+            # cache: PCH helps a cold build once, the cache helps every warm one,
+            # and most runs of this job recompile a tree that barely changed.
+            #
+            # USE_PCH_OLD is separately broken under Ninja -- its macro only does
+            # anything for Visual Studio and Xcode generators, so it has been
+            # silently doing nothing regardless. USE_PCH=OFF makes the intent
+            # explicit rather than relying on that accident.
+            '-DUSE_PCH=OFF',
             "-DACE_ROOT=$env:ACE_ROOT"
           )
+          if ($dbg -ne 'Zi') {
+            $cmakeArgs += '-DCMAKE_C_COMPILER_LAUNCHER=sccache'
+            $cmakeArgs += '-DCMAKE_CXX_COMPILER_LAUNCHER=sccache'
+          } else {
+            Write-Host 'MSVC_DEBUG_INFO=Zi: sccache would decline every translation unit, so it is not enabled'
+          }
           if ($env:TW_OPENSSL_INCLUDE_DIR) {
             $cmakeArgs += "-DOPENSSL_INCLUDE_DIR=$env:TW_OPENSSL_INCLUDE_DIR"
             $cmakeArgs += "-DOPENSSL_LIBRARIES=$env:TW_OPENSSL_LIBRARIES"
@@ -1034,6 +1097,22 @@ jobs:
       # invocation, say) this step would otherwise add a second, louder error
       # about object files that were never going to exist, on top of the real
       # one. That happened on the first run and it buried the actual cause.
+
+      - name: sccache statistics
+        if: ${{ always() && vars.MSVC_DEBUG_INFO != 'Zi' }}
+        continue-on-error: true
+        run: sccache --show-stats
+
+      # if: always() on purpose -- see the restore step. A late failure has still
+      # compiled most of the tree, and throwing that away would make the next run
+      # cold for no reason.
+      - name: Save the sccache cache
+        if: ${{ always() && vars.MSVC_DEBUG_INFO != 'Zi' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}\.sccache
+          key: sccache-msvc-${{ github.ref_name }}-${{ github.run_id }}
+
       - name: Confirm the MSVC-only fixes were actually compiled
         if: always() && steps.build.conclusion != 'skipped'
         shell: pwsh

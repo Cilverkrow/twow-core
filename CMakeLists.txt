@@ -681,8 +681,41 @@ if(MSVC)
   # /OPT:REF and /OPT:ICF are here because /DEBUG turns them off by default;
   # with them the generated binary is the same as before, there is simply a
   # .pdb beside it.
-  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+  #
+  # The FORMAT is selectable because it decides whether a compiler cache can
+  # work, and the two are otherwise silently incompatible:
+  #
+  #   Zi  - debug info goes to a separate PDB that every compilation in the
+  #         target appends to. sccache and ccache both REFUSE /Zi, because a
+  #         cache hit skips the compile and therefore skips that append, which
+  #         would leave a PDB with holes. Refusing is the honest behaviour.
+  #   Z7  - the same debug info, stored inside each .obj instead. The object is
+  #         self-contained, so caching preserves it exactly, and the linker still
+  #         produces a full PDB from those objects because /DEBUG is on the link
+  #         line below. Costs larger .obj files and a slightly slower link.
+  #   OFF - no debug information. A minidump is bare addresses again, which is
+  #         the state the comment above exists to describe as unacceptable.
+  #
+  # Default stays Zi, so nothing changes for anyone who does not ask. Z7 exists
+  # because "cache or backtraces" is a false choice that was being made by
+  # omission -- the option simply did not exist, so CI paid full compile time to
+  # keep debug info it never used.
+  set(MSVC_DEBUG_INFO "Zi" CACHE STRING
+      "MSVC release debug info: Zi (separate PDB), Z7 (in objects, cacheable), OFF")
+  set_property(CACHE MSVC_DEBUG_INFO PROPERTY STRINGS Zi Z7 OFF)
+
+  if(MSVC_DEBUG_INFO STREQUAL "OFF")
+    message(STATUS "MSVC_DEBUG_INFO=OFF: release binaries will have no PDB")
+  elseif(MSVC_DEBUG_INFO MATCHES "^(Zi|Z7)$")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /${MSVC_DEBUG_INFO}")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /${MSVC_DEBUG_INFO}")
+  else()
+    # Fail rather than fall through. A typo would otherwise produce a build with
+    # no debug information at all, reported as success -- the exact silent
+    # downgrade this option exists to make deliberate.
+    message(FATAL_ERROR
+        "MSVC_DEBUG_INFO must be Zi, Z7 or OFF (got '${MSVC_DEBUG_INFO}')")
+  endif()
   foreach(_linker EXE SHARED MODULE)
     set(CMAKE_${_linker}_LINKER_FLAGS_RELEASE
         "${CMAKE_${_linker}_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
