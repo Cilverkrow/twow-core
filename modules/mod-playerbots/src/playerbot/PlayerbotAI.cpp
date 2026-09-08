@@ -1,6 +1,7 @@
 #include "PlayerbotMgr.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/AiContextAugment.h"
+#include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
 #include <stdarg.h>
 #include <iomanip>
@@ -1301,6 +1302,10 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
     // bot's own world-thread tick, rather than off a detached thread. See
     // UpdateDelayedPackets()/SendDelayedPacket()/ReceiveDelayedPacket().
     UpdateDelayedPackets(elapsed);
+
+    // The other half of the same round trip: what a dialogue provider asked
+    // this bot to DO. Same tick, same thread, same reason.
+    RunPendingDialogueCommands();
 
     SC_PHASE("UpdateAIInternal.botOutgoingPackets", bot ? bot->GetName() : "(null)");
     botOutgoingPacketHandlers.Handle(helper);
@@ -8082,6 +8087,86 @@ void PlayerbotAI::DrainDelayedPacketBatches(std::vector<PlayerbotAI::DelayedPack
             it = batches.erase(it);
         else
             ++it;
+    }
+}
+
+namespace
+{
+    // The reachability the chat managers enforce BEFORE they call
+    // HandleCommand, re-applied here because this call does not come through
+    // them.
+    //
+    // HandleCommand itself does no proximity, group, guild or channel
+    // filtering at all -- PlayerbotMgr::HandleCommand and
+    // RandomPlayerbotMgr::HandleCommand do it on the way in, and every existing
+    // caller is one of those. A dialogue command that skipped these would be a
+    // command a player could NOT have caused by typing, which is exactly the
+    // property this feature is built on. The numbers are copied from
+    // RandomPlayerbotMgr::HandleCommand rather than re-derived.
+    //
+    // Anything not listed is refused. A world, general, trade or LFG channel
+    // has no equivalent in those managers (a command there reaches a bot only
+    // if it shares the channel, which is a weaker relationship than any of
+    // these), and refusing is the conservative half of the guess.
+    bool DialogueCommandReaches(Player* bot, Player& speaker, uint32 chatType)
+    {
+        switch (chatType)
+        {
+            case CHAT_MSG_WHISPER:
+                // Addressed to this bot by name; that IS the relationship.
+                return true;
+            case CHAT_MSG_SAY:
+                return bot->GetMapId() == speaker.GetMapId() &&
+                       sServerFacade.GetDistance2d(bot, &speaker) <= 25.0f;
+            case CHAT_MSG_YELL:
+                return bot->GetMapId() == speaker.GetMapId() &&
+                       sServerFacade.GetDistance2d(bot, &speaker) <= 300.0f;
+            case CHAT_MSG_PARTY:
+            case CHAT_MSG_RAID:
+                return speaker.IsInGroup(bot, true);
+            case CHAT_MSG_GUILD:
+                return bot->GetGuildId() && bot->GetGuildId() == speaker.GetGuildId();
+            default:
+                return false;
+        }
+    }
+}
+
+void PlayerbotAI::RunPendingDialogueCommands()
+{
+    if (!bot || !bot->IsInWorld())
+        return;
+
+    BotDialogueCommandRequest request;
+    while (TakeBotDialogueCommand(bot->GetGUIDLow(), request))
+    {
+        char const* text = BotDialogueCommandText(request.command);
+        if (!text || !*text)
+        {
+            // QueueBotDialogueCommand already refuses these; this is the same
+            // check on the other side of a thread boundary, because "the enum
+            // value I do not know" must never become "some other command".
+            sLog.outError("PlayerbotAI: bot %s was asked for dialogue command %u, which maps to nothing; ignored",
+                bot->GetName(), uint32(request.command));
+            continue;
+        }
+
+        // Re-resolved now, on the world thread, from a GUID: the speaker may
+        // have logged out during the model call, and this is the moment the
+        // pointer is allowed to exist.
+        Player* speaker = sObjectAccessor.FindPlayer(ObjectGuid(HIGHGUID_PLAYER, request.speakerGuidLow));
+        if (!speaker || speaker == bot || !speaker->IsInWorld() || !speaker->GetSession())
+            continue;
+
+        if (!DialogueCommandReaches(bot, *speaker, request.chatType))
+            continue;
+
+        // The whole feature, in one line. Same entry point, same arguments,
+        // same PlayerbotSecurity gates: if this speaker could not have made
+        // this bot follow by typing "follow", they cannot make it follow by
+        // saying so either, and the refusal happens inside HandleCommand where
+        // it always has.
+        HandleCommand(request.chatType, text, *speaker, request.lang);
     }
 }
 
