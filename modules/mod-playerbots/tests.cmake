@@ -16,6 +16,7 @@
 #   persistent_active_roster              unit, always built
 #   playerbot_legacy_event_write_guard    source scan, no build step
 #   playerbot_level_flag_early_return_guard  source scan, no build step
+#   playerbot_config_key_usage            Python source scan, no build step
 #   premade_specs_rate2                   Python unit, no DBC dependency
 #   playerbot_event_store_contract        unit, always built
 #   world_thread_command_queue            unit, always built
@@ -148,6 +149,34 @@ add_test(NAME premade_specs_rate2
     "${PB_MODULE_DIR}/t/premade_specs_rate2_tests.py")
 
 set_tests_properties(premade_specs_rate2 PROPERTIES
+  ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+
+# --------------------------------------------------------------------------
+# playerbot_config_key_usage -- fails when a config key is loaded into a member
+# that nothing ever reads.
+#
+# ~283 keys are loaded in PlayerbotAIConfig::Initialize. A member that is
+# assigned and never read is a setting an operator can change to no effect, with
+# no compile error (the assignment IS a use), no warning and no test. The only
+# symptom is someone concluding the feature is broken.
+#
+# Python rather than `cmake -P` because the check has to distinguish a member
+# assignment from a local's initialisation and a declaration from an assignment
+# -- CMake's regex engine is not the tool for that, and getting it wrong makes a
+# guard that reports false positives and then gets switched off.
+#
+# Six known-dead keys are allowlisted with reasons rather than deleted: they are
+# upstream's, ADR-0040 keeps our delta upstream-shaped, and resolving them is
+# twow-repo#8's decision. The allowlist is checked in both directions, so an
+# entry that stops being dead is also an error.
+# --------------------------------------------------------------------------
+
+add_test(NAME playerbot_config_key_usage
+  COMMAND "${Python3_EXECUTABLE}"
+    "${PB_MODULE_DIR}/t/config_key_usage_tests.py"
+    --module-dir "${PB_MODULE_DIR}")
+
+set_tests_properties(playerbot_config_key_usage PROPERTIES
   ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 
 # --------------------------------------------------------------------------
