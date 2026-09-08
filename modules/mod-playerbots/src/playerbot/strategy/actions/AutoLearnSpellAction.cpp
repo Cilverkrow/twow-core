@@ -86,8 +86,14 @@ void AutoLearnSpellAction::LearnTrainerSpells(std::ostringstream* out)
         if (!co)
             continue;
 
+        // Profession purchases are deliberately routed only through the
+        // plan-aware action. Keep automatic learning for class and pet
+        // trainers intact, but never turn the generic autolearn pass into a
+        // tradeskill trainer bypass.
+        if (co->TrainerType == TRAINER_TYPE_TRADESKILLS)
+            continue;
+
         if (co->TrainerType != TRAINER_TYPE_CLASS && 
-            co->TrainerType != TRAINER_TYPE_TRADESKILLS &&
             co->TrainerType != TRAINER_TYPE_PETS)
             continue;
 
