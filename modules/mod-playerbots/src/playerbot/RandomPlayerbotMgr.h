@@ -203,6 +203,15 @@ public:
             auto it = ahMirror.find(itemId);
             return (it != ahMirror.end()) ? it->second : emptyVector;}
         uint32 GetPlayersLevel() { return playersLevel; }
+
+        // Public because PlayerbotFactory::InitTradeSkills is the caller, and it
+        // is not a member of this class. Declared private alongside the event
+        // accessors they are built on, which is where they read naturally -- but
+        // the event accessors have no outside caller and these two do, so the
+        // build broke the moment the module was actually compiled.
+        uint32 GetProfessionPair(uint32 bot);
+        uint32 SetProfessionPair(uint32 bot, uint32 pair);
+
     protected:
         virtual void OnBotLoginInternal(Player * const bot) override;
     private:
@@ -213,8 +222,6 @@ public:
         uint32 GetEventValue(uint32 bot, std::string event);
         std::string GetEventData(uint32 bot, std::string event);
         uint32 SetEventValue(uint32 bot, std::string event, uint32 value, uint32 validIn, std::string data = "");
-        uint32 GetProfessionPair(uint32 bot);
-        uint32 SetProfessionPair(uint32 bot, uint32 pair);
         std::list<uint32> GetBots();
         std::list<uint32> GetBgBots(uint32 bracket);
         time_t BgCheckTimer;
