@@ -15,6 +15,7 @@
 #
 #   persistent_active_roster              unit, always built
 #   playerbot_legacy_event_write_guard    source scan, no build step
+#   playerbot_level_flag_early_return_guard  source scan, no build step
 #   premade_specs_rate2                   Python unit, no DBC dependency
 #   playerbot_event_store_contract        unit, always built
 #   world_thread_command_queue            unit, always built
@@ -114,6 +115,27 @@ add_test(NAME playerbot_legacy_event_write_guard
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
     -P "${PB_MODULE_DIR}/t/check_playerbot_legacy_writes.cmake")
+
+# --------------------------------------------------------------------------
+# playerbot_level_flag_early_return_guard -- also a source scan.
+#
+# AiPlayerbot.DisableRandomLevels was implemented as three blanket early
+# returns that skipped spells, skills, professions, talents, mounts,
+# reputations, repair and money along with the level roll. Bots were created
+# unable to fight, so they never levelled, so the setting defeated the exact
+# behaviour it exists to enable -- 5,021 of 5,039 characters at level 1 on the
+# realm where it was found.
+#
+# Nothing else catches that shape: a blanket return compiles, links, runs, and
+# produces a population that looks alive from everywhere except a database
+# query. Same `cmake -P` form as the guard above, and for the same reason: it
+# costs no build time and runs on a configure-only checkout.
+# --------------------------------------------------------------------------
+
+add_test(NAME playerbot_level_flag_early_return_guard
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/check_level_flag_early_returns.cmake")
 
 # --------------------------------------------------------------------------
 # premade_specs_rate2 -- deterministic unit coverage for the generated
