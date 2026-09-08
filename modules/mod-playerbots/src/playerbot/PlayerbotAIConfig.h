@@ -170,6 +170,7 @@ public:
     float randomGearLoweringChance;
     bool rollBadItemsWithPlayer;
     float randomBotMaxLevelChance;
+    float randomBotRaceVariantChance;
     float randomBotRpgChance;
     float usePotionChance;
     float attackEmoteChance;

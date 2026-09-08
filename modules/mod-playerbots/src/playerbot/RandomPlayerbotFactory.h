@@ -68,6 +68,16 @@ class RandomPlayerbotFactory
         static void CreateRandomGuilds();
         static void CreateRandomArenaTeams();
         static std::string CreateRandomGuildName();
+        // Names the server race variant a character's appearance encodes, or
+        // nullptr when it encodes none. The skin value IS the record -- a token
+        // sets it and nothing else survives -- so this works for characters
+        // created long before bots had variants, and needs no stored column.
+        //
+        // Returns nullptr when the value is also a standard skin for that race
+        // and gender, because then it distinguishes nothing. Personality
+        // contract section 5.1 requires exactly that check.
+        static char const* GetRaceVariant(uint8 race, uint8 gender, uint8 skin);
+
         static bool isAvailableRace(uint8 cls, uint8 race);
         static bool isAvailableRole(uint8 cls, BotRoles role = BotRoles::BOT_ROLE_NONE);
         uint8 GetRandomClass(uint8 race = 0, BotRoles role = BotRoles::BOT_ROLE_NONE);
