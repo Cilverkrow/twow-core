@@ -1,6 +1,7 @@
 #pragma once
 
 #include "playerbot/strategy/Action.h"
+#include "playerbot/BotDialogueProvider.h"
 #include "QuestAction.h"
 
 namespace ai
@@ -36,6 +37,23 @@ namespace ai
 
         static delayedPackets GenerateResponsePackets(const std::string json
             , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, const std::string startPattern, const std::string endPattern, const std::string deletePattern, const std::string splitPattern, bool debug = false);
+
+        // The same job as GenerateResponsePackets, for a bot whose voice comes
+        // from a registered BotDialogueProvider instead of an LLMApiJson
+        // request body. Runs on the async worker; `dialogue` is a copy of
+        // scalars and strings, so nothing here can name a Player or a session.
+        //
+        // A provider answers with one line or with silence, so there is no
+        // start/end/delete/split pattern here: those exist to carve chat out of
+        // a completion API's response envelope, and there is no envelope.
+        static delayedPackets GenerateDialoguePackets(const BotDialogueRequest dialogue
+            , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, bool debug = false);
+
+        // This tree's own name for a chat source, as documented on
+        // BotDialogueRequest::channel. Empty for SRC_UNDEFINED and nothing
+        // else: which channels a bot may answer in is the provider's policy,
+        // not this function's.
+        static std::string DialogueChannelName(ChatChannelSource source);
 
         static void ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32 guid2, std::string msg, std::string chanName, std::string name);
         static bool HandleThunderfuryReply(Player* bot, ChatChannelSource chatChannelSource, std::string msg, std::string name);
