@@ -927,6 +927,30 @@ jobs:
           $cmakeArgs = @(
             '-S', '.', '-B', 'build', '-G', 'Ninja',
             '-DCMAKE_BUILD_TYPE=Release',
+            # This build had NO precompiled headers, despite USE_PCH defaulting
+            # ON. USE_PCH_OLD also defaults ON under MSVC (CMakeLists.txt:154),
+            # which routes src/game and src/scripts through
+            # cmake/FindPCHSupport.cmake's ADD_NATIVE_PRECOMPILED_HEADER -- and
+            # that macro only does anything when CMAKE_GENERATOR matches
+            # "Visual Studio*" or Xcode. This job uses Ninja, so it fell through
+            # to a branch whose entire body is a commented-out line:
+            #
+            #     #Fallback to the "old" precompiled suppport
+            #     #ADD_PRECOMPILED_HEADER(${_targetName} ${_input} ${_dowarn})
+            #
+            # It silently did nothing, and the 33 minutes this job spends is an
+            # uncached AND header-less compile of the whole tree.
+            #
+            # OFF switches both directories onto target_precompile_headers(),
+            # which is the path the Debian job builds through every day and the
+            # only one that works under Ninja.
+            #
+            # A MEASUREMENT, NOT A CLAIM: I have not predicted a number here on
+            # purpose. Compare this run's "Build mangosd and realmd" step against
+            # the 22.7-33.1 minute range the last 30 runs recorded. If it does not
+            # move, PCH is not where the time goes and the next lever is elsewhere
+            # -- which is worth knowing too.
+            '-DUSE_PCH_OLD=OFF',
             "-DACE_ROOT=$env:ACE_ROOT"
           )
           if ($env:TW_OPENSSL_INCLUDE_DIR) {
