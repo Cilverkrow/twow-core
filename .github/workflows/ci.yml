@@ -632,87 +632,34 @@ jobs:
   # bytes. The "Prove the clean checkout is self-sufficient" step below asserts
   # exactly that against the checkout this job is given, so the claim is now
   # checked on every run rather than repeated.
-  # Decides whether the MSVC build is worth 33 minutes for THIS change.
-  #
-  # Measured over 30 consecutive runs: windows-msvc is 82% of all CI job-minutes
-  # (90% of billed minutes -- windows-latest bills at 2x) and was the longest job
-  # in 30 of 30. The Debian build finishes in ~5 minutes and the run then waits
-  # ~28 more. It gates nothing -- no `needs:` anywhere, no branch protection --
-  # but "gates nothing" is not the same as "costs nothing": every human and agent
-  # working this repository waits for a green tick before merging, so a job that
-  # blocks no dependency still blocks the person.
-  #
-  # An allowlist, not a denylist, and the polarity is the safety property: a path
-  # nobody has thought about runs the build. Being slow is recoverable; merging an
-  # MSVC break because a new directory was not on a denylist is not.
-  #
-  # A push to main is never filtered. If this gate is ever wrong, the merge commit
-  # catches it within one run rather than at the next release.
-  scope:
-    name: Does this change need the MSVC build?
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      cpp: ${{ steps.decide.outputs.cpp }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: decide
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eu
-
-          # Anything that is not a pull_request builds. Pushes to main, the weekly
-          # schedule and manual dispatch all want the real answer.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "cpp=true" >> "$GITHUB_OUTPUT"
-            echo "not a pull request -- building"
-            exit 0
-          fi
-
-          files=$(gh api --paginate             "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files"             --jq '.[].path' 2>/dev/null || true)
-
-          if [ -z "$files" ]; then
-            echo "cpp=true" >> "$GITHUB_OUTPUT"
-            echo "could not read the file list -- building rather than guessing"
-            exit 0
-          fi
-
-          # modules/** is skippable only while this workflow does not build
-          # modules, and that is checked rather than remembered. MODULES defaults
-          # to "disabled" (CMakeLists.txt:106) and is forced to "static" only by
-          # BUILD_PLAYERBOTS, which defaults OFF. If either ever appears on a
-          # configure line here, the assumption is dead and modules stop being
-          # skippable the same day -- without anyone having to notice this comment.
-          modules_skippable=true
-          if grep -qE '\-DMODULES=|\-DBUILD_PLAYERBOTS=(ON|1|TRUE)' .github/workflows/ci.yml; then
-            modules_skippable=false
-            echo "this workflow now builds modules -- modules/** no longer skippable"
-          fi
-
-          needed=false
-          for f in $files; do
-            case "$f" in
-              docs/*|*.md|sql/*|.gitignore|LICENSE*) ;;
-              modules/*)
-                [ "$modules_skippable" = "true" ] || { echo "  needs MSVC: $f"; needed=true; } ;;
-              *) echo "  needs MSVC: $f"; needed=true ;;
-            esac
-          done
-
-          echo "cpp=$needed" >> "$GITHUB_OUTPUT"
-          [ "$needed" = "true" ] && echo "building" || echo "skipping the MSVC build for this PR"
-
   windows-msvc:
     name: Build core (MSVC, windows-latest)
     runs-on: windows-latest
     timeout-minutes: 120
-    needs: scope
-    # Fails open on purpose: if `scope` itself failed, its verdict is unknown and
-    # unknown means build.
-    if: >-
-      ${{ !cancelled()
-          && (needs.scope.result != 'success' || needs.scope.outputs.cpp == 'true') }}
+    # Never on a pull request. Measured over 30 consecutive runs: this job is 82%
+    # of all CI job-minutes, 90% of billed minutes, and was the longest-running
+    # job in 30 of 30 -- the Debian build finishes in ~5 minutes and the run then
+    # waits ~28 more for this one.
+    #
+    # It gates nothing: no `needs:` anywhere in this workflow, and main has no
+    # branch protection. But it was still blocking every person and agent working
+    # the repository, because everyone waits for a green tick before merging. A
+    # job that blocks no dependency can still block the work, and this one did.
+    #
+    # A path filter was tried first and was not the answer. It skipped only PRs
+    # that touched nothing but docs, sql or modules -- so every PR to .github/**
+    # or src/** still paid 30 minutes, which is most of them. Half a fix that
+    # still blocks the common case is not a fix.
+    #
+    # Coverage is not lost, it moves by one step: pushes to main, the weekly
+    # schedule and manual dispatch all still build. MSVC breakage is caught on the
+    # merge commit rather than on the PR -- minutes later, not at the next
+    # release. Nothing here can be broken and stay unnoticed; it is noticed
+    # slightly later, and that is the trade being made deliberately.
+    #
+    # Want it on a specific PR anyway? Run the workflow manually against that
+    # branch with workflow_dispatch.
+    if: ${{ github.event_name != 'pull_request' }}
 
     env:
       # Written once, used twice - to install and to key the cache. Spelling the
