@@ -202,6 +202,40 @@ bool TrainerAction::Execute(Event& event)
     {
         ObjectGuid guid = event.getObject();
         creature = ai->GetCreature(guid);
+
+        // No guid on the event is a normal case, not a malformed one. The rpg
+        // path carries one because ChooseRpgTargetAction picked a live spawn;
+        // a caller that merely walked the bot to a trainer destination has no
+        // spawn to name -- travel destinations carry an entry and a position,
+        // never an ObjectGuid.
+        //
+        // So fall back to the same thing SellAction and RepairAllAction do:
+        // look at what is actually within interaction range. GetNPCIfCanInteractWith
+        // checks the npc flag, hostility and distance, and IsTrainerOf checks
+        // that this trainer will teach THIS bot, so "arrived" is the whole
+        // precondition and nothing here has to know where the bot came from.
+        if (!creature)
+        {
+            std::list<ObjectGuid> npcs = AI_VALUE(std::list<ObjectGuid>, "nearest npcs");
+            for (ObjectGuid const& npc : npcs)
+            {
+                Creature* candidate = bot->GetNPCIfCanInteractWith(npc, UNIT_NPC_FLAG_TRAINER);
+                if (!candidate || !candidate->IsTrainerOf(bot, false))
+                    continue;
+
+                // Deliberately skipped here rather than left to the guard below.
+                // A tradeskill trainer standing next to a class trainer would
+                // otherwise be picked first and abort the whole visit, so the
+                // bot would report a refusal while the trainer it came for was
+                // two yards away. The guard below still stands for the guid
+                // path, where the caller named the NPC and must be told no.
+                if (candidate->GetCreatureInfo()->TrainerType == TRAINER_TYPE_TRADESKILLS)
+                    continue;
+
+                creature = candidate;
+                break;
+            }
+        }
     }
     else
     {
@@ -248,13 +282,26 @@ bool TrainerAction::Execute(Event& event)
     if (spell)
         spells.insert(spell);
 
+    bool hadSomethingToTeach = false;
     if (text.find("learn") != std::string::npos || sRandomPlayerbotMgr.IsFreeBot(bot) || (sPlayerbotAIConfig.autoTrainSpells != "no" && (creature->GetCreatureInfo()->TrainerType != TRAINER_TYPE_TRADESKILLS || !ai->HasActivePlayerMaster()))) //Todo rewrite to only exclude start primary profession skills and make config dependent.
     {
-        if(Iterate(requester, creature, &TrainerAction::Learn, spells))
+        hadSomethingToTeach = Iterate(requester, creature, &TrainerAction::Learn, spells);
+        if (hadSomethingToTeach)
             context->ClearValues("item usage"); //Bot might be able to use new items.
     }
     else
-        Iterate(requester, creature, NULL, spells);
+        hadSomethingToTeach = Iterate(requester, creature, NULL, spells);
+
+    // The rpg path is the only one whose caller acts on the answer, so it is the
+    // only one whose answer changes. A visit that taught nothing is reported as
+    // a refusal there, because a caller that is told "done" for a trainer with
+    // nothing left to teach walks the bot back to it on the next tick, forever.
+    //
+    // The chat path keeps returning true: a player who types "trainer" wants the
+    // list, and "trainer: failed" for an already-trained bot would be a worse
+    // answer than the list of nothing it just printed.
+    if (event.getSource() == "rpg action")
+        return hadSomethingToTeach;
 
     return true;
 }
