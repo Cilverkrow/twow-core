@@ -185,10 +185,31 @@ void PlayerbotFactory::Randomize(bool incremental, bool syncWithMaster)
     sLog.outDetail("Preparing to %s randomize...", (incremental ? "incremental" : "full"));
     Prepare();
 
-    if (sPlayerbotAIConfig.disableRandomLevels)
+    // DisableRandomLevels used to return here, and it meant far more than it
+    // said: spells, skills, talents, mounts, reputations and quest rewards were
+    // all skipped along with the level roll. That is self-defeating on the
+    // setting's own terms -- bots are meant to start low and work their way up by
+    // killing things, and a bot with no class spells never kills anything. On the
+    // realm where this was found, 5,021 of 5,039 bots sat at level 1, 8 had any
+    // spell at all.
+    //
+    // Prepare() above already chose the level for both cases, so the flag's real
+    // job is done before control reaches here. What is left is to keep the rest of
+    // the function honest about which level it is initialising for:
+    //
+    //   - `level` is the value the CALLER rolled, and every tier decision below
+    //     reads it -- item quality, talent and spell tiers, SetRandomSkill's
+    //     `level * 5` cap. RandomizeFirst rolls it up to randomBotMaxLevel whether
+    //     or not this flag is set, so a level-1 bot would be handed level-60 gear.
+    //   - the two clamps further down pull the bot back to that rolled value,
+    //     which would drag an organically levelled bot down: the "Randomize()
+    //     reassigns levels" hazard the config comment warns about.
+    bool const rollLevels = !sPlayerbotAIConfig.disableRandomLevels;
+    if (!rollLevels)
     {
-        return;
+        level = bot->GetLevel();
     }
+
     bool isRealRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
     bool isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot) && GetBotAI(bot) && !GetBotAI(bot)->HasRealPlayerMaster() && !GetBotAI(bot)->IsInRealGuild();
 
@@ -206,7 +227,9 @@ void PlayerbotFactory::Randomize(bool incremental, bool syncWithMaster)
     }
     if (isRealRandomBot)
     {
-        if (bot->GetLevel() > level)
+        // Clamping to the rolled level would undo real progression; quest
+        // rewards below can push a bot past it legitimately.
+        if (rollLevels && bot->GetLevel() > level)
         {
             bot->SetLevel(level);
             //Reset xp and xp for next level.
@@ -219,7 +242,7 @@ void PlayerbotFactory::Randomize(bool incremental, bool syncWithMaster)
 
         // clear inventory and set level after getting xp and quest rewards
         ClearInventory();
-        if (bot->GetLevel() > level)
+        if (rollLevels && bot->GetLevel() > level)
         {
             bot->SetLevel(level);
             //Reset xp and xp for next level.

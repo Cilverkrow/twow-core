@@ -3454,18 +3454,15 @@ void RandomPlayerbotMgr::UpdateGearSpells(Player* bot)
     uint32 level = bot->GetLevel();
     PlayerbotFactory factory(bot, level);
 
-    if (sPlayerbotAIConfig.disableRandomLevels)
-    {
-        // Randomize() exits early when DisableRandomLevels=1 (it would skip gear too).
-        // Call UpgradeGear/InitGems directly so bots still get proper equipment.
-        sLog.outBasic("Bot #%d <%s> lvl %d: UpdateGearSpells direct path (DisableRandomLevels=1)",
-            bot->GetGUIDLow(), bot->GetName(), level);
-        factory.UpgradeGearBest();
-    }
-    else
-    {
-        factory.Randomize(true, false);
-    }
+    // This used to fork: with DisableRandomLevels set it called UpgradeGearBest()
+    // directly, because Randomize() would have returned before reaching the gear.
+    // It was a workaround for that early return, and it treated the symptom --
+    // bots got equipment and still no spells, skills or talents, which is the
+    // half-initialised state this whole function is named for.
+    //
+    // Randomize() no longer skips anything for this flag, so the workaround is
+    // not just unnecessary, it is now the thing holding the bug in place.
+    factory.Randomize(true, false);
 
     if (lastLevel != level)
         SetValue(bot, "level", level);
@@ -3513,7 +3510,14 @@ void RandomPlayerbotMgr::RandomizeFirst(Player* bot)
         level = 60;
 #endif
 
-    if (level == sWorld.getConfig(CONFIG_UINT32_START_PLAYER_LEVEL))
+    // A bot rolled to exactly the starting level needs no level change, which is
+    // all this return was ever about -- but it leaves before the factory runs, so
+    // it also skips spells, skills, talents and gear. With DisableRandomLevels the
+    // rolled value is discarded anyway and the bot is deliberately started low, so
+    // this return would fire for a large share of the population and leave those
+    // bots permanently uninitialised.
+    if (!sPlayerbotAIConfig.disableRandomLevels &&
+        level == sWorld.getConfig(CONFIG_UINT32_START_PLAYER_LEVEL))
         return;
 
     SetValue(bot, "level", level);
@@ -3570,9 +3574,12 @@ void RandomPlayerbotMgr::Refresh(Player* bot)
         GetBotAI(bot)->ResetStrategies();
     }
 
-    if (sPlayerbotAIConfig.disableRandomLevels)
-        return;
-
+    // The third early return of the same shape, and the one that explains the
+    // empty purses: everything below repairs, heals, restores power, refreshes
+    // consumables and grants a little money. None of it is a level change, and
+    // all of it reads bot->GetLevel() rather than any rolled value, so there was
+    // never anything here for this flag to protect. On the realm where this was
+    // found, 16 of 5,039 bots had any money at all.
     if (bot->InBattleGround())
         return;
 
