@@ -159,6 +159,19 @@ AiPlayerbot.RollBadItemsWithPlayer = 0
 # Chance random bot has max level on first randomize (default 0.15)
 AiPlayerbot.RandomBotMaxLevelChance = 0.15
 
+#    AiPlayerbot.RandomBotRaceVariantChance
+#        Chance that a newly created random bot is given one of the server's
+#        race variants -- Wildhammer or Dark Iron dwarf, forest troll, blood
+#        elf styled high elf -- instead of a standard appearance.
+#        The variant is applied as the skin value the corresponding
+#        custom_character_skins token would have set, and only when that value
+#        is not also a standard skin for the race and gender, so the variant
+#        stays unambiguously identifiable afterwards.
+#        Set to 0 to create only standard-looking bots.
+#        Default: 0.1
+
+AiPlayerbot.RandomBotRaceVariantChance = 0.1
+
 # Chance bot chooses RPG (Teleport to random camp for their level) instead of grinding
 AiPlayerbot.RandomBotRpgChance = 0.8
 

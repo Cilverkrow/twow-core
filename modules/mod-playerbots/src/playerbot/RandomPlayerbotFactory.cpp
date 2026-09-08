@@ -10,6 +10,8 @@
 #include "PlayerbotAI.h"
 #include "Objects/Player.h"
 #include "RandomPlayerbotFactory.h"
+
+#include <algorithm>
 #include "SystemConfig.h"
 #include "SocialMgr.h"
 #include "Guild/GuildMgr.h"
@@ -265,6 +267,110 @@ uint8 RandomPlayerbotFactory::GetRandomRace(uint8 cls, Team team)
     return availableRaces[cls].front();
 }
 
+// ---------------------------------------------------------------- race variants
+//
+// The server has race variants -- Wildhammer and Dark Iron dwarves, forest
+// trolls, blood-elf-styled high elves -- but a PLAYER only gets one by consuming
+// an item token from `world.custom_character_skins`, which maps the token to a
+// skin value. Nothing records that a token was used: the character row keeps the
+// resulting skin byte and nothing else.
+//
+// Bots never consumed a token, so no bot had a variant, and the personality
+// contract's section 5.1 pools had no input at all on this realm.
+//
+// The skin byte is enough on its own, and that matters more than it looks: it
+// means a variant needs no new table to record and no migration to detect, for
+// bots or for the players who used a token years ago. What it needs is for the
+// value to be UNAMBIGUOUS -- if a variant's skin is also a standard skin for
+// that race and gender, then "skin 9" says nothing and the check would report
+// variants for ordinary characters. Section 5.1 makes exactly that demand
+// ("nur wenn die lokale Datenquelle die Variante sicher unterscheidet"), so
+// both the assignment below and the lookup verify it against CharSections.dbc
+// rather than trusting the table.
+namespace
+{
+    struct RaceVariantSkin
+    {
+        uint8       race;
+        uint8       gender;
+        uint8       skin;
+        char const* variant;
+    };
+
+    // Transcribed from world.custom_character_skins joined to item_template, for
+    // the four variants section 5.1 names. Tokens for a race/gender the contract
+    // does not cover are deliberately absent: an appearance this table cannot
+    // name is not a variant as far as personality is concerned.
+    RaceVariantSkin const kRaceVariantSkins[] =
+    {
+        // "Wildhammer I-IV [Dwarf]" -- tokens 50204, 50250, 50251, 50252.
+        { RACE_DWARF,    GENDER_MALE,    9, "wildhammer" },
+        { RACE_DWARF,    GENDER_MALE,   10, "wildhammer" },
+        { RACE_DWARF,    GENDER_MALE,   11, "wildhammer" },
+        { RACE_DWARF,    GENDER_MALE,   12, "wildhammer" },
+        { RACE_DWARF,    GENDER_FEMALE,  9, "wildhammer" },
+        // "Dark Iron [Dwarf]" -- token 50205.
+        { RACE_DWARF,    GENDER_MALE,   14, "dark_iron"  },
+        { RACE_DWARF,    GENDER_FEMALE, 15, "dark_iron"  },
+        // "Forest I/II [Troll]" -- tokens 50210, 50225.
+        { RACE_TROLL,    GENDER_MALE,   19, "forest"     },
+        { RACE_TROLL,    GENDER_FEMALE, 19, "forest"     },
+        { RACE_TROLL,    GENDER_FEMALE, 14, "forest"     },
+        // "Blood Elf [High Elf]" -- token 81209.
+        { RACE_HIGH_ELF, GENDER_MALE,   18, "blood_elf"  },
+        { RACE_HIGH_ELF, GENDER_FEMALE, 16, "blood_elf"  },
+    };
+
+    // The standard skin values for a race/gender, straight from CharSections.dbc
+    // -- the same source CreateRandomBot rolls a normal appearance from.
+    void CollectStandardSkins(uint8 race, uint8 gender, std::vector<uint8>& out)
+    {
+        for (CharSectionsMap::const_iterator itr = sCharSectionMap.begin(); itr != sCharSectionMap.end(); ++itr)
+        {
+            CharSectionsEntry const* entry = itr->second;
+            if (entry->Race != race || entry->Gender != gender || entry->BaseSection != SECTION_TYPE_SKIN)
+                continue;
+#ifndef MANGOSBOT_TWO
+            out.push_back(entry->ColorIndex);
+#else
+            out.push_back(entry->Color);
+#endif
+        }
+    }
+
+    bool IsStandardSkin(uint8 skin, std::vector<uint8> const& standard)
+    {
+        return std::find(standard.begin(), standard.end(), skin) != standard.end();
+    }
+}
+
+char const* RandomPlayerbotFactory::GetRaceVariant(uint8 race, uint8 gender, uint8 skin)
+{
+    std::vector<uint8> standard;
+    bool collected = false;
+
+    for (auto const& v : kRaceVariantSkins)
+    {
+        if (v.race != race || v.gender != gender || v.skin != skin)
+            continue;
+
+        // Collected lazily: the table misses on almost every character, and
+        // walking the whole DBC section map for each of those would make a
+        // population-wide sweep needlessly expensive.
+        if (!collected)
+        {
+            CollectStandardSkins(race, gender, standard);
+            collected = true;
+        }
+
+        // A value that is also a standard skin proves nothing. Report no
+        // variant rather than a guess -- a wrong answer here hands a character
+        // a personality built on someone else's appearance.
+        return IsStandardSkin(skin, standard) ? nullptr : v.variant;
+    }
+    return nullptr;
+}
+
 bool RandomPlayerbotFactory::CreateRandomBot(uint8 cls, uint8 inputRace)
 {
     std::lock_guard<std::mutex> lock(nameMutex);
@@ -353,6 +459,32 @@ bool RandomPlayerbotFactory::CreateRandomBot(uint8 cls, uint8 inputRace)
     std::pair<uint8,uint8> face = faces[urand(0, faces.size() - 1)];
     std::pair<uint8,uint8> hair = hairs[urand(0, hairs.size() - 1)];
 
+    // The skin actually stored. Normally the face section's colour index, which
+    // is what keeps the face consistent with the skin tone -- see the call to
+    // Create below, where this has always been passed instead of the separately
+    // rolled skinColor.
+    uint8 skin = face.second;
+    char const* variant = nullptr;
+
+    if (sPlayerbotAIConfig.randomBotRaceVariantChance > 0.0f &&
+        frand(0.0f, 1.0f) < sPlayerbotAIConfig.randomBotRaceVariantChance)
+    {
+        std::vector<uint8> candidates;
+        for (auto const& v : kRaceVariantSkins)
+            if (v.race == race && v.gender == gender && !IsStandardSkin(v.skin, skinColors))
+                candidates.push_back(v.skin);
+
+        if (!candidates.empty())
+        {
+            skin = candidates[urand(0, candidates.size() - 1)];
+            variant = GetRaceVariant(race, gender, skin);
+        }
+    }
+
+    if (variant)
+        sLog.outDetail("Creating %s variant bot <%s> (race %u gender %u skin %u)",
+            variant, name.c_str(), race, gender, skin);
+
 	bool excludeCheck = (race == RACE_TAUREN) || (gender == GENDER_FEMALE && race != RACE_NIGHTELF && race != RACE_UNDEAD);
 #ifndef MANGOSBOT_TWO
 	uint8 facialHair = (excludeCheck || facialHairTypes.empty()) ? 0 : facialHairTypes[urand(0, facialHairTypes.size() - 1)];
@@ -384,7 +516,7 @@ bool RandomPlayerbotFactory::CreateRandomBot(uint8 cls, uint8 inputRace)
         return false;
     }
 	if (!player->Create(sObjectMgr.GeneratePlayerLowGuid(), name, race, cls, gender,
-	        face.second, // skinColor,
+	        skin,
 	        face.first,
 	        hair.first,
 	        hair.second, // hairColor,
