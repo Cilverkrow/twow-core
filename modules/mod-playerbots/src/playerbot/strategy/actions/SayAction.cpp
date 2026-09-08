@@ -8,6 +8,8 @@
 #include <regex>
 #include <boost/algorithm/string.hpp>
 #include "playerbot/PlayerbotLLMInterface.h"
+#include "playerbot/BotDialogueProvider.h"
+#include "playerbot/BotSlots.h"
 
 using namespace ai;
 
@@ -448,6 +450,71 @@ delayedPackets ChatReplyAction::GenerateResponsePackets(const std::string json
     return packets;
 }
 
+std::string ChatReplyAction::DialogueChannelName(ChatChannelSource source)
+{
+    switch (source)
+    {
+        case ChatChannelSource::SRC_GUILD:              return "guild";
+        case ChatChannelSource::SRC_WORLD:              return "world";
+        case ChatChannelSource::SRC_GENERAL:            return "general";
+        case ChatChannelSource::SRC_TRADE:              return "trade";
+        case ChatChannelSource::SRC_LOOKING_FOR_GROUP:  return "lfg";
+        case ChatChannelSource::SRC_LOCAL_DEFENSE:      return "local_defense";
+        case ChatChannelSource::SRC_WORLD_DEFENSE:      return "world_defense";
+        case ChatChannelSource::SRC_GUILD_RECRUITMENT:  return "guild_recruitment";
+        case ChatChannelSource::SRC_SAY:                return "say";
+        case ChatChannelSource::SRC_WHISPER:            return "whisper";
+        case ChatChannelSource::SRC_EMOTE:              return "emote";
+        case ChatChannelSource::SRC_TEXT_EMOTE:         return "text_emote";
+        case ChatChannelSource::SRC_YELL:               return "yell";
+        case ChatChannelSource::SRC_PARTY:              return "party";
+        case ChatChannelSource::SRC_RAID:               return "raid";
+        default:                                        return "";
+    }
+}
+
+delayedPackets ChatReplyAction::GenerateDialoguePackets(const BotDialogueRequest dialogue
+    , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, bool debug)
+{
+    std::vector<std::string> debugLines;
+
+    if (debug)
+        debugLines.push_back("dialogue [" + dialogue.channel + "] " + dialogue.speakerName + ": " + dialogue.message);
+
+    auto startTime = time(nullptr);
+
+    // The blocking call, on the async worker. RunBotDialogueProvider never
+    // throws and answers "" for every failure, so silence is the only thing
+    // that can go wrong here.
+    std::string const reply = RunBotDialogueProvider(dialogue);
+
+    auto timeAfter = time(nullptr);
+    auto timeDiff = (timeAfter - startTime) * IN_MILLISECONDS;
+
+    delayedPackets packets, debugPackets;
+
+    // One line, and it is already the text to say: a provider owns its own
+    // parsing, so ParseResponse and the four patterns have nothing to do here.
+    // LinesToPackets still runs, because the per-character typing delay and
+    // the 200-byte split are how a bot SPEAKS rather than how a model answers.
+    if (!reply.empty())
+    {
+        std::vector<std::string> const lines(1, reply);
+        packets = LinesToPackets(lines, chatTemplate, false, 200, emoteTemplate, uint32(timeDiff));
+    }
+
+    if (debug)
+        debugLines.push_back(reply.empty() ? "dialogue: silence" : "dialogue reply: " + reply);
+
+    if (!debugLines.empty())
+    {
+        debugPackets = LinesToPackets(debugLines, systemTemplate, true, 1);
+        packets.insert(packets.begin(), std::make_move_iterator(debugPackets.begin()), std::make_move_iterator(debugPackets.end()));
+    }
+
+    return packets;
+}
+
 void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32 guid2, std::string msg, std::string chanName, std::string name)
 {
     // if we're just commanding bots around, don't respond...
@@ -648,7 +715,35 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
                 WorldPacket emoteTemplate = (type == CHAT_MSG_SAY || type == CHAT_MSG_WHISPER) ? GetPacketTemplate(CMSG_MESSAGECHAT, CHAT_MSG_EMOTE, bot, player) : WorldPacket();
                 WorldPacket systemTemplate = GetPacketTemplate(CMSG_MESSAGECHAT, CHAT_MSG_WHISPER, bot, player);
 
-                futurePackets futPackets = std::async(std::launch::async, ChatReplyAction::GenerateResponsePackets, json, chatTemplate, emoteTemplate, systemTemplate, startPattern, endPattern, deletePattern, splitPattern, debug);
+                // A registered module provider takes precedence, and takes the
+                // STRUCTURED facts rather than the request body assembled just
+                // above. Everything down to here -- the LLMEnabled gate, the
+                // "ai chat" strategy, the blocked-channel list, the bot-to-bot
+                // chance, the packet templates -- is unchanged and still
+                // decides whether this bot answers at all. All that changes is
+                // where the sentence comes from.
+                //
+                // With no provider registered this branch is not taken and the
+                // path below runs exactly as before (and, in this build,
+                // answers nothing: PlayerbotLLMInterface::Generate is a stub).
+                futurePackets futPackets;
+                if (HasBotDialogueProvider())
+                {
+                    BotDialogueRequest dialogue;
+                    dialogue.botGuidLow = bot->GetGUIDLow();
+                    dialogue.channel = DialogueChannelName(chatChannelSource);
+                    dialogue.speakerIsBot = !IsRealPlayer(player);
+                    dialogue.speakerName = playerName;
+                    dialogue.message = msg;
+                    // Config is seconds; the provider contract is milliseconds.
+                    dialogue.timeoutMs = uint32(sPlayerbotAIConfig.llmGenerationTimeout) * IN_MILLISECONDS;
+
+                    futPackets = std::async(std::launch::async, ChatReplyAction::GenerateDialoguePackets, dialogue, chatTemplate, emoteTemplate, systemTemplate, debug);
+                }
+                else
+                {
+                    futPackets = std::async(std::launch::async, ChatReplyAction::GenerateResponsePackets, json, chatTemplate, emoteTemplate, systemTemplate, startPattern, endPattern, deletePattern, splitPattern, debug);
+                }
 
                 // LLM-012: SendDelayedPacket no longer takes a WorldSession* --
                 // it re-resolves bot->GetSession() itself once the future is
