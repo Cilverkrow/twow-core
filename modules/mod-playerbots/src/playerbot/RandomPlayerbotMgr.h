@@ -107,6 +107,12 @@ public:
         std::string GetPersistentRosterState() const;
         bool ApplyPersistentRosterRequest(std::string const& canonicalRequest, std::string& result);
 
+        // Stable profession-pair plan access used by PlayerbotFactory. These
+        // methods expose only the versioned plan value; the generic event
+        // store remains private to RandomPlayerbotMgr.
+        uint32 GetProfessionPair(uint32 bot);
+        uint32 SetProfessionPair(uint32 bot, uint32 pair);
+
         void ScheduleTeleport(uint32 bot, uint32 time = 0);
         void ScheduleChangeStrategy(uint32 bot, uint32 time = 0);
     private:
@@ -213,8 +219,6 @@ public:
         uint32 GetEventValue(uint32 bot, std::string event);
         std::string GetEventData(uint32 bot, std::string event);
         uint32 SetEventValue(uint32 bot, std::string event, uint32 value, uint32 validIn, std::string data = "");
-        uint32 GetProfessionPair(uint32 bot);
-        uint32 SetProfessionPair(uint32 bot, uint32 pair);
         std::list<uint32> GetBots();
         std::list<uint32> GetBgBots(uint32 bracket);
         time_t BgCheckTimer;
