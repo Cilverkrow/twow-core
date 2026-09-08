@@ -764,7 +764,24 @@ bool PlayerbotAIConfig::Initialize()
     respawnModForInstances = config.GetBoolDefault("AiPlayerbot.RespawnModForInstances", false);
 
     //LLM START
-    llmEnabled = config.GetIntDefault("AiPlayerbot.LLMEnabled", 1);
+    // Defaults OFF. Upstream defaults this to 1, and the shipped .conf.dist.in
+    // leaves the key COMMENTED OUT -- so a server built from the raw template
+    // inherits "enabled" without anyone choosing it. Only this project's own
+    // overlay pins 0, which protects our deployment and nobody else's.
+    //
+    // The value decides whether bots make outbound HTTP requests to an inference
+    // endpoint. A network feature that turns itself on because a config line was
+    // left commented is the wrong way round: ADR-0024 invariant 6 is fail closed,
+    // and this is exactly the shape it describes.
+    //
+    // Harmless today only because PlayerbotLLMInterface::Generate is a stub that
+    // returns "" -- so an accidental 1 produces silence rather than traffic. That
+    // stops being true the moment the network client is reinstated, which is why
+    // this changes now rather than then.
+    //
+    // 0 = disabled, 1 = enabled with the 'ai chat' strategy, 2 = that strategy on
+    // every bot by default, 3 = enabled without needing the strategy.
+    llmEnabled = config.GetIntDefault("AiPlayerbot.LLMEnabled", 0);
     llmApiEndpoint = config.GetStringDefault("AiPlayerbot.LLMApiEndpoint", "http://127.0.0.1:5001/api/v1/generate");
     try {
         llmEndPointUrl = parseUrl(llmApiEndpoint);
