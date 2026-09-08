@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotFactory.h"
+#include "playerbot/ProfessionPair.h"
 #include "playerbot/PerformanceMonitor.h"
 
 #include "Database/SQLStorages.h"
@@ -3962,218 +3963,53 @@ void PlayerbotFactory::InitAllSkills()
 
 void PlayerbotFactory::InitTradeSkills()
 {
-    uint16 firstSkill = sRandomPlayerbotMgr.GetValue(bot, "firstSkill");
-    uint16 secondSkill = sRandomPlayerbotMgr.GetValue(bot, "secondSkill");
-    if (!firstSkill || !secondSkill)
+    using namespace profession;
+    uint32 const guid = bot->GetObjectGuid().GetCounter();
+    Pair pair = static_cast<Pair>(sRandomPlayerbotMgr.GetProfessionPair(guid));
+    if (IsValid(pair))
+        return;
+
+    uint32 learned[2] = { 0, 0 };
+    uint32 learnedCount = 0;
+    for (Pair candidate : { HerbalismAlchemy, SkinningLeatherworking, MiningBlacksmithing, MiningEngineering, MiningJewelcrafting, TailoringEnchanting })
     {
-        std::vector<uint32> firstSkills;
-        std::vector<uint32> secondSkills;
-        switch (bot->getClass())
+        Definition const* definition = Find(candidate);
+        for (uint32 skill : { definition->first, definition->second })
         {
-        case CLASS_WARRIOR:
-        case CLASS_PALADIN:
-#ifdef MANGOSBOT_TWO
-        case CLASS_DEATH_KNIGHT:
-#endif
-            firstSkills.push_back(SKILL_BLACKSMITHING);
-            secondSkills.push_back(SKILL_ENGINEERING);
-            break;
-        case CLASS_SHAMAN:
-        case CLASS_DRUID:
-        case CLASS_HUNTER:
-        case CLASS_ROGUE:
-            firstSkills.push_back(SKILL_SKINNING);
-            firstSkills.push_back(SKILL_ENGINEERING);
-            secondSkills.push_back(SKILL_LEATHERWORKING);
-            break;
-        // The cloth classes had no mapping at all, so they fell through to the
-        // generic pool below -- which contains no cloth profession either.
-        // Tailoring and Enchanting appear in tradeSkills[] and were reachable
-        // from nowhere: no bot on the realm could ever hold either.
-        case CLASS_MAGE:
-        case CLASS_PRIEST:
-        case CLASS_WARLOCK:
-            firstSkills.push_back(SKILL_TAILORING);
-            firstSkills.push_back(SKILL_HERBALISM);
-            secondSkills.push_back(SKILL_ENCHANTING);
-            secondSkills.push_back(SKILL_ALCHEMY);
-            break;
-        }
-
-        if (firstSkills.empty() || secondSkills.empty())
-        {
-            // This was `switch (urand(0, 6))` with cases 0-3. urand's upper
-            // bound is inclusive, so three of its seven outcomes matched no case
-            // and left both skills at 0 -- and SetRandomSkill(0) below does not
-            // no-op, it writes a skill row with id 0. Roughly two in seven bots
-            // reaching this path came away with no professions.
-            //
-            // Seven pairs, which is very likely what the original 0-6 range was
-            // reaching for, indexed off the table's own size so the two cannot
-            // drift apart again.
-            static uint16 const genericPairs[][2] =
+            bool seen = false;
+            for (uint32 i = 0; i < learnedCount; ++i)
+                seen = seen || learned[i] == skill;
+            if (bot->HasSkill(skill) && !seen)
             {
-                { SKILL_HERBALISM,  SKILL_ALCHEMY       },
-                { SKILL_HERBALISM,  SKILL_MINING        },
-                { SKILL_MINING,     SKILL_SKINNING      },
-                { SKILL_HERBALISM,  SKILL_SKINNING      },
-                { SKILL_MINING,     SKILL_BLACKSMITHING },
-                { SKILL_SKINNING,   SKILL_LEATHERWORKING},
-                { SKILL_TAILORING,  SKILL_ENCHANTING    },
-#ifndef MANGOSBOT_ZERO
-                { SKILL_JEWELCRAFTING, SKILL_MINING     },
-#endif
-            };
-
-            uint32 const pick = urand(0, uint32(sizeof(genericPairs) / sizeof(genericPairs[0])) - 1);
-            firstSkill = genericPairs[pick][0];
-            secondSkill = genericPairs[pick][1];
+                if (learnedCount == 2)
+                {
+                    sLog.outError("[PlayerbotFactory] Bot %u has more than two learned professions; retaining skills without a profession_pair plan.", guid);
+                    return;
+                }
+                learned[learnedCount++] = skill;
+            }
         }
-        else
-        {
-            firstSkill = firstSkills[urand(0, firstSkills.size() - 1)];
-            secondSkill = secondSkills[urand(0, secondSkills.size() - 1)];
-        }
-
-        sRandomPlayerbotMgr.SetValue(bot, "firstSkill", firstSkill);
-        sRandomPlayerbotMgr.SetValue(bot, "secondSkill", secondSkill);
     }
 
-    SetRandomSkill(SKILL_FIRST_AID);
-    SetRandomSkill(SKILL_FISHING);
-    SetRandomSkill(SKILL_COOKING);
-
-    SetRandomSkill(firstSkill);
-    SetRandomSkill(secondSkill);
-
-#ifndef MANGOSBOT_ZERO
-    // skill proficiencies
-    switch (bot->getClass())
+    pair = SelectExisting(guid, bot->getClass(), learned, learnedCount);
+    if (pair == None)
     {
-    case CLASS_WARRIOR:
-    case CLASS_PALADIN:
-#ifdef MANGOSBOT_TWO
-    case CLASS_DEATH_KNIGHT:
-#endif
-        bot->learnSpell(9788, false);  // armorsmith
-        bot->learnSpell(9788, false);  // armorsmith
-        bot->learnSpell(9787, false);  // weaponsmith
-        bot->learnSpell(17040, false); // hammersmith
-        bot->learnSpell(17039, false); // swordsmith
-        bot->learnSpell(17041, false); // axesmith
-        break;
+        sLog.outError("[PlayerbotFactory] Bot %u has conflicting learned professions; retaining skills without a profession_pair plan.", guid);
+        return;
     }
-#endif
 
-    // learn recipies
-    for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
-    {
-        CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id);
-        if (!co)
-            continue;
+    if (!sRandomPlayerbotMgr.SetProfessionPair(guid, pair))
+        sLog.outError("[PlayerbotFactory] Failed to persist profession_pair plan for bot %u.", guid);
 
-        if (co->TrainerType != TRAINER_TYPE_TRADESKILLS)
-            continue;
-
-        uint32 trainerId = co->TrainerTemplateId;
-        if (!trainerId)
-            trainerId = co->Entry;
-
-        TrainerSpellData const* trainer_spells = sObjectMgr.GetNpcTrainerTemplateSpells(trainerId);
-        if (!trainer_spells)
-            trainer_spells = sObjectMgr.GetNpcTrainerSpells(trainerId);
-
-        if (!trainer_spells)
-            continue;
-
-        for (TrainerSpellMap::const_iterator itr = trainer_spells->spellList.begin(); itr != trainer_spells->spellList.end(); ++itr)
-        {
-            TrainerSpell const* tSpell = &itr->second;
-
-            if (!tSpell)
-                continue;
-
-            uint32 reqLevel = 0;
-            reqLevel = tSpell->isProvidedReqLevel ? tSpell->reqLevel : std::max(reqLevel, tSpell->reqLevel);
-            TrainerSpellState state = bot->GetTrainerSpellState(tSpell, reqLevel);
-            if (state != TRAINER_SPELL_GREEN)
-                continue;
-
-            SpellEntry const* proto = sServerFacade.LookupSpellInfo(tSpell->spell);
-            if (!proto)
-                continue;
-
-            SpellEntry const* spell = sServerFacade.LookupSpellInfo(tSpell->spell);
-            if (spell)
-            {
-                std::string SpellName = spell->SpellName[0];
-                if (spell->Effect[EFFECT_INDEX_1] == SPELL_EFFECT_SKILL_STEP)
-                {
-                    uint32 skill = spell->EffectMiscValue[EFFECT_INDEX_1];
-
-                    if (skill && !bot->HasSkill(skill))
-                    {
-                        SkillLineEntry const* pSkill = sSkillLineStore.LookupEntry(skill);
-                        if (pSkill)
-                        {
-                            if (SpellName.find("Apprentice") != std::string::npos && pSkill->categoryId == SKILL_CATEGORY_PROFESSION || pSkill->categoryId == SKILL_CATEGORY_SECONDARY)
-                                continue;
-                        }
-                    }
-                }
-            }
-
-#ifdef MANGOSBOT_ZERO
-            if (tSpell->learnedSpell)
-            {
-                bool learned = false;
-                for (int j = 0; j < 3; ++j)
-                {
-                    if (proto->Effect[j] == SPELL_EFFECT_LEARN_SPELL)
-                    {
-                        uint32 learnedSpell = proto->EffectTriggerSpell[j];
-                        bot->learnSpell(learnedSpell, false);
-                        learned = true;
-                    }
-                }
-                if (!learned) bot->learnSpell(tSpell->learnedSpell, false);
-            }
-            else
-                ai->CastSpell(tSpell->spell, bot);
-#else
-            if (!tSpell->learnedSpell.empty())
-            {
-                for (auto learnSpell : tSpell->learnedSpell)
-                {
-                    bool learned = false;
-                    for (int j = 0; j < 3; ++j)
-                    {
-                        if (proto->Effect[j] == SPELL_EFFECT_LEARN_SPELL)
-                        {
-                            uint32 learnedSpell = proto->EffectTriggerSpell[j];
-                            bot->learnSpell(learnedSpell, false);
-                            learned = true;
-                        }
-                    }
-                    if (!learned)
-                        bot->learnSpell(learnSpell, false);
-                }
-            }
-            else
-                ai->CastSpell(tSpell->spell, bot);
-#endif
-        }
-    }
+    // Factory owns plan selection only. Skill ranks, recipes and profession
+    // purchases are intentionally deferred to the dedicated PR-2 action.
 }
 
 void PlayerbotFactory::UpdateTradeSkills()
 {
-    auto pmo = sPerformanceMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Skills2");
-    for (int i = 0; i < sizeof(tradeSkills) / sizeof(uint32); ++i)
-    {
-        if (bot->GetSkillValue(tradeSkills[i]) == 1)
-            bot->SetSkill(tradeSkills[i], 0, 0, 0);
-    }
+    // Profession-pair planning is intentionally non-destructive. The dedicated
+    // profession action owns all future purchases; no factory path may erase,
+    // grant, rank, or randomize a profession.
 }
 
 void PlayerbotFactory::InitSkills()

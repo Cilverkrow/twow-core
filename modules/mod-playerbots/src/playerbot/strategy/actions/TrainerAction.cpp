@@ -236,6 +236,13 @@ bool TrainerAction::Execute(Event& event)
         return false;
     }
 
+    // Profession purchases require the dedicated, plan-aware path. In particular,
+    // do not let an RPG visit or a master-triggered generic trainer command fan out
+    // into an unplanned profession purchase. Class, pet, and mount trainers remain
+    // handled by the existing generic path.
+    if (creature->GetCreatureInfo()->TrainerType == TRAINER_TYPE_TRADESKILLS)
+        return false;
+
     uint32 spell = chat->parseSpell(text);
     SpellIds spells;
     if (spell)

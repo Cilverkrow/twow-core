@@ -1,12 +1,14 @@
 // See PlayerbotMgr.cpp: botpch.h supplied <regex>, and the module build has
 // no precompiled header.
 #include <regex>
+#include <limits>
 
 #include "Config/Config.h"
 
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
+#include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
@@ -3719,7 +3721,7 @@ uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string event)
     }
     CachedEvent e = eventCache[bot][event];
 
-    if ((time(0) - e.lastChangeTime) >= e.validIn && event != "specNo" && event != "specLink" && event != "init" && event != "current_time" && event != "always" && event != "selfbot")
+    if ((time(0) - e.lastChangeTime) >= e.validIn && event != "specNo" && event != "specLink" && event != "init" && event != "current_time" && event != "always" && event != "selfbot" && event != ai::profession::kEventName)
         e.value = 0;
 
     return e.value;
@@ -3852,6 +3854,22 @@ uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string event, uint32 v
     CachedEvent e(value, (uint32)time(0), validIn, data);
     eventCache[bot][event] = e;
     return value;
+}
+
+uint32 RandomPlayerbotMgr::GetProfessionPair(uint32 bot)
+{
+    if (GetEventData(bot, ai::profession::kEventName) != ai::profession::kEventData)
+        return 0;
+
+    uint32 const pair = GetEventValue(bot, ai::profession::kEventName);
+    return ai::profession::IsValid(pair) ? pair : 0;
+}
+
+uint32 RandomPlayerbotMgr::SetProfessionPair(uint32 bot, uint32 pair)
+{
+    if (!ai::profession::IsValid(pair))
+        return 0;
+    return SetEventValue(bot, ai::profession::kEventName, pair, std::numeric_limits<uint32>::max(), ai::profession::kEventData);
 }
 
 uint32 RandomPlayerbotMgr::GetValue(uint32 bot, std::string type)
