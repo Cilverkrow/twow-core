@@ -151,11 +151,25 @@ void AiObjectContext::Load(std::list<std::string> data)
     for (std::list<std::string>::iterator i = data.begin(); i != data.end(); ++i)
     {
         std::string row = *i;
-        std::vector<std::string> parts = split(row, '>');
-        if (parts.empty() || parts.size() > 2) continue;
 
-        std::string name = parts[0];
-        std::string text = (parts.size() == 2) ? parts[1] : "";
+        // Split on the FIRST '>' only. Save() writes exactly one separator --
+        // `out << name << ">" << data` -- so every later '>' belongs to the data.
+        //
+        // This used to split on every '>' and drop the row when that produced
+        // more than two parts, which silently discarded any stored value whose
+        // text contained the character. That is not a rare shape: the LLM prompt
+        // DSL is built out of <bot name>, <other race>, <channel name> and the
+        // like, so a character card stored in `manual saved string::
+        // llmdefaultprompt` almost certainly contains one and was therefore
+        // never loaded back. The bot came up with no personality, no error, and a
+        // row sitting in ai_playerbot_db_store that looked perfectly fine.
+        //
+        // A name cannot contain '>' -- names are value keys like
+        // "manual saved string::llmdefaultprompt" -- so first-separator wins is
+        // unambiguous rather than a heuristic.
+        std::string::size_type const sep = row.find('>');
+        std::string name = (sep == std::string::npos) ? row : row.substr(0, sep);
+        std::string text = (sep == std::string::npos) ? "" : row.substr(sep + 1);
 
         UntypedValue* value = GetUntypedValue(name);
         if (!value) continue;
