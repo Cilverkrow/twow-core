@@ -24,6 +24,8 @@ void TestNonHunterEmptyAndExistingSlots()
     CHECK(Count(ai::roster::bags::SelectEmptySlots(false, empty)) == 4);
 
     Slots mixed{};
+    // An occupied slot represents an existing bag of any capacity, including
+    // one that is larger than item 50004. It must never be selected.
     mixed[1].occupied = true;
     auto plan = ai::roster::bags::SelectEmptySlots(false, mixed);
     CHECK(!plan[1]);
@@ -37,10 +39,13 @@ void TestFullAndIdempotent()
         slot.occupied = true;
     CHECK(Count(ai::roster::bags::SelectEmptySlots(false, full)) == 0);
 
-    Slots afterFirst{};
-    for (auto& slot : afterFirst)
-        slot.occupied = true;
-    CHECK(Count(ai::roster::bags::SelectEmptySlots(false, afterFirst)) == 0);
+    Slots initiallyEmpty{};
+    auto firstPlan = ai::roster::bags::SelectEmptySlots(false, initiallyEmpty);
+    CHECK(Count(firstPlan) == 4);
+    for (std::size_t index = 0; index < initiallyEmpty.size(); ++index)
+        if (firstPlan[index])
+            initiallyEmpty[index].occupied = true;
+    CHECK(Count(ai::roster::bags::SelectEmptySlots(false, initiallyEmpty)) == 0);
 }
 
 void TestHunterReserveAndRangedContainer()
