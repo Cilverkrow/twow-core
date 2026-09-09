@@ -484,9 +484,33 @@ delayedPackets ChatReplyAction::GenerateDialoguePackets(const BotDialogueRequest
     auto startTime = time(nullptr);
 
     // The blocking call, on the async worker. RunBotDialogueProvider never
-    // throws and answers "" for every failure, so silence is the only thing
-    // that can go wrong here.
-    std::string const reply = RunBotDialogueProvider(dialogue);
+    // throws and answers with silence for every failure, so silence is the only
+    // thing that can go wrong here.
+    BotDialogueAnswer const answer = RunBotDialogueProvider(dialogue);
+    std::string const reply = answer.reply;
+
+    // The command travels separately, and it has to: it needs two Players and
+    // this is a worker thread. QueueBotDialogueCommand takes scalars and the
+    // bot's own tick executes it -- as the speaker, through HandleCommand,
+    // against the same security gates a typed command meets. A command with no
+    // resolved speaker is dropped there, because there is then nobody it could
+    // be executed as.
+    //
+    // Independent of the reply, in both directions: a bot may act without
+    // speaking, speak without acting, or do neither.
+    if (answer.command != BotDialogueCommand::None)
+    {
+        BotDialogueCommandRequest command;
+        command.botGuidLow = dialogue.botGuidLow;
+        command.speakerGuidLow = dialogue.speakerGuidLow;
+        command.chatType = dialogue.chatType;
+        command.lang = dialogue.lang;
+        command.command = answer.command;
+        QueueBotDialogueCommand(command);
+
+        if (debug)
+            debugLines.push_back(std::string("dialogue command: ") + BotDialogueCommandText(answer.command));
+    }
 
     auto timeAfter = time(nullptr);
     auto timeDiff = (timeAfter - startTime) * IN_MILLISECONDS;
@@ -737,6 +761,28 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
                     dialogue.message = msg;
                     // Config is seconds; the provider contract is milliseconds.
                     dialogue.timeoutMs = uint32(sPlayerbotAIConfig.llmGenerationTimeout) * IN_MILLISECONDS;
+
+                    // Who a command would be executed as, and the ONLY thing
+                    // that makes one possible at all.
+                    //
+                    // Zero in two cases, both deliberate. `player` is null
+                    // whenever this path could not resolve who spoke -- an
+                    // offline speaker, or a channel with no real player in it
+                    // -- and there is then nobody to attribute a command to.
+                    // And a speaker who is another BOT is deliberately given
+                    // zero too: the safety rule is that a command may only do
+                    // what the speaker could have caused BY TYPING IT, and a
+                    // bot never typed anything. Bot-to-bot chatter stays
+                    // conversation.
+                    dialogue.speakerGuidLow = (player && !dialogue.speakerIsBot) ? player->GetGUIDLow() : 0;
+                    dialogue.chatType = type;
+                    // The chat-reply queue does not carry the language the line
+                    // was spoken in, and HandleCommand uses it for exactly one
+                    // thing: refusing LANG_ADDON. An addon message cannot reach
+                    // this path (HandleBotOutgoingPacket filters the chat types
+                    // it queues replies for), so LANG_UNIVERSAL is what a typed
+                    // command would have been judged as either way.
+                    dialogue.lang = LANG_UNIVERSAL;
 
                     futPackets = std::async(std::launch::async, ChatReplyAction::GenerateDialoguePackets, dialogue, chatTemplate, emoteTemplate, systemTemplate, debug);
                 }

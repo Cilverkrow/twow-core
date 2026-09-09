@@ -843,6 +843,17 @@ private:
     // SendDelayedPacket/ReceiveDelayedPacket for why.
     void UpdateDelayedPackets(uint32 elapsed);
 
+    // Executes the commands a BotDialogueProvider asked for on this bot's
+    // behalf, if any. Called from this bot's own AI tick, next to
+    // UpdateDelayedPackets, because the two halves of one dialogue round trip
+    // -- the line to say and the thing to do -- come back on the same tick.
+    //
+    // Every command runs through HandleCommand with the SPEAKER as fromPlayer,
+    // so PlayerbotSecurity decides whether it happens, exactly as it does for
+    // the same words typed. Nothing here grants anything: it can only replay a
+    // command a player was already entitled to give.
+    void RunPendingDialogueCommands();
+
 protected:
 	Player* bot;
 	Player* master;
