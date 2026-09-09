@@ -69,6 +69,9 @@ public:
     void InitAmmo();
     void InitPet();
     void InitPetSpells();
+    // Safe for an already-played roster bot: chooses or adopts only the
+    // persistent profession_pair plan and never runs factory randomization.
+    void EnsureProfessionPairPlan();
 
 private:
     void Prepare();
