@@ -4188,6 +4188,12 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player * const bot)
     {
         ClearPersistentRosterRetry(bot->GetGUIDLow());
         persistentRoster->RecordOnline(bot->GetGUIDLow());
+
+        // This hook is invoked once by PlayerbotHolder after the bot login
+        // has loaded the Player and attached its AI. Persistent-roster bots
+        // bypass Randomize(), so backfill only their GUID-bound plan here.
+        // Factory persistence failures are logged but never reject login.
+        PlayerbotFactory(bot, bot->GetLevel()).EnsureProfessionPairPlan();
     }
 	//if (loginProgressBar && playerBots.size() < sRandomPlayerbotMgr.GetMaxAllowedBotCount()) { loginProgressBar->step(); }
 	//if (loginProgressBar && playerBots.size() >= sRandomPlayerbotMgr.GetMaxAllowedBotCount() - 1) {

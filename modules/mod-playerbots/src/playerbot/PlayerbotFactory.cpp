@@ -3961,6 +3961,13 @@ void PlayerbotFactory::InitAllSkills()
     InitTradeSkills();
 }
 
+void PlayerbotFactory::EnsureProfessionPairPlan()
+{
+    // InitTradeSkills is deliberately plan-only: it returns immediately for
+    // an existing valid value and never changes skills, recipes, or progress.
+    InitTradeSkills();
+}
+
 void PlayerbotFactory::InitTradeSkills()
 {
     using namespace profession;
