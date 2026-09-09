@@ -70,6 +70,7 @@ Invoke-Clean $cmake @('--build',$build,'--config','Release','--target','persiste
 Invoke-Clean $cmake @('--build',$build,'--config','Release','--target','playerbot_event_store_contract_tests','--parallel','2') | Out-Null
 Invoke-Clean $cmake @('--build',$build,'--config','Release','--target','world_thread_command_queue_tests','--parallel','2') | Out-Null
 Invoke-Clean $cmake @('--build',$build,'--config','Release','--target','profession_pair_policy_tests','--parallel','2') | Out-Null
+Invoke-Clean $cmake @('--build',$build,'--config','Release','--target','persistent_roster_bag_policy_tests','--parallel','2') | Out-Null
 
 # ctest exits 0 on an empty test set, so the count is checked before the run --
 # the same reason core's CI checks it. A green run that tested nothing is worse

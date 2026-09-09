@@ -2,12 +2,14 @@
 // no precompiled header.
 #include <regex>
 #include <limits>
+#include <array>
 
 #include "Config/Config.h"
 
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
+#include "playerbot/PersistentRosterBagPolicy.h"
 #include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/PerformanceMonitor.h"
@@ -4194,6 +4196,7 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player * const bot)
         // bypass Randomize(), so backfill only their GUID-bound plan here.
         // Factory persistence failures are logged but never reject login.
         PlayerbotFactory(bot, bot->GetLevel()).EnsureProfessionPairPlan();
+        ProvisionPersistentRosterBags(bot);
     }
 	//if (loginProgressBar && playerBots.size() < sRandomPlayerbotMgr.GetMaxAllowedBotCount()) { loginProgressBar->step(); }
 	//if (loginProgressBar && playerBots.size() >= sRandomPlayerbotMgr.GetMaxAllowedBotCount() - 1) {
@@ -4201,6 +4204,56 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player * const bot)
 	//	sLog.outString("All bots logged in");
     //    delete loginProgressBar;
 	//}
+}
+
+void RandomPlayerbotMgr::ProvisionPersistentRosterBags(Player* bot)
+{
+    constexpr uint32 kPersistentRosterBagItemId = 50004;
+    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(kPersistentRosterBagItemId);
+    if (!proto || proto->Class != ITEM_CLASS_CONTAINER || proto->ContainerSlots != 36 || proto->BagFamily != BAG_FAMILY_NONE)
+    {
+        sLog.outError("[PersistentRoster] bag provisioner rejected item %u: missing or not a normal 36-slot bag",
+            kPersistentRosterBagItemId);
+        return;
+    }
+
+    using namespace ai::roster::bags;
+    std::array<BagSlotState, kBagSlotCount> slots{};
+    for (uint8 index = 0; index < kBagSlotCount; ++index)
+    {
+        uint8 const slot = INVENTORY_SLOT_BAG_START + index;
+        Item* existing = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        slots[index].occupied = existing != nullptr;
+        ItemPrototype const* existingProto = existing ? existing->GetProto() : nullptr;
+        slots[index].rangedContainer = existingProto &&
+            (existingProto->BagFamily == BAG_FAMILY_ARROWS || existingProto->BagFamily == BAG_FAMILY_BULLETS);
+    }
+
+    auto const provision = SelectEmptySlots(bot->getClass() == CLASS_HUNTER, slots);
+    for (uint8 index = 0; index < kBagSlotCount; ++index)
+    {
+        if (!provision[index])
+            continue;
+
+        uint8 const slot = INVENTORY_SLOT_BAG_START + index;
+        uint16 destination = 0;
+        // `swap=false` is the no-overwrite part of the contract. A runtime
+        // inventory change between the earlier read and this check cannot
+        // turn this repair into an item replacement.
+        InventoryResult const result = bot->CanEquipItem(slot, destination, proto, nullptr, false, false);
+        if (result != EQUIP_ERR_OK)
+        {
+            sLog.outError("[PersistentRoster] bag provisioner cannot equip item %u for bot %u in slot %u: error=%u",
+                kPersistentRosterBagItemId, bot->GetGUIDLow(), slot, static_cast<uint32>(result));
+            continue;
+        }
+
+        if (!bot->EquipNewItem(destination, kPersistentRosterBagItemId, true))
+        {
+            sLog.outError("[PersistentRoster] bag provisioner failed to create or equip item %u for bot %u in slot %u",
+                kPersistentRosterBagItemId, bot->GetGUIDLow(), slot);
+        }
+    }
 }
 
 void RandomPlayerbotMgr::OnPlayerLogin(Player* player)
