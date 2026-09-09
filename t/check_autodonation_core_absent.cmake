@@ -1,0 +1,25 @@
+if(NOT DEFINED TW_CORE_ROOT)
+  message(FATAL_ERROR "TW_CORE_ROOT is required")
+endif()
+
+set(world_cpp "${TW_CORE_ROOT}/src/game/World.cpp")
+set(world_h "${TW_CORE_ROOT}/src/game/World.h")
+file(READ "${world_cpp}" world_cpp_text)
+file(READ "${world_h}" world_h_text)
+
+foreach(text IN ITEMS world_cpp_text world_h_text)
+  string(FIND "${${text}}" "AutoDonationPoints" match)
+  if(NOT match EQUAL -1)
+    message(FATAL_ERROR "Core World still consumes AutoDonationPoints configuration")
+  endif()
+endforeach()
+
+foreach(needle "m_donationPointAccumulatorMs" "m_donationPointFlushTimer" "donation_point_progress")
+  string(FIND "${world_cpp_text}" "${needle}" cpp_match)
+  string(FIND "${world_h_text}" "${needle}" h_match)
+  if(NOT cpp_match EQUAL -1 OR NOT h_match EQUAL -1)
+    message(FATAL_ERROR "Core World still owns donation timer state or persistence: ${needle}")
+  endif()
+endforeach()
+
+message(STATUS "AUTODONATION_CORE_ABSENT=PASS")

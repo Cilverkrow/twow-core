@@ -948,6 +948,14 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_sql_update_dirs_reachable.cmake")
 
+  # mod-donation owns the automatic donation-point scheduler. This is a
+  # source contract because the Core must never again consume its config keys
+  # or retain per-account donation timer state.
+  add_test(NAME autodonation_core_absent
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_autodonation_core_absent.cmake")
+
   include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
   # skipped for a disabled module and read twice per configure otherwise.

@@ -1374,17 +1374,6 @@ class World
         void UpdateWorldBuffTimer(uint32 diff, WorldBuffTimerState& state, uint32 spellId,
             std::string const& announceLabel, std::function<bool(Player*)> const& eligible);
 
-        // custom: AutoDonationPoints - time online in ms per account since the
-        // last award, so that different login times need not be synchronised
-        // onto one common tick: every account gets its own full hour.
-        //
-        std::unordered_map<uint32 /*accountId*/, uint32 /*accumulatedMs*/> m_donationPointAccumulatorMs;
-        // Time until the next periodic persist of the accumulators above into
-        // `donation_point_progress` in the login database - see World.cpp.
-        // Without persistence the progress restarted from zero after every
-        // server restart.
-        uint32 m_donationPointFlushTimer = 0;
-
         uint32 m_minChatLevel = 0;
         time_t m_startTime;
         time_t m_gameTime;
