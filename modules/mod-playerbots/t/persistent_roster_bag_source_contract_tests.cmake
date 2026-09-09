@@ -38,6 +38,13 @@ if(login_start EQUAL -1 OR login_end EQUAL -1 OR call_offset EQUAL -1 OR
    call_offset LESS login_start OR call_offset GREATER login_end)
   message(FATAL_ERROR "Roster bag provisioner is not confined to the one-time login hook")
 endif()
+math(EXPR login_length "${login_end} - ${login_start}")
+string(SUBSTRING "${manager}" ${login_start} ${login_length} login_region)
+string(FIND "${login_region}" "if (IsPersistentRosterMember(bot->GetGUIDLow()))" roster_gate_offset)
+string(FIND "${login_region}" "ProvisionPersistentRosterBags(bot);" roster_call_offset)
+if(roster_gate_offset EQUAL -1 OR roster_call_offset EQUAL -1 OR roster_call_offset LESS roster_gate_offset)
+  message(FATAL_ERROR "Roster bag provisioner is not protected by the persistent-roster admission gate")
+endif()
 
 string(FIND "${manager}" "void RandomPlayerbotMgr::ProvisionPersistentRosterBags(Player* bot)" provision_start)
 string(FIND "${manager}" "void RandomPlayerbotMgr::OnPlayerLogin(Player* player)" provision_end)
