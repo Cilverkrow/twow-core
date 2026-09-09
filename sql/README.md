@@ -68,26 +68,6 @@ the migration that put it there.
 | `base/` | imported by hand; `README.md`, `INSTALL-LINUX.md`, `INSTALL-WINDOWS.md`, `PLAYERBOTS_QUICKSTART.md` | no — 186 files, 131 MB of world content, deliberately never auto-applied |
 | `tools/` | an operator, by hand, per server; plus `tools/probe_migration_overlap.py`, `audit_migration_content.py`, `extract_missing_templates.py` which read the migration tree | no — depends on per-server data |
 | `wip_updates/` | nothing yet; `CONTRIBUTING.md` stages SQL here per table until it is folded into a real migration | no — by design |
-| `logon/` | imported by hand into the **login** database; named in `README.md`'s feature table and in the `AutoDonationPoints` block of `mangosd.conf.dist.in` | no — see below |
-
-### `logon/` is a near-miss, on purpose
-
-`sql/logon/donation_point_progress.sql` is one directory name away from
-`database_updates/auth/`, which is where the auto-updater looks for login-database
-migrations. Two things make that easy to miss:
-
-- `database_updates/auth/` does not exist in this repository, and
-- `LoadFileMigrations` `create_directory()`s a missing core target on first run,
-
-so an empty `sql/database_updates/auth/` appears in a deployment at runtime and
-looks intentional. It is not; it is just the updater creating what it expected
-to find.
-
-`donation_point_progress.sql` is left where it is. It is an **opt-in** feature
-schema — moving it under `auth/` would auto-apply it to every deployment,
-including those that never enabled the feature. That is a product decision, not
-a filing cleanup. If the feature is ever made unconditional, that is the commit
-that should move the file.
 
 ## The guard
 

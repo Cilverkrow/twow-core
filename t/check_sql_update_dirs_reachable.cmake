@@ -171,20 +171,6 @@ set(allowed_dirs
   # deemed appropriate"). Not applied by anything, on purpose.
   "wip_updates"
 
-  # sql/logon/donation_point_progress.sql -- an opt-in feature schema imported
-  # by hand into the login database. Named readers: README.md's feature table
-  # ("`sql/logon/donation_point_progress.sql` on the **login** database") and
-  # the AutoDonationPoints block of src/mangosd/mangosd.conf.dist.in, which
-  # tells the operator to import it.
-  #
-  # This one is a genuine near-miss and is allowlisted rather than moved on
-  # purpose: the auth target above is database_updates/auth/, which does not
-  # exist in the tree, and LoadFileMigrations create_directory()s a missing
-  # core target -- so an empty database_updates/auth/ appears at first run and
-  # looks deliberate. Moving this file there would auto-apply an opt-in feature
-  # schema to every deployment, which is a product decision, not a cleanup. See
-  # sql/README.md.
-  "logon"
 )
 
 # --------------------------------------------------------------------------
