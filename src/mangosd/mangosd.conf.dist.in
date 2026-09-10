@@ -2090,18 +2090,6 @@ AutoWorldBuff.MinInterval = 3600000
 AutoWorldBuff.MaxInterval = 10800000
 AutoWorldBuff.WarningInterval = 600000
 
-# AutoDonationPoints. Grants donation points (shop_coins) to real online players
-# for time spent online, tracked per account. Requires the
-# donation_point_progress table in the LOGIN database - see
-# sql/logon/donation_point_progress.sql. Without it the feature still runs but
-# progress is lost on every restart. FlushIntervalMs controls how often progress
-# is written out; at worst that much time is lost on an unclean shutdown.
-
-AutoDonationPoints.Enable = 0
-AutoDonationPoints.IntervalMs = 3600000
-AutoDonationPoints.Amount = 1
-AutoDonationPoints.FlushIntervalMs = 300000
-
 # AutoBroadcast.Timer. Print broadcast messages in players chat.
 
 AutoBroadcast.Timer = 2400000
