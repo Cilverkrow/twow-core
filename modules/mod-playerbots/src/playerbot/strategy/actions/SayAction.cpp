@@ -9,6 +9,7 @@
 #include <boost/algorithm/string.hpp>
 #include "playerbot/PlayerbotLLMInterface.h"
 #include "playerbot/BotDialogueProvider.h"
+#include "playerbot/BotDialoguePolicy.h"
 #include "playerbot/BotSlots.h"
 
 using namespace ai;
@@ -354,7 +355,8 @@ inline void LineToPacket(delayedPackets& delayedPackets, const WorldPacket packe
     delayedPackets.push_back(std::make_pair(packet, MsDelay));
 }
 
-delayedPackets ChatReplyAction::LinesToPackets(const std::vector<std::string>& lines, WorldPacket packetTemplate, bool debug, uint32 MsPerChar, WorldPacket emoteTemplate, uint32 timeDiff)
+delayedPackets ChatReplyAction::LinesToPackets(const std::vector<std::string>& lines, WorldPacket packetTemplate,
+    bool debug, uint32 MsPerChar, WorldPacket emoteTemplate, uint32 timeDiff, uint32 maxDelayMs)
 {
     delayedPackets delayedPackets;
 
@@ -377,19 +379,8 @@ delayedPackets ChatReplyAction::LinesToPackets(const std::vector<std::string>& l
             if ((!isEmote || !emoteTemplate.empty()) && !sentence.substr(0, splitPos).empty())
             {
                 auto sentenceSplit = sentence.substr(0, splitPos);
-                auto delay = sentenceSplit.size() * MsPerChar;
-                if (timeDiff)
-                {
-                    if (timeDiff >= delay)
-                    {
-                        delay = 0;
-                    }
-                    else
-                    {
-                        delay -= timeDiff;
-                    }
-                    timeDiff = 0;
-                }
+                uint32 const delay = BotDialogueDelayMs(sentenceSplit.size(), MsPerChar, timeDiff, maxDelayMs);
+                timeDiff = 0;
 
                 LineToPacket(delayedPackets, isEmote ? emoteTemplate : packetTemplate, sentenceSplit, delay, debug);
             }
@@ -399,21 +390,8 @@ delayedPackets ChatReplyAction::LinesToPackets(const std::vector<std::string>& l
 
         if ((!isEmote || !emoteTemplate.empty()) && !sentence.empty())
         {
-            auto delay = sentence.size() * MsPerChar;
-            if (timeDiff)
-            {
-                if (timeDiff >= delay)
-                {
-                    delay = 0;
-                    sLog.outError("delay packet removed: %lu", delay);
-                }
-                else
-                {
-                    delay -= timeDiff;
-                    sLog.outError("delay packet reduced to %lu", delay);
-                }
-                timeDiff = 0;
-            }
+            uint32 const delay = BotDialogueDelayMs(sentence.size(), MsPerChar, timeDiff, maxDelayMs);
+            timeDiff = 0;
             LineToPacket(delayedPackets, isEmote ? emoteTemplate : packetTemplate, sentence, delay, debug);
         }
     }
@@ -474,7 +452,8 @@ std::string ChatReplyAction::DialogueChannelName(ChatChannelSource source)
 }
 
 delayedPackets ChatReplyAction::GenerateDialoguePackets(const BotDialogueRequest dialogue
-    , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, bool debug)
+    , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate
+    , bool debug, uint32 msPerCharacter, uint32 maxDelayMs)
 {
     std::vector<std::string> debugLines;
 
@@ -524,7 +503,8 @@ delayedPackets ChatReplyAction::GenerateDialoguePackets(const BotDialogueRequest
     if (!reply.empty())
     {
         std::vector<std::string> const lines(1, reply);
-        packets = LinesToPackets(lines, chatTemplate, false, 200, emoteTemplate, uint32(timeDiff));
+        packets = LinesToPackets(lines, chatTemplate, false, msPerCharacter, emoteTemplate,
+            uint32(timeDiff), maxDelayMs);
     }
 
     if (debug)
@@ -604,6 +584,25 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
         )
     {
         Player* player = sObjectAccessor.FindPlayer(ObjectGuid(HIGHGUID_PLAYER, guid1));
+
+        if (HasBotDialogueProvider())
+        {
+            BotDialogueRoute route = BotDialogueRoute::Other;
+            if (chatChannelSource == ChatChannelSource::SRC_WHISPER)
+                route = BotDialogueRoute::Whisper;
+            else if (chatChannelSource == ChatChannelSource::SRC_PARTY)
+                route = BotDialogueRoute::Party;
+            else if (chatChannelSource == ChatChannelSource::SRC_RAID)
+                route = BotDialogueRoute::Raid;
+
+            bool const speakerIsRealPlayer = player && IsRealPlayer(player);
+            bool const speakerIsMaster = speakerIsRealPlayer && GetBotAI(bot)->GetMaster() == player;
+            if (!IsBotDialogueRouteEligible(route, speakerIsRealPlayer, speakerIsMaster))
+            {
+                SendGeneralResponse(bot, chatChannelSource, GenerateReplyMessage(bot, msg, guid1, name), name);
+                return;
+            }
+        }
 
         PlayerbotAI* ai = GetBotAI(bot);
         AiObjectContext* context = ai->GetAiObjectContext();
@@ -784,7 +783,9 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
                     // command would have been judged as either way.
                     dialogue.lang = LANG_UNIVERSAL;
 
-                    futPackets = std::async(std::launch::async, ChatReplyAction::GenerateDialoguePackets, dialogue, chatTemplate, emoteTemplate, systemTemplate, debug);
+                    futPackets = std::async(std::launch::async, ChatReplyAction::GenerateDialoguePackets,
+                        dialogue, chatTemplate, emoteTemplate, systemTemplate, debug,
+                        sPlayerbotAIConfig.llmDialogueMsPerCharacter, sPlayerbotAIConfig.llmDialogueMaxDelayMs);
                 }
                 else
                 {

@@ -450,6 +450,7 @@ public:
     //LM BEGIN
     std::string llmApiEndpoint, llmApiKey, llmApiJson, llmPrePrompt, llmPreRpgPrompt, llmPrompt, llmPostPrompt, llmResponseStartPattern, llmResponseEndPattern, llmResponseDeletePattern, llmResponseSplitPattern;
     uint32 llmEnabled, llmContextLength, llmBotToBotChatChance, llmGenerationTimeout, llmMaxSimultaniousGenerations, llmRpgAIChatChance;
+    uint32 llmDialogueMsPerCharacter, llmDialogueMaxDelayMs;
     bool llmGlobalContext;
     ParsedUrl llmEndPointUrl;
     std::set<uint32> llmBlockedReplyChannels;

@@ -19,6 +19,7 @@
 #   playerbot_config_key_usage            Python source scan, no build step
 #   premade_specs_rate2                   Python unit, no DBC dependency
 #   playerbot_event_store_contract        unit, always built
+#   bot_dialogue_policy                    unit, always built
 #   world_thread_command_queue            unit, always built
 #   persistent_active_roster_database_tests       opt-in, needs MariaDB, no add_test
 #   playerbot_event_store_database_tests          opt-in, needs MariaDB, no add_test
@@ -251,6 +252,19 @@ add_test(NAME persistent_roster_bag_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/persistent_roster_bag_source_contract_tests.cmake")
+
+add_executable(bot_dialogue_policy_tests
+  "${PB_MODULE_DIR}/t/bot_dialogue_policy_tests.cpp")
+
+target_include_directories(bot_dialogue_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(bot_dialogue_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_dialogue_policy
+  COMMAND bot_dialogue_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # --------------------------------------------------------------------------
 # world_thread_command_queue_tests -- the unit suite for the hand-off that

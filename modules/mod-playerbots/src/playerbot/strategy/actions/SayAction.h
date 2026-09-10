@@ -33,7 +33,9 @@ namespace ai
         static void GetAIChatPlaceholders(std::map<std::string, std::string>& placeholders, Unit* sender = nullptr, Unit* receiver = nullptr);
         static void GetAIChatPlaceholders(std::map<std::string, std::string>& placeholders, Unit* unit, const std::string preFix = "bot", Player* observer = nullptr);
         static WorldPacket GetPacketTemplate(OpcodesList op, uint32 type, Unit* sender, Unit* target = nullptr, std::string channelName = "");
-        static delayedPackets LinesToPackets(const std::vector<std::string>& lines, WorldPacket packetTemplate, bool debug = false, uint32 MsPerChar = 0, WorldPacket emoteTemplate = WorldPacket(), uint32 timeDiff = 0);
+        static delayedPackets LinesToPackets(const std::vector<std::string>& lines, WorldPacket packetTemplate,
+            bool debug = false, uint32 MsPerChar = 0, WorldPacket emoteTemplate = WorldPacket(),
+            uint32 timeDiff = 0, uint32 maxDelayMs = 0);
 
         static delayedPackets GenerateResponsePackets(const std::string json
             , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, const std::string startPattern, const std::string endPattern, const std::string deletePattern, const std::string splitPattern, bool debug = false);
@@ -47,12 +49,12 @@ namespace ai
         // start/end/delete/split pattern here: those exist to carve chat out of
         // a completion API's response envelope, and there is no envelope.
         static delayedPackets GenerateDialoguePackets(const BotDialogueRequest dialogue
-            , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, bool debug = false);
+            , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate
+            , bool debug, uint32 msPerCharacter, uint32 maxDelayMs);
 
         // This tree's own name for a chat source, as documented on
         // BotDialogueRequest::channel. Empty for SRC_UNDEFINED and nothing
-        // else: which channels a bot may answer in is the provider's policy,
-        // not this function's.
+        // else. Provider eligibility is applied separately before inference.
         static std::string DialogueChannelName(ChatChannelSource source);
 
         static void ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32 guid2, std::string msg, std::string chanName, std::string name);
