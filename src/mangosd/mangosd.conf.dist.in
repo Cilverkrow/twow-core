@@ -2188,24 +2188,6 @@ Perf.Enable = 1
 Perf.ReportInterval = 600
 
 
-# Leech Module
-# Enables a baseline heal on damage
-Leech.Enable = 0
-
-# Sets the percentage of damage to leech
-Leech.Amount = 0.05
-
-# Leech restrictions. Without them the leech applies to every player -
-# including the random bots - and in PvP as well.
-#   PvEOnly          against non-players only
-#   RealPlayersOnly  no random bots (RNDBOT accounts)
-#   SoloOnly         only while not in a party or raid
-#   DungeonOnly      instances only (dungeons and raids), not the open world
-Leech.PvEOnly = 1
-Leech.RealPlayersOnly = 1
-Leech.SoloOnly = 1
-Leech.DungeonOnly = 1
-
 # SoloDungeonRepopAlive. A player who dies ALONE inside an instance is brought
 # back alive just inside the entrance instead of having to walk their corpse
 # back - solo there is nobody who could resurrect them. Does nothing while in a

@@ -1466,7 +1466,6 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_UINT32_TRANSMOG_REQ_ITEM, "Transmog.ReqItemID", 0);
     setConfig(CONFIG_UINT32_TRANSMOG_REQ_ITEM_COUNT, "Transmog.ReqItemCount", 1);
     setConfig(CONFIG_FLOAT_TRANSMOG_REQ_MONEY_RATE, "Transmog.ReqMoneyRate", 0.0);
-    setConfig(CONFIG_FLOAT_LEECH_AMOUNT, "Leech.Amount", 0.10f);
     setConfig(CONFIG_BOOL_STATIC_OBJECT_LOS, "StaticObjectLOS", true);
     setConfig(CONFIG_BOOL_DUAL_SPEC, "DualSpec", false);
     
@@ -1524,11 +1523,6 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_UINT32_AUTO_PDUMP_DELETE_AFTER_DAYS, "AutoPDump.DeleteAfterDays", 60);
 
     setConfig(CONFIG_BOOL_PERFORMANCE_ENABLE, "Perf.Enable", true);
-    setConfig(CONFIG_BOOL_LEECH_ENABLE, "Leech.Enable", false);
-    setConfig(CONFIG_BOOL_LEECH_PVE_ONLY, "Leech.PvEOnly", true);
-    setConfig(CONFIG_BOOL_LEECH_REAL_PLAYERS_ONLY, "Leech.RealPlayersOnly", true);
-    setConfig(CONFIG_BOOL_LEECH_SOLO_ONLY, "Leech.SoloOnly", true);
-    setConfig(CONFIG_BOOL_LEECH_DUNGEON_ONLY, "Leech.DungeonOnly", true);
     setConfig(CONFIG_BOOL_SOLO_DUNGEON_REPOP_ALIVE, "SoloDungeonRepopAlive.Enable", false);
     setConfig(CONFIG_BOOL_LFT_BOTFILL_ENABLE, "LFT.BotFill.Enable", false);
     setConfig(CONFIG_UINT32_LFT_BOTFILL_DELAY, "LFT.BotFill.DelaySeconds", 90);

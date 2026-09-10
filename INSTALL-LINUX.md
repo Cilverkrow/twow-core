@@ -212,7 +212,6 @@ fork adds is off by default:
 ```
 LFT.BotFill.Enable = 1
 SoloDungeonRepopAlive.Enable = 1
-Leech.Enable = 1
 ```
 
 `aiplayerbot.conf` — this one is not a `mangosd.conf` key, which is easy to trip
