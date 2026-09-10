@@ -1301,6 +1301,12 @@ AiPlayerbot.AllowedLogFiles = bot_events.csv,deaths.csv
 # AiPlayerbot.LLMContextLength = 4096
 # Time in seconds the server will wait for the generation to finish. This includes waiting in queue.
 # AiPlayerbot.LLMGenerationTimeout = 600
+
+# Milliseconds of simulated typing time per character for module-provided
+# dialogue, and the maximum delay for one emitted packet. These do not alter
+# the legacy HTTP response parser path.
+# AiPlayerbot.LLMDialogueMsPerCharacter = 40
+# AiPlayerbot.LLMDialogueMaxDelayMs = 2000
 # Maximum generation requests allowed at the same time. This includes waiting in queue.
 # AiPlayerbot.LLMMaxSimultaniousGenerations = 100
 

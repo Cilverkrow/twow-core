@@ -794,6 +794,8 @@ bool PlayerbotAIConfig::Initialize()
     llmContextLength = config.GetIntDefault("AiPlayerbot.LLMContextLength", 4096);
     llmGenerationTimeout = config.GetIntDefault("AiPlayerbot.LLMGenerationTimeout", 600);
     llmMaxSimultaniousGenerations = config.GetIntDefault("AiPlayerbot.LLMMaxSimultaniousGenerations", 100);
+    llmDialogueMsPerCharacter = config.GetIntDefault("AiPlayerbot.LLMDialogueMsPerCharacter", 40);
+    llmDialogueMaxDelayMs = config.GetIntDefault("AiPlayerbot.LLMDialogueMaxDelayMs", 2000);
         
     
     llmPrePrompt = config.GetStringDefault("AiPlayerbot.LLMPrePrompt", "You are a roleplaying character in World of Warcraft: <expansion name>. Your name is <bot name>. The <other type> <other name> is speaking to you <channel name> and is an <other gender> <other race> <other class> of level <other level>. You are level <bot level> and play as a <bot gender> <bot race> <bot class> that is currently in <bot subzone> <bot zone>. Answer as a roleplaying character. Limit responses to 100 characters.");
