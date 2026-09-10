@@ -8182,7 +8182,23 @@ void PlayerbotAI::UpdateDelayedPackets(uint32 elapsed)
             // this bot may have logged out or the session may otherwise be
             // gone. bot->GetSession() is the live pointer, checked every time.
             if (WorldSession* session = bot ? bot->GetSession() : nullptr)
-                session->QueuePacket(packet);
+            {
+                // Bot sessions have no network socket, so packets placed in
+                // WorldSession::_recvQueue are never consumed:
+                // CanProcessPackets() deliberately returns false for them.
+                // These CMSG_MESSAGECHAT packets were assembled internally
+                // from a validated dialogue result and we are already on the
+                // bot's world-thread tick, so dispatch them through the normal
+                // chat opcode handler directly.  QueuePacket() remains the
+                // correct fallback for any future non-chat caller.
+                if (packet.GetOpcode() == CMSG_MESSAGECHAT)
+                {
+                    WorldPacket chatPacket(packet);
+                    session->HandleMessagechatOpcode(chatPacket);
+                }
+                else
+                    session->QueuePacket(packet);
+            }
         });
     }
 

@@ -302,6 +302,16 @@ add_test(NAME world_thread_command_queue
   COMMAND world_thread_command_queue_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# Bot dialogue replies are generated asynchronously but delivered on the
+# bot's world-thread tick. Random-bot sessions have no socket, so feeding a
+# generated CMSG_MESSAGECHAT into WorldSession::_recvQueue silently strands
+# it behind CanProcessPackets(). Keep the direct chat-handler dispatch and
+# the non-chat QueuePacket fallback explicit.
+add_test(NAME bot_dialogue_delivery_source_contract
+  COMMAND ${CMAKE_COMMAND}
+    -DPLAYERBOT_AI_SOURCE=${PB_MODULE_DIR}/src/playerbot/PlayerbotAI.cpp
+    -P ${PB_MODULE_DIR}/t/bot_dialogue_delivery_source_contract_tests.cmake)
+
 # --------------------------------------------------------------------------
 # persistent_active_roster_database_tests -- the same serialiser against a
 # live MariaDB. Opt-in: it needs a running database, so it is not part of a
