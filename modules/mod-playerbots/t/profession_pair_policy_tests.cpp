@@ -119,11 +119,11 @@ void TestExactApproved68QuotaAndDeterminism()
     CHECK(first.version == kExactRosterPlanVersion);
     CHECK(first.assignments.size() == kExactRosterBaseSize);
     CHECK(first.assignments == second.assignments);
-    CHECK(Count(first, HerbalismAlchemy) == 14);
+    CHECK(Count(first, HerbalismAlchemy) == 4);
     CHECK(Count(first, SkinningLeatherworking) == 13);
-    CHECK(Count(first, MiningBlacksmithing) == 12);
-    CHECK(Count(first, MiningEngineering) == 8);
-    CHECK(Count(first, MiningJewelcrafting) == 8);
+    CHECK(Count(first, MiningBlacksmithing) == 16);
+    CHECK(Count(first, MiningEngineering) == 11);
+    CHECK(Count(first, MiningJewelcrafting) == 11);
     CHECK(Count(first, TailoringEnchanting) == 13);
     for (PlanAssignment const& assignment : first.assignments)
         CHECK(IsValid(assignment.pair));
@@ -147,20 +147,20 @@ void TestStablePrefixScaleUpAndIdempotence()
     CHECK(MaterializeExactRosterPlan(roster136, expanded.assignments, replay) == ExactPlanResult::Success);
     CHECK(expanded.assignments == replay.assignments);
     CHECK(std::equal(initial.assignments.begin(), initial.assignments.end(), expanded.assignments.begin()));
-    CHECK(Count(expanded, HerbalismAlchemy) == 28);
+    CHECK(Count(expanded, HerbalismAlchemy) == 8);
     CHECK(Count(expanded, SkinningLeatherworking) == 26);
-    CHECK(Count(expanded, MiningBlacksmithing) == 24);
-    CHECK(Count(expanded, MiningEngineering) == 16);
-    CHECK(Count(expanded, MiningJewelcrafting) == 16);
+    CHECK(Count(expanded, MiningBlacksmithing) == 32);
+    CHECK(Count(expanded, MiningEngineering) == 22);
+    CHECK(Count(expanded, MiningJewelcrafting) == 22);
     CHECK(Count(expanded, TailoringEnchanting) == 26);
     CHECK(MaterializeExactRosterPlan(roster500, expanded.assignments, scaled500) == ExactPlanResult::Success);
     CHECK(std::equal(expanded.assignments.begin(), expanded.assignments.end(), scaled500.assignments.begin()));
     CHECK(scaled500.assignments.size() == 500);
-    CHECK(Count(scaled500, HerbalismAlchemy) == 103);
+    CHECK(Count(scaled500, HerbalismAlchemy) == 29);
     CHECK(Count(scaled500, SkinningLeatherworking) == 96);
-    CHECK(Count(scaled500, MiningBlacksmithing) == 88);
-    CHECK(Count(scaled500, MiningEngineering) == 59);
-    CHECK(Count(scaled500, MiningJewelcrafting) == 59);
+    CHECK(Count(scaled500, MiningBlacksmithing) == 118);
+    CHECK(Count(scaled500, MiningEngineering) == 81);
+    CHECK(Count(scaled500, MiningJewelcrafting) == 81);
     CHECK(Count(scaled500, TailoringEnchanting) == 95);
     for (PlanAssignment const& assignment : scaled500.assignments)
         CHECK(IsValid(assignment.pair));
@@ -179,11 +179,8 @@ void TestInvalidAndConflictingExistingPlansFailClosed()
     members[1].guid = members[0].guid;
     CHECK(MaterializeExactRosterPlan(members, {}, rejected) == ExactPlanResult::InvalidRoster);
 
-    // A larger cohort may only start without the prior prefix under the
-    // explicitly named test-reset escape hatch; production admission never
-    // receives that authorization implicitly.
-    std::vector<RosterMember> const resetRoster = MakeRoster(136);
-    CHECK(MaterializeExactRosterPlan(resetRoster, {}, rejected, true) == ExactPlanResult::Success);
+    std::vector<RosterMember> const expandedRoster = MakeRoster(136);
+    CHECK(MaterializeExactRosterPlan(expandedRoster, {}, rejected) == ExactPlanResult::ExistingPlanRequired);
 }
 }
 

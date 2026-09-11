@@ -11,11 +11,11 @@ namespace ai::profession
 {
 constexpr std::uint32_t kPlanVersion = 1;
 // Version 1 remains the per-bot legacy plan selected on first login. Version
-// 2 is deliberately a separate *policy* version for the explicit, ordered
+// 3 is deliberately a separate *policy* version for the explicit, ordered
 // persistent-roster materializer below. Nothing in the normal login path may
 // invoke it: a roster version is an administrative decision, not a side effect
 // of login, restart, or scale-up.
-constexpr std::uint32_t kExactRosterPlanVersion = 2;
+constexpr std::uint32_t kExactRosterPlanVersion = 3;
 constexpr std::size_t kExactRosterBaseSize = 68;
 constexpr char const* kEventName = "profession_pair";
 constexpr char const* kEventData = "v1";
@@ -281,11 +281,13 @@ inline std::array<ExactQuota, 6> ExactRosterQuotas(std::size_t memberCount)
 {
     std::array<ExactQuota, 6> quotas =
     {{
-        { HerbalismAlchemy, 14 },
+        { HerbalismAlchemy, 4 },
         { SkinningLeatherworking, 13 },
-        { MiningBlacksmithing, 12 },
-        { MiningEngineering, 8 },
-        { MiningJewelcrafting, 8 },
+        // The remaining 38 members cannot divide exactly as 3:2:2. The
+        // symmetric closest integer vector is 16:11:11.
+        { MiningBlacksmithing, 16 },
+        { MiningEngineering, 11 },
+        { MiningJewelcrafting, 11 },
         { TailoringEnchanting, 13 }
     }};
 
@@ -346,12 +348,12 @@ inline bool IsStableRoster(std::vector<RosterMember> const& members)
 // the existing profession_pair store. A conflict never mutates learned skills
 // or an existing plan; it is reported for explicit administrative resolution.
 inline ExactPlanResult MaterializeExactRosterPlan(std::vector<RosterMember> const& members,
-    std::vector<PlanAssignment> const& existing, ExactRosterPlan& output, bool authorizedTestReset = false)
+    std::vector<PlanAssignment> const& existing, ExactRosterPlan& output)
 {
     output = ExactRosterPlan{};
     if (!IsStableRoster(members) || existing.size() > members.size())
         return ExactPlanResult::InvalidRoster;
-    if (members.size() > kExactRosterBaseSize && existing.empty() && !authorizedTestReset)
+    if (members.size() > kExactRosterBaseSize && existing.empty())
         return ExactPlanResult::ExistingPlanRequired;
 
     std::array<ExactQuota, 6> quotas = ExactRosterQuotas(members.size());
