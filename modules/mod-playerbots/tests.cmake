@@ -223,6 +223,30 @@ add_test(NAME profession_pair_policy
   COMMAND profession_pair_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A deliberately pure contract for the future local-console fresh-start
+# operation. It has no Player, database, or command-handler dependency, so
+# parsing and fail-closed preflight behavior are independently testable before
+# any state-mutating Core API is introduced.
+add_executable(roster_fresh_start_preflight_tests
+  "${PB_MODULE_DIR}/t/roster_fresh_start_preflight_tests.cpp"
+  "${PB_MODULE_DIR}/src/playerbot/RosterFreshStartPreflight.cpp")
+
+target_include_directories(roster_fresh_start_preflight_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot"
+  ${OPENSSL_INCLUDE_DIR})
+
+target_link_libraries(roster_fresh_start_preflight_tests PRIVATE ${OPENSSL_LIBRARIES})
+if(UNIX)
+  target_link_libraries(roster_fresh_start_preflight_tests PRIVATE ${TW_OPENSSL_CRYPTO_LIBRARY})
+endif()
+
+set_target_properties(roster_fresh_start_preflight_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_fresh_start_preflight
+  COMMAND roster_fresh_start_preflight_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # The roster bag policy is intentionally independent from game objects. It
 # verifies slot selection and hunter reserve semantics while the paired source
 # contract below pins the only permitted runtime hook and Core equip sequence.
