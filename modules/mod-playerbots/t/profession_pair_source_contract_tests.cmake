@@ -29,7 +29,7 @@ file(READ "${PB_SOURCE_DIR}/PlayerbotFactory.cpp" factory)
 file(READ "${PB_SOURCE_DIR}/PlayerbotFactory.h" factory_header)
 file(READ "${PB_SOURCE_DIR}/ProfessionPair.h" policy_header)
 require_text("${policy_header}"
-  "kExactRosterPlanVersion = 2"
+  "kExactRosterPlanVersion = 3"
   "versioned exact roster policy")
 require_text("${policy_header}"
   "MaterializeExactRosterPlan"
@@ -41,12 +41,21 @@ require_text("${policy_header}"
   "ExistingPlanConflict"
   "non-destructive existing-plan conflict")
 require_text("${policy_header}"
-  "authorizedTestReset"
-  "explicit test-reset-only replan gate")
+  "{ HerbalismAlchemy, 4 }"
+  "approved herbalism/alchemy quota")
+require_text("${policy_header}"
+  "{ MiningBlacksmithing, 16 }"
+  "approved mining/blacksmithing quota")
+require_text("${policy_header}"
+  "{ MiningEngineering, 11 }"
+  "approved mining/engineering quota")
+require_text("${policy_header}"
+  "{ MiningJewelcrafting, 11 }"
+  "approved mining/jewelcrafting quota")
 require_text("${policy_header}"
   "kExactRosterBaseSize = 68"
   "approved exact roster base size")
-foreach(forbidden "SetSkill(" "learnSpell(" "RemoveSpell(" "Unlearn" "Player*" "CharacterDatabase")
+foreach(forbidden "SetSkill(" "learnSpell(" "RemoveSpell(" "Unlearn" "Player*" "CharacterDatabase" "authorizedTestReset")
   string(FIND "${policy_header}" "${forbidden}" forbidden_offset)
   if(NOT forbidden_offset EQUAL -1)
     message(FATAL_ERROR "Exact roster policy must not mutate runtime or database state: ${forbidden}")
