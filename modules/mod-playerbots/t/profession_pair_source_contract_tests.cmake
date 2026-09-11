@@ -27,6 +27,31 @@ require_text("${auto_learn}"
 
 file(READ "${PB_SOURCE_DIR}/PlayerbotFactory.cpp" factory)
 file(READ "${PB_SOURCE_DIR}/PlayerbotFactory.h" factory_header)
+file(READ "${PB_SOURCE_DIR}/ProfessionPair.h" policy_header)
+require_text("${policy_header}"
+  "kExactRosterPlanVersion = 2"
+  "versioned exact roster policy")
+require_text("${policy_header}"
+  "MaterializeExactRosterPlan"
+  "single exact roster plan materializer")
+require_text("${policy_header}"
+  "PersistentActiveRoster snapshot"
+  "explicit roster-only policy boundary")
+require_text("${policy_header}"
+  "ExistingPlanConflict"
+  "non-destructive existing-plan conflict")
+require_text("${policy_header}"
+  "authorizedTestReset"
+  "explicit test-reset-only replan gate")
+require_text("${policy_header}"
+  "kExactRosterBaseSize = 68"
+  "approved exact roster base size")
+foreach(forbidden "SetSkill(" "learnSpell(" "RemoveSpell(" "Unlearn" "Player*" "CharacterDatabase")
+  string(FIND "${policy_header}" "${forbidden}" forbidden_offset)
+  if(NOT forbidden_offset EQUAL -1)
+    message(FATAL_ERROR "Exact roster policy must not mutate runtime or database state: ${forbidden}")
+  endif()
+endforeach()
 require_text("${factory_header}"
   "void EnsureProfessionPairPlan();"
   "narrow plan-only factory entry point")
@@ -95,6 +120,10 @@ string(SUBSTRING "${manager}" ${process_start} ${process_length} process_region)
 string(FIND "${process_region}" "EnsureProfessionPairPlan" process_backfill_offset)
 if(NOT process_backfill_offset EQUAL -1)
   message(FATAL_ERROR "Profession-pair backfill must not run from periodic ProcessBot")
+endif()
+string(FIND "${manager}" "MaterializeExactRosterPlan" exact_roster_runtime_offset)
+if(NOT exact_roster_runtime_offset EQUAL -1)
+  message(FATAL_ERROR "Exact roster policy must not run implicitly during login, restart, or scale-up")
 endif()
 
 message(STATUS "PROFESSION_PAIR_SOURCE_CONTRACT=PASS")
