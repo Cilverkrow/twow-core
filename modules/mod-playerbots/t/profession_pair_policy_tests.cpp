@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 
 namespace
 {
@@ -89,6 +90,101 @@ void TestGrandfatheringPolicy()
     CHECK(IsValid(emptyFirst));
     CHECK(emptyFirst == emptySecond);
 }
+
+std::vector<ai::profession::RosterMember> MakeRoster(std::size_t count)
+{
+    std::vector<ai::profession::RosterMember> members;
+    std::uint8_t const classes[] = { 3, 1, 7, 8, 4, 2, 11, 5, 9 };
+    for (std::size_t index = 0; index < count; ++index)
+        members.push_back({ static_cast<std::uint32_t>(10000 + index), classes[index % (sizeof(classes) / sizeof(classes[0]))] });
+    return members;
+}
+
+std::uint32_t Count(ai::profession::ExactRosterPlan const& plan, ai::profession::Pair pair)
+{
+    std::uint32_t count = 0;
+    for (ai::profession::PlanAssignment const& assignment : plan.assignments)
+        if (assignment.pair == pair)
+            ++count;
+    return count;
+}
+
+void TestExactApproved68QuotaAndDeterminism()
+{
+    using namespace ai::profession;
+    std::vector<RosterMember> const members = MakeRoster(kExactRosterBaseSize);
+    ExactRosterPlan first, second;
+    CHECK(MaterializeExactRosterPlan(members, {}, first) == ExactPlanResult::Success);
+    CHECK(MaterializeExactRosterPlan(members, {}, second) == ExactPlanResult::Success);
+    CHECK(first.version == kExactRosterPlanVersion);
+    CHECK(first.assignments.size() == kExactRosterBaseSize);
+    CHECK(first.assignments == second.assignments);
+    CHECK(Count(first, HerbalismAlchemy) == 14);
+    CHECK(Count(first, SkinningLeatherworking) == 13);
+    CHECK(Count(first, MiningBlacksmithing) == 12);
+    CHECK(Count(first, MiningEngineering) == 8);
+    CHECK(Count(first, MiningJewelcrafting) == 8);
+    CHECK(Count(first, TailoringEnchanting) == 13);
+    for (PlanAssignment const& assignment : first.assignments)
+        CHECK(IsValid(assignment.pair));
+
+    // The first roster member is a hunter. With all quotas available its
+    // largest class preference is Skinning+Leatherworking (21), proving that
+    // class weight decides before deterministic GUID/pair tie-breaking.
+    CHECK(first.assignments.front().pair == SkinningLeatherworking);
+}
+
+void TestStablePrefixScaleUpAndIdempotence()
+{
+    using namespace ai::profession;
+    ExactRosterPlan initial, expanded, replay, scaled500;
+    std::vector<RosterMember> const roster68 = MakeRoster(68);
+    std::vector<RosterMember> const roster136 = MakeRoster(136);
+    std::vector<RosterMember> const roster500 = MakeRoster(500);
+    CHECK(MaterializeExactRosterPlan(roster68, {}, initial) == ExactPlanResult::Success);
+    CHECK(MaterializeExactRosterPlan(roster136, {}, replay) == ExactPlanResult::ExistingPlanRequired);
+    CHECK(MaterializeExactRosterPlan(roster136, initial.assignments, expanded) == ExactPlanResult::Success);
+    CHECK(MaterializeExactRosterPlan(roster136, expanded.assignments, replay) == ExactPlanResult::Success);
+    CHECK(expanded.assignments == replay.assignments);
+    CHECK(std::equal(initial.assignments.begin(), initial.assignments.end(), expanded.assignments.begin()));
+    CHECK(Count(expanded, HerbalismAlchemy) == 28);
+    CHECK(Count(expanded, SkinningLeatherworking) == 26);
+    CHECK(Count(expanded, MiningBlacksmithing) == 24);
+    CHECK(Count(expanded, MiningEngineering) == 16);
+    CHECK(Count(expanded, MiningJewelcrafting) == 16);
+    CHECK(Count(expanded, TailoringEnchanting) == 26);
+    CHECK(MaterializeExactRosterPlan(roster500, expanded.assignments, scaled500) == ExactPlanResult::Success);
+    CHECK(std::equal(expanded.assignments.begin(), expanded.assignments.end(), scaled500.assignments.begin()));
+    CHECK(scaled500.assignments.size() == 500);
+    CHECK(Count(scaled500, HerbalismAlchemy) == 103);
+    CHECK(Count(scaled500, SkinningLeatherworking) == 96);
+    CHECK(Count(scaled500, MiningBlacksmithing) == 88);
+    CHECK(Count(scaled500, MiningEngineering) == 59);
+    CHECK(Count(scaled500, MiningJewelcrafting) == 59);
+    CHECK(Count(scaled500, TailoringEnchanting) == 95);
+    for (PlanAssignment const& assignment : scaled500.assignments)
+        CHECK(IsValid(assignment.pair));
+}
+
+void TestInvalidAndConflictingExistingPlansFailClosed()
+{
+    using namespace ai::profession;
+    std::vector<RosterMember> members = MakeRoster(68);
+    ExactRosterPlan plan;
+    CHECK(MaterializeExactRosterPlan(members, {}, plan) == ExactPlanResult::Success);
+    std::vector<PlanAssignment> conflict = plan.assignments;
+    conflict.front().pair = conflict.front().pair == HerbalismAlchemy ? SkinningLeatherworking : HerbalismAlchemy;
+    ExactRosterPlan rejected;
+    CHECK(MaterializeExactRosterPlan(members, conflict, rejected) == ExactPlanResult::ExistingPlanConflict);
+    members[1].guid = members[0].guid;
+    CHECK(MaterializeExactRosterPlan(members, {}, rejected) == ExactPlanResult::InvalidRoster);
+
+    // A larger cohort may only start without the prior prefix under the
+    // explicitly named test-reset escape hatch; production admission never
+    // receives that authorization implicitly.
+    std::vector<RosterMember> const resetRoster = MakeRoster(136);
+    CHECK(MaterializeExactRosterPlan(resetRoster, {}, rejected, true) == ExactPlanResult::Success);
+}
 }
 
 int main()
@@ -98,6 +194,9 @@ int main()
     TestContractClassFamilyMatrix();
     TestCompatibleSingleProfession();
     TestGrandfatheringPolicy();
+    TestExactApproved68QuotaAndDeterminism();
+    TestStablePrefixScaleUpAndIdempotence();
+    TestInvalidAndConflictingExistingPlansFailClosed();
     if (failures) return EXIT_FAILURE;
     std::cout << "PROFESSION_PAIR_POLICY_TESTS=PASS\n";
     return EXIT_SUCCESS;
