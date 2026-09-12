@@ -372,6 +372,55 @@ void ObjectMgr::LoadMapLootDisabled()
     while (result->NextRow());
 }
 
+void ObjectMgr::LoadBonusLootBossRegistry()
+{
+    m_BonusLootBossRegistry.clear();
+
+    if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_ENABLED))
+        return;
+
+    std::unique_ptr<QueryResult> result(WorldDatabase.Query(
+        "SELECT `creature_entry`, `map_id`, `category` "
+        "FROM `creature_loot_bonus_registry`"));
+
+    if (!result)
+        return; // Empty or missing data fails closed; the feature is opt-in.
+
+    do
+    {
+        Field* fields = result->Fetch();
+        uint32 entry = fields[0].GetUInt32();
+        uint32 mapId = fields[1].GetUInt32();
+        std::string const categoryName = fields[2].GetString();
+        BonusLootBossCategory const category = categoryName == "dungeon" ? BONUS_LOOT_BOSS_DUNGEON :
+                                               categoryName == "raid" ? BONUS_LOOT_BOSS_RAID : BONUS_LOOT_BOSS_NONE;
+        MapEntry const* map = sMapStorage.LookupEntry<MapEntry>(mapId);
+
+        if (!GetCreatureTemplate(entry) ||
+            !map ||
+            (category != BONUS_LOOT_BOSS_DUNGEON && category != BONUS_LOOT_BOSS_RAID) ||
+            (category == BONUS_LOOT_BOSS_DUNGEON && (!map->IsDungeon() || map->IsRaid())) ||
+            (category == BONUS_LOOT_BOSS_RAID && !map->IsRaid()))
+        {
+            sLog.outErrorDb("creature_loot_bonus_registry has invalid row for creature entry %u; ignored", entry);
+            continue;
+        }
+
+        uint64 key = (uint64(entry) << 32) | mapId;
+        if (!m_BonusLootBossRegistry.emplace(key, BonusLootBossRegistryEntry{ category }).second)
+            sLog.outErrorDb("creature_loot_bonus_registry has duplicate creature entry %u map %u; later row ignored", entry, mapId);
+    }
+    while (result->NextRow());
+
+    sLog.outString("Loaded %u reviewed funserver bonus-loot boss entries", uint32(m_BonusLootBossRegistry.size()));
+}
+
+BonusLootBossRegistryEntry ObjectMgr::GetBonusLootBossRegistryEntry(uint32 creatureEntry, uint32 mapId) const
+{
+    auto itr = m_BonusLootBossRegistry.find((uint64(creatureEntry) << 32) | mapId);
+    return itr == m_BonusLootBossRegistry.end() ? BonusLootBossRegistryEntry{} : itr->second;
+}
+
 void ObjectMgr::LoadCinematicsWaypoints()
 {
     m_CinematicWaypoints.clear();

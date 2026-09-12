@@ -963,6 +963,20 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_leech_core_absent.cmake")
 
+  # Issue #288's deterministic policy harness is deliberately independent of
+  # a running server or database. It locks the reviewed registry cardinality,
+  # the byte-identical migration handoff, the disabled RNG contract and the
+  # bounded four-pass simulation.
+  add_executable(loot_bonus_policy_simulation
+    "${TW_CORE_ROOT}/t/loot_bonus_policy_simulation.cpp")
+  add_test(NAME loot_bonus_policy_simulation COMMAND loot_bonus_policy_simulation)
+  set_tests_properties(loot_bonus_policy_simulation PROPERTIES
+    WORKING_DIRECTORY "${TW_CORE_ROOT}")
+  add_test(NAME loot_bonus_source_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_loot_bonus_source_contract.cmake")
+
   include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
   # skipped for a disabled module and read twice per configure otherwise.

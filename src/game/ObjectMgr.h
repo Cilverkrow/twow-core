@@ -50,6 +50,21 @@ extern SQLStorage sCreatureDataLinkGroupStorage;
 class Group;
 class Item;
 
+// Database-owned allowlist for instance bosses. Do not infer this from
+// creature rank, scripts, or map type: ordinary instance elites must remain
+// ineligible unless a reviewed row explicitly names their template entry.
+enum BonusLootBossCategory : uint8
+{
+    BONUS_LOOT_BOSS_NONE = 0,
+    BONUS_LOOT_BOSS_DUNGEON = 1,
+    BONUS_LOOT_BOSS_RAID = 2,
+};
+
+struct BonusLootBossRegistryEntry
+{
+    BonusLootBossCategory category = BONUS_LOOT_BOSS_NONE;
+};
+
 struct GameTele
 {
     // bot uses position_x/y/z naming via anon unions.
@@ -1503,6 +1518,9 @@ class ObjectMgr
         std::set<uint32>    m_DisabledMapLoots;
         void LoadMapLootDisabled();
         bool IsMapLootDisabled(uint32 mapId) const { return m_DisabledMapLoots.count(mapId) != 0; }
+        void LoadBonusLootBossRegistry();
+        BonusLootBossRegistryEntry GetBonusLootBossRegistryEntry(uint32 creatureEntry, uint32 mapId) const;
+        robin_hood::unordered_map<uint64, BonusLootBossRegistryEntry> m_BonusLootBossRegistry;
         // Cinematics
         void LoadCinematicsWaypoints();
         Position const* GetCinematicPosition(uint32 cinematicId, uint32 elapsed_time);
