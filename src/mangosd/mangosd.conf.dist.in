@@ -1756,6 +1756,33 @@ Rate.Drop.Item.Artifact = 1
 Rate.Drop.Item.Referenced = 1
 Rate.Drop.Money = 1
 
+# Funserver.Loot.Bonus.Enabled
+#   Opt-in additional selection rounds for reviewed rare/boss loot only. The
+#   normal loot generator always runs once; zero preserves the historic path.
+#   Default: 0 (off)
+
+Funserver.Loot.Bonus.Enabled = 0
+Funserver.Loot.Bonus.Rare = 0
+Funserver.Loot.Bonus.RareElite = 0
+Funserver.Loot.Bonus.WorldBoss = 0
+Funserver.Loot.Bonus.DungeonBoss = 0
+Funserver.Loot.Bonus.RaidBoss = 0
+
+# Funserver.Loot.Bonus.SelectionMultiplier
+#   Total bounded selection passes including the historical pass. Valid range
+#   is 1..4; 4 means up to three additional eligible selections.
+#   Default: 4
+
+Funserver.Loot.Bonus.SelectionMultiplier = 4
+
+# Funserver.Loot.Bonus.DuplicateDecay
+#   Each copy already selected during this kill multiplies an eligible item's
+#   next bonus-round weight by this value. 0 prevents repeats; 0.25 is the
+#   conservative default. Valid range: 0..1.
+#   Default: 0.25
+
+Funserver.Loot.Bonus.DuplicateDecay = 0.25
+
 # Rate.XP. XP rates (player's favorite, haha)
 
 Rate.XP.Kill = 1

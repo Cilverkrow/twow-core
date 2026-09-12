@@ -970,6 +970,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
 {
     ///- Read all rates from the config file
     setConfigPos(CONFIG_FLOAT_RATE_HEALTH,               "Rate.Health", 1.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY, "Funserver.Loot.Bonus.DuplicateDecay", 0.25f, 0.0f, 1.0f);
     setConfigPos(CONFIG_FLOAT_RATE_POWER_MANA,           "Rate.Mana", 1.0f);
     setConfig(CONFIG_FLOAT_RATE_POWER_RAGE_INCOME,       "Rate.Rage.Income", 1.0f);
     setConfigPos(CONFIG_FLOAT_RATE_POWER_RAGE_LOSS,      "Rate.Rage.Loss", 1.0f);
@@ -1065,6 +1066,12 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_GRID_UNLOAD, "GridUnload", true);
     setConfig(CONFIG_BOOL_CLEANUP_TERRAIN, "CleanupTerrain", true);
     setConfig(CONFIG_BOOL_MMAP_TILE_UNLOAD, "MMapTileUnload", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_ENABLED, "Funserver.Loot.Bonus.Enabled", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE, "Funserver.Loot.Bonus.Rare", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE_ELITE, "Funserver.Loot.Bonus.RareElite", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_WORLD_BOSS, "Funserver.Loot.Bonus.WorldBoss", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_DUNGEON_BOSS, "Funserver.Loot.Bonus.DungeonBoss", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RAID_BOSS, "Funserver.Loot.Bonus.RaidBoss", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
     setConfigMinMax(CONFIG_UINT32_MIN_LEVEL_STAT_SAVE, "PlayerSave.Stats.MinLevel", 0, 0, MAX_LEVEL);
     setConfig(CONFIG_BOOL_STATS_SAVE_ONLY_ON_LOGOUT, "PlayerSave.Stats.SaveOnlyOnLogout", true);
@@ -1389,6 +1396,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
 
     setConfig(CONFIG_UINT32_ITEM_INSTANTSAVE_QUALITY, "Item.InstantSaveQuality", ITEM_QUALITY_ARTIFACT);
     setConfig(CONFIG_UINT32_ITEM_RARELOOT_QUALITY, "Item.RareLoot.Quality", ITEM_QUALITY_EPIC);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER, "Funserver.Loot.Bonus.SelectionMultiplier", 4, 1, 4);
     setConfig(CONFIG_BOOL_PREVENT_ITEM_DATAMINING, "Item.PreventDataMining", true);
 
     setConfig(CONFIG_UINT32_MAILSPAM_EXPIRE_SECS, "MailSpam.ExpireSecs", 0);
@@ -2402,7 +2410,9 @@ void LoadPlayerEggLoot();
     sLog.outString("Loading faction change mounts...");
 	sObjectMgr.LoadFactionChangeMounts();
     sLog.outString("Loading loot-disable map list...");
-    sObjectMgr.LoadMapLootDisabled();
+	sObjectMgr.LoadMapLootDisabled();
+    sLog.outString("Loading reviewed funserver bonus-loot boss registry...");
+    sObjectMgr.LoadBonusLootBossRegistry();
     sLog.outString("Loading cinematic waypoints...");
     sObjectMgr.LoadCinematicsWaypoints();
     sLog.outString("Loading transmogrification templates...");

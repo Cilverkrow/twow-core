@@ -239,6 +239,9 @@ class LootTemplate
         void AddEntry(LootStoreItem& item);
         // Rolls for every item in the template and adds the rolled items the the loot
         void Process(Loot& loot, LootStore const& store, bool rate, Player const* lootOwner = nullptr, uint8 GroupId = 0) const;
+        // Applies only the opt-in, bounded bonus rounds. Grouped entries,
+        // references and ownership-sensitive rows are intentionally excluded.
+        void ProcessBonus(Loot& loot, bool rate, Player const* lootOwner, uint8 selectionMultiplier, float duplicateDecay) const;
 
         // True if template includes at least 1 quest drop entry
         bool HasQuestDrop(LootTemplateMap const& store, uint8 GroupId = 0) const;

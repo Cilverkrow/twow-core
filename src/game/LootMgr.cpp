@@ -30,6 +30,8 @@
 #include "SpellAuraDefines.h"
 #include "SpellAuras.h"
 
+#include <map>
+
 static eConfigFloatValues const qualityToRate[MAX_ITEM_QUALITY] =
 {
     CONFIG_FLOAT_RATE_DROP_ITEM_POOR,                                    // ITEM_QUALITY_POOR
@@ -60,6 +62,7 @@ public:
     bool HasQuestDropForPlayer(Player const * player) const;
     // The same for active quests of the player
     void Process(Loot& loot, Player const* lootOwner) const; // Rolls an item from the group (if any) and adds the item to the loot
+    bool ProcessBonus(Loot& loot, Player const* lootOwner, std::map<uint32, uint32>& selectedCount, float duplicateDecay) const;
     float RawTotalChance() const;                       // Overall chance for the group (without equal chanced items)
     float TotalChance() const;                          // Overall chance for the group
 
@@ -281,6 +284,46 @@ static float GetGatheringItemChanceMod(Player const* lootOwner, uint32 itemId)
             chanceMod += aura->GetModifier()->m_amount;
 
     return chanceMod;
+}
+
+static uint8 GetFunserverBonusSelectionMultiplier(WorldObject const* looted)
+{
+    if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_ENABLED) || !looted)
+        return 1;
+
+    Creature const* creature = ToCreature(looted);
+    if (!creature || creature->IsPet())
+        return 1;
+
+    uint32 rank = creature->GetCreatureInfo()->rank;
+    if ((rank == CREATURE_ELITE_RARE && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE)) ||
+        (rank == CREATURE_ELITE_RAREELITE && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE_ELITE)) ||
+        (rank == CREATURE_ELITE_WORLDBOSS && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_WORLD_BOSS)))
+        return uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER));
+
+    BonusLootBossRegistryEntry registry = sObjectMgr.GetBonusLootBossRegistryEntry(creature->GetEntry(), creature->GetMapId());
+    if (registry.category == BONUS_LOOT_BOSS_DUNGEON && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_DUNGEON_BOSS) && creature->GetMap()->IsDungeon() && !creature->GetMap()->IsRaid())
+        return uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER));
+    if (registry.category == BONUS_LOOT_BOSS_RAID && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RAID_BOSS) && creature->GetMap()->IsRaid())
+        return uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER));
+
+    return 1;
+}
+
+static bool IsBonusLootCandidate(LootStoreItem const& item, Loot const& loot)
+{
+    // Do not re-enter references or multiply protected and recipient-specific
+    // rows. Groups have their own one-of-group bonus processor below.
+    if (item.mincountOrRef <= 0 || item.needs_quest || item.conditionId ||
+        item.chance <= 0.0f || item.chance >= 100.0f || !item.AllowedForTeam(loot))
+        return false;
+
+    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid);
+    if (!proto || proto->StartQuest || proto->Class == ITEM_CLASS_KEY || proto->Class == ITEM_CLASS_RECIPE || proto->LockID || proto->MaxCount ||
+        (proto->Flags & ITEM_FLAG_UNIQUE_EQUIPPED))
+        return false;
+
+    return true;
 }
 
 //
@@ -534,6 +577,13 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
     m_questItems.reserve(MAX_NR_QUEST_ITEMS);
 
     tab->Process(*this, store, store.IsRatesAllowed(), loot_owner); // Processing is done there, callback via Loot::AddItem()
+
+    // Normal loot is generated exactly once above. Bonus selection is opt-in,
+    // bounded, and runs before the existing group-rights finalisation below.
+    uint8 selectionMultiplier = GetFunserverBonusSelectionMultiplier(looted);
+    if (selectionMultiplier > 1)
+        tab->ProcessBonus(*this, store.IsRatesAllowed(), loot_owner, selectionMultiplier,
+                          sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY));
 
     // Setting access rights for group loot case
     Group* group = loot_owner->GetGroup();
@@ -1242,6 +1292,69 @@ void LootTemplate::LootGroup::Process(Loot& loot, Player const* lootOwner) const
         loot.AddItem(*item);
 }
 
+bool LootTemplate::LootGroup::ProcessBonus(Loot& loot, Player const* lootOwner,
+                                            std::map<uint32, uint32>& selectedCount, float duplicateDecay) const
+{
+    struct WeightedCandidate { LootStoreItem const* item; float weight; };
+    std::vector<WeightedCandidate> explicitCandidates;
+    std::vector<WeightedCandidate> equalCandidates;
+
+    auto addCandidate = [&](LootStoreItem const& item, bool equalChance)
+    {
+        if (!IsBonusLootCandidate(item, loot))
+            return;
+
+        float weight = equalChance ? 1.0f : item.chance;
+        weight *= (100.0f + GetGatheringItemChanceMod(lootOwner, item.itemid)) / 100.0f;
+        for (uint32 copy = 0; copy < selectedCount[item.itemid]; ++copy)
+            weight *= duplicateDecay;
+        if (weight > 0.0f)
+            (equalChance ? equalCandidates : explicitCandidates).push_back({ &item, weight });
+    };
+
+    for (LootStoreItem const& item : ExplicitlyChanced)
+        addCandidate(item, false);
+    for (LootStoreItem const& item : EqualChanced)
+        addCandidate(item, true);
+
+    LootStoreItem const* selected = nullptr;
+    float roll = frand(0.0f, 100.0f);
+    for (WeightedCandidate const& candidate : explicitCandidates)
+    {
+        roll -= candidate.weight;
+        if (roll < 0.0f)
+        {
+            selected = candidate.item;
+            break;
+        }
+    }
+
+    if (!selected && !equalCandidates.empty())
+    {
+        float total = 0.0f;
+        for (WeightedCandidate const& candidate : equalCandidates)
+            total += candidate.weight;
+        roll = frand(0.0f, total);
+        selected = equalCandidates.back().item;
+        for (WeightedCandidate const& candidate : equalCandidates)
+        {
+            roll -= candidate.weight;
+            if (roll <= 0.0f)
+            {
+                selected = candidate.item;
+                break;
+            }
+        }
+    }
+
+    if (!selected)
+        return false;
+
+    loot.AddItem(*selected);
+    ++selectedCount[selected->itemid];
+    return true;
+}
+
 // Overall chance for the group without equal chanced items
 float LootTemplate::LootGroup::RawTotalChance() const
 {
@@ -1355,6 +1468,49 @@ void LootTemplate::Process(Loot& loot, LootStore const& store, bool rate, Player
     // Now processing groups
     for (const auto& group : Groups)
         group.Process(loot, lootOwner);
+}
+
+void LootTemplate::ProcessBonus(Loot& loot, bool rate, Player const* lootOwner, uint8 selectionMultiplier, float duplicateDecay) const
+{
+    if (selectionMultiplier < 2 || loot.items.size() >= MAX_NR_LOOT_ITEMS)
+        return;
+
+    std::map<uint32, uint32> selectedCount;
+    for (LootItem const& item : loot.items)
+        ++selectedCount[item.itemid];
+
+    // Re-run every safe ordinary opportunity and every safe one-of-group
+    // opportunity. This gives approximately four times normal useful drops,
+    // rather than merely appending three items to a multi-group boss table.
+    for (uint8 round = 1; round < selectionMultiplier && round <= 3 && loot.items.size() < MAX_NR_LOOT_ITEMS; ++round)
+    {
+        for (LootStoreItem const& item : Entries)
+        {
+            if (item.group || !IsBonusLootCandidate(item, loot))
+                continue;
+
+            ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid);
+            float chance = item.chance * (rate ? sWorld.getConfig(qualityToRate[proto->Quality]) : 1.0f);
+            chance *= (100.0f + GetGatheringItemChanceMod(lootOwner, item.itemid)) / 100.0f;
+            for (uint32 copy = 0; copy < selectedCount[item.itemid]; ++copy)
+                chance *= duplicateDecay;
+
+            if (chance <= 0.0f || !roll_chance_f(chance))
+                continue;
+
+            loot.AddItem(item);
+            ++selectedCount[item.itemid];
+            if (loot.items.size() >= MAX_NR_LOOT_ITEMS)
+                return;
+        }
+
+        for (LootGroup const& group : Groups)
+        {
+            group.ProcessBonus(loot, lootOwner, selectedCount, duplicateDecay);
+            if (loot.items.size() >= MAX_NR_LOOT_ITEMS)
+                return;
+        }
+    }
 }
 
 // True if template includes at least 1 quest drop entry
