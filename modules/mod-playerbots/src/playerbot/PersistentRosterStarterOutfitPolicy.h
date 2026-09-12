@@ -26,4 +26,24 @@ inline bool IsComplete(std::uint32_t required, std::uint32_t owned)
 {
     return MissingAmount(required, owned) == 0;
 }
+
+enum class SecondPassAction : std::uint8_t
+{
+    NONE,
+    EQUIP,
+    ACTIVATE_AMMO,
+};
+
+// The second pass intentionally operates only on a canonical starter item
+// still present in the main backpack. It never selects an already-equipped
+// object or an item that was not declared by PlayerCreateInfo::item.
+inline SecondPassAction SelectSecondPassAction(bool canonicalStarterItem, bool alreadyEquipped,
+    bool canEquip, bool canUseAmmo)
+{
+    if (!canonicalStarterItem || alreadyEquipped)
+        return SecondPassAction::NONE;
+    if (canEquip)
+        return SecondPassAction::EQUIP;
+    return canUseAmmo ? SecondPassAction::ACTIVATE_AMMO : SecondPassAction::NONE;
+}
 }}} // namespace ai::roster::starter_outfit

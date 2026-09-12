@@ -31,9 +31,19 @@ require_text("${manager}" "bot->GetItemCount(itemId)"
   "inventory completion marker")
 require_text("${manager}" "bot->StoreNewItemInBestSlots(itemId, missing)"
   "core-managed missing item provision")
-require_text("${manager}" "bot->CanUseAmmo(item.item_id) == EQUIP_ERR_OK"
+require_text("${manager}" "for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)"
+  "bounded canonical second-pass slot range")
+require_text("${manager}" "required.find(item->GetEntry()) == required.end()"
+  "canonical starter-item second-pass gate")
+require_text("${manager}" "bot->CanEquipItem(NULL_SLOT, destination, item, false)"
+  "non-replacing canonical equipment check")
+require_text("${manager}" "SelectSecondPassAction(true, false, canEquip, canUseAmmo)"
+  "policy-governed canonical second pass")
+require_text("${manager}" "bot->EquipItem(destination, item, true)"
+  "canonical main-hand or offhand equip")
+require_text("${manager}" "bot->CanUseAmmo(item->GetEntry()) == EQUIP_ERR_OK"
   "canonical ammunition eligibility check")
-require_text("${manager}" "bot->SetAmmo(item.item_id)"
+require_text("${manager}" "bot->SetAmmo(item->GetEntry())"
   "canonical ammunition selection")
 require_text("${manager}" "retrying on next roster login"
   "partial failure retry diagnostic")
@@ -61,12 +71,16 @@ if(provision_start EQUAL -1 OR provision_end EQUAL -1 OR provision_end LESS prov
 endif()
 math(EXPR provision_length "${provision_end} - ${provision_start}")
 string(SUBSTRING "${manager}" ${provision_start} ${provision_length} provision_region)
-foreach(forbidden "Randomize(" "DestroyItem(" "RemoveItem(" "MoveItemFromInventory(" "SwapItem(" "StoreNewItem(" "CharacterDatabase" "LoginDatabase" "SetEventValue(")
+foreach(forbidden "Randomize(" "DestroyItem(" "MoveItemFromInventory(" "SwapItem(" "StoreNewItem(" "CanStoreItem(" "StoreItem(" "CharacterDatabase" "LoginDatabase" "SetEventValue(")
   string(FIND "${provision_region}" "${forbidden}" forbidden_offset)
   if(NOT forbidden_offset EQUAL -1)
     message(FATAL_ERROR "Starter outfit provisioner contains forbidden ${forbidden}")
   endif()
 endforeach()
+require_text("${provision_region}" "bot->RemoveItem(INVENTORY_SLOT_BAG_0, slot, true)"
+  "bounded main-backpack-only equip transfer")
+require_text("${provision_region}" "bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot)"
+  "main-backpack-only second-pass lookup")
 foreach(bag_marker "INVENTORY_SLOT_BAG_START" "50004")
   string(FIND "${provision_region}" "${bag_marker}" bag_marker_offset)
   if(NOT bag_marker_offset EQUAL -1)
