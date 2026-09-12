@@ -21,13 +21,13 @@ std::size_t Count(std::array<bool, ai::roster::bags::kBagSlotCount> const& plan)
 void TestNonHunterEmptyAndExistingSlots()
 {
     Slots empty{};
-    CHECK(Count(ai::roster::bags::SelectEmptySlots(false, empty)) == 4);
+    CHECK(Count(ai::roster::bags::SelectEmptySlots(empty)) == 4);
 
     Slots mixed{};
     // An occupied slot represents an existing bag of any capacity, including
     // one that is larger than item 50004. It must never be selected.
     mixed[1].occupied = true;
-    auto plan = ai::roster::bags::SelectEmptySlots(false, mixed);
+    auto plan = ai::roster::bags::SelectEmptySlots(mixed);
     CHECK(!plan[1]);
     CHECK(Count(plan) == 3);
 }
@@ -37,28 +37,28 @@ void TestFullAndIdempotent()
     Slots full{};
     for (auto& slot : full)
         slot.occupied = true;
-    CHECK(Count(ai::roster::bags::SelectEmptySlots(false, full)) == 0);
+    CHECK(Count(ai::roster::bags::SelectEmptySlots(full)) == 0);
 
     Slots initiallyEmpty{};
-    auto firstPlan = ai::roster::bags::SelectEmptySlots(false, initiallyEmpty);
+    auto firstPlan = ai::roster::bags::SelectEmptySlots(initiallyEmpty);
     CHECK(Count(firstPlan) == 4);
     for (std::size_t index = 0; index < initiallyEmpty.size(); ++index)
         if (firstPlan[index])
             initiallyEmpty[index].occupied = true;
-    CHECK(Count(ai::roster::bags::SelectEmptySlots(false, initiallyEmpty)) == 0);
+    CHECK(Count(ai::roster::bags::SelectEmptySlots(initiallyEmpty)) == 0);
 }
 
-void TestHunterReserveAndRangedContainer()
+void TestHunterUsesAllEmptySlots()
 {
+    // Character class is not a policy input: a level-1 hunter with four
+    // empty outer slots gets the same four normal bags as every roster bot.
     Slots hunterEmpty{};
-    auto reservePlan = ai::roster::bags::SelectEmptySlots(true, hunterEmpty);
-    CHECK(Count(reservePlan) == 3);
-    CHECK(!reservePlan[3]);
+    auto emptyPlan = ai::roster::bags::SelectEmptySlots(hunterEmpty);
+    CHECK(Count(emptyPlan) == 4);
 
     Slots hunterWithQuiver{};
     hunterWithQuiver[2].occupied = true;
-    hunterWithQuiver[2].rangedContainer = true;
-    auto quiverPlan = ai::roster::bags::SelectEmptySlots(true, hunterWithQuiver);
+    auto quiverPlan = ai::roster::bags::SelectEmptySlots(hunterWithQuiver);
     CHECK(!quiverPlan[2]);
     CHECK(Count(quiverPlan) == 3);
 }
@@ -68,7 +68,7 @@ void TestExistingSlotsAreNeverTargets()
     Slots existing{};
     existing[0].occupied = true;
     existing[3].occupied = true;
-    auto plan = ai::roster::bags::SelectEmptySlots(false, existing);
+    auto plan = ai::roster::bags::SelectEmptySlots(existing);
     CHECK(!plan[0]);
     CHECK(!plan[3]);
     CHECK(plan[1]);
@@ -80,7 +80,7 @@ int main()
 {
     TestNonHunterEmptyAndExistingSlots();
     TestFullAndIdempotent();
-    TestHunterReserveAndRangedContainer();
+    TestHunterUsesAllEmptySlots();
     TestExistingSlotsAreNeverTargets();
     if (failures)
         return EXIT_FAILURE;

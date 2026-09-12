@@ -4,6 +4,7 @@ endif()
 
 file(READ "${PB_SOURCE_DIR}/RandomPlayerbotMgr.cpp" manager)
 file(READ "${PB_SOURCE_DIR}/RandomPlayerbotMgr.h" manager_header)
+file(READ "${PB_SOURCE_DIR}/PersistentRosterBagPolicy.h" bag_policy)
 
 function(require_text text needle description)
   string(FIND "${text}" "${needle}" offset)
@@ -28,6 +29,8 @@ require_text("${manager}" "bot->CanEquipItem(slot, destination, proto, nullptr, 
   "non-mutating no-swap equip preflight")
 require_text("${manager}" "bot->EquipNewItem(destination, kPersistentRosterBagItemId, true)"
   "core-managed item creation and equip")
+require_text("${manager}" "auto const provision = SelectEmptySlots(slots);"
+  "class-independent empty-slot policy")
 require_text("${manager}" "ProvisionPersistentRosterBags(bot);"
   "roster login hook")
 
@@ -53,10 +56,24 @@ if(provision_start EQUAL -1 OR provision_end EQUAL -1 OR provision_end LESS prov
 endif()
 math(EXPR provision_length "${provision_end} - ${provision_start}")
 string(SUBSTRING "${manager}" ${provision_start} ${provision_length} provision_region)
-foreach(forbidden "Randomize(" "DestroyItem(" "RemoveItem(" "MoveItemFromInventory(" "StoreNewItem(" "CharacterDatabase" "LoginDatabase")
+foreach(forbidden "Randomize(" "DestroyItem(" "RemoveItem(" "MoveItemFromInventory(" "SwapItem(" "StoreNewItem(" "CharacterDatabase" "LoginDatabase")
   string(FIND "${provision_region}" "${forbidden}" forbidden_offset)
   if(NOT forbidden_offset EQUAL -1)
     message(FATAL_ERROR "Roster bag provisioner contains forbidden ${forbidden}")
+  endif()
+endforeach()
+
+foreach(forbidden "rangedContainer" "bool hunter")
+  string(FIND "${bag_policy}" "${forbidden}" forbidden_offset)
+  if(NOT forbidden_offset EQUAL -1)
+    message(FATAL_ERROR "Persistent roster bag policy retains obsolete hunter reservation ${forbidden}")
+  endif()
+endforeach()
+
+foreach(forbidden "CLASS_HUNTER" "rangedContainer" "BAG_FAMILY_ARROWS" "BAG_FAMILY_BULLETS")
+  string(FIND "${provision_region}" "${forbidden}" forbidden_offset)
+  if(NOT forbidden_offset EQUAL -1)
+    message(FATAL_ERROR "Roster bag provisioner contains obsolete hunter reservation ${forbidden}")
   endif()
 endforeach()
 
