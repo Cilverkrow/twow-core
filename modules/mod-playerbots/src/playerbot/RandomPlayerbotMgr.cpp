@@ -4248,13 +4248,34 @@ void RandomPlayerbotMgr::ProvisionPersistentRosterStarterOutfit(Player* bot)
         }
     }
 
-    // Player::Create performs this second canonical pass after materializing
-    // PlayerCreateInfo items. StoreNewItemInBestSlots intentionally leaves
-    // ammunition selection alone, so restore it without moving or replacing
-    // any inventory item (including the persistent-roster bags).
-    for (PlayerCreateInfoItem const& item : info->item)
-        if (item.item_id && bot->CanUseAmmo(item.item_id) == EQUIP_ERR_OK)
-            bot->SetAmmo(item.item_id);
+    // This is the bounded equivalent of Player::Create's second pass. The
+    // first canonical pass can leave an offhand weapon or shield in the main
+    // backpack when the main hand did not exist yet. Never re-equip an item
+    // that is already worn, and never inspect outer-bag slots or their
+    // contents: only a canonical CreateInfo entry still in the main backpack
+    // may be moved to an empty equipment slot.
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+    {
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item || required.find(item->GetEntry()) == required.end())
+            continue;
+
+        uint16 destination = 0;
+        bool const canEquip = bot->CanEquipItem(NULL_SLOT, destination, item, false) == EQUIP_ERR_OK;
+        bool const canUseAmmo = bot->CanUseAmmo(item->GetEntry()) == EQUIP_ERR_OK;
+        switch (SelectSecondPassAction(true, false, canEquip, canUseAmmo))
+        {
+        case SecondPassAction::EQUIP:
+            bot->RemoveItem(INVENTORY_SLOT_BAG_0, slot, true);
+            bot->EquipItem(destination, item, true);
+            break;
+        case SecondPassAction::ACTIVATE_AMMO:
+            bot->SetAmmo(item->GetEntry());
+            break;
+        case SecondPassAction::NONE:
+            break;
+        }
+    }
 }
 
 void RandomPlayerbotMgr::ProvisionPersistentRosterBags(Player* bot)
