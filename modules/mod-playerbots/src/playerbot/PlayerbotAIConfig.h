@@ -400,6 +400,12 @@ public:
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
+    // Disabled by default. When enabled, only the GUIDs admitted by the
+    // persistent roster use the quest-first progression policy.
+    bool questFirstProgressionEnabled = false;
+    uint32 questFirstProgressionAutonomousLogSoftLimit = 16;
+    uint32 questFirstProgressionRejectBelowLevelDelta = 4;
+    uint32 questFirstProgressionRetireBelowLevelDelta = 6;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;

@@ -180,6 +180,24 @@ add_test(NAME playerbot_config_key_usage
 set_tests_properties(playerbot_config_key_usage PROPERTIES
   ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 
+# Quest-first policy is deliberately small and pure: the policy fixture locks
+# the roster/default-off, level-boundary, reservation and safe-retirement
+# contract, while the source scan pins the production hooks that apply it.
+add_executable(quest_first_progression_policy_tests
+  "${PB_MODULE_DIR}/t/quest_first_progression_policy_tests.cpp")
+
+set_target_properties(quest_first_progression_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_first_progression_policy
+  COMMAND quest_first_progression_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_first_progression_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/check_quest_first_progression_source_contract.cmake")
+
 # --------------------------------------------------------------------------
 # playerbot_event_store_contract_tests -- the unit suite for the three SQL
 # builders in PlayerbotDatabaseContract.h. Same hand-rolled-assertion shape as

@@ -4,9 +4,28 @@
 #include "SharedValueContext.h"
 #include "ItemUsageValue.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/strategy/deathknight/DKActions.h"
 
 using namespace ai;
+
+namespace
+{
+bool UsesQuestFirstProgression(Player const* bot)
+{
+    return bot && sPlayerbotAIConfig.questFirstProgressionEnabled &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+}
+
+uint32 ActiveQuestSlotCount(Player const* bot)
+{
+    uint32 count = 0;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        if (bot->GetQuestSlotQuestId(slot))
+            ++count;
+    return count;
+}
+}
 
 
 //What kind of a relation does this entry have with this quest.
@@ -182,6 +201,12 @@ questGiverMap QuestGiversValue::Calculate()
 
 	questGiverMap guidps;
 
+    // This value feeds autonomous travel only. A real-player-directed quest
+    // still uses the normal Core hard limit and is not rejected here.
+    bool const questFirst = UsesQuestFirstProgression(bot);
+    if (questFirst && ActiveQuestSlotCount(bot) >= sPlayerbotAIConfig.questFirstProgressionAutonomousLogSoftLimit)
+        return guidps;
+
 	for (auto& [questId, questRelationGuidps]: questMap)
 	{
 		for (auto& entry : questRelationGuidps[(uint8)TravelDestinationPurpose::QuestGiver])
@@ -192,7 +217,9 @@ questGiverMap QuestGiversValue::Calculate()
 				{
 					Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
 
-					if (quest && (level < quest->GetMinLevel() || (int32)level > quest->GetQuestLevel() + 10))
+                    if (quest && (level < quest->GetMinLevel() ||
+                        (int32)level >= quest->GetQuestLevel() +
+                            (questFirst ? sPlayerbotAIConfig.questFirstProgressionRejectBelowLevelDelta : 10)))
 						continue;
 				}
 
