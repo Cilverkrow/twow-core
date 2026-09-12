@@ -109,22 +109,22 @@ std::uint32_t Count(ai::profession::ExactRosterPlan const& plan, ai::profession:
     return count;
 }
 
-void TestExactApproved68QuotaAndDeterminism()
+void TestExactApprovedCheckpointQuotasAndDeterminism()
 {
     using namespace ai::profession;
-    std::vector<RosterMember> const members = MakeRoster(kExactRosterBaseSize);
+    std::vector<RosterMember> const members = MakeRoster(kExactRosterMinimumSize);
     ExactRosterPlan first, second;
     CHECK(MaterializeExactRosterPlan(members, {}, first) == ExactPlanResult::Success);
     CHECK(MaterializeExactRosterPlan(members, {}, second) == ExactPlanResult::Success);
     CHECK(first.version == kExactRosterPlanVersion);
-    CHECK(first.assignments.size() == kExactRosterBaseSize);
+    CHECK(first.assignments.size() == kExactRosterMinimumSize);
     CHECK(first.assignments == second.assignments);
-    CHECK(Count(first, HerbalismAlchemy) == 4);
-    CHECK(Count(first, SkinningLeatherworking) == 13);
-    CHECK(Count(first, MiningBlacksmithing) == 16);
-    CHECK(Count(first, MiningEngineering) == 11);
-    CHECK(Count(first, MiningJewelcrafting) == 11);
-    CHECK(Count(first, TailoringEnchanting) == 13);
+    CHECK(Count(first, HerbalismAlchemy) == 11);
+    CHECK(Count(first, SkinningLeatherworking) == 12);
+    CHECK(Count(first, MiningBlacksmithing) == 13);
+    CHECK(Count(first, MiningEngineering) == 10);
+    CHECK(Count(first, MiningJewelcrafting) == 10);
+    CHECK(Count(first, TailoringEnchanting) == 12);
     for (PlanAssignment const& assignment : first.assignments)
         CHECK(IsValid(assignment.pair));
 
@@ -137,7 +137,7 @@ void TestExactApproved68QuotaAndDeterminism()
 void TestStablePrefixScaleUpAndIdempotence()
 {
     using namespace ai::profession;
-    ExactRosterPlan initial, expanded, replay, scaled500;
+    ExactRosterPlan initial, expanded, replay, scaled500, scaled800;
     std::vector<RosterMember> const roster68 = MakeRoster(68);
     std::vector<RosterMember> const roster136 = MakeRoster(136);
     std::vector<RosterMember> const roster500 = MakeRoster(500);
@@ -147,23 +147,33 @@ void TestStablePrefixScaleUpAndIdempotence()
     CHECK(MaterializeExactRosterPlan(roster136, expanded.assignments, replay) == ExactPlanResult::Success);
     CHECK(expanded.assignments == replay.assignments);
     CHECK(std::equal(initial.assignments.begin(), initial.assignments.end(), expanded.assignments.begin()));
-    CHECK(Count(expanded, HerbalismAlchemy) == 8);
-    CHECK(Count(expanded, SkinningLeatherworking) == 26);
-    CHECK(Count(expanded, MiningBlacksmithing) == 32);
-    CHECK(Count(expanded, MiningEngineering) == 22);
-    CHECK(Count(expanded, MiningJewelcrafting) == 22);
-    CHECK(Count(expanded, TailoringEnchanting) == 26);
+    CHECK(Count(expanded, HerbalismAlchemy) == 22);
+    CHECK(Count(expanded, SkinningLeatherworking) == 24);
+    CHECK(Count(expanded, MiningBlacksmithing) == 25);
+    CHECK(Count(expanded, MiningEngineering) == 21);
+    CHECK(Count(expanded, MiningJewelcrafting) == 20);
+    CHECK(Count(expanded, TailoringEnchanting) == 24);
     CHECK(MaterializeExactRosterPlan(roster500, expanded.assignments, scaled500) == ExactPlanResult::Success);
     CHECK(std::equal(expanded.assignments.begin(), expanded.assignments.end(), scaled500.assignments.begin()));
     CHECK(scaled500.assignments.size() == 500);
-    CHECK(Count(scaled500, HerbalismAlchemy) == 29);
-    CHECK(Count(scaled500, SkinningLeatherworking) == 96);
-    CHECK(Count(scaled500, MiningBlacksmithing) == 118);
-    CHECK(Count(scaled500, MiningEngineering) == 81);
-    CHECK(Count(scaled500, MiningJewelcrafting) == 81);
-    CHECK(Count(scaled500, TailoringEnchanting) == 95);
+    CHECK(Count(scaled500, HerbalismAlchemy) == 80);
+    CHECK(Count(scaled500, SkinningLeatherworking) == 89);
+    CHECK(Count(scaled500, MiningBlacksmithing) == 93);
+    CHECK(Count(scaled500, MiningEngineering) == 75);
+    CHECK(Count(scaled500, MiningJewelcrafting) == 74);
+    CHECK(Count(scaled500, TailoringEnchanting) == 89);
     for (PlanAssignment const& assignment : scaled500.assignments)
         CHECK(IsValid(assignment.pair));
+
+    std::vector<RosterMember> const roster800 = MakeRoster(800);
+    CHECK(MaterializeExactRosterPlan(roster800, scaled500.assignments, scaled800) == ExactPlanResult::Success);
+    CHECK(std::equal(scaled500.assignments.begin(), scaled500.assignments.end(), scaled800.assignments.begin()));
+    CHECK(Count(scaled800, HerbalismAlchemy) == 127);
+    CHECK(Count(scaled800, SkinningLeatherworking) == 143);
+    CHECK(Count(scaled800, MiningBlacksmithing) == 148);
+    CHECK(Count(scaled800, MiningEngineering) == 120);
+    CHECK(Count(scaled800, MiningJewelcrafting) == 119);
+    CHECK(Count(scaled800, TailoringEnchanting) == 143);
 }
 
 void TestInvalidAndConflictingExistingPlansFailClosed()
@@ -191,7 +201,7 @@ int main()
     TestContractClassFamilyMatrix();
     TestCompatibleSingleProfession();
     TestGrandfatheringPolicy();
-    TestExactApproved68QuotaAndDeterminism();
+    TestExactApprovedCheckpointQuotasAndDeterminism();
     TestStablePrefixScaleUpAndIdempotence();
     TestInvalidAndConflictingExistingPlansFailClosed();
     if (failures) return EXIT_FAILURE;

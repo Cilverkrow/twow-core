@@ -11,12 +11,13 @@ namespace ai::profession
 {
 constexpr std::uint32_t kPlanVersion = 1;
 // Version 1 remains the per-bot legacy plan selected on first login. Version
-// 3 is deliberately a separate *policy* version for the explicit, ordered
+// 4 is deliberately a separate *policy* version for the explicit, ordered
 // persistent-roster materializer below. Nothing in the normal login path may
 // invoke it: a roster version is an administrative decision, not a side effect
 // of login, restart, or scale-up.
-constexpr std::uint32_t kExactRosterPlanVersion = 3;
-constexpr std::size_t kExactRosterBaseSize = 68;
+constexpr std::uint32_t kExactRosterPlanVersion = 4;
+constexpr std::size_t kExactRosterMinimumSize = 68;
+constexpr std::size_t kExactRosterQuotaTargetSize = 800;
 constexpr char const* kEventName = "profession_pair";
 constexpr char const* kEventData = "v1";
 
@@ -281,29 +282,27 @@ inline std::array<ExactQuota, 6> ExactRosterQuotas(std::size_t memberCount)
 {
     std::array<ExactQuota, 6> quotas =
     {{
-        { HerbalismAlchemy, 4 },
-        { SkinningLeatherworking, 13 },
-        // The remaining 38 members cannot divide exactly as 3:2:2. The
-        // symmetric closest integer vector is 16:11:11.
-        { MiningBlacksmithing, 16 },
-        { MiningEngineering, 11 },
-        { MiningJewelcrafting, 11 },
-        { TailoringEnchanting, 13 }
+        { HerbalismAlchemy, 127 },
+        { SkinningLeatherworking, 143 },
+        { MiningBlacksmithing, 148 },
+        { MiningEngineering, 120 },
+        { MiningJewelcrafting, 119 },
+        { TailoringEnchanting, 143 }
     }};
 
-    if (memberCount == kExactRosterBaseSize)
+    if (memberCount == kExactRosterQuotaTargetSize)
         return quotas;
 
-    // Largest-remainder scaling keeps every target deterministic. At 136 it
-    // is exactly 2x the approved 68-member distribution; at 500 the pair
-    // declaration order breaks equal remainders, never GUID iteration order.
+    // Largest-remainder scaling keeps every checkpoint deterministic relative
+    // to the approved 800-member target. Pair declaration order breaks equal
+    // remainders, never GUID iteration order.
     std::array<std::uint32_t, 6> remainder{};
     std::size_t assigned = 0;
     for (std::size_t index = 0; index < quotas.size(); ++index)
     {
         std::uint64_t const scaled = static_cast<std::uint64_t>(quotas[index].count) * memberCount;
-        quotas[index].count = static_cast<std::uint32_t>(scaled / kExactRosterBaseSize);
-        remainder[index] = static_cast<std::uint32_t>(scaled % kExactRosterBaseSize);
+        quotas[index].count = static_cast<std::uint32_t>(scaled / kExactRosterQuotaTargetSize);
+        remainder[index] = static_cast<std::uint32_t>(scaled % kExactRosterQuotaTargetSize);
         assigned += quotas[index].count;
     }
 
@@ -330,7 +329,7 @@ inline ExactQuota* FindQuota(std::array<ExactQuota, 6>& quotas, Pair pair)
 
 inline bool IsStableRoster(std::vector<RosterMember> const& members)
 {
-    if (members.size() < kExactRosterBaseSize)
+    if (members.size() < kExactRosterMinimumSize)
         return false;
     for (std::size_t index = 0; index < members.size(); ++index)
     {
@@ -353,7 +352,7 @@ inline ExactPlanResult MaterializeExactRosterPlan(std::vector<RosterMember> cons
     output = ExactRosterPlan{};
     if (!IsStableRoster(members) || existing.size() > members.size())
         return ExactPlanResult::InvalidRoster;
-    if (members.size() > kExactRosterBaseSize && existing.empty())
+    if (members.size() > kExactRosterMinimumSize && existing.empty())
         return ExactPlanResult::ExistingPlanRequired;
 
     std::array<ExactQuota, 6> quotas = ExactRosterQuotas(members.size());

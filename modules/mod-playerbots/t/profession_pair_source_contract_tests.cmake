@@ -29,7 +29,7 @@ file(READ "${PB_SOURCE_DIR}/PlayerbotFactory.cpp" factory)
 file(READ "${PB_SOURCE_DIR}/PlayerbotFactory.h" factory_header)
 file(READ "${PB_SOURCE_DIR}/ProfessionPair.h" policy_header)
 require_text("${policy_header}"
-  "kExactRosterPlanVersion = 3"
+  "kExactRosterPlanVersion = 4"
   "versioned exact roster policy")
 require_text("${policy_header}"
   "MaterializeExactRosterPlan"
@@ -41,20 +41,26 @@ require_text("${policy_header}"
   "ExistingPlanConflict"
   "non-destructive existing-plan conflict")
 require_text("${policy_header}"
-  "{ HerbalismAlchemy, 4 }"
+  "{ HerbalismAlchemy, 127 }"
   "approved herbalism/alchemy quota")
 require_text("${policy_header}"
-  "{ MiningBlacksmithing, 16 }"
+  "{ SkinningLeatherworking, 143 }"
+  "approved skinning/leatherworking quota")
+require_text("${policy_header}"
+  "{ MiningBlacksmithing, 148 }"
   "approved mining/blacksmithing quota")
 require_text("${policy_header}"
-  "{ MiningEngineering, 11 }"
+  "{ MiningEngineering, 120 }"
   "approved mining/engineering quota")
 require_text("${policy_header}"
-  "{ MiningJewelcrafting, 11 }"
+  "{ MiningJewelcrafting, 119 }"
   "approved mining/jewelcrafting quota")
 require_text("${policy_header}"
-  "kExactRosterBaseSize = 68"
-  "approved exact roster base size")
+  "{ TailoringEnchanting, 143 }"
+  "approved tailoring/enchanting quota")
+require_text("${policy_header}"
+  "kExactRosterQuotaTargetSize = 800"
+  "approved exact roster quota target size")
 foreach(forbidden "SetSkill(" "learnSpell(" "RemoveSpell(" "Unlearn" "Player*" "CharacterDatabase" "authorizedTestReset")
   string(FIND "${policy_header}" "${forbidden}" forbidden_offset)
   if(NOT forbidden_offset EQUAL -1)
