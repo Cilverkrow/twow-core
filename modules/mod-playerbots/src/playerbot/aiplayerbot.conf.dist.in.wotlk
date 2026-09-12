@@ -376,6 +376,14 @@ AiPlayerbot.AutoEquipUpgradeLoot = 1
 # Default: 0 (disabled)
 AiPlayerbot.SyncQuestWithPlayer = 0
 
+# Quest-first progression for explicitly admitted PersistentActiveRoster bots only.
+# Default: 0 (disabled). The soft limit reserves four normal quest-log slots;
+# no key changes the core MAX_QUEST_LOG_SIZE of 20.
+AiPlayerbot.QuestFirstProgression.Enabled = 0
+AiPlayerbot.QuestFirstProgression.AutonomousLogSoftLimit = 16
+AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta = 4
+AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta = 6
+
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes
 

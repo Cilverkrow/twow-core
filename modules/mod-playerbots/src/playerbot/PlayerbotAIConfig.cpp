@@ -387,6 +387,14 @@ bool PlayerbotAIConfig::Initialize()
     asyncBotLogin = config.GetBoolDefault("AiPlayerbot.AsyncBotLogin", false);
     persistentActiveRosterEnabled = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.Enabled", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
+    questFirstProgressionEnabled = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.Enabled", false);
+    questFirstProgressionAutonomousLogSoftLimit = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.AutonomousLogSoftLimit", 16);
+    questFirstProgressionRejectBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta", 4);
+    questFirstProgressionRetireBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta", 6);
+
+    // Never let configuration turn the autonomous reservation into a changed
+    // core quest-log limit. The Player limit remains MAX_QUEST_LOG_SIZE (20).
+    questFirstProgressionAutonomousLogSoftLimit = std::min<uint32>(questFirstProgressionAutonomousLogSoftLimit, MAX_QUEST_LOG_SIZE);
 
     // AsyncBotLogin = 1 swaps RandomPlayerbotMgr's own login loop for PlayerBotLoginMgr,
     // which is entirely roster-unaware: PlayerBotLoginMgr::PlayerLoginInfo::LogoutBot reaches

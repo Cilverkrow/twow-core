@@ -13,6 +13,87 @@
 
 using namespace ai;
 
+namespace
+{
+bool UsesQuestFirstProgression(Player const* bot)
+{
+    return bot && sPlayerbotAIConfig.questFirstProgressionEnabled &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+}
+
+bool HasQuestProgress(QuestStatusData const& status)
+{
+    if (status.m_explored)
+        return true;
+
+    for (uint8 objective = 0; objective < QUEST_OBJECTIVES_COUNT; ++objective)
+        if (status.m_itemcount[objective] || status.m_creatureOrGOcount[objective])
+            return true;
+
+    return false;
+}
+
+bool IsProtectedFromQuestFirstRetirement(PlayerbotAI* ai, Quest const* quest, QuestStatusData const& status,
+    focusQuestTravelList const& focusList)
+{
+    // Be deliberately stricter than the policy's minimum. An unclassified
+    // chain, access, profession or player-directed quest must stay put.
+    if (status.m_status == QUEST_STATUS_COMPLETE || status.m_rewarded || HasQuestProgress(status))
+        return true;
+    if (quest->GetLimitTime() || quest->GetRequiredClasses() || quest->GetRequiredSkill() || quest->GetSrcItemId())
+        return true;
+    for (uint8 objective = 0; objective < QUEST_ITEM_OBJECTIVES_COUNT; ++objective)
+        if (quest->ReqItemId[objective])
+            return true;
+    if (quest->GetPrevQuestId() || quest->GetNextQuestId() || quest->GetNextQuestInChain() || quest->GetExclusiveGroup())
+        return true;
+    if (quest->GetSuggestedPlayers() || quest->IsRepeatable() || focusList.find(quest->GetQuestId()) != focusList.end())
+        return true;
+
+    // There is no reliable per-quest master pin in the current contract. Keep
+    // every quest while a real master is attached rather than guessing.
+    return ai->HasRealPlayerMaster();
+}
+
+bool RetireOneStaleQuest(PlayerbotAI* ai, focusQuestTravelList const& focusList)
+{
+    Player* bot = ai->GetBot();
+    if (!UsesQuestFirstProgression(bot))
+        return false;
+
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        QuestStatusMap::const_iterator statusIt = bot->getQuestStatusMap().find(questId);
+        if (statusIt == bot->getQuestStatusMap().end())
+            continue;
+
+        QuestStatusData const& status = statusIt->second;
+        if (bot->GetLevel() < quest->GetQuestLevel() + sPlayerbotAIConfig.questFirstProgressionRetireBelowLevelDelta)
+            continue;
+        if (IsProtectedFromQuestFirstRetirement(ai, quest, status, focusList))
+            continue;
+
+        // Core owns the item/source-item semantics. Do not issue SQL or
+        // manually delete items. Item and source-item quests are protected by
+        // the predicate above until their sharing contract is explicitly
+        // broadened and separately tested.
+        bot->RemoveQuestAtSlot(slot);
+        if (!bot->GetQuestSlotQuestId(slot))
+        {
+            sLog.outDetail("[QuestFirst] retired_stale_quest bot=%u quest=%u", bot->GetGUIDLow(), questId);
+            return true;
+        }
+    }
+
+    return false;
+}
+}
+
 inline std::string GetTravelPurposeName(std::string purpose)
 {
     if (Qualified::isValidNumberString(purpose) && TravelDestinationPurposeName.find(TravelDestinationPurpose(stoi(purpose))) != TravelDestinationPurposeName.end())
@@ -1368,6 +1449,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 {
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
 
+    focusQuestTravelList focusList = AI_VALUE(focusQuestTravelList, "focus travel target");
+    RetireOneStaleQuest(ai, focusList);
+
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for travel quest", "debug travel");
 
     // Both search radii below scale with level, which keeps a low level bot near
@@ -1476,7 +1560,7 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 finished++;
         }
 
-        if (finished >= 5 || active + 2 >= MAX_QUEST_LOG_SIZE)
+        if ((UsesQuestFirstProgression(bot) && finished > 0) || finished >= 5 || active + 2 >= MAX_QUEST_LOG_SIZE)
         {
             std::vector<std::tuple<uint32, int32, float>> handInOnly;
             for (auto& fetch : destinationFetches)

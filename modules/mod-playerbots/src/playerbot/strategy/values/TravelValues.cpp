@@ -4,9 +4,19 @@
 #include "SharedValueContext.h"
 #include "BudgetValues.h"
 #include "GuildValues.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 #include "Guild/GuildMgr.h"
 
 using namespace ai;
+
+namespace
+{
+bool UsesQuestFirstProgression(Player const* bot)
+{
+    return bot && sPlayerbotAIConfig.questFirstProgressionEnabled &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+}
+}
 
 EntryGuidps EntryGuidpsValue::Calculate()
 {
@@ -308,6 +318,12 @@ bool NeedTravelPurposeValue::Calculate()
     }
     case TravelDestinationPurpose::Grind:
     {
+        // Quest objectives can still point at creatures that also carry the
+        // Grind bit. This branch is only the generic travel-purpose fallback;
+        // objective destinations are built independently by the quest path.
+        if (UsesQuestFirstProgression(bot))
+            return false;
+
         uint32 rpgPhase = ai->GetFixedBotNumber(BotTypeNumber::RPG_PHASE_NUMBER, 60, 1);
 
         if (rpgPhase > 45) //Only first 45 minutes of the hour allow generic grind.
