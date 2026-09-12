@@ -1539,6 +1539,9 @@ class Player final: public Unit
         Quest const* GetNextQuest(ObjectGuid guid, Quest const* pQuest);
         bool CanSeeStartQuest(Quest const* pQuest) const;
         bool CanTakeQuest(Quest const* pQuest, bool msg, bool skipStatusCheck = false) const;
+        // Narrow catch-up admission: preserves every normal gate except the
+        // minimum level and positive previous-quest requirements.
+        bool CanTakeQuestForCatchup(Quest const* pQuest, bool msg) const;
         bool CanAddQuest(Quest const* pQuest, bool msg) const;
         bool CanCompleteQuest(uint32 quest_id) const;
         bool CanCompleteRepeatableQuest(Quest const* pQuest) const;
@@ -1559,6 +1562,7 @@ class Player final: public Unit
         bool SatisfyQuestLevel(Quest const* qInfo, bool msg) const;
         bool SatisfyQuestLog(bool msg) const;
         bool SatisfyQuestPreviousQuest(Quest const* qInfo, bool msg) const;
+        bool SatisfyQuestNegativePreviousQuest(Quest const* qInfo, bool msg) const;
         bool SatisfyQuestClass(Quest const* qInfo, bool msg) const;
         bool SatisfyQuestRace(Quest const* qInfo, bool msg) const;
         bool SatisfyQuestReputation(Quest const* qInfo, bool msg) const;

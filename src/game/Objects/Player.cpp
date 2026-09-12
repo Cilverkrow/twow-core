@@ -14758,6 +14758,23 @@ bool Player::CanTakeQuest(Quest const *pQuest, bool msg, bool skipStatusCheck /*
            pQuest->IsActive() && SatisfyQuestChallenges(pQuest, msg);
 }
 
+bool Player::CanTakeQuestForCatchup(Quest const* pQuest, bool msg) const
+{
+    if (pQuest->GetMaxLevel() && pQuest->GetMaxLevel() < GetLevel())
+        return false;
+
+    // This deliberately differs from CanTakeQuest only at the two documented
+    // points: the normal minimum-level check and positive prevQuests are not
+    // consulted.
+    return SatisfyQuestStatus(pQuest, msg) && SatisfyQuestExclusiveGroup(pQuest, msg) &&
+           SatisfyQuestClass(pQuest, msg) && SatisfyQuestRace(pQuest, msg) &&
+           SatisfyQuestSkill(pQuest, msg) && SatisfyQuestCondition(pQuest, msg) &&
+           SatisfyQuestReputation(pQuest, msg) && SatisfyQuestNegativePreviousQuest(pQuest, msg) &&
+           SatisfyQuestTimed(pQuest, msg) && SatisfyQuestNextChain(pQuest, msg) &&
+           SatisfyQuestPrevChain(pQuest, msg) && pQuest->IsActive() &&
+           SatisfyQuestChallenges(pQuest, msg);
+}
+
 bool Player::SatisfyQuestChallenges(Quest const* quest, bool msg) const
 {
     if (quest->HasSpecialFlag(QUEST_SPECIAL_FLAG_HARDCORE_ONLY) && !IsHardcore())
@@ -15661,6 +15678,44 @@ bool Player::SatisfyQuestPreviousQuest(Quest const* qInfo, bool msg) const
         SendCanTakeQuestResponse(INVALIDREASON_DONT_HAVE_REQ);
 
     return false;
+}
+
+bool Player::SatisfyQuestNegativePreviousQuest(Quest const* qInfo, bool msg) const
+{
+    bool hasNegativePreviousQuest = false;
+
+    for (const auto prevQuest : qInfo->prevQuests)
+    {
+        if (prevQuest >= 0)
+            continue;
+
+        hasNegativePreviousQuest = true;
+        uint32 prevId = abs(prevQuest);
+        Quest const* prev = sObjectMgr.GetQuestTemplate(prevId);
+        if (!prev || !IsCurrentQuest(prevId))
+            continue;
+
+        if (prev->GetExclusiveGroup() >= 0)
+            return true;
+
+        ExclusiveQuestGroupsMapBounds bounds = sObjectMgr.GetExclusiveQuestGroupsMapBounds(prev->GetExclusiveGroup());
+        MANGOS_ASSERT(bounds.first != bounds.second);
+        for (ExclusiveQuestGroupsMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+            if (itr->second != prevId && !IsCurrentQuest(itr->second))
+            {
+                if (msg)
+                    SendCanTakeQuestResponse(INVALIDREASON_DONT_HAVE_REQ);
+                return false;
+            }
+        return true;
+    }
+
+    // Positive entries are intentionally ignored by catch-up admission, but a
+    // declared negative predecessor remains a normal mandatory requirement.
+    if (hasNegativePreviousQuest && msg)
+        SendCanTakeQuestResponse(INVALIDREASON_DONT_HAVE_REQ);
+
+    return !hasNegativePreviousQuest;
 }
 
 bool Player::SatisfyQuestClass(Quest const* qInfo, bool msg) const

@@ -253,6 +253,15 @@ add_test(NAME persistent_roster_bag_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/persistent_roster_bag_source_contract_tests.cmake")
 
+# Explicit player-requested catch-up is deliberately a narrow Core plus
+# PlayerBot boundary. This source-level regression locks the exact live
+# validator and action path without requiring a world database or a server.
+add_test(NAME quest_catchup_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+    -P "${PB_MODULE_DIR}/t/quest_catchup_source_contract_tests.cmake")
+
 add_executable(bot_dialogue_policy_tests
   "${PB_MODULE_DIR}/t/bot_dialogue_policy_tests.cpp")
 

@@ -100,6 +100,7 @@ namespace ai
             creators["drop"] = [](PlayerbotAI* ai) { return new DropQuestAction(ai); };
             creators["clean quest log"] = [](PlayerbotAI* ai) { return new CleanQuestLogAction(ai); };
             creators["share"] = [](PlayerbotAI* ai) { return new ShareQuestAction(ai); };
+            creators["catchup quest"] = [](PlayerbotAI* ai) { return new CatchupQuestAction(ai); };
             creators["query quest"] = [](PlayerbotAI* ai) { return new QueryQuestAction(ai); };
             creators["query item usage"] = [](PlayerbotAI* ai) { return new QueryItemUsageAction(ai); };
             creators["ll"] = [](PlayerbotAI* ai) { return new LootStrategyAction(ai); };
