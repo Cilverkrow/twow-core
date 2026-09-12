@@ -38,6 +38,35 @@ bool ShareQuestAction::Execute(Event& event)
     return false;
 }
 
+bool CatchupQuestAction::Execute(Event& event)
+{
+    Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
+    Player* master = GetMaster();
+    if (!master || requester != master || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return false;
+
+    PlayerbotChatHandler handler(master);
+    uint32 questId = handler.extractQuestId(event.getParam());
+    Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+    Group* group = bot->GetGroup();
+    if (!quest || !questId || !master->IsCurrentQuest(questId) || !master->CanShareQuest(questId) ||
+        !group || group != master->GetGroup() ||
+        (group->IsRaidGroup() && !quest->HasQuestFlag(QUEST_FLAGS_RAID)) ||
+        !bot->IsAtGroupRewardDistance(master) || master->GetLevel() < bot->GetLevel() ||
+        master->GetLevel() - bot->GetLevel() > 8)
+        return false;
+
+    // Same command is a no-op; it must never alter existing progress.
+    if (bot->GetQuestStatus(questId) != QUEST_STATUS_NONE)
+        return true;
+
+    if (!bot->CanTakeQuestForCatchup(quest, false) || !bot->CanAddQuest(quest, false))
+        return false;
+
+    bot->AddQuest(quest, nullptr);
+    return bot->GetQuestStatus(questId) != QUEST_STATUS_NONE;
+}
+
 bool AutoShareQuestAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
