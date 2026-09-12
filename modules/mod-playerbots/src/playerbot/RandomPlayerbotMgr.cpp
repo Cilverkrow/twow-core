@@ -4224,12 +4224,9 @@ void RandomPlayerbotMgr::ProvisionPersistentRosterBags(Player* bot)
         uint8 const slot = INVENTORY_SLOT_BAG_START + index;
         Item* existing = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
         slots[index].occupied = existing != nullptr;
-        ItemPrototype const* existingProto = existing ? existing->GetProto() : nullptr;
-        slots[index].rangedContainer = existingProto &&
-            (existingProto->BagFamily == BAG_FAMILY_ARROWS || existingProto->BagFamily == BAG_FAMILY_BULLETS);
     }
 
-    auto const provision = SelectEmptySlots(bot->getClass() == CLASS_HUNTER, slots);
+    auto const provision = SelectEmptySlots(slots);
     for (uint8 index = 0; index < kBagSlotCount; ++index)
     {
         if (!provision[index])
