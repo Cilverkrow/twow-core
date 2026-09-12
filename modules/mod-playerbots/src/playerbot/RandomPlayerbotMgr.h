@@ -229,6 +229,7 @@ public:
         uint32 AddRandomBots();
         bool ProcessBot(uint32 bot);
         void ScheduleRandomize(uint32 bot, uint32 time);
+        void ProvisionPersistentRosterStarterOutfit(Player* bot);
         void ProvisionPersistentRosterBags(Player* bot);
         bool PersistentRosterRetryReady(uint32 bot) const;
         void SchedulePersistentRosterRetry(uint32 bot, std::string const& diagnostic);
