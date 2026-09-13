@@ -3,6 +3,8 @@
 #include <regex>
 #include <limits>
 #include <array>
+#include <map>
+#include <set>
 
 #include "Config/Config.h"
 
@@ -10,6 +12,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
 #include "playerbot/PersistentRosterBagPolicy.h"
+#include "playerbot/PersistentRosterStarterOutfitPolicy.h"
 #include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/PerformanceMonitor.h"
@@ -4196,6 +4199,7 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player * const bot)
         // bypass Randomize(), so backfill only their GUID-bound plan here.
         // Factory persistence failures are logged but never reject login.
         PlayerbotFactory(bot, bot->GetLevel()).EnsureProfessionPairPlan();
+        ProvisionPersistentRosterStarterOutfit(bot);
         ProvisionPersistentRosterBags(bot);
     }
 	//if (loginProgressBar && playerBots.size() < sRandomPlayerbotMgr.GetMaxAllowedBotCount()) { loginProgressBar->step(); }
@@ -4204,6 +4208,74 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player * const bot)
 	//	sLog.outString("All bots logged in");
     //    delete loginProgressBar;
 	//}
+}
+
+void RandomPlayerbotMgr::ProvisionPersistentRosterStarterOutfit(Player* bot)
+{
+    using namespace ai::roster::starter_outfit;
+    if (!bot || !ShouldProvision(IsPersistentRosterMember(bot->GetGUIDLow()), bot->GetLevel()))
+        return;
+
+    PlayerInfo const* info = sObjectMgr.GetPlayerInfo(bot->GetRace(), bot->GetClass());
+    if (!info)
+    {
+        sLog.outError("[PersistentRoster] starter outfit unavailable for bot %u: invalid race/class %u/%u",
+            bot->GetGUIDLow(), bot->GetRace(), bot->GetClass());
+        return;
+    }
+
+    std::map<uint32, uint32> required;
+    for (PlayerCreateInfoItem const& item : info->item)
+        if (item.item_id && item.item_amount)
+            required[item.item_id] += item.item_amount;
+
+    std::set<uint32> processed;
+    for (PlayerCreateInfoItem const& item : info->item)
+    {
+        uint32 const itemId = item.item_id;
+        if (!itemId || !processed.insert(itemId).second)
+            continue;
+
+        uint32 const missing = MissingAmount(required[itemId], bot->GetItemCount(itemId));
+        if (!missing)
+            continue;
+
+        if (!bot->StoreNewItemInBestSlots(itemId, missing))
+        {
+            sLog.outError("[PersistentRoster] starter outfit incomplete for bot %u item %u missing=%u; retrying on next roster login",
+                bot->GetGUIDLow(), itemId, missing);
+            return;
+        }
+    }
+
+    // This is the bounded equivalent of Player::Create's second pass. The
+    // first canonical pass can leave an offhand weapon or shield in the main
+    // backpack when the main hand did not exist yet. Never re-equip an item
+    // that is already worn, and never inspect outer-bag slots or their
+    // contents: only a canonical CreateInfo entry still in the main backpack
+    // may be moved to an empty equipment slot.
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+    {
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item || required.find(item->GetEntry()) == required.end())
+            continue;
+
+        uint16 destination = 0;
+        bool const canEquip = bot->CanEquipItem(NULL_SLOT, destination, item, false) == EQUIP_ERR_OK;
+        bool const canUseAmmo = bot->CanUseAmmo(item->GetEntry()) == EQUIP_ERR_OK;
+        switch (SelectSecondPassAction(true, false, canEquip, canUseAmmo))
+        {
+        case SecondPassAction::EQUIP:
+            bot->RemoveItem(INVENTORY_SLOT_BAG_0, slot, true);
+            bot->EquipItem(destination, item, true);
+            break;
+        case SecondPassAction::ACTIVATE_AMMO:
+            bot->SetAmmo(item->GetEntry());
+            break;
+        case SecondPassAction::NONE:
+            break;
+        }
+    }
 }
 
 void RandomPlayerbotMgr::ProvisionPersistentRosterBags(Player* bot)
