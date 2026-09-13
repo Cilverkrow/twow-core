@@ -1770,7 +1770,7 @@ Funserver.Loot.Bonus.RaidBoss = 0
 
 # Funserver.Loot.Bonus.SelectionMultiplier
 #   Total bounded selection passes including the historical pass. Valid range
-#   is 1..4; 4 means up to three additional eligible selections.
+#   is 1..8; 5 means up to four additional eligible selections.
 #   Default: 4
 
 Funserver.Loot.Bonus.SelectionMultiplier = 4

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -145,15 +146,18 @@ namespace
         return base;
     }
 
-    unsigned Simulate(uint32_t seed, bool enabled, unsigned eligibleOpportunities, unsigned& rngCalls)
+    unsigned Simulate(uint32_t seed, bool enabled, unsigned eligibleOpportunities,
+                      unsigned selectionMultiplier, unsigned maxSlots, unsigned& rngCalls)
     {
         if (!enabled)
-            return eligibleOpportunities; // Disabled path must not consume bonus RNG.
+            return std::min(eligibleOpportunities, maxSlots); // Disabled path must not consume bonus RNG.
         std::mt19937 rng(seed);
-        unsigned result = eligibleOpportunities;
-        for (unsigned round = 0; round != 3; ++round)
+        unsigned result = std::min(eligibleOpportunities, maxSlots);
+        for (unsigned round = 1; round < selectionMultiplier && result < maxSlots; ++round)
             for (unsigned opportunity = 0; opportunity != eligibleOpportunities; ++opportunity)
             {
+                if (result == maxSlots)
+                    break;
                 (void)rng();
                 ++rngCalls;
                 ++result;
@@ -233,11 +237,18 @@ int main()
     assert(std::fabs(DecayedWeight(1.0f, 2) - 0.0625f) < 0.0001f);
 
     unsigned disabledRng = 0;
-    unsigned baseline = Simulate(0x288u, false, 4, disabledRng);
-    unsigned enabledRng = 0;
-    unsigned enabled = Simulate(0x288u, true, 4, enabledRng);
-    assert(disabledRng == 0 && baseline == 4 && enabledRng == 12 && enabled == 16 && enabled == 4 * baseline);
-    assert(enabled <= 16); // Client loot-slot ceiling fixture.
-    std::cout << "accepted=136 rejected=18 baseline=" << baseline << " enabled=" << enabled
-              << " multiplier=" << (enabled / baseline) << " disabled_rng_equivalence=PASS\n";
+    unsigned baseline = Simulate(0x288u, false, 4, 8, 16, disabledRng);
+    unsigned fiveRng = 0;
+    unsigned five = Simulate(0x288u, true, 1, 5, 16, fiveRng);
+    unsigned eightRng = 0;
+    unsigned eight = Simulate(0x288u, true, 1, 8, 16, eightRng);
+    unsigned cappedRng = 0;
+    unsigned capped = Simulate(0x288u, true, 4, 8, 16, cappedRng);
+    assert(disabledRng == 0 && baseline == 4);
+    assert(fiveRng == 4 && five == 5);
+    assert(eightRng == 7 && eight == 8);
+    assert(cappedRng == 12 && capped == 16); // Client loot-slot ceiling fixture.
+    std::cout << "accepted=136 rejected=18 baseline=" << baseline
+              << " multiplier5=" << five << " multiplier8=" << eight
+              << " slot_limited=" << capped << " disabled_rng_equivalence=PASS\n";
 }

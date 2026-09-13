@@ -1396,7 +1396,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
 
     setConfig(CONFIG_UINT32_ITEM_INSTANTSAVE_QUALITY, "Item.InstantSaveQuality", ITEM_QUALITY_ARTIFACT);
     setConfig(CONFIG_UINT32_ITEM_RARELOOT_QUALITY, "Item.RareLoot.Quality", ITEM_QUALITY_EPIC);
-    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER, "Funserver.Loot.Bonus.SelectionMultiplier", 4, 1, 4);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER, "Funserver.Loot.Bonus.SelectionMultiplier", 4, 1, 8);
     setConfig(CONFIG_BOOL_PREVENT_ITEM_DATAMINING, "Item.PreventDataMining", true);
 
     setConfig(CONFIG_UINT32_MAILSPAM_EXPIRE_SECS, "MailSpam.ExpireSecs", 0);
