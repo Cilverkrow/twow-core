@@ -391,6 +391,8 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionAutonomousLogSoftLimit = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.AutonomousLogSoftLimit", 16);
     questFirstProgressionRejectBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta", 4);
     questFirstProgressionRetireBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta", 6);
+    questFirstProgressionMaxAboveLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.MaxAboveLevelDelta", 1);
+    questFirstProgressionLocalHubRadius = config.GetFloatDefault("AiPlayerbot.QuestFirstProgression.LocalHubRadius", 1200.0f);
 
     // Never let configuration turn the autonomous reservation into a changed
     // core quest-log limit. The Player limit remains MAX_QUEST_LOG_SIZE (20).

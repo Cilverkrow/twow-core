@@ -21,6 +21,20 @@ bool UsesQuestFirstProgression(Player const* bot)
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
 }
 
+bool IsGatherLeashPurpose(TravelDestinationPurpose purpose)
+{
+    return purpose == TravelDestinationPurpose::GatherSkinning ||
+        purpose == TravelDestinationPurpose::GatherHerbalism ||
+        purpose == TravelDestinationPurpose::GatherMining ||
+        purpose == TravelDestinationPurpose::GatherFishing;
+}
+
+bool IsAutonomousRosterTravelBlocked(PlayerbotAI* ai, TravelDestinationPurpose purpose)
+{
+    Player* bot = ai ? ai->GetBot() : nullptr;
+    return UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() && !IsGatherLeashPurpose(purpose);
+}
+
 bool HasQuestProgress(QuestStatusData const& status)
 {
     if (status.m_explored)
@@ -36,26 +50,29 @@ bool HasQuestProgress(QuestStatusData const& status)
 bool IsProtectedFromQuestFirstRetirement(PlayerbotAI* ai, Quest const* quest, QuestStatusData const& status,
     focusQuestTravelList const& focusList)
 {
-    // Be deliberately stricter than the policy's minimum. An unclassified
-    // chain, access, profession or player-directed quest must stay put.
+    // Retiring is deliberately fail-closed. The only removable quest is an
+    // entirely unprogressed, ordinary, autonomous quest with no item, chain,
+    // access or player-directed semantics.
     if (status.m_status == QUEST_STATUS_COMPLETE || status.m_rewarded || HasQuestProgress(status))
         return true;
     if (quest->GetLimitTime() || quest->GetRequiredClasses() || quest->GetRequiredSkill() || quest->GetSrcItemId())
         return true;
     for (uint8 objective = 0; objective < QUEST_ITEM_OBJECTIVES_COUNT; ++objective)
-        if (quest->ReqItemId[objective])
+        if (quest->ReqItemId[objective] || quest->ReqSourceId[objective])
             return true;
     if (quest->GetPrevQuestId() || quest->GetNextQuestId() || quest->GetNextQuestInChain() || quest->GetExclusiveGroup())
         return true;
-    if (quest->GetSuggestedPlayers() || quest->IsRepeatable() || focusList.find(quest->GetQuestId()) != focusList.end())
+    if (quest->GetType() == QUEST_TYPE_DUNGEON || quest->GetType() == QUEST_TYPE_RAID ||
+        quest->HasQuestFlag(QUEST_FLAGS_RAID) || quest->GetSuggestedPlayers() || quest->IsRepeatable() ||
+        focusList.find(quest->GetQuestId()) != focusList.end())
         return true;
 
-    // There is no reliable per-quest master pin in the current contract. Keep
-    // every quest while a real master is attached rather than guessing.
+    // No reliable per-quest master-pin exists in this path. Preserve every
+    // quest while the bot has a real master rather than infer authorship.
     return ai->HasRealPlayerMaster();
 }
 
-bool RetireOneStaleQuest(PlayerbotAI* ai, focusQuestTravelList const& focusList)
+bool RetireOneSafeStaleQuest(PlayerbotAI* ai, focusQuestTravelList const& focusList)
 {
     Player* bot = ai->GetBot();
     if (!UsesQuestFirstProgression(bot))
@@ -63,35 +80,39 @@ bool RetireOneStaleQuest(PlayerbotAI* ai, focusQuestTravelList const& focusList)
 
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
-        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
         Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
-        if (!quest)
-            continue;
-
         QuestStatusMap::const_iterator statusIt = bot->getQuestStatusMap().find(questId);
-        if (statusIt == bot->getQuestStatusMap().end())
+        if (!quest || statusIt == bot->getQuestStatusMap().end())
             continue;
 
-        QuestStatusData const& status = statusIt->second;
-        if (bot->GetLevel() < quest->GetQuestLevel() + sPlayerbotAIConfig.questFirstProgressionRetireBelowLevelDelta)
-            continue;
-        if (IsProtectedFromQuestFirstRetirement(ai, quest, status, focusList))
+        if (bot->GetLevel() < quest->GetQuestLevel() + sPlayerbotAIConfig.questFirstProgressionRetireBelowLevelDelta ||
+            IsProtectedFromQuestFirstRetirement(ai, quest, statusIt->second, focusList))
             continue;
 
-        // Core owns the item/source-item semantics. Do not issue SQL or
-        // manually delete items. Item and source-item quests are protected by
-        // the predicate above until their sharing contract is explicitly
-        // broadened and separately tested.
+        // Core owns every quest-item/source-item effect. This path only calls
+        // the canonical quest-log removal after the conservative predicate.
         bot->RemoveQuestAtSlot(slot);
         if (!bot->GetQuestSlotQuestId(slot))
         {
-            sLog.outDetail("[QuestFirst] retired_stale_quest bot=%u quest=%u", bot->GetGUIDLow(), questId);
+            sLog.outDetail("[QuestFirst] retired_safe_stale_quest bot=%u quest=%u", bot->GetGUIDLow(), questId);
             return true;
         }
     }
 
     return false;
 }
+
+bool IsLocalActiveQuestHubDestination(Player* bot, TravelDestination* destination, WorldPosition const* position,
+    PlayerTravelInfo const& travelInfo)
+{
+    QuestTravelDestination const* questDestination = dynamic_cast<QuestTravelDestination const*>(destination);
+    return questDestination && questDestination->GetQuestId() && position &&
+        position->getMapId() == bot->GetMapId() &&
+        position->distance(WorldPosition(bot)) <= sPlayerbotAIConfig.questFirstProgressionLocalHubRadius &&
+        destination->IsActive(bot, travelInfo);
+}
+
 }
 
 inline std::string GetTravelPurposeName(std::string purpose)
@@ -418,6 +439,25 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     std::unordered_map<TravelDestination*, bool> isActive;
 
     bool hasTarget = false;
+    bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
+        AI_VALUE2(std::string, "manual string", "future travel purpose") == "quest";
+    bool hasActiveLocalQuestHub = false;
+
+    // A reachable point is not necessarily usable. Check the normal
+    // destination activation predicate before holding the bot in its current
+    // map, so an inactive local point cannot hide a valid follow-up elsewhere.
+    if (preferLocalQuest && !target->IsForced())
+    {
+        PlayerTravelInfo travelInfo(bot);
+        for (auto const& [partition, travelPointList] : partitionedList)
+            for (auto const& [destination, position, distance] : travelPointList)
+                if (IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&
+                    (isActive[destination] = true))
+                {
+                    hasActiveLocalQuestHub = true;
+                    break;
+                }
+    }
 
     for (auto& [partition, travelPointList] : partitionedList)
     {
@@ -427,6 +467,13 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
         {
             if (!target->IsForced() && isActive.find(destination) != isActive.end() && !isActive[destination])
                 continue;
+
+            if (!target->IsForced() && hasActiveLocalQuestHub)
+            {
+                PlayerTravelInfo travelInfo(bot);
+                if (!IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo))
+                    continue;
+            }
 
             if (distanceCheck) //Check if we have moved significantly after getting the destinations.
             {
@@ -816,11 +863,43 @@ bool RequestTravelTargetAction::Execute(Event& event)
 {
     TravelDestinationPurpose actionPurpose = TravelDestinationPurpose(stoi(getQualifier()));
 
+    // A persistent roster bot with a real player master must not trade Follow
+    // for an autonomous RPG, grind, trainer, vendor, or distant gathering trip.
+    // Skinning remains a local loot interaction rather than a travel purpose;
+    // herb/mining use the existing travel pipeline but are constrained below.
+    if (IsAutonomousRosterTravelBlocked(ai, actionPurpose) && !event.getOwner())
+        return false;
+
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
+    bool const enforceGatherLeash = UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() &&
+        IsGatherLeashPurpose(actionPurpose);
+    WorldPosition const masterPosition(enforceGatherLeash ? ai->GetMaster() : nullptr);
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for " + TravelDestinationPurposeName.at(actionPurpose), "debug travel");
 
-    *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, purpose = actionPurpose]() { return sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose); });
+    *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
+        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, purpose = actionPurpose,
+            enforceGatherLeash, masterPosition]()
+        {
+            PartitionedTravelList list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose);
+            if (!enforceGatherLeash)
+                return list;
+
+            // Preserve the manager's normal destination and ownership semantics;
+            // only remove resource targets that would pull this bot away from the
+            // real master. The master position is an immutable value captured
+            // before the worker starts.
+            for (auto& [partition, points] : list)
+            {
+                points.erase(std::remove_if(points.begin(), points.end(), [&masterPosition](TravelPoint const& point)
+                {
+                    WorldPosition const* position = std::get<1>(point);
+                    return !position || position->getMapId() != masterPosition.getMapId() ||
+                        position->distance(masterPosition) > 25.0f;
+                }), points.end());
+            }
+            return list;
+        });
 
     AI_VALUE(TravelTarget*, "travel target")->SetStatus(TravelStatus::TRAVEL_STATUS_PREPARE);
     SET_AI_VALUE2(std::string, "manual string", "future travel purpose", getQualifier());
@@ -896,6 +975,11 @@ bool RequestTravelTargetAction::isAllowed() const
 
 bool RequestNamedTravelTargetAction::Execute(Event& event)
 {
+    // Strategy-triggered named travel is autonomous. A command from the real
+    // master carries its owner and remains an explicit instruction.
+    if (UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() && !event.getOwner())
+        return false;
+
     std::string travelName = getQualifier();
 
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
@@ -1447,10 +1531,15 @@ bool RequestNamedTravelTargetAction::isAllowed() const
 
 bool RequestQuestTravelTargetAction::Execute(Event& event)
 {
+    // The normal player catch-up command supplies an owner. Do not let the
+    // autonomous quest strategy move a roster bot away from its real master.
+    if (UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() && !event.getOwner())
+        return false;
+
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
 
     focusQuestTravelList focusList = AI_VALUE(focusQuestTravelList, "focus travel target");
-    RetireOneStaleQuest(ai, focusList);
+    RetireOneSafeStaleQuest(ai, focusList);
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for travel quest", "debug travel");
 
@@ -1600,7 +1689,8 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             takers, objectives, givers);
     }
 
-    *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches]()
+    *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
+        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches]()
         {
             PartitionedTravelList list;
             for (auto [purpose, questId, range] : destinationFetches)

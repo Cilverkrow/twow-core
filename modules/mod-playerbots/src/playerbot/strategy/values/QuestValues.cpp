@@ -219,7 +219,9 @@ questGiverMap QuestGiversValue::Calculate()
 
                     if (quest && (level < quest->GetMinLevel() ||
                         (int32)level >= quest->GetQuestLevel() +
-                            (questFirst ? sPlayerbotAIConfig.questFirstProgressionRejectBelowLevelDelta : 10)))
+                            (questFirst ? sPlayerbotAIConfig.questFirstProgressionRejectBelowLevelDelta : 10) ||
+                        (questFirst && (int32)quest->GetQuestLevel() >
+                            (int32)level + sPlayerbotAIConfig.questFirstProgressionMaxAboveLevelDelta)))
 						continue;
 				}
 
