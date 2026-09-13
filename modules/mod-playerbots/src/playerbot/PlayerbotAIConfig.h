@@ -406,6 +406,12 @@ public:
     uint32 questFirstProgressionAutonomousLogSoftLimit = 16;
     uint32 questFirstProgressionRejectBelowLevelDelta = 4;
     uint32 questFirstProgressionRetireBelowLevelDelta = 6;
+    // Autonomous roster offers stay close to the character's actual level.
+    // This deliberately does not apply to an explicit player catch-up quest.
+    uint32 questFirstProgressionMaxAboveLevelDelta = 1;
+    // Radius around the bot within which an active quest destination is a
+    // local hub candidate. It is spatial, not a hard-coded zone allowlist.
+    float questFirstProgressionLocalHubRadius = 1200.0f;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;

@@ -10,11 +10,44 @@
 
 using namespace ai;
 
+namespace
+{
+bool QuestFirstRosterFollowingRealMaster(PlayerbotAI* ai)
+{
+    Player* const bot = ai ? ai->GetBot() : nullptr;
+    return bot && ai->HasRealPlayerMaster() && sPlayerbotAIConfig.questFirstProgressionEnabled &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+}
+
+bool IsGatherTravelTarget(TravelTarget const* target)
+{
+    TravelDestination* destination = target ? target->GetDestination() : nullptr;
+    if (!destination)
+        return false;
+
+    TravelDestinationPurpose purpose = destination->GetPurpose();
+    return purpose == TravelDestinationPurpose::GatherSkinning ||
+        purpose == TravelDestinationPurpose::GatherHerbalism ||
+        purpose == TravelDestinationPurpose::GatherMining ||
+        purpose == TravelDestinationPurpose::GatherFishing;
+}
+}
+
 bool FollowAction::Execute(Event& event)
 {
     bool moved = false;
     Unit* followTarget = AI_VALUE(Unit*, "follow target");
     Formation* formation = AI_VALUE(Formation*, "formation");
+
+    // Local herb/mining is permitted only while it does not compete with a
+    // moving real master. Drop its travel target before issuing Follow so the
+    // normal travel action cannot resume the detached resource trip.
+    if (QuestFirstRosterFollowingRealMaster(ai) && followTarget && followTarget->IsMoving())
+    {
+        TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+        if (IsGatherTravelTarget(travelTarget))
+            travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
+    }
 
     if (ai->IsSafe(followTarget))
     {
@@ -42,7 +75,7 @@ bool FollowAction::isUseful()
     Unit* followTarget = AI_VALUE(Unit*, "follow target");
     Formation* formation = AI_VALUE(Formation*, "formation");
 
-    if (followTarget && followTarget->IsPlayer())
+    if (followTarget && followTarget->IsPlayer() && !QuestFirstRosterFollowingRealMaster(ai))
     {
         if (AI_VALUE(GuidPosition, "rpg target") && CanFreeMoveValue::CanFreeMoveTo(ai, AI_VALUE(GuidPosition, "rpg target")))
         {
@@ -184,7 +217,7 @@ bool FleeToMasterAction::isUseful()
     if (!CanDeadFollow(fTarget))
         return false;
 
-    if (fTarget && fTarget->IsPlayer())
+    if (fTarget && fTarget->IsPlayer() && !QuestFirstRosterFollowingRealMaster(ai))
     {
         if (AI_VALUE(GuidPosition, "rpg target") && CanFreeMoveValue::CanFreeMoveTo(ai, AI_VALUE(GuidPosition, "rpg target")))
             return false;
