@@ -1480,9 +1480,9 @@ void LootTemplate::ProcessBonus(Loot& loot, bool rate, Player const* lootOwner, 
         ++selectedCount[item.itemid];
 
     // Re-run every safe ordinary opportunity and every safe one-of-group
-    // opportunity. This gives approximately four times normal useful drops,
-    // rather than merely appending three items to a multi-group boss table.
-    for (uint8 round = 1; round < selectionMultiplier && round <= 3 && loot.items.size() < MAX_NR_LOOT_ITEMS; ++round)
+    // opportunity. The configured multiplier is the total number of passes,
+    // including the historical pass, and is bounded by World to at most eight.
+    for (uint8 round = 1; round < selectionMultiplier && loot.items.size() < MAX_NR_LOOT_ITEMS; ++round)
     {
         for (LootStoreItem const& item : Entries)
         {
