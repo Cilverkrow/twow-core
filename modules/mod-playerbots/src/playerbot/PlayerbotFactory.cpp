@@ -7,6 +7,7 @@
 #include "Database/SQLStorages.h"
 #include "Objects/ItemPrototype.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/PersistentRosterTalentSpecPolicy.h"
 #include "AccountMgr.h"
 #include "Database/DBCStore.h"
 #include "SharedDefines.h"
@@ -2541,6 +2542,15 @@ bool PlayerbotFactory::SelectPremadeSpecNo()
     std::vector<TalentPath>& paths = sPlayerbotAIConfig.classSpecs[cls].talentPath;
     if (paths.empty())
         return false;
+
+    uint32 storedSpecNo = sRandomPlayerbotMgr.GetValue(bot->GetGUIDLow(), "specNo");
+    if (ai::roster::talents::KeepStoredSpecNo(
+            sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), storedSpecNo, paths))
+    {
+        sLog.outDetail("SPECROLL: factory retained stored roster spec %u for class %u",
+            storedSpecNo, uint32(cls));
+        return true;
+    }
 
     // Weighted roll across the configured premade specs (currently one PvE spec per
     // class, but this keeps working if more are added). GetBestPremadeSpec indexes
