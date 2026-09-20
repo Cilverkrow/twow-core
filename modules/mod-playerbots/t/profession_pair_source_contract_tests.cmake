@@ -11,8 +11,8 @@ endfunction()
 
 file(READ "${PB_SOURCE_DIR}/strategy/actions/TrainerAction.cpp" trainer)
 require_text("${trainer}"
-  "if (creature->GetCreatureInfo()->TrainerType == TRAINER_TYPE_TRADESKILLS)"
-  "generic trainer tradeskill admission guard")
+  "TRAINER_TYPE_TRADESKILLS && !AllowsTradeSkillTrainer(creature)"
+  "generic trainer tradeskill refusal guard")
 require_text("${trainer}"
   "// handled by the existing generic path."
   "generic trainer scope note")
