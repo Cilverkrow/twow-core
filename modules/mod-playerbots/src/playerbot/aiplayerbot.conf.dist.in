@@ -451,6 +451,14 @@ AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes
 
+# Persistent roster professions use only the dedicated plan-aware trainer
+# action. This optional funserver switch waives the normal trainer cost for
+# that action alone; it does not grant or refund money.
+AiPlayerbot.ProfessionTraining.FreeForPersistentRoster = 0
+AiPlayerbot.ProfessionTraining.StartLevel = 3
+# Log only profession-training action state changes. Never enable per-tick logging.
+AiPlayerbot.ProfessionTraining.Trace = 0
+
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full
 

@@ -241,6 +241,19 @@ add_test(NAME profession_pair_policy
   COMMAND profession_pair_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+add_executable(persistent_roster_profession_training_policy_tests
+  "${PB_MODULE_DIR}/t/persistent_roster_profession_training_policy_tests.cpp")
+
+target_include_directories(persistent_roster_profession_training_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(persistent_roster_profession_training_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME persistent_roster_profession_training_policy
+  COMMAND persistent_roster_profession_training_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # The roster bag policy is intentionally independent from game objects. It
 # verifies slot selection and hunter reserve semantics while the paired source
 # contract below pins the only permitted runtime hook and Core equip sequence.
@@ -291,6 +304,11 @@ add_test(NAME profession_pair_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/profession_pair_source_contract_tests.cmake")
+
+add_test(NAME persistent_roster_profession_training_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/persistent_roster_profession_training_source_contract_tests.cmake")
 
 add_test(NAME persistent_roster_bag_source_contract
   COMMAND "${CMAKE_COMMAND}"

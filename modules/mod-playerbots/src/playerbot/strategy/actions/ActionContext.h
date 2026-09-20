@@ -56,6 +56,7 @@
 #include "GuildShareItemAction.h"
 #include "GuildShareAhBuyAction.h"
 #include "RpgSubActions.h"
+#include "RosterProfessionTrainerAction.h"
 #include "VehicleActions.h"
 #include "UseTrinketAction.h"
 #include "BotStateActions.h"
@@ -305,6 +306,7 @@ namespace ai
             creators["rpg get mail"] = [](PlayerbotAI* ai) { return new RpgGetMailAction(ai); };
             creators["rpg repair"] = [](PlayerbotAI* ai) { return new RpgRepairAction(ai); };
             creators["rpg train"] = [](PlayerbotAI* ai) { return new RpgTrainAction(ai); };
+            creators["roster profession trainer"] = [](PlayerbotAI* ai) { return new RosterProfessionTrainerAction(ai); };
             creators["rpg heal"] = [](PlayerbotAI* ai) { return new RpgHealAction(ai); };
             creators["rpg home bind"] = [](PlayerbotAI* ai) { return new RpgHomeBindAction(ai); };
             creators["rpg queue bg"] = [](PlayerbotAI* ai) { return new RpgQueueBgAction(ai); };

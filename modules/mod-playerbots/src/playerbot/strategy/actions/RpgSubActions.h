@@ -224,7 +224,22 @@ namespace ai
 
         virtual std::string GetRpgActionName() const override { return "training a new skill at"; };
     private:
-        virtual std::string ActionName() override { return "trainer"; }
+        virtual std::string ActionName() override
+        {
+            // Keep player-led groups authoritative: roster bots may still
+            // gather within their existing leash, but never leave a real
+            // master to pursue a profession trainer on their own.
+            if (ai->HasRealPlayerMaster() ||
+                !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) ||
+                bot->GetLevel() < sPlayerbotAIConfig.professionTrainingStartLevel)
+                return "trainer";
+
+            CreatureInfo const* info = rpg->guidP().GetCreatureTemplate();
+            if (info && info->TrainerType == TRAINER_TYPE_TRADESKILLS)
+                return "roster profession trainer";
+
+            return "trainer";
+        }
         virtual Event ActionEvent(Event event) override { return Event("rpg action",rpg->guidP()); }
     };
 

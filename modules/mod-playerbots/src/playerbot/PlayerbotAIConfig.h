@@ -379,6 +379,11 @@ public:
     bool syncQuestWithPlayer;
     bool syncQuestForPlayer;
     std::string autoTrainSpells;
+    // Disabled by default: only the dedicated persistent-roster profession
+    // action reads these values. Generic trainer behaviour is unchanged.
+    bool professionTrainingFreeForPersistentRoster = false;
+    uint32 professionTrainingStartLevel = 3;
+    bool professionTrainingTrace = false;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;
