@@ -8,7 +8,7 @@ using namespace ai;
 
 void TrainerAction::Learn(uint32 cost, ObjectGuid trainerGuid, uint32 spellId, TrainerSpell const* tSpell, std::ostringstream& msg)
 {
-    if (sPlayerbotAIConfig.autoTrainSpells != "free" &&  !ai->HasCheat(BotCheatMask::gold))
+    if (!UsesFreeTraining() && sPlayerbotAIConfig.autoTrainSpells != "free" &&  !ai->HasCheat(BotCheatMask::gold))
     {
         if (AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::spells) < cost)
         {
@@ -83,6 +83,9 @@ bool TrainerAction::Iterate(Player* requester, Creature* creature, TrainerSpellA
         TrainerSpell const* tSpell = &itr->second;
 
         if (!tSpell)
+            continue;
+
+        if (!AllowsTrainerSpell(creature, tSpell))
             continue;
 
         uint32 reqLevel = 0;
@@ -229,7 +232,7 @@ bool TrainerAction::Execute(Event& event)
                 // bot would report a refusal while the trainer it came for was
                 // two yards away. The guard below still stands for the guid
                 // path, where the caller named the NPC and must be told no.
-                if (candidate->GetCreatureInfo()->TrainerType == TRAINER_TYPE_TRADESKILLS)
+                if (candidate->GetCreatureInfo()->TrainerType == TRAINER_TYPE_TRADESKILLS && !AllowsTradeSkillTrainer(candidate))
                     continue;
 
                 creature = candidate;
@@ -274,7 +277,7 @@ bool TrainerAction::Execute(Event& event)
     // do not let an RPG visit or a master-triggered generic trainer command fan out
     // into an unplanned profession purchase. Class, pet, and mount trainers remain
     // handled by the existing generic path.
-    if (creature->GetCreatureInfo()->TrainerType == TRAINER_TYPE_TRADESKILLS)
+    if (creature->GetCreatureInfo()->TrainerType == TRAINER_TYPE_TRADESKILLS && !AllowsTradeSkillTrainer(creature))
         return false;
 
     uint32 spell = chat->parseSpell(text);
@@ -283,7 +286,9 @@ bool TrainerAction::Execute(Event& event)
         spells.insert(spell);
 
     bool hadSomethingToTeach = false;
-    if (text.find("learn") != std::string::npos || sRandomPlayerbotMgr.IsFreeBot(bot) || (sPlayerbotAIConfig.autoTrainSpells != "no" && (creature->GetCreatureInfo()->TrainerType != TRAINER_TYPE_TRADESKILLS || !ai->HasActivePlayerMaster()))) //Todo rewrite to only exclude start primary profession skills and make config dependent.
+    if (text.find("learn") != std::string::npos || sRandomPlayerbotMgr.IsFreeBot(bot) ||
+        (sPlayerbotAIConfig.autoTrainSpells != "no" &&
+            (creature->GetCreatureInfo()->TrainerType != TRAINER_TYPE_TRADESKILLS || !ai->HasActivePlayerMaster() || AllowsTradeSkillTrainer(creature)))) //Todo rewrite to only exclude start primary profession skills and make config dependent.
     {
         hadSomethingToTeach = Iterate(requester, creature, &TrainerAction::Learn, spells);
         if (hadSomethingToTeach)
