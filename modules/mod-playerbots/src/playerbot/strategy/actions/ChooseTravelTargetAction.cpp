@@ -113,6 +113,63 @@ bool IsLocalActiveQuestHubDestination(Player* bot, TravelDestination* destinatio
         destination->IsActive(bot, travelInfo);
 }
 
+uint32 GetZoneId(WorldPosition const& position)
+{
+    return sTerrainMgr.GetZoneId(position.getMapId(), position.getX(), position.getY(), position.getZ());
+}
+
+uint32 GetCompletedQuestId(Player* player)
+{
+    if (!player)
+        return 0;
+
+    for (auto const& [questId, status] : player->getQuestStatusMap())
+        if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE)
+            return questId;
+
+    return 0;
+}
+
+void TraceQuestRouteDecision(Player* bot, TravelTarget& target, std::string const& strategy, char const* reason)
+{
+    if (!UsesQuestFirstProgression(bot) || !sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
+        return;
+
+    TravelDestination const* destination = target.GetDestination();
+    WorldPosition const* targetPosition = target.GetPosition();
+    if (!destination || !targetPosition)
+        return;
+
+    QuestTravelDestination const* questDestination = dynamic_cast<QuestTravelDestination const*>(destination);
+    WorldPosition const source(bot);
+    std::string purpose = "unknown";
+    if (auto const it = TravelDestinationPurposeName.find(destination->GetPurpose()); it != TravelDestinationPurposeName.end())
+        purpose = it->second;
+
+    // TravelMgr only exposes a route-qualified destination after GetPartitions
+    // has rejected FLT_MAX/no-path points. Do not claim a specific transport
+    // vehicle: cross-map is the actionable fact here, and the normal travel
+    // planner remains the authority for ships, zeppelins and portals.
+    char const* transport = source.getMapId() == targetPosition->getMapId() ? "same_map" : "cross_map_travelmgr";
+    sLog.outBasic("[QuestFirstRoute] state=selected bot=%u level=%u quest=%u purpose=%s strategy=%s "
+        "source_map=%u source_zone=%u target_entry=%d target_map=%u target_zone=%u transport=%s distance=%.0f reason=%s",
+        bot->GetGUIDLow(), bot->GetLevel(), questDestination ? questDestination->GetQuestId() : 0,
+        purpose.c_str(), strategy.c_str(), source.getMapId(), GetZoneId(source), destination->GetEntry(),
+        targetPosition->getMapId(), GetZoneId(*targetPosition), transport, target.Distance(bot), reason);
+}
+
+void TraceQuestRouteRejection(Player* bot, std::string const& strategy, uint32 rangeCount, char const* reason)
+{
+    if (!UsesQuestFirstProgression(bot) || !sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
+        return;
+
+    WorldPosition const source(bot);
+    sLog.outBasic("[QuestFirstRoute] state=rejected bot=%u level=%u quest=%u strategy=%s source_map=%u source_zone=%u "
+        "offered_ranges=%u fallback=none reason=%s",
+        bot->GetGUIDLow(), bot->GetLevel(), GetCompletedQuestId(bot), strategy.c_str(), source.getMapId(),
+        GetZoneId(source), rangeCount, reason);
+}
+
 }
 
 inline std::string GetTravelPurposeName(std::string purpose)
@@ -141,6 +198,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     if (!futureDestinations->valid())
     {
+        if (futureTravelPurpose == "quest")
+            TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"), 0,
+                "future_destination_invalid");
         travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
         context->ClearValues("no active travel destinations");        
         return false;
@@ -180,15 +240,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
 
-        // TEMPORARY, see the probe in RequestQuestTravelTargetAction. Destinations
-        // came back and none of them was accepted - worth telling apart from "none
-        // were offered", which looks identical from the outside.
-        if (sRandomPlayerbotMgr.IsPinnedBot(bot->GetGUIDLow()))
-            sLog.outBasic("QUESTPROBE: %s got %u destination ranges for '%s' and picked none",
-                bot->GetName(), uint32(destinationList.size()), futureTravelPurpose.c_str());
+        if (futureTravelPurpose == "quest")
+            TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
+                uint32(destinationList.size()), "no_active_route_candidate");
 
         return false;
     }
+
+    if (futureTravelPurpose == "quest")
+        TraceQuestRouteDecision(bot, newTarget, AI_VALUE2(std::string, "manual string", "future travel condition"),
+            "travelmgr_route_validated");
 
     setNewTarget(requester, &newTarget, travelTarget);
     
@@ -1606,7 +1667,13 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             // Quadratic in level, so a level 20 bot searches thirty times further
             // than a level 1 one. The quest giver a bot has to walk back to is by
             // definition inside its own zone, whatever its level.
-            destinationFetches.push_back({ flag, questId, std::max(5000.f, 1000.f + (bot->GetLevel() * bot->GetLevel()) * 75.f) });
+            // A completed quest is not a new autonomous offer. Its taker must
+            // be found through TravelMgr even when it is beyond the ordinary
+            // local objective radius; TravelMgr still rejects inactive or
+            // unreachable destinations and supplies normal transport routing.
+            float const range = (flag & (uint32)TravelDestinationPurpose::QuestTaker) ? 1000000.0f :
+                std::max(5000.f, 1000.f + (bot->GetLevel() * bot->GetLevel()) * 75.f);
+            destinationFetches.push_back({ flag, questId, range });
 
             if (onlyClassQuest && destinationFetches.size() > 1) //Only do class quests if we have any.
             {
@@ -1670,7 +1737,7 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     // this records what was on offer; which one then won is already written to
     // bot_events.csv by setNewTarget. Limited to the pinned bots, since a
     // thousand of them would drown the log. Remove once the answer is in.
-    if (sRandomPlayerbotMgr.IsPinnedBot(bot->GetGUIDLow()))
+    if (sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions && UsesQuestFirstProgression(bot))
     {
         uint32 takers = 0, objectives = 0, givers = 0, readyToHandIn = 0;
         for (auto& [purpose, questId, range] : destinationFetches)
@@ -1684,9 +1751,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             if (!questStatus.m_rewarded && questStatus.m_status == QUEST_STATUS_COMPLETE)
                 readyToHandIn++;
 
-        sLog.outBasic("QUESTPROBE: %s has %u finished and unhanded-in, %u quests in the log; offered %u taker, %u objective, %u giver destinations",
-            bot->GetName(), readyToHandIn, uint32(bot->getQuestStatusMap().size()),
-            takers, objectives, givers);
+        sLog.outBasic("[QuestFirstRoute] state=request bot=%u level=%u source_map=%u source_zone=%u finished=%u active=%u "
+            "offered_takers=%u objectives=%u givers=%u strategy=%s",
+            bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(),
+            sTerrainMgr.GetZoneId(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()), readyToHandIn,
+            uint32(bot->getQuestStatusMap().size()), takers, objectives, givers, event.getSource().c_str());
     }
 
     *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
