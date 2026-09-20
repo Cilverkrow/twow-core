@@ -226,16 +226,16 @@ namespace ai
     private:
         virtual std::string ActionName() override
         {
-            // Keep player-led groups authoritative: roster bots may still
-            // gather within their existing leash, but never leave a real
-            // master to pursue a profession trainer on their own.
-            if (ai->HasRealPlayerMaster() ||
-                !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) ||
+            if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) ||
                 bot->GetLevel() < sPlayerbotAIConfig.professionTrainingStartLevel)
                 return "trainer";
 
             CreatureInfo const* info = rpg->guidP().GetCreatureTemplate();
             if (info && info->TrainerType == TRAINER_TYPE_TRADESKILLS)
+                // NeedTravelPurposeValue prevents a bot with a real player
+                // master from starting an autonomous trainer trip. Once the
+                // group is already at this RPG target, the local dedicated
+                // action may still perform its plan-restricted training.
                 return "roster profession trainer";
 
             return "trainer";

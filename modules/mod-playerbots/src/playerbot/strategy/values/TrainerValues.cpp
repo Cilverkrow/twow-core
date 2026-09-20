@@ -3,6 +3,8 @@
 #include "TrainerValues.h"
 #include "SharedValueContext.h"
 #include "playerbot/PlayerbotHelpMgr.h"
+#include "playerbot/PersistentRosterProfessionTrainingPolicy.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 
 using namespace ai;
 
@@ -137,13 +139,41 @@ std::vector<TrainerSpell const*> TrainableSpellsValue::Calculate()
                 if (state != TRAINER_SPELL_GREEN)
                     continue;
 
-                //Skip initial profession training.
-#ifdef MANGOSBOT_ZERO
-                if (bot->GetLevel() < 10 && sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell) && sSpellMgr.GetSpellRank(trainerSpell->learnedSpell) == 1)
-#else
-                if (bot->GetLevel() < 10 && sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell[0]) && sSpellMgr.GetSpellRank(trainerSpell->learnedSpell[0]) == 1)
-#endif
+                bool const persistentRosterBot =
+                    sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+                uint32 const pair = persistentRosterBot
+                    ? sRandomPlayerbotMgr.GetProfessionPair(bot->GetGUIDLow())
+                    : 0;
+                bool const allowedRosterProfession = trainerType == TRAINER_TYPE_TRADESKILLS &&
+                    profession_training::IsEligibleProfessionTraining(
+                        persistentRosterBot, bot->GetLevel(),
+                        sPlayerbotAIConfig.professionTrainingStartLevel,
+                        static_cast<profession::Pair>(pair), requirement);
+
+                // A registered roster bot has exactly one persisted primary
+                // pair. Filter every tradeskill rank here, not only the
+                // level-three starting spell, so an unplanned trainer cannot
+                // become a travel destination later.
+                if (trainerType == TRAINER_TYPE_TRADESKILLS &&
+                    persistentRosterBot && !allowedRosterProfession)
                     continue;
+
+                // Initial professions stay unavailable below level ten for
+                // generic bots. Persistent roster bots may instead start the
+                // one stored profession plan from their configured start
+                // level, but never an unplanned primary profession.
+#ifdef MANGOSBOT_ZERO
+                bool const isInitialProfession = sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell) &&
+                    sSpellMgr.GetSpellRank(trainerSpell->learnedSpell) == 1;
+#else
+                bool const isInitialProfession = sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell[0]) &&
+                    sSpellMgr.GetSpellRank(trainerSpell->learnedSpell[0]) == 1;
+#endif
+                if (bot->GetLevel() < 10 && isInitialProfession)
+                {
+                    if (!allowedRosterProfession)
+                        continue;
+                }
 
                 trainableSpells.push_back(trainerSpell);
             }

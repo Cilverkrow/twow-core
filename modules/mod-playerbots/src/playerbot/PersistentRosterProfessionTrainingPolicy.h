@@ -31,6 +31,14 @@ inline bool IsAllowedSkill(profession::Pair pair, std::uint32_t skill)
     return profession::Contains(pair, skill) || IsSecondarySkill(skill);
 }
 
+inline bool IsEligibleProfessionTraining(bool persistentRosterMember,
+    std::uint32_t level, std::uint32_t startLevel, profession::Pair pair,
+    std::uint32_t skill)
+{
+    return IsEligible(persistentRosterMember, level, startLevel, pair) &&
+        IsAllowedSkill(pair, skill);
+}
+
 inline bool MayStartAutonomousTravel(bool hasRealPlayerMaster)
 {
     return !hasRealPlayerMaster;

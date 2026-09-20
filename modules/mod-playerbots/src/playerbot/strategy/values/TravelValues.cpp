@@ -4,6 +4,7 @@
 #include "SharedValueContext.h"
 #include "BudgetValues.h"
 #include "GuildValues.h"
+#include "playerbot/PersistentRosterProfessionTrainingPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Guild/GuildMgr.h"
 
@@ -15,6 +16,18 @@ bool UsesQuestFirstProgression(Player const* bot)
 {
     return bot && sPlayerbotAIConfig.questFirstProgressionEnabled &&
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+}
+
+bool UsesFreePersistentRosterProfessionTraining(Player const* bot)
+{
+    if (!bot || !sPlayerbotAIConfig.professionTrainingFreeForPersistentRoster)
+        return false;
+
+    uint32 const pair = sRandomPlayerbotMgr.GetProfessionPair(bot->GetGUIDLow());
+    return profession_training::IsEligible(
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
+        bot->GetLevel(), sPlayerbotAIConfig.professionTrainingStartLevel,
+        static_cast<profession::Pair>(pair));
 }
 }
 
@@ -480,7 +493,11 @@ bool ShouldTravelNamedValue::Calculate()
         if (AI_VALUE2(uint32, "train cost", trainerType) == 0) //Has nothing to train
             return false;
 
-        if (!AI_VALUE2(bool, "has all money for", (uint32)budgetType))
+        bool const freePersistentRosterProfessionTraining =
+            trainerType == TRAINER_TYPE_TRADESKILLS &&
+            UsesFreePersistentRosterProfessionTraining(bot);
+        if (!freePersistentRosterProfessionTraining &&
+            !AI_VALUE2(bool, "has all money for", (uint32)budgetType))
             return false;
 
         return true;
