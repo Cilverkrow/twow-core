@@ -38,6 +38,19 @@ int main()
     Require(kSurvival == 142, "survival keeps the Turtle skill identifier");
     Require(!IsAllowedSkill(MiningEngineering, 0), "unknown skill is rejected");
 
+    Require(IsEligibleProfessionTraining(true, 3, 3, HerbalismAlchemy, kHerbalism),
+        "planned initial profession is allowed from the configured start level");
+    Require(IsEligibleProfessionTraining(true, 3, 3, HerbalismAlchemy, kCooking),
+        "allowed secondary initial profession is accepted");
+    Require(!IsEligibleProfessionTraining(true, 3, 3, HerbalismAlchemy, kMining),
+        "unplanned initial primary profession fails closed");
+    Require(!IsEligibleProfessionTraining(false, 60, 3, HerbalismAlchemy, kHerbalism),
+        "non-roster initial profession remains blocked");
+    Require(!IsEligibleProfessionTraining(true, 10, 3, HerbalismAlchemy, kMining),
+        "unplanned primary remains blocked at level ten and above");
+    Require(IsEligibleProfessionTraining(true, 10, 3, HerbalismAlchemy, kHerbalism),
+        "planned primary rank remains allowed at level ten and above");
+
     Require(MayStartAutonomousTravel(false), "unled roster bot may travel");
     Require(!MayStartAutonomousTravel(true), "real master blocks autonomous trainer travel");
     return 0;
