@@ -412,6 +412,9 @@ public:
     // Radius around the bot within which an active quest destination is a
     // local hub candidate. It is spatial, not a hard-coded zone allowlist.
     float questFirstProgressionLocalHubRadius = 1200.0f;
+    // Low-volume route-decision diagnostics for persistent quest-first bots.
+    // Disabled by default and emitted only by the quest travel request path.
+    bool questFirstProgressionTraceTravelDecisions = false;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;

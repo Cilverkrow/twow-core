@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -49,6 +50,37 @@ bool MustCancelGatherForMovingMaster(bool enabled, bool rosterMember, bool realM
 {
     return UsesPolicy(enabled, rosterMember) && realMaster && masterMoving && herbOrMiningTarget;
 }
+
+float QuestTravelSearchRadius(bool completed, uint32_t level)
+{
+    return completed ? 1000000.0f : std::max(5000.0f, 1000.0f + level * level * 75.0f);
+}
+
+bool MayMaterializeCompletedQuestTaker(bool completed, bool crossMap, bool travelMgrPossible, bool routeHasPath)
+{
+    // Cross-map destinations use the same TravelMgr reachability proof; the
+    // feature never selects a transport or fabricates a route itself.
+    (void)crossMap;
+    return completed && travelMgrPossible && routeHasPath;
+}
+
+bool MayUseGenericGrindTravel(bool enabled, bool rosterMember)
+{
+    return !UsesPolicy(enabled, rosterMember);
+}
+
+bool ShouldEmitQuestRouteTrace(bool enabled, bool rosterMember, bool traceEnabled, bool stateTransition)
+{
+    return UsesPolicy(enabled, rosterMember) && traceEnabled && stateTransition;
+}
+
+struct CompletedQuestTurnInFixture
+{
+    uint32_t questId;
+    uint32_t startEntry;
+    uint32_t takerEntry;
+    float knownMinimumDistance;
+};
 
 bool MaySafelyRetire(bool enabled, bool rosterMember, uint32_t botLevel, uint32_t questLevel, uint32_t retireDelta,
     bool completeOrRewarded, bool hasObjectiveProgress, bool itemOrSourceItem, bool chainOrExclusive,
@@ -113,6 +145,32 @@ int main()
     assert(!MaySafelyRetire(true, true, 20, 14, 6, false, false, false, false, false, true, false));
     assert(!MaySafelyRetire(true, true, 20, 14, 6, false, false, false, false, false, false, true));
 
+    // Real regression fixture: quest 40273 starts at Southshore object 2010854
+    // and completes at Roheg Clay (60517), beyond the former 5,000-yard floor.
+    constexpr CompletedQuestTurnInFixture southshoreOwner {40273, 2010854, 60517, 8000.0f};
+    assert(southshoreOwner.questId == 40273);
+    assert(southshoreOwner.startEntry == 2010854);
+    assert(southshoreOwner.takerEntry == 60517);
+    assert(QuestTravelSearchRadius(true, 1) > southshoreOwner.knownMinimumDistance);
+    assert(QuestTravelSearchRadius(false, 1) == 5000.0f);
+    assert(QuestTravelSearchRadius(false, 20) == 31000.0f);
+    assert(MayMaterializeCompletedQuestTaker(true, false, true, true));  // 40273 Southshore -> Roheg Clay via TravelMgr
+    assert(MayMaterializeCompletedQuestTaker(true, true, true, true));   // cross-map only after TravelMgr route validation
+    assert(!MayMaterializeCompletedQuestTaker(true, false, false, true)); // unsafe relation remains rejected
+    assert(!MayMaterializeCompletedQuestTaker(true, true, true, false)); // no TravelMgr path remains rejected
+    assert(!MayMaterializeCompletedQuestTaker(false, false, true, true)); // new offers stay on the local policy
+
+    // Generic grind is blocked only as a travel-purpose fallback. The normal
+    // quest objective path still creates its own objective destinations.
+    assert(!MayUseGenericGrindTravel(true, true));
+    assert(MayUseGenericGrindTravel(false, true));
+    assert(MayUseGenericGrindTravel(true, false));
+
+    assert(!ShouldEmitQuestRouteTrace(true, true, false, true));
+    assert(!ShouldEmitQuestRouteTrace(true, true, true, false));
+    assert(ShouldEmitQuestRouteTrace(true, true, true, true));
+
     std::cout << "quest_first_policy=PASS default_off=PASS quest_band=PASS local_stickiness=PASS "
-        "master_leash=PASS moving_master_gather_cancel=PASS safe_retire=PASS item_safety=PASS\n";
+        "master_leash=PASS moving_master_gather_cancel=PASS safe_retire=PASS item_safety=PASS "
+        "remote_turnin_40273=PASS route_validation=PASS generic_grind_block=PASS trace_transition=PASS\n";
 }

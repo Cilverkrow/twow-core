@@ -21,6 +21,7 @@ file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/values/TravelValues.cpp" trav
 file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/values/QuestValues.cpp" quest_values)
 file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/actions/ChooseTravelTargetAction.cpp" quest_travel)
 file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/actions/FollowActions.cpp" follow_actions)
+file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/actions/SetHomeAction.cpp" set_home_action)
 
 foreach(required
   "AiPlayerbot.QuestFirstProgression.Enabled"
@@ -28,7 +29,8 @@ foreach(required
   "AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta"
   "AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta"
   "AiPlayerbot.QuestFirstProgression.MaxAboveLevelDelta"
-  "AiPlayerbot.QuestFirstProgression.LocalHubRadius")
+  "AiPlayerbot.QuestFirstProgression.LocalHubRadius"
+  "AiPlayerbot.QuestFirstProgression.TraceTravelDecisions")
   require_text("${config}" "${required}" "configuration key")
 endforeach()
 
@@ -40,6 +42,16 @@ require_text("${quest_values}" "questFirstProgressionMaxAboveLevelDelta" "upper 
 require_text("${quest_values}" "(int32)level >= quest->GetQuestLevel()" "delta-four reject boundary")
 require_text("${quest_values}" "quest->GetQuestLevel() >" "upper quest comparison")
 require_text("${quest_travel}" "finished > 0" "turn-in-first ordering")
+require_text("${quest_travel}" "TravelDestinationPurpose::QuestTaker) ? 1000000.0f" "unbounded completed-quest search")
+require_text("${quest_travel}" "questFirstProgressionTraceTravelDecisions" "default-off travel provenance gate")
+require_text("${quest_travel}" "[QuestFirstRoute]" "sanitized travel provenance record")
+require_text("${quest_travel}" "state=selected" "selected-route provenance")
+require_text("${quest_travel}" "state=rejected" "rejected-route provenance")
+require_text("${quest_travel}" "cross_map_travelmgr" "transport provenance without a parallel navigator")
+require_text("${quest_travel}" "travelmgr_route_validated" "route-validation provenance")
+require_text("${quest_travel}" "no_active_route_candidate" "fail-closed route rejection")
+require_text("${set_home_action}" "state=homebind" "homebind transition provenance")
+require_text("${set_home_action}" "old_map=%u old_zone=%u new_map=%u new_zone=%u" "homebind before-after location")
 require_text("${quest_travel}" "preferLocalQuest" "local quest stickiness")
 require_text("${quest_travel}" "hasActiveLocalQuestHub" "active local hub precedence")
 require_text("${quest_travel}" "IsLocalActiveQuestHubDestination" "local quest hub predicate")

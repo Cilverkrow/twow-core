@@ -447,6 +447,8 @@ AiPlayerbot.QuestFirstProgression.MaxAboveLevelDelta = 1
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
+# Emit one QuestFirst route decision when a quest-travel request is materialized.
+AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes
