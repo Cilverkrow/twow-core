@@ -7,6 +7,7 @@
 #include "Maps/PathFinder.h"
 #include "TravelNode.h"
 #include "PlayerbotAI.h"
+#include "RandomPlayerbotMgr.h"
 #include "BotTests.h"
 #include "ObjectAccessor.h"
 
@@ -877,6 +878,7 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
 
     wPosition = wPosition1;
     tDestination = tDestination1;
+    turnInRecovery.ResetProgress();
 
     SetStatus(TravelStatus::TRAVEL_STATUS_TRAVEL);
 }
@@ -903,7 +905,9 @@ void TravelTarget::SetStatus(TravelStatus status) {
         statusTime = HOUR *  1000;
         break;
     case TravelStatus::TRAVEL_STATUS_TRAVEL:
-        statusTime = GetMaxTravelTime() * 2 + sPlayerbotAIConfig.maxWaitForMove;
+        // Cross-map/transport turn-ins are governed by observed progress,
+        // never by a generic distance-derived overall wall clock.
+        statusTime = IsProgressAwareTurnIn() ? 0 : GetMaxTravelTime() * 2 + sPlayerbotAIConfig.maxWaitForMove;
         break;
     case TravelStatus::TRAVEL_STATUS_WORK:
         statusTime = tDestination->GetExpireDelay();
@@ -912,6 +916,47 @@ void TravelTarget::SetStatus(TravelStatus status) {
         statusTime = tDestination->GetCooldownDelay();
     default: break;
     }
+}
+
+bool TravelTarget::IsProgressAwareTurnIn() const
+{
+    QuestRelationTravelDestination const* destination = dynamic_cast<QuestRelationTravelDestination const*>(tDestination);
+    return destination && destination->GetRelation() &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+        bot->GetQuestStatus(destination->GetQuestId()) == QUEST_STATUS_COMPLETE;
+}
+
+bool TravelTarget::IsTurnInRouteSuppressed(TravelDestination const* destination, WorldPosition const* position) const
+{
+    QuestRelationTravelDestination const* questDestination = dynamic_cast<QuestRelationTravelDestination const*>(destination);
+    return questDestination && questDestination->GetRelation() && position &&
+        turnin_recovery::IsSuppressed(turnInRecovery, WorldTimer::getMSTime(),
+            uint32(questDestination->GetEntry()), position->getMapId());
+}
+
+turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
+{
+    QuestRelationTravelDestination const* destination = dynamic_cast<QuestRelationTravelDestination const*>(tDestination);
+    if (!destination || !wPosition)
+        return turnin_recovery::RecoveryAction::None;
+
+    // These states are legitimate travel interruptions. They consume neither
+    // a recovery stage nor a fixed overall duration.
+    bool const paused = bot->IsInCombat() || !bot->IsAlive() || bot->IsTaxiFlying() ||
+        bot->GetTransport() || ai->HasRealPlayerMaster();
+    turnin_recovery::Observation observation;
+    observation.now = WorldTimer::getMSTime();
+    observation.targetEntry = uint32(destination->GetEntry());
+    observation.questId = destination->GetQuestId();
+    observation.mapId = bot->GetMapId();
+    observation.zoneId = bot->GetZoneId();
+    observation.x = bot->GetPositionX();
+    observation.y = bot->GetPositionY();
+    observation.distance = Distance(bot);
+    observation.paused = paused;
+    return turnin_recovery::Observe(turnInRecovery, observation,
+        sPlayerbotAIConfig.questFirstProgressionTurnInStallSeconds * IN_MILLISECONDS,
+        sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
 }
 
 bool TravelTarget::IsDestinationActive()
@@ -1016,6 +1061,29 @@ void TravelTarget::CheckStatus()
             return;
         }
         else if(IsForced()) return; //While traveling do not go into cooldown
+
+        if (IsProgressAwareTurnIn())
+        {
+            switch (ObserveTurnInProgress())
+            {
+            case turnin_recovery::RecoveryAction::RecomputeRoute:
+                if (sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
+                    sLog.outBasic("[QuestFirstRoute] state=recovery_stage1 bot=%u quest=%u target_entry=%d action=recompute_route",
+                        bot->GetGUIDLow(), static_cast<QuestRelationTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry());
+                SetStatus(TravelStatus::TRAVEL_STATUS_READY);
+                return;
+            case turnin_recovery::RecoveryAction::SuppressRouteAndCooldown:
+                if (sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
+                    sLog.outBasic("[QuestFirstRoute] state=recovery_stage2 bot=%u quest=%u target_entry=%d action=suppress_route_cooldown cooldown_seconds=%u",
+                        bot->GetGUIDLow(), static_cast<QuestRelationTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry(),
+                        sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds);
+                SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+                SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
+                return;
+            case turnin_recovery::RecoveryAction::None:
+                break;
+            }
+        }
     }
 
     if (GetStatus() != TravelStatus::TRAVEL_STATUS_COOLDOWN)

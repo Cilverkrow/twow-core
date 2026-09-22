@@ -420,6 +420,10 @@ public:
     // Low-volume route-decision diagnostics for persistent quest-first bots.
     // Disabled by default and emitted only by the quest travel request path.
     bool questFirstProgressionTraceTravelDecisions = false;
+    // A completed persistent-roster turn-in is progress-observed rather than
+    // bounded by the generic distance-derived travel wall clock.
+    uint32 questFirstProgressionTurnInStallSeconds = 300;
+    uint32 questFirstProgressionTurnInRouteCooldownSeconds = 120;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;

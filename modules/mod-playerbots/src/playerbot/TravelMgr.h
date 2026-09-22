@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ProgressAwareTurnInRecoveryPolicy.h"
+
 #include "strategy/AiObject.h"
 #include <boost/functional/hash.hpp>
 #include "GuidPosition.h"
@@ -391,6 +393,9 @@ namespace ai
 		void DecRetry(bool isMove) { if (isMove && moveRetryCount > 0) moveRetryCount--; else if (extendRetryCount > 0) extendRetryCount--; }
 
 		void CopyTarget(TravelTarget* const target);
+        bool IsProgressAwareTurnIn() const;
+        bool IsTurnInRouteSuppressed(TravelDestination const* destination, WorldPosition const* position) const;
+        turnin_recovery::RecoveryAction ObserveTurnInProgress();
 	private:
 		uint32 GetMaxTravelTime() const { return (1000.0 * Distance(bot)) / bot->GetSpeed(MOVE_RUN); }
 
@@ -410,6 +415,7 @@ namespace ai
 		WorldPosition* wPosition = nullptr;
 		GuidPosition groupMember;
 		uint32 relevance = 0;
+        turnin_recovery::State turnInRecovery;
 	};
 
 	//General container for all travel destinations.
