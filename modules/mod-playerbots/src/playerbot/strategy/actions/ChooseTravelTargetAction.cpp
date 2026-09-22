@@ -235,7 +235,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         newTarget.SetRelevance(targetRelevance);
     }
 
-    if (!SetBestTarget(requester, &newTarget, destinationList))
+    if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))
     {
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
@@ -494,7 +494,8 @@ inline std::string PrintPartion(uint32 sqPartition)
 }
 
 //Sets the target to the best destination.
-bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* target, PartitionedTravelList& partitionedList, bool onlyActive)
+bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* target, PartitionedTravelList& partitionedList, bool onlyActive,
+    TravelTarget const* excludedTurnInTarget)
 {
     bool distanceCheck = true;
     std::unordered_map<TravelDestination*, bool> isActive;
@@ -526,6 +527,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
         for (auto& [destination, position, distance] : travelPointList)
         {
+            if (excludedTurnInTarget && excludedTurnInTarget->IsTurnInRouteSuppressed(destination, position))
+            {
+                ai->TellDebug(requester, "Skipping temporarily suppressed completed-quest turn-in route.", "debug travel");
+                continue;
+            }
+
             if (!target->IsForced() && isActive.find(destination) != isActive.end() && !isActive[destination])
                 continue;
 

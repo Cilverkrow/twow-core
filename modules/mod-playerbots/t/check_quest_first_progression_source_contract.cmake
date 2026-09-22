@@ -22,6 +22,7 @@ file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/values/QuestValues.cpp" quest
 file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/actions/ChooseTravelTargetAction.cpp" quest_travel)
 file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/actions/FollowActions.cpp" follow_actions)
 file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/actions/SetHomeAction.cpp" set_home_action)
+file(READ "${PB_MODULE_DIR}/src/playerbot/TravelMgr.cpp" travel_mgr)
 
 foreach(required
   "AiPlayerbot.QuestFirstProgression.Enabled"
@@ -30,7 +31,9 @@ foreach(required
   "AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta"
   "AiPlayerbot.QuestFirstProgression.MaxAboveLevelDelta"
   "AiPlayerbot.QuestFirstProgression.LocalHubRadius"
-  "AiPlayerbot.QuestFirstProgression.TraceTravelDecisions")
+  "AiPlayerbot.QuestFirstProgression.TraceTravelDecisions"
+  "AiPlayerbot.QuestFirstProgression.TurnInStallSeconds"
+  "AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds")
   require_text("${config}" "${required}" "configuration key")
 endforeach()
 
@@ -50,6 +53,13 @@ require_text("${quest_travel}" "state=rejected" "rejected-route provenance")
 require_text("${quest_travel}" "cross_map_travelmgr" "transport provenance without a parallel navigator")
 require_text("${quest_travel}" "travelmgr_route_validated" "route-validation provenance")
 require_text("${quest_travel}" "no_active_route_candidate" "fail-closed route rejection")
+require_text("${travel_mgr}" "IsProgressAwareTurnIn" "completed roster turn-in scope")
+require_text("${travel_mgr}" "statusTime = IsProgressAwareTurnIn() ? 0" "no generic wall-clock expiry")
+require_text("${travel_mgr}" "ObserveTurnInProgress" "progress-aware turn-in monitoring")
+require_text("${travel_mgr}" "SuppressRouteAndCooldown" "bounded stale-route recovery")
+require_text("${quest_travel}" "IsTurnInRouteSuppressed" "same-route temporary suppression")
+require_text("${travel_mgr}" "bot->IsTaxiFlying()" "transport pause")
+require_absent("${travel_mgr}" "TeleportTo(" "turn-in recovery teleport")
 require_text("${set_home_action}" "state=homebind" "homebind transition provenance")
 require_text("${set_home_action}" "old_map=%u old_zone=%u new_map=%u new_zone=%u" "homebind before-after location")
 require_text("${quest_travel}" "preferLocalQuest" "local quest stickiness")
