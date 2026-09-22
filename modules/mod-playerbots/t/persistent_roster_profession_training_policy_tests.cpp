@@ -21,10 +21,10 @@ int main()
     using namespace ai::profession;
     using namespace ai::profession_training;
 
-    Require(!IsEligible(true, 2, 3, HerbalismAlchemy), "level two is blocked");
-    Require(IsEligible(true, 3, 3, HerbalismAlchemy), "level three is eligible");
-    Require(!IsEligible(false, 60, 3, HerbalismAlchemy), "non-roster bot is blocked");
-    Require(!IsEligible(true, 60, 3, None), "invalid pair fails closed");
+    Require(!IsEligible(true, 0, 1, HerbalismAlchemy), "level zero is blocked");
+    Require(IsEligible(true, 1, 1, HerbalismAlchemy), "level one is eligible when the core trainer permits it");
+    Require(!IsEligible(false, 60, 1, HerbalismAlchemy), "non-roster bot is blocked");
+    Require(!IsEligible(true, 60, 1, None), "invalid pair fails closed");
 
     Require(IsAllowedSkill(HerbalismAlchemy, kHerbalism), "planned first primary accepted");
     Require(IsAllowedSkill(HerbalismAlchemy, kAlchemy), "planned second primary accepted");
@@ -38,20 +38,26 @@ int main()
     Require(kSurvival == 142, "survival keeps the Turtle skill identifier");
     Require(!IsAllowedSkill(MiningEngineering, 0), "unknown skill is rejected");
 
-    Require(IsEligibleProfessionTraining(true, 3, 3, HerbalismAlchemy, kHerbalism),
+    Require(IsEligibleProfessionTraining(true, 1, 1, HerbalismAlchemy, kHerbalism),
         "planned initial profession is allowed from the configured start level");
-    Require(IsEligibleProfessionTraining(true, 3, 3, HerbalismAlchemy, kCooking),
+    Require(IsEligibleProfessionTraining(true, 1, 1, HerbalismAlchemy, kCooking),
         "allowed secondary initial profession is accepted");
-    Require(!IsEligibleProfessionTraining(true, 3, 3, HerbalismAlchemy, kMining),
+    Require(!IsEligibleProfessionTraining(true, 1, 1, HerbalismAlchemy, kMining),
         "unplanned initial primary profession fails closed");
-    Require(!IsEligibleProfessionTraining(false, 60, 3, HerbalismAlchemy, kHerbalism),
+    Require(!IsEligibleProfessionTraining(false, 60, 1, HerbalismAlchemy, kHerbalism),
         "non-roster initial profession remains blocked");
-    Require(!IsEligibleProfessionTraining(true, 10, 3, HerbalismAlchemy, kMining),
+    Require(!IsEligibleProfessionTraining(true, 10, 1, HerbalismAlchemy, kMining),
         "unplanned primary remains blocked at level ten and above");
-    Require(IsEligibleProfessionTraining(true, 10, 3, HerbalismAlchemy, kHerbalism),
+    Require(IsEligibleProfessionTraining(true, 10, 1, HerbalismAlchemy, kHerbalism),
         "planned primary rank remains allowed at level ten and above");
 
-    Require(MayStartAutonomousTravel(false), "unled roster bot may travel");
-    Require(!MayStartAutonomousTravel(true), "real master blocks autonomous trainer travel");
+    Require(!MayRequestRemoteTrainerTravel(true, true), "roster profession plan never starts remote trainer travel");
+    Require(MayRequestRemoteTrainerTravel(false, true), "generic bot trainer travel is unchanged");
+    Require(MayRequestRemoteTrainerTravel(true, false), "non-tradeskill trainer travel is unchanged");
+    Require(IsWithinLocalTrainerRadius(0.0f, 30.0f), "co-located trainer is local");
+    Require(IsWithinLocalTrainerRadius(30.0f, 30.0f), "local-radius boundary is accepted");
+    Require(!IsWithinLocalTrainerRadius(30.1f, 30.0f), "distant city trainer is rejected");
+    Require(!IsWithinLocalTrainerRadius(-1.0f, 30.0f), "unknown trainer distance is rejected");
+    Require(!IsWithinLocalTrainerRadius(10.0f, -1.0f), "invalid configured radius is rejected");
     return 0;
 }

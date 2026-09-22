@@ -2,6 +2,9 @@
 
 #include "TrainerAction.h"
 
+#include <ctime>
+#include <string>
+
 namespace ai
 {
 class RosterProfessionTrainerAction : public TrainerAction
@@ -18,5 +21,9 @@ protected:
 private:
     uint32 GetPlannedPair() const;
     uint32 GetTrainerSpellSkill(TrainerSpell const* spell) const;
+    void TraceDecision(char const* state, char const* reason, Creature const* trainer) const;
+
+    mutable std::string lastTraceState;
+    mutable std::time_t nextTraceAt = 0;
 };
 }

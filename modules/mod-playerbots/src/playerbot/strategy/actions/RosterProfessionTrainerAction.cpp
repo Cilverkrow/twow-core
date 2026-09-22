@@ -5,17 +5,24 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
 
+#include <ctime>
+#include <sstream>
+
 using namespace ai;
 
 bool RosterProfessionTrainerAction::Execute(Event& event)
 {
     uint32 const pair = GetPlannedPair();
-    if (sPlayerbotAIConfig.professionTrainingTrace && pair)
-        sLog.outDebug("[PersistentRosterProfessionTraining] trainer-attempt bot=%u level=%u pair=%u free=%u",
-            bot->GetGUIDLow(), bot->GetLevel(), pair,
-            sPlayerbotAIConfig.professionTrainingFreeForPersistentRoster ? 1u : 0u);
+    if (!pair)
+    {
+        TraceDecision("rejected", "missing_or_invalid_plan", nullptr);
+        return false;
+    }
 
-    return TrainerAction::Execute(event);
+    bool const completed = TrainerAction::Execute(event);
+    TraceDecision(completed ? "accepted" : "rejected",
+        completed ? "local_trainer_completed" : "no_eligible_local_trainer", nullptr);
+    return completed;
 }
 
 uint32 RosterProfessionTrainerAction::GetPlannedPair() const
@@ -56,9 +63,22 @@ bool RosterProfessionTrainerAction::AllowsTradeSkillTrainer(Creature const* crea
         return false;
 
     uint32 const pair = GetPlannedPair();
-    return ai::profession_training::IsEligible(true, bot->GetLevel(),
+    if (!ai::profession_training::IsEligible(true, bot->GetLevel(),
         sPlayerbotAIConfig.professionTrainingStartLevel,
-        static_cast<ai::profession::Pair>(pair));
+        static_cast<ai::profession::Pair>(pair)))
+    {
+        TraceDecision("rejected", "plan_or_level_not_eligible", creature);
+        return false;
+    }
+
+    if (!ai::profession_training::IsWithinLocalTrainerRadius(
+            bot->GetDistance(creature), sPlayerbotAIConfig.professionTrainingLocalTrainerRadius))
+    {
+        TraceDecision("rejected", "trainer_outside_local_radius", creature);
+        return false;
+    }
+
+    return true;
 }
 
 bool RosterProfessionTrainerAction::AllowsTrainerSpell(Creature const* creature, TrainerSpell const* spell) const
@@ -84,4 +104,26 @@ bool RosterProfessionTrainerAction::UsesFreeTraining() const
 {
     return sPlayerbotAIConfig.professionTrainingFreeForPersistentRoster &&
         GetPlannedPair() != 0;
+}
+
+void RosterProfessionTrainerAction::TraceDecision(char const* state, char const* reason, Creature const* trainer) const
+{
+    if (!sPlayerbotAIConfig.professionTrainingTrace)
+        return;
+
+    uint32 const trainerEntry = trainer ? trainer->GetEntry() : 0;
+    float const distance = trainer ? bot->GetDistance(trainer) : -1.0f;
+    std::ostringstream key;
+    key << state << ':' << reason << ':' << GetPlannedPair() << ':' << trainerEntry;
+
+    std::time_t const now = std::time(nullptr);
+    if (key.str() == lastTraceState && now < nextTraceAt)
+        return;
+
+    lastTraceState = key.str();
+    nextTraceAt = now + sPlayerbotAIConfig.professionTrainingTraceCooldownSeconds;
+    sLog.outDebug("[PersistentRosterProfessionTraining] state=%s reason=%s guid=%u level=%u pair=%u trainer=%u map=%u zone=%u distance=%.1f retry_seconds=%u",
+        state, reason, bot->GetGUIDLow(), bot->GetLevel(), GetPlannedPair(), trainerEntry,
+        bot->GetMapId(), bot->GetZoneId(), distance,
+        sPlayerbotAIConfig.professionTrainingTraceCooldownSeconds);
 }

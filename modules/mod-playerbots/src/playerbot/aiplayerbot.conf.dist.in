@@ -462,9 +462,15 @@ AiPlayerbot.AutoTrainSpells = yes
 # action. This optional funserver switch waives the normal trainer cost for
 # that action alone; it does not grant or refund money.
 AiPlayerbot.ProfessionTraining.FreeForPersistentRoster = 0
-AiPlayerbot.ProfessionTraining.StartLevel = 3
-# Log only profession-training action state changes. Never enable per-tick logging.
+# The core/trainer remains authoritative for level and rank requirements. This
+# gate merely allows a roster bot to use a valid local profession trainer at L1.
+AiPlayerbot.ProfessionTraining.StartLevel = 1
+# A planned profession never creates autonomous travel. This is only the
+# maximum local distance for an already-selected normal RPG trainer.
+AiPlayerbot.ProfessionTraining.LocalTrainerRadius = 30
+# Log only throttled profession-training decision state changes. Never enable per-tick logging.
 AiPlayerbot.ProfessionTraining.Trace = 0
+AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full

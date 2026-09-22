@@ -232,10 +232,10 @@ namespace ai
 
             CreatureInfo const* info = rpg->guidP().GetCreatureTemplate();
             if (info && info->TrainerType == TRAINER_TYPE_TRADESKILLS)
-                // NeedTravelPurposeValue prevents a bot with a real player
-                // master from starting an autonomous trainer trip. Once the
-                // group is already at this RPG target, the local dedicated
-                // action may still perform its plan-restricted training.
+                // NeedTravelPurposeValue never creates a remote tradeskill
+                // trip for a persistent roster bot. Once ordinary gameplay
+                // has already selected this local RPG target, the dedicated
+                // action may perform plan-restricted training.
                 return "roster profession trainer";
 
             return "trainer";

@@ -471,6 +471,16 @@ bool ShouldTravelNamedValue::Calculate()
         if (ai->HasRealPlayerMaster())
             return false;
 
+        // A persistent roster profession pair authorizes only local,
+        // opportunistic training. Do not turn a missing planned profession
+        // into a city, map, transport, hearth, or teleport trip. The normal
+        // RPG trainer action remains available after ordinary gameplay has
+        // brought the bot into local interaction range.
+        if (name == "trainer trade" &&
+            !profession_training::MayRequestRemoteTrainerTravel(
+                sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), true))
+            return false;
+
         TrainerType trainerType = TRAINER_TYPE_CLASS;
         NeedMoneyFor budgetType = NeedMoneyFor::spells;
 
