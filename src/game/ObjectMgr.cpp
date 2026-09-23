@@ -421,6 +421,53 @@ BonusLootBossRegistryEntry ObjectMgr::GetBonusLootBossRegistryEntry(uint32 creat
     return itr == m_BonusLootBossRegistry.end() ? BonusLootBossRegistryEntry{} : itr->second;
 }
 
+void ObjectMgr::LoadRareRespawnRegistry()
+{
+    m_RareRespawnRegistry.clear();
+
+    if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RARE_RESPAWN_ENABLED) &&
+        !sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED))
+        return;
+
+    std::unique_ptr<QueryResult> result(WorldDatabase.Query(
+        "SELECT `guid`, `creature_entry`, `map_id` FROM `creature_rare_respawn_registry`"));
+
+    if (!result)
+        return; // Empty or missing data fails closed; the feature is opt-in.
+
+    do
+    {
+        Field* fields = result->Fetch();
+        uint32 guid = fields[0].GetUInt32();
+        uint32 entry = fields[1].GetUInt32();
+        uint32 mapId = fields[2].GetUInt32();
+        CreatureInfo const* cInfo = GetCreatureTemplate(entry);
+        MapEntry const* map = sMapStorage.LookupEntry<MapEntry>(mapId);
+
+        if (!cInfo || !map || !map->IsContinent() ||
+            (cInfo->rank != CREATURE_ELITE_RARE && cInfo->rank != CREATURE_ELITE_RAREELITE))
+        {
+            sLog.outErrorDb("creature_rare_respawn_registry has invalid row for guid %u (entry %u, map %u); ignored", guid, entry, mapId);
+            continue;
+        }
+
+        m_RareRespawnRegistry.emplace(guid, RareRespawnRegistryEntry{ entry, mapId });
+    }
+    while (result->NextRow());
+
+    // LoadCreatures() re-checks every guid against its spawn row and drops mismatches.
+}
+
+bool ObjectMgr::HasAcceleratedRareRespawn(uint32 guid) const
+{
+    return sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RARE_RESPAWN_ENABLED) && IsRareRespawnRegistered(guid);
+}
+
+bool ObjectMgr::IsRareRespawnPoolBypass(uint32 guid) const
+{
+    return sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED) && IsRareRespawnRegistered(guid);
+}
+
 void ObjectMgr::LoadCinematicsWaypoints()
 {
     m_CinematicWaypoints.clear();
@@ -2042,6 +2089,18 @@ void ObjectMgr::LoadCreatures(bool reload)
         int16 GuidPoolId        = fields[17].GetInt16();
         int16 EntryPoolId       = fields[18].GetInt16();
 
+        // twow-repo#298: a registered rare must still be exactly the audited
+        // single-entry, non-event, guid-pooled-or-static continent spawn.
+        auto rareItr = m_RareRespawnRegistry.find(guid);
+        if (rareItr != m_RareRespawnRegistry.end() &&
+            (rareItr->second.creatureEntry != data.creature_id[0] || rareItr->second.mapId != data.position.mapId ||
+             data.creature_id[1] || data.creature_id[2] || data.creature_id[3] || gameEvent != 0 || EntryPoolId != 0))
+        {
+            sLog.outErrorDb("creature_rare_respawn_registry guid %u no longer matches its audited spawn; ignored", guid);
+            m_RareRespawnRegistry.erase(rareItr);
+        }
+        bool const rarePoolBypass = GuidPoolId != 0 && IsRareRespawnPoolBypass(guid);
+
         MapEntry const* mapEntry = sMapStorage.LookupEntry<MapEntry>(data.position.mapId);
         if (!mapEntry)
         {
@@ -2082,11 +2141,25 @@ void ObjectMgr::LoadCreatures(bool reload)
             }
         }
 
-        if (!alreadyPresent && gameEvent == 0 && GuidPoolId == 0 && EntryPoolId == 0) // if not this is to be managed by GameEvent System or Pool system
+        if (!alreadyPresent && gameEvent == 0 && (GuidPoolId == 0 || rarePoolBypass) && EntryPoolId == 0) // if not this is to be managed by GameEvent System or Pool system
             AddCreatureToGrid(guid, &data);
 
     }
     while (result->NextRow());
+
+    for (auto itr = m_RareRespawnRegistry.begin(); itr != m_RareRespawnRegistry.end();)
+    {
+        if (m_CreatureDataMap.find(itr->first) == m_CreatureDataMap.end())
+        {
+            sLog.outErrorDb("creature_rare_respawn_registry guid %u has no creature spawn; ignored", itr->first);
+            itr = m_RareRespawnRegistry.erase(itr);
+        }
+        else
+            ++itr;
+    }
+
+    if (!m_RareRespawnRegistry.empty())
+        sLog.outString("Loaded %u reviewed funserver rare-respawn spawns", uint32(m_RareRespawnRegistry.size()));
 }
 
 void ObjectMgr::AddCreatureToGrid(uint32 guid, CreatureData const* data)

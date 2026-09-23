@@ -65,6 +65,15 @@ struct BonusLootBossRegistryEntry
     BonusLootBossCategory category = BONUS_LOOT_BOSS_NONE;
 };
 
+// Database-owned allowlist of audited open-world rare spawns (twow-repo#298),
+// keyed by spawn guid. Rank and map are checked on load and the guid is
+// re-checked against its `creature` row; any mismatch drops the row.
+struct RareRespawnRegistryEntry
+{
+    uint32 creatureEntry = 0;
+    uint32 mapId = 0;
+};
+
 struct GameTele
 {
     // bot uses position_x/y/z naming via anon unions.
@@ -1521,6 +1530,12 @@ class ObjectMgr
         void LoadBonusLootBossRegistry();
         BonusLootBossRegistryEntry GetBonusLootBossRegistryEntry(uint32 creatureEntry, uint32 mapId) const;
         robin_hood::unordered_map<uint64, BonusLootBossRegistryEntry> m_BonusLootBossRegistry;
+        // Loaded before LoadCreatures() and only when a Funserver.Rare.* switch is on.
+        void LoadRareRespawnRegistry();
+        bool IsRareRespawnRegistered(uint32 guid) const { return m_RareRespawnRegistry.find(guid) != m_RareRespawnRegistry.end(); }
+        bool HasAcceleratedRareRespawn(uint32 guid) const;
+        bool IsRareRespawnPoolBypass(uint32 guid) const;
+        robin_hood::unordered_map<uint32, RareRespawnRegistryEntry> m_RareRespawnRegistry;
         // Cinematics
         void LoadCinematicsWaypoints();
         Position const* GetCinematicPosition(uint32 cinematicId, uint32 elapsed_time);

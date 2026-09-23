@@ -736,6 +736,10 @@ void PoolManager::LoadFromDB()
                 sLog.outErrorDb("`%s` has a non existing creature spawn (GUID: %u) defined for pool id (%u), skipped.", table, guid, pool_id);
                 continue;
             }
+            // twow-repo#298: an audited rare leaves its pool and spawns independently
+            // (ObjectMgr::LoadCreatures put it on the grid); other members keep the pool's limit.
+            if (!entry_id && sObjectMgr.IsRareRespawnPoolBypass(guid))
+                continue;
             // `pool_creature` and `pool_creature_template` can't have guids duplicates (in second case because entries also unique)
             // So if guid already listed in pools then this duplicate from alt.table
             // Also note: for added guid not important what case we skip from 2 tables
