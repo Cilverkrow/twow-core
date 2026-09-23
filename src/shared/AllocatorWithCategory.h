@@ -76,13 +76,24 @@ void* InternalAllocateMemory(size_t Count)
 template<size_t alignment, std::enable_if_t<(alignment > __STDCPP_DEFAULT_NEW_ALIGNMENT__), int> = 0>
 void InternalDeallocateMemory(void* Ptr, size_t Bytes)
 {
+#if defined(__cpp_sized_deallocation)
 	::operator delete(Ptr, Bytes, std::align_val_t{ alignment });
+#else
+	// clang < 19 leaves sized deallocation off unless -fsized-deallocation is given.
+	(void)Bytes;
+	::operator delete(Ptr, std::align_val_t{ alignment });
+#endif
 }
 
 template<size_t alignment, std::enable_if_t<(alignment <= __STDCPP_DEFAULT_NEW_ALIGNMENT__), int> = 0>
 void InternalDeallocateMemory(void* Ptr, size_t Bytes)
 {
+#if defined(__cpp_sized_deallocation)
 	::operator delete(Ptr, Bytes);
+#else
+	(void)Bytes;
+	::operator delete(Ptr);
+#endif
 }
 
 template <class TargetType, const char* CategoryName>
