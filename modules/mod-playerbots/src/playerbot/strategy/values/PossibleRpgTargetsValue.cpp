@@ -78,3 +78,25 @@ bool PossibleRpgTargetsValue::AcceptUnit(Unit* unit)
 
     return false;
 }
+
+void RosterProfessionTrainersValue::FindUnits(std::list<Unit*> &targets)
+{
+    if (range <= 0.0f)
+        return;
+
+    AnyUnitInObjectRangeCheck u_check(bot, range);
+    UnitListSearcher<AnyUnitInObjectRangeCheck> searcher(targets, u_check);
+    Cell::VisitAllObjects(bot, searcher, range);
+}
+
+bool RosterProfessionTrainersValue::AcceptUnit(Unit* unit)
+{
+    if (unit->GetTypeId() != TYPEID_UNIT || sServerFacade.IsHostileTo(unit, bot))
+        return false;
+
+    if (!unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_TRAINER))
+        return false;
+
+    CreatureInfo const* info = static_cast<Creature*>(unit)->GetCreatureInfo();
+    return info && info->TrainerType == TRAINER_TYPE_TRADESKILLS;
+}

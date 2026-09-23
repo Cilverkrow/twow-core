@@ -460,15 +460,20 @@ AiPlayerbot.AutoTrainSpells = yes
 
 # Persistent roster professions use only the dedicated plan-aware trainer
 # action. This optional funserver switch waives the normal trainer cost for
-# that action alone; it does not grant or refund money.
+# that action alone (and the RPG trigger does not reject on that cost); it does
+# not grant or refund money.
 AiPlayerbot.ProfessionTraining.FreeForPersistentRoster = 0
 # The core/trainer remains authoritative for level and rank requirements. This
 # gate merely allows a roster bot to use a valid local profession trainer at L1.
 AiPlayerbot.ProfessionTraining.StartLevel = 1
-# A planned profession never creates autonomous travel. This is only the
-# maximum local distance for an already-selected normal RPG trainer.
-AiPlayerbot.ProfessionTraining.LocalTrainerRadius = 30
-# Log only throttled profession-training decision state changes. Never enable per-tick logging.
+# A planned profession never creates autonomous travel. Persistent roster bots
+# add tradeskill trainers within LocalTrainerRadius (yards) to their ordinary
+# RPG candidates, beyond the generic AiPlayerbot.RpgDistance reach, so a bot
+# that is in town anyway (e.g. Stormwind) picks up its planned profession on
+# the way. Movement-strategy limits still apply; 0 disables the wider reach.
+AiPlayerbot.ProfessionTraining.LocalTrainerRadius = 120
+# Log throttled profession-training decisions (RPG trigger and trainer action)
+# at BASIC level, visible with LogLevel 1. Never enable per-tick logging.
 AiPlayerbot.ProfessionTraining.Trace = 0
 AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 

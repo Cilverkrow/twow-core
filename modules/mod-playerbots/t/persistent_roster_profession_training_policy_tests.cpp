@@ -59,5 +59,9 @@ int main()
     Require(!IsWithinLocalTrainerRadius(30.1f, 30.0f), "distant city trainer is rejected");
     Require(!IsWithinLocalTrainerRadius(-1.0f, 30.0f), "unknown trainer distance is rejected");
     Require(!IsWithinLocalTrainerRadius(10.0f, -1.0f), "invalid configured radius is rejected");
+
+    Require(ShouldEmitTrace(false, 1000, 0), "first decision is always traced");
+    Require(!ShouldEmitTrace(true, 1000, 1300), "repeated decision inside cooldown is suppressed");
+    Require(ShouldEmitTrace(true, 1300, 1300), "repeated decision after cooldown is traced again");
     return 0;
 }

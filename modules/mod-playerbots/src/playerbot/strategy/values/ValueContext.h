@@ -132,6 +132,7 @@ namespace ai
             creators["possible adds"] = [](PlayerbotAI* ai) { return new PossibleAddsValue(ai); };
             creators["all targets"] = [](PlayerbotAI* ai) { return new AllTargetsValue(ai); };
             creators["possible rpg targets"] = [](PlayerbotAI* ai) { return new PossibleRpgTargetsValue(ai); };
+            creators["roster profession trainers"] = [](PlayerbotAI* ai) { return new RosterProfessionTrainersValue(ai); };
             creators["nearest adds"] = [](PlayerbotAI* ai) { return new NearestAddsValue(ai); };
             creators["nearest corpses"] = [](PlayerbotAI* ai) { return new NearestCorpsesValue(ai); };
             creators["nearest stealthed units"] = [](PlayerbotAI* ai) { return new NearestStealthedUnitsValue(ai); };

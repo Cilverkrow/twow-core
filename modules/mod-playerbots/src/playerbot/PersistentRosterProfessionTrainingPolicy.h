@@ -48,8 +48,17 @@ inline bool MayRequestRemoteTrainerTravel(bool persistentRosterMember, bool trad
     return !(persistentRosterMember && tradeTrainer);
 }
 
+// The local profession reach (AiPlayerbot.ProfessionTraining.LocalTrainerRadius,
+// default 120 yards) bounds which tradeskill trainers join a roster bot's RPG
+// candidates. The action re-checks it at execution as a plausibility bound.
 inline bool IsWithinLocalTrainerRadius(float distance, float radius)
 {
     return distance >= 0.0f && radius >= 0.0f && distance <= radius;
+}
+
+// Diagnostics are emitted once per decision key and cooldown, never per tick.
+inline bool ShouldEmitTrace(bool knownKey, std::int64_t now, std::int64_t nextAt)
+{
+    return !knownKey || now >= nextAt;
 }
 }

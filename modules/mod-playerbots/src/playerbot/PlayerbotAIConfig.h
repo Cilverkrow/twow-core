@@ -383,7 +383,7 @@ public:
     // action reads these values. Generic trainer behaviour is unchanged.
     bool professionTrainingFreeForPersistentRoster = false;
     uint32 professionTrainingStartLevel = 1;
-    float professionTrainingLocalTrainerRadius = 30.0f;
+    float professionTrainingLocalTrainerRadius = 120.0f;
     bool professionTrainingTrace = false;
     uint32 professionTrainingTraceCooldownSeconds = 300;
     std::string autoPickTalents;
