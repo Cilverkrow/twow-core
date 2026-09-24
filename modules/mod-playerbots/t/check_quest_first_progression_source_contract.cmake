@@ -33,7 +33,9 @@ foreach(required
   "AiPlayerbot.QuestFirstProgression.LocalHubRadius"
   "AiPlayerbot.QuestFirstProgression.TraceTravelDecisions"
   "AiPlayerbot.QuestFirstProgression.TurnInStallSeconds"
-  "AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds")
+  "AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds"
+  "AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute"
+  "AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds")
   require_text("${config}" "${required}" "configuration key")
 endforeach()
 
@@ -60,6 +62,9 @@ require_text("${travel_mgr}" "SuppressRouteAndCooldown" "bounded stale-route rec
 require_text("${quest_travel}" "IsTurnInRouteSuppressed" "same-route temporary suppression")
 require_text("${travel_mgr}" "bot->IsTaxiFlying()" "transport pause")
 require_absent("${travel_mgr}" "TeleportTo(" "turn-in recovery teleport")
+# #307: a death on the turn-in route is a failed attempt, not a pause.
+require_text("${travel_mgr}" "turnin_recovery::RecordDeathOnRoute(" "death counts against the turn-in route")
+require_text("${travel_mgr}" "state=death_suppressed" "visible death suppression record")
 require_text("${set_home_action}" "state=homebind" "homebind transition provenance")
 require_text("${set_home_action}" "old_map=%u old_zone=%u new_map=%u new_zone=%u" "homebind before-after location")
 require_text("${quest_travel}" "preferLocalQuest" "local quest stickiness")

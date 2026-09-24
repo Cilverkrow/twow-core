@@ -959,6 +959,32 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
 }
 
+void TravelTarget::OnDeathOnTurnInRoute()
+{
+    if (!IsProgressAwareTurnIn())
+        return;
+
+    QuestRelationTravelDestination const* destination = static_cast<QuestRelationTravelDestination const*>(tDestination);
+    uint32 const entry = uint32(destination->GetEntry());
+    uint32 const questId = destination->GetQuestId();
+    uint32 const mapId = wPosition ? wPosition->getMapId() : bot->GetMapId();
+
+    if (!turnin_recovery::RecordDeathOnRoute(turnInRecovery, entry, questId, mapId, WorldTimer::getMSTime(),
+            sPlayerbotAIConfig.questFirstProgressionTurnInMaxDeathsOnRoute,
+            sPlayerbotAIConfig.questFirstProgressionTurnInDeathRouteCooldownSeconds * IN_MILLISECONDS))
+        return;
+
+    // Always visible (BASIC): this is the acceptance signal for #307.
+    sLog.outBasic("[QuestFirstRoute] state=death_suppressed bot=%u level=%u quest=%u target_entry=%u map=%u deaths=%u action=suppress_route_cooldown cooldown_seconds=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), questId, entry, mapId,
+        sPlayerbotAIConfig.questFirstProgressionTurnInMaxDeathsOnRoute,
+        sPlayerbotAIConfig.questFirstProgressionTurnInDeathRouteCooldownSeconds);
+
+    // Drop the route now; target selection skips it until the cooldown ends,
+    // so the revived bot picks level-appropriate work instead.
+    SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+}
+
 bool TravelTarget::IsDestinationActive()
 {
     Player* player = bot;

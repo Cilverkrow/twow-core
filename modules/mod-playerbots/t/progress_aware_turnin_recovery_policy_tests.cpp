@@ -1,3 +1,6 @@
+// The CI gate builds Release (-DNDEBUG), which compiled every assert below out
+// and left this suite checking nothing. Keep assertions live in this test.
+#undef NDEBUG
 #include "playerbot/ProgressAwareTurnInRecoveryPolicy.h"
 
 #include <cassert>
@@ -58,6 +61,30 @@ int main()
     assert(ai::turnin_recovery::Observe(stalled, next, stall, cooldown) == RecoveryAction::None);
     assert(ai::turnin_recovery::Observe(stalled, At(1100, 30.0f, 0.0f), stall, cooldown) == RecoveryAction::None);
 
+    // #307: deaths on the same turn-in route are failed attempts. The graveyard
+    // teleport and target re-selection (ResetProgress) must not forget them.
+    State dying;
+    std::uint32_t const deathCooldown = 3600;
+    assert(!ai::turnin_recovery::RecordDeathOnRoute(dying, 61746, 40001, 0, 100, 2, deathCooldown));
+    dying.ResetProgress();
+    assert(!ai::turnin_recovery::IsSuppressed(dying, 101, 61746, 0));
+    assert(ai::turnin_recovery::RecordDeathOnRoute(dying, 61746, 40001, 0, 200, 2, deathCooldown));
+    assert(ai::turnin_recovery::IsSuppressed(dying, 201, 61746, 0));
+    assert(ai::turnin_recovery::IsSuppressed(dying, 3799, 61746, 0));
+    assert(!ai::turnin_recovery::IsSuppressed(dying, 3800, 61746, 0));
+    assert(!ai::turnin_recovery::IsSuppressed(dying, 201, 60517, 0));
+
+    // A death on a different turn-in starts a fresh count.
+    State switching;
+    assert(!ai::turnin_recovery::RecordDeathOnRoute(switching, 61746, 40001, 0, 100, 2, deathCooldown));
+    assert(!ai::turnin_recovery::RecordDeathOnRoute(switching, 60517, 40273, 0, 200, 2, deathCooldown));
+    assert(!ai::turnin_recovery::IsSuppressed(switching, 201, 60517, 0));
+
+    // 0 disables the death rule.
+    State disabled;
+    for (std::uint32_t i = 0; i < 10; ++i)
+        assert(!ai::turnin_recovery::RecordDeathOnRoute(disabled, 61746, 40001, 0, i, 0, deathCooldown));
+
     std::cout << "progress_aware_turnin_recovery=PASS hillsbrad=PASS transport_pause=PASS "
-        "stalled_route_recovery=PASS suppress_cooldown=PASS relog_state_reset=PASS\n";
+        "stalled_route_recovery=PASS suppress_cooldown=PASS relog_state_reset=PASS death_route_suppression=PASS\n";
 }
