@@ -1,5 +1,6 @@
 #pragma once
 #include "playerbot/strategy/Trigger.h"
+#include "playerbot/RosterProfessionTrace.h"
 
 namespace ai
 {
@@ -149,6 +150,9 @@ namespace ai
         static bool IsTrainerOf(CreatureInfo const* cInfo, Player* pPlayer);
 
         virtual bool IsActive() override;
+
+    private:
+        RosterProfessionTraceGate rosterTraceGate;
     };
 
     class RpgHealTrigger : public RpgTrigger

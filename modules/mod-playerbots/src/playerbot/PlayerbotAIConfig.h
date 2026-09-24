@@ -382,8 +382,10 @@ public:
     // Disabled by default: only the dedicated persistent-roster profession
     // action reads these values. Generic trainer behaviour is unchanged.
     bool professionTrainingFreeForPersistentRoster = false;
-    uint32 professionTrainingStartLevel = 3;
+    uint32 professionTrainingStartLevel = 1;
+    float professionTrainingLocalTrainerRadius = 120.0f;
     bool professionTrainingTrace = false;
+    uint32 professionTrainingTraceCooldownSeconds = 300;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;

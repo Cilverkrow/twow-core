@@ -7,6 +7,9 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/PersistentRosterProfessionTrainingPolicy.h"
+#include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/strategy/actions/RosterProfessionTrainerAction.h"
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 
 using namespace ai;
@@ -335,6 +338,22 @@ bool RpgTrainTrigger::IsActive()
         return false;
     }
 
+    // A persistent roster bot only counts spells of its persisted profession
+    // pair (plus secondaries), so an unplanned tradeskill trainer never becomes
+    // an RPG target. This is the local, opportunistic entry point of #306: the
+    // trainer is already within the local profession reach (LocalTrainerRadius).
+    bool const rosterTradeTrainer = cInfo->TrainerType == TRAINER_TYPE_TRADESKILLS &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+    uint32 const rosterPair = rosterTradeTrainer ? RosterProfessionTrainerAction::PlannedPairFor(bot) : 0;
+    float const rosterTrainerDistance = rosterTradeTrainer ? guidP.distance(bot) : -1.0f;
+    if (rosterTradeTrainer && !rosterPair)
+    {
+        rosterTraceGate.Emit(bot, 0, "trigger", "rejected", "missing_or_invalid_plan", guidP.GetEntry(), rosterTrainerDistance);
+        return false;
+    }
+    bool const rosterFreeTraining = rosterTradeTrainer && sPlayerbotAIConfig.professionTrainingFreeForPersistentRoster;
+    bool rosterBlockedByCost = false;
+
     FactionTemplateEntry const* factionTemplate = sFactionTemplateStore.LookupEntry(cInfo->Faction);
     float fDiscountMod = bot->GetReputationPriceDiscount(factionTemplate);
 
@@ -356,6 +375,10 @@ bool RpgTrainTrigger::IsActive()
         reqLevel = tSpell->isProvidedReqLevel ? tSpell->reqLevel : std::max(reqLevel, tSpell->reqLevel);
         TrainerSpellState state = bot->GetTrainerSpellState(tSpell, reqLevel);
         if (state != TRAINER_SPELL_GREEN)
+            continue;
+
+        if (rosterTradeTrainer && !profession_training::IsAllowedSkill(
+                static_cast<profession::Pair>(rosterPair), RosterProfessionTrainerAction::GetTrainerSpellSkill(tSpell)))
             continue;
 
         uint32 spellId = tSpell->spell;
@@ -448,12 +471,24 @@ bool RpgTrainTrigger::IsActive()
             break;
         }
 
+        // The roster free-training switch waives the cost in the dedicated
+        // action, so the trigger must not reject on that same cost.
         uint32 cost = uint32(floor(tSpell->spellCost * fDiscountMod));
-        if (cost > AI_VALUE2(uint32, "free money for", (uint32)budgetType))
+        if (!rosterFreeTraining && cost > AI_VALUE2(uint32, "free money for", (uint32)budgetType))
+        {
+            rosterBlockedByCost = rosterTradeTrainer;
             continue;
+        }
 
+        if (rosterTradeTrainer)
+            rosterTraceGate.Emit(bot, rosterPair, "trigger", "candidate", "planned_spell_available", guidP.GetEntry(), rosterTrainerDistance);
         return true;
     }
+
+    if (rosterTradeTrainer)
+        rosterTraceGate.Emit(bot, rosterPair, "trigger", "rejected",
+            rosterBlockedByCost ? "planned_spell_over_budget" : "no_planned_trainable_spell",
+            guidP.GetEntry(), rosterTrainerDistance);
     return false;
 }
 

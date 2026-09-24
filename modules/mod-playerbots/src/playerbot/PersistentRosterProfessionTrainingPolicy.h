@@ -39,8 +39,26 @@ inline bool IsEligibleProfessionTraining(bool persistentRosterMember,
         IsAllowedSkill(pair, skill);
 }
 
-inline bool MayStartAutonomousTravel(bool hasRealPlayerMaster)
+// A profession plan is admission data, not a travel order. A registered bot
+// may use a tradeskill trainer only when normal behaviour has already put it
+// in local interaction range; it must never create a remote travel purpose
+// merely because one of the two planned professions is missing.
+inline bool MayRequestRemoteTrainerTravel(bool persistentRosterMember, bool tradeTrainer)
 {
-    return !hasRealPlayerMaster;
+    return !(persistentRosterMember && tradeTrainer);
+}
+
+// The local profession reach (AiPlayerbot.ProfessionTraining.LocalTrainerRadius,
+// default 120 yards) bounds which tradeskill trainers join a roster bot's RPG
+// candidates. The action re-checks it at execution as a plausibility bound.
+inline bool IsWithinLocalTrainerRadius(float distance, float radius)
+{
+    return distance >= 0.0f && radius >= 0.0f && distance <= radius;
+}
+
+// Diagnostics are emitted once per decision key and cooldown, never per tick.
+inline bool ShouldEmitTrace(bool knownKey, std::int64_t now, std::int64_t nextAt)
+{
+    return !knownKey || now >= nextAt;
 }
 }

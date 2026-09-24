@@ -7,6 +7,7 @@
 #include "playerbot/strategy/values/BudgetValues.h"
 #include "GuildCreateActions.h"
 #include "RpgSubActions.h"
+#include "RosterProfessionTrainerAction.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/strategy/values/PositionValue.h"
 #include "playerbot/strategy/values/TravelValues.h"
@@ -74,11 +75,22 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
     std::list<ObjectGuid> possibleObjects = bot->GetMap()->IsDungeon() ? AI_VALUE(std::list<ObjectGuid>, "nearest game objects") : AI_VALUE(std::list<ObjectGuid>, "nearest game objects no los");
     std::list<ObjectGuid> possiblePlayers = AI_VALUE(std::list<ObjectGuid>, "nearest friendly players");
 
+    //Persistent roster bots also consider tradeskill trainers within the wider
+    //local profession reach (#306). The plan-aware rpg train trigger decides if
+    //one is worth a visit; nothing here creates a travel target.
+    std::set<ObjectGuid> rosterProfessionTrainers;
+    if (RosterProfessionTrainerAction::PlannedPairFor(bot))
+        for (auto const& trainer : AI_VALUE(std::list<ObjectGuid>, "roster profession trainers"))
+            rosterProfessionTrainers.insert(trainer);
+
     //List of targets that we rpg'ed with before and should be ignored.
     std::set<ObjectGuid>& ignoreList = AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target");
 
     //Add all targets with an initial priority of 0.
     for (auto target : possibleTargets)
+        targets[target] = -1.0f;
+
+    for (auto target : rosterProfessionTrainers)
         targets[target] = -1.0f;
 
     for (auto target : possibleObjects)
@@ -163,8 +175,9 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
         bool isTravelTarget = (travelTarget->GetEntry() != 0 &&
                                (uint32)std::abs(travelTarget->GetEntry()) == guidP.GetEntry());
 
-        //Stop to save peformance.
-        if (checked >= maxCheck && !isTravelTarget)
+        //Stop to save peformance. The few roster profession trainers are always
+        //checked, so a crowded town cannot shuffle them out of reach.
+        if (checked >= maxCheck && !isTravelTarget && !rosterProfessionTrainers.count(guid))
             continue;
 
         //Check if we are allowed to move to this position. This is based on movement strategies follow, free, guard, stay. Bots are limited to finding targets near the center of those movement strategies.
