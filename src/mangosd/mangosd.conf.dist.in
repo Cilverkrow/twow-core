@@ -1783,6 +1783,24 @@ Funserver.Loot.Bonus.SelectionMultiplier = 4
 
 Funserver.Loot.Bonus.DuplicateDecay = 0.25
 
+# Funserver.Rare.Respawn.Enabled
+#   Accelerated respawn for the audited open-world rare spawns listed in
+#   `creature_rare_respawn_registry` (twow-repo#298) only:
+#   new_seconds = max(60, min(floor(old_seconds / 60), 1440)), i.e. 14h -> 14m,
+#   7h30 -> 7m30, capped at 24m. Random/dynamic respawn modifiers are skipped for
+#   these spawns, and longer saved respawn timers are clamped on startup.
+#   Requires a restart. An empty or missing registry changes nothing.
+#   Default: 0 (off)
+#
+# Funserver.Rare.PoolBypass.Enabled
+#   Registered rare spawns leave their `pool_creature` pool and spawn
+#   independently; the remaining pool members keep the pool's limit.
+#   Requires a restart.
+#   Default: 0 (off)
+
+Funserver.Rare.Respawn.Enabled = 0
+Funserver.Rare.PoolBypass.Enabled = 0
+
 # Rate.XP. XP rates (player's favorite, haha)
 
 Rate.XP.Kill = 1

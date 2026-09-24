@@ -58,6 +58,7 @@
 #include "Anticheat/Anticheat.h"
 #include "Anticheat/Movement/Movement.hpp"
 #include "CreatureLinkingMgr.h"
+#include "FunserverRareRespawn.h"
 #include "TemporarySummon.h"
 #include "ScriptedEscortAI.h"
 #include "GuardMgr.h"
@@ -1778,6 +1779,8 @@ bool Creature::LoadFromDB(uint32 guidlow, Map *map, bool force)
     m_wanderDistance = data->wander_distance;
 
     m_respawnDelay = data->GetRandomRespawnTime();
+    if (sObjectMgr.HasAcceleratedRareRespawn(guidlow))
+        m_respawnDelay = ScaleFunserverRareRespawnDelay(m_respawnDelay);
     m_deathState = data->spawn_flags & SPAWN_FLAG_DEAD ? DEAD : ALIVE;
 
     if (data->spawn_flags & SPAWN_FLAG_ACTIVE)
@@ -1995,12 +1998,15 @@ void Creature::SetDeathState(DeathState s)
         auto data = sObjectMgr.GetCreatureData(GetGUIDLow());
 
         uint32 respawnDelay = m_respawnDelay;
-        ApplyDynamicRespawnDelay(respawnDelay, data);
+        // twow-repo#298: an accelerated rare keeps its already scaled delay exactly.
+        bool const acceleratedRare = data && sObjectMgr.HasAcceleratedRareRespawn(GetGUIDLow());
+        if (!acceleratedRare)
+            ApplyDynamicRespawnDelay(respawnDelay, data);
 
         // the max/default time for corpse decay (before creature is looted/AllLootRemovedFromCorpse() is called)
         m_corpseDecayTimer = HasExtraFlag(CREATURE_FLAG_EXTRA_DESPAWN_INSTANTLY) ? 1 : m_corpseDelay * IN_MILLISECONDS;
 
-        if (data)
+        if (data && !acceleratedRare)
         {
             if (data->spawn_flags & SPAWN_FLAG_RANDOM_RESPAWN_TIME)
                 respawnDelay *= float(urand(90, 110)) / 100.0f;

@@ -1072,6 +1072,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_WORLD_BOSS, "Funserver.Loot.Bonus.WorldBoss", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_DUNGEON_BOSS, "Funserver.Loot.Bonus.DungeonBoss", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RAID_BOSS, "Funserver.Loot.Bonus.RaidBoss", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_RARE_RESPAWN_ENABLED, "Funserver.Rare.Respawn.Enabled", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED, "Funserver.Rare.PoolBypass.Enabled", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
     setConfigMinMax(CONFIG_UINT32_MIN_LEVEL_STAT_SAVE, "PlayerSave.Stats.MinLevel", 0, 0, MAX_LEVEL);
     setConfig(CONFIG_BOOL_STATS_SAVE_ONLY_ON_LOGOUT, "PlayerSave.Stats.SaveOnlyOnLogout", true);
@@ -2127,6 +2129,8 @@ void LoadPlayerEggLoot();
     sObjectMgr.LoadPointsOfInterest();
     sLog.outString("Loading defaul pet spells...");
     sObjectMgr.LoadPetCreateSpells();
+    sLog.outString("Loading reviewed funserver rare-respawn registry...");
+    sObjectMgr.LoadRareRespawnRegistry();                   // must be before LoadCreatures(): pool bypass decides grid admission
     sLog.outString("Loading creatures...");
     sObjectMgr.LoadCreatures();
     sLog.outString("Loading creature addons...");
