@@ -333,6 +333,10 @@ bool SpiritHealerAction::Execute(Event& event)
 
 
         sLog.outDetail("Bot #%d %s:%d <%s> revives at spirit healer", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
+        // One BASIC line per revive (visible at live LogLevel 1) so a far graveyard
+        // choice is provable from the log instead of reconstructed (#276).
+        sLog.outBasic("[BOT GRAVEYARD] event=revive guid=%u level=%u death_count=%u map=%u zone=%u corpse_zone=%u corpse_dist=%.0f",
+            bot->GetGUIDLow(), bot->GetLevel(), dCount, bot->GetMapId(), bot->GetZoneId(), corpse->GetZoneId(), grave.fDist(corpse));
         PlayerbotChatHandler ch(bot);
         bot->ResurrectPlayer(0.5f, !ai->HasCheat(BotCheatMask::repair));
         bot->DurabilityLossAll(0.25f, true);
@@ -384,6 +388,9 @@ bool SpiritHealerAction::Execute(Event& event)
 
     if (shouldTeleportToGY)
     {
+        sLog.outBasic("[BOT GRAVEYARD] event=teleport guid=%u level=%u death_count=%u dead_seconds=%lld map=%u corpse_zone=%u grave=%.0f,%.0f corpse_dist=%.0f",
+            bot->GetGUIDLow(), bot->GetLevel(), dCount, (long long)deadTime, grave.getMapId(), corpse->GetZoneId(),
+            grave.getX(), grave.getY(), grave.fDist(corpse));
         bot->GetMotionMaster()->Clear();
         bot->TeleportTo(grave.getMapId(), grave.getX(), grave.getY(), grave.getZ(), 0);
         if (IsRealPlayer(bot))

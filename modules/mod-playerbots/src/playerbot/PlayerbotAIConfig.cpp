@@ -184,6 +184,7 @@ bool PlayerbotAIConfig::Initialize()
     healDistance = config.GetFloatDefault("AiPlayerbot.HealDistance", 30.0f);
     healDistanceBg = config.GetFloatDefault("AiPlayerbot.HealDistanceBg", 25.0f);
     reactDistance = config.GetFloatDefault("AiPlayerbot.ReactDistance", 150.0f);
+    maxAlternateGraveyardDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.MaxAlternateGraveyardDistance", 2500.0f));
     maxFreeMoveDistance = config.GetFloatDefault("AiPlayerbot.MaxFreeMoveDistance", 150.0f);
     freeMoveDelay = config.GetFloatDefault("AiPlayerbot.FreeMoveDelay", 30.0f);
     grindDistance = config.GetFloatDefault("AiPlayerbot.GrindDistance", 75.0f);

@@ -254,6 +254,26 @@ add_test(NAME profession_pair_policy
   COMMAND profession_pair_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# #276: alternate and travel graveyards stay within a bounded distance of the
+# corpse, so a low-level bot is never revived in a far zone.
+add_executable(graveyard_selection_policy_tests
+  "${PB_MODULE_DIR}/t/graveyard_selection_policy_tests.cpp")
+
+target_include_directories(graveyard_selection_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(graveyard_selection_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME graveyard_selection_policy
+  COMMAND graveyard_selection_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME graveyard_selection_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/graveyard_selection_source_contract_tests.cmake")
+
 add_executable(persistent_roster_profession_training_policy_tests
   "${PB_MODULE_DIR}/t/persistent_roster_profession_training_policy_tests.cpp")
 
