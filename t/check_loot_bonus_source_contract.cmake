@@ -37,6 +37,21 @@ forbid_text("${followup}" "INSERT INTO creature_loot_template" "normal loot-data
 forbid_text("${followup}" "UPDATE creature_loot_template" "normal loot-data mutation")
 forbid_text("${followup}" "DELETE FROM creature_loot_template" "normal loot-data mutation")
 
+# twow-repo#330: instance-scan class A additions are insert-only and match their CSV.
+file(READ "${TW_CORE_ROOT}/sql/database_updates/20260924190000_world.sql" scan330)
+require_text("${scan330}" "INSERT IGNORE INTO creature_loot_bonus_registry" "idempotent #330 insert")
+foreach (forbidden "UPDATE " "DELETE " "REPLACE " "creature_loot_template")
+  forbid_text("${scan330}" "${forbidden}" "#330 registry-only change")
+endforeach()
+string(REGEX MATCHALL "\n    \\([0-9]+,[0-9]+,'(dungeon|raid)'" scan330_rows "${scan330}")
+list(LENGTH scan330_rows scan330_count)
+file(STRINGS "${TW_CORE_ROOT}/modules/mod-dungeon-clear/data/bonus-loot-coverage-330-a.csv" scan330_csv)
+list(LENGTH scan330_csv scan330_csv_lines)
+math(EXPR scan330_csv_rows "${scan330_csv_lines} - 1")
+if (NOT scan330_count EQUAL 111 OR NOT scan330_csv_rows EQUAL 111)
+  message(FATAL_ERROR "#330 expects 111 class-A rows (migration ${scan330_count}, csv ${scan330_csv_rows})")
+endif()
+
 file(READ "${TW_CORE_ROOT}/src/game/LootMgr.cpp" loot)
 file(READ "${TW_CORE_ROOT}/src/game/ObjectMgr.cpp" object_mgr)
 file(READ "${TW_CORE_ROOT}/src/mangosd/mangosd.conf.dist.in" config)
