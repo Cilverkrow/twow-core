@@ -12,3 +12,10 @@ Dockerfile text eol=lf
 # A shebang only works if the file is checked out with LF, and this repo has
 # core.autocrlf users; without this the script fails to run on their machines.
 sql/touch_migration.sh text eol=lf
+
+# Migration identity is the SHA-1 of the file's bytes (AutoUpdater and
+# deploy/compose/db-init.sh in twow-repo). A Windows checkout with autocrlf=true
+# used to hand those tools CRLF bytes, so one unchanged migration had two
+# hashes and the bootstrap reported an identity conflict (twow-repo#34). The
+# production target is Linux/Docker: SQL is LF everywhere.
+sql/**/*.sql text eol=lf
