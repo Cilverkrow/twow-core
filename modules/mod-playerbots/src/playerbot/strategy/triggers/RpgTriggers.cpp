@@ -9,6 +9,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/PersistentRosterProfessionTrainingPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/HomeBindPolicy.h"
 #include "playerbot/strategy/actions/RosterProfessionTrainerAction.h"
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 
@@ -529,6 +530,15 @@ bool RpgHomeBindTrigger::IsActive()
     //Do not update for realplayers/always online when at max level.
     if ((ai->IsRealPlayer() || sPlayerbotAIConfig.IsFreeAltBot(bot)) && bot->GetLevel() == DEFAULT_MAX_LEVEL)
         return false;
+
+    // #307: a roster bot never makes a zone far above its level its home.
+    if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+    {
+        AreaTableEntry const* area = GetAreaEntryByAreaID(
+            sTerrainMgr.GetZoneId(guidP.getMapId(), guidP.getX(), guidP.getY(), guidP.getZ()));
+        if (homebind::IsZoneClearlyAboveLevel(area ? area->area_level : 0, bot->GetLevel()))
+            return false;
+    }
 
     WorldPosition currentBind = AI_VALUE(WorldPosition, "home bind");
     WorldPosition newBind = (guidP.sqDistance2d(bot) > INTERACTION_DISTANCE * INTERACTION_DISTANCE) ? guidP : bot;
