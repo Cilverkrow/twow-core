@@ -1079,7 +1079,10 @@ class World
                     for (size_t j = 0; j < i_data_cache[i].size(); ++j)
                         delete i_data_cache[i][j];
             }
-            void operator()(Player* p)
+            // PlayerT keeps the member accesses dependent: Player is incomplete
+            // here, and clang (unlike gcc) rejects them at definition time.
+            template <typename PlayerT = Player>
+            void operator()(PlayerT* p)
             {
                 int32 loc_idx = p->GetSession()->GetSessionDbLocaleIndex();
                 uint32 cache_idx = loc_idx + 1;
@@ -1110,7 +1113,8 @@ class World
 
         void SendWorldText(int32 string_id, ...);
         
-        template <typename F>
+        // PlayerT: see LocalizedPacketListDo::operator().
+        template <typename F, typename PlayerT = Player>
         void SendWorldTextChecked(int32 string_id, F checker, ...)
         {
             va_list ap;
@@ -1122,7 +1126,7 @@ class World
             {
                 if (WorldSession* session = itr.second)
                 {
-                    Player* player = session->GetPlayer();
+                    PlayerT* player = session->GetPlayer();
                     if (player && player->IsInWorld() && checker(player))
                         wt_do(player);
                 }

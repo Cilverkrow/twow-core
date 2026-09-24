@@ -196,7 +196,7 @@ namespace
                 if (!target)
                 {
                     handler->PSendSysMessage(
-                        "No watchable bot matching '{}' here. Try `.dc spectate list`.", name);
+                        "No watchable bot matching '%s' here. Try `.dc spectate list`.", name.c_str());
                     return true;
                 }
                 if (!DcSpectator::SeatFollow(issuer, target, &whyNot))
@@ -592,7 +592,7 @@ public:
             return true;
         }
 
-        handler->PSendSysMessage("Watching {}", msg);
+        handler->PSendSysMessage("Watching %s", msg.c_str());
 
         Map* tankMap = tank->FindMap();
         Difficulty const tankDiff = tank->GetDifficulty(tankMap->IsRaid());

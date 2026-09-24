@@ -1,4 +1,15 @@
 //add here most rarely modified headers to speed up debug build compilation
+
+// Declared before anything else: this header reaches every playerbot TU first,
+// and headers below use sPlayerbotAIConfig inline. Without these declarations
+// INSTANTIATE_SINGLETON_1(PlayerbotAIConfig) in PlayerbotAIConfig.cpp is an
+// explicit specialization after instantiation, which clang rejects. No
+// initializer, so these are declarations; the definitions stay in the .cpp.
+#include "Policies/Singleton.h"
+class PlayerbotAIConfig;
+template <> PlayerbotAIConfig* MaNGOS::Singleton<PlayerbotAIConfig>::si_instance;
+template <> bool MaNGOS::Singleton<PlayerbotAIConfig>::si_destroyed;
+
 #include "Protocol/WorldSocket.h"
 #include "Common.h"
 
