@@ -396,6 +396,9 @@ namespace ai
         bool IsProgressAwareTurnIn() const;
         bool IsTurnInRouteSuppressed(TravelDestination const* destination, WorldPosition const* position) const;
         turnin_recovery::RecoveryAction ObserveTurnInProgress();
+        // Counts a death against the current completed-quest turn-in route and
+        // puts the route on the death cooldown after too many (#307).
+        void OnDeathOnTurnInRoute();
 	private:
 		uint32 GetMaxTravelTime() const { return (1000.0 * Distance(bot)) / bot->GetSpeed(MOVE_RUN); }
 

@@ -1165,6 +1165,11 @@ void PlayerbotAI::OnDeath()
 
                 sPlayerbotAIConfig.log("deaths.csv", out.str().c_str());
             }
+
+            // #307: a death on a completed-quest turn-in route counts against
+            // that route, so a revived bot does not walk back into the same mobs.
+            if (TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target"))
+                travelTarget->OnDeathOnTurnInRoute();
         }
 
         SET_AI_VALUE(Unit*, "current target", nullptr);

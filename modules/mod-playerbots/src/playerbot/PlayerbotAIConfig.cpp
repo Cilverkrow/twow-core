@@ -396,6 +396,8 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTraceTravelDecisions = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TraceTravelDecisions", false);
     questFirstProgressionTurnInStallSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInStallSeconds", 300));
     questFirstProgressionTurnInRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds", 120));
+    questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
+    questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
 
     // Never let configuration turn the autonomous reservation into a changed
     // core quest-log limit. The Player limit remains MAX_QUEST_LOG_SIZE (20).

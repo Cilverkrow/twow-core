@@ -454,6 +454,12 @@ AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # teleports, removes quests or changes generic travel behaviour.
 AiPlayerbot.QuestFirstProgression.TurnInStallSeconds = 300
 AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds = 120
+# A death on a completed-quest turn-in route is a failed attempt, not a pause.
+# After TurnInMaxDeathsOnRoute deaths on the same turn-in (0 = off) the route is
+# skipped for TurnInDeathRouteCooldownSeconds, so the bot levels elsewhere
+# instead of dying on it again and again.
+AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
+AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes

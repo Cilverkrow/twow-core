@@ -426,6 +426,8 @@ public:
     // bounded by the generic distance-derived travel wall clock.
     uint32 questFirstProgressionTurnInStallSeconds = 300;
     uint32 questFirstProgressionTurnInRouteCooldownSeconds = 120;
+    uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
+    uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;
