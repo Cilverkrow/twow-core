@@ -294,6 +294,26 @@ add_test(NAME graveyard_selection_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/graveyard_selection_source_contract_tests.cmake")
 
+# #307: roster bots neither bind nor hearth to a zone clearly above their
+# level (the Southshore trap).
+add_executable(home_bind_policy_tests
+  "${PB_MODULE_DIR}/t/home_bind_policy_tests.cpp")
+
+target_include_directories(home_bind_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(home_bind_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME home_bind_policy
+  COMMAND home_bind_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME home_bind_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/home_bind_source_contract_tests.cmake")
+
 add_executable(persistent_roster_profession_training_policy_tests
   "${PB_MODULE_DIR}/t/persistent_roster_profession_training_policy_tests.cpp")
 

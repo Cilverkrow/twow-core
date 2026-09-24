@@ -12,6 +12,8 @@
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/strategy/values/ItemCountValue.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/HomeBindPolicy.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 
 using namespace ai;
 
@@ -1314,6 +1316,18 @@ bool UseHearthStoneAction::isUseful()
 
     if (bot->IsFlying() && WorldPosition(bot).currentHeight() > 10.0f)
         return false;
+
+    // #307: a roster bot does not hearth into a zone far above its level (e.g.
+    // a level 3 bot bound in Southshore). "unstuck" then falls back to repop,
+    // which returns it to its level-appropriate start.
+    if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+    {
+        WorldPosition const bind = AI_VALUE(WorldPosition, "home bind");
+        AreaTableEntry const* area = GetAreaEntryByAreaID(
+            sTerrainMgr.GetZoneId(bind.getMapId(), bind.getX(), bind.getY(), bind.getZ()));
+        if (homebind::IsZoneClearlyAboveLevel(area ? area->area_level : 0, bot->GetLevel()))
+            return false;
+    }
 
     return true;
 }
