@@ -184,6 +184,7 @@ bool PlayerbotAIConfig::Initialize()
     healDistance = config.GetFloatDefault("AiPlayerbot.HealDistance", 30.0f);
     healDistanceBg = config.GetFloatDefault("AiPlayerbot.HealDistanceBg", 25.0f);
     reactDistance = config.GetFloatDefault("AiPlayerbot.ReactDistance", 150.0f);
+    maxAlternateGraveyardDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.MaxAlternateGraveyardDistance", 2500.0f));
     maxFreeMoveDistance = config.GetFloatDefault("AiPlayerbot.MaxFreeMoveDistance", 150.0f);
     freeMoveDelay = config.GetFloatDefault("AiPlayerbot.FreeMoveDelay", 30.0f);
     grindDistance = config.GetFloatDefault("AiPlayerbot.GrindDistance", 75.0f);
@@ -396,6 +397,8 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTraceTravelDecisions = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TraceTravelDecisions", false);
     questFirstProgressionTurnInStallSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInStallSeconds", 300));
     questFirstProgressionTurnInRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds", 120));
+    questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
+    questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
 
     // Never let configuration turn the autonomous reservation into a changed
     // core quest-log limit. The Player limit remains MAX_QUEST_LOG_SIZE (20).

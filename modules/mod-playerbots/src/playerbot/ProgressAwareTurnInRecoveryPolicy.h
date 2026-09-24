@@ -42,6 +42,12 @@ struct State
     std::uint32_t suppressedEntry = 0;
     std::uint32_t suppressedMapId = 0;
     std::uint32_t suppressUntil = 0;
+    // Deaths on the way to one turn-in. Kept apart from the progress fields:
+    // the graveyard teleport looks like progress and a revived bot re-selects
+    // the same target, so ResetProgress must not clear it (#307).
+    std::uint32_t deathEntry = 0;
+    std::uint32_t deathQuestId = 0;
+    std::uint8_t deathsOnRoute = 0;
 
     void ResetProgress()
     {
@@ -49,6 +55,33 @@ struct State
         recoveryStage = 0;
     }
 };
+
+// A death on the way to a completed-quest turn-in is a failed attempt, not a
+// pause. Without this a roster bot whose turn-in route crosses higher-level
+// mobs died on it indefinitely (#307: 5 bots, 1,321 deaths in 21 hours).
+// Returns true when the route is now suppressed for cooldownMs.
+inline bool RecordDeathOnRoute(State& state, std::uint32_t targetEntry, std::uint32_t questId,
+    std::uint32_t mapId, std::uint32_t now, std::uint32_t maxDeaths, std::uint32_t cooldownMs)
+{
+    if (state.deathEntry != targetEntry || state.deathQuestId != questId)
+    {
+        state.deathEntry = targetEntry;
+        state.deathQuestId = questId;
+        state.deathsOnRoute = 0;
+    }
+
+    if (state.deathsOnRoute < 255)
+        ++state.deathsOnRoute;
+
+    if (maxDeaths == 0 || state.deathsOnRoute < maxDeaths)
+        return false;
+
+    state.deathsOnRoute = 0;
+    state.suppressedEntry = targetEntry;
+    state.suppressedMapId = mapId;
+    state.suppressUntil = now + cooldownMs;
+    return true;
+}
 
 inline float SquaredDistance(float leftX, float leftY, float rightX, float rightY)
 {

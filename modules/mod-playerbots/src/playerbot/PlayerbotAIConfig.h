@@ -132,6 +132,9 @@ public:
         gatheringDistance, groupMemberGatheringDistance, groupMemberGatheringDistanceWithActiveMaster, shootDistance,
         fleeDistance, tooCloseDistance, meleeDistance, followDistance, raidFollowDistance, wanderMinDistance, wanderMaxDistance, whisperDistance, contactDistance,
         aoeRadius, rpgDistance, targetPosRecalcDistance, farDistance, healDistance, healDistanceBg, aggroDistance, proximityDistance, maxFreeMoveDistance, freeMoveDelay, walkDistance;
+    // #276: bound for any graveyard other than the one nearest the corpse
+    // (alternate after repeated deaths, or near the travel target).
+    float maxAlternateGraveyardDistance = 2500.0f;
     uint32 criticalHealth, lowHealth, mediumHealth, almostFullHealth;
     uint32 lowMana, mediumMana;
 
@@ -430,6 +433,8 @@ public:
     // bounded by the generic distance-derived travel wall clock.
     uint32 questFirstProgressionTurnInStallSeconds = 300;
     uint32 questFirstProgressionTurnInRouteCooldownSeconds = 120;
+    uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
+    uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;

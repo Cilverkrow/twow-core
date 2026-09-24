@@ -9,6 +9,7 @@
 #include "playerbot/TravelMgr.h"
 
 #include "playerbot/BotSlots.h"
+#include "playerbot/CorpseRunPolicy.h"
 // The base class. Came in through botpch.h inside the bot library; a module
 // including this header from outside has no botpch.
 #include "GenericActions.h"
@@ -141,6 +142,8 @@ namespace ai
     // "corpse run" chat command: set the "corpse run" flag so FindCorpseAction ignores the
     // wait-for-master gate and the bot runs to its own corpse (e.g. when the master has no
     // way to resurrect it). The flag is cleared automatically when the bot resurrects.
+    // A bot that is dead but has not released yet has no corpse object; it releases first
+    // (the same repop the "release" command sends) and then runs (#277).
     class CorpseRunAction : public ChatCommandAction
     {
     public:
@@ -150,10 +153,37 @@ namespace ai
         {
             Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
-            if (sServerFacade.IsAlive(bot) || !bot->GetCorpse())
+            corpse_run::State const state = corpse_run::Classify(sServerFacade.IsAlive(bot),
+                bot->GetCorpse() != nullptr, bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST));
+
+            if (state == corpse_run::State::Alive)
             {
                 ai->TellPlayerNoFacing(requester, "I am not dead", PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
                 return false;
+            }
+
+            if (state == corpse_run::State::GhostWithoutCorpse)
+            {
+                sLog.outString("[BOT CORPSE] %s: corpse run command received - ghost without corpse, nothing to run to", bot->GetName());
+                ai->TellPlayerNoFacing(requester, "I have no corpse to return to", PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+                return false;
+            }
+
+            if (state == corpse_run::State::DeadUnreleased)
+            {
+                sLog.outString("[BOT CORPSE] %s: corpse run command received - not released yet, releasing spirit first", bot->GetName());
+                ai->TellPlayerNoFacing(requester, "Releasing my spirit first", PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+
+                WorldPacket packet(CMSG_REPOP_REQUEST);
+                packet << uint8(0);
+                bot->GetSession()->HandleRepopRequestOpcode(packet);
+
+                if (!bot->GetCorpse())
+                {
+                    sLog.outString("[BOT CORPSE] %s: corpse run - release did not create a corpse", bot->GetName());
+                    ai->TellPlayerNoFacing(requester, "I could not release my spirit", PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+                    return false;
+                }
             }
 
             SET_AI_VALUE(bool, "corpse run", true);

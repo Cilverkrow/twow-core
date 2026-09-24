@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "DeadValues.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/GraveyardSelectionPolicy.h"
 
 using namespace ai;
 
@@ -100,11 +101,15 @@ WorldSafeLocsEntry const* GraveyardValue::GetAnotherAppropriateClosestGraveyard(
         if (!graveyardAreaEntry)
             continue;
 
-        //skip higher level zones
-        if (bot->GetLevel() + 5 < (uint32)graveyardAreaEntry->area_level)
+        //skip higher level zones and zones without a known level
+        if (!graveyard_policy::IsZoneLevelAppropriate((uint32)graveyardAreaEntry->area_level, bot->GetLevel()))
             continue;
 
         float dist = WorldPosition(corpse).sqDistance(graveyardCoreEntry);
+
+        //skip graveyards too far from the corpse (#276: Elwynn death, Hillsbrad revive)
+        if (!graveyard_policy::IsWithinAlternateDistance(sqrt(dist), sPlayerbotAIConfig.maxAlternateGraveyardDistance))
+            continue;
 
         if (dist < distNear)
         {
@@ -172,8 +177,10 @@ GuidPosition BestGraveyardValue::Calculate()
         );
     }
 
-    //Revive near travel target if it's far away from last death.
-    if (AI_VALUE2(GuidPosition, "graveyard", "travel") && AI_VALUE2(GuidPosition, "graveyard", "travel").fDist(corpse) > sPlayerbotAIConfig.reactDistance)
+    //Revive near travel target if it's far away from last death, but never
+    //implausibly far from the corpse (#276).
+    if (AI_VALUE2(GuidPosition, "graveyard", "travel") && AI_VALUE2(GuidPosition, "graveyard", "travel").fDist(corpse) > sPlayerbotAIConfig.reactDistance &&
+        graveyard_policy::IsWithinAlternateDistance(AI_VALUE2(GuidPosition, "graveyard", "travel").fDist(corpse), sPlayerbotAIConfig.maxAlternateGraveyardDistance))
     {
         GuidPosition travelGraveyard = AI_VALUE2(GuidPosition, "graveyard", "travel");
         if (travelGraveyard)
