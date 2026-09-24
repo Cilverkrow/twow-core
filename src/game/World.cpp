@@ -129,6 +129,7 @@ namespace HttpApi
 #include <iostream>
 
 #include <chrono>
+#include "FunserverRareRespawn.h"
 
 volatile bool World::m_stopEvent = false;
 uint8 World::m_ExitCode = SHUTDOWN_EXIT_CODE;
@@ -1399,6 +1400,15 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_UINT32_ITEM_INSTANTSAVE_QUALITY, "Item.InstantSaveQuality", ITEM_QUALITY_ARTIFACT);
     setConfig(CONFIG_UINT32_ITEM_RARELOOT_QUALITY, "Item.RareLoot.Quality", ITEM_QUALITY_EPIC);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER, "Funserver.Loot.Bonus.SelectionMultiplier", 4, 1, 8);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_DIVISOR, "Funserver.Rare.Respawn.Divisor", FUNSERVER_RARE_RESPAWN_DEFAULT_DIVISOR, 1, 86400);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS, "Funserver.Rare.Respawn.MinSeconds", FUNSERVER_RARE_RESPAWN_DEFAULT_MIN_SECONDS, 1, 604800);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS, "Funserver.Rare.Respawn.MaxSeconds", FUNSERVER_RARE_RESPAWN_DEFAULT_MAX_SECONDS, 1, 604800);
+    if (getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS) < getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS))
+    {
+        sLog.outError("Funserver.Rare.Respawn.MaxSeconds (%u) < MinSeconds (%u), using MinSeconds for both.",
+            getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS), getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS));
+        setConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS, getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS));
+    }
     setConfig(CONFIG_BOOL_PREVENT_ITEM_DATAMINING, "Item.PreventDataMining", true);
 
     setConfig(CONFIG_UINT32_MAILSPAM_EXPIRE_SECS, "MailSpam.ExpireSecs", 0);

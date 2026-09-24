@@ -1535,6 +1535,8 @@ class ObjectMgr
         bool IsRareRespawnRegistered(uint32 guid) const { return m_RareRespawnRegistry.find(guid) != m_RareRespawnRegistry.end(); }
         bool HasAcceleratedRareRespawn(uint32 guid) const;
         bool IsRareRespawnPoolBypass(uint32 guid) const;
+        // Funserver.Rare.Respawn.{Divisor,MinSeconds,MaxSeconds} applied to a configured delay.
+        uint32 ScaleRareRespawnDelay(uint32 seconds) const;
         robin_hood::unordered_map<uint32, RareRespawnRegistryEntry> m_RareRespawnRegistry;
         // Cinematics
         void LoadCinematicsWaypoints();

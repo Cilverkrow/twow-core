@@ -33,6 +33,22 @@ int main()
     Expect(3659, 60, "rounds down (60.98 -> 60s)");
     Expect(3719, 61, "rounds down (61.98 -> 61s)");
 
+    // twow-repo#322: configurable divisor and bounds.
+    auto expectCfg = [](uint32_t oldSeconds, uint32_t div, uint32_t lo, uint32_t hi, uint32_t expected, char const* label)
+    {
+        uint32_t const actual = ScaleFunserverRareRespawnDelay(oldSeconds, div, lo, hi);
+        if (actual != expected)
+        {
+            std::cerr << label << ": " << oldSeconds << "s -> " << actual << "s, expected " << expected << "s\n";
+            ++failures;
+        }
+    };
+    expectCfg(7 * 86400, 60, 60, 7200, 7200, "7d capped at 2h when MaxSeconds=7200");
+    expectCfg(3 * 86400, 60, 60, 7200, 4320, "3d -> 72m under 2h cap");
+    expectCfg(14 * 3600, 120, 60, 1440, 420, "divisor 120: 14h -> 7m");
+    expectCfg(1800, 60, 120, 1440, 120, "MinSeconds 120 floor");
+    expectCfg(14 * 3600, 0, 60, 1440, 1440, "divisor 0 treated as 1, capped");
+
     if (failures)
         return 1;
     std::cout << "RARE_RESPAWN_POLICY=PASS\n";
