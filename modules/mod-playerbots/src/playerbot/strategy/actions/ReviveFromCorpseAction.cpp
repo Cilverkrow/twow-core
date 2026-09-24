@@ -7,6 +7,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/DeadValues.h"
+#include "playerbot/MasterWaitPolicy.h"
 
 using namespace ai;
 
@@ -91,6 +92,23 @@ bool FindCorpseAction::Execute(Event& event)
     // below and run to the corpse regardless of master proximity. Useful when the master cannot
     // resurrect the bot (no res spell / too low level) and would otherwise leave it waiting.
     bool manualCorpseRun = AI_VALUE(bool, "corpse run");
+
+    // #276: the wait for an active real-player master is bounded. Once it has
+    // expired the bot behaves as if told "corpse run" (flag cleared on revive).
+    // The corpse's map decides: a dungeon or raid corpse gets the longer wait.
+    MapEntry const* corpseMap = sMapStore.LookupEntry(corpse->GetMapId());
+    uint32 const masterWaitLimit = master_wait::LimitFor(corpseMap && corpseMap->IsDungeon(),
+        sPlayerbotAIConfig.deadWaitForRealMasterSeconds, sPlayerbotAIConfig.deadWaitForRealMasterInstanceSeconds);
+    bool const masterWaitExpired = master_wait::IsExpired(
+        master_wait::SecondsSinceDeath(time(nullptr), AI_VALUE(time_t, "death time"), corpse->GetGhostTime()),
+        masterWaitLimit);
+    if (masterWaitExpired && !manualCorpseRun && ai->HasActivePlayerMaster())
+    {
+        sLog.outBasic("[BOT CORPSE] state=master_wait_expired guid=%u action=corpse_run wait_seconds=%u",
+            bot->GetGUIDLow(), masterWaitLimit);
+        SET_AI_VALUE(bool, "corpse run", true);
+        manualCorpseRun = true;
+    }
 
     Player* master = ai->GetGroupMaster();
     if (master && !manualCorpseRun)
@@ -263,6 +281,12 @@ bool FindCorpseAction::Execute(Event& event)
             if (!moved && !ai->HasActivePlayerMaster()) //We could not move to coprse. Try spirithealer instead.
             {
                 sLog.outDetail("[BOT CORPSE] %s: find corpse - MoveTo failed & no active player master, trying spirit healer", bot->GetName());
+                moved = ai->DoSpecificAction("spirit healer", Event(), true);
+            }
+            else if (!moved && masterWaitExpired) // #276: bounded, no endless ghost loop next to a master
+            {
+                sLog.outBasic("[BOT CORPSE] state=master_wait_expired guid=%u action=spirit_healer reason=corpse_unreachable",
+                    bot->GetGUIDLow());
                 moved = ai->DoSpecificAction("spirit healer", Event(), true);
             }
             else if (!moved)

@@ -284,6 +284,10 @@ public:
     bool randomBotSayWithoutMaster;
     bool randomBotInvitePlayer;
     bool randomBotGroupNearby;
+    // #276: seconds a dead bot defers to an active real-player master before it
+    // releases, runs to its corpse or falls back to a spirit healer. 0 = unbounded.
+    uint32 deadWaitForRealMasterSeconds = 180;
+    uint32 deadWaitForRealMasterInstanceSeconds = 600;
     bool randomBotRaidNearby;
     bool randomBotGuildNearby;
     bool randomBotFormGuild;

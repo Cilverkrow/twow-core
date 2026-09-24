@@ -1097,6 +1097,8 @@ void PlayerbotAI::OnDeath()
 
         Player* master = GetMaster();
         AiObjectContext* context = aiObjectContext;
+        // Start of the bounded wait for an active real-player master (#276).
+        SET_AI_VALUE(time_t, "death time", time(nullptr));
         if (!HasActivePlayerMaster() && !bot->InBattleGround())
         {
             SET_AI_VALUE(uint32, "death count", AI_VALUE(uint32, "death count") + 1);

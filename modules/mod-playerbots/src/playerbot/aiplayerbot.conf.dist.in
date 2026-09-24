@@ -270,6 +270,14 @@ AiPlayerbot.RandomBotQuestIds = 7848,3802,5505,6502,7761,9378
 
 # Randombots will invite nearby bots to groups/raids/guilds
 # AiPlayerbot.RandomBotGroupNearby = 1
+
+# Seconds a dead bot waits for its active real-player master (who may resurrect
+# it) before it releases, runs to its corpse, or uses a spirit healer when the
+# corpse is unreachable. Counted from the death. 0 = wait indefinitely.
+# DeadWaitForRealMasterSeconds applies in the open world, the Instance value in
+# dungeons and raids.
+AiPlayerbot.DeadWaitForRealMasterSeconds = 180
+AiPlayerbot.DeadWaitForRealMasterInstanceSeconds = 600
 # AiPlayerbot.RandomBotRaidNearby = 1
 # AiPlayerbot.RandomBotGuildNearby = 1
 

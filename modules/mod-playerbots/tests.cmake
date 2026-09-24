@@ -211,6 +211,26 @@ add_test(NAME progress_aware_turnin_recovery_policy
   COMMAND progress_aware_turnin_recovery_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# #276: a dead bot waits for an active real-player master only for
+# AiPlayerbot.DeadWaitForRealMasterSeconds, never indefinitely.
+add_executable(master_wait_policy_tests
+  "${PB_MODULE_DIR}/t/master_wait_policy_tests.cpp")
+
+target_include_directories(master_wait_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(master_wait_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME master_wait_policy
+  COMMAND master_wait_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME master_wait_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/master_wait_source_contract_tests.cmake")
+
 # --------------------------------------------------------------------------
 # playerbot_event_store_contract_tests -- the unit suite for the three SQL
 # builders in PlayerbotDatabaseContract.h. Same hand-rolled-assertion shape as

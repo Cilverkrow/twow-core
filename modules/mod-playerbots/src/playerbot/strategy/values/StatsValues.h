@@ -200,6 +200,14 @@ namespace ai
         virtual bool Calculate() override { return bot->GetGroup(); }
     };
 
+    // Wall-clock time of the last observed death; bounds how long a dead bot
+    // defers to an active real-player master (#276).
+    class DeathTimeValue : public ManualSetValue<time_t>
+    {
+    public:
+        DeathTimeValue(PlayerbotAI* ai, std::string name = "death time") : ManualSetValue<time_t>(ai, 0, name) {}
+    };
+
     class DeathCountValue : public ManualSetValue<uint32>
     {
     public:
