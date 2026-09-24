@@ -415,6 +415,15 @@ bool StoreLootAction::Execute(Event& event)
 
         ItemQualifier itemQualifier(itemid, ((int32)randomPropertyId));
 
+        // #329: make quest-item loot visible (BASIC) for roster bots, so a quest
+        // that never progresses shows whether its item was offered and why it
+        // was not taken.
+        bool const traceQuestLoot = sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions &&
+            sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+            ItemUsageValue::IsNeededForQuest(bot, itemid);
+        if (traceQuestLoot)
+            sLog.outBasic("[QuestLoot] state=offered bot=%u item=%u count=%u slot_type=%u", bot->GetGUIDLow(), itemid, itemcount, lootslot_type);
+
 		if (lootslot_type != LOOT_SLOT_NORMAL
 #ifndef MANGOSBOT_ZERO
 		        && lootslot_type != LOOT_SLOT_OWNER
@@ -422,18 +431,25 @@ bool StoreLootAction::Execute(Event& event)
             )
 		{
 			sLog.outDebug("[BOT LOOT] %s: skip item=%u slot_type=%u (not normal/owner)", bot->GetName(), itemid, lootslot_type);
+            if (traceQuestLoot)
+                sLog.outBasic("[QuestLoot] state=skipped bot=%u item=%u reason=slot_type", bot->GetGUIDLow(), itemid);
 			continue;
 		}
 
         if (loot_type != LOOT_SKINNING && !IsLootAllowed(itemQualifier, ai))
         {
             sLog.outDebug("[BOT LOOT] %s: skip item=%u (IsLootAllowed=false)", bot->GetName(), itemid);
+            if (traceQuestLoot)
+                sLog.outBasic("[QuestLoot] state=skipped bot=%u item=%u reason=loot_not_allowed usage=%u", bot->GetGUIDLow(), itemid,
+                    uint32(AI_VALUE2(ItemUsage, "item usage", itemQualifier.GetQualifier())));
             continue;
         }
 
         if (AI_VALUE2(uint32, "stack space for item", itemid) < itemcount)
         {
             sLog.outDebug("[BOT LOOT] %s: skip item=%u (no stack space, need=%u)", bot->GetName(), itemid, itemcount);
+            if (traceQuestLoot)
+                sLog.outBasic("[QuestLoot] state=skipped bot=%u item=%u reason=no_stack_space", bot->GetGUIDLow(), itemid);
             continue;
         }
 

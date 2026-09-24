@@ -85,6 +85,26 @@ int main()
     for (std::uint32_t i = 0; i < 10; ++i)
         assert(!ai::turnin_recovery::RecordDeathOnRoute(disabled, 61746, 40001, 0, i, 0, deathCooldown));
 
+    // #329: the same turn-in dropped and re-selected every few seconds keeps its
+    // progress state, so the stall window runs out (live: 96 re-selections of
+    // Pumpmaster Galvax at a constant 223 yards, never recovered).
+    State churn;
+    assert(ai::turnin_recovery::Observe(churn, At(0, 0.0f, 223.0f), stall, cooldown) == RecoveryAction::None);
+    for (std::uint32_t t = 5; t < 300; t += 5)
+    {
+        assert(!ai::turnin_recovery::ShouldResetProgressOnSetTarget(churn, true, 60517, 40273));
+        assert(!ai::turnin_recovery::ShouldResetProgressOnSetTarget(churn, false, 0, 0));
+        assert(ai::turnin_recovery::Observe(churn, At(t, 0.0f, 223.0f), stall, cooldown) == RecoveryAction::None);
+    }
+    assert(ai::turnin_recovery::Observe(churn, At(300, 0.0f, 223.0f), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    assert(ai::turnin_recovery::Observe(churn, At(600, 0.0f, 223.0f), stall, cooldown) == RecoveryAction::SuppressRouteAndCooldown);
+
+    // A genuinely different quest target still starts fresh.
+    assert(ai::turnin_recovery::ShouldResetProgressOnSetTarget(churn, true, 295, 2158));
+    State fresh;
+    assert(!ai::turnin_recovery::ShouldResetProgressOnSetTarget(fresh, true, 295, 2158));
+
     std::cout << "progress_aware_turnin_recovery=PASS hillsbrad=PASS transport_pause=PASS "
-        "stalled_route_recovery=PASS suppress_cooldown=PASS relog_state_reset=PASS death_route_suppression=PASS\n";
+        "stalled_route_recovery=PASS suppress_cooldown=PASS relog_state_reset=PASS death_route_suppression=PASS "
+        "same_target_churn=PASS\n";
 }

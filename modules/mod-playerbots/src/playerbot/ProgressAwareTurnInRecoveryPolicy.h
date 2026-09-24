@@ -153,4 +153,18 @@ inline bool IsSuppressed(State const& state, std::uint32_t now, std::uint32_t en
 {
     return state.suppressUntil > now && state.suppressedEntry == entry && state.suppressedMapId == mapId;
 }
+
+// #329: a target that is dropped and picked again every few seconds must not
+// restart the stall window, or the recovery above never runs (live: one bot
+// re-selected the same turn-in 96 times at a constant 223 yards). Only a
+// different quest target starts fresh; a null or non-quest target in between,
+// and the same entry + quest again, keep the observed progress.
+inline bool ShouldResetProgressOnSetTarget(State const& state, bool questTarget,
+    std::uint32_t entry, std::uint32_t questId)
+{
+    if (!questTarget || !state.initialized)
+        return false;
+
+    return state.targetEntry != entry || state.questId != questId;
+}
 }

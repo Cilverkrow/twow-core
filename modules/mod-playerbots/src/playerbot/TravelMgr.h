@@ -4,6 +4,8 @@
 
 #include "strategy/AiObject.h"
 #include <boost/functional/hash.hpp>
+#include <map>
+#include <string>
 #include "GuidPosition.h"
 #include "strategy/values/TravelValues.h"
 #include "WorldSquare.h"
@@ -400,6 +402,10 @@ namespace ai
         // puts the route on the death cooldown after too many (#307).
         void OnDeathOnTurnInRoute();
 	private:
+        // #329: one visible [QuestCommit] line per commitment change of a
+        // roster bot's quest target, throttled per event, reason and target.
+        void TraceQuestCommit(TravelDestination const* destination, char const* event, char const* reason);
+
 		uint32 GetMaxTravelTime() const { return (1000.0 * Distance(bot)) / bot->GetSpeed(MOVE_RUN); }
 
 		TravelStatus m_status = TravelStatus::TRAVEL_STATUS_NONE;
@@ -419,6 +425,8 @@ namespace ai
 		GuidPosition groupMember;
 		uint32 relevance = 0;
         turnin_recovery::State turnInRecovery;
+        struct CommitTrace { uint32 nextAt = 0; uint32 repeats = 0; };
+        std::map<std::string, CommitTrace> commitTrace;
 	};
 
 	//General container for all travel destinations.
