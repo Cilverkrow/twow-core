@@ -35,7 +35,6 @@
 #include "World.h"
 #include "Group.h"
 #include "InstanceData.h"
-#include "FunserverRareRespawn.h"
 
 typedef MaNGOS::ClassLevelLockable<MapPersistentStateManager, std::mutex> MapPersistanceStateManagerLock;
 INSTANTIATE_SINGLETON_2(MapPersistentStateManager, MapPersistanceStateManagerLock);
@@ -1048,7 +1047,7 @@ void MapPersistentStateManager::LoadCreatureRespawnTimes()
         // accelerated rare. Clamp in memory on every load; only registry guids are touched.
         if (sObjectMgr.HasAcceleratedRareRespawn(loguid))
         {
-            uint64 const latest = uint64(time(nullptr)) + ScaleFunserverRareRespawnDelay(data->spawntimesecsmax);
+            uint64 const latest = uint64(time(nullptr)) + sObjectMgr.ScaleRareRespawnDelay(data->spawntimesecsmax);
             if (respawn_time > latest)
             {
                 sLog.outString("Funserver rare guid %u: stale respawn time clamped by %u s", loguid, uint32(respawn_time - latest));

@@ -58,7 +58,6 @@
 #include "Anticheat/Anticheat.h"
 #include "Anticheat/Movement/Movement.hpp"
 #include "CreatureLinkingMgr.h"
-#include "FunserverRareRespawn.h"
 #include "TemporarySummon.h"
 #include "ScriptedEscortAI.h"
 #include "GuardMgr.h"
@@ -1780,7 +1779,7 @@ bool Creature::LoadFromDB(uint32 guidlow, Map *map, bool force)
 
     m_respawnDelay = data->GetRandomRespawnTime();
     if (sObjectMgr.HasAcceleratedRareRespawn(guidlow))
-        m_respawnDelay = ScaleFunserverRareRespawnDelay(m_respawnDelay);
+        m_respawnDelay = sObjectMgr.ScaleRareRespawnDelay(m_respawnDelay);
     m_deathState = data->spawn_flags & SPAWN_FLAG_DEAD ? DEAD : ALIVE;
 
     if (data->spawn_flags & SPAWN_FLAG_ACTIVE)

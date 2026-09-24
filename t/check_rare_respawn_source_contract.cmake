@@ -47,4 +47,16 @@ require_text("${world}" "\"Funserver.Rare.Respawn.Enabled\", false" "default-off
 require_text("${world}" "\"Funserver.Rare.PoolBypass.Enabled\", false" "default-off pool switch")
 require_text("${config}" "Funserver.Rare.Respawn.Enabled = 0" "default-disabled configuration")
 require_text("${config}" "Funserver.Rare.PoolBypass.Enabled = 0" "default-disabled configuration")
+# twow-repo#322: the defaults must reproduce the #298 formula exactly.
+foreach (required
+    "Funserver.Rare.Respawn.Divisor = 60" "Funserver.Rare.Respawn.MinSeconds = 60"
+    "Funserver.Rare.Respawn.MaxSeconds = 1440")
+  require_text("${config}" "${required}" "#298-equivalent scaling default")
+endforeach()
+file(READ "${TW_CORE_ROOT}/src/game/FunserverRareRespawn.h" policy)
+foreach (required
+    "FUNSERVER_RARE_RESPAWN_DEFAULT_DIVISOR = 60" "FUNSERVER_RARE_RESPAWN_DEFAULT_MIN_SECONDS = 60"
+    "FUNSERVER_RARE_RESPAWN_DEFAULT_MAX_SECONDS = 1440")
+  require_text("${policy}" "${required}" "#298-equivalent scaling default")
+endforeach()
 message(STATUS "RARE_RESPAWN_SOURCE_CONTRACT=PASS")

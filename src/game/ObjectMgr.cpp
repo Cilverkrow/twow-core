@@ -56,6 +56,7 @@
 #include "Geometry.h"
 
 #include <limits>
+#include "FunserverRareRespawn.h"
 
 ObjectMgr sObjectMgr;
 
@@ -466,6 +467,14 @@ bool ObjectMgr::HasAcceleratedRareRespawn(uint32 guid) const
 bool ObjectMgr::IsRareRespawnPoolBypass(uint32 guid) const
 {
     return sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED) && IsRareRespawnRegistered(guid);
+}
+
+uint32 ObjectMgr::ScaleRareRespawnDelay(uint32 seconds) const
+{
+    return ScaleFunserverRareRespawnDelay(seconds,
+        sWorld.getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_DIVISOR),
+        sWorld.getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS),
+        sWorld.getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS));
 }
 
 void ObjectMgr::LoadCinematicsWaypoints()
