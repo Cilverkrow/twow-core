@@ -438,6 +438,11 @@ AiPlayerbot.AutoPickReward = yes
 # Default: 0 (disabled)
 AiPlayerbot.AutoEquipUpgradeLoot = 1
 
+# One BASIC [ITEM EQUIP] line per bagged uncommon+ weapon/armor decision (equip
+# decision, reason code, overall item usage, stat weight), at most once per bot,
+# item and decision until the next level-up. Diagnostics only; default off.
+AiPlayerbot.EquipDiagnostics.Trace = 0
+
 # Sync quests with player (Bots will complete quests the moment you hand them in. Bots will ignore looting quest items.)
 # Default: 0 (disabled)
 AiPlayerbot.SyncQuestWithPlayer = 0

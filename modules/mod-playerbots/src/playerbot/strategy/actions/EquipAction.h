@@ -1,6 +1,9 @@
 #pragma once
 #include "GenericActions.h"
 
+#include <set>
+#include <string>
+
 namespace ai
 {
     class EquipAction : public ChatCommandAction
@@ -49,6 +52,13 @@ namespace ai
         }
         virtual std::vector<std::string> GetUsedActions() { return {}; }
         virtual std::vector<std::string> GetUsedValues() { return {}; }
-#endif 
+#endif
+
+    private:
+        // #308: explain every bagged uncommon+ weapon/armor decision once.
+        void TraceBagDecisions();
+
+        std::set<std::string> tracedDecisions;
+        uint32 tracedLevel = 0;
     };
 }

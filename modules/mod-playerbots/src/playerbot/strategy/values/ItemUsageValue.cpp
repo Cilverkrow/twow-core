@@ -530,7 +530,19 @@ if ((proto->Class == ITEM_CLASS_PROJECTILE ||
     return ItemUsage::ITEM_USAGE_NONE;
 }
 
-ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, Player* bot)
+namespace
+{
+// #308: every equip decision carries a short reason code so the live log can
+// explain why a bagged item was or was not put on.
+inline ItemUsage EquipReason(char const** out, ItemUsage usage, char const* reason)
+{
+    if (out)
+        *out = reason;
+    return usage;
+}
+}
+
+ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, Player* bot, char const** reason)
 {
     PlayerbotAI* ai = GetBotAI(bot);
     AiObjectContext* context = ai->GetAiObjectContext();
@@ -538,10 +550,10 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
     ItemPrototype const* itemProto = itemQualifier.GetProto();
 
     if (bot->CanUseItem(itemProto) != EQUIP_ERR_OK)
-        return ItemUsage::ITEM_USAGE_NONE;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "cannot_use");
 
     if (itemProto->InventoryType == INVTYPE_NON_EQUIP)
-        return ItemUsage::ITEM_USAGE_NONE;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "not_equippable");
 
     uint16 dest;
 
@@ -557,7 +569,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
     }
 
     if (result != EQUIP_ERR_OK)
-        return ItemUsage::ITEM_USAGE_NONE;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "cannot_equip_slot");
 
     if (itemProto->Class == ITEM_CLASS_QUIVER)
     {
@@ -567,7 +579,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
         {
             ItemPrototype const* rangedWeaponItemProto = equippedRangedWeapon->GetProto();
             if (!rangedWeaponItemProto)
-                return ItemUsage::ITEM_USAGE_NONE;
+                return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "quiver_no_ranged_weapon");
 
             bool isCorrectQuiverTypeForCurrentWeapon = false;
 
@@ -587,7 +599,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
             }
 
             if (!isCorrectQuiverTypeForCurrentWeapon)
-                return ItemUsage::ITEM_USAGE_NONE;
+                return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "quiver_wrong_type");
 
             std::vector<Bag*> equippedQuivers = GetBotAI(bot)->GetEquippedQuivers();
 
@@ -595,30 +607,30 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
             {
                 if (quiver->GetProto()->ItemLevel < itemProto->ItemLevel)
                 {
-                    return ItemUsage::ITEM_USAGE_EQUIP;
+                    return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "quiver_higher_level");
                 }
 
                 if (quiver->GetProto()->ItemLevel == itemProto->ItemLevel && quiver->GetProto()->Quality < itemProto->Quality)
                 {
-                    return ItemUsage::ITEM_USAGE_EQUIP;
+                    return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "quiver_higher_quality");
                 }
 
                 //no need to check for quiver container slots size, higher ilvl/quality checks is enough
             }
         }
 
-        return ItemUsage::ITEM_USAGE_NONE;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "quiver_not_better");
     }
 
     if (itemProto->Class == ITEM_CLASS_CONTAINER)
     {
         if (itemProto->SubClass != ITEM_SUBCLASS_CONTAINER)
-            return ItemUsage::ITEM_USAGE_NONE; //Todo add logic for non-bag containers. We want to look at professions/class and only replace if non-bag is larger than bag.
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "container_special"); //Todo add logic for non-bag containers. We want to look at professions/class and only replace if non-bag is larger than bag.
 
         if (GetSmallestBagSize(bot) >= itemProto->ContainerSlots)
-            return ItemUsage::ITEM_USAGE_NONE;
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "container_not_larger");
 
-        return ItemUsage::ITEM_USAGE_EQUIP;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "container_larger");
     }
 
     bool shouldEquip = false;
@@ -643,7 +655,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
         !sRandomItemMgr.ShouldEquipWeaponForSpec(bot->getClass(), specId, itemProto))
     {
         if (oldItem)
-            return ItemUsage::ITEM_USAGE_NONE;
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "spec_rejects_weapon");
     }
 
 
@@ -661,25 +673,25 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
             || itemProto->Spells[0].SpellId > 0;
 
         if (!contributes)
-            return ItemUsage::ITEM_USAGE_NONE;
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "no_stats_armor_damage_or_spell");
     }
 
     //No item equiped
     if (!oldItem)
     {
         if (shouldEquip)
-            return ItemUsage::ITEM_USAGE_EQUIP;
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "empty_slot");
         else
-            return ItemUsage::ITEM_USAGE_BAD_EQUIP;
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_BAD_EQUIP, "empty_slot_off_spec");
     }
 
     const ItemPrototype* oldItemProto = oldItem->GetProto();
 
     if(MustEquipForQuest(itemProto, bot) && !MustEquipForQuest(oldItemProto, bot))
-        return ItemUsage::ITEM_USAGE_EQUIP;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "quest_requires_equip");
 
     if (MustEquipForQuest(oldItemProto, bot))
-        return ItemUsage::ITEM_USAGE_KEEP;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_KEEP, "equipped_item_needed_for_quest");
 
     if (itemProto->Class == ITEM_CLASS_ARMOR && itemProto->InventoryType == INVTYPE_TABARD)
     {
@@ -688,20 +700,20 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
         if (currentStacks > 0)
         {
             if (itemProto->ItemId != oldItemProto->ItemId && urand(1, 100) <= 10) //Not equiped. Random 10% equip it.
-                return ItemUsage::ITEM_USAGE_EQUIP;
+                return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "tabard_random_swap");
 
-            return ItemUsage::ITEM_USAGE_KEEP;
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_KEEP, "tabard_keep");
         }
 
-        return ItemUsage::ITEM_USAGE_EQUIP; //Do not have it yet. Buy/get it.
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "tabard_new"); //Do not have it yet. Buy/get it.
     }
 
     if (AI_VALUE2_EXISTS(ForceItemUsage, "force item usage", oldItemProto->ItemId, ForceItemUsage::FORCE_USAGE_NONE) == ForceItemUsage::FORCE_USAGE_EQUIP) //Current equip is forced. Do not unequip.
     {
         if (AI_VALUE2_EXISTS(ForceItemUsage, "force item usage", itemProto->ItemId, ForceItemUsage::FORCE_USAGE_NONE) == ForceItemUsage::FORCE_USAGE_EQUIP)
-            return ItemUsage::ITEM_USAGE_KEEP;
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_KEEP, "forced_both_keep");
         else
-            return ItemUsage::ITEM_USAGE_NONE;
+            return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "equipped_item_forced");
     }
 
     uint32 oldStatWeight = sRandomItemMgr.ItemStatWeight(bot, oldItem);
@@ -715,7 +727,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
     }
 
     if (AI_VALUE2_EXISTS(ForceItemUsage, "force item usage", itemProto->ItemId, ForceItemUsage::FORCE_USAGE_NONE) == ForceItemUsage::FORCE_USAGE_EQUIP) //New item is forced. Always equip it.
-        return ItemUsage::ITEM_USAGE_EQUIP;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "new_item_forced");
 
     bool existingShouldEquip = true;
     if (oldItemProto->Class == ITEM_CLASS_WEAPON && !oldStatWeight)
@@ -742,29 +754,29 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
         case ITEM_CLASS_ARMOR:
             if (oldItemProto->SubClass <= itemProto->SubClass) {
                 if (itemIsBroken && !oldItemIsBroken)
-                    return ItemUsage::ITEM_USAGE_BROKEN_EQUIP;
+                    return EquipReason(reason, ItemUsage::ITEM_USAGE_BROKEN_EQUIP, "upgrade_but_broken");
                 else
                     if (shouldEquip)
-                        return ItemUsage::ITEM_USAGE_EQUIP;
+                        return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "armor_upgrade");
                     else
-                        return ItemUsage::ITEM_USAGE_BAD_EQUIP;
+                        return EquipReason(reason, ItemUsage::ITEM_USAGE_BAD_EQUIP, "armor_upgrade_off_spec");
             }
             break;
         default:
             if (itemIsBroken && !oldItemIsBroken)
-                return ItemUsage::ITEM_USAGE_BROKEN_EQUIP;
+                return EquipReason(reason, ItemUsage::ITEM_USAGE_BROKEN_EQUIP, "upgrade_but_broken");
             else
                 if (shouldEquip)
-                    return ItemUsage::ITEM_USAGE_EQUIP;
+                    return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "upgrade");
                 else
-                    return ItemUsage::ITEM_USAGE_BAD_EQUIP;
+                    return EquipReason(reason, ItemUsage::ITEM_USAGE_BAD_EQUIP, "upgrade_off_spec");
         }
     }
     //Item is not better but current item is broken and new one is not.
     if (oldItemIsBroken && !itemIsBroken)
-        return ItemUsage::ITEM_USAGE_EQUIP;
+        return EquipReason(reason, ItemUsage::ITEM_USAGE_EQUIP, "equipped_item_broken");
 
-    return ItemUsage::ITEM_USAGE_NONE;
+    return EquipReason(reason, ItemUsage::ITEM_USAGE_NONE, "not_better_than_equipped");
 }
 
 //Return smaltest bag size equipped

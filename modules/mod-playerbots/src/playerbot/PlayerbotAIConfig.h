@@ -383,6 +383,8 @@ public:
 
     std::string autoPickReward;
     bool autoEquipUpgradeLoot;
+    // #308: log one BASIC [ITEM EQUIP] line per bagged green+ weapon/armor decision.
+    bool equipDiagnosticsTrace = false;
     bool syncQuestWithPlayer;
     bool syncQuestForPlayer;
     std::string autoTrainSpells;

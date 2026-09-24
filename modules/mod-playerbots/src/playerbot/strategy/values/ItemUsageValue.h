@@ -82,7 +82,8 @@ namespace ai
         ItemUsageValue(PlayerbotAI* ai, std::string name = "item usage") : CalculatedValue<ItemUsage>(ai, name), Qualified() {}
         virtual ItemUsage Calculate() override;
 
-        static ItemUsage QueryItemUsageForEquip(ItemQualifier& itemQualifier, Player* bot);
+        // reason (optional) receives a static reason code for the decision (#308).
+        static ItemUsage QueryItemUsageForEquip(ItemQualifier& itemQualifier, Player* bot, char const** reason = nullptr);
         static uint32 GetSmallestBagSize(Player* bot);
         static std::string ReasonForNeed(ItemUsage usage, ItemQualifier qualifier = ItemQualifier(), uint32 count = 1, Player* bot = nullptr);
         static uint32 GetAhDepositCost(ItemPrototype const* proto, uint32 count = 1);
