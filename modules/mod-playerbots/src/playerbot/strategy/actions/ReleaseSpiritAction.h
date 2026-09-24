@@ -5,6 +5,7 @@
 #include "MovementActions.h"
 #include "playerbot/strategy/values/LastMovementValue.h"
 #include "ReviveFromCorpseAction.h"
+#include "playerbot/MasterWaitPolicy.h"
 #include "playerbot/TravelMgr.h"
 
 #include "playerbot/BotSlots.h"
@@ -110,6 +111,20 @@ namespace ai
 
             if (!ai->HasActivePlayerMaster())
                 return true;
+
+            // #276: the active master had its bounded chance to resurrect (3 min
+            // in the open world, 10 min in dungeons and raids). This also covers
+            // instance maps (e.g. Deeprun Tram), where the core never
+            // auto-releases and a waiting bot would stay a body indefinitely.
+            uint32 const masterWaitLimit = master_wait::LimitFor(bot->GetMap()->IsDungeon(),
+                sPlayerbotAIConfig.deadWaitForRealMasterSeconds, sPlayerbotAIConfig.deadWaitForRealMasterInstanceSeconds);
+            if (master_wait::IsExpired(master_wait::SecondsSinceDeath(time(nullptr), AI_VALUE(time_t, "death time"), 0),
+                    masterWaitLimit))
+            {
+                sLog.outBasic("[BOT CORPSE] state=master_wait_expired guid=%u action=release wait_seconds=%u",
+                    bot->GetGUIDLow(), masterWaitLimit);
+                return true;
+            }
 
             if (ai->HasActivePlayerMaster() && ai->GetGroupMaster()->GetMapId() == bot->GetMapId() && (bot->GetMap()->IsRaid() || bot->GetMap()->IsDungeon()))
                 return false;

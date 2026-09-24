@@ -287,6 +287,7 @@ namespace ai
             creators["party member without food"] = [](PlayerbotAI* ai) { return new PartyMemberWithoutFoodValue(ai); };
             creators["party member without water"] = [](PlayerbotAI* ai) { return new PartyMemberWithoutWaterValue(ai); };
             creators["death count"] = [](PlayerbotAI* ai) { return new DeathCountValue(ai); };
+            creators["death time"] = [](PlayerbotAI* ai) { return new DeathTimeValue(ai); };
             creators["corpse run"] = [](PlayerbotAI* ai) { return new CorpseRunValue(ai); };
 
             creators["rpg target"] = [](PlayerbotAI* ai) { return new RpgTargetValue(ai); };
