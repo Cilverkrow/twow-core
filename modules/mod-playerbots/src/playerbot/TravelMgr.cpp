@@ -878,12 +878,63 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
 
     wPosition = wPosition1;
     tDestination = tDestination1;
-    turnInRecovery.ResetProgress();
+
+    // #329: only a different quest target restarts the observed progress;
+    // re-selecting the same one (or passing through no target) keeps it, so
+    // the stall recovery can finally run out on a target that is dropped and
+    // picked again every few seconds.
+    QuestTravelDestination const* quest = dynamic_cast<QuestTravelDestination const*>(tDestination1);
+    if (turnin_recovery::ShouldResetProgressOnSetTarget(turnInRecovery, quest != nullptr,
+            quest ? uint32(quest->GetEntry()) : 0, quest ? quest->GetQuestId() : 0))
+        turnInRecovery.ResetProgress();
 
     SetStatus(TravelStatus::TRAVEL_STATUS_TRAVEL);
 }
 
+void TravelTarget::TraceQuestCommit(TravelDestination const* destination, char const* event, char const* reason)
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions || !bot)
+        return;
+
+    QuestTravelDestination const* quest = dynamic_cast<QuestTravelDestination const*>(destination);
+    if (!quest || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return;
+
+    std::ostringstream key;
+    key << event << ':' << reason << ':' << quest->GetEntry() << ':' << quest->GetQuestId();
+
+    // Bounded: a bot touches only a few quest targets per minute.
+    if (commitTrace.size() > 64 && commitTrace.find(key.str()) == commitTrace.end())
+        commitTrace.clear();
+
+    uint32 const now = WorldTimer::getMSTime();
+    CommitTrace& trace = commitTrace[key.str()];
+    if (trace.nextAt && now < trace.nextAt)
+    {
+        ++trace.repeats;
+        return;
+    }
+
+    uint32 const repeats = trace.repeats;
+    trace.repeats = 0;
+    trace.nextAt = now + MINUTE * IN_MILLISECONDS;
+
+    bool const relation = dynamic_cast<QuestRelationTravelDestination const*>(destination) != nullptr;
+    float const distance = (destination == tDestination && wPosition) ? wPosition->distance(bot) : -1.0f;
+    sLog.outBasic("[QuestCommit] bot=%u level=%u quest=%u target_entry=%d kind=%s event=%s reason=%s distance=%.0f repeats_since_last=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), quest->GetQuestId(), quest->GetEntry(), relation ? "giver_or_taker" : "objective",
+        event, reason, distance, repeats);
+}
+
 void TravelTarget::CopyTarget(TravelTarget* const target) {
+    // Every applied choice (stock or BotBrain intent) passes here.
+    QuestTravelDestination const* oldQuest = dynamic_cast<QuestTravelDestination const*>(tDestination);
+    QuestTravelDestination const* newQuest = dynamic_cast<QuestTravelDestination const*>(target->tDestination);
+    if (newQuest)
+        TraceQuestCommit(newQuest, "commit", oldQuest == newQuest ? "same_target" : (oldQuest ? "switched_quest_target" : "new_quest_target"));
+    else if (oldQuest)
+        TraceQuestCommit(oldQuest, "drop", "replaced_by_non_quest_target");
+
     SetTarget(target->tDestination, target->wPosition);
     groupMember = target->groupMember;
     forced = target->forced;
@@ -982,6 +1033,7 @@ void TravelTarget::OnDeathOnTurnInRoute()
 
     // Drop the route now; target selection skips it until the cooldown ends,
     // so the revived bot picks level-appropriate work instead.
+    TraceQuestCommit(tDestination, "abandon", "death_suppressed");
     SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
 }
 
@@ -1063,6 +1115,7 @@ void TravelTarget::CheckStatus()
     if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())
     {
         ai->TellDebug(ai->GetMaster(), "Travel target expired because the status time was exceeded.", "debug travel");
+        TraceQuestCommit(tDestination, "drop", "status_time_exceeded");
         SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         ai->GetAiObjectContext()->ClearValues("no active travel destinations");
         return;
@@ -1083,6 +1136,7 @@ void TravelTarget::CheckStatus()
             }
 
             ai->TellDebug(ai->GetMaster(), "The target is starting to work because the destination has been reached.", "debug travel");
+            TraceQuestCommit(tDestination, "progress", "arrived");
             SetStatus(TravelStatus::TRAVEL_STATUS_WORK);
             return;
         }
@@ -1096,6 +1150,7 @@ void TravelTarget::CheckStatus()
                 if (sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
                     sLog.outBasic("[QuestFirstRoute] state=recovery_stage1 bot=%u quest=%u target_entry=%d action=recompute_route",
                         bot->GetGUIDLow(), static_cast<QuestRelationTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry());
+                TraceQuestCommit(tDestination, "blocked", "stall_recompute_route");
                 SetStatus(TravelStatus::TRAVEL_STATUS_READY);
                 return;
             case turnin_recovery::RecoveryAction::SuppressRouteAndCooldown:
@@ -1103,6 +1158,7 @@ void TravelTarget::CheckStatus()
                     sLog.outBasic("[QuestFirstRoute] state=recovery_stage2 bot=%u quest=%u target_entry=%d action=suppress_route_cooldown cooldown_seconds=%u",
                         bot->GetGUIDLow(), static_cast<QuestRelationTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry(),
                         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds);
+                TraceQuestCommit(tDestination, "abandon", "stall_suppressed");
                 SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
                 SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
                 return;
@@ -1120,6 +1176,7 @@ void TravelTarget::CheckStatus()
         if (destinationInactive || conditionsInactive)
         {
             ai->TellDebug(ai->GetMaster(), "The target is cooling down because the destination was no longer active or the conditions are no longer true.", "debug travel");
+            TraceQuestCommit(tDestination, "drop", destinationInactive ? "destination_inactive" : "conditions_inactive");
             forced = false;
             SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
             return;

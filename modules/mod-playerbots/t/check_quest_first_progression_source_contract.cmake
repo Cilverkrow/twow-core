@@ -90,4 +90,16 @@ require_text("${follow_actions}" "IsGatherTravelTarget" "moving-master gather ar
 require_text("${follow_actions}" "followTarget->IsMoving()" "moving-master gather cancellation")
 require_text("${follow_actions}" "TravelDestinationPurpose::GatherSkinning" "skinning local-interaction preservation")
 require_text("${follow_actions}" "LootObject loot" "existing loot follow gate")
+# #329: re-selecting the same target keeps progress; commitment changes and
+# quest-item loot are visible at LogLevel 1.
+file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/actions/LootAction.cpp" loot_action)
+require_text("${travel_mgr}" "turnin_recovery::ShouldResetProgressOnSetTarget(" "no progress reset on the same target")
+require_absent("${travel_mgr}" "    tDestination = tDestination1;\n    turnInRecovery.ResetProgress();" "unconditional progress reset")
+require_text("${travel_mgr}" "sLog.outBasic(\"[QuestCommit]" "visible commitment record")
+foreach(reason "same_target" "replaced_by_non_quest_target" "destination_inactive" "conditions_inactive" "status_time_exceeded" "stall_suppressed" "death_suppressed" "arrived")
+  require_text("${travel_mgr}" "\"${reason}\"" "commitment reason")
+endforeach()
+require_text("${loot_action}" "[QuestLoot] state=offered" "quest item offered record")
+require_text("${loot_action}" "[QuestLoot] state=skipped" "quest item skipped record")
+
 message(STATUS "QUEST_FIRST_PROGRESSION_SOURCE_CONTRACT=PASS")
