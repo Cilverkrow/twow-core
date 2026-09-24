@@ -428,5 +428,48 @@ bool EquipUpgradesAction::Execute(Event& event)
         }
     }
 
+    TraceBagDecisions();
+
     return didEquip;
+}
+
+void EquipUpgradesAction::TraceBagDecisions()
+{
+    if (!sPlayerbotAIConfig.equipDiagnosticsTrace)
+        return;
+
+    // Once per bot, item and decision; a level-up can change every decision.
+    if (tracedLevel != bot->GetLevel())
+    {
+        tracedDecisions.clear();
+        tracedLevel = bot->GetLevel();
+    }
+
+    FindAllItemVisitor visitor;
+    ai->InventoryIterateItems(&visitor, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);
+    uint32 const specId = sRandomItemMgr.GetPlayerSpecId(bot);
+
+    for (Item* item : visitor.GetResult())
+    {
+        ItemPrototype const* proto = item->GetProto();
+        if (!proto || proto->Quality < ITEM_QUALITY_UNCOMMON ||
+            (proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR))
+            continue;
+
+        ItemQualifier qualifier(item);
+        char const* reason = "unknown";
+        ItemUsage const equip = ItemUsageValue::QueryItemUsageForEquip(qualifier, bot, &reason);
+        ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", qualifier.GetQualifier());
+
+        std::ostringstream key;
+        key << proto->ItemId << ':' << uint32(equip) << ':' << reason << ':' << uint32(usage);
+        if (tracedDecisions.size() >= 512 || !tracedDecisions.insert(key.str()).second)
+            continue;
+
+        // usage: 0 none, 1 equip, 2 bad equip, 9 ah, 10 broken ah, 11 keep, 12 vendor (ItemUsage).
+        sLog.outBasic("[ITEM EQUIP] guid=%u level=%u class=%u spec=%u item=%u quality=%u ilvl=%u req_level=%u equip=%u reason=%s usage=%u stat_weight=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(bot->getClass()), specId, proto->ItemId,
+            proto->Quality, proto->ItemLevel, proto->RequiredLevel, uint32(equip), reason, uint32(usage),
+            sRandomItemMgr.ItemStatWeight(bot, qualifier));
+    }
 }
