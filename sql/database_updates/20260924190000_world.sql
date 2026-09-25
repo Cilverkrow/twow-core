@@ -1,7 +1,8 @@
 -- Issue twow-repo#330: complete creature_loot_bonus_registry for real instance bosses.
 -- Rows = class A_strong of the read-only live instance scan (2026-09-24): rank 3, instance-bind
 -- flag or boss_ script, single static spawn, >= 2 own blue+ loot rows or >= epic. Source:
--- modules/mod-dungeon-clear/data/bonus-loot-coverage-330-a.csv. Uncertain candidates (class B/C)
+-- modules/mod-dungeon-clear/data/bonus-loot-coverage-330-a.csv, plus 7 owner-approved class-B BRD bosses
+-- (2026-09-25). Remaining uncertain candidates (class B/C)
 -- await owner review in #330. INSERT IGNORE keeps existing rows; no loot-table change.
 INSERT IGNORE INTO creature_loot_bonus_registry (creature_entry, map_id, category, note) VALUES
     (14686,129,'dungeon','#330 scan class A: Lady Falther''ess'),
@@ -114,4 +115,11 @@ INSERT IGNORE INTO creature_loot_bonus_registry (creature_entry, map_id, categor
     (62941,819,'raid','#330 scan class A: Chieftain Partath'),
     (62946,819,'raid','#330 scan class A: Trioch the Devourer'),
     (62780,820,'dungeon','#330 scan class A: Bonespeaker Narlgom'),
-    (62782,820,'dungeon','#330 scan class A: Chieftain Shalk Blackwind');
+    (62782,820,'dungeon','#330 scan class A: Chieftain Shalk Blackwind'),
+    (9025,230,'dungeon','#330 owner-approved class B: Lord Roccor'),
+    (9041,230,'dungeon','#330 owner-approved class B: Warder Stilgiss'),
+    (9042,230,'dungeon','#330 owner-approved class B: Verek'),
+    (9056,230,'dungeon','#330 owner-approved class B: Fineous Darkvire'),
+    (9319,230,'dungeon','#330 owner-approved class B: Houndmaster Grebmar'),
+    (9502,230,'dungeon','#330 owner-approved class B: Phalanx'),
+    (9543,230,'dungeon','#330 owner-approved class B: Ribbly Screwspigot');
