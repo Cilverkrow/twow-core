@@ -9530,7 +9530,8 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type, Player* pVictim)
                         loot->SetTeam(group->GetTeam());
                     }
 
-                    loot->FillLoot(lootid, LootTemplates_Gameobject, this, !groupRules, false);
+                    // twow-repo#345: the chest is only the bonus source; `looted` stays null as before.
+                    loot->FillLoot(lootid, LootTemplates_Gameobject, this, !groupRules, false, nullptr, go);
                     loot->GenerateMoneyLoot(go->GetGOInfo()->MinMoneyLoot, go->GetGOInfo()->MaxMoneyLoot);
                     if (go->GetInstanceId())
                         go->GetMap()->BindToInstanceOrRaid(this, go->GetRespawnTimeEx(), false);

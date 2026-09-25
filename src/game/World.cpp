@@ -1073,6 +1073,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_WORLD_BOSS, "Funserver.Loot.Bonus.WorldBoss", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_DUNGEON_BOSS, "Funserver.Loot.Bonus.DungeonBoss", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RAID_BOSS, "Funserver.Loot.Bonus.RaidBoss", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_BOSS_CHEST, "Funserver.Loot.Bonus.BossChest", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_RESPAWN_ENABLED, "Funserver.Rare.Respawn.Enabled", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED, "Funserver.Rare.PoolBypass.Enabled", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
@@ -2427,6 +2428,8 @@ void LoadPlayerEggLoot();
 	sObjectMgr.LoadMapLootDisabled();
     sLog.outString("Loading reviewed funserver bonus-loot boss registry...");
     sObjectMgr.LoadBonusLootBossRegistry();
+    sLog.outString("Loading reviewed funserver bonus-loot boss chest registry...");
+    sObjectMgr.LoadBonusLootChestRegistry();
     sLog.outString("Loading cinematic waypoints...");
     sObjectMgr.LoadCinematicsWaypoints();
     sLog.outString("Loading transmogrification templates...");
