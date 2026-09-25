@@ -428,6 +428,9 @@ public:
     // Autonomous roster offers stay close to the character's actual level.
     // This deliberately does not apply to an explicit player catch-up quest.
     uint32 questFirstProgressionMaxAboveLevelDelta = 1;
+    // #335: quest giver/objective locations may lie up to this many levels
+    // above the bot (negative = old grind gate).
+    int32 questFirstProgressionQuestAreaLevelMargin = 5;
     // Radius around the bot within which an active quest destination is a
     // local hub candidate. It is spatial, not a hard-coded zone allowlist.
     float questFirstProgressionLocalHubRadius = 1200.0f;
