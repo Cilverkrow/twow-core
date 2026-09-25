@@ -394,6 +394,8 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionRetireBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta", 6);
     questFirstProgressionMaxAboveLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.MaxAboveLevelDelta", 1);
     questFirstProgressionQuestAreaLevelMargin = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin", 5);
+    destinationDeathsMax = config.GetIntDefault("AiPlayerbot.DestinationDeaths.Max", 2);
+    destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
     questFirstProgressionLocalHubRadius = config.GetFloatDefault("AiPlayerbot.QuestFirstProgression.LocalHubRadius", 1200.0f);
     questFirstProgressionTraceTravelDecisions = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TraceTravelDecisions", false);
     questFirstProgressionTurnInStallSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInStallSeconds", 300));

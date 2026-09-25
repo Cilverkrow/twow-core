@@ -1323,9 +1323,8 @@ bool UseHearthStoneAction::isUseful()
     if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
     {
         WorldPosition const bind = AI_VALUE(WorldPosition, "home bind");
-        AreaTableEntry const* area = GetAreaEntryByAreaID(
-            sTerrainMgr.GetZoneId(bind.getMapId(), bind.getX(), bind.getY(), bind.getZ()));
-        if (homebind::IsZoneClearlyAboveLevel(area ? area->area_level : 0, bot->GetLevel()))
+        // Real area level (Lakeshire 15), not the zone row (Redridge 0).
+        if (homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, bind.getAreaLevel())), bot->GetLevel()))
             return false;
     }
 

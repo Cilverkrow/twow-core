@@ -4,6 +4,8 @@
 #include "playerbot/TravelMgr.h"
 #include "TellLosAction.h"
 #include "EquipAction.h"
+#include "playerbot/HomeBindPolicy.h"
+#include "Maps/GridMap.h"
 
 using namespace ai;
 
@@ -23,11 +25,32 @@ bool MoveToFishAction::isUseful()
     return true;
 }
 
+namespace
+{
+// #307: the "any fish spot" pick (25 % chance of another grid) had no level
+// check, and the spot stayed stored: a level 7 high elf was sent to Blackwood
+// Lake (Eastern Plaguelands, area level 58) and died there 60 times. Generator
+// rows with INVALID_HEIGHT are unusable as well.
+bool IsUsableFishSpot(WorldPosition const& spot, Player* bot)
+{
+    if (!spot || spot.getZ() <= INVALID_HEIGHT)
+        return false;
+
+    return !homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, spot.getAreaLevel())), bot->GetLevel());
+}
+}
+
 bool MoveToFishAction::Execute(Event& event)
-{    
+{
     WorldPosition fishSpot;
 
     fishSpot = AI_VALUE2(WorldPosition, "custom position", "fish spot");
+
+    if (fishSpot && !IsUsableFishSpot(fishSpot, bot))
+    {
+        RESET_AI_VALUE2(WorldPosition, "custom position", "fish spot");
+        fishSpot = WorldPosition();
+    }
 
     if (!fishSpot && qualifier == "travel") //Get travel fish spot if available.
     {
@@ -36,11 +59,23 @@ bool MoveToFishAction::Execute(Event& event)
 
         if (AI_VALUE(TravelTarget*, "travel target") != target) //Do not fish ontop of master.
             fishSpot = *sTravelMgr.GetFishSpot(bot, true);
+
+        if (!IsUsableFishSpot(fishSpot, bot))
+            return false;
     }
-    
+
     if (!fishSpot) //Get any fish spot.
     {
-        fishSpot = *sTravelMgr.GetFishSpot(bot);
+        // Prefer the random pick, then fall back to the nearest grid; never a
+        // spot clearly above the bot's level.
+        for (uint8 attempt = 0; attempt < 5 && !IsUsableFishSpot(fishSpot, bot); ++attempt)
+        {
+            WorldPosition* candidate = sTravelMgr.GetFishSpot(bot, attempt > 0);
+            fishSpot = candidate ? *candidate : WorldPosition();
+        }
+
+        if (!IsUsableFishSpot(fishSpot, bot))
+            return false;
 
         TravelPath movePath = sTravelNodeMap.getFullPath(bot, fishSpot, bot);
 

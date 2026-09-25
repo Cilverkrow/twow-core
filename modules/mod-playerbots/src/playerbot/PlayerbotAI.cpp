@@ -1099,6 +1099,8 @@ void PlayerbotAI::OnDeath()
         AiObjectContext* context = aiObjectContext;
         // Start of the bounded wait for an active real-player master (#276).
         SET_AI_VALUE(time_t, "death time", time(nullptr));
+        // #307: a fishing spot the bot died at is not kept for the next attempt.
+        RESET_AI_VALUE2(WorldPosition, "custom position", "fish spot");
         if (!HasActivePlayerMaster() && !bot->InBattleGround())
         {
             SET_AI_VALUE(uint32, "death count", AI_VALUE(uint32, "death count") + 1);
@@ -1171,7 +1173,11 @@ void PlayerbotAI::OnDeath()
             // #307: a death on a completed-quest turn-in route counts against
             // that route, so a revived bot does not walk back into the same mobs.
             if (TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target"))
+            {
                 travelTarget->OnDeathOnTurnInRoute();
+                // #307: and every other destination (fishing, gathering, grind, ...).
+                travelTarget->OnDeathAtDestination();
+            }
         }
 
         SET_AI_VALUE(Unit*, "current target", nullptr);

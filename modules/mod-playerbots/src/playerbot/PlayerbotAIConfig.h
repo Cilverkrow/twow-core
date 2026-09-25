@@ -431,6 +431,10 @@ public:
     // #335: quest giver/objective locations may lie up to this many levels
     // above the bot (negative = old grind gate).
     int32 questFirstProgressionQuestAreaLevelMargin = 5;
+    // #307: any travel destination a roster bot died at this often is skipped
+    // for this bot for the cooldown (0 = off).
+    uint32 destinationDeathsMax = 2;
+    uint32 destinationDeathsCooldownSeconds = 3600;
     // Radius around the bot within which an active quest destination is a
     // local hub candidate. It is spatial, not a hard-coded zone allowlist.
     float questFirstProgressionLocalHubRadius = 1200.0f;
