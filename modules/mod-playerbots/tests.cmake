@@ -328,6 +328,21 @@ add_test(NAME auction_house_switch_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/auction_house_switch_source_contract_tests.cmake")
 
+# #307: quest targets across a continent below a minimum level, or in a zone
+# clearly above the bot, are deferred instead of discovered by dying.
+add_executable(route_danger_policy_tests
+  "${PB_MODULE_DIR}/t/route_danger_policy_tests.cpp")
+
+target_include_directories(route_danger_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(route_danger_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME route_danger_policy
+  COMMAND route_danger_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_executable(persistent_roster_profession_training_policy_tests
   "${PB_MODULE_DIR}/t/persistent_roster_profession_training_policy_tests.cpp")
 

@@ -480,6 +480,11 @@ AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds = 120
 # instead of dying on it again and again.
 AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
+# Route danger for low levels: a roster bot defers a quest giver, objective or
+# turn-in on another continent until it reaches this level (0 = off), and any
+# quest target in a zone clearly above its level (known zone level > level + 5).
+# Logged as [QuestFirstRoute] state=deferred reason=route_danger.
+AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute = 10
 
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes
