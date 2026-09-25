@@ -443,6 +443,13 @@ AiPlayerbot.AutoEquipUpgradeLoot = 1
 # item and decision until the next level-up. Diagnostics only; default off.
 AiPlayerbot.EquipDiagnostics.Trace = 0
 
+# Whether bots may use the auction house at all. With 0 no item is classified
+# for the AH (usage "AH"); anything unusable is sold to a vendor (or disenchanted
+# by an enchanter) instead of being hoarded, and bots neither sell nor buy at
+# the AH. Set 0 while the realm has no auction house for bots.
+# Default: 1
+AiPlayerbot.AuctionHouse.Enabled = 1
+
 # Sync quests with player (Bots will complete quests the moment you hand them in. Bots will ignore looting quest items.)
 # Default: 0 (disabled)
 AiPlayerbot.SyncQuestWithPlayer = 0
