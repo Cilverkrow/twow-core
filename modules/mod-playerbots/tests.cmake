@@ -321,6 +321,13 @@ add_test(NAME home_bind_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/home_bind_source_contract_tests.cmake")
 
+# #308: AiPlayerbot.AuctionHouse.Enabled = 0 removes the AH item usage and the
+# AH sell/buy visits, and leaves vendor selling untouched.
+add_test(NAME auction_house_switch_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/auction_house_switch_source_contract_tests.cmake")
+
 add_executable(persistent_roster_profession_training_policy_tests
   "${PB_MODULE_DIR}/t/persistent_roster_profession_training_policy_tests.cpp")
 

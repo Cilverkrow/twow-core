@@ -474,6 +474,11 @@ if ((proto->Class == ITEM_CLASS_PROJECTILE ||
             return sellUsage;
 #endif
 
+        // #308: without an auction house nothing is kept for it. A vendor
+        // item is sold; one without a vendor price is of no use to the bot.
+        if (!sPlayerbotAIConfig.auctionHouseEnabled)
+            return proto->SellPrice > 0 ? sellUsage : ItemUsage::ITEM_USAGE_NONE;
+
         //if item value is significantly higher than its vendor sell price and we actually have money to place the item on ah.
         uint32 ahMoney = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::ah);
 

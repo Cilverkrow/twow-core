@@ -385,6 +385,9 @@ public:
     bool autoEquipUpgradeLoot;
     // #308: log one BASIC [ITEM EQUIP] line per bagged green+ weapon/armor decision.
     bool equipDiagnosticsTrace = false;
+    // #308: with the auction house off, bots never mark items for it (no AH
+    // usage, no AH sell/buy visits); such items go to the vendor instead.
+    bool auctionHouseEnabled = true;
     bool syncQuestWithPlayer;
     bool syncQuestForPlayer;
     std::string autoTrainSpells;
