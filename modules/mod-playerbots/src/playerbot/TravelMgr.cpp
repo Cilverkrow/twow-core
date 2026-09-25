@@ -1058,6 +1058,44 @@ void TravelTarget::OnDeathOnTurnInRoute()
     SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
 }
 
+void TravelTarget::OnDeathAtDestination()
+{
+    // Completed turn-ins keep their own route rule above; everything else
+    // (fishing, gathering, grind, quest objectives and givers) is counted here.
+    if (!tDestination || dynamic_cast<NullTravelDestination const*>(tDestination) || IsProgressAwareTurnIn())
+        return;
+
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return;
+
+    // Bounded: a bot dies at only a handful of distinct destinations per hour.
+    if (destinationDeaths.size() > 64 && destinationDeaths.find(tDestination) == destinationDeaths.end())
+        destinationDeaths.clear();
+
+    if (!destination_death::RecordDeath(destinationDeaths[tDestination], WorldTimer::getMSTime(),
+            sPlayerbotAIConfig.destinationDeathsMax, sPlayerbotAIConfig.destinationDeathsCooldownSeconds * IN_MILLISECONDS))
+        return;
+
+    std::string kind = "unknown";
+    if (auto const it = TravelDestinationPurposeName.find(tDestination->GetPurpose()); it != TravelDestinationPurposeName.end())
+        kind = it->second;
+
+    // Always visible (BASIC): acceptance signal for the generalised #307 rule.
+    sLog.outBasic("[DestinationDeath] state=death_suppressed bot=%u level=%u kind=%s title=\"%s\" entry=%d map=%u deaths=%u cooldown_seconds=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), kind.c_str(), tDestination->GetTitle().c_str(), tDestination->GetEntry(),
+        wPosition ? wPosition->getMapId() : bot->GetMapId(), sPlayerbotAIConfig.destinationDeathsMax,
+        sPlayerbotAIConfig.destinationDeathsCooldownSeconds);
+
+    TraceQuestCommit(tDestination, "abandon", "death_suppressed");
+    SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+}
+
+bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destination) const
+{
+    auto const it = destinationDeaths.find(destination);
+    return it != destinationDeaths.end() && destination_death::IsSuppressed(it->second, WorldTimer::getMSTime());
+}
+
 bool TravelTarget::IsDestinationActive()
 {
     Player* player = bot;

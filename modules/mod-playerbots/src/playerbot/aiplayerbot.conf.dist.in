@@ -469,6 +469,13 @@ AiPlayerbot.QuestFirstProgression.MaxAboveLevelDelta = 1
 # was refused every quest point in its start zone and stayed at level 1.
 # Negative restores the old grind-style gate (level - 2 - deaths).
 AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin = 5
+
+# Any travel destination (fishing spot, gathering node, grind area, quest
+# objective or giver) a roster bot died at DestinationDeaths.Max times is
+# skipped by that bot for DestinationDeaths.CooldownSeconds. Completed turn-ins
+# keep the TurnInMaxDeathsOnRoute rule. 0 = off.
+AiPlayerbot.DestinationDeaths.Max = 2
+AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200

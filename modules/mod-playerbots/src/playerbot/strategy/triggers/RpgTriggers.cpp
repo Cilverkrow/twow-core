@@ -534,9 +534,8 @@ bool RpgHomeBindTrigger::IsActive()
     // #307: a roster bot never makes a zone far above its level its home.
     if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
     {
-        AreaTableEntry const* area = GetAreaEntryByAreaID(
-            sTerrainMgr.GetZoneId(guidP.getMapId(), guidP.getX(), guidP.getY(), guidP.getZ()));
-        if (homebind::IsZoneClearlyAboveLevel(area ? area->area_level : 0, bot->GetLevel()))
+        // Real area level (Lakeshire 15), not the zone row (Redridge 0).
+        if (homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, guidP.getAreaLevel())), bot->GetLevel()))
             return false;
     }
 

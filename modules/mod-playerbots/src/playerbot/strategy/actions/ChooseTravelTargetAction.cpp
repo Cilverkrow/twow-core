@@ -502,6 +502,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     std::unordered_map<TravelDestination*, bool> isActive;
 
     bool hasTarget = false;
+    TravelTarget const* persistentTarget = AI_VALUE(TravelTarget*, "travel target");
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
         AI_VALUE2(std::string, "manual string", "future travel purpose") == "quest";
@@ -532,6 +533,13 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             if (excludedTurnInTarget && excludedTurnInTarget->IsTurnInRouteSuppressed(destination, position))
             {
                 ai->TellDebug(requester, "Skipping temporarily suppressed completed-quest turn-in route.", "debug travel");
+                continue;
+            }
+
+            // #307: a destination this bot kept dying at is on a per-bot cooldown.
+            if (persistentTarget && persistentTarget->IsDestinationDeathSuppressed(destination))
+            {
+                ai->TellDebug(requester, "Skipping destination after repeated deaths there.", "debug travel");
                 continue;
             }
 
@@ -575,11 +583,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 if (!target->IsForced() && position && UsesQuestFirstProgression(bot) &&
                     dynamic_cast<QuestTravelDestination const*>(destination))
                 {
-                    AreaTableEntry const* area = GetAreaEntryByAreaID(
-                        sTerrainMgr.GetZoneId(position->getMapId(), position->getX(), position->getY(), position->getZ()));
+                    // Area (sub-zone) level: a zone row such as Redridge has 0, its
+                    // Lakeshire sub-area 15. getAreaLevel() resolves the real one.
+                    int32 const areaLevel = std::max<int32>(0, position->getAreaLevel());
                     route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
                         bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
-                        area ? area->area_level : 0);
+                        uint32(areaLevel));
                     if (danger == route_danger::Reason::CrossMap)
                     {
                         ++deferredCrossMap;

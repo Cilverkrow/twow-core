@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ProgressAwareTurnInRecoveryPolicy.h"
+#include "DestinationDeathPolicy.h"
 
 #include "strategy/AiObject.h"
 #include <boost/functional/hash.hpp>
@@ -403,6 +404,11 @@ namespace ai
         // Counts a death against the current completed-quest turn-in route and
         // puts the route on the death cooldown after too many (#307).
         void OnDeathOnTurnInRoute();
+        // #307: counts a death against any current destination (fishing,
+        // gathering, grind, quest objective, ...) and suppresses it for this
+        // bot after too many.
+        void OnDeathAtDestination();
+        bool IsDestinationDeathSuppressed(TravelDestination const* destination) const;
 	private:
         // #329: one visible [QuestCommit] line per commitment change of a
         // roster bot's quest target, throttled per event, reason and target.
@@ -429,6 +435,7 @@ namespace ai
         turnin_recovery::State turnInRecovery;
         struct CommitTrace { uint32 nextAt = 0; uint32 repeats = 0; };
         std::map<std::string, CommitTrace> commitTrace;
+        std::map<TravelDestination const*, destination_death::Record> destinationDeaths;
 	};
 
 	//General container for all travel destinations.
