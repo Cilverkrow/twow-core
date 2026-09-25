@@ -412,6 +412,26 @@ add_test(NAME persistent_roster_profession_training_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/persistent_roster_profession_training_source_contract_tests.cmake")
 
+# #335: quest givers/objectives use a quest tolerance (bot level + margin), not
+# the grind gate that kept low-level bots without any quest route.
+add_executable(quest_area_level_policy_tests
+  "${PB_MODULE_DIR}/t/quest_area_level_policy_tests.cpp")
+
+target_include_directories(quest_area_level_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_area_level_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_area_level_policy
+  COMMAND quest_area_level_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_area_level_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_area_level_source_contract_tests.cmake")
+
 add_test(NAME persistent_roster_bag_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"

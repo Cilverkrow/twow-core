@@ -1,5 +1,6 @@
 #include "playerbot/TravelMgr.h"
 #include <numeric>
+#include "playerbot/QuestAreaLevelPolicy.h"
 #include <iomanip>
 
 #include "playerbot/strategy/values/SharedValueContext.h"
@@ -2851,6 +2852,25 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
     //
     // Elite and dungeon turn-ins are still held back by
     // QuestRelationTravelDestination::IsPossible, which is where that belongs.
+
+    // #335: quest givers and objectives are not grind targets. The grind gate
+    // below (level - 2 - deaths, minimum 1) refused a level 1 bot that had died
+    // once every quest point around Dolanaar (area level 5), so seven roster
+    // bots stayed at level 1 with no quest route at all. For a destination that
+    // is only about quests, "clearly above the bot" is the limit, the same rule
+    // as the route danger; the quest level itself was checked on acceptance.
+    uint32 const questPurposes = (uint32)TravelDestinationPurpose::QuestGiver | (uint32)TravelDestinationPurpose::QuestAllObjective;
+    if ((purposeFlag & questPurposes) && !(purposeFlag & ~(questPurposes | (uint32)TravelDestinationPurpose::QuestTaker)) &&
+        sPlayerbotAIConfig.questFirstProgressionQuestAreaLevelMargin >= 0)
+    {
+        int32 questAreaLevel = position.getAreaLevel();
+        if (questAreaLevel > 0 && !position.isOverworld() && !canFightElite)
+            questAreaLevel += 10;
+
+        return quest_area_level::IsQuestLocationLevelValid(questAreaLevel, info.GetLevel(),
+            sPlayerbotAIConfig.questFirstProgressionQuestAreaLevelMargin);
+    }
+
     if (!(purposeFlag & (uint32)TravelDestinationPurpose::QuestTaker))
     {
         if (!areaLevel || (uint32)botLevel < areaLevel) //Skip points that are in a area that is too high level.

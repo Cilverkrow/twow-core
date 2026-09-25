@@ -464,6 +464,11 @@ AiPlayerbot.QuestFirstProgression.AutonomousLogSoftLimit = 16
 AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta = 4
 AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta = 6
 AiPlayerbot.QuestFirstProgression.MaxAboveLevelDelta = 1
+# Quest givers and objectives may lie in areas up to this many levels above the
+# bot (unknown area level is allowed). Without it a low-level bot that had died
+# was refused every quest point in its start zone and stayed at level 1.
+# Negative restores the old grind-style gate (level - 2 - deaths).
+AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin = 5
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
