@@ -238,6 +238,13 @@ add_test(NAME equip_diagnostics_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/equip_diagnostics_source_contract_tests.cmake")
 
+# #329 step 2: roster quest objectives travel on observed progress instead of
+# the generic travel time budget.
+add_test(NAME quest_objective_progress_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_objective_progress_source_contract_tests.cmake")
+
 # --------------------------------------------------------------------------
 # playerbot_event_store_contract_tests -- the unit suite for the three SQL
 # builders in PlayerbotDatabaseContract.h. Same hand-rolled-assertion shape as

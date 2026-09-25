@@ -957,9 +957,11 @@ void TravelTarget::SetStatus(TravelStatus status) {
         statusTime = HOUR *  1000;
         break;
     case TravelStatus::TRAVEL_STATUS_TRAVEL:
-        // Cross-map/transport turn-ins are governed by observed progress,
-        // never by a generic distance-derived overall wall clock.
-        statusTime = IsProgressAwareTurnIn() ? 0 : GetMaxTravelTime() * 2 + sPlayerbotAIConfig.maxWaitForMove;
+        // Cross-map/transport turn-ins, and (#329) roster quest objectives,
+        // are governed by observed progress, never by a generic
+        // distance-derived overall wall clock that every fight on the way
+        // used up.
+        statusTime = IsProgressAwareQuestTravel() ? 0 : GetMaxTravelTime() * 2 + sPlayerbotAIConfig.maxWaitForMove;
         break;
     case TravelStatus::TRAVEL_STATUS_WORK:
         statusTime = tDestination->GetExpireDelay();
@@ -978,17 +980,35 @@ bool TravelTarget::IsProgressAwareTurnIn() const
         bot->GetQuestStatus(destination->GetQuestId()) == QUEST_STATUS_COMPLETE;
 }
 
+bool TravelTarget::IsProgressAwareQuestTravel() const
+{
+    if (IsProgressAwareTurnIn())
+        return true;
+
+    // #329: live, 1,214 quest targets in two hours were dropped by the
+    // generic travel budget (2 x straight-line travel time), which every
+    // fight on the way consumed; the bot then chose again and again.
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    return objective && sPlayerbotAIConfig.questFirstProgressionProgressAwareObjectives &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+        bot->GetQuestStatus(objective->GetQuestId()) == QUEST_STATUS_INCOMPLETE;
+}
+
 bool TravelTarget::IsTurnInRouteSuppressed(TravelDestination const* destination, WorldPosition const* position) const
 {
-    QuestRelationTravelDestination const* questDestination = dynamic_cast<QuestRelationTravelDestination const*>(destination);
-    return questDestination && questDestination->GetRelation() && position &&
+    // Turn-ins (#117) and, since #329, stalled objective routes.
+    QuestTravelDestination const* questDestination = dynamic_cast<QuestTravelDestination const*>(destination);
+    QuestRelationTravelDestination const* relation = dynamic_cast<QuestRelationTravelDestination const*>(destination);
+    bool const eligible = questDestination && (!relation || relation->GetRelation());
+    return eligible && position &&
         turnin_recovery::IsSuppressed(turnInRecovery, WorldTimer::getMSTime(),
             uint32(questDestination->GetEntry()), position->getMapId());
 }
 
 turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
 {
-    QuestRelationTravelDestination const* destination = dynamic_cast<QuestRelationTravelDestination const*>(tDestination);
+    // Turn-ins and (#329) objectives share the same progress observation.
+    QuestTravelDestination const* destination = dynamic_cast<QuestTravelDestination const*>(tDestination);
     if (!destination || !wPosition)
         return turnin_recovery::RecoveryAction::None;
 
@@ -1116,7 +1136,12 @@ void TravelTarget::CheckStatus()
     if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())
     {
         ai->TellDebug(ai->GetMaster(), "Travel target expired because the status time was exceeded.", "debug travel");
-        TraceQuestCommit(tDestination, "drop", "status_time_exceeded");
+        // #329: which budget ran out separates travel churn from a finished
+        // work phase (WORK expiring after the objective area is legitimate).
+        TraceQuestCommit(tDestination, "drop",
+            GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ? "status_time_exceeded_travel" :
+            GetStatus() == TravelStatus::TRAVEL_STATUS_WORK ? "status_time_exceeded_work" :
+            GetStatus() == TravelStatus::TRAVEL_STATUS_COOLDOWN ? "status_time_exceeded_cooldown" : "status_time_exceeded");
         SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         ai->GetAiObjectContext()->ClearValues("no active travel destinations");
         return;
@@ -1143,21 +1168,21 @@ void TravelTarget::CheckStatus()
         }
         else if(IsForced()) return; //While traveling do not go into cooldown
 
-        if (IsProgressAwareTurnIn())
+        if (IsProgressAwareQuestTravel())
         {
             switch (ObserveTurnInProgress())
             {
             case turnin_recovery::RecoveryAction::RecomputeRoute:
                 if (sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
                     sLog.outBasic("[QuestFirstRoute] state=recovery_stage1 bot=%u quest=%u target_entry=%d action=recompute_route",
-                        bot->GetGUIDLow(), static_cast<QuestRelationTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry());
+                        bot->GetGUIDLow(), static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry());
                 TraceQuestCommit(tDestination, "blocked", "stall_recompute_route");
                 SetStatus(TravelStatus::TRAVEL_STATUS_READY);
                 return;
             case turnin_recovery::RecoveryAction::SuppressRouteAndCooldown:
                 if (sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
                     sLog.outBasic("[QuestFirstRoute] state=recovery_stage2 bot=%u quest=%u target_entry=%d action=suppress_route_cooldown cooldown_seconds=%u",
-                        bot->GetGUIDLow(), static_cast<QuestRelationTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry(),
+                        bot->GetGUIDLow(), static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry(),
                         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds);
                 TraceQuestCommit(tDestination, "abandon", "stall_suppressed");
                 SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);

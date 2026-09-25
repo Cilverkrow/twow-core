@@ -396,6 +396,8 @@ namespace ai
 
 		void CopyTarget(TravelTarget* const target);
         bool IsProgressAwareTurnIn() const;
+        // #329: completed turn-ins and incomplete roster quest objectives.
+        bool IsProgressAwareQuestTravel() const;
         bool IsTurnInRouteSuppressed(TravelDestination const* destination, WorldPosition const* position) const;
         turnin_recovery::RecoveryAction ObserveTurnInProgress();
         // Counts a death against the current completed-quest turn-in route and
