@@ -440,6 +440,8 @@ public:
     uint32 questFirstProgressionTurnInRouteCooldownSeconds = 120;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
+    // #307: quest targets on another continent wait until this level (0 = off).
+    uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;

@@ -35,7 +35,8 @@ foreach(required
   "AiPlayerbot.QuestFirstProgression.TurnInStallSeconds"
   "AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds"
   "AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute"
-  "AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds")
+  "AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds"
+  "AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute")
   require_text("${config}" "${required}" "configuration key")
 endforeach()
 
@@ -101,5 +102,9 @@ foreach(reason "same_target" "replaced_by_non_quest_target" "destination_inactiv
 endforeach()
 require_text("${loot_action}" "[QuestLoot] state=offered" "quest item offered record")
 require_text("${loot_action}" "[QuestLoot] state=skipped" "quest item skipped record")
+
+# #307: route danger for low levels is decided up front, for every roster bot.
+require_text("${quest_travel}" "route_danger::Classify(position->getMapId() != bot->GetMapId()" "route danger classification")
+require_text("${quest_travel}" "state=deferred bot=%u level=%u reason=route_danger" "visible route danger deferral")
 
 message(STATUS "QUEST_FIRST_PROGRESSION_SOURCE_CONTRACT=PASS")

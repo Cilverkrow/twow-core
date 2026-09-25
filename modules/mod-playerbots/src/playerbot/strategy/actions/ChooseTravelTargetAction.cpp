@@ -8,6 +8,7 @@
 #include "playerbot/strategy/values/GuildValues.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/RouteDangerPolicy.h"
 #include "Guild/GuildMgr.h"
 #include <iomanip>
 
@@ -501,6 +502,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     std::unordered_map<TravelDestination*, bool> isActive;
 
     bool hasTarget = false;
+    uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
         AI_VALUE2(std::string, "manual string", "future travel purpose") == "quest";
     bool hasActiveLocalQuestHub = false;
@@ -566,6 +568,30 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     continue;
                 }
 
+                // #307: a low-level roster bot defers a quest target whose route
+                // is a continent switch or whose zone is clearly above its level,
+                // instead of learning the danger by dying on the way (live: 81
+                // deaths of level 2-4 bots on the Durotar -> Undercity turn-in).
+                if (!target->IsForced() && position && UsesQuestFirstProgression(bot) &&
+                    dynamic_cast<QuestTravelDestination const*>(destination))
+                {
+                    AreaTableEntry const* area = GetAreaEntryByAreaID(
+                        sTerrainMgr.GetZoneId(position->getMapId(), position->getX(), position->getY(), position->getZ()));
+                    route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
+                        bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
+                        area ? area->area_level : 0);
+                    if (danger == route_danger::Reason::CrossMap)
+                    {
+                        ++deferredCrossMap;
+                        continue;
+                    }
+                    if (danger == route_danger::Reason::TargetZoneLevel)
+                    {
+                        ++deferredZoneLevel;
+                        continue;
+                    }
+                }
+
                 if (partition != std::prev(partitionedList.end())->first && !urand(0, 10)) //10% chance to skip to a longer partition.
                 {
                     ai->TellDebug(requester, "Skipping range " + PrintPartion(partition), "debug travel");
@@ -600,6 +626,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
      
     if(hasTarget)
         ai->TellDebug(requester, "Point at " + std::to_string(uint32(target->Distance(bot))) + "y selected.", "debug travel");
+
+    if ((deferredCrossMap || deferredZoneLevel) && sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
+        sLog.outBasic("[QuestFirstRoute] state=deferred bot=%u level=%u reason=route_danger cross_map=%u target_zone_level=%u selected_other=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), deferredCrossMap, deferredZoneLevel, hasTarget ? 1u : 0u);
 
     return hasTarget;
 }
