@@ -438,6 +438,9 @@ public:
     // bounded by the generic distance-derived travel wall clock.
     uint32 questFirstProgressionTurnInStallSeconds = 300;
     uint32 questFirstProgressionTurnInRouteCooldownSeconds = 120;
+    // #329: roster quest objectives use observed progress instead of the
+    // generic travel budget while travelling.
+    bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     uint32 freeRoomForNonSpareBots;

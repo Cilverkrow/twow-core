@@ -474,6 +474,11 @@ AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # teleports, removes quests or changes generic travel behaviour.
 AiPlayerbot.QuestFirstProgression.TurnInStallSeconds = 300
 AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds = 120
+# Roster bots travelling to an incomplete quest objective use the same observed
+# progress as turn-ins (stall recovery after TurnInStallSeconds without
+# progress; combat and transport pause it) instead of the generic travel time
+# budget, which fights on the way used up. 0 restores the old budget.
+AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives = 1
 # A death on a completed-quest turn-in route is a failed attempt, not a pause.
 # After TurnInMaxDeathsOnRoute deaths on the same turn-in (0 = off) the route is
 # skipped for TurnInDeathRouteCooldownSeconds, so the bot levels elsewhere
