@@ -31,6 +31,7 @@
 #include "QuestDef.h"
 #include "ObjectAccessor.h"
 #include "ScriptMgr.h"
+#include "ScriptObjects.h"
 #include "Group.h"
 #ifdef ENABLE_ELUNA
 #include "LuaEngine.h"
