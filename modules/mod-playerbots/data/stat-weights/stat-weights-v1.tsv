@@ -1,0 +1,28 @@
+class_id	class	spec_no	spec	role	str	agi	sta	int	spi	ap	rap	hit_pct	crit_pct	spell_power	healing	spell_hit_pct	spell_crit_pct	mp5	defense	dodge_pct	parry_pct	block_pct	block_value	armor	melee_dps	ranged_dps	spell_school	source	notes
+1	warrior	0	fury	dps	100	65	45	0	5	50	0	1200	1100	0	0	0	0	0	0	0	0	0	0	1	600	40		classic-1.12-consensus	dual wield: hit higher than arms; sta raised for solo levelling
+1	warrior	1	protection	tank	60	60	100	0	0	25	0	600	300	0	0	0	0	0	120	1200	1100	800	40	8	250	20		classic-1.12-consensus	defense > avoidance > stamina > strength (owner example)
+1	warrior	2	arms	dps	100	60	50	0	5	50	0	1000	1000	0	0	0	0	0	0	0	0	0	0	1	700	40		classic-1.12-consensus	two-handed levelling; weapon DPS dominant
+2	paladin	0	holy	healer	5	0	40	100	30	0	0	0	0	0	90	0	1000	200	0	0	0	0	0	1	0	0	holy	classic-1.12-consensus	intellect > healing > crit > mp5 > spirit
+2	paladin	1	protection	tank	50	40	100	40	0	20	0	500	200	40	0	0	0	40	150	1000	900	1000	40	8	200	0	holy	classic-1.12-consensus	owner: defense > block/dodge > stamina > strength; holy spell power for threat
+2	paladin	2	retribution	dps	100	55	50	25	5	50	0	900	1000	20	0	0	0	20	0	0	0	0	0	1	700	0	holy	classic-1.12-consensus	owner: strength > crit/agility > stamina; two-handed
+3	hunter	0	beastmastery	dps	0	100	50	25	5	5	45	1000	900	0	0	0	0	30	0	0	0	0	0	1	50	900		classic-1.12-consensus	pet does much of the damage: stamina slightly higher
+3	hunter	1	marksmanship	dps	0	100	45	25	5	5	45	1000	1000	0	0	0	0	30	0	0	0	0	0	1	50	1000		classic-1.12-consensus	ranged weapon DPS dominant
+3	hunter	2	survival	dps	0	110	45	25	5	5	45	1000	900	0	0	0	0	30	0	0	0	0	0	1	80	900		classic-1.12-consensus	Lightning Reflexes: agility worth more
+4	rogue	0	combat	dps	55	100	40	0	5	55	0	1300	1000	0	0	0	0	0	0	0	0	0	0	1	600	20		classic-1.12-consensus	swords/maces main hand; dual wield hit
+4	rogue	1	assassination	dps	55	100	40	0	5	55	0	1200	1100	0	0	0	0	0	0	0	0	0	0	1	550	20		classic-1.12-consensus	daggers
+4	rogue	2	subtlety	dps	55	100	45	0	5	55	0	1200	1000	0	0	0	0	0	0	0	0	0	0	1	550	20		classic-1.12-consensus	daggers
+5	priest	0	holy	healer	0	0	40	100	70	0	0	0	0	0	90	0	800	200	0	0	0	0	0	0.5	0	0	holy	classic-1.12-consensus	Spiritual Guidance: spirit worth more
+5	priest	1	shadow	dps	0	0	50	80	70	0	0	0	0	100	0	1000	200	150	0	0	0	0	0	0.5	0	0	shadow	classic-1.12-consensus	Spirit Tap levelling; shadow crit value to verify
+5	priest	2	discipline	healer	0	0	45	100	60	0	0	0	0	40	80	0	600	180	0	0	0	0	0	0.5	0	0	holy	classic-1.12-consensus	mixed smite levelling
+7	shaman	0	restoration	healer	0	0	40	100	20	0	0	0	0	0	90	0	800	220	0	0	0	0	0	1	0	0	nature	classic-1.12-consensus	mp5 strong
+7	shaman	1	enhancement	dps	100	60	50	25	5	50	0	1000	1000	10	0	0	0	20	0	0	0	0	0	1	750	0	nature	classic-1.12-consensus	slow two-hander (Windfury); Turtle 1.18 shaman changes to verify
+7	shaman	2	elemental	dps	0	0	45	70	10	0	0	0	0	100	0	1200	900	150	0	0	0	0	0	1	0	0	nature	classic-1.12-consensus	nature/fire spell power
+8	mage	0	arcane	dps	0	0	45	80	15	0	0	0	0	100	0	1300	900	150	0	0	0	0	0	0.5	0	0	arcane	classic-1.12-consensus	intellect higher (Arcane Mind)
+8	mage	1	fire	dps	0	0	45	70	15	0	0	0	0	100	0	1300	1000	150	0	0	0	0	0	0.5	0	0	fire	classic-1.12-consensus	crit worth more (Ignite)
+8	mage	2	frost	dps	0	0	45	70	15	0	0	0	0	100	0	1300	800	150	0	0	0	0	0	0.5	0	0	frost	classic-1.12-consensus	usual levelling spec
+9	warlock	0	affliction	dps	0	0	60	50	10	0	0	0	0	100	0	1200	200	100	0	0	0	0	0	0.5	0	0	shadow	classic-1.12-consensus	DoTs do not crit; Life Tap: stamina
+9	warlock	1	demonology	dps	0	0	70	50	10	0	0	0	0	100	0	1200	400	100	0	0	0	0	0	0.5	0	0	shadow	classic-1.12-consensus	Demonic Embrace: stamina worth more
+9	warlock	2	destruction	dps	0	0	60	50	5	0	0	0	0	100	0	1200	900	100	0	0	0	0	0	0.5	0	0	fire	classic-1.12-consensus	crit (Ruin)
+11	druid	0	balance	dps	0	0	45	70	30	0	0	0	0	100	0	1100	800	150	0	0	0	0	0	1	0	0	arcane	classic-1.12-consensus	arcane/nature spell power
+11	druid	1	feral	dps	100	90	60	10	5	50	0	900	900	0	0	0	0	0	50	600	0	0	0	2	0	0		classic-1.12-consensus	cat levelling with bear option; weapon DPS does NOT count in forms (classic)
+11	druid	2	restoration	healer	0	0	40	100	60	0	0	0	0	0	90	0	500	180	0	0	0	0	0	1	0	0	nature	classic-1.12-consensus	Reflection/Intensity: spirit worth more
