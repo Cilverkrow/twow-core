@@ -1,0 +1,29 @@
+class_id	class	spec_no	spec	role	prio1	prio2	prio3	prio4	prio5	weapon_dps	spell_school	source	guide_link	notes
+1	warrior	0	fury	dps	str	crit_pct	hit_pct	agi	sta	melee	-	classic-1.12-consensus	tbd	dual wield
+1	warrior	1	protection	tank	defense	block_pct	dodge_pct	sta	str	melee	-	classic-1.12-consensus	tbd	shield required
+1	warrior	2	arms	dps	str	crit_pct	agi	hit_pct	sta	melee	-	classic-1.12-consensus	tbd	two-handed
+2	paladin	0	holy	healer	int	healing	spell_crit_pct	mp5	spi	none	holy	classic-1.12-consensus	tbd	-
+2	paladin	1	protection	tank	defense	block_pct	dodge_pct	sta	str	melee	holy	owner-2026-09-25	tbd	owner example; shield required
+2	paladin	2	retribution	dps	str	crit_pct	agi	sta	hit_pct	melee	-	owner-2026-09-25	tbd	owner example; two-handed
+3	hunter	0	beastmastery	dps	agi	rap	crit_pct	hit_pct	int	ranged	-	classic-1.12-consensus	tbd	-
+3	hunter	1	marksmanship	dps	agi	crit_pct	rap	hit_pct	int	ranged	-	classic-1.12-consensus	tbd	-
+3	hunter	2	survival	dps	agi	crit_pct	rap	hit_pct	sta	ranged	-	classic-1.12-consensus	tbd	-
+4	rogue	0	combat	dps	agi	hit_pct	crit_pct	str	ap	melee	-	classic-1.12-consensus	tbd	swords/maces
+4	rogue	1	assassination	dps	agi	crit_pct	hit_pct	ap	str	melee	-	classic-1.12-consensus	tbd	daggers
+4	rogue	2	subtlety	dps	agi	crit_pct	ap	hit_pct	str	melee	-	classic-1.12-consensus	tbd	daggers
+5	priest	0	holy	healer	int	spi	healing	mp5	spell_crit_pct	none	holy	classic-1.12-consensus	tbd	-
+5	priest	1	shadow	dps	spell_power	int	spi	spell_hit_pct	sta	none	shadow	classic-1.12-consensus	tbd	-
+5	priest	2	discipline	healer	int	spi	healing	mp5	spell_power	none	holy	classic-1.12-consensus	tbd	-
+7	shaman	0	restoration	healer	int	healing	mp5	spell_crit_pct	spi	none	nature	classic-1.12-consensus	tbd	-
+7	shaman	1	enhancement	dps	str	agi	crit_pct	hit_pct	int	melee	-	classic-1.12-consensus	tbd	Turtle 1.18 changes to check
+7	shaman	2	elemental	dps	spell_power	int	spell_crit_pct	spell_hit_pct	mp5	none	nature	classic-1.12-consensus	tbd	-
+8	mage	0	arcane	dps	int	spell_power	spell_crit_pct	spell_hit_pct	spi	none	arcane	classic-1.12-consensus	tbd	-
+8	mage	1	fire	dps	spell_power	spell_crit_pct	int	spell_hit_pct	spi	none	fire	classic-1.12-consensus	tbd	-
+8	mage	2	frost	dps	spell_power	int	spell_hit_pct	spell_crit_pct	spi	none	frost	classic-1.12-consensus	tbd	-
+9	warlock	0	affliction	dps	spell_power	sta	int	spell_hit_pct	spi	none	shadow	classic-1.12-consensus	tbd	-
+9	warlock	1	demonology	dps	sta	spell_power	int	spell_hit_pct	spi	none	shadow	classic-1.12-consensus	tbd	-
+9	warlock	2	destruction	dps	spell_power	spell_crit_pct	int	spell_hit_pct	sta	none	fire	classic-1.12-consensus	tbd	-
+11	druid	0	balance	dps	spell_power	int	spell_crit_pct	spi	mp5	none	arcane	classic-1.12-consensus	tbd	-
+11	druid	1	feral	dps	agi	crit_pct	ap	str	hit_pct	none	-	owner-2026-09-26	tbd	cat; forms ignore weapon DPS
+11	druid	2	restoration	healer	int	spi	healing	mp5	spell_crit_pct	none	nature	classic-1.12-consensus	tbd	-
+11	druid	3	bear	tank	defense	dodge_pct	armor	sta	agi	none	-	owner-2026-09-26	tbd	NEW spec: needs premade path 11.3

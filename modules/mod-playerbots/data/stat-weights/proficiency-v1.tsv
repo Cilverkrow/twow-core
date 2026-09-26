@@ -1,0 +1,14 @@
+class_id	class	min_level	max_level	preferred_armor	also_wearable	weapons	off_hand	ranged	notes
+1	warrior	1	39	mail	cloth,leather	axe1h,axe2h,sword1h,sword2h,mace1h,mace2h,polearm,staff,dagger,fist	shield	bow,crossbow,gun,thrown	polearm/staff only after training
+1	warrior	40	60	plate	cloth,leather,mail	axe1h,axe2h,sword1h,sword2h,mace1h,mace2h,polearm,staff,dagger,fist	shield	bow,crossbow,gun,thrown	plate from level 40 (trainer)
+2	paladin	1	39	mail	cloth,leather	axe1h,axe2h,sword1h,sword2h,mace1h,mace2h,polearm	shield	-	libram in relic slot
+2	paladin	40	60	plate	cloth,leather,mail	axe1h,axe2h,sword1h,sword2h,mace1h,mace2h,polearm	shield	-	plate from level 40
+3	hunter	1	39	leather	cloth	axe1h,axe2h,sword1h,sword2h,polearm,staff,dagger,fist	-	bow,crossbow,gun,thrown	no shield
+3	hunter	40	60	mail	cloth,leather	axe1h,axe2h,sword1h,sword2h,polearm,staff,dagger,fist	-	bow,crossbow,gun,thrown	mail from level 40
+4	rogue	1	60	leather	cloth	dagger,sword1h,mace1h,fist	-	bow,crossbow,gun,thrown	-
+5	priest	1	60	cloth	-	mace1h,dagger,staff	holdable	wand	-
+7	shaman	1	39	leather	cloth	axe1h,axe2h,mace1h,mace2h,staff,dagger,fist	shield,holdable	-	totem in relic slot; dual wield per Turtle 1.18 to verify
+7	shaman	40	60	mail	cloth,leather	axe1h,axe2h,mace1h,mace2h,staff,dagger,fist	shield,holdable	-	mail from level 40
+8	mage	1	60	cloth	-	dagger,sword1h,staff	holdable	wand	-
+9	warlock	1	60	cloth	-	dagger,sword1h,staff	holdable	wand	-
+11	druid	1	60	leather	cloth	dagger,fist,mace1h,mace2h,staff	holdable	-	idol in relic slot; feral: weapon stats only, no weapon DPS
