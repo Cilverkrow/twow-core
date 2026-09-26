@@ -1097,7 +1097,7 @@ AiPlayerbot.PremadeSpecLink.11.0.50 = 51423233312533113321-5532332131-3
 AiPlayerbot.PremadeSpecLink.11.0.55 = 51423233312533113321-5532332131-50305
 AiPlayerbot.PremadeSpecLink.11.0.60 = 51423233312533113321-5532332131-5030513300012
 AiPlayerbot.PremadeSpecName.11.1 = feral
-AiPlayerbot.PremadeSpecProb.11.1 = 100
+AiPlayerbot.PremadeSpecProb.11.1 = 50
 AiPlayerbot.PremadeSpecLink.11.1.10 = -2
 AiPlayerbot.PremadeSpecLink.11.1.15 = -552
 AiPlayerbot.PremadeSpecLink.11.1.20 = -5532331
@@ -1122,6 +1122,20 @@ AiPlayerbot.PremadeSpecLink.11.2.45 = 514231--5555513355213521
 AiPlayerbot.PremadeSpecLink.11.2.50 = 514232333--5555513355213521
 AiPlayerbot.PremadeSpecLink.11.2.55 = 5142323331252--5555513355213521
 AiPlayerbot.PremadeSpecLink.11.2.60 = 514232333125331131--5555513355213521
+# #308: bear (tank) shares the feral build; cat (11.1) and bear 50/50 (owner 2026-09-26).
+AiPlayerbot.PremadeSpecName.11.3 = bear
+AiPlayerbot.PremadeSpecProb.11.3 = 50
+AiPlayerbot.PremadeSpecLink.11.3.10 = -2
+AiPlayerbot.PremadeSpecLink.11.3.15 = -552
+AiPlayerbot.PremadeSpecLink.11.3.20 = -5532331
+AiPlayerbot.PremadeSpecLink.11.3.25 = -55323321323
+AiPlayerbot.PremadeSpecLink.11.3.30 = -5532332132322213
+AiPlayerbot.PremadeSpecLink.11.3.35 = 5-553233213232221521
+AiPlayerbot.PremadeSpecLink.11.3.40 = 51423-553233213232221521
+AiPlayerbot.PremadeSpecLink.11.3.45 = 514232332-553233213232221521
+AiPlayerbot.PremadeSpecLink.11.3.50 = 5142323331251-553233213232221521
+AiPlayerbot.PremadeSpecLink.11.3.55 = 51423233312533113-553233213232221521
+AiPlayerbot.PremadeSpecLink.11.3.60 = 51423233312533113-553233213232221521-55
 
 # --- Klasse 2 ---
 

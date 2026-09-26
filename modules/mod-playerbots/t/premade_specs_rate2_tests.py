@@ -66,14 +66,14 @@ class RateTwoPremadePathTests(unittest.TestCase):
             GENERATOR_MODULE.legal_prefix(self.entries, target, 1, 8, set()),
             {20: 5, 10: 3})
 
-    def test_all_27_paths_have_a_full_102_point_level_60_template(self):
+    def test_all_28_paths_have_a_full_102_point_level_60_template(self):
         config = (pathlib.Path(__file__).resolve().parents[1] /
                   'src' / 'playerbot' / 'aiplayerbot.conf.dist.in').read_text(
                       encoding='utf-8')
         names = re.findall(r'^AiPlayerbot\.PremadeSpecName\.(\d+)\.(\d+) = (\S+)$',
                            config, flags=re.MULTILINE)
-        self.assertEqual(27, len(names))
-        self.assertEqual(27, len({(cls, spec) for cls, spec, _ in names}))
+        self.assertEqual(28, len(names))  # 27 + bear (#308)
+        self.assertEqual(28, len({(cls, spec) for cls, spec, _ in names}))
         for cls, spec, _ in names:
             match = re.search(r'^AiPlayerbot\.PremadeSpecLink\.' + cls + r'\.' +
                               spec + r'\.60 = ([0-9-]+)$', config,
