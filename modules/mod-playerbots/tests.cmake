@@ -676,6 +676,14 @@ add_test(NAME gossip_select_source_contract
     "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
     -P "${PB_MODULE_DIR}/t/gossip_select_source_contract_tests.cmake")
 
+# #290 (owner 2026-09-26): every quest sharable behind a key; a roster bot
+# admitted by the catch-up gets no "not eligible" first.
+add_test(NAME quest_share_all_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+    -P "${PB_MODULE_DIR}/t/quest_share_all_source_contract_tests.cmake")
+
 add_executable(bot_dialogue_policy_tests
   "${PB_MODULE_DIR}/t/bot_dialogue_policy_tests.cpp")
 

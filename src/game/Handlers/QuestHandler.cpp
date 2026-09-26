@@ -31,6 +31,7 @@
 #include "QuestDef.h"
 #include "ObjectAccessor.h"
 #include "ScriptMgr.h"
+#include "ScriptObjects.h"
 #include "Group.h"
 #ifdef ENABLE_ELUNA
 #include "LuaEngine.h"
@@ -652,7 +653,14 @@ void WorldSession::HandlePushQuestToParty(WorldPacket& recvPacket)
 
                 if (!pPlayer->CanTakeQuest(pQuest, false))
                 {
-                    _player->SendPushToPartyResponse(pPlayer, QUEST_PARTY_MSG_CANT_TAKE_QUEST);
+                    // twow-repo#290: a module may admit the member by its own
+                    // rule (playerbot roster catch-up); then no "not eligible".
+                    bool const admitted = ScriptRegistry<PlayerScript>::ForEachEnabledHookWithReturn(PLAYERHOOK_ON_QUEST_SHARE_REFUSED, [&](PlayerScript* script)
+                    {
+                        return script->OnQuestShareRefused(_player, pPlayer, pQuest);
+                    });
+                    if (!admitted)
+                        _player->SendPushToPartyResponse(pPlayer, QUEST_PARTY_MSG_CANT_TAKE_QUEST);
                     continue;
                 }
 

@@ -1772,6 +1772,16 @@ Rate.Drop.Item.Artifact = 1
 Rate.Drop.Item.Referenced = 1
 Rate.Drop.Money = 1
 
+# Funserver.Quests.AllSharable
+#   Every quest can be shared with the party (the quest log share button is
+#   active for all quests, for all players). The recipient's normal checks stay
+#   (class, race, reputation, profession, chain, log). Applied at quest load:
+#   restart after a change. Players clear the client cache (WDB) once so the
+#   client learns the new quest flags.
+#   Default: 0 (vanilla: only quests flagged sharable)
+
+Funserver.Quests.AllSharable = 0
+
 # Funserver.Loot.Bonus.Enabled
 #   Opt-in additional selection rounds for reviewed rare/boss loot only. The
 #   normal loot generator always runs once; zero preserves the historic path.

@@ -1088,6 +1088,9 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_GRID_UNLOAD, "GridUnload", true);
     setConfig(CONFIG_BOOL_CLEANUP_TERRAIN, "CleanupTerrain", true);
     setConfig(CONFIG_BOOL_MMAP_TILE_UNLOAD, "MMapTileUnload", false);
+    // twow-repo#290 (owner 2026-09-26): every quest can be shared, for all
+    // players. Applied to the quest templates at load (restart after a change).
+    setConfig(CONFIG_BOOL_FUNSERVER_ALL_QUESTS_SHARABLE, "Funserver.Quests.AllSharable", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_ENABLED, "Funserver.Loot.Bonus.Enabled", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE, "Funserver.Loot.Bonus.Rare", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE_ELITE, "Funserver.Loot.Bonus.RareElite", false);

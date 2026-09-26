@@ -4527,6 +4527,24 @@ void ObjectMgr::LoadQuests()
             }
         }
     }
+
+    // twow-repo#290 (owner 2026-09-26): on the funserver every quest can be
+    // shared, for all players. Setting the template flag keeps the client's
+    // share button (quest query response), CanShareQuest() and the playerbot
+    // catch-up in agreement; the recipient checks are untouched.
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_ALL_QUESTS_SHARABLE))
+    {
+        uint32 made = 0;
+        for (auto& [questId, quest] : m_QuestTemplatesMap)
+        {
+            if (!quest->HasQuestFlag(QUEST_FLAGS_SHARABLE))
+            {
+                quest->m_QuestFlags |= QUEST_FLAGS_SHARABLE;
+                ++made;
+            }
+        }
+        sLog.outString(">> Funserver.Quests.AllSharable: %u quests made sharable", made);
+    }
 }
 
 uint32 ObjectMgr::GetQuestStartingItemID(uint32 quest_id) const
