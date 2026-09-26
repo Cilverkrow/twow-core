@@ -507,6 +507,25 @@ add_test(NAME corpse_run_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/corpse_run_source_contract_tests.cmake")
 
+# #341: role- and profession-aware group rolls for roster bots.
+add_executable(loot_roll_policy_tests
+  "${PB_MODULE_DIR}/t/loot_roll_policy_tests.cpp")
+
+target_include_directories(loot_roll_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(loot_roll_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_roll_policy
+  COMMAND loot_roll_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_roll_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/loot_roll_source_contract_tests.cmake")
+
 add_test(NAME persistent_roster_starter_outfit_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"

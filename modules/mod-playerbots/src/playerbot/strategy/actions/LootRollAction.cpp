@@ -5,8 +5,32 @@
 #include "playerbot/strategy/values/LootValues.h"
 #include "Group/Group.h"
 #include "Maps/Map.h"
+#include "playerbot/LootRollPolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 
 using namespace ai;
+
+namespace
+{
+// #341: the profession a recipe belongs to (0 = none known here).
+uint32 RecipeSkill(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_LEATHERWORKING_PATTERN: return SKILL_LEATHERWORKING;
+        case ITEM_SUBCLASS_TAILORING_PATTERN: return SKILL_TAILORING;
+        case ITEM_SUBCLASS_ENGINEERING_SCHEMATIC: return SKILL_ENGINEERING;
+        case ITEM_SUBCLASS_BLACKSMITHING: return SKILL_BLACKSMITHING;
+        case ITEM_SUBCLASS_COOKING_RECIPE: return SKILL_COOKING;
+        case ITEM_SUBCLASS_ALCHEMY_RECIPE: return SKILL_ALCHEMY;
+        case ITEM_SUBCLASS_FIRST_AID_MANUAL: return SKILL_FIRST_AID;
+        case ITEM_SUBCLASS_ENCHANTING_FORMULA: return SKILL_ENCHANTING;
+        case ITEM_SUBCLASS_FISHING_MANUAL: return SKILL_FISHING;
+        default: return 0;
+    }
+}
+}
 
 bool LootStartRollAction::Execute(Event& event)
 {
@@ -228,7 +252,47 @@ RollVote RollAction::CalculateRollVote(ItemQualifier& itemQualifier)
             needVote = ROLL_GREED;
     }
 
+    // #341: roster bots on their own roll by role and profession.
+    char const* rollReason = "usage";
+    bool const roleAware = sPlayerbotAIConfig.lootRollRoleAware &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+    if (roleAware)
+    {
+        loot_roll::Decision decision;
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemQualifier.GetId());
+        if (proto && proto->Class == ITEM_CLASS_RECIPE)
+        {
+            loot_roll::RecipeFacts facts;
+            uint32 const skill = RecipeSkill(proto->SubClass);
+            facts.hasProfession = skill && ai->HasSkill(SkillType(skill));
+            uint32 const recipeSpell = ItemUsageValue::GetRecipeSpell(proto);
+            facts.known = recipeSpell && bot->HasSpell(recipeSpell);
+            facts.inBags = bot->HasItemCount(proto->ItemId, 1, true);
+            decision = loot_roll::ForRecipe(facts);
+        }
+        else
+            decision = loot_roll::ForGear(usage == ItemUsage::ITEM_USAGE_EQUIP, usage == ItemUsage::ITEM_USAGE_BAD_EQUIP);
+
+        switch (decision.vote)
+        {
+            case loot_roll::Vote::Need: needVote = ROLL_NEED; break;
+            case loot_roll::Vote::Greed: needVote = ROLL_GREED; break;
+            case loot_roll::Vote::Pass: needVote = ROLL_PASS; break;
+            default: break;
+        }
+        rollReason = decision.reason;
+    }
+
     bool canLoot = StoreLootAction::IsLootAllowed(itemQualifier, GetBotAI(bot));
+
+    if (roleAware && sPlayerbotAIConfig.lootRollTrace)
+    {
+        RollVote const finalVote = canLoot ? needVote : ROLL_PASS;
+        char const* voteName = finalVote == ROLL_NEED ? "need" : finalVote == ROLL_GREED ? "greed" : "pass";
+        sLog.outBasic("[LootRoll] vote=%s reason=%s bot=%u level=%u item=%u usage=%u can_loot=%u",
+            voteName, canLoot ? rollReason : "not_lootable", bot->GetGUIDLow(), bot->GetLevel(),
+            itemQualifier.GetId(), uint32(usage), canLoot ? 1u : 0u);
+    }
 
     if (AI_VALUE2(bool, "manual bool", "roll feedback"))
     {
