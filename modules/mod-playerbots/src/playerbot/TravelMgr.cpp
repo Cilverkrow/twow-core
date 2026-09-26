@@ -1316,6 +1316,12 @@ void TravelMgr::Clear()
 
 int32 TravelMgr::GetAreaLevel(uint32 area_id)
 {
+    // #307: configured levels for areas the generated table misses (Turtle
+    // zones such as the high elf start 5225 Thalassian Highlands).
+    auto const configured = sPlayerbotAIConfig.areaLevelOverrides.find(area_id);
+    if (configured != sPlayerbotAIConfig.areaLevelOverrides.end())
+        return configured->second;
+
     auto lev = areaLevels.find(area_id);
 
     if (lev != areaLevels.end())

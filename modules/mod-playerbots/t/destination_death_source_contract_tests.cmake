@@ -26,6 +26,6 @@ require_text("${choose}" "int32 const areaLevel = std::max<int32>(0, position->g
 # #307 (b): fishing spots are level-checked, INVALID_HEIGHT rows skipped, and
 # the stored spot is dropped on death (Carler: L7 at Blackwood Lake, area 58).
 file(READ "${PB_SOURCE_DIR}/strategy/actions/FishAction.cpp" fish)
-require_text("${fish}" "homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, spot.getAreaLevel())), bot->GetLevel())" "fishing spot level check")
+require_text("${fish}" "homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, spot.getAreaLevelOrParent())), bot->GetLevel())" "fishing spot level check (parent zone fallback)")
 require_text("${fish}" "spot.getZ() <= INVALID_HEIGHT" "invalid generated spots skipped")
 require_text("${ai_source}" "RESET_AI_VALUE2(WorldPosition, \"custom position\", \"fish spot\");" "fishing spot dropped on death")

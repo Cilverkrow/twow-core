@@ -15,7 +15,7 @@ file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_template)
 
 # #307 zone escape: roster bots on their own, real area level, #129 hearth rule.
 require_text("${triggers}" "IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster()" "roster bots on their own")
-require_text("${triggers}" "WorldPosition(bot).getAreaLevel()" "real area level")
+require_text("${triggers}" "WorldPosition(bot).getAreaLevelOrParent()" "real area level (parent zone fallback)")
 require_text("${triggers}" "AI_VALUE2(bool, \"action useful\", \"hearthstone\")" "hearthstone only when useful (#129 bind check)")
 require_text("${triggers}" "zoneEscapeCooldownSeconds" "cooldown")
 require_text("${triggers}" "PLAYER_FLAGS_RESTING" "cities and inns exempt")
@@ -30,3 +30,15 @@ require_text("${trigger_context}" "creators[\"zone escape\"]" "trigger registere
 require_text("${action_context}" "creators[\"zone escape\"]" "action registered")
 require_text("${config_source}" "\"AiPlayerbot.ZoneEscape.Enabled\", false" "default off")
 require_text("${config_template}" "AiPlayerbot.ZoneEscape.Enabled = 0" "documented switch")
+
+# Train 5 follow-up: retry, safe waiting, parent-zone level, level overrides.
+file(READ "${PB_SOURCE_DIR}/WorldPosition.cpp" world_position)
+file(READ "${PB_SOURCE_DIR}/TravelMgr.cpp" travel_mgr)
+require_text("${triggers}" "WorldPosition(bot).getAreaLevelOrParent()" "parent-zone level for the bot position")
+require_text("${triggers}" "zone_escape::IntervalSeconds(lastStep" "short retry after a hearthstone attempt")
+require_text("${triggers}" "!AI_VALUE2(bool, \"spell ready\", 8690)" "hearthstone cooldown detected")
+require_text("${actions}" "[ZoneEscape] state=wait reason=%s" "visible waiting")
+require_text("${world_position}" "int32 const parent = sTravelMgr.GetAreaLevel(area->zone);" "parent-zone fallback")
+require_text("${travel_mgr}" "sPlayerbotAIConfig.areaLevelOverrides.find(area_id)" "configured area levels")
+require_text("${config_template}" "AiPlayerbot.ZoneEscape.RetrySeconds = 60" "documented retry")
+require_text("${config_template}" "AiPlayerbot.AreaLevelOverrides =" "documented overrides")

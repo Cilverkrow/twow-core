@@ -501,6 +501,12 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 # No other teleports. One attempt per CooldownSeconds. Logged as [ZoneEscape].
 AiPlayerbot.ZoneEscape.Enabled = 0
 AiPlayerbot.ZoneEscape.CooldownSeconds = 600
+# After a hearthstone attempt that left the bot in the zone (cast interrupted),
+# try again after RetrySeconds instead of the full cooldown.
+AiPlayerbot.ZoneEscape.RetrySeconds = 60
+# Area levels for areas the generated ai_playerbot_zone_level table misses or
+# gets wrong, as a comma list of <area id>:<level> (e.g. Turtle zones).
+AiPlayerbot.AreaLevelOverrides =
 # Shared danger map (#307). Deaths of all bots (not real players, not in
 # instances or battlegrounds) are pooled per CellSize x CellSize yard cell for
 # WindowSeconds. A roster bot skips a travel destination when the destination

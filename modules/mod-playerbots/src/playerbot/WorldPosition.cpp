@@ -531,6 +531,20 @@ int32 WorldPosition::getAreaLevel() const
     return 0;
 }
 
+int32 WorldPosition::getAreaLevelOrParent() const
+{
+    int32 const level = getAreaLevel();
+    if (level > 0)
+        return level;
+
+    AreaTableEntry const* area = GetArea();
+    if (!area || !area->zone)
+        return level;
+
+    int32 const parent = sTravelMgr.GetAreaLevel(area->zone);
+    return parent > 0 ? parent : level;
+}
+
 bool WorldPosition::HasAreaFlag(const AreaFlags flag) const
 {
     AreaTableEntry const* areaEntry = GetArea();

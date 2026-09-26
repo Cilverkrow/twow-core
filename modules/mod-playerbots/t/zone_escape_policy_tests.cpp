@@ -69,6 +69,22 @@ int main()
     home.inHomeZone = true;
     d = Decide(home);
     Require(d.step == Step::None && !std::strcmp(d.reason, "home_zone"), "never inside the home-bind zone (start zone)");
+    // Train 5: hearthstone on cooldown -> hold still (no new local target),
+    // also while the interval is still running.
+    Facts waiting = Stranded();
+    waiting.hearthUsable = false;
+    waiting.hearthOnCooldown = true;
+    waiting.due = false;
+    d = Decide(waiting);
+    Require(d.step == Step::Wait && !std::strcmp(d.reason, "hearth_cooldown"), "hearthstone on cooldown: wait");
+    waiting.inHomeZone = true;
+    Require(Decide(waiting).step == Step::None, "no waiting once home");
+
+    // Retry soon after an interrupted hearthstone, full cooldown otherwise.
+    Require(IntervalSeconds(Step::Hearth, 600, 60) == 60, "hearth attempt: retry after 60 s");
+    Require(IntervalSeconds(Step::Travel, 600, 60) == 600, "travel: full cooldown");
+    Require(IntervalSeconds(Step::None, 600, 60) == 600, "first attempt: full cooldown rule");
+
     Facts dungeon = Stranded();
     dungeon.inInstanceOrBattleground = true;
     Require(Decide(dungeon).step == Step::None, "never inside instances or battlegrounds");

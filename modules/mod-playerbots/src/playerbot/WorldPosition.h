@@ -321,6 +321,9 @@ namespace ai
         // Stub to empty string (loses WMO area-override lookup; would need a Penqle-side equivalent).
         std::string getAreaOverride() const { return ""; }
         int32 getAreaLevel() const;
+        // #307: like getAreaLevel, but a sub-area without a level of its own (0/-1/-2,
+        // e.g. a lake in Eastern Plaguelands) takes its parent zone's level.
+        int32 getAreaLevelOrParent() const;
 
         bool HasAreaFlag(const AreaFlags flag = AREA_FLAG_CAPITAL) const;
         bool HasFaction(const Team team) const;
