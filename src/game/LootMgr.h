@@ -405,7 +405,7 @@ struct Loot
 
 
     void GenerateMoneyLoot(uint32 minAmount, uint32 maxAmount);
-    bool FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, bool personal, bool noEmptyError = false, WorldObject const* looted = nullptr);
+    bool FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, bool personal, bool noEmptyError = false, WorldObject const* looted = nullptr, WorldObject const* bonusSource = nullptr);
 
     // twow-repo#346: funserver bonus selections stop while the generated quest
     // items still need their slots. The client shows at most MAX_NR_LOOT_ITEMS

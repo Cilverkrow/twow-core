@@ -1530,6 +1530,10 @@ class ObjectMgr
         void LoadBonusLootBossRegistry();
         BonusLootBossRegistryEntry GetBonusLootBossRegistryEntry(uint32 creatureEntry, uint32 mapId) const;
         robin_hood::unordered_map<uint64, BonusLootBossRegistryEntry> m_BonusLootBossRegistry;
+        // twow-repo#345: reviewed boss reward chests (gameobject entry + map), same categories.
+        void LoadBonusLootChestRegistry();
+        BonusLootBossRegistryEntry GetBonusLootChestRegistryEntry(uint32 gameobjectEntry, uint32 mapId) const;
+        robin_hood::unordered_map<uint64, BonusLootBossRegistryEntry> m_BonusLootChestRegistry;
         // Loaded before LoadCreatures() and only when a Funserver.Rare.* switch is on.
         void LoadRareRespawnRegistry();
         bool IsRareRespawnRegistered(uint32 guid) const { return m_RareRespawnRegistry.find(guid) != m_RareRespawnRegistry.end(); }

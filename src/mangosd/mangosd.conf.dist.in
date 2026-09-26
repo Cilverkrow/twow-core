@@ -1760,6 +1760,12 @@ Rate.Drop.Money = 1
 #   Opt-in additional selection rounds for reviewed rare/boss loot only. The
 #   normal loot generator always runs once; zero preserves the historic path.
 #   Default: 0 (off)
+#
+# Funserver.Loot.Bonus.BossChest
+#   Also apply the bonus selections to reviewed boss reward chests listed in
+#   `gameobject_loot_bonus_registry` (e.g. Cache of the Firelord), in their own
+#   dungeon or raid only. Requires Funserver.Loot.Bonus.Enabled and a restart.
+#   Default: 0 (off)
 
 Funserver.Loot.Bonus.Enabled = 0
 Funserver.Loot.Bonus.Rare = 0
@@ -1767,6 +1773,7 @@ Funserver.Loot.Bonus.RareElite = 0
 Funserver.Loot.Bonus.WorldBoss = 0
 Funserver.Loot.Bonus.DungeonBoss = 0
 Funserver.Loot.Bonus.RaidBoss = 0
+Funserver.Loot.Bonus.BossChest = 0
 
 # Funserver.Loot.Bonus.SelectionMultiplier
 #   Total bounded selection passes including the historical pass. Valid range

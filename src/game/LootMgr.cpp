@@ -291,6 +291,18 @@ static uint8 GetFunserverBonusSelectionMultiplier(WorldObject const* looted)
     if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_ENABLED) || !looted)
         return 1;
 
+    // twow-repo#345: a reviewed boss reward chest in its own dungeon or raid.
+    if (looted->IsGameObject())
+    {
+        if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_BOSS_CHEST))
+            return 1;
+        BonusLootBossRegistryEntry chest = sObjectMgr.GetBonusLootChestRegistryEntry(looted->GetEntry(), looted->GetMapId());
+        if ((chest.category == BONUS_LOOT_BOSS_DUNGEON && looted->GetMap()->IsDungeon() && !looted->GetMap()->IsRaid()) ||
+            (chest.category == BONUS_LOOT_BOSS_RAID && looted->GetMap()->IsRaid()))
+            return uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER));
+        return 1;
+    }
+
     Creature const* creature = ToCreature(looted);
     if (!creature || creature->IsPet())
         return 1;
@@ -557,7 +569,7 @@ void Loot::AddItem(LootStoreItem const & item)
 }
 
 // Calls processor of corresponding LootTemplate (which handles everything including references)
-bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, bool personal, bool noEmptyError, WorldObject const* looted)
+bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, bool personal, bool noEmptyError, WorldObject const* looted, WorldObject const* bonusSource)
 {
     // Must be provided
     if (!loot_owner)
@@ -580,7 +592,9 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
 
     // Normal loot is generated exactly once above. Bonus selection is opt-in,
     // bounded, and runs before the existing group-rights finalisation below.
-    uint8 selectionMultiplier = GetFunserverBonusSelectionMultiplier(looted);
+    // bonusSource names the bonus owner without changing `looted`, which also
+    // drives the group reward-distance check below (twow-repo#345 chests).
+    uint8 selectionMultiplier = GetFunserverBonusSelectionMultiplier(looted ? looted : bonusSource);
     if (selectionMultiplier > 1)
         tab->ProcessBonus(*this, store.IsRatesAllowed(), loot_owner, selectionMultiplier,
                           sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY));

@@ -422,6 +422,57 @@ BonusLootBossRegistryEntry ObjectMgr::GetBonusLootBossRegistryEntry(uint32 creat
     return itr == m_BonusLootBossRegistry.end() ? BonusLootBossRegistryEntry{} : itr->second;
 }
 
+void ObjectMgr::LoadBonusLootChestRegistry()
+{
+    m_BonusLootChestRegistry.clear();
+
+    if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_ENABLED) ||
+        !sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_BOSS_CHEST))
+        return;
+
+    std::unique_ptr<QueryResult> result(WorldDatabase.Query(
+        "SELECT `gameobject_entry`, `map_id`, `category` "
+        "FROM `gameobject_loot_bonus_registry`"));
+
+    if (!result)
+        return; // Empty or missing data fails closed; the feature is opt-in.
+
+    do
+    {
+        Field* fields = result->Fetch();
+        uint32 entry = fields[0].GetUInt32();
+        uint32 mapId = fields[1].GetUInt32();
+        std::string const categoryName = fields[2].GetString();
+        BonusLootBossCategory const category = categoryName == "dungeon" ? BONUS_LOOT_BOSS_DUNGEON :
+                                               categoryName == "raid" ? BONUS_LOOT_BOSS_RAID : BONUS_LOOT_BOSS_NONE;
+        GameObjectInfo const* goInfo = GetGameObjectInfo(entry);
+        MapEntry const* map = sMapStorage.LookupEntry<MapEntry>(mapId);
+
+        if (!goInfo || goInfo->type != GAMEOBJECT_TYPE_CHEST || !goInfo->GetLootId() ||
+            !map ||
+            (category != BONUS_LOOT_BOSS_DUNGEON && category != BONUS_LOOT_BOSS_RAID) ||
+            (category == BONUS_LOOT_BOSS_DUNGEON && (!map->IsDungeon() || map->IsRaid())) ||
+            (category == BONUS_LOOT_BOSS_RAID && !map->IsRaid()))
+        {
+            sLog.outErrorDb("gameobject_loot_bonus_registry has invalid row for gameobject entry %u; ignored", entry);
+            continue;
+        }
+
+        uint64 key = (uint64(entry) << 32) | mapId;
+        if (!m_BonusLootChestRegistry.emplace(key, BonusLootBossRegistryEntry{ category }).second)
+            sLog.outErrorDb("gameobject_loot_bonus_registry has duplicate gameobject entry %u map %u; later row ignored", entry, mapId);
+    }
+    while (result->NextRow());
+
+    sLog.outString("Loaded %u reviewed funserver bonus-loot boss chest entries", uint32(m_BonusLootChestRegistry.size()));
+}
+
+BonusLootBossRegistryEntry ObjectMgr::GetBonusLootChestRegistryEntry(uint32 gameobjectEntry, uint32 mapId) const
+{
+    auto itr = m_BonusLootChestRegistry.find((uint64(gameobjectEntry) << 32) | mapId);
+    return itr == m_BonusLootChestRegistry.end() ? BonusLootBossRegistryEntry{} : itr->second;
+}
+
 void ObjectMgr::LoadRareRespawnRegistry()
 {
     m_RareRespawnRegistry.clear();
