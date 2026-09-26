@@ -460,6 +460,9 @@ public:
     // Low-volume route-decision diagnostics for persistent quest-first bots.
     // Disabled by default and emitted only by the quest travel request path.
     bool questFirstProgressionTraceTravelDecisions = false;
+    // #303: follow-state snapshot for bots of a real-player master ([FollowDiag]),
+    // rate-limited per bot. Diagnostic gate before the far-follow fix.
+    bool followDiagnostics = false;
     // A completed persistent-roster turn-in is progress-observed rather than
     // bounded by the generic distance-derived travel wall clock.
     uint32 questFirstProgressionTurnInStallSeconds = 300;
