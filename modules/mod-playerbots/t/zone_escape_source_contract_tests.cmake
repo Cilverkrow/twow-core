@@ -19,6 +19,7 @@ require_text("${triggers}" "WorldPosition(bot).getAreaLevel()" "real area level"
 require_text("${triggers}" "AI_VALUE2(bool, \"action useful\", \"hearthstone\")" "hearthstone only when useful (#129 bind check)")
 require_text("${triggers}" "zoneEscapeCooldownSeconds" "cooldown")
 require_text("${triggers}" "PLAYER_FLAGS_RESTING" "cities and inns exempt")
+require_text("${triggers}" "facts.inHomeZone = bind.getMapId() == bot->GetMapId()" "home-bind zone exempt")
 # Only the hearthstone teleports; otherwise a new target under the normal rules.
 require_text("${actions}" "DoSpecificAction(\"hearthstone\"" "hearthstone")
 require_text("${actions}" "SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED)" "new travel target")

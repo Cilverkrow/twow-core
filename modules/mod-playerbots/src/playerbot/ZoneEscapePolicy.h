@@ -27,6 +27,7 @@ struct Facts
     bool alive = false;
     bool inInstanceOrBattleground = false;
     bool inRestArea = false;       // city or inn: trainers, guards (#306 visits)
+    bool inHomeZone = false;       // same zone as the home bind: the start zone (L2 in Durotar, train 5)
     bool due = false;              // cooldown since the last escape attempt is over
     bool hearthUsable = false;     // hearthstone ready and its bind zone suits the bot
     std::uint32_t areaLevel = 0;
@@ -47,6 +48,8 @@ inline Decision Decide(Facts const& facts)
         return { Step::None, "zone_ok" };
     if (facts.inRestArea)
         return { Step::None, "rest_area" };
+    if (facts.inHomeZone)
+        return { Step::None, "home_zone" };
     if (!facts.due)
         return { Step::None, "cooldown" };
     if (facts.hearthUsable)

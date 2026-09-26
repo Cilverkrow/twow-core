@@ -65,6 +65,10 @@ int main()
     city.inRestArea = true;
     d = Decide(city);
     Require(d.step == Step::None && !std::strcmp(d.reason, "rest_area"), "cities and inns are never left (OB-40: L1 bots in Stormwind)");
+    Facts home = Stranded();
+    home.inHomeZone = true;
+    d = Decide(home);
+    Require(d.step == Step::None && !std::strcmp(d.reason, "home_zone"), "never inside the home-bind zone (start zone)");
     Facts dungeon = Stranded();
     dungeon.inInstanceOrBattleground = true;
     Require(Decide(dungeon).step == Step::None, "never inside instances or battlegrounds");

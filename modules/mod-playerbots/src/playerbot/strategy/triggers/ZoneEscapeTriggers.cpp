@@ -25,6 +25,11 @@ zone_escape::Facts ai::GatherZoneEscapeFacts(PlayerbotAI* ai)
     facts.areaLevel = uint32(std::max<int32>(0, WorldPosition(bot).getAreaLevel()));
     facts.botLevel = bot->GetLevel();
     facts.inRestArea = bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING);
+    // Hearthing would not leave the zone anyway, and the start zone is where
+    // a low-level bot belongs (train 5: L2 bot in a Durotar sub-area of level 8).
+    WorldPosition const bind = AI_VALUE(WorldPosition, "home bind");
+    if (AreaTableEntry const* area = bind.GetArea())
+        facts.inHomeZone = bind.getMapId() == bot->GetMapId() && (area->zone ? area->zone : area->ID) == bot->GetZoneId();
     facts.due = uint32(time(nullptr)) >= uint32(AI_VALUE2(time_t, "manual time", "zone escape")) + sPlayerbotAIConfig.zoneEscapeCooldownSeconds;
     // "hearthstone" is only useful when it is ready and its bind zone is not
     // itself clearly above the bot's level (#129).
