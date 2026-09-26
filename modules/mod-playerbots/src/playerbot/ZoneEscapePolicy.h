@@ -18,6 +18,7 @@ enum class Step : std::uint8_t
     None,
     Hearth,
     Travel,
+    Wait,       // hearthstone on cooldown: hold still instead of walking back into danger
 };
 
 struct Facts
@@ -27,8 +28,10 @@ struct Facts
     bool alive = false;
     bool inInstanceOrBattleground = false;
     bool inRestArea = false;       // city or inn: trainers, guards (#306 visits)
-    bool due = false;              // cooldown since the last escape attempt is over
+    bool inHomeZone = false;       // same zone as the home bind: the start zone (L2 in Durotar, train 5)
+    bool due = false;              // interval since the last escape attempt is over
     bool hearthUsable = false;     // hearthstone ready and its bind zone suits the bot
+    bool hearthOnCooldown = false; // hearthstone carried, bind zone fine, spell not ready yet
     std::uint32_t areaLevel = 0;
     std::uint32_t botLevel = 0;
 };
@@ -39,6 +42,13 @@ struct Decision
     char const* reason = "not_applicable";
 };
 
+// A hearthstone attempt that left the bot in the zone (cast interrupted, train 5:
+// Carler) is retried soon; everything else waits the full cooldown.
+inline std::uint32_t IntervalSeconds(Step lastStep, std::uint32_t cooldownSeconds, std::uint32_t retrySeconds)
+{
+    return lastStep == Step::Hearth ? retrySeconds : cooldownSeconds;
+}
+
 inline Decision Decide(Facts const& facts)
 {
     if (!facts.enabled || !facts.rosterOnItsOwn || !facts.alive || facts.inInstanceOrBattleground)
@@ -47,6 +57,12 @@ inline Decision Decide(Facts const& facts)
         return { Step::None, "zone_ok" };
     if (facts.inRestArea)
         return { Step::None, "rest_area" };
+    if (facts.inHomeZone)
+        return { Step::None, "home_zone" };
+    // Train 5: waiting beats a new local target, which was the next lake the
+    // bot died at (Hodelin: 5 deaths in 7 minutes).
+    if (facts.hearthOnCooldown)
+        return { Step::Wait, "hearth_cooldown" };
     if (!facts.due)
         return { Step::None, "cooldown" };
     if (facts.hearthUsable)

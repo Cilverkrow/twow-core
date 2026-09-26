@@ -36,7 +36,7 @@ bool IsUsableFishSpot(WorldPosition const& spot, Player* bot)
     if (!spot || spot.getZ() <= INVALID_HEIGHT)
         return false;
 
-    return !homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, spot.getAreaLevel())), bot->GetLevel());
+    return !homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, spot.getAreaLevelOrParent())), bot->GetLevel());
 }
 }
 

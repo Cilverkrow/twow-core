@@ -22,13 +22,24 @@ zone_escape::Facts ai::GatherZoneEscapeFacts(PlayerbotAI* ai)
         return facts;
 
     AiObjectContext* context = ai->GetAiObjectContext();
-    facts.areaLevel = uint32(std::max<int32>(0, WorldPosition(bot).getAreaLevel()));
+    // A sub-area without a level of its own takes its parent zone's level.
+    facts.areaLevel = uint32(std::max<int32>(0, WorldPosition(bot).getAreaLevelOrParent()));
     facts.botLevel = bot->GetLevel();
     facts.inRestArea = bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING);
-    facts.due = uint32(time(nullptr)) >= uint32(AI_VALUE2(time_t, "manual time", "zone escape")) + sPlayerbotAIConfig.zoneEscapeCooldownSeconds;
+    // Hearthing would not leave the zone anyway, and the start zone is where
+    // a low-level bot belongs (train 5: L2 bot in a Durotar sub-area of level 8).
+    WorldPosition const bind = AI_VALUE(WorldPosition, "home bind");
+    if (AreaTableEntry const* area = bind.GetArea())
+        facts.inHomeZone = bind.getMapId() == bot->GetMapId() && (area->zone ? area->zone : area->ID) == bot->GetZoneId();
+
+    zone_escape::Step const lastStep = zone_escape::Step(AI_VALUE2(int, "manual int", "zone escape step"));
+    facts.due = uint32(time(nullptr)) >= uint32(AI_VALUE2(time_t, "manual time", "zone escape")) +
+        zone_escape::IntervalSeconds(lastStep, sPlayerbotAIConfig.zoneEscapeCooldownSeconds, sPlayerbotAIConfig.zoneEscapeRetrySeconds);
     // "hearthstone" is only useful when it is ready and its bind zone is not
     // itself clearly above the bot's level (#129).
     facts.hearthUsable = AI_VALUE2(bool, "action useful", "hearthstone");
+    facts.hearthOnCooldown = !facts.hearthUsable && bot->HasItemCount(6948, 1) && !AI_VALUE2(bool, "spell ready", 8690) &&
+        !homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, bind.getAreaLevel())), facts.botLevel);
     return facts;
 }
 

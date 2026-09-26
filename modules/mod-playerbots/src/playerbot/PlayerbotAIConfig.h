@@ -449,6 +449,9 @@ public:
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;
+    uint32 zoneEscapeRetrySeconds = 60;
+    // #307: area id -> level for areas missing in ai_playerbot_zone_level.
+    std::map<uint32, int32> areaLevelOverrides;
     // #307: shared danger map. Deaths of all bots (never real players) pooled
     // per cell; roster bots skip destinations and routes through cells where
     // several bots died to mobs clearly above their own level.
