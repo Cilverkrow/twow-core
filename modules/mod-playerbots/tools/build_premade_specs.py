@@ -76,7 +76,10 @@ BUILDS = {
          ('destruction',   '-053030101-5505221522525151')],
     11: [('balance',       '50000230312533113321--5030513300012'),
          ('feral',         '0140003201-553030213232021521-55'),
-         ('restoration',   '5002013031203--5050013355213521')],
+         ('restoration',   '5002013031203--5050013355213521'),
+         # #308: bear (tank) shares the feral build - the 102-point path fills the
+         # whole feral tree anyway; bear vs cat is a role and stat decision.
+         ('bear',          '0140003201-553030213232021521-55')],
 }
 
 # Expected Turtle TalentTab page for every explicitly named path. Keeping this
@@ -91,7 +94,14 @@ EXPECTED_TREE_PAGE = {
     7: {'elemental': 0, 'enhancement': 1, 'restoration': 2},
     8: {'arcane': 0, 'fire': 1, 'frost': 2},
     9: {'affliction': 0, 'demonology': 1, 'destruction': 2},
-    11: {'balance': 0, 'feral': 1, 'restoration': 2},
+    11: {'balance': 0, 'feral': 1, 'restoration': 2, 'bear': 1},
+}
+
+# Roll weights of the premade paths (default 100). Owner 2026-09-26 (#308):
+# cat and bear 50/50, keeping the old feral share of a druid.
+PROBABILITY = {
+    (11, 'feral'): 50,
+    (11, 'bear'): 50,
 }
 
 EXPECTED_NEW_TREE_TAB = {
@@ -420,7 +430,7 @@ def main():
             else:
                 out.append('AiPlayerbot.PremadeSpecName.%d.%d = %s' %
                            (cls, index, name))
-                out.append('AiPlayerbot.PremadeSpecProb.%d.%d = 100' % (cls, index))
+                out.append('AiPlayerbot.PremadeSpecProb.%d.%d = %d' % (cls, index, PROBABILITY.get((cls, name), 100)))
                 for level in LEVELS:
                     out.append('AiPlayerbot.PremadeSpecLink.%d.%d.%d = %s' %
                                (cls, index, level,

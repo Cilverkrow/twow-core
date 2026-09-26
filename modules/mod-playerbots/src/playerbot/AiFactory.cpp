@@ -18,6 +18,29 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Battlegrounds/BattleGroundMgr.h"
 
+namespace
+{
+// #308: bear (tank) or cat is decided by the premade path the bot was given
+// ("bear", druid 11.3), not by Primal Fury: in Turtle that talent is
+// 45719/45720, so the classic IDs 16958/16961 below never matched and every
+// free-roaming feral played cat. The spell check stays as a fallback.
+bool IsBearSpec(Player const* player)
+{
+    if (!player || player->getClass() != CLASS_DRUID)
+        return false;
+
+    uint32 const specNo = sRandomPlayerbotMgr.GetValue(player->GetGUIDLow(), "specNo");
+    if (!specNo)
+        return false;
+
+    for (TalentPath const& path : sPlayerbotAIConfig.classSpecs[CLASS_DRUID].talentPath)
+        if (path.id >= 0 && uint32(path.id) + 1 == specNo)
+            return path.name == "bear";
+
+    return false;
+}
+}
+
 AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* ai)
 {
     switch (player->getClass())
@@ -452,7 +475,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
                 uint8 const role = facade->GetForcedRole();
 
                 bool const tanking = role ? (role & BOT_ROLE_TANK) != 0
-                                          : (player->HasSpell(16961) || player->HasSpell(16958));
+                                          : (IsBearSpec(player) || player->HasSpell(16961) || player->HasSpell(16958));
 
                 if (tanking)
                 {
@@ -578,7 +601,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
 
             if (player->getClass() == CLASS_DRUID && tab == 1 && urand(0, 100) > 50 && player->GetLevel() >= 20)
             {
-                if (player->HasSpell(16961) || player->HasSpell(16958))
+                if (IsBearSpec(player) || player->HasSpell(16961) || player->HasSpell(16958))
                 {
                     combatEngine->addStrategies("dps feral", "close", "stealth", "behind", NULL);
                     combatEngine->removeStrategy("tank feral");
@@ -699,7 +722,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
 
         if (player->getClass() == CLASS_DRUID && tab == 1)
         {
-            if (player->HasSpell(16961) || player->HasSpell(16958))
+            if (IsBearSpec(player) || player->HasSpell(16961) || player->HasSpell(16958))
             {
                 combatEngine->addStrategies("tank feral", "close", NULL);
             }
@@ -872,7 +895,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
 
             if (tab == 1)
             {
-                if (player->HasSpell(16961) || player->HasSpell(16958))
+                if (IsBearSpec(player) || player->HasSpell(16961) || player->HasSpell(16958))
                 {
                     nonCombatEngine->addStrategies("tank feral", "tank assist", NULL);
                 }
@@ -1289,7 +1312,7 @@ void AiFactory::AddDefaultDeadStrategies(Player* player, PlayerbotAI* const faca
 
             if (tab == 1)
             {
-                if (player->HasSpell(16961) || player->HasSpell(16958))
+                if (IsBearSpec(player) || player->HasSpell(16961) || player->HasSpell(16958))
                 {
                     deadEngine->addStrategy("tank feral");
                 }
@@ -1489,7 +1512,7 @@ void AiFactory::AddDefaultReactionStrategies(Player* player, PlayerbotAI* const 
 
             if (tab == 1)
             {
-                if (player->HasSpell(16961) || player->HasSpell(16958))
+                if (IsBearSpec(player) || player->HasSpell(16961) || player->HasSpell(16958))
                 {
                     reactionEngine->addStrategy("tank feral");
                 }

@@ -584,6 +584,13 @@ add_test(NAME grind_cap_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_cap_source_contract_tests.cmake")
 
+# #308: druid bear path 11.3 (tank), chosen by premade spec, not Primal Fury.
+add_test(NAME bear_path_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/bear_path_source_contract_tests.cmake")
+
 add_test(NAME persistent_roster_bag_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
