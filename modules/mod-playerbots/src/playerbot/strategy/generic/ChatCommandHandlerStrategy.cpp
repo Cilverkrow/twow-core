@@ -113,6 +113,8 @@ ChatCommandHandlerStrategy::ChatCommandHandlerStrategy(PlayerbotAI* ai) : PassTr
     supported.push_back("set value");
     supported.push_back("glyph");
     supported.push_back("speak");
+    // #340: `catchup quest <link>` had an action but no trigger and never fired.
+    supported.push_back("catchup quest");
 }
 
 void ChatCommandHandlerStrategy::InitReactionTriggers(std::list<TriggerNode*> &triggers)

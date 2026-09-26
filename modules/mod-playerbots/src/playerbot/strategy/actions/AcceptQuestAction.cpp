@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "AcceptQuestAction.h"
+#include "ShareQuestAction.h"
 
 using namespace ai;
 
@@ -120,8 +121,37 @@ bool AcceptQuestShareAction::Execute(Event& event)
     p >> quest;
     Quest const* qInfo = sObjectMgr.GetQuestTemplate(quest);
 
-    if (!qInfo || !bot->GetDividerGuid())
+    if (!qInfo)
         return false;
+
+    // #340: the share button. Core's HandlePushQuestToParty already refused this
+    // member (missing prerequisite, below minimum level, ...) and set no divider.
+    // A roster bot of the sharing master still gets the bounded catch-up of
+    // core#102 - the same gates as the `catchup quest` chat command.
+    if (!bot->GetDividerGuid())
+    {
+        Player* master = GetMaster();
+        if (!master || requester != master || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+            return false;
+
+        CatchupResult const result = CatchupQuestAction::Admit(bot, master, requester, qInfo->GetQuestId());
+        sLog.outBasic("[QuestShare] path=gui bot=%u master=%u quest=%u result=%s reason=%s",
+            bot->GetGUIDLow(), master->GetGUIDLow(), qInfo->GetQuestId(),
+            result == CatchupResult::ADMITTED || result == CatchupResult::ALREADY_HAS ? "admitted" : "rejected",
+            CatchupQuestAction::ResultCode(result));
+
+        if (result == CatchupResult::ADMITTED)
+        {
+            requester->SendPushToPartyResponse(bot, QUEST_PARTY_MSG_ACCEPT_QUEST);
+            ai->TellPlayer(requester, BOT_TEXT("quest_accept"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+            return true;
+        }
+
+        if (result != CatchupResult::ALREADY_HAS)
+            ai->TellPlayer(requester, std::string("Cannot catch up on this quest: ") + CatchupQuestAction::ResultCode(result),
+                PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+        return false;
+    }
 
     quest = qInfo->GetQuestId();
     if( !bot->CanTakeQuest( qInfo, false ) )

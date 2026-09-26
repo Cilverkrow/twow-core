@@ -42,29 +42,89 @@ bool CatchupQuestAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
     Player* master = GetMaster();
-    if (!master || requester != master || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+    if (!requester)
         return false;
 
-    PlayerbotChatHandler handler(master);
+    PlayerbotChatHandler handler(requester);
     uint32 questId = handler.extractQuestId(event.getParam());
-    Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
-    Group* group = bot->GetGroup();
-    if (!quest || !questId || !master->IsCurrentQuest(questId) || !master->CanShareQuest(questId) ||
-        !group || group != master->GetGroup() ||
-        (group->IsRaidGroup() && !quest->HasQuestFlag(QUEST_FLAGS_RAID)) ||
-        !bot->IsAtGroupRewardDistance(master) || master->GetLevel() < bot->GetLevel() ||
-        master->GetLevel() - bot->GetLevel() > 8)
-        return false;
+
+    CatchupResult const result = Admit(bot, master, requester, questId);
+    sLog.outBasic("[QuestShare] path=chat bot=%u master=%u quest=%u result=%s reason=%s",
+        bot->GetGUIDLow(), master ? master->GetGUIDLow() : 0, questId,
+        result == CatchupResult::ADMITTED || result == CatchupResult::ALREADY_HAS ? "admitted" : "rejected",
+        ResultCode(result));
+
+    if (result == CatchupResult::ADMITTED)
+    {
+        ai->TellPlayer(requester, BOT_TEXT("quest_accept"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+        return true;
+    }
 
     // Same command is a no-op; it must never alter existing progress.
-    if (bot->GetQuestStatus(questId) != QUEST_STATUS_NONE)
+    if (result == CatchupResult::ALREADY_HAS)
         return true;
 
-    if (!bot->CanTakeQuestForCatchup(quest, false) || !bot->CanAddQuest(quest, false))
-        return false;
+    ai->TellError(requester, std::string("Cannot catch up on this quest: ") + ResultCode(result));
+    return false;
+}
+
+CatchupResult CatchupQuestAction::Admit(Player* bot, Player* master, Player* requester, uint32 questId)
+{
+    if (!master || requester != master)
+        return CatchupResult::NOT_MASTER;
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return CatchupResult::NOT_ROSTER;
+
+    Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+    if (!quest || !questId)
+        return CatchupResult::NO_QUEST;
+    if (!master->IsCurrentQuest(questId))
+        return CatchupResult::MASTER_LACKS_QUEST;
+    if (!master->CanShareQuest(questId))
+        return CatchupResult::NOT_SHAREABLE;
+
+    Group* group = bot->GetGroup();
+    if (!group || group != master->GetGroup())
+        return CatchupResult::NOT_SAME_GROUP;
+    if (group->IsRaidGroup() && !quest->HasQuestFlag(QUEST_FLAGS_RAID))
+        return CatchupResult::RAID;
+    if (!bot->IsAtGroupRewardDistance(master))
+        return CatchupResult::TOO_FAR;
+    if (master->GetLevel() < bot->GetLevel() || master->GetLevel() - bot->GetLevel() > 8)
+        return CatchupResult::LEVEL_WINDOW;
+
+    // Never alter existing progress.
+    if (bot->GetQuestStatus(questId) != QUEST_STATUS_NONE)
+        return CatchupResult::ALREADY_HAS;
+
+    if (!bot->CanTakeQuestForCatchup(quest, false))
+        return CatchupResult::CANT_TAKE;
+    if (!bot->CanAddQuest(quest, false))
+        return CatchupResult::LOG_FULL;
 
     bot->AddQuest(quest, nullptr);
-    return bot->GetQuestStatus(questId) != QUEST_STATUS_NONE;
+    return bot->GetQuestStatus(questId) != QUEST_STATUS_NONE ? CatchupResult::ADMITTED : CatchupResult::CANT_TAKE;
+}
+
+char const* CatchupQuestAction::ResultCode(CatchupResult result)
+{
+    switch (result)
+    {
+        case CatchupResult::ADMITTED:           return "ok";
+        case CatchupResult::ALREADY_HAS:        return "already_has";
+        case CatchupResult::NOT_MASTER:         return "not_master";
+        case CatchupResult::NOT_ROSTER:         return "not_roster";
+        case CatchupResult::NO_QUEST:           return "no_quest";
+        case CatchupResult::MASTER_LACKS_QUEST: return "master_lacks_quest";
+        case CatchupResult::NOT_SHAREABLE:      return "not_shareable";
+        case CatchupResult::NOT_SAME_GROUP:     return "not_same_group";
+        case CatchupResult::RAID:               return "raid";
+        case CatchupResult::TOO_FAR:            return "too_far";
+        case CatchupResult::LEVEL_WINDOW:       return "level_window";
+        case CatchupResult::CANT_TAKE:          return "cant_take";
+        case CatchupResult::LOG_FULL:           return "log_full";
+    }
+    return "cant_take";
 }
 
 bool AutoShareQuestAction::Execute(Event& event)
