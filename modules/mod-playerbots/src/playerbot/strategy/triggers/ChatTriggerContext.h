@@ -54,6 +54,7 @@ namespace ai
             creators["react"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "react"); };
             creators["all"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "all"); };
             creators["trainer"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "trainer"); };
+            creators["train"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "train"); };
             creators["attack"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "attack"); };
             creators["attack rti"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "attack rti"); };
             creators["pull"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "pull"); };

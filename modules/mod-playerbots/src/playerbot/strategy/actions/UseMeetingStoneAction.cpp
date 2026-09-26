@@ -81,11 +81,37 @@ bool SummonAction::Execute(Event& event)
     // Say something either way. The meeting stone and innkeeper routes below
     // both report what happened; this one used to return in silence, which is
     // indistinguishable from the command not arriving at all.
-    if (requester->GetSession()->GetSecurity() > SEC_PLAYER || sPlayerbotAIConfig.nonGmFreeSummon)
+    // #354 S3: free teleport only from the one GM threshold; observers and
+    // moderators (1-2) used to get it and skipped the roster safety checks below.
+    if (roster_control::IsGmBypass(requester->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity) || sPlayerbotAIConfig.nonGmFreeSummon)
     {
         if (!Teleport(requester, requester, bot))
             return false;
 
+        ai->TellPlayerNoFacing(requester, BOT_TEXT("hello"));
+        return true;
+    }
+
+    // #292: a roster/random bot that follows this player in their group comes
+    // without GM rank or a meeting stone, but only between safe places and not
+    // more often than the cooldown. Other bots keep the meeting-stone routes.
+    if (DecideRosterControl(requester, bot) == ai::roster_control::Decision::ALLOW)
+    {
+        ai::roster_control::SummonBlock const block = CheckRosterSummon(requester, bot);
+        if (block != ai::roster_control::SummonBlock::NONE)
+        {
+            sLog.outBasic("[BotCtl] cmd=summon issuer=%u bot=%u result=deny reason=%s",
+                requester->GetGUIDLow(), bot->GetGUIDLow(), ai::roster_control::SummonBlockCode(block));
+            ai->TellError(requester, ai::roster_control::SummonBlockText(block));
+            return false;
+        }
+
+        if (!Teleport(requester, requester, bot))
+            return false;
+
+        MarkRosterSummon(bot);
+        sLog.outBasic("[BotCtl] cmd=summon issuer=%u bot=%u result=allow",
+            requester->GetGUIDLow(), bot->GetGUIDLow());
         ai->TellPlayerNoFacing(requester, BOT_TEXT("hello"));
         return true;
     }

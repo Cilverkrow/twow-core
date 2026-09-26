@@ -24,4 +24,19 @@ namespace ai
         void TellHeader(Player* requester, Creature* creature);
         void TellFooter(Player* requester, uint32 totalCost);
     };
+
+    // #292 `train`: the player tells its own roster bot to learn what its class
+    // trainer teaches. Only the bot's master (same group) or a GM; only at a
+    // class trainer in interaction range (the selected one first). The bot does
+    // not travel or teleport on its own - the player brings it there - and the
+    // normal trainer gates (level, rank, prerequisites, cost policy) apply.
+    class TrainCommandAction : public TrainerAction
+    {
+    public:
+        TrainCommandAction(PlayerbotAI* ai) : TrainerAction(ai, "train") {}
+        virtual bool Execute(Event& event) override;
+
+    private:
+        Creature* FindClassTrainer(Player* requester);
+    };
 }

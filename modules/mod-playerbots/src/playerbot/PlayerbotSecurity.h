@@ -49,4 +49,9 @@ class PlayerbotSecurity
 // RosterControlPolicy request from live state; the decision itself lives there.
 ai::roster_control::Decision DecideRosterControl(Player* issuer, Player* bot);
 
+// #292: may a directed bot be summoned right now (safe places, cooldown)?
+// MarkRosterSummon starts the cooldown after a summon went through.
+ai::roster_control::SummonBlock CheckRosterSummon(Player* issuer, Player* bot);
+void MarkRosterSummon(Player* bot);
+
 #endif

@@ -2397,6 +2397,19 @@ std::string PlayerbotHolder::HandleBotSummon(Player* bot, Player* master, const 
                 master->GetGUIDLow(), bot->GetGUIDLow(), ai::roster_control::ReasonCode(decision));
             return ai::roster_control::ReasonText(decision);
         }
+
+        // #292: a player summon is only between safe places and rate-limited.
+        ai::roster_control::SummonBlock const block = CheckRosterSummon(master, bot);
+        if (block != ai::roster_control::SummonBlock::NONE)
+        {
+            sLog.outBasic("[BotCtl] cmd=summon issuer=%u bot=%u result=deny reason=%s",
+                master->GetGUIDLow(), bot->GetGUIDLow(), ai::roster_control::SummonBlockCode(block));
+            return ai::roster_control::SummonBlockText(block);
+        }
+
+        MarkRosterSummon(bot);
+        sLog.outBasic("[BotCtl] cmd=summon issuer=%u bot=%u result=allow",
+            master->GetGUIDLow(), bot->GetGUIDLow());
     }
     else if (!isMasterAccount && !isGm)
     {

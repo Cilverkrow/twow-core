@@ -86,7 +86,8 @@ int main()
 
     Require(IsGmBypass(3, 3), "the owner's GM 3 account keeps admin control by default");
     Require(IsGmBypass(4, 3) && IsGmBypass(6, 3), "higher ranks keep it too");
-    Require(!IsGmBypass(0, 3) && !IsGmBypass(2, 3), "players and moderators do not");
+    Require(!IsGmBypass(0, 3) && !IsGmBypass(1, 3) && !IsGmBypass(2, 3),
+            "players, observers and moderators do not (no free chat summon, #354 S3)");
     Require(!IsGmBypass(6, 0) && !IsGmBypass(0, 0), "0 switches the bypass off instead of opening it to everyone");
     Require(!IsGmBypass(3, 4), "a stricter threshold is honoured");
 
@@ -94,5 +95,41 @@ int main()
     for (char const* name : {"", "a'b", "x OR 1=1", "a;b", "a\\b", "name%", "a b"})
         Require(!IsPlainName(name), "anything but letters, digits and _ is kept out of SQL");
     Require(!IsPlainName(std::string(33, 'a')), "overlong names are kept out of SQL");
+
+    // #292 summon safety and cooldown.
+    SummonState safe;
+    safe.now = 1000;
+    Require(CheckSummon(safe) == SummonBlock::NONE, "a safe summon goes through");
+    SummonState s = safe; s.inCombat = true;
+    Require(CheckSummon(s) == SummonBlock::IN_COMBAT, "no summon in combat");
+    s = safe; s.battleground = true;
+    Require(CheckSummon(s) == SummonBlock::BATTLEGROUND, "no summon around battlegrounds");
+    s = safe; s.instance = true;
+    Require(CheckSummon(s) == SummonBlock::INSTANCE, "no summon into or out of a dungeon");
+    s = safe; s.taxi = true;
+    Require(CheckSummon(s) == SummonBlock::TAXI, "no summon on a flight path");
+    s = safe; s.transport = true;
+    Require(CheckSummon(s) == SummonBlock::TRANSPORT, "no summon on a boat or zeppelin");
+    s = safe; s.dead = true;
+    Require(CheckSummon(s) == SummonBlock::DEAD, "no summon while dead");
+    s = safe; s.teleporting = true;
+    Require(CheckSummon(s) == SummonBlock::TELEPORTING, "no summon mid-teleport");
+    s = safe; s.cooldownUntil = SummonCooldownUntil(900, 300);
+    Require(CheckSummon(s) == SummonBlock::COOLDOWN, "a second summon within the cooldown is refused");
+    s = safe; s.cooldownUntil = SummonCooldownUntil(700, 300);
+    Require(CheckSummon(s) == SummonBlock::NONE, "the cooldown ends");
+    s = safe; s.cooldownUntil = SummonCooldownUntil(1000, 0);
+    Require(CheckSummon(s) == SummonBlock::NONE, "cooldown 0 means no cooldown");
+    for (SummonBlock b : {SummonBlock::NONE, SummonBlock::IN_COMBAT, SummonBlock::BATTLEGROUND, SummonBlock::INSTANCE,
+                          SummonBlock::TAXI, SummonBlock::TRANSPORT, SummonBlock::DEAD, SummonBlock::TELEPORTING,
+                          SummonBlock::COOLDOWN})
+        Require(*SummonBlockCode(b) && *SummonBlockText(b), "every summon block has a code and a text");
+
+    // #292 leave.
+    Require(MayDismiss(false, true, false, false), "the master may send its bot away");
+    Require(MayDismiss(false, false, true, false), "the group leader may send a bot away");
+    Require(MayDismiss(true, false, false, false), "the bot may leave by itself");
+    Require(MayDismiss(false, false, false, true), "a GM may send a bot away");
+    Require(!MayDismiss(false, false, false, false), "a bystander may not");
     return 0;
 }

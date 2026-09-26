@@ -18,8 +18,9 @@ PlayerbotSecurity::PlayerbotSecurity(Player* const bot) : bot(bot), account(0)
 PlayerbotSecurityLevel PlayerbotSecurity::LevelFor(Player* from, DenyReason* reason, bool ignoreGroup)
 {
 
-    // Allow everything if request is from gm account
-    if (from->GetSession()->GetSecurity() >= SEC_GAMEMASTER)
+    // Allow everything if request is from gm account. One threshold with the
+    // bot admin commands (#354): the module's SEC_GAMEMASTER is 4, the owner is GM 3.
+    if (ai::roster_control::IsGmBypass(from->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity))
     {
         return PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL;
     }
@@ -274,4 +275,39 @@ ai::roster_control::Decision DecideRosterControl(Player* issuer, Player* bot)
         request.sameGroup = issuer && bot->GetGroup() && bot->GetGroup() == issuer->GetGroup();
     }
     return ai::roster_control::Decide(request);
+}
+
+static long long RosterSummonCooldownUntil(Player* bot)
+{
+    PlayerbotAI* ai = GetBotAI(bot);
+    if (!ai)
+        return 0;
+    return ai->GetAiObjectContext()->GetValue<int>("manual int", "roster summon until")->Get();
+}
+
+ai::roster_control::SummonBlock CheckRosterSummon(Player* issuer, Player* bot)
+{
+    auto unsafeMap = [](Player* p) { return p->GetMap() && p->GetMap()->Instanceable(); };
+
+    ai::roster_control::SummonState state;
+    state.teleporting = issuer->IsBeingTeleported() || bot->IsBeingTeleported();
+    state.dead = !issuer->IsAlive() || !bot->IsAlive();
+    state.inCombat = issuer->IsInCombat() || bot->IsInCombat();
+    state.battleground = issuer->InBattleGround() || issuer->InBattleGroundQueue() ||
+        bot->InBattleGround() || bot->InBattleGroundQueue();
+    state.instance = unsafeMap(issuer) || unsafeMap(bot);
+    state.taxi = issuer->IsTaxiFlying() || bot->IsTaxiFlying();
+    state.transport = issuer->GetTransport() || bot->GetTransport();
+    state.now = time(nullptr);
+    state.cooldownUntil = RosterSummonCooldownUntil(bot);
+    return ai::roster_control::CheckSummon(state);
+}
+
+void MarkRosterSummon(Player* bot)
+{
+    PlayerbotAI* ai = GetBotAI(bot);
+    if (!ai)
+        return;
+    ai->GetAiObjectContext()->GetValue<int>("manual int", "roster summon until")->Set(
+        int(ai::roster_control::SummonCooldownUntil(time(nullptr), sPlayerbotAIConfig.rosterSummonCooldownSeconds)));
 }

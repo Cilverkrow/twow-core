@@ -331,6 +331,11 @@ AiPlayerbot.BotLogFile =
 # follow them in their group. 0 disables the bypass (console only).
 # AiPlayerbot.RosterControl.GmMinSecurity = 3
 
+# Seconds before a player may summon the same roster bot again (.bot summon or chat
+# "summon"). Only bots that follow the player in their group; never in combat, from or
+# into a dungeon or battleground, on a flight path or boat, or while dead.
+# AiPlayerbot.RosterControl.SummonCooldownSeconds = 300
+
 # Bots will put their talentspec in guild notes when they change/tell their talents if they have the rights.
 # AiPlayerbot.TalentsInPublicNote = 0
 
