@@ -5,6 +5,9 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/PositionValue.h"
 #include "Arrow.h"
+#include "playerbot/SpearFormationPolicy.h"
+
+#include <algorithm>
 
 using namespace ai;
 
@@ -404,6 +407,72 @@ namespace ai
         virtual float GetOffset() override { return ai->GetRange("follow"); }
     };
 
+    // #290: "spear" (wedge). The follow target is the tip; the group forms a V
+    // behind it - tanks in the front ranks, then melee, ranged, healers last.
+    // Unlike "arrow" (role rows), every member keeps a slot on the V's legs.
+    class SpearFormation : public MoveFormation
+    {
+    public:
+        SpearFormation(PlayerbotAI* ai) : MoveFormation(ai, "spear") {}
+        virtual WorldLocation GetLocation() override
+        {
+            Player* followTarget = (Player*)AI_VALUE(Unit*, "follow target");
+            if (!followTarget || followTarget == bot)
+                return Formation::NullLocation;
+
+            std::vector<Player*> tanks, melee, ranged, heals;
+            if (Group* group = bot->GetGroup())
+            {
+                for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+                {
+                    Player* member = gref->getSource();
+                    if (!member || member == followTarget || !ai->IsSafe(member) || !sServerFacade.IsAlive(member))
+                        continue;
+
+                    if (ai->IsTank(member))
+                        tanks.push_back(member);
+                    else if (ai->IsHeal(member))
+                        heals.push_back(member);
+                    else if (ai->IsRanged(member))
+                        ranged.push_back(member);
+                    else
+                        melee.push_back(member);
+                }
+            }
+            else
+                melee.push_back(bot);
+
+            std::vector<Player*> slots;
+            for (std::vector<Player*>* role : { &tanks, &melee, &ranged, &heals })
+                slots.insert(slots.end(), role->begin(), role->end());
+
+            auto it = std::find(slots.begin(), slots.end(), bot);
+            if (it == slots.end())
+                return Formation::NullLocation;
+
+            spear_formation::Offset const offset = spear_formation::SlotOffset(uint32(it - slots.begin()), ai->GetRange("follow"));
+            float const o = followTarget->GetOrientation();
+            float x = followTarget->GetPositionX() + cos(o) * offset.forward + cos(o + M_PI_F / 2.0f) * offset.side;
+            float y = followTarget->GetPositionY() + sin(o) * offset.forward + sin(o + M_PI_F / 2.0f) * offset.side;
+            float z = followTarget->GetPositionZ();
+
+#ifdef MANGOSBOT_TWO
+            float ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z);
+#else
+            float ground = bot->GetMap()->GetHeight(x, y, z);
+#endif
+            if (ground <= INVALID_HEIGHT)
+                return Formation::NullLocation;
+
+            if (!bot->IsFlying() && !bot->IsFreeFlying())
+            {
+                z += CONTACT_DISTANCE;
+                bot->UpdateAllowedPositionZ(x, y, z);
+            }
+            return WorldLocation(bot->GetMapId(), x, y, z);
+        }
+    };
+
     class CustomFormation : public MoveAheadFormation
     {
     public:
@@ -577,6 +646,11 @@ bool FormationValue::Load(std::string formation)
         if (value) delete value;
         value = new ArrowFormation(ai);
     }
+    else if (formation == "spear" || formation == "wedge")
+    {
+        if (value) delete value;
+        value = new SpearFormation(ai);
+    }
     else if (formation == "near" || formation == "default")
     {
         if (value) delete value;
@@ -631,7 +705,7 @@ bool SetFormationAction::Execute(Event& event)
     {
         std::ostringstream str; str << "Invalid formation: |cffff0000" << formation;
         ai->TellPlayer(requester, str);
-        ai->TellPlayer(requester, "Please set to any of:|cffffffff near, queue, chaos, circle, line, shield, arrow, melee, far, default");
+        ai->TellPlayer(requester, "Please set to any of:|cffffffff near, queue, chaos, circle, line, shield, arrow, spear, melee, far, default");
         return false;
     }
 
