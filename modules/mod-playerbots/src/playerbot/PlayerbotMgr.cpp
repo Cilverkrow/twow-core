@@ -1045,8 +1045,14 @@ std::string PlayerbotHolder::ProcessBotCommand(std::string cmd, ObjectGuid guid,
     {
         // #354: gear/level/spell/diagnostic tools are GM tools for every bot,
         // not only for alt bots of someone else's account.
-        if (!admin && ai::roster_control::IsGmOnlyBotCommand(cmd))
-            return "GM only";
+        if (ai::roster_control::IsGmOnlyBotCommand(cmd))
+        {
+            if (!admin)
+                return "GM only";
+
+            sLog.outBasic("[BotCtl] cmd=%s issuer=%u bot=%u result=gm_bypass",
+                cmd.c_str(), masterguid.GetCounter(), guid.GetCounter());
+        }
 
         // Most handlers dereference the bot; an offline name must not crash.
         if (!bot && !ai::roster_control::BotCommandAcceptsOfflineBot(cmd))
@@ -1264,11 +1270,11 @@ std::list<std::string> PlayerbotHolder::HandlePlayerbotCommand(const std::string
         }
         else if (master)
         {
-            out << ProcessBotCommand(command, member, master->GetObjectGuid(), useSecurity >= SEC_GAMEMASTER, master->GetSession()->GetAccountId(), master->GetGuildId(), param);
+            out << ProcessBotCommand(command, member, master->GetObjectGuid(), ai::roster_control::IsGmBypass(useSecurity, sPlayerbotAIConfig.rosterControlGmMinSecurity), master->GetSession()->GetAccountId(), master->GetGuildId(), param);
         }
         else
         {
-            out << ProcessBotCommand(command, member, ObjectGuid(), useSecurity >= SEC_GAMEMASTER, -1, -1, param);
+            out << ProcessBotCommand(command, member, ObjectGuid(), ai::roster_control::IsGmBypass(useSecurity, sPlayerbotAIConfig.rosterControlGmMinSecurity), -1, -1, param);
         }
 
         messages.push_back(out.str());
@@ -2381,7 +2387,7 @@ std::string PlayerbotHolder::HandleBotSummon(Player* bot, Player* master, const 
     // this master. A random/roster bot used to be summonable by anyone (#354);
     // it now goes through the shared roster-control decision. GMs keep the
     // old reach.
-    bool const isGm = master->GetSession()->GetSecurity() >= SEC_GAMEMASTER;
+    bool const isGm = ai::roster_control::IsGmBypass(master->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity);
     if (isRandomAccount && !isMasterAccount && !isGm)
     {
         ai::roster_control::Decision const decision = DecideRosterControl(master, bot);
@@ -2397,6 +2403,11 @@ std::string PlayerbotHolder::HandleBotSummon(Player* bot, Player* master, const 
         PlayerbotAI* ai = GetBotAI(bot);
         if (!ai || ai->GetMaster() != master)
             return "This bot isn't yours to summon.";
+    }
+    else if (isGm && isRandomAccount && !isMasterAccount)
+    {
+        sLog.outBasic("[BotCtl] cmd=summon issuer=%u bot=%u result=gm_bypass",
+            master->GetGUIDLow(), bot->GetGUIDLow());
     }
 
     // Block when in combat, BG, or instance — these usually mean the bot

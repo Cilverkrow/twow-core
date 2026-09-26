@@ -84,6 +84,12 @@ int main()
     for (char const* cmd : {"reset", "update", "stats", "init A", "remove A", "clean map", "roster status", "helpx"})
         Require(!IsRndbotCommandAllowedForPlayer(cmd), "every other rndbot command is GM-only");
 
+    Require(IsGmBypass(3, 3), "the owner's GM 3 account keeps admin control by default");
+    Require(IsGmBypass(4, 3) && IsGmBypass(6, 3), "higher ranks keep it too");
+    Require(!IsGmBypass(0, 3) && !IsGmBypass(2, 3), "players and moderators do not");
+    Require(!IsGmBypass(6, 0) && !IsGmBypass(0, 0), "0 switches the bypass off instead of opening it to everyone");
+    Require(!IsGmBypass(3, 4), "a stricter threshold is honoured");
+
     Require(IsPlainName("RNDBOT12") && IsPlainName("Farley"), "plain names pass");
     for (char const* name : {"", "a'b", "x OR 1=1", "a;b", "a\\b", "name%", "a b"})
         Require(!IsPlainName(name), "anything but letters, digits and _ is kept out of SQL");

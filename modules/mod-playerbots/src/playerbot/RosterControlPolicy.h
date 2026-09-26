@@ -77,6 +77,14 @@ inline char const* ReasonText(Decision d)
     return "This bot isn't yours.";
 }
 
+// Explicit GM bypass (AiPlayerbot.RosterControl.GmMinSecurity). The module's
+// SEC_GAMEMASTER is SEC_ADMINISTRATOR (4), so the owner's GM 3 account needs
+// its own threshold. 0 turns the bypass off: fail closed, never "everyone".
+inline bool IsGmBypass(unsigned int accountSecurity, unsigned int gmMinSecurity)
+{
+    return gmMinSecurity > 0 && accountSecurity >= gmMinSecurity;
+}
+
 // `.bot <cmd>` subcommands that change a bot's gear, items, spells, level or
 // identity, or run diagnostics in its name. They are GM tools: a player who
 // could run them would skip the self-earned progression (ADR-0031).

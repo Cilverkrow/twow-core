@@ -761,6 +761,9 @@ bool PlayerbotAIConfig::Initialize()
     shareTargets = config.GetBoolDefault("AiPlayerbot.ShareTargets", true);
     globalSoundEffects = config.GetBoolDefault("AiPlayerbot.GlobalSoundEffects", false);
     nonGmFreeSummon = config.GetBoolDefault("AiPlayerbot.NonGmFreeSummon", false);
+    // #354: account level from which bot admin commands bypass the roster-control
+    // checks. 3 = the owner's GM account; the module's SEC_GAMEMASTER is 4. 0 = nobody.
+    rosterControlGmMinSecurity = config.GetIntDefault("AiPlayerbot.RosterControl.GmMinSecurity", 3);
 
     //SPP automation
     autoPickReward = config.GetStringDefault("AiPlayerbot.AutoPickReward", "no");

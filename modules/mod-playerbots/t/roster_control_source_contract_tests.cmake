@@ -76,6 +76,15 @@ if(allow_all EQUAL -1 OR remote_debug EQUAL -1 OR NOT allow_all LESS remote_debu
   message(FATAL_ERROR "chat debug must run after the ALLOW_ALL check")
 endif()
 
+# GM bypass: one configurable threshold everywhere, and every use is logged.
+foreach(region process summon console)
+  require_text("${${region}}" "result=gm_bypass" "gm_bypass log in ${region}")
+endforeach()
+require_text("${summon}" "IsGmBypass(master->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity)" "summon GM threshold from config")
+require_text("${console}" "IsGmBypass(handler->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity)" "rndbot GM threshold from config")
+function_region("${mgr}" "std::list<std::string> PlayerbotHolder::HandlePlayerbotCommand" "uint32 PlayerbotHolder::GetAccountId" dispatcher)
+forbid_text("${dispatcher}" "useSecurity >= SEC_GAMEMASTER, " "hard-coded SEC_GAMEMASTER (4) as admin flag; the owner is GM 3")
+
 # The adapter only fills the request; the decision is the pure policy.
 require_text("${security}" "return ai::roster_control::Decide(request);" "adapter delegates to the policy")
 

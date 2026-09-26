@@ -3940,12 +3940,16 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
     // #354: `.rndbot` acts on the whole random/roster population and is
     // registered at player level. From a game session it needs GM rank; the
     // console keeps full access and roster admin stays console-only below.
-    if (handler->GetSession() && handler->GetSession()->GetSecurity() < SEC_GAMEMASTER &&
+    if (handler->GetSession() &&
+        !ai::roster_control::IsGmBypass(handler->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity) &&
         !ai::roster_control::IsRndbotCommandAllowedForPlayer(cmd))
     {
         handler->SendSysMessage("GM only");
         return true;
     }
+    if (handler->GetSession() && !ai::roster_control::IsRndbotCommandAllowedForPlayer(cmd))
+        sLog.outBasic("[BotCtl] cmd=rndbot issuer=%u args='%s' result=gm_bypass",
+            handler->GetSession()->GetPlayer() ? handler->GetSession()->GetPlayer()->GetGUIDLow() : 0, cmd.c_str());
 
     if (cmd == "roster status" || cmd.find("roster apply ") == 0 || cmd == "roster apply")
     {
