@@ -458,6 +458,30 @@ add_test(NAME destination_death_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/destination_death_source_contract_tests.cmake")
 
+# #307: shared danger map; roster bots avoid cells where other bots died to
+# mobs clearly above their level.
+find_package(Threads REQUIRED)
+
+add_executable(danger_map_policy_tests
+  "${PB_MODULE_DIR}/t/danger_map_policy_tests.cpp")
+
+target_include_directories(danger_map_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(danger_map_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(danger_map_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME danger_map_policy
+  COMMAND danger_map_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME danger_map_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/danger_map_source_contract_tests.cmake")
+
 add_test(NAME persistent_roster_bag_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"

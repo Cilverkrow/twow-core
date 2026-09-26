@@ -476,6 +476,18 @@ AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin = 5
 # keep the TurnInMaxDeathsOnRoute rule. 0 = off.
 AiPlayerbot.DestinationDeaths.Max = 2
 AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
+# Shared danger map (#307). Deaths of all bots (not real players, not in
+# instances or battlegrounds) are pooled per CellSize x CellSize yard cell for
+# WindowSeconds. A roster bot skips a travel destination when the destination
+# cell, its 8 neighbours or up to LineSamples cells on the straight route hold
+# deaths of at least MinDeaths different bots to mobs at least LevelMargin
+# levels above the bot. MinDeaths 0 = no cell is ever dangerous.
+AiPlayerbot.DangerMap.Enabled = 0
+AiPlayerbot.DangerMap.CellSize = 100
+AiPlayerbot.DangerMap.WindowSeconds = 7200
+AiPlayerbot.DangerMap.MinDeaths = 3
+AiPlayerbot.DangerMap.LevelMargin = 3
+AiPlayerbot.DangerMap.LineSamples = 20
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
