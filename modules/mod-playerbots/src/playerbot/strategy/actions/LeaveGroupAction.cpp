@@ -22,7 +22,11 @@ namespace ai
 
             bool const gmBypass = master->GetSession() &&
                 roster_control::IsGmBypass(master->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity);
-            if (!roster_control::MayDismiss(false, ai->GetMaster() == master,
+            // #301: a self-led one-member group strands the bot with nobody;
+            // any player may ask it to leave so it can be invited again.
+            bool const strandedSingleton = singleton_group::IsSelfLedSingleton(
+                group->GetMembersCount(), group->IsLeader(bot->GetObjectGuid()), group->isBGGroup());
+            if (!strandedSingleton && !roster_control::MayDismiss(false, ai->GetMaster() == master,
                 group->IsLeader(master->GetObjectGuid()), gmBypass))
             {
                 sLog.outBasic("[BotCtl] cmd=leave issuer=%u bot=%u result=deny reason=not_master_or_leader",

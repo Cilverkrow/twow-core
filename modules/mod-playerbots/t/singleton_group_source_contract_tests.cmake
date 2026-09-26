@@ -35,4 +35,13 @@ require_text("${handler}" "GetPlayer()->RemoveFromGroup();" "leave removes the p
 require_text("${group}" "if (GetMembersCount() > GetMembersMinCount())" "member-count branch")
 require_text("${group}" "Disband(true, guid);" "disband below the minimum")
 
+
+# With #145's dismiss rule: a stranded singleton may be released by any
+# player, every other roster group still needs master, leader or GM.
+string(FIND "${leave}" "bool const strandedSingleton = singleton_group::IsSelfLedSingleton(" stranded)
+string(FIND "${leave}" "if (!strandedSingleton && !roster_control::MayDismiss(" dismiss)
+if(stranded EQUAL -1 OR dismiss EQUAL -1 OR NOT stranded LESS dismiss)
+  message(FATAL_ERROR "the dismiss rule must let any player release a stranded singleton, and only that")
+endif()
+
 message(STATUS "SINGLETON_GROUP_SOURCE_CONTRACT=PASS")
