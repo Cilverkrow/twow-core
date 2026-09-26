@@ -20,6 +20,9 @@
 
 using namespace ai;
 
+// #303: [FollowDiag] snapshot, defined next to FollowOnTransport.
+static void LogFollowDiag(PlayerbotAI* ai, Player* bot, Unit* target, char const* point);
+
 void MovementAction::CreateWp(Player* wpOwner, float x, float y, float z, float o, uint32 entry, bool important)
 {
     float dist = wpOwner->GetDistance(x, y, z);
@@ -2391,6 +2394,10 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
 
     if (tDist > sPlayerbotAIConfig.sightDistance || (target->IsFlying() && !bot->IsFreeFlying()) || target->IsTaxiFlying())
     {
+        // #303 diagnostic gate: this branch moves to a snapshot of the target's
+        // position instead of following the unit.
+        LogFollowDiag(ai, bot, target, "far_follow");
+
         if (target->GetObjectGuid().IsPlayer())
         {
             Player* player = (Player*)target;
@@ -2750,11 +2757,58 @@ float MovementAction::MoveDelay(float distance)
     return distance / bot->GetSpeed(MOVE_RUN);
 }
 
+// #303: one correlated follow-state line for a bot of a real player, so a
+// stuck follow can be explained from the log before anyone resets the bot.
+static void LogFollowDiag(PlayerbotAI* ai, Player* bot, Unit* target, char const* point)
+{
+    if (!sPlayerbotAIConfig.followDiagnostics || !ai || !bot || !target || !ai->HasRealPlayerMaster())
+        return;
+
+    // At most once per bot every 5 seconds.
+    Value<int32>* last = ai->GetAiObjectContext()->GetValue<int32>("manual int", "follow diag at");
+    int32 const now = int32(time(nullptr));
+    if (last->Get() && now - last->Get() < 5)
+        return;
+    last->Set(now);
+
+    MotionMaster* mm = bot->GetMotionMaster();
+    Unit* chase = sServerFacade.GetChaseTarget(bot);
+    sLog.outBasic("[FollowDiag] point=%s bot=%u target=%u bot_map=%u bot_inst=%u target_map=%u target_inst=%u "
+        "bot_tguid=%u bot_transport=%u target_tguid=%u target_transport=%u mg=%u chase=%u dist=%.1f "
+        "bot_pos=%.1f,%.1f,%.1f target_pos=%.1f,%.1f,%.1f follow=%u stay=%u passive=%u state=%u teleporting=%u",
+        point, bot->GetGUIDLow(), target->GetGUIDLow(), bot->GetMapId(), bot->GetInstanceId(),
+        target->GetMapId(), target->GetInstanceId(),
+        bot->m_movementInfo.t_guid.GetCounter(), bot->GetTransport() ? 1 : 0,
+        target->m_movementInfo.t_guid.GetCounter(), target->GetTransport() ? 1 : 0,
+        mm ? uint32(mm->GetCurrentMovementGeneratorType()) : 0, chase ? chase->GetGUIDLow() : 0,
+        sServerFacade.GetDistance2d(bot, target),
+        bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+        target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(),
+        ai->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) ? 1 : 0,
+        ai->HasStrategy("stay", BotState::BOT_STATE_NON_COMBAT) ? 1 : 0,
+        ai->HasStrategy("passive", BotState::BOT_STATE_COMBAT) ? 1 : 0,
+        uint32(ai->GetState()), bot->IsBeingTeleported() ? 1 : 0);
+}
+
 bool MovementAction::FollowOnTransport(Unit* target)
 {
-    bool const onDifferentTransports = bot->m_movementInfo.t_guid != target->m_movementInfo.t_guid;
+    // #303: t_guid alone is not proof of a transport. The Core clears it only
+    // when a server-side transport removes the passenger, and a player's t_guid
+    // comes from the client (e.g. the Deeprun Tram). A stale bot t_guid without
+    // a transport is cleared; a mismatch with no transport on either side is no
+    // reason to stop - that used to freeze follow within sight distance.
+    if (!bot->GetTransport() && !bot->m_movementInfo.t_guid.IsEmpty())
+    {
+        LogFollowDiag(ai, bot, target, "stale_transport_guid");
+        bot->m_movementInfo.ClearTransportData();
+        bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_ONTRANSPORT);
+    }
+
+    bool const onDifferentTransports = bot->m_movementInfo.t_guid != target->m_movementInfo.t_guid &&
+        (bot->GetTransport() || target->GetTransport());
     if (onDifferentTransports && sServerFacade.IsDistanceLessOrEqualThan(sServerFacade.GetDistance2d(bot, target), sPlayerbotAIConfig.sightDistance))
     {
+        LogFollowDiag(ai, bot, target, "transport_switch");
         ai->StopMoving();
         bool sendHeartbeat = false;
 

@@ -493,6 +493,10 @@ AiPlayerbot.DangerMap.LineSamples = 20
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
 # Emit one QuestFirst route decision when a quest-travel request is materialized.
 AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
+# #303: log a [FollowDiag] snapshot (map, transports, movement generator, chase
+# target, distance, strategies) when a bot of a real player falls back to far
+# follow or meets a transport mismatch. At most once per bot every 5 seconds.
+AiPlayerbot.FollowDiagnostics = 0
 # Completed persistent-roster turn-ins use observed movement progress instead
 # of a fixed overall travel duration. Stall recovery is route-local and never
 # teleports, removes quests or changes generic travel behaviour.

@@ -231,6 +231,12 @@ add_test(NAME master_wait_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/master_wait_source_contract_tests.cmake")
 
+# #303: a stale transport GUID must not freeze follow; far follow is logged.
+add_test(NAME follow_transport_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/follow_transport_source_contract_tests.cmake")
+
 # #308: every equip decision carries a reason code and the bagged-item
 # decisions can be logged (default off) for the live equipment audit.
 add_test(NAME equip_diagnostics_source_contract
