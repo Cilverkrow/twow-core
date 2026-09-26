@@ -536,6 +536,17 @@ AiPlayerbot.ProfessionTraining.LocalTrainerRadius = 120
 # at BASIC level, visible with LogLevel 1. Never enable per-tick logging.
 AiPlayerbot.ProfessionTraining.Trace = 0
 AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
+# Profession use (#333), persistent roster bots without a real-player master.
+# GatherDistance: passive gathering radius for such a bot on its own (herbs,
+# ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
+# Craft: craft a recipe without spell focus that still gives a skill-up, when
+# its reagents are in the bags, at most once per CraftIntervalSeconds.
+# Trace: throttled [ProfessionUse] lines at BASIC level.
+AiPlayerbot.ProfessionUse.GatherDistance = 0
+AiPlayerbot.ProfessionUse.Craft = 0
+AiPlayerbot.ProfessionUse.CraftIntervalSeconds = 300
+AiPlayerbot.ProfessionUse.Trace = 0
+AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full

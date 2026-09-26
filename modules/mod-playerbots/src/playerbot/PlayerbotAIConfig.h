@@ -398,6 +398,12 @@ public:
     float professionTrainingLocalTrainerRadius = 120.0f;
     bool professionTrainingTrace = false;
     uint32 professionTrainingTraceCooldownSeconds = 300;
+    // #333: roster bots use their professions while levelling.
+    float professionUseGatherDistance = 0.0f;     // 0 = GatheringDistance
+    bool professionUseCraft = false;
+    uint32 professionUseCraftIntervalSeconds = 300;
+    bool professionUseTrace = false;
+    uint32 professionUseTraceCooldownSeconds = 300;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;

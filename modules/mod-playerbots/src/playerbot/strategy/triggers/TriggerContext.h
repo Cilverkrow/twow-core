@@ -22,6 +22,7 @@
 #include "NaxxramasDungeonTriggers.h"
 #include "GlyphTriggers.h"
 #include "WorldBuffTravelTriggers.h"
+#include "ProfessionUseTriggers.h"
 
 #ifdef GenerateBotTests
 #include "../tests/TestTriggers.h"
@@ -41,6 +42,7 @@ namespace ai
             creators["collision"] = [](PlayerbotAI* ai) { return new CollisionTrigger(ai); };
 
             creators["timer"] = [](PlayerbotAI* ai) { return new TimerTrigger(ai); };
+            creators["profession craft"] = [](PlayerbotAI* ai) { return new ProfessionCraftTrigger(ai); };
             creators["random"] = [](PlayerbotAI* ai) { return new RandomTrigger(ai, "random", 20); };
             creators["seldom"] = [](PlayerbotAI* ai) { return new RandomTrigger(ai, "seldom", 300); };
             creators["often"] = [](PlayerbotAI* ai) { return new RandomTrigger(ai, "often", 5); };

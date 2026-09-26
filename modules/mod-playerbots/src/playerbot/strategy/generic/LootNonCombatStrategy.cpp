@@ -28,6 +28,11 @@ void GatherStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
     triggers.push_back(new TriggerNode(
         "timer",
         NextAction::array(0, new NextAction("add gathering loot", 2.0f), NULL)));
+
+    // #333: minimal crafting loop for roster bots (the trigger holds the rules).
+    triggers.push_back(new TriggerNode(
+        "profession craft",
+        NextAction::array(0, new NextAction("profession craft", 1.5f), NULL)));
 }
 
 void RevealStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
