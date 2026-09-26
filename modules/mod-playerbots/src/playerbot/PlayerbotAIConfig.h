@@ -378,6 +378,7 @@ public:
     bool talentsInPublicNote;
     bool nonGmFreeSummon;
     uint32 rosterControlGmMinSecurity;
+    uint32 rosterSummonCooldownSeconds;
 
     BotSelfBotLevel selfBotLevel;
     uint32 iterationsPerTick;

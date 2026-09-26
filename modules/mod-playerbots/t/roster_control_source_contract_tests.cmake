@@ -8,6 +8,12 @@ file(READ "${PB_SOURCE_DIR}/PlayerbotMgr.cpp" mgr)
 file(READ "${PB_SOURCE_DIR}/RandomPlayerbotMgr.cpp" rnd)
 file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai)
 file(READ "${PB_SOURCE_DIR}/PlayerbotSecurity.cpp" security)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/UseMeetingStoneAction.cpp" meeting_stone)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/LeaveGroupAction.cpp" leave)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/TrainerAction.cpp" trainer)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/ChatActionContext.h" action_context)
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/ChatTriggerContext.h" trigger_context)
+file(READ "${PB_SOURCE_DIR}/strategy/generic/ChatCommandHandlerStrategy.cpp" chat_strategy)
 
 function(require_text text needle description)
   string(FIND "${text}" "${needle}" offset)
@@ -87,5 +93,40 @@ forbid_text("${dispatcher}" "useSecurity >= SEC_GAMEMASTER, " "hard-coded SEC_GA
 
 # The adapter only fills the request; the decision is the pure policy.
 require_text("${security}" "return ai::roster_control::Decide(request);" "adapter delegates to the policy")
+
+
+# ---- #292 player commands ----
+
+# One GM threshold: chat permission levels use the same bypass as bot admin.
+function_region("${security}" "PlayerbotSecurityLevel PlayerbotSecurity::LevelFor" "bool PlayerbotSecurity::CheckLevelFor" level_for)
+require_text("${level_for}" "IsGmBypass(from->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity)" "LevelFor GM threshold from config")
+forbid_text("${level_for}" ">= SEC_GAMEMASTER" "hard-coded SEC_GAMEMASTER (4) in LevelFor")
+
+# Summon, both paths: decision, then safety and cooldown, then the cooldown mark.
+require_text("${summon}" "CheckRosterSummon(master, bot)" ".bot summon safety check")
+require_text("${summon}" "MarkRosterSummon(bot)" ".bot summon starts the cooldown")
+function_region("${meeting_stone}" "bool SummonAction::Execute" "bool SummonAction::SummonUsingGos" chat_summon)
+string(FIND "${chat_summon}" "DecideRosterControl(requester, bot)" chat_decide)
+string(FIND "${chat_summon}" "CheckRosterSummon(requester, bot)" chat_check)
+string(FIND "${chat_summon}" "MarkRosterSummon(bot)" chat_mark)
+if(chat_decide EQUAL -1 OR chat_check EQUAL -1 OR chat_mark EQUAL -1 OR NOT chat_decide LESS chat_check OR NOT chat_check LESS chat_mark)
+  message(FATAL_ERROR "chat summon must decide, then check safety, then mark the cooldown")
+endif()
+
+# Leave: roster bots go only for master, leader, GM; repeat is answered.
+function_region("${leave}" "bool LeaveGroupAction::Execute" "bool LeaveGroupAction::Leave" leave_exec)
+require_text("${leave_exec}" "roster_control::MayDismiss(" "leave through the dismiss rule")
+require_text("${leave_exec}" "I am not in a group." "idempotent repeat")
+
+# Train: registered in all three places, authorized, never a raw grant or travel.
+require_text("${action_context}" "creators[\"train\"]" "train action")
+require_text("${trigger_context}" "ChatCommandTrigger(ai, \"train\")" "train chat trigger")
+require_text("${chat_strategy}" "supported.push_back(\"train\");" "train accepted as a command")
+function_region("${trainer}" "bool TrainCommandAction::Execute" "ZZZ_END_OF_FILE" train_exec)
+require_text("${train_exec}" "DecideRosterControl(requester, bot)" "train authorization")
+require_text("${train_exec}" "Iterate(requester, trainer, &TrainerAction::Learn, spells)" "train through the normal trainer path")
+foreach(forbidden learnClassLevelSpells learnSpell TeleportTo "request named travel target" DoSpecificAction)
+  forbid_text("${train_exec}" "${forbidden}" "train side effect ${forbidden}")
+endforeach()
 
 message(STATUS "ROSTER_CONTROL_SOURCE_CONTRACT=PASS")

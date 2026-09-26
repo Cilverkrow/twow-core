@@ -4,7 +4,37 @@
 
 namespace ai
 {
-	bool LeaveGroupAction::Leave(Player* player) 
+    bool LeaveGroupAction::Execute(Event& event)
+    {
+        Player* master = event.getOwner();
+
+        // #292: a persistent roster bot is sent away only by itself, its master,
+        // the group leader or a GM - and saying it twice is not an error.
+        if (master && master != bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        {
+            Group* group = bot->GetGroup();
+            if (!group)
+            {
+                ai->TellPlayerNoFacing(master, "I am not in a group.");
+                return false;
+            }
+
+            bool const gmBypass = master->GetSession() &&
+                roster_control::IsGmBypass(master->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity);
+            if (!roster_control::MayDismiss(false, ai->GetMaster() == master,
+                group->IsLeader(master->GetObjectGuid()), gmBypass))
+            {
+                sLog.outBasic("[BotCtl] cmd=leave issuer=%u bot=%u result=deny reason=not_master_or_leader",
+                    master->GetGUIDLow(), bot->GetGUIDLow());
+                ai->TellError(master, "Only my master or the group leader can send me away.");
+                return false;
+            }
+        }
+
+        return Leave(master);
+    }
+
+	bool LeaveGroupAction::Leave(Player* player)
     {
         if (!player)
             return false;

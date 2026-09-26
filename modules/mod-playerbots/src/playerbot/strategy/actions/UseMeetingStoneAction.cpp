@@ -90,6 +90,30 @@ bool SummonAction::Execute(Event& event)
         return true;
     }
 
+    // #292: a roster/random bot that follows this player in their group comes
+    // without GM rank or a meeting stone, but only between safe places and not
+    // more often than the cooldown. Other bots keep the meeting-stone routes.
+    if (DecideRosterControl(requester, bot) == ai::roster_control::Decision::ALLOW)
+    {
+        ai::roster_control::SummonBlock const block = CheckRosterSummon(requester, bot);
+        if (block != ai::roster_control::SummonBlock::NONE)
+        {
+            sLog.outBasic("[BotCtl] cmd=summon issuer=%u bot=%u result=deny reason=%s",
+                requester->GetGUIDLow(), bot->GetGUIDLow(), ai::roster_control::SummonBlockCode(block));
+            ai->TellError(requester, ai::roster_control::SummonBlockText(block));
+            return false;
+        }
+
+        if (!Teleport(requester, requester, bot))
+            return false;
+
+        MarkRosterSummon(bot);
+        sLog.outBasic("[BotCtl] cmd=summon issuer=%u bot=%u result=allow",
+            requester->GetGUIDLow(), bot->GetGUIDLow());
+        ai->TellPlayerNoFacing(requester, BOT_TEXT("hello"));
+        return true;
+    }
+
     if(bot->GetMapId() == requester->GetMapId() && !WorldPosition(bot).canPathTo(requester, bot) && bot->GetDistance(requester) < sPlayerbotAIConfig.sightDistance) //We can't walk to requester so fine to short-range teleport.
         return Teleport(requester, requester, bot);
 

@@ -9,12 +9,7 @@ namespace ai
     public:
         LeaveGroupAction(PlayerbotAI* ai, std::string name = "leave") : ChatCommandAction(ai, name) {}
 
-        virtual bool Execute(Event& event) override
-        {            
-            Player* master = event.getOwner();
-
-            return Leave(master);
-        }
+        virtual bool Execute(Event& event) override;
 
         virtual bool isUsefulWhenStunned() override { return true; }
 

@@ -133,6 +133,7 @@ namespace ai
             creators["react"] = [](PlayerbotAI* ai) { return new ChangeReactionStrategyAction(ai); };
             creators["all"] = [](PlayerbotAI* ai) { return new ChangeAllStrategyAction(ai); };
             creators["trainer"] = [](PlayerbotAI* ai) { return new TrainerAction(ai); };
+            creators["train"] = [](PlayerbotAI* ai) { return new TrainCommandAction(ai); };
             creators["attack my target"] = [](PlayerbotAI* ai) { return new AttackMyTargetAction(ai); };
             creators["attack rti target"] = [](PlayerbotAI* ai) { return new AttackRTITargetAction(ai); };
             creators["chat"] = [](PlayerbotAI* ai) { return new ChangeChatAction(ai); };

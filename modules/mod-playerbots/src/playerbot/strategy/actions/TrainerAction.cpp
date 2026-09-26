@@ -325,3 +325,73 @@ void TrainerAction::TellFooter(Player* requester, uint32 totalCost)
         ai->TellPlayer(requester, out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
     }
 }
+
+Creature* TrainCommandAction::FindClassTrainer(Player* requester)
+{
+    auto isClassTrainerForBot = [&](Creature* creature)
+    {
+        return creature && bot->GetNPCIfCanInteractWith(creature->GetObjectGuid(), UNIT_NPC_FLAG_TRAINER) &&
+            creature->GetCreatureInfo()->TrainerType == TRAINER_TYPE_CLASS && creature->IsTrainerOf(bot, false);
+    };
+
+    Creature* selected = ai->GetCreature(requester->GetSelectionGuid());
+    if (isClassTrainerForBot(selected))
+        return selected;
+
+    std::list<ObjectGuid> npcs = AI_VALUE(std::list<ObjectGuid>, "nearest npcs");
+    for (ObjectGuid const& npc : npcs)
+    {
+        Creature* candidate = ai->GetCreature(npc);
+        if (isClassTrainerForBot(candidate))
+            return candidate;
+    }
+
+    return nullptr;
+}
+
+bool TrainCommandAction::Execute(Event& event)
+{
+    Player* requester = event.getOwner();
+    if (!requester)
+        return false;
+
+    bool const gmBypass = requester->GetSession() &&
+        roster_control::IsGmBypass(requester->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity);
+    if (!gmBypass)
+    {
+        roster_control::Decision const decision = DecideRosterControl(requester, bot);
+        if (decision != roster_control::Decision::ALLOW)
+        {
+            sLog.outBasic("[BotCtl] cmd=train issuer=%u bot=%u result=deny reason=%s",
+                requester->GetGUIDLow(), bot->GetGUIDLow(), roster_control::ReasonCode(decision));
+            ai->TellError(requester, roster_control::ReasonText(decision));
+            return false;
+        }
+    }
+
+    if (bot->IsInCombat())
+    {
+        ai->TellError(requester, "Not during combat.");
+        return false;
+    }
+
+    Creature* trainer = FindClassTrainer(requester);
+    if (!trainer)
+    {
+        sLog.outBasic("[BotCtl] cmd=train issuer=%u bot=%u result=deny reason=no_trainer_in_range",
+            requester->GetGUIDLow(), bot->GetGUIDLow());
+        ai->TellError(requester, "No trainer for my class in reach. Bring me to my class trainer.");
+        return false;
+    }
+
+    sLog.outBasic("[BotCtl] cmd=train issuer=%u bot=%u trainer=%u result=%s",
+        requester->GetGUIDLow(), bot->GetGUIDLow(), trainer->GetEntry(), gmBypass ? "gm_bypass" : "allow");
+
+    // The generic trainer path: level/rank/prerequisite checks and the
+    // configured cost policy in Learn(); no spell is granted directly here.
+    SpellIds spells;
+    bool const learned = Iterate(requester, trainer, &TrainerAction::Learn, spells);
+    if (learned)
+        context->ClearValues("item usage");
+    return learned;
+}

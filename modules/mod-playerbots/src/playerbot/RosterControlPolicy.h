@@ -77,6 +77,101 @@ inline char const* ReasonText(Decision d)
     return "This bot isn't yours.";
 }
 
+// #292 summon: a directed bot is teleported only between safe places, and not
+// more often than the configured cooldown. Checked after Decide() == ALLOW.
+enum class SummonBlock
+{
+    NONE,
+    IN_COMBAT,       // issuer or bot
+    BATTLEGROUND,    // either in a battleground or its queue
+    INSTANCE,        // either inside a dungeon/raid map
+    TAXI,            // either on a flight path
+    TRANSPORT,       // either on a boat/zeppelin
+    DEAD,            // either dead or a ghost
+    TELEPORTING,     // either already mid-teleport
+    COOLDOWN,
+};
+
+struct SummonState
+{
+    bool inCombat = false;
+    bool battleground = false;
+    bool instance = false;
+    bool taxi = false;
+    bool transport = false;
+    bool dead = false;
+    bool teleporting = false;
+    long long now = 0;
+    long long cooldownUntil = 0;
+};
+
+inline SummonBlock CheckSummon(SummonState const& s)
+{
+    if (s.teleporting)
+        return SummonBlock::TELEPORTING;
+    if (s.dead)
+        return SummonBlock::DEAD;
+    if (s.inCombat)
+        return SummonBlock::IN_COMBAT;
+    if (s.battleground)
+        return SummonBlock::BATTLEGROUND;
+    if (s.instance)
+        return SummonBlock::INSTANCE;
+    if (s.taxi)
+        return SummonBlock::TAXI;
+    if (s.transport)
+        return SummonBlock::TRANSPORT;
+    if (s.now < s.cooldownUntil)
+        return SummonBlock::COOLDOWN;
+    return SummonBlock::NONE;
+}
+
+inline char const* SummonBlockCode(SummonBlock b)
+{
+    switch (b)
+    {
+        case SummonBlock::NONE:         return "ok";
+        case SummonBlock::IN_COMBAT:    return "in_combat";
+        case SummonBlock::BATTLEGROUND: return "unsafe_map_bg";
+        case SummonBlock::INSTANCE:     return "unsafe_map_instance";
+        case SummonBlock::TAXI:         return "unsafe_taxi";
+        case SummonBlock::TRANSPORT:    return "unsafe_transport";
+        case SummonBlock::DEAD:         return "dead";
+        case SummonBlock::TELEPORTING:  return "teleporting";
+        case SummonBlock::COOLDOWN:     return "cooldown";
+    }
+    return "ambiguous";
+}
+
+inline char const* SummonBlockText(SummonBlock b)
+{
+    switch (b)
+    {
+        case SummonBlock::NONE:         return "ok";
+        case SummonBlock::IN_COMBAT:    return "Not during combat.";
+        case SummonBlock::BATTLEGROUND: return "Not in or queued for a battleground.";
+        case SummonBlock::INSTANCE:     return "Not into or out of a dungeon.";
+        case SummonBlock::TAXI:         return "Not while flying.";
+        case SummonBlock::TRANSPORT:    return "Not on a boat or zeppelin.";
+        case SummonBlock::DEAD:         return "Not while dead.";
+        case SummonBlock::TELEPORTING:  return "Already teleporting.";
+        case SummonBlock::COOLDOWN:     return "Summon is on cooldown.";
+    }
+    return "Not now.";
+}
+
+inline long long SummonCooldownUntil(long long now, unsigned int cooldownSeconds)
+{
+    return now + static_cast<long long>(cooldownSeconds);
+}
+
+// #292 leave: a directed roster bot leaves its group only when told so by
+// itself, its master or the group leader (or a GM) - not by any bystander.
+inline bool MayDismiss(bool issuerIsBot, bool issuerIsMaster, bool issuerIsGroupLeader, bool gmBypass)
+{
+    return issuerIsBot || issuerIsMaster || issuerIsGroupLeader || gmBypass;
+}
+
 // Explicit GM bypass (AiPlayerbot.RosterControl.GmMinSecurity). The module's
 // SEC_GAMEMASTER is SEC_ADMINISTRATOR (4), so the owner's GM 3 account needs
 // its own threshold. 0 turns the bypass off: fail closed, never "everyone".
