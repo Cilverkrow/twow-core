@@ -502,6 +502,25 @@ add_test(NAME danger_map_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/danger_map_source_contract_tests.cmake")
 
+# #307: roster bots leave zones clearly above their level.
+add_executable(zone_escape_policy_tests
+  "${PB_MODULE_DIR}/t/zone_escape_policy_tests.cpp")
+
+target_include_directories(zone_escape_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(zone_escape_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME zone_escape_policy
+  COMMAND zone_escape_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME zone_escape_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/zone_escape_source_contract_tests.cmake")
+
 add_test(NAME persistent_roster_bag_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"

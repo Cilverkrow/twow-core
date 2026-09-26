@@ -118,6 +118,12 @@ void TravelStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
         "has nearby quest taker",
         NextAction::array(0, new NextAction("reset travel target", 6.99f), NULL)));
 
+    // #307: a roster bot on its own leaves a zone clearly above its level
+    // before any other travel decision (the trigger holds the rules).
+    triggers.push_back(new TriggerNode(
+        "zone escape",
+        NextAction::array(0, new NextAction("zone escape", 7.0f), NULL)));
+
     triggers.push_back(new TriggerNode(
         "val::travel target ready",
         NextAction::array(0, new NextAction("check mount state", 1), new NextAction("move to travel target", 1), NULL)));

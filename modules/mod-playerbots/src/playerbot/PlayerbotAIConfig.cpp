@@ -396,6 +396,8 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionQuestAreaLevelMargin = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin", 5);
     destinationDeathsMax = config.GetIntDefault("AiPlayerbot.DestinationDeaths.Max", 2);
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
+    zoneEscapeEnabled = config.GetBoolDefault("AiPlayerbot.ZoneEscape.Enabled", false);
+    zoneEscapeCooldownSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.ZoneEscape.CooldownSeconds", 600));
     dangerMapEnabled = config.GetBoolDefault("AiPlayerbot.DangerMap.Enabled", false);
     dangerMapCellSize = std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DangerMap.CellSize", 100.0f));
     dangerMapWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DangerMap.WindowSeconds", 7200));

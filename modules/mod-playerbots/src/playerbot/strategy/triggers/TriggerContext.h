@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HealthTriggers.h"
+#include "ZoneEscapeTriggers.h"
 #include "GenericTriggers.h"
 #include "LootTriggers.h"
 #include "GenericTriggers.h"
@@ -40,6 +41,7 @@ namespace ai
             creators["return to stay position"] = [](PlayerbotAI* ai) { return new ReturnToStayPositionTrigger(ai); };
             creators["return to pull position"] = [](PlayerbotAI* ai) { return new ReturnToPullPositionTrigger(ai); };
             creators["collision"] = [](PlayerbotAI* ai) { return new CollisionTrigger(ai); };
+            creators["zone escape"] = [](PlayerbotAI* ai) { return new ZoneEscapeTrigger(ai); };
 
             creators["timer"] = [](PlayerbotAI* ai) { return new TimerTrigger(ai); };
             creators["profession craft"] = [](PlayerbotAI* ai) { return new ProfessionCraftTrigger(ai); };
