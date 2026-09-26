@@ -1,6 +1,6 @@
 # Stat priorities per class × talent tree (twow-repo#308, "checkup system")
 
-**Status: DRAFT v2 for owner review. No code reads this table yet.**
+**Status: v2, approved by the owner on 2026-09-26 (via OB-00, #308/#319). No code reads this table yet.**
 After approval, it becomes the shared scoring basis for equipping (#308), quest reward selection (#284) and group loot rolls (#341).
 
 ## Files
@@ -41,7 +41,7 @@ Stamina is included only where it matters for that spec. It is not weighted high
 
    It is generated for `Rate.Talent = 2` with 102 legal points and validated against the Turtle DBCs like core#70, then entered in `aiplayerbot.conf.dist.in` (`PremadeSpecName/Prob/Link.11.3.*`).
 2. **Existing path:** `11.1 feral` becomes the cat path (name stays `feral`, stats as cat).
-3. **Roster distribution:** `SelectPremadeSpecNo` rolls weighted over `PremadeSpecProb`. With four druid paths at 100 each, every druid spec gets 1/4 instead of 1/3. For bear and cat together to keep the old feral share, use `11.1` and `11.3` = 50 each. The owner decides.
+3. **Roster distribution (owner decision 2026-09-26: cat and bear 50/50, because there are too few tanks):** `SelectPremadeSpecNo` rolls weighted over `PremadeSpecProb`; `11.1 = 50` and `11.3 = 50` keep the old feral share. The 102-point feral path already fills the whole feral tree (47/47), so 11.3 can use the same link.
 4. **Existing roster bots** keep their stored `specNo` (`KeepStoredSpecNo`). Today's ferals stay cats; bears only appear at the next roster reset or a new roll. **For the next roster/reset topic:** decide the druid bear share and generate the roster accordingly.
 5. **Bot strategies:** `AiFactory.cpp` does not decide bear vs cat by the premade name. For the feral tree (tab 1) it plays **bear (`tank feral`)** when the role is forced to tank, or when the bot knows **Primal Fury (16958/16961)**; otherwise it plays cat.
 
