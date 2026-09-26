@@ -111,6 +111,9 @@ void WorldRunnable::operator()()
         uint32 updateTime = WorldTimer::getMSTimeDiffToNow(currTime);
         prevTime = currTime;
 
+        // twow-repo#351: every tick's work time into the aggregated statistic.
+        sPerfMonitor.RecordTick(updateTime, diff);
+
         sPerfMonitor.WorldSleep.Begin();
         if (updateTime < WORLD_SLEEP_CONST)
             std::this_thread::sleep_for(std::chrono::milliseconds(WORLD_SLEEP_CONST - updateTime));

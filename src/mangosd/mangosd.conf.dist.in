@@ -621,6 +621,22 @@ PerformanceLog.SlowPackets = 100
 PerformanceLog.SlowMapPackets = 100
 PerformanceLog.SlowPacketBroadcast = 0
 
+# PerformanceLog.TickStats
+#   One aggregated line per interval in the performance log (twow-repo#351):
+#   "Tick stats: interval=60s ticks=N p50=..ms p95=..ms p99=..ms max=..ms
+#   over100=N over200=N". The Slow* entries above only record updates over their
+#   threshold, so they cannot give a percentile; this line counts every world
+#   tick (work time without the sleep). over100 is the "slow update" of the D1
+#   gate (ADR-0031), over200 matches PerformanceLog.SlowMapSystemUpdate.
+#   Default: 0 (off)
+#
+# PerformanceLog.TickStatsInterval
+#   Seconds per aggregated line, at least 10.
+#   Default: 60
+
+PerformanceLog.TickStats = 0
+PerformanceLog.TickStatsInterval = 60
+
 # RaLogFile. Log file of RA commands.
 
 RaLogFile = ""

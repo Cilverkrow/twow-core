@@ -2,6 +2,7 @@
 #include "Chat.h"
 #include "World.h"
 #include "MapManager.h"
+#include "TickStats.h"
 
 PerformanceMonitor sPerfMonitor;
 
@@ -78,6 +79,31 @@ void PerformanceMonitor::FrameEnd(uint32 delta)
 void PerformanceMonitor::SetReportInterval(uint32 IntervalInSeconds)
 {
 	IntervalReport.SetInterval(IntervalInSeconds * 1000);
+}
+
+void PerformanceMonitor::RecordTick(uint32 UpdateMs, uint32 DiffMs)
+{
+	if (!sWorld.getConfig(CONFIG_BOOL_PERFLOG_TICK_STATS))
+	{
+		// Switched off (possibly by a config reload): start the next interval clean.
+		TickSamples.clear();
+		TickStatsElapsedMs = 0;
+		return;
+	}
+
+	TickSamples.push_back(UpdateMs);
+	TickStatsElapsedMs += DiffMs;
+	if (TickStatsElapsedMs < sWorld.getConfig(CONFIG_UINT32_PERFLOG_TICK_STATS_INTERVAL) * 1000)
+		return;
+
+	// One line per interval, never per tick. clear() keeps the capacity, so a
+	// steady tick rate stops allocating after the first interval.
+	TickStatsSummary const Summary = SummarizeTickStats(TickSamples);
+	sLog.out(LOG_PERFORMANCE, "Tick stats: interval=%us ticks=%u p50=%ums p95=%ums p99=%ums max=%ums over100=%u over200=%u",
+		TickStatsElapsedMs / 1000, Summary.count, Summary.p50, Summary.p95, Summary.p99, Summary.max,
+		Summary.over100, Summary.over200);
+	TickSamples.clear();
+	TickStatsElapsedMs = 0;
 }
 
 void PerformanceMonitor::ReportCPU(ChatHandler& Handler)

@@ -977,6 +977,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_loot_bonus_source_contract.cmake")
 
+  # twow-repo#351: percentiles and slow counters of the aggregated tick line.
+  add_executable(tick_stats_test
+    "${TW_CORE_ROOT}/t/tick_stats_test.cpp")
+  add_test(NAME tick_stats_test COMMAND tick_stats_test)
+
   # twow-repo#298: accelerated respawn policy values and the audited,
   # default-off rare registry contract; no server or database required.
   add_executable(rare_respawn_policy_test
