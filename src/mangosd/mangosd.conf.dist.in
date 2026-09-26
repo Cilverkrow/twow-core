@@ -1790,6 +1790,72 @@ Funserver.Loot.Bonus.SelectionMultiplier = 4
 
 Funserver.Loot.Bonus.DuplicateDecay = 0.25
 
+# Funserver.Loot.Units.Enabled
+#   twow-repo#323. Replaces the SelectionMultiplier rounds for the content the
+#   Funserver.Loot.Bonus.* switches already classify (rares, registered dungeon
+#   and raid bosses, boss chests, world bosses as raid): after the normal loot
+#   pass the loot is filled up to a fixed number of units. Draws come from the
+#   own table (direct rows, groups, one reference level) weighted by
+#   base chance x quality weight x DuplicateDecay^(copies already dropped).
+#   Whatever the own table cannot cover with distinct items at the quality
+#   floor comes from a pool of BoE blue/epic weapons and armour that drop in
+#   the world, at the looted creature's level +- LevelWindow (chests: the
+#   looter's level). Quest items always keep their slots. Requires
+#   Funserver.Loot.Bonus.Enabled and a restart. Rate.Drop.Item.* does not
+#   apply to the fill draws.
+#   Default: 0 (off)
+#
+# Funserver.Loot.Units.Rare / .Dungeon / .Raid
+#   Total loot units per kill, including the normal pass. Range 1..16.
+#   Default: 6 / 8 / 16
+#
+# Funserver.Loot.Units.Floor.Rare / .Dungeon / .Raid
+#   Item quality floor (0 poor .. 5 legendary) for counting distinct own-table
+#   items and for the BoE pool. Default: 3 (blue) / 3 (blue) / 4 (epic)
+#
+# Funserver.Loot.Units.Weight.<Rare|Dungeon|Raid>.<Poor|Common|Uncommon|Rare|Epic|Legendary>
+#   Multipliers on the base chance per item quality. Range 0..100.
+#   Default rare/dungeon: 0.1 0.25 0.5 10 10 1; raid: 0.1 0.1 0.1 0.1 10 10
+#
+# Funserver.Loot.Units.DuplicateDecay
+#   Weight factor per copy of an item already dropped in this kill (0.75 = -25 %).
+#   Default: 0.75
+#
+# Funserver.Loot.Units.BoePool.LevelWindow
+#   Required-level window around the level for BoE pool items. Default: 4
+#
+# Funserver.Loot.Units.BoePool.EpicShare
+#   Weight of an epic next to a blue (1.0) below an epic floor. Default: 0.2
+
+Funserver.Loot.Units.Enabled = 0
+Funserver.Loot.Units.Rare = 6
+Funserver.Loot.Units.Dungeon = 8
+Funserver.Loot.Units.Raid = 16
+Funserver.Loot.Units.Floor.Rare = 3
+Funserver.Loot.Units.Floor.Dungeon = 3
+Funserver.Loot.Units.Floor.Raid = 4
+Funserver.Loot.Units.Weight.Rare.Poor = 0.1
+Funserver.Loot.Units.Weight.Rare.Common = 0.25
+Funserver.Loot.Units.Weight.Rare.Uncommon = 0.5
+Funserver.Loot.Units.Weight.Rare.Rare = 10
+Funserver.Loot.Units.Weight.Rare.Epic = 10
+Funserver.Loot.Units.Weight.Rare.Legendary = 1
+Funserver.Loot.Units.Weight.Dungeon.Poor = 0.1
+Funserver.Loot.Units.Weight.Dungeon.Common = 0.25
+Funserver.Loot.Units.Weight.Dungeon.Uncommon = 0.5
+Funserver.Loot.Units.Weight.Dungeon.Rare = 10
+Funserver.Loot.Units.Weight.Dungeon.Epic = 10
+Funserver.Loot.Units.Weight.Dungeon.Legendary = 1
+Funserver.Loot.Units.Weight.Raid.Poor = 0.1
+Funserver.Loot.Units.Weight.Raid.Common = 0.1
+Funserver.Loot.Units.Weight.Raid.Uncommon = 0.1
+Funserver.Loot.Units.Weight.Raid.Rare = 0.1
+Funserver.Loot.Units.Weight.Raid.Epic = 10
+Funserver.Loot.Units.Weight.Raid.Legendary = 10
+Funserver.Loot.Units.DuplicateDecay = 0.75
+Funserver.Loot.Units.BoePool.LevelWindow = 4
+Funserver.Loot.Units.BoePool.EpicShare = 0.2
+
 # Funserver.Rare.Respawn.Enabled
 #   Accelerated respawn for the audited open-world rare spawns listed in
 #   `creature_rare_respawn_registry` (twow-repo#298) only:

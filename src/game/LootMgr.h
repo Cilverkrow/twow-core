@@ -230,12 +230,24 @@ class LootStore
         bool m_ratesAllowed;
 };
 
+// twow-repo#323: one own-table item that may fill a funserver loot unit, with
+// its effective base chance (group share and reference chance applied).
+struct FunserverUnitCandidate
+{
+    LootStoreItem const* item;
+    float baseChance;
+};
+
 class LootTemplate
 {
     class  LootGroup;                                       // A set of loot definitions for items (refs are not allowed inside)
     typedef std::vector<LootGroup> LootGroups;
 
     public:
+        // twow-repo#323: fill the loot up to the fixed unit count of `content`
+        // (FunserverLootContent) by weighted own-table draws, then the BoE pool.
+        void ProcessUnits(Loot& loot, Player const* lootOwner, uint8 content, uint32 level) const;
+        void CollectUnitCandidates(std::vector<FunserverUnitCandidate>& out, float scale, bool followReferences) const;
         // Adds an entry to the group (at loading stage)
         void AddEntry(LootStoreItem& item);
         // Rolls for every item in the template and adds the rolled items the the loot
@@ -481,6 +493,10 @@ void LoadLootTemplates_Skinning();
 void LoadLootTemplates_Disenchant();
 
 void LoadLootTemplates_Reference(LootIdSet& ids_set);
+
+// twow-repo#323: BoE blue/epic weapons and armour that drop from world loot
+// tables; loaded only when Funserver.Loot.Units.Enabled is on.
+void LoadFunserverBoePool();
 
 void CheckLootTemplates_Reference(LootIdSet& ids_set); // has to be split due to bg usage
 

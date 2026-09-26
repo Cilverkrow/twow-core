@@ -972,6 +972,27 @@ void World::LoadConfigSettingsFromFile(bool reload)
     ///- Read all rates from the config file
     setConfigPos(CONFIG_FLOAT_RATE_HEALTH,               "Rate.Health", 1.0f);
     setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY, "Funserver.Loot.Bonus.DuplicateDecay", 0.25f, 0.0f, 1.0f);
+    // twow-repo#323: fixed loot units per kill (funserver profile only).
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_UNITS_DECAY, "Funserver.Loot.Units.DuplicateDecay", 0.75f, 0.0f, 1.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_BOE_EPIC_SHARE, "Funserver.Loot.Units.BoePool.EpicShare", 0.2f, 0.0f, 1.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR, "Funserver.Loot.Units.Weight.Rare.Poor", 0.1f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_COMMON, "Funserver.Loot.Units.Weight.Rare.Common", 0.25f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_UNCOMMON, "Funserver.Loot.Units.Weight.Rare.Uncommon", 0.5f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_RARE, "Funserver.Loot.Units.Weight.Rare.Rare", 10.0f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_EPIC, "Funserver.Loot.Units.Weight.Rare.Epic", 10.0f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_LEGENDARY, "Funserver.Loot.Units.Weight.Rare.Legendary", 1.0f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_DUNGEON_POOR, "Funserver.Loot.Units.Weight.Dungeon.Poor", 0.1f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_DUNGEON_COMMON, "Funserver.Loot.Units.Weight.Dungeon.Common", 0.25f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_DUNGEON_UNCOMMON, "Funserver.Loot.Units.Weight.Dungeon.Uncommon", 0.5f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_DUNGEON_RARE, "Funserver.Loot.Units.Weight.Dungeon.Rare", 10.0f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_DUNGEON_EPIC, "Funserver.Loot.Units.Weight.Dungeon.Epic", 10.0f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_DUNGEON_LEGENDARY, "Funserver.Loot.Units.Weight.Dungeon.Legendary", 1.0f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RAID_POOR, "Funserver.Loot.Units.Weight.Raid.Poor", 0.1f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RAID_COMMON, "Funserver.Loot.Units.Weight.Raid.Common", 0.1f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RAID_UNCOMMON, "Funserver.Loot.Units.Weight.Raid.Uncommon", 0.1f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RAID_RARE, "Funserver.Loot.Units.Weight.Raid.Rare", 0.1f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RAID_EPIC, "Funserver.Loot.Units.Weight.Raid.Epic", 10.0f, 0.0f, 100.0f);
+    setConfigMinMax(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RAID_LEGENDARY, "Funserver.Loot.Units.Weight.Raid.Legendary", 10.0f, 0.0f, 100.0f);
     setConfigPos(CONFIG_FLOAT_RATE_POWER_MANA,           "Rate.Mana", 1.0f);
     setConfig(CONFIG_FLOAT_RATE_POWER_RAGE_INCOME,       "Rate.Rage.Income", 1.0f);
     setConfigPos(CONFIG_FLOAT_RATE_POWER_RAGE_LOSS,      "Rate.Rage.Loss", 1.0f);
@@ -1074,6 +1095,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_DUNGEON_BOSS, "Funserver.Loot.Bonus.DungeonBoss", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RAID_BOSS, "Funserver.Loot.Bonus.RaidBoss", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_BOSS_CHEST, "Funserver.Loot.Bonus.BossChest", false);
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED, "Funserver.Loot.Units.Enabled", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_RESPAWN_ENABLED, "Funserver.Rare.Respawn.Enabled", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED, "Funserver.Rare.PoolBypass.Enabled", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
@@ -1404,6 +1426,13 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_DIVISOR, "Funserver.Rare.Respawn.Divisor", FUNSERVER_RARE_RESPAWN_DEFAULT_DIVISOR, 1, 86400);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS, "Funserver.Rare.Respawn.MinSeconds", FUNSERVER_RARE_RESPAWN_DEFAULT_MIN_SECONDS, 1, 604800);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS, "Funserver.Rare.Respawn.MaxSeconds", FUNSERVER_RARE_RESPAWN_DEFAULT_MAX_SECONDS, 1, 604800);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RARE, "Funserver.Loot.Units.Rare", 6, 1, 16);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_DUNGEON, "Funserver.Loot.Units.Dungeon", 8, 1, 16);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RAID, "Funserver.Loot.Units.Raid", 16, 1, 16);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RARE, "Funserver.Loot.Units.Floor.Rare", 3, 0, 5);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_DUNGEON, "Funserver.Loot.Units.Floor.Dungeon", 3, 0, 5);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RAID, "Funserver.Loot.Units.Floor.Raid", 4, 0, 5);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_BOE_LEVEL_WINDOW, "Funserver.Loot.Units.BoePool.LevelWindow", 4, 0, 60);
     if (getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS) < getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS))
     {
         sLog.outError("Funserver.Rare.Respawn.MaxSeconds (%u) < MinSeconds (%u), using MinSeconds for both.",
@@ -2219,6 +2248,8 @@ void LoadPlayerEggLoot();
     sLog.outString("Loading loot tables...");
     LootIdSet ids_set;
     LoadLootTables(ids_set);
+    sLog.outString("Loading funserver BoE bonus pool...");
+    LoadFunserverBoePool();                                 // twow-repo#323, needs item and loot templates
     sLog.outString("Loading custom character skins...");
     sObjectMgr.LoadCustomCharacterSkins();
     sLog.outString("Loading fishing base level requirements...");
