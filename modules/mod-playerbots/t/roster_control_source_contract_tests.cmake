@@ -129,4 +129,13 @@ foreach(forbidden learnClassLevelSpells learnSpell TeleportTo "request named tra
   forbid_text("${train_exec}" "${forbidden}" "train side effect ${forbidden}")
 endforeach()
 
+
+# #354 S3: chat summon's free teleport uses the one GM threshold and runs
+# before the roster branch; ranks 1-2 now take the checked roster path.
+forbid_text("${chat_summon}" "GetSecurity() > SEC_PLAYER" "free chat summon for observers and moderators")
+string(FIND "${chat_summon}" "IsGmBypass(requester->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity)" chat_gm)
+if(chat_gm EQUAL -1 OR NOT chat_gm LESS chat_decide)
+  message(FATAL_ERROR "chat summon GM bypass must use the config threshold before the roster branch")
+endif()
+
 message(STATUS "ROSTER_CONTROL_SOURCE_CONTRACT=PASS")

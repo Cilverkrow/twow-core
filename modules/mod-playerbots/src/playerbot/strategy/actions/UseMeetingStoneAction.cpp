@@ -81,7 +81,9 @@ bool SummonAction::Execute(Event& event)
     // Say something either way. The meeting stone and innkeeper routes below
     // both report what happened; this one used to return in silence, which is
     // indistinguishable from the command not arriving at all.
-    if (requester->GetSession()->GetSecurity() > SEC_PLAYER || sPlayerbotAIConfig.nonGmFreeSummon)
+    // #354 S3: free teleport only from the one GM threshold; observers and
+    // moderators (1-2) used to get it and skipped the roster safety checks below.
+    if (roster_control::IsGmBypass(requester->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity) || sPlayerbotAIConfig.nonGmFreeSummon)
     {
         if (!Teleport(requester, requester, bot))
             return false;

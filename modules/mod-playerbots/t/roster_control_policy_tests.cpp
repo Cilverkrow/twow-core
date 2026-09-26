@@ -86,7 +86,8 @@ int main()
 
     Require(IsGmBypass(3, 3), "the owner's GM 3 account keeps admin control by default");
     Require(IsGmBypass(4, 3) && IsGmBypass(6, 3), "higher ranks keep it too");
-    Require(!IsGmBypass(0, 3) && !IsGmBypass(2, 3), "players and moderators do not");
+    Require(!IsGmBypass(0, 3) && !IsGmBypass(1, 3) && !IsGmBypass(2, 3),
+            "players, observers and moderators do not (no free chat summon, #354 S3)");
     Require(!IsGmBypass(6, 0) && !IsGmBypass(0, 0), "0 switches the bypass off instead of opening it to everyone");
     Require(!IsGmBypass(3, 4), "a stricter threshold is honoured");
 
