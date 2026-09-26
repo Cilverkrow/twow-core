@@ -149,6 +149,7 @@ enum PlayerHook
     PLAYERHOOK_ON_CHAT_COMMAND,
     PLAYERHOOK_CAN_USE_GROUP_CHAT,
     PLAYERHOOK_ON_REPOP_AT_GRAVEYARD,
+    PLAYERHOOK_ON_QUEST_SHARE_REFUSED,
     PLAYERHOOK_END
 };
 
@@ -252,6 +253,13 @@ class PlayerScript : public ScriptObject
         // mutually exclusive: a module that resurrects a player at an instance
         // entrance cannot also let the corpse run start.
         virtual bool OnRepopAtGraveyard(Player* /*player*/) { return false; }
+
+        // The core refused a party member a shared quest (CanTakeQuest failed).
+        // A module may admit the member by its own, narrower rule instead - the
+        // playerbot catch-up for a roster bot of the sharer (twow-repo#340).
+        // Return true once the member was admitted: the core then sends no
+        // "not eligible" line to the sharer; the module answers for it.
+        virtual bool OnQuestShareRefused(Player* /*sharer*/, Player* /*member*/, Quest const* /*quest*/) { return false; }
 };
 
 class CreatureScript : public ScriptObject, public UpdatableScript<Creature>

@@ -25,6 +25,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/AiFactory.h"
 #include "playerbot/strategy/actions/ChangeTalentsAction.h"
+#include "playerbot/strategy/actions/ShareQuestAction.h"
 #include "ahbot/AhBot.h"
 #include "BotDiagnostics.h"
 #include "playerbot/BotSlots.h"
@@ -212,6 +213,33 @@ class PlayerbotPlayerScript : public PlayerScript
 
             if (PlayerbotMgr* mgr = GetBotMgr(master))
                 mgr->HandleCommand(type, msg, lang, to);
+        }
+
+        // twow-repo#290/#340: the share button. Core refused a roster bot of
+        // the sharer (missing prerequisite, below minimum level); the bounded
+        // catch-up of core#102 admits it instead, and the sharer sees
+        // "accepted" rather than "not eligible" followed by "accepted".
+        bool OnQuestShareRefused(Player* sharer, Player* member, Quest const* quest) override
+        {
+            if (!sharer || !member || !quest || !sPlayerbotAIConfig.enabled)
+                return false;
+
+            PlayerbotAI* ai = GetBotAI(member);
+            if (!ai || ai->GetMaster() != sharer || !sRandomPlayerbotMgr.IsPersistentRosterMember(member->GetGUIDLow()))
+                return false;
+
+            ai::CatchupResult const result = ai::CatchupQuestAction::Admit(member, sharer, sharer, quest->GetQuestId());
+            sLog.outBasic("[QuestShare] path=gui bot=%u master=%u quest=%u result=%s reason=%s",
+                member->GetGUIDLow(), sharer->GetGUIDLow(), quest->GetQuestId(),
+                result == ai::CatchupResult::ADMITTED ? "admitted" : "rejected",
+                ai::CatchupQuestAction::ResultCode(result));
+
+            if (result != ai::CatchupResult::ADMITTED)
+                return false;
+
+            sharer->SendPushToPartyResponse(member, QUEST_PARTY_MSG_ACCEPT_QUEST);
+            ai->TellPlayer(sharer, BOT_TEXT("quest_accept"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+            return true;
         }
 
         // Was the CreatePlayerbotMgr() call in HandlePlayerLogin. Only a person

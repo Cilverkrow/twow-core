@@ -134,11 +134,15 @@ bool AcceptQuestShareAction::Execute(Event& event)
         if (!master || requester != master || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
             return false;
 
+        // #290: normally the Core hook (PlayerbotScripts OnQuestShareRefused)
+        // has already admitted or refused the bot and logged it (path=gui);
+        // then this is ALREADY_HAS and stays silent. It remains the fallback.
         CatchupResult const result = CatchupQuestAction::Admit(bot, master, requester, qInfo->GetQuestId());
-        sLog.outBasic("[QuestShare] path=gui bot=%u master=%u quest=%u result=%s reason=%s",
-            bot->GetGUIDLow(), master->GetGUIDLow(), qInfo->GetQuestId(),
-            result == CatchupResult::ADMITTED || result == CatchupResult::ALREADY_HAS ? "admitted" : "rejected",
-            CatchupQuestAction::ResultCode(result));
+        if (result != CatchupResult::ALREADY_HAS)
+            sLog.outBasic("[QuestShare] path=gui_fallback bot=%u master=%u quest=%u result=%s reason=%s",
+                bot->GetGUIDLow(), master->GetGUIDLow(), qInfo->GetQuestId(),
+                result == CatchupResult::ADMITTED ? "admitted" : "rejected",
+                CatchupQuestAction::ResultCode(result));
 
         if (result == CatchupResult::ADMITTED)
         {

@@ -774,6 +774,7 @@ enum eConfigBoolValues
     // Remove navmesh tiles again at runtime. Off by default, see
     // MMapManager::unloadMap.
     CONFIG_BOOL_MMAP_TILE_UNLOAD,
+    CONFIG_BOOL_FUNSERVER_ALL_QUESTS_SHARABLE,
     CONFIG_BOOL_FUNSERVER_LOOT_BONUS_ENABLED,
     CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE,
     CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE_ELITE,
