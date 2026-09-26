@@ -40,8 +40,8 @@ character). `/botmenu` shows the state.
 | Quests | quests, `accept *`, talk, `catchup quest ` (then shift-click the quest link) |
 | Gruppe | summon, leave |
 
-The list comes from the command inventory in twow-repo#290. `train` needs
-twow-core#145, `catchup quest` #147, `formation spear` #148.
+The list comes from the command inventory in twow-repo#290. `train` came
+with twow-core#145, `catchup quest` with #147, `formation spear` with #148.
 
 ## Lua 5.0
 

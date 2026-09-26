@@ -13,8 +13,8 @@ file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/values/Formations.cpp" format
 
 # Commands and formations of PRs that are not merged yet. A name must leave
 # this list as soon as the server has it - the test fails on a stale entry.
-set(pending_commands "train;catchup quest")  # twow-core#145, twow-core#147
-set(pending_formations "spear")              # twow-core#148
+set(pending_commands "")
+set(pending_formations "")
 
 function(require_text text needle description)
   string(FIND "${text}" "${needle}" offset)
