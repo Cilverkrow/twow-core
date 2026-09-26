@@ -33,6 +33,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/DangerMapPolicy.h"
+#include "playerbot/GrindCapPolicy.h"
 #include "Movement/spline/MoveSplineInitArgs.h"
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
@@ -85,6 +86,31 @@ danger_map::Params DangerMapParams()
 
 // #307: pools a bot death to a mob into the shared danger map. Deaths without
 // a creature target (falling, drowning, players) stay with the per-bot rules.
+// #307: a creature entry that killed this roster bot GrindAvoid.MaxDeaths times within
+// GrindAvoid.WindowSeconds is skipped as a grind target for GrindAvoid.AvoidSeconds.
+void RecordGrindDeath(PlayerbotAI* ai, Player* bot, Unit* killer)
+{
+    if (!killer || killer->GetTypeId() != TYPEID_UNIT)
+        return;
+
+    AiObjectContext* context = ai->GetAiObjectContext();
+    std::string const entry = std::to_string(killer->GetEntry());
+    grind_cap::Record record;
+    record.windowStart = uint32(AI_VALUE2(time_t, "manual time", "grind window " + entry));
+    record.deaths = uint32(std::max(0, AI_VALUE2(int, "manual int", "grind deaths " + entry)));
+    uint32 const now = uint32(time(nullptr));
+    bool const avoid = grind_cap::RecordDeath(record, now, sPlayerbotAIConfig.grindAvoidMaxDeaths,
+        sPlayerbotAIConfig.grindAvoidWindowSeconds, sPlayerbotAIConfig.grindAvoidSeconds);
+    SET_AI_VALUE2(time_t, "manual time", "grind window " + entry, time_t(record.windowStart));
+    SET_AI_VALUE2(int, "manual int", "grind deaths " + entry, int(record.deaths));
+    if (!avoid)
+        return;
+
+    SET_AI_VALUE2(time_t, "manual time", "grind avoid " + entry, time_t(record.avoidUntil));
+    sLog.outBasic("[GrindCap] state=avoid bot=%u level=%u entry=%u killer_level=%u avoid_seconds=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), killer->GetEntry(), killer->GetLevel(), sPlayerbotAIConfig.grindAvoidSeconds);
+}
+
 void RecordDangerMapDeath(Player* bot, Unit* killer)
 {
     if (!killer || killer->GetTypeId() != TYPEID_UNIT)
@@ -1206,7 +1232,8 @@ void PlayerbotAI::OnDeath()
 
                 TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
                 std::string travelInfo = "none";
-                if (travelTarget && travelTarget->GetDestination())
+                // #307: an expired or abandoned target is not where the bot died.
+                if (travelTarget && travelTarget->GetDestination() && travelTarget->IsActiveForDeathAttribution())
                     travelInfo = travelTarget->GetDestination()->GetTitle();
                 out << ",\"" << travelInfo << "\"";
 
@@ -1217,6 +1244,9 @@ void PlayerbotAI::OnDeath()
             // world is pooled (roster or not); real players never feed it.
             if (sPlayerbotAIConfig.dangerMapEnabled && !IsRealPlayer() && !bot->GetMap()->IsDungeon())
                 RecordDangerMapDeath(bot, AI_VALUE(Unit*, "current target"));
+
+            if (sPlayerbotAIConfig.grindAvoidMaxDeaths && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+                RecordGrindDeath(this, bot, AI_VALUE(Unit*, "current target"));
 
             // #307: a death on a completed-quest turn-in route counts against
             // that route, so a revived bot does not walk back into the same mobs.

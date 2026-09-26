@@ -461,6 +461,12 @@ public:
     uint32 dangerMapMinDeaths = 3;
     uint32 dangerMapLevelMargin = 3;
     uint32 dangerMapLineSamples = 20;
+    // #307: grind cap for low-level roster bots and per-bot avoidance of killers.
+    uint32 grindCapLowLevelBelow = 0;     // 0 = off
+    int32 grindCapLowLevelMargin = 2;
+    uint32 grindAvoidMaxDeaths = 0;       // 0 = off
+    uint32 grindAvoidWindowSeconds = 3600;
+    uint32 grindAvoidSeconds = 3600;
     // Radius around the bot within which an active quest destination is a
     // local hub candidate. It is spatial, not a hard-coded zone allowlist.
     float questFirstProgressionLocalHubRadius = 1200.0f;

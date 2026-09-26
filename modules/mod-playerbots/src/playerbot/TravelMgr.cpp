@@ -1031,8 +1031,17 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
 }
 
+bool TravelTarget::IsActiveForDeathAttribution() const
+{
+    return m_status == TravelStatus::TRAVEL_STATUS_TRAVEL || m_status == TravelStatus::TRAVEL_STATUS_WORK;
+}
+
 void TravelTarget::OnDeathOnTurnInRoute()
 {
+    // #307: a dropped or abandoned target (bot now grinding elsewhere) is not
+    // blamed for later deaths.
+    if (!IsActiveForDeathAttribution())
+        return;
     if (!IsProgressAwareTurnIn())
         return;
 
@@ -1060,6 +1069,9 @@ void TravelTarget::OnDeathOnTurnInRoute()
 
 void TravelTarget::OnDeathAtDestination()
 {
+    if (!IsActiveForDeathAttribution())
+        return;
+
     // Completed turn-ins keep their own route rule above; everything else
     // (fishing, gathering, grind, quest objectives and givers) is counted here.
     if (!tDestination || dynamic_cast<NullTravelDestination const*>(tDestination) || IsProgressAwareTurnIn())

@@ -408,6 +408,8 @@ namespace ai
         // gathering, grind, quest objective, ...) and suppresses it for this
         // bot after too many.
         void OnDeathAtDestination();
+        // #307: only a target the bot is still travelling to or working at.
+        bool IsActiveForDeathAttribution() const;
         bool IsDestinationDeathSuppressed(TravelDestination const* destination) const;
 	private:
         // #329: one visible [QuestCommit] line per commitment change of a

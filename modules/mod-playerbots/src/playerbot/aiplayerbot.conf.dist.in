@@ -519,6 +519,16 @@ AiPlayerbot.DangerMap.WindowSeconds = 7200
 AiPlayerbot.DangerMap.MinDeaths = 3
 AiPlayerbot.DangerMap.LevelMargin = 3
 AiPlayerbot.DangerMap.LineSamples = 20
+# Grinding of persistent roster bots without a real-player master (#307).
+# Below GrindCap.LowLevelBelow a bot attacks mobs at most LowLevelMargin levels
+# above itself (otherwise 4). 0 = off.
+AiPlayerbot.GrindCap.LowLevelBelow = 0
+AiPlayerbot.GrindCap.LowLevelMargin = 2
+# A creature entry that killed the bot GrindAvoid.MaxDeaths times within
+# WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
+AiPlayerbot.GrindAvoid.MaxDeaths = 0
+AiPlayerbot.GrindAvoid.WindowSeconds = 3600
+AiPlayerbot.GrindAvoid.AvoidSeconds = 3600
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
