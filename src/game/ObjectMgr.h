@@ -72,6 +72,9 @@ struct RareRespawnRegistryEntry
 {
     uint32 creatureEntry = 0;
     uint32 mapId = 0;
+    // twow-repo#322: spawn point of an entry pool (pool_creature_template, e.g. a
+    // wandering rare with several points). Accelerated respawn only, never bypassed.
+    bool entryPooled = false;
 };
 
 struct GameTele

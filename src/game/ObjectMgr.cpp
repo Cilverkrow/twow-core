@@ -466,7 +466,10 @@ bool ObjectMgr::HasAcceleratedRareRespawn(uint32 guid) const
 
 bool ObjectMgr::IsRareRespawnPoolBypass(uint32 guid) const
 {
-    return sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED) && IsRareRespawnRegistered(guid);
+    if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED))
+        return false;
+    auto itr = m_RareRespawnRegistry.find(guid);
+    return itr != m_RareRespawnRegistry.end() && !itr->second.entryPooled;
 }
 
 uint32 ObjectMgr::ScaleRareRespawnDelay(uint32 seconds) const
@@ -2099,15 +2102,18 @@ void ObjectMgr::LoadCreatures(bool reload)
         int16 EntryPoolId       = fields[18].GetInt16();
 
         // twow-repo#298: a registered rare must still be exactly the audited
-        // single-entry, non-event, guid-pooled-or-static continent spawn.
+        // single-entry, non-event continent spawn. twow-repo#322: an entry-pool
+        // spawn point stays registered for accelerated respawn only.
         auto rareItr = m_RareRespawnRegistry.find(guid);
         if (rareItr != m_RareRespawnRegistry.end() &&
             (rareItr->second.creatureEntry != data.creature_id[0] || rareItr->second.mapId != data.position.mapId ||
-             data.creature_id[1] || data.creature_id[2] || data.creature_id[3] || gameEvent != 0 || EntryPoolId != 0))
+             data.creature_id[1] || data.creature_id[2] || data.creature_id[3] || gameEvent != 0))
         {
             sLog.outErrorDb("creature_rare_respawn_registry guid %u no longer matches its audited spawn; ignored", guid);
             m_RareRespawnRegistry.erase(rareItr);
         }
+        else if (rareItr != m_RareRespawnRegistry.end())
+            rareItr->second.entryPooled = EntryPoolId != 0;
         bool const rarePoolBypass = GuidPoolId != 0 && IsRareRespawnPoolBypass(guid);
 
         MapEntry const* mapEntry = sMapStorage.LookupEntry<MapEntry>(data.position.mapId);
