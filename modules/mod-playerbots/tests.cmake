@@ -257,6 +257,25 @@ add_test(NAME follow_transport_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/follow_transport_source_contract_tests.cmake")
 
+# #303 part 2: no continental walk to a real-player master; far walks re-plan.
+add_executable(far_follow_policy_tests
+  "${PB_MODULE_DIR}/t/far_follow_policy_tests.cpp")
+
+target_include_directories(far_follow_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(far_follow_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME far_follow_policy
+  COMMAND far_follow_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME far_follow_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/far_follow_source_contract_tests.cmake")
+
 # #308: every equip decision carries a reason code and the bagged-item
 # decisions can be logged (default off) for the live equipment audit.
 add_test(NAME equip_diagnostics_source_contract

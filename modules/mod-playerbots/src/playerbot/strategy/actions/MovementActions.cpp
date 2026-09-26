@@ -17,6 +17,7 @@
 #include "Entities/Vehicle.h"
 #endif
 #include "playerbot/strategy/generic/CombatStrategy.h"
+#include "playerbot/FarFollowPolicy.h"
 
 using namespace ai;
 
@@ -2394,9 +2395,31 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
 
     if (tDist > sPlayerbotAIConfig.sightDistance || (target->IsFlying() && !bot->IsFreeFlying()) || target->IsTaxiFlying())
     {
+        // #303 part 2: a real player beyond FarFollowMaxWalkDistance is not
+        // walked to - the train 5 snapshot showed 4,600-8,300 yd walks across
+        // the continent. The bot keeps its own activity and asks to be summoned.
+        bool const realPlayerTarget = target->GetObjectGuid().IsPlayer() && IsRealPlayer((Player*)target);
+        bool const hold = far_follow::Decide(tDist, sPlayerbotAIConfig.sightDistance,
+            sPlayerbotAIConfig.farFollowMaxWalkDistance, realPlayerTarget) == far_follow::Decision::HOLD;
+
         // #303 diagnostic gate: this branch moves to a snapshot of the target's
-        // position instead of following the unit.
-        LogFollowDiag(ai, bot, target, "far_follow");
+        // position instead of following the unit (or, beyond the limit, holds).
+        LogFollowDiag(ai, bot, target, hold ? "far_follow_hold" : "far_follow");
+
+        if (hold)
+        {
+
+            Value<int32>* told = context->GetValue<int32>("manual int", "far follow told at");
+            int32 const now = int32(time(nullptr));
+            if (far_follow::ShouldTell(now, told->Get(), 300))
+            {
+                told->Set(now);
+                std::ostringstream out;
+                out << "I'm too far away (" << uint32(tDist) << " yd) to walk to you - summon me.";
+                ai->TellPlayerNoFacing((Player*)target, out.str(), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+            }
+            return false;
+        }
 
         if (target->GetObjectGuid().IsPlayer())
         {
@@ -2428,7 +2451,15 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
             }
         }
         if (!target->IsTaxiFlying()/* || bot->GetTransport()*/)
-           return MoveTo(target, ai->GetRange("follow"));
+        {
+            bool const moved = MoveTo(target, ai->GetRange("follow"));
+            // #303: MoveTo walks to a snapshot of the target's position and
+            // waits until it is reached. For a real player re-plan soon, so a
+            // master who turns around is not run past to the old point.
+            if (moved && realPlayerTarget)
+                SetDuration(far_follow::ReplanMs);
+            return moved;
+        }
     }
 
     // Handle water transition

@@ -522,6 +522,10 @@ AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # target, distance, strategies) when a bot of a real player falls back to far
 # follow or meets a transport mismatch. At most once per bot every 5 seconds.
 AiPlayerbot.FollowDiagnostics = 0
+# #303: a bot of a real player does not walk more than this many yards to its
+# master; beyond it the bot keeps its own activity and asks to be summoned
+# ("far_follow_hold"). 0 = no limit (old behaviour: walk any distance).
+AiPlayerbot.FarFollowMaxWalkDistance = 400
 # Completed persistent-roster turn-ins use observed movement progress instead
 # of a fixed overall travel duration. Stall recovery is route-local and never
 # teleports, removes quests or changes generic travel behaviour.

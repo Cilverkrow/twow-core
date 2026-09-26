@@ -40,7 +40,7 @@ require_text("${transport}" "if (!bot->GetTransport() && !bot->m_movementInfo.t_
 
 # Diagnostic gate: far follow and transport decisions leave a snapshot.
 function_region("${movement}" "bool MovementAction::Follow(Unit* target, float distance, float angle)" "WorldPosition CalculatePerpendicularPoint" follow)
-require_text("${follow}" "LogFollowDiag(ai, bot, target, \"far_follow\")" "far-follow snapshot")
+require_text("${follow}" "LogFollowDiag(ai, bot, target, hold ? \"far_follow_hold\" : \"far_follow\")" "far-follow snapshot")
 require_text("${transport}" "LogFollowDiag(ai, bot, target, \"transport_switch\")" "transport snapshot")
 require_text("${movement}" "if (!sPlayerbotAIConfig.followDiagnostics" "diagnostics behind the switch")
 require_text("${config}" "config.GetBoolDefault(\"AiPlayerbot.FollowDiagnostics\", false)" "diagnostics off by default")
