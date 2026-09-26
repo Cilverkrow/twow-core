@@ -142,3 +142,11 @@ if(NOT exact_roster_runtime_offset EQUAL -1)
 endif()
 
 message(STATUS "PROFESSION_PAIR_SOURCE_CONTRACT=PASS")
+
+# #366: double-gatherer pair 7 is valid for explicit plans, never random.
+require_text("${policy_header}" "{ HerbalismMining, kHerbalism, kMining }" "pair 7 definition")
+require_text("${policy_header}" "case HerbalismMining:" "pair 7 weight case (0, never random)")
+file(READ "${PB_SOURCE_DIR}/strategy/values/ItemUsageValue.cpp" item_usage)
+require_text("${item_usage}" "// #366: Turtle has jewelcrafting (755) in the classic build too." "jewelcrafting materials recognised")
+# #333 owner test: with a player master, skill reagents are only bought for a known recipe.
+require_text("${item_usage}" "(IsItemNeededForUsefullCraft(proto, false) && CurrentStacks(ai, proto) < 1)" "no blanket reagent buying with a player master")

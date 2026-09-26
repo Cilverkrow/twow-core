@@ -29,7 +29,10 @@ enum Pair : std::uint32_t
     MiningBlacksmithing,
     MiningEngineering,
     MiningJewelcrafting,
-    TailoringEnchanting
+    TailoringEnchanting,
+    // #366: double gatherer (raw materials for crafters), assigned only
+    // explicitly by a roster plan; never chosen by Select() or the quotas.
+    HerbalismMining
 };
 
 struct Definition
@@ -100,7 +103,8 @@ inline Definition const* Find(Pair pair)
         { MiningBlacksmithing, kMining, kBlacksmithing },
         { MiningEngineering, kMining, kEngineering },
         { MiningJewelcrafting, kMining, kJewelcrafting },
-        { TailoringEnchanting, kTailoring, kEnchanting }
+        { TailoringEnchanting, kTailoring, kEnchanting },
+        { HerbalismMining, kHerbalism, kMining }
     };
 
     for (Definition const& definition : definitions)
@@ -196,6 +200,8 @@ inline std::uint32_t Weight(std::uint8_t classId, Pair pair)
             return mining * 2;
         case TailoringEnchanting:
             return tailoring * 7;
+        case HerbalismMining:
+            return 0;
         case None:
             return 0;
     }
@@ -264,7 +270,7 @@ inline Pair SelectExisting(std::uint32_t guid, std::uint8_t classId,
     Pair match = None;
     for (Pair candidate : { HerbalismAlchemy, SkinningLeatherworking,
             MiningBlacksmithing, MiningEngineering, MiningJewelcrafting,
-            TailoringEnchanting })
+            TailoringEnchanting, HerbalismMining })
     {
         if (!Contains(candidate, skills[0]) || !Contains(candidate, skills[1]))
             continue;

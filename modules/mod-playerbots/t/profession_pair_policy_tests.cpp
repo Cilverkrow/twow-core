@@ -194,8 +194,30 @@ void TestInvalidAndConflictingExistingPlansFailClosed()
 }
 }
 
+void TestDoubleGathererPair()
+{
+    using namespace ai::profession;
+    // #366: pair 7 is a valid explicit assignment (272 roster CSV) ...
+    CHECK(IsValid(7));
+    CHECK(Contains(HerbalismMining, kHerbalism) && Contains(HerbalismMining, kMining));
+    CHECK(!IsValid(8));
+    // ... but never chosen at random, so no existing plan or new bot changes.
+    for (std::uint8_t classId : {std::uint8_t(1),std::uint8_t(3),std::uint8_t(4),std::uint8_t(8),std::uint8_t(11)})
+    {
+        CHECK(Weight(classId, HerbalismMining) == 0);
+        for (std::uint32_t guid = 1; guid < 2048; ++guid)
+            CHECK(Select(guid, classId) != HerbalismMining);
+    }
+    // A bot that already knows exactly herbalism and mining is recognised.
+    std::uint32_t const both[] = { kHerbalism, kMining };
+    CHECK(SelectExisting(4242, 3, both, 2) == HerbalismMining);
+    // The 800 quotas stay the six approved pairs.
+    CHECK(ExactRosterQuotas(800).size() == 6);
+}
+
 int main()
 {
+    TestDoubleGathererPair();
     TestOnlyApprovedPairsAndDeterminism();
     TestMiningSplitAndHunterWeight();
     TestContractClassFamilyMatrix();
