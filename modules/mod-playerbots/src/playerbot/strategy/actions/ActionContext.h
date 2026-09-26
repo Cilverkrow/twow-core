@@ -79,6 +79,7 @@
 #include "BlackwingLairDungeonActions.h"
 #include "KarazhanDungeonActions.h"
 #include "NaxxramasDungeonActions.h"
+#include "ProfessionUseActions.h"
 
 #ifdef GenerateBotTests
 #include "../tests/TestAction.h"
@@ -214,6 +215,7 @@ namespace ai
             creators["open random item"] = [](PlayerbotAI* ai) { return new OpenRandomItemAction(ai); };
             creators["use random quest item"] = [](PlayerbotAI* ai) { return new UseRandomQuestItemAction(ai); };
             creators["craft random item"] = [](PlayerbotAI* ai) { return new CraftRandomItemAction(ai); };
+            creators["profession craft"] = [](PlayerbotAI* ai) { return new ProfessionCraftAction(ai); };
             creators["smart destroy item"] = [](PlayerbotAI* ai) { return new SmartDestroyItemAction(ai); };
             creators["disenchant random item"] = [](PlayerbotAI* ai) { return new DisenchantRandomItemAction(ai); };
             creators["enchant random item"] = [](PlayerbotAI* ai) { return new EnchantRandomItemAction(ai); };

@@ -5,6 +5,8 @@
 #include "playerbot/LootObjectStack.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/ProfessionUsePolicy.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 #include "Maps/GridNotifiers.h"
 #include "Maps/GridNotifiersImpl.h"
@@ -240,7 +242,11 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
         return false;
 
     if (!loot.IsLootPossible(bot))
+    {
+        // #333: e.g. a node above the bot's skill.
+        TraceProfessionUse(ai, "gather", "skipped", "not_lootable", uint32(loot.skillId));
         return false;
+    }
 
     float gatheringDistanceToUse = sPlayerbotAIConfig.gatheringDistance;
 
@@ -266,11 +272,14 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
     }
     else
     {
-        gatheringDistanceToUse = sPlayerbotAIConfig.gatheringDistance;
+        // #333: a roster bot on its own looks further than the global 15 yards.
+        gatheringDistanceToUse = profession_use::GatherDistance(IsRosterBotOnItsOwn(ai), sPlayerbotAIConfig.gatheringDistance,
+            sPlayerbotAIConfig.professionUseGatherDistance);
     }
 
     if (sServerFacade.IsDistanceGreaterThan(sServerFacade.GetDistance2d(requester, wo), gatheringDistanceToUse))
     {
+        TraceProfessionUse(ai, "gather", "skipped", "too_far", uint32(sServerFacade.GetDistance2d(requester, wo)));
         return false;
     }
 
@@ -301,6 +310,7 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
     {
         if (strongHostiles.size() > 1)
         {
+            TraceProfessionUse(ai, "gather", "skipped", "hostiles", uint32(strongHostiles.size()));
             std::ostringstream out;
             out << strongHostiles.front()->GetName() << " is blocking " << wo->GetName() << ", need to kill it or I will not gather";
             ai->TellError(requester, out.str());
@@ -334,10 +344,14 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
 
         if (usedBagSpacePercent > 99)
         {
+            TraceProfessionUse(ai, "gather", "skipped", "bag_full", uint32(usedBagSpacePercent));
             ai->TellError(requester, "There is some loot but I do not have free bag space, so not looting");
             return false;
         }
     }
 
-    return AddAllLootAction::AddLoot(requester, guid);
+    bool const added = AddAllLootAction::AddLoot(requester, guid);
+    if (added)
+        TraceProfessionUse(ai, "gather", "added", "node_in_range", uint32(loot.skillId));
+    return added;
 }

@@ -775,6 +775,11 @@ bool PlayerbotAIConfig::Initialize()
     professionTrainingLocalTrainerRadius = std::max<float>(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionTraining.LocalTrainerRadius", 120.0f));
     professionTrainingTrace = config.GetBoolDefault("AiPlayerbot.ProfessionTraining.Trace", false);
     professionTrainingTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionTraining.TraceCooldownSeconds", 300));
+    professionUseGatherDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionUse.GatherDistance", 0.0f));
+    professionUseCraft = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Craft", false);
+    professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
+    professionUseTrace = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Trace", false);
+    professionUseTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.TraceCooldownSeconds", 300));
     autoPickTalents = config.GetStringDefault("AiPlayerbot.AutoPickTalents", "no");
     autoLearnTrainerSpells = config.GetBoolDefault("AiPlayerbot.AutoLearnTrainerSpells", false);
     autoLearnQuestSpells = config.GetBoolDefault("AiPlayerbot.AutoLearnQuestSpells", false);
