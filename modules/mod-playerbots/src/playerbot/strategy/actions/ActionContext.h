@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GenericActions.h"
+#include "ZoneEscapeActions.h"
 #include "EmoteAction.h"
 #include "AddLootAction.h"
 #include "LootAction.h"
@@ -209,6 +210,7 @@ namespace ai
             creators["world buff travel dm cast portal"] = [](PlayerbotAI* ai) { return new WorldBuffTravelDMCastPortalAction(ai); };
             creators["world buff travel dm take portal"] = [](PlayerbotAI* ai) { return new WorldBuffTravelDMTakePortalAction(ai); };
             creators["hearthstone"] = [](PlayerbotAI* ai) { return new UseHearthStoneAction(ai); };
+            creators["zone escape"] = [](PlayerbotAI* ai) { return new ZoneEscapeAction(ai); };
             creators["cast random spell"] = [](PlayerbotAI* ai) { return new CastRandomSpellAction(ai); };
             creators["free bg join"] = [](PlayerbotAI* ai) { return new FreeBGJoinAction(ai); };
             creators["use random recipe"] = [](PlayerbotAI* ai) { return new UseRandomRecipeAction(ai); };

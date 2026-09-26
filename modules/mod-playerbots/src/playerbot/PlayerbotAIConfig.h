@@ -446,6 +446,9 @@ public:
     // for this bot for the cooldown (0 = off).
     uint32 destinationDeathsMax = 2;
     uint32 destinationDeathsCooldownSeconds = 3600;
+    // #307: a roster bot on its own leaves a zone clearly above its level.
+    bool zoneEscapeEnabled = false;
+    uint32 zoneEscapeCooldownSeconds = 600;
     // #307: shared danger map. Deaths of all bots (never real players) pooled
     // per cell; roster bots skip destinations and routes through cells where
     // several bots died to mobs clearly above their own level.

@@ -495,6 +495,12 @@ AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin = 5
 # keep the TurnInMaxDeathsOnRoute rule. 0 = off.
 AiPlayerbot.DestinationDeaths.Max = 2
 AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
+# A roster bot on its own that stands in a zone clearly above its level (area
+# level more than 5 above) leaves it (#307): hearthstone when it is ready and
+# its bind zone suits the bot, otherwise a new level-appropriate travel target.
+# No other teleports. One attempt per CooldownSeconds. Logged as [ZoneEscape].
+AiPlayerbot.ZoneEscape.Enabled = 0
+AiPlayerbot.ZoneEscape.CooldownSeconds = 600
 # Shared danger map (#307). Deaths of all bots (not real players, not in
 # instances or battlegrounds) are pooled per CellSize x CellSize yard cell for
 # WindowSeconds. A roster bot skips a travel destination when the destination
