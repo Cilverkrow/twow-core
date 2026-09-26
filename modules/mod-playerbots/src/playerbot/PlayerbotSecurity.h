@@ -1,6 +1,8 @@
 #ifndef _PlayerbotSecurity_H
 #define _PlayerbotSecurity_H
 
+#include "RosterControlPolicy.h"
+
 enum class PlayerbotSecurityLevel : uint8
 {
     PLAYERBOT_SECURITY_DENY_ALL = 0,
@@ -42,5 +44,9 @@ class PlayerbotSecurity
         uint32 account;
         std::map<uint64, std::map<std::string, time_t> > whispers;
 };
+
+// #354/#292: may `issuer` direct `bot` without GM rank? Fills the pure
+// RosterControlPolicy request from live state; the decision itself lives there.
+ai::roster_control::Decision DecideRosterControl(Player* issuer, Player* bot);
 
 #endif

@@ -1043,6 +1043,15 @@ std::string PlayerbotHolder::ProcessBotCommand(std::string cmd, ObjectGuid guid,
     auto it = m_botCommandHandlers.find(cmd);
     if (it != m_botCommandHandlers.end())
     {
+        // #354: gear/level/spell/diagnostic tools are GM tools for every bot,
+        // not only for alt bots of someone else's account.
+        if (!admin && ai::roster_control::IsGmOnlyBotCommand(cmd))
+            return "GM only";
+
+        // Most handlers dereference the bot; an offline name must not crash.
+        if (!bot && !ai::roster_control::BotCommandAcceptsOfflineBot(cmd))
+            return "Bot is offline";
+
         std::string realParam;
         
         if (!subType.empty())
@@ -1274,6 +1283,11 @@ std::list<std::string> PlayerbotHolder::HandlePlayerbotCommand(const std::string
 uint32 PlayerbotHolder::GetAccountId(std::string name)
 {
     uint32 accountId = 0;
+
+    // #354: the name comes straight from chat. Only plain names reach SQL;
+    // anything else cannot be an account name and is looked up as a character.
+    if (!ai::roster_control::IsPlainName(name))
+        return accountId;
 
     auto results = LoginDatabase.PQuery("SELECT id FROM account WHERE username = '%s'", name.c_str());
     if(results)
@@ -2363,17 +2377,27 @@ std::string PlayerbotHolder::HandleBotSummon(Player* bot, Player* master, const 
     const bool isMasterAccount = (masterAccountId == botAccount);
     const bool isRandomAccount = sPlayerbotAIConfig.IsInRandomAccountList(botAccount);
 
-    // Security: only allow summoning bots on the master's account, random
-    // bots, or bots that have explicitly accepted this master via group.
-    bool allowed = isMasterAccount || isRandomAccount;
-    if (!allowed)
+    // Security: bots on the master's own account, or bots that have accepted
+    // this master. A random/roster bot used to be summonable by anyone (#354);
+    // it now goes through the shared roster-control decision. GMs keep the
+    // old reach.
+    bool const isGm = master->GetSession()->GetSecurity() >= SEC_GAMEMASTER;
+    if (isRandomAccount && !isMasterAccount && !isGm)
+    {
+        ai::roster_control::Decision const decision = DecideRosterControl(master, bot);
+        if (decision != ai::roster_control::Decision::ALLOW)
+        {
+            sLog.outBasic("[BotCtl] cmd=summon issuer=%u bot=%u result=deny reason=%s",
+                master->GetGUIDLow(), bot->GetGUIDLow(), ai::roster_control::ReasonCode(decision));
+            return ai::roster_control::ReasonText(decision);
+        }
+    }
+    else if (!isMasterAccount && !isGm)
     {
         PlayerbotAI* ai = GetBotAI(bot);
-        if (ai && ai->GetMaster() == master)
-            allowed = true;
+        if (!ai || ai->GetMaster() != master)
+            return "This bot isn't yours to summon.";
     }
-    if (!allowed)
-        return "This bot isn't yours to summon.";
 
     // Block when in combat, BG, or instance — these usually mean the bot
     // is mid-fight or in restricted content. The master can manually
