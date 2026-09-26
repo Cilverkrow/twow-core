@@ -4,6 +4,9 @@
 #include "playerbot/ServerFacade.h"
 #include "Objects/Item.h"
 #include <Mail/Mail.h>
+#include "playerbot/ClassGrantPolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 
 using namespace ai;
 
@@ -38,6 +41,10 @@ void AutoLearnSpellAction::LearnSpells(std::ostringstream* out)
 
     if (sPlayerbotAIConfig.autoLearnQuestSpells)
         LearnQuestSpells(out);
+
+    // #356: class tools the quest path does not hand out (shaman totems).
+    if (IsClassGrantBot() && bot->getClass() == CLASS_SHAMAN)
+        GrantShamanTotems(out);
 
     if (sPlayerbotAIConfig.autoLearnTrainerSpells)
     {
@@ -200,6 +207,9 @@ void AutoLearnSpellAction::LearnQuestSpells(std::ostringstream* out)
         {
             if (LearnSpellFromSpell(quest->GetRewSpellCast(), out))
             {
+                if (IsClassGrantBot())
+                    sLog.outBasic("[ClassGrant] state=granted source=quest bot=%u level=%u quest=%u teach_spell=%u",
+                        bot->GetGUIDLow(), bot->GetLevel(), questId, quest->GetRewSpellCast());
                 GetClassQuestItem(quest, out);
             }
             // Shaman Call of Air Quest casts Swift Wind on player and rewards Air Totem, Swift Wind is not to be learned however it is a one time cast.
@@ -230,6 +240,38 @@ void AutoLearnSpellAction::LearnQuestSpells(std::ostringstream* out)
                 }
             }
         }
+    }
+}
+
+bool AutoLearnSpellAction::IsClassGrantBot() const
+{
+    return sPlayerbotAIConfig.classGrantEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+}
+
+void AutoLearnSpellAction::GrantShamanTotems(std::ostringstream* out)
+{
+    for (class_grant::Grant const& grant : class_grant::ShamanTotems())
+    {
+        if (!class_grant::IsDue(grant, bot->GetLevel()))
+            continue;
+
+        // Idempotent: the reward spell only when unknown, the totem only when
+        // it is neither in the bags nor in the bank.
+        uint32 learned = 0;
+        if (grant.teachSpell && LearnSpellFromSpell(grant.teachSpell, out))
+            learned = grant.teachSpell;
+
+        bool given = false;
+        if (!bot->HasItemCount(grant.item, 1, true))
+        {
+            ItemPosCountVec dest;
+            if (bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, grant.item, 1) == EQUIP_ERR_OK)
+                given = bot->StoreNewItemInInventorySlot(grant.item, 1) != nullptr;
+        }
+
+        if (learned || given)
+            sLog.outBasic("[ClassGrant] state=granted source=totem bot=%u level=%u item=%u given=%u teach_spell=%u",
+                bot->GetGUIDLow(), bot->GetLevel(), grant.item, given ? 1u : 0u, learned);
     }
 }
 
