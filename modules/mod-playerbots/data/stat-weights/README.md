@@ -43,11 +43,11 @@ Stamina is included only where it matters for that spec. It is not weighted high
 2. **Existing path:** `11.1 feral` becomes the cat path (name stays `feral`, stats as cat).
 3. **Roster distribution:** `SelectPremadeSpecNo` rolls weighted over `PremadeSpecProb`. With four druid paths at 100 each, every druid spec gets 1/4 instead of 1/3. For bear and cat together to keep the old feral share, use `11.1` and `11.3` = 50 each. The owner decides.
 4. **Existing roster bots** keep their stored `specNo` (`KeepStoredSpecNo`). Today's ferals stay cats; bears only appear at the next roster reset or a new roll. **For the next roster/reset topic:** decide the druid bear share and generate the roster accordingly.
-5. **Bot strategies:** `AiFactory.cpp` does not decide bear vs cat by the premade name. For the feral tree (tab 1) it plays **bear (`tank feral`)** when the role is forced to tank, or when the bot knows **Primal Fury (16958/16961)**; otherwise it plays cat. So:
-   - the bear path must take Primal Fury;
-   - the cat path must **not** take it.
+5. **Bot strategies:** `AiFactory.cpp` does not decide bear vs cat by the premade name. For the feral tree (tab 1) it plays **bear (`tank feral`)** when the role is forced to tank, or when the bot knows **Primal Fury (16958/16961)**; otherwise it plays cat.
 
-   Check whether the current `feral` path takes Primal Fury. If it does, today's ferals already turn into bears once they learn it.
+   **Checked (2026-09-26, Turtle DBCs):** in Turtle, Primal Fury is the talent ranks **45719/45720**. The `feral` path takes it 2/2 from level 25. The classic IDs 16958/16961 are not taught by any talent, so free-roaming ferals always play cat today.
+
+   Therefore bear vs cat must be decided **by the premade spec** (11.3 → `tank feral`), not by spell IDs. The cat path also takes Primal Fury.
 
 ## Sources and open checks
 - `source`:
