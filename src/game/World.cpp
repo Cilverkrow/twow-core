@@ -1366,6 +1366,10 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_UINT32_PERFLOG_SLOW_MAP_PACKETS, "PerformanceLog.SlowMapPackets", 60);
     setConfig(CONFIG_UINT32_PERFLOG_SLOW_SESSIONS_UPDATE, "PerformanceLog.SlowSessionsUpdate", 0);
     setConfig(CONFIG_UINT32_PERFLOG_SLOW_PACKET_BCAST, "PerformanceLog.SlowPacketBroadcast", 0);
+    // twow-repo#351: one aggregated tick line per interval (count, percentiles,
+    // max, ticks over 100 and 200 ms). Off by default; at least 10 s.
+    setConfig(CONFIG_BOOL_PERFLOG_TICK_STATS, "PerformanceLog.TickStats", false);
+    setConfigMin(CONFIG_UINT32_PERFLOG_TICK_STATS_INTERVAL, "PerformanceLog.TickStatsInterval", 60, 10);
     setConfig(CONFIG_UINT32_LOG_MONEY_TRADES_TRESHOLD, "LogMoneyTreshold", 10000);
 
     setConfig(CONFIG_FLOAT_DYN_RESPAWN_CHECK_RANGE, "DynamicRespawn.Range", -1.0f);
