@@ -1000,6 +1000,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_boss_chest_bonus_contract.cmake")
+  # twow-repo#348: owner-decided quest completion summons (void lord, Azuregos, Peroth'arn).
+  add_test(NAME quest_end_summons_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_quest_end_summons_contract.cmake")
 
   include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
