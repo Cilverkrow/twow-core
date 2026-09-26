@@ -230,6 +230,8 @@ bool PlayerbotAIConfig::Initialize()
     randomBotMaxLevelChance = config.GetFloatDefault("AiPlayerbot.RandomBotMaxLevelChance", 0.15f);
     randomBotRaceVariantChance = config.GetFloatDefault("AiPlayerbot.RandomBotRaceVariantChance", 0.10f);
     rollBadItemsWithPlayer = config.GetBoolDefault("AiPlayerbot.RollBadItemsWithPlayer", false);
+    lootRollRoleAware = config.GetBoolDefault("AiPlayerbot.LootRoll.RoleAware", false);
+    lootRollTrace = config.GetBoolDefault("AiPlayerbot.LootRoll.Trace", false);
     randomBotRpgChance = config.GetFloatDefault("AiPlayerbot.RandomBotRpgChance", 0.35f);
     usePotionChance = config.GetFloatDefault("AiPlayerbot.UsePotionChance", 1.0f);
     attackEmoteChance = config.GetFloatDefault("AiPlayerbot.AttackEmoteChance", 0.0f);

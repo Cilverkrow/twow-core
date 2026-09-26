@@ -172,6 +172,9 @@ public:
     bool randomGearProgression;
     float randomGearLoweringChance;
     bool rollBadItemsWithPlayer;
+    // #341: need/greed/pass by role and profession for roster bots on their own.
+    bool lootRollRoleAware = false;
+    bool lootRollTrace = false;
     float randomBotMaxLevelChance;
     float randomBotRaceVariantChance;
     float randomBotRpgChance;

@@ -156,6 +156,14 @@ AiPlayerbot.RandomGearBlacklist = 0
 # 0 - roll greed on such items (Default)
 AiPlayerbot.RollBadItemsWithPlayer = 0
 
+# Group rolls of persistent roster bots without a real-player master (#341):
+# need on an unknown recipe of an own profession (even before the skill allows
+# learning it), pass on known or duplicate recipes, greed on other recipes;
+# need on gear only for a real upgrade, greed on worse or unsuitable gear.
+# Trace logs every automatic roll as [LootRoll] at BASIC level.
+AiPlayerbot.LootRoll.RoleAware = 0
+AiPlayerbot.LootRoll.Trace = 0
+
 # Chance random bot has max level on first randomize (default 0.15)
 AiPlayerbot.RandomBotMaxLevelChance = 0.15
 
