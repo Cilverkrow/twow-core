@@ -608,6 +608,13 @@ AiPlayerbot.AutoLearnTrainerSpells = 0
 # Default: 0 (disabled)
 AiPlayerbot.AutoLearnQuestSpells = 0
 
+# Persistent roster bots: class quest rewards the quest path above misses are
+# granted at the quest level (shaman Earth/Fire/Water/Air totems and their
+# totem spells), idempotently on level-up and the login catch-up. Every grant,
+# including quest spells, is logged as [ClassGrant]. Players keep doing the
+# quests. (#356)
+AiPlayerbot.ClassGrant.Enabled = 0
+
 # Alt Bots automatically learn class spells from books dropped from dungeons and raids when leveled and they reached the required level of the book.
 # Default: 0 (disabled)
 AiPlayerbot.AutoLearnDroppedSpells = 0

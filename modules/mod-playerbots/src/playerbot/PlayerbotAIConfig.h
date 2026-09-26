@@ -413,6 +413,8 @@ public:
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;
     bool autoLearnDroppedSpells;
+    // #356: roster bots get class quest tools the quest path misses + [ClassGrant] log.
+    bool classGrantEnabled = false;
     bool autoDoQuests;
     bool syncLevelWithPlayers;
     uint32 syncLevelMaxAbove, syncLevelNoPlayer;
