@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "LeaveGroupAction.h"
+#include "playerbot/SingletonGroupPolicy.h"
 
 namespace ai
 {
@@ -50,7 +51,16 @@ namespace ai
 
         bool freeBot = sRandomPlayerbotMgr.IsFreeBot(bot);
 
-        bool shouldStay = freeBot && bot->GetGroup() && player == bot;
+        // #301: a self-led one-member group is no group to stay in. Leaving goes
+        // through the normal Core path (RemoveMember -> Disband), which also
+        // drops pending invites and the persisted group rows.
+        bool const selfLedSingleton = group && singleton_group::IsSelfLedSingleton(
+            group->GetMembersCount(), group->IsLeader(bot->GetObjectGuid()), group->isBGGroup());
+        if (selfLedSingleton && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+            sLog.outBasic("[RosterGroup] state=singleton_disband bot=%u issuer=%u group=%u",
+                bot->GetGUIDLow(), player->GetGUIDLow(), group->GetId());
+
+        bool shouldStay = singleton_group::ShouldStayInGroup(freeBot, bot->GetGroup() != nullptr, player == bot, selfLedSingleton);
 
         if (!shouldStay)
         {
