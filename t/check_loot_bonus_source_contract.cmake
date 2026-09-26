@@ -72,4 +72,15 @@ foreach (required
     "Funserver.Loot.Bonus.DungeonBoss = 0" "Funserver.Loot.Bonus.RaidBoss = 0")
   require_text("${config}" "${required}" "default-disabled configuration")
 endforeach()
+# twow-repo#346: bonus selections must never take a slot a generated quest item needs.
+file(READ "${TW_CORE_ROOT}/src/game/LootMgr.h" loot_h)
+require_text("${loot_h}" "bool IsBonusFull() const { return items.size() + std::min<size_t>(m_questItems.size(), MAX_NR_LOOT_ITEMS) >= MAX_NR_LOOT_ITEMS; }" "quest-slot reserve")
+string(FIND "${loot}" "void LootTemplate::ProcessBonus(" bonus_at)
+string(SUBSTRING "${loot}" ${bonus_at} -1 bonus_body)
+string(FIND "${bonus_body}" "
+}" bonus_end)
+string(SUBSTRING "${bonus_body}" 0 ${bonus_end} bonus_body)
+forbid_text("${bonus_body}" "loot.items.size() >= MAX_NR_LOOT_ITEMS" "bonus fill up to the full window")
+forbid_text("${bonus_body}" "loot.items.size() < MAX_NR_LOOT_ITEMS" "bonus fill up to the full window")
+require_text("${bonus_body}" "loot.IsBonusFull()" "quest-slot aware bonus stop")
 message(STATUS "LOOT_BONUS_SOURCE_CONTRACT=PASS")

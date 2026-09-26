@@ -1472,7 +1472,7 @@ void LootTemplate::Process(Loot& loot, LootStore const& store, bool rate, Player
 
 void LootTemplate::ProcessBonus(Loot& loot, bool rate, Player const* lootOwner, uint8 selectionMultiplier, float duplicateDecay) const
 {
-    if (selectionMultiplier < 2 || loot.items.size() >= MAX_NR_LOOT_ITEMS)
+    if (selectionMultiplier < 2 || loot.IsBonusFull())
         return;
 
     std::map<uint32, uint32> selectedCount;
@@ -1482,7 +1482,7 @@ void LootTemplate::ProcessBonus(Loot& loot, bool rate, Player const* lootOwner, 
     // Re-run every safe ordinary opportunity and every safe one-of-group
     // opportunity. The configured multiplier is the total number of passes,
     // including the historical pass, and is bounded by World to at most eight.
-    for (uint8 round = 1; round < selectionMultiplier && loot.items.size() < MAX_NR_LOOT_ITEMS; ++round)
+    for (uint8 round = 1; round < selectionMultiplier && !loot.IsBonusFull(); ++round)
     {
         for (LootStoreItem const& item : Entries)
         {
@@ -1500,14 +1500,14 @@ void LootTemplate::ProcessBonus(Loot& loot, bool rate, Player const* lootOwner, 
 
             loot.AddItem(item);
             ++selectedCount[item.itemid];
-            if (loot.items.size() >= MAX_NR_LOOT_ITEMS)
+            if (loot.IsBonusFull())
                 return;
         }
 
         for (LootGroup const& group : Groups)
         {
             group.ProcessBonus(loot, lootOwner, selectedCount, duplicateDecay);
-            if (loot.items.size() >= MAX_NR_LOOT_ITEMS)
+            if (loot.IsBonusFull())
                 return;
         }
     }

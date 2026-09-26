@@ -28,6 +28,7 @@
 #include "Utilities/LinkedReference/RefManager.h"
 #include "SharedDefines.h"
 
+#include <algorithm>
 #include <map>
 #include <vector>
 
@@ -405,6 +406,11 @@ struct Loot
 
     void GenerateMoneyLoot(uint32 minAmount, uint32 maxAmount);
     bool FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, bool personal, bool noEmptyError = false, WorldObject const* looted = nullptr);
+
+    // twow-repo#346: funserver bonus selections stop while the generated quest
+    // items still need their slots. The client shows at most MAX_NR_LOOT_ITEMS
+    // entries and FillQuestLoot() hides every quest item once `items` is full.
+    bool IsBonusFull() const { return items.size() + std::min<size_t>(m_questItems.size(), MAX_NR_LOOT_ITEMS) >= MAX_NR_LOOT_ITEMS; }
 
     // Inserts the item into the loot (called by LootTemplate processors)
     void AddItem(LootStoreItem const & item);
