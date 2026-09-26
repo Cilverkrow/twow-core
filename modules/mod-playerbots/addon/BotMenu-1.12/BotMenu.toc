@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title: BotMenu
+## Notes: Adds a "Bots" entry to the chat bubble menu. A click writes a playerbot command into the chat line; the active channel (whisper, party, raid, say) decides which bots it reaches.
+## Author: TWoW project
+## Version: 1.0
+## SavedVariables: BotMenuDB
+
+BotMenu.xml
