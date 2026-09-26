@@ -124,7 +124,7 @@ require_text("${trigger_context}" "ChatCommandTrigger(ai, \"train\")" "train cha
 require_text("${chat_strategy}" "supported.push_back(\"train\");" "train accepted as a command")
 function_region("${trainer}" "bool TrainCommandAction::Execute" "ZZZ_END_OF_FILE" train_exec)
 require_text("${train_exec}" "DecideRosterControl(requester, bot)" "train authorization")
-require_text("${train_exec}" "Iterate(requester, trainer, &TrainerAction::Learn, spells)" "train through the normal trainer path")
+require_text("${train_exec}" "Iterate(requester, trainer, &TrainCommandAction::Learn, spells)" "train through the normal trainer path")
 foreach(forbidden learnClassLevelSpells learnSpell TeleportTo "request named travel target" DoSpecificAction)
   forbid_text("${train_exec}" "${forbidden}" "train side effect ${forbidden}")
 endforeach()

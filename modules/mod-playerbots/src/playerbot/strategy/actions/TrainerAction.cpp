@@ -390,7 +390,7 @@ bool TrainCommandAction::Execute(Event& event)
     // The generic trainer path: level/rank/prerequisite checks and the
     // configured cost policy in Learn(); no spell is granted directly here.
     SpellIds spells;
-    bool const learned = Iterate(requester, trainer, &TrainerAction::Learn, spells);
+    bool const learned = Iterate(requester, trainer, &TrainCommandAction::Learn, spells);
     if (learned)
         context->ClearValues("item usage");
     return learned;
