@@ -396,6 +396,12 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionQuestAreaLevelMargin = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin", 5);
     destinationDeathsMax = config.GetIntDefault("AiPlayerbot.DestinationDeaths.Max", 2);
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
+    dangerMapEnabled = config.GetBoolDefault("AiPlayerbot.DangerMap.Enabled", false);
+    dangerMapCellSize = std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DangerMap.CellSize", 100.0f));
+    dangerMapWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DangerMap.WindowSeconds", 7200));
+    dangerMapMinDeaths = config.GetIntDefault("AiPlayerbot.DangerMap.MinDeaths", 3);
+    dangerMapLevelMargin = config.GetIntDefault("AiPlayerbot.DangerMap.LevelMargin", 3);
+    dangerMapLineSamples = std::min<uint32>(100, config.GetIntDefault("AiPlayerbot.DangerMap.LineSamples", 20));
     questFirstProgressionLocalHubRadius = config.GetFloatDefault("AiPlayerbot.QuestFirstProgression.LocalHubRadius", 1200.0f);
     questFirstProgressionTraceTravelDecisions = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TraceTravelDecisions", false);
     questFirstProgressionTurnInStallSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInStallSeconds", 300));

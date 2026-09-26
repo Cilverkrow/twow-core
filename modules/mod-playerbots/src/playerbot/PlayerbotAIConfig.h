@@ -435,6 +435,15 @@ public:
     // for this bot for the cooldown (0 = off).
     uint32 destinationDeathsMax = 2;
     uint32 destinationDeathsCooldownSeconds = 3600;
+    // #307: shared danger map. Deaths of all bots (never real players) pooled
+    // per cell; roster bots skip destinations and routes through cells where
+    // several bots died to mobs clearly above their own level.
+    bool dangerMapEnabled = false;
+    float dangerMapCellSize = 100.0f;
+    uint32 dangerMapWindowSeconds = 7200;
+    uint32 dangerMapMinDeaths = 3;
+    uint32 dangerMapLevelMargin = 3;
+    uint32 dangerMapLineSamples = 20;
     // Radius around the bot within which an active quest destination is a
     // local hub candidate. It is spatial, not a hard-coded zone allowlist.
     float questFirstProgressionLocalHubRadius = 1200.0f;

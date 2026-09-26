@@ -9,6 +9,7 @@
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RouteDangerPolicy.h"
+#include "playerbot/DangerMapPolicy.h"
 #include "Guild/GuildMgr.h"
 #include <iomanip>
 
@@ -16,6 +17,17 @@ using namespace ai;
 
 namespace
 {
+danger_map::Params DangerMapParams()
+{
+    danger_map::Params params;
+    params.cellSize = sPlayerbotAIConfig.dangerMapCellSize;
+    params.windowSeconds = sPlayerbotAIConfig.dangerMapWindowSeconds;
+    params.minDeaths = sPlayerbotAIConfig.dangerMapMinDeaths;
+    params.levelMargin = sPlayerbotAIConfig.dangerMapLevelMargin;
+    params.lineSamples = sPlayerbotAIConfig.dangerMapLineSamples;
+    return params;
+}
+
 bool UsesQuestFirstProgression(Player const* bot)
 {
     return bot && sPlayerbotAIConfig.questFirstProgressionEnabled &&
@@ -504,6 +516,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     bool hasTarget = false;
     TravelTarget const* persistentTarget = AI_VALUE(TravelTarget*, "travel target");
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
+    uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
         AI_VALUE2(std::string, "manual string", "future travel purpose") == "quest";
     bool hasActiveLocalQuestHub = false;
@@ -601,6 +614,23 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     }
                 }
 
+                // #307: shared danger map. Any destination purpose; only roster
+                // bots on their own, never a bot led by a real player.
+                if (!target->IsForced() && position && sPlayerbotAIConfig.dangerMapEnabled &&
+                    UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() && position->getMapId() == bot->GetMapId())
+                {
+                    danger_map::DangerMap::Hit const hit = danger_map::Instance().Query(bot->GetMapId(),
+                        bot->GetPositionX(), bot->GetPositionY(), position->getX(), position->getY(),
+                        bot->GetLevel(), uint32(time(nullptr)), DangerMapParams());
+                    if (hit.cells)
+                    {
+                        ++deferredDeathCluster;
+                        deathClusterCells += hit.cells;
+                        deathClusterWorstKillerLevel = std::max(deathClusterWorstKillerLevel, hit.worstKillerLevel);
+                        continue;
+                    }
+                }
+
                 if (partition != std::prev(partitionedList.end())->first && !urand(0, 10)) //10% chance to skip to a longer partition.
                 {
                     ai->TellDebug(requester, "Skipping range " + PrintPartion(partition), "debug travel");
@@ -639,6 +669,11 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     if ((deferredCrossMap || deferredZoneLevel) && sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
         sLog.outBasic("[QuestFirstRoute] state=deferred bot=%u level=%u reason=route_danger cross_map=%u target_zone_level=%u selected_other=%u",
             bot->GetGUIDLow(), bot->GetLevel(), deferredCrossMap, deferredZoneLevel, hasTarget ? 1u : 0u);
+
+    // Always visible (BASIC): acceptance signal for the shared danger map.
+    if (deferredDeathCluster)
+        sLog.outBasic("[QuestFirstRoute] state=deferred bot=%u level=%u reason=route_danger detail=death_cluster deferred=%u cells=%u worst_killer_level=%u selected_other=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), deferredDeathCluster, deathClusterCells, deathClusterWorstKillerLevel, hasTarget ? 1u : 0u);
 
     return hasTarget;
 }

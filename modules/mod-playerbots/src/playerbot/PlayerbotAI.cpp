@@ -4,6 +4,7 @@
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
 #include <stdarg.h>
+#include <atomic>
 #include <iomanip>
 
 #include "playerbot/AiFactory.h"
@@ -31,6 +32,7 @@
 #include "strategy/values/PositionValue.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/DangerMapPolicy.h"
 #include "Movement/spline/MoveSplineInitArgs.h"
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
@@ -67,6 +69,47 @@ uint64 extractGuid(WorldPacket& packet);
 std::string &trim(std::string &s);
 
 std::set<std::string> PlayerbotAI::unsecuredCommands;
+
+namespace
+{
+danger_map::Params DangerMapParams()
+{
+    danger_map::Params params;
+    params.cellSize = sPlayerbotAIConfig.dangerMapCellSize;
+    params.windowSeconds = sPlayerbotAIConfig.dangerMapWindowSeconds;
+    params.minDeaths = sPlayerbotAIConfig.dangerMapMinDeaths;
+    params.levelMargin = sPlayerbotAIConfig.dangerMapLevelMargin;
+    params.lineSamples = sPlayerbotAIConfig.dangerMapLineSamples;
+    return params;
+}
+
+// #307: pools a bot death to a mob into the shared danger map. Deaths without
+// a creature target (falling, drowning, players) stay with the per-bot rules.
+void RecordDangerMapDeath(Player* bot, Unit* killer)
+{
+    if (!killer || killer->GetTypeId() != TYPEID_UNIT)
+        return;
+
+    danger_map::Params const params = DangerMapParams();
+    uint32 const now = uint32(time(nullptr));
+
+    danger_map::Death death;
+    death.time = now;
+    death.victim = bot->GetGUIDLow();
+    death.killerLevel = uint8(std::min<uint32>(255, killer->GetLevel()));
+    death.victimLevel = uint8(std::min<uint32>(255, bot->GetLevel()));
+    danger_map::Instance().Record(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), death, params);
+
+    // Always visible (BASIC), at most every ten minutes: size of the map.
+    static std::atomic<uint32> lastSummary{ 0 };
+    uint32 last = lastSummary.load();
+    if (now >= last + 600 && lastSummary.compare_exchange_strong(last, now))
+    {
+        auto const [cells, deaths] = danger_map::Instance().Prune(now, params);
+        sLog.outBasic("[DangerMap] cells=%u deaths=%u window=%u", uint32(cells), uint32(deaths), params.windowSeconds);
+    }
+}
+}
 
 uint32 PlayerbotChatHandler::extractQuestId(std::string str)
 {
@@ -1169,6 +1212,11 @@ void PlayerbotAI::OnDeath()
 
                 sPlayerbotAIConfig.log("deaths.csv", out.str().c_str());
             }
+
+            // #307: shared danger map. Every bot death to a mob in the open
+            // world is pooled (roster or not); real players never feed it.
+            if (sPlayerbotAIConfig.dangerMapEnabled && !IsRealPlayer() && !bot->GetMap()->IsDungeon())
+                RecordDangerMapDeath(bot, AI_VALUE(Unit*, "current target"));
 
             // #307: a death on a completed-quest turn-in route counts against
             // that route, so a revived bot does not walk back into the same mobs.
