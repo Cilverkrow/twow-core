@@ -150,8 +150,13 @@ ItemUsage ItemUsageValue::Calculate()
     //SKILL
     if (ai->HasActivePlayerMaster())
     {
+        // #333 owner test: with the owner as master, every thread and dye of the
+        // tailoring skill counted as "buy more" (one raid: 740 purchases in minutes,
+        // Rune Thread for a level 10 tailor). Buy only what a known recipe needs,
+        // one stack at most; everything else of the skill is kept, not bought.
         if (IsItemUsefulForSkill(proto))
-            return ItemUsage::ITEM_USAGE_SKILL;
+            return (IsItemNeededForUsefullCraft(proto, false) && CurrentStacks(ai, proto) < 1) ?
+                ItemUsage::ITEM_USAGE_SKILL : ItemUsage::ITEM_USAGE_KEEP;
 
         if (IsItemNeededForSkill(proto))
         {
@@ -998,10 +1003,9 @@ bool ItemUsageValue::IsItemUsefulForSkill(ItemPrototype const* proto)
             return true;
         if (ai->HasSkill(SKILL_COOKING) && IsItemUsedBySkill(proto, SKILL_COOKING))
             return true;
-#ifndef MANGOSBOT_ZERO
+        // #366: Turtle has jewelcrafting (755) in the classic build too.
         if (ai->HasSkill(SKILL_JEWELCRAFTING) && IsItemUsedBySkill(proto, SKILL_JEWELCRAFTING))
             return true;
-#endif
         if (ai->HasSkill(SKILL_MINING) &&
             (
                 IsItemUsedBySkill(proto, SKILL_MINING)// ||
