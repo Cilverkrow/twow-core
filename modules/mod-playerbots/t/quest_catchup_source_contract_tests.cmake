@@ -105,4 +105,30 @@ function_region("${player}" "bool Player::CanAddQuest" "bool Player::CanComplete
 require_text("${can_add}" "SatisfyQuestLog(msg)" "quest-log capacity check")
 require_text("${can_add}" "CanGiveQuestSourceItemIfNeed(pQuest)" "source-item capacity check")
 
+
+# #340: the command must be reachable from chat. core#102 registered only the
+# action; without a trigger and a `supported` entry the text never fired.
+file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/triggers/ChatTriggerContext.h" trigger_context)
+file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/generic/ChatCommandHandlerStrategy.cpp" chat_strategy)
+file(READ "${PB_MODULE_DIR}/src/playerbot/strategy/actions/AcceptQuestAction.cpp" accept_action)
+require_text("${trigger_context}" "ChatCommandTrigger(ai, \"catchup quest\")" "catch-up chat trigger")
+require_text("${chat_strategy}" "supported.push_back(\"catchup quest\");" "catch-up accepted as a command")
+
+# #340: the normal share button uses the same bounded admission, only when Core
+# refused the member (no divider), only for a roster bot of the sharing master.
+function_region("${accept_action}" "bool AcceptQuestShareAction::Execute" "bool ConfirmQuestAction::Execute" share_accept)
+string(FIND "${share_accept}" "if (!bot->GetDividerGuid())" no_divider)
+string(FIND "${share_accept}" "CatchupQuestAction::Admit(bot, master, requester, qInfo->GetQuestId())" gui_admit)
+if(no_divider EQUAL -1 OR gui_admit EQUAL -1 OR NOT no_divider LESS gui_admit)
+  message(FATAL_ERROR "share button catch-up must run only in the refused (no divider) branch")
+endif()
+require_text("${share_accept}" "IsPersistentRosterMember(bot->GetGUIDLow())" "share button catch-up only for roster bots")
+require_text("${share_accept}" "requester != master" "share button catch-up only from the master")
+require_text("${share_accept}" "[QuestShare] path=gui" "share button diagnostics")
+require_text("${action}" "[QuestShare] path=chat" "chat diagnostics")
+function_region("${share_accept}" "if (!bot->GetDividerGuid())" "quest = qInfo->GetQuestId();" gui_branch)
+foreach(forbidden "CompleteQuest(" "RewardQuest(" "SetQuestStatus(")
+  forbid_text("${gui_branch}" "${forbidden}" "share button catch-up side effect ${forbidden}")
+endforeach()
+
 message(STATUS "QUEST_CATCHUP_SOURCE_CONTRACT=PASS")
