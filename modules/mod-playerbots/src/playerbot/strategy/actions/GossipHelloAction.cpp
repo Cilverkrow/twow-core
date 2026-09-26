@@ -53,6 +53,7 @@ bool GossipHelloAction::Execute(Event& event)
             }
         }
 
+        gossipNpc = guid;
         ProcessGossip(requester, guid, -1);
     }
 	else if (text.empty())
@@ -61,22 +62,39 @@ bool GossipHelloAction::Execute(Event& event)
         p1 << guid;
         bot->GetSession()->HandleGossipHelloOpcode(p1);
         sServerFacade.SetFacingTo(bot, pCreature);
+        gossipNpc = guid;
 
         std::ostringstream out; out << "--- " << pCreature->GetName() << " ---";
         ai->TellPlayerNoFacing(requester, out.str());
 
         TellGossipMenus(requester);
 	}
-	else if (!bot->GetPlayerMenu())
-	{
-	    ai->TellPlayerNoFacing(requester, "I need to talk first");
-	    return false;
-	}
 	else
 	{
-	    menuToSelect = atoi(text.c_str());
-	    if (menuToSelect > 0) menuToSelect--;
-        ProcessGossip(requester, guid, menuToSelect);
+        // `talk N` is a contract with the numbered list the bot printed: it must
+        // run exactly that option of exactly that menu, or say why not. Never
+        // fall back to a different option (atoi("x") used to become option 1).
+        if (text.find_first_not_of("0123456789") != std::string::npos || text.size() > 3)
+        {
+            ai->TellError(requester, "Usage: talk <number from the list>");
+            return false;
+        }
+
+        menuToSelect = atoi(text.c_str());
+        if (menuToSelect < 1)
+        {
+            ai->TellError(requester, "Usage: talk <number from the list>");
+            return false;
+        }
+
+        if (!bot->GetPlayerMenu() || gossipNpc != guid || !bot->GetPlayerMenu()->GetGossipMenu().MenuItemCount())
+        {
+            ai->TellPlayerNoFacing(requester, "I need to talk first");
+            return false;
+        }
+
+        if (!ProcessGossip(requester, guid, menuToSelect - 1))
+            return false;
 	}
 
 	bot->TalkedToCreature(pCreature->GetEntry(), pCreature->GetObjectGuid());
@@ -133,6 +151,13 @@ bool GossipHelloAction::ProcessGossip(Player* requester, ObjectGuid creatureGuid
 
     bool noFeedback = (menuToSelect == -1);
 
+    if (!menu.MenuItemCount())
+    {
+        if (!noFeedback)
+            ai->TellError(requester, "Unknown gossip option");
+        return false;
+    }
+
     int actualMenuToSelect = menuToSelect;
 
     if (actualMenuToSelect == -1)
@@ -140,24 +165,104 @@ bool GossipHelloAction::ProcessGossip(Player* requester, ObjectGuid creatureGuid
         actualMenuToSelect = urand(0, menu.MenuItemCount() - 1);
     }
 
-    if (actualMenuToSelect >= 0 && (unsigned int)actualMenuToSelect >= menu.MenuItemCount())
+    if (actualMenuToSelect < 0 || (unsigned int)actualMenuToSelect >= menu.MenuItemCount())
     {
-        ai->TellError(requester, "Unknown gossip option");
+        std::ostringstream out; out << "Unknown gossip option, choose 1-" << menu.MenuItemCount();
+        ai->TellError(requester, out.str());
         return false;
     }
-    GossipMenuItem const& item = menu.GetItem(actualMenuToSelect);
+
+    // Copy what we need: selecting an option can rebuild or clear the menu.
+    GossipMenuItem const item = menu.GetItem(actualMenuToSelect);
+    GossipMenuSnapshot const before = SnapshotGossipMenu();
+
     WorldPacket p;
     std::string code;
     p << creatureGuid;
 #ifdef MANGOSBOT_ZERO
-    p << actualMenuToSelect;
+    p << uint32(actualMenuToSelect);
 #else
-    p << menu.GetMenuId() << actualMenuToSelect;
+    p << menu.GetMenuId() << uint32(actualMenuToSelect);
 #endif
     p << code;
     bot->GetSession()->HandleGossipSelectOptionOpcode(p);
 
-    if(!noFeedback)
+    // The random rpg path only browses. Client confirmations below are for an
+    // explicit player choice, otherwise wandering bots would rebind at every inn.
+    if (noFeedback)
+        return true;
+
+    std::ostringstream chosen; chosen << "[" << (actualMenuToSelect + 1) << "] " << item.m_gMessage;
+
+    switch (item.m_gOptionId)
+    {
+        case GOSSIP_OPTION_INNKEEPER:
+            return ConfirmBindPoint(requester, creatureGuid, chosen.str());
+        case GOSSIP_OPTION_VENDOR:
+        case GOSSIP_OPTION_ARMORER:
+            ai->TellPlayerNoFacing(requester, chosen.str() + " opens the vendor window - use 'b <item>' / 's <item>' instead");
+            return true;
+        case GOSSIP_OPTION_TRAINER:
+            ai->TellPlayerNoFacing(requester, chosen.str() + " opens the trainer window - use 'trainer' instead");
+            return true;
+        case GOSSIP_OPTION_TAXIVENDOR:
+            ai->TellPlayerNoFacing(requester, chosen.str() + " opens the flight map - use 'taxi' instead");
+            return true;
+        case GOSSIP_OPTION_BANKER:
+            ai->TellPlayerNoFacing(requester, chosen.str() + " opens the bank window - use 'bank' instead");
+            return true;
+        case GOSSIP_OPTION_QUESTGIVER:
+            ai->TellPlayerNoFacing(requester, chosen.str() + " opens the quest list - use 'quests' / 'accept' instead");
+            return true;
+        default:
+            break;
+    }
+
+    // Only show a menu when the NPC actually opened a different one; a closed
+    // gossip leaves the old items in place and must not be shown again.
+    if (bot->GetPlayerMenu() && bot->GetPlayerMenu()->GetGossipMenu().MenuItemCount() && !(SnapshotGossipMenu() == before))
         TellGossipMenus(requester);
+    else
+        ai->TellPlayerNoFacing(requester, chosen.str() + " - done");
+
+    return true;
+}
+
+GossipHelloAction::GossipMenuSnapshot GossipHelloAction::SnapshotGossipMenu()
+{
+    GossipMenuSnapshot snapshot;
+    if (!bot->GetPlayerMenu())
+        return snapshot;
+
+    GossipMenu& menu = bot->GetPlayerMenu()->GetGossipMenu();
+    snapshot.menuId = menu.GetMenuId();
+    for (unsigned int i = 0; i < menu.MenuItemCount(); i++)
+        snapshot.items.push_back(menu.GetItem(i).m_gMessage);
+
+    return snapshot;
+}
+
+bool GossipHelloAction::ConfirmBindPoint(Player* requester, ObjectGuid innkeeperGuid, std::string const& chosen)
+{
+    // The core only asks the client (SMSG_BINDER_CONFIRM); a bot has no client
+    // to answer, so answer the way the client does: CMSG_BINDER_ACTIVATE. That
+    // handler keeps every gate (alive, in range, innkeeper, not in an instance).
+    RESET_AI_VALUE(WorldPosition, "home bind"); // cached for 30s, read it fresh
+    WorldPosition const oldHomeBind = AI_VALUE(WorldPosition, "home bind");
+
+    WorldPacket activate;
+    activate << innkeeperGuid;
+    bot->GetSession()->HandleBinderActivateOpcode(activate);
+
+    RESET_AI_VALUE(WorldPosition, "home bind");
+    WorldPosition const newHomeBind = AI_VALUE(WorldPosition, "home bind");
+
+    if (newHomeBind == oldHomeBind)
+    {
+        ai->TellError(requester, chosen + " - home bind unchanged (already bound here, or not allowed)");
+        return false;
+    }
+
+    ai->TellPlayerNoFacing(requester, chosen + " - this inn is my new home");
     return true;
 }

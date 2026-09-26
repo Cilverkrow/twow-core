@@ -502,6 +502,14 @@ add_test(NAME quest_catchup_source_contract
     "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
     -P "${PB_MODULE_DIR}/t/quest_catchup_source_contract_tests.cmake")
 
+# #275: `talk N` runs exactly the displayed gossip option (innkeeper bind via
+# the client's Core handler) and never falls back to another option.
+add_test(NAME gossip_select_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+    -P "${PB_MODULE_DIR}/t/gossip_select_source_contract_tests.cmake")
+
 add_executable(bot_dialogue_policy_tests
   "${PB_MODULE_DIR}/t/bot_dialogue_policy_tests.cpp")
 
