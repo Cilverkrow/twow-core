@@ -2,6 +2,7 @@
 #include "PlayerbotMgr.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 #include "PlayerbotAI.h"
 #include "ChatHelper.h"
 #include "playerbot/ServerFacade.h"
@@ -257,4 +258,20 @@ bool PlayerbotSecurity::CheckLevelFor(PlayerbotSecurityLevel level, bool silent,
         bot->Whisper(text, LANG_UNIVERSAL, ObjectGuid(guid));
     }
     return false;
+}
+
+ai::roster_control::Decision DecideRosterControl(Player* issuer, Player* bot)
+{
+    ai::roster_control::Request request;
+    request.issuerIsRealPlayer = issuer && issuer->GetSession() && IsRealPlayer(issuer);
+    request.botOnline = bot && bot->IsInWorld() && GetBotAI(bot);
+    if (request.botOnline)
+    {
+        request.botIsRosterOrRandom = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || sRandomPlayerbotMgr.IsRandomBot(bot);
+        Player* master = GetBotAI(bot)->GetMaster();
+        request.botHasMaster = master != nullptr && master != bot;
+        request.masterIsIssuer = request.botHasMaster && master == issuer;
+        request.sameGroup = issuer && bot->GetGroup() && bot->GetGroup() == issuer->GetGroup();
+    }
+    return ai::roster_control::Decide(request);
 }

@@ -211,6 +211,26 @@ add_test(NAME progress_aware_turnin_recovery_policy
   COMMAND progress_aware_turnin_recovery_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# #354/#292: who may direct a bot without GM rank, and which `.bot`/`.rndbot`
+# commands stay GM tools. Decision table plus the call sites that use it.
+add_executable(roster_control_policy_tests
+  "${PB_MODULE_DIR}/t/roster_control_policy_tests.cpp")
+
+target_include_directories(roster_control_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(roster_control_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_control_policy
+  COMMAND roster_control_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_control_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_control_source_contract_tests.cmake")
+
 # #276: a dead bot waits for an active real-player master only for
 # AiPlayerbot.DeadWaitForRealMasterSeconds, never indefinitely.
 add_executable(master_wait_policy_tests
