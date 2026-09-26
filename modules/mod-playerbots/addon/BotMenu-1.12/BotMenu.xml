@@ -1,0 +1,69 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+	<Script file="BotMenu.lua"/>
+
+	<!-- The "Bots" submenu of the chat bubble menu (ChatMenu) and one menu per
+	     category. They reuse Blizzard's UIMenuTemplate like EmoteMenu does, so
+	     hover, nesting and the auto-hide timer behave exactly like the stock menus. -->
+	<Frame name="BotMenu" inherits="UIMenuTemplate" hidden="true" parent="ChatMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("ChatMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuCombat" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuFormation" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuLoot" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuProfession" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuQuest" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuGroup" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+
+	<!-- Event frame: fills the menus once saved variables are loaded. -->
+	<Frame name="BotMenuEventFrame" hidden="true">
+		<Scripts>
+			<OnLoad>
+				this:RegisterEvent("VARIABLES_LOADED");
+			</OnLoad>
+			<OnEvent>
+				BotMenu_OnEvent();
+			</OnEvent>
+		</Scripts>
+	</Frame>
+</Ui>

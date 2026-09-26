@@ -822,3 +822,19 @@ set_target_properties(playerbot_event_store_database_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/adapter-bin")
 
 endif()
+
+# twow-repo#290: the BotMenu client addon (addon/BotMenu-1.12). The contract
+# checks every menu command against the chat triggers and the 1.12 Lua 5.0
+# rules; the harness runs the addon against stand-ins of the 1.12 menu API
+# where a Lua interpreter is available (not part of the CI image).
+add_test(NAME botmenu_addon_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/botmenu_addon_contract_tests.cmake")
+
+find_program(TW_LUA_EXECUTABLE NAMES lua5.1 lua5.0 lua)
+if(TW_LUA_EXECUTABLE)
+  add_test(NAME botmenu_addon_harness
+    COMMAND "${TW_LUA_EXECUTABLE}" "${PB_MODULE_DIR}/t/botmenu_addon_harness.lua"
+      "${PB_MODULE_DIR}/addon/BotMenu-1.12")
+endif()
