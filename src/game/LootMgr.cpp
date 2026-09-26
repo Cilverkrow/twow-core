@@ -29,8 +29,11 @@
 #include "Player.h"
 #include "SpellAuraDefines.h"
 #include "SpellAuras.h"
+#include "FunserverLootUnits.h"
 
 #include <map>
+#include <memory>
+#include <set>
 
 static eConfigFloatValues const qualityToRate[MAX_ITEM_QUALITY] =
 {
@@ -63,6 +66,7 @@ public:
     // The same for active quests of the player
     void Process(Loot& loot, Player const* lootOwner) const; // Rolls an item from the group (if any) and adds the item to the loot
     bool ProcessBonus(Loot& loot, Player const* lootOwner, std::map<uint32, uint32>& selectedCount, float duplicateDecay) const;
+    void CollectUnitCandidates(std::vector<FunserverUnitCandidate>& out, float scale) const;
     float RawTotalChance() const;                       // Overall chance for the group (without equal chanced items)
     float TotalChance() const;                          // Overall chance for the group
 
@@ -286,40 +290,61 @@ static float GetGatheringItemChanceMod(Player const* lootOwner, uint32 itemId)
     return chanceMod;
 }
 
-static uint8 GetFunserverBonusSelectionMultiplier(WorldObject const* looted)
+// Which funserver content a looted object belongs to (#288 classification,
+// #345 chests). FUNSERVER_LOOT_NONE means the historic loot path only.
+static FunserverLootContent GetFunserverBonusContent(WorldObject const* looted)
 {
     if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_ENABLED) || !looted)
-        return 1;
+        return FUNSERVER_LOOT_NONE;
 
     // twow-repo#345: a reviewed boss reward chest in its own dungeon or raid.
     if (looted->IsGameObject())
     {
         if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_BOSS_CHEST))
-            return 1;
+            return FUNSERVER_LOOT_NONE;
         BonusLootBossRegistryEntry chest = sObjectMgr.GetBonusLootChestRegistryEntry(looted->GetEntry(), looted->GetMapId());
-        if ((chest.category == BONUS_LOOT_BOSS_DUNGEON && looted->GetMap()->IsDungeon() && !looted->GetMap()->IsRaid()) ||
-            (chest.category == BONUS_LOOT_BOSS_RAID && looted->GetMap()->IsRaid()))
-            return uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER));
-        return 1;
+        if (chest.category == BONUS_LOOT_BOSS_DUNGEON && looted->GetMap()->IsDungeon() && !looted->GetMap()->IsRaid())
+            return FUNSERVER_LOOT_DUNGEON;
+        if (chest.category == BONUS_LOOT_BOSS_RAID && looted->GetMap()->IsRaid())
+            return FUNSERVER_LOOT_RAID;
+        return FUNSERVER_LOOT_NONE;
     }
 
     Creature const* creature = ToCreature(looted);
     if (!creature || creature->IsPet())
-        return 1;
+        return FUNSERVER_LOOT_NONE;
 
     uint32 rank = creature->GetCreatureInfo()->rank;
     if ((rank == CREATURE_ELITE_RARE && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE)) ||
-        (rank == CREATURE_ELITE_RAREELITE && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE_ELITE)) ||
-        (rank == CREATURE_ELITE_WORLDBOSS && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_WORLD_BOSS)))
-        return uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER));
+        (rank == CREATURE_ELITE_RAREELITE && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RARE_ELITE)))
+        return FUNSERVER_LOOT_RARE;
+    if (rank == CREATURE_ELITE_WORLDBOSS && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_WORLD_BOSS))
+        return FUNSERVER_LOOT_RAID;
 
     BonusLootBossRegistryEntry registry = sObjectMgr.GetBonusLootBossRegistryEntry(creature->GetEntry(), creature->GetMapId());
     if (registry.category == BONUS_LOOT_BOSS_DUNGEON && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_DUNGEON_BOSS) && creature->GetMap()->IsDungeon() && !creature->GetMap()->IsRaid())
-        return uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER));
+        return FUNSERVER_LOOT_DUNGEON;
     if (registry.category == BONUS_LOOT_BOSS_RAID && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RAID_BOSS) && creature->GetMap()->IsRaid())
-        return uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER));
+        return FUNSERVER_LOOT_RAID;
 
-    return 1;
+    return FUNSERVER_LOOT_NONE;
+}
+
+static uint8 GetFunserverBonusSelectionMultiplier(WorldObject const* looted)
+{
+    return GetFunserverBonusContent(looted) != FUNSERVER_LOOT_NONE
+        ? uint8(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BONUS_SELECTION_MULTIPLIER)) : 1;
+}
+
+// Protected and recipient-specific items never become bonus loot.
+static bool IsBonusLootItemAllowed(LootStoreItem const& item, Loot const& loot)
+{
+    if (item.mincountOrRef <= 0 || item.needs_quest || item.conditionId || !item.AllowedForTeam(loot))
+        return false;
+
+    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid);
+    return proto && !proto->StartQuest && proto->Class != ITEM_CLASS_KEY && proto->Class != ITEM_CLASS_RECIPE &&
+           !proto->LockID && !proto->MaxCount && !(proto->Flags & ITEM_FLAG_UNIQUE_EQUIPPED);
 }
 
 static bool IsBonusLootCandidate(LootStoreItem const& item, Loot const& loot)
@@ -594,10 +619,23 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
     // bounded, and runs before the existing group-rights finalisation below.
     // bonusSource names the bonus owner without changing `looted`, which also
     // drives the group reward-distance check below (twow-repo#345 chests).
-    uint8 selectionMultiplier = GetFunserverBonusSelectionMultiplier(looted ? looted : bonusSource);
-    if (selectionMultiplier > 1)
-        tab->ProcessBonus(*this, store.IsRatesAllowed(), loot_owner, selectionMultiplier,
-                          sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY));
+    // twow-repo#323: with Funserver.Loot.Units.Enabled the classified content is
+    // filled to a fixed unit count instead of the #288 multiplier rounds.
+    WorldObject const* bonusOwner = looted ? looted : bonusSource;
+    FunserverLootContent const unitsContent = sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED)
+        ? GetFunserverBonusContent(bonusOwner) : FUNSERVER_LOOT_NONE;
+    if (unitsContent != FUNSERVER_LOOT_NONE)
+    {
+        Unit const* levelSource = bonusOwner->IsUnit() ? static_cast<Unit const*>(bonusOwner) : loot_owner;
+        tab->ProcessUnits(*this, loot_owner, unitsContent, levelSource->GetLevel());
+    }
+    else
+    {
+        uint8 selectionMultiplier = GetFunserverBonusSelectionMultiplier(looted ? looted : bonusSource);
+        if (selectionMultiplier > 1)
+            tab->ProcessBonus(*this, store.IsRatesAllowed(), loot_owner, selectionMultiplier,
+                              sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY));
+    }
 
     // Setting access rights for group loot case
     Group* group = loot_owner->GetGroup();
@@ -1524,6 +1562,198 @@ void LootTemplate::ProcessBonus(Loot& loot, bool rate, Player const* lootOwner, 
             if (loot.IsBonusFull())
                 return;
         }
+    }
+}
+
+// ---------- twow-repo#323: fixed funserver loot units ----------
+
+struct FunserverBoePoolItem
+{
+    uint32 itemId;
+    uint32 requiredLevel;
+    uint32 quality;
+};
+
+static std::vector<FunserverBoePoolItem> sFunserverBoePool;
+
+void LoadFunserverBoePool()
+{
+    sFunserverBoePool.clear();
+
+    if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED))
+        return;
+
+    // Items that already drop somewhere in the world; the prototype filter
+    // below keeps BoE blue/epic weapons and armour for levels 10..60.
+    std::unique_ptr<QueryResult> result(WorldDatabase.Query(
+        "SELECT DISTINCT `item` FROM `creature_loot_template` WHERE `mincountOrRef` > 0 "
+        "UNION SELECT DISTINCT `item` FROM `reference_loot_template` WHERE `mincountOrRef` > 0"));
+
+    if (!result)
+        return;
+
+    do
+    {
+        uint32 const itemId = result->Fetch()[0].GetUInt32();
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
+        if (!proto || proto->Bonding != BIND_WHEN_EQUIPPED ||
+            (proto->Quality != ITEM_QUALITY_RARE && proto->Quality != ITEM_QUALITY_EPIC) ||
+            (proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR) ||
+            proto->RequiredLevel < 10 || proto->RequiredLevel > 60 ||
+            proto->StartQuest || proto->MaxCount || proto->LockID || (proto->Flags & ITEM_FLAG_UNIQUE_EQUIPPED))
+            continue;
+
+        sFunserverBoePool.push_back({ itemId, proto->RequiredLevel, proto->Quality });
+    }
+    while (result->NextRow());
+
+    sLog.outString("Loaded %u funserver BoE bonus-pool items", uint32(sFunserverBoePool.size()));
+}
+
+void LootTemplate::LootGroup::CollectUnitCandidates(std::vector<FunserverUnitCandidate>& out, float scale) const
+{
+    for (LootStoreItem const& item : ExplicitlyChanced)
+        if (item.chance > 0.0f)
+            out.push_back({ &item, item.chance * scale });
+
+    if (EqualChanced.empty())
+        return;
+
+    float const share = (100.0f - RawTotalChance()) / float(EqualChanced.size());
+    if (share > 0.0f)
+        for (LootStoreItem const& item : EqualChanced)
+            out.push_back({ &item, share * scale });
+}
+
+void LootTemplate::CollectUnitCandidates(std::vector<FunserverUnitCandidate>& out, float scale, bool followReferences) const
+{
+    for (LootStoreItem const& item : Entries)
+    {
+        float const chance = std::min(item.chance, 100.0f);
+        if (item.mincountOrRef > 0)
+            out.push_back({ &item, chance * scale });
+        else if (followReferences)                          // one reference level, as in the #322 loot export
+            if (LootTemplate const* referenced = LootTemplates_Reference.GetLootFor(-item.mincountOrRef))
+                referenced->CollectUnitCandidates(out, scale * chance / 100.0f, false);
+    }
+
+    for (LootGroup const& group : Groups)
+        group.CollectUnitCandidates(out, scale);
+}
+
+void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 content, uint32 level) const
+{
+    if (content == FUNSERVER_LOOT_NONE || content >= FUNSERVER_LOOT_CONTENT_COUNT)
+        return;
+
+    uint32 const idx = content - FUNSERVER_LOOT_RARE;
+    uint32 const target = sWorld.getConfig(eConfigUInt32Values(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RARE + idx));
+    uint32 const floorQuality = sWorld.getConfig(eConfigUInt32Values(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RARE + idx));
+    float const decay = sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_UNITS_DECAY);
+
+    if (loot.items.size() >= target || loot.IsBonusFull())
+        return;
+    uint32 const remaining = target - uint32(loot.items.size());
+
+    // Own-table candidates (direct rows, groups, one reference level).
+    struct Candidate { LootStoreItem const* item; float baseChance; float qualityWeight; };
+    std::vector<FunserverUnitCandidate> raw;
+    CollectUnitCandidates(raw, 1.0f, true);
+
+    std::vector<Candidate> candidates;
+    std::set<uint32> floorItems;
+    for (FunserverUnitCandidate const& c : raw)
+    {
+        if (!IsBonusLootItemAllowed(*c.item, loot))
+            continue;
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
+        float const weight = sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
+            idx * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(proto->Quality)));
+        candidates.push_back({ c.item, c.baseChance, weight });
+        if (proto->Quality >= floorQuality)
+            floorItems.insert(c.item->itemid);
+    }
+
+    std::map<uint32, uint32> selected;
+    for (LootItem const& item : loot.items)
+        ++selected[item.itemid];
+
+    // The own table covers what it can with distinct items at the quality
+    // floor; the BoE pool supplies the rest (owner rule 2026-09-24).
+    uint32 poolUnits = FunserverBoePoolShortfall(remaining, uint32(floorItems.size()));
+    uint32 const ownUnits = remaining - poolUnits;
+
+    std::vector<float> weights(candidates.size());
+    for (uint32 unit = 0; unit < ownUnits && !loot.IsBonusFull(); ++unit)
+    {
+        float total = 0.0f;
+        for (size_t i = 0; i < candidates.size(); ++i)
+        {
+            weights[i] = FunserverUnitWeight(candidates[i].baseChance, candidates[i].qualityWeight,
+                                             selected[candidates[i].item->itemid], decay);
+            total += weights[i];
+        }
+        if (total <= 0.0f)
+        {
+            poolUnits += ownUnits - unit;                  // nothing eligible left in the own table
+            break;
+        }
+
+        float roll = frand(0.0f, total);
+        size_t pick = candidates.size() - 1;
+        for (size_t i = 0; i < candidates.size(); ++i)
+        {
+            roll -= weights[i];
+            if (roll < 0.0f)
+            {
+                pick = i;
+                break;
+            }
+        }
+
+        loot.AddItem(*candidates[pick].item);
+        ++selected[candidates[pick].item->itemid];
+    }
+
+    if (!poolUnits || loot.IsBonusFull())
+        return;
+
+    uint32 const window = sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BOE_LEVEL_WINDOW);
+    float const epicShare = sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BOE_EPIC_SHARE);
+    std::vector<FunserverBoePoolItem const*> pool;
+    for (FunserverBoePoolItem const& item : sFunserverBoePool)
+        if (item.quality >= floorQuality && FunserverBoeLevelMatch(item.requiredLevel, level, window))
+            pool.push_back(&item);
+
+    std::vector<float> poolWeights(pool.size());
+    for (uint32 unit = 0; unit < poolUnits && !loot.IsBonusFull() && !pool.empty(); ++unit)
+    {
+        float total = 0.0f;
+        for (size_t i = 0; i < pool.size(); ++i)
+        {
+            // Below an epic floor, epics are a smaller share next to blues.
+            float const base = (pool[i]->quality >= ITEM_QUALITY_EPIC && floorQuality < ITEM_QUALITY_EPIC) ? epicShare : 1.0f;
+            poolWeights[i] = FunserverUnitWeight(base, 1.0f, selected[pool[i]->itemId], decay);
+            total += poolWeights[i];
+        }
+        if (total <= 0.0f)
+            return;
+
+        float roll = frand(0.0f, total);
+        size_t pick = pool.size() - 1;
+        for (size_t i = 0; i < pool.size(); ++i)
+        {
+            roll -= poolWeights[i];
+            if (roll < 0.0f)
+            {
+                pick = i;
+                break;
+            }
+        }
+
+        LootStoreItem const poolItem(pool[pick]->itemId, 100.0f, 0, 0, 1, 1);
+        loot.AddItem(poolItem);
+        ++selected[pool[pick]->itemId];
     }
 }
 

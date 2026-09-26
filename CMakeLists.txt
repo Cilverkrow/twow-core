@@ -982,6 +982,10 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(rare_respawn_policy_test
     "${TW_CORE_ROOT}/t/rare_respawn_policy_test.cpp")
   add_test(NAME rare_respawn_policy_test COMMAND rare_respawn_policy_test)
+  # twow-repo#323: fixed loot unit rules (weights, diminishing, BoE shortfall, level window).
+  add_executable(loot_units_policy_test
+    "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")
+  add_test(NAME loot_units_policy_test COMMAND loot_units_policy_test)
   add_test(NAME rare_respawn_source_contract
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
