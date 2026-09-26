@@ -9,6 +9,7 @@
 #include "playerbot/strategy/actions/ChooseTargetActions.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "Formulas.h"
+#include "playerbot/GrindCapPolicy.h"
 
 using namespace ai;
 
@@ -109,6 +110,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
 
     std::unordered_map<uint32, bool> needForQuestCache;
 
+    // #307: low-level roster bots grind at most GrindCap.LowLevelMargin levels
+    // above themselves and skip creatures that killed them repeatedly.
+    bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+    int const maxLevelsAbove = grind_cap::MaxLevelsAbove(rosterOnItsOwn, bot->GetLevel(),
+        sPlayerbotAIConfig.grindCapLowLevelBelow, sPlayerbotAIConfig.grindCapLowLevelMargin);
+    time_t const now = time(nullptr);
+
     for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)
     {
         Unit* unit = ai->GetUnit(*tIter);
@@ -192,9 +200,16 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
             continue;
         }
 
-        if (!bot->InBattleGround() && (int)unit->GetLevel() - (int)bot->GetLevel() > 4 && !unit->GetObjectGuid().IsPlayer())
+        if (!bot->InBattleGround() && (int)unit->GetLevel() - (int)bot->GetLevel() > maxLevelsAbove && !unit->GetObjectGuid().IsPlayer())
         {
             logGrind(unit, std::to_string((int)unit->GetLevel() - (int)bot->GetLevel()) + " levels above bot).");
+            continue;
+        }
+
+        if (rosterOnItsOwn && sPlayerbotAIConfig.grindAvoidMaxDeaths && !unit->GetObjectGuid().IsPlayer() &&
+            AI_VALUE2(time_t, "manual time", "grind avoid " + std::to_string(unit->GetEntry())) > now)
+        {
+            logGrind(unit, "ignored (killed this bot repeatedly).");
             continue;
         }
 
