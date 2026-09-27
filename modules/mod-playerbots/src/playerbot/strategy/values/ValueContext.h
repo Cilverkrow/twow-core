@@ -316,6 +316,7 @@ namespace ai
             creators["graveyard"] = [](PlayerbotAI* ai) { return new GraveyardValue(ai); };
             creators["best graveyard"] = [](PlayerbotAI* ai) { return new BestGraveyardValue(ai); };
             creators["should spirit healer"] = [](PlayerbotAI* ai) { return new ShouldSpiritHealerValue(ai); };
+            creators["death loop"] = [](PlayerbotAI* ai) { return new DeathLoopValue(ai); };
 
             creators["bot roles"] = [](PlayerbotAI* ai) { return new BotRolesValue(ai); };
             creators["talent spec"] = [](PlayerbotAI* ai) { return new TalentSpecValue(ai); };

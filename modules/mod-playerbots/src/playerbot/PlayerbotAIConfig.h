@@ -452,6 +452,11 @@ public:
     // for this bot for the cooldown (0 = off).
     uint32 destinationDeathsMax = 2;
     uint32 destinationDeathsCooldownSeconds = 3600;
+    // G4: evacuate a bot that died DeathLoop.MaxDeaths times within WindowSeconds
+    // and Radius yards (0 = off); not reset by XP like "death count".
+    uint32 deathLoopMaxDeaths = 0;
+    uint32 deathLoopWindowSeconds = 900;
+    float deathLoopRadius = 150.0f;
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;

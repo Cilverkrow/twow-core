@@ -205,6 +205,13 @@ namespace ai
 
             sLog.outDetail("Repop bot #%d %s:%d <%s>", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
 
+            // G4: always visible, the acceptance signal of the death loop guard.
+            if (ai->IsInDeathLoop())
+                sLog.outBasic("[DeathLoop] state=evacuate guid=%u level=%u map=%u zone=%u deaths=%u window_seconds=%u radius=%.0f",
+                    bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), ai->GetDeathLoopSize(),
+                    sPlayerbotAIConfig.deathLoopWindowSeconds, sPlayerbotAIConfig.deathLoopRadius);
+            ai->ClearDeathLoop();
+
             SET_AI_VALUE(uint32, "death count", 0);
 
             if (bot->IsDead())

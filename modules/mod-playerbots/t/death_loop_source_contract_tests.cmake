@@ -1,0 +1,52 @@
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "Missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(NOT offset EQUAL -1)
+    message(FATAL_ERROR "Unexpected ${description}: ${needle}")
+  endif()
+endfunction()
+
+file(READ "${PB_SOURCE_DIR}/strategy/actions/ChooseTravelTargetAction.cpp" choose)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_source)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAI.h" ai_header)
+file(READ "${PB_SOURCE_DIR}/strategy/generic/DeadStrategy.cpp" dead)
+file(READ "${PB_SOURCE_DIR}/strategy/values/DeadValues.h" dead_values)
+file(READ "${PB_SOURCE_DIR}/strategy/values/ValueContext.h" values)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/ReleaseSpiritAction.h" release)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/XpGainAction.cpp" xp)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_source)
+file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_template)
+
+# (A) Isolanna: the refresh path must not bring back a death-suppressed route
+# or destination (#138, #307, zone escape).
+string(FIND "${choose}" "bool RefreshTravelTargetAction::Execute" refresh_at)
+if(refresh_at EQUAL -1)
+  message(FATAL_ERROR "RefreshTravelTargetAction::Execute not found")
+endif()
+string(SUBSTRING "${choose}" ${refresh_at} 2500 refresh)
+require_text("${refresh}" "target->IsTurnInRouteSuppressed(oldDestination, target->GetPosition())" "refresh honours the turn-in death cooldown")
+require_text("${refresh}" "target->IsDestinationDeathSuppressed(oldDestination)" "refresh honours the destination death cooldown")
+
+# (B) Konso: a death loop at one spot evacuates, independent of "death count".
+require_text("${ai_header}" "std::deque<ai::death_loop::Death> recentDeaths;" "per-bot death loop record")
+require_text("${ai_source}" "RecordDeathForLoop();" "deaths recorded for the loop guard")
+require_text("${ai_source}" "death_loop::IsLoop(recentDeaths" "loop check uses the policy")
+require_text("${dead_values}" "ai->IsInDeathLoop()" "death loop value")
+require_text("${values}" "creators[\"death loop\"]" "death loop value registered")
+require_text("${dead}" "\"val::death loop\"" "dead strategy trigger")
+require_text("${dead}" "new NextAction(\"repop\", relevance + 5.0f)" "evacuation outranks the old escalation")
+require_text("${release}" "[DeathLoop] state=evacuate" "visible evacuation")
+require_text("${release}" "ai->ClearDeathLoop();" "record cleared after the evacuation")
+forbid_text("${xp}" "ClearDeathLoop" "XP gain clearing the death loop record")
+
+# Off by default in code and dist; the roster profile switches it on.
+require_text("${config_source}" "\"AiPlayerbot.DeathLoop.MaxDeaths\", 0" "guard off by default")
+require_text("${config_template}" "AiPlayerbot.DeathLoop.MaxDeaths = 0" "documented default")
+require_text("${config_template}" "AiPlayerbot.DeathLoop.WindowSeconds = 900" "documented window")
+require_text("${config_template}" "AiPlayerbot.DeathLoop.Radius = 150" "documented radius")
