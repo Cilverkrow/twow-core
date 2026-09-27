@@ -1242,6 +1242,10 @@ void PlayerbotAI::OnDeath()
             if (sPlayerbotAIConfig.grindAvoidMaxDeaths && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
                 RecordGrindDeath(this, bot, AI_VALUE(Unit*, "current target"));
 
+            // G4: a death loop at one spot (graveyard among mobs above the
+            // bot) is counted apart from "death count", which XP resets.
+            RecordDeathForLoop();
+
             // #307: a death on a completed-quest turn-in route counts against
             // that route, so a revived bot does not walk back into the same mobs.
             if (TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target"))
@@ -2779,6 +2783,33 @@ bool PlayerbotAI::IsRanged(Player* player, bool inGroup)
 bool PlayerbotAI::IsMelee(Player* player, bool inGroup)
 {
     return !IsRanged(player, inGroup);
+}
+
+namespace
+{
+death_loop::Settings DeathLoopSettings()
+{
+    death_loop::Settings settings;
+    settings.maxDeaths = sPlayerbotAIConfig.deathLoopMaxDeaths;
+    settings.windowSeconds = sPlayerbotAIConfig.deathLoopWindowSeconds;
+    settings.radius = sPlayerbotAIConfig.deathLoopRadius;
+    return settings;
+}
+}
+
+void PlayerbotAI::RecordDeathForLoop()
+{
+    death_loop::Death death;
+    death.atSeconds = uint32(time(nullptr));
+    death.mapId = bot->GetMapId();
+    death.x = bot->GetPositionX();
+    death.y = bot->GetPositionY();
+    death_loop::Record(recentDeaths, death, DeathLoopSettings());
+}
+
+bool PlayerbotAI::IsInDeathLoop() const
+{
+    return death_loop::IsLoop(recentDeaths, uint32(time(nullptr)), DeathLoopSettings());
 }
 
 bool PlayerbotAI::IsTank(Player* player, bool inGroup)

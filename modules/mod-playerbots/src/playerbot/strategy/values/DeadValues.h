@@ -37,4 +37,14 @@ namespace ai
     public:
         bool Calculate() override;
     };
+
+    // G4: repeated deaths at one spot (DeathLoopPolicy.h); drives the "repop" evacuation.
+    class DeathLoopValue : public BoolCalculatedValue
+    {
+    public:
+        DeathLoopValue(PlayerbotAI* ai, std::string name = "death loop") : BoolCalculatedValue(ai, name) {}
+
+    public:
+        bool Calculate() override { return !ai->HasActivePlayerMaster() && ai->IsInDeathLoop(); }
+    };
 }

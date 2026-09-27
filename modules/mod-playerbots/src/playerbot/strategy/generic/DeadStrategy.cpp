@@ -18,6 +18,11 @@ void DeadStrategy::InitDeadTriggers(std::list<TriggerNode*>& triggers)
         "val::gt32::{death count," + std::to_string(DeadValueConstants::DEATH_COUNT_BEFORE_EVAC) + "}",
         NextAction::array(0, new NextAction("repop", relevance + 4.0f), NULL)));
 
+    // G4: a death loop at one spot evacuates at once, whatever "death count" says.
+    triggers.push_back(new TriggerNode(
+        "val::death loop",
+        NextAction::array(0, new NextAction("repop", relevance + 5.0f), NULL)));
+
     triggers.push_back(new TriggerNode(
         "very often",
         NextAction::array(0, new NextAction("self resurrect", relevance + 3.0f), NULL)));

@@ -900,6 +900,16 @@ bool RefreshTravelTargetAction::Execute(Event& event)
     if (!oldDestination) //Does this target have a destination?
         return false;
 
+    // G4 (train 6.1, 2026-09-27): a route or destination put on the death
+    // cooldown (#138, #307) or skipped by the zone escape must not come back
+    // through the refresh. Isolanna died 16x on one turn-in route in an hour:
+    // every death_suppressed was undone a minute later by this action.
+    if (target->IsTurnInRouteSuppressed(oldDestination, target->GetPosition()) || target->IsDestinationDeathSuppressed(oldDestination))
+    {
+        ai->TellDebug(requester, "Old destination is on the death cooldown.", "debug travel");
+        return false;
+    }
+
     if (!target->IsDestinationActive()) //Is the destination still valid?
     {
         ai->TellDebug(requester, "Old destination was no longer valid.", "debug travel");

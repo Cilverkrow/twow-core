@@ -14,6 +14,7 @@
 #include "RandomPlayerbotMgr.h"
 
 #include "playerbot/BotSlots.h"
+#include "playerbot/DeathLoopPolicy.h"
 class Player;
 class PlayerbotMgr;
 class ChatHandler;
@@ -665,6 +666,11 @@ public:
     bool HasRealPlayerMaster() { return master && (!GetBotAI(master) || GetBotAI(master)->IsRealPlayer()); } 
     //Bot has a master that is actively playing.
     bool HasActivePlayerMaster() const { return master && !GetBotAI(master); }
+    // G4: deaths close in time and place, not reset by XP (DeathLoopPolicy.h).
+    void RecordDeathForLoop();
+    bool IsInDeathLoop() const;
+    void ClearDeathLoop() { recentDeaths.clear(); }
+    uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
     //Checks if the bot is summoned as alt of a player
     bool IsAlt() { return HasRealPlayerMaster() && !sRandomPlayerbotMgr.IsRandomBot(bot); }
     //Get the group leader or the master of the bot.
@@ -858,6 +864,7 @@ protected:
 	Player* bot;
 	Player* master;
 	uint8 m_forcedRole = 0;
+    std::deque<ai::death_loop::Death> recentDeaths;
 	bool m_suppressAreaTriggerRelay = false;
 	// GUID-shadow of `master` so we can verify the pointer is still
 	// alive each tick without dereferencing it. Set in SetMaster().
