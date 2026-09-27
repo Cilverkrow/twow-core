@@ -312,8 +312,20 @@ bool ChangeTalentsAction::AutoSelectTalents(Player* bot, std::ostringstream* out
         }
     }
 
+    // #357 / #367: a bot on a known premade path keeps it. CalculateTalentsPoints()
+    // is the level's total, not the free points, so this block used to run for
+    // every bot from level 10 on and re-rolled among all paths "like" its talents:
+    // 7.1/7.3, 4.0/4.3 and feral/bear share their links, so a tank set to its
+    // path (weight 0) was rolled back to the dps path at the next login or level-up.
+    // (getPremadePath falls back to path 0, so the id is matched exactly.)
+    bool onKnownPath = false;
+    if (specNo > 0)
+        for (TalentPath const& path : sPlayerbotAIConfig.classSpecs[cls].talentPath)
+            if (path.id == int(specId))
+                onKnownPath = true;
+
     //Spec was not found or not sufficient
-    if (bot->CalculateTalentsPoints() > 0 || (!specNo && specLink.empty()))
+    if (!onKnownPath && (bot->CalculateTalentsPoints() > 0 || (!specNo && specLink.empty())))
     {
         TalentSpec oldSpec(bot);
         int currentTree = oldSpec.highestTree();
