@@ -175,6 +175,13 @@ public:
     // #341: need/greed/pass by role and profession for roster bots on their own.
     bool lootRollRoleAware = false;
     bool lootRollTrace = false;
+    // twow-repo#363: roster bots up to a level cap buy vendor gear upgrades.
+    bool vendorGearEnabled = false;
+    uint32 vendorGearMaxLevel = 30;
+    uint32 vendorGearMaxSpendPercent = 50;
+    uint32 vendorGearReserveCopper = 0;
+    uint32 vendorGearCooldownSeconds = 600;
+    bool vendorGearTrace = false;
     float randomBotMaxLevelChance;
     float randomBotRaceVariantChance;
     float randomBotRpgChance;

@@ -1,6 +1,7 @@
 #pragma once
 #include "GenericActions.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
+#include "playerbot/VendorGearPolicy.h"
 
 namespace ai
 {
@@ -13,6 +14,12 @@ namespace ai
     public:
         BuyAction(PlayerbotAI* ai, std::string name = "buy") : ChatCommandAction(ai, name) {}
         virtual bool Execute(Event& event) override;
+
+        // twow-repo#363: the vendor gear rule applies to this bot now.
+        static bool VendorGearInScope(PlayerbotAI* ai);
+        // Money a vendor visit may spend on gear under that rule (0 while the
+        // cooldown after the last gear purchase runs).
+        static uint32 VendorGearAllowance(PlayerbotAI* ai);
 
     private:
         bool BuyItem(Player* requester, VendorItemData const* tItems, ObjectGuid vendorguid, const ItemPrototype* proto, UsageBoughtList& bought, ItemUsage usage = ItemUsage::ITEM_USAGE_NONE);

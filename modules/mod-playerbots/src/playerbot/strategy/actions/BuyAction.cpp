@@ -7,8 +7,68 @@
 #include "playerbot/strategy/values/BudgetValues.h"
 #include "playerbot/strategy/values/MountValues.h"
 #include "playerbot/strategy/values/GuildValues.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/RandomItemMgr.h"
+#include "playerbot/RandomPlayerbotMgr.h"
+#include <ctime>
 
 using namespace ai;
+
+namespace
+{
+vendor_gear::Settings VendorGearSettings()
+{
+    vendor_gear::Settings settings;
+    settings.enabled = sPlayerbotAIConfig.vendorGearEnabled;
+    settings.maxLevel = sPlayerbotAIConfig.vendorGearMaxLevel;
+    settings.maxSpendPercent = sPlayerbotAIConfig.vendorGearMaxSpendPercent;
+    settings.reserveCopper = sPlayerbotAIConfig.vendorGearReserveCopper;
+    settings.cooldownSeconds = sPlayerbotAIConfig.vendorGearCooldownSeconds;
+    return settings;
+}
+
+uint64 VendorGearNowMs()
+{
+    return uint64(time(nullptr)) * 1000;
+}
+
+void LogVendorGear(Player* bot, bool buy, char const* reason, uint32 itemId, uint32 slot, uint32 price,
+    uint32 newScore, uint32 oldScore, uint32 allowance, uint32 spent)
+{
+    if (!buy && !sPlayerbotAIConfig.vendorGearTrace)
+        return;
+
+    sLog.outBasic("[VendorGear] %s reason=%s bot=%u level=%u item=%u slot=%u price=%u score_new=%u score_old=%u allowance=%u spent=%u",
+        buy ? "buy" : "skip", reason, bot->GetGUIDLow(), bot->GetLevel(), itemId, slot, price, newScore, oldScore, allowance, spent);
+}
+}
+
+bool BuyAction::VendorGearInScope(PlayerbotAI* ai)
+{
+    Player* bot = ai->GetBot();
+    bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+    return vendor_gear::InScope(VendorGearSettings(), rosterOnItsOwn, bot->GetLevel());
+}
+
+uint32 BuyAction::VendorGearAllowance(PlayerbotAI* ai)
+{
+    vendor_gear::Settings const settings = VendorGearSettings();
+    Player* bot = ai->GetBot();
+    AiObjectContext* context = ai->GetAiObjectContext();
+
+    vendor_gear::Memory const memory = vendor_gear::Store::Instance().Get(bot->GetGUIDLow());
+    if (vendor_gear::CooldownActive(settings, VendorGearNowMs(), memory.LastPurchaseMs()))
+        return 0;
+
+    // Repairs and class training come first; the rest may go into gear.
+    uint64 reserve = uint64(settings.reserveCopper)
+        + AI_VALUE2(uint32, "money needed for", (uint32)NeedMoneyFor::repair)
+        + AI_VALUE2(uint32, "money needed for", (uint32)NeedMoneyFor::spells);
+    if (reserve > UINT32_MAX)
+        reserve = UINT32_MAX;
+
+    return vendor_gear::VisitAllowance(settings, bot->GetMoney(), uint32(reserve));
+}
 
 bool BuyAction::Execute(Event& event)
 {
@@ -28,6 +88,20 @@ bool BuyAction::Execute(Event& event)
     bool vendored = false, result = false;
 
     UsageBoughtList bought;
+
+    // twow-repo#363: gear purchases of a roster bot up to the level cap follow the
+    // vendor gear policy instead of the "free money for gear" rule.
+    bool const gearPolicy = buyUseful && VendorGearInScope(ai);
+    uint32 const gearAllowance = gearPolicy ? VendorGearAllowance(ai) : 0;
+    uint32 gearSpent = 0;
+    vendor_gear::Memory gearMemory;
+    bool gearCooldown = false;
+    if (gearPolicy)
+    {
+        gearMemory = vendor_gear::Store::Instance().Get(bot->GetGUIDLow());
+        gearMemory.BeginVisit();
+        gearCooldown = vendor_gear::CooldownActive(VendorGearSettings(), VendorGearNowMs(), gearMemory.LastPurchaseMs());
+    }
 
     for (std::list<ObjectGuid>::iterator i = vendors.begin(); i != vendors.end(); ++i)
     {
@@ -117,11 +191,49 @@ bool BuyAction::Execute(Event& event)
                     if (!usageAllowed)
                         break;
 
-                    // Gold affordability 
-                    RESET_AI_VALUE2(uint32, "free money for", moneyKey);
-                    uint32 money = AI_VALUE2(uint32, "free money for", moneyKey);
-                    if (price > money)
-                        break;
+                    bool const policyGear = gearPolicy && usage == ItemUsage::ITEM_USAGE_EQUIP;
+                    uint32 gearSlot = 0;
+                    vendor_gear::Offer offer;
+                    vendor_gear::Decision gearDecision;
+                    if (policyGear)
+                    {
+                        offer.equipUpgrade = true;
+                        offer.price = price;
+                        offer.cooldownActive = gearCooldown;
+                        offer.alreadyOwned = bot->HasItemCount(proto->ItemId, 1, false);
+                        offer.boughtBefore = gearMemory.BoughtBefore(proto->ItemId);
+
+                        uint16 dest = 0;
+                        if (RandomPlayerbotMgr::CanEquipUnseenItem(bot, NULL_SLOT, dest, proto->ItemId) != EQUIP_ERR_OK)
+                        {
+                            LogVendorGear(bot, false, "cannot_equip_slot", proto->ItemId, 0, price, 0, 0, gearAllowance, gearSpent);
+                            break;
+                        }
+
+                        gearSlot = dest & 255;
+                        Item* oldItem = bot->GetItemByPos(dest);
+                        ItemQualifier offered(proto->ItemId);
+                        offer.slotEmpty = !oldItem;
+                        offer.newScore = sRandomItemMgr.ItemStatWeight(bot, offered);
+                        offer.oldScore = oldItem ? sRandomItemMgr.ItemStatWeight(bot, oldItem) : 0;
+                        offer.slotBoughtThisVisit = gearMemory.SlotDone(gearSlot);
+
+                        gearDecision = vendor_gear::Decide(offer, gearAllowance, gearSpent);
+                        if (!gearDecision.buy)
+                        {
+                            LogVendorGear(bot, false, gearDecision.reason, proto->ItemId, gearSlot, price,
+                                offer.newScore, offer.oldScore, gearAllowance, gearSpent);
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // Gold affordability 
+                        RESET_AI_VALUE2(uint32, "free money for", moneyKey);
+                        uint32 money = AI_VALUE2(uint32, "free money for", moneyKey);
+                        if (price > money)
+                            break;
+                    }
 
 #ifndef MANGOSBOT_ZERO
                     // ExtendedCost check
@@ -164,7 +276,21 @@ bool BuyAction::Execute(Event& event)
 
                     result |= didBuy;
                     if (!didBuy)
+                    {
+                        if (policyGear)
+                            LogVendorGear(bot, false, "buy_failed", proto->ItemId, gearSlot, price,
+                                offer.newScore, offer.oldScore, gearAllowance, gearSpent);
                         break;
+                    }
+
+                    if (policyGear)
+                    {
+                        gearSpent += price;
+                        gearMemory.Record(proto->ItemId, gearSlot, VendorGearNowMs());
+                        vendor_gear::Store::Instance().Put(bot->GetGUIDLow(), gearMemory);
+                        LogVendorGear(bot, true, gearDecision.reason, proto->ItemId, gearSlot, price,
+                            offer.newScore, offer.oldScore, gearAllowance, gearSpent);
+                    }
 
                     RESET_AI_VALUE2(ItemUsage, "item usage", tItem->item);
                     RESET_AI_VALUE2(std::list<Item*>, "inventory items", ChatHelper::formatItem(proto));
