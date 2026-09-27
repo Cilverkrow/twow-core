@@ -1,0 +1,21 @@
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "Missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+file(READ "${PB_SOURCE_DIR}/strategy/values/ItemUsageValue.cpp" usage)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_source)
+file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_template)
+
+# OB-10 train 6: 142 Crude Throwing Axes. The ammo need is capped by config.
+require_text("${usage}" "ammo_stock::NeededStacks(bot->getClass() == CLASS_HUNTER" "capped ammo need")
+string(FIND "${usage}" "(bot->getClass() == CLASS_HUNTER) ? 8 : 2" uncapped)
+if(NOT uncapped EQUAL -1)
+  message(FATAL_ERROR "Uncapped ammo need (8/2 stacks) is back")
+endif()
+require_text("${config_source}" "\"AiPlayerbot.AmmoMaxStacks\", 2" "ammo cap default")
+require_text("${config_source}" "\"AiPlayerbot.ThrownMaxStacks\", 1" "thrown cap default")
+require_text("${config_template}" "AiPlayerbot.AmmoMaxStacks = 2" "documented ammo cap")
+require_text("${config_template}" "AiPlayerbot.ThrownMaxStacks = 1" "documented thrown cap")

@@ -179,6 +179,13 @@ AiPlayerbot.VendorGear.ReserveCopper = 0
 AiPlayerbot.VendorGear.CooldownSeconds = 600
 AiPlayerbot.VendorGear.Trace = 0
 
+# Most stacks of arrows/bullets (hunters) and of thrown weapons (warriors,
+# rogues; the equipped stack counts) a bot buys up to. Without a cap the class
+# default applies: 8 stacks of ammo for a hunter, 2 stacks otherwise - a warrior
+# bought 142 Crude Throwing Axes in one train (OB-10). 0 = class default.
+AiPlayerbot.AmmoMaxStacks = 2
+AiPlayerbot.ThrownMaxStacks = 1
+
 # Chance random bot has max level on first randomize (default 0.15)
 AiPlayerbot.RandomBotMaxLevelChance = 0.15
 

@@ -7,6 +7,7 @@
 #include "GuildValues.h"
 
 #include "playerbot/RandomItemMgr.h"
+#include "playerbot/AmmoStockPolicy.h"
 #include "playerbot/ServerFacade.h"
 
 using namespace ai;
@@ -392,7 +393,9 @@ if ((proto->Class == ITEM_CLASS_PROJECTILE ||
                     currentAmmoProto = sObjectMgr.GetItemPrototype(currentAmmoId);
 
                 float betterAmmoStacks = BetterStacks(proto, "ammo"); // how much better ammo we have
-                float needAmmo = (bot->getClass() == CLASS_HUNTER) ? 8 : 2;
+                // OB-10 train 6 (142 Crude Throwing Axes): the wanted stock is capped.
+                float needAmmo = ammo_stock::NeededStacks(bot->getClass() == CLASS_HUNTER,
+                    proto->Class == ITEM_CLASS_WEAPON, sPlayerbotAIConfig.ammoMaxStacks, sPlayerbotAIConfig.thrownMaxStacks);
 
                 if (ai->HasCheat(BotCheatMask::item))
                     needAmmo = 1;

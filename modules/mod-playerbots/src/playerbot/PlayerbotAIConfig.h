@@ -182,6 +182,9 @@ public:
     uint32 vendorGearReserveCopper = 0;
     uint32 vendorGearCooldownSeconds = 600;
     bool vendorGearTrace = false;
+    // OB-10 train 6: most stacks of ammo / thrown weapons a bot keeps (0 = class default).
+    uint32 ammoMaxStacks = 2;
+    uint32 thrownMaxStacks = 1;
     float randomBotMaxLevelChance;
     float randomBotRaceVariantChance;
     float randomBotRpgChance;
