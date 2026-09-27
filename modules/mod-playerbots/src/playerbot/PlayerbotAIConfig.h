@@ -433,6 +433,9 @@ public:
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
+    // #391: roster login waves after an L1 reset (0 = everyone at once).
+    uint32 persistentActiveRosterLoginWaveSize = 0;
+    uint32 persistentActiveRosterLoginWaveIntervalSeconds = 300;
     // Disabled by default. When enabled, only the GUIDs admitted by the
     // persistent roster use the quest-first progression policy.
     bool questFirstProgressionEnabled = false;

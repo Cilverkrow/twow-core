@@ -1,0 +1,22 @@
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "Missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+file(READ "${PB_SOURCE_DIR}/RandomPlayerbotMgr.cpp" mgr)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_source)
+file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_template)
+
+# #391: only reset-flagged roster members, order from the start zone.
+require_text("${mgr}" "WHERE (at_login & 6) = 6" "reset marker")
+require_text("${mgr}" "if (!isMember(guid))" "roster members only")
+require_text("${mgr}" "sObjectMgr.GetPlayerInfo(" "start zone from playercreateinfo")
+require_text("${mgr}" "login_wave::AssignWaves(candidates, sPlayerbotAIConfig.persistentActiveRosterLoginWaveSize)" "zone round robin")
+require_text("${mgr}" "if (!RosterLoginWaveOpen(bot))" "gate in the roster login loop")
+require_text("${mgr}" "[RosterLoginWave] wave=%u/%u opened bots=%u waiting=%u" "per-wave diagnostics")
+require_text("${mgr}" "[RosterLoginWave] complete waves=%u waiting=0" "completion line for D2")
+require_text("${config_source}" "\"AiPlayerbot.PersistentActiveRoster.LoginWaveSize\", 0" "default off")
+require_text("${config_template}" "AiPlayerbot.PersistentActiveRoster.LoginWaveSize = 0" "documented switch")
+require_text("${config_template}" "AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds = 300" "documented interval")
