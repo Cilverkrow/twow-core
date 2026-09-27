@@ -599,6 +599,24 @@ add_test(NAME trainer_cache_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trainer_cache_source_contract_tests.cmake")
+# #356: class quest tools the quest path misses (shaman totems), [ClassGrant].
+add_executable(class_grant_policy_tests
+  "${PB_MODULE_DIR}/t/class_grant_policy_tests.cpp")
+
+target_include_directories(class_grant_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(class_grant_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME class_grant_policy
+  COMMAND class_grant_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME class_grant_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/class_grant_source_contract_tests.cmake")
 
 add_test(NAME persistent_roster_bag_source_contract
   COMMAND "${CMAKE_COMMAND}"
