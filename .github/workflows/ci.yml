@@ -189,6 +189,11 @@ jobs:
       # pch_defines means ccache will not notice a macro changing inside the
       # precompiled header itself, and that exposure is bounded by CI building a
       # fresh checkout every run with a cache that rotates per run.
+      # include_file_mtime,include_file_ctime (added 2026-09-27, twow-repo#319):
+      # the .gch is written by this same build, seconds before the TUs that
+      # -include it, so ccache's "include file too new" guard switched every one
+      # of those TUs out of direct mode. The guard protects against headers edited
+      # DURING a build; a CI checkout is never edited mid-build.
       #
       # Deliberately NOT keyed on a hashFiles() of this workflow, which is the
       # obvious thing to reach for and is wrong here twice over. ccache already
@@ -204,14 +209,23 @@ jobs:
       # then to any cache on this runner OS. That fallback is the difference
       # between a five-minute incremental and a cold build on every branch's
       # first push.
+      #
+      # Restore and save are split, and a pull_request run only RESTORES
+      # (twow-repo#319, OB-30 2026-09-27). With actions/cache@v4 every PR run
+      # wrote its own ~1.9 GB entry: on 2026-09-27 the repository held 13.2 GB
+      # in 8 entries against GitHub's 10 GB limit, so the main entry that every
+      # PR restores from was evicted within hours and runs sat at 5.8 % hits,
+      # ~60 minutes each. main (push), workflow_dispatch and the weekly schedule
+      # still save; a PR falls back to its own branch prefix (only ever written
+      # by a dispatch run on that branch) and then to main's.
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-trixie-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: |
             ccache-trixie-${{ github.ref_name }}-
-            ccache-trixie-
+            ccache-trixie-main-
 
       # A run-unique disposable MariaDB, the same way twow-repo's ci.yml runs
       # persistent_active_roster_database_tests: a plain `docker run -d`
@@ -294,8 +308,8 @@ jobs:
             -v "${{ github.workspace }}:/src" \
             -v "${{ github.workspace }}/.ccache:/ccache" \
             -e CCACHE_DIR=/ccache \
-            -e CCACHE_MAXSIZE=2G \
-            -e CCACHE_SLOPPINESS=pch_defines,time_macros \
+            -e CCACHE_MAXSIZE=3G \
+            -e CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime \
             -e DEBIAN_FRONTEND=noninteractive \
             -e CI_DB_PORT \
             -e MARIADB_ROOT_PASSWORD \
@@ -356,9 +370,16 @@ jobs:
               # build was already removed (see the note below it), so nothing here
               # contradicts a claim this job still makes. The MSVC job keeps its own
               # standalone assertion and is deliberately untouched.
+              #
+              # DEBUG_SYMBOLS=OFF (twow-repo#319, 2026-09-27). With -g the object
+              # tree is ~20 GB and did not fit the 2 GB ccache: the cache was full
+              # after a single build (2.0/2.0 GB) and evicted its own entries, so
+              # the next run hit 5.8 %. The binaries this job ships are stripped
+              # below anyway, so the symbols were compiled only to be thrown away.
               cmake -S /src -B /build -G Ninja \
                 -DMODULES=static \
                 -DCMAKE_BUILD_TYPE=Release \
+                -DDEBUG_SYMBOLS=OFF \
                 -DBUILD_TESTING=ON \
                 -DBUILD_PERSISTENT_ROSTER_ADAPTER_TESTS=ON \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -549,6 +570,17 @@ jobs:
       - name: Remove the disposable roster database
         if: always()
         run: docker rm -f "$CI_DB_CONTAINER" 2>/dev/null || true
+
+      # Save half of the split cache (see "Restore ccache"). Never on a pull
+      # request: those entries are what pushed the repository past its 10 GB
+      # cache limit. always() so a failed build still leaves its objects for the
+      # retry; the key is run-unique, so a save can never collide.
+      - name: Save ccache
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-trixie-${{ github.ref_name }}-${{ github.run_id }}
 
       # The build container cannot see $GITHUB_STEP_SUMMARY (a runner path), so
       # the warning step above writes its summary into the bind-mounted workspace.
