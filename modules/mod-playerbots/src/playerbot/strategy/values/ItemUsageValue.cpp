@@ -393,12 +393,9 @@ if ((proto->Class == ITEM_CLASS_PROJECTILE ||
                     currentAmmoProto = sObjectMgr.GetItemPrototype(currentAmmoId);
 
                 float betterAmmoStacks = BetterStacks(proto, "ammo"); // how much better ammo we have
-                // OB-10 train 6 (142 Crude Throwing Axes): the wanted stock is capped.
-                float needAmmo = ammo_stock::NeededStacks(bot->getClass() == CLASS_HUNTER,
-                    proto->Class == ITEM_CLASS_WEAPON, sPlayerbotAIConfig.ammoMaxStacks, sPlayerbotAIConfig.thrownMaxStacks);
-
-                if (ai->HasCheat(BotCheatMask::item))
-                    needAmmo = 1;
+                // OB-10 train 6 (142 Crude Throwing Axes) and owner decision
+                // 2026-09-27 (hunter tiers): the wanted stock is a count of items.
+                float needAmmo = float(AmmoTargetCount(ai, proto)) / float(std::max<uint32>(1, proto->GetMaxStackSize()));
 
                                     // fallback: equip any ammo if no ammo equipped
                 if (!currentAmmoId)
@@ -1156,6 +1153,56 @@ float ItemUsageValue::CurrentStacks(PlayerbotAI* ai, ItemPrototype const* proto)
     }
 
     return itemCount / maxStack;
+}
+
+uint32 ItemUsageValue::AmmoTargetCount(PlayerbotAI* ai, ItemPrototype const* proto)
+{
+    Player* bot = ai->GetBot();
+    bool const thrown = proto->Class == ITEM_CLASS_WEAPON && proto->SubClass == ITEM_SUBCLASS_WEAPON_THROWN;
+
+    ammo_stock::Settings settings;
+    settings.hunterTiers = sPlayerbotAIConfig.hunterAmmoTiers;
+    settings.hunterFillQuiver = sPlayerbotAIConfig.hunterAmmoFillQuiver;
+    settings.thrownMaxCount = sPlayerbotAIConfig.thrownMaxCount;
+
+    ammo_stock::Facts facts;
+    facts.hunter = bot->getClass() == CLASS_HUNTER;
+    facts.thrown = thrown;
+    facts.itemCheat = ai->HasCheat(BotCheatMask::item);
+    facts.level = bot->GetLevel();
+    facts.stackSize = proto->GetMaxStackSize();
+
+    // A quiver holds arrows, an ammo pouch bullets; only a fitting one is filled.
+    if (facts.hunter && !thrown && proto->Class == ITEM_CLASS_PROJECTILE)
+    {
+        uint32 const fitting = proto->SubClass == ITEM_SUBCLASS_ARROW ? ITEM_SUBCLASS_QUIVER : ITEM_SUBCLASS_AMMO_POUCH;
+        for (Bag* quiver : ai->GetEquippedQuivers())
+            if (quiver->GetProto()->SubClass == fitting)
+                facts.quiverCapacity += quiver->GetProto()->ContainerSlots * facts.stackSize;
+    }
+
+    return ammo_stock::TargetCount(settings, facts);
+}
+
+uint32 ItemUsageValue::AmmoCarriedCount(PlayerbotAI* ai, ItemPrototype const* proto)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    Player* bot = ai->GetBot();
+
+    // This ammo, counted live (equipped thrown stack included).
+    uint32 count = bot->GetItemCount(proto->ItemId);
+
+    // Plus better ammo of the same kind, as BetterStacks counts it.
+    for (Item* item : AI_VALUE2(std::list<Item*>, "inventory items", "ammo"))
+    {
+        ItemPrototype const* other = item->GetProto();
+        if (other->ItemId == proto->ItemId || other->Class != proto->Class || other->SubClass != proto->SubClass)
+            continue;
+        if (other->ItemLevel >= proto->ItemLevel)
+            count += item->GetCount();
+    }
+
+    return count;
 }
 
 float ItemUsageValue::BetterStacks(ItemPrototype const* proto, std::string itemType)

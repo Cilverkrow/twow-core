@@ -22,7 +22,7 @@ namespace ai
         static uint32 VendorGearAllowance(PlayerbotAI* ai);
 
     private:
-        bool BuyItem(Player* requester, VendorItemData const* tItems, ObjectGuid vendorguid, const ItemPrototype* proto, UsageBoughtList& bought, ItemUsage usage = ItemUsage::ITEM_USAGE_NONE);
+        bool BuyItem(Player* requester, VendorItemData const* tItems, ObjectGuid vendorguid, const ItemPrototype* proto, UsageBoughtList& bought, ItemUsage usage = ItemUsage::ITEM_USAGE_NONE, uint32 units = 1);
 
 #ifdef GenerateBotHelp
         virtual std::string GetHelpName() { return "buy"; } //Must equal iternal name

@@ -179,12 +179,21 @@ AiPlayerbot.VendorGear.ReserveCopper = 0
 AiPlayerbot.VendorGear.CooldownSeconds = 600
 AiPlayerbot.VendorGear.Trace = 0
 
-# Most stacks of arrows/bullets (hunters) and of thrown weapons (warriors,
-# rogues; the equipped stack counts) a bot buys up to. Without a cap the class
-# default applies: 8 stacks of ammo for a hunter, 2 stacks otherwise - a warrior
-# bought 142 Crude Throwing Axes in one train (OB-10). 0 = class default.
-AiPlayerbot.AmmoMaxStacks = 2
-AiPlayerbot.ThrownMaxStacks = 1
+# Ammo and thrown weapon stock, as item counts (OB-10 train 6, twow-repo#363).
+# Without a setting the class default applies: a hunter keeps 8 stacks of
+# arrows/bullets, warriors and rogues 2 stacks of thrown weapons (400 axes -
+# one warrior bought 142 Crude Throwing Axes one at a time in one train).
+#
+# HunterAmmoTiers: "maxLevel:count,..." target stock a hunter refills to, e.g.
+#   "10:400,30:800,50:1200"; above the last tier its count applies.
+# HunterAmmoFillQuiver: with a fitting quiver/ammo pouch equipped, fill it
+#   completely instead (slots x stack size).
+# ThrownMaxCount: most thrown weapons a warrior/rogue carries (equipped stack
+#   counts), e.g. 20. 0 = class default.
+# Missing ammo is bought in one vendor transaction per stack, not one by one.
+AiPlayerbot.HunterAmmoTiers =
+AiPlayerbot.HunterAmmoFillQuiver = 0
+AiPlayerbot.ThrownMaxCount = 0
 
 # Chance random bot has max level on first randomize (default 0.15)
 AiPlayerbot.RandomBotMaxLevelChance = 0.15

@@ -10,6 +10,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomItemMgr.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/AmmoStockPolicy.h"
 #include <ctime>
 
 using namespace ai;
@@ -269,10 +270,22 @@ bool BuyAction::Execute(Event& event)
                     if (usage == ItemUsage::ITEM_USAGE_SKILL && ItemUsageValue::CurrentStacks(ai, proto) >= 1)
                         break;
 
+                    // OB-10 train 6: missing ammo / thrown weapons in one transaction
+                    // (up to one stack), not one item per vendor call.
+                    uint32 units = 1;
+                    if (usage == ItemUsage::ITEM_USAGE_AMMO)
+                    {
+                        units = ammo_stock::PurchaseUnits(ItemUsageValue::AmmoTargetCount(ai, proto),
+                            ItemUsageValue::AmmoCarriedCount(ai, proto), proto->BuyCount, proto->GetMaxStackSize(),
+                            price, AI_VALUE2(uint32, "free money for", moneyKey));
+                        if (!units)
+                            break;
+                    }
+
                     bool didBuy = false;
-                    didBuy = BuyItem(requester, tItems, vendorguid, proto, bought, usage);
+                    didBuy = BuyItem(requester, tItems, vendorguid, proto, bought, usage, units);
                     if (!didBuy)
-                        didBuy = BuyItem(requester, vItems, vendorguid, proto, bought, usage);
+                        didBuy = BuyItem(requester, vItems, vendorguid, proto, bought, usage, units);
 
                     result |= didBuy;
                     if (!didBuy)
@@ -295,6 +308,8 @@ bool BuyAction::Execute(Event& event)
                     RESET_AI_VALUE2(ItemUsage, "item usage", tItem->item);
                     RESET_AI_VALUE2(std::list<Item*>, "inventory items", ChatHelper::formatItem(proto));
                     RESET_AI_VALUE(std::vector<MountValue>, "mount list");
+                    if (usage == ItemUsage::ITEM_USAGE_AMMO)
+                        RESET_AI_VALUE2(std::list<Item*>, "inventory items", "ammo");
 
                     if (usage == ItemUsage::ITEM_USAGE_EQUIP || usage == ItemUsage::ITEM_USAGE_BAD_EQUIP) //Equip upgrades and stop buying this time. 
                     {
@@ -396,7 +411,7 @@ bool BuyAction::Execute(Event& event)
     return result;
 }
 
-bool BuyAction::BuyItem(Player* requester, VendorItemData const* tItems, ObjectGuid vendorguid, const ItemPrototype* proto, UsageBoughtList& bought, ItemUsage usage)
+bool BuyAction::BuyItem(Player* requester, VendorItemData const* tItems, ObjectGuid vendorguid, const ItemPrototype* proto, UsageBoughtList& bought, ItemUsage usage, uint32 units)
 {
     uint32 oldCount = AI_VALUE2(uint32, "item count", proto->Name1);
 
@@ -415,16 +430,17 @@ bool BuyAction::BuyItem(Player* requester, VendorItemData const* tItems, ObjectG
             }
 
 #ifdef MANGOSBOT_TWO
-            bot->BuyItemFromVendorSlot(vendorguid, slot, itemId, 1, NULL_BAG, NULL_SLOT);
+            bot->BuyItemFromVendorSlot(vendorguid, slot, itemId, uint8(units), NULL_BAG, NULL_SLOT);
 #else
-            bot->BuyItemFromVendor(vendorguid, itemId, 1, NULL_BAG, NULL_SLOT);
+            bot->BuyItemFromVendor(vendorguid, itemId, uint8(units), NULL_BAG, NULL_SLOT);
 #endif
             if (ai->HasCheat(BotCheatMask::gold))
             {
                 bot->SetMoney(botMoney);
             }
 
-            if (oldCount < AI_VALUE2(uint32, "item count", proto->Name1)) //BuyItem Always returns false (unless unique) so we have to check the item counts.
+            uint32 const newCount = AI_VALUE2(uint32, "item count", proto->Name1);
+            if (oldCount < newCount) //BuyItem Always returns false (unless unique) so we have to check the item counts.
             {
                 sPlayerbotAIConfig.logEvent(ai, "BuyAction", proto->Name1, std::to_string(proto->ItemId));
 
@@ -446,7 +462,7 @@ bool BuyAction::BuyItem(Player* requester, VendorItemData const* tItems, ObjectG
                 }
                 else
                 {
-                    bought[usage][proto->ItemId]++;
+                    bought[usage][proto->ItemId] += units > 1 ? newCount - oldCount : 1;
                 }
                 return true;
             }

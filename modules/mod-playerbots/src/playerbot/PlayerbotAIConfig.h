@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AmmoStockPolicy.h"
 #include <unordered_set>
 #include "Config/Config.h"
 #include "Talentspec.h"
@@ -182,9 +183,11 @@ public:
     uint32 vendorGearReserveCopper = 0;
     uint32 vendorGearCooldownSeconds = 600;
     bool vendorGearTrace = false;
-    // OB-10 train 6: most stacks of ammo / thrown weapons a bot keeps (0 = class default).
-    uint32 ammoMaxStacks = 2;
-    uint32 thrownMaxStacks = 1;
+    // OB-10 train 6 / twow-repo#363: ammo and thrown weapon stock as item counts.
+    // Empty / 0 = class default (hunter 8 stacks, otherwise 2 stacks).
+    std::vector<ai::ammo_stock::Tier> hunterAmmoTiers;
+    bool hunterAmmoFillQuiver = false;
+    uint32 thrownMaxCount = 0;
     float randomBotMaxLevelChance;
     float randomBotRaceVariantChance;
     float randomBotRpgChance;

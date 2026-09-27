@@ -239,8 +239,9 @@ bool PlayerbotAIConfig::Initialize()
     vendorGearReserveCopper = (uint32)config.GetIntDefault("AiPlayerbot.VendorGear.ReserveCopper", 0);
     vendorGearCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.VendorGear.CooldownSeconds", 600);
     vendorGearTrace = config.GetBoolDefault("AiPlayerbot.VendorGear.Trace", false);
-    ammoMaxStacks = (uint32)config.GetIntDefault("AiPlayerbot.AmmoMaxStacks", 2);
-    thrownMaxStacks = (uint32)config.GetIntDefault("AiPlayerbot.ThrownMaxStacks", 1);
+    hunterAmmoTiers = ai::ammo_stock::ParseTiers(config.GetStringDefault("AiPlayerbot.HunterAmmoTiers", ""));
+    hunterAmmoFillQuiver = config.GetBoolDefault("AiPlayerbot.HunterAmmoFillQuiver", false);
+    thrownMaxCount = (uint32)config.GetIntDefault("AiPlayerbot.ThrownMaxCount", 0);
     randomBotRpgChance = config.GetFloatDefault("AiPlayerbot.RandomBotRpgChance", 0.35f);
     usePotionChance = config.GetFloatDefault("AiPlayerbot.UsePotionChance", 1.0f);
     attackEmoteChance = config.GetFloatDefault("AiPlayerbot.AttackEmoteChance", 0.0f);
