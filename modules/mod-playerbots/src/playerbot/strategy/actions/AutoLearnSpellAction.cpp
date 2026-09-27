@@ -4,8 +4,72 @@
 #include "playerbot/ServerFacade.h"
 #include "Objects/Item.h"
 #include <Mail/Mail.h>
+#include "playerbot/PlayerbotAIConfig.h"
+#include <array>
+#include <mutex>
+#include <vector>
 
 using namespace ai;
+
+namespace
+{
+// #351 (train 6 tick regression): every level-up and every login scanned all
+// creature entries (up to six passes) and all quest templates. After an L1
+// reset 154 bots levelled 100-290 times an hour. The class and pet trainers
+// and the class quests are static after load, so they are collected once per
+// class - in the same ascending entry order the fixpoint loop relies on.
+struct ClassLearnCache
+{
+    std::vector<CreatureInfo const*> trainers;
+    std::vector<std::pair<uint32, Quest const*>> quests;
+};
+
+ClassLearnCache const& LearnCacheFor(uint8 cls)
+{
+    static std::array<ClassLearnCache, MAX_CLASSES> caches;
+    static std::array<std::once_flag, MAX_CLASSES> built;
+    static ClassLearnCache const empty;
+    if (cls == 0 || cls >= MAX_CLASSES)
+        return empty;
+
+    std::call_once(built[cls], [cls]()
+    {
+        uint32 const started = WorldTimer::getMSTime();
+        ClassLearnCache& cache = caches[cls];
+        for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
+        {
+            CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id);
+            if (!co)
+                continue;
+            // Profession purchases are deliberately routed only through the
+            // plan-aware action. Keep automatic learning for class and pet
+            // trainers intact, but never turn the generic autolearn pass into a
+            // tradeskill trainer bypass.
+            if (co->TrainerType != TRAINER_TYPE_CLASS && co->TrainerType != TRAINER_TYPE_PETS)
+                continue;
+            if (co->TrainerType == TRAINER_TYPE_PETS && cls == CLASS_HUNTER)
+                continue;
+            if (co->TrainerClass != cls)
+                continue;
+            cache.trainers.push_back(co);
+        }
+        uint32 const scanMs = WorldTimer::getMSTimeDiff(started, WorldTimer::getMSTime());
+
+        uint32 const classMask = 1 << (cls - 1);
+        for (auto const& [questId, quest] : sObjectMgr.GetQuestTemplates())
+        {
+            if (!quest->GetRequiredClasses() || quest->IsRepeatable() || !(quest->GetRequiredClasses() & classMask))
+                continue;
+            cache.quests.emplace_back(questId, quest.get());
+        }
+
+        // One full creature scan is what every trainer pass cost before.
+        sLog.outBasic("[AutoLearn] cache class=%u trainers=%u quests=%u full_scan_ms=%u (per pass, before #351)",
+            uint32(cls), uint32(cache.trainers.size()), uint32(cache.quests.size()), scanMs);
+    });
+    return caches[cls];
+}
+}
 
 bool AutoLearnSpellAction::Execute(Event& event)
 {
@@ -36,6 +100,9 @@ void AutoLearnSpellAction::LearnSpells(std::ostringstream* out)
 {
     BroadcastHelper::BroadcastLevelup(ai, bot);
 
+    uint32 const learnStarted = WorldTimer::getMSTime();
+    uint32 trainerPasses = 0;
+
     if (sPlayerbotAIConfig.autoLearnQuestSpells)
         LearnQuestSpells(out);
 
@@ -49,6 +116,7 @@ void AutoLearnSpellAction::LearnSpells(std::ostringstream* out)
         // level-34 ones on rank 5). Repeat while a pass still learns something.
         for (int pass = 0; pass < 6; ++pass)
         {
+            ++trainerPasses;
             size_t const before = bot->GetSpellMap().size();
             LearnTrainerSpells(out);
             if (bot->GetSpellMap().size() == before)
@@ -60,6 +128,12 @@ void AutoLearnSpellAction::LearnSpells(std::ostringstream* out)
     if (sPlayerbotAIConfig.autoLearnDroppedSpells)
         LearnDroppedSpells(out);
 #endif
+
+    // #351: cost of one level-up / login pass, for the before/after comparison.
+    if (sPlayerbotAIConfig.autoLearnTimingTrace)
+        sLog.outBasic("[AutoLearn] timing bot=%u level=%u class=%u ms=%u trainer_passes=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(bot->getClass()),
+            WorldTimer::getMSTimeDiff(learnStarted, WorldTimer::getMSTime()), trainerPasses);
 
     if (!ai->HasActivePlayerMaster()) //Hunter spells for pets.
     {
@@ -80,28 +154,9 @@ void AutoLearnSpellAction::LearnTrainerSpells(std::ostringstream* out)
 {
     bot->learnDefaultSpells();
 
-    for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
+    // #351: cached class and pet trainers (tradeskill trainers never included).
+    for (CreatureInfo const* co : LearnCacheFor(bot->getClass()).trainers)
     {
-        CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id);
-        if (!co)
-            continue;
-
-        // Profession purchases are deliberately routed only through the
-        // plan-aware action. Keep automatic learning for class and pet
-        // trainers intact, but never turn the generic autolearn pass into a
-        // tradeskill trainer bypass.
-        if (co->TrainerType == TRAINER_TYPE_TRADESKILLS)
-            continue;
-
-        if (co->TrainerType != TRAINER_TYPE_CLASS && 
-            co->TrainerType != TRAINER_TYPE_PETS)
-            continue;
-
-        if (co->TrainerType == TRAINER_TYPE_PETS && bot->getClass() == CLASS_HUNTER)
-            continue;
-
-        if ((co->TrainerType == TRAINER_TYPE_CLASS || co->TrainerType == TRAINER_TYPE_PETS) && co->TrainerClass != bot->getClass())
-            continue;
 
         uint32 trainerId = co->TrainerTemplateId;
         if (!trainerId)
@@ -181,14 +236,9 @@ void AutoLearnSpellAction::LearnTrainerSpells(std::ostringstream* out)
 
 void AutoLearnSpellAction::LearnQuestSpells(std::ostringstream* out)
 {
-    ObjectMgr::QuestMap const& questTemplates = sObjectMgr.GetQuestTemplates();
-    for (ObjectMgr::QuestMap::const_iterator i = questTemplates.begin(); i != questTemplates.end(); ++i)
+    // #351: cached class quests (RequiredClasses matching, not repeatable).
+    for (auto const& [questId, quest] : LearnCacheFor(bot->getClass()).quests)
     {
-        uint32 questId = i->first;
-        Quest const* quest = i->second.get();
-
-        if (!quest->GetRequiredClasses() || quest->IsRepeatable())
-            continue;
 
         if (!bot->SatisfyQuestClass(quest, false) ||
             quest->GetMinLevel() > bot->GetLevel() ||

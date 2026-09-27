@@ -413,6 +413,7 @@ public:
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;
     bool autoLearnDroppedSpells;
+    bool autoLearnTimingTrace = false;   // #351: [AutoLearn] timing per level-up/login
     bool autoDoQuests;
     bool syncLevelWithPlayers;
     uint32 syncLevelMaxAbove, syncLevelNoPlayer;
