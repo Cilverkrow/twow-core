@@ -105,8 +105,8 @@ endforeach()
 # Ten named formations in the menu (owner concept).
 string(REGEX MATCHALL "\"formation [a-z]+\"" menu_formations "${lua}")
 list(LENGTH menu_formations formation_count)
-if(NOT formation_count EQUAL 10)
-  message(FATAL_ERROR "Expected 10 formations in the menu, found ${formation_count}")
+if(NOT formation_count EQUAL 16)
+  message(FATAL_ERROR "Expected 16 formations in the menu (#389), found ${formation_count}")
 endif()
 
 message(STATUS "BOTMENU_ADDON_CONTRACT=PASS entries=${entry_count}")

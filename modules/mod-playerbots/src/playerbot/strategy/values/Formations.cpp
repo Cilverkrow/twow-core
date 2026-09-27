@@ -1,11 +1,10 @@
-
 #include "playerbot/playerbot.h"
 #include "Formations.h"
 
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/PositionValue.h"
 #include "Arrow.h"
-#include "playerbot/SpearFormationPolicy.h"
+#include "playerbot/FormationGridPolicy.h"
 
 #include <algorithm>
 
@@ -407,13 +406,14 @@ namespace ai
         virtual float GetOffset() override { return ai->GetRange("follow"); }
     };
 
-    // #290: "spear" (wedge). The follow target is the tip; the group forms a V
-    // behind it - tanks in the front ranks, then melee, ranged, healers last.
-    // Unlike "arrow" (role rows), every member keeps a slot on the V's legs.
-    class SpearFormation : public MoveFormation
+    // #389 formations v2: filled slot grids for up to 40 bots with their own
+    // spacing (AiPlayerbot.Formation.Spacing) and a cap - 15 yd around the
+    // leader for the circle, 30 yd for the other shapes (owner 2026-09-27).
+    // Slots are filled in role order: tanks, melee, ranged, healers.
+    class GridFormation : public MoveFormation
     {
     public:
-        SpearFormation(PlayerbotAI* ai) : MoveFormation(ai, "spear") {}
+        GridFormation(PlayerbotAI* ai, std::string name, formation_grid::Shape shape) : MoveFormation(ai, name), shape(shape) {}
         virtual WorldLocation GetLocation() override
         {
             Player* followTarget = (Player*)AI_VALUE(Unit*, "follow target");
@@ -442,35 +442,51 @@ namespace ai
             else
                 melee.push_back(bot);
 
-            std::vector<Player*> slots;
+            std::vector<Player*> order;
             for (std::vector<Player*>* role : { &tanks, &melee, &ranged, &heals })
-                slots.insert(slots.end(), role->begin(), role->end());
+                order.insert(order.end(), role->begin(), role->end());
 
-            auto it = std::find(slots.begin(), slots.end(), bot);
-            if (it == slots.end())
+            auto it = std::find(order.begin(), order.end(), bot);
+            if (it == order.end())
                 return Formation::NullLocation;
 
-            spear_formation::Offset const offset = spear_formation::SlotOffset(uint32(it - slots.begin()), ai->GetRange("follow"));
-            float const o = followTarget->GetOrientation();
-            float x = followTarget->GetPositionX() + cos(o) * offset.forward + cos(o + M_PI_F / 2.0f) * offset.side;
-            float y = followTarget->GetPositionY() + sin(o) * offset.forward + sin(o + M_PI_F / 2.0f) * offset.side;
-            float z = followTarget->GetPositionZ();
+            std::vector<formation_grid::Offset> const slots = formation_grid::Slots(shape, uint32(order.size()),
+                sPlayerbotAIConfig.formationSpacing,
+                formation_grid::MaxExtentFor(shape, sPlayerbotAIConfig.formationCircleMaxRadius, sPlayerbotAIConfig.formationMaxExtent));
+            size_t const index = size_t(it - order.begin());
+            if (index >= slots.size())
+                return Formation::NullLocation;
+
+            // A slot inside a wall or over a drop is pulled halfway to the
+            // leader once before the bot falls back to plain following.
+            for (float pull : { 1.0f, 0.5f })
+            {
+                formation_grid::Offset const offset = slots[index];
+                float const o = followTarget->GetOrientation();
+                float x = followTarget->GetPositionX() + (cos(o) * offset.forward + cos(o + M_PI_F / 2.0f) * offset.side) * pull;
+                float y = followTarget->GetPositionY() + (sin(o) * offset.forward + sin(o + M_PI_F / 2.0f) * offset.side) * pull;
+                float z = followTarget->GetPositionZ();
 
 #ifdef MANGOSBOT_TWO
-            float ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z);
+                float ground = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, z);
 #else
-            float ground = bot->GetMap()->GetHeight(x, y, z);
+                float ground = bot->GetMap()->GetHeight(x, y, z);
 #endif
-            if (ground <= INVALID_HEIGHT)
-                return Formation::NullLocation;
+                if (ground <= INVALID_HEIGHT || std::fabs(ground - z) > 5.0f)
+                    continue;
 
-            if (!bot->IsFlying() && !bot->IsFreeFlying())
-            {
-                z += CONTACT_DISTANCE;
-                bot->UpdateAllowedPositionZ(x, y, z);
+                if (!bot->IsFlying() && !bot->IsFreeFlying())
+                {
+                    z += CONTACT_DISTANCE;
+                    bot->UpdateAllowedPositionZ(x, y, z);
+                }
+                return WorldLocation(bot->GetMapId(), x, y, z);
             }
-            return WorldLocation(bot->GetMapId(), x, y, z);
+            return Formation::NullLocation;
         }
+
+    private:
+        formation_grid::Shape shape;
     };
 
     class CustomFormation : public MoveAheadFormation
@@ -646,10 +662,41 @@ bool FormationValue::Load(std::string formation)
         if (value) delete value;
         value = new ArrowFormation(ai);
     }
+    // #389 formations v2 (owner 2026-09-27): filled grids, thematic aliases.
     else if (formation == "spear" || formation == "wedge")
     {
         if (value) delete value;
-        value = new SpearFormation(ai);
+        value = new GridFormation(ai, "spear", formation_grid::Shape::WEDGE);
+    }
+    else if (formation == "ring" || formation == "schutzring")
+    {
+        if (value) delete value;
+        value = new GridFormation(ai, "ring", formation_grid::Shape::CIRCLE);
+    }
+    else if (formation == "vanguard" || formation == "vorhut")
+    {
+        if (value) delete value;
+        value = new GridFormation(ai, "vanguard", formation_grid::Shape::VANGUARD);
+    }
+    else if (formation == "rearguard" || formation == "nachhut")
+    {
+        if (value) delete value;
+        value = new GridFormation(ai, "rearguard", formation_grid::Shape::REARGUARD);
+    }
+    else if (formation == "triangle" || formation == "dreieck")
+    {
+        if (value) delete value;
+        value = new GridFormation(ai, "triangle", formation_grid::Shape::TRIANGLE);
+    }
+    else if (formation == "block" || formation == "rectangle")
+    {
+        if (value) delete value;
+        value = new GridFormation(ai, "block", formation_grid::Shape::BLOCK);
+    }
+    else if (formation == "column" || formation == "kolonne")
+    {
+        if (value) delete value;
+        value = new GridFormation(ai, "column", formation_grid::Shape::COLUMN);
     }
     else if (formation == "near" || formation == "default")
     {
@@ -705,7 +752,7 @@ bool SetFormationAction::Execute(Event& event)
     {
         std::ostringstream str; str << "Invalid formation: |cffff0000" << formation;
         ai->TellPlayer(requester, str);
-        ai->TellPlayer(requester, "Please set to any of:|cffffffff near, queue, chaos, circle, line, shield, arrow, spear, melee, far, default");
+        ai->TellPlayer(requester, "Please set to any of:|cffffffff near, queue, chaos, circle, line, shield, arrow, spear, melee, far, ring, vanguard, rearguard, triangle, block, column, default");
         return false;
     }
 

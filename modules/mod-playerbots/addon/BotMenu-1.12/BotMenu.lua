@@ -35,6 +35,12 @@ BOTMENU_CATEGORIES = {
 		{ "Chaos",               "formation chaos" },
 		{ "Weit",                "formation far" },
 		{ "Schild",              "formation shield" },
+		{ "Schutzring (voll)",   "formation ring" },
+		{ "Vorhut (Halbring vorn)",   "formation vanguard" },
+		{ "Nachhut (Halbring hinten)", "formation rearguard" },
+		{ "Dreieck",             "formation triangle" },
+		{ "Block",               "formation block" },
+		{ "Kolonne",             "formation column" },
 		{ "Welche Formation?",   "formation ?" },
 	} },
 	{ label = "Beute", menu = "BotMenuLoot", entries = {

@@ -480,6 +480,10 @@ public:
     // #303 part 2: a bot does not walk more than this far to a real-player
     // master (0 = no limit); beyond it the bot waits and asks to be summoned.
     float farFollowMaxWalkDistance = 400.0f;
+    // #389 formations v2: slot spacing and caps (owner 2026-09-27).
+    float formationSpacing = 2.0f;
+    float formationCircleMaxRadius = 15.0f;
+    float formationMaxExtent = 30.0f;
     // A completed persistent-roster turn-in is progress-observed rather than
     // bounded by the generic distance-derived travel wall clock.
     uint32 questFirstProgressionTurnInStallSeconds = 300;

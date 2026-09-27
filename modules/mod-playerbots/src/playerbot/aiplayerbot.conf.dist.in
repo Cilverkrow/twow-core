@@ -542,6 +542,13 @@ AiPlayerbot.FollowDiagnostics = 0
 # master; beyond it the bot keeps its own activity and asks to be summoned
 # ("far_follow_hold"). 0 = no limit (old behaviour: walk any distance).
 AiPlayerbot.FarFollowMaxWalkDistance = 400
+# #389 formations v2 (ring, vanguard/vorhut, rearguard/nachhut, spear/wedge,
+# triangle/dreieck, block, column/kolonne): distance between two slots in yards,
+# the cap around the leader for "ring", and the total extent of the other
+# grid shapes. Larger groups are compressed to fit the cap. 0 disables a cap.
+AiPlayerbot.Formation.Spacing = 2.0
+AiPlayerbot.Formation.CircleMaxRadius = 15.0
+AiPlayerbot.Formation.MaxExtent = 30.0
 # Completed persistent-roster turn-ins use observed movement progress instead
 # of a fixed overall travel duration. Stall recovery is route-local and never
 # teleports, removes quests or changes generic travel behaviour.
