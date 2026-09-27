@@ -1000,6 +1000,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_boss_chest_bonus_contract.cmake")
+  # twow-repo#379: the dwarf shaman may learn the three Horde shaman racials, nothing more.
+  add_test(NAME dwarf_shaman_racials_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_dwarf_shaman_racials_contract.cmake")
   # twow-repo#348: owner-decided quest completion summons (void lord, Azuregos, Peroth'arn).
   add_test(NAME quest_end_summons_contract
     COMMAND "${CMAKE_COMMAND}"

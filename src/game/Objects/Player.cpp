@@ -21881,6 +21881,27 @@ float Player::GetReputationPriceDiscount(Creature const* pCreature) const
                     if arg not provided then considered train action mode and level checked
  * @return          true if spell available for show in trainer list (with skip level check) or training.
  */
+// twow-repo#379 (owner decision 2026-09-27): the dwarf shaman stands alone for the
+// Alliance and may learn all three Horde shaman racial abilities, which the DBC
+// race-masks to their race: Hex (troll), Feral Spirit (orc, two ranks) and
+// Ethereal Form (tauren). Nothing else changes for any race or class.
+static bool IsDwarfShamanHordeRacial(uint8 race, uint8 playerClass, uint32 spellId)
+{
+    if (race != RACE_DWARF || playerClass != CLASS_SHAMAN)
+        return false;
+
+    switch (spellId)
+    {
+        case 45504:     // Hex (troll)
+        case 45505:     // Feral Spirit (orc)
+        case 45514:     // Feral Spirit (orc, rank 2)
+        case 45502:     // Ethereal Form (tauren)
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool Player::IsSpellFitByClassAndRace(uint32 spell_id, uint32* pReqlevel /*= nullptr*/) const
 {
     uint32 racemask = GetRaceMask();
@@ -21890,11 +21911,13 @@ bool Player::IsSpellFitByClassAndRace(uint32 spell_id, uint32* pReqlevel /*= nul
     if (bounds.first == bounds.second)
         return true;
 
+    bool const hordeRacialForDwarfShaman = IsDwarfShamanHordeRacial(GetRace(), GetClass(), spell_id);
+
     for (SkillLineAbilityMap::const_iterator _spell_idx = bounds.first; _spell_idx != bounds.second; ++_spell_idx)
     {
         SkillLineAbilityEntry const* abilityEntry = _spell_idx->second;
         // skip wrong race skills
-        if (abilityEntry->racemask && (abilityEntry->racemask & racemask) == 0)
+        if (abilityEntry->racemask && (abilityEntry->racemask & racemask) == 0 && !hordeRacialForDwarfShaman)
             continue;
 
         // skip wrong class skills
