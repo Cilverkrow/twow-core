@@ -411,6 +411,9 @@ namespace ai
         // #307: only a target the bot is still travelling to or working at.
         bool IsActiveForDeathAttribution() const;
         bool IsDestinationDeathSuppressed(TravelDestination const* destination) const;
+        // #307 zone escape: the destination that led into a zone clearly above
+        // the bot's level is skipped like a death-suppressed one.
+        void SuppressCurrentDestination(uint32 durationMs);
 	private:
         // #329: one visible [QuestCommit] line per commitment change of a
         // roster bot's quest target, throttled per event, reason and target.

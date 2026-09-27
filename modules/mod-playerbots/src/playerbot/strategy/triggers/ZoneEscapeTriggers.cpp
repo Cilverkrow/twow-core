@@ -25,7 +25,9 @@ zone_escape::Facts ai::GatherZoneEscapeFacts(PlayerbotAI* ai)
     // A sub-area without a level of its own takes its parent zone's level.
     facts.areaLevel = uint32(std::max<int32>(0, WorldPosition(bot).getAreaLevelOrParent()));
     facts.botLevel = bot->GetLevel();
-    facts.inRestArea = bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING);
+    // Capitals count as rest areas even outside the resting spots (train 6:
+    // an L1 bot in Stormwind, area level 10, hearthed out of the city).
+    facts.inRestArea = bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING) || WorldPosition(bot).HasAreaFlag(AREA_FLAG_CAPITAL);
     // Hearthing would not leave the zone anyway, and the start zone is where
     // a low-level bot belongs (train 5: L2 bot in a Durotar sub-area of level 8).
     WorldPosition const bind = AI_VALUE(WorldPosition, "home bind");
@@ -37,6 +39,9 @@ zone_escape::Facts ai::GatherZoneEscapeFacts(PlayerbotAI* ai)
         zone_escape::IntervalSeconds(lastStep, sPlayerbotAIConfig.zoneEscapeCooldownSeconds, sPlayerbotAIConfig.zoneEscapeRetrySeconds);
     // "hearthstone" is only useful when it is ready and its bind zone is not
     // itself clearly above the bot's level (#129).
+    facts.threatened = !AI_VALUE(std::list<ObjectGuid>, "attackers").empty() ||
+        !ai->GetAllHostileNPCNonPetUnitsAroundWO(bot, 30.0f).empty();
+    facts.failedHearths = uint32(std::max(0, AI_VALUE2(int, "manual int", "zone escape fails")));
     facts.hearthUsable = AI_VALUE2(bool, "action useful", "hearthstone");
     facts.hearthOnCooldown = !facts.hearthUsable && bot->HasItemCount(6948, 1) && !AI_VALUE2(bool, "spell ready", 8690) &&
         !homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, bind.getAreaLevel())), facts.botLevel);
@@ -48,5 +53,16 @@ bool ZoneEscapeTrigger::IsActive()
     if (!sPlayerbotAIConfig.zoneEscapeEnabled)
         return false;
 
-    return zone_escape::Decide(GatherZoneEscapeFacts(ai)).step != zone_escape::Step::None;
+    zone_escape::Facts const facts = GatherZoneEscapeFacts(ai);
+    zone_escape::Decision const decision = zone_escape::Decide(facts);
+
+    // Out of the zone again (or never needed): the attempt count starts over.
+    if (facts.failedHearths && decision.step == zone_escape::Step::None && std::string(decision.reason) != "cooldown" &&
+        std::string(decision.reason) != "threatened")
+    {
+        AiObjectContext* context = ai->GetAiObjectContext();
+        SET_AI_VALUE2(int, "manual int", "zone escape fails", 0);
+    }
+
+    return decision.step != zone_escape::Step::None;
 }

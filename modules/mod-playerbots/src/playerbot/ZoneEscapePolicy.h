@@ -32,6 +32,8 @@ struct Facts
     bool due = false;              // interval since the last escape attempt is over
     bool hearthUsable = false;     // hearthstone ready and its bind zone suits the bot
     bool hearthOnCooldown = false; // hearthstone carried, bind zone fine, spell not ready yet
+    bool threatened = false;       // attackers or a hostile mob within 30 yd: fight first
+    std::uint32_t failedHearths = 0; // hearthstone attempts that left the bot in the zone
     std::uint32_t areaLevel = 0;
     std::uint32_t botLevel = 0;
 };
@@ -41,6 +43,10 @@ struct Decision
     Step step = Step::None;
     char const* reason = "not_applicable";
 };
+
+// After this many hearthstone attempts that did not leave the zone the bot
+// walks instead (new level-appropriate target, full cooldown).
+constexpr std::uint32_t MaxHearthAttempts = 3;
 
 // A hearthstone attempt that left the bot in the zone (cast interrupted, train 5:
 // Carler) is retried soon; everything else waits the full cooldown.
@@ -59,14 +65,20 @@ inline Decision Decide(Facts const& facts)
         return { Step::None, "rest_area" };
     if (facts.inHomeZone)
         return { Step::None, "home_zone" };
+    // Train 6: a bot revived at a spirit healer started the 10 s cast among
+    // mobs, did not defend itself and died again every minute.
+    if (facts.threatened)
+        return { Step::None, "threatened" };
     // Train 5: waiting beats a new local target, which was the next lake the
     // bot died at (Hodelin: 5 deaths in 7 minutes).
     if (facts.hearthOnCooldown)
         return { Step::Wait, "hearth_cooldown" };
     if (!facts.due)
         return { Step::None, "cooldown" };
-    if (facts.hearthUsable)
+    if (facts.hearthUsable && facts.failedHearths < MaxHearthAttempts)
         return { Step::Hearth, "zone_above_level" };
+    if (facts.hearthUsable)
+        return { Step::Travel, "hearth_failed_3x" };
     return { Step::Travel, "no_hearthstone" };
 }
 }
