@@ -702,6 +702,14 @@ add_test(NAME quest_catchup_source_contract
     "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
     -P "${PB_MODULE_DIR}/t/quest_catchup_source_contract_tests.cmake")
 
+# #379: the factory's race/class allow-list (incl. dwarf shaman, undead paladin),
+# backed by playercreateinfo data, and a group fill that asks the factory.
+add_test(NAME race_class_availability_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+    -P "${PB_MODULE_DIR}/t/race_class_availability_source_contract_tests.cmake")
+
 # #275: `talk N` runs exactly the displayed gossip option (innkeeper bind via
 # the client's Core handler) and never falls back to another option.
 add_test(NAME gossip_select_source_contract

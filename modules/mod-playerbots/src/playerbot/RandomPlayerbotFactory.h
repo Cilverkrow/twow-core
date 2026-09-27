@@ -82,6 +82,8 @@ class RandomPlayerbotFactory
         static bool isAvailableRole(uint8 cls, BotRoles role = BotRoles::BOT_ROLE_NONE);
         uint8 GetRandomClass(uint8 race = 0, BotRoles role = BotRoles::BOT_ROLE_NONE);
         static bool isRaceForTeam(uint8 race, Team team = Team::TEAM_BOTH_ALLOWED);
+        // True when at least one race of the team may be this class (twow-repo#379).
+        static bool isClassForTeam(uint8 cls, Team team);
         uint8 GetRandomRace(uint8 cls, Team team = Team::TEAM_BOTH_ALLOWED);
         static std::string CreateRandomBotName(NameRaceAndGender raceAndGender);
         static void EnsureNamesInitialized();
