@@ -35,7 +35,7 @@ foreach (forbidden "UPDATE " "DELETE " "REPLACE " "creature_loot_template" "INSE
   forbid_text("${without_temp_update}" "${forbidden}" "#348 scope")
 endforeach()
 # twow-repo#348 round 2: scripted split encounter; only 65201/65202 templates are touched.
-file(READ "${TW_CORE_ROOT}/sql/database_updates/20260927120000_world.sql" m2)
+file(READ "${TW_CORE_ROOT}/sql/database_updates/20260927130000_world.sql" m2)
 foreach (required "SET scale = 4.5, script_name = 'boss_twisting_rift_voidlord'" "WHERE entry = 65201;" "entry = 65202, script_name = 'npc_twisting_rift_voidsplit', loot_id = 0" "INSERT IGNORE INTO creature_template SELECT * FROM tw_348_void_split;")
   require_text("${m2}" "${required}" "#348 round 2 migration")
 endforeach()
