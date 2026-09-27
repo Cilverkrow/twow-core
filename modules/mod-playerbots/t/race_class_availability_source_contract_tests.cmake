@@ -84,16 +84,16 @@ set(expected
   1,2 3,2 10,2 5,2
   # rogue
   1,4 3,4 4,4 7,4 2,4 5,4 8,4 9,4 10,4
-  # priest
-  1,5 3,5 4,5 8,5 5,5 10,5
-  # mage
-  1,8 7,8 5,8 8,8 9,8 10,8
-  # warlock
-  1,9 7,9 5,9 2,9 9,9
+  # priest, incl. #379 follow-up tauren priest
+  1,5 3,5 4,5 8,5 5,5 10,5 6,5
+  # mage, incl. #379 follow-up orc and dwarf mage
+  1,8 7,8 5,8 8,8 9,8 10,8 2,8 3,8
+  # warlock, incl. #379 follow-up dwarf and troll warlock
+  1,9 7,9 5,9 2,9 9,9 3,9 8,9
   # shaman, incl. #379 dwarf shaman
   2,7 6,7 8,7 3,7
-  # hunter
-  1,3 3,3 4,3 2,3 6,3 8,3 9,3 10,3
+  # hunter, incl. #379 follow-up undead and gnome hunter
+  1,3 3,3 4,3 2,3 6,3 8,3 9,3 10,3 5,3 7,3
   # druid
   4,11 6,11)
 string(REPLACE " " ";" expected "${expected}")
