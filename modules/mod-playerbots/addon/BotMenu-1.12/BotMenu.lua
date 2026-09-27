@@ -8,7 +8,7 @@
 --
 -- Lua 5.0 / 1.12 client: no '#', no '%', handlers read `this`, no SetSize.
 
-BOTMENU_VERSION = "1.0";
+BOTMENU_VERSION = "1.1";
 
 -- Categories in menu order. `menu` is the frame from BotMenu.xml; each entry
 -- is { label, command }. Commands are the playerbot chat commands verified in
@@ -62,6 +62,20 @@ BOTMENU_CATEGORIES = {
 	{ label = "Gruppe", menu = "BotMenuGroup", entries = {
 		{ "Herbeirufen",         "summon" },
 		{ "Wegschicken",         "leave" },
+	} },
+	-- Owner request after the train 6 acceptance: NPC actions without typing.
+	-- Select the NPC first; the bot must stand next to it. Entries ending in a
+	-- space wait for a shift-clicked item link.
+	{ label = "Händler & NPC", menu = "BotMenuNpc", entries = {
+		{ "Mit NPC sprechen",    "talk" },
+		{ "Option 1",            "talk 1" },
+		{ "Option 2",            "talk 2" },
+		{ "Option 3",            "talk 3" },
+		{ "Hier wohnen",         "home" },
+		{ "Reparieren",          "repair" },
+		{ "Graues verkaufen",    "s" },
+		{ "Verkaufen...",        "s " },
+		{ "Kaufen...",           "b " },
 	} },
 };
 
