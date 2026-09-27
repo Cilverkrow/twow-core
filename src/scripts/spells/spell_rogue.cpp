@@ -1,5 +1,6 @@
 #include "scriptPCH.h"
 #include "ThreatManager.h"
+#include "DBCStores.h"
 
 namespace
 {
@@ -23,7 +24,45 @@ enum RogueSpells
     SPELL_ROGUE_CLOAKED_IN_SHADOWS_R2         = 52709,
     SPELL_ROGUE_SHADOW_OF_DEATH               = 52710,
     SPELL_ROGUE_SHADOW_OF_DEATH_DAMAGE        = 52711,
+
+    // twow-repo#367 rogue tank (bots only in release train 7; IDs 90140-90149, 90150-90199
+    // reserved for the owner's rogue talent line).
+    SPELL_ROGUE_SPIT_SPLASH                   = 90141,
+    SPELL_ROGUE_SHADOW_DANCE_DODGE_BUFF       = 90145,
+    SPELL_ROGUE_SHADOW_DANCE_PARRY_BUFF       = 90146,
 };
+
+// #367 D-1/D-7/D-8: Agitating Poison ranks by caster level (rank V = the existing 45613).
+struct AgitatingPoisonRank
+{
+    uint32 minLevel;
+    int32 threat;
+};
+
+AgitatingPoisonRank const AGITATING_POISON_RANKS[] =
+{
+    { 60, 395 },
+    { 50, 335 },
+    { 40, 275 },
+    { 30, 210 },
+    {  0, 150 },
+};
+
+int32 const AGITATING_POISON_RANK_V_THREAT = 395;
+
+int32 GetAgitatingPoisonThreat(Unit const* caster)
+{
+    uint32 const level = caster ? caster->GetLevel() : 0;
+    for (AgitatingPoisonRank const& rank : AGITATING_POISON_RANKS)
+        if (level >= rank.minLevel)
+            return rank.threat;
+
+    return AGITATING_POISON_RANK_V_THREAT;
+}
+
+// #367 D-2: Spit also taunts up to two more enemies around the main target.
+uint32 const SPIT_EXTRA_TARGETS  = 2;
+float const  SPIT_SPLASH_RADIUS  = 8.0f;
 
 template <class T>
 SpellScript* GetSpellScript(SpellEntry const*)
@@ -629,10 +668,110 @@ struct spell_rogue_improved_sap_vanish : public SpellScript
             player->CastHighestStealthRank();
     }
 };
+
+// #367 O-9 (a): Agitating Poison proc 45613 keeps its enchantment; threat and Nature damage
+// follow the caster's level band (L20 +150 ... L60 +395, damage in the same ratio). Rank V at
+// level 60 is unchanged; the lower ranks exist only through the bot poison item 90140.
+struct spell_rogue_agitating_poison : public SpellScript
+{
+    bool OnEffectExecute(Spell* spell, SpellEffectIndex effIdx) const override
+    {
+        if (!spell || !spell->m_casterUnit)
+            return true;
+
+        int32 const threat = GetAgitatingPoisonThreat(spell->m_casterUnit);
+        if (effIdx == EFFECT_INDEX_0)
+            spell->damage = int32(float(spell->damage) * threat / AGITATING_POISON_RANK_V_THREAT + 0.5f);
+        else if (effIdx == EFFECT_INDEX_1)
+            spell->damage = threat;
+
+        return true;
+    }
+};
+
+// #367 D-2 Spit (bots): taunt on the main target plus up to two enemies around it, and the
+// rogue spits at the main target (text emote 89).
+struct spell_rogue_spit : public SpellScript
+{
+    void OnHit(Spell* spell, SpellMissInfo missInfo) const override
+    {
+        Unit* caster = spell ? spell->m_casterUnit : nullptr;
+        Unit* target = spell ? spell->GetUnitTarget() : nullptr;
+        if (!caster || !target || missInfo != SPELL_MISS_NONE)
+            return;
+
+        SendSpitEmote(caster, target);
+
+        std::list<Unit*> nearby;
+        MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck check(target, caster, SPIT_SPLASH_RADIUS);
+        MaNGOS::UnitListSearcher<MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck> searcher(nearby, check);
+        Cell::VisitAllObjects(target, searcher, SPIT_SPLASH_RADIUS);
+
+        uint32 taunted = 0;
+        for (Unit* unit : nearby)
+        {
+            if (taunted >= SPIT_EXTRA_TARGETS)
+                break;
+            if (!unit || unit == target || unit == caster || !unit->IsAlive())
+                continue;
+            if (!caster->IsValidAttackTarget(unit) || !target->IsWithinLOSInMap(unit))
+                continue;
+
+            caster->CastSpell(unit, SPELL_ROGUE_SPIT_SPLASH, true);
+            ++taunted;
+        }
+    }
+
+    static void SendSpitEmote(Unit* caster, Unit* target)
+    {
+        if (EmotesTextEntry const* emote = sEmotesTextStore.LookupEntry(TEXTEMOTE_SPIT))
+            caster->HandleEmote(emote->textid);
+
+        char const* name = target->GetName();
+        uint32 const nameLength = (name ? strlen(name) : 0) + 1;
+        WorldPacket data(SMSG_TEXT_EMOTE, 20 + nameLength);
+        data << caster->GetObjectGuid();
+        data << uint32(TEXTEMOTE_SPIT);
+        data << uint32(0);
+        data << uint32(nameLength);
+        if (nameLength > 1)
+            data.append(name, nameLength);
+        else
+            data << uint8(0x00);
+        caster->SendMessageToSet(&data, true);
+    }
+};
+
+// #367 D-4/D-9 Shadow Dance (bots): parry -> +5 % dodge for 3 s, dodge -> +5 % parry for
+// 3 s; every dodge and parry adds the rank's flat threat (50/90/130) on the attacker.
+struct spell_rogue_shadow_dance : public AuraScript
+{
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 procEx, uint32 /*cooldown*/) override
+    {
+        if (!owner || !aura)
+            return std::nullopt;
+
+        if (procEx & PROC_EX_PARRY)
+            owner->CastSpell(owner, SPELL_ROGUE_SHADOW_DANCE_DODGE_BUFF, true, nullptr, aura);
+        else if (procEx & PROC_EX_DODGE)
+            owner->CastSpell(owner, SPELL_ROGUE_SHADOW_DANCE_PARRY_BUFF, true, nullptr, aura);
+        else
+            return SPELL_AURA_PROC_FAILED;
+
+        int32 const threat = aura->GetModifier()->m_amount;
+        if (victim && threat > 0 && victim->IsAlive() && victim->CanHaveThreatList())
+            victim->AddThreat(owner, float(threat), false, SPELL_SCHOOL_MASK_NORMAL, aura->GetSpellProto());
+
+        return SPELL_AURA_PROC_OK;
+    }
+};
 }
 
 void AddSC_rogue_spell_scripts()
 {
+    RegisterSpellScript("spell_rogue_agitating_poison", &GetSpellScript<spell_rogue_agitating_poison>);
+    RegisterSpellScript("spell_rogue_spit", &GetSpellScript<spell_rogue_spit>);
+    RegisterAuraScript("spell_rogue_shadow_dance", &GetAuraScript<spell_rogue_shadow_dance>);
     RegisterSpellScript("spell_rogue_eviscerate", &GetSpellScript<spell_rogue_eviscerate>);
     RegisterSpellScript("spell_rogue_surprise_attack", &GetSpellScript<spell_rogue_surprise_attack>);
     RegisterSpellScript("spell_rogue_noxious_assault", &GetSpellScript<spell_rogue_noxious_assault>);

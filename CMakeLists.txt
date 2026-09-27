@@ -1015,6 +1015,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_race_class_379_contract.cmake")
+  # twow-repo#367 rogue tank (bots only): Spit, Shadow Dance, poison ranks by level band.
+  add_test(NAME rogue_tank_367_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_rogue_tank_367_contract.cmake")
   # twow-repo#357 route A: owner-decided Elemental Weapons values and Earthen Bulwark cap.
   add_test(NAME shaman_elemental_weapons_357_contract
     COMMAND "${CMAKE_COMMAND}"
