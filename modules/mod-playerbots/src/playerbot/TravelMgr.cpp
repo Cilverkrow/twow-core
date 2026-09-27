@@ -11,6 +11,7 @@
 #include "RandomPlayerbotMgr.h"
 #include "BotTests.h"
 #include "ObjectAccessor.h"
+#include "playerbot/HomeBindPolicy.h"
 
 using namespace ai;
 using namespace MaNGOS;
@@ -2917,6 +2918,21 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
 
     if (position.getMapId() == 571 && info.GetLevel() < 68) //Northrend
         return false;
+
+    // #333 (owner test video): gathering is not a fight. Raid bots of a real
+    // player counted as "can fight elite/boss" below and were sent to fish in
+    // Maraudon and to skin in Blackrock Depths at level 6-11. Gathering points
+    // are open world only and compare the plain bot level with the area level
+    // (a sub-area without a level of its own takes its parent zone's).
+    uint32 const gatherPurposes = (uint32)TravelDestinationPurpose::GatherSkinning | (uint32)TravelDestinationPurpose::GatherMining |
+        (uint32)TravelDestinationPurpose::GatherHerbalism | (uint32)TravelDestinationPurpose::GatherFishing;
+    if ((purposeFlag & gatherPurposes) && !(purposeFlag & ~gatherPurposes))
+    {
+        if (!position.isOverworld())
+            return false;
+        int32 const gatherAreaLevel = position.getAreaLevelOrParent();
+        return gatherAreaLevel > 0 && !homebind::IsZoneClearlyAboveLevel(uint32(gatherAreaLevel), info.GetLevel());
+    }
 
     if (info.GetBoolValue("can fight boss"))
         botLevel += 5;

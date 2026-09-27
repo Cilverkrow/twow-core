@@ -450,7 +450,16 @@ void ChooseTravelTargetAction::ReportTravelTarget(Player* bot, Player* requester
     if (out.str().empty())
         return;
 
-    if (!isGuildMeeting)
+    // #333: profession trips (fishing, mining, herbalism, skinning) are not
+    // announced in party or raid chat; they stay visible with "debug travel".
+    bool const gatherTrip = destination && (destination->GetPurpose() == TravelDestinationPurpose::GatherFishing ||
+        destination->GetPurpose() == TravelDestinationPurpose::GatherMining ||
+        destination->GetPurpose() == TravelDestinationPurpose::GatherHerbalism ||
+        destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning);
+
+    if (gatherTrip)
+        ai->TellDebug(requester, out.str(), "debug travel");
+    else if (!isGuildMeeting)
         ai->TellPlayerNoFacing(requester, out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_TALK, false);
 
     if (!futureTravelDetail.empty())
