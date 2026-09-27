@@ -74,7 +74,12 @@ bool GossipHelloAction::Execute(Event& event)
         // `talk N` is a contract with the numbered list the bot printed: it must
         // run exactly that option of exactly that menu, or say why not. Never
         // fall back to a different option (atoi("x") used to become option 1).
-        if (text.find_first_not_of("0123456789") != std::string::npos || text.size() > 3)
+        // The list is printed as "[1] ...", so "talk [1]" means the same (#290:
+        // the owner typed it exactly like that in the train 6 acceptance).
+        if (text.size() > 2 && text.front() == '[' && text.back() == ']')
+            text = text.substr(1, text.size() - 2);
+
+        if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos || text.size() > 3)
         {
             ai->TellError(requester, "Usage: talk <number from the list>");
             return false;

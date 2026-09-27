@@ -55,6 +55,7 @@ function_region("${action}" "bool GossipHelloAction::ConfirmBindPoint" "ZZZ_END_
 # No silent fallback: non-numbers and 0 are rejected, a stale menu is rejected.
 require_text("${execute}" "find_first_not_of(\"0123456789\")" "numeric-only talk parameter")
 require_text("${execute}" "gossipNpc != guid" "menu bound to the NPC it was opened for")
+require_text("${execute}" "text.front() == '[' && text.back() == ']'" "talk [N] accepted like talk N (#290)")
 forbid_text("${execute}" "if (menuToSelect > 0) menuToSelect--;" "old atoi fallback to option 1")
 require_text("${action_header}" "ObjectGuid gossipNpc;" "remembered gossip NPC")
 

@@ -2,7 +2,7 @@
 
 Adds a **"Bots"** entry to the chat bubble menu (the button left of the chat
 window, next to Say, Party, Emote, Language, ...). Hovering it opens the
-categories **Kampf, Formation, Beute, Berufe, Quests, Gruppe**; a click writes
+categories **Kampf, Formation, Beute, Berufe, Quests, Gruppe, Händler & NPC**; a click writes
 the playerbot command into the chat line. Press Enter to send it.
 
 The **active chat channel decides who gets the command**, exactly as when you
@@ -39,6 +39,7 @@ character). `/botmenu` shows the state.
 | Berufe | train, trainer, skill, `nc +gather`, `nc -gather` |
 | Quests | quests, `accept *`, talk, `catchup quest ` (then shift-click the quest link) |
 | Gruppe | summon, leave |
+| Händler & NPC | talk, `talk 1`–`talk 3`, home, repair, `s` (sell grey), `s ` / `b ` (then shift-click the item) |
 
 The list comes from the command inventory in twow-repo#290. `train` came
 with twow-core#145, `catchup quest` with #147, `formation spear` with #148.
