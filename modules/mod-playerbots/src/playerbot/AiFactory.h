@@ -31,4 +31,6 @@ public:
     static std::map<uint32, int32> GetPlayerSpecTabs(const Player* player);
     static BotRoles GetPlayerRoles(uint8 cls, uint8 specTab);
     static BotRoles GetPlayerRoles(const Player* player);
+    // #357: the premade path the bot was given ("" = none).
+    static std::string GetPremadePathName(const Player* player);
 };

@@ -74,13 +74,35 @@ class RateTwoPremadePathTests(unittest.TestCase):
                            config, flags=re.MULTILINE)
         self.assertEqual(30, len(names))  # 27 + bear (#308) + shaman tank (#357) + rogue tank (#367)
         self.assertEqual(30, len({(cls, spec) for cls, spec, _ in names}))
-        for cls, spec, _ in names:
+        for cls, spec, name in names:
             match = re.search(r'^AiPlayerbot\.PremadeSpecLink\.' + cls + r'\.' +
                               spec + r'\.60 = ([0-9-]+)$', config,
                               flags=re.MULTILINE)
             self.assertIsNotNone(match)
-            self.assertEqual(102, sum(int(value) for value in match.group(1)
-                                      if value.isdigit()))
+            # #357 O-12: 7.1 / 7.3 leave the points of their talent auras free.
+            reserved = GENERATOR_MODULE.reserved_points(int(cls), name, 60)
+            self.assertEqual(102 - reserved, sum(int(value) for value in match.group(1)
+                                                 if value.isdigit()))
+
+    def test_spec_aura_reserve_matches_the_owner_values(self):
+        # O-12 (owner 2026-09-27): 7.1 pays 14, 7.3 pays 21 talent points at 60
+        # (Ghost Wolf rank 3 is Improved Ghost Wolf 2/2 for everyone).
+        self.assertEqual(14, GENERATOR_MODULE.reserved_points(7, 'enhancement', 60))
+        self.assertEqual(21, GENERATOR_MODULE.reserved_points(7, 'shaman tank', 60))
+        self.assertEqual(0, GENERATOR_MODULE.reserved_points(7, 'elemental', 60))
+        self.assertEqual(0, GENERATOR_MODULE.reserved_points(4, 'rogue tank', 60))
+
+    def test_spec_aura_table_matches_the_core_header(self):
+        # tools/build_premade_specs.py SPEC_AURAS and SpecAuraPolicy.h must agree,
+        # or the links leave a different number of points free than the core grants.
+        header = (pathlib.Path(__file__).resolve().parents[1] /
+                  'src' / 'playerbot' / 'SpecAuraPolicy.h').read_text(encoding='utf-8')
+        rows = re.findall(r'\{\s*"([^"]+)",\s*(\w+),\s*(\d+),\s*\{([^}]*)\}\s*\}', header)
+        paths = {'Both': {'enhancement', 'shaman tank'},
+                 'Enhancement': {'enhancement'}, 'ShamanTank': {'shaman tank'}}
+        core = [(name, int(level), len([i for i in ids.split(',') if i.strip()]), paths[mask])
+                for name, mask, level, ids in rows]
+        self.assertEqual(GENERATOR_MODULE.SPEC_AURAS, core)
 
 
 if __name__ == '__main__':

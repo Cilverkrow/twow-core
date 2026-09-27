@@ -3,6 +3,7 @@
 #include "playerbot/Talentspec.h"
 #include "ChangeTalentsAction.h"
 #include "playerbot/AiFactory.h"
+#include "playerbot/SpecAuraPolicy.h"
 
 using namespace ai;
 
@@ -100,7 +101,7 @@ bool ChangeTalentsAction::Execute(Event& event)
                         TalentPath* path = PickPremadePath(paths, sRandomPlayerbotMgr.IsRandomBot(bot));
                         TalentSpec newSpec = *GetBestPremadeSpec(bot, path->id);
                         std::string specLink = newSpec.GetTalentLink();
-                        newSpec.CropTalents(bot);
+                        newSpec.CropTalents(bot, PremadeBudget(bot, path->id));
                         newSpec.ApplyTalents(bot, &out);
 
                         if (newSpec.GetTalentPoints() > 0)
@@ -183,7 +184,7 @@ std::vector<TalentPath*> ChangeTalentsAction::getPremadePaths(Player* bot, Talen
     for (auto& path : sPlayerbotAIConfig.classSpecs[bot->getClass()].talentPath)
     {
         TalentSpec newSpec = *GetBestPremadeSpec(bot, path.id);
-        newSpec.CropTalents(bot);        
+        newSpec.CropTalents(bot, PremadeBudget(bot, path.id));
         if (oldSpec->isEarlierVersionOf(newSpec))
         {
             ret.push_back(&path);
@@ -290,7 +291,7 @@ bool ChangeTalentsAction::AutoSelectTalents(Player* bot, std::ostringstream* out
     if (specNo > 0)
     {
         TalentSpec newSpec = *GetBestPremadeSpec(bot, specId);
-        newSpec.CropTalents(bot);
+        newSpec.CropTalents(bot, PremadeBudget(bot, specId));
         newSpec.ApplyTalents(bot, out);
         if (GetBotAI(bot))
             GetBotAI(bot)->UpdateTalentSpec();
@@ -391,7 +392,7 @@ bool ChangeTalentsAction::AutoSelectTalents(Player* bot, std::ostringstream* out
             specId = PickPremadePath(paths, sRandomPlayerbotMgr.IsRandomBot(bot))->id;
             TalentSpec newSpec = *GetBestPremadeSpec(bot, specId);
             specLink = newSpec.GetTalentLink();
-            newSpec.CropTalents(bot);
+            newSpec.CropTalents(bot, PremadeBudget(bot, specId));
             newSpec.ApplyTalents(bot, out);
             if (GetBotAI(bot))
                 GetBotAI(bot)->UpdateTalentSpec();
@@ -413,15 +414,27 @@ bool ChangeTalentsAction::AutoSelectTalents(Player* bot, std::ostringstream* out
 }
 
 //Returns a pre-made talent spec that best suits the bots current talents. 
+uint32 ChangeTalentsAction::PremadeBudget(Player* bot, int specId)
+{
+    uint32 const total = bot->CalculateTalentsPoints();
+    TalentPath* path = getPremadePath(bot->getClass(), specId);
+    if (!path)
+        return total;
+
+    uint32 const reserved = ai::spec_aura::ReservedPoints(ai::spec_aura::PathFor(bot->getClass(), path->name), bot->GetLevel());
+    return total > reserved ? total - reserved : 0;
+}
+
 TalentSpec* ChangeTalentsAction::GetBestPremadeSpec(Player* bot, int specId)
 {
     TalentPath* path = getPremadePath(bot->getClass(), specId);
     if (!path)
         return &sPlayerbotAIConfig.classSpecs[bot->getClass()].baseSpec;
 
+    uint32 const budget = PremadeBudget(bot, specId);
     for (auto& spec : path->talentSpec)
     {
-        if (spec.points >= bot->CalculateTalentsPoints())
+        if (spec.points >= budget)
             return &spec;
     }
     if (path->talentSpec.size())

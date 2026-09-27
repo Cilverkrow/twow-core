@@ -23,6 +23,8 @@ namespace ai
         // #356: shaman totems that LearnQuestSpells misses (water, air).
         void GrantShamanTotems(std::ostringstream* out);
         bool IsClassGrantBot() const;
+        // #357 O-12: route B auras of premade paths 7.1 / 7.3 (SpecAuraPolicy.h).
+        void GrantSpecAuras();
         bool LearnSpell(uint32 spellId, std::ostringstream* out);
         bool LearnSpellFromSpell(uint32 spellId, std::ostringstream* out);
         bool IsValidSpell(uint32 spellId);

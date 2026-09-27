@@ -9,6 +9,9 @@
 #include <mutex>
 #include <vector>
 #include "playerbot/ClassGrantPolicy.h"
+#include "playerbot/SpecAuraPolicy.h"
+#include "playerbot/AiFactory.h"
+#include <algorithm>
 #include "playerbot/RandomPlayerbotMgr.h"
 
 using namespace ai;
@@ -111,6 +114,11 @@ void AutoLearnSpellAction::LearnSpells(std::ostringstream* out)
     // #356: class tools the quest path does not hand out (shaman totems).
     if (IsClassGrantBot() && bot->getClass() == CLASS_SHAMAN)
         GrantShamanTotems(out);
+
+    // #357 O-12: talent auras the premade path pays for with talent points.
+    if (sPlayerbotAIConfig.specAuraEnabled && bot->getClass() == CLASS_SHAMAN &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        GrantSpecAuras();
 
     if (sPlayerbotAIConfig.autoLearnTrainerSpells)
     {
@@ -321,6 +329,41 @@ void AutoLearnSpellAction::GrantShamanTotems(std::ostringstream* out)
         if (learned || given)
             sLog.outBasic("[ClassGrant] state=granted source=totem bot=%u level=%u item=%u given=%u teach_spell=%u",
                 bot->GetGUIDLow(), bot->GetLevel(), grant.item, given ? 1u : 0u, learned);
+    }
+}
+
+void AutoLearnSpellAction::GrantSpecAuras()
+{
+    std::uint8_t const path = ai::spec_aura::PathFor(bot->getClass(), AiFactory::GetPremadePathName(bot));
+    std::vector<uint32> const wanted = path ? ai::spec_aura::WantedAuras(path, bot->GetLevel()) : std::vector<uint32>();
+
+    // Idempotent. A lower rank the level has outgrown, or an aura of another
+    // path after a respec, goes; no lower rank is taught back.
+    for (uint32 spellId : ai::spec_aura::AllAuras())
+    {
+        if (std::find(wanted.begin(), wanted.end(), spellId) != wanted.end() || !bot->HasSpell(spellId))
+            continue;
+        bot->removeSpell(spellId, false, false);
+        sLog.outBasic("[SpecAura] state=remove bot=%u level=%u path=%u spell=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(path), spellId);
+    }
+
+    for (uint32 spellId : wanted)
+    {
+        if (bot->HasSpell(spellId))
+            continue;
+
+        // The spell_template rows come with OB-20's route B migration.
+        if (!sSpellTemplate.LookupEntry<SpellEntry>(spellId))
+        {
+            sLog.outBasic("[SpecAura] state=missing_spell bot=%u level=%u path=%u spell=%u",
+                bot->GetGUIDLow(), bot->GetLevel(), uint32(path), spellId);
+            continue;
+        }
+
+        bot->learnSpell(spellId, false);
+        sLog.outBasic("[SpecAura] state=grant bot=%u level=%u path=%u spell=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(path), spellId);
     }
 }
 

@@ -468,6 +468,8 @@ public:
     // G4: evacuate a bot that died DeathLoop.MaxDeaths times within WindowSeconds
     // and Radius yards (0 = off); not reset by XP like "death count".
     uint32 deathLoopMaxDeaths = 0;
+    // #357 O-12: route B talent auras for shamans on premade path 7.1 / 7.3.
+    bool specAuraEnabled = false;
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
     // #307: a roster bot on its own leaves a zone clearly above its level.

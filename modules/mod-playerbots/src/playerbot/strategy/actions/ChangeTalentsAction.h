@@ -28,6 +28,9 @@ namespace ai
         static void listPremadePaths(uint8 cls, std::vector<TalentPath*> paths, std::ostringstream* out);
         static TalentPath* PickPremadePath(std::vector<TalentPath*> paths, bool useProbability);
         static TalentSpec* GetBestPremadeSpec(Player* bot, int spec);
+        // #357 O-12: talent points a premade path spends at the bot's level: the
+        // total minus the points it pays for its talent auras (SpecAuraPolicy.h).
+        static uint32 PremadeBudget(Player* bot, int spec);
     };
 
     class AutoSetTalentsAction : public ChangeTalentsAction 
