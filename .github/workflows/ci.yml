@@ -437,6 +437,7 @@ jobs:
                 -DBUILD_PERSISTENT_ROSTER_ADAPTER_TESTS=ON \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
                 2>&1 | tee /src/configure.log
 
               # The default target, not "--target mangosd realmd".
@@ -477,6 +478,23 @@ jobs:
               cmake --build /build -j "$(nproc)"
 
               ccache --show-stats
+
+              # Compiler warnings for the translation units this change touches
+              # (twow-repo#83). The build above runs with --no-warnings
+              # (CMakeLists.txt, BUILD_ADDITIONAL_FLAGS), so until this step a
+              # green tick said nothing about warnings, and "0 warnings" in a PR
+              # description was not a check anybody had run. Enabling warnings
+              # globally would bury every change under the legacy inventory
+              # (REF-005), so only changed .cpp/.c files are recompiled, with
+              # -fsyntax-only and -Wall -Wextra, against HEAD^1 -- the base
+              # branch for a pull_request merge commit, the previous main for a
+              # push. Warnings on changed lines become ::warning annotations;
+              # the rest are only counted. NON-BLOCKING on purpose: a tool
+              # failure is reported and swallowed, and --strict (fail on new
+              # warnings) is the planned second stage, not this one.
+              python3 tools/ci/warn_changed_tus.py --build-dir /build \
+                --summary-file /src/warnings-summary.md \
+                || echo "::warning::warn_changed_tus.py failed (exit $?); warnings not checked in this run"
 
               # Run the disposable-database adapter suite directly, rather than
               # through ctest: it needs the connection string on its own
@@ -605,6 +623,15 @@ jobs:
       - name: Remove the disposable roster database
         if: always()
         run: docker rm -f "$CI_DB_CONTAINER" 2>/dev/null || true
+
+      # The build container cannot see $GITHUB_STEP_SUMMARY (a runner path), so
+      # the warning step above writes its summary into the bind-mounted workspace.
+      - name: Publish the changed-TU warning summary
+        if: always()
+        run: |
+          if [ -f warnings-summary.md ]; then
+            cat warnings-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
