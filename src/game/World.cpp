@@ -1440,6 +1440,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_DUNGEON, "Funserver.Loot.Units.Floor.Dungeon", 3, 0, 5);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RAID, "Funserver.Loot.Units.Floor.Raid", 4, 0, 5);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_BOE_LEVEL_WINDOW, "Funserver.Loot.Units.BoePool.LevelWindow", 4, 0, 60);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_BOE_ITEM_LEVEL_MARGIN, "Funserver.Loot.Units.BoePool.ItemLevelMargin", 5, 0, 100);
     if (getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS) < getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS))
     {
         sLog.outError("Funserver.Rare.Respawn.MaxSeconds (%u) < MinSeconds (%u), using MinSeconds for both.",

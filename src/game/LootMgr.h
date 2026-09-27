@@ -246,7 +246,7 @@ class LootTemplate
     public:
         // twow-repo#323: fill the loot up to the fixed unit count of `content`
         // (FunserverLootContent) by weighted own-table draws, then the BoE pool.
-        void ProcessUnits(Loot& loot, Player const* lootOwner, uint8 content, uint32 level) const;
+        void ProcessUnits(Loot& loot, Player const* lootOwner, uint8 content, uint32 level, uint32 mapId) const;
         void CollectUnitCandidates(std::vector<FunserverUnitCandidate>& out, float scale, bool followReferences) const;
         // Adds an entry to the group (at loading stage)
         void AddEntry(LootStoreItem& item);

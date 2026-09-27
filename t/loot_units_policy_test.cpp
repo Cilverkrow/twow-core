@@ -43,6 +43,18 @@ int main()
     Check(FunserverBoeLevelMatch(56, 60, 4) && FunserverBoeLevelMatch(60, 56, 4), "window edges inclusive");
     Check(!FunserverBoeLevelMatch(55, 60, 4) && !FunserverBoeLevelMatch(61, 56, 4), "outside window");
 
+    // Owner 2026-09-27 (e, d): unique items and pool items at most once per kill.
+    Check(Near(FunserverUnitWeightCapped(25.0f, 10.0f, 0, 0.75f, FUNSERVER_UNIQUE_MAX_COPIES), 250.0f), "unique first copy drawable");
+    Check(FunserverUnitWeightCapped(25.0f, 10.0f, 1, 0.75f, FUNSERVER_UNIQUE_MAX_COPIES) == 0.0f, "unique second copy blocked");
+    Check(FunserverUnitWeightCapped(1.0f, 1.0f, 1, 0.75f, FUNSERVER_POOL_MAX_COPIES) == 0.0f, "pool item only once");
+    Check(Near(FunserverUnitWeightCapped(20.0f, 10.0f, 2, 0.75f, 0), 112.5f), "no cap keeps the decay");
+
+    // Owner 2026-09-27 (a): world pool item level >= own max - 5; no own floor items = no bound.
+    Check(!FunserverBoeItemLevelMatch(66, 88, 5), "T1 belt (66) not in a T3.5 pool (88)");
+    Check(FunserverBoeItemLevelMatch(83, 88, 5) && !FunserverBoeItemLevelMatch(82, 88, 5), "margin edge inclusive");
+    Check(FunserverBoeItemLevelMatch(66, 71, 5), "T1 pool stays for MC-level tables");
+    Check(FunserverBoeItemLevelMatch(40, 0, 5), "no own floor items -> level window only");
+
     if (failures)
         return 1;
     std::cout << "LOOT_UNITS_POLICY=PASS\n";

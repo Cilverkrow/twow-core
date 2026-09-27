@@ -47,4 +47,24 @@ inline bool FunserverBoeLevelMatch(uint32_t itemRequiredLevel, uint32_t level, u
     return diff <= window;
 }
 
+// Owner decision 2026-09-27 (e, d): unique own-table items and every instance or BoE
+// pool item drop at most once per kill. maxCopies 0 = no cap (the decay alone applies).
+uint32_t constexpr FUNSERVER_UNIQUE_MAX_COPIES = 1;
+uint32_t constexpr FUNSERVER_POOL_MAX_COPIES   = 1;
+
+inline float FunserverUnitWeightCapped(float baseChance, float qualityWeight, uint32_t copiesSelected, float decay, uint32_t maxCopies)
+{
+    if (maxCopies && copiesSelected >= maxCopies)
+        return 0.0f;
+    return FunserverUnitWeight(baseChance, qualityWeight, copiesSelected, decay);
+}
+
+// Owner decision 2026-09-27 (a): world pool items must reach the tier of the boss's
+// own table, item level >= own maximum - margin. Without own floor items (max 0)
+// the required-level window alone decides.
+inline bool FunserverBoeItemLevelMatch(uint32_t itemLevel, uint32_t ownMaxItemLevel, uint32_t margin)
+{
+    return !ownMaxItemLevel || itemLevel + margin >= ownMaxItemLevel;
+}
+
 #endif
