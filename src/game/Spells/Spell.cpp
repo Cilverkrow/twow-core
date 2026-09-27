@@ -58,6 +58,7 @@
 #include "MountManager.hpp"
 #include "CompanionManager.hpp"
 #include "ScriptObjects.h"
+#include "FunserverRogueTalents.h"
 
 #include <memory>
 
@@ -5558,6 +5559,17 @@ void Spell::CastPreCastSpells(Unit* target)
         m_caster->CastSpell(target, spellInfo, true, m_CastItem);
 }
 
+// twow-repo#367 Combat R7/C1 (bot aura): Backstab from the front while the target is
+// below the talent's health threshold (60 %).
+static bool IsFunserverFrontalBackstab(Unit* caster, Unit* target, SpellEntry const* spellInfo)
+{
+    if (!spellInfo->IsFitToFamily<SPELLFAMILY_ROGUE, CF_ROGUE_BACKSTAB>())
+        return false;
+
+    Aura* aura = caster->GetAura(ROGUE_TALENT_FRONTAL_BACKSTAB, EFFECT_INDEX_0);
+    return aura && FunserverRogueFrontalBackstabAllowed(target->GetHealthPercent(), aura->GetModifier()->m_amount);
+}
+
 SpellCastResult Spell::CheckCast(bool strict)
 {
     if (m_caster->IsPlayer() && m_caster->ToPlayer()->HasOption(PLAYER_CHEAT_NO_CHECK_CAST))
@@ -5923,7 +5935,8 @@ SpellCastResult Spell::CheckCast(bool strict)
                 return SPELL_FAILED_TARGET_AURASTATE;
 
         // Must be behind the target.
-        if (m_spellInfo->IsFromBehindOnlySpell() && m_casterUnit && target->HasInArc(m_caster))
+        if (m_spellInfo->IsFromBehindOnlySpell() && m_casterUnit && target->HasInArc(m_caster) &&
+            !IsFunserverFrontalBackstab(m_casterUnit, target, m_spellInfo))
         {
             SendInterrupted();
             return SPELL_FAILED_NOT_BEHIND;

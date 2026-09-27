@@ -1,6 +1,7 @@
 #include "scriptPCH.h"
 #include "ThreatManager.h"
 #include "DBCStores.h"
+#include "FunserverRogueTalents.h"
 
 namespace
 {
@@ -765,10 +766,195 @@ struct spell_rogue_shadow_dance : public AuraScript
         return SPELL_AURA_PROC_OK;
     }
 };
+
+// ---- twow-repo#367: the owner's rogue talent line (bot auras 90150-90193) ----
+
+int32 GetRogueTalentAmount(Unit* unit, uint32 firstRank, uint32 lastRank)
+{
+    for (uint32 spellId = lastRank; spellId >= firstRank; --spellId)
+        if (Aura* aura = unit->GetAura(spellId, EFFECT_INDEX_0))
+            return aura->GetModifier()->m_amount;
+    return 0;
+}
+
+// Assassination R3/C4: cooldowns that a crit during Slice and Dice shortens by 1 s.
+uint32 const ROGUE_COOLDOWN_FLOW_SPELLS[] = { 45604 /*Flourish*/, 14177 /*Cold Blood*/, 13750 /*Adrenaline Rush*/,
+                                              14185 /*Preparation*/, 52538 /*Mark for Death*/ };
+uint32 const ROGUE_SLICE_AND_DICE_RANKS[] = { 5171, 6774 };
+time_t const ROGUE_COOLDOWN_FLOW_SECONDS = 1;
+
+void ReduceRogueSpellCooldown(Unit* unit, uint32 spellId, time_t seconds)
+{
+    time_t const left = unit->GetSpellCooldownDelay(spellId);
+    if (!left)
+        return;
+    if (left <= seconds)
+        unit->RemoveSpellCooldown(spellId, true);
+    else
+        unit->AddSpellCooldown(spellId, 0, time(nullptr) + left - seconds);
+}
+
+struct spell_rogue_cooldown_flow : public AuraScript
+{
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* /*victim*/, uint32 /*amount*/, int32 /*originalAmount*/, Aura* /*aura*/, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) override
+    {
+        bool sliceAndDice = false;
+        for (uint32 spellId : ROGUE_SLICE_AND_DICE_RANKS)
+            sliceAndDice = sliceAndDice || owner->HasAura(spellId);
+        if (!sliceAndDice)
+            return SPELL_AURA_PROC_FAILED;
+
+        for (uint32 spellId : ROGUE_COOLDOWN_FLOW_SPELLS)
+            ReduceRogueSpellCooldown(owner, spellId, ROGUE_COOLDOWN_FLOW_SECONDS);
+        return SPELL_AURA_PROC_OK;
+    }
+};
+
+// Assassination R7/C1: every Vigor energy gain adds a stack of +2 % damage (8 s, 10 stacks).
+struct spell_rogue_vigor_energy : public SpellScript
+{
+    void OnHit(Spell* spell, SpellMissInfo missInfo) const override
+    {
+        Unit* caster = spell ? spell->m_casterUnit : nullptr;
+        if (caster && missInfo == SPELL_MISS_NONE && caster->HasAura(ROGUE_TALENT_VIGOR_FURY))
+            caster->CastSpell(caster, ROGUE_TALENT_VIGOR_FURY_BUFF, true);
+    }
+};
+
+// Assassination R7/C3: a Seal Fate combo point has a 33 % chance to bring another one.
+struct spell_rogue_seal_fate_echo : public SpellScript
+{
+    void OnEffectExecuted(Spell* spell, SpellEffectIndex effIdx) const override
+    {
+        if (effIdx != EFFECT_INDEX_0 || !spell)
+            return;
+
+        Player* rogue = spell->m_casterUnit ? spell->m_casterUnit->ToPlayer() : nullptr;
+        Unit* target = spell->GetUnitTarget();
+        if (!rogue || !target)
+            return;
+
+        int32 const chance = GetRogueTalentAmount(rogue, ROGUE_TALENT_SEAL_FATE_ECHO, ROGUE_TALENT_SEAL_FATE_ECHO);
+        if (chance > 0 && roll_chance_i(chance))
+            rogue->AddComboPoints(target, 1);
+    }
+};
+
+// Combat R2/C4: parry -> an off-hand attack, dodge -> a main-hand attack, at most once per
+// second; these attacks cause double threat (owner question 1, proposal).
+struct spell_rogue_riposte_flow : public AuraScript
+{
+    bool m_extraAttack = false;
+
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 procEx, uint32 /*cooldown*/) override
+    {
+        if (!owner || !victim || !aura || !victim->IsAlive() || owner->HasSpellCooldown(aura->GetId()))
+            return SPELL_AURA_PROC_FAILED;
+
+        WeaponAttackType attackType;
+        if (procEx & PROC_EX_PARRY)
+        {
+            if (!owner->HaveOffhandWeapon())
+                return SPELL_AURA_PROC_FAILED;
+            attackType = OFF_ATTACK;
+        }
+        else if (procEx & PROC_EX_DODGE)
+            attackType = BASE_ATTACK;
+        else
+            return SPELL_AURA_PROC_FAILED;
+
+        owner->AddSpellCooldown(aura->GetId(), 0, time(nullptr) + 1);
+        m_extraAttack = true;
+        owner->AttackerStateUpdate(victim, attackType, true, true);
+        m_extraAttack = false;
+        return SPELL_AURA_PROC_OK;
+    }
+
+    void OnThreatCalculate(Aura* /*aura*/, SpellEntry const* threatSpell, SpellSchoolMask /*schoolMask*/, float& threat) override
+    {
+        if (m_extraAttack && !threatSpell)
+            threat *= 2.0f;
+    }
+};
+
+// Combat R4/C4: dodge + parry as resistance in all magic schools (owner 2026-09-27, no cap),
+// recalculated every second. Effect 1 holds the share (15/30/45 %), effect 2 the points
+// per resulting percent (1/2/3).
+struct spell_rogue_arcane_evasion : public AuraScript
+{
+    static int32 Resistance(Unit* owner, SpellEntry const* spellProto)
+    {
+        if (!owner || !spellProto)
+            return 0;
+        return FunserverRogueArcaneEvasionResistance(owner->GetUnitDodgeChance(), owner->GetUnitParryChance(),
+                                                     spellProto->CalculateSimpleValue(EFFECT_INDEX_0),
+                                                     spellProto->CalculateSimpleValue(EFFECT_INDEX_1));
+    }
+
+    int32 OnAuraValueCalculate(Aura* /*aura*/, Unit* /*caster*/, Unit* target, SpellEntry const* spellProto, SpellEffectIndex effIdx, Item* /*castItem*/, int32 value) override
+    {
+        return effIdx == EFFECT_INDEX_0 ? Resistance(target, spellProto) : value;
+    }
+
+    void OnPeriodicTrigger(Aura* aura, Unit* /*caster*/, Unit* /*target*/, WorldObject* /*targetObject*/, SpellEntry const*& spellInfo) override
+    {
+        spellInfo = nullptr;
+        if (!aura || !aura->GetHolder())
+            return;
+
+        Aura* resistance = aura->GetHolder()->GetAuraByEffectIndex(EFFECT_INDEX_0);
+        if (!resistance)
+            return;
+
+        int32 const amount = Resistance(aura->GetTarget(), aura->GetSpellProto());
+        if (amount == resistance->GetModifier()->m_amount)
+            return;
+
+        resistance->ApplyModifier(false, true);
+        resistance->GetModifier()->m_amount = amount;
+        resistance->ApplyModifier(true, true);
+    }
+};
+
+// Subtlety R6/C4: each Hemorrhage adds a stack of its bonus (up to 5 with the original), 15 s.
+struct spell_rogue_hemorrhage_stacks : public SpellScript
+{
+    void OnHit(Spell* spell, SpellMissInfo missInfo) const override
+    {
+        Unit* caster = spell ? spell->m_casterUnit : nullptr;
+        Unit* target = spell ? spell->GetUnitTarget() : nullptr;
+        if (caster && target && missInfo == SPELL_MISS_NONE && caster->HasAura(ROGUE_TALENT_HEMORRHAGE_STACKS))
+            caster->CastSpell(target, ROGUE_TALENT_HEMORRHAGE_STACK, true);
+    }
+};
+
+// Subtlety R7/C3: melee hits deal an extra 8/16/24 % of their damage as Shadow damage.
+struct spell_rogue_shadow_edge : public AuraScript
+{
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 amount, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) override
+    {
+        if (!owner || !victim || !aura || !amount || !victim->IsAlive())
+            return SPELL_AURA_PROC_FAILED;
+
+        int32 damage = int32(amount) * aura->GetModifier()->m_amount / 100;
+        if (damage <= 0)
+            return SPELL_AURA_PROC_FAILED;
+
+        owner->CastCustomSpell(victim, ROGUE_TALENT_SHADOW_EDGE_DAMAGE, &damage, nullptr, nullptr, true, nullptr, aura);
+        return SPELL_AURA_PROC_OK;
+    }
+};
 }
 
 void AddSC_rogue_spell_scripts()
 {
+    RegisterAuraScript("spell_rogue_cooldown_flow", &GetAuraScript<spell_rogue_cooldown_flow>);
+    RegisterSpellScript("spell_rogue_vigor_energy", &GetSpellScript<spell_rogue_vigor_energy>);
+    RegisterSpellScript("spell_rogue_seal_fate_echo", &GetSpellScript<spell_rogue_seal_fate_echo>);
+    RegisterAuraScript("spell_rogue_riposte_flow", &GetAuraScript<spell_rogue_riposte_flow>);
+    RegisterAuraScript("spell_rogue_arcane_evasion", &GetAuraScript<spell_rogue_arcane_evasion>);
+    RegisterSpellScript("spell_rogue_hemorrhage_stacks", &GetSpellScript<spell_rogue_hemorrhage_stacks>);
+    RegisterAuraScript("spell_rogue_shadow_edge", &GetAuraScript<spell_rogue_shadow_edge>);
     RegisterSpellScript("spell_rogue_agitating_poison", &GetSpellScript<spell_rogue_agitating_poison>);
     RegisterSpellScript("spell_rogue_spit", &GetSpellScript<spell_rogue_spit>);
     RegisterAuraScript("spell_rogue_shadow_dance", &GetAuraScript<spell_rogue_shadow_dance>);
