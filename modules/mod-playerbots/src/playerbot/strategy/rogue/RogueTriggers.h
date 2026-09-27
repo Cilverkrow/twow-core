@@ -307,6 +307,13 @@ namespace ai
         ApplyWoundPoisonTrigger(PlayerbotAI* ai, bool inMainHand) : ApplyPoisonTrigger(ai, inMainHand, { 703, 704, 705, 706, 2644, 3772, 3773 }, "apply wound poison main hand") {}
     };
 
+    // #367: main hand without the threat poison (enchant 3006 of 45612 / 90140).
+    class ApplyAgitatingPoisonTrigger : public ApplyPoisonTrigger
+    {
+    public:
+        ApplyAgitatingPoisonTrigger(PlayerbotAI* ai, bool inMainHand) : ApplyPoisonTrigger(ai, inMainHand, { 3006 }, "apply agitating poison main hand") {}
+    };
+
     class ApplyAnestheticPoisonTrigger : public ApplyPoisonTrigger
     {
     public:
