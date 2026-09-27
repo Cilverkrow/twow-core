@@ -20,6 +20,7 @@
  */
 
 #include "Object.h"
+#include "FunserverRogueTalents.h"
 #include <shared_mutex>
 #include "SharedDefines.h"
 #include "WorldPacket.h"
@@ -4010,6 +4011,12 @@ SpellMissInfo WorldObject::MagicSpellHitResult(Unit* pVictim, SpellEntry const* 
     if (!pVictim->IsAlive())
         return SPELL_MISS_NONE;
 
+    // twow-repo#367 Combat R7/C4 (bot aura): while Ghostly Strike is active, the rogue
+    // dodges hostile spells with its normal dodge chance (owner question 6, proposal).
+    if (!spell->IsPositiveSpell() && pVictim->HasAura(ROGUE_TALENT_GHOSTLY_EVASION) &&
+        pVictim->HasAura(SPELL_ROGUE_GHOSTLY_STRIKE_FUNSERVER) && roll_chance_f(pVictim->GetUnitDodgeChance()))
+        return SPELL_MISS_DODGE;
+
     // Spell cannot be resisted (not exist on dbc, custom flag)
     if (spell->AttributesEx4 & SPELL_ATTR_EX4_IGNORE_RESISTANCES)
         return SPELL_MISS_NONE;
@@ -4589,6 +4596,30 @@ void WorldObject::CalculateSpellDamage(SpellNonMeleeDamage* damageInfo, int32 da
     damageInfo->damage = damage;
 }
 
+// twow-repo#367: highest amount among a bot talent's rank auras (0 without the talent).
+static int32 GetFunserverRogueTalentAmount(Unit* unit, uint32 firstRank, uint32 lastRank)
+{
+    for (uint32 spellId = lastRank; spellId >= firstRank; --spellId)
+        if (Aura* aura = unit->GetAura(spellId, EFFECT_INDEX_0))
+            return aura->GetModifier()->m_amount;
+    return 0;
+}
+
+static float GetFunserverRogueTalentDamageMultiplier(Unit* attacker, Unit* victim, SpellEntry const* spellProto)
+{
+    int32 const behindPct = !victim->HasInArc(attacker)
+        ? GetFunserverRogueTalentAmount(attacker, ROGUE_TALENT_BEHIND_R1, ROGUE_TALENT_BEHIND_R4) : 0;
+    // Owner question 3 (proposal): openers that require stealth count although they break it.
+    int32 const stealthPct = (attacker->HasStealthAura() || (spellProto && spellProto->HasAttribute(SPELL_ATTR_ONLY_STEALTHED)))
+        ? GetFunserverRogueTalentAmount(attacker, ROGUE_TALENT_SHADOW_R1, ROGUE_TALENT_SHADOW_R4) : 0;
+    int32 const executePct = (spellProto && spellProto->IsFitToFamily<SPELLFAMILY_ROGUE, CF_ROGUE_BACKSTAB, CF_ROGUE_SINISTER_STRIKE>() &&
+                              FunserverRogueExecuteApplies(victim->GetHealthPercent()))
+        ? GetFunserverRogueTalentAmount(attacker, ROGUE_TALENT_EXECUTE_R1, ROGUE_TALENT_EXECUTE_R3) : 0;
+    int32 const coldBloodPct = (spellProto && attacker->HasAura(SPELL_ROGUE_COLD_BLOOD_FUNSERVER))
+        ? GetFunserverRogueTalentAmount(attacker, ROGUE_TALENT_COLD_BLOOD, ROGUE_TALENT_COLD_BLOOD) : 0;
+    return FunserverRogueTalentDamageMultiplier(behindPct, stealthPct, executePct, coldBloodPct);
+}
+
 /**
  * Calculates caster part of melee damage bonuses,
  * also includes different bonuses dependent from target auras
@@ -4690,6 +4721,10 @@ uint32 WorldObject::MeleeDamageBonusDone(Unit* pVictim, uint32 pdamage, WeaponAt
     // ..done pct (by creature type mask)
     if (pUnit)
         DonePercent *= pUnit->GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_DONE_VERSUS, creatureTypeMask);
+
+    // twow-repo#367: bot-only rogue talents (behind, stealth openers, execute, Cold Blood)
+    if (pUnit && pUnit->GetClass() == CLASS_ROGUE)
+        DonePercent *= GetFunserverRogueTalentDamageMultiplier(pUnit, pVictim, spellProto);
 
     if (pUnit && pUnit->IsPet())
     {
