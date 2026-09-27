@@ -85,9 +85,18 @@ class PerformanceMonitor
         // of every bot, for a function that had already decided to do nothing.
         std::unique_ptr<PerformanceMonitorOperation> start(PerformanceMetric metric, std::string_view name, PerformanceStack* stack = nullptr, uint32 mapId = 0, uint32 instanceId = 0);
         std::unique_ptr<PerformanceMonitorOperation> start(PerformanceMetric metric, std::string_view name, PlayerbotAI* ai);
-        void PrintStats(bool perTick = false,  bool fullStack = false, bool showMap = false);
+        // Returns false when it printed nothing, so a caller can say why rather
+        // than leaving the operator staring at an empty console. It used to
+        // return void and bail silently on an empty mapsData, which is how a
+        // completely inert monitor passed for a working one for months.
+        bool PrintStats(bool perTick = false,  bool fullStack = false, bool showMap = false);
         void Reset();
         void Init(uint32 mapId, uint32 instanceId);
+
+        // True once Init() has registered at least one (mapId, instanceId)
+        // bucket. Until then start() returns nullptr for every probe and nothing
+        // whatsoever is collected.
+        bool IsCollecting() const { return !mapsData.empty(); }
     private:
         performanceMetricMap data;
         performanceMapMap mapsData;

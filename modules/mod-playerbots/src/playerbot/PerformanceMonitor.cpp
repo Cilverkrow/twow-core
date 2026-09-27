@@ -99,10 +99,13 @@ std::string StackString(const std::vector<std::string>& stack, bool fullStack = 
     return result;
 }
 
-void PerformanceMonitor::PrintStats(bool perTick, bool fullStack, bool showMap)
+bool PerformanceMonitor::PrintStats(bool perTick, bool fullStack, bool showMap)
 {
+    // Empty mapsData means Init() has never run with the monitor enabled, so
+    // every start() above returned nullptr and there is nothing to print. Say so
+    // through the return value; the caller turns it into a message.
     if (mapsData.empty())
-        return;
+        return false;
 
     uint32 total = 0;
 
@@ -136,8 +139,14 @@ void PerformanceMonitor::PrintStats(bool perTick, bool fullStack, bool showMap)
                     {
                         if (!pd.minTime || pd.minTime > performanceData.minTime)
                             pd.minTime = performanceData.minTime;
-                        if (!pd.maxTime || pd.maxTime < performanceData.minTime)
-                            pd.maxTime = performanceData.minTime;
+                        // performanceData.maxTime, not minTime. It read minTime,
+                        // so every "max" column in every .perfmon report was
+                        // really the minimum -- which is why min and max always
+                        // came out equal. The platform's roster rollback guard is
+                        // written against a maximum ("max > 3000 ms"), so this
+                        // column silently could not trip it.
+                        if (!pd.maxTime || pd.maxTime < performanceData.maxTime)
+                            pd.maxTime = performanceData.maxTime;
                         pd.totalTime += performanceData.totalTime;
                     }
                     pd.count += performanceData.count;
@@ -147,7 +156,7 @@ void PerformanceMonitor::PrintStats(bool perTick, bool fullStack, bool showMap)
     }
 
     if (data.empty())
-        return;
+        return false;
 
     uint32 totalCount = 0;
 
@@ -277,6 +286,8 @@ void PerformanceMonitor::PrintStats(bool perTick, bool fullStack, bool showMap)
 
         sLog.outString(" ");
     }
+
+    return true;
 }
 
 void PerformanceMonitor::Reset()
@@ -341,29 +352,44 @@ void PerformanceMonitorOperation::finish()
 
 bool ChatHandler::HandlePerfMonCommand(char* args)
 {
-    if (!strcmp(args, "reset"))
+    // args is a bare char* straight off the command table; `.perfmon` with no
+    // argument can hand us an empty string, and strcmp/std::string on a null
+    // pointer is undefined. Normalise once.
+    std::string const arguments(args ? args : "");
+
+    if (arguments == "reset")
     {
         sPerformanceMonitor.Reset();
         sLog.outString("Performance monitor reset");
+        SendSysMessage("Performance monitor reset.");
         return true;
     }
 
-    if (!strcmp(args, "toggle"))
+    if (arguments == "toggle")
     {
         sPlayerbotAIConfig.perfMonEnabled = !sPlayerbotAIConfig.perfMonEnabled;
         if (sPlayerbotAIConfig.perfMonEnabled)
+        {
             sLog.outString("Performance monitor enabled");
+            // Collection cannot start until RandomPlayerbotMgr::UpdateAIInternal
+            // next runs Init() and registers the map buckets, which is one
+            // AiPlayerbot.RandomBotUpdateInterval away. Saying so is the
+            // difference between "it is warming up" and the old silence, which
+            // read as "enabled and broken".
+            SendSysMessage("Performance monitor enabled. Collection begins on the next random-bot update tick; report with .perfmon tick.");
+        }
         else
+        {
             sLog.outString("Performance monitor disabled");
+            SendSysMessage("Performance monitor disabled.");
+        }
 
         return true;
-    }   
-
-    std::string arguments = args;
+    }
 
     bool tick = false, stack = false, map = false;
 
-    if (arguments.find("tick") != std::string::npos) 
+    if (arguments.find("tick") != std::string::npos)
     {
         tick = true;
     }
@@ -378,6 +404,27 @@ bool ChatHandler::HandlePerfMonCommand(char* args)
         map = true;
     }
 
-    sPerformanceMonitor.PrintStats(tick, stack, map);
+    // PrintStats writes through sLog, which bot translation units redirect to
+    // BotLog (playerbot.h) -- so the report lands in the server log, or in
+    // AiPlayerbot.BotLogFile when that is set, and never in the requester's chat
+    // window. Reporting whether it printed anything, and where, is the whole
+    // difference between a usable instrument and a command that always looks
+    // like it did nothing.
+    if (!sPlayerbotAIConfig.perfMonEnabled)
+    {
+        SendSysMessage("Performance monitor is disabled (AiPlayerbot.PerfMonEnabled = 0). Enable it with .perfmon toggle.");
+        return true;
+    }
+
+    if (!sPerformanceMonitor.PrintStats(tick, stack, map))
+    {
+        if (!sPerformanceMonitor.IsCollecting())
+            SendSysMessage("Performance monitor has no map buckets yet: nothing has been collected. It registers them on the next random-bot update tick.");
+        else
+            SendSysMessage("Performance monitor is collecting but has recorded nothing measurable yet. Try again after some bot activity.");
+        return true;
+    }
+
+    SendSysMessage("Performance monitor report written to the server log.");
     return true;
 }

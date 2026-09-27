@@ -21,6 +21,8 @@
 #   playerbot_event_store_contract        unit, always built
 #   bot_dialogue_policy                    unit, always built
 #   world_thread_command_queue            unit, always built
+#   perfmon_collection                    unit, always built
+#   perfmon_init_reachable                Python source scan, no build step
 #   persistent_active_roster_database_tests       opt-in, needs MariaDB, no add_test
 #   playerbot_event_store_database_tests          opt-in, needs MariaDB, no add_test
 #
@@ -966,3 +968,83 @@ if(TW_LUA_EXECUTABLE)
     COMMAND "${TW_LUA_EXECUTABLE}" "${PB_MODULE_DIR}/t/botmenu_addon_harness.lua"
       "${PB_MODULE_DIR}/addon/BotMenu-1.12")
 endif()
+
+# --------------------------------------------------------------------------
+# perfmon_collection / perfmon_init_reachable -- does the bot performance
+# monitor actually collect anything?
+#
+# It did not. `.perfmon toggle` reported "Performance monitor enabled" and
+# `.perfmon tick` then printed nothing, because PerformanceMonitor::Init() is the
+# only writer of mapsData, start() returns nullptr for an unregistered
+# (mapId, instanceId), and the single call to Init() sat near the bottom of
+# RandomPlayerbotMgr::UpdateAIInternal -- below the randomBotAutologin/enabled
+# gate and below both returns of the persistent-roster branch. On a persistent
+# roster the call was unreachable and the instrument was inert. The platform's
+# tick-latency roster gate depends on this monitor, so a dead monitor is a dead
+# safety net.
+#
+# Two suites, because the bug had two halves and neither test catches the other:
+#
+#   perfmon_collection      the collector's contract: no bucket means no
+#                           collection, a bucket plus a probe means a real
+#                           elapsed time comes out and a report is printed.
+#                           Compiles the REAL PerformanceMonitor.cpp.
+#   perfmon_init_reachable  the call site: Init() is reached before the first
+#                           return of RandomPlayerbotMgr::UpdateAIInternal, and
+#                           the map-less (0, 0) bucket is registered explicitly.
+#
+# The relocated copy below is the awkward part, and it is not avoidable. A
+# quote-include is searched in the directory of the file containing the directive
+# before any -I path, so while PerformanceMonitor.cpp sits next to the real
+# playerbot.h, `#include "playerbot.h"` finds that -- and the real one is
+# Spell.h, World.h, ObjectMgr.h, Chat.h and the whole game library behind them.
+# configure_file(COPYONLY) puts the unmodified .cpp somewhere with no sibling
+# headers, where t/stubs-perfmon is the only candidate, and re-runs CMake when
+# the original changes. The translation unit compiled is still the shipping one,
+# byte for byte; only its neighbours change.
+# --------------------------------------------------------------------------
+
+find_package(Threads REQUIRED)
+
+configure_file(
+  "${PB_MODULE_DIR}/src/playerbot/PerformanceMonitor.cpp"
+  "${CMAKE_BINARY_DIR}/perfmon-test-src/PerformanceMonitor.cpp"
+  COPYONLY)
+
+add_executable(perfmon_collection_tests
+  "${PB_MODULE_DIR}/t/perfmon_collection_tests.cpp"
+  "${CMAKE_BINARY_DIR}/perfmon-test-src/PerformanceMonitor.cpp")
+
+# t/stubs-perfmon FIRST, and no ${PB_MODULE_DIR}/src: the same arrangement the
+# event-store suites use with t/stubs, for the same reason. src/playerbot is on
+# the path because the header under test, PerformanceMonitor.h, is the real one.
+target_include_directories(perfmon_collection_tests PRIVATE
+  "${PB_MODULE_DIR}/t/stubs-perfmon"
+  "${PB_MODULE_DIR}/src/playerbot")
+
+# The vendor's three feature macros, as mod-playerbots.cmake sets them on the
+# module target. CMANGOS is load-bearing here and not cosmetic:
+# PerformanceMonitorOperation declares its `started` timestamp under
+# `#ifdef CMANGOS` while the constructor assigns it unconditionally, so without
+# the macro the real .cpp does not compile.
+target_compile_definitions(perfmon_collection_tests PRIVATE
+  CMANGOS MANGOSBOT_ZERO ENABLE_PLAYERBOTS)
+
+# The suite holds probes open with std::this_thread::sleep_for, because the
+# monitor records whole milliseconds and drops a zero-length measurement.
+target_link_libraries(perfmon_collection_tests PRIVATE Threads::Threads)
+
+set_target_properties(perfmon_collection_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME perfmon_collection
+  COMMAND perfmon_collection_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME perfmon_init_reachable
+  COMMAND "${Python3_EXECUTABLE}"
+    "${PB_MODULE_DIR}/t/perfmon_init_reachable_tests.py"
+    --module-dir "${PB_MODULE_DIR}")
+
+set_tests_properties(perfmon_init_reachable PROPERTIES
+  ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
