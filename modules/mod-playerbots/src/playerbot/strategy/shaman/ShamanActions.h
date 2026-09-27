@@ -420,6 +420,9 @@ namespace ai
         CastEarthShockAction(PlayerbotAI* ai) : CastRangedDebuffSpellAction(ai, "earth shock") {}
     };
 
+    // #357: Turtle shaman taunt (51365, needs a shield, 10 s cooldown, trainers from L10).
+    MELEE_ACTION_U(CastEarthshakerSlamAction, "earthshaker slam", GetTarget() && GetTarget()->GetVictim() && GetTarget()->GetVictim() != bot);
+
     class CastFrostShockAction : public CastSnareSpellAction
     {
     public:

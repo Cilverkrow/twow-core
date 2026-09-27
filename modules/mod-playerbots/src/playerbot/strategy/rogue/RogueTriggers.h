@@ -11,6 +11,9 @@ namespace ai
 
     CAN_CAST_TRIGGER_A(RiposteCastTrigger, "riposte");
 
+    // #367: the rogue tank keeps Ghostly Strike (+dodge) up.
+    BUFF_TRIGGER(GhostlyStrikeTrigger, "ghostly strike");
+
     class SliceAndDiceTrigger : public NoBuffAndComboPointsAvailableTrigger
     {
     public:

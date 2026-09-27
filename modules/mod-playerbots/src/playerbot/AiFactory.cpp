@@ -17,6 +17,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Battlegrounds/BattleGroundMgr.h"
+#include "playerbot/TankPathPolicy.h"
 
 namespace
 {
@@ -38,6 +39,30 @@ bool IsBearSpec(Player const* player)
             return path.name == "bear";
 
     return false;
+}
+
+// #357 / #367: the premade path the bot was given ("" = none).
+std::string PremadePathName(Player const* player)
+{
+    if (!player)
+        return "";
+
+    uint32 const specNo = sRandomPlayerbotMgr.GetValue(player->GetGUIDLow(), "specNo");
+    if (!specNo)
+        return "";
+
+    for (TalentPath const& path : sPlayerbotAIConfig.classSpecs[player->getClass()].talentPath)
+        if (path.id >= 0 && uint32(path.id) + 1 == specNo)
+            return path.name;
+
+    return "";
+}
+
+// #357 / #367: "tank shaman" / "tank rogue" for a shaman or rogue on its tank
+// premade path, else nullptr. Off until the owner gives the paths a weight.
+char const* TankPathStrategy(Player const* player)
+{
+    return player ? ai::tank_path::StrategyFor(player->getClass(), PremadePathName(player)) : nullptr;
 }
 }
 
@@ -301,6 +326,10 @@ BotRoles AiFactory::GetPlayerRoles(uint8 cls, uint8 tab)
 
 BotRoles AiFactory::GetPlayerRoles(const Player* player)
 {
+    // #357 / #367: a shaman or rogue on its tank path tanks, whatever the tree.
+    if (TankPathStrategy(player))
+        return BOT_ROLE_TANK;
+
     // This used to work out a role from what the character was doing right then
     // - defensive stance, righteous fury, bear form - and then return the talent
     // based answer anyway, throwing that work away. Restoring it would have made
@@ -417,11 +446,21 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
             else
             {
                 combatEngine->addStrategies("enhancement", "aoe", "cc", "close", NULL);
-                if (sPlayerbotAIConfig.enableOffSpecStrategies)
+                if (sPlayerbotAIConfig.enableOffSpecStrategies && !TankPathStrategy(player))
                     combatEngine->addStrategy("offheal");
             }
 
             combatEngine->addStrategies("dps assist", "cure", "totems", "buff", "boost", NULL);
+
+            // #357: shaman tank path (7.3) on top of the enhancement kit.
+            if (tab == 1)
+            {
+                if (char const* tank = TankPathStrategy(player))
+                {
+                    combatEngine->addStrategies(tank, "tank assist", "pull", NULL);
+                    combatEngine->removeStrategy("dps assist");
+                }
+            }
             break;
         }
 
@@ -540,6 +579,19 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
             }
 
             combatEngine->addStrategies("dps assist", "aoe", "close", "cc", "behind", "stealth", "poisons", "buff", "boost", NULL);
+
+            // #367: rogue tank path (4.3) on top of the combat kit; a tank
+            // faces its target and does not open from stealth.
+            if (tab == 1)
+            {
+                if (char const* tank = TankPathStrategy(player))
+                {
+                    combatEngine->addStrategies(tank, "tank assist", NULL);
+                    combatEngine->removeStrategy("dps assist");
+                    combatEngine->removeStrategy("behind");
+                    combatEngine->removeStrategy("stealth");
+                }
+            }
             break;
         }
 
@@ -825,6 +877,16 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             }
 
             nonCombatEngine->addStrategies("dps assist", "cure", "totems", "buff", "boost", NULL);
+
+            // #357: the tank path keeps its tank strategy (Rockbiter) out of combat.
+            if (tab == 1)
+            {
+                if (char const* tank = TankPathStrategy(player))
+                {
+                    nonCombatEngine->addStrategies(tank, "tank assist", NULL);
+                    nonCombatEngine->removeStrategy("dps assist");
+                }
+            }
             break;
         }
 
@@ -844,6 +906,17 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             }
 
             nonCombatEngine->addStrategies("dps assist", "poisons", "stealth", "buff", "boost", NULL);
+
+            // #367: rogue tank path.
+            if (tab == 1)
+            {
+                if (char const* tank = TankPathStrategy(player))
+                {
+                    nonCombatEngine->addStrategies(tank, "tank assist", NULL);
+                    nonCombatEngine->removeStrategy("dps assist");
+                    nonCombatEngine->removeStrategy("stealth");
+                }
+            }
             break;
         }
 

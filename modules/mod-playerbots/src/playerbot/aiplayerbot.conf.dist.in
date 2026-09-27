@@ -953,6 +953,20 @@ AiPlayerbot.PremadeSpecLink.4.2.45 = 325323124--52332333112232112251
 AiPlayerbot.PremadeSpecLink.4.2.50 = 3253231252331--52332333112232112251
 AiPlayerbot.PremadeSpecLink.4.2.55 = 32532312523331124--52332333112232112251
 AiPlayerbot.PremadeSpecLink.4.2.60 = 325323125233311251-53-52332333112232112251
+# #367: rogue tank shares the combat build; weight 0 until the owner decides (2026-09-27).
+AiPlayerbot.PremadeSpecName.4.3 = rogue tank
+AiPlayerbot.PremadeSpecProb.4.3 = 0
+AiPlayerbot.PremadeSpecLink.4.3.10 = -2
+AiPlayerbot.PremadeSpecLink.4.3.15 = -552
+AiPlayerbot.PremadeSpecLink.4.3.20 = -55534
+AiPlayerbot.PremadeSpecLink.4.3.25 = -5553512321
+AiPlayerbot.PremadeSpecLink.4.3.30 = -555351232551
+AiPlayerbot.PremadeSpecLink.4.3.35 = -55535123255212222
+AiPlayerbot.PremadeSpecLink.4.3.40 = 323-555351232552122231
+AiPlayerbot.PremadeSpecLink.4.3.45 = 325323-555351232552122231
+AiPlayerbot.PremadeSpecLink.4.3.50 = 3253231252-555351232552122231
+AiPlayerbot.PremadeSpecLink.4.3.55 = 32532312523331-555351232552122231
+AiPlayerbot.PremadeSpecLink.4.3.60 = 325323125233311251-555351232552122231-1
 
 # --- class 5 ---
 AiPlayerbot.PremadeSpecName.5.0 = holy
@@ -1035,6 +1049,20 @@ AiPlayerbot.PremadeSpecLink.7.2.45 = 55233135222321251-5525323
 AiPlayerbot.PremadeSpecLink.7.2.50 = 55233135222321251-55253231351
 AiPlayerbot.PremadeSpecLink.7.2.55 = 55233135222321251-55253231351-55
 AiPlayerbot.PremadeSpecLink.7.2.60 = 55233135222321251-55253231351-55235
+# #357: shaman tank shares the enhancement build; weight 0 until the owner decides (2026-09-27).
+AiPlayerbot.PremadeSpecName.7.3 = shaman tank
+AiPlayerbot.PremadeSpecProb.7.3 = 0
+AiPlayerbot.PremadeSpecLink.7.3.10 = -2
+AiPlayerbot.PremadeSpecLink.7.3.15 = -552
+AiPlayerbot.PremadeSpecLink.7.3.20 = -552532
+AiPlayerbot.PremadeSpecLink.7.3.25 = -5525323133
+AiPlayerbot.PremadeSpecLink.7.3.30 = -55253231352231
+AiPlayerbot.PremadeSpecLink.7.3.35 = 4-5525323135223151
+AiPlayerbot.PremadeSpecLink.7.3.40 = 5522-5525323135223151
+AiPlayerbot.PremadeSpecLink.7.3.45 = 55233132-5525323135223151
+AiPlayerbot.PremadeSpecLink.7.3.50 = 552331352221-5525323135223151
+AiPlayerbot.PremadeSpecLink.7.3.55 = 5523313522232123-5525323135223151
+AiPlayerbot.PremadeSpecLink.7.3.60 = 55233135222321251-5525323135223151-52
 
 # --- class 8 ---
 AiPlayerbot.PremadeSpecName.8.0 = arcane
