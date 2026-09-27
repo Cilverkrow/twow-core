@@ -42,3 +42,10 @@ require_text("${world_position}" "int32 const parent = sTravelMgr.GetAreaLevel(a
 require_text("${travel_mgr}" "sPlayerbotAIConfig.areaLevelOverrides.find(area_id)" "configured area levels")
 require_text("${config_template}" "AiPlayerbot.ZoneEscape.RetrySeconds = 60" "documented retry")
 require_text("${config_template}" "AiPlayerbot.AreaLevelOverrides =" "documented overrides")
+
+# Train 6 follow-up: no hearthstone among mobs, cap at three attempts, and the
+# destination that led into the zone is suppressed.
+require_text("${triggers}" "ai->GetAllHostileNPCNonPetUnitsAroundWO(bot, 30.0f).empty()" "hostile check before the cast")
+require_text("${triggers}" "\"manual int\", \"zone escape fails\"" "attempt counter")
+require_text("${actions}" "target->SuppressCurrentDestination(" "leading destination suppressed")
+require_text("${travel_mgr}" "void TravelTarget::SuppressCurrentDestination(uint32 durationMs)" "suppression in the travel target")

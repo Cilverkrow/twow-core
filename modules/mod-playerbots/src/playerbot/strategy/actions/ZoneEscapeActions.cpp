@@ -1,6 +1,7 @@
 #include "playerbot/playerbot.h"
 #include "ZoneEscapeActions.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/strategy/triggers/ZoneEscapeTriggers.h"
 
 using namespace ai;
@@ -18,7 +19,12 @@ bool ZoneEscapeAction::Execute(Event& event)
     // The current travel target led here; whatever happens next must not be
     // another local target (train 5: the next lake the bot died at).
     if (TravelTarget* target = AI_VALUE(TravelTarget*, "travel target"))
+    {
+        // Train 6: and the target that led here is not picked again right
+        // after the hearthstone (Durotar -> Grull Hawkwind through the Barrens).
+        target->SuppressCurrentDestination(sPlayerbotAIConfig.destinationDeathsCooldownSeconds * IN_MILLISECONDS);
         target->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+    }
 
     if (decision.step == zone_escape::Step::Wait)
     {
@@ -38,9 +44,13 @@ bool ZoneEscapeAction::Execute(Event& event)
 
     char const* state = "travel";
     char const* reason = decision.reason;
+    if (decision.step == zone_escape::Step::Travel && facts.failedHearths)
+        SET_AI_VALUE2(int, "manual int", "zone escape fails", 0);
 
     if (decision.step == zone_escape::Step::Hearth)
     {
+        // Counts attempts; reset once the bot is out of the zone (trigger).
+        SET_AI_VALUE2(int, "manual int", "zone escape fails", int(facts.failedHearths + 1));
         if (ai->DoSpecificAction("hearthstone", Event("zone escape"), true))
             state = lastStep == zone_escape::Step::Hearth ? "retry" : "hearth";
         else

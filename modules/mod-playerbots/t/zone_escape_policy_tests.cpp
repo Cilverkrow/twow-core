@@ -85,6 +85,18 @@ int main()
     Require(IntervalSeconds(Step::Travel, 600, 60) == 600, "travel: full cooldown");
     Require(IntervalSeconds(Step::None, 600, 60) == 600, "first attempt: full cooldown rule");
 
+    // Train 6 (#307): no cast among mobs; walk after three failed attempts.
+    Facts threatened = Stranded();
+    threatened.threatened = true;
+    d = Decide(threatened);
+    Require(d.step == Step::None && !std::strcmp(d.reason, "threatened"), "no hearthstone with attackers or hostile mobs near");
+    Facts failed = Stranded();
+    failed.failedHearths = MaxHearthAttempts - 1;
+    Require(Decide(failed).step == Step::Hearth, "third attempt still hearths");
+    failed.failedHearths = MaxHearthAttempts;
+    d = Decide(failed);
+    Require(d.step == Step::Travel && !std::strcmp(d.reason, "hearth_failed_3x"), "after three failed attempts: walk");
+
     Facts dungeon = Stranded();
     dungeon.inInstanceOrBattleground = true;
     Require(Decide(dungeon).step == Step::None, "never inside instances or battlegrounds");

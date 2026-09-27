@@ -1102,6 +1102,20 @@ void TravelTarget::OnDeathAtDestination()
     SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
 }
 
+void TravelTarget::SuppressCurrentDestination(uint32 durationMs)
+{
+    if (!tDestination || dynamic_cast<NullTravelDestination const*>(tDestination) || !durationMs)
+        return;
+
+    // Same bounded per-bot map as the destination death rule (#138).
+    if (destinationDeaths.size() > 64 && destinationDeaths.find(tDestination) == destinationDeaths.end())
+        destinationDeaths.clear();
+
+    destination_death::Record& record = destinationDeaths[tDestination];
+    record.deaths = 0;
+    record.suppressUntil = WorldTimer::getMSTime() + durationMs;
+}
+
 bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destination) const
 {
     auto const it = destinationDeaths.find(destination);
