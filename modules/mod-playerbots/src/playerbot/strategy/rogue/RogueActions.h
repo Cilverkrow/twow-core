@@ -505,6 +505,16 @@ namespace ai
         ApplyCripplingPoisonAction(PlayerbotAI* ai, bool inMainHand) : ApplyPoisonAction(ai, inMainHand, { 3775, 3776 }, "apply crippling poison") {}
     };
 
+    // #367 (owner 2026-09-27): the rogue tank coats its main hand with the threat
+    // poison - the bot item 90140 (core#188, level 20, enchant 3006, threat by
+    // level band) or the level-60 Agitating Poison 65032.
+    class ApplyAgitatingPoisonAction : public ApplyPoisonAction
+    {
+    public:
+        ApplyAgitatingPoisonAction(PlayerbotAI* ai, bool inMainHand) : ApplyPoisonAction(ai, inMainHand, { 90140, 65032 }, "apply agitating poison") {}
+        bool isPossible() override;
+    };
+
     class ApplyMindPoisonAction : public ApplyPoisonAction
     {
     public:

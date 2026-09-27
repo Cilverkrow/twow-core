@@ -36,6 +36,12 @@ void TankRogueStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode(
         "shadow dance",
         NextAction::array(0, new NextAction("shadow dance", ACTION_NORMAL + 1), NULL)));
+
+    // #367 (owner): the threat poison on the main hand, above the combat kit's
+    // main-hand poison (which the multiplier below keeps off the main hand).
+    triggers.push_back(new TriggerNode(
+        "apply agitating poison main hand",
+        NextAction::array(0, new NextAction("apply agitating poison main hand", ACTION_NORMAL + 2), NULL)));
 }
 
 void TankRogueStrategy::InitCombatMultipliers(std::list<Multiplier*>& multipliers)
@@ -47,6 +53,13 @@ float TankRogueThreatMultiplier::GetValue(Action* action)
 {
     std::string const name = action->getName();
     if (name == "feint" || name == "vanish")
+        return 0.0f;
+
+    // #367: no other poison on the main hand - it would replace the threat poison
+    // (every "apply ... poison main hand" trigger treats a foreign poison as missing).
+    std::string const mainHand = " poison main hand";
+    if (name != "apply agitating poison main hand" && name.size() > mainHand.size() &&
+        name.compare(0, 6, "apply ") == 0 && name.compare(name.size() - mainHand.size(), mainHand.size(), mainHand) == 0)
         return 0.0f;
 
     return 1.0f;

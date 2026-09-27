@@ -60,3 +60,14 @@ require_text("${config_template}" "AiPlayerbot.PremadeSpecLink.4.3.60 = " "rogue
 # Stat rows (#308).
 require_text("${stats}" "7\tshaman\t3\tshaman tank\ttank\tdefense" "shaman tank stats")
 require_text("${stats}" "4\trogue\t3\trogue tank\ttank\tsta\tagi\tdodge_pct\tparry_pct" "rogue tank stats (owner 2026-09-27: stamina, agility, dodge, parry)")
+
+# #367 (owner): the rogue tank keeps the threat poison on its main hand.
+require_text("${rogue}" "new NextAction(\"apply agitating poison main hand\", ACTION_NORMAL + 2)" "threat poison on the main hand")
+require_text("${rogue}" "name != \"apply agitating poison main hand\"" "no other main-hand poison for the tank")
+require_text("${rogue_actions}" "ApplyPoisonAction(ai, inMainHand, { 90140, 65032 }, \"apply agitating poison\")" "bot poison and Agitating Poison")
+require_text("${rogue_ctx}" "creators[\"apply agitating poison main hand\"]" "trigger and action registered")
+file(READ "${PB_SOURCE_DIR}/strategy/rogue/RogueTriggers.h" rogue_triggers)
+require_text("${rogue_triggers}" "ApplyPoisonTrigger(ai, inMainHand, { 3006 }, \"apply agitating poison main hand\")" "enchant 3006")
+file(READ "${PB_SOURCE_DIR}/strategy/rogue/RogueActions.cpp" rogue_actions_cpp)
+require_text("${rogue_actions_cpp}" "[SpecAura] state=kit_item" "visible poison supply")
+require_text("${rogue_actions_cpp}" "AiFactory::GetPremadePathName(bot) == \"rogue tank\"" "supply for the tank path only")

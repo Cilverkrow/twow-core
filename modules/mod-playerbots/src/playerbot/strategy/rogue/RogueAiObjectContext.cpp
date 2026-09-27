@@ -225,6 +225,7 @@ namespace ai
                 creators["apply crippling poison main hand"] = [](PlayerbotAI* ai) { return new ApplyCripplingPoisonTrigger(ai, true); };
                 creators["apply mind poison main hand"] = [](PlayerbotAI* ai) { return new ApplyMindPoisonTrigger(ai, true); };
                 creators["apply instant poison main hand"] = [](PlayerbotAI* ai) { return new ApplyInstantPoisonTrigger(ai, true); };
+                creators["apply agitating poison main hand"] = [](PlayerbotAI* ai) { return new ApplyAgitatingPoisonTrigger(ai, true); };
                 creators["apply wound poison main hand"] = [](PlayerbotAI* ai) { return new ApplyWoundPoisonTrigger(ai, true); };
                 creators["apply anesthetic poison main hand"] = [](PlayerbotAI* ai) { return new ApplyAnestheticPoisonTrigger(ai, true); };
                 creators["apply deadly poison off hand"] = [](PlayerbotAI* ai) { return new ApplyDeadlyPoisonTrigger(ai, false); };
@@ -286,6 +287,7 @@ namespace ai
                 creators["apply crippling poison main hand"] = [](PlayerbotAI* ai) { return new ApplyCripplingPoisonAction(ai, true); };
                 creators["apply mind poison main hand"] = [](PlayerbotAI* ai) { return new ApplyMindPoisonAction(ai, true); };
                 creators["apply instant poison main hand"] = [](PlayerbotAI* ai) { return new ApplyInstantPoisonAction(ai, true); };
+                creators["apply agitating poison main hand"] = [](PlayerbotAI* ai) { return new ApplyAgitatingPoisonAction(ai, true); };
                 creators["apply wound poison main hand"] = [](PlayerbotAI* ai) { return new ApplyWoundPoisonAction(ai, true); };
                 creators["apply anesthetic poison main hand"] = [](PlayerbotAI* ai) { return new ApplyAnestheticPoisonAction(ai, true); };
                 creators["apply deadly poison off hand"] = [](PlayerbotAI* ai) { return new ApplyDeadlyPoisonAction(ai, false); };
