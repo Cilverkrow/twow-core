@@ -410,6 +410,8 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionQuestAreaLevelMargin = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin", 5);
     destinationDeathsMax = config.GetIntDefault("AiPlayerbot.DestinationDeaths.Max", 2);
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
+    questWorkTimeoutsMax = (uint32)config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.Max", 0);
+    questWorkTimeoutsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.CooldownSeconds", 3600));
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
     deathLoopWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DeathLoop.WindowSeconds", 900));
     deathLoopRadius = std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DeathLoop.Radius", 150.0f));
