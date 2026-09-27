@@ -207,7 +207,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
         }
 
         if (rosterOnItsOwn && sPlayerbotAIConfig.grindAvoidMaxDeaths && !unit->GetObjectGuid().IsPlayer() &&
-            AI_VALUE2(time_t, "manual time", "grind avoid " + std::to_string(unit->GetEntry())) > now)
+            grind_cap::Avoids().IsAvoided(bot->GetGUIDLow(), unit->GetEntry(), uint32(now)))
         {
             logGrind(unit, "ignored (killed this bot repeatedly).");
             continue;
