@@ -94,11 +94,25 @@ for i = 1, table.getn(BOTMENU_CATEGORIES) do
     require_true(menu.numButtons == table.getn(category.entries), category.label.." has all entries")
     for j = 1, menu.numButtons do
         local button = getglobal(category.menu.."Button"..j)
+        local entry = category.entries[j]
         ChatMenu:Show()
         this = button
-        button.func()
-        require_true(written[table.getn(written)] == category.entries[j][2], "click writes '"..category.entries[j][2].."'")
-        require_true(not ChatMenu.shown, "a click closes the chat menu")
+        if entry.prefix then
+            -- A role click writes nothing; the next command gets the prefix once.
+            local before = table.getn(written)
+            button.func()
+            require_true(table.getn(written) == before, entry[1].." writes nothing by itself")
+            require_true(not ChatMenu.shown, "a role click closes the chat menu")
+            local follow = getglobal("BotMenuCombatButton1")
+            this = follow; follow.func()
+            require_true(written[table.getn(written)] == entry.prefix.."follow", "role prefix '"..entry.prefix.."' goes in front of the next command")
+            this = follow; follow.func()
+            require_true(written[table.getn(written)] == "follow", "the role prefix applies to one command only")
+        else
+            button.func()
+            require_true(written[table.getn(written)] == entry[2], "click writes '"..entry[2].."'")
+            require_true(not ChatMenu.shown, "a click closes the chat menu")
+        end
         total = total + 1
     end
 end
