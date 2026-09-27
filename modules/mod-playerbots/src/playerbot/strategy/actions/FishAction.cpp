@@ -36,6 +36,10 @@ bool IsUsableFishSpot(WorldPosition const& spot, Player* bot)
     if (!spot || spot.getZ() <= INVALID_HEIGHT)
         return false;
 
+    // #333: never a fishing spot inside an instance (Maraudon at level 6-11).
+    if (!spot.isOverworld())
+        return false;
+
     return !homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, spot.getAreaLevelOrParent())), bot->GetLevel());
 }
 }
