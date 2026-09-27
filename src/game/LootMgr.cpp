@@ -347,6 +347,23 @@ static bool IsBonusLootItemAllowed(LootStoreItem const& item, Loot const& loot)
            !proto->LockID && !proto->MaxCount && !(proto->Flags & ITEM_FLAG_UNIQUE_EQUIPPED);
 }
 
+// twow-repo#323, owner 2026-09-27 (e): loot units may take unique items, because a
+// raid kill is shared by many players; ProcessUnits caps them at one copy per kill.
+static bool IsUnitLootItemAllowed(LootStoreItem const& item, Loot const& loot)
+{
+    if (item.mincountOrRef <= 0 || item.needs_quest || item.conditionId || !item.AllowedForTeam(loot))
+        return false;
+
+    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid);
+    return proto && !proto->StartQuest && proto->Class != ITEM_CLASS_KEY && proto->Class != ITEM_CLASS_RECIPE &&
+           !proto->LockID;
+}
+
+static uint32 GetUnitLootMaxCopies(ItemPrototype const* proto)
+{
+    return proto && (proto->MaxCount || (proto->Flags & ITEM_FLAG_UNIQUE_EQUIPPED)) ? FUNSERVER_UNIQUE_MAX_COPIES : 0;
+}
+
 static bool IsBonusLootCandidate(LootStoreItem const& item, Loot const& loot)
 {
     // Do not re-enter references or multiply protected and recipient-specific
@@ -627,7 +644,7 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
     if (unitsContent != FUNSERVER_LOOT_NONE)
     {
         Unit const* levelSource = bonusOwner->IsUnit() ? static_cast<Unit const*>(bonusOwner) : loot_owner;
-        tab->ProcessUnits(*this, loot_owner, unitsContent, levelSource->GetLevel());
+        tab->ProcessUnits(*this, loot_owner, unitsContent, levelSource->GetLevel(), bonusOwner->GetMapId());
     }
     else
     {
@@ -1572,16 +1589,50 @@ struct FunserverBoePoolItem
     uint32 itemId;
     uint32 requiredLevel;
     uint32 quality;
+    uint32 itemLevel;
 };
 
 static std::vector<FunserverBoePoolItem> sFunserverBoePool;
 
+// twow-repo#323, owner 2026-09-27 (b): creature loot templates of the reviewed bosses
+// per map, so a kill can fill up from the other bosses of the same instance first.
+static std::map<uint32, std::vector<uint32>> sFunserverInstanceBossLoot;
+
+static void LoadFunserverInstanceBossLoot()
+{
+    sFunserverInstanceBossLoot.clear();
+
+    std::unique_ptr<QueryResult> result(WorldDatabase.Query(
+        "SELECT DISTINCT r.`map_id`, c.`loot_id` FROM `creature_loot_bonus_registry` r "
+        "JOIN `creature_template` c ON c.`entry` = r.`creature_entry` WHERE c.`loot_id` > 0"));
+    if (!result)
+        return;
+
+    uint32 count = 0;
+    do
+    {
+        Field* fields = result->Fetch();
+        uint32 const mapId = fields[0].GetUInt32();
+        uint32 const lootId = fields[1].GetUInt32();
+        if (!LootTemplates_Creature.GetLootFor(lootId))
+            continue;
+        sFunserverInstanceBossLoot[mapId].push_back(lootId);
+        ++count;
+    }
+    while (result->NextRow());
+
+    sLog.outString("Loaded %u funserver instance boss loot tables on %u maps", count, uint32(sFunserverInstanceBossLoot.size()));
+}
+
 void LoadFunserverBoePool()
 {
     sFunserverBoePool.clear();
+    sFunserverInstanceBossLoot.clear();
 
     if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED))
         return;
+
+    LoadFunserverInstanceBossLoot();
 
     // Items that already drop somewhere in the world; the prototype filter
     // below keeps BoE blue/epic weapons and armour for levels 10..60.
@@ -1603,7 +1654,7 @@ void LoadFunserverBoePool()
             proto->StartQuest || proto->MaxCount || proto->LockID || (proto->Flags & ITEM_FLAG_UNIQUE_EQUIPPED))
             continue;
 
-        sFunserverBoePool.push_back({ itemId, proto->RequiredLevel, proto->Quality });
+        sFunserverBoePool.push_back({ itemId, proto->RequiredLevel, proto->Quality, proto->ItemLevel });
     }
     while (result->NextRow());
 
@@ -1641,7 +1692,7 @@ void LootTemplate::CollectUnitCandidates(std::vector<FunserverUnitCandidate>& ou
         group.CollectUnitCandidates(out, scale);
 }
 
-void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 content, uint32 level) const
+void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 content, uint32 level, uint32 mapId) const
 {
     if (content == FUNSERVER_LOOT_NONE || content >= FUNSERVER_LOOT_CONTENT_COUNT)
         return;
@@ -1655,31 +1706,42 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
         return;
     uint32 const remaining = target - uint32(loot.items.size());
 
-    // Own-table candidates (direct rows, groups, one reference level).
-    struct Candidate { LootStoreItem const* item; float baseChance; float qualityWeight; };
+    std::map<uint32, uint32> selected;
+    for (LootItem const& item : loot.items)
+        ++selected[item.itemid];
+
+    // Owner rule 2026-09-27 (#323): own table first (unique items at most once),
+    // then the other bosses of the same instance, then the world BoE pool at the
+    // own table's tier; every pool item at most once; otherwise fewer units.
+
+    // Stage 1: own-table candidates (direct rows, groups, one reference level).
+    struct Candidate { LootStoreItem const* item; float baseChance; float qualityWeight; uint32 maxCopies; };
     std::vector<FunserverUnitCandidate> raw;
     CollectUnitCandidates(raw, 1.0f, true);
 
     std::vector<Candidate> candidates;
     std::set<uint32> floorItems;
+    uint32 ownMaxItemLevel = 0;
     for (FunserverUnitCandidate const& c : raw)
     {
-        if (!IsBonusLootItemAllowed(*c.item, loot))
+        if (!IsUnitLootItemAllowed(*c.item, loot))
             continue;
         ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
         float const weight = sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
             idx * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(proto->Quality)));
-        candidates.push_back({ c.item, c.baseChance, weight });
+        uint32 const maxCopies = GetUnitLootMaxCopies(proto);
+        candidates.push_back({ c.item, c.baseChance, weight, maxCopies });
         if (proto->Quality >= floorQuality)
-            floorItems.insert(c.item->itemid);
+        {
+            ownMaxItemLevel = std::max(ownMaxItemLevel, proto->ItemLevel);
+            // A unique item that already dropped cannot fill another unit.
+            if (!maxCopies || selected[c.item->itemid] < maxCopies)
+                floorItems.insert(c.item->itemid);
+        }
     }
 
-    std::map<uint32, uint32> selected;
-    for (LootItem const& item : loot.items)
-        ++selected[item.itemid];
-
     // The own table covers what it can with distinct items at the quality
-    // floor; the BoE pool supplies the rest (owner rule 2026-09-24).
+    // floor; the pools supply the rest (owner rule 2026-09-24).
     uint32 poolUnits = FunserverBoePoolShortfall(remaining, uint32(floorItems.size()));
     uint32 const ownUnits = remaining - poolUnits;
 
@@ -1689,8 +1751,8 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
         float total = 0.0f;
         for (size_t i = 0; i < candidates.size(); ++i)
         {
-            weights[i] = FunserverUnitWeight(candidates[i].baseChance, candidates[i].qualityWeight,
-                                             selected[candidates[i].item->itemid], decay);
+            weights[i] = FunserverUnitWeightCapped(candidates[i].baseChance, candidates[i].qualityWeight,
+                                                   selected[candidates[i].item->itemid], decay, candidates[i].maxCopies);
             total += weights[i];
         }
         if (total <= 0.0f)
@@ -1711,6 +1773,8 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
             }
         }
 
+        while (pick > 0 && weights[pick] <= 0.0f)            // a boundary roll never picks a capped item
+            --pick;
         loot.AddItem(*candidates[pick].item);
         ++selected[candidates[pick].item->itemid];
     }
@@ -1718,11 +1782,58 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
     if (!poolUnits || loot.IsBonusFull())
         return;
 
+    // Stage 2 (b): distinct floor-quality items of the other reviewed bosses on this
+    // map, drawn evenly, each at most once per kill.
+    std::map<uint32, LootStoreItem const*> instanceItems;
+    auto const bosses = sFunserverInstanceBossLoot.find(mapId);
+    if (bosses != sFunserverInstanceBossLoot.end())
+    {
+        for (uint32 lootId : bosses->second)
+        {
+            LootTemplate const* other = LootTemplates_Creature.GetLootFor(lootId);
+            if (!other || other == this)
+                continue;
+
+            std::vector<FunserverUnitCandidate> otherRaw;
+            other->CollectUnitCandidates(otherRaw, 1.0f, true);
+            for (FunserverUnitCandidate const& c : otherRaw)
+            {
+                if (c.baseChance <= 0.0f || !IsUnitLootItemAllowed(*c.item, loot))
+                    continue;
+                ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
+                if (proto->Quality >= floorQuality)
+                    instanceItems.emplace(c.item->itemid, c.item);
+            }
+        }
+    }
+
+    std::vector<LootStoreItem const*> instancePool;
+    for (auto const& entry : instanceItems)
+        if (!selected[entry.first])
+            instancePool.push_back(entry.second);
+
+    while (poolUnits && !instancePool.empty() && !loot.IsBonusFull())
+    {
+        size_t const pick = urand(0, uint32(instancePool.size() - 1));
+        loot.AddItem(*instancePool[pick]);
+        ++selected[instancePool[pick]->itemid];
+        instancePool[pick] = instancePool.back();
+        instancePool.pop_back();
+        --poolUnits;
+    }
+
+    if (!poolUnits || loot.IsBonusFull())
+        return;
+
+    // Stage 3 (a, d): world BoE pool within the required-level window and at the
+    // own table's tier (item level >= own max - margin), each item at most once.
     uint32 const window = sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BOE_LEVEL_WINDOW);
+    uint32 const margin = sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BOE_ITEM_LEVEL_MARGIN);
     float const epicShare = sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BOE_EPIC_SHARE);
     std::vector<FunserverBoePoolItem const*> pool;
     for (FunserverBoePoolItem const& item : sFunserverBoePool)
-        if (item.quality >= floorQuality && FunserverBoeLevelMatch(item.requiredLevel, level, window))
+        if (item.quality >= floorQuality && FunserverBoeLevelMatch(item.requiredLevel, level, window) &&
+            FunserverBoeItemLevelMatch(item.itemLevel, ownMaxItemLevel, margin))
             pool.push_back(&item);
 
     std::vector<float> poolWeights(pool.size());
@@ -1733,11 +1844,11 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
         {
             // Below an epic floor, epics are a smaller share next to blues.
             float const base = (pool[i]->quality >= ITEM_QUALITY_EPIC && floorQuality < ITEM_QUALITY_EPIC) ? epicShare : 1.0f;
-            poolWeights[i] = FunserverUnitWeight(base, 1.0f, selected[pool[i]->itemId], decay);
+            poolWeights[i] = FunserverUnitWeightCapped(base, 1.0f, selected[pool[i]->itemId], decay, FUNSERVER_POOL_MAX_COPIES);
             total += poolWeights[i];
         }
         if (total <= 0.0f)
-            return;
+            return;                                         // fewer units rather than repeats or off-tier filler
 
         float roll = frand(0.0f, total);
         size_t pick = pool.size() - 1;
@@ -1751,6 +1862,8 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
             }
         }
 
+        while (pick > 0 && poolWeights[pick] <= 0.0f)
+            --pick;
         LootStoreItem const poolItem(pool[pick]->itemId, 100.0f, 0, 0, 1, 1);
         loot.AddItem(poolItem);
         ++selected[pool[pick]->itemId];

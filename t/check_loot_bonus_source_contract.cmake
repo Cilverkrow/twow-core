@@ -94,5 +94,19 @@ string(FIND "${units_body}" "
 }" units_end)
 string(SUBSTRING "${units_body}" 0 ${units_end} units_body)
 require_text("${units_body}" "!loot.IsBonusFull()" "quest-slot aware unit fill")
-require_text("${units_body}" "IsBonusLootItemAllowed" "protected items never fill units")
+require_text("${units_body}" "IsUnitLootItemAllowed" "protected items never fill units")
+# Owner 2026-09-27 (#323 e/a/b/d): units allow unique items (capped at one copy), fill from
+# the same instance before the world pool, bound the world pool by tier, one copy per pool item.
+string(FIND "${loot}" "static bool IsUnitLootItemAllowed(" unit_filter_at)
+string(SUBSTRING "${loot}" ${unit_filter_at} -1 unit_filter)
+string(FIND "${unit_filter}" "
+}" unit_filter_end)
+string(SUBSTRING "${unit_filter}" 0 ${unit_filter_end} unit_filter)
+foreach (protected "item.needs_quest" "item.conditionId" "proto->StartQuest" "ITEM_CLASS_KEY" "ITEM_CLASS_RECIPE" "proto->LockID")
+  require_text("${unit_filter}" "${protected}" "unit filter keeps protected items out")
+endforeach()
+foreach (rule "candidates[i].maxCopies" "sFunserverInstanceBossLoot.find(mapId)" "other == this"
+              "FunserverBoeItemLevelMatch(item.itemLevel, ownMaxItemLevel, margin)" "FUNSERVER_POOL_MAX_COPIES")
+  require_text("${units_body}" "${rule}" "#323 owner unit rule")
+endforeach()
 message(STATUS "LOOT_BONUS_SOURCE_CONTRACT=PASS")

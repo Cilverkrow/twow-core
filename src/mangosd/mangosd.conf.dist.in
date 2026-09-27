@@ -1844,11 +1844,21 @@ Funserver.Loot.Bonus.DuplicateDecay = 0.25
 #   Default rare/dungeon: 0.1 0.25 0.5 10 10 1; raid: 0.1 0.1 0.1 0.1 10 10
 #
 # Funserver.Loot.Units.DuplicateDecay
-#   Weight factor per copy of an item already dropped in this kill (0.75 = -25 %).
+#   Weight factor per copy of an own-table item already dropped in this kill
+#   (0.75 = -25 %). Unique items (max count / unique-equipped) drop at most once.
 #   Default: 0.75
+#
+#   Fill order (owner rule 2026-09-27): the boss's own table, then the other
+#   reviewed bosses of the same map (creature_loot_bonus_registry), then the
+#   world BoE pool. Every pool item drops at most once per kill; if nothing
+#   fits, the kill gives fewer units.
 #
 # Funserver.Loot.Units.BoePool.LevelWindow
 #   Required-level window around the level for BoE pool items. Default: 4
+#
+# Funserver.Loot.Units.BoePool.ItemLevelMargin
+#   World BoE pool items need an item level of at least the highest item level
+#   of the boss's own floor-quality items minus this margin. Default: 5
 #
 # Funserver.Loot.Units.BoePool.EpicShare
 #   Weight of an epic next to a blue (1.0) below an epic floor. Default: 0.2
@@ -1880,6 +1890,7 @@ Funserver.Loot.Units.Weight.Raid.Epic = 10
 Funserver.Loot.Units.Weight.Raid.Legendary = 10
 Funserver.Loot.Units.DuplicateDecay = 0.75
 Funserver.Loot.Units.BoePool.LevelWindow = 4
+Funserver.Loot.Units.BoePool.ItemLevelMargin = 5
 Funserver.Loot.Units.BoePool.EpicShare = 0.2
 
 # Funserver.Rare.Respawn.Enabled
