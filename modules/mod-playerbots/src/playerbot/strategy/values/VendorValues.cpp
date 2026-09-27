@@ -3,6 +3,7 @@
 #include "BudgetValues.h"
 #include "playerbot/PlayerbotAI.h"
 #include "SharedValueContext.h"
+#include "playerbot/strategy/actions/BuyAction.h"
 
 using namespace ai;
 
@@ -85,7 +86,9 @@ bool VendorHasUsefulItemValue::Calculate()
 
     std::unordered_map <ItemUsage, uint32> freeMoney;
 
-    freeMoney[ItemUsage::ITEM_USAGE_EQUIP] = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::gear);
+    // twow-repo#363: under the vendor gear rule the gear budget is the policy's.
+    freeMoney[ItemUsage::ITEM_USAGE_EQUIP] = BuyAction::VendorGearInScope(ai) ?
+        BuyAction::VendorGearAllowance(ai) : AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::gear);
     freeMoney[ItemUsage::ITEM_USAGE_USE] = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::consumables);
     freeMoney[ItemUsage::ITEM_USAGE_SKILL] = freeMoney[ItemUsage::ITEM_USAGE_DISENCHANT] = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::tradeskill);
     freeMoney[ItemUsage::ITEM_USAGE_AMMO] = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::ammo);

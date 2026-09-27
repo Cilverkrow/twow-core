@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AmmoStockPolicy.h"
 #include <unordered_set>
 #include "Config/Config.h"
 #include "Talentspec.h"
@@ -175,6 +176,18 @@ public:
     // #341: need/greed/pass by role and profession for roster bots on their own.
     bool lootRollRoleAware = false;
     bool lootRollTrace = false;
+    // twow-repo#363: roster bots up to a level cap buy vendor gear upgrades.
+    bool vendorGearEnabled = false;
+    uint32 vendorGearMaxLevel = 30;
+    uint32 vendorGearMaxSpendPercent = 50;
+    uint32 vendorGearReserveCopper = 0;
+    uint32 vendorGearCooldownSeconds = 600;
+    bool vendorGearTrace = false;
+    // OB-10 train 6 / twow-repo#363: ammo and thrown weapon stock as item counts.
+    // Empty / 0 = class default (hunter 8 stacks, otherwise 2 stacks).
+    std::vector<ai::ammo_stock::Tier> hunterAmmoTiers;
+    bool hunterAmmoFillQuiver = false;
+    uint32 thrownMaxCount = 0;
     float randomBotMaxLevelChance;
     float randomBotRaceVariantChance;
     float randomBotRpgChance;

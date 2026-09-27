@@ -233,6 +233,15 @@ bool PlayerbotAIConfig::Initialize()
     rollBadItemsWithPlayer = config.GetBoolDefault("AiPlayerbot.RollBadItemsWithPlayer", false);
     lootRollRoleAware = config.GetBoolDefault("AiPlayerbot.LootRoll.RoleAware", false);
     lootRollTrace = config.GetBoolDefault("AiPlayerbot.LootRoll.Trace", false);
+    vendorGearEnabled = config.GetBoolDefault("AiPlayerbot.VendorGear.Enabled", false);
+    vendorGearMaxLevel = (uint32)config.GetIntDefault("AiPlayerbot.VendorGear.MaxLevel", 30);
+    vendorGearMaxSpendPercent = (uint32)config.GetIntDefault("AiPlayerbot.VendorGear.MaxSpendPercent", 50);
+    vendorGearReserveCopper = (uint32)config.GetIntDefault("AiPlayerbot.VendorGear.ReserveCopper", 0);
+    vendorGearCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.VendorGear.CooldownSeconds", 600);
+    vendorGearTrace = config.GetBoolDefault("AiPlayerbot.VendorGear.Trace", false);
+    hunterAmmoTiers = ai::ammo_stock::ParseTiers(config.GetStringDefault("AiPlayerbot.HunterAmmoTiers", ""));
+    hunterAmmoFillQuiver = config.GetBoolDefault("AiPlayerbot.HunterAmmoFillQuiver", false);
+    thrownMaxCount = (uint32)config.GetIntDefault("AiPlayerbot.ThrownMaxCount", 0);
     randomBotRpgChance = config.GetFloatDefault("AiPlayerbot.RandomBotRpgChance", 0.35f);
     usePotionChance = config.GetFloatDefault("AiPlayerbot.UsePotionChance", 1.0f);
     attackEmoteChance = config.GetFloatDefault("AiPlayerbot.AttackEmoteChance", 0.0f);

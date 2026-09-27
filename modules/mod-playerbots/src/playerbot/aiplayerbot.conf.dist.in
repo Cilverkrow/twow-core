@@ -164,6 +164,37 @@ AiPlayerbot.RollBadItemsWithPlayer = 0
 AiPlayerbot.LootRoll.RoleAware = 0
 AiPlayerbot.LootRoll.Trace = 0
 
+# twow-repo#363: up to MaxLevel, roster bots on their own buy gear from a vendor
+# they visit anyway when it is a measurable upgrade by the stat score for their
+# class and spec (armour and weapon proficiency included). A visit spends at most
+# MaxSpendPercent of the money carried and never goes below repair cost + class
+# training cost + ReserveCopper; one item per slot per visit, never the same item
+# twice, and no further gear purchase before CooldownSeconds have passed.
+# Every purchase is logged as [VendorGear] buy; Trace also logs every skipped
+# upgrade as [VendorGear] skip with its reason. 0 keeps the unchanged buy rule.
+AiPlayerbot.VendorGear.Enabled = 0
+AiPlayerbot.VendorGear.MaxLevel = 30
+AiPlayerbot.VendorGear.MaxSpendPercent = 50
+AiPlayerbot.VendorGear.ReserveCopper = 0
+AiPlayerbot.VendorGear.CooldownSeconds = 600
+AiPlayerbot.VendorGear.Trace = 0
+
+# Ammo and thrown weapon stock, as item counts (OB-10 train 6, twow-repo#363).
+# Without a setting the class default applies: a hunter keeps 8 stacks of
+# arrows/bullets, warriors and rogues 2 stacks of thrown weapons (400 axes -
+# one warrior bought 142 Crude Throwing Axes one at a time in one train).
+#
+# HunterAmmoTiers: "maxLevel:count,..." target stock a hunter refills to, e.g.
+#   "10:400,30:800,50:1200"; above the last tier its count applies.
+# HunterAmmoFillQuiver: with a fitting quiver/ammo pouch equipped, fill it
+#   completely instead (slots x stack size).
+# ThrownMaxCount: most thrown weapons a warrior/rogue carries (equipped stack
+#   counts), e.g. 20. 0 = class default.
+# Missing ammo is bought in one vendor transaction per stack, not one by one.
+AiPlayerbot.HunterAmmoTiers =
+AiPlayerbot.HunterAmmoFillQuiver = 0
+AiPlayerbot.ThrownMaxCount = 0
+
 # Chance random bot has max level on first randomize (default 0.15)
 AiPlayerbot.RandomBotMaxLevelChance = 0.15
 
