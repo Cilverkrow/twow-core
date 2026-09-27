@@ -12,8 +12,7 @@ file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_source)
 file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_template)
 
 # #307 shared danger map: every access is locked (map update thread pools).
-require_text("${policy}" "std::unique_lock lock(mutex);" "locked writes")
-require_text("${policy}" "std::shared_lock lock(mutex);" "shared reads")
+require_text("${policy}" "std::lock_guard<std::mutex> lock(mutex);" "locked reads and writes")
 require_text("${policy}" "MaxCells = 4096" "bounded cell count")
 
 # Source: all bots, never real players, no instances, only deaths to a creature.
