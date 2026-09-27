@@ -593,6 +593,12 @@ add_test(NAME bear_path_source_contract
     "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
     -P "${PB_MODULE_DIR}/t/bear_path_source_contract_tests.cmake")
 
+# #351: trainer and class-quest scans cached per class (level-up cost).
+add_test(NAME trainer_cache_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/trainer_cache_source_contract_tests.cmake")
+
 add_test(NAME persistent_roster_bag_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
