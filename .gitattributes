@@ -19,3 +19,8 @@ sql/touch_migration.sh text eol=lf
 # hashes and the bootstrap reported an identity conflict (twow-repo#34). The
 # production target is Linux/Docker: SQL is LF everywhere.
 sql/**/*.sql text eol=lf
+
+# The upstream-freshness CI job runs this by shebang, and it is meant to be run
+# by hand on a developer machine too. Same reason as sql/touch_migration.sh: a
+# CRLF checkout on a core.autocrlf=true machine makes the shebang unusable.
+tools/ci/check-upstream-lock.sh text eol=lf
