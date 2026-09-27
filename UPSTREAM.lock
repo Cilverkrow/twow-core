@@ -7,8 +7,28 @@
 upstream_url    = https://github.com/Shyalya/tortoise-wow.git
 upstream_branch = playerbots-integration-gh
 
-# The commit this fork's delta is applied on top of.
-fork_point      = 61a8269151721f6467eddb05e7bed37704d0fc0b
+# The commit this fork's delta is applied on top of: the merge base between our
+# history and the branch we track. Re-derive it rather than trusting this line --
+# it was wrong for the life of the fork:
+#
+#   git fetch upstream playerbots-integration-gh
+#   git merge-base origin/main upstream/playerbots-integration-gh
+#   -> 6be01e533342912604a671d37a0e3c87f5bbdf54
+#
+# It read 61a8269151721f6467eddb05e7bed37704d0fc0b until 2026-09-27, which is an
+# ancestor of the real merge base by 512 commits:
+#
+#   git rev-list --count 61a8269..6be01e53   -> 512
+#
+# Wrong in the benign direction -- it understated how current we are -- and still
+# wrong, because every "we are N commits behind upstream" figure derived from it
+# is off by 512. CI now asserts this value directly: it must be an ancestor of
+# HEAD, an ancestor of upstream/<upstream_branch>, and equal to the merge base of
+# the two. See tools/ci/check-upstream-lock.sh, checks 5-7, which is runnable by
+# hand. Nothing asserted it before; checks 1-4 used it only as a floor for the
+# tracking branch, and a stale floor is still a floor, which is why 512 commits
+# of drift sat here green.
+fork_point      = 6be01e533342912604a671d37a0e3c87f5bbdf54
 
 # ADR-0020 originally recorded db5fb2a as "the upstream tip". That is not an
 # upstream hash: it is a commit in twow-repo, whose history was rewritten with
@@ -54,11 +74,31 @@ upstream_tip_at_fork      = be3e6cdd47680c1308251e115164eb3d9eecc6f7
 #           and a commit we are genuinely tracking never is.
 #   4. origin/<upstream_tracking_branch> is at most `max_drift_commits` behind
 #      the live branch tip -- staleness, as opposed to wrongness.
+#   5. fork_point is an ancestor of HEAD
+#        -- our delta cannot apply on top of a commit we do not contain.
+#   6. fork_point is an ancestor of upstream/<upstream_branch>
+#        -- it is not a commit on the branch we claim to be based on.
+#   7. fork_point EQUALS git merge-base HEAD upstream/<upstream_branch>
+#        -- the strong form, and deliberately so. Ancestry alone is exactly the
+#           hole 61a8269 sat in for the life of the fork. Equality does not go
+#           red merely because upstream advanced: a merge base moves only when
+#           OUR side absorbs upstream commits, so the daily case (upstream
+#           pushes, we do nothing) stays green and that species of staleness is
+#           check 4's job, with a budget. Check 7 goes red exactly when somebody
+#           merges upstream and forgets this file.
 #
-# 2, 3 and 4 measure the BRANCH, not the string recorded here. Measuring the
-# recorded value makes them unreachable in the case that matters: move the
-# branch to a dead one and leave this file alone, and check 1 fires while 2-4
-# sit there approving a commit nothing points at. Seen happen, then fixed.
+# 2, 3 and 4 measure the BRANCH, not the string recorded on the
+# upstream_tracking_commit line. Measuring the recorded value makes them
+# unreachable in the case that matters: move the branch to a dead one and leave
+# this file alone, and check 1 fires while 2-4 sit there approving a commit
+# nothing points at. Seen happen, then fixed.
+#
+# 5, 6 and 7 are the opposite, and not a relapse into that mistake: fork_point
+# has no branch anywhere to be measured instead of, so the recorded string IS
+# the claim, and checking it against computed history is the only thing there is
+# to do. That distinction is the whole reason a stale fork_point survived: the
+# job was named after the ref, checked the ref, and never audited the one value
+# in this file that nothing points at.
 #
 # Updating this pair is the whole ceremony for "we have looked at upstream":
 # move the branch, put the same hash here, let CI agree.
