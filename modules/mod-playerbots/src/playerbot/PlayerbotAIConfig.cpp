@@ -444,6 +444,9 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsMaxBots = ai::bot_group::ClampMaxBots(config.GetIntDefault("AiPlayerbot.BotGroups.MaxBots", 3));
     botGroupsLevelWindow = config.GetIntDefault("AiPlayerbot.BotGroups.LevelWindow", 3);
     botGroupsDiagnostics = config.GetBoolDefault("AiPlayerbot.BotGroups.Diagnostics", false);
+    botGroupsAdhocScanIntervalSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanIntervalSeconds", 10));
+    botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
+    botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
     formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
     formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);

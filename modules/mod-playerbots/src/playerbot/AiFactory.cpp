@@ -1162,6 +1162,11 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig.nonCombatStrategies);
     }
 
+    // #365 step 2: ad-hoc quest groups, roster bots only, only while BotGroups.Enabled.
+    if (sPlayerbotAIConfig.botGroupsEnabled && !player->InBattleGround() &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()))
+        nonCombatEngine->addStrategy("adhoc group");
+
     // Battleground switch
     if (player->InBattleGround())
     {

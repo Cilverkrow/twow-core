@@ -769,6 +769,27 @@ add_test(NAME loot_roll_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/loot_roll_source_contract_tests.cmake")
 
+# #365 step 2: ad-hoc quest groups.
+add_executable(adhoc_group_policy_tests
+  "${PB_MODULE_DIR}/t/adhoc_group_policy_tests.cpp")
+
+target_include_directories(adhoc_group_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(adhoc_group_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(adhoc_group_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME adhoc_group_policy
+  COMMAND adhoc_group_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME adhoc_group_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/adhoc_group_source_contract_tests.cmake")
+
 # #391: roster login waves after an L1 reset.
 add_executable(login_wave_policy_tests
   "${PB_MODULE_DIR}/t/login_wave_policy_tests.cpp")

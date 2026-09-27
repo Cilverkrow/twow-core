@@ -587,6 +587,19 @@ AiPlayerbot.BotGroups.Enabled = 0
 AiPlayerbot.BotGroups.MaxBots = 3
 AiPlayerbot.BotGroups.LevelWindow = 3
 AiPlayerbot.BotGroups.Diagnostics = 0
+
+# #365 step 2 (owner contract 2026-09-27): with BotGroups.Enabled = 1, roster
+# bots working on the same quest objective within AdHoc.Radius yards form an
+# ad-hoc group (up to MaxBots, level spread within LevelWindow), share kill
+# credit with free-for-all loot and leave as soon as their own objective is
+# done (also: quest turned in, 2 x Radius from the leader for 60 s, level
+# window left for 5 min, no progress for 10 min, instance). Their quest logs
+# never change. A bot scans every ScanIntervalSeconds; a pair that was invited
+# does not invite again for PairCooldownSeconds. Logged as [BotGroup] kind=adhoc
+# with Diagnostics = 1. Owner profile: Enabled 1, MaxBots 5.
+AiPlayerbot.BotGroups.AdHoc.ScanIntervalSeconds = 10
+AiPlayerbot.BotGroups.AdHoc.Radius = 50
+AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds = 600
 # #303: a bot of a real player does not walk more than this many yards to its
 # master; beyond it the bot keeps its own activity and asks to be summoned
 # ("far_follow_hold"). 0 = no limit (old behaviour: walk any distance).
