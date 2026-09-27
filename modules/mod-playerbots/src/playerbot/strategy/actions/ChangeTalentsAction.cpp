@@ -421,7 +421,7 @@ uint32 ChangeTalentsAction::PremadeBudget(Player* bot, int specId)
     if (!path)
         return total;
 
-    uint32 const reserved = ai::spec_aura::ReservedPoints(ai::spec_aura::PathFor(bot->getClass(), path->name), bot->GetLevel());
+    uint32 const reserved = ai::spec_aura::ReservedPoints(bot->getClass(), ai::spec_aura::PathFor(bot->getClass(), path->name), bot->GetLevel());
     return total > reserved ? total - reserved : 0;
 }
 
