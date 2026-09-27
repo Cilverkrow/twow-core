@@ -49,3 +49,4 @@ require_text("${triggers}" "ai->GetAllHostileNPCNonPetUnitsAroundWO(bot, 30.0f).
 require_text("${triggers}" "\"manual int\", \"zone escape fails\"" "attempt counter")
 require_text("${actions}" "target->SuppressCurrentDestination(" "leading destination suppressed")
 require_text("${travel_mgr}" "void TravelTarget::SuppressCurrentDestination(uint32 durationMs)" "suppression in the travel target")
+require_text("${triggers}" "WorldPosition(bot).HasAreaFlag(AREA_FLAG_CAPITAL)" "capitals are rest areas")

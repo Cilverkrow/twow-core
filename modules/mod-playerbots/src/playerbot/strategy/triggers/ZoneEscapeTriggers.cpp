@@ -25,7 +25,9 @@ zone_escape::Facts ai::GatherZoneEscapeFacts(PlayerbotAI* ai)
     // A sub-area without a level of its own takes its parent zone's level.
     facts.areaLevel = uint32(std::max<int32>(0, WorldPosition(bot).getAreaLevelOrParent()));
     facts.botLevel = bot->GetLevel();
-    facts.inRestArea = bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING);
+    // Capitals count as rest areas even outside the resting spots (train 6:
+    // an L1 bot in Stormwind, area level 10, hearthed out of the city).
+    facts.inRestArea = bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING) || WorldPosition(bot).HasAreaFlag(AREA_FLAG_CAPITAL);
     // Hearthing would not leave the zone anyway, and the start zone is where
     // a low-level bot belongs (train 5: L2 bot in a Durotar sub-area of level 8).
     WorldPosition const bind = AI_VALUE(WorldPosition, "home bind");
