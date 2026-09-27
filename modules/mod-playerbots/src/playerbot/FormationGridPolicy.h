@@ -1,0 +1,189 @@
+#pragma once
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+namespace ai::formation_grid
+{
+// twow-repo#389 formations v2. Train 5 raid video: shapes built from outlines
+// at the raid follow distance (5 yd) spread 27 bots over ~70 yd, and the one-
+// ring circle collapsed into a blob. Here every shape is a *filled* grid of
+// slots with its own spacing, capped to a maximum radius, so up to 40 bots
+// stay orderly and compact. Slot 0 is the most prominent position (closest to
+// the leader / front); the formation fills slots in role order.
+
+struct Offset
+{
+    float forward; // along the leader's facing; negative is behind
+    float side;    // to the leader's left (positive) or right (negative)
+};
+
+enum class Shape
+{
+    CIRCLE,      // full circle, leader in the middle, concentric rings
+    HALF_RING,   // half ring behind the leader, rows of arcs
+    WEDGE,       // filled V, leader at the tip
+    TRIANGLE,    // filled triangle behind the leader, widest row first
+    BLOCK,       // rows behind the leader
+    COLUMN,      // 2 abreast (3 from 21 bots) behind the leader
+};
+
+constexpr float Pi = 3.14159265358979f;
+
+inline float Distance(Offset const& o)
+{
+    return std::sqrt(o.forward * o.forward + o.side * o.side);
+}
+
+// Evenly spaced positions on [from, to] (centred when there is one).
+inline std::vector<float> Spread(unsigned int count, float from, float to)
+{
+    std::vector<float> out;
+    if (count == 0)
+        return out;
+    if (count == 1)
+    {
+        out.push_back((from + to) / 2.0f);
+        return out;
+    }
+    for (unsigned int i = 0; i < count; ++i)
+        out.push_back(from + (to - from) * float(i) / float(count - 1));
+    return out;
+}
+
+// Centre-out order within a row: middle first, then alternating outwards.
+inline std::vector<float> CentreOut(std::vector<float> row)
+{
+    std::sort(row.begin(), row.end(), [](float a, float b) { return std::fabs(a) < std::fabs(b); });
+    return row;
+}
+
+inline std::vector<Offset> Circle(unsigned int count, float spacing)
+{
+    std::vector<Offset> out;
+    for (unsigned int ring = 1; out.size() < count; ++ring)
+    {
+        float const radius = spacing * float(ring);
+        unsigned int const capacity = std::max(1u, unsigned(2.0f * Pi * radius / spacing));
+        unsigned int const here = std::min(capacity, count - unsigned(out.size()));
+        // Start at the front and alternate left/right so a partial ring stays
+        // balanced around the leader.
+        for (unsigned int i = 0; i < here; ++i)
+        {
+            float const step = 2.0f * Pi / float(here);
+            float const k = float((i + 1) / 2) * ((i % 2) ? 1.0f : -1.0f);
+            float const angle = k * step + (ring % 2 ? 0.0f : step / 2.0f);
+            out.push_back({ radius * std::cos(angle), radius * std::sin(angle) });
+        }
+    }
+    return out;
+}
+
+inline std::vector<Offset> HalfRing(unsigned int count, float spacing)
+{
+    std::vector<Offset> out;
+    for (unsigned int row = 2; out.size() < count; ++row)
+    {
+        float const radius = spacing * float(row);
+        unsigned int const capacity = std::max(1u, unsigned(Pi * radius / spacing) + 1);
+        unsigned int const here = std::min(capacity, count - unsigned(out.size()));
+        // Behind the leader: angles from 90 to 270 degrees, centre (180) first.
+        for (float a : CentreOut(Spread(here, -Pi / 2.0f, Pi / 2.0f)))
+        {
+            float const angle = Pi + a;
+            out.push_back({ radius * std::cos(angle), radius * std::sin(angle) });
+        }
+    }
+    return out;
+}
+
+inline std::vector<Offset> Wedge(unsigned int count, float spacing)
+{
+    std::vector<Offset> out;
+    for (unsigned int row = 1; out.size() < count; ++row)
+    {
+        unsigned int const here = std::min(row + 1, count - unsigned(out.size()));
+        float const half = spacing * float(row) * 0.7f;
+        for (float s : CentreOut(Spread(here, -half, half)))
+            out.push_back({ -spacing * float(row), s });
+    }
+    return out;
+}
+
+inline std::vector<Offset> Triangle(unsigned int count, float spacing)
+{
+    unsigned int rows = 1;
+    while (rows * (rows + 1) / 2 < count)
+        ++rows;
+    std::vector<Offset> out;
+    for (unsigned int row = 1; row <= rows && out.size() < count; ++row)
+    {
+        unsigned int const width = rows - row + 1;
+        unsigned int const here = std::min(width, count - unsigned(out.size()));
+        float const half = spacing * float(width - 1) / 2.0f;
+        for (float s : CentreOut(Spread(here, -half, half)))
+            out.push_back({ -spacing * float(row), s });
+    }
+    return out;
+}
+
+inline std::vector<Offset> Rows(unsigned int count, float spacing, unsigned int width)
+{
+    std::vector<Offset> out;
+    for (unsigned int row = 1; out.size() < count; ++row)
+    {
+        unsigned int const here = std::min(width, count - unsigned(out.size()));
+        float const half = spacing * float(width - 1) / 2.0f;
+        std::vector<float> row_pos = Spread(width, -half, half);
+        row_pos = CentreOut(row_pos);
+        row_pos.resize(here);
+        for (float s : row_pos)
+            out.push_back({ -spacing * float(row), s });
+    }
+    return out;
+}
+
+inline unsigned int BlockWidth(unsigned int count)
+{
+    unsigned int width = 1;
+    while (width * width < count)
+        ++width;
+    return std::min(8u, std::max(3u, width));
+}
+
+inline unsigned int ColumnWidth(unsigned int count)
+{
+    return count > 20 ? 3u : 2u;
+}
+
+// All slots for `count` followers, compressed so that no slot lies further
+// than maxRadius from the leader (0 = no cap).
+inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing, float maxRadius)
+{
+    std::vector<Offset> out;
+    switch (shape)
+    {
+        case Shape::CIRCLE:    out = Circle(count, spacing); break;
+        case Shape::HALF_RING: out = HalfRing(count, spacing); break;
+        case Shape::WEDGE:     out = Wedge(count, spacing); break;
+        case Shape::TRIANGLE:  out = Triangle(count, spacing); break;
+        case Shape::BLOCK:     out = Rows(count, spacing, BlockWidth(count)); break;
+        case Shape::COLUMN:    out = Rows(count, spacing, ColumnWidth(count)); break;
+    }
+
+    float far = 0.0f;
+    for (Offset const& o : out)
+        far = std::max(far, Distance(o));
+    if (maxRadius > 0.0f && far > maxRadius)
+    {
+        float const scale = maxRadius / far;
+        for (Offset& o : out)
+        {
+            o.forward *= scale;
+            o.side *= scale;
+        }
+    }
+    return out;
+}
+}
