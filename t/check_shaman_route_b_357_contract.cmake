@@ -20,16 +20,21 @@ endfunction()
 file(READ "${TW_CORE_ROOT}/sql/database_updates/20260927170000_world.sql" m)
 string(REGEX MATCHALL "INTO `spell_template` SELECT [*] FROM `tmp_spell`" clones "${m}")
 list(LENGTH clones clone_count)
-if (NOT clone_count EQUAL 30)
-  message(FATAL_ERROR "#357 route B: expected 30 spell clones (90100-90129), got ${clone_count}")
+if (NOT clone_count EQUAL 29)
+  message(FATAL_ERROR "#357 route B: expected 29 spell clones (90100-90129 without 90110), got ${clone_count}")
 endif()
 foreach (id RANGE 90100 90129)
-  require_text("${m}" "SET `entry` = ${id}," "#357 route B spell")
+  if (id EQUAL 90110)
+    # Ghost Wolf instant comes from Improved Ghost Wolf rank 2 for everyone (owner, 2026-09-27).
+    forbid_text("${m}" "SET `entry` = ${id}," "#357 route B unused id")
+  else()
+    require_text("${m}" "SET `entry` = ${id}," "#357 route B spell")
+  endif()
 endforeach()
 foreach (required
     "`effectBasePoints1` = 9, `effect2` = 0"
     "`effectBasePoints1` = 29"
-    "`effectBasePoints1` = -3001"
+    "UPDATE `spell_template` SET `effectBasePoints1` = -3001 WHERE `entry` = 16287;"
     "`effectApplyAuraName1` = 108, `effectMiscValue1` = 8, `effectItemType1` = 31457280, `effectBasePoints1` = 8"
     "`procChance` = 90, `effectApplyAuraName1` = 42"
     "`procChance` = 100, `effectApplyAuraName1` = 42"
@@ -42,11 +47,12 @@ foreach (required
     "WHERE `entry` = 17364 AND `script_name` = '';")
   require_text("${m}" "${required}" "#357 route B migration")
 endforeach()
-# Only the Stormstrike script binding touches an existing spell; nothing is deleted or replaced.
+# Only the Stormstrike script binding and Improved Ghost Wolf rank 2 touch existing spells;
+# nothing is deleted or replaced.
 string(REGEX MATCHALL "UPDATE `spell_template`" live_updates "${m}")
 list(LENGTH live_updates live_update_count)
-if (NOT live_update_count EQUAL 1)
-  message(FATAL_ERROR "#357 route B: expected exactly 1 UPDATE of spell_template, got ${live_update_count}")
+if (NOT live_update_count EQUAL 2)
+  message(FATAL_ERROR "#357 route B: expected exactly 2 UPDATEs of spell_template, got ${live_update_count}")
 endif()
 foreach (forbidden "DELETE " "REPLACE " "npc_trainer" "skill_line_ability")
   forbid_text("${m}" "${forbidden}" "#357 route B scope")

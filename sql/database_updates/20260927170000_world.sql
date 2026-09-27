@@ -1,14 +1,15 @@
 -- Issue twow-repo#357 (shaman tank, design twow-repo#392), route B: bot-only talent auras.
 -- Owner decisions O-2..O-19 (2026-09-27, #357 / #319). IDs 90100-90129 (O-14); 90130-90139
 -- stay reserved for the weapon talent W. These spells are never trained: ClassGrant (#356)
--- grants them to bots on premade paths 7.1/7.3 (OB-10). Players are unaffected: the only
--- change to an existing spell is the Stormstrike script, which acts only with aura 90117.
+-- grants them to bots on premade paths 7.1/7.3 (OB-10). Changes to existing spells: the
+-- Stormstrike script (acts only with aura 90117) and Improved Ghost Wolf rank 2, which
+-- makes Ghost Wolf instant for players and bots (owner, 2026-09-27, see the end).
 -- Each spell is copied from a donor so every column is right; only what differs is set.
--- Replay-safe: INSERT IGNORE and a guarded UPDATE.
+-- Replay-safe: INSERT IGNORE, a guarded UPDATE and a fixed-value UPDATE.
 --
 --   90100-90104 Attack speed    +2..10 % melee haste    (donor 8815 Haste, aura 138)
 --   90105-90109 Defense         +6..30 defense skill    (donor 12297 Anticipation, aura 98)
---   90110       Imp. Ghost Wolf rank 3, instant         (donor 16287, aura 107, -3000 ms)
+--   90110       unused (Ghost Wolf instant comes from rank 2 of 16287 for everyone)
 --   90111-90113 Imbue mastery   +3/6/9 % all effects    (aura 108 mod 8, imbue mask 0x1E00000)
 --   90114-90116 Retaliation     30/60/90 %, once per s  (donor 12298, spell_shaman_retaliation)
 --   90117       Stormstrike charges (marker for spell_shaman_stormstrike_charges)
@@ -96,14 +97,6 @@ CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
 INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 12297;
 UPDATE `tmp_spell` SET `entry` = 90109, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
     `name` = 'Earthen Guard', `nameSubtext` = 'Rank 5', `description` = 'Increases your Defense skill by 30.', `effectBasePoints1` = 29;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- Improved Ghost Wolf rank 3
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 16287;
-UPDATE `tmp_spell` SET `entry` = 90110, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `nameSubtext` = 'Rank 3', `description` = 'Reduces the cast time of your Ghost Wolf spell by 3 sec.', `effectBasePoints1` = -3001;
 INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
 DROP TEMPORARY TABLE `tmp_spell`;
 
@@ -273,3 +266,9 @@ INSERT IGNORE INTO `spell_proc_event` (`entry`, `SchoolMask`, `SpellFamilyName`,
 -- Stormstrike gets the charge script; it only acts for casters with aura 90117 (bots).
 UPDATE `spell_template` SET `script_name` = 'spell_shaman_stormstrike_charges'
 WHERE `entry` = 17364 AND `script_name` = '';
+
+-- Owner decision 2026-09-27 (#357 issuecomment-5857525343, confirmed by the owner in OB-20):
+-- players get instant Ghost Wolf too. Improved Ghost Wolf 2/2 = -3000 ms (Ghost Wolf uses
+-- castingTimeIndex 14 = 3000 ms), rank 1 16262 stays -1000 ms. The client tooltip keeps
+-- "2 sec" until the phase-2 patch.
+UPDATE `spell_template` SET `effectBasePoints1` = -3001 WHERE `entry` = 16287;
