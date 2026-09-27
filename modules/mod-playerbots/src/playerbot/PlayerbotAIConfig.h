@@ -487,6 +487,13 @@ public:
     // #303: follow-state snapshot for bots of a real-player master ([FollowDiag]),
     // rate-limited per bot. Diagnostic gate before the far-follow fix.
     bool followDiagnostics = false;
+    // #365: bot-bot groups (design: twow-repo docs/design/bot-groups.md).
+    // Step 1 only reports: Enabled changes no behaviour yet, and MaxBots and
+    // LevelWindow are what the [BotGroup] diagnostic classifies a group against.
+    bool botGroupsEnabled = false;
+    uint32 botGroupsMaxBots = 3;
+    uint32 botGroupsLevelWindow = 3;
+    bool botGroupsDiagnostics = false;
     // #303 part 2: a bot does not walk more than this far to a real-player
     // master (0 = no limit); beyond it the bot waits and asks to be summoned.
     float farFollowMaxWalkDistance = 400.0f;

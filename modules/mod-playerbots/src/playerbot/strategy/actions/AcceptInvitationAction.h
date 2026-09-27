@@ -3,6 +3,7 @@
 #include "playerbot/strategy/Action.h"
 
 #include "playerbot/BotSlots.h"
+#include "playerbot/BotGroupDiagnostics.h"
 namespace ai
 {
     class AcceptInvitationAction : public Action 
@@ -54,6 +55,7 @@ namespace ai
             ai->Reset();
 
             sPlayerbotAIConfig.logEvent(ai, "AcceptInvitationAction", grp->GetLeaderName(), std::to_string(grp->GetMembersCount()));
+            bot_group::LogMembership(bot, bot->GetGroup(), "join");
 
             Player* master = inviter;
 

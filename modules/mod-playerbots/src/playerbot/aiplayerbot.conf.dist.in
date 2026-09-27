@@ -547,6 +547,15 @@ AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # target, distance, strategies) when a bot of a real player falls back to far
 # follow or meets a transport mismatch. At most once per bot every 5 seconds.
 AiPlayerbot.FollowDiagnostics = 0
+# #365: bot-bot groups of at most BotGroups.MaxBots roster bots (2..5) whose
+# levels differ by at most BotGroups.LevelWindow. Step 1 is diagnostics only:
+# BotGroups.Enabled does not change behaviour yet. BotGroups.Diagnostics logs a
+# [BotGroup] line (members, bots, level spread, verdict, quest-log overlap with
+# the leader) whenever a free bot joins or leaves a group.
+AiPlayerbot.BotGroups.Enabled = 0
+AiPlayerbot.BotGroups.MaxBots = 3
+AiPlayerbot.BotGroups.LevelWindow = 3
+AiPlayerbot.BotGroups.Diagnostics = 0
 # #303: a bot of a real player does not walk more than this many yards to its
 # master; beyond it the bot keeps its own activity and asks to be summoned
 # ("far_follow_hold"). 0 = no limit (old behaviour: walk any distance).

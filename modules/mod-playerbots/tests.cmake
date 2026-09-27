@@ -688,6 +688,26 @@ add_test(NAME singleton_group_source_contract
     "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
     -P "${PB_MODULE_DIR}/t/singleton_group_source_contract_tests.cmake")
 
+# #365 step 1: bot-bot group config keys and the [BotGroup] diagnostic,
+# default off, no behaviour change.
+add_executable(bot_group_policy_tests
+  "${PB_MODULE_DIR}/t/bot_group_policy_tests.cpp")
+
+target_include_directories(bot_group_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(bot_group_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_group_policy
+  COMMAND bot_group_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_group_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bot_group_source_contract_tests.cmake")
+
 # #277: "corpse run" on a dead, unreleased bot releases first instead of
 # answering "I am not dead".
 add_executable(corpse_run_policy_tests

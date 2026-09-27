@@ -14,6 +14,7 @@
 #include "playerbot/strategy/actions/CheatAction.h"
 
 #include "playerbot/TravelMgr.h"
+#include "playerbot/BotGroupPolicy.h"
 
 #include <iostream>
 #include <numeric>
@@ -430,6 +431,10 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionLocalHubRadius = config.GetFloatDefault("AiPlayerbot.QuestFirstProgression.LocalHubRadius", 1200.0f);
     questFirstProgressionTraceTravelDecisions = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TraceTravelDecisions", false);
     followDiagnostics = config.GetBoolDefault("AiPlayerbot.FollowDiagnostics", false);
+    botGroupsEnabled = config.GetBoolDefault("AiPlayerbot.BotGroups.Enabled", false);
+    botGroupsMaxBots = ai::bot_group::ClampMaxBots(config.GetIntDefault("AiPlayerbot.BotGroups.MaxBots", 3));
+    botGroupsLevelWindow = config.GetIntDefault("AiPlayerbot.BotGroups.LevelWindow", 3);
+    botGroupsDiagnostics = config.GetBoolDefault("AiPlayerbot.BotGroups.Diagnostics", false);
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
     formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
     formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);

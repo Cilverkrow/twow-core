@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "LeaveGroupAction.h"
 #include "playerbot/SingletonGroupPolicy.h"
+#include "playerbot/BotGroupDiagnostics.h"
 
 namespace ai
 {
@@ -70,6 +71,8 @@ namespace ai
         {
             if (group)
                 sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount()-1));
+
+            bot_group::LogMembership(bot, group, "leave");
 
             WorldPacket p;
             std::string member = bot->GetName();
