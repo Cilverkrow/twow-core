@@ -394,9 +394,11 @@ uint32 GetEarthenBulwarkBuildAmount(Unit const* owner, Aura const* aura, uint32 
     return buildAmount;
 }
 
+// #357 O-10: the shield is capped at 40 % of max health at 3/3, i.e. build % x 4/3
+// (build 10/20/30 % -> cap 13.3/26.7/40 %).
 uint32 GetEarthenBulwarkCap(Unit* owner, Aura const* aura)
 {
-    return owner ? CalculatePct(owner->GetMaxHealth(), GetEarthenBulwarkBuildPct(aura)) : 0;
+    return owner ? uint32(uint64(CalculatePct(owner->GetMaxHealth(), GetEarthenBulwarkBuildPct(aura))) * 4 / 3) : 0;
 }
 
 int32 GetEarthenBulwarkAbsorbPct(Aura const* aura)
