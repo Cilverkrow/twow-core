@@ -24,7 +24,7 @@ Stamina is included only where it matters for that spec. It is not weighted high
 | `ap rap` | 2 points |
 | `spell_power healing` (school in `spell_school` or all schools) | 1 point |
 | `mp5` | 0.5 mana per 5 s (i.e. 1 mp5 = 2 units) |
-| `hit_pct crit_pct spell_hit_pct spell_crit_pct dodge_pct block_pct` | 0.1 % (i.e. 1 % = 10 units) |
+| `hit_pct crit_pct spell_hit_pct spell_crit_pct dodge_pct parry_pct block_pct` | 0.1 % (i.e. 1 % = 10 units) |
 | `armor` | 10 points of armour above the item-type baseline |
 
 **Example** (paladin, owner direction): 10 str / 3 sta vs 3 str / 15 sta.

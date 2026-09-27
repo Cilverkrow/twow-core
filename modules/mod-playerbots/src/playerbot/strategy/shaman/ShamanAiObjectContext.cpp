@@ -7,6 +7,7 @@
 #include "ElementalShamanStrategy.h"
 #include "RestorationShamanStrategy.h"
 #include "EnhancementShamanStrategy.h"
+#include "TankShamanStrategy.h"
 
 namespace ai
 {
@@ -23,6 +24,7 @@ namespace ai
                 creators["buff"] = [](PlayerbotAI* ai) { return new BuffPlaceholderStrategy(ai); };
                 creators["boost"] = [](PlayerbotAI* ai) { return new BoostPlaceholderStrategy(ai); };
                 creators["pull"] = [](PlayerbotAI* ai) { return new PullStrategy(ai, "lightning bolt"); };
+                creators["tank shaman"] = [](PlayerbotAI* ai) { return new TankShamanStrategy(ai); };
                 creators["offheal"] = [](PlayerbotAI* ai) { return new OffhealPlaceholderStrategy(ai); };
             }
         };
@@ -354,6 +356,7 @@ namespace ai
                 creators["cleanse spirit curse on party"] = [](PlayerbotAI* ai) { return new CastCleanseSpiritCurseOnPartyAction(ai); };
                 creators["flame shock"] = [](PlayerbotAI* ai) { return new CastFlameShockAction(ai); };
                 creators["earth shock"] = [](PlayerbotAI* ai) { return new CastEarthShockAction(ai); };
+                creators["earthshaker slam"] = [](PlayerbotAI* ai) { return new CastEarthshakerSlamAction(ai); };
                 creators["frost shock"] = [](PlayerbotAI* ai) { return new CastFrostShockAction(ai); };
                 creators["chain lightning"] = [](PlayerbotAI* ai) { return new CastChainLightningAction(ai); };
                 creators["lightning bolt"] = [](PlayerbotAI* ai) { return new CastLightningBoltAction(ai); };

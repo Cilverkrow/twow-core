@@ -32,6 +32,15 @@ namespace ai
 		CastEvasionAction(PlayerbotAI* ai) : CastBuffSpellAction(ai, "evasion") {}
 	};
 
+    // #367: rogue tank taunt, design D-2 "Spit" (15 yd; spell not in the data yet,
+    // the action stays impossible until a bot knows it).
+    class CastRogueTauntAction : public CastSpellAction
+    {
+    public:
+        CastRogueTauntAction(PlayerbotAI* ai) : CastSpellAction(ai, "spit") {}
+        virtual bool isUseful() override { return GetTarget() && GetTarget()->GetVictim() && GetTarget()->GetVictim() != bot; }
+    };
+
 	class CastSprintAction : public CastBuffSpellAction
 	{
 	public:

@@ -61,13 +61,19 @@ BUILDS = {
          ('survival',      '550332002--35232000500020030051')],
     4:  [('combat',        '0053231052330012-500350200050122231'),
          ('assassination', '005323105233311251-500350020050001'),
-         ('subtlety',      '325323101--52330230112102102021')],
+         ('subtlety',      '325323101--52330230112102102021'),
+         # #367: rogue tank shares the combat build (phase 1, bots only); the
+         # difference is role, strategy and stats. Weight 0 until the owner decides.
+         ('rogue tank',    '0053231052330012-500350200050122231')],
     5:  [('holy',          '2052022013300301-32050203023521351'),
          ('shadow',        '20504020133003115--05225000102501251'),
          ('discipline',    '235050000323231101-325532')],
     7:  [('restoration',   '50203105-500002-5503032105321251'),
          ('enhancement',   '550331300202012-5005303105023151'),
-         ('elemental',     '55023105002001151--55235')],
+         ('elemental',     '55023105002001151--55235'),
+         # #357: shaman tank shares the enhancement build (phase 1, bots only);
+         # the difference is role, strategy and stats. Weight 0 until the owner decides.
+         ('shaman tank',   '550331300202012-5005303105023151')],
     8:  [('arcane',        '2352551312233311251-55000001'),
          ('fire',          '230205111200301-50523201030303251-203'),
          ('frost',         '230225100210301--0533020510235110521')],
@@ -89,9 +95,9 @@ EXPECTED_TREE_PAGE = {
     1: {'arms': 0, 'fury': 1, 'protection': 2},
     2: {'holy': 0, 'protection': 1, 'retribution': 2},
     3: {'beastmastery': 0, 'marksmanship': 1, 'survival': 2},
-    4: {'assassination': 0, 'combat': 1, 'subtlety': 2},
+    4: {'assassination': 0, 'combat': 1, 'subtlety': 2, 'rogue tank': 1},
     5: {'discipline': 0, 'holy': 1, 'shadow': 2},
-    7: {'elemental': 0, 'enhancement': 1, 'restoration': 2},
+    7: {'elemental': 0, 'enhancement': 1, 'restoration': 2, 'shaman tank': 1},
     8: {'arcane': 0, 'fire': 1, 'frost': 2},
     9: {'affliction': 0, 'demonology': 1, 'destruction': 2},
     11: {'balance': 0, 'feral': 1, 'restoration': 2, 'bear': 1},
@@ -102,6 +108,10 @@ EXPECTED_TREE_PAGE = {
 PROBABILITY = {
     (11, 'feral'): 50,
     (11, 'bear'): 50,
+    # #357 / #367 (owner 2026-09-27): tank paths off until the design numbers
+    # are signed off; the server profile sets their weight.
+    (4, 'rogue tank'): 0,
+    (7, 'shaman tank'): 0,
 }
 
 EXPECTED_NEW_TREE_TAB = {

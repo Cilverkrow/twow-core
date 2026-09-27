@@ -27,3 +27,5 @@ class_id	class	spec_no	spec	role	prio1	prio2	prio3	prio4	prio5	weapon_dps	spell_
 11	druid	1	feral	dps	agi	crit_pct	ap	str	hit_pct	none	-	owner-2026-09-26	tbd	cat; forms ignore weapon DPS
 11	druid	2	restoration	healer	int	spi	healing	mp5	spell_crit_pct	none	nature	classic-1.12-consensus	tbd	-
 11	druid	3	bear	tank	defense	dodge_pct	armor	sta	agi	none	-	owner-2026-09-26	tbd	NEW spec: needs premade path 11.3
+7	shaman	3	shaman tank	tank	defense	block_pct	sta	str	dodge_pct	melee	-	owner-2026-09-27	tbd	NEW spec #357: premade path 7.3, shield required, weight 0 until owner sign-off
+4	rogue	3	rogue tank	tank	sta	agi	dodge_pct	parry_pct	defense	melee	-	owner-2026-09-27	tbd	NEW spec #367: premade path 4.3, weight 0 until owner sign-off; prio1-4 owner 2026-09-27, prio5 defense from design (+6 per talent rank)
