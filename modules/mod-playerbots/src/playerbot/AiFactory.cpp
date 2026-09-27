@@ -324,6 +324,11 @@ BotRoles AiFactory::GetPlayerRoles(uint8 cls, uint8 tab)
     return role;
 }
 
+std::string AiFactory::GetPremadePathName(const Player* player)
+{
+    return PremadePathName(player);
+}
+
 BotRoles AiFactory::GetPlayerRoles(const Player* player)
 {
     // #357 / #367: a shaman or rogue on its tank path tanks, whatever the tree.

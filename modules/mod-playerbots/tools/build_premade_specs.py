@@ -114,6 +114,46 @@ PROBABILITY = {
     (7, 'shaman tank'): 0,
 }
 
+# #357 O-12 (owner 2026-09-27, variant A): shamans on 7.1 / 7.3 get the reworked
+# Enhancement talents as bot auras (SpecAuraPolicy.h, keep both tables equal) and
+# pay for them with talent points: at every level the link leaves exactly the
+# points of the aura ranks granted by then unspent (7.1: 14, 7.3: 21 at 60;
+# Ghost Wolf rank 3 is Improved Ghost Wolf 2/2 for everyone, owner 2026-09-27).
+# (name, first grant level, ranks, paths)
+SPEC_AURAS = [
+    ('attack speed',        10, 5, {'enhancement', 'shaman tank'}),
+    ('defense',             10, 5, {'shaman tank'}),
+    ('imbue mastery',       25, 3, {'enhancement', 'shaman tank'}),
+    ('retaliation',         25, 3, {'shaman tank'}),
+    ('stormstrike charges', 30, 1, {'shaman tank'}),
+    ('storm wisdom',        35, 5, {'enhancement'}),
+    ('chain storm',         40, 1, {'enhancement'}),
+    ('shield constitution', 35, 3, {'shaman tank'}),
+    ('shield ward',         40, 1, {'shaman tank'}),
+]
+
+
+def reserved_points(cls, name, level):
+    """Talent points a path pays at this level for its #357 auras."""
+    if cls != 7:
+        return 0
+    return sum(min(ranks, max(0, level - first + 1))
+               for _, first, ranks, paths in SPEC_AURAS if name in paths)
+
+
+# Talents a path never takes (talent id). #357: Calming Winds (-25 % threat)
+# is harmful for the shaman tank (owner 2026-09-27).
+EXCLUDED_TALENTS = {
+    (7, 'shaman tank'): {257},
+}
+
+# Ranks a path sets on top of its shared build (talent id -> rank). The shaman
+# tank moves the 3 Calming Winds points into Ancestral Guardian (259, row 3:
+# +armour, +dodge), which also keeps the 15 points before Flurry (row 4).
+TARGET_OVERRIDES = {
+    (7, 'shaman tank'): {259: 3},
+}
+
 EXPECTED_NEW_TREE_TAB = {
     (1, 'arms'): 161,
     (3, 'survival'): 362,
@@ -270,7 +310,7 @@ def prefix(entries, target, main_tree, budget):
     return ranks
 
 
-def extend_target(entries, target, main_tree, desired, spell_ids):
+def extend_target(entries, target, main_tree, desired, spell_ids, excluded=frozenset()):
     """Fill a Rate-1 target deterministically for higher talent rates.
 
     The accepted target remains untouched at Rate 1.  For an additive higher
@@ -285,6 +325,8 @@ def extend_target(entries, target, main_tree, desired, spell_ids):
     while sum(ranks.values()) < desired:
         added = False
         for entry in order:
+            if entry['id'] in excluded:
+                continue
             current = ranks.get(entry['id'], 0)
             if current >= entry['maxRank']:
                 continue
@@ -363,6 +405,10 @@ def main():
                 failures += 1
                 continue
 
+            excluded = EXCLUDED_TALENTS.get((cls, name), frozenset())
+            target = {talent_id: rank for talent_id, rank in target.items()
+                      if talent_id not in excluded}
+            target.update(TARGET_OVERRIDES.get((cls, name), {}))
             strict_prerequisites = ((cls, name) in NEW_PATHS or args.rate > 1)
             problem = check(entries, target, sum(target.values()), spell_ids,
                             strict_prerequisites)
@@ -393,11 +439,11 @@ def main():
                     failures += 1
                     continue
 
-            desired = int((60 - 9) * args.rate)
+            desired = int((60 - 9) * args.rate) - reserved_points(cls, name, 60)
             active_target = target
             if args.rate > 1:
                 active_target = extend_target(entries, target, main_tree,
-                                              desired, spell_ids)
+                                              desired, spell_ids, excluded)
                 if sum(active_target.values()) != desired:
                     print('  BROKEN  class %d %s: only %d of %d legal points' %
                           (cls, name, sum(active_target.values()), desired),
@@ -410,7 +456,8 @@ def main():
             validation_levels = (VALIDATION_LEVELS if args.rate > 1 or
                                  (cls, name) in NEW_PATHS else LEVELS)
             for level in validation_levels:
-                budget = int((level - 9) * args.rate)
+                budget = max(0, int((level - 9) * args.rate) -
+                             reserved_points(cls, name, level))
                 ranks = (legal_prefix(entries, active_target, main_tree,
                                       budget, spell_ids) if args.rate > 1 else
                          prefix(entries, active_target, main_tree, budget))
@@ -442,9 +489,13 @@ def main():
                            (cls, index, name))
                 out.append('AiPlayerbot.PremadeSpecProb.%d.%d = %d' % (cls, index, PROBABILITY.get((cls, name), 100)))
                 for level in LEVELS:
+                    link = build_link(entries, prefixes[level])
+                    # #357: a level whose points all go to talent auras has no
+                    # link (the loader skips empty ones anyway).
+                    if not link:
+                        continue
                     out.append('AiPlayerbot.PremadeSpecLink.%d.%d.%d = %s' %
-                               (cls, index, level,
-                                build_link(entries, prefixes[level])))
+                               (cls, index, level, link))
 
                 full = sum(active_target.values())
                 at_sixty = sum(prefix(entries, active_target, main_tree,

@@ -39,6 +39,8 @@ class TalentSpec {
         virtual bool CheckTalents(uint32 freeTalentPoints, std::ostringstream* out);
         virtual bool CheckTalents(Player* bot, std::ostringstream* out) { return CheckTalents(bot->CalculateTalentsPoints(), out); }
         void CropTalents(Player* botl);
+        // #357 O-12: crop to a budget below the level's total (talent auras).
+        void CropTalents(Player* botl, uint32 maxPoints);
         void ShiftTalents(TalentSpec* oldTalents, Player* botl);
         void ApplyTalents(Player* bot, std::ostringstream* out);
         static void SetPublicNote(Player* bot);

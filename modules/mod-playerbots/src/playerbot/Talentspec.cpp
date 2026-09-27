@@ -379,7 +379,12 @@ std::string TalentSpec::formatSpec(uint8 cls)
 //Removes talentpoints to match the level
 void TalentSpec::CropTalents(Player* bot)
 {
-    if (points <= bot->CalculateTalentsPoints())
+    CropTalents(bot, bot->CalculateTalentsPoints());
+}
+
+void TalentSpec::CropTalents(Player* bot, uint32 maxPoints)
+{
+    if (points <= maxPoints)
         return;
 
     SortTalents(talents, SORT_BY_POINTS_TREE);
@@ -388,8 +393,8 @@ void TalentSpec::CropTalents(Player* bot)
 
     for (auto& entry : talents)
     {
-        if (points + entry.rank > (int)bot->CalculateTalentsPoints())
-            entry.rank = std::max(0, (int)(bot->CalculateTalentsPoints() - points));
+        if (points + entry.rank > (int)maxPoints)
+            entry.rank = std::max(0, (int)maxPoints - points);
         points += entry.rank;
     }
 
