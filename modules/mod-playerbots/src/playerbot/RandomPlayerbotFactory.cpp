@@ -53,6 +53,10 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_PALADIN].push_back(RACE_HUMAN);
     availableRaces[CLASS_PALADIN].push_back(RACE_DWARF);
     availableRaces[CLASS_PALADIN].push_back(RACE_HIGH_ELF);
+    // twow-repo#379: undead paladin, the Horde's first paladin. Needs the (5,2)
+    // playercreateinfo rows of sql/database_updates/20260927120000_world.sql;
+    // without them Player::Create refuses the pair and the bot is not created.
+    availableRaces[CLASS_PALADIN].push_back(RACE_UNDEAD);
 #ifndef MANGOSBOT_ZERO
     availableRaces[CLASS_PALADIN].push_back(RACE_DRAENEI);
     availableRaces[CLASS_PALADIN].push_back(RACE_BLOODELF);
@@ -105,6 +109,8 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_SHAMAN].push_back(RACE_ORC);
     availableRaces[CLASS_SHAMAN].push_back(RACE_TAUREN);
     availableRaces[CLASS_SHAMAN].push_back(RACE_TROLL);
+    // twow-repo#379: dwarf shaman for the Alliance, same migration, pair (3,7).
+    availableRaces[CLASS_SHAMAN].push_back(RACE_DWARF);
 #ifndef MANGOSBOT_ZERO
     availableRaces[CLASS_SHAMAN].push_back(RACE_DRAENEI);
 #endif
@@ -237,6 +243,17 @@ bool RandomPlayerbotFactory::isRaceForTeam(uint8 race, Team team)
 
     if (team == Team::HORDE && (raceBit & RACEMASK_HORDE))
         return true;
+
+    return false;
+}
+
+bool RandomPlayerbotFactory::isClassForTeam(uint8 cls, Team team)
+{
+    for (uint32 race = 1; race < MAX_RACES; ++race)
+    {
+        if (isRaceForTeam(race, team) && isAvailableRace(cls, race))
+            return true;
+    }
 
     return false;
 }

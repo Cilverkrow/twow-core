@@ -2810,18 +2810,13 @@ std::list<std::string> PlayerbotHolder::HandleGroup(Player* master, const std::s
 
         uint8 cls = factory.GetRandomClass(0, role);
 
-#ifdef MANGOSBOT_ZERO
-        if (cls == CLASS_PALADIN && team == HORDE)
+        // Ask the factory instead of hardcoding "no Horde paladin, no Alliance
+        // shaman": undead paladins and dwarf shamans exist here (twow-repo#379).
+        if (!RandomPlayerbotFactory::isClassForTeam(cls, team))
         {
             continue_race++;
             continue;
         }
-        if (cls == CLASS_SHAMAN && team == ALLIANCE)
-        {
-            continue_race++;
-            continue;
-        }
-#endif
 
         if (allowedClassNr[cls].find(role) != allowedClassNr[cls].end() && allowedClassNr[cls][role] == 0)
         {
