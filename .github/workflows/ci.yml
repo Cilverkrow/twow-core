@@ -106,7 +106,13 @@ jobs:
         # fork side of its comparisons is HEAD, which on pull_request is the
         # merge of this pull request into its base -- see the comment block above
         # `OURS=` in the script for why that is not origin/main.
-        run: tools/ci/check-upstream-lock.sh
+        # Invoked through `bash` rather than by its shebang. The first
+        # revision of this step ran it directly and got `Permission denied`,
+        # exit 126: the commit that added it came from a Windows checkout with
+        # core.fileMode=false, so the mode landed as 100644 no matter what the
+        # index said. The mode is 100755 now, but this way the step does not
+        # depend on it surviving the next Windows-side edit.
+        run: bash tools/ci/check-upstream-lock.sh
 
   build:
     name: Build core (Debian trixie)
