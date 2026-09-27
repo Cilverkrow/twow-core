@@ -13,7 +13,7 @@ file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_template)
 # #307: roster bots on their own only; cap replaces the fixed +4.
 require_text("${grind}" "IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster()" "roster bots on their own")
 require_text("${grind}" "(int)unit->GetLevel() - (int)bot->GetLevel() > maxLevelsAbove" "configurable level cap")
-require_text("${grind}" "\"grind avoid \" + std::to_string(unit->GetEntry())" "avoided killers skipped")
+require_text("${grind}" "grind_cap::Avoids().IsAvoided(bot->GetGUIDLow(), unit->GetEntry()" "avoided killers skipped (bounded store)")
 require_text("${ai_source}" "RecordGrindDeath(this, bot, AI_VALUE(Unit*, \"current target\"))" "deaths recorded per killer entry")
 require_text("${ai_source}" "[GrindCap] state=avoid" "visible avoidance")
 require_text("${config_source}" "\"AiPlayerbot.GrindCap.LowLevelBelow\", 0" "cap off by default")
@@ -25,3 +25,12 @@ require_text("${config_template}" "AiPlayerbot.GrindAvoid.MaxDeaths = 0" "docume
 file(READ "${PB_SOURCE_DIR}/TravelMgr.cpp" travel_mgr)
 require_text("${travel_mgr}" "return m_status == TravelStatus::TRAVEL_STATUS_TRAVEL || m_status == TravelStatus::TRAVEL_STATUS_WORK;" "active-target rule")
 require_text("${ai_source}" "travelTarget->IsActiveForDeathAttribution()" "deaths.csv title only for active targets")
+
+# Train 6 tick regression: no per-entry AI context values for grind avoidance.
+foreach(forbidden "\"grind avoid \"" "\"grind window \"" "\"grind deaths \"")
+  string(FIND "${grind}${ai_source}" "${forbidden}" forbidden_offset)
+  if(NOT forbidden_offset EQUAL -1)
+    message(FATAL_ERROR "Grind avoidance must not create per-entry context values: ${forbidden}")
+  endif()
+endforeach()
+require_text("${ai_source}" "grind_cap::Avoids().RecordDeath(bot->GetGUIDLow(), killer->GetEntry()" "deaths recorded in the bounded store")

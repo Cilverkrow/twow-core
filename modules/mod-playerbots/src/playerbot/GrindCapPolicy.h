@@ -1,6 +1,10 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <mutex>
+#include <shared_mutex>
+#include <unordered_map>
 
 namespace ai::grind_cap
 {
@@ -47,5 +51,66 @@ inline bool RecordDeath(Record& record, std::uint32_t now, std::uint32_t maxDeat
 inline bool IsAvoided(Record const& record, std::uint32_t now)
 {
     return record.avoidUntil > now;
+}
+
+// Train 6 tick regression: the records were kept as qualified "manual time" /
+// "manual int" values in each bot's AI context. Every grind candidate *read*
+// created one value per creature entry the bot ever saw, never removed, and the
+// engine iterates all created values every tick - the tick cost grew with time.
+// One bounded, locked store instead; reads never create anything.
+class AvoidStore
+{
+public:
+    static constexpr std::size_t MaxRecords = 8192;
+
+    bool IsAvoided(std::uint32_t bot, std::uint32_t entry, std::uint32_t now) const
+    {
+        if (!size.load(std::memory_order_relaxed))
+            return false;
+        std::shared_lock lock(mutex);
+        auto const it = records.find(Key(bot, entry));
+        return it != records.end() && grind_cap::IsAvoided(it->second, now);
+    }
+
+    // Returns true when this death starts an avoidance period; record receives
+    // the updated state.
+    bool RecordDeath(std::uint32_t bot, std::uint32_t entry, std::uint32_t now, std::uint32_t maxDeaths,
+        std::uint32_t windowSeconds, std::uint32_t avoidSeconds, Record& out)
+    {
+        std::unique_lock lock(mutex);
+        if (records.size() >= MaxRecords)
+        {
+            for (auto it = records.begin(); it != records.end();)
+            {
+                bool const stale = it->second.avoidUntil <= now && it->second.windowStart + windowSeconds <= now;
+                it = stale ? records.erase(it) : std::next(it);
+            }
+            if (records.size() >= MaxRecords)
+                records.clear();
+        }
+        Record& record = records[Key(bot, entry)];
+        bool const avoid = grind_cap::RecordDeath(record, now, maxDeaths, windowSeconds, avoidSeconds);
+        out = record;
+        size.store(records.size(), std::memory_order_relaxed);
+        return avoid;
+    }
+
+    std::size_t Size() const { return size.load(std::memory_order_relaxed); }
+
+private:
+    static std::uint64_t Key(std::uint32_t bot, std::uint32_t entry)
+    {
+        return (std::uint64_t(bot) << 32) | entry;
+    }
+
+    mutable std::shared_mutex mutex;
+    std::unordered_map<std::uint64_t, Record> records;
+    std::atomic<std::size_t> size{ 0 };
+};
+
+inline AvoidStore& Avoids()
+{
+    static AvoidStore store;
+    return store;
 }
 }

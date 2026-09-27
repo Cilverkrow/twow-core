@@ -38,6 +38,19 @@ int main()
     Require(!RecordDeath(slow, 5000, 3, 3600, 3600), "window over: counting restarts");
     Require(!IsAvoided(slow, 5001), "deaths spread over hours do not avoid");
 
+    // Bounded shared store: reads never create records.
+    AvoidStore store;
+    Require(!store.IsAvoided(7, 42, 1000) && store.Size() == 0, "a read creates nothing");
+    Record state;
+    Require(!store.RecordDeath(7, 42, 1000, 3, 3600, 3600, state), "store: first death");
+    Require(!store.RecordDeath(7, 42, 1100, 3, 3600, 3600, state), "store: second death");
+    Require(store.RecordDeath(7, 42, 1200, 3, 3600, 3600, state) && state.avoidUntil == 4800, "store: third death avoids");
+    Require(store.IsAvoided(7, 42, 1300) && !store.IsAvoided(8, 42, 1300) && !store.IsAvoided(7, 43, 1300), "per bot and entry");
+    Require(store.Size() == 1, "one record");
+    for (std::uint32_t bot = 0; bot < AvoidStore::MaxRecords + 10; ++bot)
+        store.RecordDeath(bot, 1, 100000, 3, 3600, 3600, state);
+    Require(store.Size() <= AvoidStore::MaxRecords, "store stays bounded");
+
     Record off;
     for (int i = 0; i < 10; ++i)
         Require(!RecordDeath(off, 1000 + i, 0, 3600, 3600), "0 disables avoidance");

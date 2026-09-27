@@ -90,23 +90,17 @@ danger_map::Params DangerMapParams()
 // GrindAvoid.WindowSeconds is skipped as a grind target for GrindAvoid.AvoidSeconds.
 void RecordGrindDeath(PlayerbotAI* ai, Player* bot, Unit* killer)
 {
+    (void)ai;
     if (!killer || killer->GetTypeId() != TYPEID_UNIT)
         return;
 
-    AiObjectContext* context = ai->GetAiObjectContext();
-    std::string const entry = std::to_string(killer->GetEntry());
+    // Bounded shared store, not per-bot AI context values (train 6 tick regression).
     grind_cap::Record record;
-    record.windowStart = uint32(AI_VALUE2(time_t, "manual time", "grind window " + entry));
-    record.deaths = uint32(std::max(0, AI_VALUE2(int, "manual int", "grind deaths " + entry)));
-    uint32 const now = uint32(time(nullptr));
-    bool const avoid = grind_cap::RecordDeath(record, now, sPlayerbotAIConfig.grindAvoidMaxDeaths,
-        sPlayerbotAIConfig.grindAvoidWindowSeconds, sPlayerbotAIConfig.grindAvoidSeconds);
-    SET_AI_VALUE2(time_t, "manual time", "grind window " + entry, time_t(record.windowStart));
-    SET_AI_VALUE2(int, "manual int", "grind deaths " + entry, int(record.deaths));
-    if (!avoid)
+    if (!grind_cap::Avoids().RecordDeath(bot->GetGUIDLow(), killer->GetEntry(), uint32(time(nullptr)),
+            sPlayerbotAIConfig.grindAvoidMaxDeaths, sPlayerbotAIConfig.grindAvoidWindowSeconds,
+            sPlayerbotAIConfig.grindAvoidSeconds, record))
         return;
 
-    SET_AI_VALUE2(time_t, "manual time", "grind avoid " + entry, time_t(record.avoidUntil));
     sLog.outBasic("[GrindCap] state=avoid bot=%u level=%u entry=%u killer_level=%u avoid_seconds=%u",
         bot->GetGUIDLow(), bot->GetLevel(), killer->GetEntry(), killer->GetLevel(), sPlayerbotAIConfig.grindAvoidSeconds);
 }

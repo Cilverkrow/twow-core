@@ -572,6 +572,8 @@ add_executable(grind_cap_policy_tests
 target_include_directories(grind_cap_policy_tests PRIVATE
   "${PB_MODULE_DIR}/src/playerbot")
 
+target_link_libraries(grind_cap_policy_tests PRIVATE Threads::Threads)
+
 set_target_properties(grind_cap_policy_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
