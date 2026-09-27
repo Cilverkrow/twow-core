@@ -390,6 +390,8 @@ bool PlayerbotAIConfig::Initialize()
     asyncBotLogin = config.GetBoolDefault("AiPlayerbot.AsyncBotLogin", false);
     persistentActiveRosterEnabled = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.Enabled", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
+    persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
+    persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));
     questFirstProgressionEnabled = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.Enabled", false);
     questFirstProgressionAutonomousLogSoftLimit = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.AutonomousLogSoftLimit", 16);
     questFirstProgressionRejectBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta", 4);

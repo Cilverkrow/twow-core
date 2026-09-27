@@ -1592,6 +1592,12 @@ AiPlayerbot.PersistentActiveRoster.Enabled = 0
 # performs partial live reconciliation. Client chat and remote-admin sessions
 # are not authorized for these two commands.
 AiPlayerbot.PersistentActiveRoster.MaintenanceMode = 0
+# After an L1 reset (roster members flagged with at_login & 6 == 6) log the
+# roster in waves of LoginWaveSize bots, one wave every
+# LoginWaveIntervalSeconds, mixed across the start zones, so the start zones do
+# not overflow. Logged as [RosterLoginWave]. 0 = everyone at once. (#391)
+AiPlayerbot.PersistentActiveRoster.LoginWaveSize = 0
+AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds = 300
 
 # Dramatically speeds up initial and future bot logins but takes 2gb/1000 accounts and might prevent player login during the initial bot login period.
 # !!warning heavy db usage at start!!

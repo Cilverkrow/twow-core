@@ -41,6 +41,8 @@
 #include "PlayerbotLoginMgr.h"
 #include "PersistentActiveRoster.h"
 #include "PersistentActiveRosterDatabase.h"
+#include "LoginWavePolicy.h"
+#include <functional>
 #include "Transports/Transport.h"
 
 #ifndef MANGOSBOT_ZERO
@@ -68,6 +70,100 @@ using namespace ai;
 using namespace MaNGOS;
 
 INSTANTIATE_SINGLETON_1(RandomPlayerbotMgr);
+
+namespace
+{
+// #391: login waves after an L1 reset. Built once from the roster members the
+// reset flagged (characters.at_login & 6 == 6); the core clears that flag at
+// the first login, so a restart in the middle simply continues with the rest.
+struct RosterLoginWaves
+{
+    bool built = false;
+    time_t start = 0;
+    std::map<uint32, uint32> waveOf;     // guid -> wave
+    std::vector<uint32> botsPerWave;
+    uint32 loggedWaves = 0;             // waves already announced
+    bool completeLogged = false;
+};
+
+RosterLoginWaves& LoginWaves()
+{
+    static RosterLoginWaves waves;
+    return waves;
+}
+
+void BuildRosterLoginWaves(std::vector<uint32> const& desired, std::function<bool(uint32)> isMember)
+{
+    RosterLoginWaves& waves = LoginWaves();
+    waves.built = true;
+    waves.start = time(nullptr);
+    if (!sPlayerbotAIConfig.persistentActiveRosterLoginWaveSize)
+        return;
+
+    std::map<uint32, uint32> startZone;
+    if (auto result = CharacterDatabase.Query("SELECT guid, race, class FROM characters WHERE (at_login & 6) = 6"))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            uint32 const guid = fields[0].GetUInt32();
+            if (!isMember(guid))
+                continue;
+            PlayerInfo const* info = sObjectMgr.GetPlayerInfo(fields[1].GetUInt8(), fields[2].GetUInt8());
+            startZone[guid] = info ? ((info->mapId << 16) | (info->areaId & 0xFFFF)) : 0;
+        } while (result->NextRow());
+    }
+
+    std::vector<login_wave::Candidate> candidates;
+    for (uint32 guid : desired)     // roster order
+    {
+        auto const it = startZone.find(guid);
+        if (it != startZone.end())
+            candidates.push_back({ guid, it->second });
+    }
+
+    waves.waveOf = login_wave::AssignWaves(candidates, sPlayerbotAIConfig.persistentActiveRosterLoginWaveSize);
+    for (auto const& [guid, wave] : waves.waveOf)
+    {
+        if (waves.botsPerWave.size() <= wave)
+            waves.botsPerWave.resize(wave + 1, 0);
+        ++waves.botsPerWave[wave];
+    }
+    if (!waves.waveOf.empty())
+        sLog.outBasic("[RosterLoginWave] planned bots=%u waves=%u wave_size=%u interval_seconds=%u",
+            uint32(waves.waveOf.size()), uint32(waves.botsPerWave.size()),
+            sPlayerbotAIConfig.persistentActiveRosterLoginWaveSize, sPlayerbotAIConfig.persistentActiveRosterLoginWaveIntervalSeconds);
+}
+
+// True when this roster bot may log in now. Announces every newly opened wave.
+bool RosterLoginWaveOpen(uint32 guid)
+{
+    RosterLoginWaves& waves = LoginWaves();
+    if (waves.waveOf.empty())
+        return true;
+
+    uint32 const total = uint32(waves.botsPerWave.size());
+    uint32 const elapsed = uint32(time(nullptr) - waves.start);
+    uint32 const open = login_wave::OpenWaves(total, elapsed, sPlayerbotAIConfig.persistentActiveRosterLoginWaveIntervalSeconds);
+    while (waves.loggedWaves < open)
+    {
+        uint32 waiting = 0;
+        for (uint32 w = waves.loggedWaves + 1; w < total; ++w)
+            waiting += waves.botsPerWave[w];
+        sLog.outBasic("[RosterLoginWave] wave=%u/%u opened bots=%u waiting=%u",
+            waves.loggedWaves + 1, total, waves.botsPerWave[waves.loggedWaves], waiting);
+        ++waves.loggedWaves;
+    }
+    if (open == total && !waves.completeLogged)
+    {
+        waves.completeLogged = true;
+        sLog.outBasic("[RosterLoginWave] complete waves=%u waiting=0", total);
+    }
+
+    auto const it = waves.waveOf.find(guid);
+    return it == waves.waveOf.end() || login_wave::IsOpen(it->second, elapsed, sPlayerbotAIConfig.persistentActiveRosterLoginWaveIntervalSeconds);
+}
+}
 
 #ifdef CMANGOS
 #include <boost/thread/thread.hpp>
@@ -714,6 +810,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
         ScaleBotActivity();
         std::list<uint32> desiredBots = GetBots();
+        if (!LoginWaves().built)
+            BuildRosterLoginWaves(persistentRoster->Desired(), [this](uint32 guid) { return IsPersistentRosterMember(guid); });
         uint32 maxLogins = sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval;
         for (uint32 bot : desiredBots)
         {
@@ -721,6 +819,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
                 ProcessBot(bot);
             else if (maxLogins && sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") < 10 * IN_MILLISECONDS)
             {
+                // #391: after an L1 reset, flagged bots log in wave by wave.
+                if (!RosterLoginWaveOpen(bot))
+                    continue;
                 if (ProcessBot(bot))
                     --maxLogins;
             }
