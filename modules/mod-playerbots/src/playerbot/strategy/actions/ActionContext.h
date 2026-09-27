@@ -2,6 +2,7 @@
 
 #include "GenericActions.h"
 #include "ZoneEscapeActions.h"
+#include "AdhocGroupAction.h"
 #include "EmoteAction.h"
 #include "AddLootAction.h"
 #include "LootAction.h"
@@ -103,6 +104,7 @@ namespace ai
 			creators["choose travel target"] = [](PlayerbotAI* ai) { return new ChooseTravelTargetAction(ai); };
             creators["choose group travel target"] = [](PlayerbotAI* ai) { return new ChooseGroupTravelTargetAction(ai); };
             creators["refresh travel target"] = [](PlayerbotAI* ai) { return new RefreshTravelTargetAction(ai); };
+            creators["ad-hoc group"] = [](PlayerbotAI* ai) { return new AdhocGroupAction(ai); };
             creators["request travel target"] = [](PlayerbotAI* ai) { return new RequestTravelTargetAction(ai); };
             creators["request named travel target"] = [](PlayerbotAI* ai) { return new RequestNamedTravelTargetAction(ai); };
             creators["request quest travel target"] = [](PlayerbotAI* ai) { return new RequestQuestTravelTargetAction(ai); };

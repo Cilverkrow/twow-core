@@ -512,6 +512,10 @@ public:
     uint32 botGroupsMaxBots = 3;
     uint32 botGroupsLevelWindow = 3;
     bool botGroupsDiagnostics = false;
+    // #365 step 2: ad-hoc quest groups.
+    uint32 botGroupsAdhocScanIntervalSeconds = 10;
+    float botGroupsAdhocRadius = 50.0f;
+    uint32 botGroupsAdhocPairCooldownSeconds = 600;
     // #303 part 2: a bot does not walk more than this far to a real-player
     // master (0 = no limit); beyond it the bot waits and asks to be summoned.
     float farFollowMaxWalkDistance = 400.0f;

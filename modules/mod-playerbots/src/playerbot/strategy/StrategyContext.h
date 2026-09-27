@@ -6,6 +6,7 @@
 #include "generic/ChatCommandHandlerStrategy.h"
 #include "generic/WorldPacketHandlerStrategy.h"
 #include "generic/DeadStrategy.h"
+#include "generic/AdhocGroupStrategy.h"
 #include "generic/QuestStrategies.h"
 #include "generic/LootNonCombatStrategy.h"
 #include "generic/DuelStrategy.h"
@@ -80,6 +81,7 @@ namespace ai
             creators["dead"] = [](PlayerbotAI* ai) { return new DeadStrategy(ai); };
             creators["flee"] = [](PlayerbotAI* ai) { return new FleeStrategy(ai); };
             creators["avoid mobs"] = [](PlayerbotAI* ai) { return new AvoidMobsStrategy(ai); };
+            creators["adhoc group"] = [](PlayerbotAI* ai) { return new AdhocGroupStrategy(ai); };
             creators["duel"] = [](PlayerbotAI* ai) { return new DuelStrategy(ai); };
             creators["start duel"] = [](PlayerbotAI* ai) { return new StartDuelStrategy(ai); };
             creators["kite"] = [](PlayerbotAI* ai) { return new KiteStrategy(ai); };
