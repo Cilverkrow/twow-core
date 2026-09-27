@@ -49,7 +49,28 @@ enum ShamanSpells
     SPELL_SHAMAN_EARTHQUAKE_R3           = 48308,
     SPELL_SHAMAN_EARTHQUAKE_SPLASH       = 52878,
     SPELL_SHAMAN_EARTHQUAKE_AFTERSHOCK   = 51489,
+
+    // twow-repo#357 route B: bot-only talent auras (granted by ClassGrant, never trained).
+    SPELL_SHAMAN_BOT_IMBUE_MASTERY_R1    = 90111,
+    SPELL_SHAMAN_BOT_IMBUE_MASTERY_R2    = 90112,
+    SPELL_SHAMAN_BOT_IMBUE_MASTERY_R3    = 90113,
+    SPELL_SHAMAN_BOT_RETALIATION_R1      = 90114,
+    SPELL_SHAMAN_BOT_RETALIATION_R3      = 90116,
+    SPELL_SHAMAN_BOT_STORMSTRIKE_CHARGES = 90117,
+    SPELL_SHAMAN_BOT_STORM_WISDOM_R1     = 90118,
+    SPELL_SHAMAN_BOT_STORM_WISDOM_R5     = 90122,
+    SPELL_SHAMAN_BOT_STORM_WISDOM_BUFF   = 90123,
+    SPELL_SHAMAN_BOT_CHAIN_STORM         = 90124,
+    SPELL_SHAMAN_BOT_CHAIN_STORM_BUFF    = 90125,
+    SPELL_SHAMAN_BOT_SHIELD_CONSTITUTION_R1 = 90126,
+    SPELL_SHAMAN_BOT_SHIELD_WARD         = 90129,
 };
+
+// #357 O-8: Stormstrike consumes up to 3 Lightning Shield charges, +10 % damage each.
+uint32 const STORMSTRIKE_MAX_CONSUMED_CHARGES = 3;
+uint32 const STORMSTRIKE_PCT_PER_CHARGE       = 10;
+// #357 O-6: Retaliation fires at most once per second.
+uint32 const RETALIATION_COOLDOWN_SECONDS     = 1;
 
 template <class T>
 SpellScript* GetSpellScript(SpellEntry const*)
@@ -593,6 +614,83 @@ uint32 GetEarthShieldMaxCharges(Unit* owner, SpellAuraHolder* holder)
     return charges;
 }
 
+SpellAuraHolder* GetActiveLightningShieldHolder(Unit* owner)
+{
+    Aura* shield = GetActiveElementalShield(owner);
+    if (!shield || !IsLightningShieldSpell(shield->GetSpellProto()))
+        return nullptr;
+
+    return shield->GetHolder();
+}
+
+uint32 GetLightningShieldMaxCharges(Unit* owner, SpellAuraHolder* holder)
+{
+    if (!owner || !holder)
+        return 0;
+
+    uint32 charges = holder->GetSpellProto()->procCharges;
+    if (Player* modOwner = owner->GetSpellModOwner())
+        modOwner->ApplySpellMod(holder->GetId(), SPELLMOD_CHARGES, charges);
+
+    return charges;
+}
+
+uint32 GetLightningShieldCharges(Unit* owner)
+{
+    SpellAuraHolder* holder = GetActiveLightningShieldHolder(owner);
+    return holder ? holder->GetAuraCharges() : 0;
+}
+
+bool IsShieldChargeScalingSpell(uint32 spellId)
+{
+    return spellId >= SPELL_SHAMAN_BOT_SHIELD_CONSTITUTION_R1 && spellId <= SPELL_SHAMAN_BOT_SHIELD_WARD;
+}
+
+// #357 R6/C4 + R7/C4: stamina % and damage taken % scale with the current Lightning
+// Shield charges (per-charge value = the aura's own effect value, no cap per O-7).
+void UpdateShieldChargeScaling(Unit* owner, uint32 charges)
+{
+    if (!owner)
+        return;
+
+    for (uint32 spellId = SPELL_SHAMAN_BOT_SHIELD_CONSTITUTION_R1; spellId <= SPELL_SHAMAN_BOT_SHIELD_WARD; ++spellId)
+    {
+        Aura* aura = owner->GetAura(spellId, EFFECT_INDEX_0);
+        if (!aura)
+            continue;
+
+        int32 const amount = aura->GetSpellProto()->CalculateSimpleValue(EFFECT_INDEX_0) * int32(charges);
+        if (amount == aura->GetModifier()->m_amount)
+            continue;
+
+        aura->ApplyModifier(false, true);
+        aura->GetModifier()->m_amount = amount;
+        aura->ApplyModifier(true, true);
+    }
+}
+
+// #357 R4/C1 (O-4): +3 % per rank on all imbue effects. Spell mods cover the imbue
+// spells by family mask; the Rockbiter threat proc (mask 0) reads this directly.
+int32 GetImbueMasteryPct(Unit* owner)
+{
+    if (!owner)
+        return 0;
+
+    for (uint32 spellId = SPELL_SHAMAN_BOT_IMBUE_MASTERY_R3; spellId >= SPELL_SHAMAN_BOT_IMBUE_MASTERY_R1; --spellId)
+        if (Aura* aura = owner->GetAura(spellId, EFFECT_INDEX_0))
+            return std::max<int32>(aura->GetModifier()->m_amount, 0);
+
+    return 0;
+}
+
+uint32 GetStormstrikeConsumableCharges(Unit* caster)
+{
+    if (!caster || !caster->HasAura(SPELL_SHAMAN_BOT_STORMSTRIKE_CHARGES))
+        return 0;
+
+    return std::min(GetLightningShieldCharges(caster), STORMSTRIKE_MAX_CONSUMED_CHARGES);
+}
+
 bool IsOffensiveNatureDirectSpell(Unit const* owner, Unit* victim, SpellEntry const* procSpell, uint32 procFlag, uint32 procEx, bool isVictim)
 {
     if (!owner || !victim || !procSpell || isVictim)
@@ -807,6 +905,19 @@ struct spell_shaman_lightning_shield : public AuraScript
 
         return SPELL_AURA_PROC_OK;
     }
+
+    // #357 route B: keep the charge-scaled bot auras in step with the shield.
+    void OnAfterApply(Aura* aura, bool apply) override
+    {
+        if (aura && aura->GetEffIndex() == EFFECT_INDEX_0)
+            UpdateShieldChargeScaling(aura->GetTarget(), apply ? aura->GetHolder()->GetAuraCharges() : 0);
+    }
+
+    void OnAuraChargesChanged(SpellAuraHolder* holder) override
+    {
+        if (holder)
+            UpdateShieldChargeScaling(holder->GetTarget(), holder->GetAuraCharges());
+    }
 };
 
 struct spell_shaman_water_shield : public AuraScript
@@ -944,6 +1055,7 @@ struct spell_shaman_lightning_strike_shield : public SpellScript
             if (holder->DropAuraCharge())
                 spell->m_casterUnit->RemoveSpellAuraHolder(holder);
 
+        UpdateShieldChargeScaling(spell->m_casterUnit, GetLightningShieldCharges(spell->m_casterUnit));
         return false;
     }
 };
@@ -1246,7 +1358,12 @@ struct spell_shaman_rockbiter_proc : public SpellScript
             return false;
 
         if (target->GetThreatManager().getThreat(spell->m_casterUnit))
-            target->GetThreatManager().addThreat(spell->m_casterUnit, spell->damage * spell->m_casterUnit->GetAttackTime(BASE_ATTACK) / 1000);
+        {
+            float threat = spell->damage * spell->m_casterUnit->GetAttackTime(BASE_ATTACK) / 1000;
+            if (int32 const masteryPct = GetImbueMasteryPct(spell->m_casterUnit))
+                threat *= (100.0f + masteryPct) / 100.0f;
+            target->GetThreatManager().addThreat(spell->m_casterUnit, threat);
+        }
 
         return false;
     }
@@ -1480,8 +1597,102 @@ struct spell_spirit_armor : public AuraScript
 };
 }
 
+// #357 R4/C4 Retaliation (bots): on dodge, parry or block, a free Lightning Shield hit
+// on the attacker plus one charge up to the maximum; at most once per second (O-6).
+struct spell_shaman_retaliation : public AuraScript
+{
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) override
+    {
+        if (!aura || aura->GetId() < SPELL_SHAMAN_BOT_RETALIATION_R1 || aura->GetId() > SPELL_SHAMAN_BOT_RETALIATION_R3)
+            return std::nullopt;
+
+        SpellAuraHolder* shield = GetActiveLightningShieldHolder(owner);
+        if (!shield || owner->HasSpellCooldown(aura->GetId()))
+            return SPELL_AURA_PROC_FAILED;
+
+        if (victim && owner->IsValidAttackTarget(victim))
+            if (uint32 const damageSpellId = GetLightningShieldDamageSpell(shield->GetId()))
+                owner->CastSpell(victim, damageSpellId, true, nullptr, aura);
+
+        uint32 const maxCharges = GetLightningShieldMaxCharges(owner, shield);
+        if (shield->GetAuraCharges() < maxCharges)
+            shield->SetAuraCharges(shield->GetAuraCharges() + 1);
+
+        UpdateShieldChargeScaling(owner, shield->GetAuraCharges());
+        owner->AddSpellCooldown(aura->GetId(), 0, time(nullptr) + RETALIATION_COOLDOWN_SECONDS);
+        return SPELL_AURA_PROC_OK;
+    }
+};
+
+// #357 R5/C4 (O-8): with the bot aura, Stormstrike consumes up to 3 Lightning Shield
+// charges for +10 % weapon damage each. Without the aura (players) nothing changes.
+struct spell_shaman_stormstrike_charges : public SpellScript
+{
+    void OnEffectDamageCalculate(Spell* spell, SpellEffectIndex effIdx, float& damage) const override
+    {
+        if (effIdx != EFFECT_INDEX_0 || !spell)
+            return;
+
+        if (uint32 const charges = GetStormstrikeConsumableCharges(spell->m_casterUnit))
+            damage *= (100.0f + STORMSTRIKE_PCT_PER_CHARGE * charges) / 100.0f;
+    }
+
+    void OnHit(Spell* spell, SpellMissInfo missInfo) const override
+    {
+        if (missInfo != SPELL_MISS_NONE || !spell)
+            return;
+
+        Unit* caster = spell->m_casterUnit;
+        uint32 const consumed = GetStormstrikeConsumableCharges(caster);
+        if (!consumed)
+            return;
+
+        SpellAuraHolder* shield = GetActiveLightningShieldHolder(caster);
+        uint32 const left = shield->GetAuraCharges() - consumed;
+        if (left)
+        {
+            shield->SetAuraCharges(left);
+            UpdateShieldChargeScaling(caster, left);
+        }
+        else
+            caster->RemoveSpellAuraHolder(shield);
+    }
+};
+
+// #357 R6/C1 + R7/C1 Storm wisdom (bots): a melee crit adds a stack of -20 % cast time
+// and cost for Lightning Bolt (with Chain storm also Chain Lightning); the next such
+// cast consumes the whole stack (buff procCharges 1).
+struct spell_shaman_storm_wisdom : public AuraScript
+{
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* /*victim*/, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) override
+    {
+        if (!aura || aura->GetId() < SPELL_SHAMAN_BOT_STORM_WISDOM_R1 || aura->GetId() > SPELL_SHAMAN_BOT_STORM_WISDOM_R5)
+            return std::nullopt;
+
+        uint32 const buffId = owner->HasAura(SPELL_SHAMAN_BOT_CHAIN_STORM) ? SPELL_SHAMAN_BOT_CHAIN_STORM_BUFF : SPELL_SHAMAN_BOT_STORM_WISDOM_BUFF;
+        owner->CastSpell(owner, buffId, true, nullptr, aura);
+        return SPELL_AURA_PROC_OK;
+    }
+};
+
+// #357 R6/C4 Shield constitution + R7/C4 Shield ward (bots): value per Lightning Shield charge.
+struct spell_shaman_shield_charge_scaling : public AuraScript
+{
+    int32 OnAuraValueCalculate(Aura* aura, Unit* /*caster*/, Unit* target, SpellEntry const* spellProto, SpellEffectIndex effIdx, Item* /*castItem*/, int32 value) override
+    {
+        if (!aura || effIdx != EFFECT_INDEX_0 || !spellProto || !IsShieldChargeScalingSpell(spellProto->Id))
+            return value;
+
+        return spellProto->CalculateSimpleValue(EFFECT_INDEX_0) * int32(GetLightningShieldCharges(target));
+    }
+};
+
 void AddSC_shaman_spell_scripts()
 {
+    RegisterAuraScript("spell_shaman_retaliation", &GetAuraScript<spell_shaman_retaliation>);
+    RegisterSpellScript("spell_shaman_stormstrike_charges", &GetSpellScript<spell_shaman_stormstrike_charges>);
+    RegisterAuraScript("spell_shaman_storm_wisdom", &GetAuraScript<spell_shaman_storm_wisdom>);
+    RegisterAuraScript("spell_shaman_shield_charge_scaling", &GetAuraScript<spell_shaman_shield_charge_scaling>);
     RegisterSpellScript("spell_shaman_thunderhead", &GetSpellScript<spell_shaman_thunderhead>);
     RegisterSpellScript("spell_shaman_rockbiter_proc", &GetSpellScript<spell_shaman_rockbiter_proc>);
     RegisterSpellScript("spell_shaman_flametongue_proc", &GetSpellScript<spell_shaman_flametongue_proc>);
