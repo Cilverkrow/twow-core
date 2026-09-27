@@ -14,7 +14,7 @@ file(READ "${PB_MODULE_DIR}/tools/build_premade_specs.py" generator)
 
 # #357 O-12: talent auras for 7.1 / 7.3 (route B), idempotent, visible.
 require_text("${learn}" "GrantSpecAuras();" "aura grant on login / level-up / respec")
-require_text("${learn}" "ai::spec_aura::WantedAuras(path, bot->GetLevel())" "highest due rank per talent")
+require_text("${learn}" "ai::spec_aura::WantedAuras(bot->getClass(), path, bot->GetLevel())" "highest due rank per talent")
 require_text("${learn}" "bot->removeSpell(spellId, false, false);" "outgrown ranks removed, no lower rank taught back")
 require_text("${learn}" "sSpellTemplate.LookupEntry<SpellEntry>(spellId)" "missing spell_template rows skipped")
 require_text("${learn}" "[SpecAura] state=grant" "visible grant")
@@ -34,3 +34,8 @@ require_text("${config_template}" "AiPlayerbot.SpecAura.Enabled = 0" "documented
 require_text("${generator}" "def reserved_points(cls, name, level):" "per-level reserve in the generator")
 require_text("${generator}" "(7, 'shaman tank'): {257}," "no Calming Winds for the tank")
 require_text("${generator}" "(7, 'shaman tank'): {259: 3}," "Ancestral Guardian for the tank")
+
+# #367 kit (core#188): Spit and Shadow Dance for 4.3, free, and Shadow Dance kept up.
+file(READ "${PB_SOURCE_DIR}/strategy/rogue/TankRogueStrategy.cpp" tank_rogue)
+require_text("${learn}" "ai::spec_aura::WantedKit(bot->getClass(), path, bot->GetLevel())" "kit granted with the auras")
+require_text("${tank_rogue}" "new NextAction(\"shadow dance\", ACTION_HIGH + 3)" "Shadow Dance kept up in combat")

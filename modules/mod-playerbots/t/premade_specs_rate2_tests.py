@@ -90,18 +90,30 @@ class RateTwoPremadePathTests(unittest.TestCase):
         self.assertEqual(14, GENERATOR_MODULE.reserved_points(7, 'enhancement', 60))
         self.assertEqual(21, GENERATOR_MODULE.reserved_points(7, 'shaman tank', 60))
         self.assertEqual(0, GENERATOR_MODULE.reserved_points(7, 'elemental', 60))
-        self.assertEqual(0, GENERATOR_MODULE.reserved_points(4, 'rogue tank', 60))
+        # #367 rogue (OB-20 IDs, OB-10 path assignment).
+        self.assertEqual(9, GENERATOR_MODULE.reserved_points(4, 'combat', 60))
+        self.assertEqual(9, GENERATOR_MODULE.reserved_points(4, 'assassination', 60))
+        self.assertEqual(8, GENERATOR_MODULE.reserved_points(4, 'subtlety', 60))
+        self.assertEqual(20, GENERATOR_MODULE.reserved_points(4, 'rogue tank', 60))
 
     def test_spec_aura_table_matches_the_core_header(self):
         # tools/build_premade_specs.py SPEC_AURAS and SpecAuraPolicy.h must agree,
         # or the links leave a different number of points free than the core grants.
         header = (pathlib.Path(__file__).resolve().parents[1] /
                   'src' / 'playerbot' / 'SpecAuraPolicy.h').read_text(encoding='utf-8')
-        rows = re.findall(r'\{\s*"([^"]+)",\s*(\w+),\s*(\d+),\s*\{([^}]*)\}\s*\}', header)
         paths = {'Both': {'enhancement', 'shaman tank'},
-                 'Enhancement': {'enhancement'}, 'ShamanTank': {'shaman tank'}}
-        core = [(name, int(level), len([i for i in ids.split(',') if i.strip()]), paths[mask])
-                for name, mask, level, ids in rows]
+                 'Enhancement': {'enhancement'}, 'ShamanTank': {'shaman tank'},
+                 'RogueCombat': {'combat'}, 'RogueAssassination': {'assassination'},
+                 'RogueSubtlety': {'subtlety'}, 'RogueTank': {'rogue tank'}}
+        core = []
+        for cls, function in ((7, 'ShamanAuras'), (4, 'RogueAuras')):
+            body = header.split('inline std::vector<AuraTalent> const& %s()' % function)[1].split('return auras;')[0]
+            rows = re.findall(r'\{\s*"([^"]+)",\s*([\w |]+?),\s*(\d+),\s*\{([^}]*)\}\s*\}', body)
+            for name, mask, level, ids in rows:
+                names = set()
+                for part in mask.split('|'):
+                    names |= paths[part.strip()]
+                core.append((cls, name, int(level), len([i for i in ids.split(',') if i.strip()]), names))
         self.assertEqual(GENERATOR_MODULE.SPEC_AURAS, core)
 
 

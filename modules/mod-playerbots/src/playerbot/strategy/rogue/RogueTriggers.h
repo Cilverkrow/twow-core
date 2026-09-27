@@ -13,6 +13,8 @@ namespace ai
 
     // #367: the rogue tank keeps Ghostly Strike (+dodge) up.
     BUFF_TRIGGER(GhostlyStrikeTrigger, "ghostly strike");
+    // #367 kit (core#188): the rogue tank keeps its Shadow Dance toggle up.
+    BUFF_TRIGGER(ShadowDanceTrigger, "shadow dance");
 
     class SliceAndDiceTrigger : public NoBuffAndComboPointsAvailableTrigger
     {

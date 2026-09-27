@@ -115,8 +115,9 @@ void AutoLearnSpellAction::LearnSpells(std::ostringstream* out)
     if (IsClassGrantBot() && bot->getClass() == CLASS_SHAMAN)
         GrantShamanTotems(out);
 
-    // #357 O-12: talent auras the premade path pays for with talent points.
-    if (sPlayerbotAIConfig.specAuraEnabled && bot->getClass() == CLASS_SHAMAN &&
+    // #357 / #367 O-12: talent auras the premade path pays for with talent points.
+    if (sPlayerbotAIConfig.specAuraEnabled &&
+        (!ai::spec_aura::AurasFor(bot->getClass()).empty() || !ai::spec_aura::KitFor(bot->getClass()).empty()) &&
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
         GrantSpecAuras();
 
@@ -335,11 +336,18 @@ void AutoLearnSpellAction::GrantShamanTotems(std::ostringstream* out)
 void AutoLearnSpellAction::GrantSpecAuras()
 {
     std::uint8_t const path = ai::spec_aura::PathFor(bot->getClass(), AiFactory::GetPremadePathName(bot));
-    std::vector<uint32> const wanted = path ? ai::spec_aura::WantedAuras(path, bot->GetLevel()) : std::vector<uint32>();
+    std::vector<uint32> wanted = path ? ai::spec_aura::WantedAuras(bot->getClass(), path, bot->GetLevel()) : std::vector<uint32>();
+    // #367: the kit of the path (Spit, Shadow Dance for 4.3) comes the same way, for free.
+    if (path)
+        for (uint32 spellId : ai::spec_aura::WantedKit(bot->getClass(), path, bot->GetLevel()))
+            wanted.push_back(spellId);
+    std::vector<uint32> known = ai::spec_aura::AllAuras(bot->getClass());
+    for (uint32 spellId : ai::spec_aura::AllKit(bot->getClass()))
+        known.push_back(spellId);
 
     // Idempotent. A lower rank the level has outgrown, or an aura of another
     // path after a respec, goes; no lower rank is taught back.
-    for (uint32 spellId : ai::spec_aura::AllAuras())
+    for (uint32 spellId : known)
     {
         if (std::find(wanted.begin(), wanted.end(), spellId) != wanted.end() || !bot->HasSpell(spellId))
             continue;

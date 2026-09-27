@@ -119,26 +119,42 @@ PROBABILITY = {
 # pay for them with talent points: at every level the link leaves exactly the
 # points of the aura ranks granted by then unspent (7.1: 14, 7.3: 21 at 60;
 # Ghost Wolf rank 3 is Improved Ghost Wolf 2/2 for everyone, owner 2026-09-27).
-# (name, first grant level, ranks, paths)
+# (class, name, first grant level, ranks, paths)
 SPEC_AURAS = [
-    ('attack speed',        10, 5, {'enhancement', 'shaman tank'}),
-    ('defense',             10, 5, {'shaman tank'}),
-    ('imbue mastery',       25, 3, {'enhancement', 'shaman tank'}),
-    ('retaliation',         25, 3, {'shaman tank'}),
-    ('stormstrike charges', 30, 1, {'shaman tank'}),
-    ('storm wisdom',        35, 5, {'enhancement'}),
-    ('chain storm',         40, 1, {'enhancement'}),
-    ('shield constitution', 35, 3, {'shaman tank'}),
-    ('shield ward',         40, 1, {'shaman tank'}),
+    (7, 'attack speed',        10, 5, {'enhancement', 'shaman tank'}),
+    (7, 'defense',             10, 5, {'shaman tank'}),
+    (7, 'imbue mastery',       25, 3, {'enhancement', 'shaman tank'}),
+    (7, 'retaliation',         25, 3, {'shaman tank'}),
+    (7, 'stormstrike charges', 30, 1, {'shaman tank'}),
+    (7, 'storm wisdom',        35, 5, {'enhancement'}),
+    (7, 'chain storm',         40, 1, {'enhancement'}),
+    (7, 'shield constitution', 35, 3, {'shaman tank'}),
+    (7, 'shield ward',         40, 1, {'shaman tank'}),
+    # #367 rogue (OB-20 IDs 90150-90190): 4.0 = 9, 4.1 = 9, 4.2 = 8, 4.3 = 20 points at 60.
+    (4, 'damage from behind',  10, 4, {'assassination'}),
+    (4, 'snd cooldown crits',  20, 2, {'assassination'}),
+    (4, 'cold blood damage',   30, 1, {'assassination'}),
+    (4, 'vigor damage',        40, 1, {'assassination'}),
+    (4, 'seal fate extra',     40, 1, {'assassination'}),
+    (4, 'agility',             10, 5, {'combat', 'rogue tank'}),
+    (4, 'defense',             10, 5, {'rogue tank'}),
+    (4, 'riposte strikes',     15, 3, {'rogue tank'}),
+    (4, 'evasive resistance',  25, 3, {'rogue tank'}),
+    (4, 'execute strikes',     35, 3, {'combat'}),
+    (4, 'frontal backstab',    40, 1, {'combat'}),
+    (4, 'tank toughness',      35, 3, {'rogue tank'}),
+    (4, 'ghostly magic dodge', 40, 1, {'rogue tank'}),
+    (4, 'stealth damage',      10, 4, {'subtlety'}),
+    (4, 'hemorrhage stacks',   35, 1, {'subtlety'}),
+    (4, 'shadow damage',       40, 3, {'subtlety'}),
 ]
 
 
 def reserved_points(cls, name, level):
-    """Talent points a path pays at this level for its #357 auras."""
-    if cls != 7:
-        return 0
+    """Talent points a path pays at this level for its #357 / #367 auras."""
     return sum(min(ranks, max(0, level - first + 1))
-               for _, first, ranks, paths in SPEC_AURAS if name in paths)
+               for aura_cls, _, first, ranks, paths in SPEC_AURAS
+               if aura_cls == cls and name in paths)
 
 
 # Talents a path never takes (talent id). #357: Calming Winds (-25 % threat)

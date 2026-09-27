@@ -34,6 +34,13 @@ namespace ai
 
     // #367: rogue tank taunt, design D-2 "Spit" (15 yd; spell not in the data yet,
     // the action stays impossible until a bot knows it).
+    // #367 kit (core#188): Shadow Dance I-III, a self buff toggle.
+    class CastShadowDanceAction : public CastBuffSpellAction
+    {
+    public:
+        CastShadowDanceAction(PlayerbotAI* ai) : CastBuffSpellAction(ai, "shadow dance") {}
+    };
+
     class CastRogueTauntAction : public CastSpellAction
     {
     public:

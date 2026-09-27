@@ -220,6 +220,7 @@ namespace ai
                 creators["fan of knives"] = [](PlayerbotAI* ai) { return new SpellCanBeCastedTrigger(ai, "fan of knives"); };
                 creators["riposte"] = [](PlayerbotAI* ai) { return new RiposteCastTrigger(ai); };
                 creators["ghostly strike"] = [](PlayerbotAI* ai) { return new GhostlyStrikeTrigger(ai); };
+                creators["shadow dance"] = [](PlayerbotAI* ai) { return new ShadowDanceTrigger(ai); };
                 creators["apply deadly poison main hand"] = [](PlayerbotAI* ai) { return new ApplyDeadlyPoisonTrigger(ai, true); };
                 creators["apply crippling poison main hand"] = [](PlayerbotAI* ai) { return new ApplyCripplingPoisonTrigger(ai, true); };
                 creators["apply mind poison main hand"] = [](PlayerbotAI* ai) { return new ApplyMindPoisonTrigger(ai, true); };
@@ -253,6 +254,7 @@ namespace ai
                 creators["vanish"] = [](PlayerbotAI* ai) { return new CastVanishAction(ai); };
                 creators["evasion"] = [](PlayerbotAI* ai) { return new CastEvasionAction(ai); };
                 creators["rogue taunt"] = [](PlayerbotAI* ai) { return new CastRogueTauntAction(ai); };
+                creators["shadow dance"] = [](PlayerbotAI* ai) { return new CastShadowDanceAction(ai); };
                 creators["kick"] = [](PlayerbotAI* ai) { return new CastKickAction(ai); };
                 creators["feint"] = [](PlayerbotAI* ai) { return new CastFeintAction(ai); };
                 creators["backstab"] = [](PlayerbotAI* ai) { return new CastBackstabAction(ai); };

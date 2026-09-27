@@ -24,6 +24,18 @@ void TankRogueStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode(
         "ghostly strike",
         NextAction::array(0, new NextAction("ghostly strike", ACTION_HIGH + 2), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "shadow dance",
+        NextAction::array(0, new NextAction("shadow dance", ACTION_HIGH + 3), NULL)));
+}
+
+void TankRogueStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
+{
+    // #367 kit (core#188): Shadow Dance stays up between fights too.
+    triggers.push_back(new TriggerNode(
+        "shadow dance",
+        NextAction::array(0, new NextAction("shadow dance", ACTION_NORMAL + 1), NULL)));
 }
 
 void TankRogueStrategy::InitCombatMultipliers(std::list<Multiplier*>& multipliers)
