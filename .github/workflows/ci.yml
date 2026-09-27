@@ -308,7 +308,7 @@ jobs:
             -v "${{ github.workspace }}:/src" \
             -v "${{ github.workspace }}/.ccache:/ccache" \
             -e CCACHE_DIR=/ccache \
-            -e CCACHE_MAXSIZE=2G \
+            -e CCACHE_MAXSIZE=3G \
             -e CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime \
             -e DEBIAN_FRONTEND=noninteractive \
             -e CI_DB_PORT \
