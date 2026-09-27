@@ -81,6 +81,8 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_PRIEST].push_back(RACE_TROLL);
     availableRaces[CLASS_PRIEST].push_back(RACE_UNDEAD);
     availableRaces[CLASS_PRIEST].push_back(RACE_HIGH_ELF);
+    // twow-repo#379 (owner 2026-09-27): Turtle pair with complete playercreateinfo/levelstats rows.
+    availableRaces[CLASS_PRIEST].push_back(RACE_TAUREN);
 #ifndef MANGOSBOT_ZERO
     availableRaces[CLASS_PRIEST].push_back(RACE_DRAENEI);
     availableRaces[CLASS_PRIEST].push_back(RACE_BLOODELF);
@@ -92,6 +94,9 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_MAGE].push_back(RACE_TROLL);
     availableRaces[CLASS_MAGE].push_back(RACE_GOBLIN);
     availableRaces[CLASS_MAGE].push_back(RACE_HIGH_ELF);
+    // twow-repo#379 (owner 2026-09-27): Turtle pair with complete playercreateinfo/levelstats rows.
+    availableRaces[CLASS_MAGE].push_back(RACE_ORC);
+    availableRaces[CLASS_MAGE].push_back(RACE_DWARF);
 #ifndef MANGOSBOT_ZERO
     availableRaces[CLASS_MAGE].push_back(RACE_DRAENEI);
     availableRaces[CLASS_MAGE].push_back(RACE_BLOODELF);
@@ -102,6 +107,9 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_WARLOCK].push_back(RACE_UNDEAD);
     availableRaces[CLASS_WARLOCK].push_back(RACE_ORC);
     availableRaces[CLASS_WARLOCK].push_back(RACE_GOBLIN);
+    // twow-repo#379 (owner 2026-09-27): Turtle pair with complete playercreateinfo/levelstats rows.
+    availableRaces[CLASS_WARLOCK].push_back(RACE_DWARF);
+    availableRaces[CLASS_WARLOCK].push_back(RACE_TROLL);
 #ifndef MANGOSBOT_ZERO
     availableRaces[CLASS_WARLOCK].push_back(RACE_BLOODELF);
 #endif
@@ -125,6 +133,9 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_HUNTER].push_back(RACE_TROLL);
     availableRaces[CLASS_HUNTER].push_back(RACE_GOBLIN);
     availableRaces[CLASS_HUNTER].push_back(RACE_HIGH_ELF);
+    // twow-repo#379 (owner 2026-09-27): Turtle pair with complete playercreateinfo/levelstats rows.
+    availableRaces[CLASS_HUNTER].push_back(RACE_UNDEAD);
+    availableRaces[CLASS_HUNTER].push_back(RACE_GNOME);
 #ifndef MANGOSBOT_ZERO
     availableRaces[CLASS_HUNTER].push_back(RACE_DRAENEI);
     availableRaces[CLASS_HUNTER].push_back(RACE_BLOODELF);
