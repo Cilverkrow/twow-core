@@ -61,6 +61,34 @@
 			</OnLoad>
 		</Scripts>
 	</Frame>
+	<Frame name="BotMenuRole" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuInventory" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuDeath" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
+	<Frame name="BotMenuInfo" inherits="UIMenuTemplate" hidden="true" parent="BotMenu">
+		<Scripts>
+			<OnLoad>
+				BotMenu_OnLoadMenu("BotMenu");
+			</OnLoad>
+		</Scripts>
+	</Frame>
 
 	<!-- Event frame: fills the menus once saved variables are loaded. -->
 	<Frame name="BotMenuEventFrame" hidden="true">

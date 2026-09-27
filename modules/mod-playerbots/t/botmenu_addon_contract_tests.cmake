@@ -102,11 +102,40 @@ foreach(value IN LISTS pending_formations)
   endif()
 endforeach()
 
-# Ten named formations in the menu (owner concept).
+# 16 named formations in the menu (#389).
 string(REGEX MATCHALL "\"formation [a-z]+\"" menu_formations "${lua}")
 list(LENGTH menu_formations formation_count)
 if(NOT formation_count EQUAL 16)
   message(FATAL_ERROR "Expected 16 formations in the menu (#389), found ${formation_count}")
 endif()
 
+
+# #290 owner order (2026-09-27): 11 categories.
+string(REGEX MATCHALL "label = \"[^\"]+\"" labels "${lua}")
+string(REPLACE "label = " "" labels "${labels}")
+string(REPLACE "\"" "" labels "${labels}")
+set(expected_labels "Kampf;Formation;Rolle;Gruppe;Quests;Händler & NPC;Beute;Berufe;Inventar;Tod;Info")
+if(NOT labels STREQUAL expected_labels)
+  message(FATAL_ERROR "Category order is '${labels}', expected '${expected_labels}'")
+endif()
+
+# Role prefixes are chat filters the server knows (ChatFilter.cpp).
+file(READ "${PB_MODULE_DIR}/src/playerbot/ChatFilter.cpp" filters)
+string(REGEX MATCHALL "prefix = \"@[a-z]+ \"" prefixes "${lua}")
+list(LENGTH prefixes prefix_count)
+if(NOT prefix_count EQUAL 4)
+  message(FATAL_ERROR "Expected 4 role prefixes (tank, heal, ranged, melee), found ${prefix_count}")
+endif()
+foreach(prefix IN LISTS prefixes)
+  string(REGEX REPLACE "^prefix = \"(@[a-z]+) \"$" "\1" filter "${prefix}")
+  require_text("${filters}" "retMap[\"${filter}\"]" "chat filter ${filter}")
+endforeach()
+
+# Caution commands stay out of the menu (owner decision pending, #290).
+foreach(command destroy drop sendmail ah cast castnc "guild promote" "guild demote" "guild remove" "guild leader" "reset")
+  string(REGEX MATCH "\{ \"[^\"]+\", +\"${command}( [^\"]*)?\" \}" hit "${lua}")
+  if(hit)
+    message(FATAL_ERROR "Caution command '${command}' is in the menu: ${hit}")
+  endif()
+endforeach()
 message(STATUS "BOTMENU_ADDON_CONTRACT=PASS entries=${entry_count}")

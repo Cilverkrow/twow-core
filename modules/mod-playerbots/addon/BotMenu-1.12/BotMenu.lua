@@ -8,19 +8,27 @@
 --
 -- Lua 5.0 / 1.12 client: no '#', no '%', handlers read `this`, no SetSize.
 
-BOTMENU_VERSION = "1.1";
+BOTMENU_VERSION = "1.2";
 
--- Categories in menu order. `menu` is the frame from BotMenu.xml; each entry
--- is { label, command }. Commands are the playerbot chat commands verified in
--- the inventory of twow-repo#290 (and t/botmenu_addon_contract_tests.cmake).
+-- Categories in menu order (owner 2026-09-27, twow-repo#290). `menu` is the
+-- frame from BotMenu.xml; each entry is { label, command }. Commands are the
+-- playerbot chat commands of docs/bots/command-inventory.md, checked against
+-- the chat triggers by t/botmenu_addon_contract_tests.cmake. Entries ending
+-- in a space wait for a shift-clicked link. "Vorsicht" commands (destroy,
+-- drop, sendmail, ah, cast, guild ranks, reset) are deliberately left out.
 BOTMENU_CATEGORIES = {
 	{ label = "Kampf", menu = "BotMenuCombat", entries = {
 		{ "Folgen",              "follow" },
 		{ "Bleiben",             "stay" },
 		{ "Angreifen (Ziel)",    "attack" },
+		{ "Tank greift an",      "tank attack" },
+		{ "Ziehen (Ziel)",       "pull" },
+		{ "Markiertes Ziel",     "attack rti" },
+		{ "Volle Kraft",         "max dps" },
 		{ "Zurückziehen",        "flee" },
 		{ "Bewachen",            "guard" },
 		{ "Frei bewegen",        "free" },
+		{ "Umherstreifen",       "wander" },
 		{ "Passiv an",           "co +passive" },
 		{ "Passiv aus",          "co -passive" },
 	} },
@@ -43,35 +51,30 @@ BOTMENU_CATEGORIES = {
 		{ "Kolonne",             "formation column" },
 		{ "Welche Formation?",   "formation ?" },
 	} },
-	{ label = "Beute", menu = "BotMenuLoot", entries = {
-		{ "Aufsammeln",          "loot" },
-		{ "Nur Nützliches",      "ll normal" },
-		{ "Auch Graues",         "ll gray" },
-		{ "Alles",               "ll all" },
-		{ "Looten an",           "nc +loot" },
-		{ "Looten aus",          "nc -loot" },
+	-- Role filter: a click remembers the prefix, the next command click puts
+	-- it in front ("/p @tank attack") - only the matching bots react.
+	{ label = "Rolle", menu = "BotMenuRole", entries = {
+		{ "Nur Tanks ...",       prefix = "@tank " },
+		{ "Nur Heiler ...",      prefix = "@heal " },
+		{ "Nur Fernkampf ...",   prefix = "@ranged " },
+		{ "Nur Nahkampf ...",    prefix = "@melee " },
+		{ "Alle (Filter aus)",   prefix = "" },
 	} },
-	{ label = "Berufe", menu = "BotMenuProfession", entries = {
-		{ "Beim Lehrer lernen",  "train" },
-		{ "Lehrer zeigen",       "trainer" },
-		{ "Fertigkeiten",        "skill" },
-		{ "Sammeln an",          "nc +gather" },
-		{ "Sammeln aus",         "nc -gather" },
+	{ label = "Gruppe", menu = "BotMenuGroup", entries = {
+		{ "Herbeirufen",         "summon" },
+		{ "Wegschicken",         "leave" },
+		{ "Anführer geben",      "give leader" },
+		{ "Bereitschaftscheck",  "ready" },
 	} },
 	{ label = "Quests", menu = "BotMenuQuest", entries = {
 		{ "Questliste",          "quests" },
 		{ "Quests annehmen",     "accept *" },
 		{ "Mit NPC sprechen",    "talk" },
-		-- Ends with a space: shift-click the quest link into the line.
 		{ "Quest nachholen...",  "catchup quest " },
+		{ "Belohnung wählen...", "r " },
+		{ "Questziel prüfen...", "q " },
 	} },
-	{ label = "Gruppe", menu = "BotMenuGroup", entries = {
-		{ "Herbeirufen",         "summon" },
-		{ "Wegschicken",         "leave" },
-	} },
-	-- Owner request after the train 6 acceptance: NPC actions without typing.
-	-- Select the NPC first; the bot must stand next to it. Entries ending in a
-	-- space wait for a shift-clicked item link.
+	-- Select the NPC first; the bot must stand next to it.
 	{ label = "Händler & NPC", menu = "BotMenuNpc", entries = {
 		{ "Mit NPC sprechen",    "talk" },
 		{ "Option 1",            "talk 1" },
@@ -82,8 +85,53 @@ BOTMENU_CATEGORIES = {
 		{ "Graues verkaufen",    "s" },
 		{ "Verkaufen...",        "s " },
 		{ "Kaufen...",           "b " },
+		{ "Zurückkaufen",        "bb all" },
+		{ "Bank zeigen",         "bank ?" },
+	} },
+	{ label = "Beute", menu = "BotMenuLoot", entries = {
+		{ "Aufsammeln",          "loot" },
+		{ "Nur Nützliches",      "ll normal" },
+		{ "Auch Graues",         "ll gray" },
+		{ "Alles",               "ll all" },
+		{ "Looten an",           "nc +loot" },
+		{ "Looten aus",          "nc -loot" },
+		{ "Würfeln: Bedarf",     "roll need" },
+		{ "Würfeln: Gier",       "roll greed" },
+		{ "Würfeln: Passen",     "roll pass" },
+		{ "Würfeln: Automatisch", "roll auto" },
+	} },
+	{ label = "Berufe", menu = "BotMenuProfession", entries = {
+		{ "Beim Lehrer lernen",  "train" },
+		{ "Lehrer zeigen",       "trainer" },
+		{ "Fertigkeiten",        "skill" },
+		{ "Sammeln an",          "nc +gather" },
+		{ "Sammeln aus",         "nc -gather" },
+	} },
+	-- Item commands: shift-click the item into the line before Enter.
+	{ label = "Inventar", menu = "BotMenuInventory", entries = {
+		{ "Inventar zeigen",     "c" },
+		{ "Anzahl von...",       "c " },
+		{ "Ausrüsten...",        "e " },
+		{ "Ablegen...",          "ue " },
+		{ "Benutzen...",         "u " },
+		{ "Handeln (Fenster offen)...", "t " },
+	} },
+	{ label = "Tod", menu = "BotMenuDeath", entries = {
+		{ "Geist freilassen",    "release" },
+		{ "Beim Geistheiler",    "revive" },
+		{ "Selbst wiederbeleben", "self res" },
+	} },
+	{ label = "Info", menu = "BotMenuInfo", entries = {
+		{ "Status",              "stats" },
+		{ "Wo bist du?",         "where" },
+		{ "Talente",             "talents" },
+		{ "Zauber",              "spells" },
+		{ "Ruf",                 "reputation" },
 	} },
 };
+
+-- Role prefix chosen in "Rolle", used by the next command click.
+local botMenuPrefix = "";
 
 -- The "Bots" button in ChatMenu, remembered so the switch can hide it.
 local botMenuButton = nil;
@@ -109,11 +157,24 @@ function BotMenu_OnLoadMenu(parentName)
 	this.parentMenu = parentName;
 end
 
--- Button click: write the command into the chat line in the active channel.
+-- Button click: write the command into the chat line in the active channel,
+-- behind a role prefix chosen before (used once).
 function BotMenu_CommandClick()
 	local command = this.botCommand;
 	if ( command ) then
-		ChatFrame_OpenChat(command, DEFAULT_CHAT_FRAME);
+		ChatFrame_OpenChat(botMenuPrefix..command, DEFAULT_CHAT_FRAME);
+		botMenuPrefix = "";
+	end
+	ChatMenu:Hide();
+end
+
+-- Role click: remember the filter for the next command.
+function BotMenu_PrefixClick()
+	botMenuPrefix = this.botPrefix or "";
+	if ( botMenuPrefix == "" ) then
+		BotMenu_Print("Rollenfilter aus - der nächste Befehl gilt für alle Bots.");
+	else
+		BotMenu_Print("Der nächste Befehl gilt nur für "..botMenuPrefix.."- jetzt den Befehl wählen.");
 	end
 	ChatMenu:Hide();
 end
@@ -125,9 +186,16 @@ local function BotMenu_Fill()
 		BotMenu_AddButton(BotMenu, category.label, nil, category.menu);
 		for j = 1, table.getn(category.entries) do
 			local entry = category.entries[j];
-			local button = BotMenu_AddButton(menu, entry[1], BotMenu_CommandClick, nil);
-			if ( button ) then
-				button.botCommand = entry[2];
+			if ( entry.prefix ) then
+				local button = BotMenu_AddButton(menu, entry[1], BotMenu_PrefixClick, nil);
+				if ( button ) then
+					button.botPrefix = entry.prefix;
+				end
+			else
+				local button = BotMenu_AddButton(menu, entry[1], BotMenu_CommandClick, nil);
+				if ( button ) then
+					button.botCommand = entry[2];
+				end
 			end
 		end
 	end
