@@ -457,10 +457,22 @@ bool StoreLootAction::Execute(Event& event)
         if (!proto)
             continue;
 
-        LootItem* lootItem = loot->GetLootItemInSlot(itemindex);
+        // #405 (probe 2026-09-27): the loot packet numbers quest-only items after
+        // the normal ones, per player (items.size() + position in the player's
+        // quest item list). The GetLootItemInSlot shim knows only the normal items
+        // and returned null for every quest slot, so bots opened quest chests and
+        // looted quest mobs but silently left every quest-only item behind
+        // (93 % of the objective work phases at chests ran out). The Core
+        // resolves the slot for this player, quest and free-for-all items included.
+        LootItem* lootItem = loot->LootItemInSlot(itemindex, bot->GetGUIDLow());
 
         if (!lootItem)
+        {
+            sLog.outDebug("[BOT LOOT] %s: skip item=%u (no loot item in slot %u)", bot->GetName(), itemid, uint32(itemindex));
+            if (traceQuestLoot)
+                sLog.outBasic("[QuestLoot] state=skipped bot=%u item=%u reason=no_slot", bot->GetGUIDLow(), itemid);
             continue;
+        }
 
         //have no right to loot
         if (lootItem->is_blocked || lootItem->GetSlotTypeForSharedLoot(ALL_PERMISSION, bot, loot ? loot->GetLootTarget() : nullptr) == MAX_LOOT_SLOT_TYPE)

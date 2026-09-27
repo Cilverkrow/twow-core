@@ -441,6 +441,10 @@ namespace ai
         struct CommitTrace { uint32 nextAt = 0; uint32 repeats = 0; };
         std::map<std::string, CommitTrace> commitTrace;
         std::map<TravelDestination const*, destination_death::Record> destinationDeaths;
+        // #405: quest objectives whose work phase ran out without progress
+        // (same counting rule as the destination deaths, own map).
+        std::map<TravelDestination const*, destination_death::Record> workTimeouts;
+        void OnWorkTimeout();
 	};
 
 	//General container for all travel destinations.

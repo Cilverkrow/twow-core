@@ -1103,6 +1103,33 @@ void TravelTarget::OnDeathAtDestination()
     SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
 }
 
+void TravelTarget::OnWorkTimeout()
+{
+    // #405 (live 2026-09-27): 93 % of the quest-objective work phases at world
+    // objects (lock 43 chests: Cactus Apple, Tirisfal Pumpkin, Water Pitcher...)
+    // ran out without a loot, and the bot picked the same objective again: Juzika
+    // (L9) kept going back to a level-1 quest 1100 yards away. After
+    // QuestWorkTimeouts.Max such timeouts the objective is skipped by this bot for
+    // QuestWorkTimeouts.CooldownSeconds, like a death-suppressed destination.
+    if (!sPlayerbotAIConfig.questWorkTimeoutsMax || !dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
+        return;
+
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return;
+
+    // Bounded like the destination death map.
+    if (workTimeouts.size() > 64 && workTimeouts.find(tDestination) == workTimeouts.end())
+        workTimeouts.clear();
+
+    uint32 const cooldownMs = sPlayerbotAIConfig.questWorkTimeoutsCooldownSeconds * IN_MILLISECONDS;
+    if (!destination_death::RecordDeath(workTimeouts[tDestination], WorldTimer::getMSTime(),
+            sPlayerbotAIConfig.questWorkTimeoutsMax, cooldownMs))
+        return;
+
+    TraceQuestCommit(tDestination, "abandon", "work_suppressed");
+    SuppressCurrentDestination(cooldownMs);
+}
+
 void TravelTarget::SuppressCurrentDestination(uint32 durationMs)
 {
     if (!tDestination || dynamic_cast<NullTravelDestination const*>(tDestination) || !durationMs)
@@ -1207,6 +1234,8 @@ void TravelTarget::CheckStatus()
             GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ? "status_time_exceeded_travel" :
             GetStatus() == TravelStatus::TRAVEL_STATUS_WORK ? "status_time_exceeded_work" :
             GetStatus() == TravelStatus::TRAVEL_STATUS_COOLDOWN ? "status_time_exceeded_cooldown" : "status_time_exceeded");
+        if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK)
+            OnWorkTimeout();
         SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         ai->GetAiObjectContext()->ClearValues("no active travel destinations");
         return;

@@ -527,6 +527,14 @@ AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin = 5
 AiPlayerbot.DestinationDeaths.Max = 2
 AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 
+# #405: a quest objective whose work phase (at the objective, e.g. a quest
+# chest) ran out QuestWorkTimeouts.Max times without the travel target
+# finishing is skipped by that roster bot for CooldownSeconds, logged as
+# [QuestCommit] ... event=abandon reason=work_suppressed. 0 = off.
+# Profile value for the roster: 3 / 3600.
+AiPlayerbot.QuestWorkTimeouts.Max = 0
+AiPlayerbot.QuestWorkTimeouts.CooldownSeconds = 3600
+
 # G4 (train 6.1): a bot that died DeathLoop.MaxDeaths times within
 # DeathLoop.WindowSeconds and DeathLoop.Radius yards of its latest death is
 # evacuated on the next death (the "repop" teleport to its spawn, travel target

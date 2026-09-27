@@ -756,6 +756,12 @@ add_test(NAME corpse_run_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/corpse_run_source_contract_tests.cmake")
 
+# #405: quest objectives whose work phase keeps running out are skipped.
+add_test(NAME quest_work_timeout_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_work_timeout_source_contract_tests.cmake")
+
 # #357 / #367: shaman and rogue tank paths (phase 1 skeleton, weight 0).
 add_executable(tank_path_policy_tests
   "${PB_MODULE_DIR}/t/tank_path_policy_tests.cpp")
