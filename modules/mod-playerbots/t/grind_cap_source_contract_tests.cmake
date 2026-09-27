@@ -34,3 +34,15 @@ foreach(forbidden "\"grind avoid \"" "\"grind window \"" "\"grind deaths \"")
   endif()
 endforeach()
 require_text("${ai_source}" "grind_cap::Avoids().RecordDeath(bot->GetGUIDLow(), killer->GetEntry()" "deaths recorded in the bounded store")
+
+# #351 review: striped plain mutexes, no reader-preferring shared_mutex that
+# let busy readers starve death records in the stress test.
+file(READ "${PB_SOURCE_DIR}/GrindCapPolicy.h" policy)
+require_text("${policy}" "std::array<Stripe, Stripes> stripes;" "striped store")
+require_text("${policy}" "std::lock_guard<std::mutex> lock(stripe.mutex);" "plain mutex per stripe")
+foreach(forbidden "std::shared_lock" "std::shared_mutex mutex")
+  string(FIND "${policy}" "${forbidden}" shared_offset)
+  if(NOT shared_offset EQUAL -1)
+    message(FATAL_ERROR "AvoidStore must not use a reader-preferring shared_mutex: ${forbidden}")
+  endif()
+endforeach()

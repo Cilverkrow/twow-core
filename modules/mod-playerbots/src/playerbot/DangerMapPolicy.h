@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <mutex>
-#include <shared_mutex>
+
 #include <tuple>
 #include <vector>
 
@@ -120,7 +120,7 @@ public:
 
     void Record(std::uint32_t map, float x, float y, Death const& death, Params const& params)
     {
-        std::unique_lock lock(mutex);
+        std::lock_guard<std::mutex> lock(mutex);
         std::vector<Death>& deaths = cells[CellOf(map, x, y, params.cellSize)];
         deaths.erase(std::remove_if(deaths.begin(), deaths.end(),
             [&](Death const& d) { return IsExpired(d, death.time, params.windowSeconds); }), deaths.end());
@@ -156,7 +156,7 @@ public:
             }
 
         Hit hit;
-        std::shared_lock lock(mutex);
+        std::lock_guard<std::mutex> lock(mutex);
         if (cells.empty())
             return hit;
 
@@ -179,7 +179,7 @@ public:
     // Drops expired deaths; returns {cells, deaths} after pruning.
     std::pair<std::size_t, std::size_t> Prune(std::uint32_t now, Params const& params)
     {
-        std::unique_lock lock(mutex);
+        std::lock_guard<std::mutex> lock(mutex);
         return PruneLocked(now, params);
     }
 
@@ -212,7 +212,8 @@ private:
         return { cells.size(), total };
     }
 
-    mutable std::shared_mutex mutex;
+    // #351: plain mutex - glibc's reader-preferring shared_mutex can starve writers.
+    mutable std::mutex mutex;
     std::map<Cell, std::vector<Death>> cells;
 };
 
