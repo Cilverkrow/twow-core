@@ -368,24 +368,10 @@ add_test(NAME formation_grid_policy
   COMMAND formation_grid_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# #290: "spear" (wedge) is the 10th formation; its V geometry and registration.
-add_executable(spear_formation_policy_tests
-  "${PB_MODULE_DIR}/t/spear_formation_policy_tests.cpp")
-
-target_include_directories(spear_formation_policy_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
-
-set_target_properties(spear_formation_policy_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME spear_formation_policy
-  COMMAND spear_formation_policy_tests
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME spear_formation_source_contract
+add_test(NAME formation_v2_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/spear_formation_source_contract_tests.cmake")
+    -P "${PB_MODULE_DIR}/t/formation_v2_source_contract_tests.cmake")
 
 # #307: roster bots neither bind nor hearth to a zone clearly above their
 # level (the Southshore trap).

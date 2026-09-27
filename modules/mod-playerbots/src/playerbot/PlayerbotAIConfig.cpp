@@ -426,6 +426,9 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTraceTravelDecisions = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TraceTravelDecisions", false);
     followDiagnostics = config.GetBoolDefault("AiPlayerbot.FollowDiagnostics", false);
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
+    formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
+    formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);
+    formationMaxExtent = config.GetFloatDefault("AiPlayerbot.Formation.MaxExtent", 30.0f);
     questFirstProgressionTurnInStallSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInStallSeconds", 300));
     questFirstProgressionTurnInRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds", 120));
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);

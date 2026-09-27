@@ -22,7 +22,8 @@ struct Offset
 enum class Shape
 {
     CIRCLE,      // full circle, leader in the middle, concentric rings
-    HALF_RING,   // half ring behind the leader, rows of arcs
+    REARGUARD,   // half ring behind the leader, rows of arcs ("Nachhut")
+    VANGUARD,    // half ring in front of the leader ("Vorhut")
     WEDGE,       // filled V, leader at the tip
     TRIANGLE,    // filled triangle behind the leader, widest row first
     BLOCK,       // rows behind the leader
@@ -80,7 +81,7 @@ inline std::vector<Offset> Circle(unsigned int count, float spacing)
     return out;
 }
 
-inline std::vector<Offset> HalfRing(unsigned int count, float spacing)
+inline std::vector<Offset> HalfRing(unsigned int count, float spacing, bool front)
 {
     std::vector<Offset> out;
     for (unsigned int row = 2; out.size() < count; ++row)
@@ -88,10 +89,10 @@ inline std::vector<Offset> HalfRing(unsigned int count, float spacing)
         float const radius = spacing * float(row);
         unsigned int const capacity = std::max(1u, unsigned(Pi * radius / spacing) + 1);
         unsigned int const here = std::min(capacity, count - unsigned(out.size()));
-        // Behind the leader: angles from 90 to 270 degrees, centre (180) first.
+        // Centre first: straight behind (180 degrees) or straight ahead (0).
         for (float a : CentreOut(Spread(here, -Pi / 2.0f, Pi / 2.0f)))
         {
-            float const angle = Pi + a;
+            float const angle = (front ? 0.0f : Pi) + a;
             out.push_back({ radius * std::cos(angle), radius * std::sin(angle) });
         }
     }
@@ -154,7 +155,15 @@ inline unsigned int BlockWidth(unsigned int count)
 
 inline unsigned int ColumnWidth(unsigned int count)
 {
-    return count > 20 ? 3u : 2u;
+    // Owner 2026-09-27 (#389): 4 abreast from 30 bots keeps 40 at ~10 rows.
+    return count >= 30 ? 4u : count > 20 ? 3u : 2u;
+}
+
+// Owner 2026-09-27 (#389): around the leader at most 15 yd, other shapes may
+// extend up to 30 yd in total.
+inline float MaxExtentFor(Shape shape, float circleMax, float otherMax)
+{
+    return shape == Shape::CIRCLE ? circleMax : otherMax;
 }
 
 // All slots for `count` followers, compressed so that no slot lies further
@@ -165,7 +174,8 @@ inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing,
     switch (shape)
     {
         case Shape::CIRCLE:    out = Circle(count, spacing); break;
-        case Shape::HALF_RING: out = HalfRing(count, spacing); break;
+        case Shape::REARGUARD: out = HalfRing(count, spacing, false); break;
+        case Shape::VANGUARD:  out = HalfRing(count, spacing, true); break;
         case Shape::WEDGE:     out = Wedge(count, spacing); break;
         case Shape::TRIANGLE:  out = Triangle(count, spacing); break;
         case Shape::BLOCK:     out = Rows(count, spacing, BlockWidth(count)); break;
