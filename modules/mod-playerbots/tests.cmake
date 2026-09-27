@@ -650,6 +650,12 @@ add_test(NAME persistent_roster_bag_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/persistent_roster_bag_source_contract_tests.cmake")
 
+# #357 / #367: a bot on a known premade path is not re-rolled onto another path.
+add_test(NAME talent_path_hold_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/talent_path_hold_source_contract_tests.cmake")
+
 # #333: roster bots gather and craft with their professions while levelling.
 add_executable(profession_use_policy_tests
   "${PB_MODULE_DIR}/t/profession_use_policy_tests.cpp")
