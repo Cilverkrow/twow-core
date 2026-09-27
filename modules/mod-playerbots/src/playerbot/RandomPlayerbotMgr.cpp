@@ -791,6 +791,40 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     // same purpose, applied to the random-bot pool.
     UpdateSessions(elapsed);
 
+    // Register the performance monitor's per-map buckets.
+    //
+    // This must stay ABOVE every early return in this function, and it did not
+    // use to be: the loop sat near the bottom of the legacy random-roster path,
+    // behind the randomBotAutologin/enabled gate below and behind both
+    // `return`s of the persistentActiveRosterEnabled branch. Init() is the ONLY
+    // writer of PerformanceMonitor::mapsData, and start() returns nullptr for an
+    // unregistered (mapId, instanceId) -- so on any server that runs a
+    // persistent roster, or with autologin off, mapsData stayed empty forever,
+    // every start() handed back nullptr, nothing was ever timed, and
+    // `.perfmon tick` printed nothing while `.perfmon toggle` cheerfully
+    // reported "Performance monitor enabled". The whole instrument was inert.
+    //
+    // Init() itself is a no-op unless perfMonEnabled, so the cost when the
+    // monitor is off is one bool test plus a walk of the loaded-map list, once
+    // per random-bot update interval.
+    //
+    // It also has to run on THIS thread. mapsData is a std::map with no lock
+    // (see PerformanceMonitor.h); the design is that the world thread creates
+    // the (mapId, instanceId) buckets here and bot threads only ever mutate the
+    // sub-map they own. Creating buckets lazily inside start() would look
+    // simpler and would corrupt the top-level map.
+    for (auto& [mapId, map] : sMapMgr.Maps())
+        sPerformanceMonitor.Init(map->GetId(), map->GetInstanceId());
+
+    // The map-less bucket. PlayerbotAIBase::UpdateAI times "FullTick", and every
+    // PERF_MON_RNDBOT probe in PlayerbotFactory/RandomPlayerbotMgr calls the
+    // start() overload that defaults mapId and instanceId to 0. Those land in
+    // mapsData[0][0], which the loop above only creates when map 0 (Eastern
+    // Kingdoms) happens to be instantiated -- and PrintStats(perTick) divides by
+    // the FullTick count, so without this bucket the per-tick report is either
+    // absent or a division by zero.
+    sPerformanceMonitor.Init(0, 0);
+
     if (!sPlayerbotAIConfig.randomBotAutologin || !sPlayerbotAIConfig.enabled)
         return;
 
@@ -952,10 +986,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     MirrorAh();
 
-    for (auto& [mapId, map] : sMapMgr.Maps())
-    {
-        sPerformanceMonitor.Init(map->GetId(), map->GetInstanceId());
-    }
+    // The sPerformanceMonitor.Init() loop used to live here, which is inside the
+    // legacy random-roster path and below three early returns. It is now at the
+    // top of this function; see the comment there.
 
     //Ping character database.
     CharacterDatabase.AsyncPQuery(&RandomPlayerbotMgr::DatabasePing, sWorld.GetCurrentMSTime(), std::string("CharacterDatabase"), "SELECT 1");
