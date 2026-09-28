@@ -15,6 +15,7 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
+#include "playerbot/StallGuardPolicy.h"
 class Player;
 class PlayerbotMgr;
 class ChatHandler;
@@ -864,6 +865,14 @@ protected:
 	Player* bot;
 	Player* master;
 	uint8 m_forcedRole = 0;
+    // #416: last [BotSlowUpdate] line (seconds), for the rate limit.
+    uint32 lastSlowUpdateLog = 0;
+
+public:
+    // #416: called when an UpdateAI call took elapsedMs.
+    void ReportSlowUpdate(uint32 elapsedMs);
+
+protected:
     std::deque<ai::death_loop::Death> recentDeaths;
 	bool m_suppressAreaTriggerRelay = false;
 	// GUID-shadow of `master` so we can verify the pointer is still

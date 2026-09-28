@@ -336,8 +336,46 @@ void PlayerbotAI::RevalidateMasterPointer()
     }
 }
 
+namespace
+{
+// #416: times one UpdateAI call and reports it when it ran long.
+struct SlowUpdateProbe
+{
+    PlayerbotAI* ai;
+    uint32 start;
+    ~SlowUpdateProbe()
+    {
+        uint32 const elapsedMs = WorldTimer::getMSTimeDiffToNow(start);
+        if (elapsedMs > ai::stall_guard::SlowUpdateMs)
+            ai->ReportSlowUpdate(elapsedMs);
+    }
+};
+}
+
+void PlayerbotAI::ReportSlowUpdate(uint32 elapsedMs)
+{
+    uint32 const now = uint32(time(nullptr));
+    if (!ai::stall_guard::ShouldLog(lastSlowUpdateLog, now, ai::stall_guard::SlowUpdateLogSeconds))
+        return;
+    lastSlowUpdateLog = now;
+
+    std::string travel = "none";
+    uint32 travelStatus = 0;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+    {
+        travelStatus = uint32(target->GetStatus());
+        if (target->GetDestination())
+            travel = target->GetDestination()->GetTitle();
+    }
+
+    sLog.outBasic("[BotSlowUpdate] bot=%u name=%s ms=%u map=%u zone=%u level=%u combat=%u dead=%u travel=\"%s\" travel_status=%u",
+        bot->GetGUIDLow(), bot->GetName(), elapsedMs, bot->GetMapId(), bot->GetZoneId(), bot->GetLevel(),
+        bot->IsInCombat() ? 1u : 0u, bot->IsAlive() ? 0u : 1u, travel.c_str(), travelStatus);
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
+    SlowUpdateProbe const slowUpdateProbe{ this, WorldTimer::getMSTime() };
     AiObjectContext* context = aiObjectContext;
     std::string mapString = WorldPosition(bot).isInstance() ? "I" : std::to_string(bot->GetMapId());
     auto pmo = sPerformanceMonitor.start(PERF_MON_TOTAL, "PlayerbotAI::UpdateAI " + mapString, nullptr, bot->GetMapId(), bot->GetInstanceId());

@@ -4,6 +4,7 @@
 
 #include "TravelNode.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/StallGuardPolicy.h"
 
 #include <iomanip>
 #include <regex>
@@ -1737,6 +1738,17 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     if (startNodes.empty() || endNodes.empty())
         return TravelNodeRoute();    
 
+    // #416: time budget for this search (up to 5 x 5 node pairs, each an A* plus
+    // mmap path searches). A bot whose search for a target cell ran over budget
+    // gets no new search for that cell for a while (no retry storm).
+    Player* const routeBot = unit ? dynamic_cast<Player*>(unit) : nullptr;
+    uint32 const routeNow = uint32(time(nullptr));
+    uint64 const routeKey = routeBot ? ai::stall_guard::RouteCooldownStore::Key(routeBot->GetGUIDLow(), endPos.getMapId(), endPos.getX(), endPos.getY()) : 0;
+    if (routeBot && ai::stall_guard::RouteCooldowns().IsBlocked(routeKey, routeNow))
+        return TravelNodeRoute();
+    uint32 const routeStart = WorldTimer::getMSTime();
+    uint32 routePairs = 0;
+
     uint32 startNr = std::min(5, (int)startNodes.size());
     uint32 endNr = std::min(5, (int)endNodes.size());
 
@@ -1763,6 +1775,18 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
             WorldPosition endNodePosition = *endNode->getPosition();
 
             float maxStartDistance = startNode->isTransport() ? 20.0f : 1.0f;
+
+            uint32 const routeElapsed = WorldTimer::getMSTimeDiffToNow(routeStart);
+            if (ai::stall_guard::BudgetExceeded(routeElapsed, ai::stall_guard::RouteBudgetMs))
+            {
+                if (routeBot)
+                    ai::stall_guard::RouteCooldowns().Block(routeKey, routeNow + ai::stall_guard::RouteCooldownSeconds, routeNow);
+                sLog.outBasic("[TravelRoute] state=budget_exceeded bot=%u ms=%u pairs=%u map=%u x=%.0f y=%.0f cooldown_seconds=%u",
+                    routeBot ? routeBot->GetGUIDLow() : 0u, routeElapsed, routePairs, endPos.getMapId(), endPos.getX(), endPos.getY(),
+                    routeBot ? ai::stall_guard::RouteCooldownSeconds : 0u);
+                return TravelNodeRoute();
+            }
+            ++routePairs;
 
             TravelNodeRoute route = getRoute(startNode, endNode, unit);
 
