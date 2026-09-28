@@ -16,7 +16,6 @@ function(require_text text needle description)
 endfunction()
 
 require_text("${formations}" "class GridFormation : public MoveFormation" "grid formation class")
-require_text("${formations}" "formation_grid::Slots(" "slot geometry from the tested policy")
 require_text("${formations}" "sPlayerbotAIConfig.formationSpacing" "configured slot spacing")
 require_text("${formations}" "formation_grid::MaxExtentFor(" "configured radius cap")
 
@@ -30,7 +29,10 @@ foreach(pair "spear|wedge|WEDGE" "ring|schutzring|CIRCLE" "vanguard|vorhut|VANGU
   require_text("${formations}" "formation == \"${name}\" || formation == \"${alias}\"" "${name}/${alias} in FormationValue::Load")
   require_text("${formations}" "new GridFormation(ai, \"${name}\", formation_grid::Shape::${shape})" "${name} grid instance")
 endforeach()
-require_text("${formations}" "spear, melee, far, ring, vanguard, rearguard, triangle, block, column" "v2 names in the help list")
+require_text("${formations}" "spear, melee, far, ring, vanguard, rearguard, triangle, block, column, dragonslayer" "v2 names in the help list")
+require_text("${formations}" "formation == \"dragonslayer\" || formation == \"dragon\"" "dragonslayer in FormationValue::Load")
+require_text("${formations}" "new GridFormation(ai, \"dragonslayer\", formation_grid::Shape::DRAGONSLAYER)" "dragonslayer grid instance")
+require_text("${formations}" "formation_grid::SlotsForRoles(shape, roles" "slots from the role split")
 
 foreach(name melee queue chaos circle line shield arrow far)
   require_text("${formations}" "formation == \"${name}\"" "named formation ${name}")
