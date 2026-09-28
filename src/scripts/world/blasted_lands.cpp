@@ -149,6 +149,20 @@ enum
 
 static float const VOID_START_SCALE = 5.4f;  // owner 2026-09-28: 20 % larger (was 4.5)
 
+// Owner 2026-09-28: Twisting Nether yells (broadcast_text 6520101-6520111, yell, no sound).
+enum
+{
+    SAY_VOID_AGGRO                  = 6520101,
+    SAY_VOID_TAUNT_FIRST            = 6520102,  // 6520102-6520105, every 30-45 s
+    SAY_VOID_TAUNT_COUNT            = 4,
+    SAY_VOID_SPLIT_FIRST            = 6520106,  // 6520106-6520107
+    SAY_VOID_SPLIT_COUNT            = 2,
+    SAY_VOID_LOW_HEALTH             = 6520108,  // the last split, at 20 %
+    SAY_VOID_KILL_FIRST             = 6520109,  // 6520109-6520110
+    SAY_VOID_KILL_COUNT             = 2,
+    SAY_VOID_DEATH                  = 6520111,
+};
+
 // Abilities and the shared health pool, identical for the lord and every split.
 struct twisting_rift_voidAI : public ScriptedAI
 {
@@ -164,6 +178,15 @@ struct twisting_rift_voidAI : public ScriptedAI
 
     // Every other living body of this encounter.
     virtual void GetOtherBodies(std::vector<Creature*>& bodies) = 0;
+    // The body that speaks for the encounter: always the lord.
+    virtual Creature* GetSpeaker() = 0;
+
+    void KilledUnit(Unit* pVictim) override
+    {
+        if (pVictim && pVictim->IsPlayer())
+            if (Creature* pSpeaker = GetSpeaker())
+                DoScriptText(SAY_VOID_KILL_FIRST + urand(0, SAY_VOID_KILL_COUNT - 1), pSpeaker);
+    }
 
     void Reset() override
     {
@@ -245,12 +268,30 @@ struct boss_twisting_rift_voidlordAI : public twisting_rift_voidAI
 
     std::vector<ObjectGuid> m_splitGuids;
     uint32 m_uiSplitsDone;
+    uint32 m_uiTauntTimer;
 
     void Reset() override
     {
         twisting_rift_voidAI::Reset();
         m_uiSplitsDone = 0;
+        m_uiTauntTimer = urand(30000, 45000);
         m_creature->SetObjectScale(VOID_START_SCALE);
+    }
+
+    Creature* GetSpeaker() override
+    {
+        return m_creature;
+    }
+
+    void Aggro(Unit* /*pWho*/) override
+    {
+        DoScriptText(SAY_VOID_AGGRO, m_creature);
+    }
+
+    void JustDied(Unit* pKiller) override
+    {
+        DoScriptText(SAY_VOID_DEATH, m_creature);
+        twisting_rift_voidAI::JustDied(pKiller);
     }
 
     void GetOtherBodies(std::vector<Creature*>& bodies) override
@@ -311,7 +352,19 @@ struct boss_twisting_rift_voidlordAI : public twisting_rift_voidAI
                 m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_CORPSE_TIMED_DESPAWN, 60000);
             ++m_uiSplitsDone;
             Rescale();
+            if (m_uiSplitsDone == VOID_SPLIT_STEPS)
+                DoScriptText(SAY_VOID_LOW_HEALTH, m_creature);
+            else
+                DoScriptText(SAY_VOID_SPLIT_FIRST + urand(0, SAY_VOID_SPLIT_COUNT - 1), m_creature);
         }
+
+        if (m_uiTauntTimer <= uiDiff)
+        {
+            DoScriptText(SAY_VOID_TAUNT_FIRST + urand(0, SAY_VOID_TAUNT_COUNT - 1), m_creature);
+            m_uiTauntTimer = urand(30000, 45000);
+        }
+        else
+            m_uiTauntTimer -= uiDiff;
 
         UpdateAbilities(uiDiff);
         DoMeleeAttackIfReady();
@@ -325,6 +378,12 @@ struct npc_twisting_rift_voidsplitAI : public twisting_rift_voidAI
     Creature* GetLord()
     {
         return GetClosestCreatureWithEntry(m_creature, NPC_TWISTING_RIFT_VOIDLORD, 100.0f);
+    }
+
+    Creature* GetSpeaker() override
+    {
+        Creature* pLord = GetLord();
+        return pLord && pLord->IsAlive() ? pLord : nullptr;
     }
 
     void GetOtherBodies(std::vector<Creature*>& bodies) override
