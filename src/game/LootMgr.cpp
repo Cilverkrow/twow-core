@@ -1783,9 +1783,13 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
         return;
 
     // Stage 2 (b): distinct floor-quality items of the other reviewed bosses on this
-    // map, drawn evenly, each at most once per kill.
+    // map, drawn evenly, each at most once per kill. Only with
+    // Funserver.Loot.Units.InstancePool (twow-repo#429): without a boss order a first
+    // boss could draw the end boss's loot, so it stays off until the encounter order
+    // exists and the fill goes straight to the reward pool.
     std::map<uint32, LootStoreItem const*> instanceItems;
-    auto const bosses = sFunserverInstanceBossLoot.find(mapId);
+    auto const bosses = sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_INSTANCE_POOL)
+        ? sFunserverInstanceBossLoot.find(mapId) : sFunserverInstanceBossLoot.end();
     if (bosses != sFunserverInstanceBossLoot.end())
     {
         for (uint32 lootId : bosses->second)
