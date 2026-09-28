@@ -4,6 +4,7 @@
 #include <set>
 #include <mutex>
 #include <regex>
+#include <chrono>
 
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -27,6 +28,8 @@
 #include "Database/DatabaseImpl.h"
 #include "ObjectMgr.h"
 #include "Handlers/LoginQueryHolder.h"
+#include "RosterListPolicy.h"
+#include "PlayerbotSecurity.h"
 
 #ifdef GenerateBotTests
 #include "strategy/tests/TestAction.h"
@@ -332,6 +335,7 @@ PlayerbotHolder::PlayerbotHolder() : PlayerbotAIBase()
         HolderRegistry().insert(this);
     }
     m_holderHandlers["list"] = &PlayerbotHolder::HandleList;
+    m_holderHandlers["roster"] = &PlayerbotHolder::HandleRoster;
     m_holderHandlers["help"] = &PlayerbotHolder::HandleHelp;
     m_holderHandlers["reload"] = &PlayerbotHolder::HandleReload;
     m_holderHandlers["tweak"] = &PlayerbotHolder::HandleTweak;
@@ -1673,13 +1677,196 @@ std::list<std::string> PlayerbotHolder::HandleList(Player* master, const std::st
     return messages;
 }
 
+// twow-repo#419 variant B: the roster bot list, built from the persistent
+// roster snapshot and shared by every requester for rosterListCacheMs. A
+// request never walks the session list: one rebuild costs one player lookup
+// per roster member (~180), and between rebuilds a request only filters the
+// cached vector. Only rosterListMinIntervalMs per player keeps it bounded.
+namespace
+{
+struct RosterListCache
+{
+    std::vector<ai::roster_list::Entry> entries;
+    uint64 builtMs = 0;
+    uint32 buildUs = 0;
+    bool built = false;
+};
+
+std::mutex& RosterListCacheLock()
+{
+    static std::mutex lock;
+    return lock;
+}
+
+RosterListCache& RosterListCacheData()
+{
+    static RosterListCache cache;
+    return cache;
+}
+
+uint64 RosterListNowMs()
+{
+    return uint64(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+std::string RosterZoneName(uint32 zoneId)
+{
+    if (AreaEntry const* area = AreaEntry::GetById(zoneId))
+        return area->Name;
+    return "";
+}
+
+ai::roster_list::Faction RosterFaction(uint8 race)
+{
+    return Player::TeamForRace(race) == HORDE ? ai::roster_list::Faction::HORDE : ai::roster_list::Faction::ALLIANCE;
+}
+
+void BuildRosterListEntries(std::vector<ai::roster_list::Entry>& out)
+{
+    out.clear();
+    std::vector<uint32> const guids = sRandomPlayerbotMgr.PersistentRosterGuids();
+    out.reserve(guids.size());
+    for (uint32 guidLow : guids)
+    {
+        ai::roster_list::Entry e;
+        Player* bot = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, guidLow));
+        if (bot)
+        {
+            // A roster character played by a person is not a bot right now:
+            // never list real players.
+            if (!bot->IsInWorld() || !GetBotAI(bot) || !bot->GetSession())
+                continue;
+            e.name = bot->GetName();
+            e.classId = bot->getClass();
+            e.raceId = bot->getRace();
+            e.level = bot->GetLevel();
+            e.online = true;
+            e.role = PlayerbotAI::IsTank(bot) ? ai::roster_list::Role::TANK
+                : PlayerbotAI::IsHeal(bot) ? ai::roster_list::Role::HEAL
+                : ai::roster_list::Role::DPS;
+            if (Group* group = bot->GetGroup())
+                e.group = group->IsRaidGroup() ? ai::roster_list::GroupState::RAID : ai::roster_list::GroupState::GROUP;
+            e.zone = RosterZoneName(bot->GetCachedZoneId());
+            if (bot->GetGuildId())
+                e.guild = sGuildMgr.GetGuildNameById(bot->GetGuildId());
+            e.security = uint32(bot->GetSession()->GetSecurity());
+        }
+        else
+        {
+            // Offline members come from the character cache, never the DB.
+            // Their role and guild are unknown without loading them.
+            PlayerCacheData const* data = sObjectMgr.GetPlayerDataByGUID(guidLow);
+            if (!data)
+                continue;
+            e.name = data->sName;
+            e.classId = data->uiClass;
+            e.raceId = data->uiRace;
+            e.level = data->uiLevel;
+            e.online = false;
+            e.role = ai::roster_list::Role::DPS;
+            e.zone = RosterZoneName(data->uiZoneId);
+            // An offline account's rank is not loaded. Roster bots live on
+            // the random-bot accounts, which are rank 0; any other account
+            // is hidden from players rather than guessed (fail closed).
+            e.security = sPlayerbotAIConfig.IsInRandomAccountList(data->uiAccount) ? 0 : 1;
+        }
+        e.faction = RosterFaction(uint8(e.raceId));
+        out.push_back(std::move(e));
+    }
+    std::sort(out.begin(), out.end(), [](ai::roster_list::Entry const& a, ai::roster_list::Entry const& b)
+        {
+            return a.name < b.name;
+        });
+}
+}
+
+std::list<std::string> PlayerbotHolder::HandleRoster(Player* master, const std::string param, AccountTypes security)
+{
+    std::list<std::string> messages;
+    uint32 const issuer = master ? master->GetGUIDLow() : 0;
+
+    if (!sPlayerbotAIConfig.rosterListEnabled)
+    {
+        messages.push_back(ai::roster_list::ErrorLine("disabled"));
+        return messages;
+    }
+    if (!master || !master->GetSession() || !master->IsInWorld())
+    {
+        messages.push_back(ai::roster_list::ErrorLine("no_session"));
+        return messages;
+    }
+
+    uint64 const now = RosterListNowMs();
+    uint32 retryMs = 0;
+    if (ai::roster_list::RateLimited(now, m_rosterListLastMs, sPlayerbotAIConfig.rosterListMinIntervalMs, retryMs))
+    {
+        sLog.outBasic("[BotCtl] cmd=roster issuer=%u result=deny reason=rate_limited retry_ms=%u", issuer, retryMs);
+        messages.push_back(ai::roster_list::ErrorLine("rate_limited", retryMs));
+        return messages;
+    }
+    m_rosterListLastMs = now;
+
+    ai::roster_list::Filter filter;
+    std::string error;
+    if (!ai::roster_list::ParseFilter(param, filter, error))
+    {
+        sLog.outBasic("[BotCtl] cmd=roster issuer=%u result=deny reason=bad_filter key=%s", issuer, error.c_str());
+        messages.push_back(ai::roster_list::ErrorLine("bad_filter_" + error));
+        return messages;
+    }
+
+    ai::roster_list::Viewer viewer;
+    viewer.faction = master->GetTeam() == HORDE ? ai::roster_list::Faction::HORDE : ai::roster_list::Faction::ALLIANCE;
+    viewer.gm = ai::roster_control::IsGmBypass(master->GetSession()->GetSecurity(), sPlayerbotAIConfig.rosterControlGmMinSecurity);
+    viewer.allowTwoSide = sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_WHO_LIST);
+    if (!ai::roster_list::FactionFilterAllowed(filter, viewer))
+    {
+        sLog.outBasic("[BotCtl] cmd=roster issuer=%u result=deny reason=faction_hidden", issuer);
+        messages.push_back(ai::roster_list::ErrorLine("faction_hidden"));
+        return messages;
+    }
+
+    std::vector<std::string> lines;
+    size_t matched = 0;
+    uint32 buildUs = 0;
+    uint64 cacheAgeMs = 0;
+    size_t cached = 0;
+    bool rebuilt = false;
+    {
+        std::lock_guard<std::mutex> lock(RosterListCacheLock());
+        RosterListCache& cache = RosterListCacheData();
+        if (!cache.built || now < cache.builtMs || now - cache.builtMs >= sPlayerbotAIConfig.rosterListCacheMs)
+        {
+            auto const start = std::chrono::steady_clock::now();
+            BuildRosterListEntries(cache.entries);
+            cache.buildUs = uint32(std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - start).count());
+            cache.builtMs = now;
+            cache.built = true;
+            rebuilt = true;
+        }
+        buildUs = cache.buildUs;
+        cacheAgeMs = now - cache.builtMs;
+        cached = cache.entries.size();
+        lines = ai::roster_list::BuildPage(cache.entries, filter, viewer, sPlayerbotAIConfig.rosterListPageSize, &matched);
+    }
+
+    // The measuring point of #419: rebuild cost, cache age and size per request.
+    sLog.outBasic("[BotCtl] cmd=roster issuer=%u result=allow gm=%d page=%u matched=%u lines=%u cached=%u rebuilt=%d build_us=%u cache_age_ms=%u",
+        issuer, int(viewer.gm), filter.page, uint32(matched), uint32(lines.size()), uint32(cached), int(rebuilt), buildUs, uint32(cacheAgeMs));
+
+    messages.insert(messages.end(), lines.begin(), lines.end());
+    return messages;
+}
+
 std::list<std::string> PlayerbotHolder::HandleHelp(Player* master, const std::string param, AccountTypes security)
 {
     std::list<std::string> messages;
     
     if (param.empty())
     {
-        messages.push_back("Available commands: list, reload, tweak, always, self, debug, c, do, record, read, clear");
+        messages.push_back("Available commands: list, roster, reload, tweak, always, self, debug, c, do, record, read, clear");
         messages.push_back("Type 'help <command>' for more information on a specific command.");
         return messages;
     }
