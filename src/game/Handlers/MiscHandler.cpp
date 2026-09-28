@@ -250,7 +250,11 @@ void WorldSession::HandleWhoOpcode(WorldPacket & recv_data)
     time_t t = time(nullptr);
 
 
-    if (t - m_lastWhoRequest < 30 && !(GetPlayer() && GetPlayer()->HasCustomFlag(CUSTOM_PLAYER_FLAG_BYPASS_WHO_COOLDOWN)))
+    // twow-repo#419: seconds between two /who of a player account, from
+    // WhoList.RequestCooldownSeconds (default 30, the former fixed value).
+    // Only player accounts set m_lastWhoRequest; the bypass flag is unchanged.
+    time_t const whoCooldown = time_t(sWorld.getConfig(CONFIG_UINT32_WHO_LIST_REQUEST_COOLDOWN));
+    if (t - m_lastWhoRequest < whoCooldown && !(GetPlayer() && GetPlayer()->HasCustomFlag(CUSTOM_PLAYER_FLAG_BYPASS_WHO_COOLDOWN)))
         return;
 
     std::string player_name, guild_name;

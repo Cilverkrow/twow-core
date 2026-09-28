@@ -25,6 +25,14 @@
 #include "../recastnavigation/Detour/Include/DetourNavMeshQuery.h"
 #include "MoveSplineInitArgs.h"
 
+// twow-repo#416 (7.2): poly-path builds on this thread and their time, read by
+// the playerbot [BotSlowUpdate] diagnostic (a bot update runs on one map thread).
+struct PathFinderStats
+{
+    static thread_local uint32 builds;
+    static thread_local uint32 buildMs;
+};
+
 
 using Movement::Vector3;
 using Movement::PointsArray;

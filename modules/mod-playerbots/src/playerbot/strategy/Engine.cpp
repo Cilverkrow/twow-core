@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include <chrono>
 #include <stdarg.h>
 #include <iomanip>
 
@@ -803,7 +804,13 @@ bool Engine::ListenAndExecute(Action* action, Event& event)
     if (actionExecutionListeners.Before(action, event))
     {
         ai->SetLastEvent(event);
+        // #416: time each action for the [BotSlowUpdate] top-3.
+        auto const executeStart = std::chrono::steady_clock::now();
         actionExecuted = actionExecutionListeners.AllowExecution(action, event) ? action->Execute(event) : true;
+        uint32 const executeMs = uint32(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - executeStart).count());
+        if (executeMs)
+            ai->RecordActionTime(action->getName(), executeMs);
         if (actionExecuted)
         {
             ai->SetActionDuration(action);

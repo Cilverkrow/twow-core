@@ -1,0 +1,26 @@
+if (NOT DEFINED TW_CORE_ROOT)
+  message(FATAL_ERROR "TW_CORE_ROOT is required")
+endif()
+
+# twow-repo#408: map 45 secured; content stays, only the owner-approved targets change.
+file(READ "${TW_CORE_ROOT}/sql/database_updates/20260927220000_world.sql" m)
+foreach (required
+    "UPDATE `gameobject_template` SET `flags` = `flags` | 16 WHERE `entry` = 112920;"
+    "DELETE FROM `game_tele` WHERE `id` IN (500, 819) AND `map` = 45;")
+  string(FIND "${m}" "${required}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "Missing #408 statement: ${required}")
+  endif()
+endforeach()
+string(REGEX MATCHALL "DELETE FROM" deletes "${m}")
+list(LENGTH deletes delete_count)
+if (NOT delete_count EQUAL 1)
+  message(FATAL_ERROR "#408: exactly one DELETE (game_tele 500/819) is approved, got ${delete_count}")
+endif()
+foreach (forbidden "FROM `creature`" "FROM `gameobject` " "creature_loot_template" "map_template" "REPLACE ")
+  string(FIND "${m}" "${forbidden}" at)
+  if (NOT at EQUAL -1)
+    message(FATAL_ERROR "Forbidden #408 scope: ${forbidden}")
+  endif()
+endforeach()
+message(STATUS "SCARLET_CITADEL_408_CONTRACT=PASS")

@@ -977,6 +977,12 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_loot_bonus_source_contract.cmake")
 
+  # twow-repo#419: /who cooldown of player accounts from the config.
+  add_test(NAME who_cooldown_source_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_who_cooldown_source_contract.cmake")
+
   # twow-repo#351: percentiles and slow counters of the aggregated tick line.
   add_executable(tick_stats_test
     "${TW_CORE_ROOT}/t/tick_stats_test.cpp")
@@ -991,6 +997,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(loot_units_policy_test
     "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")
   add_test(NAME loot_units_policy_test COMMAND loot_units_policy_test)
+  # twow-repo#408: Scarlet Citadel (map 45) secured, content kept.
+  add_test(NAME scarlet_citadel_408_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_scarlet_citadel_408_contract.cmake")
   # twow-repo#405: quest-item chests respawn in half the time (owner, train 8).
   add_test(NAME quest_go_respawn_405_contract
     COMMAND "${CMAKE_COMMAND}"

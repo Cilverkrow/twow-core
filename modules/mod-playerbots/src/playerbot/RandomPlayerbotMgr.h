@@ -101,6 +101,9 @@ public:
         void EnsurePinnedBotsOnline();
         bool InitializePersistentRoster();
         bool IsPersistentRosterMember(uint32 guidLow) const;
+        // twow-repo#419: the current roster snapshot's members; empty when the
+        // persistent roster is off or not loaded.
+        std::vector<uint32> PersistentRosterGuids() const;
         bool PersistentRosterAdmissionOpen() const;
         bool PersistentRosterDestructiveMutationAllowed(uint32 guidLow) const;
         bool ValidatePersistentRosterLogin(uint32 bot, uint32& accountId, std::string& diagnostic) const;

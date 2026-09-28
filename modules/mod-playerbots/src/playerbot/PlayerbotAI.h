@@ -870,6 +870,12 @@ protected:
     uint32 lastSlowUpdateLog = 0;
     // #420: [GroupBuff] counters of the current window.
     ai::group_buff::BuffWindow groupBuffWindow;
+    // #416: phase of the bot for [BotSlowUpdate].
+    uint32 travelChooseChecked = 0;
+    ai::stall_guard::TopActions updateActions;
+    uint32 firstUpdateTime = 0;
+    uint32 lastReviveTime = 0;
+    bool wasAlive = true;
 
 public:
     // #416: called when an UpdateAI call took elapsedMs.
@@ -881,6 +887,10 @@ public:
     void RecordGroupBuff(SpellEntry const* spellInfo, Unit* target);
     // #420: writes one [GroupBuff] line when the window is over.
     void ReportGroupBuff(uint32 now);
+    // #416: travel-target candidates checked in this update.
+    void AddTravelChooseChecked(uint32 count) { travelChooseChecked += count; }
+    // #416: time of one executed action (ms > 0), for the top-3 of this update.
+    void RecordActionTime(std::string const& name, uint32 ms) { updateActions.Add(name, ms); }
 
 protected:
     std::deque<ai::death_loop::Death> recentDeaths;

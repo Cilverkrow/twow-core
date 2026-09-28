@@ -251,6 +251,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))
     {
+        // #416: out of time, not out of targets - the next list goes on.
+        if (chooseBudgetExceeded)
+            return false;
+
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
 
@@ -525,6 +529,14 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
     bool hasTarget = false;
     TravelTarget const* persistentTarget = AI_VALUE(TravelTarget*, "travel target");
+
+    // #416: a time budget per update. Candidates an aborted choice already
+    // checked are skipped next time, so the search moves on.
+    uint32 const chooseStart = WorldTimer::getMSTime();
+    std::string const choosePurpose = AI_VALUE2(std::string, "manual string", "future travel purpose");
+    uint32 const resumeSkip = chooseResume.SkipFor(choosePurpose);
+    uint32 candidateIndex = 0, checked = 0;
+    chooseBudgetExceeded = false;
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
@@ -534,12 +546,14 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     // A reachable point is not necessarily usable. Check the normal
     // destination activation predicate before holding the bot in its current
     // map, so an inactive local point cannot hide a valid follow-up elsewhere.
-    if (preferLocalQuest && !target->IsForced())
+    if (preferLocalQuest && !target->IsForced() && !resumeSkip)
     {
         PlayerTravelInfo travelInfo(bot);
         for (auto const& [partition, travelPointList] : partitionedList)
             for (auto const& [destination, position, distance] : travelPointList)
-                if (IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&
+                if (ai::travel_choose::OverBudget(WorldTimer::getMSTimeDiffToNow(chooseStart)))
+                    break;
+                else if (IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&
                     (isActive[destination] = true))
                 {
                     hasActiveLocalQuestHub = true;
@@ -553,6 +567,16 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
         for (auto& [destination, position, distance] : travelPointList)
         {
+            // #416: skip what an aborted choice already checked; stop when the time is up.
+            if (candidateIndex++ < resumeSkip)
+                continue;
+            if (checked++ && ai::travel_choose::OverBudget(WorldTimer::getMSTimeDiffToNow(chooseStart)))
+            {
+                chooseBudgetExceeded = true;
+                chooseResume.Abort(choosePurpose, candidateIndex - 1);
+                break;
+            }
+
             if (excludedTurnInTarget && excludedTurnInTarget->IsTurnInRouteSuppressed(destination, position))
             {
                 ai->TellDebug(requester, "Skipping temporarily suppressed completed-quest turn-in route.", "debug travel");
@@ -679,7 +703,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
         }
 
-        if (hasTarget)
+        if (hasTarget || chooseBudgetExceeded)
             break;
     }         
      
@@ -694,6 +718,21 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     if (deferredDeathCluster)
         sLog.outBasic("[QuestFirstRoute] state=deferred bot=%u level=%u reason=route_danger detail=death_cluster deferred=%u cells=%u worst_killer_level=%u selected_other=%u",
             bot->GetGUIDLow(), bot->GetLevel(), deferredDeathCluster, deathClusterCells, deathClusterWorstKillerLevel, hasTarget ? 1u : 0u);
+
+    ai->AddTravelChooseChecked(checked);
+    if (!chooseBudgetExceeded)
+        chooseResume.Clear();
+    else
+    {
+        uint32 const now = uint32(time(nullptr));
+        if (now - lastChooseBudgetLog >= ai::travel_choose::LogSeconds)
+        {
+            lastChooseBudgetLog = now;
+            sLog.outBasic("[TravelChoose] state=budget_exceeded bot=%u purpose=%s checked=%u resume_at=%u ms=%u map=%u zone=%u",
+                bot->GetGUIDLow(), choosePurpose.c_str(), checked, chooseResume.skip,
+                WorldTimer::getMSTimeDiffToNow(chooseStart), bot->GetMapId(), bot->GetZoneId());
+        }
+    }
 
     return hasTarget;
 }
@@ -1033,6 +1072,10 @@ bool ResetTargetAction::isUseful()
 
 bool RequestTravelTargetAction::Execute(Event& event)
 {
+    // #416: no new destination job while the parking lot is full.
+    if (!FutureDestinations::MayStart())
+        return false;
+
     TravelDestinationPurpose actionPurpose = TravelDestinationPurpose(stoi(getQualifier()));
 
     // A persistent roster bot with a real player master must not trade Follow
@@ -1147,6 +1190,10 @@ bool RequestTravelTargetAction::isAllowed() const
 
 bool RequestNamedTravelTargetAction::Execute(Event& event)
 {
+    // #416: no new destination job while the parking lot is full.
+    if (!FutureDestinations::MayStart())
+        return false;
+
     // Strategy-triggered named travel is autonomous. A command from the real
     // master carries its owner and remains an explicit instruction.
     if (UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() && !event.getOwner())
@@ -1703,6 +1750,10 @@ bool RequestNamedTravelTargetAction::isAllowed() const
 
 bool RequestQuestTravelTargetAction::Execute(Event& event)
 {
+    // #416: no new destination job while the parking lot is full.
+    if (!FutureDestinations::MayStart())
+        return false;
+
     // The normal player catch-up command supplies an owner. Do not let the
     // autonomous quest strategy move a roster bot away from its real master.
     if (UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() && !event.getOwner())
