@@ -183,10 +183,19 @@ function BotMenu_PrefixClick()
 	ChatMenu:Hide();
 end
 
--- Opens a window instead of writing a command.
+-- Opens the bot list window instead of writing a command. BotList.lua may
+-- be missing after an update until the game is restarted (see BotMenu.xml).
+local function BotMenu_ShowList()
+	if ( BotList_Show ) then
+		BotList_Show();
+	else
+		BotMenu_Print("bot list not loaded - please close and restart the game (a /reload does not load new addon files).");
+	end
+end
+
 function BotMenu_OpenClick()
 	ChatMenu:Hide();
-	BotList_Show();
+	BotMenu_ShowList();
 end
 
 local function BotMenu_Fill()
@@ -271,7 +280,7 @@ SlashCmdList["BOTMENU"] = function(msg)
 		BotMenu_ShowEntry(false);
 		BotMenu_Print("off.");
 	elseif ( msg == "list" or msg == "liste" ) then
-		BotList_Show();
+		BotMenu_ShowList();
 	elseif ( string.sub(msg, 1, 4) == "pace" or string.sub(msg, 1, 4) == "takt" ) then
 		-- Pace of the bot list scan: seconds between two /who, or auto.
 		local value = tonumber(string.sub(msg, 6));
