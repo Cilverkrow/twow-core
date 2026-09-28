@@ -1663,6 +1663,12 @@ GM.InGMList.Level = 3
 
 GM.InWhoList.Level = 3
 
+# WhoList.RequestCooldownSeconds. Seconds a player account must wait between
+# two /who requests; earlier ones are dropped without an answer. GM accounts
+# are not limited. Default 30 (the former fixed value). twow-repo#419.
+
+WhoList.RequestCooldownSeconds = 30
+
 # GM.LogTrade. Include GM trade and trade slot enchanting operations in GM log if it enable.
 
 GM.LogTrade = 1
