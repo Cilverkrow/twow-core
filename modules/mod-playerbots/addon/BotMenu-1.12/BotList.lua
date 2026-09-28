@@ -9,7 +9,7 @@
 -- level halves, then per class, then per race. The pace adapts by itself:
 -- queries go out as fast as answers come back (GM accounts); after a query
 -- without answer one per 6 s (a 5 s cooldown), after a second one per 31 s.
--- /botmenu takt <s> sets it by hand.
+-- /botmenu pace <s> sets it by hand.
 --
 -- While a scan runs, the stock who window is detached (FriendsFrame would pop
 -- up on every answer) and the player's own /who cancels the scan first.
@@ -65,7 +65,7 @@ function BotList_Faction(race)
 	for _, locale in pairs(BOTLIST_LOCALES) do
 		for i = 1, table.getn(locale.alliance) do
 			if ( locale.alliance[i] == race ) then
-				return "Allianz";
+				return "Alliance";
 			end
 		end
 		for i = 1, table.getn(locale.horde) do
@@ -215,7 +215,7 @@ function BotList_CancelScan(reason)
 		return;
 	end
 	scan.complete = false;
-	Finish("Scan abgebrochen"..(reason and (" ("..reason..")") or "")..".");
+	Finish("Scan cancelled"..(reason and (" ("..reason..")") or "")..".");
 end
 
 function BotList_Store(name, guild, level, race, class, zone)
@@ -269,7 +269,7 @@ function BotList_OnWhoUpdate()
 		if ( scan.complete ) then
 			Finish(nil);
 		else
-			Finish("Liste unvollständig: mehr als 49 Charaktere mit gleicher Stufe, Klasse und Volk.");
+			Finish("List incomplete: more than 49 characters with the same level, class and race.");
 		end
 		return;
 	end
@@ -291,7 +291,7 @@ function BotList_OnUpdate()
 		scan.drops = scan.drops + 1;
 		if ( scan.drops > BOTLIST_MAX_DROPS ) then
 			scan.complete = false;
-			Finish("Der Server beantwortet /who gerade nicht - Scan beendet.");
+			Finish("The server does not answer /who right now - scan stopped.");
 			return;
 		end
 		if ( not (BotMenuDB and BotMenuDB.whoInterval) ) then
@@ -321,7 +321,7 @@ end
 -- the stock window gets its answer as usual.
 SendWho = function(text)
 	if ( scan ) then
-		BotList_CancelScan("eigenes /who");
+		BotList_CancelScan("own /who");
 	end
 	originalSendWho(text);
 end
@@ -369,7 +369,7 @@ end
 function BotList_Invite(name)
 	name = name or selected;
 	if ( not name ) then
-		Print("Erst einen Charakter in der Liste anklicken.");
+		Print("Click a character in the list first.");
 		return;
 	end
 	InviteByName(name);
@@ -392,8 +392,8 @@ end
 function BotList_CycleFaction()
 	local f = BotListFilter;
 	if ( not f.faction ) then
-		f.faction = "Allianz";
-	elseif ( f.faction == "Allianz" ) then
+		f.faction = "Alliance";
+	elseif ( f.faction == "Alliance" ) then
 		f.faction = "Horde";
 	else
 		f.faction = nil;
@@ -481,18 +481,18 @@ function BotList_Refresh()
 
 	local status;
 	if ( scan ) then
-		status = "Abfragen "..scan.done.."/"..scan.planned;
+		status = "Queries "..scan.done.."/"..scan.planned;
 		if ( scan.interval > 0 ) then
-			status = status.." - Takt "..scan.interval.." s";
+			status = status.." - pace "..scan.interval.." s";
 		end
 	elseif ( BotListData.lastScan ) then
-		status = "Scan fertig";
+		status = "Scan done";
 	else
-		status = "Noch kein Scan";
+		status = "No scan yet";
 	end
-	BotListFrameStatus:SetText(status.." - "..total.." von "..BotList_Count().." Charakteren");
-	BotListFrameFaction:SetText(BotListFilter.faction or "Fraktion: alle");
-	BotListFrameClass:SetText(BotListFilter.class or "Klasse: alle");
+	BotListFrameStatus:SetText(status.." - "..total.." of "..BotList_Count().." characters");
+	BotListFrameFaction:SetText(BotListFilter.faction or "Faction: all");
+	BotListFrameClass:SetText(BotListFilter.class or "Class: all");
 	if ( scan ) then
 		BotListFrameScan:Disable();
 		BotListFrameCancel:Enable();

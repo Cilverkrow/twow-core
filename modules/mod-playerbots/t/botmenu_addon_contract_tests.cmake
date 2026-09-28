@@ -110,11 +110,11 @@ if(NOT formation_count EQUAL 16)
 endif()
 
 
-# #290 owner order (2026-09-27): 11 categories.
+# #290 owner order (2026-09-27), English labels (2026-09-28): 11 categories.
 string(REGEX MATCHALL "label = \"[^\"]+\"" labels "${lua}")
 string(REPLACE "label = " "" labels "${labels}")
 string(REPLACE "\"" "" labels "${labels}")
-set(expected_labels "Kampf;Formation;Rolle;Gruppe;Quests;Händler & NPC;Beute;Berufe;Inventar;Tod;Info")
+set(expected_labels "Combat;Formation;Role;Group;Quests;Vendor & NPC;Loot;Professions;Inventory;Death;Info")
 if(NOT labels STREQUAL expected_labels)
   message(FATAL_ERROR "Category order is '${labels}', expected '${expected_labels}'")
 endif()

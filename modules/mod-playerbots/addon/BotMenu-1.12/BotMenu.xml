@@ -137,14 +137,14 @@
 		</Backdrop>
 		<Layers>
 			<Layer level="ARTWORK">
-				<FontString name="$parentTitle" inherits="GameFontNormal" text="Bot-Liste (alle online)">
+				<FontString name="$parentTitle" inherits="GameFontNormal" text="Bot list (all online)">
 					<Anchors><Anchor point="TOP"><Offset><AbsDimension x="0" y="-16"/></Offset></Anchor></Anchors>
 				</FontString>
 				<FontString name="$parentStatus" inherits="GameFontHighlightSmall" justifyH="LEFT">
 					<Size><AbsDimension x="460" y="14"/></Size>
 					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-36"/></Offset></Anchor></Anchors>
 				</FontString>
-				<FontString inherits="GameFontNormalSmall" text="Stufe von/bis:">
+				<FontString inherits="GameFontNormalSmall" text="Level from/to:">
 					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-86"/></Offset></Anchor></Anchors>
 				</FontString>
 				<FontString inherits="GameFontNormalSmall" text="Zone:">
@@ -153,13 +153,13 @@
 				<FontString inherits="GameFontNormalSmall" text="Name">
 					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-110"/></Offset></Anchor></Anchors>
 				</FontString>
-				<FontString inherits="GameFontNormalSmall" text="Klasse">
+				<FontString inherits="GameFontNormalSmall" text="Class">
 					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="125" y="-110"/></Offset></Anchor></Anchors>
 				</FontString>
-				<FontString inherits="GameFontNormalSmall" text="Stufe">
+				<FontString inherits="GameFontNormalSmall" text="Level">
 					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="205" y="-110"/></Offset></Anchor></Anchors>
 				</FontString>
-				<FontString inherits="GameFontNormalSmall" text="Gilde">
+				<FontString inherits="GameFontNormalSmall" text="Guild">
 					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="235" y="-110"/></Offset></Anchor></Anchors>
 				</FontString>
 				<FontString inherits="GameFontNormalSmall" text="Zone">
@@ -168,22 +168,22 @@
 			</Layer>
 		</Layers>
 		<Frames>
-			<Button name="$parentScan" inherits="UIPanelButtonTemplate" text="Scannen">
+			<Button name="$parentScan" inherits="UIPanelButtonTemplate" text="Scan">
 				<Size><AbsDimension x="90" y="22"/></Size>
 				<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-54"/></Offset></Anchor></Anchors>
 				<Scripts><OnClick>BotList_StartScan();</OnClick></Scripts>
 			</Button>
-			<Button name="$parentCancel" inherits="UIPanelButtonTemplate" text="Abbrechen">
+			<Button name="$parentCancel" inherits="UIPanelButtonTemplate" text="Cancel">
 				<Size><AbsDimension x="90" y="22"/></Size>
 				<Anchors><Anchor point="LEFT" relativeTo="$parentScan" relativePoint="RIGHT"/></Anchors>
 				<Scripts><OnClick>BotList_CancelScan(nil);</OnClick></Scripts>
 			</Button>
-			<Button name="$parentFaction" inherits="UIPanelButtonTemplate" text="Fraktion: alle">
+			<Button name="$parentFaction" inherits="UIPanelButtonTemplate" text="Faction: all">
 				<Size><AbsDimension x="120" y="22"/></Size>
 				<Anchors><Anchor point="LEFT" relativeTo="$parentCancel" relativePoint="RIGHT"><Offset><AbsDimension x="10" y="0"/></Offset></Anchor></Anchors>
 				<Scripts><OnClick>BotList_CycleFaction();</OnClick></Scripts>
 			</Button>
-			<Button name="$parentClass" inherits="UIPanelButtonTemplate" text="Klasse: alle">
+			<Button name="$parentClass" inherits="UIPanelButtonTemplate" text="Class: all">
 				<Size><AbsDimension x="120" y="22"/></Size>
 				<Anchors><Anchor point="LEFT" relativeTo="$parentFaction" relativePoint="RIGHT"/></Anchors>
 				<Scripts><OnClick>BotList_CycleClass();</OnClick></Scripts>
@@ -257,12 +257,12 @@
 			<Button name="BotListRow15" inherits="BotListRowTemplate">
 				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow14" relativePoint="BOTTOMLEFT"/></Anchors>
 			</Button>
-			<Button name="$parentInvite" inherits="UIPanelButtonTemplate" text="Einladen">
+			<Button name="$parentInvite" inherits="UIPanelButtonTemplate" text="Invite">
 				<Size><AbsDimension x="110" y="22"/></Size>
 				<Anchors><Anchor point="BOTTOMLEFT"><Offset><AbsDimension x="20" y="16"/></Offset></Anchor></Anchors>
 				<Scripts><OnClick>BotList_Invite(nil);</OnClick></Scripts>
 			</Button>
-			<Button name="$parentRaid" inherits="UIPanelButtonTemplate" text="In Raid umwandeln">
+			<Button name="$parentRaid" inherits="UIPanelButtonTemplate" text="Convert to raid">
 				<Size><AbsDimension x="140" y="22"/></Size>
 				<Anchors><Anchor point="LEFT" relativeTo="$parentInvite" relativePoint="RIGHT"/></Anchors>
 				<Scripts><OnClick>BotList_ConvertToRaid();</OnClick></Scripts>
@@ -277,7 +277,7 @@
 				<Anchors><Anchor point="LEFT" relativeTo="$parentUp" relativePoint="RIGHT"/></Anchors>
 				<Scripts><OnClick>BotList_Scroll(-5);</OnClick></Scripts>
 			</Button>
-			<Button name="$parentClose" inherits="UIPanelButtonTemplate" text="Schließen">
+			<Button name="$parentClose" inherits="UIPanelButtonTemplate" text="Close">
 				<Size><AbsDimension x="90" y="22"/></Size>
 				<Anchors><Anchor point="BOTTOMRIGHT"><Offset><AbsDimension x="-20" y="16"/></Offset></Anchor></Anchors>
 				<Scripts><OnClick>BotListFrame:Hide();</OnClick></Scripts>
