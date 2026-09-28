@@ -18,7 +18,7 @@ endfunction()
 
 # twow-repo#357 stage 2 (client talents, twow-repo#409): weapon talent W 90130-90139,
 # shaman sword skills via skill_race_class_info_mod, talent icons. Replay-safe.
-file(READ "${TW_CORE_ROOT}/sql/database_updates/20260928120000_world.sql" m)
+file(READ "${TW_CORE_ROOT}/sql/database_updates/20260928200000_world.sql" m)
 string(REGEX MATCHALL "INTO `spell_template` SELECT [*] FROM `tmp_spell`" clones "${m}")
 list(LENGTH clones clone_count)
 if (NOT clone_count EQUAL 10)

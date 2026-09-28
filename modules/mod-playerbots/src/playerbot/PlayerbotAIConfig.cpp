@@ -823,6 +823,12 @@ bool PlayerbotAIConfig::Initialize()
     rosterControlGmMinSecurity = config.GetIntDefault("AiPlayerbot.RosterControl.GmMinSecurity", 3);
     // #292: seconds between two player summons of the same roster bot.
     rosterSummonCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterControl.SummonCooldownSeconds", 300);
+    // twow-repo#419: `.bot roster`, the roster bot list for every account rank.
+    // Off by default; the funserver profile switches it on.
+    rosterListEnabled = config.GetBoolDefault("AiPlayerbot.RosterList.Enabled", false);
+    rosterListMinIntervalMs = config.GetIntDefault("AiPlayerbot.RosterList.MinIntervalMs", 2000);
+    rosterListPageSize = config.GetIntDefault("AiPlayerbot.RosterList.PageSize", 50);
+    rosterListCacheMs = config.GetIntDefault("AiPlayerbot.RosterList.CacheMs", 1000);
 
     //SPP automation
     autoPickReward = config.GetStringDefault("AiPlayerbot.AutoPickReward", "no");

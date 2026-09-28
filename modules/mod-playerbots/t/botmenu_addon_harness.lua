@@ -297,5 +297,6 @@ require_true(BotMenuDB.whoInterval == 10, "/botmenu pace 10")
 SlashCmdList["BOTMENU"]("pace auto")
 require_true(BotMenuDB.whoInterval == nil, "/botmenu pace auto")
 
+-- BotList.lua missing (the 1.12 client only sees files that existed when-- the game started): opening the list must print a hint, not raise.local savedShow = BotList_ShowBotList_Show = nillocal okList = pcall(SlashCmdList["BOTMENU"], "list")require_true(okList, "/botmenu list without BotList.lua prints a hint instead of an error")BotList_Show = savedShow
 for _, line in ipairs(report) do print("BOTLIST_SCAN "..line) end
 print("BOTMENU_ADDON_HARNESS=PASS entries="..total)

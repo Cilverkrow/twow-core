@@ -1,172 +1,90 @@
--- Issue twow-repo#357 stage 2 (client patch pipeline twow-repo#409, OB-00 brief
--- issuecomment-5874183685 part B): server counterpart of the real Enhancement talents.
--- The talent rank spells are the phase-1 IDs 90100-90129 (core#187); this migration
--- only adds what those rows do not carry yet:
---   1. the weapon talent W "Ancestral Arms" (owner decisions O-16..O-20, twow-repo#357
---      issuecomment-5855808216), IDs 90130-90139 (reserved for W by OB-20):
---        90130       talent rank: learns One-Handed Swords 201, Two-Handed Swords 202
---                    and the hub 90131 (shape of Two-Handed Axes and Maces 16269)
---        90131       hub (passive, hidden): adds 90132, 90133, 90134 (aura 192)
---        90132       mace skill +5, two-handed mace skill +10, dagger skill +5
---                    (1 expertise = 1 weapon skill, O-18; aura 98 like 20864)
---        90133       hub: adds 90135, 90136, 90137
---        90134       hub: adds 90138, 90139
---        90135/90136 5 % / 10 % extra attack with a one-/two-handed sword (Sword Master 51668)
---        90137/90138 +4 % / +8 % crit with one-/two-handed axes (O-17, Axe Master 51663)
---        90139       +5 % crit with daggers (Axe Master shape, dagger mask)
---      A talent reset removes 201, 202 and 90131 again: LEARN_SPELL effects are dependent
---      spells (SpellMgr::LoadSpellLearnSpells), as for 16269.
---   2. sword skills for shamans: skill_race_class_info_mod rows for skills 43 and 55,
---      class shaman, flags 0x180, the pattern of Turtle's talent-gated shaman rows 701/702
---      (skills 172/160, SkillRaceClassInfo.dbc, twow-repo#357 issuecomment-5857352559).
---      skill_line_ability stays unchanged, so weapon masters keep refusing swords to
---      shamans (Player::IsSpellFitByClassAndRace); only the talent teaches them.
---   3. talent icons for 90100-90129 (existing SpellIcon IDs only), so the client
---      Spell.dbc rows built from spell_template show fitting icons.
---   4. Elemental Weapons tooltips: the Earthen Bulwark cap is code (spell_shaman.cpp,
---      GetEarthenBulwarkCap = build % x 4/3 = 13/27/40 %, core#182), the text still said
---      "20%". The client tooltip is built from this text in stage 2.
--- Nothing is trained, sold or granted here. Players get W only through the patched
--- Talent.dbc (coupled release); without it no one learns 90130.
--- Replay-safe: INSERT IGNORE and fixed-value UPDATEs.
+-- Issue twow-repo#405: halve the respawn time of quest-item gameobjects. Owner rule change
+-- for release train 8 (2026-09-28, #405 issuecomment-5874498611): "respawn zeit der quest
+-- gegenstände halbieren". For players and bots.
+--
+-- Scope (read-only dry run 2026-09-28, evidence ws-30/405-quest-go-respawn): chests (type 3)
+-- whose loot table holds only quest drops (every row ChanceOrQuestChance < 0, no reference):
+-- the 555 entries listed below, 4478 spawns with a positive respawn time. Not included: herbs,
+-- ore and crates with mixed loot (16 entries), goobers/quest givers (no item source), spawns
+-- with a negative (event/script) respawn time, creatures that drop quest items.
+--
+-- Rule: new = LEAST(old, GREATEST(5, old DIV 2)) for spawntimesecsmin and spawntimesecsmax.
+-- The 5 s floor never raises a value; 225 spawns at <= 5 s stay as they are, 4253 change.
+-- Dynamic (spawn_flags 0x08, 816 spawns) and random (0x04, 13) respawn only multiply this base,
+-- and pooled spawns (95 in 5 pools) keep their pool, so the halving holds for all of them.
+--
+-- Reversible: the original values are kept once in gameobject_bak_405, and the
+-- halving is always computed from them (replay-safe). Naming per OB-40: <source>_bak_<issue>.
+-- Later migrations that change respawn times of these spawns must update this table too,
+-- because INSERT IGNORE keeps the first values. Window check (sum over the listed entries):
+--   SELECT COUNT(*), SUM(spawntimesecsmin), SUM(spawntimesecsmax) FROM gameobject
+--    WHERE spawntimesecsmin > 0 AND id IN (<the 555 entries below>);
+-- Rollback:
+--   UPDATE gameobject g JOIN gameobject_bak_405 b ON b.guid = g.guid
+--      SET g.spawntimesecsmin = b.old_min, g.spawntimesecsmax = b.old_max;
 
--- W talent rank (learns swords + the hub)
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 16269;
-UPDATE `tmp_spell` SET `entry` = 90130, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = 'Rank 1', `description` = 'Allows the use of One-Handed and Two-Handed Swords. Your melee attacks with a one-handed sword have a 5% chance and with a two-handed sword a 10% chance to grant an extra attack. Increases your critical strike chance with one-handed axes by 4%, with two-handed axes by 8% and with daggers by 5%. Increases your skill with maces by 5, with two-handed maces by 10 and with daggers by 5.',
-    `spellIconId` = 1462, `effectTriggerSpell1` = 201, `effectTriggerSpell2` = 202,
-    `effect3` = 36, `effectDieSides3` = `effectDieSides1`, `effectBaseDice3` = `effectBaseDice1`, `effectBasePoints3` = `effectBasePoints1`,
-    `effectBonusCoefficient3` = `effectBonusCoefficient1`, `effectImplicitTargetA3` = `effectImplicitTargetA1`, `effectImplicitTargetB3` = `effectImplicitTargetB1`,
-    `effectApplyAuraName3` = 0, `effectMiscValue3` = 0, `effectTriggerSpell3` = 90131, `dmgMultiplier3` = `dmgMultiplier1`;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
+CREATE TABLE IF NOT EXISTS `gameobject_bak_405` (
+  `guid` int(10) unsigned NOT NULL,
+  `id` mediumint(8) unsigned NOT NULL,
+  `old_min` int(11) NOT NULL,
+  `old_max` int(11) NOT NULL,
+  PRIMARY KEY (`guid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='twow-repo#405: original respawn times of quest-item chests';
 
--- W hub 1
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51663;
-UPDATE `tmp_spell` SET `entry` = 90131, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Ancestral Arms (weapon bonuses).',
-    `attributes` = 464,
-    `spellIconId` = 1462,
-    `equippedItemClass` = -1,
-    `equippedItemSubClassMask` = 0,
-    `effect1` = 6, `effectDieSides1` = 1, `effectBaseDice1` = 1, `effectDicePerLevel1` = 0, `effectRealPointsPerLevel1` = 0, `effectBasePoints1` = 0, `effectBonusCoefficient1` = -1, `effectMechanic1` = 0, `effectImplicitTargetA1` = 1, `effectImplicitTargetB1` = 0, `effectRadiusIndex1` = 0, `effectApplyAuraName1` = 192, `effectAmplitude1` = 0, `effectMultipleValue1` = 0, `effectChainTarget1` = 0, `effectItemType1` = 0, `effectMiscValue1` = 0, `effectTriggerSpell1` = 90132, `effectPointsPerComboPoint1` = 0, `dmgMultiplier1` = 1,
-    `effect2` = 6, `effectDieSides2` = 1, `effectBaseDice2` = 1, `effectDicePerLevel2` = 0, `effectRealPointsPerLevel2` = 0, `effectBasePoints2` = 0, `effectBonusCoefficient2` = -1, `effectMechanic2` = 0, `effectImplicitTargetA2` = 1, `effectImplicitTargetB2` = 0, `effectRadiusIndex2` = 0, `effectApplyAuraName2` = 192, `effectAmplitude2` = 0, `effectMultipleValue2` = 0, `effectChainTarget2` = 0, `effectItemType2` = 0, `effectMiscValue2` = 0, `effectTriggerSpell2` = 90133, `effectPointsPerComboPoint2` = 0, `dmgMultiplier2` = 1,
-    `effect3` = 6, `effectDieSides3` = 1, `effectBaseDice3` = 1, `effectDicePerLevel3` = 0, `effectRealPointsPerLevel3` = 0, `effectBasePoints3` = 0, `effectBonusCoefficient3` = -1, `effectMechanic3` = 0, `effectImplicitTargetA3` = 1, `effectImplicitTargetB3` = 0, `effectRadiusIndex3` = 0, `effectApplyAuraName3` = 192, `effectAmplitude3` = 0, `effectMultipleValue3` = 0, `effectChainTarget3` = 0, `effectItemType3` = 0, `effectMiscValue3` = 0, `effectTriggerSpell3` = 90134, `effectPointsPerComboPoint3` = 0, `dmgMultiplier3` = 1;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `gameobject_bak_405` (`guid`, `id`, `old_min`, `old_max`)
+SELECT g.`guid`, g.`id`, g.`spawntimesecsmin`, g.`spawntimesecsmax`
+FROM `gameobject` g
+WHERE g.`spawntimesecsmin` > 0 AND g.`id` IN (
+    32, 41, 52, 54, 57, 58, 119, 263, 264, 271, 272, 276, 290, 321, 331, 333, 334, 375, 1165, 1166, 
+    1560, 1562, 1571, 1594, 1673, 1723, 1727, 1736, 1759, 1760, 2068, 2084, 2086, 2087, 2689, 2690, 
+    2691, 2707, 2708, 2709, 2710, 2712, 2714, 2716, 2717, 2718, 2724, 2739, 2740, 2741, 2742, 2743, 
+    2867, 2891, 2892, 2893, 2907, 2910, 2912, 3236, 3237, 3240, 3290, 3640, 3646, 3685, 3767, 3768, 
+    4406, 4608, 9630, 11713, 11714, 12654, 13360, 13872, 13891, 13949, 17282, 17783, 18036, 19015, 
+    19016, 19022, 19283, 19284, 19595, 19596, 19597, 19598, 19602, 19603, 19868, 19869, 19870, 
+    19871, 19872, 19873, 19877, 19904, 19905, 19906, 20691, 20725, 20726, 20727, 20807, 20920, 
+    20925, 21052, 21277, 21530, 22245, 22246, 22550, 24798, 28024, 30854, 30855, 30856, 35252, 
+    36738, 37098, 37099, 50935, 50936, 50937, 50982, 58369, 58595, 68865, 83763, 85562, 85563, 
+    86492, 89634, 89635, 91138, 92013, 92420, 92423, 93192, 102984, 102985, 103600, 103628, 103662, 
+    103664, 103815, 104564, 104569, 104574, 104575, 105169, 105170, 105171, 105172, 105174, 105175, 
+    105176, 113757, 121264, 123214, 124388, 124389, 125477, 126049, 126158, 126260, 128293, 129127, 
+    140911, 140971, 141853, 142076, 142088, 142181, 142344, 142477, 144053, 144054, 147557, 148499, 
+    148506, 148513, 148514, 148515, 148516, 149036, 149480, 149481, 149482, 149483, 152094, 152095, 
+    153239, 154357, 161521, 161526, 161527, 161557, 161752, 164662, 164798, 164910, 165554, 166863, 
+    171938, 173266, 174728, 175165, 175166, 175207, 175324, 175329, 175330, 175331, 175334, 175382, 
+    175384, 175385, 175407, 175487, 175488, 175565, 175566, 175606, 175628, 175629, 175708, 175785, 
+    175802, 175888, 175889, 175891, 175892, 175893, 175928, 175949, 175950, 175966, 175970, 176092, 
+    176116, 176142, 176143, 176145, 176150, 176189, 176206, 176207, 176208, 176209, 176249, 176344, 
+    176356, 176484, 176485, 176486, 176487, 176630, 176634, 176751, 176752, 176753, 176785, 176793, 
+    177264, 177287, 177464, 177747, 177750, 177784, 177785, 177789, 177790, 177792, 177794, 177804, 
+    177805, 177806, 177844, 177926, 177964, 178084, 178085, 178087, 178104, 178105, 178106, 178144, 
+    178184, 178185, 178186, 178195, 178204, 178553, 179024, 179025, 179545, 179553, 179565, 179644, 
+    179826, 179828, 179908, 179914, 179915, 179922, 180216, 180435, 180436, 180501, 181053, 181098, 
+    300531, 300532, 300608, 300609, 1000045, 1000082, 1000177, 1000249, 1000250, 1000389, 1000395, 
+    1000501, 1000502, 1000503, 1000510, 1000511, 1772000, 1772001, 1772003, 1772004, 1772005, 
+    2010800, 2010802, 2010803, 2010805, 2010806, 2010807, 2010808, 2010809, 2010816, 2010817, 
+    2010818, 2010820, 2010821, 2010822, 2010823, 2010825, 2010826, 2010827, 2010828, 2010831, 
+    2010832, 2010833, 2010835, 2010837, 2010838, 2010839, 2010840, 2010843, 2010844, 2010845, 
+    2010846, 2010847, 2010848, 2010852, 2010855, 2010856, 2010857, 2010858, 2010860, 2010861, 
+    2010862, 2010863, 2010864, 2010869, 2010872, 2010874, 2010876, 2010885, 2010888, 2010891, 
+    2010892, 2010893, 2010894, 2010895, 2010896, 2010897, 2010898, 2010899, 2010900, 2010901, 
+    2010902, 2010904, 2010908, 2010909, 2010914, 2010915, 2010921, 2010922, 2010925, 2010926, 
+    2010928, 2010929, 2010930, 2010931, 2010932, 2010935, 2010936, 2010937, 2010938, 2010943, 
+    2010944, 2010945, 2010947, 2010950, 2010961, 2010962, 2010963, 2010967, 2010971, 2010973, 
+    2010974, 2010975, 2010976, 2010977, 2010978, 2010979, 2011049, 2011105, 2020015, 2020016, 
+    2020019, 2020020, 2020021, 2020022, 2020023, 2020024, 2020025, 2020029, 2020030, 2020031, 
+    2020033, 2020034, 2020038, 2020039, 2020040, 2020041, 2020043, 2020044, 2020045, 2020046, 
+    2020050, 2020053, 2020055, 2020056, 2020057, 2020063, 2020064, 2020065, 2020066, 2020067, 
+    2020068, 2020069, 2020072, 2020073, 2020074, 2020075, 2020077, 2020078, 2020079, 2020080, 
+    2020081, 2020082, 2020083, 2020084, 2020096, 2020097, 2020100, 2020109, 2020115, 2020134, 
+    2020154, 2020155, 2020162, 2020163, 2020164, 2020165, 2020170, 2020171, 2020172, 2020174, 
+    2020175, 2020176, 2020181, 2020189, 2020190, 2020191, 2020192, 2020197, 2020217, 2020221, 
+    2020222, 2020234, 2020235, 2020237, 2020238, 2020243, 2020244, 2020245, 2020248, 2020249, 
+    2020253, 2020264, 2020265, 2020307, 2020308, 2020313, 2020317, 2020320, 2020321, 2020322, 
+    2020323, 2020324, 2020325, 2020326, 2020327, 2020338, 2020339, 2020341, 2020342, 2020343, 
+    2020344, 2020345, 2020346, 2020420, 3000207, 3000222, 3000223, 3000227, 3000228, 3000229, 
+    3000235, 3000236, 3000238, 3000245, 3000247, 3000248, 3000280, 3000343, 3000520);
 
--- W weapon skills (O-18: 1 expertise = 1 weapon skill)
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51663;
-UPDATE `tmp_spell` SET `entry` = 90132, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Increases your skill with Maces by 5, Two-Handed Maces by 10 and Daggers by 5.',
-    `attributes` = 464,
-    `spellIconId` = 1663,
-    `equippedItemClass` = -1,
-    `equippedItemSubClassMask` = 0,
-    `effect1` = 6, `effectDieSides1` = 1, `effectBaseDice1` = 1, `effectDicePerLevel1` = 0, `effectRealPointsPerLevel1` = 0, `effectBasePoints1` = 4, `effectBonusCoefficient1` = -1, `effectMechanic1` = 0, `effectImplicitTargetA1` = 1, `effectImplicitTargetB1` = 0, `effectRadiusIndex1` = 0, `effectApplyAuraName1` = 98, `effectAmplitude1` = 0, `effectMultipleValue1` = 0, `effectChainTarget1` = 0, `effectItemType1` = 0, `effectMiscValue1` = 54, `effectTriggerSpell1` = 0, `effectPointsPerComboPoint1` = 0, `dmgMultiplier1` = 1,
-    `effect2` = 6, `effectDieSides2` = 1, `effectBaseDice2` = 1, `effectDicePerLevel2` = 0, `effectRealPointsPerLevel2` = 0, `effectBasePoints2` = 9, `effectBonusCoefficient2` = -1, `effectMechanic2` = 0, `effectImplicitTargetA2` = 1, `effectImplicitTargetB2` = 0, `effectRadiusIndex2` = 0, `effectApplyAuraName2` = 98, `effectAmplitude2` = 0, `effectMultipleValue2` = 0, `effectChainTarget2` = 0, `effectItemType2` = 0, `effectMiscValue2` = 160, `effectTriggerSpell2` = 0, `effectPointsPerComboPoint2` = 0, `dmgMultiplier2` = 1,
-    `effect3` = 6, `effectDieSides3` = 1, `effectBaseDice3` = 1, `effectDicePerLevel3` = 0, `effectRealPointsPerLevel3` = 0, `effectBasePoints3` = 4, `effectBonusCoefficient3` = -1, `effectMechanic3` = 0, `effectImplicitTargetA3` = 1, `effectImplicitTargetB3` = 0, `effectRadiusIndex3` = 0, `effectApplyAuraName3` = 98, `effectAmplitude3` = 0, `effectMultipleValue3` = 0, `effectChainTarget3` = 0, `effectItemType3` = 0, `effectMiscValue3` = 173, `effectTriggerSpell3` = 0, `effectPointsPerComboPoint3` = 0, `dmgMultiplier3` = 1;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- W hub 2
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51663;
-UPDATE `tmp_spell` SET `entry` = 90133, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Ancestral Arms (weapon bonuses).',
-    `attributes` = 464,
-    `spellIconId` = 1462,
-    `equippedItemClass` = -1,
-    `equippedItemSubClassMask` = 0,
-    `effect1` = 6, `effectDieSides1` = 1, `effectBaseDice1` = 1, `effectDicePerLevel1` = 0, `effectRealPointsPerLevel1` = 0, `effectBasePoints1` = 0, `effectBonusCoefficient1` = -1, `effectMechanic1` = 0, `effectImplicitTargetA1` = 1, `effectImplicitTargetB1` = 0, `effectRadiusIndex1` = 0, `effectApplyAuraName1` = 192, `effectAmplitude1` = 0, `effectMultipleValue1` = 0, `effectChainTarget1` = 0, `effectItemType1` = 0, `effectMiscValue1` = 0, `effectTriggerSpell1` = 90135, `effectPointsPerComboPoint1` = 0, `dmgMultiplier1` = 1,
-    `effect2` = 6, `effectDieSides2` = 1, `effectBaseDice2` = 1, `effectDicePerLevel2` = 0, `effectRealPointsPerLevel2` = 0, `effectBasePoints2` = 0, `effectBonusCoefficient2` = -1, `effectMechanic2` = 0, `effectImplicitTargetA2` = 1, `effectImplicitTargetB2` = 0, `effectRadiusIndex2` = 0, `effectApplyAuraName2` = 192, `effectAmplitude2` = 0, `effectMultipleValue2` = 0, `effectChainTarget2` = 0, `effectItemType2` = 0, `effectMiscValue2` = 0, `effectTriggerSpell2` = 90136, `effectPointsPerComboPoint2` = 0, `dmgMultiplier2` = 1,
-    `effect3` = 6, `effectDieSides3` = 1, `effectBaseDice3` = 1, `effectDicePerLevel3` = 0, `effectRealPointsPerLevel3` = 0, `effectBasePoints3` = 0, `effectBonusCoefficient3` = -1, `effectMechanic3` = 0, `effectImplicitTargetA3` = 1, `effectImplicitTargetB3` = 0, `effectRadiusIndex3` = 0, `effectApplyAuraName3` = 192, `effectAmplitude3` = 0, `effectMultipleValue3` = 0, `effectChainTarget3` = 0, `effectItemType3` = 0, `effectMiscValue3` = 0, `effectTriggerSpell3` = 90137, `effectPointsPerComboPoint3` = 0, `dmgMultiplier3` = 1;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- W hub 3
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51663;
-UPDATE `tmp_spell` SET `entry` = 90134, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Ancestral Arms (weapon bonuses).',
-    `attributes` = 464,
-    `spellIconId` = 1462,
-    `equippedItemClass` = -1,
-    `equippedItemSubClassMask` = 0,
-    `effect1` = 6, `effectDieSides1` = 1, `effectBaseDice1` = 1, `effectDicePerLevel1` = 0, `effectRealPointsPerLevel1` = 0, `effectBasePoints1` = 0, `effectBonusCoefficient1` = -1, `effectMechanic1` = 0, `effectImplicitTargetA1` = 1, `effectImplicitTargetB1` = 0, `effectRadiusIndex1` = 0, `effectApplyAuraName1` = 192, `effectAmplitude1` = 0, `effectMultipleValue1` = 0, `effectChainTarget1` = 0, `effectItemType1` = 0, `effectMiscValue1` = 0, `effectTriggerSpell1` = 90138, `effectPointsPerComboPoint1` = 0, `dmgMultiplier1` = 1,
-    `effect2` = 6, `effectDieSides2` = 1, `effectBaseDice2` = 1, `effectDicePerLevel2` = 0, `effectRealPointsPerLevel2` = 0, `effectBasePoints2` = 0, `effectBonusCoefficient2` = -1, `effectMechanic2` = 0, `effectImplicitTargetA2` = 1, `effectImplicitTargetB2` = 0, `effectRadiusIndex2` = 0, `effectApplyAuraName2` = 192, `effectAmplitude2` = 0, `effectMultipleValue2` = 0, `effectChainTarget2` = 0, `effectItemType2` = 0, `effectMiscValue2` = 0, `effectTriggerSpell2` = 90139, `effectPointsPerComboPoint2` = 0, `dmgMultiplier2` = 1,
-    `effect3` = 0, `effectApplyAuraName3` = 0, `effectTriggerSpell3` = 0, `effectBasePoints3` = 0, `effectMiscValue3` = 0;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- W one-handed sword: 5 % extra attack (16459)
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51668;
-UPDATE `tmp_spell` SET `entry` = 90135, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Gives your melee attacks with a One-Handed Sword a 5% chance to grant an extra attack.',
-    `spellIconId` = 1462, `equippedItemSubClassMask` = 128, `procChance` = 5;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- W two-handed sword: 10 % extra attack (16459)
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51668;
-UPDATE `tmp_spell` SET `entry` = 90136, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Gives your melee attacks with a Two-Handed Sword a 10% chance to grant an extra attack.',
-    `spellIconId` = 1462, `equippedItemSubClassMask` = 256, `procChance` = 10;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- W one-handed axe: +4 % crit
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51663;
-UPDATE `tmp_spell` SET `entry` = 90137, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Increases your chance to get a critical strike with One-Handed Axes by 4%.',
-    `spellIconId` = 1474, `equippedItemSubClassMask` = 1, `effectBasePoints1` = 3;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- W two-handed axe: +8 % crit
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51663;
-UPDATE `tmp_spell` SET `entry` = 90138, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Increases your chance to get a critical strike with Two-Handed Axes by 8%.',
-    `spellIconId` = 1474, `equippedItemSubClassMask` = 2, `effectBasePoints1` = 7;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- W dagger: +5 % crit
-CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
-INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 51663;
-UPDATE `tmp_spell` SET `entry` = 90139, `spellFamilyName` = 11, `spellFamilyFlags` = 0, `script_name` = '',
-    `name` = 'Ancestral Arms', `nameSubtext` = '', `description` = 'Increases your chance to get a critical strike with Daggers by 5%.',
-    `spellIconId` = 1504, `equippedItemSubClassMask` = 32768, `effectBasePoints1` = 4;
-INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
-DROP TEMPORARY TABLE `tmp_spell`;
-
--- Sword skills for shamans (flags 0x180 like the talent-gated shaman rows 701/702).
--- Ids 90043/90055 are new records (no SkillRaceClassInfo.dbc row; every field explicit,
--- SkillCostIndex -1 as the loader requires). The client patch adds the same two rows.
-INSERT IGNORE INTO `skill_race_class_info_mod` (`Id`, `SkillLineDbcRecord`, `RaceMask`, `ClassMask`, `Flags`, `MinLevel`, `SkillTierId`, `SkillCostIndex`, `Comment`) VALUES
-(90043, 43, 2047, 64, 384, 0, 0, -1, 'twow-repo#357 W: One-Handed Swords for shamans, talent only'),
-(90055, 55, 2047, 64, 384, 0, 0, -1, 'twow-repo#357 W: Two-Handed Swords for shamans, talent only');
-
--- Talent icons (existing SpellIcon IDs): attack speed = Flurry, imbue mastery = Elemental
--- Weapons, charged Stormstrike = Stormstrike, storm wisdom = Lightning Bolt, chain storm =
--- Chain Lightning, shield constitution = Lightning Shield, shield ward = Ancestral Guardian.
--- Defense (229) and retaliation (1463) keep theirs.
-UPDATE `spell_template` SET `spellIconId` = 108  WHERE `entry` BETWEEN 90100 AND 90104;
-UPDATE `spell_template` SET `spellIconId` = 679  WHERE `entry` BETWEEN 90111 AND 90113;
-UPDATE `spell_template` SET `spellIconId` = 2210 WHERE `entry` = 90117;
-UPDATE `spell_template` SET `spellIconId` = 62   WHERE `entry` BETWEEN 90118 AND 90122;
-UPDATE `spell_template` SET `spellIconId` = 165  WHERE `entry` = 90124;
-UPDATE `spell_template` SET `spellIconId` = 19   WHERE `entry` BETWEEN 90126 AND 90128;
-UPDATE `spell_template` SET `spellIconId` = 1465 WHERE `entry` = 90129;
-
--- Elemental Weapons ranks 1-3: Earthen Bulwark cap as the code applies it (13/27/40 %).
-UPDATE `spell_template` SET `description` = REPLACE(`description`, 'cannot exceed 20% of maximum health', 'cannot exceed 13% of maximum health') WHERE `entry` = 16266;
-UPDATE `spell_template` SET `description` = REPLACE(`description`, 'cannot exceed 20% of maximum health', 'cannot exceed 27% of maximum health') WHERE `entry` = 29079;
-UPDATE `spell_template` SET `description` = REPLACE(`description`, 'cannot exceed 20% of maximum health', 'cannot exceed 40% of maximum health') WHERE `entry` = 29080;
+UPDATE `gameobject` g
+JOIN `gameobject_bak_405` b ON b.`guid` = g.`guid`
+SET g.`spawntimesecsmin` = LEAST(b.`old_min`, GREATEST(5, b.`old_min` DIV 2)),
+    g.`spawntimesecsmax` = LEAST(b.`old_max`, GREATEST(5, b.`old_max` DIV 2));

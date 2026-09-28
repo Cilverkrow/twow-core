@@ -233,6 +233,30 @@ add_test(NAME roster_control_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/roster_control_source_contract_tests.cmake")
 
+# twow-repo#419 variant B: `.bot roster`, the roster bot list without the /who
+# cap. Filters, visibility, paging, rate limit and the BL1 addon wire format
+# (golden file t/fixtures/roster_list_v1.txt), plus the call site.
+add_executable(roster_list_policy_tests
+  "${PB_MODULE_DIR}/t/roster_list_policy_tests.cpp")
+
+target_include_directories(roster_list_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_compile_definitions(roster_list_policy_tests PRIVATE
+  ROSTER_LIST_FIXTURE="${PB_MODULE_DIR}/t/fixtures/roster_list_v1.txt")
+
+set_target_properties(roster_list_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_list_policy
+  COMMAND roster_list_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_list_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_list_source_contract_tests.cmake")
+
 # #276: a dead bot waits for an active real-player master only for
 # AiPlayerbot.DeadWaitForRealMasterSeconds, never indefinitely.
 add_executable(master_wait_policy_tests
@@ -780,6 +804,43 @@ add_test(NAME gather_node_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/gather_node_source_contract_tests.cmake")
+
+# #420: group bots buff their group only and drink late while following.
+add_executable(group_buff_policy_tests
+  "${PB_MODULE_DIR}/t/group_buff_policy_tests.cpp")
+
+target_include_directories(group_buff_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(group_buff_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_buff_policy
+  COMMAND group_buff_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_buff_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/group_buff_source_contract_tests.cmake")
+# #416: no map thread waits for a destination job; time budget for the choice.
+add_executable(travel_choose_policy_tests
+  "${PB_MODULE_DIR}/t/travel_choose_policy_tests.cpp")
+
+target_include_directories(travel_choose_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(travel_choose_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME travel_choose_policy
+  COMMAND travel_choose_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME travel_choose_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/travel_choose_source_contract_tests.cmake")
 
 # #416: slow bot updates are visible, route searches have a time budget.
 add_executable(stall_guard_policy_tests

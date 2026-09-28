@@ -16,6 +16,7 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/StallGuardPolicy.h"
+#include "playerbot/GroupBuffPolicy.h"
 class Player;
 class PlayerbotMgr;
 class ChatHandler;
@@ -867,10 +868,29 @@ protected:
 	uint8 m_forcedRole = 0;
     // #416: last [BotSlowUpdate] line (seconds), for the rate limit.
     uint32 lastSlowUpdateLog = 0;
+    // #420: [GroupBuff] counters of the current window.
+    ai::group_buff::BuffWindow groupBuffWindow;
+    // #416: phase of the bot for [BotSlowUpdate].
+    uint32 travelChooseChecked = 0;
+    ai::stall_guard::TopActions updateActions;
+    uint32 firstUpdateTime = 0;
+    uint32 lastReviveTime = 0;
+    bool wasAlive = true;
 
 public:
     // #416: called when an UpdateAI call took elapsedMs.
     void ReportSlowUpdate(uint32 elapsedMs);
+    // #420: the bot has a real player as master, or a real player (or a real
+    // player's bot) is in its group on the same map.
+    bool IsInGroupWithRealPlayer();
+    // #420: counts a helpful aura cast on another unit outside combat.
+    void RecordGroupBuff(SpellEntry const* spellInfo, Unit* target);
+    // #420: writes one [GroupBuff] line when the window is over.
+    void ReportGroupBuff(uint32 now);
+    // #416: travel-target candidates checked in this update.
+    void AddTravelChooseChecked(uint32 count) { travelChooseChecked += count; }
+    // #416: time of one executed action (ms > 0), for the top-3 of this update.
+    void RecordActionTime(std::string const& name, uint32 ms) { updateActions.Add(name, ms); }
 
 protected:
     std::deque<ai::death_loop::Death> recentDeaths;

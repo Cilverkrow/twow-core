@@ -81,6 +81,7 @@ private:
  
 
     std::list<std::string> HandleList(Player* master, const std::string param, AccountTypes security);
+    std::list<std::string> HandleRoster(Player* master, const std::string param, AccountTypes security);
     std::list<std::string> HandleHelp(Player* master, const std::string param, AccountTypes security);
     std::list<std::string> HandleReload(Player* master, const std::string param, AccountTypes security);
     std::list<std::string> HandleTweak(Player* master, const std::string param, AccountTypes security);
@@ -145,6 +146,8 @@ private:
     std::map<std::string, HolderCommandHandler> m_holderHandlers;
     std::map<std::string, BotCommandHandler> m_botCommandHandlers;
     ObjectGuid m_spoofGuid;
+    // twow-repo#419: last `.bot roster` of this holder's player (steady ms, 0 = never).
+    uint64 m_rosterListLastMs = 0;
 };
 
 class PlayerbotMgr : public PlayerbotHolder

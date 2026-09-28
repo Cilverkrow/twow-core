@@ -2,6 +2,7 @@
 #include "playerbot/strategy/Value.h"
 #include "ItemUsageValue.h"
 #include "BudgetValues.h"
+#include "playerbot/GroupBuffPolicy.h"
 
 namespace ai
 {
@@ -182,6 +183,10 @@ namespace ai
 
             if (!master->IsMoving())
                 return true;
+
+            // #420: no drink stop while the master walks on, unless mana is below medium.
+            if (!ai::group_buff::DrinkWhileMasterMoves(AI_VALUE2(uint8, "mana", "self target"), sPlayerbotAIConfig.mediumMana))
+                return false;
 
             float minDistance = sPlayerbotAIConfig.EatDrinkMinDistance;
             if (!bot->GetGroup()->IsRaidGroup())

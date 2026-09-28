@@ -105,8 +105,8 @@ endforeach()
 # 16 named formations in the menu (#389).
 string(REGEX MATCHALL "\"formation [a-z]+\"" menu_formations "${lua}")
 list(LENGTH menu_formations formation_count)
-if(NOT formation_count EQUAL 17)
-  message(FATAL_ERROR "Expected 17 formations in the menu (#389, dragonslayer), found ${formation_count}")
+if(NOT formation_count EQUAL 18)
+  message(FATAL_ERROR "Expected 18 formations in the menu (#389, dragonslayer, giantkiller), found ${formation_count}")
 endif()
 
 
@@ -159,4 +159,10 @@ endif()
 require_text("${botlist}" "BOTLIST_MAX_PER_QUERY = 49;" "the server's 49 cut-off")
 require_text("${botlist}" "FriendsFrame:RegisterEvent(\"WHO_LIST_UPDATE\")" "who window re-attached")
 require_text("${botlist}" "FriendsFrame:UnregisterEvent(\"WHO_LIST_UPDATE\")" "who window detached during a scan")
+
+# The event frame must not call BotList_OnUpdate every frame when
+# BotList.lua was not loaded (new file, game not restarted) - owner report
+# 2026-09-28: an error popup that could not be closed.
+require_text("${xml}" "if ( not BotList_OnUpdate ) then" "event frame hides itself without BotList.lua")
+require_text("${lua}" "if ( BotList_Show ) then" "menu entry checks for BotList.lua")
 message(STATUS "BOTMENU_ADDON_CONTRACT=PASS entries=${entry_count}")
