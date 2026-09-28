@@ -31,6 +31,7 @@ Two things it takes care of that are easy to get wrong:
 
 Usage:
     build_premade_specs.py --dbc /path/to/dbc [--rate 1.0] [--out file]
+                           [--talent-classes 7]   (#357 stage 2: patched Talent.dbc)
 """
 import argparse
 import os
@@ -150,8 +151,28 @@ SPEC_AURAS = [
 ]
 
 
-def reserved_points(cls, name, level):
+# #357 stage 2 (client talents, twow-repo#409): the patched Talent.dbc adds these
+# rows to the shaman Enhancement tab (twow-repo tools/clientpatch change
+# 0357-shaman-talents; rank spells are the SPEC_AURAS spell ids 90100-90129, W is
+# 90130). The BUILDS links above are encoded against the tree without them.
+# With --talent-classes 7 a link is read against the old tree and the new talents
+# are added by id; the class then pays nothing for auras (real talents instead).
+# A patched Talent.dbc without the flag, or the flag without the patch, is refused.
+STAGE2_TALENTS = {7: frozenset(range(9001, 9011))}
+STAGE2_TARGETS = {
+    # 7.1: attack speed, imbue mastery, storm wisdom, chain storm, W
+    (7, 'enhancement'): {9001: 5, 9003: 3, 9006: 5, 9008: 1, 9010: 1},
+    # 7.3: attack speed, defense, imbue mastery, retaliation, charged Stormstrike,
+    # shield constitution, shield ward, W
+    (7, 'shaman tank'): {9001: 5, 9002: 5, 9003: 3, 9004: 3, 9005: 1,
+                         9007: 3, 9009: 1, 9010: 1},
+}
+
+
+def reserved_points(cls, name, level, talent_classes=frozenset()):
     """Talent points a path pays at this level for its #357 / #367 auras."""
+    if cls in talent_classes:
+        return 0
     return sum(min(ranks, max(0, level - first + 1))
                for aura_cls, _, first, ranks, paths in SPEC_AURAS
                if aura_cls == cls and name in paths)
@@ -260,6 +281,24 @@ def parse_link(link, entries):
     if pos != len(link):
         raise ValueError('link has unconsumed data at offset %d: %s' % (pos, link[pos:]))
     return wanted
+
+
+def read_target(cls, name, link, entries, talent_classes=frozenset()):
+    """Target ranks of a BUILDS link, aware of the #357 stage-2 talent rows."""
+    new_ids = STAGE2_TALENTS.get(cls, frozenset())
+    present = new_ids & {entry['id'] for entry in entries}
+    if cls in talent_classes:
+        if present != new_ids:
+            raise ValueError('--talent-classes %d needs the patched Talent.dbc '
+                             '(missing talents %s)' % (cls, sorted(new_ids - present)))
+        legacy = [entry for entry in entries if entry['id'] not in new_ids]
+        target = parse_link(link, legacy)
+        target.update(STAGE2_TARGETS.get((cls, name), {}))
+        return target
+    if present:
+        raise ValueError('Talent.dbc has the stage-2 talents %s; run with '
+                         '--talent-classes %d' % (sorted(present), cls))
+    return parse_link(link, entries)
 
 
 def check(entries, ranks, budget, spell_ids, strict_prerequisites):
@@ -388,9 +427,17 @@ def main():
     ap.add_argument('--rate', type=float, default=1.0,
                     help='Rate.Talent from mangosd.conf')
     ap.add_argument('--out', help='write here instead of stdout')
+    ap.add_argument('--talent-classes', default='',
+                    help='comma-separated classes whose SpecAura auras are real talents '
+                         'in this Talent.dbc (#357 stage 2: 7)')
     args = ap.parse_args()
     if args.rate <= 0:
         ap.error('--rate must be greater than zero')
+    try:
+        talent_classes = frozenset(int(item) for item in args.talent_classes.split(',')
+                                   if item.strip())
+    except ValueError:
+        ap.error('--talent-classes takes class ids such as 7')
 
     try:
         talents = load_talents(args.dbc)
@@ -415,7 +462,7 @@ def main():
 
         for index, (name, link) in enumerate(BUILDS[cls]):
             try:
-                target = parse_link(link, entries)
+                target = read_target(cls, name, link, entries, talent_classes)
             except ValueError as error:
                 print('  BROKEN  class %d %s: %s' % (cls, name, error), file=sys.stderr)
                 failures += 1
@@ -455,7 +502,8 @@ def main():
                     failures += 1
                     continue
 
-            desired = int((60 - 9) * args.rate) - reserved_points(cls, name, 60)
+            desired = int((60 - 9) * args.rate) - reserved_points(cls, name, 60,
+                                                                  talent_classes)
             active_target = target
             if args.rate > 1:
                 active_target = extend_target(entries, target, main_tree,
@@ -473,7 +521,7 @@ def main():
                                  (cls, name) in NEW_PATHS else LEVELS)
             for level in validation_levels:
                 budget = max(0, int((level - 9) * args.rate) -
-                             reserved_points(cls, name, level))
+                             reserved_points(cls, name, level, talent_classes))
                 ranks = (legal_prefix(entries, active_target, main_tree,
                                       budget, spell_ids) if args.rate > 1 else
                          prefix(entries, active_target, main_tree, budget))

@@ -194,6 +194,18 @@ inline std::vector<std::uint32_t> AllKit(std::uint8_t cls)
     return all;
 }
 
+// #357 stage 2 (twow-repo#409): once the client patch and the server Talent.dbc carry
+// a class's reworked talents, the aura spell ids above are that class's real talent
+// ranks (same ids). The grant must then neither teach nor remove them, and the premade
+// path pays nothing extra: AiPlayerbot.SpecAura.TalentClasses lists such classes.
+inline bool TalentBacked(std::uint8_t cls, std::vector<std::uint32_t> const& talentClasses)
+{
+    for (std::uint32_t talentClass : talentClasses)
+        if (talentClass == cls)
+            return true;
+    return false;
+}
+
 // Talent points the path pays for its auras at this level (one per granted rank;
 // the kit is free).
 inline std::uint32_t ReservedPoints(std::uint8_t cls, std::uint8_t path, std::uint32_t level)

@@ -473,6 +473,7 @@ public:
     uint32 deathLoopMaxDeaths = 0;
     // #357 O-12: route B talent auras for shamans on premade path 7.1 / 7.3.
     bool specAuraEnabled = false;
+    std::vector<uint32> specAuraTalentClasses;
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
     // #307: a roster bot on its own leaves a zone clearly above its level.

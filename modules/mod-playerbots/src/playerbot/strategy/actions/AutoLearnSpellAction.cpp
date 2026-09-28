@@ -336,12 +336,15 @@ void AutoLearnSpellAction::GrantShamanTotems(std::ostringstream* out)
 void AutoLearnSpellAction::GrantSpecAuras()
 {
     std::uint8_t const path = ai::spec_aura::PathFor(bot->getClass(), AiFactory::GetPremadePathName(bot));
-    std::vector<uint32> wanted = path ? ai::spec_aura::WantedAuras(bot->getClass(), path, bot->GetLevel()) : std::vector<uint32>();
+    // #357 stage 2: the auras of a talent-backed class are its real talent ranks now;
+    // the premade links teach them, so they are neither granted nor removed here.
+    bool const talentBacked = ai::spec_aura::TalentBacked(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses);
+    std::vector<uint32> wanted = path && !talentBacked ? ai::spec_aura::WantedAuras(bot->getClass(), path, bot->GetLevel()) : std::vector<uint32>();
     // #367: the kit of the path (Spit, Shadow Dance for 4.3) comes the same way, for free.
     if (path)
         for (uint32 spellId : ai::spec_aura::WantedKit(bot->getClass(), path, bot->GetLevel()))
             wanted.push_back(spellId);
-    std::vector<uint32> known = ai::spec_aura::AllAuras(bot->getClass());
+    std::vector<uint32> known = talentBacked ? std::vector<uint32>() : ai::spec_aura::AllAuras(bot->getClass());
     for (uint32 spellId : ai::spec_aura::AllKit(bot->getClass()))
         known.push_back(spellId);
 

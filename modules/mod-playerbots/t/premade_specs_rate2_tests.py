@@ -117,5 +117,48 @@ class RateTwoPremadePathTests(unittest.TestCase):
         self.assertEqual(GENERATOR_MODULE.SPEC_AURAS, core)
 
 
+
+class ShamanStageTwoTalentTests(unittest.TestCase):
+    """#357 stage 2: the patched Talent.dbc adds 9001-9010 to the Enhancement tab."""
+
+    def entries(self, with_new):
+        # Two old Enhancement talents (page 1) around a new one in tree order.
+        old = [dict(talent(251, 1, 5), row=0, col=1), dict(talent(254, 1, 5), row=1, col=1)]
+        new = [dict(talent(talent_id, 1, 5), row=0, col=0)
+               for talent_id in sorted(GENERATOR_MODULE.STAGE2_TALENTS[7])]
+        entries = old + (new if with_new else [])
+        entries.sort(key=lambda entry: (entry['page'], entry['row'], entry['col'], entry['id']))
+        return entries
+
+    def test_links_are_read_against_the_old_tree_and_new_talents_added_by_id(self):
+        target = GENERATOR_MODULE.read_target(7, 'enhancement', '-53', self.entries(True), {7})
+        expected = {251: 5, 254: 3}
+        expected.update(GENERATOR_MODULE.STAGE2_TARGETS[(7, 'enhancement')])
+        self.assertEqual(expected, target)
+
+    def test_unpatched_tree_is_unchanged(self):
+        self.assertEqual({251: 5, 254: 3},
+                         GENERATOR_MODULE.read_target(7, 'enhancement', '-53', self.entries(False)))
+
+    def test_patch_and_flag_must_agree(self):
+        with self.assertRaises(ValueError):
+            GENERATOR_MODULE.read_target(7, 'enhancement', '-53', self.entries(True))
+        with self.assertRaises(ValueError):
+            GENERATOR_MODULE.read_target(7, 'enhancement', '-53', self.entries(False), {7})
+
+    def test_talent_classes_pay_nothing_for_auras(self):
+        self.assertEqual(0, GENERATOR_MODULE.reserved_points(7, 'shaman tank', 60, {7}))
+        self.assertEqual(20, GENERATOR_MODULE.reserved_points(4, 'rogue tank', 60, {7}))
+
+    def test_new_talents_carry_the_phase_one_points_plus_w(self):
+        # O-12 variant A: bots keep what they paid for the auras (7.1 = 14, 7.3 = 21)
+        # and add the one point of the weapon talent W (9010).
+        for name in ('enhancement', 'shaman tank'):
+            target = GENERATOR_MODULE.STAGE2_TARGETS[(7, name)]
+            self.assertEqual(GENERATOR_MODULE.reserved_points(7, name, 60) + 1,
+                             sum(target.values()), name)
+            self.assertEqual(1, target[9010], name)
+            self.assertTrue(set(target) <= GENERATOR_MODULE.STAGE2_TALENTS[7], name)
+
 if __name__ == '__main__':
     unittest.main()

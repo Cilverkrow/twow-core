@@ -90,5 +90,12 @@ int main()
     Require(ReservedPoints(4, RogueTank, 60) == 20, "the kit costs no talent points");
 
     std::cout << "spec_aura_policy_tests passed\n";
+    // #357 stage 2: a talent-backed class (AiPlayerbot.SpecAura.TalentClasses) keeps its
+    // aura ids as real talent ranks: the grant skips the class, the path pays nothing.
+    Require(TalentBacked(7, { 7 }), "shaman listed");
+    Require(TalentBacked(7, { 4, 7 }), "shaman in a list");
+    Require(!TalentBacked(4, { 7 }), "rogue not listed");
+    Require(!TalentBacked(7, {}), "empty list: nothing talent-backed");
+
     return 0;
 }

@@ -31,7 +31,18 @@ require_text("${talentspec}" "void TalentSpec::CropTalents(Player* bot, uint32 m
 # Keys and generator.
 require_text("${config_source}" "\"AiPlayerbot.SpecAura.Enabled\", false" "grant off by default")
 require_text("${config_template}" "AiPlayerbot.SpecAura.Enabled = 0" "documented key")
-require_text("${generator}" "def reserved_points(cls, name, level):" "per-level reserve in the generator")
+
+# #357 stage 2: classes whose auras are real talents (patched Talent.dbc) are skipped
+# by the grant and pay nothing; the links come from the generator's stage-2 mode.
+require_text("${config_source}" "\"AiPlayerbot.SpecAura.TalentClasses\", \"\"), specAuraTalentClasses" "talent-backed classes, none by default")
+require_text("${config_template}" "AiPlayerbot.SpecAura.TalentClasses =" "documented talent-backed key")
+require_text("${learn}" "bool const talentBacked = ai::spec_aura::TalentBacked(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses);" "grant checks talent-backed classes")
+require_text("${learn}" "path && !talentBacked ? ai::spec_aura::WantedAuras(" "no aura granted for a talent-backed class")
+require_text("${learn}" "talentBacked ? std::vector<uint32>() : ai::spec_aura::AllAuras(bot->getClass())" "no talent rank removed for a talent-backed class")
+require_text("${talents}" "ai::spec_aura::TalentBacked(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses)" "no reserve for a talent-backed class")
+require_text("${generator}" "STAGE2_TALENTS = {7: frozenset(range(9001, 9011))}" "stage-2 Enhancement talent ids")
+require_text("${generator}" "def read_target(cls, name, link, entries, talent_classes=frozenset()):" "stage-2 link reading")
+require_text("${generator}" "def reserved_points(cls, name, level, talent_classes=frozenset()):" "per-level reserve in the generator")
 require_text("${generator}" "(7, 'shaman tank'): {257}," "no Calming Winds for the tank")
 require_text("${generator}" "(7, 'shaman tank'): {259: 3}," "Ancestral Guardian for the tank")
 
