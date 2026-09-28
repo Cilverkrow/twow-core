@@ -2305,10 +2305,31 @@ MailSpam.AccountCharLevel = 1
 MailSpam.Money = 10000
 MailSpam.Item = 1
 
+# DynamicRespawn.*
+#   Shorter respawn for normal creatures on the continents (maps 0/1) while players are
+#   near (Creature::ApplyDynamicRespawnDelay). Players (bots count) within Range yards and
+#   PlayersMaxLevelDiff levels are counted; at PlayersThreshold or more, the respawn drops by
+#   PercentPerPlayer % per player, at most MaxReductionRate (or at once when fewer of the
+#   entry are alive than dead). Only base respawns between MinRespawnTime and
+#   AffectRespawnTimeBelow seconds and creatures up to AffectLevelBelow are affected; an
+#   escort in range switches it off. The reduced delay never falls below the minimum and
+#   never exceeds the original delay.
+#
+# DynamicRespawn.MinEliteRespawnTime
+#   Minimum respawn in seconds for elites that are forced into dynamic respawn
+#   (spawn_flags FORCE_DYNAMIC_ELITE). 0 = MinRespawnTime applies. Default: 0
+#
+# DynamicRespawn.MinIndoorRespawnTime
+#   Minimum respawn in seconds for non-elite creatures indoors (caves, buildings); it
+#   replaces MinRespawnTime there.
+#   0 = MinRespawnTime applies. Default: 0
+
 DynamicRespawn.Range = 120
 DynamicRespawn.PercentPerPlayer = 7
 DynamicRespawn.MaxReductionRate = 0.25
 DynamicRespawn.MinRespawnTime = 25
+DynamicRespawn.MinEliteRespawnTime = 0
+DynamicRespawn.MinIndoorRespawnTime = 0
 DynamicRespawn.AffectRespawnTimeBelow = 900
 DynamicRespawn.AffectLevelBelow = 60
 DynamicRespawn.PlayersThreshold = 4
