@@ -18,7 +18,7 @@ endfunction()
 
 # twow-repo#367 / #409 stage 2: server counterpart of the rogue client delta
 # (twow-repo ops/clientpatch/changes/*/0367_*). Texts and icons only for the
-# existing spells, and the player poison ranks I-IV, never trained or sold yet.
+# existing spells, the player poison ranks I-IV, and the trainer rows of P-1/P-2.
 file(READ "${TW_CORE_ROOT}/sql/database_updates/20260928170000_world.sql" m)
 # CMake lists split on ';' (statement ends, and the tooltip token $lpoint:points;).
 string(REPLACE ";" "<SC>" m_nosc "${m}")
@@ -57,10 +57,35 @@ string(REGEX MATCHALL "INSERT IGNORE INTO `spell_template` SELECT" spell_clones 
 list(LENGTH spell_clones spell_clone_count)
 string(REGEX MATCHALL "INSERT IGNORE INTO `item_template` SELECT" item_clones "${m}")
 list(LENGTH item_clones item_clone_count)
-if (NOT spell_clone_count EQUAL 8 OR NOT item_clone_count EQUAL 4)
-  message(FATAL_ERROR "#367 poison ranks: expected 8 spell and 4 item clones")
+# 4 procs + 4 coatings + 4 recipes + 4 recipe trainer spells + 4 kit trainer spells.
+if (NOT spell_clone_count EQUAL 20 OR NOT item_clone_count EQUAL 4)
+  message(FATAL_ERROR "#367: expected 20 spell and 4 item clones, got ${spell_clone_count} / ${item_clone_count}")
 endif()
-foreach (forbidden "DELETE " "REPLACE " "npc_trainer" "npc_vendor" "skill_line_ability" "loot_template"
+
+# Owner decisions P-1/P-2 (2026-09-28): the trainer teaches the kit and the recipes, only
+# where it already teaches Agitating Poison (the rogue trainers), with the owner reagents.
+foreach (required
+    "`entry` = 90208, `nameSubtext` = 'Rank 1', `spellLevel` = 20, `effectItemType1` = 90141, `reagent1` = 2931, `reagentCount1` = 1, `reagent2` = 3372, `reagentCount2` = 1"
+    "`entry` = 90211, `nameSubtext` = 'Rank 4', `spellLevel` = 50, `effectItemType1` = 90144, `reagent1` = 2931, `reagentCount1` = 2, `reagent2` = 3372, `reagentCount2` = 1"
+    "`entry` = 90212, `nameSubtext` = 'Rank 1', `effectTriggerSpell1` = 90208;"
+    "`entry` = 90216, `name` = 'Spit', `nameSubtext` = '', `description` = '', `effectTriggerSpell1` = 90140,"
+    "`entry` = 90219, `name` = 'Shadow Dance', `nameSubtext` = 'Rank 3', `description` = '', `effectTriggerSpell1` = 90144,"
+    "VALUES (90142, 38, 90142, 0, 8, 1, 90143, 0, 0, 0, 0);"
+    "VALUES (90143, 38, 90143, 0, 8, 1, 90144, 0, 0, 0, 0);"
+    "VALUES (90208, 40, 90208, 0, 8, 1, 0, 0, 175, 125, 0);"
+    "SELECT `entry`, 90212, 2700, 40, 1, 20 FROM `npc_trainer` WHERE `spell` = 47312;"
+    "SELECT `entry`, 90216, 720, 0, 0, 12 FROM `npc_trainer` WHERE `spell` = 47312;"
+    "SELECT `entry`, 90219, 48600, 0, 0, 60 FROM `npc_trainer` WHERE `spell` = 47312;")
+  require_text("${m}" "${required}" "#367 trainer and recipes")
+endforeach()
+string(REGEX MATCHALL "INSERT IGNORE INTO `npc_trainer`" trainer_rows "${m}")
+list(LENGTH trainer_rows trainer_count)
+string(REGEX MATCHALL "INSERT IGNORE INTO `skill_line_ability`" sla_rows "${m}")
+list(LENGTH sla_rows sla_count)
+if (NOT trainer_count EQUAL 8 OR NOT sla_count EQUAL 8)
+  message(FATAL_ERROR "#367: expected 8 trainer and 8 skill_line_ability inserts, got ${trainer_count} / ${sla_count}")
+endif()
+foreach (forbidden "DELETE " "REPLACE " "npc_vendor" "loot_template"
                    "UPDATE `spell_template` SET `effect" "`script_name` = 'spell_rogue")
   forbid_text("${m}" "${forbidden}" "#367 client scope")
 endforeach()

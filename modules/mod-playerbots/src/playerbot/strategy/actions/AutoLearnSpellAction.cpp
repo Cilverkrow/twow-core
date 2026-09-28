@@ -344,7 +344,7 @@ void AutoLearnSpellAction::GrantSpecAuras()
         for (uint32 spellId : ai::spec_aura::WantedKit(bot->getClass(), path, bot->GetLevel()))
             wanted.push_back(spellId);
     std::vector<uint32> known = ai::spec_aura::ManagedAllAuras(bot->getClass(), auraTalentsAreReal);
-    for (uint32 spellId : ai::spec_aura::AllKit(bot->getClass()))
+    for (uint32 spellId : ai::spec_aura::ManagedAllKit(bot->getClass(), auraTalentsAreReal))
         known.push_back(spellId);
 
     // Idempotent. A lower rank the level has outgrown, or an aura of another

@@ -557,7 +557,8 @@ AiPlayerbot.SpecAura.Enabled = 0
 # and the regenerated premade links (build_premade_specs.py --talent-classes).
 # For a listed class SpecAura neither grants nor removes the talent auras (the
 # talent system owns them) and the links reserve no points; the kit (Spit, Shadow
-# Dance) is still granted. Empty = phase 1, everything as before.
+# Dance) is still granted to its path, but taken from no one (every rogue can learn it
+# at the trainer, #367 P-1). Empty = phase 1, everything as before.
 AiPlayerbot.SpecAura.TalentClasses =
 # A roster bot on its own that stands in a zone clearly above its level (area
 # level more than 5 above) leaves it (#307): hearthstone when it is ready and

@@ -1,6 +1,6 @@
 -- Issue twow-repo#367, client patch stage 2 (twow-repo#409 issuecomment-5874183685, part B):
 -- the server counterpart of the rogue talent delta in twow-repo
--- ops/clientpatch/deltas/367-rogue-talents/. Replay-safe: guarded UPDATEs and INSERT IGNORE.
+-- ops/clientpatch/changes/*/0367_*.csv. Replay-safe: guarded UPDATEs and INSERT IGNORE.
 --
 -- 1. Spells 90140-90193 (kit + talent line) get the tooltip text and icon the client
 --    Spell.dbc rows carry, so spell_template stays the single source of truth for both.
@@ -8,9 +8,15 @@
 -- 2. Player poison ranks I-IV of Agitating Poison (#386 D-1/D-7/D-8, rank V = 45611-45613,
 --    item 65032, unchanged): proc 90200-90203, coating 90204-90207, item 90141-90144, each
 --    coating on its own enchantment 90141-90144 (SpellItemEnchantment.dbc, server and client,
---    coupled release). Nothing teaches, sells or drops them yet: no trainer, recipe, vendor or
---    loot rows (open owner decision P-2, twow-repo docs/design/rogue-tank.md section 7). Until the server DBC has 90141-90144 a coating fails
---    closed (no enchantment), and no player can own the items anyway.
+--    coupled release). No vendor or loot rows: players craft them (3.).
+-- 3. Owner decisions P-1/P-2 (twow-repo#367, 2026-09-28): every rogue can learn at the rogue
+--    trainer Spit (12) and Shadow Dance I/II/III (20/40/60), and the poison recipes I-IV
+--    (Poisons, 20/30/40/50). Recipes use the reagents of Agitating Poison 45611: Maiden's
+--    Anguish 2931 (1 for ranks I-II, 2 for III-IV) + Leaded Vial 3372, both already sold by
+--    the poison vendors. Recipes 90208-90211, trainer spells 90212-90219, skill_line_ability
+--    rows with the spell's ID, trainer rows for every trainer that teaches Agitating Poison
+--    (47312). The client needs these spells too: this file belongs to the coupled release
+--    (twow-repo docs/design/rogue-tank.md 7.3) and must not be pinned before it.
 
 UPDATE `spell_template` SET `name` = 'Spit', `nameSubtext` = '', `description` = 'Spit at the enemy, forcing it and up to two enemies within 8 yards of it to attack you for $d.', `auraDescription` = '', `spellIconId` = 24 WHERE `entry` = 90140;
 UPDATE `spell_template` SET `name` = 'Spit', `nameSubtext` = '', `description` = 'Spit at the enemy, forcing it and up to two enemies within 8 yards of it to attack you for $d.', `auraDescription` = '', `spellIconId` = 24 WHERE `entry` = 90141;
@@ -131,3 +137,95 @@ INSERT IGNORE INTO `tmp_item` SELECT * FROM `item_template` WHERE `entry` = 6503
 UPDATE `tmp_item` SET `entry` = 90144, `name` = 'Agitating Poison IV', `spellid_1` = 90207, `item_level` = 50, `required_level` = 50, `buy_price` = 900, `sell_price` = 75;
 INSERT IGNORE INTO `item_template` SELECT * FROM `tmp_item`;
 DROP TEMPORARY TABLE `tmp_item`;
+
+-- Agitating Poison rank 1: recipe 90208, trainer spell 90212 (Poisons 1, level 20)
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 45611;
+UPDATE `tmp_spell` SET `entry` = 90208, `nameSubtext` = 'Rank 1', `spellLevel` = 20, `effectItemType1` = 90141, `reagent1` = 2931, `reagentCount1` = 1, `reagent2` = 3372, `reagentCount2` = 1, `description` = 'Creates Agitating Poison I.';
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 47312;
+UPDATE `tmp_spell` SET `entry` = 90212, `nameSubtext` = 'Rank 1', `effectTriggerSpell1` = 90208;
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `skill_line_ability` (`id`, `skill_id`, `spell_id`, `race_mask`, `class_mask`, `req_skill_value`, `superseded_by_spell`, `learn_on_get_skill`, `max_value`, `min_value`, `req_train_points`) VALUES (90208, 40, 90208, 0, 8, 1, 0, 0, 175, 125, 0);
+INSERT IGNORE INTO `npc_trainer` (`entry`, `spell`, `spellcost`, `reqskill`, `reqskillvalue`, `reqlevel`) SELECT `entry`, 90212, 2700, 40, 1, 20 FROM `npc_trainer` WHERE `spell` = 47312;
+
+-- Agitating Poison rank 2: recipe 90209, trainer spell 90213 (Poisons 130, level 30)
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 45611;
+UPDATE `tmp_spell` SET `entry` = 90209, `nameSubtext` = 'Rank 2', `spellLevel` = 30, `effectItemType1` = 90142, `reagent1` = 2931, `reagentCount1` = 1, `reagent2` = 3372, `reagentCount2` = 1, `description` = 'Creates Agitating Poison II.';
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 47312;
+UPDATE `tmp_spell` SET `entry` = 90213, `nameSubtext` = 'Rank 2', `effectTriggerSpell1` = 90209;
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `skill_line_ability` (`id`, `skill_id`, `spell_id`, `race_mask`, `class_mask`, `req_skill_value`, `superseded_by_spell`, `learn_on_get_skill`, `max_value`, `min_value`, `req_train_points`) VALUES (90209, 40, 90209, 0, 8, 1, 0, 0, 225, 175, 0);
+INSERT IGNORE INTO `npc_trainer` (`entry`, `spell`, `spellcost`, `reqskill`, `reqskillvalue`, `reqlevel`) SELECT `entry`, 90213, 9000, 40, 130, 30 FROM `npc_trainer` WHERE `spell` = 47312;
+
+-- Agitating Poison rank 3: recipe 90210, trainer spell 90214 (Poisons 180, level 40)
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 45611;
+UPDATE `tmp_spell` SET `entry` = 90210, `nameSubtext` = 'Rank 3', `spellLevel` = 40, `effectItemType1` = 90143, `reagent1` = 2931, `reagentCount1` = 2, `reagent2` = 3372, `reagentCount2` = 1, `description` = 'Creates Agitating Poison III.';
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 47312;
+UPDATE `tmp_spell` SET `entry` = 90214, `nameSubtext` = 'Rank 3', `effectTriggerSpell1` = 90210;
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `skill_line_ability` (`id`, `skill_id`, `spell_id`, `race_mask`, `class_mask`, `req_skill_value`, `superseded_by_spell`, `learn_on_get_skill`, `max_value`, `min_value`, `req_train_points`) VALUES (90210, 40, 90210, 0, 8, 1, 0, 0, 275, 225, 0);
+INSERT IGNORE INTO `npc_trainer` (`entry`, `spell`, `spellcost`, `reqskill`, `reqskillvalue`, `reqlevel`) SELECT `entry`, 90214, 18000, 40, 180, 40 FROM `npc_trainer` WHERE `spell` = 47312;
+
+-- Agitating Poison rank 4: recipe 90211, trainer spell 90215 (Poisons 230, level 50)
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 45611;
+UPDATE `tmp_spell` SET `entry` = 90211, `nameSubtext` = 'Rank 4', `spellLevel` = 50, `effectItemType1` = 90144, `reagent1` = 2931, `reagentCount1` = 2, `reagent2` = 3372, `reagentCount2` = 1, `description` = 'Creates Agitating Poison IV.';
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 47312;
+UPDATE `tmp_spell` SET `entry` = 90215, `nameSubtext` = 'Rank 4', `effectTriggerSpell1` = 90211;
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `skill_line_ability` (`id`, `skill_id`, `spell_id`, `race_mask`, `class_mask`, `req_skill_value`, `superseded_by_spell`, `learn_on_get_skill`, `max_value`, `min_value`, `req_train_points`) VALUES (90211, 40, 90211, 0, 8, 1, 0, 0, 325, 275, 0);
+INSERT IGNORE INTO `npc_trainer` (`entry`, `spell`, `spellcost`, `reqskill`, `reqskillvalue`, `reqlevel`) SELECT `entry`, 90215, 31500, 40, 230, 50 FROM `npc_trainer` WHERE `spell` = 47312;
+
+-- Spit at the rogue trainer: trainer spell 90216 (level 12)
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 47312;
+UPDATE `tmp_spell` SET `entry` = 90216, `name` = 'Spit', `nameSubtext` = '', `description` = '', `effectTriggerSpell1` = 90140, `spellIconId` = 24;
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `skill_line_ability` (`id`, `skill_id`, `spell_id`, `race_mask`, `class_mask`, `req_skill_value`, `superseded_by_spell`, `learn_on_get_skill`, `max_value`, `min_value`, `req_train_points`) VALUES (90140, 38, 90140, 0, 8, 1, 0, 0, 0, 0, 0);
+INSERT IGNORE INTO `npc_trainer` (`entry`, `spell`, `spellcost`, `reqskill`, `reqskillvalue`, `reqlevel`) SELECT `entry`, 90216, 720, 0, 0, 12 FROM `npc_trainer` WHERE `spell` = 47312;
+
+-- Shadow Dance Rank 1 at the rogue trainer: trainer spell 90217 (level 20)
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 47312;
+UPDATE `tmp_spell` SET `entry` = 90217, `name` = 'Shadow Dance', `nameSubtext` = 'Rank 1', `description` = '', `effectTriggerSpell1` = 90142, `spellIconId` = 252;
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `skill_line_ability` (`id`, `skill_id`, `spell_id`, `race_mask`, `class_mask`, `req_skill_value`, `superseded_by_spell`, `learn_on_get_skill`, `max_value`, `min_value`, `req_train_points`) VALUES (90142, 38, 90142, 0, 8, 1, 90143, 0, 0, 0, 0);
+INSERT IGNORE INTO `npc_trainer` (`entry`, `spell`, `spellcost`, `reqskill`, `reqskillvalue`, `reqlevel`) SELECT `entry`, 90217, 2700, 0, 0, 20 FROM `npc_trainer` WHERE `spell` = 47312;
+
+-- Shadow Dance Rank 2 at the rogue trainer: trainer spell 90218 (level 40)
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 47312;
+UPDATE `tmp_spell` SET `entry` = 90218, `name` = 'Shadow Dance', `nameSubtext` = 'Rank 2', `description` = '', `effectTriggerSpell1` = 90143, `spellIconId` = 252;
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `skill_line_ability` (`id`, `skill_id`, `spell_id`, `race_mask`, `class_mask`, `req_skill_value`, `superseded_by_spell`, `learn_on_get_skill`, `max_value`, `min_value`, `req_train_points`) VALUES (90143, 38, 90143, 0, 8, 1, 90144, 0, 0, 0, 0);
+INSERT IGNORE INTO `npc_trainer` (`entry`, `spell`, `spellcost`, `reqskill`, `reqskillvalue`, `reqlevel`) SELECT `entry`, 90218, 18000, 0, 0, 40 FROM `npc_trainer` WHERE `spell` = 47312;
+
+-- Shadow Dance Rank 3 at the rogue trainer: trainer spell 90219 (level 60)
+CREATE TEMPORARY TABLE `tmp_spell` LIKE `spell_template`;
+INSERT IGNORE INTO `tmp_spell` SELECT * FROM `spell_template` WHERE `entry` = 47312;
+UPDATE `tmp_spell` SET `entry` = 90219, `name` = 'Shadow Dance', `nameSubtext` = 'Rank 3', `description` = '', `effectTriggerSpell1` = 90144, `spellIconId` = 252;
+INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
+DROP TEMPORARY TABLE `tmp_spell`;
+INSERT IGNORE INTO `skill_line_ability` (`id`, `skill_id`, `spell_id`, `race_mask`, `class_mask`, `req_skill_value`, `superseded_by_spell`, `learn_on_get_skill`, `max_value`, `min_value`, `req_train_points`) VALUES (90144, 38, 90144, 0, 8, 1, 0, 0, 0, 0, 0);
+INSERT IGNORE INTO `npc_trainer` (`entry`, `spell`, `spellcost`, `reqskill`, `reqskillvalue`, `reqlevel`) SELECT `entry`, 90219, 48600, 0, 0, 60 FROM `npc_trainer` WHERE `spell` = 47312;

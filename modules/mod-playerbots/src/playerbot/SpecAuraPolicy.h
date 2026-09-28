@@ -229,6 +229,14 @@ inline std::vector<std::uint32_t> ManagedAllAuras(std::uint8_t cls, bool auraTal
     return auraTalentsAreReal ? std::vector<std::uint32_t>() : AllAuras(cls);
 }
 
+// Owner decision P-1 (twow-repo#367, 2026-09-28): with the real talents every rogue can
+// learn the kit at the trainer, so a bot of another path may know it. SpecAura still
+// grants the kit to its path (4.3), but no longer takes it from anyone.
+inline std::vector<std::uint32_t> ManagedAllKit(std::uint8_t cls, bool auraTalentsAreReal)
+{
+    return auraTalentsAreReal ? std::vector<std::uint32_t>() : AllKit(cls);
+}
+
 inline std::uint32_t ManagedReservedPoints(std::uint8_t cls, std::uint8_t path, std::uint32_t level, bool auraTalentsAreReal)
 {
     return auraTalentsAreReal ? 0 : ReservedPoints(cls, path, level);

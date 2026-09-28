@@ -102,6 +102,8 @@ int main()
             ManagedAllAuras(4, false) == AllAuras(4) &&
             ManagedReservedPoints(4, RogueTank, 60, false) == 20, "phase 1 unchanged");
     Require(WantedKit(4, RogueTank, 60).size() == 2, "the kit stays with real talents (no talent)");
+    Require(ManagedAllKit(4, true).empty(), "P-1: every rogue may learn the kit at the trainer, none loses it");
+    Require(ManagedAllKit(4, false) == AllKit(4), "phase 1: the kit is removed from other paths as before");
 
     std::cout << "spec_aura_policy_tests passed\n";
     return 0;

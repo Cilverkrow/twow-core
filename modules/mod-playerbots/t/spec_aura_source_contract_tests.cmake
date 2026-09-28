@@ -44,6 +44,7 @@ require_text("${tank_rogue}" "new NextAction(\"shadow dance\", ACTION_HIGH + 3)"
 # gets no aura grant, no aura removal (a bought talent stays) and no reserve.
 require_text("${learn}" "ai::spec_aura::AuraTalentsAreReal(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses)" "talent classes read in the grant")
 require_text("${learn}" "ai::spec_aura::ManagedAllAuras(bot->getClass(), auraTalentsAreReal)" "no removal of real talents")
+require_text("${learn}" "ai::spec_aura::ManagedAllKit(bot->getClass(), auraTalentsAreReal)" "no removal of a trainer-learned kit")
 require_text("${talents}" "ai::spec_aura::ManagedReservedPoints(bot->getClass(), ai::spec_aura::PathFor(bot->getClass(), path->name), bot->GetLevel(), auraTalentsAreReal)" "no reserve for real talents")
 require_text("${config_source}" "\"AiPlayerbot.SpecAura.TalentClasses\", \"\"" "talent classes empty by default")
 require_text("${config_template}" "AiPlayerbot.SpecAura.TalentClasses =" "documented key")
