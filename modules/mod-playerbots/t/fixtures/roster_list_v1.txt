@@ -1,0 +1,4 @@
+BL1;H;1;2;3;2
+BL1;E;Aldric;Warrior;Human;60;tank;online;raid;Blackrock Mountain;Iron Vanguard
+BL1;E;Brenna;Priest;Dwarf;58;heal;online;free;Ironforge;
+BL1;Z;2

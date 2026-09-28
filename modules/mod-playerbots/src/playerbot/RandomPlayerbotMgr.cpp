@@ -419,6 +419,14 @@ bool RandomPlayerbotMgr::IsPersistentRosterMember(uint32 guidLow) const
     return sPlayerbotAIConfig.persistentActiveRosterEnabled && persistentRoster && persistentRoster->IsMember(guidLow);
 }
 
+std::vector<uint32> RandomPlayerbotMgr::PersistentRosterGuids() const
+{
+    if (!sPlayerbotAIConfig.persistentActiveRosterEnabled || !persistentRoster)
+        return {};
+    std::vector<uint32_t> const& desired = persistentRoster->Desired();
+    return std::vector<uint32>(desired.begin(), desired.end());
+}
+
 bool RandomPlayerbotMgr::PersistentRosterAdmissionOpen() const
 {
     if (!sPlayerbotAIConfig.persistentActiveRosterEnabled)
