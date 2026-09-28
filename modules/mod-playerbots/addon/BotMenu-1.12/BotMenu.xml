@@ -298,10 +298,19 @@
 		</Scripts>
 	</Frame>
 
-	<!-- Must stay shown: its OnUpdate paces the /who queries of a scan. -->
+	<!-- Must stay shown: its OnUpdate paces the /who queries of a scan.
+	     The 1.12 client only sees files that existed when the game started;
+	     after an update that adds BotList.lua, /reload is not enough. Then
+	     this frame hides itself (no OnUpdate error every frame) and says so
+	     once. -->
 	<Frame name="BotListEventFrame">
 		<Scripts>
 			<OnLoad>
+				if ( not BotList_OnUpdate ) then
+					this:Hide();
+					DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffBotMenu:|r bot list not loaded - please close and restart the game (a /reload does not load new addon files).");
+					return;
+				end
 				this:RegisterEvent("WHO_LIST_UPDATE");
 			</OnLoad>
 			<OnEvent>
