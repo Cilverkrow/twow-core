@@ -26,3 +26,10 @@ require_text("${config_template}" "AiPlayerbot.QuestWorkTimeouts.Max = 0" "docum
 file(READ "${PB_SOURCE_DIR}/strategy/actions/LootAction.cpp" loot_action)
 require_text("${loot_action}" "LootItem* lootItem = loot->LootItemInSlot(itemindex, bot->GetGUIDLow());" "per-player loot slot")
 require_text("${loot_action}" "reason=no_slot" "visible skip when a slot has no item")
+
+# #405 (c): quest slots are reserved for the player (is_blocked from FillQuestLoot);
+# the shared-loot right check applies to normal slots only, and a take is visible.
+require_text("${loot_action}" "bool const questSlot = loot_slot::IsQuestSlot(itemindex, loot->items.size());" "quest slot detection")
+require_text("${loot_action}" "if (!loot_slot::MayTake(questSlot, lootItem->is_blocked, sharedAllowed))" "shared-loot check for normal slots only")
+require_text("${loot_action}" "reason=no_right" "visible right skip")
+require_text("${loot_action}" "[QuestLoot] state=taken" "visible quest item take")
