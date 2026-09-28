@@ -97,7 +97,38 @@ namespace ai
     using TravelPoint = std::tuple<TravelDestination*, WorldPosition*, float>;
     using TravelPointList = std::vector<TravelPoint>;
     using PartitionedTravelList = std::map<uint32, TravelPointList>;
-    using FutureDestinations = std::future<PartitionedTravelList>;
+    // #416: a std::future from std::async blocks in its destructor until the
+    // job is done. Replacing or clearing a pending list on the map thread
+    // therefore waited for the whole search; this wrapper parks a running job
+    // instead (see TravelChoosePolicy.h).
+    class FutureDestinations
+    {
+    public:
+        FutureDestinations() = default;
+        FutureDestinations(std::future<PartitionedTravelList>&& job) : future(std::move(job)) {}
+        FutureDestinations(FutureDestinations const&) = delete;
+        FutureDestinations& operator=(FutureDestinations const&) = delete;
+        FutureDestinations& operator=(FutureDestinations&& other) { if (this != &other) { Park(); future = std::move(other.future); } return *this; }
+        FutureDestinations& operator=(std::future<PartitionedTravelList>&& job) { Park(); future = std::move(job); return *this; }
+        ~FutureDestinations() { Park(); }
+
+        bool valid() const { return future.valid(); }
+        template <class Rep, class Period>
+        std::future_status wait_for(std::chrono::duration<Rep, Period> const& timeout) const { return future.wait_for(timeout); }
+        PartitionedTravelList get() { return future.get(); }
+
+        // #416: false while the parking lot is full - the request is retried
+        // next update instead of starting one more job.
+        static bool MayStart();
+        // #416: drops finished parked jobs (from the bot updates) and writes the
+        // [TravelChoose] state=summary line.
+        static void Collect();
+
+    private:
+        void Park();
+
+        std::future<PartitionedTravelList> future;
+    };
 
     typedef std::set<uint32> focusQuestTravelList;
 

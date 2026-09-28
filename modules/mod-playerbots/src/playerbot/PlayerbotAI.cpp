@@ -368,9 +368,18 @@ void PlayerbotAI::ReportSlowUpdate(uint32 elapsedMs)
             travel = target->GetDestination()->GetTitle();
     }
 
-    sLog.outBasic("[BotSlowUpdate] bot=%u name=%s ms=%u map=%u zone=%u level=%u combat=%u dead=%u travel=\"%s\" travel_status=%u",
+    // #416: the phase - alive/dead/ghost, time since login and revive, the last
+    // action of the running engine and the travel candidates checked.
+    char const* phase = bot->IsAlive() ? "alive" : (bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST) ? "ghost" : "dead");
+    uint32 const sinceLogin = firstUpdateTime ? now - firstUpdateTime : 0;
+    int32 const sinceRevive = lastReviveTime ? int32(now - lastReviveTime) : -1;
+    std::string const lastAction = currentEngine ? currentEngine->GetLastAction() : "";
+
+    sLog.outBasic("[BotSlowUpdate] bot=%u name=%s ms=%u map=%u zone=%u level=%u combat=%u dead=%u travel=\"%s\" travel_status=%u"
+        " phase=%s since_login_s=%u since_revive_s=%d state=%u last_action=\"%s\" candidates=%u",
         bot->GetGUIDLow(), bot->GetName(), elapsedMs, bot->GetMapId(), bot->GetZoneId(), bot->GetLevel(),
-        bot->IsInCombat() ? 1u : 0u, bot->IsAlive() ? 0u : 1u, travel.c_str(), travelStatus);
+        bot->IsInCombat() ? 1u : 0u, bot->IsAlive() ? 0u : 1u, travel.c_str(), travelStatus,
+        phase, sinceLogin, sinceRevive, uint32(currentState), lastAction.c_str(), travelChooseChecked);
 }
 
 bool PlayerbotAI::IsInGroupWithRealPlayer()
@@ -433,6 +442,21 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     // #420: close a finished [GroupBuff] window.
     if (groupBuffWindow.casts)
         ReportGroupBuff(uint32(time(nullptr)));
+
+    // #416: collect finished parked destination jobs.
+    FutureDestinations::Collect();
+
+    // #416: phase for [BotSlowUpdate].
+    travelChooseChecked = 0;
+    {
+        uint32 const now = uint32(time(nullptr));
+        if (!firstUpdateTime)
+            firstUpdateTime = now;
+        bool const alive = bot->IsAlive();
+        if (alive && !wasAlive)
+            lastReviveTime = now;
+        wasAlive = alive;
+    }
 
     AiObjectContext* context = aiObjectContext;
     std::string mapString = WorldPosition(bot).isInstance() ? "I" : std::to_string(bot->GetMapId());

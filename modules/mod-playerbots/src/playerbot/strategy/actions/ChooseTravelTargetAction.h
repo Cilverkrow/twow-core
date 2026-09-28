@@ -4,6 +4,7 @@
 #include "MovementActions.h"
 #include "GenericActions.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/TravelChoosePolicy.h"
 
 namespace ai
 {
@@ -21,6 +22,11 @@ namespace ai
 
         bool SetBestTarget(Player* requester, TravelTarget* target, PartitionedTravelList& travelPartitions, bool onlyActive = true,
             TravelTarget const* excludedTurnInTarget = nullptr);
+
+        // #416: SetBestTarget ran out of time; resume with the next list.
+        ai::travel_choose::Resume chooseResume;
+        bool chooseBudgetExceeded = false;
+        uint32 lastChooseBudgetLog = 0;
     public:
         static DestinationList FindDestination(PlayerTravelInfo info, std::string name, bool zones = true, bool npcs = true, bool quests = true, bool mobs = true, bool bosses = true, bool gather = true);
     private:

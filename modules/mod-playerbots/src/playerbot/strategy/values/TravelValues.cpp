@@ -7,8 +7,59 @@
 #include "playerbot/PersistentRosterProfessionTrainingPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Guild/GuildMgr.h"
+#include "playerbot/TravelChoosePolicy.h"
 
 using namespace ai;
+
+namespace
+{
+ai::travel_choose::ParkingLot<std::future<PartitionedTravelList>> parkingLot;
+std::atomic<uint32> parkedSince{ 0 };
+std::atomic<uint32> capHitsSince{ 0 };
+std::atomic<uint32> lastSummary{ 0 };
+std::atomic<uint32> lastCollectMs{ 0 };
+}
+
+void FutureDestinations::Park()
+{
+    if (!future.valid() || future.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        return;
+
+    parkingLot.Park(std::move(future));
+    future = std::future<PartitionedTravelList>();
+    ++parkedSince;
+}
+
+bool FutureDestinations::MayStart()
+{
+    if (!parkingLot.Full())
+        return true;
+
+    ++capHitsSince;
+    return false;
+}
+
+void FutureDestinations::Collect()
+{
+    uint32 const nowMs = WorldTimer::getMSTime();
+    uint32 lastMs = lastCollectMs.load();
+    if (WorldTimer::getMSTimeDiff(lastMs, nowMs) < ai::travel_choose::CollectIntervalMs ||
+        !lastCollectMs.compare_exchange_strong(lastMs, nowMs))
+        return;
+
+    size_t const pending = parkingLot.Count() ? parkingLot.Pending() : 0;
+
+    uint32 const now = uint32(time(nullptr));
+    uint32 last = lastSummary.load();
+    if (now - last < ai::travel_choose::LogSeconds || !(pending || parkedSince.load() || capHitsSince.load()))
+        return;
+    if (!lastSummary.compare_exchange_strong(last, now))
+        return;
+
+    sLog.outBasic("[TravelChoose] state=summary pending=%u parked=%u parked_max=%u cap_hits=%u cap=%u",
+        uint32(pending), parkedSince.exchange(0), uint32(parkingLot.Max()), capHitsSince.exchange(0),
+        uint32(ai::travel_choose::ParkCap));
+}
 
 namespace
 {

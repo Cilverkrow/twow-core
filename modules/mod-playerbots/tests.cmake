@@ -799,6 +799,24 @@ add_test(NAME group_buff_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/group_buff_source_contract_tests.cmake")
+# #416: no map thread waits for a destination job; time budget for the choice.
+add_executable(travel_choose_policy_tests
+  "${PB_MODULE_DIR}/t/travel_choose_policy_tests.cpp")
+
+target_include_directories(travel_choose_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(travel_choose_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME travel_choose_policy
+  COMMAND travel_choose_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME travel_choose_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/travel_choose_source_contract_tests.cmake")
 
 # #416: slow bot updates are visible, route searches have a time budget.
 add_executable(stall_guard_policy_tests
