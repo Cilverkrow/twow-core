@@ -44,12 +44,15 @@ int main()
     float const circleMax = 15.0f;   // around the leader
     float const otherMax = 30.0f;    // total extent of the other shapes
 
-    for (Shape shape : { Shape::CIRCLE, Shape::REARGUARD, Shape::VANGUARD, Shape::WEDGE, Shape::TRIANGLE, Shape::BLOCK, Shape::COLUMN })
+    for (Shape shape : { Shape::CIRCLE, Shape::REARGUARD, Shape::VANGUARD, Shape::WEDGE, Shape::TRIANGLE, Shape::BLOCK, Shape::COLUMN,
+                         Shape::LINE, Shape::SHIELD, Shape::ARROW })
     {
         float const maxRadius = MaxExtentFor(shape, circleMax, otherMax);
         for (unsigned int n = 1; n <= 40; ++n)
         {
-            auto const slots = Slots(shape, n, spacing, maxRadius);
+            // A raid of n: about one tank per eight (at least one).
+            unsigned int const tanks = std::max(1u, n / 8);
+            auto const slots = Slots(shape, n, spacing, maxRadius, tanks);
             Require(slots.size() == n, "one slot per follower");
             Require(Far(slots) <= maxRadius + 0.01f, "no slot beyond the maximum radius");
             if (n > 1)
@@ -60,11 +63,50 @@ int main()
             if (shape == Shape::VANGUARD)
                 for (auto const& o : slots)
                     Require(o.forward >= -0.01f, "the vanguard stays beside or in front of the leader");
+            else if (shape == Shape::SHIELD || shape == Shape::ARROW)
+            {
+                for (unsigned int i = 0; i < tanks && i < n; ++i)
+                    Require(slots[i].forward > 0.5f, "shield and arrow put the tanks in front of the leader");
+                if (n > tanks + 2)
+                    Require(slots[n - 1].forward <= 0.01f, "the last in role order (healers) stand beside or behind the leader");
+            }
             else if (shape != Shape::CIRCLE)
                 for (auto const& o : slots)
                     Require(o.forward <= 0.01f, "every other shape stays beside or behind the leader");
         }
     }
+
+    // Line: 10 beside the leader, then rows of 11 behind - 40 bots are
+    // 4 rows and 20 yd wide, not one line of 200 yd (old: 5 yd apart).
+    auto const line = Slots(Shape::LINE, 40, spacing, otherMax);
+    float widest = 0.0f, deepestLine = 0.0f;
+    for (auto const& o : line)
+    {
+        widest = std::max(widest, std::fabs(o.side));
+        deepestLine = std::max(deepestLine, -o.forward);
+    }
+    Require(widest <= 10.01f && deepestLine <= 3 * spacing + 0.01f, "40 in line: 4 rows, 20 yd wide");
+    for (unsigned int i = 0; i < 10; ++i)
+        Require(std::fabs(line[i].forward) < 0.01f, "the first ten stand level with the leader");
+
+    // Shield with 4 tanks and 36 others: one tank row, a block behind.
+    auto const shield = Slots(Shape::SHIELD, 40, spacing, otherMax, 4);
+    for (unsigned int i = 0; i < 4; ++i)
+        Require(std::fabs(shield[i].forward - 1.5f * spacing) < 0.01f, "the tanks form one row in front");
+    for (unsigned int i = 4; i < 40; ++i)
+        Require(shield[i].forward < 0.0f, "everybody else is behind the leader");
+
+    // Arrow with 5 tanks: the tanks lead, the healers close the back, and the
+    // whole arrow of 40 stays within 16 yd front to back.
+    auto const arrow = Slots(Shape::ARROW, 40, spacing, otherMax, 5);
+    float arrowFront = -1e9f, arrowBack = 1e9f;
+    for (auto const& o : arrow)
+    {
+        arrowFront = std::max(arrowFront, o.forward);
+        arrowBack = std::min(arrowBack, o.forward);
+    }
+    Require(arrowFront - arrowBack <= 16.01f, "the arrow of 40 is at most 16 yd deep");
+    Require(arrow[0].forward >= arrow[39].forward + 10.0f, "tanks at the tip, healers at the back");
 
     // Circle: the leader is in the middle.
     auto const circle = Slots(Shape::CIRCLE, 40, spacing, circleMax);

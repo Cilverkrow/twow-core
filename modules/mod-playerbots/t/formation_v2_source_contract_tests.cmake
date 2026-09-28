@@ -37,6 +37,23 @@ foreach(name melee queue chaos circle line shield arrow far)
 endforeach()
 require_text("${formations}" "formation == \"near\" || formation == \"default\"" "named formation near")
 
+# Owner 2026-09-28: line, shield and arrow rebuilt on the grid. The old
+# outline classes (5 yd apart, rows in front of the leader, arrow lines
+# stacked on top of each other) are gone; shield/arrow get the tank count.
+foreach(pair "line|LINE" "shield|SHIELD" "arrow|ARROW")
+  string(REPLACE "|" ";" parts "${pair}")
+  list(GET parts 0 name)
+  list(GET parts 1 shape)
+  require_text("${formations}" "new GridFormation(ai, \"${name}\", formation_grid::Shape::${shape})" "${name} grid instance")
+endforeach()
+require_text("${formations}" "uint32(tanks.size())" "tank count for shield and arrow")
+foreach(old "class LineFormation" "class ShieldFormation" "new ArrowFormation(ai)")
+  string(FIND "${formations}" "${old}" at)
+  if(NOT at EQUAL -1)
+    message(FATAL_ERROR "Old outline formation still in use: ${old}")
+  endif()
+endforeach()
+
 foreach(key Spacing CircleMaxRadius MaxExtent)
   require_text("${config}" "\"AiPlayerbot.Formation.${key}\"" "config key AiPlayerbot.Formation.${key}")
 endforeach()
