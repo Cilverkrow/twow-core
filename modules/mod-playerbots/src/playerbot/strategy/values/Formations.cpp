@@ -271,105 +271,6 @@ namespace ai
         }
     };
 
-    class LineFormation : public MoveAheadFormation
-    {
-    public:
-        LineFormation(PlayerbotAI* ai) : MoveAheadFormation(ai, "line") {}
-        virtual WorldLocation GetLocationInternal() override
-        {
-            Group* group = bot->GetGroup();
-            if (!group)
-                return Formation::NullLocation;
-
-            float range = ai->GetRange("follow");
-
-            Player* followTarget = (Player*)AI_VALUE(Unit*, "follow target");
-            if (!followTarget)
-                return Formation::NullLocation;
-
-            float x = followTarget->GetPositionX();
-            float y = followTarget->GetPositionY();
-            float z = followTarget->GetPositionZ();
-            float orientation = followTarget->GetOrientation();
-
-            std::vector<Player*> players;
-            for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
-            {
-                Player* member = gref->getSource();
-                if (!ai->IsSafe(member)) continue;
-                if (member != followTarget)
-                    players.push_back(member);
-            }
-
-            players.insert(players.begin() + players.size() / 2, followTarget);
-
-            return MoveLine(players, 0.0f, x, y, z, orientation, range);
-        }
-    };
-
-    class ShieldFormation : public MoveFormation
-    {
-    public:
-        ShieldFormation(PlayerbotAI* ai) : MoveFormation(ai, "shield") {}
-        virtual WorldLocation GetLocation() override
-        {
-            Group* group = bot->GetGroup();
-            if (!group)
-                return Formation::NullLocation;
-
-            float range = ai->GetRange("follow");
-
-            Player* followTarget = (Player*)AI_VALUE(Unit*, "follow target");
-            if (!followTarget)
-                return Formation::NullLocation;
-
-            float x = followTarget->GetPositionX();
-            float y = followTarget->GetPositionY();
-            float z = followTarget->GetPositionZ();
-            float orientation = followTarget->GetOrientation();
-
-            std::vector<Player*> tanks;
-            std::vector<Player*> dps;
-            for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
-            {
-                Player* member = gref->getSource();
-                if (!ai->IsSafe(member)) continue;
-                if (member != followTarget)
-                {
-                    if (ai->IsTank(member))
-                        tanks.push_back(member);
-                    else
-                        dps.push_back(member);
-                }
-            }
-
-            if (ai->IsTank(followTarget))
-                tanks.insert(tanks.begin() + (tanks.size() + 1) / 2, followTarget);
-            else
-                dps.insert(dps.begin() + (dps.size() + 1) / 2, followTarget);
-
-            if (ai->IsTank(bot) && ai->IsTank(followTarget))
-            {
-                return MoveLine(tanks, 0.0f, x, y, z, orientation, range);
-            }
-            if (!ai->IsTank(bot) && !ai->IsTank(followTarget))
-            {
-                return MoveLine(dps, 0.0f, x, y, z, orientation, range);
-            }
-            if (ai->IsTank(bot) && !ai->IsTank(followTarget))
-            {
-                float diff = tanks.size() % 2 == 0 ? -sPlayerbotAIConfig.tooCloseDistance / 2.0f : 0.0f;
-                return MoveLine(tanks, diff, x + cos(orientation) * range, y + sin(orientation) * range, z, orientation, range);
-            }
-            if (!ai->IsTank(bot) && ai->IsTank(followTarget))
-            {
-                float diff = dps.size() % 2 == 0 ? -sPlayerbotAIConfig.tooCloseDistance / 2.0f : 0.0f;
-                return MoveLine(dps, diff, x - cos(orientation) * range, y - sin(orientation) * range, z, orientation, range);
-            }
-            return Formation::NullLocation;
-        }
-    };
-
     class FarFormation : public FollowFormation
     {
     public:
@@ -452,7 +353,8 @@ namespace ai
 
             std::vector<formation_grid::Offset> const slots = formation_grid::Slots(shape, uint32(order.size()),
                 sPlayerbotAIConfig.formationSpacing,
-                formation_grid::MaxExtentFor(shape, sPlayerbotAIConfig.formationCircleMaxRadius, sPlayerbotAIConfig.formationMaxExtent));
+                formation_grid::MaxExtentFor(shape, sPlayerbotAIConfig.formationCircleMaxRadius, sPlayerbotAIConfig.formationMaxExtent),
+                uint32(tanks.size()));
             size_t const index = size_t(it - order.begin());
             if (index >= slots.size())
                 return Formation::NullLocation;
@@ -650,17 +552,17 @@ bool FormationValue::Load(std::string formation)
     else if (formation == "line")
     {
         if (value) delete value;
-        value = new LineFormation(ai);
+        value = new GridFormation(ai, "line", formation_grid::Shape::LINE);
     }
     else if (formation == "shield")
     {
         if (value) delete value;
-        value = new ShieldFormation(ai);
+        value = new GridFormation(ai, "shield", formation_grid::Shape::SHIELD);
     }
     else if (formation == "arrow")
     {
         if (value) delete value;
-        value = new ArrowFormation(ai);
+        value = new GridFormation(ai, "arrow", formation_grid::Shape::ARROW);
     }
     // #389 formations v2 (owner 2026-09-27): filled grids, thematic aliases.
     else if (formation == "spear" || formation == "wedge")

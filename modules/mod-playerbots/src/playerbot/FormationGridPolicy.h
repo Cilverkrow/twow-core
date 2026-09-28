@@ -28,6 +28,11 @@ enum class Shape
     TRIANGLE,    // filled triangle behind the leader, widest row first
     BLOCK,       // rows behind the leader
     COLUMN,      // 2 abreast (3 from 21 bots) behind the leader
+    // #389 follow-up (owner 2026-09-28): the old outline formations rebuilt
+    // on the grid, same names.
+    LINE,        // a row beside the leader, more rows behind (10-11 wide)
+    SHIELD,      // tanks in a row in front, everybody else in rows behind
+    ARROW,       // role wedge: tanks at the tip in front, healers at the back
 };
 
 constexpr float Pi = 3.14159265358979f;
@@ -159,6 +164,79 @@ inline unsigned int ColumnWidth(unsigned int count)
     return count >= 30 ? 4u : count > 20 ? 3u : 2u;
 }
 
+constexpr unsigned int LineWidth = 10;   // bots per side-by-side row
+constexpr unsigned int ShieldWidth = 8;  // tanks per front row
+
+// Line: the first row is level with the leader, 5 bots on each side; the
+// next rows are behind, 11 wide (the gap is only needed beside the leader).
+inline std::vector<Offset> Line(unsigned int count, float spacing)
+{
+    std::vector<Offset> out;
+    for (unsigned int i = 1; out.size() < count && i <= LineWidth / 2; ++i)
+    {
+        out.push_back({ 0.0f, spacing * float(i) });
+        if (out.size() < count)
+            out.push_back({ 0.0f, -spacing * float(i) });
+    }
+    for (unsigned int row = 1; out.size() < count; ++row)
+    {
+        unsigned int const here = std::min(LineWidth + 1, count - unsigned(out.size()));
+        float const half = spacing * float(LineWidth) / 2.0f;
+        std::vector<float> positions = CentreOut(Spread(LineWidth + 1, -half, half));
+        positions.resize(here);
+        for (float s : positions)
+            out.push_back({ -spacing * float(row), s });
+    }
+    return out;
+}
+
+// Shield: the first `tanks` slots form rows in front of the leader, the rest
+// stand in block rows behind.
+inline std::vector<Offset> Shield(unsigned int count, unsigned int tanks, float spacing)
+{
+    std::vector<Offset> out;
+    tanks = std::min(tanks, count);
+    for (unsigned int row = 0; out.size() < tanks; ++row)
+    {
+        unsigned int const here = std::min(ShieldWidth, tanks - unsigned(out.size()));
+        float const half = spacing * float(here - 1) / 2.0f;
+        for (float s : CentreOut(Spread(here, -half, half)))
+            out.push_back({ spacing * (1.5f + float(row)), s });
+    }
+    unsigned int const rest = count - tanks;
+    if (rest)
+        for (Offset const& o : Rows(rest, spacing, BlockWidth(rest)))
+            out.push_back(o);
+    return out;
+}
+
+// Arrow: the wedge in role order (tanks, melee, ranged, healers), moved
+// forward so the rows holding the tanks are in front of the leader and the
+// leader stands inside the arrow.
+inline std::vector<Offset> Arrow(unsigned int count, unsigned int tanks, float spacing)
+{
+    if (count == 0)
+        return {};
+    // One slot more than needed: the one that lands on the leader is dropped.
+    std::vector<Offset> out = Wedge(count + 1, spacing);
+    float deepestTank = spacing;
+    for (unsigned int i = 0; i < tanks && i < count; ++i)
+        deepestTank = std::max(deepestTank, -out[i].forward);
+    float const shift = deepestTank + spacing;
+    for (Offset& o : out)
+        o.forward += shift;
+    for (size_t i = 0; i < out.size(); ++i)
+    {
+        if (Distance(out[i]) < 1.0f)
+        {
+            out.erase(out.begin() + i);
+            break;
+        }
+    }
+    out.resize(count);
+    return out;
+}
+
 // Owner 2026-09-27 (#389): around the leader at most 15 yd, other shapes may
 // extend up to 30 yd in total.
 inline float MaxExtentFor(Shape shape, float circleMax, float otherMax)
@@ -167,8 +245,9 @@ inline float MaxExtentFor(Shape shape, float circleMax, float otherMax)
 }
 
 // All slots for `count` followers, compressed so that no slot lies further
-// than maxRadius from the leader (0 = no cap).
-inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing, float maxRadius)
+// than maxRadius from the leader (0 = no cap). `leadCount` is the number of
+// tanks at the start of the role order (SHIELD, ARROW).
+inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing, float maxRadius, unsigned int leadCount = 0)
 {
     std::vector<Offset> out;
     switch (shape)
@@ -180,6 +259,9 @@ inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing,
         case Shape::TRIANGLE:  out = Triangle(count, spacing); break;
         case Shape::BLOCK:     out = Rows(count, spacing, BlockWidth(count)); break;
         case Shape::COLUMN:    out = Rows(count, spacing, ColumnWidth(count)); break;
+        case Shape::LINE:      out = Line(count, spacing); break;
+        case Shape::SHIELD:    out = Shield(count, leadCount, spacing); break;
+        case Shape::ARROW:     out = Arrow(count, leadCount, spacing); break;
     }
 
     float far = 0.0f;
