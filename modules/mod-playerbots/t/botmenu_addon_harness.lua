@@ -263,7 +263,7 @@ local function countWhere(check)
     return c
 end
 local function isAlliance(p) for _, r in ipairs(alliance) do if r == p.race then return true end end return false end
-BotListFilter.faction = "Allianz"
+BotListFilter.faction = "Alliance"
 require_true(table.getn(BotList_Filtered()) == countWhere(isAlliance), "faction filter")
 BotListFilter.faction = nil; BotListFilter.class = "Mage"
 require_true(table.getn(BotList_Filtered()) == countWhere(function(p) return p.class == "Mage" end), "class filter")
@@ -292,10 +292,10 @@ require_true(not BotList_IsScanning() and FriendsFrame.events.WHO_LIST_UPDATE an
     "the player's own /who cancels the scan and restores the who window")
 
 -- Manual pace.
-SlashCmdList["BOTMENU"]("takt 10")
-require_true(BotMenuDB.whoInterval == 10, "/botmenu takt 10")
-SlashCmdList["BOTMENU"]("takt auto")
-require_true(BotMenuDB.whoInterval == nil, "/botmenu takt auto")
+SlashCmdList["BOTMENU"]("pace 10")
+require_true(BotMenuDB.whoInterval == 10, "/botmenu pace 10")
+SlashCmdList["BOTMENU"]("pace auto")
+require_true(BotMenuDB.whoInterval == nil, "/botmenu pace auto")
 
 for _, line in ipairs(report) do print("BOTLIST_SCAN "..line) end
 print("BOTMENU_ADDON_HARNESS=PASS entries="..total)

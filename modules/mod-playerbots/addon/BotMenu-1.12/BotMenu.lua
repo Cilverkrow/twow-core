@@ -8,7 +8,7 @@
 --
 -- Lua 5.0 / 1.12 client: no '#', no '%', handlers read `this`, no SetSize.
 
-BOTMENU_VERSION = "1.3";
+BOTMENU_VERSION = "1.4";
 
 -- Categories in menu order (owner 2026-09-27, twow-repo#290). `menu` is the
 -- frame from BotMenu.xml; each entry is { label, command }. Commands are the
@@ -17,118 +17,118 @@ BOTMENU_VERSION = "1.3";
 -- in a space wait for a shift-clicked link. "Vorsicht" commands (destroy,
 -- drop, sendmail, ah, cast, guild ranks, reset) are deliberately left out.
 BOTMENU_CATEGORIES = {
-	{ label = "Kampf", menu = "BotMenuCombat", entries = {
-		{ "Folgen",              "follow" },
-		{ "Bleiben",             "stay" },
-		{ "Angreifen (Ziel)",    "attack" },
-		{ "Tank greift an",      "tank attack" },
-		{ "Ziehen (Ziel)",       "pull" },
-		{ "Markiertes Ziel",     "attack rti" },
-		{ "Volle Kraft",         "max dps" },
-		{ "Zurückziehen",        "flee" },
-		{ "Bewachen",            "guard" },
-		{ "Frei bewegen",        "free" },
-		{ "Umherstreifen",       "wander" },
-		{ "Passiv an",           "co +passive" },
-		{ "Passiv aus",          "co -passive" },
+	{ label = "Combat", menu = "BotMenuCombat", entries = {
+		{ "Follow",              "follow" },
+		{ "Stay",             "stay" },
+		{ "Attack (target)",    "attack" },
+		{ "Tank attack",      "tank attack" },
+		{ "Pull (target)",       "pull" },
+		{ "Attack marked target",     "attack rti" },
+		{ "Max DPS",         "max dps" },
+		{ "Flee",        "flee" },
+		{ "Guard",            "guard" },
+		{ "Free",        "free" },
+		{ "Wander",       "wander" },
+		{ "Passive on",           "co +passive" },
+		{ "Passive off",          "co -passive" },
 	} },
 	{ label = "Formation", menu = "BotMenuFormation", entries = {
-		{ "Nah (Standard)",      "formation near" },
-		{ "Nahkampf",            "formation melee" },
-		{ "Linie",               "formation line" },
-		{ "Kreis",               "formation circle" },
-		{ "Pfeil",               "formation arrow" },
-		{ "Speer",               "formation spear" },
-		{ "Reihe",               "formation queue" },
+		{ "Near (default)",      "formation near" },
+		{ "Melee",            "formation melee" },
+		{ "Line",               "formation line" },
+		{ "Circle",               "formation circle" },
+		{ "Arrow",               "formation arrow" },
+		{ "Spear",               "formation spear" },
+		{ "Queue",               "formation queue" },
 		{ "Chaos",               "formation chaos" },
-		{ "Weit",                "formation far" },
-		{ "Schild",              "formation shield" },
-		{ "Schutzring (voll)",   "formation ring" },
-		{ "Vorhut (Halbring vorn)",   "formation vanguard" },
-		{ "Nachhut (Halbring hinten)", "formation rearguard" },
-		{ "Dreieck",             "formation triangle" },
+		{ "Far",                "formation far" },
+		{ "Shield",              "formation shield" },
+		{ "Ring",   "formation ring" },
+		{ "Vanguard",   "formation vanguard" },
+		{ "Rearguard", "formation rearguard" },
+		{ "Triangle",             "formation triangle" },
 		{ "Block",               "formation block" },
-		{ "Kolonne",             "formation column" },
-		{ "Welche Formation?",   "formation ?" },
+		{ "Column",             "formation column" },
+		{ "Which formation?",   "formation ?" },
 	} },
 	-- Role filter: a click remembers the prefix, the next command click puts
 	-- it in front ("/p @tank attack") - only the matching bots react.
-	{ label = "Rolle", menu = "BotMenuRole", entries = {
-		{ "Nur Tanks ...",       prefix = "@tank " },
-		{ "Nur Heiler ...",      prefix = "@heal " },
-		{ "Nur Fernkampf ...",   prefix = "@ranged " },
-		{ "Nur Nahkampf ...",    prefix = "@melee " },
-		{ "Alle (Filter aus)",   prefix = "" },
+	{ label = "Role", menu = "BotMenuRole", entries = {
+		{ "Tanks only ...",       prefix = "@tank " },
+		{ "Healers only ...",      prefix = "@heal " },
+		{ "Ranged only ...",   prefix = "@ranged " },
+		{ "Melee only ...",    prefix = "@melee " },
+		{ "All (filter off)",   prefix = "" },
 	} },
-	{ label = "Gruppe", menu = "BotMenuGroup", entries = {
-		{ "Herbeirufen",         "summon" },
-		{ "Wegschicken",         "leave" },
-		{ "Anführer geben",      "give leader" },
-		{ "Bereitschaftscheck",  "ready" },
+	{ label = "Group", menu = "BotMenuGroup", entries = {
+		{ "Summon",         "summon" },
+		{ "Leave group",         "leave" },
+		{ "Give leader",      "give leader" },
+		{ "Ready check",  "ready" },
 		-- #419: all online characters (paced /who) with an invite button.
-		{ "Bot-Liste (alle online)...", open = "BotList" },
+		{ "Bot list (all online)...", open = "BotList" },
 	} },
 	{ label = "Quests", menu = "BotMenuQuest", entries = {
-		{ "Questliste",          "quests" },
-		{ "Quests annehmen",     "accept *" },
-		{ "Mit NPC sprechen",    "talk" },
-		{ "Quest nachholen...",  "catchup quest " },
-		{ "Belohnung wählen...", "r " },
-		{ "Questziel prüfen...", "q " },
+		{ "Quest list",          "quests" },
+		{ "Accept quests",     "accept *" },
+		{ "Talk to NPC",    "talk" },
+		{ "Catch up quest...",  "catchup quest " },
+		{ "Choose reward...", "r " },
+		{ "Quest objective...", "q " },
 	} },
 	-- Select the NPC first; the bot must stand next to it.
-	{ label = "Händler & NPC", menu = "BotMenuNpc", entries = {
-		{ "Mit NPC sprechen",    "talk" },
-		{ "Option 1",            "talk 1" },
-		{ "Option 2",            "talk 2" },
-		{ "Option 3",            "talk 3" },
-		{ "Hier wohnen",         "home" },
-		{ "Reparieren",          "repair" },
-		{ "Graues verkaufen",    "s" },
-		{ "Verkaufen...",        "s " },
-		{ "Kaufen...",           "b " },
-		{ "Zurückkaufen",        "bb all" },
-		{ "Bank zeigen",         "bank ?" },
+	{ label = "Vendor & NPC", menu = "BotMenuNpc", entries = {
+		{ "Talk to NPC",    "talk" },
+		{ "Gossip option 1",            "talk 1" },
+		{ "Gossip option 2",            "talk 2" },
+		{ "Gossip option 3",            "talk 3" },
+		{ "Set hearthstone",         "home" },
+		{ "Repair",          "repair" },
+		{ "Sell grey items",    "s" },
+		{ "Sell...",        "s " },
+		{ "Buy...",           "b " },
+		{ "Buy back all",        "bb all" },
+		{ "Show bank",         "bank ?" },
 	} },
-	{ label = "Beute", menu = "BotMenuLoot", entries = {
-		{ "Aufsammeln",          "loot" },
-		{ "Nur Nützliches",      "ll normal" },
-		{ "Auch Graues",         "ll gray" },
-		{ "Alles",               "ll all" },
-		{ "Looten an",           "nc +loot" },
-		{ "Looten aus",          "nc -loot" },
-		{ "Würfeln: Bedarf",     "roll need" },
-		{ "Würfeln: Gier",       "roll greed" },
-		{ "Würfeln: Passen",     "roll pass" },
-		{ "Würfeln: Automatisch", "roll auto" },
+	{ label = "Loot", menu = "BotMenuLoot", entries = {
+		{ "Loot",          "loot" },
+		{ "Useful items only",      "ll normal" },
+		{ "Include grey",         "ll gray" },
+		{ "Everything",               "ll all" },
+		{ "Looting on",           "nc +loot" },
+		{ "Looting off",          "nc -loot" },
+		{ "Roll: need",     "roll need" },
+		{ "Roll: greed",       "roll greed" },
+		{ "Roll: pass",     "roll pass" },
+		{ "Roll: auto", "roll auto" },
 	} },
-	{ label = "Berufe", menu = "BotMenuProfession", entries = {
-		{ "Beim Lehrer lernen",  "train" },
-		{ "Lehrer zeigen",       "trainer" },
-		{ "Fertigkeiten",        "skill" },
-		{ "Sammeln an",          "nc +gather" },
-		{ "Sammeln aus",         "nc -gather" },
+	{ label = "Professions", menu = "BotMenuProfession", entries = {
+		{ "Learn at trainer",  "train" },
+		{ "Show trainer",       "trainer" },
+		{ "Skills",        "skill" },
+		{ "Gathering on",          "nc +gather" },
+		{ "Gathering off",         "nc -gather" },
 	} },
 	-- Item commands: shift-click the item into the line before Enter.
-	{ label = "Inventar", menu = "BotMenuInventory", entries = {
-		{ "Inventar zeigen",     "c" },
-		{ "Anzahl von...",       "c " },
-		{ "Ausrüsten...",        "e " },
-		{ "Ablegen...",          "ue " },
-		{ "Benutzen...",         "u " },
-		{ "Handeln (Fenster offen)...", "t " },
+	{ label = "Inventory", menu = "BotMenuInventory", entries = {
+		{ "Show inventory",     "c" },
+		{ "Count of...",       "c " },
+		{ "Equip...",        "e " },
+		{ "Unequip...",          "ue " },
+		{ "Use...",         "u " },
+		{ "Trade (window open)...", "t " },
 	} },
-	{ label = "Tod", menu = "BotMenuDeath", entries = {
-		{ "Geist freilassen",    "release" },
-		{ "Beim Geistheiler",    "revive" },
-		{ "Selbst wiederbeleben", "self res" },
+	{ label = "Death", menu = "BotMenuDeath", entries = {
+		{ "Release spirit",    "release" },
+		{ "Spirit healer",    "revive" },
+		{ "Self resurrect", "self res" },
 	} },
 	{ label = "Info", menu = "BotMenuInfo", entries = {
-		{ "Status",              "stats" },
-		{ "Wo bist du?",         "where" },
-		{ "Talente",             "talents" },
-		{ "Zauber",              "spells" },
-		{ "Ruf",                 "reputation" },
+		{ "Stats",              "stats" },
+		{ "Where are you?",         "where" },
+		{ "Talents",             "talents" },
+		{ "Spells",              "spells" },
+		{ "Reputation",                 "reputation" },
 	} },
 };
 
@@ -174,9 +174,9 @@ end
 function BotMenu_PrefixClick()
 	botMenuPrefix = this.botPrefix or "";
 	if ( botMenuPrefix == "" ) then
-		BotMenu_Print("Rollenfilter aus - der nächste Befehl gilt für alle Bots.");
+		BotMenu_Print("Role filter off - the next command goes to all bots.");
 	else
-		BotMenu_Print("Der nächste Befehl gilt nur für "..botMenuPrefix.."- jetzt den Befehl wählen.");
+		BotMenu_Print("The next command goes to "..botMenuPrefix.."only - now pick the command.");
 	end
 	ChatMenu:Hide();
 end
@@ -220,7 +220,7 @@ local function BotMenu_ShowEntry(show)
 	local isLast = (ChatMenu.numButtons == botMenuButton:GetID()) or
 		(ChatMenu.numButtons == botMenuButton:GetID() - 1);
 	if ( not isLast ) then
-		BotMenu_Print("Ein anderes Addon hat danach Einträge angelegt - bitte /reload.");
+		BotMenu_Print("Another addon added entries after this one - please /reload.");
 		return;
 	end
 	if ( show ) then
@@ -263,21 +263,21 @@ SlashCmdList["BOTMENU"] = function(msg)
 	if ( msg == "on" ) then
 		BotMenuDB.enabled = 1;
 		BotMenu_ShowEntry(true);
-		BotMenu_Print("an - Eintrag \"Bots\" im Chat-Menü.");
+		BotMenu_Print("on - \"Bots\" entry in the chat menu.");
 	elseif ( msg == "off" ) then
 		BotMenuDB.enabled = 0;
 		BotMenu_ShowEntry(false);
-		BotMenu_Print("aus.");
-	elseif ( msg == "liste" or msg == "list" ) then
+		BotMenu_Print("off.");
+	elseif ( msg == "list" or msg == "liste" ) then
 		BotList_Show();
-	elseif ( string.sub(msg, 1, 4) == "takt" ) then
+	elseif ( string.sub(msg, 1, 4) == "pace" or string.sub(msg, 1, 4) == "takt" ) then
 		-- Pace of the bot list scan: seconds between two /who, or auto.
 		local value = tonumber(string.sub(msg, 6));
 		BotMenuDB.whoInterval = value;
-		BotMenu_Print("Takt der Bot-Liste: "..(value and (value.." s") or "automatisch")..".");
+		BotMenu_Print("Bot list pace: "..(value and (value.." s") or "automatic")..".");
 	else
-		BotMenu_Print("Version "..BOTMENU_VERSION..", "..((BotMenuDB and BotMenuDB.enabled == 1) and "an" or "aus")..
-			". /botmenu on | off | liste | takt <s>|auto. Der aktive Chat-Kanal bestimmt, welche Bots den Befehl bekommen: "..
-			"/w Name = ein Bot, /p = Gruppe, /raid = Schlachtzug.");
+		BotMenu_Print("Version "..BOTMENU_VERSION..", "..((BotMenuDB and BotMenuDB.enabled == 1) and "on" or "off")..
+			". /botmenu on | off | list | pace <s>|auto. The active chat channel decides which bots get the command: "..
+			"/w name = one bot, /p = party, /raid = raid.");
 	end
 end

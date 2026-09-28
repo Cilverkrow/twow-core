@@ -2,8 +2,8 @@
 
 Adds a **"Bots"** entry to the chat bubble menu (the button left of the chat
 window, next to Say, Party, Emote, Language, ...). Hovering it opens the
-categories **Kampf, Formation, Rolle, Gruppe, Quests, Händler & NPC, Beute,
-Berufe, Inventar, Tod, Info** (owner order, twow-repo#290); a click writes
+categories **Combat, Formation, Role, Group, Quests, Vendor & NPC, Loot,
+Professions, Inventory, Death, Info** (owner order, twow-repo#290; English labels since 1.4); a click writes
 the playerbot command into the chat line. Press Enter to send it.
 
 The **active chat channel decides who gets the command**, exactly as when you
@@ -34,16 +34,16 @@ character). `/botmenu` shows the state.
 
 | Category | Entries (command) |
 |---|---|
-| Kampf | follow, stay, attack, `tank attack`, pull, `attack rti`, `max dps`, flee, guard, free, wander, `co +passive`, `co -passive` |
+| Combat | follow, stay, attack, `tank attack`, pull, `attack rti`, `max dps`, flee, guard, free, wander, `co +passive`, `co -passive` |
 | Formation | near, melee, line, circle, arrow, spear, queue, chaos, far, shield, ring, vanguard, rearguard, triangle, block, column, `formation ?` (#389) |
-| Rolle | "Nur Tanks/Heiler/Fernkampf/Nahkampf ...": the **next** command click gets `@tank ` / `@heal ` / `@ranged ` / `@melee ` in front, so only those bots react; "Alle" clears it |
-| Gruppe | summon, leave, `give leader`, ready |
+| Role | "Tanks/Healers/Ranged/Melee only ...": the **next** command click gets `@tank ` / `@heal ` / `@ranged ` / `@melee ` in front, so only those bots react; "All (filter off)" clears it |
+| Group | summon, leave, `give leader`, ready |
 | Quests | quests, `accept *`, talk, `catchup quest `, `r `, `q ` |
-| Händler & NPC | talk, `talk 1`–`talk 3`, home, repair, `s` (sell grey), `s ` / `b `, `bb all`, `bank ?` |
-| Beute | loot, `ll normal`, `ll gray`, `ll all`, `nc +loot`, `nc -loot`, `roll need/greed/pass/auto` |
-| Berufe | train, trainer, skill, `nc +gather`, `nc -gather` |
-| Inventar | c, `c `, `e `, `ue `, `u `, `t ` (trade window open) |
-| Tod | release, revive, `self res` |
+| Vendor & NPC | talk, `talk 1`–`talk 3`, home, repair, `s` (sell grey), `s ` / `b `, `bb all`, `bank ?` |
+| Loot | loot, `ll normal`, `ll gray`, `ll all`, `nc +loot`, `nc -loot`, `roll need/greed/pass/auto` |
+| Professions | train, trainer, skill, `nc +gather`, `nc -gather` |
+| Inventory | c, `c `, `e `, `ue `, `u `, `t ` (trade window open) |
+| Death | release, revive, `self res` |
 | Info | stats, where, talents, spells, reputation |
 
 Entries ending in a space wait for a shift-clicked link (item or quest).
@@ -71,12 +71,12 @@ handlers read `this`/`event`, no `SetSize`. The menus reuse Blizzard's
 
 ## Bot-Liste (1.3, twow-repo#419)
 
-"Bots → Gruppe → Bot-Liste (alle online)..." or `/botmenu liste` opens a
+"Bots → Group → Bot list (all online)..." or `/botmenu list` opens a
 window with every online character: name, class, level, guild, zone; filters
-for faction, class, level range and zone (part of the name); "Einladen" for
-the selected row and "In Raid umwandeln".
+for faction, class, level range and zone (part of the name); "Invite" for
+the selected row and "Convert to raid".
 
-"Scannen" collects the list with several `/who` queries, because one answer
+"Scan" collects the list with several `/who` queries, because one answer
 holds at most 49 entries: one query per class first, full answers are split
 by level (at the median of the answer), then by race. The list fills while
 the scan runs and stays until the next scan.
@@ -84,8 +84,8 @@ the scan runs and stays until the next scan.
 - Pace: as fast as answers come back (GM accounts). A rank-0 account may send
   one `/who` per cooldown (30 s by default, server key
   `WhoList.RequestCooldownSeconds`); the addon notices a dropped query and
-  steps to 6 s, then 31 s. `/botmenu takt <s>` sets it by hand,
-  `/botmenu takt auto` goes back.
+  steps to 6 s, then 31 s. `/botmenu pace <s>` sets it by hand,
+  `/botmenu pace auto` goes back.
 - Measured in `t/botmenu_addon_harness.lua` (simulated server, 180/360
   characters on levels 3-17): GM ≈ 3 s, cooldown 5 s ≈ 50 s, cooldown 30 s
   ≈ 4 min (9-11 queries).
