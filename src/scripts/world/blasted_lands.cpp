@@ -137,7 +137,9 @@ enum
     NPC_TWISTING_RIFT_VOIDLORD      = 65201,
     NPC_TWISTING_RIFT_VOIDSPLIT     = 65202,
 
-    SPELL_VOID_SHADOW_NOVA          = 45559,    // 236 shadow to all enemies around the caster
+    // Owner 2026-09-28: the Shadow Nova (45559) looked like Holy Nova in the client, so the
+    // pulse uses the Hellfire III visual (2951, an unused NPC spell) with the nova values.
+    SPELL_VOID_HELLFIRE             = 2951,     // 236 shadow to all enemies around the caster
     SPELL_VOID_SHADOW_SHIELD        = 22417,    // self absorb
     SPELL_VOID_CORRUPTION           = 25311,    // warlock Corruption rank 7
     SPELL_VOID_SHADOW_BOLT          = 25307,    // warlock Shadow Bolt rank 10
@@ -145,7 +147,7 @@ enum
     VOID_SPLIT_STEPS                = 4,        // 80, 60, 40, 20 %
 };
 
-static float const VOID_START_SCALE = 4.5f;
+static float const VOID_START_SCALE = 5.4f;  // owner 2026-09-28: 20 % larger (was 4.5)
 
 // Abilities and the shared health pool, identical for the lord and every split.
 struct twisting_rift_voidAI : public ScriptedAI
@@ -199,7 +201,7 @@ struct twisting_rift_voidAI : public ScriptedAI
     {
         if (m_uiNovaTimer <= uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature, SPELL_VOID_SHADOW_NOVA, CF_TRIGGERED) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature, SPELL_VOID_HELLFIRE, CF_TRIGGERED) == CAST_OK)
                 m_uiNovaTimer = 2000;
         }
         else
