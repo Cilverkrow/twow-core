@@ -551,6 +551,14 @@ AiPlayerbot.DeathLoop.Radius = 150
 # premade links leave the same number of talent points unspent. Missing spells
 # are skipped. 0 = off (no auras; the trimmed links still apply).
 AiPlayerbot.SpecAura.Enabled = 0
+# twow-repo#409 stage 2 (#367/#357): comma-separated classes (4 rogue, 7 shaman)
+# whose SpecAura talents are real Talent.dbc talents now, with the same spell IDs.
+# Set it only in the release that ships the server Talent.dbc with those talents
+# and the regenerated premade links (build_premade_specs.py --talent-classes).
+# For a listed class SpecAura neither grants nor removes the talent auras (the
+# talent system owns them) and the links reserve no points; the kit (Spit, Shadow
+# Dance) is still granted. Empty = phase 1, everything as before.
+AiPlayerbot.SpecAura.TalentClasses =
 # A roster bot on its own that stands in a zone clearly above its level (area
 # level more than 5 above) leaves it (#307): hearthstone when it is ready and
 # its bind zone suits the bot, otherwise a new level-appropriate travel target.

@@ -421,7 +421,8 @@ uint32 ChangeTalentsAction::PremadeBudget(Player* bot, int specId)
     if (!path)
         return total;
 
-    uint32 const reserved = ai::spec_aura::ReservedPoints(bot->getClass(), ai::spec_aura::PathFor(bot->getClass(), path->name), bot->GetLevel());
+    bool const auraTalentsAreReal = ai::spec_aura::AuraTalentsAreReal(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses);
+    uint32 const reserved = ai::spec_aura::ManagedReservedPoints(bot->getClass(), ai::spec_aura::PathFor(bot->getClass(), path->name), bot->GetLevel(), auraTalentsAreReal);
     return total > reserved ? total - reserved : 0;
 }
 

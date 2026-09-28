@@ -89,6 +89,20 @@ int main()
     Require(WantedKit(4, RogueCombat, 60).empty(), "the kit is tank only");
     Require(ReservedPoints(4, RogueTank, 60) == 20, "the kit costs no talent points");
 
+    // twow-repo#409 stage 2: a class in AiPlayerbot.SpecAura.TalentClasses has real talents
+    // with the same IDs. SpecAura must neither grant nor remove them, and nothing is reserved.
+    std::vector<std::uint32_t> const noClasses;
+    std::vector<std::uint32_t> const rogueReal = { 4 };
+    Require(!AuraTalentsAreReal(4, noClasses), "empty list: phase 1 for everyone");
+    Require(AuraTalentsAreReal(4, rogueReal) && !AuraTalentsAreReal(7, rogueReal), "only the listed class");
+    Require(ManagedWantedAuras(4, RogueTank, 60, true).empty(), "real talents: no aura grant");
+    Require(ManagedAllAuras(4, true).empty(), "real talents: nothing to remove, a bought talent stays");
+    Require(ManagedReservedPoints(4, RogueTank, 60, true) == 0, "real talents: the links spend the points");
+    Require(ManagedWantedAuras(4, RogueTank, 60, false) == WantedAuras(4, RogueTank, 60) &&
+            ManagedAllAuras(4, false) == AllAuras(4) &&
+            ManagedReservedPoints(4, RogueTank, 60, false) == 20, "phase 1 unchanged");
+    Require(WantedKit(4, RogueTank, 60).size() == 2, "the kit stays with real talents (no talent)");
+
     std::cout << "spec_aura_policy_tests passed\n";
     return 0;
 }
