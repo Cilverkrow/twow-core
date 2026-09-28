@@ -68,3 +68,29 @@ handlers read `this`/`event`, no `SetSize`. The menus reuse Blizzard's
   against stand-ins of the 1.12 menu API; every click writes its command, the
   switch works, old submenus close, a role prefix applies to exactly one
   command.
+
+## Bot-Liste (1.3, twow-repo#419)
+
+"Bots → Gruppe → Bot-Liste (alle online)..." or `/botmenu liste` opens a
+window with every online character: name, class, level, guild, zone; filters
+for faction, class, level range and zone (part of the name); "Einladen" for
+the selected row and "In Raid umwandeln".
+
+"Scannen" collects the list with several `/who` queries, because one answer
+holds at most 49 entries: one query per class first, full answers are split
+by level (at the median of the answer), then by race. The list fills while
+the scan runs and stays until the next scan.
+
+- Pace: as fast as answers come back (GM accounts). A rank-0 account may send
+  one `/who` per cooldown (30 s by default, server key
+  `WhoList.RequestCooldownSeconds`); the addon notices a dropped query and
+  steps to 6 s, then 31 s. `/botmenu takt <s>` sets it by hand,
+  `/botmenu takt auto` goes back.
+- Measured in `t/botmenu_addon_harness.lua` (simulated server, 180/360
+  characters on levels 3-17): GM ≈ 3 s, cooldown 5 s ≈ 50 s, cooldown 30 s
+  ≈ 4 min (9-11 queries).
+- The stock who window is detached during a scan and given back afterwards;
+  your own `/who` cancels a running scan.
+- Real players are in the list too; `/who` has no bot marker.
+- Class and race splitting know the enUS/enGB and deDE names; other client
+  languages split by level only.
