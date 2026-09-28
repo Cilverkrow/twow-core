@@ -43,7 +43,7 @@ foreach (forbidden "DELETE " "REPLACE " "creature_loot_template" "INSERT INTO `c
   forbid_text("${m2}" "${forbidden}" "#348 round 2 scope")
 endforeach()
 file(READ "${TW_CORE_ROOT}/src/scripts/world/blasted_lands.cpp" script)
-foreach (required "newscript->Name = \"boss_twisting_rift_voidlord\";" "newscript->Name = \"npc_twisting_rift_voidsplit\";" "SPELL_VOID_SHADOW_NOVA          = 45559" "VOID_SPLIT_STEPS                = 4" "static float const VOID_START_SCALE = 4.5f;")
+foreach (required "newscript->Name = \"boss_twisting_rift_voidlord\";" "newscript->Name = \"npc_twisting_rift_voidsplit\";" "SPELL_VOID_HELLFIRE             = 2951" "VOID_SPLIT_STEPS                = 4" "static float const VOID_START_SCALE = 5.4f;")
   require_text("${script}" "${required}" "#348 split script")
 endforeach()
 message(STATUS "QUEST_END_SUMMONS_CONTRACT=PASS")
