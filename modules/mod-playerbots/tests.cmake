@@ -233,6 +233,30 @@ add_test(NAME roster_control_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/roster_control_source_contract_tests.cmake")
 
+# twow-repo#419 variant B: `.bot roster`, the roster bot list without the /who
+# cap. Filters, visibility, paging, rate limit and the BL1 addon wire format
+# (golden file t/fixtures/roster_list_v1.txt), plus the call site.
+add_executable(roster_list_policy_tests
+  "${PB_MODULE_DIR}/t/roster_list_policy_tests.cpp")
+
+target_include_directories(roster_list_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_compile_definitions(roster_list_policy_tests PRIVATE
+  ROSTER_LIST_FIXTURE="${PB_MODULE_DIR}/t/fixtures/roster_list_v1.txt")
+
+set_target_properties(roster_list_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_list_policy
+  COMMAND roster_list_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_list_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_list_source_contract_tests.cmake")
+
 # #276: a dead bot waits for an active real-player master only for
 # AiPlayerbot.DeadWaitForRealMasterSeconds, never indefinitely.
 add_executable(master_wait_policy_tests

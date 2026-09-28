@@ -367,6 +367,19 @@ AiPlayerbot.BotLogFile =
 # into a dungeon or battleground, on a flight path or boat, or while dead.
 # AiPlayerbot.RosterControl.SummonCooldownSeconds = 300
 
+# `.bot roster [page=N] [faction=own|alliance|horde|all] [class=<name>] [role=tank|heal|dps]
+# [level=N|A-B] [zone=<text>] [status=online|all]` lists the persistent roster bots for
+# every account rank, past the 49 entries of /who (twow-repo#419). Players see only roster
+# bots (no real players, no GM characters, no account names). Answer lines start with BL1;
+# for the BotMenu addon. Every request is logged as [BotCtl] cmd=roster.
+# AiPlayerbot.RosterList.Enabled = 0
+# Minimum milliseconds between two requests of one player; earlier ones are refused.
+# AiPlayerbot.RosterList.MinIntervalMs = 2000
+# Entries per page (at most 50).
+# AiPlayerbot.RosterList.PageSize = 50
+# Milliseconds the list is reused before it is rebuilt from the roster snapshot.
+# AiPlayerbot.RosterList.CacheMs = 1000
+
 # Bots will put their talentspec in guild notes when they change/tell their talents if they have the rights.
 # AiPlayerbot.TalentsInPublicNote = 0
 

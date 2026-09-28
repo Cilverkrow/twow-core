@@ -395,6 +395,10 @@ public:
     bool nonGmFreeSummon;
     uint32 rosterControlGmMinSecurity;
     uint32 rosterSummonCooldownSeconds;
+    bool rosterListEnabled;
+    uint32 rosterListMinIntervalMs;
+    uint32 rosterListPageSize;
+    uint32 rosterListCacheMs;
 
     BotSelfBotLevel selfBotLevel;
     uint32 iterationsPerTick;
