@@ -356,6 +356,7 @@ namespace ai
             roles.melee = uint32(melee.size());
             roles.ranged = uint32(ranged.size());
             roles.heals = uint32(heals.size());
+            roles.leaderIsTank = ai->IsTank(followTarget);
             std::vector<formation_grid::Offset> const slots = formation_grid::SlotsForRoles(shape, roles,
                 sPlayerbotAIConfig.formationSpacing,
                 formation_grid::MaxExtentFor(shape, sPlayerbotAIConfig.formationCircleMaxRadius, sPlayerbotAIConfig.formationMaxExtent));
@@ -611,6 +612,13 @@ bool FormationValue::Load(std::string formation)
         if (value) delete value;
         value = new GridFormation(ai, "dragonslayer", formation_grid::Shape::DRAGONSLAYER);
     }
+    // Owner sketch 2026-09-28: tank V 10 yd ahead, then melee, healer and
+    // ranged rows that close up (no empty rows, blocks move up).
+    else if (formation == "giantkiller" || formation == "giant")
+    {
+        if (value) delete value;
+        value = new GridFormation(ai, "giantkiller", formation_grid::Shape::GIANTKILLER);
+    }
     else if (formation == "near" || formation == "default")
     {
         if (value) delete value;
@@ -665,7 +673,7 @@ bool SetFormationAction::Execute(Event& event)
     {
         std::ostringstream str; str << "Invalid formation: |cffff0000" << formation;
         ai->TellPlayer(requester, str);
-        ai->TellPlayer(requester, "Please set to any of:|cffffffff near, queue, chaos, circle, line, shield, arrow, spear, melee, far, ring, vanguard, rearguard, triangle, block, column, dragonslayer, default");
+        ai->TellPlayer(requester, "Please set to any of:|cffffffff near, queue, chaos, circle, line, shield, arrow, spear, melee, far, ring, vanguard, rearguard, triangle, block, column, dragonslayer, giantkiller, default");
         return false;
     }
 
