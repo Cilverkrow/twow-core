@@ -44,3 +44,9 @@ foreach(capture IN LISTS captures)
     message(FATAL_ERROR "Destination job captures by reference or this: ${capture}")
   endif()
 endforeach()
+
+# 7.2 addition: slowest actions and path builds in [BotSlowUpdate].
+file(READ "${PB_SOURCE_DIR}/strategy/Engine.cpp" engine)
+require_text("${engine}" "ai->RecordActionTime(action->getName(), executeMs);" "action timing around Execute")
+require_text("${ai_cpp}" "slowest_action=" "slowest action in [BotSlowUpdate]")
+require_text("${ai_cpp}" "PathFinderStats::builds, PathFinderStats::buildMs" "path builds in [BotSlowUpdate]")
