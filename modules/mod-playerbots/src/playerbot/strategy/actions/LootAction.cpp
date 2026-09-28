@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/LootSlotPolicy.h"
 #include "LootAction.h"
 
 #include "playerbot/LootObjectStack.h"
@@ -474,12 +475,27 @@ bool StoreLootAction::Execute(Event& event)
             continue;
         }
 
+        // #405 (train 7 live, 2026-09-28): quest-only items sit in the player's own
+        // quest list; Loot::FillQuestLoot marks every one of them is_blocked, which
+        // reserves it for that player. The shared-loot check below read that as
+        // "no right", so bots skipped every quest drop although LootItemInSlot had
+        // already resolved it for them (per-player is_looted included). The check
+        // stays for the shared normal slots.
+        bool const questSlot = loot_slot::IsQuestSlot(itemindex, loot->items.size());
+        bool const sharedAllowed = questSlot ||
+            lootItem->GetSlotTypeForSharedLoot(ALL_PERMISSION, bot, loot ? loot->GetLootTarget() : nullptr) != MAX_LOOT_SLOT_TYPE;
+
         //have no right to loot
-        if (lootItem->is_blocked || lootItem->GetSlotTypeForSharedLoot(ALL_PERMISSION, bot, loot ? loot->GetLootTarget() : nullptr) == MAX_LOOT_SLOT_TYPE)
+        if (!loot_slot::MayTake(questSlot, lootItem->is_blocked, sharedAllowed))
         {
             sLog.outDebug("[BOT LOOT] %s: skip item=%u (no right: blocked=%u)", bot->GetName(), itemid, lootItem->is_blocked ? 1 : 0);
+            if (traceQuestLoot)
+                sLog.outBasic("[QuestLoot] state=skipped bot=%u item=%u reason=no_right", bot->GetGUIDLow(), itemid);
             continue;
         }
+
+        if (traceQuestLoot)
+            sLog.outBasic("[QuestLoot] state=taken bot=%u item=%u count=%u quest_slot=%u", bot->GetGUIDLow(), itemid, itemcount, questSlot ? 1u : 0u);
 
         Player* master = ai->GetMaster();
         if (sRandomPlayerbotMgr.IsRandomBot(bot) && master)
