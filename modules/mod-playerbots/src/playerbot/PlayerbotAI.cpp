@@ -373,9 +373,67 @@ void PlayerbotAI::ReportSlowUpdate(uint32 elapsedMs)
         bot->IsInCombat() ? 1u : 0u, bot->IsAlive() ? 0u : 1u, travel.c_str(), travelStatus);
 }
 
+bool PlayerbotAI::IsInGroupWithRealPlayer()
+{
+    if (HasRealPlayerMaster())
+        return true;
+
+    Group* group = bot->GetGroup();
+    if (!group)
+        return false;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* member = gref->getSource();
+
+        // Same map only: a bot on another map is updated by another thread.
+        if (!member || member == bot || !member->IsInWorld() || member->FindMap() != bot->FindMap())
+            continue;
+
+        if (!GetBotAI(member) || GetBotAI(member)->HasRealPlayerMaster())
+            return true;
+    }
+
+    return false;
+}
+
+void PlayerbotAI::RecordGroupBuff(SpellEntry const* spellInfo, Unit* target)
+{
+    if (!spellInfo || !target || target == bot || !spellInfo->IsPositiveSpell() || sServerFacade.IsInCombat(bot))
+        return;
+
+    bool appliesAura = false;
+    for (int i = 0; i < MAX_EFFECT_INDEX; ++i)
+        if (spellInfo->Effect[i] == SPELL_EFFECT_APPLY_AURA)
+            appliesAura = true;
+
+    if (!appliesAura || !IsInGroupWithRealPlayer())
+        return;
+
+    Player* targetPlayer = target->GetCharmerOrOwnerPlayerOrPlayerItself();
+    bool const outOfGroup = !targetPlayer || !targetPlayer->IsInGroup(bot);
+    groupBuffWindow.Record(uint32(time(nullptr)), target->GetObjectGuid().GetRawValue(), outOfGroup);
+}
+
+void PlayerbotAI::ReportGroupBuff(uint32 now)
+{
+    if (!groupBuffWindow.Due(now))
+        return;
+
+    sLog.outBasic("[GroupBuff] bot=%u name=%s window_s=%u casts=%u out_of_group=%u same_target_60s=%u map=%u zone=%u level=%u",
+        bot->GetGUIDLow(), bot->GetName(), now - groupBuffWindow.start, groupBuffWindow.casts, groupBuffWindow.outOfGroup,
+        groupBuffWindow.sameTarget, bot->GetMapId(), bot->GetZoneId(), bot->GetLevel());
+    groupBuffWindow.Reset(now);
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     SlowUpdateProbe const slowUpdateProbe{ this, WorldTimer::getMSTime() };
+
+    // #420: close a finished [GroupBuff] window.
+    if (groupBuffWindow.casts)
+        ReportGroupBuff(uint32(time(nullptr)));
+
     AiObjectContext* context = aiObjectContext;
     std::string mapString = WorldPosition(bot).isInstance() ? "I" : std::to_string(bot->GetMapId());
     auto pmo = sPerformanceMonitor.start(PERF_MON_TOTAL, "PlayerbotAI::UpdateAI " + mapString, nullptr, bot->GetMapId(), bot->GetInstanceId());
@@ -5107,6 +5165,8 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
 
     if (spell->GetCastTime() || (IsChanneledSpell(pSpellInfo) && GetSpellDuration(pSpellInfo) > 0))
         aiObjectContext->GetValue<LastSpellCast&>("last spell cast")->Get().Set(spellId, target->GetObjectGuid(), time(0));
+
+    RecordGroupBuff(pSpellInfo, target);
 
     aiObjectContext->GetValue<ai::PositionMap&>("position")->Get()["random"].Reset();
 

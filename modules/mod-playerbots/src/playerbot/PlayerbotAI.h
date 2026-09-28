@@ -16,6 +16,7 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/StallGuardPolicy.h"
+#include "playerbot/GroupBuffPolicy.h"
 class Player;
 class PlayerbotMgr;
 class ChatHandler;
@@ -867,10 +868,19 @@ protected:
 	uint8 m_forcedRole = 0;
     // #416: last [BotSlowUpdate] line (seconds), for the rate limit.
     uint32 lastSlowUpdateLog = 0;
+    // #420: [GroupBuff] counters of the current window.
+    ai::group_buff::BuffWindow groupBuffWindow;
 
 public:
     // #416: called when an UpdateAI call took elapsedMs.
     void ReportSlowUpdate(uint32 elapsedMs);
+    // #420: the bot has a real player as master, or a real player (or a real
+    // player's bot) is in its group on the same map.
+    bool IsInGroupWithRealPlayer();
+    // #420: counts a helpful aura cast on another unit outside combat.
+    void RecordGroupBuff(SpellEntry const* spellInfo, Unit* target);
+    // #420: writes one [GroupBuff] line when the window is over.
+    void ReportGroupBuff(uint32 now);
 
 protected:
     std::deque<ai::death_loop::Death> recentDeaths;

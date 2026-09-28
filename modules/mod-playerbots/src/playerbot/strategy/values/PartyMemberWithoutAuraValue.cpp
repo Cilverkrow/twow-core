@@ -3,6 +3,7 @@
 #include "PartyMemberWithoutAuraValue.h"
 
 #include "playerbot/ServerFacade.h"
+#include "playerbot/GroupBuffPolicy.h"
 using namespace ai;
 
 extern std::vector<std::string> split(const std::string &s, char delim);
@@ -58,8 +59,11 @@ Unit* FriendlyUnitWithoutAuraValue::Calculate()
         ignoreTank = std::stoi(qualifier.substr(paramPos + 1, paramPos + 2));
     }
 
+    // #420: bots grouped with a real player buff their group only.
+    bool const ignoreOutOfGroup = !ai::group_buff::MayBuffOutOfGroup(ai->IsInGroupWithRealPlayer());
+
     PlayerWithoutAuraPredicate predicate(ai, auras);
-    return FindPartyMember(predicate, false, ignoreTank);
+    return FindPartyMember(predicate, ignoreOutOfGroup, ignoreTank);
 }
 
 Unit* PartyMemberWithoutAuraValue::Calculate()
