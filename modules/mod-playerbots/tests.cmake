@@ -762,6 +762,27 @@ add_test(NAME quest_work_timeout_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_work_timeout_source_contract_tests.cmake")
 
+# #416: slow bot updates are visible, route searches have a time budget.
+add_executable(stall_guard_policy_tests
+  "${PB_MODULE_DIR}/t/stall_guard_policy_tests.cpp")
+
+target_include_directories(stall_guard_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(stall_guard_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(stall_guard_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME stall_guard_policy
+  COMMAND stall_guard_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME stall_guard_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/stall_guard_source_contract_tests.cmake")
+
 # #405 (c): quest-only loot slots are the player's own.
 add_executable(loot_slot_policy_tests
   "${PB_MODULE_DIR}/t/loot_slot_policy_tests.cpp")
