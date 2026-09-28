@@ -25,6 +25,10 @@
 #include "Transport.h"
 
 #include <array>
+#include <chrono>
+
+thread_local uint32 PathFinderStats::builds = 0;
+thread_local uint32 PathFinderStats::buildMs = 0;
 #include <tuple>
 
 #include "Detour/Include/DetourCommon.h"
@@ -127,7 +131,11 @@ bool PathInfo::calculate(Vector3 const& start, Vector3 dest, bool forceDest, boo
     else
     {
         // target moved, so we need to update the poly path
+        auto const buildStart = std::chrono::steady_clock::now();
         BuildPolyPath(start, dest);
+        ++PathFinderStats::builds;
+        PathFinderStats::buildMs += uint32(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - buildStart).count());
 
         if (m_type & PATHFIND_NOPATH)
         {

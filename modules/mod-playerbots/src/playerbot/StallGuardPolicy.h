@@ -87,3 +87,62 @@ inline RouteCooldownStore& RouteCooldowns()
     return store;
 }
 }
+
+#include <array>
+#include <string>
+
+namespace ai::stall_guard
+{
+// #416 (7.2): the three slowest actions of one bot update, for [BotSlowUpdate].
+// Only actions that took at least 1 ms are recorded.
+struct TopActions
+{
+    struct Entry
+    {
+        std::string name;
+        uint32_t ms = 0;
+    };
+
+    std::array<Entry, 3> top;
+
+    void Reset()
+    {
+        for (Entry& entry : top)
+        {
+            entry.name.clear();
+            entry.ms = 0;
+        }
+    }
+
+    void Add(std::string const& name, uint32_t ms)
+    {
+        if (!ms)
+            return;
+
+        size_t slot = top.size();
+        while (slot > 0 && ms > top[slot - 1].ms)
+            --slot;
+        if (slot == top.size())
+            return;
+
+        for (size_t i = top.size() - 1; i > slot; --i)
+            top[i] = top[i - 1];
+        top[slot] = Entry{ name, ms };
+    }
+
+    // "name:ms,name:ms"
+    std::string Format() const
+    {
+        std::string out;
+        for (Entry const& entry : top)
+        {
+            if (!entry.ms)
+                break;
+            if (!out.empty())
+                out += ',';
+            out += entry.name + ':' + std::to_string(entry.ms);
+        }
+        return out;
+    }
+};
+}

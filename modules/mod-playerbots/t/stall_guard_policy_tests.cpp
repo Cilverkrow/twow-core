@@ -66,6 +66,20 @@ int main()
         thread.join();
     Require(shared.Size() <= RouteCooldownStore::MaxEntries, "cooldown store stays bounded");
 
+    // #416 (7.2): the three slowest actions of an update.
+    {
+        ai::stall_guard::TopActions actions;
+        actions.Add("move to travel target", 5);
+        actions.Add("attack anything", 0);
+        actions.Add("choose travel target", 16900);
+        actions.Add("loot", 2);
+        actions.Add("craft", 40);
+        Require(actions.top[0].name == "choose travel target" && actions.top[0].ms == 16900, "slowest action first");
+        Require(actions.Format() == "choose travel target:16900,craft:40,move to travel target:5", "top-3, 0 ms and the 4th left out");
+        actions.Reset();
+        Require(actions.Format().empty() && actions.top[0].ms == 0, "reset per update");
+    }
+
     std::cout << "stall_guard_policy_tests passed\n";
     return 0;
 }

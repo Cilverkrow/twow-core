@@ -3,6 +3,7 @@
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
+#include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <atomic>
 #include <iomanip>
@@ -376,10 +377,13 @@ void PlayerbotAI::ReportSlowUpdate(uint32 elapsedMs)
     std::string const lastAction = currentEngine ? currentEngine->GetLastAction() : "";
 
     sLog.outBasic("[BotSlowUpdate] bot=%u name=%s ms=%u map=%u zone=%u level=%u combat=%u dead=%u travel=\"%s\" travel_status=%u"
-        " phase=%s since_login_s=%u since_revive_s=%d state=%u last_action=\"%s\" candidates=%u",
+        " phase=%s since_login_s=%u since_revive_s=%d state=%u last_action=\"%s\" candidates=%u"
+        " slowest_action=\"%s\" action_ms=%u top_actions=\"%s\" path_builds=%u path_ms=%u",
         bot->GetGUIDLow(), bot->GetName(), elapsedMs, bot->GetMapId(), bot->GetZoneId(), bot->GetLevel(),
         bot->IsInCombat() ? 1u : 0u, bot->IsAlive() ? 0u : 1u, travel.c_str(), travelStatus,
-        phase, sinceLogin, sinceRevive, uint32(currentState), lastAction.c_str(), travelChooseChecked);
+        phase, sinceLogin, sinceRevive, uint32(currentState), lastAction.c_str(), travelChooseChecked,
+        updateActions.top[0].name.c_str(), updateActions.top[0].ms, updateActions.Format().c_str(),
+        PathFinderStats::builds, PathFinderStats::buildMs);
 }
 
 bool PlayerbotAI::IsInGroupWithRealPlayer()
@@ -448,6 +452,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
     // #416: phase for [BotSlowUpdate].
     travelChooseChecked = 0;
+    updateActions.Reset();
+    PathFinderStats::builds = 0;
+    PathFinderStats::buildMs = 0;
     {
         uint32 const now = uint32(time(nullptr));
         if (!firstUpdateTime)
