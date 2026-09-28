@@ -977,6 +977,12 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_loot_bonus_source_contract.cmake")
 
+  # twow-repo#419: /who cooldown of player accounts from the config.
+  add_test(NAME who_cooldown_source_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_who_cooldown_source_contract.cmake")
+
   # twow-repo#351: percentiles and slow counters of the aggregated tick line.
   add_executable(tick_stats_test
     "${TW_CORE_ROOT}/t/tick_stats_test.cpp")
