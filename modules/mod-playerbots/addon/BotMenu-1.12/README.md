@@ -35,7 +35,7 @@ character). `/botmenu` shows the state.
 | Category | Entries (command) |
 |---|---|
 | Combat | follow, stay, attack, `tank attack`, pull, `attack rti`, `max dps`, flee, guard, free, wander, `co +passive`, `co -passive` |
-| Formation | near, melee, line, circle, arrow, spear, queue, chaos, far, shield, ring, vanguard, rearguard, triangle, block, column, dragonslayer (raid), `formation ?` (#389) |
+| Formation | near, melee, line, circle, arrow, spear, queue, chaos, far, shield, ring, vanguard, rearguard, triangle, block, column, dragonslayer (raid), giantkiller (raid), `formation ?` (#389) |
 | Role | "Tanks/Healers/Ranged/Melee only ...": the **next** command click gets `@tank ` / `@heal ` / `@ranged ` / `@melee ` in front, so only those bots react; "All (filter off)" clears it |
 | Group | summon, leave, `give leader`, ready |
 | Quests | quests, `accept *`, talk, `catchup quest `, `r `, `q ` |

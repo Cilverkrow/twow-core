@@ -203,5 +203,72 @@ int main()
         for (auto const& o : slots)
             Require(Distance(o) >= 1.0f && Distance(o) <= otherMax + 0.01f, "dragonslayer: off the leader, within the cap");
     }
+
+    // Giant Killer (owner sketch 2026-09-28), the owner's typical raid:
+    // 3 tanks, 14 melee, 13 ranged, 10 healers (slot order tanks, melee,
+    // ranged, healers).
+    auto giant = [&](unsigned int t, unsigned int m, unsigned int r, unsigned int h, bool leaderIsTank)
+    {
+        RoleCounts roles;
+        roles.tanks = t; roles.melee = m; roles.ranged = r; roles.heals = h; roles.leaderIsTank = leaderIsTank;
+        return SlotsForRoles(Shape::GIANTKILLER, roles, spacing, otherMax);
+    };
+    auto rangeOf = [](std::vector<Offset> const& v, unsigned int from, unsigned int count, float& front, float& back)
+    {
+        front = -1e9f; back = 1e9f;
+        for (unsigned int i = from; i < from + count; ++i)
+        {
+            front = std::max(front, v[i].forward);
+            back = std::min(back, v[i].forward);
+        }
+    };
+    {
+        auto const gk = giant(3, 14, 13, 10, false);
+        Require(gk.size() == 40 && Nearest(gk) >= 1.0f, "giant killer: 40 slots, nobody on top of another");
+        Require(std::fabs(gk[0].forward - 10.0f) < 0.01f && std::fabs(gk[0].side) < 0.01f, "the first tank is the tip, 10 yd ahead");
+        Require(gk[1].forward < gk[0].forward && gk[1].side * gk[2].side < 0.0f, "the other tanks spread back left and right");
+        float mFront, mBack, rFront, rBack, hFront, hBack;
+        rangeOf(gk, 3, 14, mFront, mBack);
+        rangeOf(gk, 17, 13, rFront, rBack);
+        rangeOf(gk, 30, 10, hFront, hBack);
+        Require(std::fabs(mFront) < 0.01f, "melee start level with the leader (he stands in their first row)");
+        Require(hFront <= mBack + 0.01f && hFront < 0.0f, "healers close up behind the melee, never in the front row");
+        Require(rFront <= hBack + 0.01f, "ranged close up behind the healers");
+        Require(mBack - hFront < spacing + 0.01f && hBack - rFront < spacing + 0.01f, "no empty row between the blocks");
+    }
+    {
+        // The leader is the tank: he is the tip, everybody else behind him.
+        auto const gk = giant(3, 14, 13, 10, true);
+        for (auto const& o : gk)
+            Require(o.forward < -0.5f, "leader tank: the whole group forms behind him");
+        float mFront, mBack;
+        rangeOf(gk, 3, 14, mFront, mBack);
+        Require(std::fabs(mFront + 10.0f) < 0.01f, "leader tank: the first row is 10 yd behind him");
+    }
+    {
+        // An all-melee raid just gets more melee rows; no healers or ranged.
+        auto const gk = giant(2, 30, 0, 0, false);
+        Require(gk.size() == 32 && Nearest(gk) >= 1.0f, "all melee: every bot has a slot");
+        // No melee at all: the healer block moves up to the first row.
+        auto const noMelee = giant(2, 0, 8, 6, false);
+        float hFront, hBack;
+        rangeOf(noMelee, 10, 6, hFront, hBack);
+        Require(std::fabs(hFront) < 0.01f, "no melee: the healers move up into the first row");
+    }
+    for (unsigned int n = 1; n <= 40; ++n)
+        for (bool leaderIsTank : { false, true })
+        {
+            unsigned int const t = std::max(1u, n / 10);
+            unsigned int const h = std::min(n - t, n / 4);
+            unsigned int const r = (n - t - h) / 2;
+            unsigned int const m = n - t - h - r;
+            auto const gk = giant(t, m, r, h, leaderIsTank);
+            Require(gk.size() == n, "giant killer: one slot per follower");
+            if (n > 1)
+                Require(Nearest(gk) >= 1.0f, "giant killer: nobody on top of another");
+            for (auto const& o : gk)
+                Require(Distance(o) >= 1.0f && Distance(o) <= otherMax + 0.01f, "giant killer: off the leader, within the cap");
+        }
+    Require(GiantKillerWidth(5) == 3 && GiantKillerWidth(40) == 8, "rows of 3 for a small group, 8 for a raid");
     return 0;
 }

@@ -105,8 +105,8 @@ endforeach()
 # 16 named formations in the menu (#389).
 string(REGEX MATCHALL "\"formation [a-z]+\"" menu_formations "${lua}")
 list(LENGTH menu_formations formation_count)
-if(NOT formation_count EQUAL 17)
-  message(FATAL_ERROR "Expected 17 formations in the menu (#389, dragonslayer), found ${formation_count}")
+if(NOT formation_count EQUAL 18)
+  message(FATAL_ERROR "Expected 18 formations in the menu (#389, dragonslayer, giantkiller), found ${formation_count}")
 endif()
 
 

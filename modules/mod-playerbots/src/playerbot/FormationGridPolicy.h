@@ -35,6 +35,8 @@ enum class Shape
     ARROW,       // role wedge: tanks at the tip in front, healers at the back
     DRAGONSLAYER,// raid: tanks 10 yd ahead, melee arcs in front, healer and
                  // ranged arcs behind (owner 2026-09-28)
+    GIANTKILLER, // raid: tank V 10 yd ahead, then melee, healer and ranged
+                 // rows that close up (owner sketch 2026-09-28)
 };
 
 constexpr float Pi = 3.14159265358979f;
@@ -250,6 +252,7 @@ inline float MaxExtentFor(Shape shape, float circleMax, float otherMax)
 struct RoleCounts
 {
     unsigned int tanks = 0, melee = 0, ranged = 0, heals = 0;
+    bool leaderIsTank = false;  // GIANTKILLER: the leader is the tip of the V
     unsigned int Total() const { return tanks + melee + ranged + heals; }
 };
 
@@ -347,6 +350,70 @@ inline std::vector<Offset> Dragonslayer(RoleCounts const& roles, float spacing, 
     return out;
 }
 
+// Row width of Giant Killer: grows with the group, so 5 bots stand in a
+// small block and 40 in rows of 8 (about 14 yd wide).
+inline unsigned int GiantKillerWidth(unsigned int count)
+{
+    unsigned int width = 1;
+    while (width * width < count)
+        ++width;
+    return std::min(8u, std::max(3u, count > 16 ? width + 1 : width));
+}
+
+// Giant Killer (owner sketch 2026-09-28): only tanks form the V, its tip
+// tankDistance ahead of the first row; the tanks spread back from the tip
+// left and right. Behind it one stream of rows: melee first, then healers,
+// then ranged. A block that does not fill its last row leaves the rest of
+// that row to the next block, so no row stays empty and the healer and
+// ranged blocks move up by themselves. If the leader is not a tank he takes
+// the middle of the first row; if he is, he is the tip of the V and the
+// rows start tankDistance behind him. Slots come in role order: tanks,
+// melee, ranged, healers.
+inline std::vector<Offset> GiantKiller(RoleCounts const& roles, float spacing, float tankDistance = 10.0f)
+{
+    float const tip = roles.leaderIsTank ? 0.0f : tankDistance;
+    float const firstRow = roles.leaderIsTank ? -tankDistance : 0.0f;
+
+    std::vector<Offset> tanks;
+    for (unsigned int i = roles.leaderIsTank ? 1 : 0; tanks.size() < roles.tanks; ++i)
+    {
+        float const step = float((i + 1) / 2);
+        float const side = (i % 2 ? 1.0f : -1.0f) * spacing * step;
+        tanks.push_back({ tip - 0.8f * spacing * step, i ? side : 0.0f });
+    }
+
+    unsigned int const width = GiantKillerWidth(roles.Total() + 1);
+    float const half = spacing * float(width - 1) / 2.0f;
+    std::vector<float> const rowSides = CentreOut(Spread(width, -half, half));
+
+    // One stream of row slots, in the order they are handed out.
+    std::vector<Offset> stream;
+    unsigned int const others = roles.melee + roles.heals + roles.ranged;
+    for (unsigned int row = 0; stream.size() < others; ++row)
+    {
+        for (float s : rowSides)
+        {
+            // The middle of the first row belongs to a leader who is not a tank.
+            if (row == 0 && !roles.leaderIsTank && std::fabs(s) < 0.01f)
+                continue;
+            stream.push_back({ firstRow - spacing * float(row), s });
+            if (stream.size() == others)
+                break;
+        }
+    }
+
+    std::vector<Offset> out = tanks;
+    auto take = [&](unsigned int from, unsigned int count)
+    {
+        out.insert(out.end(), stream.begin() + from, stream.begin() + from + count);
+    };
+    // Stream order melee, healers, ranged; output order melee, ranged, healers.
+    take(0, roles.melee);
+    take(roles.melee + roles.heals, roles.ranged);
+    take(roles.melee, roles.heals);
+    return out;
+}
+
 inline void Cap(std::vector<Offset>& out, float maxRadius)
 {
     float far = 0.0f;
@@ -380,6 +447,14 @@ inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing,
             out = Dragonslayer(roles, spacing);
             break;
         }
+        case Shape::GIANTKILLER:
+        {
+            RoleCounts roles;
+            roles.tanks = std::min(leadCount, count);
+            roles.melee = count - roles.tanks;
+            out = GiantKiller(roles, spacing);
+            break;
+        }
         case Shape::CIRCLE:    out = Circle(count, spacing); break;
         case Shape::REARGUARD: out = HalfRing(count, spacing, false); break;
         case Shape::VANGUARD:  out = HalfRing(count, spacing, true); break;
@@ -398,9 +473,13 @@ inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing,
 // Slots for a group split by role (the order GridFormation fills them).
 inline std::vector<Offset> SlotsForRoles(Shape shape, RoleCounts const& roles, float spacing, float maxRadius)
 {
-    if (shape != Shape::DRAGONSLAYER)
+    std::vector<Offset> out;
+    if (shape == Shape::DRAGONSLAYER)
+        out = Dragonslayer(roles, spacing);
+    else if (shape == Shape::GIANTKILLER)
+        out = GiantKiller(roles, spacing);
+    else
         return Slots(shape, roles.Total(), spacing, maxRadius, roles.tanks);
-    std::vector<Offset> out = Dragonslayer(roles, spacing);
     Cap(out, maxRadius);
     return out;
 }
