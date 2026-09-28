@@ -1002,6 +1002,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_scarlet_citadel_408_contract.cmake")
+  # twow-repo#405: quest-item chests respawn in half the time (owner, train 8).
+  add_test(NAME quest_go_respawn_405_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_quest_go_respawn_405_contract.cmake")
   # twow-repo#348 round 3: Voidlord pulse with the Hellfire visual, boss 20 % larger.
   add_test(NAME voidlord_round3_348_contract
     COMMAND "${CMAKE_COMMAND}"
