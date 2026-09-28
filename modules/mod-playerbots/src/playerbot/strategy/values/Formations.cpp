@@ -351,10 +351,14 @@ namespace ai
             if (it == order.end())
                 return Formation::NullLocation;
 
-            std::vector<formation_grid::Offset> const slots = formation_grid::Slots(shape, uint32(order.size()),
+            formation_grid::RoleCounts roles;
+            roles.tanks = uint32(tanks.size());
+            roles.melee = uint32(melee.size());
+            roles.ranged = uint32(ranged.size());
+            roles.heals = uint32(heals.size());
+            std::vector<formation_grid::Offset> const slots = formation_grid::SlotsForRoles(shape, roles,
                 sPlayerbotAIConfig.formationSpacing,
-                formation_grid::MaxExtentFor(shape, sPlayerbotAIConfig.formationCircleMaxRadius, sPlayerbotAIConfig.formationMaxExtent),
-                uint32(tanks.size()));
+                formation_grid::MaxExtentFor(shape, sPlayerbotAIConfig.formationCircleMaxRadius, sPlayerbotAIConfig.formationMaxExtent));
             size_t const index = size_t(it - order.begin());
             if (index >= slots.size())
                 return Formation::NullLocation;
@@ -600,6 +604,13 @@ bool FormationValue::Load(std::string formation)
         if (value) delete value;
         value = new GridFormation(ai, "column", formation_grid::Shape::COLUMN);
     }
+    // Owner 2026-09-28: the raid formation - tanks 10 yd ahead, melee in
+    // front, healers and ranged on half circles behind.
+    else if (formation == "dragonslayer" || formation == "dragon")
+    {
+        if (value) delete value;
+        value = new GridFormation(ai, "dragonslayer", formation_grid::Shape::DRAGONSLAYER);
+    }
     else if (formation == "near" || formation == "default")
     {
         if (value) delete value;
@@ -654,7 +665,7 @@ bool SetFormationAction::Execute(Event& event)
     {
         std::ostringstream str; str << "Invalid formation: |cffff0000" << formation;
         ai->TellPlayer(requester, str);
-        ai->TellPlayer(requester, "Please set to any of:|cffffffff near, queue, chaos, circle, line, shield, arrow, spear, melee, far, ring, vanguard, rearguard, triangle, block, column, default");
+        ai->TellPlayer(requester, "Please set to any of:|cffffffff near, queue, chaos, circle, line, shield, arrow, spear, melee, far, ring, vanguard, rearguard, triangle, block, column, dragonslayer, default");
         return false;
     }
 

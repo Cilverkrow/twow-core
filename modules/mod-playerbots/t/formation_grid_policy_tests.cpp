@@ -157,5 +157,51 @@ int main()
     auto const uncapped = Slots(Shape::COLUMN, 40, spacing, 0.0f);
     Require(Far(uncapped) > 10.0f, "0 disables the cap");
     Require(MaxExtentFor(Shape::CIRCLE, 15.0f, 30.0f) == 15.0f && MaxExtentFor(Shape::BLOCK, 15.0f, 30.0f) == 30.0f, "circle 15 yd, others 30 yd");
+
+    // Dragonslayer (owner 2026-09-28), a 40 raid: 5 tanks, 10 melee,
+    // 15 ranged, 10 healers - slots in that order.
+    RoleCounts raid;
+    raid.tanks = 5; raid.melee = 10; raid.ranged = 15; raid.heals = 10;
+    auto const dragon = SlotsForRoles(Shape::DRAGONSLAYER, raid, spacing, otherMax);
+    Require(dragon.size() == 40 && Nearest(dragon) >= 1.0f, "40 slots, nobody on top of another");
+    for (unsigned int i = 0; i < 5; ++i)
+        Require(std::fabs(dragon[i].forward - 10.0f) < 0.01f && std::fabs(dragon[i].side) <= 4.01f, "five tanks in one row 10 yd ahead");
+    for (unsigned int i = 5; i < 15; ++i)
+        Require(dragon[i].forward > 0.5f && dragon[i].forward < 8.0f && Distance(dragon[i]) <= 5.01f,
+            "melee on one or two rows in front of the leader, behind the tanks");
+    float healDepth = 0.0f;
+    for (unsigned int i = 30; i < 40; ++i)
+    {
+        Require(dragon[i].forward < -0.5f && Distance(dragon[i]) <= 5.01f, "healers on one or two rows behind the leader");
+        Require(10.0f - dragon[i].forward <= 15.01f, "healers at most 15 yd behind the tank row");
+        healDepth = std::max(healDepth, Distance(dragon[i]));
+    }
+    for (unsigned int i = 15; i < 30; ++i)
+        Require(dragon[i].forward < -0.5f && Distance(dragon[i]) > healDepth + 1.0f && Distance(dragon[i]) <= healDepth + 5.01f,
+            "ranged on one or two rows behind the healers");
+
+    // More than five tanks: the extra ones line up behind the first row.
+    RoleCounts sevenTanks;
+    sevenTanks.tanks = 7; sevenTanks.melee = 8; sevenTanks.ranged = 10; sevenTanks.heals = 8;
+    auto const tankRows = SlotsForRoles(Shape::DRAGONSLAYER, sevenTanks, spacing, otherMax);
+    Require(std::fabs(tankRows[5].forward - 8.0f) < 0.01f && std::fabs(tankRows[6].forward - 8.0f) < 0.01f,
+        "tanks six and seven stand in a second row behind the first five");
+    Require(Nearest(tankRows) >= 1.0f, "seven tanks, nobody on top of another");
+
+    // Every raid size 1..40 with a typical role mix stays sane.
+    for (unsigned int n = 1; n <= 40; ++n)
+    {
+        RoleCounts roles;
+        roles.tanks = std::max(1u, n / 8);
+        roles.heals = std::min(n - roles.tanks, n / 4);
+        roles.ranged = (n - roles.tanks - roles.heals) / 2;
+        roles.melee = n - roles.tanks - roles.heals - roles.ranged;
+        auto const slots = SlotsForRoles(Shape::DRAGONSLAYER, roles, spacing, otherMax);
+        Require(slots.size() == n, "dragonslayer: one slot per follower");
+        if (n > 1)
+            Require(Nearest(slots) >= 1.0f, "dragonslayer: nobody on top of another");
+        for (auto const& o : slots)
+            Require(Distance(o) >= 1.0f && Distance(o) <= otherMax + 0.01f, "dragonslayer: off the leader, within the cap");
+    }
     return 0;
 }

@@ -8,7 +8,7 @@
 --
 -- Lua 5.0 / 1.12 client: no '#', no '%', handlers read `this`, no SetSize.
 
-BOTMENU_VERSION = "1.4";
+BOTMENU_VERSION = "1.5";
 
 -- Categories in menu order (owner 2026-09-27, twow-repo#290). `menu` is the
 -- frame from BotMenu.xml; each entry is { label, command }. Commands are the
@@ -49,6 +49,7 @@ BOTMENU_CATEGORIES = {
 		{ "Triangle",             "formation triangle" },
 		{ "Block",               "formation block" },
 		{ "Column",             "formation column" },
+		{ "Dragonslayer (raid)", "formation dragonslayer" },
 		{ "Which formation?",   "formation ?" },
 	} },
 	-- Role filter: a click remembers the prefix, the next command click puts

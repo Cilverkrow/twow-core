@@ -33,6 +33,8 @@ enum class Shape
     LINE,        // a row beside the leader, more rows behind (10-11 wide)
     SHIELD,      // tanks in a row in front, everybody else in rows behind
     ARROW,       // role wedge: tanks at the tip in front, healers at the back
+    DRAGONSLAYER,// raid: tanks 10 yd ahead, melee arcs in front, healer and
+                 // ranged arcs behind (owner 2026-09-28)
 };
 
 constexpr float Pi = 3.14159265358979f;
@@ -244,26 +246,109 @@ inline float MaxExtentFor(Shape shape, float circleMax, float otherMax)
     return shape == Shape::CIRCLE ? circleMax : otherMax;
 }
 
-// All slots for `count` followers, compressed so that no slot lies further
-// than maxRadius from the leader (0 = no cap). `leadCount` is the number of
-// tanks at the start of the role order (SHIELD, ARROW).
-inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing, float maxRadius, unsigned int leadCount = 0)
+// Group members per role, in the order the formation fills its slots.
+struct RoleCounts
+{
+    unsigned int tanks = 0, melee = 0, ranged = 0, heals = 0;
+    unsigned int Total() const { return tanks + melee + ranged + heals; }
+};
+
+constexpr float ArcHalfAngle = 5.0f * Pi / 12.0f;  // 75 degrees each side
+
+// `count` slots on half-circle rows ahead of (`front`) or behind the leader,
+// first row at firstRadius, one spacing further per row. One row while the
+// bots fit at full spacing, else two; more only when two rows would put
+// neighbours closer than 3/4 spacing. Rows span +-75 degrees so the front
+// and back arcs never meet beside the leader.
+inline std::vector<Offset> Arcs(unsigned int count, float firstRadius, float spacing, bool front)
 {
     std::vector<Offset> out;
-    switch (shape)
+    if (count == 0)
+        return out;
+    auto capacity = [&](float radius, float gap) { return unsigned(2.0f * ArcHalfAngle * radius / gap) + 1; };
+
+    unsigned int rows = count > capacity(firstRadius, spacing) ? 2 : 1;
+    for (;;)
     {
-        case Shape::CIRCLE:    out = Circle(count, spacing); break;
-        case Shape::REARGUARD: out = HalfRing(count, spacing, false); break;
-        case Shape::VANGUARD:  out = HalfRing(count, spacing, true); break;
-        case Shape::WEDGE:     out = Wedge(count, spacing); break;
-        case Shape::TRIANGLE:  out = Triangle(count, spacing); break;
-        case Shape::BLOCK:     out = Rows(count, spacing, BlockWidth(count)); break;
-        case Shape::COLUMN:    out = Rows(count, spacing, ColumnWidth(count)); break;
-        case Shape::LINE:      out = Line(count, spacing); break;
-        case Shape::SHIELD:    out = Shield(count, leadCount, spacing); break;
-        case Shape::ARROW:     out = Arrow(count, leadCount, spacing); break;
+        unsigned int total = 0;
+        for (unsigned int i = 0; i < rows; ++i)
+            total += capacity(firstRadius + spacing * float(i), 0.75f * spacing);
+        if (total >= count)
+            break;
+        ++rows;
     }
 
+    // Share the bots among the rows in proportion to their length.
+    float radiusSum = 0.0f;
+    for (unsigned int i = 0; i < rows; ++i)
+        radiusSum += firstRadius + spacing * float(i);
+    std::vector<unsigned int> perRow(rows, 0);
+    unsigned int left = count;
+    for (unsigned int i = 0; i < rows; ++i)
+    {
+        float const radius = firstRadius + spacing * float(i);
+        unsigned int here = i + 1 == rows ? left
+            : std::min(left, unsigned(std::floor(float(count) * radius / radiusSum + 0.5f)));
+        here = std::min(here, capacity(radius, 0.75f * spacing));
+        perRow[i] = here;
+        left -= here;
+    }
+    for (unsigned int i = 0; left && i < rows; ++i)
+    {
+        unsigned int const room = capacity(firstRadius + spacing * float(i), 0.75f * spacing) - perRow[i];
+        unsigned int const add = std::min(room, left);
+        perRow[i] += add;
+        left -= add;
+    }
+
+    for (unsigned int i = 0; i < rows; ++i)
+    {
+        float const radius = firstRadius + spacing * float(i);
+        for (float a : CentreOut(Spread(perRow[i], -ArcHalfAngle, ArcHalfAngle)))
+        {
+            float const forward = radius * std::cos(a);
+            out.push_back({ front ? forward : -forward, radius * std::sin(a) });
+        }
+    }
+    return out;
+}
+
+constexpr unsigned int DragonslayerTankRow = 5;
+
+// Dragonslayer (owner 2026-09-28): tanks in rows of up to five 10 yd ahead
+// (more tanks line up behind them), melee on one or two half-circle rows in
+// front of the leader, healers on one or two rows behind him, ranged on one
+// or two rows behind the healers. Slots come in role order: tanks, melee,
+// ranged, healers.
+inline std::vector<Offset> Dragonslayer(RoleCounts const& roles, float spacing, float tankDistance = 10.0f)
+{
+    std::vector<Offset> tanks;
+    for (unsigned int row = 0; tanks.size() < roles.tanks; ++row)
+    {
+        unsigned int const here = std::min(DragonslayerTankRow, roles.tanks - unsigned(tanks.size()));
+        float const half = spacing * float(here - 1) / 2.0f;
+        for (float s : CentreOut(Spread(here, -half, half)))
+            tanks.push_back({ tankDistance - spacing * float(row), s });
+    }
+
+    float const firstRow = 1.5f * spacing;
+    std::vector<Offset> const melee = Arcs(roles.melee, firstRow, spacing, true);
+    std::vector<Offset> const heals = Arcs(roles.heals, firstRow, spacing, false);
+    float healDepth = 0.0f;
+    for (Offset const& o : heals)
+        healDepth = std::max(healDepth, Distance(o));
+    float const rangedFirst = heals.empty() ? firstRow : healDepth + firstRow;
+    std::vector<Offset> const ranged = Arcs(roles.ranged, rangedFirst, spacing, false);
+
+    std::vector<Offset> out = tanks;
+    out.insert(out.end(), melee.begin(), melee.end());
+    out.insert(out.end(), ranged.begin(), ranged.end());
+    out.insert(out.end(), heals.begin(), heals.end());
+    return out;
+}
+
+inline void Cap(std::vector<Offset>& out, float maxRadius)
+{
     float far = 0.0f;
     for (Offset const& o : out)
         far = std::max(far, Distance(o));
@@ -276,6 +361,47 @@ inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing,
             o.side *= scale;
         }
     }
+}
+
+// All slots for `count` followers, compressed so that no slot lies further
+// than maxRadius from the leader (0 = no cap). `leadCount` is the number of
+// tanks at the start of the role order (SHIELD, ARROW; DRAGONSLAYER treats
+// the rest as melee here - use SlotsForRoles for the real split).
+inline std::vector<Offset> Slots(Shape shape, unsigned int count, float spacing, float maxRadius, unsigned int leadCount = 0)
+{
+    std::vector<Offset> out;
+    switch (shape)
+    {
+        case Shape::DRAGONSLAYER:
+        {
+            RoleCounts roles;
+            roles.tanks = std::min(leadCount, count);
+            roles.melee = count - roles.tanks;
+            out = Dragonslayer(roles, spacing);
+            break;
+        }
+        case Shape::CIRCLE:    out = Circle(count, spacing); break;
+        case Shape::REARGUARD: out = HalfRing(count, spacing, false); break;
+        case Shape::VANGUARD:  out = HalfRing(count, spacing, true); break;
+        case Shape::WEDGE:     out = Wedge(count, spacing); break;
+        case Shape::TRIANGLE:  out = Triangle(count, spacing); break;
+        case Shape::BLOCK:     out = Rows(count, spacing, BlockWidth(count)); break;
+        case Shape::COLUMN:    out = Rows(count, spacing, ColumnWidth(count)); break;
+        case Shape::LINE:      out = Line(count, spacing); break;
+        case Shape::SHIELD:    out = Shield(count, leadCount, spacing); break;
+        case Shape::ARROW:     out = Arrow(count, leadCount, spacing); break;
+    }
+    Cap(out, maxRadius);
+    return out;
+}
+
+// Slots for a group split by role (the order GridFormation fills them).
+inline std::vector<Offset> SlotsForRoles(Shape shape, RoleCounts const& roles, float spacing, float maxRadius)
+{
+    if (shape != Shape::DRAGONSLAYER)
+        return Slots(shape, roles.Total(), spacing, maxRadius, roles.tanks);
+    std::vector<Offset> out = Dragonslayer(roles, spacing);
+    Cap(out, maxRadius);
     return out;
 }
 }
