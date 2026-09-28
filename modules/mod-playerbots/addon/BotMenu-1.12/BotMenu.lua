@@ -8,7 +8,7 @@
 --
 -- Lua 5.0 / 1.12 client: no '#', no '%', handlers read `this`, no SetSize.
 
-BOTMENU_VERSION = "1.2";
+BOTMENU_VERSION = "1.3";
 
 -- Categories in menu order (owner 2026-09-27, twow-repo#290). `menu` is the
 -- frame from BotMenu.xml; each entry is { label, command }. Commands are the
@@ -65,6 +65,8 @@ BOTMENU_CATEGORIES = {
 		{ "Wegschicken",         "leave" },
 		{ "Anführer geben",      "give leader" },
 		{ "Bereitschaftscheck",  "ready" },
+		-- #419: all online characters (paced /who) with an invite button.
+		{ "Bot-Liste (alle online)...", open = "BotList" },
 	} },
 	{ label = "Quests", menu = "BotMenuQuest", entries = {
 		{ "Questliste",          "quests" },
@@ -179,6 +181,12 @@ function BotMenu_PrefixClick()
 	ChatMenu:Hide();
 end
 
+-- Opens a window instead of writing a command.
+function BotMenu_OpenClick()
+	ChatMenu:Hide();
+	BotList_Show();
+end
+
 local function BotMenu_Fill()
 	for i = 1, table.getn(BOTMENU_CATEGORIES) do
 		local category = BOTMENU_CATEGORIES[i];
@@ -186,7 +194,9 @@ local function BotMenu_Fill()
 		BotMenu_AddButton(BotMenu, category.label, nil, category.menu);
 		for j = 1, table.getn(category.entries) do
 			local entry = category.entries[j];
-			if ( entry.prefix ) then
+			if ( entry.open ) then
+				BotMenu_AddButton(menu, entry[1], BotMenu_OpenClick, nil);
+			elseif ( entry.prefix ) then
 				local button = BotMenu_AddButton(menu, entry[1], BotMenu_PrefixClick, nil);
 				if ( button ) then
 					button.botPrefix = entry.prefix;
@@ -258,9 +268,16 @@ SlashCmdList["BOTMENU"] = function(msg)
 		BotMenuDB.enabled = 0;
 		BotMenu_ShowEntry(false);
 		BotMenu_Print("aus.");
+	elseif ( msg == "liste" or msg == "list" ) then
+		BotList_Show();
+	elseif ( string.sub(msg, 1, 4) == "takt" ) then
+		-- Pace of the bot list scan: seconds between two /who, or auto.
+		local value = tonumber(string.sub(msg, 6));
+		BotMenuDB.whoInterval = value;
+		BotMenu_Print("Takt der Bot-Liste: "..(value and (value.." s") or "automatisch")..".");
 	else
 		BotMenu_Print("Version "..BOTMENU_VERSION..", "..((BotMenuDB and BotMenuDB.enabled == 1) and "an" or "aus")..
-			". /botmenu on | off. Der aktive Chat-Kanal bestimmt, welche Bots den Befehl bekommen: "..
+			". /botmenu on | off | liste | takt <s>|auto. Der aktive Chat-Kanal bestimmt, welche Bots den Befehl bekommen: "..
 			"/w Name = ein Bot, /p = Gruppe, /raid = Schlachtzug.");
 	end
 end

@@ -138,4 +138,25 @@ foreach(command destroy drop sendmail ah cast castnc "guild promote" "guild demo
     message(FATAL_ERROR "Caution command '${command}' is in the menu: ${hit}")
   endif()
 endforeach()
+
+# #419: BotList.lua follows the same 1.12 rules and is loaded by the XML.
+file(READ "${addon_dir}/BotList.lua" botlist)
+require_text("${xml}" "<Script file=\"BotList.lua\"/>" "BotList.lua loaded by BotMenu.xml")
+foreach(forbidden ":match(" "string.match" "gmatch" ":SetSize(" "SendAddonMessage" "SendChatMessage" "C_Timer")
+  string(FIND "${botlist}" "${forbidden}" at)
+  if(NOT at EQUAL -1)
+    message(FATAL_ERROR "BotList.lua uses ${forbidden} (not on 1.12, or sends on its own)")
+  endif()
+endforeach()
+if(botlist MATCHES "[=(,] *#[A-Za-z_]")
+  message(FATAL_ERROR "BotList.lua uses the # length operator (Lua 5.1)")
+endif()
+if(botlist MATCHES "[A-Za-z0-9_)] *% *[A-Za-z0-9_(]")
+  message(FATAL_ERROR "BotList.lua uses the % operator (Lua 5.1)")
+endif()
+# It only asks /who and invites: the server's cooldown and 49 cut-off stay
+# the limits, and the stock who window is given back after a scan.
+require_text("${botlist}" "BOTLIST_MAX_PER_QUERY = 49;" "the server's 49 cut-off")
+require_text("${botlist}" "FriendsFrame:RegisterEvent(\"WHO_LIST_UPDATE\")" "who window re-attached")
+require_text("${botlist}" "FriendsFrame:UnregisterEvent(\"WHO_LIST_UPDATE\")" "who window detached during a scan")
 message(STATUS "BOTMENU_ADDON_CONTRACT=PASS entries=${entry_count}")

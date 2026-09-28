@@ -90,6 +90,231 @@
 		</Scripts>
 	</Frame>
 
+
+	<!-- twow-repo#419: the bot list (all online characters via paced /who). -->
+	<Script file="BotList.lua"/>
+	<Button name="BotListRowTemplate" virtual="true">
+		<Size><AbsDimension x="470" y="16"/></Size>
+		<Layers>
+			<Layer level="BORDER">
+				<FontString name="$parentName" inherits="GameFontNormalSmall" justifyH="LEFT">
+					<Size><AbsDimension x="105" y="16"/></Size>
+					<Anchors><Anchor point="LEFT"/></Anchors>
+				</FontString>
+				<FontString name="$parentClass" inherits="GameFontHighlightSmall" justifyH="LEFT">
+					<Size><AbsDimension x="80" y="16"/></Size>
+					<Anchors><Anchor point="LEFT" relativeTo="$parentName" relativePoint="RIGHT"/></Anchors>
+				</FontString>
+				<FontString name="$parentLevel" inherits="GameFontHighlightSmall" justifyH="LEFT">
+					<Size><AbsDimension x="30" y="16"/></Size>
+					<Anchors><Anchor point="LEFT" relativeTo="$parentClass" relativePoint="RIGHT"/></Anchors>
+				</FontString>
+				<FontString name="$parentGuild" inherits="GameFontHighlightSmall" justifyH="LEFT">
+					<Size><AbsDimension x="115" y="16"/></Size>
+					<Anchors><Anchor point="LEFT" relativeTo="$parentLevel" relativePoint="RIGHT"/></Anchors>
+				</FontString>
+				<FontString name="$parentZone" inherits="GameFontHighlightSmall" justifyH="LEFT">
+					<Size><AbsDimension x="140" y="16"/></Size>
+					<Anchors><Anchor point="LEFT" relativeTo="$parentGuild" relativePoint="RIGHT"/></Anchors>
+				</FontString>
+			</Layer>
+		</Layers>
+		<HighlightTexture file="Interface\QuestFrame\UI-QuestTitleHighlight" alphaMode="ADD"/>
+		<Scripts>
+			<OnClick>
+				BotList_RowClick();
+			</OnClick>
+		</Scripts>
+	</Button>
+
+	<Frame name="BotListFrame" parent="UIParent" toplevel="true" movable="true" enableMouse="true" hidden="true" frameStrata="DIALOG">
+		<Size><AbsDimension x="500" y="420"/></Size>
+		<Anchors><Anchor point="CENTER"/></Anchors>
+		<Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Background" edgeFile="Interface\DialogFrame\UI-DialogBox-Border" tile="true">
+			<BackgroundInsets><AbsInset left="11" right="12" top="12" bottom="11"/></BackgroundInsets>
+			<TileSize><AbsValue val="32"/></TileSize>
+			<EdgeSize><AbsValue val="32"/></EdgeSize>
+		</Backdrop>
+		<Layers>
+			<Layer level="ARTWORK">
+				<FontString name="$parentTitle" inherits="GameFontNormal" text="Bot-Liste (alle online)">
+					<Anchors><Anchor point="TOP"><Offset><AbsDimension x="0" y="-16"/></Offset></Anchor></Anchors>
+				</FontString>
+				<FontString name="$parentStatus" inherits="GameFontHighlightSmall" justifyH="LEFT">
+					<Size><AbsDimension x="460" y="14"/></Size>
+					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-36"/></Offset></Anchor></Anchors>
+				</FontString>
+				<FontString inherits="GameFontNormalSmall" text="Stufe von/bis:">
+					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-86"/></Offset></Anchor></Anchors>
+				</FontString>
+				<FontString inherits="GameFontNormalSmall" text="Zone:">
+					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="230" y="-86"/></Offset></Anchor></Anchors>
+				</FontString>
+				<FontString inherits="GameFontNormalSmall" text="Name">
+					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-110"/></Offset></Anchor></Anchors>
+				</FontString>
+				<FontString inherits="GameFontNormalSmall" text="Klasse">
+					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="125" y="-110"/></Offset></Anchor></Anchors>
+				</FontString>
+				<FontString inherits="GameFontNormalSmall" text="Stufe">
+					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="205" y="-110"/></Offset></Anchor></Anchors>
+				</FontString>
+				<FontString inherits="GameFontNormalSmall" text="Gilde">
+					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="235" y="-110"/></Offset></Anchor></Anchors>
+				</FontString>
+				<FontString inherits="GameFontNormalSmall" text="Zone">
+					<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="350" y="-110"/></Offset></Anchor></Anchors>
+				</FontString>
+			</Layer>
+		</Layers>
+		<Frames>
+			<Button name="$parentScan" inherits="UIPanelButtonTemplate" text="Scannen">
+				<Size><AbsDimension x="90" y="22"/></Size>
+				<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-54"/></Offset></Anchor></Anchors>
+				<Scripts><OnClick>BotList_StartScan();</OnClick></Scripts>
+			</Button>
+			<Button name="$parentCancel" inherits="UIPanelButtonTemplate" text="Abbrechen">
+				<Size><AbsDimension x="90" y="22"/></Size>
+				<Anchors><Anchor point="LEFT" relativeTo="$parentScan" relativePoint="RIGHT"/></Anchors>
+				<Scripts><OnClick>BotList_CancelScan(nil);</OnClick></Scripts>
+			</Button>
+			<Button name="$parentFaction" inherits="UIPanelButtonTemplate" text="Fraktion: alle">
+				<Size><AbsDimension x="120" y="22"/></Size>
+				<Anchors><Anchor point="LEFT" relativeTo="$parentCancel" relativePoint="RIGHT"><Offset><AbsDimension x="10" y="0"/></Offset></Anchor></Anchors>
+				<Scripts><OnClick>BotList_CycleFaction();</OnClick></Scripts>
+			</Button>
+			<Button name="$parentClass" inherits="UIPanelButtonTemplate" text="Klasse: alle">
+				<Size><AbsDimension x="120" y="22"/></Size>
+				<Anchors><Anchor point="LEFT" relativeTo="$parentFaction" relativePoint="RIGHT"/></Anchors>
+				<Scripts><OnClick>BotList_CycleClass();</OnClick></Scripts>
+			</Button>
+			<EditBox name="$parentMinLevel" inherits="InputBoxTemplate" autoFocus="false" numeric="true" letters="2">
+				<Size><AbsDimension x="30" y="20"/></Size>
+				<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="110" y="-82"/></Offset></Anchor></Anchors>
+				<Scripts>
+					<OnTextChanged>BotList_SetLevel("minLevel", this:GetText());</OnTextChanged>
+					<OnEscapePressed>this:ClearFocus();</OnEscapePressed>
+				</Scripts>
+			</EditBox>
+			<EditBox name="$parentMaxLevel" inherits="InputBoxTemplate" autoFocus="false" numeric="true" letters="2">
+				<Size><AbsDimension x="30" y="20"/></Size>
+				<Anchors><Anchor point="LEFT" relativeTo="$parentMinLevel" relativePoint="RIGHT"><Offset><AbsDimension x="10" y="0"/></Offset></Anchor></Anchors>
+				<Scripts>
+					<OnTextChanged>BotList_SetLevel("maxLevel", this:GetText());</OnTextChanged>
+					<OnEscapePressed>this:ClearFocus();</OnEscapePressed>
+				</Scripts>
+			</EditBox>
+			<EditBox name="$parentZone" inherits="InputBoxTemplate" autoFocus="false" letters="40">
+				<Size><AbsDimension x="200" y="20"/></Size>
+				<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="270" y="-82"/></Offset></Anchor></Anchors>
+				<Scripts>
+					<OnTextChanged>BotList_SetZone(this:GetText());</OnTextChanged>
+					<OnEscapePressed>this:ClearFocus();</OnEscapePressed>
+				</Scripts>
+			</EditBox>
+			<Button name="BotListRow1" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="20" y="-126"/></Offset></Anchor></Anchors>
+			</Button>
+			<Button name="BotListRow2" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow1" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow3" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow2" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow4" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow3" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow5" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow4" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow6" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow5" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow7" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow6" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow8" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow7" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow9" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow8" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow10" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow9" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow11" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow10" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow12" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow11" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow13" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow12" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow14" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow13" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="BotListRow15" inherits="BotListRowTemplate">
+				<Anchors><Anchor point="TOPLEFT" relativeTo="BotListRow14" relativePoint="BOTTOMLEFT"/></Anchors>
+			</Button>
+			<Button name="$parentInvite" inherits="UIPanelButtonTemplate" text="Einladen">
+				<Size><AbsDimension x="110" y="22"/></Size>
+				<Anchors><Anchor point="BOTTOMLEFT"><Offset><AbsDimension x="20" y="16"/></Offset></Anchor></Anchors>
+				<Scripts><OnClick>BotList_Invite(nil);</OnClick></Scripts>
+			</Button>
+			<Button name="$parentRaid" inherits="UIPanelButtonTemplate" text="In Raid umwandeln">
+				<Size><AbsDimension x="140" y="22"/></Size>
+				<Anchors><Anchor point="LEFT" relativeTo="$parentInvite" relativePoint="RIGHT"/></Anchors>
+				<Scripts><OnClick>BotList_ConvertToRaid();</OnClick></Scripts>
+			</Button>
+			<Button name="$parentUp" inherits="UIPanelButtonTemplate" text="^">
+				<Size><AbsDimension x="30" y="22"/></Size>
+				<Anchors><Anchor point="LEFT" relativeTo="$parentRaid" relativePoint="RIGHT"><Offset><AbsDimension x="20" y="0"/></Offset></Anchor></Anchors>
+				<Scripts><OnClick>BotList_Scroll(5);</OnClick></Scripts>
+			</Button>
+			<Button name="$parentDown" inherits="UIPanelButtonTemplate" text="v">
+				<Size><AbsDimension x="30" y="22"/></Size>
+				<Anchors><Anchor point="LEFT" relativeTo="$parentUp" relativePoint="RIGHT"/></Anchors>
+				<Scripts><OnClick>BotList_Scroll(-5);</OnClick></Scripts>
+			</Button>
+			<Button name="$parentClose" inherits="UIPanelButtonTemplate" text="Schließen">
+				<Size><AbsDimension x="90" y="22"/></Size>
+				<Anchors><Anchor point="BOTTOMRIGHT"><Offset><AbsDimension x="-20" y="16"/></Offset></Anchor></Anchors>
+				<Scripts><OnClick>BotListFrame:Hide();</OnClick></Scripts>
+			</Button>
+		</Frames>
+		<Scripts>
+			<OnLoad>
+				this:RegisterForDrag("LeftButton");
+				if ( this.EnableMouseWheel ) then
+					this:EnableMouseWheel(1);
+				end
+				tinsert(UISpecialFrames, "BotListFrame");
+			</OnLoad>
+			<OnDragStart>this:StartMoving();</OnDragStart>
+			<OnDragStop>this:StopMovingOrSizing();</OnDragStop>
+			<OnMouseWheel>BotList_Scroll(arg1);</OnMouseWheel>
+			<OnShow>BotList_Refresh();</OnShow>
+		</Scripts>
+	</Frame>
+
+	<!-- Must stay shown: its OnUpdate paces the /who queries of a scan. -->
+	<Frame name="BotListEventFrame">
+		<Scripts>
+			<OnLoad>
+				this:RegisterEvent("WHO_LIST_UPDATE");
+			</OnLoad>
+			<OnEvent>
+				if ( event == "WHO_LIST_UPDATE" ) then
+					BotList_OnWhoUpdate();
+				end
+			</OnEvent>
+			<OnUpdate>
+				BotList_OnUpdate();
+			</OnUpdate>
+		</Scripts>
+	</Frame>
+
 	<!-- Event frame: fills the menus once saved variables are loaded. -->
 	<Frame name="BotMenuEventFrame" hidden="true">
 		<Scripts>
