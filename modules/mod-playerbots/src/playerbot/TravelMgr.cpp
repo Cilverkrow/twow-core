@@ -1,4 +1,5 @@
 #include "playerbot/TravelMgr.h"
+#include "playerbot/GatherNodePolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include <iomanip>
@@ -773,6 +774,16 @@ bool GatherTravelDestination::IsPossible(const PlayerTravelInfo& info) const
         uint32 lockId = goInfo->GetLockId();
         LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
         if (!lockInfo)
+            return false;
+
+        // #414: only real herb/ore nodes. A lock slot that asks for a skill no
+        // profession provides (e.g. "open kneeling") marks a quest object.
+        bool lockHasNonProfessionSkill = false;
+        for (int i = 0; i < 8; ++i)
+            if (lockInfo->Type[i] == LOCK_KEY_SKILL && lockInfo->Index[i] && SkillByLockType(LockType(lockInfo->Index[i])) == 0)
+                lockHasNonProfessionSkill = true;
+
+        if (!ai::gather_node::IsGatherNode(goInfo->type == GAMEOBJECT_TYPE_CHEST, lockHasNonProfessionSkill))
             return false;
 
         for (int i = 0; i < 8; ++i)

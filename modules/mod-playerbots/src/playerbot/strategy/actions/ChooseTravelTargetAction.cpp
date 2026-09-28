@@ -3,6 +3,7 @@
 #include "playerbot/LootObjectStack.h"
 #include "ChooseTravelTargetAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/GatherNodePolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
@@ -562,6 +563,16 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             if (persistentTarget && persistentTarget->IsDestinationDeathSuppressed(destination))
             {
                 ai->TellDebug(requester, "Skipping destination after repeated deaths there.", "debug travel");
+                continue;
+            }
+
+            // #414: no gathering trips to another continent.
+            uint32 const gatherPurposes = uint32(TravelDestinationPurpose::GatherSkinning) | uint32(TravelDestinationPurpose::GatherMining) |
+                uint32(TravelDestinationPurpose::GatherHerbalism) | uint32(TravelDestinationPurpose::GatherFishing);
+            if (position && !ai::gather_node::StaysOnMap((uint32(destination->GetPurpose()) & gatherPurposes) != 0,
+                    bot->GetMapId(), position->getMapId()))
+            {
+                ai->TellDebug(requester, "Skipping gathering destination on another map.", "debug travel");
                 continue;
             }
 
