@@ -109,4 +109,8 @@ foreach (rule "candidates[i].maxCopies" "sFunserverInstanceBossLoot.find(mapId)"
               "FunserverBoeItemLevelMatch(item.itemLevel, ownMaxItemLevel, margin)" "FUNSERVER_POOL_MAX_COPIES")
   require_text("${units_body}" "${rule}" "#323 owner unit rule")
 endforeach()
+# twow-repo#429: the instance pool stays off (default) until an encounter order exists.
+require_text("${units_body}" "sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_INSTANCE_POOL)" "#429 instance pool gate")
+require_text("${world}" "\"Funserver.Loot.Units.InstancePool\", false" "#429 instance pool default off")
+require_text("${config}" "Funserver.Loot.Units.InstancePool = 0" "#429 instance pool dist default")
 message(STATUS "LOOT_BONUS_SOURCE_CONTRACT=PASS")
