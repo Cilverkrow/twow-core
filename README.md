@@ -1,6 +1,8 @@
 
 # Tortoise-WoW
 
+> **Private, non-commercial hobby project.** Run privately for its owner and a few friends over a private VPN; no public server, no donations, no paid perks, and money is never taken. The repository contains only our own source, configuration templates and documentation — **no Blizzard or Turtle-WoW client files** (DBC/MPQ/models/textures) and no secrets. World of Warcraft is a trademark of Blizzard Entertainment; this project is not affiliated with Blizzard or Turtle-WoW.
+
 This is an unofficial, community driven, restoration of the 1.18.1 patch of Turtle-WoW, with some additions for solo play.  
 This project is not to be used for profit or to misrepresent itself, or anyone using it, as the original creators  
 This project targets version 1.18.1 build 7272
