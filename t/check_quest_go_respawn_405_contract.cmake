@@ -6,8 +6,8 @@ endif()
 # replay-safe from stored originals, reversible.
 file(READ "${TW_CORE_ROOT}/sql/database_updates/20260928120000_world.sql" m)
 foreach (required
-    "CREATE TABLE IF NOT EXISTS `gameobject_respawn_halving_405`"
-    "INSERT IGNORE INTO `gameobject_respawn_halving_405`"
+    "CREATE TABLE IF NOT EXISTS `gameobject_bak_405`"
+    "INSERT IGNORE INTO `gameobject_bak_405`"
     "WHERE g.`spawntimesecsmin` > 0 AND g.`id` IN ("
     "SET g.`spawntimesecsmin` = LEAST(b.`old_min`, GREATEST(5, b.`old_min` DIV 2)),"
     "g.`spawntimesecsmax` = LEAST(b.`old_max`, GREATEST(5, b.`old_max` DIV 2));"

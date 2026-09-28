@@ -13,12 +13,17 @@
 -- Dynamic (spawn_flags 0x08, 816 spawns) and random (0x04, 13) respawn only multiply this base,
 -- and pooled spawns (95 in 5 pools) keep their pool, so the halving holds for all of them.
 --
--- Reversible: the original values are kept once in gameobject_respawn_halving_405, and the
--- halving is always computed from them (replay-safe). Rollback:
---   UPDATE gameobject g JOIN gameobject_respawn_halving_405 b ON b.guid = g.guid
+-- Reversible: the original values are kept once in gameobject_bak_405, and the
+-- halving is always computed from them (replay-safe). Naming per OB-40: <source>_bak_<issue>.
+-- Later migrations that change respawn times of these spawns must update this table too,
+-- because INSERT IGNORE keeps the first values. Window check (sum over the listed entries):
+--   SELECT COUNT(*), SUM(spawntimesecsmin), SUM(spawntimesecsmax) FROM gameobject
+--    WHERE spawntimesecsmin > 0 AND id IN (<the 555 entries below>);
+-- Rollback:
+--   UPDATE gameobject g JOIN gameobject_bak_405 b ON b.guid = g.guid
 --      SET g.spawntimesecsmin = b.old_min, g.spawntimesecsmax = b.old_max;
 
-CREATE TABLE IF NOT EXISTS `gameobject_respawn_halving_405` (
+CREATE TABLE IF NOT EXISTS `gameobject_bak_405` (
   `guid` int(10) unsigned NOT NULL,
   `id` mediumint(8) unsigned NOT NULL,
   `old_min` int(11) NOT NULL,
@@ -26,7 +31,7 @@ CREATE TABLE IF NOT EXISTS `gameobject_respawn_halving_405` (
   PRIMARY KEY (`guid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='twow-repo#405: original respawn times of quest-item chests';
 
-INSERT IGNORE INTO `gameobject_respawn_halving_405` (`guid`, `id`, `old_min`, `old_max`)
+INSERT IGNORE INTO `gameobject_bak_405` (`guid`, `id`, `old_min`, `old_max`)
 SELECT g.`guid`, g.`id`, g.`spawntimesecsmin`, g.`spawntimesecsmax`
 FROM `gameobject` g
 WHERE g.`spawntimesecsmin` > 0 AND g.`id` IN (
@@ -80,6 +85,6 @@ WHERE g.`spawntimesecsmin` > 0 AND g.`id` IN (
     3000235, 3000236, 3000238, 3000245, 3000247, 3000248, 3000280, 3000343, 3000520);
 
 UPDATE `gameobject` g
-JOIN `gameobject_respawn_halving_405` b ON b.`guid` = g.`guid`
+JOIN `gameobject_bak_405` b ON b.`guid` = g.`guid`
 SET g.`spawntimesecsmin` = LEAST(b.`old_min`, GREATEST(5, b.`old_min` DIV 2)),
     g.`spawntimesecsmax` = LEAST(b.`old_max`, GREATEST(5, b.`old_max` DIV 2));
