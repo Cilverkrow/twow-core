@@ -26,6 +26,7 @@
     #endif
 #endif
 #include "strategy/ItemVisitors.h"
+#include "playerbot/ShamanWeaponPolicy.h"
 
 using namespace ai;
 
@@ -2905,6 +2906,12 @@ bool PlayerbotFactory::CanEquipWeapon(ItemPrototype const* proto)
    case CLASS_SHAMAN:
       if (tab == 1) //enh
       {
+         // twow-repo#357 S2-7: swords once "Ancestral Arms" taught the skill.
+         if ((proto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || proto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD2) &&
+            ai::shaman_weapons::SwordAllowed(proto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD2,
+               bot->HasSkill(SKILL_SWORDS), bot->HasSkill(SKILL_2H_SWORDS)))
+            break;
+
          if (proto->SubClass != ITEM_SUBCLASS_WEAPON_MACE &&
             proto->SubClass != ITEM_SUBCLASS_WEAPON_FIST &&
             proto->SubClass != ITEM_SUBCLASS_WEAPON_AXE &&
