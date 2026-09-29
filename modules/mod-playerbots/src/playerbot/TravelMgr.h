@@ -2,6 +2,8 @@
 
 #include "ProgressAwareTurnInRecoveryPolicy.h"
 #include "DestinationDeathPolicy.h"
+#include "AreaLevelPolicy.h"
+#include <mutex>
 
 #include "strategy/AiObject.h"
 #include <boost/functional/hash.hpp>
@@ -487,6 +489,8 @@ namespace ai
 
 		int32 GetAreaLevel(uint32 area_id);
 		void LoadAreaLevels();
+		// #416 (7.3): creature levels per area in one pass, only while LoadAreaLevels runs.
+		void LoadCreatureAreaLevels();
 	private:
 		void Clear();
 		void SetMobAvoidAreaMap(uint32 mapId);
@@ -528,6 +532,10 @@ namespace ai
 		GatherTravelDestination fishMap;
 		std::list<AsyncGuidPosition> fishPoints;
 		std::unordered_map<uint32, int32> areaLevels;
+		// #416 (7.3): areaLevels is read from the map threads and the destination jobs.
+		std::recursive_mutex areaLevelMutex;
+		ai::area_level::CreatureLevels creatureAreaLevels;
+		bool loadingAreaLevels = false;
 
 		std::mutex getDestinationMutex;
 		std::condition_variable getDestinationVar;

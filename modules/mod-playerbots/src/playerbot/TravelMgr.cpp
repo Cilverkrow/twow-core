@@ -1383,6 +1383,8 @@ void TravelMgr::Clear()
 
 int32 TravelMgr::GetAreaLevel(uint32 area_id)
 {
+    std::lock_guard<std::recursive_mutex> lock(areaLevelMutex);
+
     // #307: configured levels for areas the generated table misses (Turtle
     // zones such as the high elf start 5225 Thalassian Highlands).
     auto const configured = sPlayerbotAIConfig.areaLevelOverrides.find(area_id);
@@ -1414,7 +1416,8 @@ int32 TravelMgr::GetAreaLevel(uint32 area_id)
     uint32 cnt = 0;
 
     //Get sub-area's
-    for (uint32 i = 0; i <= sAreaStore.GetNumRows(); i++)
+    // #416 (7.3): ids go past the record count of the SQL store.
+    for (uint32 i = 0; i < ai::area_level::AreaIdEnd(sAreaStore.GetMaxEntry(), sAreaStore.GetNumRows()); i++)
     {
         AreaTableEntry const* subArea = GetAreaEntryByAreaID(i);
 
@@ -1438,35 +1441,21 @@ int32 TravelMgr::GetAreaLevel(uint32 area_id)
     }
 
     //Get units avarage
-    FactionTemplateEntry const* humanFaction = sFactionTemplateStore.LookupEntry(1);
-    FactionTemplateEntry const* orcFaction = sFactionTemplateStore.LookupEntry(2);
-
-    for (auto& creaturePair : WorldPosition().getCreaturesNear())
+    // #416 (7.3): this was a scan over every creature of the world, with a
+    // terrain lookup each, per area - 17-20 s on the map thread when a bot first
+    // touched such an area. Now one pass fills all areas while LoadAreaLevels
+    // runs at startup; at runtime an uncached area falls through to its zone.
+    if (ai::area_level::MayUseCreatureLevels(loadingAreaLevels))
     {
-        if (WorldPosition(creaturePair).GetArea() != area)
-            continue;
+        if (!creatureAreaLevels.loaded)
+            LoadCreatureAreaLevels();
 
-        CreatureData const cData = creaturePair->second;
-        CreatureInfo const* cInfo = sObjectMgr.GetCreatureTemplate(cData.creature_id[0]);
-
-        if (!cInfo)
-            continue;
-
-        FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(cInfo->Faction);
-        ReputationRank reactionHum = PlayerbotAI::GetFactionReaction(humanFaction, factionEntry);
-        ReputationRank reactionOrc = PlayerbotAI::GetFactionReaction(orcFaction, factionEntry);
-
-        if (reactionHum > REP_NEUTRAL || reactionOrc > REP_NEUTRAL)
-            continue;
-
-        level += cInfo->MaxLevel;
-        cnt++;
-    }
-
-    if (cnt)
-    {
-        areaLevels[area_id] = std::max(uint32(1),level / cnt);
-        return areaLevels[area_id];
+        int32 const unitLevel = creatureAreaLevels.Average(area->ID);
+        if (unitLevel > 0)
+        {
+            areaLevels[area_id] = unitLevel;
+            return areaLevels[area_id];
+        }
     }
 
     //Use parent zone value.
@@ -1483,10 +1472,52 @@ int32 TravelMgr::GetAreaLevel(uint32 area_id)
     return areaLevels[area_id];
 }
 
+void TravelMgr::LoadCreatureAreaLevels()
+{
+    std::lock_guard<std::recursive_mutex> lock(areaLevelMutex);
+    creatureAreaLevels.loaded = true;
+
+    uint32 const start = WorldTimer::getMSTime();
+    FactionTemplateEntry const* humanFaction = sFactionTemplateStore.LookupEntry(1);
+    FactionTemplateEntry const* orcFaction = sFactionTemplateStore.LookupEntry(2);
+
+    for (auto& creaturePair : WorldPosition().getCreaturesNear())
+    {
+        CreatureData const& cData = creaturePair->second;
+        CreatureInfo const* cInfo = sObjectMgr.GetCreatureTemplate(cData.creature_id[0]);
+
+        if (!cInfo)
+            continue;
+
+        FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(cInfo->Faction);
+        ReputationRank reactionHum = PlayerbotAI::GetFactionReaction(humanFaction, factionEntry);
+        ReputationRank reactionOrc = PlayerbotAI::GetFactionReaction(orcFaction, factionEntry);
+
+        if (reactionHum > REP_NEUTRAL || reactionOrc > REP_NEUTRAL)
+            continue;
+
+        if (AreaTableEntry const* creatureArea = WorldPosition(creaturePair).GetArea())
+            creatureAreaLevels.Add(creatureArea->ID, cInfo->MaxLevel);
+    }
+
+    sLog.outString(">> Area levels: creature levels for %u areas in one pass (%u ms).",
+        creatureAreaLevels.Size(), WorldTimer::getMSTimeDiffToNow(start));
+}
+
 void TravelMgr::LoadAreaLevels()
 {
+    std::lock_guard<std::recursive_mutex> lock(areaLevelMutex);
+
     if (!areaLevels.empty())
         return;
+
+    // #416 (7.3): the creature levels may only be used during this load.
+    struct LoadingFlag
+    {
+        bool& flag;
+        explicit LoadingFlag(bool& f) : flag(f) { flag = true; }
+        ~LoadingFlag() { flag = false; }
+    } const loading(loadingAreaLevels);
 
     WorldDatabase.PExecute("CREATE TABLE IF NOT EXISTS `ai_playerbot_zone_level` (`id` bigint(20) NOT NULL ,`level` bigint(20) NOT NULL,PRIMARY KEY(`id`))");
 
@@ -1514,9 +1545,12 @@ void TravelMgr::LoadAreaLevels()
             sLog.outString(">> Loaded " SIZEFMTD " area levels.", areaLevels.size());
         }
 
-        BarGoLink bar(sAreaStore.GetNumRows());
+        // #416 (7.3): GetNumRows() is the record count of the SQL store (1481); the
+        // ids go up to GetMaxEntry() (Turtle areas up to 5735).
+        uint32 const areaIdEnd = ai::area_level::AreaIdEnd(sAreaStore.GetMaxEntry(), sAreaStore.GetNumRows());
+        BarGoLink bar(areaIdEnd);
         WorldDatabase.BeginTransaction();
-        for (uint32 i = 0; i < sAreaStore.GetNumRows(); ++i)    // areaflag numbered from 0
+        for (uint32 i = 0; i < areaIdEnd; ++i)
         {
             bar.step();
             if (AreaTableEntry const* area = sAreaStore.LookupEntry<AreaEntry>(i))
