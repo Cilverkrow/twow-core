@@ -128,8 +128,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
     // #307: low-level roster bots grind at most GrindCap.LowLevelMargin levels
     // above themselves and skip creatures that killed them repeatedly.
     bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
-    int const maxLevelsAbove = grind_cap::MaxLevelsAbove(rosterOnItsOwn, bot->GetLevel(),
-        sPlayerbotAIConfig.grindCapLowLevelBelow, sPlayerbotAIConfig.grindCapLowLevelMargin);
+    // #422: a bot in a death series grinds nothing above its level.
+    int const maxLevelsAbove = ai::death_series::GrindMargin(rosterOnItsOwn && ai->IsCautious(),
+        grind_cap::MaxLevelsAbove(rosterOnItsOwn, bot->GetLevel(),
+            sPlayerbotAIConfig.grindCapLowLevelBelow, sPlayerbotAIConfig.grindCapLowLevelMargin));
     time_t const now = time(nullptr);
 
     for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)

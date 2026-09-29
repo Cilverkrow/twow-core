@@ -676,6 +676,13 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 continue;
             }
 
+            // #422: a gathering purpose this bot died at twice without a killer.
+            if (!target->IsForced() && ai->IsGatherPurposeSuppressed(uint32(destination->GetPurpose()) & gatherPurposes))
+            {
+                ++lastRejects.deathSuppressed;
+                continue;
+            }
+
             if (!target->IsForced() && isActive.find(destination) != isActive.end() && !isActive[destination])
             {
                 ++lastRejects.knownInactive;
@@ -728,7 +735,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     int32 const areaLevel = std::max<int32>(0, position->getAreaLevel());
                     route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
                         bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
-                        uint32(areaLevel));
+                        uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()));
                     if (danger == route_danger::Reason::CrossMap)
                     {
                         ++deferredCrossMap;
