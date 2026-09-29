@@ -19,7 +19,7 @@ endfunction()
 # twow-repo#367 / #409 stage 2: server counterpart of the rogue client delta
 # (twow-repo ops/clientpatch/changes/*/0367_*). Texts and icons only for the
 # existing spells, the player poison ranks I-IV, and the trainer rows of P-1/P-2.
-file(READ "${TW_CORE_ROOT}/sql/database_updates/20260928170000_world.sql" m)
+file(READ "${TW_CORE_ROOT}/sql/database_updates/20260929100000_world.sql" m)
 # CMake lists split on ';' (statement ends, and the tooltip token $lpoint:points;).
 string(REPLACE ";" "<SC>" m_nosc "${m}")
 
