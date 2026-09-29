@@ -1786,6 +1786,11 @@ inline void Map::setNGrid(NGridType *grid, uint32 x, uint32 y)
         sLog.outError("map::setNGrid() Invalid grid coordinates found: %d, %d!", x, y);
         MANGOS_ASSERT(false);
     }
+    // twow-repo#416 (7.3): count the loaded grids for [MemStores].
+    if (!i_grids[x][y] && grid)
+        ++m_loadedGridCount;
+    else if (i_grids[x][y] && !grid)
+        --m_loadedGridCount;
     i_grids[x][y] = grid;
 }
 

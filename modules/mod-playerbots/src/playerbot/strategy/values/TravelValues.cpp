@@ -30,6 +30,11 @@ void FutureDestinations::Park()
     ++parkedSince;
 }
 
+size_t FutureDestinations::ParkedCount()
+{
+    return parkingLot.Count();
+}
+
 bool FutureDestinations::MayStart()
 {
     if (!parkingLot.Full())
