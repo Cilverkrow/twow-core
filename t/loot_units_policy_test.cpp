@@ -55,6 +55,27 @@ int main()
     Check(FunserverBoeItemLevelMatch(66, 71, 5), "T1 pool stays for MC-level tables");
     Check(FunserverBoeItemLevelMatch(40, 0, 5), "no own floor items -> level window only");
 
+    // Owner 2026-09-28 (#429 hotfix 7.3): dungeon target 2..4, max 4, at least 1 BoE while room.
+    Check(FunserverDungeonBoeUnits(1, 2, 4, 1) == 1 && FunserverDungeonBoeUnits(1, 4, 4, 1) == 3, "1 own -> 1..3 BoE");
+    Check(FunserverDungeonBoeUnits(2, 2, 4, 1) == 1 && FunserverDungeonBoeUnits(2, 4, 4, 1) == 2, "2 own -> 1..2 BoE");
+    Check(FunserverDungeonBoeUnits(3, 2, 4, 1) == 1 && FunserverDungeonBoeUnits(3, 4, 4, 1) == 1, "3 own -> 1 BoE");
+    Check(FunserverDungeonBoeUnits(4, 4, 4, 1) == 0 && FunserverDungeonBoeUnits(6, 2, 4, 1) == 0, "4+ own -> no BoE");
+    Check(FunserverDungeonBoeUnits(0, 2, 4, 1) == 2 && FunserverDungeonBoeUnits(0, 4, 4, 1) == 4, "no own drop -> T BoE");
+    Check(FunserverDungeonBoeUnits(1, 3, 4, 0) == 2 && FunserverDungeonBoeUnits(3, 2, 4, 0) == 0, "minBoe 0 fills to T only");
+
+    // Raids: fill normal loot to the map target, set pieces on top, never above 16 in total.
+    Check(FunserverRaidFillUnits(1, 8, 3, 16) == 7, "MC target 8, 1 normal + 2 set on corpse -> 7 more");
+    Check(FunserverRaidFillUnits(5, 4, 7, 16) == 0, "normal drops already above target -> none");
+    Check(FunserverRaidFillUnits(0, 8, 12, 16) == 4, "hard cap 16 wins over the target");
+    Check(FunserverRaidFillUnits(0, 8, 16, 16) == 0, "full corpse -> none");
+
+    auto ranges = FunserverParseMapRanges("409:6-8,469:4-6, 814:2-4,bad,531:6-4,533:3-5x,819:3-5");
+    Check(ranges.size() == 4, "four valid map ranges");
+    Check(ranges.count(409) && ranges[409].min == 6 && ranges[409].max == 8, "MC 6..8");
+    Check(ranges.count(814) && ranges[814].min == 2 && ranges[814].max == 4, "Kara 814 2..4 with blank");
+    Check(!ranges.count(531) && !ranges.count(533), "min > max and trailing junk skipped");
+    Check(FunserverParseMapRanges("").empty(), "empty string = off");
+
     if (failures)
         return 1;
     std::cout << "LOOT_UNITS_POLICY=PASS\n";
