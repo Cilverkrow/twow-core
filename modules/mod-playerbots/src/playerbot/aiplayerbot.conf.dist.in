@@ -593,6 +593,11 @@ AiPlayerbot.DangerMap.LineSamples = 20
 # above itself (otherwise 4). 0 = off.
 AiPlayerbot.GrindCap.LowLevelBelow = 0
 AiPlayerbot.GrindCap.LowLevelMargin = 2
+# #421: a roster bot on its own that made no quest progress (level, XP, quest
+# state) for this many minutes, while its quest search already reached the
+# region, is teleported to another race's starting area / level hub of its
+# faction (at most once per bot in 2 h, 5 per 10 min world-wide). 0 = off.
+AiPlayerbot.QuestRescue.IdleMinutes = 30
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0

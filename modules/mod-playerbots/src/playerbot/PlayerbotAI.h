@@ -17,6 +17,7 @@
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
+#include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/GroupBuffPolicy.h"
 class Player;
 class PlayerbotMgr;
@@ -880,6 +881,12 @@ protected:
     uint32 lastValueNamesTime = 0;
     mutable std::mutex valueNamesMutex;
     std::string topValueNames;
+    // #421 C: progress watch for the quest rescue teleport.
+    ai::quest_search::ProgressTracker questProgress;
+    uint32 lastQuestProgressCheck = 0;
+    std::atomic<uint32> lastQuestRescue{ 0 };
+    std::atomic<bool> questRescueRequested{ false };
+    std::atomic<bool> questRescueDone{ false };
     ai::stall_guard::TopActions updateActions;
     uint32 firstUpdateTime = 0;
     uint32 lastReviveTime = 0;
@@ -901,6 +908,10 @@ public:
     uint32 GetOwnValueCount() const { return ownValueCount.load(); }
     uint32 GetSharedValueCount() const { return sharedValueCount.load(); }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
+    // #421 C: set on the bot's thread, taken and acted on by the world thread.
+    bool TakeQuestRescueRequest() { return questRescueRequested.exchange(false); }
+    void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
+    uint32 GetQuestIdleSeconds(uint32 now) const { return questProgress.IdleSeconds(now); }
     // #416: time of one executed action (ms > 0), for the top-3 of this update.
     void RecordActionTime(std::string const& name, uint32 ms) { updateActions.Add(name, ms); }
 

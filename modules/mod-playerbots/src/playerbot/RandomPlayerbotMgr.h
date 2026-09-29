@@ -2,6 +2,7 @@
 #define _RandomPlayerbotMgr_H
 
 #include <mutex>
+#include "playerbot/QuestSearchPolicy.h"
 #include "Common.h"
 #include <unordered_set>
 #include "PlayerbotAIBase.h"
@@ -148,6 +149,9 @@ public:
         uint32 GetTradeDiscount(Player* bot, Player* master);
         void Refresh(Player* bot);
         void RandomTeleportForLevel(Player* bot, bool activeOnly);
+        // #421 C: rescue teleport for roster bots without quest progress.
+        void ProcessQuestRescues();
+        std::vector<WorldLocation> QuestRescueTargets(Player* bot);
         void RandomTeleportForLevel(Player* bot) { return RandomTeleportForLevel(bot, true); }
         void RandomTeleportForRpg(Player* bot, bool activeOnly);
         void RandomTeleportForRpg(Player* bot) { return RandomTeleportForRpg(bot, true); }
@@ -321,6 +325,11 @@ public:
         std::map<uint32, std::vector<WorldLocation> > rpgLocsCache;
 		std::map<uint32, std::map<uint32, std::vector<WorldLocation> > > rpgLocsCacheLevel;
         std::map<uint32, std::map<uint32, std::vector<std::pair<ObjectGuid, WorldLocation>> > > innCacheLevel;
+        // #421 C: global rate limit of the rescue teleport.
+        ai::quest_search::RescueLimiter questRescueLimiter;
+        uint32 lastQuestRescueScan = 0;
+        // #421 C: spawn points of the rescue anchor NPCs, looked up once.
+        std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;
         std::map<uint32, std::map<std::string, CachedEvent> > eventCache;
         BarGoLink* loginProgressBar;
