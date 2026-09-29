@@ -146,7 +146,9 @@ Map::Map(uint32 id, time_t expiry, uint32 InstanceId)
         {
             //z code
             m_bLoadedGrids[idx][j] = false;
-            setNGrid(nullptr, idx, j);
+            // twow-repo#416: raw init - i_grids is uninitialised here, setNGrid would
+            // count the garbage as loaded grids and underflow m_loadedGridCount.
+            i_grids[idx][j] = nullptr;
         }
     }
 
