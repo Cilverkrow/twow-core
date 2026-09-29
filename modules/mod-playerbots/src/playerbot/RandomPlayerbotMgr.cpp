@@ -42,6 +42,12 @@
 #include "PersistentActiveRoster.h"
 #include "PersistentActiveRosterDatabase.h"
 #include "LoginWavePolicy.h"
+#include "playerbot/MemStoresPolicy.h"
+#include "playerbot/StallGuardPolicy.h"
+#include "playerbot/strategy/values/TravelValues.h"
+#include "Maps/MapManager.h"
+#include <fstream>
+#include <sstream>
 #include <functional>
 #include "Transports/Transport.h"
 
@@ -786,8 +792,65 @@ void RandomPlayerbotMgr::LogPlayerLocation()
     }
 }
 
+namespace
+{
+// twow-repo#416 / #319 (7.3): one [MemStores] line per hour - resident memory
+// next to the loaded grids and objects per map and the bounded bot stores, to
+// find the ~300 MB/h growth. Runs on the world thread; the map list is read
+// under the MapManager lock, the object stores under their own locks.
+void ReportMemStores()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!ai::mem_stores::Due(lastReport, now))
+        return;
+    lastReport = now;
+
+    uint64 rssKb = 0;
+#ifdef __linux__
+    std::ifstream status("/proc/self/status");
+    std::stringstream text;
+    text << status.rdbuf();
+    rssKb = ai::mem_stores::ParseVmRssKb(text.str());
+#endif
+
+    std::vector<ai::mem_stores::MapStat> stats;
+    ai::mem_stores::MapStat total;
+    {
+        MaNGOS::ClassLevelLockable<MapManager, std::recursive_mutex>::Lock guard(sMapMgr);
+        for (auto const& [id, map] : sMapMgr.Maps())
+        {
+            if (!map)
+                continue;
+
+            std::pair<uint32, uint32> const objects = map->CountStoredObjects();
+            ai::mem_stores::MapStat stat;
+            stat.mapId = map->GetId();
+            stat.instanceId = map->GetInstanceId();
+            stat.grids = map->GetLoadedGridCount();
+            stat.creatures = objects.first;
+            stat.gameobjects = objects.second;
+            stat.players = map->GetPlayersCountExceptGMs();
+            total.grids += stat.grids;
+            total.creatures += stat.creatures;
+            total.gameobjects += stat.gameobjects;
+            total.players += stat.players;
+            stats.push_back(stat);
+        }
+    }
+
+    sLog.outBasic("[MemStores] rss_kb=%llu maps=%u grids=%u creatures=%u gameobjects=%u players=%u"
+        " route_cooldowns=%u parked_jobs=%u top_maps=\"%s\"",
+        (unsigned long long)rssKb, uint32(stats.size()), total.grids, total.creatures, total.gameobjects, total.players,
+        uint32(ai::stall_guard::RouteCooldowns().Size()), uint32(FutureDestinations::ParkedCount()),
+        ai::mem_stores::TopMaps(stats, 5).c_str());
+}
+}
+
 void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
+    ReportMemStores();
+
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
     sMemoryMonitor.LogCount(sConfig.GetStringDefault("LogsDir") + "/" + "memory.csv");

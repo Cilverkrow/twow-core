@@ -52,6 +52,7 @@
 #include <set>
 #include <mutex>
 #include <shared_mutex>
+#include <atomic>
 
 using Movement::Vector3;
 
@@ -534,6 +535,16 @@ class Map : public GridRefManager<NGridType>
                 store.emplace(it->first.GetCounter(), it->second);
             return store;
         }
+        // twow-repo#416 (7.3): loaded grids and stored objects, for [MemStores].
+        uint32 GetLoadedGridCount() const { return m_loadedGridCount.load(); }
+        std::pair<uint32, uint32> CountStoredObjects()
+        {
+            std::shared_lock<std::shared_mutex> lock(m_objectsStore_lock);
+            auto const creatures = m_objectsStore.range<Creature>();
+            auto const gameobjects = m_objectsStore.range<GameObject>();
+            return { uint32(std::distance(creatures.first, creatures.second)),
+                uint32(std::distance(gameobjects.first, gameobjects.second)) };
+        }
         virtual bool CanEnter(Player* /*player*/) { return true; }
         const char* GetMapName() const;
         time_t GetTime() const;
@@ -874,6 +885,7 @@ class Map : public GridRefManager<NGridType>
         time_t i_gridExpiry;
 
         NGridType* i_grids[MAX_NUMBER_OF_GRIDS][MAX_NUMBER_OF_GRIDS];
+        std::atomic<uint32> m_loadedGridCount{ 0 };   // twow-repo#416: grids in i_grids
 
         //Shared geodata object with map coord info...
         TerrainInfo * const m_TerrainData;

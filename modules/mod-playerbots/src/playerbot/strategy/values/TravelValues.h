@@ -120,6 +120,8 @@ namespace ai
         // #416: false while the parking lot is full - the request is retried
         // next update instead of starting one more job.
         static bool MayStart();
+        // #416 (7.3): parked jobs, for [MemStores].
+        static size_t ParkedCount();
         // #416: drops finished parked jobs (from the bot updates) and writes the
         // [TravelChoose] state=summary line.
         static void Collect();
