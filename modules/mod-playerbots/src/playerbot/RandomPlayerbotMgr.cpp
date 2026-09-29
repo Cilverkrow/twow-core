@@ -798,7 +798,7 @@ namespace
 // next to the loaded grids and objects per map and the bounded bot stores, to
 // find the ~300 MB/h growth. Runs on the world thread; the map list is read
 // under the MapManager lock, the object stores under their own locks.
-void ReportMemStores()
+void ReportMemStores(PlayerBotMap const& bots)
 {
     static uint32 lastReport = 0;
     uint32 const now = uint32(time(nullptr));
@@ -839,17 +839,41 @@ void ReportMemStores()
         }
     }
 
+    // #416 (7.3): value caches of the bots - counted by each bot on its own
+    // thread (atomics), only summed here; the names of the largest bot.
+    uint64 botValues = 0;
+    uint32 botValuesMax = 0, sharedValues = 0, botCount = 0;
+    std::string topValues;
+    for (auto const& [guid, bot] : bots)
+    {
+        PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        if (!ai)
+            continue;
+        uint32 const own = ai->GetOwnValueCount();
+        botValues += own;
+        ++botCount;
+        sharedValues = std::max(sharedValues, ai->GetSharedValueCount());
+        if (own > botValuesMax)
+        {
+            botValuesMax = own;
+            topValues = ai->GetTopValueNames();
+        }
+    }
+
     sLog.outBasic("[MemStores] rss_kb=%llu maps=%u grids=%u creatures=%u gameobjects=%u players=%u"
-        " route_cooldowns=%u parked_jobs=%u top_maps=\"%s\"",
+        " route_cooldowns=%u parked_jobs=%u top_maps=\"%s\""
+        " bots=%u bot_values=%llu bot_values_avg=%u bot_values_max=%u shared_values=%u top_values=\"%s\"",
         (unsigned long long)rssKb, uint32(stats.size()), total.grids, total.creatures, total.gameobjects, total.players,
         uint32(ai::stall_guard::RouteCooldowns().Size()), uint32(FutureDestinations::ParkedCount()),
-        ai::mem_stores::TopMaps(stats, 5).c_str());
+        ai::mem_stores::TopMaps(stats, 5).c_str(),
+        botCount, (unsigned long long)botValues, botCount ? uint32(botValues / botCount) : 0u, botValuesMax, sharedValues,
+        topValues.c_str());
 }
 }
 
 void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
-    ReportMemStores();
+    ReportMemStores(GetAllBots());
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();

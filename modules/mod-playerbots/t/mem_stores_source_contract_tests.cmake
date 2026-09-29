@@ -18,3 +18,9 @@ string(FIND "${map_cpp}" "setNGrid(nullptr, idx, j);" ctor_count)
 if(NOT ctor_count EQUAL -1)
   message(FATAL_ERROR "Map constructor must not count its initial grids through setNGrid")
 endif()
+
+# #416 (7.3): value caches counted on the bot's thread, only summed on the world thread.
+file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_cpp)
+require_text("${ai_cpp}" "aiObjectContext->GetCreatedValueCounts();" "value count on the bot thread")
+require_text("${ai_cpp}" "if (now - lastValueNamesTime >= ai::mem_stores::IntervalSeconds)" "value names at most once per hour")
+require_text("${mgr}" "bot_values=%llu bot_values_avg=%u bot_values_max=%u shared_values=%u" "value-cache fields in [MemStores]")
