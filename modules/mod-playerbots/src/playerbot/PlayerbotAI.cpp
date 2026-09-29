@@ -451,6 +451,15 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     // #416: collect finished parked destination jobs.
     FutureDestinations::Collect();
 
+    // #416 (7.5) F1: every ten minutes (staggered by guid) drop the cached
+    // values of this bot's own contexts that were not calculated for ten
+    // minutes. Runs here, before any value of this update is in use.
+    {
+        uint32 const now = uint32(time(nullptr));
+        if (valueEvictClock.Due(now, bot->GetGUIDLow()))
+            evictedValues += uint32(aiObjectContext->ClearIdleOwnValues(ai::value_evict::EvictIdleSeconds));
+    }
+
     // #416 (7.3): value-cache size for [MemStores] - a count once per minute,
     // the most frequent value names once per hour.
     {

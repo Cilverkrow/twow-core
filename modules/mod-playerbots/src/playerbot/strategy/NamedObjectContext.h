@@ -1,5 +1,8 @@
 #pragma once
 #include <cstdarg>
+#include "playerbot/ValueEvictPolicy.h"
+#include <algorithm>
+#include <vector>
 #include <string>
 #include <iosfwd>
 #include <set>
@@ -256,6 +259,31 @@ namespace ai
 
         // #416 (7.3): [MemStores] value-cache size.
         size_t CreatedCount() const { return created.size(); }
+
+        // #416 (7.5) F2: created names with a prefix, via lower_bound.
+        void AppendCreatedWithPrefix(std::string const& prefix, std::vector<std::string>& out) const
+        {
+            ai::value_evict::AppendKeysWithPrefix(created, prefix, out);
+        }
+
+        // #416 (7.5) F1: delete the created objects the predicate selects.
+        template <class Pred>
+        size_t EraseIf(Pred pred)
+        {
+            size_t erased = 0;
+            for (auto it = created.begin(); it != created.end();)
+            {
+                if (it->second && pred(it->second))
+                {
+                    delete it->second;
+                    it = created.erase(it);
+                    ++erased;
+                }
+                else
+                    ++it;
+            }
+            return erased;
+        }
         void AddBaseNameCounts(std::map<std::string, uint32>& counts) const
         {
             for (auto const& entry : created)
@@ -409,6 +437,31 @@ namespace ai
             for (NamedObjectContext<T>* context : contexts)
                 if (!context->IsShared())
                     context->AddBaseNameCounts(counts);
+        }
+
+        // #416 (7.5) F2: the created names starting with `prefix` over all
+        // contexts, sorted and unique - what ClearValues used to filter from a
+        // full copy of every name.
+        std::vector<std::string> CreatedWithPrefix(std::string const& prefix) const
+        {
+            std::vector<std::string> names;
+            for (NamedObjectContext<T>* context : contexts)
+                context->AppendCreatedWithPrefix(prefix, names);
+            std::sort(names.begin(), names.end());
+            names.erase(std::unique(names.begin(), names.end()), names.end());
+            return names;
+        }
+
+        // #416 (7.5) F1: only this bot's own contexts; shared ones are other
+        // bots' as well and are never touched here.
+        template <class Pred>
+        size_t EraseOwnIf(Pred pred)
+        {
+            size_t erased = 0;
+            for (NamedObjectContext<T>* context : contexts)
+                if (!context->IsShared())
+                    erased += context->EraseIf(pred);
+            return erased;
         }
 
     private:

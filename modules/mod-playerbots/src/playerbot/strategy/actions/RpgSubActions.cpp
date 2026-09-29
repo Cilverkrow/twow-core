@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/ValueEvictPolicy.h"
 #include "RpgSubActions.h"
 #include "ChooseRpgTargetAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -913,7 +914,8 @@ bool RpgItemAction::Execute(Event& event)
     bool used = false;
     for (Item* item : questItems)
     {
-        if (AI_VALUE2(bool, "can use item on", Qualified::MultiQualify({ std::to_string(item->GetProto()->ItemId),guidP.to_string() }, ",")))
+        if (AI_VALUE2(bool, "can use item on", Qualified::MultiQualify({ std::to_string(item->GetProto()->ItemId),
+            ai::value_evict::StableTargetQualifier(guidP.getMapId(), guidP.GetRawValue()) }, ",")))
         {
             if (gameObjectTarget)
             {

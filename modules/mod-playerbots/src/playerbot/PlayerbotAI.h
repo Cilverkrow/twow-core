@@ -1,5 +1,6 @@
 #pragma once
 #include "PlayerbotMgr.h"
+#include "playerbot/ValueEvictPolicy.h"
 #include "PlayerbotAIBase.h"
 #include "strategy/AiObjectContext.h"
 #include "strategy/ReactionEngine.h"
@@ -875,6 +876,9 @@ protected:
     uint32 travelChooseChecked = 0;
     // #416 (7.3): value-cache size, taken on the bot's own thread for [MemStores].
     std::atomic<uint32> ownValueCount{ 0 };
+    // #416 (7.5) F1: eviction of idle cached values.
+    ai::value_evict::EvictClock valueEvictClock;
+    std::atomic<uint32> evictedValues{ 0 };
     std::atomic<uint32> sharedValueCount{ 0 };
     uint32 lastValueCountTime = 0;
     uint32 lastValueNamesTime = 0;
@@ -899,6 +903,7 @@ public:
     void AddTravelChooseChecked(uint32 count) { travelChooseChecked += count; }
     // #416 (7.3): read by [MemStores] on the world thread.
     uint32 GetOwnValueCount() const { return ownValueCount.load(); }
+    uint32 TakeEvictedValues() { return evictedValues.exchange(0); }
     uint32 GetSharedValueCount() const { return sharedValueCount.load(); }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
     // #416: time of one executed action (ms > 0), for the top-3 of this update.
