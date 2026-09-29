@@ -198,16 +198,46 @@ def aura_talents(cls, entries):
     return found
 
 
+# #357 stage 2 (core#217): new talents of the patched tree that are no SpecAura
+# aura but still belong to a path - the shaman weapon talent W "Ancestral Arms"
+# (rank spell 90130, 1 point) for both shaman paths (7.1 = 14 + W, 7.3 = 21 + W).
+# {class: {first rank spell: {path: rank}}}
+EXTRA_REAL_TALENTS = {
+    7: {90130: {'enhancement': 1, 'shaman tank': 1}},
+}
+
+
+def extra_real_talents(cls, entries):
+    """{first rank spell: talent entry} of the class's EXTRA_REAL_TALENTS in a
+    patched Talent.dbc; a missing one is an error, as for the aura talents."""
+    by_first = {entry['rankIDs'][0]: entry for entry in entries if entry['rankIDs']}
+    found, missing = {}, []
+    for spell in EXTRA_REAL_TALENTS.get(cls, {}):
+        entry = by_first.get(spell)
+        if entry is None:
+            missing.append(str(spell))
+        else:
+            found[spell] = entry
+    if missing:
+        raise ValueError('class %d: no talent with first rank spell %s' % (cls, ', '.join(missing)))
+    return found
+
+
 def real_talent_target(cls, name, link, entries):
     """The hand-built link was written against the tree without the new talents,
     so it is read against that tree; the path's aura talents are then added at
-    full rank (they are what the path paid its reserve for)."""
+    full rank (they are what the path paid its reserve for), and the extra real
+    talents of the path (the shaman weapon talent) with their rank."""
     new = aura_talents(cls, entries)
-    new_ids = {entry['id'] for entry in new.values()}
+    extra = extra_real_talents(cls, entries)
+    new_ids = {entry['id'] for entry in new.values()} | {entry['id'] for entry in extra.values()}
     target = parse_link(link, [entry for entry in entries if entry['id'] not in new_ids])
     for aura_cls, aura, _, ranks, paths in SPEC_AURAS:
         if aura_cls == cls and name in paths:
             target[new[aura]['id']] = ranks
+    for spell, per_path in EXTRA_REAL_TALENTS.get(cls, {}).items():
+        if name in per_path:
+            target[extra[spell]['id']] = per_path[name]
     return target
 
 

@@ -105,6 +105,13 @@ int main()
     Require(ManagedAllKit(4, true).empty(), "P-1: every rogue may learn the kit at the trainer, none loses it");
     Require(ManagedAllKit(4, false) == AllKit(4), "phase 1: the kit is removed from other paths as before");
 
+    // #357 stage 2 (core#217): the shaman uses the same switch ("7" in the list).
+    std::vector<std::uint32_t> const bothReal = { 4, 7 };
+    Require(AuraTalentsAreReal(7, bothReal) && AuraTalentsAreReal(4, bothReal), "shaman and rogue listed");
+    Require(!AuraTalentsAreReal(7, rogueReal), "shaman not listed: phase 1");
+    Require(ManagedAllAuras(7, true).empty() && ManagedReservedPoints(7, ShamanTank, 60, true) == 0,
+            "real shaman talents: nothing removed, nothing reserved");
+
     std::cout << "spec_aura_policy_tests passed\n";
     return 0;
 }

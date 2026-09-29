@@ -157,5 +157,61 @@ class RateTwoPremadePathTests(unittest.TestCase):
             GENERATOR_MODULE.real_talent_target(4, 'combat', '-32', [talent(1, 1, 5)])
 
 
+
+class ShamanStageTwoTalentTests(unittest.TestCase):
+    """#357 stage 2 (core#217): the shaman aura talents and the weapon talent W
+    through the shared real-talent path of #219."""
+
+    def entries(self, with_w=True):
+        # Page 1: two old Enhancement talents with W between them in tree order.
+        entries = [talent(1, 1, 5), talent(2, 1, 5)]
+        entries[0]['rankIDs'] = [10]
+        entries[1]['rankIDs'] = [20]
+        if with_w:
+            w = talent(9010, 1, 1)
+            w['rankIDs'] = [90130]
+            entries.insert(1, w)
+        for n, (cls, name, _, ranks, _) in enumerate(GENERATOR_MODULE.SPEC_AURAS):
+            if cls == 7:
+                aura = talent(9001 + n, 2, ranks)
+                first = GENERATOR_MODULE.AURA_FIRST_SPELL[(7, name)]
+                aura['rankIDs'] = list(range(first, first + ranks))
+                entries.append(aura)
+        return entries
+
+    def expected(self, name):
+        by_first = {entry['rankIDs'][0]: entry['id'] for entry in self.entries()}
+        target = {}
+        for cls, aura, _, ranks, paths in GENERATOR_MODULE.SPEC_AURAS:
+            if cls == 7 and name in paths:
+                target[by_first[GENERATOR_MODULE.AURA_FIRST_SPELL[(7, aura)]]] = ranks
+        return target
+
+    def test_links_read_against_the_old_tree_plus_auras_and_w(self):
+        for name in ('enhancement', 'shaman tank'):
+            target = GENERATOR_MODULE.real_talent_target(7, name, '-32', self.entries())
+            self.assertEqual(3, target[1], name)      # the link lands on the old talents,
+            self.assertEqual(2, target[2], name)      # not on W between them
+            self.assertEqual(1, target[9010], name)   # W, one point
+            for talent_id, ranks in self.expected(name).items():
+                self.assertEqual(ranks, target[talent_id], name)
+
+    def test_w_points_on_top_of_the_phase_one_reserve(self):
+        # O-12 variant A: 7.1 = 14 + W, 7.3 = 21 + W.
+        for name, reserve in (('enhancement', 14), ('shaman tank', 21)):
+            self.assertEqual(reserve, GENERATOR_MODULE.reserved_points(7, name, 60), name)
+            self.assertEqual(reserve, sum(self.expected(name).values()), name)
+
+    def test_elemental_gets_no_w_but_reads_the_old_tree(self):
+        target = GENERATOR_MODULE.real_talent_target(7, 'elemental', '-32', self.entries())
+        self.assertNotIn(9010, target)
+        self.assertEqual(3, target[1])
+        self.assertEqual(2, target[2])
+
+    def test_patched_tree_without_w_fails_closed(self):
+        with self.assertRaises(ValueError):
+            GENERATOR_MODULE.real_talent_target(7, 'enhancement', '-32', self.entries(with_w=False))
+
+
 if __name__ == '__main__':
     unittest.main()
