@@ -116,6 +116,46 @@ class RateTwoPremadePathTests(unittest.TestCase):
                 core.append((cls, name, int(level), len([i for i in ids.split(',') if i.strip()]), names))
         self.assertEqual(GENERATOR_MODULE.SPEC_AURAS, core)
 
+    def test_aura_first_spells_match_the_core_header(self):
+        # --talent-classes finds each aura talent in Talent.dbc by its first rank.
+        header = (pathlib.Path(__file__).resolve().parents[1] /
+                  'src' / 'playerbot' / 'SpecAuraPolicy.h').read_text(encoding='utf-8')
+        core = {}
+        for cls, function in ((7, 'ShamanAuras'), (4, 'RogueAuras')):
+            body = header.split('inline std::vector<AuraTalent> const& %s()' % function)[1].split('return auras;')[0]
+            for name, ids in re.findall(r'\{\s*"([^"]+)",\s*[\w |]+?,\s*\d+,\s*\{\s*(\d+)', body):
+                core[(cls, name)] = int(ids)
+        self.assertEqual(GENERATOR_MODULE.AURA_FIRST_SPELL, core)
+
+    def test_real_talents_reserve_nothing(self):
+        self.assertEqual(0, GENERATOR_MODULE.reserved_points(4, 'rogue tank', 60, frozenset({4})))
+        self.assertEqual(20, GENERATOR_MODULE.reserved_points(4, 'rogue tank', 60, frozenset({7})))
+
+    def test_real_talent_target_reads_the_link_without_the_new_talents(self):
+        # Page 1 holds two old talents (ids 1, 2) and, between them in tree order,
+        # the rogue 'agility' talent (rank 1 = 90159). The link '-32' was written
+        # for the old tree, so its digits must land on 1 and 2, not on the new one.
+        entries = [talent(1, 1, 5), talent(50, 1, 5), talent(2, 1, 5)]
+        entries[1]['rankIDs'] = [90159, 90160, 90161, 90162, 90163]
+        for t in entries[::2]:
+            t['rankIDs'] = [t['id'] * 10]
+        others = []
+        for n, (cls, name, _, ranks, _) in enumerate(GENERATOR_MODULE.SPEC_AURAS):
+            if cls == 4 and name != 'agility':
+                extra = talent(100 + n, 2, ranks)
+                first = GENERATOR_MODULE.AURA_FIRST_SPELL[(4, name)]
+                extra['rankIDs'] = list(range(first, first + ranks))
+                others.append(extra)
+        target = GENERATOR_MODULE.real_talent_target(4, 'combat', '-32', entries + others)
+        self.assertEqual(target[1], 3)
+        self.assertEqual(target[2], 2)
+        self.assertEqual(target[50], 5)          # agility, full rank, paid by 4.0
+        self.assertNotIn(100, target)             # damage from behind is 4.1 only
+
+    def test_real_talent_target_fails_closed_without_the_talents(self):
+        with self.assertRaises(ValueError):
+            GENERATOR_MODULE.real_talent_target(4, 'combat', '-32', [talent(1, 1, 5)])
+
 
 if __name__ == '__main__':
     unittest.main()

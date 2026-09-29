@@ -477,6 +477,9 @@ public:
     uint32 deathLoopMaxDeaths = 0;
     // #357 O-12: route B talent auras for shamans on premade path 7.1 / 7.3.
     bool specAuraEnabled = false;
+    // #367 / twow-repo#409 stage 2: classes whose SpecAura talents are real Talent.dbc talents
+    // now (same spell IDs). Their auras are neither granted nor removed and cost no reserve.
+    std::vector<uint32> specAuraTalentClasses;
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
     // #307: a roster bot on its own leaves a zone clearly above its level.

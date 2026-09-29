@@ -30,7 +30,7 @@ Two things it takes care of that are easy to get wrong:
   points, up to the full build.
 
 Usage:
-    build_premade_specs.py --dbc /path/to/dbc [--rate 1.0] [--out file]
+    build_premade_specs.py --dbc /path/to/dbc [--rate 1.0] [--out file] [--talent-classes 4,7]
 """
 import argparse
 import os
@@ -150,11 +150,65 @@ SPEC_AURAS = [
 ]
 
 
-def reserved_points(cls, name, level):
-    """Talent points a path pays at this level for its #357 / #367 auras."""
+# First rank spell of every SPEC_AURAS talent (SpecAuraPolicy.h, keep equal). With
+# --talent-classes these spells are the rank 1 of a real Talent.dbc talent
+# (twow-repo#409 stage 2), which is how the generator finds the new talents.
+AURA_FIRST_SPELL = {
+    (7, 'attack speed'): 90100, (7, 'defense'): 90105, (7, 'imbue mastery'): 90111,
+    (7, 'retaliation'): 90114, (7, 'stormstrike charges'): 90117,
+    (7, 'storm wisdom'): 90118, (7, 'chain storm'): 90124,
+    (7, 'shield constitution'): 90126, (7, 'shield ward'): 90129,
+    (4, 'damage from behind'): 90150, (4, 'snd cooldown crits'): 90154,
+    (4, 'cold blood damage'): 90156, (4, 'vigor damage'): 90157,
+    (4, 'seal fate extra'): 90158, (4, 'agility'): 90159, (4, 'defense'): 90164,
+    (4, 'riposte strikes'): 90169, (4, 'evasive resistance'): 90172,
+    (4, 'execute strikes'): 90175, (4, 'frontal backstab'): 90178,
+    (4, 'tank toughness'): 90179, (4, 'ghostly magic dodge'): 90182,
+    (4, 'stealth damage'): 90183, (4, 'hemorrhage stacks'): 90187,
+    (4, 'shadow damage'): 90188,
+}
+
+
+def reserved_points(cls, name, level, talent_classes=frozenset()):
+    """Talent points a path pays at this level for its #357 / #367 auras.
+    Nothing once the class's auras are real talents (--talent-classes)."""
+    if cls in talent_classes:
+        return 0
     return sum(min(ranks, max(0, level - first + 1))
                for aura_cls, _, first, ranks, paths in SPEC_AURAS
                if aura_cls == cls and name in paths)
+
+
+def aura_talents(cls, entries):
+    """twow-repo#409 stage 2: {aura name: talent entry} of the class's aura
+    talents in a patched Talent.dbc, found by their first rank spell. A missing
+    one is an error: the DBC is not the one the talent classes were built for."""
+    by_first = {entry['rankIDs'][0]: entry for entry in entries if entry['rankIDs']}
+    found, missing = {}, []
+    for aura_cls, name, _, ranks, _ in SPEC_AURAS:
+        if aura_cls != cls:
+            continue
+        entry = by_first.get(AURA_FIRST_SPELL[(cls, name)])
+        if entry is None or entry['maxRank'] != ranks:
+            missing.append(name)
+        else:
+            found[name] = entry
+    if missing:
+        raise ValueError('class %d: no talent with the aura ranks of %s' % (cls, ', '.join(missing)))
+    return found
+
+
+def real_talent_target(cls, name, link, entries):
+    """The hand-built link was written against the tree without the new talents,
+    so it is read against that tree; the path's aura talents are then added at
+    full rank (they are what the path paid its reserve for)."""
+    new = aura_talents(cls, entries)
+    new_ids = {entry['id'] for entry in new.values()}
+    target = parse_link(link, [entry for entry in entries if entry['id'] not in new_ids])
+    for aura_cls, aura, _, ranks, paths in SPEC_AURAS:
+        if aura_cls == cls and name in paths:
+            target[new[aura]['id']] = ranks
+    return target
 
 
 # Talents a path never takes (talent id). #357: Calming Winds (-25 % threat)
@@ -388,7 +442,12 @@ def main():
     ap.add_argument('--rate', type=float, default=1.0,
                     help='Rate.Talent from mangosd.conf')
     ap.add_argument('--out', help='write here instead of stdout')
+    ap.add_argument('--talent-classes', default='',
+                    help='comma-separated classes whose SPEC_AURAS are real talents in '
+                         'this Talent.dbc (twow-repo#409 stage 2), as in '
+                         'AiPlayerbot.SpecAura.TalentClasses')
     args = ap.parse_args()
+    talent_classes = frozenset(int(c) for c in args.talent_classes.split(',') if c.strip())
     if args.rate <= 0:
         ap.error('--rate must be greater than zero')
 
@@ -415,7 +474,8 @@ def main():
 
         for index, (name, link) in enumerate(BUILDS[cls]):
             try:
-                target = parse_link(link, entries)
+                target = (real_talent_target(cls, name, link, entries)
+                          if cls in talent_classes else parse_link(link, entries))
             except ValueError as error:
                 print('  BROKEN  class %d %s: %s' % (cls, name, error), file=sys.stderr)
                 failures += 1
@@ -455,7 +515,7 @@ def main():
                     failures += 1
                     continue
 
-            desired = int((60 - 9) * args.rate) - reserved_points(cls, name, 60)
+            desired = int((60 - 9) * args.rate) - reserved_points(cls, name, 60, talent_classes)
             active_target = target
             if args.rate > 1:
                 active_target = extend_target(entries, target, main_tree,
@@ -473,7 +533,7 @@ def main():
                                  (cls, name) in NEW_PATHS else LEVELS)
             for level in validation_levels:
                 budget = max(0, int((level - 9) * args.rate) -
-                             reserved_points(cls, name, level))
+                             reserved_points(cls, name, level, talent_classes))
                 ranks = (legal_prefix(entries, active_target, main_tree,
                                       budget, spell_ids) if args.rate > 1 else
                          prefix(entries, active_target, main_tree, budget))

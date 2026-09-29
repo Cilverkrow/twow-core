@@ -204,4 +204,41 @@ inline std::uint32_t ReservedPoints(std::uint8_t cls, std::uint8_t path, std::ui
             points += RanksAt(aura, level);
     return points;
 }
+
+// #367 / twow-repo#409 stage 2: once a class's aura talents are real Talent.dbc talents
+// (AiPlayerbot.SpecAura.TalentClasses), the rank spells keep their IDs but the talent
+// system owns them. SpecAura must then neither grant nor remove them (a removal would
+// unlearn a talent the bot bought), and the premade links spend those points on the
+// talents instead of reserving them. The kit (KitFor) is no talent and stays granted.
+template <class ClassList>
+inline bool AuraTalentsAreReal(std::uint8_t cls, ClassList const& talentClasses)
+{
+    for (auto const talentClass : talentClasses)
+        if (talentClass == cls)
+            return true;
+    return false;
+}
+
+inline std::vector<std::uint32_t> ManagedWantedAuras(std::uint8_t cls, std::uint8_t path, std::uint32_t level, bool auraTalentsAreReal)
+{
+    return auraTalentsAreReal ? std::vector<std::uint32_t>() : WantedAuras(cls, path, level);
+}
+
+inline std::vector<std::uint32_t> ManagedAllAuras(std::uint8_t cls, bool auraTalentsAreReal)
+{
+    return auraTalentsAreReal ? std::vector<std::uint32_t>() : AllAuras(cls);
+}
+
+// Owner decision P-1 (twow-repo#367, 2026-09-28): with the real talents every rogue can
+// learn the kit at the trainer, so a bot of another path may know it. SpecAura still
+// grants the kit to its path (4.3), but no longer takes it from anyone.
+inline std::vector<std::uint32_t> ManagedAllKit(std::uint8_t cls, bool auraTalentsAreReal)
+{
+    return auraTalentsAreReal ? std::vector<std::uint32_t>() : AllKit(cls);
+}
+
+inline std::uint32_t ManagedReservedPoints(std::uint8_t cls, std::uint8_t path, std::uint32_t level, bool auraTalentsAreReal)
+{
+    return auraTalentsAreReal ? 0 : ReservedPoints(cls, path, level);
+}
 }
