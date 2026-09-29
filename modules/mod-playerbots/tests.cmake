@@ -824,6 +824,25 @@ add_test(NAME quest_search_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_search_source_contract_tests.cmake")
 
+# #416 (7.5): value-cache eviction and prefix search.
+add_executable(value_evict_policy_tests
+  "${PB_MODULE_DIR}/t/value_evict_policy_tests.cpp")
+
+target_include_directories(value_evict_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(value_evict_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME value_evict_policy
+  COMMAND value_evict_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME value_evict_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/value_evict_source_contract_tests.cmake")
+
 # #416 (7.3): area levels without a world creature scan at runtime.
 add_executable(area_level_policy_tests
   "${PB_MODULE_DIR}/t/area_level_policy_tests.cpp")

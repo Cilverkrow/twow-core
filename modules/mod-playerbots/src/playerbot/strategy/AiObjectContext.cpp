@@ -39,18 +39,26 @@ AiObjectContext::AiObjectContext(PlayerbotAI* ai) : PlayerbotAIAware(ai)
 
 void AiObjectContext::ClearValues(std::string findName)
 {
-    std::set<std::string> names = valueContexts.GetCreated();
-    for (std::set<std::string>::iterator i = names.begin(); i != names.end(); ++i)
+    // #416 (7.5) F2: the names with the prefix via lower_bound, instead of a
+    // copy of every created name per call (called on each travel choice).
+    for (std::string const& name : valueContexts.CreatedWithPrefix(findName))
     {
-        UntypedValue* value = GetUntypedValue(*i);
+        UntypedValue* value = GetUntypedValue(name);
         if (!value)
             continue;
 
-        if (!findName.empty() && i->find(findName) != 0)
-            continue;
-
-        valueContexts.Erase(*i);
+        valueContexts.Erase(name);
     }
+}
+
+size_t AiObjectContext::ClearIdleOwnValues(uint32 idleSeconds)
+{
+    // Only calculated values can expire (a manual, state-carrying value never
+    // does); protected ones (memory / log values) stay.
+    return valueContexts.EraseOwnIf([idleSeconds](UntypedValue* value)
+        {
+            return ai::value_evict::Evictable(value->Protected(), value->Expired(idleSeconds));
+        });
 }
 
 void AiObjectContext::ClearExpiredValues(std::string findName, uint32 interval)
