@@ -841,7 +841,7 @@ add_test(NAME mem_stores_policy
 add_test(NAME mem_stores_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    "-DCORE_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/mem_stores_source_contract_tests.cmake")
 
 # #420: group bots buff their group only and drink late while following.
