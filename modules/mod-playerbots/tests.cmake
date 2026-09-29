@@ -805,6 +805,25 @@ add_test(NAME gather_node_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/gather_node_source_contract_tests.cmake")
 
+# #422: death series and environmental gathering deaths.
+add_executable(death_series_policy_tests
+  "${PB_MODULE_DIR}/t/death_series_policy_tests.cpp")
+
+target_include_directories(death_series_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(death_series_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME death_series_policy
+  COMMAND death_series_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME death_series_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/death_series_source_contract_tests.cmake")
+
 # #421: active quest search and the rescue teleport.
 add_executable(quest_search_policy_tests
   "${PB_MODULE_DIR}/t/quest_search_policy_tests.cpp")

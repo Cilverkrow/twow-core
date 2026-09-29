@@ -1443,6 +1443,8 @@ void PlayerbotAI::OnDeath()
             // G4: a death loop at one spot (graveyard among mobs above the
             // bot) is counted apart from "death count", which XP resets.
             RecordDeathForLoop();
+            // #422: death series and environmental gathering deaths.
+            RecordDeathForSeries();
 
             // #307: a death on a completed-quest turn-in route counts against
             // that route, so a revived bot does not walk back into the same mobs.
@@ -3003,6 +3005,38 @@ void PlayerbotAI::RecordDeathForLoop()
     death.x = bot->GetPositionX();
     death.y = bot->GetPositionY();
     death_loop::Record(recentDeaths, death, DeathLoopSettings());
+}
+
+void PlayerbotAI::RecordDeathForSeries()
+{
+    // Roster bots on their own only; a bot led by a real player follows its player.
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
+        return;
+
+    uint32 const now = uint32(time(nullptr));
+    if (deathSeries.Record(now))
+        sLog.outBasic("[DeathSeries] state=cautious bot=%u level=%u deaths=%u window_s=%u minutes=%u map=%u zone=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(deathSeries.deaths.size()), ai::death_series::WindowSeconds,
+            ai::death_series::CautiousSeconds / 60, bot->GetMapId(), bot->GetZoneId());
+
+    // A death without a killer on the way to / at a gathering destination
+    // counts for the whole purpose (Shanie: fatigue on the way to fishing spots).
+    bool const hasTarget = aiObjectContext->GetValue<Unit*>("current target")->Get() != nullptr;
+    uint32 const attackers = aiObjectContext->GetValue<uint8>("my attacker count")->Get();
+    if (!ai::death_series::IsEnvironmentalDeath(hasTarget, attackers))
+        return;
+
+    TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
+    if (!target || !target->IsActiveForDeathAttribution() || !target->GetDestination())
+        return;
+
+    uint32 const gatherPurposes = uint32(TravelDestinationPurpose::GatherSkinning) | uint32(TravelDestinationPurpose::GatherMining) |
+        uint32(TravelDestinationPurpose::GatherHerbalism) | uint32(TravelDestinationPurpose::GatherFishing);
+    uint32 const purpose = uint32(target->GetDestination()->GetPurpose()) & gatherPurposes;
+    if (purpose && gatherDeaths.RecordEnvironmentalDeath(purpose, now))
+        sLog.outBasic("[DeathSeries] state=purpose_suppressed bot=%u level=%u purpose=%u minutes=%u map=%u zone=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), purpose, ai::death_series::PurposeSuppressSeconds / 60,
+            bot->GetMapId(), bot->GetZoneId());
 }
 
 bool PlayerbotAI::IsInDeathLoop() const

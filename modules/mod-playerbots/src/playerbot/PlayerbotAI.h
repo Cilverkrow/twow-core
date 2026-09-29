@@ -19,6 +19,7 @@
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/DeathSeriesPolicy.h"
 #include "playerbot/GroupBuffPolicy.h"
 class Player;
 class PlayerbotMgr;
@@ -674,6 +675,10 @@ public:
     // G4: deaths close in time and place, not reset by XP (DeathLoopPolicy.h).
     void RecordDeathForLoop();
     bool IsInDeathLoop() const;
+    // #422: death series (any place) and deaths without a killer while gathering.
+    void RecordDeathForSeries();
+    bool IsCautious() const { return deathSeries.Cautious(uint32(time(nullptr))); }
+    bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
     void ClearDeathLoop() { recentDeaths.clear(); }
     uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
     //Checks if the bot is summoned as alt of a player
@@ -922,6 +927,9 @@ public:
 
 protected:
     std::deque<ai::death_loop::Death> recentDeaths;
+    // #422: deaths anywhere (cautious mode) and environmental gathering deaths.
+    ai::death_series::Series deathSeries;
+    ai::death_series::PurposeSuppression gatherDeaths;
 	bool m_suppressAreaTriggerRelay = false;
 	// GUID-shadow of `master` so we can verify the pointer is still
 	// alive each tick without dereferencing it. Set in SetMaster().
