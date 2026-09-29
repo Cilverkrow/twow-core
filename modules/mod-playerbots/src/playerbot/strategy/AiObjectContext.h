@@ -95,6 +95,8 @@ namespace ai
         }
 
         void ClearValues(std::string findName = "");
+        // #416 (7.5) F1: drops own calculated values idle for idleSeconds; returns the count.
+        size_t ClearIdleOwnValues(uint32 idleSeconds);
 
         void ClearExpiredValues(std::string findName = "", uint32 interval = 0);
 
