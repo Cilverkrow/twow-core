@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,33 @@ inline std::string TopMaps(std::vector<MapStat> stats, size_t count)
         if (s.instanceId)
             out += '/' + std::to_string(s.instanceId);
         out += ':' + std::to_string(s.grids) + '/' + std::to_string(s.creatures) + '/' + std::to_string(s.gameobjects);
+    }
+    return out;
+}
+
+// Value-cache diagnostic (#416, 7.3): a cached value is named "value" or
+// "value::qualifier"; the base name groups all qualifiers of one value.
+inline std::string BaseValueName(std::string const& name)
+{
+    std::string::size_type const pos = name.find("::");
+    return pos == std::string::npos ? name : name.substr(0, pos);
+}
+
+// "name:count,..." for the largest counts.
+inline std::string TopCounts(std::map<std::string, uint32_t> const& counts, size_t count)
+{
+    std::vector<std::pair<std::string, uint32_t>> sorted(counts.begin(), counts.end());
+    std::sort(sorted.begin(), sorted.end(), [](auto const& a, auto const& b)
+        {
+            return a.second != b.second ? a.second > b.second : a.first < b.first;
+        });
+
+    std::string out;
+    for (size_t i = 0; i < sorted.size() && i < count; ++i)
+    {
+        if (!out.empty())
+            out += ',';
+        out += sorted[i].first + ':' + std::to_string(sorted[i].second);
     }
     return out;
 }

@@ -3,6 +3,7 @@
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
+#include "playerbot/MemStoresPolicy.h"
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <atomic>
@@ -449,6 +450,28 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
     // #416: collect finished parked destination jobs.
     FutureDestinations::Collect();
+
+    // #416 (7.3): value-cache size for [MemStores] - a count once per minute,
+    // the most frequent value names once per hour.
+    {
+        uint32 const now = uint32(time(nullptr));
+        if (now - lastValueCountTime >= 60)
+        {
+            lastValueCountTime = now;
+            std::pair<size_t, size_t> const counts = aiObjectContext->GetCreatedValueCounts();
+            ownValueCount = uint32(counts.first);
+            sharedValueCount = uint32(counts.second);
+        }
+        if (now - lastValueNamesTime >= ai::mem_stores::IntervalSeconds)
+        {
+            lastValueNamesTime = now;
+            std::map<std::string, uint32> names;
+            aiObjectContext->AddOwnValueNameCounts(names);
+            std::string const top = ai::mem_stores::TopCounts(names, 3);
+            std::lock_guard<std::mutex> lock(valueNamesMutex);
+            topValueNames = top;
+        }
+    }
 
     // #416: phase for [BotSlowUpdate].
     travelChooseChecked = 0;
