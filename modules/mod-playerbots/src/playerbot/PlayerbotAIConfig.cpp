@@ -437,6 +437,7 @@ bool PlayerbotAIConfig::Initialize()
     dangerMapLineSamples = std::min<uint32>(100, config.GetIntDefault("AiPlayerbot.DangerMap.LineSamples", 20));
     grindCapLowLevelBelow = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelBelow", 0);
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
+    questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));

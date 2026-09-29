@@ -5,6 +5,7 @@
 #include "GenericActions.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/TravelChoosePolicy.h"
+#include "playerbot/QuestSearchPolicy.h"
 
 namespace ai
 {
@@ -27,6 +28,10 @@ namespace ai
         ai::travel_choose::Resume chooseResume;
         bool chooseBudgetExceeded = false;
         uint32 lastChooseBudgetLog = 0;
+        // #421: why the last choice found nothing, per reason.
+        ai::quest_search::RejectCounts lastRejects;
+        // #421 B: no quest target - widen the quest search.
+        void WidenQuestSearch(uint32 ranges);
     public:
         static DestinationList FindDestination(PlayerTravelInfo info, std::string name, bool zones = true, bool npcs = true, bool quests = true, bool mobs = true, bool bosses = true, bool gather = true);
     private:

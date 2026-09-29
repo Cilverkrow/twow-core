@@ -874,6 +874,7 @@ void ReportMemStores(PlayerBotMap const& bots)
 void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
     ReportMemStores(GetAllBots());
+    ProcessQuestRescues();
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
@@ -3555,6 +3556,105 @@ void RandomPlayerbotMgr::PrintTeleportCache()
                 sPlayerbotAIConfig.log("telecache.csv", out.str().c_str());
             }
         }
+    }
+}
+
+// #421 C: another race's starting area of the bot's faction up to level 10,
+// otherwise a level-appropriate inn of another race of the faction. The home
+// point is not changed. Empty = no rescue (fail closed).
+std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
+{
+    std::vector<WorldLocation> targets;
+    uint32 const level = bot->GetLevel();
+    WorldPosition const botPos(bot);
+
+    auto firstInfo = [](uint32 race) -> PlayerInfo const*
+    {
+        for (uint32 cls = 1; cls < MAX_CLASSES; ++cls)
+            if (PlayerInfo const* info = sObjectMgr.GetPlayerInfo(race, cls))
+                return info;
+        return nullptr;
+    };
+    PlayerInfo const* own = firstInfo(bot->getRace());
+
+    for (uint32 race = 1; race < MAX_RACES; ++race)
+    {
+        PlayerInfo const* info = firstInfo(race);
+        if (!info || race == bot->getRace() || Player::TeamForRace(race) != bot->GetTeam())
+            continue;
+
+        if (level <= ai::quest_search::StartAreaMaxLevel)
+        {
+            if (own && info->areaId == own->areaId)
+                continue;
+            targets.push_back(WorldLocation(info->mapId, info->positionX, info->positionY, info->positionZ, info->orientation));
+            continue;
+        }
+
+        // Goblin / high elf 11-20: the hubs OB-50 named (spawn points, cached).
+        if (ai::quest_search::UsesRescueAnchors(race, level))
+        {
+            for (uint32 entry : ai::quest_search::RescueAnchorEntries(race))
+            {
+                auto cached = questRescueAnchors.find(entry);
+                if (cached == questRescueAnchors.end())
+                {
+                    std::vector<WorldLocation> spawns;
+                    for (CreatureDataPair const* creature : WorldPosition().getCreaturesNear(0, entry))
+                        spawns.push_back(WorldPosition(creature));
+                    cached = questRescueAnchors.emplace(entry, spawns).first;
+                }
+                for (WorldLocation const& spawn : cached->second)
+                    if (botPos.distance(WorldPosition(spawn)) > ai::quest_search::RescueMinDistance)
+                        targets.push_back(spawn);
+            }
+            continue;
+        }
+
+        for (auto const& [innGuid, innLocation] : innCacheLevel[race][level])
+            if (botPos.distance(WorldPosition(innLocation)) > ai::quest_search::RescueMinDistance)
+                targets.push_back(innLocation);
+    }
+
+    return targets;
+}
+
+void RandomPlayerbotMgr::ProcessQuestRescues()
+{
+    uint32 const now = uint32(time(nullptr));
+    if (now - lastQuestRescueScan < 10)
+        return;
+    lastQuestRescueScan = now;
+
+    for (auto const& [guid, bot] : GetAllBots())
+    {
+        PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        if (!ai || !ai->TakeQuestRescueRequest())
+            continue;
+
+        // The bot asks again next minute while it stays stuck.
+        if (!questRescueLimiter.TryAcquire(now))
+            continue;
+
+        std::vector<WorldLocation> const targets = QuestRescueTargets(bot);
+        if (targets.empty())
+        {
+            sLog.outBasic("[QuestRescue] state=no_target bot=%u level=%u race=%u zone=%u",
+                bot->GetGUIDLow(), bot->GetLevel(), uint32(bot->getRace()), bot->GetZoneId());
+            ai->OnQuestRescued(now);
+            continue;
+        }
+
+        WorldLocation const& target = targets[urand(0, uint32(targets.size()) - 1)];
+        sLog.outBasic("[QuestRescue] state=teleport bot=%u level=%u race=%u from_map=%u from_zone=%u to_map=%u to_x=%.0f to_y=%.0f idle_min=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(bot->getRace()), bot->GetMapId(), bot->GetZoneId(),
+            target.mapid, target.coord_x, target.coord_y, ai->GetQuestIdleSeconds(now) / 60);
+
+        bot->GetMotionMaster()->Clear();
+        bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);
+        bot->SendHeartBeat();
+        ai->Reset(true);
+        ai->OnQuestRescued(now);
     }
 }
 

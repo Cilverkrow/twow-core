@@ -497,6 +497,8 @@ public:
     // #307: grind cap for low-level roster bots and per-bot avoidance of killers.
     uint32 grindCapLowLevelBelow = 0;     // 0 = off
     int32 grindCapLowLevelMargin = 2;
+    // #421: rescue teleport after this many minutes without quest progress.
+    uint32 questRescueIdleMinutes = 30;
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;
