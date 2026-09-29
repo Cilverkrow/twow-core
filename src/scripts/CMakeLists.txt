@@ -262,6 +262,7 @@ dungeons/temple_of_ahnqiraj/boss_viscidus.cpp
 dungeons/temple_of_ahnqiraj/instance_temple_of_ahnqiraj.cpp
 dungeons/temple_of_ahnqiraj/mob_anubisath_sentinel.cpp
 dungeons/temple_of_ahnqiraj/temple_of_ahnqiraj.h
+dungeons/timbermaw_hold/boss_karrsh_the_sentinel.cpp
 dungeons/uldaman/boss_archaedas.cpp
 dungeons/uldaman/boss_ironaya.cpp
 dungeons/uldaman/instance_uldaman.cpp
