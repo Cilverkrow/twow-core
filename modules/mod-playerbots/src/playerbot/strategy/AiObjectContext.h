@@ -70,6 +70,10 @@ namespace ai
             return valueContexts.GetCreated();
         }
 
+        // #416 (7.3): value-cache size for [MemStores] (own, shared).
+        std::pair<size_t, size_t> GetCreatedValueCounts() const { return valueContexts.CreatedCounts(); }
+        void AddOwnValueNameCounts(std::map<std::string, uint32>& counts) const { valueContexts.AddOwnBaseNameCounts(counts); }
+
         void GetSupportedStrategies(std::set<std::string>& strategies)
         {
             return strategyContexts.GetSupportedKeys(strategies);

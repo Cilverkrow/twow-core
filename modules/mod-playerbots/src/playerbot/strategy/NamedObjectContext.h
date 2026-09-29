@@ -249,10 +249,21 @@ namespace ai
             }
         }
 
-        bool IsShared() { return shared; }
+        bool IsShared() const { return shared; }
         bool IsSupportsSiblings() { return supportsSiblings; }
 
         bool IsCreated(const std::string& name) { return created.find(name) != created.end(); }
+
+        // #416 (7.3): [MemStores] value-cache size.
+        size_t CreatedCount() const { return created.size(); }
+        void AddBaseNameCounts(std::map<std::string, uint32>& counts) const
+        {
+            for (auto const& entry : created)
+            {
+                std::string::size_type const pos = entry.first.find("::");
+                ++counts[pos == std::string::npos ? entry.first : entry.first.substr(0, pos)];
+            }
+        }
 
         std::set<std::string> GetCreated()
         {
@@ -382,6 +393,22 @@ namespace ai
             {
                 (*i)->Erase(name);
             }
+        }
+
+        // #416 (7.3): cached objects of this bot's own contexts and of the shared ones.
+        std::pair<size_t, size_t> CreatedCounts() const
+        {
+            std::pair<size_t, size_t> counts{ 0, 0 };
+            for (NamedObjectContext<T>* context : contexts)
+                (context->IsShared() ? counts.second : counts.first) += context->CreatedCount();
+            return counts;
+        }
+
+        void AddOwnBaseNameCounts(std::map<std::string, uint32>& counts) const
+        {
+            for (NamedObjectContext<T>* context : contexts)
+                if (!context->IsShared())
+                    context->AddBaseNameCounts(counts);
         }
 
     private:
