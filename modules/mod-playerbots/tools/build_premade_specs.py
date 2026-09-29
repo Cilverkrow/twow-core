@@ -30,8 +30,7 @@ Two things it takes care of that are easy to get wrong:
   points, up to the full build.
 
 Usage:
-    build_premade_specs.py --dbc /path/to/dbc [--rate 1.0] [--out file]
-                           [--talent-classes 7]   (#357 stage 2: patched Talent.dbc)
+    build_premade_specs.py --dbc /path/to/dbc [--rate 1.0] [--out file] [--talent-classes 4,7]
 """
 import argparse
 import os
@@ -151,31 +150,95 @@ SPEC_AURAS = [
 ]
 
 
-# #357 stage 2 (client talents, twow-repo#409): the patched Talent.dbc adds these
-# rows to the shaman Enhancement tab (twow-repo tools/clientpatch change
-# 0357-shaman-talents; rank spells are the SPEC_AURAS spell ids 90100-90129, W is
-# 90130). The BUILDS links above are encoded against the tree without them.
-# With --talent-classes 7 a link is read against the old tree and the new talents
-# are added by id; the class then pays nothing for auras (real talents instead).
-# A patched Talent.dbc without the flag, or the flag without the patch, is refused.
-STAGE2_TALENTS = {7: frozenset(range(9001, 9011))}
-STAGE2_TARGETS = {
-    # 7.1: attack speed, imbue mastery, storm wisdom, chain storm, W
-    (7, 'enhancement'): {9001: 5, 9003: 3, 9006: 5, 9008: 1, 9010: 1},
-    # 7.3: attack speed, defense, imbue mastery, retaliation, charged Stormstrike,
-    # shield constitution, shield ward, W
-    (7, 'shaman tank'): {9001: 5, 9002: 5, 9003: 3, 9004: 3, 9005: 1,
-                         9007: 3, 9009: 1, 9010: 1},
+# First rank spell of every SPEC_AURAS talent (SpecAuraPolicy.h, keep equal). With
+# --talent-classes these spells are the rank 1 of a real Talent.dbc talent
+# (twow-repo#409 stage 2), which is how the generator finds the new talents.
+AURA_FIRST_SPELL = {
+    (7, 'attack speed'): 90100, (7, 'defense'): 90105, (7, 'imbue mastery'): 90111,
+    (7, 'retaliation'): 90114, (7, 'stormstrike charges'): 90117,
+    (7, 'storm wisdom'): 90118, (7, 'chain storm'): 90124,
+    (7, 'shield constitution'): 90126, (7, 'shield ward'): 90129,
+    (4, 'damage from behind'): 90150, (4, 'snd cooldown crits'): 90154,
+    (4, 'cold blood damage'): 90156, (4, 'vigor damage'): 90157,
+    (4, 'seal fate extra'): 90158, (4, 'agility'): 90159, (4, 'defense'): 90164,
+    (4, 'riposte strikes'): 90169, (4, 'evasive resistance'): 90172,
+    (4, 'execute strikes'): 90175, (4, 'frontal backstab'): 90178,
+    (4, 'tank toughness'): 90179, (4, 'ghostly magic dodge'): 90182,
+    (4, 'stealth damage'): 90183, (4, 'hemorrhage stacks'): 90187,
+    (4, 'shadow damage'): 90188,
 }
 
 
 def reserved_points(cls, name, level, talent_classes=frozenset()):
-    """Talent points a path pays at this level for its #357 / #367 auras."""
+    """Talent points a path pays at this level for its #357 / #367 auras.
+    Nothing once the class's auras are real talents (--talent-classes)."""
     if cls in talent_classes:
         return 0
     return sum(min(ranks, max(0, level - first + 1))
                for aura_cls, _, first, ranks, paths in SPEC_AURAS
                if aura_cls == cls and name in paths)
+
+
+def aura_talents(cls, entries):
+    """twow-repo#409 stage 2: {aura name: talent entry} of the class's aura
+    talents in a patched Talent.dbc, found by their first rank spell. A missing
+    one is an error: the DBC is not the one the talent classes were built for."""
+    by_first = {entry['rankIDs'][0]: entry for entry in entries if entry['rankIDs']}
+    found, missing = {}, []
+    for aura_cls, name, _, ranks, _ in SPEC_AURAS:
+        if aura_cls != cls:
+            continue
+        entry = by_first.get(AURA_FIRST_SPELL[(cls, name)])
+        if entry is None or entry['maxRank'] != ranks:
+            missing.append(name)
+        else:
+            found[name] = entry
+    if missing:
+        raise ValueError('class %d: no talent with the aura ranks of %s' % (cls, ', '.join(missing)))
+    return found
+
+
+# #357 stage 2 (core#217): new talents of the patched tree that are no SpecAura
+# aura but still belong to a path - the shaman weapon talent W "Ancestral Arms"
+# (rank spell 90130, 1 point) for both shaman paths (7.1 = 14 + W, 7.3 = 21 + W).
+# {class: {first rank spell: {path: rank}}}
+EXTRA_REAL_TALENTS = {
+    7: {90130: {'enhancement': 1, 'shaman tank': 1}},
+}
+
+
+def extra_real_talents(cls, entries):
+    """{first rank spell: talent entry} of the class's EXTRA_REAL_TALENTS in a
+    patched Talent.dbc; a missing one is an error, as for the aura talents."""
+    by_first = {entry['rankIDs'][0]: entry for entry in entries if entry['rankIDs']}
+    found, missing = {}, []
+    for spell in EXTRA_REAL_TALENTS.get(cls, {}):
+        entry = by_first.get(spell)
+        if entry is None:
+            missing.append(str(spell))
+        else:
+            found[spell] = entry
+    if missing:
+        raise ValueError('class %d: no talent with first rank spell %s' % (cls, ', '.join(missing)))
+    return found
+
+
+def real_talent_target(cls, name, link, entries):
+    """The hand-built link was written against the tree without the new talents,
+    so it is read against that tree; the path's aura talents are then added at
+    full rank (they are what the path paid its reserve for), and the extra real
+    talents of the path (the shaman weapon talent) with their rank."""
+    new = aura_talents(cls, entries)
+    extra = extra_real_talents(cls, entries)
+    new_ids = {entry['id'] for entry in new.values()} | {entry['id'] for entry in extra.values()}
+    target = parse_link(link, [entry for entry in entries if entry['id'] not in new_ids])
+    for aura_cls, aura, _, ranks, paths in SPEC_AURAS:
+        if aura_cls == cls and name in paths:
+            target[new[aura]['id']] = ranks
+    for spell, per_path in EXTRA_REAL_TALENTS.get(cls, {}).items():
+        if name in per_path:
+            target[extra[spell]['id']] = per_path[name]
+    return target
 
 
 # Talents a path never takes (talent id). #357: Calming Winds (-25 % threat)
@@ -281,24 +344,6 @@ def parse_link(link, entries):
     if pos != len(link):
         raise ValueError('link has unconsumed data at offset %d: %s' % (pos, link[pos:]))
     return wanted
-
-
-def read_target(cls, name, link, entries, talent_classes=frozenset()):
-    """Target ranks of a BUILDS link, aware of the #357 stage-2 talent rows."""
-    new_ids = STAGE2_TALENTS.get(cls, frozenset())
-    present = new_ids & {entry['id'] for entry in entries}
-    if cls in talent_classes:
-        if present != new_ids:
-            raise ValueError('--talent-classes %d needs the patched Talent.dbc '
-                             '(missing talents %s)' % (cls, sorted(new_ids - present)))
-        legacy = [entry for entry in entries if entry['id'] not in new_ids]
-        target = parse_link(link, legacy)
-        target.update(STAGE2_TARGETS.get((cls, name), {}))
-        return target
-    if present:
-        raise ValueError('Talent.dbc has the stage-2 talents %s; run with '
-                         '--talent-classes %d' % (sorted(present), cls))
-    return parse_link(link, entries)
 
 
 def check(entries, ranks, budget, spell_ids, strict_prerequisites):
@@ -428,16 +473,13 @@ def main():
                     help='Rate.Talent from mangosd.conf')
     ap.add_argument('--out', help='write here instead of stdout')
     ap.add_argument('--talent-classes', default='',
-                    help='comma-separated classes whose SpecAura auras are real talents '
-                         'in this Talent.dbc (#357 stage 2: 7)')
+                    help='comma-separated classes whose SPEC_AURAS are real talents in '
+                         'this Talent.dbc (twow-repo#409 stage 2), as in '
+                         'AiPlayerbot.SpecAura.TalentClasses')
     args = ap.parse_args()
+    talent_classes = frozenset(int(c) for c in args.talent_classes.split(',') if c.strip())
     if args.rate <= 0:
         ap.error('--rate must be greater than zero')
-    try:
-        talent_classes = frozenset(int(item) for item in args.talent_classes.split(',')
-                                   if item.strip())
-    except ValueError:
-        ap.error('--talent-classes takes class ids such as 7')
 
     try:
         talents = load_talents(args.dbc)
@@ -462,7 +504,8 @@ def main():
 
         for index, (name, link) in enumerate(BUILDS[cls]):
             try:
-                target = read_target(cls, name, link, entries, talent_classes)
+                target = (real_talent_target(cls, name, link, entries)
+                          if cls in talent_classes else parse_link(link, entries))
             except ValueError as error:
                 print('  BROKEN  class %d %s: %s' % (cls, name, error), file=sys.stderr)
                 failures += 1
@@ -502,8 +545,7 @@ def main():
                     failures += 1
                     continue
 
-            desired = int((60 - 9) * args.rate) - reserved_points(cls, name, 60,
-                                                                  talent_classes)
+            desired = int((60 - 9) * args.rate) - reserved_points(cls, name, 60, talent_classes)
             active_target = target
             if args.rate > 1:
                 active_target = extend_target(entries, target, main_tree,

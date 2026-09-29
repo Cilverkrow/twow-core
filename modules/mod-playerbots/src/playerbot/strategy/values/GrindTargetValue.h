@@ -1,4 +1,5 @@
 #pragma once
+#include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/strategy/Value.h"
 #include "TargetValue.h"
 
@@ -16,5 +17,9 @@ namespace ai
     private:
         int GetTargetingPlayerCount(Unit* unit);
         Unit* FindTargetForGrinding(int assistCount);
+
+        // #421: grey targets this bot engaged, reported once per hour.
+        ObjectGuid lastGreyTarget;
+        ai::quest_search::GreyEngagements greyEngagements;
     };
 }

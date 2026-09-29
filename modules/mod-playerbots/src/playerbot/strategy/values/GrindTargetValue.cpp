@@ -27,6 +27,21 @@ Unit* GrindTargetValue::Calculate()
         target = FindTargetForGrinding(assistCount++);
     }
 
+    // #421 measuring point: grey targets engaged per bot and hour.
+    Creature* creature = target ? dynamic_cast<Creature*>(target) : nullptr;
+    if (creature && creature->GetObjectGuid() != lastGreyTarget && !MaNGOS::XP::Gain(bot, creature))
+    {
+        lastGreyTarget = creature->GetObjectGuid();
+        greyEngagements.Add(uint32(time(nullptr)));
+    }
+    uint32 const now = uint32(time(nullptr));
+    if (greyEngagements.Due(now))
+    {
+        sLog.outBasic("[GreyTargets] bot=%u level=%u engaged=%u zone=%u window_s=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), greyEngagements.count, bot->GetZoneId(), now - greyEngagements.windowStart);
+        greyEngagements.Reset();
+    }
+
     return target;
 }
 
@@ -274,7 +289,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
                 logGrind(unit, "ignored (not needed for active quest).");
                 continue;
             }
-            else if (creature && !MaNGOS::XP::Gain(bot, creature) && urand(0, 50))
+            // #421: a roster bot on its own never grinds grey creatures it does
+            // not need (Deygo, L14, on level-1 wolves); others keep the old odds.
+            else if (creature && !MaNGOS::XP::Gain(bot, creature) &&
+                (ai::quest_search::SkipGreyTarget(rosterOnItsOwn, true, false, creature->GetVictim() == bot) || urand(0, 50)))
             {
                 logGrind(unit, "ignored (not xp and not needed for quest).");
                 continue;

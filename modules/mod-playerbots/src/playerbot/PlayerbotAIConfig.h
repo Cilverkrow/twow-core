@@ -477,6 +477,8 @@ public:
     uint32 deathLoopMaxDeaths = 0;
     // #357 O-12: route B talent auras for shamans on premade path 7.1 / 7.3.
     bool specAuraEnabled = false;
+    // #367 / twow-repo#409 stage 2: classes whose SpecAura talents are real Talent.dbc talents
+    // now (same spell IDs). Their auras are neither granted nor removed and cost no reserve.
     std::vector<uint32> specAuraTalentClasses;
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
@@ -498,6 +500,8 @@ public:
     // #307: grind cap for low-level roster bots and per-bot avoidance of killers.
     uint32 grindCapLowLevelBelow = 0;     // 0 = off
     int32 grindCapLowLevelMargin = 2;
+    // #421: rescue teleport after this many minutes without quest progress.
+    uint32 questRescueIdleMinutes = 30;
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;

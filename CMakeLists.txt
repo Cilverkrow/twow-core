@@ -1012,6 +1012,16 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_voidlord_round3_348_contract.cmake")
+  # twow-repo#408 train 8: missing quest giver/turn-in relations, insert-only.
+  add_test(NAME quest_relations_408_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_quest_relations_408_contract.cmake")
+  # twow-repo#408 train 8: Shade of Medivh and the quest 41637 stand-ins lose their loot id.
+  add_test(NAME medivh_shade_loot_408_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_medivh_shade_loot_408_contract.cmake")
   # twow-repo#367: the owner rogue talent line (bot auras 90150-90193), pure rules and data contract.
   add_executable(rogue_talents_policy_test
     "${TW_CORE_ROOT}/t/rogue_talents_policy_test.cpp")
@@ -1049,6 +1059,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_rogue_tank_367_contract.cmake")
+  # twow-repo#367 / #409 stage 2: server counterpart of the rogue client delta.
+  add_test(NAME rogue_client_367_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_rogue_client_367_contract.cmake")
   # twow-repo#357 route A: owner-decided Elemental Weapons values and Earthen Bulwark cap.
   add_test(NAME shaman_elemental_weapons_357_contract
     COMMAND "${CMAKE_COMMAND}"

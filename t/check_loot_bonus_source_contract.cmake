@@ -109,4 +109,21 @@ foreach (rule "candidates[i].maxCopies" "sFunserverInstanceBossLoot.find(mapId)"
               "FunserverBoeItemLevelMatch(item.itemLevel, ownMaxItemLevel, margin)" "FUNSERVER_POOL_MAX_COPIES")
   require_text("${units_body}" "${rule}" "#323 owner unit rule")
 endforeach()
+# Owner 2026-09-28 (#429 hotfix 7.3): dungeon range 2..4 is opt-in, BoE only, never the instance pool.
+require_text("${config}" "Funserver.Loot.Units.Dungeon.Range = 0" "default-off dungeon range")
+require_text("${world}" "\"Funserver.Loot.Units.Dungeon.Range\", false" "default-off dungeon range switch")
+foreach (rule "content == FUNSERVER_LOOT_DUNGEON" "FunserverDungeonBoeUnits(ownDrops")
+  require_text("${units_body}" "${rule}" "#429 dungeon range rule")
+endforeach()
+# Raids: per-map range is opt-in (empty default); set pieces and tokens never fill, 16 is the hard cap.
+require_text("${config}" "Funserver.Loot.Units.Raid.Range = \"\"" "default-off raid range")
+require_text("${loot}" "!proto->ItemSet && (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR)" "normal raid loot filter")
+foreach (rule "raidRange && !IsFunserverNormalRaidLoot(proto)" "FunserverRaidFillUnits(ownNormal"
+              "MAX_NR_LOOT_ITEMS" "!dungeonRange && !raidRange && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_INSTANCE_POOL)")
+  require_text("${units_body}" "${rule}" "#429 raid range rule")
+endforeach()
+# twow-repo#429: the instance pool stays off (default) until an encounter order exists.
+require_text("${units_body}" "sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_INSTANCE_POOL)" "#429 instance pool gate")
+require_text("${world}" "\"Funserver.Loot.Units.InstancePool\", false" "#429 instance pool default off")
+require_text("${config}" "Funserver.Loot.Units.InstancePool = 0" "#429 instance pool dist default")
 message(STATUS "LOOT_BONUS_SOURCE_CONTRACT=PASS")

@@ -146,7 +146,9 @@ Map::Map(uint32 id, time_t expiry, uint32 InstanceId)
         {
             //z code
             m_bLoadedGrids[idx][j] = false;
-            setNGrid(nullptr, idx, j);
+            // twow-repo#416: raw init - i_grids is uninitialised here, setNGrid would
+            // count the garbage as loaded grids and underflow m_loadedGridCount.
+            i_grids[idx][j] = nullptr;
         }
     }
 
@@ -1786,6 +1788,11 @@ inline void Map::setNGrid(NGridType *grid, uint32 x, uint32 y)
         sLog.outError("map::setNGrid() Invalid grid coordinates found: %d, %d!", x, y);
         MANGOS_ASSERT(false);
     }
+    // twow-repo#416 (7.3): count the loaded grids for [MemStores].
+    if (!i_grids[x][y] && grid)
+        ++m_loadedGridCount;
+    else if (i_grids[x][y] && !grid)
+        --m_loadedGridCount;
     i_grids[x][y] = grid;
 }
 

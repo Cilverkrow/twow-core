@@ -89,13 +89,29 @@ int main()
     Require(WantedKit(4, RogueCombat, 60).empty(), "the kit is tank only");
     Require(ReservedPoints(4, RogueTank, 60) == 20, "the kit costs no talent points");
 
-    std::cout << "spec_aura_policy_tests passed\n";
-    // #357 stage 2: a talent-backed class (AiPlayerbot.SpecAura.TalentClasses) keeps its
-    // aura ids as real talent ranks: the grant skips the class, the path pays nothing.
-    Require(TalentBacked(7, { 7 }), "shaman listed");
-    Require(TalentBacked(7, { 4, 7 }), "shaman in a list");
-    Require(!TalentBacked(4, { 7 }), "rogue not listed");
-    Require(!TalentBacked(7, {}), "empty list: nothing talent-backed");
+    // twow-repo#409 stage 2: a class in AiPlayerbot.SpecAura.TalentClasses has real talents
+    // with the same IDs. SpecAura must neither grant nor remove them, and nothing is reserved.
+    std::vector<std::uint32_t> const noClasses;
+    std::vector<std::uint32_t> const rogueReal = { 4 };
+    Require(!AuraTalentsAreReal(4, noClasses), "empty list: phase 1 for everyone");
+    Require(AuraTalentsAreReal(4, rogueReal) && !AuraTalentsAreReal(7, rogueReal), "only the listed class");
+    Require(ManagedWantedAuras(4, RogueTank, 60, true).empty(), "real talents: no aura grant");
+    Require(ManagedAllAuras(4, true).empty(), "real talents: nothing to remove, a bought talent stays");
+    Require(ManagedReservedPoints(4, RogueTank, 60, true) == 0, "real talents: the links spend the points");
+    Require(ManagedWantedAuras(4, RogueTank, 60, false) == WantedAuras(4, RogueTank, 60) &&
+            ManagedAllAuras(4, false) == AllAuras(4) &&
+            ManagedReservedPoints(4, RogueTank, 60, false) == 20, "phase 1 unchanged");
+    Require(WantedKit(4, RogueTank, 60).size() == 2, "the kit stays with real talents (no talent)");
+    Require(ManagedAllKit(4, true).empty(), "P-1: every rogue may learn the kit at the trainer, none loses it");
+    Require(ManagedAllKit(4, false) == AllKit(4), "phase 1: the kit is removed from other paths as before");
 
+    // #357 stage 2 (core#217): the shaman uses the same switch ("7" in the list).
+    std::vector<std::uint32_t> const bothReal = { 4, 7 };
+    Require(AuraTalentsAreReal(7, bothReal) && AuraTalentsAreReal(4, bothReal), "shaman and rogue listed");
+    Require(!AuraTalentsAreReal(7, rogueReal), "shaman not listed: phase 1");
+    Require(ManagedAllAuras(7, true).empty() && ManagedReservedPoints(7, ShamanTank, 60, true) == 0,
+            "real shaman talents: nothing removed, nothing reserved");
+
+    std::cout << "spec_aura_policy_tests passed\n";
     return 0;
 }

@@ -30,6 +30,7 @@
 #include "SpellAuraDefines.h"
 #include "SpellAuras.h"
 #include "FunserverLootUnits.h"
+#include "Config/Config.h"
 
 #include <map>
 #include <memory>
@@ -1598,6 +1599,17 @@ static std::vector<FunserverBoePoolItem> sFunserverBoePool;
 // per map, so a kill can fill up from the other bosses of the same instance first.
 static std::map<uint32, std::vector<uint32>> sFunserverInstanceBossLoot;
 
+// twow-repo#429 (owner 2026-09-28, hotfix 7.3): per-raid-map normal loot targets from
+// Funserver.Loot.Units.Raid.Range; maps not listed keep the fixed #323 unit count.
+static std::map<uint32, FunserverLootRange> sFunserverRaidRanges;
+
+// Normal raid loot: weapons and armour outside item sets. Set pieces and tokens
+// (non-equipment) come only from the normal roll, never from the fill.
+static bool IsFunserverNormalRaidLoot(ItemPrototype const* proto)
+{
+    return proto && !proto->ItemSet && (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR);
+}
+
 static void LoadFunserverInstanceBossLoot()
 {
     sFunserverInstanceBossLoot.clear();
@@ -1628,11 +1640,15 @@ void LoadFunserverBoePool()
 {
     sFunserverBoePool.clear();
     sFunserverInstanceBossLoot.clear();
+    sFunserverRaidRanges.clear();
 
     if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED))
         return;
 
     LoadFunserverInstanceBossLoot();
+    sFunserverRaidRanges = FunserverParseMapRanges(sConfig.GetStringDefault("Funserver.Loot.Units.Raid.Range", ""));
+    for (auto const& range : sFunserverRaidRanges)
+        sLog.outString("Funserver raid loot range: map %u, %u..%u normal items", range.first, range.second.min, range.second.max);
 
     // Items that already drop somewhere in the world; the prototype filter
     // below keeps BoE blue/epic weapons and armour for levels 10..60.
@@ -1702,13 +1718,39 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
     uint32 const floorQuality = sWorld.getConfig(eConfigUInt32Values(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RARE + idx));
     float const decay = sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_UNITS_DECAY);
 
-    if (loot.items.size() >= target || loot.IsBonusFull())
+    // Owner 2026-09-28 (#429 hotfix 7.3): five-player dungeon bosses keep their own
+    // drops and only add world BoE pool items up to a random 2..4 (see FunserverDungeonBoeUnits).
+    bool const dungeonRange = content == FUNSERVER_LOOT_DUNGEON &&
+        sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_DUNGEON_RANGE);
+    // Raids listed in Funserver.Loot.Units.Raid.Range fill normal loot (no set pieces,
+    // no tokens) to a random per-map target; set pieces and tokens stay on top.
+    auto const raidRangeAt = content == FUNSERVER_LOOT_RAID ? sFunserverRaidRanges.find(mapId) : sFunserverRaidRanges.end();
+    bool const raidRange = raidRangeAt != sFunserverRaidRanges.end();
+
+    if (loot.IsBonusFull() || (!dungeonRange && !raidRange && loot.items.size() >= target))
         return;
-    uint32 const remaining = target - uint32(loot.items.size());
 
     std::map<uint32, uint32> selected;
+    uint32 ownDrops = 0;                                    // green or better, grey/white filler does not count
+    uint32 ownNormal = 0;                                   // of those: weapons and armour outside item sets
     for (LootItem const& item : loot.items)
+    {
         ++selected[item.itemid];
+        if (ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid))
+            if (proto->Quality >= ITEM_QUALITY_UNCOMMON)
+            {
+                ++ownDrops;
+                if (IsFunserverNormalRaidLoot(proto))
+                    ++ownNormal;
+            }
+    }
+
+    uint32 remaining = dungeonRange ? 0 : target - std::min(target, uint32(loot.items.size()));
+    if (raidRange)
+        remaining = FunserverRaidFillUnits(ownNormal, urand(raidRangeAt->second.min, raidRangeAt->second.max),
+                                           uint32(loot.items.size()), MAX_NR_LOOT_ITEMS);
+    if (!dungeonRange && !remaining)
+        return;
 
     // Owner rule 2026-09-27 (#323): own table first (unique items at most once),
     // then the other bosses of the same instance, then the world BoE pool at the
@@ -1727,9 +1769,11 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
         if (!IsUnitLootItemAllowed(*c.item, loot))
             continue;
         ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
+        if (raidRange && !IsFunserverNormalRaidLoot(proto))
+            continue;                                       // set pieces and tokens only from the normal roll
         float const weight = sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
             idx * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(proto->Quality)));
-        uint32 const maxCopies = GetUnitLootMaxCopies(proto);
+        uint32 const maxCopies = raidRange ? FUNSERVER_UNIQUE_MAX_COPIES : GetUnitLootMaxCopies(proto);
         candidates.push_back({ c.item, c.baseChance, weight, maxCopies });
         if (proto->Quality >= floorQuality)
         {
@@ -1743,7 +1787,14 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
     // The own table covers what it can with distinct items at the quality
     // floor; the pools supply the rest (owner rule 2026-09-24).
     uint32 poolUnits = FunserverBoePoolShortfall(remaining, uint32(floorItems.size()));
-    uint32 const ownUnits = remaining - poolUnits;
+    if (dungeonRange)
+    {
+        uint32 const rangeMax = sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_DUNGEON_RANGE_MAX);
+        uint32 const rangeMin = std::min(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_DUNGEON_RANGE_MIN), rangeMax);
+        poolUnits = FunserverDungeonBoeUnits(ownDrops, urand(rangeMin, rangeMax), rangeMax,
+                                             sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_DUNGEON_RANGE_MIN_BOE));
+    }
+    uint32 const ownUnits = remaining - std::min(poolUnits, remaining);
 
     std::vector<float> weights(candidates.size());
     for (uint32 unit = 0; unit < ownUnits && !loot.IsBonusFull(); ++unit)
@@ -1783,9 +1834,13 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
         return;
 
     // Stage 2 (b): distinct floor-quality items of the other reviewed bosses on this
-    // map, drawn evenly, each at most once per kill.
+    // map, drawn evenly, each at most once per kill. Only with
+    // Funserver.Loot.Units.InstancePool (twow-repo#429): without a boss order a first
+    // boss could draw the end boss's loot, so it stays off until the encounter order
+    // exists and the fill goes straight to the reward pool.
     std::map<uint32, LootStoreItem const*> instanceItems;
-    auto const bosses = sFunserverInstanceBossLoot.find(mapId);
+    auto const bosses = !dungeonRange && !raidRange && sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_INSTANCE_POOL)
+        ? sFunserverInstanceBossLoot.find(mapId) : sFunserverInstanceBossLoot.end();
     if (bosses != sFunserverInstanceBossLoot.end())
     {
         for (uint32 lootId : bosses->second)

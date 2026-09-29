@@ -421,10 +421,8 @@ uint32 ChangeTalentsAction::PremadeBudget(Player* bot, int specId)
     if (!path)
         return total;
 
-    // #357 stage 2: a talent-backed class spends these points on the real talents.
-    uint32 const reserved = ai::spec_aura::TalentBacked(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses)
-        ? 0
-        : ai::spec_aura::ReservedPoints(bot->getClass(), ai::spec_aura::PathFor(bot->getClass(), path->name), bot->GetLevel());
+    bool const auraTalentsAreReal = ai::spec_aura::AuraTalentsAreReal(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses);
+    uint32 const reserved = ai::spec_aura::ManagedReservedPoints(bot->getClass(), ai::spec_aura::PathFor(bot->getClass(), path->name), bot->GetLevel(), auraTalentsAreReal);
     return total > reserved ? total - reserved : 0;
 }
 

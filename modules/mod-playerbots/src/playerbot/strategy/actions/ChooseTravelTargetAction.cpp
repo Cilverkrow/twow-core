@@ -35,6 +35,46 @@ bool UsesQuestFirstProgression(Player const* bot)
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
 }
 
+// #421 B: within each distance range, quest givers with more other givers
+// around them (a quest hub) come first. Bounded: long ranges stay as they are.
+void SortQuestHubsFirst(PartitionedTravelList& list)
+{
+    float const hubRadiusSq = ai::quest_search::HubRadius * ai::quest_search::HubRadius;
+    for (auto& [partition, points] : list)
+    {
+        if (points.size() < 2 || points.size() > ai::quest_search::HubSortMaxPoints)
+            continue;
+
+        std::vector<uint32> score(points.size(), 0);
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            TravelDestination* destination = std::get<0>(points[i]);
+            WorldPosition* position = std::get<1>(points[i]);
+            if (!destination || !position || destination->GetPurpose() != TravelDestinationPurpose::QuestGiver)
+                continue;
+            for (size_t j = 0; j < points.size(); ++j)
+            {
+                WorldPosition* other = std::get<1>(points[j]);
+                TravelDestination* otherDestination = std::get<0>(points[j]);
+                if (i != j && other && otherDestination && otherDestination->GetPurpose() == TravelDestinationPurpose::QuestGiver &&
+                    position->sqDistance(*other) <= hubRadiusSq)
+                    ++score[i];
+            }
+        }
+
+        std::vector<size_t> order(points.size());
+        for (size_t i = 0; i < order.size(); ++i)
+            order[i] = i;
+        std::stable_sort(order.begin(), order.end(), [&score](size_t a, size_t b) { return score[a] > score[b]; });
+
+        TravelPointList sorted;
+        sorted.reserve(points.size());
+        for (size_t i : order)
+            sorted.push_back(points[i]);
+        points.swap(sorted);
+    }
+}
+
 bool IsGatherLeashPurpose(TravelDestinationPurpose purpose)
 {
     return purpose == TravelDestinationPurpose::GatherSkinning ||
@@ -172,16 +212,17 @@ void TraceQuestRouteDecision(Player* bot, TravelTarget& target, std::string cons
         targetPosition->getMapId(), GetZoneId(*targetPosition), transport, target.Distance(bot), reason);
 }
 
-void TraceQuestRouteRejection(Player* bot, std::string const& strategy, uint32 rangeCount, char const* reason)
+void TraceQuestRouteRejection(Player* bot, std::string const& strategy, uint32 rangeCount, char const* reason,
+    std::string const& detail = std::string())
 {
     if (!UsesQuestFirstProgression(bot) || !sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
         return;
 
     WorldPosition const source(bot);
     sLog.outBasic("[QuestFirstRoute] state=rejected bot=%u level=%u quest=%u strategy=%s source_map=%u source_zone=%u "
-        "offered_ranges=%u fallback=none reason=%s",
+        "offered_ranges=%u fallback=none reason=%s%s%s",
         bot->GetGUIDLow(), bot->GetLevel(), GetCompletedQuestId(bot), strategy.c_str(), source.getMapId(),
-        GetZoneId(source), rangeCount, reason);
+        GetZoneId(source), rangeCount, reason, detail.empty() ? "" : " ", detail.c_str());
 }
 
 }
@@ -259,19 +300,50 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
 
         if (futureTravelPurpose == "quest")
+        {
+            // #421 A: which filters took every candidate.
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
-                uint32(destinationList.size()), "no_active_route_candidate");
+                uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format());
+            WidenQuestSearch(uint32(destinationList.size()));
+        }
 
         return false;
     }
 
     if (futureTravelPurpose == "quest")
+    {
         TraceQuestRouteDecision(bot, newTarget, AI_VALUE2(std::string, "manual string", "future travel condition"),
             "travelmgr_route_validated");
+
+        // #421 B: the widened search found something.
+        int const stage = AI_VALUE2(int, "manual int", "quest search stage");
+        if (stage > 0 && UsesQuestFirstProgression(bot))
+            sLog.outBasic("[QuestSearch] state=found bot=%u level=%u stage=%d distance=%.0f",
+                bot->GetGUIDLow(), bot->GetLevel(), stage, newTarget.Distance(bot));
+    }
 
     setNewTarget(requester, &newTarget, travelTarget);
     
     return true;
+}
+
+void ChooseTravelTargetAction::WidenQuestSearch(uint32 ranges)
+{
+    if (!UsesQuestFirstProgression(bot))
+        return;
+
+    uint32 const now = uint32(time(nullptr));
+    uint32 const stage = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage")));
+    uint32 const lastWiden = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search widen time")));
+    uint32 const next = ai::quest_search::NextStage(stage, lastWiden, now);
+    if (next == stage)
+        return;
+
+    SET_AI_VALUE2(int, "manual int", "quest search stage", int(next));
+    SET_AI_VALUE2(int, "manual int", "quest search widen time", int(now));
+    sLog.outBasic("[QuestSearch] state=widen bot=%u level=%u stage=%u radius=%.0f zone=%u ranges=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), next, ai::quest_search::GiverRadius(bot->GetLevel(), next),
+        bot->GetZoneId(), ranges);
 }
 
 bool ChooseTravelTargetAction::isUseful()
@@ -537,6 +609,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     uint32 const resumeSkip = chooseResume.SkipFor(choosePurpose);
     uint32 candidateIndex = 0, checked = 0;
     chooseBudgetExceeded = false;
+    lastRejects = ai::quest_search::RejectCounts();
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
@@ -580,6 +653,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             if (excludedTurnInTarget && excludedTurnInTarget->IsTurnInRouteSuppressed(destination, position))
             {
                 ai->TellDebug(requester, "Skipping temporarily suppressed completed-quest turn-in route.", "debug travel");
+                ++lastRejects.turnInSuppressed;
                 continue;
             }
 
@@ -587,6 +661,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             if (persistentTarget && persistentTarget->IsDestinationDeathSuppressed(destination))
             {
                 ai->TellDebug(requester, "Skipping destination after repeated deaths there.", "debug travel");
+                ++lastRejects.deathSuppressed;
                 continue;
             }
 
@@ -597,17 +672,24 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     bot->GetMapId(), position->getMapId()))
             {
                 ai->TellDebug(requester, "Skipping gathering destination on another map.", "debug travel");
+                ++lastRejects.otherMapGather;
                 continue;
             }
 
             if (!target->IsForced() && isActive.find(destination) != isActive.end() && !isActive[destination])
+            {
+                ++lastRejects.knownInactive;
                 continue;
+            }
 
             if (!target->IsForced() && hasActiveLocalQuestHub)
             {
                 PlayerTravelInfo travelInfo(bot);
                 if (!IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo))
+                {
+                    ++lastRejects.hubFilter;
                     continue;
+                }
             }
 
             if (distanceCheck) //Check if we have moved significantly after getting the destinations.
@@ -616,6 +698,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 if (position->distance(center) > distance * 2 && position->distance(center) > 100)
                 {
                     ai->TellDebug(requester, "We had some destinations but we moved too far since. Trying to get a new list.", "debug travel");
+                    ++lastRejects.movedAway;
                     return false;
                 }
 
@@ -629,7 +712,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 if (!target->IsForced() && position && position->isEnemyHomeZoneFor(bot->GetTeam()))
                 {
                     ai->TellDebug(requester, "Skipping " + destination->GetTitle() + " - enemy home zone", "debug travel");
-
+                    ++lastRejects.enemyZone;
                     continue;
                 }
 
@@ -649,11 +732,13 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     if (danger == route_danger::Reason::CrossMap)
                     {
                         ++deferredCrossMap;
+                        ++lastRejects.crossMap;
                         continue;
                     }
                     if (danger == route_danger::Reason::TargetZoneLevel)
                     {
                         ++deferredZoneLevel;
+                        ++lastRejects.zoneLevel;
                         continue;
                     }
                 }
@@ -671,6 +756,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                         ++deferredDeathCluster;
                         deathClusterCells += hit.cells;
                         deathClusterWorstKillerLevel = std::max(deathClusterWorstKillerLevel, hit.worstKillerLevel);
+                        ++lastRejects.dangerMap;
                         continue;
                     }
                 }
@@ -678,6 +764,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 if (partition != std::prev(partitionedList.end())->first && !urand(0, 10)) //10% chance to skip to a longer partition.
                 {
                     ai->TellDebug(requester, "Skipping range " + PrintPartion(partition), "debug travel");
+                    ++lastRejects.rangeSkip;
                     break;
                 }
 
@@ -699,6 +786,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             else
             {
                 ai->TellDebug(requester, "Not active: " + destination->GetTitle() + " " + std::to_string((uint32)round(destination->DistanceTo(bot))) + "y", "debug travel");
+                ++lastRejects.notActive;
             }
 
         }
@@ -1777,7 +1865,18 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     // one travel event, while the level 10-60 population - radius 8500 upwards -
     // travelled normally. A floor large enough to cover the zone you are standing
     // in fixes that without giving a level 1 bot the run of the continent.
-    std::vector<std::tuple<uint32, int32, float>> destinationFetches = { {(uint32)TravelDestinationPurpose::QuestGiver, 0, std::max(2000.f, 400.f + bot->GetLevel() * 10.f)} };
+    // #421 B: the quest-giver radius widens while nothing was found (stage 1
+    // neighbouring zones, stage 2 the region). A bot standing in a zone
+    // clearly below its level starts at the neighbouring zones.
+    uint32 searchStage = 0;
+    if (UsesQuestFirstProgression(bot))
+    {
+        searchStage = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage")));
+        if (!searchStage && ai::quest_search::ZoneBelowBot(WorldPosition(bot).getAreaLevelOrParent(), bot->GetLevel()))
+            searchStage = 1;
+    }
+    std::vector<std::tuple<uint32, int32, float>> destinationFetches = { {(uint32)TravelDestinationPurpose::QuestGiver, 0,
+        ai::quest_search::GiverRadius(bot->GetLevel(), searchStage)} };
 
     for (ObjectGuid guid : AI_VALUE(std::list<ObjectGuid>, "group members"))
     {
@@ -1921,7 +2020,7 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     }
 
     *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
-        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches]()
+        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches, hubsFirst = searchStage > 0]()
         {
             PartitionedTravelList list;
             for (auto [purpose, questId, range] : destinationFetches)
@@ -1931,6 +2030,10 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 for (auto& [partition, points] : subList)
                     list[partition].insert(list[partition].end(), points.begin(), points.end());
             }
+
+            // #421 B: widened search - quest hubs first (in this job, not on the map thread).
+            if (hubsFirst)
+                SortQuestHubsFirst(list);
 
             if (list.empty())
                 list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)TravelDestinationPurpose::QuestGiver);

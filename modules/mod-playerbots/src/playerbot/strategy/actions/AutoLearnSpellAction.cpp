@@ -336,16 +336,15 @@ void AutoLearnSpellAction::GrantShamanTotems(std::ostringstream* out)
 void AutoLearnSpellAction::GrantSpecAuras()
 {
     std::uint8_t const path = ai::spec_aura::PathFor(bot->getClass(), AiFactory::GetPremadePathName(bot));
-    // #357 stage 2: the auras of a talent-backed class are its real talent ranks now;
-    // the premade links teach them, so they are neither granted nor removed here.
-    bool const talentBacked = ai::spec_aura::TalentBacked(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses);
-    std::vector<uint32> wanted = path && !talentBacked ? ai::spec_aura::WantedAuras(bot->getClass(), path, bot->GetLevel()) : std::vector<uint32>();
+    // twow-repo#409 stage 2: real talents are the talent system's; only the kit stays here.
+    bool const auraTalentsAreReal = ai::spec_aura::AuraTalentsAreReal(bot->getClass(), sPlayerbotAIConfig.specAuraTalentClasses);
+    std::vector<uint32> wanted = path ? ai::spec_aura::ManagedWantedAuras(bot->getClass(), path, bot->GetLevel(), auraTalentsAreReal) : std::vector<uint32>();
     // #367: the kit of the path (Spit, Shadow Dance for 4.3) comes the same way, for free.
     if (path)
         for (uint32 spellId : ai::spec_aura::WantedKit(bot->getClass(), path, bot->GetLevel()))
             wanted.push_back(spellId);
-    std::vector<uint32> known = talentBacked ? std::vector<uint32>() : ai::spec_aura::AllAuras(bot->getClass());
-    for (uint32 spellId : ai::spec_aura::AllKit(bot->getClass()))
+    std::vector<uint32> known = ai::spec_aura::ManagedAllAuras(bot->getClass(), auraTalentsAreReal);
+    for (uint32 spellId : ai::spec_aura::ManagedAllKit(bot->getClass(), auraTalentsAreReal))
         known.push_back(spellId);
 
     // Idempotent. A lower rank the level has outgrown, or an aura of another

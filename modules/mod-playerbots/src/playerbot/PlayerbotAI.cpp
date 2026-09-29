@@ -3,6 +3,7 @@
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
+#include "playerbot/MemStoresPolicy.h"
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <atomic>
@@ -449,6 +450,67 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
     // #416: collect finished parked destination jobs.
     FutureDestinations::Collect();
+
+    // #416 (7.3): value-cache size for [MemStores] - a count once per minute,
+    // the most frequent value names once per hour.
+    {
+        uint32 const now = uint32(time(nullptr));
+        if (now - lastValueCountTime >= 60)
+        {
+            lastValueCountTime = now;
+            std::pair<size_t, size_t> const counts = aiObjectContext->GetCreatedValueCounts();
+            ownValueCount = uint32(counts.first);
+            sharedValueCount = uint32(counts.second);
+        }
+        if (now - lastValueNamesTime >= ai::mem_stores::IntervalSeconds)
+        {
+            lastValueNamesTime = now;
+            std::map<std::string, uint32> names;
+            aiObjectContext->AddOwnValueNameCounts(names);
+            std::string const top = ai::mem_stores::TopCounts(names, 3);
+            std::lock_guard<std::mutex> lock(valueNamesMutex);
+            topValueNames = top;
+        }
+    }
+
+    // #421 C: progress watch. Progress (level, XP, quest state) resets the
+    // quest search; a roster bot on its own that made none for 20 minutes
+    // while the search reached the region asks for the rescue teleport.
+    {
+        uint32 const now = uint32(time(nullptr));
+        if (questRescueDone.exchange(false))
+        {
+            aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
+            questProgress.lastChange = now;
+        }
+
+        if (now - lastQuestProgressCheck >= ai::quest_search::ProgressCheckSeconds)
+        {
+            lastQuestProgressCheck = now;
+
+            uint64 snapshot = (uint64(bot->GetLevel()) << 40) ^ uint64(bot->GetUInt32Value(PLAYER_XP));
+            for (auto const& [questId, status] : bot->getQuestStatusMap())
+            {
+                uint64 entry = uint64(questId) * 1000003ULL + uint64(status.m_status) * 131ULL + (status.m_rewarded ? 7ULL : 0ULL);
+                for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                    entry += uint64(status.m_itemcount[i]) * 17ULL + uint64(status.m_creatureOrGOcount[i]) * 29ULL;
+                snapshot += entry * 2654435761ULL;
+            }
+
+            if (questProgress.Update(snapshot, now))
+                aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
+            else if (sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+                !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && !bot->IsInCombat() &&
+                bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
+            {
+                uint32 const stage = uint32(std::max(0, aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get()));
+                if (sPlayerbotAIConfig.questRescueIdleMinutes &&
+                    ai::quest_search::RescueDue(questProgress.IdleSeconds(now), stage, lastQuestRescue.load(), now,
+                        sPlayerbotAIConfig.questRescueIdleMinutes * 60))
+                    questRescueRequested = true;
+            }
+        }
+    }
 
     // #416: phase for [BotSlowUpdate].
     travelChooseChecked = 0;

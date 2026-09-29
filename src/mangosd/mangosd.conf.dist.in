@@ -1859,6 +1859,36 @@ Funserver.Loot.Bonus.DuplicateDecay = 0.25
 #   world BoE pool. Every pool item drops at most once per kill; if nothing
 #   fits, the kill gives fewer units.
 #
+# Funserver.Loot.Units.InstancePool
+#   Fill from the other reviewed bosses of the same map (the second step above).
+#   Off until each instance has a boss order (twow-repo#429): without it an early
+#   boss could draw the end boss's loot. When off, the fill goes from the boss's own
+#   table straight to the world BoE pool. Default: 0
+#
+# Funserver.Loot.Units.Dungeon.Range
+#   Five-player dungeon bosses only (twow-repo#429, owner 2026-09-28): instead of
+#   filling to Funserver.Loot.Units.Dungeon, the boss keeps its own normal drops and
+#   adds world BoE pool items up to a random target Min..Max, at least MinBoe while
+#   the total stays at or below Max, never more than Max in total. No extra own-table
+#   rolls and no instance pool. Pool items keep Floor.Dungeon, the level window and
+#   the item-level margin. Example with 2..4, MinBoe 1: 1 own -> 1..3 BoE, 2 -> 1..2,
+#   3 -> 1, 4 -> 0. Default: 0 (off)
+#
+# Funserver.Loot.Units.Dungeon.Range.Min
+# Funserver.Loot.Units.Dungeon.Range.Max
+# Funserver.Loot.Units.Dungeon.Range.MinBoe
+#   Defaults: 2, 4, 1
+#
+# Funserver.Loot.Units.Raid.Range
+#   Per-raid-map normal loot targets (twow-repo#429, owner 2026-09-28), as
+#   "mapId:min-max" pairs separated by commas. On a listed map a raid boss keeps its
+#   normal roll; weapons and armour outside item sets count as normal loot. The fill
+#   adds normal items from the own table (each at most once per kill), then world BoE
+#   epics, up to a random target min..max; set pieces and tokens are never filled and
+#   stay on top from the normal roll. The corpse never exceeds 16 items. Maps not
+#   listed keep Funserver.Loot.Units.Raid. Requires a restart. Default: "" (off)
+#   Owner values: "409:6-8,469:4-6,249:4-6,531:4-6,819:3-5,533:3-5,814:2-4"
+#
 # Funserver.Loot.Units.BoePool.LevelWindow
 #   Required-level window around the level for BoE pool items. Default: 4
 #
@@ -1895,6 +1925,12 @@ Funserver.Loot.Units.Weight.Raid.Rare = 0.1
 Funserver.Loot.Units.Weight.Raid.Epic = 10
 Funserver.Loot.Units.Weight.Raid.Legendary = 10
 Funserver.Loot.Units.DuplicateDecay = 0.75
+Funserver.Loot.Units.InstancePool = 0
+Funserver.Loot.Units.Dungeon.Range = 0
+Funserver.Loot.Units.Dungeon.Range.Min = 2
+Funserver.Loot.Units.Dungeon.Range.Max = 4
+Funserver.Loot.Units.Dungeon.Range.MinBoe = 1
+Funserver.Loot.Units.Raid.Range = ""
 Funserver.Loot.Units.BoePool.LevelWindow = 4
 Funserver.Loot.Units.BoePool.ItemLevelMargin = 5
 Funserver.Loot.Units.BoePool.EpicShare = 0.2
