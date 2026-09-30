@@ -6,6 +6,14 @@ void DoAfterTime(Player* player, uint32 p_time, Functor&& function)
     player->m_Events.AddEvent(new LambdaBasicEvent<Functor>(std::move(function)), player->m_Events.CalculateTime(p_time));
 }
 
+// twow-repo#338 (owner 2026-09-30, bosses never return within an instance id): the trigger 91931
+// summons Alarus again once his marker (1 h) is gone while the runes (3 h) are still active.
+// His defeat is kept as instance data and saved, so neither a timer nor a restart brings him back.
+enum
+{
+    TYPE_ALARUS = 1,
+};
+
 struct instance_karazhan_crypt : public ScriptedInstance
 {
     explicit instance_karazhan_crypt(Map* p_Map) : ScriptedInstance(p_Map)
@@ -15,11 +23,54 @@ struct instance_karazhan_crypt : public ScriptedInstance
 
     uint64 hivaxxis_door_guid;
     uint64 alarus_door_guid;
+    uint32 m_alarusState;
+    std::string m_strInstData;
 
-    void Initialize() override   
+    void Initialize() override
     {
         hivaxxis_door_guid = 0;
         alarus_door_guid = 0;
+        m_alarusState = NOT_STARTED;
+    }
+
+    uint32 GetData(uint32 uiType) override
+    {
+        return uiType == TYPE_ALARUS ? m_alarusState : 0;
+    }
+
+    void SetData(uint32 uiType, uint32 uiData) override
+    {
+        if (uiType != TYPE_ALARUS)
+            return;
+
+        m_alarusState = uiData;
+        if (uiData == DONE)
+        {
+            OUT_SAVE_INST_DATA;
+            std::ostringstream saveStream;
+            saveStream << m_alarusState;
+            m_strInstData = saveStream.str();
+            SaveToDB();
+            OUT_SAVE_INST_DATA_COMPLETE;
+        }
+    }
+
+    const char* Save() override { return m_strInstData.c_str(); }
+
+    void Load(const char* chrIn) override
+    {
+        if (!chrIn)
+        {
+            OUT_LOAD_INST_DATA_FAIL;
+            return;
+        }
+
+        OUT_LOAD_INST_DATA(chrIn);
+        std::istringstream loadStream(chrIn);
+        loadStream >> m_alarusState;
+        if (m_alarusState != DONE)
+            m_alarusState = NOT_STARTED;
+        m_strInstData = chrIn;
     }
 
     void OnObjectCreate(GameObject* pGo) override
@@ -58,6 +109,7 @@ struct instance_karazhan_crypt : public ScriptedInstance
         }
         case 91928:
         {
+            SetData(TYPE_ALARUS, DONE);
             GameObject* alarus_door = instance->GetGameObject(alarus_door_guid);
             if (alarus_door && alarus_door->GetGoState() != GO_STATE_ACTIVE)
             {
@@ -246,6 +298,11 @@ struct trigger_summon_alarusAI : public ScriptedAI
     void Reset() {}
     void UpdateAI(const uint32 diff)
     {
+        // twow-repo#338: Alarus was defeated in this instance id, never summon him again.
+        if (ScriptedInstance* pInstance = (ScriptedInstance*)me->GetInstanceData())
+            if (pInstance->GetData(TYPE_ALARUS) == DONE)
+                return;
+
         GameObject* alarus_spawned = me->FindNearestGameObject(177304, 20.0f);
 
         if (!alarus_spawned)
