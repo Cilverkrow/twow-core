@@ -921,6 +921,25 @@ add_test(NAME mem_stores_source_contract
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/mem_stores_source_contract_tests.cmake")
 
+# Train 8b: roster bots on their own skip red quests (accept/drop loops).
+add_executable(quest_accept_policy_tests
+  "${PB_MODULE_DIR}/t/quest_accept_policy_tests.cpp")
+
+target_include_directories(quest_accept_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_accept_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_accept_policy
+  COMMAND quest_accept_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_accept_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_accept_source_contract_tests.cmake")
+
 # #420: group bots buff their group only and drink late while following.
 add_executable(group_buff_policy_tests
   "${PB_MODULE_DIR}/t/group_buff_policy_tests.cpp")

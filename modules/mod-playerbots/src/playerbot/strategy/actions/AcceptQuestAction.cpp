@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "AcceptQuestAction.h"
 #include "ShareQuestAction.h"
+#include "playerbot/QuestAcceptPolicy.h"
 
 using namespace ai;
 
@@ -30,6 +31,12 @@ bool AcceptAllQuestsAction::ProcessQuest(Player* requester, Quest const* quest, 
         50003, // Professor Papucho
     };
     if (turtleOnlyBlacklist.count(quest->GetQuestId()))
+        return false;
+
+    // Train 8b: a roster bot on its own skips red quests - the quest log cleanup dropped
+    // them again right away (accept/drop loops). A bot led by a real player takes them.
+    if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
+        ai::quest_accept::IsRed(bot->GetLevel(), bot->GetQuestLevelForPlayer(quest)))
         return false;
 
     if (AcceptQuest(requester, quest, questGiver->GetObjectGuid()))
