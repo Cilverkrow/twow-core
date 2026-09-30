@@ -130,7 +130,7 @@ SPEC_AURAS = [
     (7, 'chain storm',         40, 1, {'enhancement'}),
     (7, 'shield constitution', 35, 3, {'shaman tank'}),
     (7, 'shield ward',         40, 1, {'shaman tank'}),
-    # #367 rogue (OB-20 IDs 90150-90190): 4.0 = 9, 4.1 = 9, 4.2 = 8, 4.3 = 20 points at 60.
+    # #367 rogue (OB-20 IDs 61151-61191): 4.0 = 9, 4.1 = 9, 4.2 = 8, 4.3 = 20 points at 60.
     (4, 'damage from behind',  10, 4, {'assassination'}),
     (4, 'snd cooldown crits',  20, 2, {'assassination'}),
     (4, 'cold blood damage',   30, 1, {'assassination'}),
@@ -154,18 +154,18 @@ SPEC_AURAS = [
 # --talent-classes these spells are the rank 1 of a real Talent.dbc talent
 # (twow-repo#409 stage 2), which is how the generator finds the new talents.
 AURA_FIRST_SPELL = {
-    (7, 'attack speed'): 90100, (7, 'defense'): 90105, (7, 'imbue mastery'): 90111,
-    (7, 'retaliation'): 90114, (7, 'stormstrike charges'): 90117,
-    (7, 'storm wisdom'): 90118, (7, 'chain storm'): 90124,
-    (7, 'shield constitution'): 90126, (7, 'shield ward'): 90129,
-    (4, 'damage from behind'): 90150, (4, 'snd cooldown crits'): 90154,
-    (4, 'cold blood damage'): 90156, (4, 'vigor damage'): 90157,
-    (4, 'seal fate extra'): 90158, (4, 'agility'): 90159, (4, 'defense'): 90164,
-    (4, 'riposte strikes'): 90169, (4, 'evasive resistance'): 90172,
-    (4, 'execute strikes'): 90175, (4, 'frontal backstab'): 90178,
-    (4, 'tank toughness'): 90179, (4, 'ghostly magic dodge'): 90182,
-    (4, 'stealth damage'): 90183, (4, 'hemorrhage stacks'): 90187,
-    (4, 'shadow damage'): 90188,
+    (7, 'attack speed'): 61101, (7, 'defense'): 61106, (7, 'imbue mastery'): 61112,
+    (7, 'retaliation'): 61115, (7, 'stormstrike charges'): 61118,
+    (7, 'storm wisdom'): 61119, (7, 'chain storm'): 61125,
+    (7, 'shield constitution'): 61127, (7, 'shield ward'): 61130,
+    (4, 'damage from behind'): 61151, (4, 'snd cooldown crits'): 61155,
+    (4, 'cold blood damage'): 61157, (4, 'vigor damage'): 61158,
+    (4, 'seal fate extra'): 61159, (4, 'agility'): 61160, (4, 'defense'): 61165,
+    (4, 'riposte strikes'): 61170, (4, 'evasive resistance'): 61173,
+    (4, 'execute strikes'): 61176, (4, 'frontal backstab'): 61179,
+    (4, 'tank toughness'): 61180, (4, 'ghostly magic dodge'): 61183,
+    (4, 'stealth damage'): 61184, (4, 'hemorrhage stacks'): 61188,
+    (4, 'shadow damage'): 61189,
 }
 
 
@@ -200,10 +200,10 @@ def aura_talents(cls, entries):
 
 # #357 stage 2 (core#217): new talents of the patched tree that are no SpecAura
 # aura but still belong to a path - the shaman weapon talent W "Ancestral Arms"
-# (rank spell 90130, 1 point) for both shaman paths (7.1 = 14 + W, 7.3 = 21 + W).
+# (rank spell 61131, 1 point) for both shaman paths (7.1 = 14 + W, 7.3 = 21 + W).
 # {class: {first rank spell: {path: rank}}}
 EXTRA_REAL_TALENTS = {
-    7: {90130: {'enhancement': 1, 'shaman tank': 1}},
+    7: {61131: {'enhancement': 1, 'shaman tank': 1}},
 }
 
 

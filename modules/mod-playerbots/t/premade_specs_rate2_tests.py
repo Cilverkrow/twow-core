@@ -139,10 +139,10 @@ class RateTwoPremadePathTests(unittest.TestCase):
 
     def test_real_talent_target_reads_the_link_without_the_new_talents(self):
         # Page 1 holds two old talents (ids 1, 2) and, between them in tree order,
-        # the rogue 'agility' talent (rank 1 = 90159). The link '-32' was written
+        # the rogue 'agility' talent (rank 1 = 61160). The link '-32' was written
         # for the old tree, so its digits must land on 1 and 2, not on the new one.
         entries = [talent(1, 1, 5), talent(50, 1, 5), talent(2, 1, 5)]
-        entries[1]['rankIDs'] = [90159, 90160, 90161, 90162, 90163]
+        entries[1]['rankIDs'] = [61160, 61161, 61162, 61163, 61164]
         for t in entries[::2]:
             t['rankIDs'] = [t['id'] * 10]
         others = []
@@ -175,7 +175,7 @@ class ShamanStageTwoTalentTests(unittest.TestCase):
         entries[1]['rankIDs'] = [20]
         if with_w:
             w = talent(9010, 1, 1)
-            w['rankIDs'] = [90130]
+            w['rankIDs'] = [61131]
             entries.insert(1, w)
         for n, (cls, name, _, ranks, _) in enumerate(GENERATOR_MODULE.SPEC_AURAS):
             if cls == 7:
