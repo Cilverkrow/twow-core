@@ -513,6 +513,9 @@ void PetitionSignature::SaveToDB()
 void PetitionSignature::DeleteFromDB()
 {
     CharacterDatabase.BeginTransaction();
-    CharacterDatabase.PExecute("DELETE FROM petition_sign WHERE ownerguid = '%u'", m_playerGuid.GetCounter());
+    // Only this signature (petition + signer). "ownerguid = signer" kept the row - a later
+    // re-sign hit a duplicate key - and wiped the signatures on the signer's own charter.
+    CharacterDatabase.PExecute("DELETE FROM petition_sign WHERE petitionguid = '%u' AND playerguid = '%u'",
+        m_petition->GetId(), m_playerGuid.GetCounter());
     CharacterDatabase.CommitTransaction();
 }
