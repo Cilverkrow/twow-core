@@ -74,13 +74,19 @@ class RateTwoPremadePathTests(unittest.TestCase):
                            config, flags=re.MULTILINE)
         self.assertEqual(30, len(names))  # 27 + bear (#308) + shaman tank (#357) + rogue tank (#367)
         self.assertEqual(30, len({(cls, spec) for cls, spec, _ in names}))
+        # Train 8: the links match the classes whose aura talents are real talents.
+        classes = re.search(r'^AiPlayerbot\.SpecAura\.TalentClasses =[ \t]*([0-9, ]*?)\s*$',
+                            config, flags=re.MULTILINE)
+        self.assertIsNotNone(classes)
+        talent_classes = frozenset(int(c) for c in classes.group(1).split(',') if c.strip())
         for cls, spec, name in names:
             match = re.search(r'^AiPlayerbot\.PremadeSpecLink\.' + cls + r'\.' +
                               spec + r'\.60 = ([0-9-]+)$', config,
                               flags=re.MULTILINE)
             self.assertIsNotNone(match)
-            # #357 O-12: 7.1 / 7.3 leave the points of their talent auras free.
-            reserved = GENERATOR_MODULE.reserved_points(int(cls), name, 60)
+            # #357 O-12: 7.1 / 7.3 leave the points of their talent auras free,
+            # unless the class is a talent class (then nothing is reserved).
+            reserved = GENERATOR_MODULE.reserved_points(int(cls), name, 60, talent_classes)
             self.assertEqual(102 - reserved, sum(int(value) for value in match.group(1)
                                                  if value.isdigit()))
 

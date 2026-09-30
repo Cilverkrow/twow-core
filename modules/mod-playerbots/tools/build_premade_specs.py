@@ -252,6 +252,10 @@ EXCLUDED_TALENTS = {
 # +armour, +dodge), which also keeps the 15 points before Flurry (row 4).
 TARGET_OVERRIDES = {
     (7, 'shaman tank'): {259: 3},
+    # #367 stage 2: in the patched tree the rogue tank talent "evasive resistance"
+    # (9172, row 3) requires talent 117 (combat, row 2) at rank 3 - the arrow
+    # 117 -> 9172 of the owner tree. The shared combat build does not take it fully.
+    (4, 'rogue tank'): {117: 3},
 }
 
 EXPECTED_NEW_TREE_TAB = {

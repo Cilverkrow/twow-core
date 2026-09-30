@@ -572,7 +572,8 @@ AiPlayerbot.SpecAura.Enabled = 0
 # talent system owns them) and the links reserve no points; the kit (Spit, Shadow
 # Dance) is still granted to its path, but taken from no one (every rogue can learn it
 # at the trainer, #367 P-1). Empty = phase 1, everything as before.
-AiPlayerbot.SpecAura.TalentClasses =
+# Train 8 ships the patched Talent.dbc and the links below: 4,7.
+AiPlayerbot.SpecAura.TalentClasses = 4,7
 # A roster bot on its own that stands in a zone clearly above its level (area
 # level more than 5 above) leaves it (#307): hearthstone when it is ready and
 # its bind zone suits the bot, otherwise a new level-appropriate travel target.
@@ -1003,56 +1004,59 @@ AiPlayerbot.PremadeSpecLink.3.2.60 = 552332215225311225--35232322511232331251
 # --- class 4 ---
 AiPlayerbot.PremadeSpecName.4.0 = combat
 AiPlayerbot.PremadeSpecProb.4.0 = 100
-AiPlayerbot.PremadeSpecLink.4.0.10 = -1
-AiPlayerbot.PremadeSpecLink.4.0.15 = -52
-AiPlayerbot.PremadeSpecLink.4.0.20 = -5552
-AiPlayerbot.PremadeSpecLink.4.0.25 = -55535121
-AiPlayerbot.PremadeSpecLink.4.0.30 = -55535123251
-AiPlayerbot.PremadeSpecLink.4.0.35 = -55535123255212
-AiPlayerbot.PremadeSpecLink.4.0.40 = -55535123255212223
-AiPlayerbot.PremadeSpecLink.4.0.45 = 324-555351232552122231
-AiPlayerbot.PremadeSpecLink.4.0.50 = 3253231-555351232552122231
-AiPlayerbot.PremadeSpecLink.4.0.55 = 32532312521-555351232552122231
-AiPlayerbot.PremadeSpecLink.4.0.60 = 3253231252332012-555351232552122231
+AiPlayerbot.PremadeSpecLink.4.0.10 = -2
+AiPlayerbot.PremadeSpecLink.4.0.15 = -552
+AiPlayerbot.PremadeSpecLink.4.0.20 = -55552
+AiPlayerbot.PremadeSpecLink.4.0.25 = -5555534
+AiPlayerbot.PremadeSpecLink.4.0.30 = -55555353123
+AiPlayerbot.PremadeSpecLink.4.0.35 = -55555353123253
+AiPlayerbot.PremadeSpecLink.4.0.40 = -5555535312325530122
+AiPlayerbot.PremadeSpecLink.4.0.45 = -5555535312325530122323011
+AiPlayerbot.PremadeSpecLink.4.0.50 = 005032-5555535312325530122323011
+AiPlayerbot.PremadeSpecLink.4.0.55 = 005032310501-5555535312325530122323011
+AiPlayerbot.PremadeSpecLink.4.0.60 = 0050323105023300102-5555535312325530122323011
 AiPlayerbot.PremadeSpecName.4.1 = assassination
 AiPlayerbot.PremadeSpecProb.4.1 = 100
-AiPlayerbot.PremadeSpecLink.4.1.10 = 1
-AiPlayerbot.PremadeSpecLink.4.1.15 = 323
-AiPlayerbot.PremadeSpecLink.4.1.20 = 325322
-AiPlayerbot.PremadeSpecLink.4.1.25 = 325323125
-AiPlayerbot.PremadeSpecLink.4.1.30 = 3253231252331
-AiPlayerbot.PremadeSpecLink.4.1.35 = 32532312523331124
-AiPlayerbot.PremadeSpecLink.4.1.40 = 325323125233311251-51
-AiPlayerbot.PremadeSpecLink.4.1.45 = 325323125233311251-5551
-AiPlayerbot.PremadeSpecLink.4.1.50 = 325323125233311251-5553512
-AiPlayerbot.PremadeSpecLink.4.1.55 = 325323125233311251-5553512325
-AiPlayerbot.PremadeSpecLink.4.1.60 = 325323125233311251-555351232552111
+AiPlayerbot.PremadeSpecLink.4.1.10 = 2
+AiPlayerbot.PremadeSpecLink.4.1.15 = 3252
+AiPlayerbot.PremadeSpecLink.4.1.20 = 3254323
+AiPlayerbot.PremadeSpecLink.4.1.25 = 32543231252
+AiPlayerbot.PremadeSpecLink.4.1.30 = 325432312522332
+AiPlayerbot.PremadeSpecLink.4.1.35 = 32543231252233311124
+AiPlayerbot.PremadeSpecLink.4.1.40 = 32543231252233311125111-51
+AiPlayerbot.PremadeSpecLink.4.1.45 = 32543231252233311125111-5551
+AiPlayerbot.PremadeSpecLink.4.1.50 = 32543231252233311125111-555551
+AiPlayerbot.PremadeSpecLink.4.1.55 = 32543231252233311125111-55555353
+AiPlayerbot.PremadeSpecLink.4.1.60 = 32543231252233311125111-5555535311200500001
 AiPlayerbot.PremadeSpecName.4.2 = subtlety
 AiPlayerbot.PremadeSpecProb.4.2 = 100
-AiPlayerbot.PremadeSpecLink.4.2.10 = --1
-AiPlayerbot.PremadeSpecLink.4.2.15 = --521
-AiPlayerbot.PremadeSpecLink.4.2.20 = --523323
-AiPlayerbot.PremadeSpecLink.4.2.25 = --52332333112
-AiPlayerbot.PremadeSpecLink.4.2.30 = --52332333112232111
-AiPlayerbot.PremadeSpecLink.4.2.35 = --52332333112232112251
-AiPlayerbot.PremadeSpecLink.4.2.40 = 324--52332333112232112251
-AiPlayerbot.PremadeSpecLink.4.2.45 = 325322--52332333112232112251
-AiPlayerbot.PremadeSpecLink.4.2.50 = 3253231251--52332333112232112251
-AiPlayerbot.PremadeSpecLink.4.2.55 = 3253231252333--52332333112232112251
-AiPlayerbot.PremadeSpecLink.4.2.60 = 325323125233311251--52332333112232112251
+AiPlayerbot.PremadeSpecLink.4.2.10 = --2
+AiPlayerbot.PremadeSpecLink.4.2.15 = --4521
+AiPlayerbot.PremadeSpecLink.4.2.20 = --4523323
+AiPlayerbot.PremadeSpecLink.4.2.25 = --452332333112
+AiPlayerbot.PremadeSpecLink.4.2.30 = --452332333112232111
+AiPlayerbot.PremadeSpecLink.4.2.35 = --4523323331122321122511
+AiPlayerbot.PremadeSpecLink.4.2.40 = 322--45233233311223211225113
+AiPlayerbot.PremadeSpecLink.4.2.45 = 32543--45233233311223211225113
+AiPlayerbot.PremadeSpecLink.4.2.50 = 3254323122--45233233311223211225113
+AiPlayerbot.PremadeSpecLink.4.2.55 = 3254323125223--45233233311223211225113
+AiPlayerbot.PremadeSpecLink.4.2.60 = 3254323125223331111--45233233311223211225113
 # #367: rogue tank shares the combat build; weight 0 until the owner decides (2026-09-27).
+# Train 8 (patched Talent.dbc, AiPlayerbot.SpecAura.TalentClasses = 4,7): the aura
+# talents are real talents, no points held back; 117 at rank 3 for evasive resistance.
 AiPlayerbot.PremadeSpecName.4.3 = rogue tank
 AiPlayerbot.PremadeSpecProb.4.3 = 0
-AiPlayerbot.PremadeSpecLink.4.3.15 = -1
-AiPlayerbot.PremadeSpecLink.4.3.20 = -54
-AiPlayerbot.PremadeSpecLink.4.3.25 = -5553
-AiPlayerbot.PremadeSpecLink.4.3.30 = -5553512
-AiPlayerbot.PremadeSpecLink.4.3.35 = -5553512324
-AiPlayerbot.PremadeSpecLink.4.3.40 = -5553512325501
-AiPlayerbot.PremadeSpecLink.4.3.45 = -555351232550122231
-AiPlayerbot.PremadeSpecLink.4.3.50 = 00532-555351232550122231
-AiPlayerbot.PremadeSpecLink.4.3.55 = 0053231051-555351232550122231
-AiPlayerbot.PremadeSpecLink.4.3.60 = 0053231052330012-555351232550122231
+AiPlayerbot.PremadeSpecLink.4.3.10 = -2
+AiPlayerbot.PremadeSpecLink.4.3.15 = -552
+AiPlayerbot.PremadeSpecLink.4.3.20 = -55552
+AiPlayerbot.PremadeSpecLink.4.3.25 = -5555534
+AiPlayerbot.PremadeSpecLink.4.3.30 = -55555353123
+AiPlayerbot.PremadeSpecLink.4.3.35 = -55555353123253
+AiPlayerbot.PremadeSpecLink.4.3.40 = -5555535312325530122
+AiPlayerbot.PremadeSpecLink.4.3.45 = -55555353123255301220233011
+AiPlayerbot.PremadeSpecLink.4.3.50 = 005032-55555353123255301220233011
+AiPlayerbot.PremadeSpecLink.4.3.55 = 005032310501-55555353123255301220233011
+AiPlayerbot.PremadeSpecLink.4.3.60 = 0050323105023300102-55555353123255301220233011
 
 # --- class 5 ---
 AiPlayerbot.PremadeSpecName.5.0 = holy
@@ -1108,20 +1112,20 @@ AiPlayerbot.PremadeSpecLink.7.0.40 = 5522--5523532135321251
 AiPlayerbot.PremadeSpecLink.7.0.45 = 55233132--5523532135321251
 AiPlayerbot.PremadeSpecLink.7.0.50 = 552331352221--5523532135321251
 AiPlayerbot.PremadeSpecLink.7.0.55 = 5523313522232123--5523532135321251
-AiPlayerbot.PremadeSpecLink.7.0.60 = 55233135222321251-500002-5523532135321251
+AiPlayerbot.PremadeSpecLink.7.0.60 = 55233135222321251-05000002-5523532135321251
 AiPlayerbot.PremadeSpecName.7.1 = enhancement
 AiPlayerbot.PremadeSpecProb.7.1 = 100
-AiPlayerbot.PremadeSpecLink.7.1.10 = -1
-AiPlayerbot.PremadeSpecLink.7.1.15 = -52
-AiPlayerbot.PremadeSpecLink.7.1.20 = -5525
-AiPlayerbot.PremadeSpecLink.7.1.25 = -55253231
-AiPlayerbot.PremadeSpecLink.7.1.30 = -5525323135
-AiPlayerbot.PremadeSpecLink.7.1.35 = -552532313522311
-AiPlayerbot.PremadeSpecLink.7.1.40 = -5525323135223151
-AiPlayerbot.PremadeSpecLink.7.1.45 = 55-5525323135223151
-AiPlayerbot.PremadeSpecLink.7.1.50 = 5523311-5525323135223151
-AiPlayerbot.PremadeSpecLink.7.1.55 = 5523313521-5525323135223151
-AiPlayerbot.PremadeSpecLink.7.1.60 = 552331352223112-5525323135223151
+AiPlayerbot.PremadeSpecLink.7.1.10 = -2
+AiPlayerbot.PremadeSpecLink.7.1.15 = -552
+AiPlayerbot.PremadeSpecLink.7.1.20 = -55552
+AiPlayerbot.PremadeSpecLink.7.1.25 = -55552532
+AiPlayerbot.PremadeSpecLink.7.1.30 = -555525323133
+AiPlayerbot.PremadeSpecLink.7.1.35 = -555525323133523
+AiPlayerbot.PremadeSpecLink.7.1.40 = -55552532313352323113
+AiPlayerbot.PremadeSpecLink.7.1.45 = -5555253231335232311553
+AiPlayerbot.PremadeSpecLink.7.1.50 = 52-5555253231335232311553111
+AiPlayerbot.PremadeSpecLink.7.1.55 = 550331-5555253231335232311553111
+AiPlayerbot.PremadeSpecLink.7.1.60 = 550331300202012-5555253231335232311553111
 AiPlayerbot.PremadeSpecName.7.2 = elemental
 AiPlayerbot.PremadeSpecProb.7.2 = 100
 AiPlayerbot.PremadeSpecLink.7.2.10 = 2
@@ -1130,28 +1134,28 @@ AiPlayerbot.PremadeSpecLink.7.2.20 = 5523313
 AiPlayerbot.PremadeSpecLink.7.2.25 = 55233135221
 AiPlayerbot.PremadeSpecLink.7.2.30 = 5523313522232121
 AiPlayerbot.PremadeSpecLink.7.2.35 = 55233135222321251-5
-AiPlayerbot.PremadeSpecLink.7.2.40 = 55233135222321251-5523
-AiPlayerbot.PremadeSpecLink.7.2.45 = 55233135222321251-5525323
-AiPlayerbot.PremadeSpecLink.7.2.50 = 55233135222321251-55253231351
-AiPlayerbot.PremadeSpecLink.7.2.55 = 55233135222321251-55253231351-55
-AiPlayerbot.PremadeSpecLink.7.2.60 = 55233135222321251-55253231351-55235
+AiPlayerbot.PremadeSpecLink.7.2.40 = 55233135222321251-555
+AiPlayerbot.PremadeSpecLink.7.2.45 = 55233135222321251-555523
+AiPlayerbot.PremadeSpecLink.7.2.50 = 55233135222321251-555525323
+AiPlayerbot.PremadeSpecLink.7.2.55 = 55233135222321251-555525323-55
+AiPlayerbot.PremadeSpecLink.7.2.60 = 55233135222321251-555525323-55235
 # #357: shaman tank shares the enhancement build; weight 0 until the owner decides (2026-09-27).
-# O-12: 7.1 leaves 15 and 7.3 22 points unspent at 60 for the SpecAura talent auras
-# (per level as granted); the tank has no Calming Winds, 3 points in Ancestral Guardian.
-# O-12: 7.1 leaves 14 and 7.3 21 points unspent at 60 for the SpecAura talent auras
-# (per level as granted); the tank has no Calming Winds, 3 points in Ancestral Guardian.
+# Train 8 (patched Talent.dbc, AiPlayerbot.SpecAura.TalentClasses = 4,7): the aura
+# talents and Ancestral Arms are real talents, no points held back; the tank has no
+# Calming Winds, 3 points in Ancestral Guardian.
 AiPlayerbot.PremadeSpecName.7.3 = shaman tank
 AiPlayerbot.PremadeSpecProb.7.3 = 0
-AiPlayerbot.PremadeSpecLink.7.3.15 = -2
-AiPlayerbot.PremadeSpecLink.7.3.20 = -552
-AiPlayerbot.PremadeSpecLink.7.3.25 = -55253
-AiPlayerbot.PremadeSpecLink.7.3.30 = -552532012
-AiPlayerbot.PremadeSpecLink.7.3.35 = -552532013521
-AiPlayerbot.PremadeSpecLink.7.3.40 = -552532013522312
-AiPlayerbot.PremadeSpecLink.7.3.45 = 51-5525320135223151
-AiPlayerbot.PremadeSpecLink.7.3.50 = 55231-5525320135223151
-AiPlayerbot.PremadeSpecLink.7.3.55 = 55233134-5525320135223151
-AiPlayerbot.PremadeSpecLink.7.3.60 = 552331352202012-5525320135223151
+AiPlayerbot.PremadeSpecLink.7.3.10 = -2
+AiPlayerbot.PremadeSpecLink.7.3.15 = -552
+AiPlayerbot.PremadeSpecLink.7.3.20 = -55552
+AiPlayerbot.PremadeSpecLink.7.3.25 = -55552532
+AiPlayerbot.PremadeSpecLink.7.3.30 = -5555253201333
+AiPlayerbot.PremadeSpecLink.7.3.35 = -55552532013352321
+AiPlayerbot.PremadeSpecLink.7.3.40 = -555525320133523231151
+AiPlayerbot.PremadeSpecLink.7.3.45 = -5555253201335232311553111
+AiPlayerbot.PremadeSpecLink.7.3.50 = 54-55552532013352323115531111
+AiPlayerbot.PremadeSpecLink.7.3.55 = 552331-55552532013352323115531111
+AiPlayerbot.PremadeSpecLink.7.3.60 = 552331300202012-55552532013352323115531111
 
 # --- class 8 ---
 AiPlayerbot.PremadeSpecName.8.0 = arcane
