@@ -69,6 +69,16 @@ inline std::string TopMaps(std::vector<MapStat> stats, size_t count)
     return out;
 }
 
+// twow-repo#452: number of malloc arenas in the malloc_info() XML ("<heap nr=...").
+inline uint32_t CountArenas(std::string const& mallocInfoXml)
+{
+    uint32_t count = 0;
+    for (std::string::size_type pos = mallocInfoXml.find("<heap nr="); pos != std::string::npos;
+         pos = mallocInfoXml.find("<heap nr=", pos + 1))
+        ++count;
+    return count;
+}
+
 // Value-cache diagnostic (#416, 7.3): a cached value is named "value" or
 // "value::qualifier"; the base name groups all qualifiers of one value.
 inline std::string BaseValueName(std::string const& name)

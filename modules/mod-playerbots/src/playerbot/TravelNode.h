@@ -3,6 +3,7 @@
 #include <shared_mutex>
 #include "WorldPosition.h"
 #include "Maps/PathFinder.h"
+#include "Objects/TrackedCount.h"
 
 //THEORY
 // 
@@ -59,7 +60,7 @@ namespace ai
         };
 
         TravelNodePath(TravelNodePath* basePath) {
-            complete = basePath->complete; path = basePath->path; extraCost = basePath->extraCost; calculated = basePath->calculated; distance = basePath->distance; maxLevelCreature = basePath->maxLevelCreature; swimDistance = basePath->swimDistance; pathType = basePath->pathType; pathObject = basePath->pathObject;
+            complete = basePath->complete; setPath(basePath->path); extraCost = basePath->extraCost; calculated = basePath->calculated; distance = basePath->distance; maxLevelCreature = basePath->maxLevelCreature; swimDistance = basePath->swimDistance; pathType = basePath->pathType; pathObject = basePath->pathObject;
         };
 
         //Getters
@@ -81,7 +82,9 @@ namespace ai
 
         //Setters
         void setComplete(bool complete1) { complete = complete1; }
-        void setPath(std::vector<WorldPosition> path1) { path = path1; }
+        void setPath(std::vector<WorldPosition> path1) { path = path1; pathPoints.Set(int64(path.size())); }
+        // twow-repo#452: points of all travel node paths for [MemStores].
+        static int64 StoredPathPoints() { return TrackedCount<TravelNodePath>::Total(); }
         void setPathAndCost(std::vector<WorldPosition> path1, float speed) { setPath(path1); calculateCost(true); extraCost = distance / speed; }
         //void setPortal(bool portal1, uint32 portalId1 = 0) { portal = portal1; portalId = portalId1; }
         //void setTransport(bool transport1) { transport = transport1; }
@@ -98,6 +101,7 @@ namespace ai
 
         //List of WorldPositions to get to the destination.
         std::vector<WorldPosition> path = {};
+        TrackedCount<TravelNodePath> pathPoints;
 
         //The extra (loading/transport) time it takes to take this path.
         float extraCost = 0;
