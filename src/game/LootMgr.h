@@ -27,6 +27,7 @@
 #include "ObjectGuid.h"
 #include "Utilities/LinkedReference/RefManager.h"
 #include "SharedDefines.h"
+#include "Objects/TrackedCount.h"
 
 #include <algorithm>
 #include <map>
@@ -462,6 +463,9 @@ struct Loot
         // What is looted
         WorldObject const* m_lootTarget;
         Team m_groupTeam;
+
+        // twow-repo#452: live Loot objects (including the one in every Item) for [MemStores].
+        TrackedCount<Loot> m_liveCount{1};
 };
 
 struct LootView

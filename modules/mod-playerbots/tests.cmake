@@ -905,7 +905,8 @@ add_executable(mem_stores_policy_tests
   "${PB_MODULE_DIR}/t/mem_stores_policy_tests.cpp")
 
 target_include_directories(mem_stores_policy_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
+  "${PB_MODULE_DIR}/src/playerbot"
+  "${PB_MODULE_DIR}/../../src/game")
 
 set_target_properties(mem_stores_policy_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")

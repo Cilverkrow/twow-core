@@ -26,6 +26,7 @@
 #include "Object.h"
 #include "LootMgr.h"
 #include "ItemPrototype.h"
+#include "TrackedCount.h"
 
 class SpellEntry;
 class Bag;
@@ -402,6 +403,8 @@ class Item : public Object
         time_t m_tradeAllowedUntil = 0;
         uint32 m_obtainedFromMapId = 0;
         ObjectGuidSet m_canBeTradedWithPlayers;
+        // twow-repo#452: live Items for [MemStores].
+        TrackedCount<Item> m_liveCount{1};
 };
 
 #endif

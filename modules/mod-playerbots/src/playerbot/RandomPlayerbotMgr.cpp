@@ -43,6 +43,10 @@
 #include "PersistentActiveRosterDatabase.h"
 #include "LoginWavePolicy.h"
 #include "playerbot/MemStoresPolicy.h"
+#if defined(__linux__) && defined(__GLIBC__)
+#include <malloc.h>
+#endif
+#include <cstdio>
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "Maps/MapManager.h"
@@ -814,6 +818,26 @@ void ReportMemStores(PlayerBotMap const& bots)
     rssKb = ai::mem_stores::ParseVmRssKb(text.str());
 #endif
 
+    // #452: glibc allocator - held by malloc (sbrk + mmap), in use, free but held,
+    // arenas. In use growing with RSS = real growth; free or arenas = fragmentation.
+    uint64 heapKb = 0, inuseKb = 0, freeKb = 0;
+    uint32 arenas = 0;
+#if defined(__linux__) && defined(__GLIBC__)
+    struct mallinfo2 const info = mallinfo2();
+    heapKb = (info.arena + info.hblkhd) / 1024;
+    inuseKb = (info.uordblks + info.hblkhd) / 1024;
+    freeKb = info.fordblks / 1024;
+    char* xml = nullptr;
+    size_t xmlSize = 0;
+    if (FILE* out = open_memstream(&xml, &xmlSize))
+    {
+        malloc_info(0, out);
+        fclose(out);
+        arenas = ai::mem_stores::CountArenas(std::string(xml, xmlSize));
+    }
+    free(xml);
+#endif
+
     std::vector<ai::mem_stores::MapStat> stats;
     ai::mem_stores::MapStat total;
     {
@@ -863,12 +887,16 @@ void ReportMemStores(PlayerBotMap const& bots)
 
     sLog.outBasic("[MemStores] rss_kb=%llu maps=%u grids=%u creatures=%u gameobjects=%u players=%u"
         " route_cooldowns=%u parked_jobs=%u top_maps=\"%s\""
-        " bots=%u bot_values=%llu bot_values_avg=%u bot_values_max=%u shared_values=%u top_values=\"%s\" values_evicted=%llu",
+        " bots=%u bot_values=%llu bot_values_avg=%u bot_values_max=%u shared_values=%u top_values=\"%s\" values_evicted=%llu"
+        " heap_kb=%llu inuse_kb=%llu free_kb=%llu arenas=%u items=%lld loots=%lld path_points=%lld",
         (unsigned long long)rssKb, uint32(stats.size()), total.grids, total.creatures, total.gameobjects, total.players,
         uint32(ai::stall_guard::RouteCooldowns().Size()), uint32(FutureDestinations::ParkedCount()),
         ai::mem_stores::TopMaps(stats, 5).c_str(),
         botCount, (unsigned long long)botValues, botCount ? uint32(botValues / botCount) : 0u, botValuesMax, sharedValues,
-        topValues.c_str(), (unsigned long long)evicted);
+        topValues.c_str(), (unsigned long long)evicted,
+        (unsigned long long)heapKb, (unsigned long long)inuseKb, (unsigned long long)freeKb, arenas,
+        (long long)TrackedCount<Item>::Total(), (long long)TrackedCount<Loot>::Total(),
+        (long long)TravelNodePath::StoredPathPoints());
 }
 }
 
