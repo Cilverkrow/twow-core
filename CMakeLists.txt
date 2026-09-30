@@ -1022,11 +1022,16 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_medivh_shade_loot_408_contract.cmake")
-  # twow-repo#338 train 8: instance trash >= 2.5 h, bosses and rares no respawn within an instance.
+  # twow-repo#338 train 8: everything hostile in instances respawns after 7 days (weekly id reset).
   add_test(NAME instance_respawn_338_contract
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_instance_respawn_338_contract.cmake")
+  # twow-repo#338 train 8: registry class B cleanup (48 out with backup, 89 to class A).
+  add_test(NAME registry_classb_338_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_registry_classb_338_contract.cmake")
   # twow-repo#338 train 8: Alarus (C++ summon) never returns within an instance id.
   add_test(NAME alarus_once_338_contract
     COMMAND "${CMAKE_COMMAND}"
