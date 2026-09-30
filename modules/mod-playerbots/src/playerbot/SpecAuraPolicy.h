@@ -40,49 +40,49 @@ struct AuraTalent
     std::vector<std::uint32_t> ranks;  // spell ids, rank 1..n; a higher rank replaces the lower
 };
 
-// Ghost Wolf rank 3 (90110) is no aura: owner 2026-09-27, Improved Ghost Wolf 2/2
+// Ghost Wolf rank 3 (61111) is no aura: owner 2026-09-27, Improved Ghost Wolf 2/2
 // is instant for everyone (#357 issuecomment-5857623399), so 7.1 = 14, 7.3 = 21.
 inline std::vector<AuraTalent> const& ShamanAuras()
 {
     static std::vector<AuraTalent> const auras = {
-        { "attack speed",        Both,        10, { 90100, 90101, 90102, 90103, 90104 } },
-        { "defense",             ShamanTank,  10, { 90105, 90106, 90107, 90108, 90109 } },
-        { "imbue mastery",       Both,        25, { 90111, 90112, 90113 } },
-        { "retaliation",         ShamanTank,  25, { 90114, 90115, 90116 } },
-        { "stormstrike charges", ShamanTank,  30, { 90117 } },
-        { "storm wisdom",        Enhancement, 35, { 90118, 90119, 90120, 90121, 90122 } },
-        { "chain storm",         Enhancement, 40, { 90124 } },
-        { "shield constitution", ShamanTank,  35, { 90126, 90127, 90128 } },
-        { "shield ward",         ShamanTank,  40, { 90129 } },
+        { "attack speed",        Both,        10, { 61101, 61102, 61103, 61104, 61105 } },
+        { "defense",             ShamanTank,  10, { 61106, 61107, 61108, 61109, 61110 } },
+        { "imbue mastery",       Both,        25, { 61112, 61113, 61114 } },
+        { "retaliation",         ShamanTank,  25, { 61115, 61116, 61117 } },
+        { "stormstrike charges", ShamanTank,  30, { 61118 } },
+        { "storm wisdom",        Enhancement, 35, { 61119, 61120, 61121, 61122, 61123 } },
+        { "chain storm",         Enhancement, 40, { 61125 } },
+        { "shield constitution", ShamanTank,  35, { 61127, 61128, 61129 } },
+        { "shield ward",         ShamanTank,  40, { 61130 } },
     };
     return auras;
 }
 
 // #367 owner talent line (issuecomment-5858564596), OB-20 IDs and grant levels
-// (issuecomment-5858585355; 90191-90193 are script helpers and never granted).
+// (issuecomment-5858585355; 61192-61194 are script helpers and never granted).
 // Path assignment (OB-10): 4.0 = 9, 4.1 = 9, 4.2 = 8, 4.3 = 20 points at 60.
 inline std::vector<AuraTalent> const& RogueAuras()
 {
     static std::vector<AuraTalent> const auras = {
         // Assassination (4.1)
-        { "damage from behind",   RogueAssassination,       10, { 90150, 90151, 90152, 90153 } },
-        { "snd cooldown crits",   RogueAssassination,       20, { 90154, 90155 } },
-        { "cold blood damage",    RogueAssassination,       30, { 90156 } },
-        { "vigor damage",         RogueAssassination,       40, { 90157 } },
-        { "seal fate extra",      RogueAssassination,       40, { 90158 } },
+        { "damage from behind",   RogueAssassination,       10, { 61151, 61152, 61153, 61154 } },
+        { "snd cooldown crits",   RogueAssassination,       20, { 61155, 61156 } },
+        { "cold blood damage",    RogueAssassination,       30, { 61157 } },
+        { "vigor damage",         RogueAssassination,       40, { 61158 } },
+        { "seal fate extra",      RogueAssassination,       40, { 61159 } },
         // Combat: C1 column for 4.0, agility and the C4 tank column for 4.3
-        { "agility",              RogueCombat | RogueTank,  10, { 90159, 90160, 90161, 90162, 90163 } },
-        { "defense",              RogueTank,                10, { 90164, 90165, 90166, 90167, 90168 } },
-        { "riposte strikes",      RogueTank,                15, { 90169, 90170, 90171 } },
-        { "evasive resistance",   RogueTank,                25, { 90172, 90173, 90174 } },
-        { "execute strikes",      RogueCombat,              35, { 90175, 90176, 90177 } },
-        { "frontal backstab",     RogueCombat,              40, { 90178 } },
-        { "tank toughness",       RogueTank,                35, { 90179, 90180, 90181 } },
-        { "ghostly magic dodge",  RogueTank,                40, { 90182 } },
+        { "agility",              RogueCombat | RogueTank,  10, { 61160, 61161, 61162, 61163, 61164 } },
+        { "defense",              RogueTank,                10, { 61165, 61166, 61167, 61168, 61169 } },
+        { "riposte strikes",      RogueTank,                15, { 61170, 61171, 61172 } },
+        { "evasive resistance",   RogueTank,                25, { 61173, 61174, 61175 } },
+        { "execute strikes",      RogueCombat,              35, { 61176, 61177, 61178 } },
+        { "frontal backstab",     RogueCombat,              40, { 61179 } },
+        { "tank toughness",       RogueTank,                35, { 61180, 61181, 61182 } },
+        { "ghostly magic dodge",  RogueTank,                40, { 61183 } },
         // Subtlety (4.2)
-        { "stealth damage",       RogueSubtlety,            10, { 90183, 90184, 90185, 90186 } },
-        { "hemorrhage stacks",    RogueSubtlety,            35, { 90187 } },
-        { "shadow damage",        RogueSubtlety,            40, { 90188, 90189, 90190 } },
+        { "stealth damage",       RogueSubtlety,            10, { 61184, 61185, 61186, 61187 } },
+        { "hemorrhage stacks",    RogueSubtlety,            35, { 61188 } },
+        { "shadow damage",        RogueSubtlety,            40, { 61189, 61190, 61191 } },
     };
     return auras;
 }
@@ -162,8 +162,8 @@ inline std::vector<KitSpell> const& KitFor(std::uint8_t cls)
 {
     static std::vector<KitSpell> const none;
     static std::vector<KitSpell> const rogue = {
-        { "spit",         RogueTank, { { 12, 90140 } } },
-        { "shadow dance", RogueTank, { { 20, 90142 }, { 40, 90143 }, { 60, 90144 } } },
+        { "spit",         RogueTank, { { 12, 61141 } } },
+        { "shadow dance", RogueTank, { { 20, 61143 }, { 40, 61144 }, { 60, 61145 } } },
     };
     return cls == ClassRogue ? rogue : none;
 }

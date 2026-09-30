@@ -559,7 +559,7 @@ AiPlayerbot.DeathLoop.Radius = 150
 
 # #357 O-12 (owner 2026-09-27, variant A): roster shamans on premade path 7.1
 # "enhancement" or 7.3 "shaman tank" get the reworked Enhancement talents as
-# bot auras (spells 90100-90129 without 90110, core#187) by level, logged as
+# bot auras (spells 61101-61130 without 61111, core#187) by level, logged as
 # [SpecAura]; the
 # premade links leave the same number of talent points unspent. Missing spells
 # are skipped. 0 = off (no auras; the trimmed links still apply).
