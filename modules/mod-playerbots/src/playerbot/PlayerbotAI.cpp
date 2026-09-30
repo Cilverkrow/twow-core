@@ -482,6 +482,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         }
     }
 
+    // Hotfix 8.1: [TankPath] diagnostic (tank rogue / tank shaman only).
+    UpdateTankPathDiag(uint32(time(nullptr)));
+
     // #421 C: progress watch. Progress (level, XP, quest state) resets the
     // quest search; a roster bot on its own that made none for 20 minutes
     // while the search reached the region asks for the rescue teleport.
@@ -1445,6 +1448,9 @@ void PlayerbotAI::OnDeath()
             RecordDeathForLoop();
             // #422: death series and environmental gathering deaths.
             RecordDeathForSeries();
+            // Hotfix 8.1: deaths of a bot on a tank path.
+            if (tankPathOn)
+                ++tankPathWindow.deaths;
 
             // #307: a death on a completed-quest turn-in route counts against
             // that route, so a revived bot does not walk back into the same mobs.
@@ -3037,6 +3043,54 @@ void PlayerbotAI::RecordDeathForSeries()
         sLog.outBasic("[DeathSeries] state=purpose_suppressed bot=%u level=%u purpose=%u minutes=%u map=%u zone=%u",
             bot->GetGUIDLow(), bot->GetLevel(), purpose, ai::death_series::PurposeSuppressSeconds / 60,
             bot->GetMapId(), bot->GetZoneId());
+}
+
+void PlayerbotAI::UpdateTankPathDiag(uint32 now)
+{
+    if (now - tankPathLastSample < ai::tank_path_diag::SampleSeconds)
+        return;
+    tankPathLastSample = now;
+
+    bool const on = HasStrategy("tank rogue", BotState::BOT_STATE_COMBAT) || HasStrategy("tank shaman", BotState::BOT_STATE_COMBAT);
+    tankPathOn = on;
+    // The first time per session only: a strategy reset that drops and re-adds
+    // the tank strategy neither logs again nor clears the running window.
+    if (on && !tankPathWindow.start)
+    {
+        tankPathWindow.Restart(now);
+        sLog.outBasic("[TankPath] state=on bot=%u name=%s class=%u level=%u strategy=%s map=%u zone=%u",
+            bot->GetGUIDLow(), bot->GetName(), uint32(bot->getClass()), bot->GetLevel(),
+            bot->getClass() == CLASS_ROGUE ? "tank rogue" : "tank shaman", bot->GetMapId(), bot->GetZoneId());
+    }
+    if (!tankPathOn)
+        return;
+
+    bool holdsAggro = false;
+    bool const combat = bot->IsInCombat();
+    if (combat)
+    {
+        for (Unit* attacker : bot->getAttackers())
+        {
+            if (attacker && attacker->GetVictim() == bot)
+            {
+                holdsAggro = true;
+                break;
+            }
+        }
+    }
+    tankPathWindow.Sample(combat, holdsAggro);
+
+    if (!tankPathWindow.Due(now))
+        return;
+
+    // Only in a group or an instance - that is where a tank has to tank.
+    Group* const group = bot->GetGroup();
+    if (group || bot->GetMap()->IsDungeon())
+        sLog.outBasic("[TankPath] state=summary bot=%u level=%u group=%u group_size=%u map=%u instance=%u pulls=%u combat_s=%u aggro_held_pct=%u taunts=%u deaths=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), group ? 1u : 0u, group ? uint32(group->GetMembersCount()) : 0u,
+            bot->GetMapId(), bot->GetInstanceId(), tankPathWindow.pulls, tankPathWindow.combatSamples * ai::tank_path_diag::SampleSeconds,
+            tankPathWindow.AggroPercent(), tankPathWindow.taunts, tankPathWindow.deaths);
+    tankPathWindow.Restart(now);
 }
 
 bool PlayerbotAI::IsInDeathLoop() const
@@ -5303,6 +5357,19 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         aiObjectContext->GetValue<LastSpellCast&>("last spell cast")->Get().Set(spellId, target->GetObjectGuid(), time(0));
 
     RecordGroupBuff(pSpellInfo, target);
+
+    // Hotfix 8.1: taunts of a bot on a tank path (attack-me effect or taunt aura).
+    if (tankPathOn)
+    {
+        for (uint32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+        {
+            if (pSpellInfo->Effect[i] == SPELL_EFFECT_ATTACK_ME || pSpellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_TAUNT)
+            {
+                ++tankPathWindow.taunts;
+                break;
+            }
+        }
+    }
 
     aiObjectContext->GetValue<ai::PositionMap&>("position")->Get()["random"].Reset();
 

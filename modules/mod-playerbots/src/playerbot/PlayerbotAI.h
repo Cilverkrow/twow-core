@@ -20,6 +20,7 @@
 #include <atomic>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/DeathSeriesPolicy.h"
+#include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/GroupBuffPolicy.h"
 class Player;
 class PlayerbotMgr;
@@ -677,6 +678,8 @@ public:
     bool IsInDeathLoop() const;
     // #422: death series (any place) and deaths without a killer while gathering.
     void RecordDeathForSeries();
+    // Hotfix 8.1: [TankPath] diagnostic for bots on a tank path (4.3 / 7.3).
+    void UpdateTankPathDiag(uint32 now);
     bool IsCautious() const { return deathSeries.Cautious(uint32(time(nullptr))); }
     bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
     void ClearDeathLoop() { recentDeaths.clear(); }
@@ -930,6 +933,10 @@ protected:
     // #422: deaths anywhere (cautious mode) and environmental gathering deaths.
     ai::death_series::Series deathSeries;
     ai::death_series::PurposeSuppression gatherDeaths;
+    // Hotfix 8.1: [TankPath] window of a bot on a tank path.
+    ai::tank_path_diag::Window tankPathWindow;
+    uint32 tankPathLastSample = 0;
+    bool tankPathOn = false;
 	bool m_suppressAreaTriggerRelay = false;
 	// GUID-shadow of `master` so we can verify the pointer is still
 	// alive each tick without dereferencing it. Set in SetMaster().
