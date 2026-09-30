@@ -26,11 +26,11 @@ enum RogueSpells
     SPELL_ROGUE_SHADOW_OF_DEATH               = 52710,
     SPELL_ROGUE_SHADOW_OF_DEATH_DAMAGE        = 52711,
 
-    // twow-repo#367 rogue tank (bots only in release train 7; IDs 90140-90149, 90150-90199
+    // twow-repo#367 rogue tank (bots only in release train 7; IDs 61141-61150, 61151-61200
     // reserved for the owner's rogue talent line).
-    SPELL_ROGUE_SPIT_SPLASH                   = 90141,
-    SPELL_ROGUE_SHADOW_DANCE_DODGE_BUFF       = 90145,
-    SPELL_ROGUE_SHADOW_DANCE_PARRY_BUFF       = 90146,
+    SPELL_ROGUE_SPIT_SPLASH                   = 61142,
+    SPELL_ROGUE_SHADOW_DANCE_DODGE_BUFF       = 61146,
+    SPELL_ROGUE_SHADOW_DANCE_PARRY_BUFF       = 61147,
 };
 
 // #367 D-1/D-7/D-8: Agitating Poison ranks by caster level (rank V = the existing 45613).
@@ -767,7 +767,7 @@ struct spell_rogue_shadow_dance : public AuraScript
     }
 };
 
-// ---- twow-repo#367: the owner's rogue talent line (bot auras 90150-90193) ----
+// ---- twow-repo#367: the owner's rogue talent line (bot auras 61151-61194) ----
 
 int32 GetRogueTalentAmount(Unit* unit, uint32 firstRank, uint32 lastRank)
 {
