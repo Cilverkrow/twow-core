@@ -20,10 +20,14 @@
 -- Part A7, twow-repo#461 (full list there): 116 Rabbit (721) spawns on 26 map-0 tiles for which
 -- the client has no terrain (#455 A7). They get SPAWN_FLAG_DISABLED (0x02), which
 -- Creature::LoadFromDB skips. None of them is pooled or event-bound; all had spawn_flags 0.
--- The excavation tent GO 4004476 on tile 24_42 stays (owner decision named creatures only).
+-- The excavation tent GO 4004476 (tile 24_42, the only gameobject without terrain) follows on
+-- the owner's second decision 2026-10-01 ("... Zelt auch abschalten", #459
+-- issuecomment-5935594022): same flag, GameObject::LoadFromDB skips it too.
 -- Rollback A7:
 --   UPDATE `creature` c JOIN `creature_bak_ws30_terrain` b ON b.`guid` = c.`guid`
 --   SET c.`spawn_flags` = b.`spawn_flags`;
+--   UPDATE `gameobject` g JOIN `gameobject_bak_ws30_terrain` b ON b.`guid` = g.`guid`
+--   SET g.`spawn_flags` = b.`spawn_flags`;
 
 -- A6 backup: the five map-44 marks as they are, plus the two map-45 marks removed in #408.
 CREATE TABLE IF NOT EXISTS `game_tele_bak_427` LIKE `game_tele`;
@@ -56,3 +60,10 @@ INSERT IGNORE INTO `creature_bak_ws30_terrain`
 -- A7: switch the backed-up spawns off (only rows that really are in the backup).
 UPDATE `creature` c JOIN `creature_bak_ws30_terrain` b ON b.`guid` = c.`guid`
 SET c.`spawn_flags` = c.`spawn_flags` | 2;
+
+-- A7: the excavation tent, backed up and switched off the same way.
+CREATE TABLE IF NOT EXISTS `gameobject_bak_ws30_terrain` LIKE `gameobject`;
+INSERT IGNORE INTO `gameobject_bak_ws30_terrain`
+  SELECT * FROM `gameobject` WHERE `guid` = 4004476 AND `id` = 2002787 AND `map` = 0;
+UPDATE `gameobject` g JOIN `gameobject_bak_ws30_terrain` b ON b.`guid` = g.`guid`
+SET g.`spawn_flags` = g.`spawn_flags` | 2;

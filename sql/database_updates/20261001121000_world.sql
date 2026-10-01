@@ -17,6 +17,10 @@
 --      mana, mana-cost checks (Spell::CheckItems, Spell::CheckPower). List ids = creature entry,
 --      as for the other Frostmane lists; 19, 96, 108 and 63131 were unused.
 --      Frostmane Slave (51) stays without an ability (owner audit #459).
+--   4. Handler Oboka joins the boss list (owner 2026-10-01, #459 issuecomment-5935594022:
+--      "Oboka die Bossliste ..."): creature_loot_bonus_registry row like the other four
+--      Frostmane bosses (category dungeon). His spawn already has the boss respawn of 604800 s
+--      (#338, 20260930120000), so the instance rule stays consistent.
 -- Replay-safe: backup tables first, INSERT IGNORE, guarded UPDATEs.
 -- Rollback:
 --   UPDATE `game_tele` t JOIN `game_tele_bak_459` b ON b.`id` = t.`id`
@@ -26,6 +30,7 @@
 --   SET t.`loot_id` = b.`loot_id`, t.`spell_list_id` = b.`spell_list_id`;
 --   DELETE FROM `creature_loot_template` WHERE `entry` = 63132 AND `item` = 184;
 --   DELETE FROM `creature_spells` WHERE `entry` IN (19, 96, 108, 63131);
+--   DELETE FROM `creature_loot_bonus_registry` WHERE `creature_entry` = 63132 AND `map_id` = 822;
 
 CREATE TABLE IF NOT EXISTS `game_tele_bak_459` LIKE `game_tele`;
 INSERT IGNORE INTO `game_tele_bak_459` SELECT * FROM `game_tele` WHERE `id` = 811 AND `map` = 806;
@@ -56,3 +61,7 @@ VALUES
   (63131, 'Frostmane Hollow - Battlemaster Ubukaz',   15496, 100, 1, 6, 9,  9, 12);
 UPDATE `creature_template` SET `spell_list_id` = `entry`
 WHERE `entry` IN (19, 96, 108, 63131) AND `spell_list_id` = 0;
+
+-- 4. Handler Oboka on the boss list.
+INSERT IGNORE INTO `creature_loot_bonus_registry` (`creature_entry`, `map_id`, `category`, `note`)
+VALUES (63132, 822, 'dungeon', '#459 owner 2026-10-01 boss list (Handler Oboka)');
