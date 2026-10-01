@@ -2,6 +2,9 @@
 #include "ThreatManager.h"
 #include "DBCStores.h"
 #include "FunserverRogueTalents.h"
+#include <map>
+#include <mutex>
+#include <string>
 
 namespace
 {
@@ -791,7 +794,16 @@ void ReduceRogueSpellCooldown(Unit* unit, uint32 spellId, time_t seconds)
     if (left <= seconds)
         unit->RemoveSpellCooldown(spellId, true);
     else
+    {
         unit->AddSpellCooldown(spellId, 0, time(nullptr) + left - seconds);
+        // Hotfix 8.6 (twow-repo#367, owner test with Luigi): the 1.12 client keeps its own
+        // cooldown clock and blocks the spell until it runs out - send the new remainder.
+        if (Player* player = unit->ToPlayer())
+        {
+            player->SendClearCooldown(spellId, player);
+            player->SendSpellCooldown(spellId, uint32(left - seconds) * IN_MILLISECONDS, player->GetObjectGuid());
+        }
+    }
 }
 
 struct spell_rogue_cooldown_flow : public AuraScript
@@ -810,14 +822,42 @@ struct spell_rogue_cooldown_flow : public AuraScript
     }
 };
 
+// Hotfix 8.6 (twow-repo#367, owner tests with Luigi): Vigorous Fury, Deep Wounds and
+// Shadow Edge showed nothing in game although the client knows 61192-61194. One
+// [RogueTalentTrace] line per player and talent (first after 20 events, then hourly).
+void TraceRogueTalent(Unit* unit, char const* talent, bool ok, uint32 result, uint32 value)
+{
+    if (!unit || !unit->IsPlayer())
+        return;
+
+    static std::mutex mutex;
+    static std::map<std::pair<uint32, std::string>, FunserverTraceWindow> windows;
+    uint32 const now = uint32(time(nullptr));
+    std::lock_guard<std::mutex> lock(mutex);
+    FunserverTraceWindow& window = windows[{ unit->GetGUIDLow(), talent }];
+    window.Add(ok, now);
+    if (!window.Due(now))
+        return;
+    sLog.outBasic("[RogueTalentTrace] player=%u talent=%s events=%u ok=%u last_result=%u last_value=%u window_s=%u",
+        unit->GetGUIDLow(), talent, window.events, window.hits, result, value, now - window.start);
+    window.Reset();
+}
+
 // Assassination R7/C1: every Vigor energy gain adds a stack of +2 % damage (8 s, 10 stacks).
 struct spell_rogue_vigor_energy : public SpellScript
 {
-    void OnHit(Spell* spell, SpellMissInfo missInfo) const override
+    // Hotfix 8.6 (#367): Vigor's energy return (52526) is cast by an ADD_TARGET_TRIGGER aura,
+    // so it cannot trigger (m_canTrigger false) and, without damage or healing, Spell never
+    // calls OnHit - Vigorous Fury was never applied. OnEffectExecuted runs for every effect.
+    void OnEffectExecuted(Spell* spell, SpellEffectIndex effIdx) const override
     {
         Unit* caster = spell ? spell->m_casterUnit : nullptr;
-        if (caster && missInfo == SPELL_MISS_NONE && caster->HasAura(ROGUE_TALENT_VIGOR_FURY))
-            caster->CastSpell(caster, ROGUE_TALENT_VIGOR_FURY_BUFF, true);
+        if (effIdx != EFFECT_INDEX_0 || !caster || !caster->HasAura(ROGUE_TALENT_VIGOR_FURY))
+            return;
+
+        SpellCastResult const result = caster->CastSpell(caster, ROGUE_TALENT_VIGOR_FURY_BUFF, true);
+        SpellAuraHolder* buff = caster->GetSpellAuraHolder(ROGUE_TALENT_VIGOR_FURY_BUFF);
+        TraceRogueTalent(caster, "vigorous_fury", result == SPELL_CAST_OK, uint32(result), buff ? buff->GetStackAmount() : 0);
     }
 };
 
@@ -924,7 +964,11 @@ struct spell_rogue_hemorrhage_stacks : public SpellScript
         Unit* caster = spell ? spell->m_casterUnit : nullptr;
         Unit* target = spell ? spell->GetUnitTarget() : nullptr;
         if (caster && target && missInfo == SPELL_MISS_NONE && caster->HasAura(ROGUE_TALENT_HEMORRHAGE_STACKS))
-            caster->CastSpell(target, ROGUE_TALENT_HEMORRHAGE_STACK, true);
+        {
+            SpellCastResult const result = caster->CastSpell(target, ROGUE_TALENT_HEMORRHAGE_STACK, true);
+            SpellAuraHolder* stack = target->GetSpellAuraHolder(ROGUE_TALENT_HEMORRHAGE_STACK, caster->GetObjectGuid());
+            TraceRogueTalent(caster, "deep_wounds", result == SPELL_CAST_OK, uint32(result), stack ? stack->GetStackAmount() : 0);
+        }
     }
 };
 
@@ -933,14 +977,18 @@ struct spell_rogue_shadow_edge : public AuraScript
 {
     std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 amount, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) override
     {
-        if (!owner || !victim || !aura || !amount || !victim->IsAlive())
+        if (!owner || !victim || !aura)
             return SPELL_AURA_PROC_FAILED;
 
-        int32 damage = int32(amount) * aura->GetModifier()->m_amount / 100;
+        int32 damage = (amount && victim->IsAlive()) ? int32(amount) * aura->GetModifier()->m_amount / 100 : 0;
         if (damage <= 0)
+        {
+            TraceRogueTalent(owner, "shadow_edge", false, amount, 0);
             return SPELL_AURA_PROC_FAILED;
+        }
 
         owner->CastCustomSpell(victim, ROGUE_TALENT_SHADOW_EDGE_DAMAGE, &damage, nullptr, nullptr, true, nullptr, aura);
+        TraceRogueTalent(owner, "shadow_edge", true, amount, uint32(damage));
         return SPELL_AURA_PROC_OK;
     }
 };

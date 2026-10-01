@@ -72,4 +72,32 @@ inline int32_t FunserverRogueArcaneEvasionResistance(float dodgePct, float parry
     return int32_t(avoidance * float(sharePct) / 100.0f * float(pointsPerPct));
 }
 
+// Hotfix 8.6 (twow-repo#367, owner tests with Luigi): measuring windows for the rogue
+// talents that showed nothing in game ([GhostlyEvasion], [RogueTalentTrace]). The first
+// line comes after 20 events, so a test gets it quickly; after that one line per hour.
+struct FunserverTraceWindow
+{
+    uint32_t events = 0;
+    uint32_t hits = 0;
+    uint32_t start = 0;
+    bool logged = false;
+
+    void Add(bool hit, uint32_t now)
+    {
+        if (!events)
+            start = now;
+        ++events;
+        if (hit)
+            ++hits;
+    }
+
+    bool Due(uint32_t now) const { return (!logged && events >= 20) || (events && now - start >= 3600); }
+
+    void Reset()
+    {
+        events = hits = start = 0;
+        logged = true;
+    }
+};
+
 #endif
