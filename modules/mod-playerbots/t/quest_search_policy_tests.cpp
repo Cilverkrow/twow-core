@@ -84,6 +84,16 @@ int main()
     Require(RescueAnchorEntries(10).size() == 2 && RescueAnchorEntries(9).size() == 1, "anchors: Auberdine, Ratchet");
     Require(RescueAnchorEntries(1).empty(), "no anchors for the other races");
 
+    // Hotfix 8.1: rescue without route requests, [Idle] cadence, route backoff, stale bots.
+    Require(!HardIdleRescueDue(3599, 0, 10000, 1800) && HardIdleRescueDue(3600, 0, 10000, 1800),
+            "twice the idle limit rescues regardless of the stage");
+    Require(!HardIdleRescueDue(7200, 9000, 10000, 1800), "per-bot rescue cooldown still applies");
+    Require(!IdleLogDue(599, 0, 1000) && IdleLogDue(600, 0, 1000), "[Idle] after ten minutes");
+    Require(!IdleLogDue(5000, 1000, 2799) && IdleLogDue(5000, 1000, 2800), "then every thirty minutes");
+    Require(RouteBackoffSeconds(1) == 120 && RouteBackoffSeconds(2) == 240 && RouteBackoffSeconds(3) == 480 &&
+            RouteBackoffSeconds(4) == 600 && RouteBackoffSeconds(20) == 600, "backoff 2, 4, 8, 10 minutes");
+    Require(!UpdateStale(0, 5000) && !UpdateStale(4500, 5000) && UpdateStale(4400, 5000), "stale after ten minutes");
+
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
 }

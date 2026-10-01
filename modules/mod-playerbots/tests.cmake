@@ -921,6 +921,11 @@ add_test(NAME mem_stores_source_contract
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/mem_stores_source_contract_tests.cmake")
 
+add_test(NAME hotfix81_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/hotfix81_source_contract_tests.cmake")
+
 # Hotfix 8.1: [TankPath] diagnostic for bots on a tank path.
 add_executable(tank_path_diag_policy_tests
   "${PB_MODULE_DIR}/t/tank_path_diag_policy_tests.cpp")

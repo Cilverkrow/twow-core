@@ -1,0 +1,20 @@
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "Missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_cpp)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/ChooseTravelTargetAction.cpp" choose)
+file(READ "${PB_SOURCE_DIR}/RandomPlayerbotMgr.cpp" mgr)
+
+# Hotfix 8.1 (#421): rescue without route requests, [Idle], route backoff, more [MemStores].
+require_text("${ai_cpp}" "ai::quest_search::HardIdleRescueDue(questProgress.IdleSeconds(now), lastQuestRescue.load(), now," "hard idle rescue")
+require_text("${ai_cpp}" "ai::quest_search::IdleLogDue(questProgress.IdleSeconds(now), lastIdleLog, now)" "[Idle] cadence")
+require_text("${ai_cpp}" "[Idle] bot=%u name=%s level=%u idle_min=%u" "[Idle] line")
+require_text("${ai_cpp}" "lastUpdateTime = uint32(time(nullptr));" "UpdateAI time for stale_bots")
+require_text("${choose}" "ai::quest_search::RouteBackoffSeconds(failures)" "backoff after a failed quest route")
+require_text("${choose}" "uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route backoff until\")))" "backoff honoured")
+require_text("${mgr}" "stale_bots=%u" "[MemStores] stale_bots")
+require_text("${mgr}" "TrackedCount<Corpse>::Total()" "[MemStores] corpses")

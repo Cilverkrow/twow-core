@@ -72,6 +72,8 @@ namespace ai
 
         // #416 (7.3): value-cache size for [MemStores] (own, shared).
         std::pair<size_t, size_t> GetCreatedValueCounts() const { return valueContexts.CreatedCounts(); }
+        // Hotfix 8.1: created (own) actions and triggers for [MemStores].
+        size_t GetCreatedActionTriggerCount() const { return actionContexts.CreatedCounts().first + triggerContexts.CreatedCounts().first; }
         void AddOwnValueNameCounts(std::map<std::string, uint32>& counts) const { valueContexts.AddOwnBaseNameCounts(counts); }
 
         void GetSupportedStrategies(std::set<std::string>& strategies)

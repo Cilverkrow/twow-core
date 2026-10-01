@@ -387,6 +387,38 @@ void PlayerbotAI::ReportSlowUpdate(uint32 elapsedMs)
         PathFinderStats::builds, PathFinderStats::buildMs);
 }
 
+void PlayerbotAI::ReportIdle(uint32 idleSeconds)
+{
+    std::string travel = "none";
+    uint32 travelStatus = 0;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+    {
+        travelStatus = uint32(target->GetStatus());
+        if (target->GetDestination())
+            travel = target->GetDestination()->GetTitle();
+    }
+
+    std::string strategies;
+    for (std::string_view name : GetStrategies(BotState::BOT_STATE_NON_COMBAT))
+    {
+        if (!strategies.empty())
+            strategies += ',';
+        strategies += name;
+        if (strategies.size() > 240)
+            break;
+    }
+
+    char const* phase = bot->IsAlive() ? "alive" : (bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST) ? "ghost" : "dead");
+    std::string const lastAction = currentEngine ? currentEngine->GetLastAction() : "";
+    sLog.outBasic("[Idle] bot=%u name=%s level=%u idle_min=%u map=%u zone=%u x=%.0f y=%.0f phase=%s combat=%u state=%u"
+        " group=%u last_action=\"%s\" travel=\"%s\" travel_status=%u quest_stage=%d quests=%u strategies=\"%s\"",
+        bot->GetGUIDLow(), bot->GetName(), bot->GetLevel(), idleSeconds / 60, bot->GetMapId(), bot->GetZoneId(),
+        bot->GetPositionX(), bot->GetPositionY(), phase, bot->IsInCombat() ? 1u : 0u, uint32(currentState),
+        bot->GetGroup() ? 1u : 0u, lastAction.c_str(), travel.c_str(), travelStatus,
+        aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get(),
+        uint32(bot->getQuestStatusMap().size()), strategies.c_str());
+}
+
 bool PlayerbotAI::IsInGroupWithRealPlayer()
 {
     if (HasRealPlayerMaster())
@@ -444,6 +476,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     SlowUpdateProbe const slowUpdateProbe{ this, WorldTimer::getMSTime() };
 
+    // Hotfix 8.1: [MemStores] stale_bots - UpdateAI ran for this bot.
+    lastUpdateTime = uint32(time(nullptr));
+
     // #420: close a finished [GroupBuff] window.
     if (groupBuffWindow.casts)
         ReportGroupBuff(uint32(time(nullptr)));
@@ -470,6 +505,13 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             std::pair<size_t, size_t> const counts = aiObjectContext->GetCreatedValueCounts();
             ownValueCount = uint32(counts.first);
             sharedValueCount = uint32(counts.second);
+            // Hotfix 8.1: the other per-bot stores.
+            whisperCount = uint32(whispers.size());
+            chatQueueCount = uint32(chatCommands.size() + chatReplies.size());
+            packetQueueCount = uint32(botOutgoingPacketHandlers.QueueSize() + masterIncomingPacketHandlers.QueueSize() +
+                masterOutgoingPacketHandlers.QueueSize());
+            recordedCount = uint32(m_recordedMessages.size());
+            createdObjectCount = uint32(aiObjectContext->GetCreatedActionTriggerCount());
         }
         if (now - lastValueNamesTime >= ai::mem_stores::IntervalSeconds)
         {
@@ -516,10 +558,22 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
             {
                 uint32 const stage = uint32(std::max(0, aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get()));
+                // Hotfix 8.1: a bot that stopped asking for routes never reaches the last
+                // search stage - twice the idle limit rescues it regardless of the stage.
                 if (sPlayerbotAIConfig.questRescueIdleMinutes &&
-                    ai::quest_search::RescueDue(questProgress.IdleSeconds(now), stage, lastQuestRescue.load(), now,
-                        sPlayerbotAIConfig.questRescueIdleMinutes * 60))
+                    (ai::quest_search::RescueDue(questProgress.IdleSeconds(now), stage, lastQuestRescue.load(), now,
+                        sPlayerbotAIConfig.questRescueIdleMinutes * 60) ||
+                     ai::quest_search::HardIdleRescueDue(questProgress.IdleSeconds(now), lastQuestRescue.load(), now,
+                        sPlayerbotAIConfig.questRescueIdleMinutes * 60)))
                     questRescueRequested = true;
+            }
+
+            // Hotfix 8.1: what a roster bot without progress is doing.
+            if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() &&
+                ai::quest_search::IdleLogDue(questProgress.IdleSeconds(now), lastIdleLog, now))
+            {
+                lastIdleLog = now;
+                ReportIdle(questProgress.IdleSeconds(now));
             }
         }
     }
