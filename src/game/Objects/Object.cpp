@@ -21,6 +21,8 @@
 
 #include "Object.h"
 #include "FunserverRogueTalents.h"
+#include <mutex>
+#include <unordered_map>
 #include <shared_mutex>
 #include "SharedDefines.h"
 #include "WorldPacket.h"
@@ -4005,6 +4007,23 @@ SpellMissInfo WorldObject::MeleeSpellHitResult(Unit* pVictim, SpellEntry const* 
     return SPELL_MISS_NONE;
 }
 
+// Hotfix 8.6 (twow-repo#367): Ghostly Evasion rolls per rogue, logged in windows. Map
+// threads call this, hence the lock; only rogues with the talent and Ghostly Strike get here.
+static void TraceGhostlyEvasion(uint32 guidLow, float dodgeChance, bool dodged)
+{
+    static std::mutex mutex;
+    static std::unordered_map<uint32, FunserverTraceWindow> windows;
+    uint32 const now = uint32(time(nullptr));
+    std::lock_guard<std::mutex> lock(mutex);
+    FunserverTraceWindow& window = windows[guidLow];
+    window.Add(dodged, now);
+    if (!window.Due(now))
+        return;
+    sLog.outBasic("[GhostlyEvasion] player=%u rolls=%u dodges=%u dodge_pct=%.1f window_s=%u",
+        guidLow, window.events, window.hits, dodgeChance, now - window.start);
+    window.Reset();
+}
+
 SpellMissInfo WorldObject::MagicSpellHitResult(Unit* pVictim, SpellEntry const* spell, Spell* spellPtr)
 {
     // Can`t miss on dead target (on skinning for example)
@@ -4014,8 +4033,15 @@ SpellMissInfo WorldObject::MagicSpellHitResult(Unit* pVictim, SpellEntry const* 
     // twow-repo#367 Combat R7/C4 (bot aura): while Ghostly Strike is active, the rogue
     // dodges hostile spells with its normal dodge chance (owner question 6, proposal).
     if (!spell->IsPositiveSpell() && pVictim->HasAura(ROGUE_TALENT_GHOSTLY_EVASION) &&
-        pVictim->HasAura(SPELL_ROGUE_GHOSTLY_STRIKE_FUNSERVER) && roll_chance_f(pVictim->GetUnitDodgeChance()))
-        return SPELL_MISS_DODGE;
+        pVictim->HasAura(SPELL_ROGUE_GHOSTLY_STRIKE_FUNSERVER))
+    {
+        float const dodgeChance = pVictim->GetUnitDodgeChance();
+        bool const dodged = roll_chance_f(dodgeChance);
+        if (pVictim->IsPlayer())
+            TraceGhostlyEvasion(pVictim->GetGUIDLow(), dodgeChance, dodged);
+        if (dodged)
+            return SPELL_MISS_DODGE;
+    }
 
     // Spell cannot be resisted (not exist on dbc, custom flag)
     if (spell->AttributesEx4 & SPELL_ATTR_EX4_IGNORE_RESISTANCES)
