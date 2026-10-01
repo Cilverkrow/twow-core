@@ -65,6 +65,7 @@
 #include "Database/DatabaseImpl.h"
 #include "Spell.h"
 #include "ScriptMgr.h"
+#include "FunserverTalentLearnSpells.h"
 #include "ScriptObjects.h"
 #include "SocialMgr.h"
 #include "Mail.h"
@@ -23303,6 +23304,25 @@ void Player::LearnTalent(uint32 talentId, uint32 talentRank)
     // learn! (other talent ranks will unlearned at learning)
     LearnSpell(spellid, false, true);
     DETAIL_LOG("TalentID: %u Rank: %u Spell: %u\n", talentId, talentRank, spellid);
+
+    // Hotfix 8.4: talents that teach spells through LEARN_SPELL effects (Ancestral Arms).
+    LearnFunserverTalentSpells(this);
+}
+
+void LearnFunserverTalentSpells(Player* player)
+{
+    if (!player)
+        return;
+
+    for (FunserverTalentLearn const& entry : FUNSERVER_TALENT_LEARN_SPELLS)
+    {
+        if (!player->HasSpell(entry.talentSpell))
+            continue;
+
+        for (uint32 spellId : entry.taught)
+            if (spellId && !player->HasSpell(spellId))
+                player->LearnSpell(spellId, false);
+    }
 }
 
 void Player::UnsummonPetTemporaryIfAny()

@@ -214,23 +214,9 @@ class SpellAuraHolder
         uint8 GetAuraLevel() const { return m_auraLevel; }
         void SetAuraLevel(uint8 level) { m_auraLevel = level; }
         uint32 GetAuraCharges() const { return m_procCharges; }
-        void SetAuraCharges(uint32 charges)
-        {
-            if (m_procCharges == charges)
-                return;
-            m_procCharges = charges;
-
-            UpdateAuraApplication();
-        }
-        bool DropAuraCharge()                               // return true if last charge dropped
-        {
-            if (m_procCharges == 0)
-                return false;
-
-            m_procCharges--;
-            UpdateAuraApplication();
-            return m_procCharges == 0;
-        }
+        // Hotfix 8.4: both notify the aura script (OnAuraChargesChanged) on every change.
+        void SetAuraCharges(uint32 charges);
+        bool DropAuraCharge();                              // return true if last charge dropped
 
         time_t GetAuraApplyTime() const { return m_applyTime; }
 
