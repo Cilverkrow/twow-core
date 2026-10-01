@@ -26,6 +26,7 @@
 #include "SpellAuraDefines.h"
 #include "UnitDefines.h"
 #include "DBCEnums.h"
+#include "Objects/TrackedCount.h"
 #include "ObjectGuid.h"
 // DiminishingGroup and DiminishingLevels.
 #include "SharedDefines.h"
@@ -303,6 +304,8 @@ class SpellAuraHolder
         bool m_addedBySpell;                                // whether aura was applied by spell cast or added directly
 
         uint32 m_in_use;                                    // > 0 while in SpellAuraHolder::ApplyModifiers call/SpellAuraHolder::Update/etc
+        // Hotfix 8.1: live aura holders for [MemStores].
+        TrackedCount<SpellAuraHolder> m_liveCount{1};
 };
 
 typedef void(Aura::*pAuraHandler)(bool Apply, bool Real);

@@ -305,6 +305,15 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
                 uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format());
             WidenQuestSearch(uint32(destinationList.size()));
+
+            // Hotfix 8.1: wait before the next quest route request (2, 4, 8, then 10 min).
+            if (UsesQuestFirstProgression(bot))
+            {
+                uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures"))) + 1;
+                SET_AI_VALUE2(int, "manual int", "quest route failures", int(failures));
+                SET_AI_VALUE2(int, "manual int", "quest route backoff until",
+                    int(uint32(time(nullptr)) + ai::quest_search::RouteBackoffSeconds(failures)));
+            }
         }
 
         return false;
@@ -314,6 +323,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     {
         TraceQuestRouteDecision(bot, newTarget, AI_VALUE2(std::string, "manual string", "future travel condition"),
             "travelmgr_route_validated");
+
+        // Hotfix 8.1: a route was found - no more backoff.
+        SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
+        SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
 
         // #421 B: the widened search found something.
         int const stage = AI_VALUE2(int, "manual int", "quest search stage");
@@ -1847,6 +1860,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 {
     // #416: no new destination job while the parking lot is full.
     if (!FutureDestinations::MayStart())
+        return false;
+
+    // Hotfix 8.1: the last quest route request found nothing - back off.
+    if (UsesQuestFirstProgression(bot) &&
+        uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"))))
         return false;
 
     // The normal player catch-up command supplies an owner. Do not let the

@@ -337,6 +337,10 @@ private:
     // Use unique_ptr to keep the stack copyable-by-value-of-element.
     std::stack<std::unique_ptr<WorldPacket>> queue;
     std::mutex m_botPacketMutex;
+
+public:
+    // Hotfix 8.1: queued packets for [MemStores].
+    size_t QueueSize() { std::lock_guard<std::mutex> lock(m_botPacketMutex); return queue.size(); }
 };
 
 class ChatCommandHolder
@@ -889,6 +893,15 @@ protected:
     ai::value_evict::EvictClock valueEvictClock;
     std::atomic<uint32> evictedValues{ 0 };
     std::atomic<uint32> sharedValueCount{ 0 };
+    // Hotfix 8.1: more per-bot stores for [MemStores], counted on the bot's thread.
+    std::atomic<uint32> whisperCount{ 0 };
+    std::atomic<uint32> chatQueueCount{ 0 };
+    std::atomic<uint32> packetQueueCount{ 0 };
+    std::atomic<uint32> recordedCount{ 0 };
+    std::atomic<uint32> createdObjectCount{ 0 };
+    std::atomic<uint32> lastUpdateTime{ 0 };
+    uint32 lastIdleLog = 0;
+    void ReportIdle(uint32 idleSeconds);
     uint32 lastValueCountTime = 0;
     uint32 lastValueNamesTime = 0;
     mutable std::mutex valueNamesMutex;
@@ -920,6 +933,13 @@ public:
     uint32 GetOwnValueCount() const { return ownValueCount.load(); }
     uint32 TakeEvictedValues() { return evictedValues.exchange(0); }
     uint32 GetSharedValueCount() const { return sharedValueCount.load(); }
+    // Hotfix 8.1: per-bot stores and the last UpdateAI time for [MemStores].
+    uint32 GetWhisperCount() const { return whisperCount.load(); }
+    uint32 GetChatQueueCount() const { return chatQueueCount.load(); }
+    uint32 GetPacketQueueCount() const { return packetQueueCount.load(); }
+    uint32 GetRecordedCount() const { return recordedCount.load(); }
+    uint32 GetCreatedObjectCount() const { return createdObjectCount.load(); }
+    uint32 GetLastUpdateTime() const { return lastUpdateTime.load(); }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
     // #421 C: set on the bot's thread, taken and acted on by the world thread.
     bool TakeQuestRescueRequest() { return questRescueRequested.exchange(false); }

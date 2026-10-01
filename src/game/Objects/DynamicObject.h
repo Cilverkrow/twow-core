@@ -24,6 +24,7 @@
 
 #include "Object.h"
 #include "DBCEnums.h"
+#include "TrackedCount.h"
 
 enum DynamicObjectType
 {
@@ -86,5 +87,7 @@ class DynamicObject : public WorldObject
         AffectedMap m_affected;
     private:
         GridReference<DynamicObject> m_gridRef;
+        // Hotfix 8.1: live dynamic objects for [MemStores].
+        TrackedCount<DynamicObject> m_liveCount{1};
 };
 #endif

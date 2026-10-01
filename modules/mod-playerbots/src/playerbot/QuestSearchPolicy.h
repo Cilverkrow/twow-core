@@ -161,6 +161,42 @@ struct ProgressTracker
     }
 };
 
+// Hotfix 8.1 (#421 train 8 acceptance): nine of ten test bots stood still from their
+// login on - they asked for one quest route and never again, so the search never reached
+// MaxStage and RescueDue never fired. Twice the idle limit rescues regardless of the stage.
+inline bool HardIdleRescueDue(uint32_t idleSeconds, uint32_t lastRescue, uint32_t now,
+    uint32_t idleLimitSeconds = RescueIdleSeconds)
+{
+    return idleSeconds >= 2 * idleLimitSeconds && (!lastRescue || now - lastRescue >= RescuePerBotSeconds);
+}
+
+// Hotfix 8.1: [Idle] after IdleLogSeconds without progress, then at most every IdleRepeatSeconds.
+constexpr uint32_t IdleLogSeconds = 10 * 60;
+constexpr uint32_t IdleRepeatSeconds = 30 * 60;
+inline bool IdleLogDue(uint32_t idleSeconds, uint32_t lastLog, uint32_t now)
+{
+    return idleSeconds >= IdleLogSeconds && (!lastLog || now - lastLog >= IdleRepeatSeconds);
+}
+
+// Hotfix 8.1: a quest route request that found nothing (no fallback) is not repeated at
+// once - two stuck bots sent 237 of 370 such requests in 50 minutes. 2, 4, 8, then 10 min.
+constexpr uint32_t RouteBackoffBaseSeconds = 120;
+constexpr uint32_t RouteBackoffMaxSeconds = 600;
+inline uint32_t RouteBackoffSeconds(uint32_t failures)
+{
+    uint32_t seconds = RouteBackoffBaseSeconds;
+    for (uint32_t i = 1; i < failures && seconds < RouteBackoffMaxSeconds; ++i)
+        seconds *= 2;
+    return seconds < RouteBackoffMaxSeconds ? seconds : RouteBackoffMaxSeconds;
+}
+
+// Hotfix 8.1 [MemStores]: a bot whose UpdateAI did not run for this long counts as stale.
+constexpr uint32_t StaleUpdateSeconds = 10 * 60;
+inline bool UpdateStale(uint32_t lastUpdate, uint32_t now)
+{
+    return lastUpdate && now > lastUpdate && now - lastUpdate >= StaleUpdateSeconds;
+}
+
 inline bool RescueDue(uint32_t idleSeconds, uint32_t stage, uint32_t lastRescue, uint32_t now,
     uint32_t idleLimitSeconds = RescueIdleSeconds)
 {
