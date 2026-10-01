@@ -15,4 +15,4 @@ require_text("${reach}" "if (ai->IsUnreachableTarget(target->GetObjectGuid()))" 
 require_text("${grind}" "if (ai->IsUnreachableTarget(unit->GetObjectGuid()))" "grind skips ignored targets")
 require_text("${ai_cpp}" "if (!target || HasRealPlayerMaster())" "bots without a real player only")
 require_text("${ai_cpp}" "if (!lastUnreachableLog || now - lastUnreachableLog >= ai::unreachable::LogSeconds)" "log budget")
-require_text("${ai_cpp}" "snapshot += uint64(bot->GetSkillValue(skill))" "skill-ups are progress")
+require_text("${ai_cpp}" "snapshot += uint64(value) * (uint64(skill) * 2654435761ULL + 1ULL);" "declared skill-ups are progress (8.5)")
