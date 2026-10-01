@@ -6,6 +6,7 @@
 #include "EquipAction.h"
 #include "playerbot/HomeBindPolicy.h"
 #include "Maps/GridMap.h"
+#include "playerbot/FishingPolicy.h"
 
 using namespace ai;
 
@@ -122,6 +123,11 @@ bool FishAction::isUseful()
     if (!AI_VALUE(bool, "can fish"))
         return false;
 
+    // Hotfix 8.3: never recast while fishing - every recast replaced the bobber before a
+    // fish could bite, so no bot ever caught anything.
+    if (AI_VALUE(bool, "fishing in progress"))
+        return false;
+
     if (fishSpot.distance(bot) > 1.0f)
         return false;
 
@@ -166,8 +172,16 @@ bool FishAction::Execute(Event& event)
     if (slot != EQUIPMENT_SLOT_MAINHAND)
         EquipAction::EquipItem(ai, GetMaster(), pole);
 
-    Event fishCastEvent = Event("fish", "7731 " + chat->formatWorldobject(bot));
+    // Hotfix 8.3: the highest fishing rank the bot knows (was 7731 for everyone).
+    uint32 const rank = ai::fishing::KnownRank(bot->HasSpell(ai::fishing::Artisan), bot->HasSpell(ai::fishing::Expert),
+        bot->HasSpell(ai::fishing::Journeyman), bot->HasSpell(ai::fishing::Apprentice));
+    if (!rank)
+        return false;
+
+    Event fishCastEvent = Event("fish", std::to_string(rank) + " " + chat->formatWorldobject(bot));
     bool didCast = CastCustomSpellAction::Execute(fishCastEvent);
+    if (didCast)
+        SET_AI_VALUE2(int, "manual int", "last fishing cast", int(time(nullptr)));
 
     SetDuration(sPlayerbotAIConfig.globalCoolDown);
 

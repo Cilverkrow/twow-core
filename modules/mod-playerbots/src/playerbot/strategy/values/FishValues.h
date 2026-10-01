@@ -55,6 +55,14 @@ namespace ai
         virtual bool Calculate() override;
     };
 
+    // Hotfix 8.3: a Fishing channel runs or the bot's own bobber is in the water.
+    class FishingInProgressValue : public BoolCalculatedValue
+    {
+    public:
+        FishingInProgressValue(PlayerbotAI* ai) : BoolCalculatedValue(ai, "fishing in progress") {};
+        virtual bool Calculate() override;
+    };
+
     class DoneFishingValue : public BoolCalculatedValue
     {
     public:

@@ -473,6 +473,7 @@ namespace ai
             creators["quest stage active"] = [](PlayerbotAI* ai) { return new QuestStageActiveValue(ai); };
 
             creators["can fish"] = [](PlayerbotAI* ai) { return new CanFishValue(ai); };
+            creators["fishing in progress"] = [](PlayerbotAI* ai) { return new FishingInProgressValue(ai); };
             creators["can open fishing dobber"] = [](PlayerbotAI* ai) { return new CanOpenFishingDobberValue(ai); };
             creators["done fishing"] = [](PlayerbotAI* ai) { return new DoneFishingValue(ai); };
             creators["world buff travel step"] = [](PlayerbotAI* ai) { return new WorldBuffTravelStepValue(ai); };
