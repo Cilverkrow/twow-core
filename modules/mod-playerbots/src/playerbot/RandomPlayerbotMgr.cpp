@@ -866,6 +866,9 @@ void ReportMemStores(PlayerBotMap const& bots)
     // #416 (7.3): value caches of the bots - counted by each bot on its own
     // thread (atomics), only summed here; the names of the largest bot.
     uint64 botValues = 0, evicted = 0;
+    // Hotfix 8.1: more per-bot stores and bots whose UpdateAI stopped.
+    uint64 whispers = 0, chatQueue = 0, packetQueue = 0, recorded = 0, createdObjects = 0;
+    uint32 staleBots = 0;
     uint32 botValuesMax = 0, sharedValues = 0, botCount = 0;
     std::string topValues;
     for (auto const& [guid, bot] : bots)
@@ -876,6 +879,13 @@ void ReportMemStores(PlayerBotMap const& bots)
         uint32 const own = ai->GetOwnValueCount();
         evicted += ai->TakeEvictedValues();
         botValues += own;
+        whispers += ai->GetWhisperCount();
+        chatQueue += ai->GetChatQueueCount();
+        packetQueue += ai->GetPacketQueueCount();
+        recorded += ai->GetRecordedCount();
+        createdObjects += ai->GetCreatedObjectCount();
+        if (ai::quest_search::UpdateStale(ai->GetLastUpdateTime(), now))
+            ++staleBots;
         ++botCount;
         sharedValues = std::max(sharedValues, ai->GetSharedValueCount());
         if (own > botValuesMax)
@@ -888,7 +898,9 @@ void ReportMemStores(PlayerBotMap const& bots)
     sLog.outBasic("[MemStores] rss_kb=%llu maps=%u grids=%u creatures=%u gameobjects=%u players=%u"
         " route_cooldowns=%u parked_jobs=%u top_maps=\"%s\""
         " bots=%u bot_values=%llu bot_values_avg=%u bot_values_max=%u shared_values=%u top_values=\"%s\" values_evicted=%llu"
-        " heap_kb=%llu inuse_kb=%llu free_kb=%llu arenas=%u items=%lld loots=%lld path_points=%lld",
+        " heap_kb=%llu inuse_kb=%llu free_kb=%llu arenas=%u items=%lld loots=%lld path_points=%lld"
+        " corpses=%lld aura_holders=%lld dynobjects=%lld bot_whispers=%llu bot_chatq=%llu bot_packetq=%llu"
+        " bot_recorded=%llu bot_objects=%llu stale_bots=%u",
         (unsigned long long)rssKb, uint32(stats.size()), total.grids, total.creatures, total.gameobjects, total.players,
         uint32(ai::stall_guard::RouteCooldowns().Size()), uint32(FutureDestinations::ParkedCount()),
         ai::mem_stores::TopMaps(stats, 5).c_str(),
@@ -896,7 +908,10 @@ void ReportMemStores(PlayerBotMap const& bots)
         topValues.c_str(), (unsigned long long)evicted,
         (unsigned long long)heapKb, (unsigned long long)inuseKb, (unsigned long long)freeKb, arenas,
         (long long)TrackedCount<Item>::Total(), (long long)TrackedCount<Loot>::Total(),
-        (long long)TravelNodePath::StoredPathPoints());
+        (long long)TravelNodePath::StoredPathPoints(),
+        (long long)TrackedCount<Corpse>::Total(), (long long)TrackedCount<SpellAuraHolder>::Total(),
+        (long long)TrackedCount<DynamicObject>::Total(), (unsigned long long)whispers, (unsigned long long)chatQueue,
+        (unsigned long long)packetQueue, (unsigned long long)recorded, (unsigned long long)createdObjects, staleBots);
 }
 }
 

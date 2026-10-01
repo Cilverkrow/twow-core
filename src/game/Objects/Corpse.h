@@ -27,6 +27,7 @@
 #include "Database/DatabaseEnv.h"
 #include "GridDefines.h"
 #include "LootMgr.h"
+#include "TrackedCount.h"
 
 enum CorpseType
 {
@@ -108,5 +109,7 @@ class Corpse : public WorldObject
         CorpseType m_type;
         time_t m_time;
         GridPair m_grid;                                    // gride for corpse position for fast search
+        // Hotfix 8.1: live corpses for [MemStores].
+        TrackedCount<Corpse> m_liveCount{1};
 };
 #endif
