@@ -238,4 +238,31 @@ inline std::vector<uint32_t> RescueAnchorEntries(uint32_t race)
         return { 6737, 10219 };                 // Shaussiy, Gwennyth Bly'Leggonde (Auberdine)
     return {};
 }
+
+// Hotfix 8.5 (twow-repo#329, Latchigedap L15 in Mulgore for 8 h): a gathering travel
+// purpose (relevance 6.5) always beat the quest request (6.3). With a skinning target
+// active, "request quest travel target" stayed USELESS and eight finished quests were
+// never handed in - 164 of the roster held 586 such quests (dump 30.09). A roster bot
+// on its own hands in first and gathers afterwards.
+inline bool GatherYieldsToTurnIn(bool rosterOnItsOwn, uint32_t finishedQuests)
+{
+    return rosterOnItsOwn && finishedQuests > 0;
+}
+
+// The grey rule of CleanQuestLogAction (CONFIG_INT32_QUEST_LOW_LEVEL_HIDE_DIFF).
+inline bool IsGreyQuest(uint32_t botLevel, uint32_t questLevel, int32_t lowLevelHideDiff)
+{
+    return lowLevelHideDiff >= 0 && botLevel > questLevel + uint32_t(lowLevelHideDiff);
+}
+
+// Hotfix 8.5: an open grey quest made its creatures "needed for quest" and so let the
+// bot grind grey mobs past the #421 filter (Mazzranache, level 8, at level 15: 50-125
+// grey targets an hour). CleanQuestLogAction dropped grey quests only above 14 quests.
+// A roster bot on its own now drops them at once - finished ones are still handed in,
+// class quests stay.
+inline bool DropGreyQuest(bool rosterOnItsOwn, uint32_t botLevel, uint32_t questLevel,
+    int32_t lowLevelHideDiff, bool complete, bool classQuest)
+{
+    return rosterOnItsOwn && !complete && !classQuest && IsGreyQuest(botLevel, questLevel, lowLevelHideDiff);
+}
 }

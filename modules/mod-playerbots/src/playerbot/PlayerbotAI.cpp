@@ -564,11 +564,35 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             lastQuestProgressCheck = now;
 
             uint64 snapshot = (uint64(bot->GetLevel()) << 40) ^ uint64(bot->GetUInt32Value(PLAYER_XP));
-            // Hotfix 8.2: profession skill-ups are progress too - a bot fishing or
-            // gathering for an hour is busy, not stuck (8.1 rescued it after 60 min).
-            for (uint16 skill : { SKILL_FISHING, SKILL_HERBALISM, SKILL_MINING, SKILL_SKINNING, SKILL_COOKING, SKILL_FIRST_AID,
-                SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_LEATHERWORKING, SKILL_TAILORING })
-                snapshot += uint64(bot->GetSkillValue(skill)) * (uint64(skill) * 2654435761ULL + 1ULL);
+            // Hotfix 8.5 (owner decision, replaces 8.2): profession skill-ups are progress
+            // only under a declared purpose ([Purpose]); without one the rescue may act.
+            if (gatherPurpose.Active())
+            {
+                uint32 const skill = gatherPurpose.skill;
+                uint32 const value = bot->GetSkillValue(uint16(skill));
+                snapshot += uint64(value) * (uint64(skill) * 2654435761ULL + 1ULL);
+
+                uint32 const startValue = gatherPurpose.startValue;
+                uint32 const start = gatherPurpose.start;
+                ai::gather_purpose::End const end = gatherPurpose.Observe(value, now);
+                if (end != ai::gather_purpose::End::None)
+                {
+                    sLog.outBasic("[Purpose] state=end bot=%u level=%u profession=%s reason=%s skill=%u gained=%u minutes=%u blocked_min=%u",
+                        bot->GetGUIDLow(), bot->GetLevel(), ai::gather_purpose::ProfessionName(skill), ai::gather_purpose::EndName(end),
+                        value, value > startValue ? value - startValue : 0, (now - start) / 60,
+                        end == ai::gather_purpose::End::TargetReached ? 0 : ai::gather_purpose::BlockSeconds / 60);
+
+                    // Back to quests and travel: leave a gathering target of this profession.
+                    uint32 const gatherFlag = skill == SKILL_SKINNING ? uint32(TravelDestinationPurpose::GatherSkinning) :
+                        skill == SKILL_MINING ? uint32(TravelDestinationPurpose::GatherMining) :
+                        skill == SKILL_HERBALISM ? uint32(TravelDestinationPurpose::GatherHerbalism) :
+                        uint32(TravelDestinationPurpose::GatherFishing);
+                    TravelTarget* travelTarget = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
+                    if (travelTarget && travelTarget->GetDestination() &&
+                        (uint32(travelTarget->GetDestination()->GetPurpose()) & gatherFlag))
+                        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                }
+            }
             for (auto const& [questId, status] : bot->getQuestStatusMap())
             {
                 uint64 entry = uint64(questId) * 1000003ULL + uint64(status.m_status) * 131ULL + (status.m_rewarded ? 7ULL : 0ULL);

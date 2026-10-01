@@ -932,6 +932,26 @@ add_test(NAME route_temp_nodes_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/route_temp_nodes_contract_tests.cmake")
 
+# Hotfix 8.5 (twow-repo#329): declared profession purpose.
+add_executable(gather_purpose_policy_tests
+  "${PB_MODULE_DIR}/t/gather_purpose_policy_tests.cpp")
+
+target_include_directories(gather_purpose_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(gather_purpose_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME gather_purpose_policy
+  COMMAND gather_purpose_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# Hotfix 8.5 (twow-repo#329): turn-ins before gathering, grey quests dropped.
+add_test(NAME hotfix85_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/hotfix85_source_contract_tests.cmake")
+
 # Hotfix 8.3: fishing without recast loops.
 add_executable(fishing_policy_tests
   "${PB_MODULE_DIR}/t/fishing_policy_tests.cpp")

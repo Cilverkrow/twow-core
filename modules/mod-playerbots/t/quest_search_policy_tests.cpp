@@ -94,6 +94,17 @@ int main()
             RouteBackoffSeconds(4) == 600 && RouteBackoffSeconds(20) == 600, "backoff 2, 4, 8, 10 minutes");
     Require(!UpdateStale(0, 5000) && !UpdateStale(4500, 5000) && UpdateStale(4400, 5000), "stale after ten minutes");
 
+    // Hotfix 8.5: turn-ins before gathering, grey quests dropped.
+    Require(GatherYieldsToTurnIn(true, 1) && !GatherYieldsToTurnIn(true, 0), "one finished quest stops gathering");
+    Require(!GatherYieldsToTurnIn(false, 8), "a bot with a real player gathers as before");
+    Require(IsGreyQuest(15, 8, 4) && IsGreyQuest(15, 10, 4) && !IsGreyQuest(15, 11, 4), "grey: more than 4 levels below");
+    Require(!IsGreyQuest(60, 1, -1), "hide diff -1: nothing is grey");
+    Require(DropGreyQuest(true, 15, 8, 4, false, false), "Mazzranache (8) at level 15 is dropped");
+    Require(!DropGreyQuest(true, 15, 8, 4, true, false), "a finished grey quest is handed in, not dropped");
+    Require(!DropGreyQuest(true, 15, 8, 4, false, true), "class quests stay");
+    Require(!DropGreyQuest(false, 15, 8, 4, false, false), "only roster bots on their own");
+    Require(!DropGreyQuest(true, 15, 12, 4, false, false), "a green quest stays");
+
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
 }
