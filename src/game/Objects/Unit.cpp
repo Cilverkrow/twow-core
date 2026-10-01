@@ -4950,11 +4950,9 @@ void Unit::HandleTriggers(Unit* pVictim, uint32 procExtra, uint32 amount, int32 
         if (useCharges && procSuccess && anyAuraProc && !triggeredByHolder->IsDeleted())
         {
             // If last charge dropped add spell to remove list
+            // Hotfix 8.4: DropAuraCharge notifies the aura script itself.
             if (triggeredByHolder->DropAuraCharge())
                 removedSpells.push_back(RemovedSpellData(triggeredByHolder->GetId(), caster));
-
-            if (triggeredByHolder->GetAuraScript())
-                triggeredByHolder->GetAuraScript()->OnAuraChargesChanged(triggeredByHolder);
         }
 
         triggeredByHolder->SetInUse(false);
