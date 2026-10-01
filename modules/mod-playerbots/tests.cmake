@@ -926,6 +926,25 @@ add_test(NAME hotfix81_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/hotfix81_source_contract_tests.cmake")
 
+# Hotfix 8.3: fishing without recast loops.
+add_executable(fishing_policy_tests
+  "${PB_MODULE_DIR}/t/fishing_policy_tests.cpp")
+
+target_include_directories(fishing_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(fishing_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME fishing_policy
+  COMMAND fishing_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME fishing_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/fishing_source_contract_tests.cmake")
+
 # Hotfix 8.2: unreachable targets.
 add_executable(unreachable_policy_tests
   "${PB_MODULE_DIR}/t/unreachable_policy_tests.cpp")

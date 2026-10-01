@@ -1,0 +1,20 @@
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "Missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+file(READ "${PB_SOURCE_DIR}/strategy/actions/FishAction.cpp" fish)
+file(READ "${PB_SOURCE_DIR}/strategy/values/FishValues.cpp" values)
+
+# Hotfix 8.3: no recast while fishing, no weapon swap while the bobber is out, known rank.
+require_text("${fish}" "if (AI_VALUE(bool, \"fishing in progress\"))" "no recast while fishing")
+require_text("${fish}" "ai::fishing::KnownRank(" "known fishing rank")
+require_text("${fish}" "SET_AI_VALUE2(int, \"manual int\", \"last fishing cast\"" "last cast time")
+require_text("${values}" "go->GetEntry() == ai::fishing::BobberEntry && go->GetOwnerGuid() == bot->GetObjectGuid()" "own bobber")
+require_text("${values}" "ai::fishing::InGrace(" "grace after a cast")
+string(FIND "${fish}" "Event(\"fish\", \"7731 \"" old)
+if(NOT old EQUAL -1)
+  message(FATAL_ERROR "The fixed rank 7731 must not come back")
+endif()
