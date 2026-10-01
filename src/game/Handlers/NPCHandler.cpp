@@ -356,8 +356,14 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket & recv_data)
     // the spell is on this trainer's list, that it can be learned, and money.
     bool const seatedTrainer = !unit->IsStandingUp();
 
+    // Hotfix 8.3 (twow-repo#455): the player casts a teaching spell himself only when it
+    // is a real self-cast (visual 222 and TARGET_UNIT_CASTER, the vanilla recipe teachers).
+    // Visual 222 with target 0 (Turtle's 47312 and its clones 61213-61220: Spit, Shadow
+    // Dance, Agitating Poison recipes) left the player's own cast hanging - "another action
+    // is in progress" and no spell learned. Those are now cast by the trainer like every
+    // other teaching spell. Recipe items ("Use: Teaches ...") do not come through here.
     Spell *spell;
-    if (proto->SpellVisual == 222)
+    if (proto->SpellVisual == 222 && proto->EffectImplicitTargetA[EFFECT_INDEX_0] == TARGET_UNIT_CASTER)
         spell = new Spell(_player, proto, false);
     else
         spell = new Spell(unit, proto, seatedTrainer);

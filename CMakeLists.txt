@@ -1052,6 +1052,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_custom_spell_id_range_contract.cmake")
+  # Hotfix 8.3 (twow-repo#455): trainer casts teaching spells that are no real self-cast.
+  add_test(NAME trainer_teach_cast_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_trainer_teach_cast_contract.cmake")
   # twow-repo#367: the owner rogue talent line (bot auras 90150-90193), pure rules and data contract.
   add_executable(rogue_talents_policy_test
     "${TW_CORE_ROOT}/t/rogue_talents_policy_test.cpp")
