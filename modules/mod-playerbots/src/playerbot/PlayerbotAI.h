@@ -21,6 +21,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/DeathSeriesPolicy.h"
 #include "playerbot/TankPathDiagPolicy.h"
+#include "playerbot/UnreachablePolicy.h"
 #include "playerbot/GroupBuffPolicy.h"
 class Player;
 class PlayerbotMgr;
@@ -902,6 +903,10 @@ protected:
     std::atomic<uint32> lastUpdateTime{ 0 };
     uint32 lastIdleLog = 0;
     void ReportIdle(uint32 idleSeconds);
+    // Hotfix 8.2: targets this bot could not get closer to.
+    ai::unreachable::Approach reachApproach;
+    ai::unreachable::IgnoreList unreachableTargets;
+    uint32 lastUnreachableLog = 0;
     uint32 lastValueCountTime = 0;
     uint32 lastValueNamesTime = 0;
     mutable std::mutex valueNamesMutex;
@@ -940,6 +945,10 @@ public:
     uint32 GetRecordedCount() const { return recordedCount.load(); }
     uint32 GetCreatedObjectCount() const { return createdObjectCount.load(); }
     uint32 GetLastUpdateTime() const { return lastUpdateTime.load(); }
+    // Hotfix 8.2: one reach attempt at this distance; true when the target is now
+    // ignored as unreachable (bots without a real player only).
+    bool CheckReachProgress(Unit* target, float distance);
+    bool IsUnreachableTarget(ObjectGuid guid) const { return unreachableTargets.Ignored(guid.GetRawValue(), uint32(time(nullptr))); }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
     // #421 C: set on the bot's thread, taken and acted on by the world thread.
     bool TakeQuestRescueRequest() { return questRescueRequested.exchange(false); }

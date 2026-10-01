@@ -140,6 +140,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
         if (!unit)
             continue;
 
+        // Hotfix 8.2: a creature this bot could not reach is skipped for five minutes.
+        if (ai->IsUnreachableTarget(unit->GetObjectGuid()))
+            continue;
+
 #ifdef MANGOSBOT_TWO 
         if (bot->GetMapId() == 609)
         {

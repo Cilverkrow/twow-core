@@ -387,6 +387,27 @@ void PlayerbotAI::ReportSlowUpdate(uint32 elapsedMs)
         PathFinderStats::builds, PathFinderStats::buildMs);
 }
 
+bool PlayerbotAI::CheckReachProgress(Unit* target, float distance)
+{
+    if (!target || HasRealPlayerMaster())
+        return false;
+
+    uint32 const now = uint32(time(nullptr));
+    if (!reachApproach.Update(target->GetObjectGuid().GetRawValue(), distance, now))
+        return false;
+
+    unreachableTargets.Add(target->GetObjectGuid().GetRawValue(), now);
+    reachApproach.Reset();
+    if (!lastUnreachableLog || now - lastUnreachableLog >= ai::unreachable::LogSeconds)
+    {
+        lastUnreachableLog = now;
+        sLog.outBasic("[Unreachable] bot=%u level=%u target_entry=%u distance=%.1f seconds=%u map=%u zone=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), target->GetEntry(), distance, ai::unreachable::WindowSeconds,
+            bot->GetMapId(), bot->GetZoneId());
+    }
+    return true;
+}
+
 void PlayerbotAI::ReportIdle(uint32 idleSeconds)
 {
     std::string travel = "none";
@@ -543,6 +564,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             lastQuestProgressCheck = now;
 
             uint64 snapshot = (uint64(bot->GetLevel()) << 40) ^ uint64(bot->GetUInt32Value(PLAYER_XP));
+            // Hotfix 8.2: profession skill-ups are progress too - a bot fishing or
+            // gathering for an hour is busy, not stuck (8.1 rescued it after 60 min).
+            for (uint16 skill : { SKILL_FISHING, SKILL_HERBALISM, SKILL_MINING, SKILL_SKINNING, SKILL_COOKING, SKILL_FIRST_AID,
+                SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_LEATHERWORKING, SKILL_TAILORING })
+                snapshot += uint64(bot->GetSkillValue(skill)) * (uint64(skill) * 2654435761ULL + 1ULL);
             for (auto const& [questId, status] : bot->getQuestStatusMap())
             {
                 uint64 entry = uint64(questId) * 1000003ULL + uint64(status.m_status) * 131ULL + (status.m_rewarded ? 7ULL : 0ULL);
