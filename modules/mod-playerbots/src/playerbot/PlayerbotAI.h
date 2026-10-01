@@ -19,6 +19,7 @@
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/DeathSeriesPolicy.h"
 #include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/UnreachablePolicy.h"
@@ -686,6 +687,8 @@ public:
     // Hotfix 8.1: [TankPath] diagnostic for bots on a tank path (4.3 / 7.3).
     void UpdateTankPathDiag(uint32 now);
     bool IsCautious() const { return deathSeries.Cautious(uint32(time(nullptr))); }
+    // Hotfix 8.5: the declared profession purpose ([Purpose]).
+    ai::gather_purpose::State& GetGatherPurpose() { return gatherPurpose; }
     bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
     void ClearDeathLoop() { recentDeaths.clear(); }
     uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
@@ -914,6 +917,7 @@ protected:
     // #421 C: progress watch for the quest rescue teleport.
     ai::quest_search::ProgressTracker questProgress;
     uint32 lastQuestProgressCheck = 0;
+    ai::gather_purpose::State gatherPurpose;
     std::atomic<uint32> lastQuestRescue{ 0 };
     std::atomic<bool> questRescueRequested{ false };
     std::atomic<bool> questRescueDone{ false };

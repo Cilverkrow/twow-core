@@ -1,6 +1,8 @@
 
 #include "playerbot/playerbot.h"
 #include "DropQuestAction.h"
+#include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 
 using namespace ai;
 
@@ -47,12 +49,34 @@ bool DropQuestAction::Execute(Event& event)
     return dropped;
 }
 
+// Hotfix 8.5: a roster bot on its own drops open grey quests whatever the log size.
+static void DropGreyQuestsOnItsOwn(PlayerbotAI* ai, Player* bot)
+{
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster())
+        return;
+
+    int32 const lowLevelDiff = sWorld.getConfig(CONFIG_INT32_QUEST_LOW_LEVEL_HIDE_DIFF);
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        Quest const* quest = questId ? sObjectMgr.GetQuestTemplate(questId) : nullptr;
+        if (!quest)
+            continue;
+
+        if (ai::quest_search::DropGreyQuest(true, bot->GetLevel(), bot->GetQuestLevelForPlayer(quest), lowLevelDiff,
+                bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE, quest->GetRequiredClasses() != 0))
+            ai->DropQuest(questId);
+    }
+}
+
 bool CleanQuestLogAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
     std::string link = event.getParam();
     if (ai->HasActivePlayerMaster())
         return false;
+
+    DropGreyQuestsOnItsOwn(ai, bot);
 
     uint8 totalQuests = 0;
 
