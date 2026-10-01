@@ -47,6 +47,15 @@ namespace ai
                 const bool inLos = bot->IsWithinLOSInMap(target, true);
                 const bool isFriend = sServerFacade.IsFriendlyTo(bot, target);
 
+                // Hotfix 8.2: a hostile target the bot does not get closer to is dropped
+                // and ignored for five minutes (endless "reach melee - OK" loops).
+                if (!isFriend && ai->CheckReachProgress(target, distanceToTarget))
+                {
+                    if (AI_VALUE(Unit*, "current target") == target)
+                        SET_AI_VALUE(Unit*, "current target", nullptr);
+                    return false;
+                }
+
                 if (range > 0.0f)
                 {
                     // Move to 75% of max range so we land comfortably inside the
@@ -100,6 +109,10 @@ namespace ai
                 Unit* target = GetTarget();
                 if (target)
                 {
+                    // Hotfix 8.2: an unreachable target is not chased again for five minutes.
+                    if (ai->IsUnreachableTarget(target->GetObjectGuid()))
+                        return false;
+
                     // A target that can never legally be attacked (friendly, wrong
                     // phase, etc.) isn't worth closing distance to - this is what let
                     // bots walk up to and cluster around friendly NPCs once a stale
