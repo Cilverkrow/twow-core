@@ -51,6 +51,7 @@ FORK_POINT=$(field fork_point)
 TRACK_BRANCH=$(field upstream_tracking_branch)
 TRACK_COMMIT=$(field upstream_tracking_commit)
 MAX_DRIFT=$(field max_drift_commits)
+TRACKING_MODE=$(field upstream_tracking_mode)
 
 # A renamed, deleted or commented-out key reads as the empty string, which would
 # otherwise turn every assertion below into a comparison of two empty strings --
@@ -64,11 +65,12 @@ declare -A KEYOF=(
   [TRACK_BRANCH]=upstream_tracking_branch
   [TRACK_COMMIT]=upstream_tracking_commit
   [MAX_DRIFT]=max_drift_commits
+  [TRACKING_MODE]=upstream_tracking_mode
 )
 
-for v in UPSTREAM_URL UPSTREAM_BRANCH FORK_POINT TRACK_BRANCH TRACK_COMMIT MAX_DRIFT; do
+for v in UPSTREAM_URL UPSTREAM_BRANCH FORK_POINT TRACK_BRANCH TRACK_COMMIT MAX_DRIFT TRACKING_MODE; do
   if [ -z "${!v}" ]; then
-    fail "${KEYOF[$v]} is missing from $LOCK (expected a line \`<key> = <value>\`; keys are upstream_url, upstream_branch, fork_point, upstream_tracking_branch, upstream_tracking_commit, max_drift_commits)"
+    fail "${KEYOF[$v]} is missing from $LOCK (expected a line \`<key> = <value>\`; keys are upstream_url, upstream_branch, fork_point, upstream_tracking_branch, upstream_tracking_commit, max_drift_commits, upstream_tracking_mode)"
     exit 1
   fi
 done
@@ -86,6 +88,14 @@ done
 
 case "$MAX_DRIFT" in
   ''|*[!0-9]*) fail "max_drift_commits must be a non-negative integer, got '$MAX_DRIFT'"; exit 1 ;;
+esac
+
+# live    = we track a live upstream; check 4 enforces max_drift_commits.
+# retired = ADR-0026 variant (a): this fork is its own trunk, the upstream is a
+#           frozen archive, check 4 is skipped. Anything else is a typo and fails.
+case "$TRACKING_MODE" in
+  live|retired) ;;
+  *) fail "upstream_tracking_mode must be 'live' or 'retired', got '$TRACKING_MODE'"; exit 1 ;;
 esac
 
 # The fork side of every comparison below. HEAD, not origin/main, and the choice
@@ -112,6 +122,7 @@ echo "fork point      : $FORK_POINT"
 echo "tracking branch : $TRACK_BRANCH"
 echo "tracking commit : $TRACK_COMMIT"
 echo "max drift       : $MAX_DRIFT"
+echo "tracking mode   : $TRACKING_MODE"
 echo "our side        : $OURS ($OURS_NAME)"
 
 git remote add upstream "$UPSTREAM_URL" 2>/dev/null \
@@ -178,7 +189,16 @@ if ! git merge-base --is-ancestor "$FORK_POINT" "$HEAD_OF_TRACKING"; then
 fi
 
 # 4. Staleness, as distinct from wrongness.
-if git merge-base --is-ancestor "$HEAD_OF_TRACKING" "$TIP"; then
+#    Skipped when upstream_tracking_mode = retired (ADR-0026, owner decision
+#    2026-10-01, variant a): this fork is its own trunk, the upstream source is a
+#    frozen archive branch, and nothing can arrive after its tip -- a drift budget
+#    against it measures a constant, not staleness. Checks 1-3 and 5-7 still run:
+#    they are history checks and catch a moved tracking branch, a dead-branch
+#    merge and a forgotten fork_point exactly as before.
+if [ "$TRACKING_MODE" = retired ]; then
+  echo "drift           : not measured (upstream_tracking_mode = retired, ADR-0026)"
+  echo "::notice::upstream tracking is retired (ADR-0026, 2026-10-01); the drift check is off, history checks 1-3 and 5-7 still apply. Upstream content arrives by deliberate cherry-pick only."
+elif git merge-base --is-ancestor "$HEAD_OF_TRACKING" "$TIP"; then
   DRIFT=$(git rev-list --count "$HEAD_OF_TRACKING..$TIP")
   echo "drift           : $DRIFT commits behind $UPSTREAM_BRANCH"
   if [ "$DRIFT" -gt "$MAX_DRIFT" ]; then
