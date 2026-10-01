@@ -4,8 +4,21 @@
 # fork_point only when this branch is genuinely rebased or merged onto a newer
 # upstream commit -- it is the answer to "what does our delta apply to".
 
-upstream_url    = https://github.com/Shyalya/tortoise-wow.git
-upstream_branch = playerbots-integration-gh
+# The upstream of record, Shyalya/tortoise-wow (branch playerbots-integration-gh),
+# announced its retirement (ADR-0026 amendment of 2026-09-27) and was removed from
+# GitHub on 2026-10-01: the repository answers 404 and `git ls-remote` reports
+# "Repository not found". Its history had been snapshotted into this repository
+# beforehand as tag upstream-archive/shyalya-playerbots-integration-gh-2026-09-27
+# (tip f2df1b6aff7ea589db4682836d7652ada77f9377, 945 commits). The checks below need
+# a branch to fetch (tools/ci/check-upstream-lock.sh fetches refs/heads only), so
+# the same commit is published as the branch named here. It is FROZEN: nobody pushes
+# to it, and since nothing can arrive after f2df1b6a, max_drift_commits below now
+# measures a fixed distance (49) rather than staleness.
+#
+# Former values: upstream_url = https://github.com/Shyalya/tortoise-wow.git
+#                upstream_branch = playerbots-integration-gh
+upstream_url    = https://github.com/Cilverkrow/twow-core.git
+upstream_branch = upstream-archive-playerbots-integration-gh
 
 # The commit this fork's delta is applied on top of: the merge base between our
 # history and the branch we track. Re-derive it rather than trusting this line --
