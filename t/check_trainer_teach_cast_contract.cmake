@@ -20,8 +20,8 @@ foreach (required
 endforeach()
 
 # The old condition (visual 222 alone) must not come back.
-string(REGEX MATCH "if \(proto->SpellVisual == 222\)" old "${npc}")
-if (old)
+string(FIND "${npc}" "if (proto->SpellVisual == 222)" old_at)
+if (NOT old_at EQUAL -1)
   message(FATAL_ERROR "Trainer teaching cast: visual 222 alone must not select the player self-cast")
 endif()
 
