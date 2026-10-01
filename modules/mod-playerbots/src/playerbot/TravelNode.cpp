@@ -1819,6 +1819,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
                     {
                         endPath.clear();
                         badEndNodes.push_back(endNode);
+                        // #452 (heap profile 01.10.): a discarded route frees its portal nodes.
+                        route.cleanTempNodes();
                         break;
                     }
                 }
@@ -1868,6 +1870,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
             }           
 
             badStartNodes.push_back(startNode);
+            // #452: a discarded route frees its portal nodes (hearthstone, teleports).
+            route.cleanTempNodes();
         }
     }
 
@@ -1898,17 +1902,22 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
             for (auto& endNode : endNodes)
             {
                 TravelNodeRoute route = getRoute(botNode, endNode, bot);
-                route.addTempNodes({botNode});
 
                 if (!route.isEmpty())
                 {
+                    route.addTempNodes({botNode});
                     std::vector<WorldPosition> routePoints;
                     for (auto& p : route.getNodes())
                         routePoints.push_back(*p->getPosition());
                     testPathToLoop(startPos, endPos, unit, uid, routePoints, "route");
                     return route;
                 }
+
+                route.cleanTempNodes();
             }
+
+            // #452: the bot node belongs to no route.
+            delete botNode;
         }
     }
 
