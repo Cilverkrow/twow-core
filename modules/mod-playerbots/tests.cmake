@@ -921,6 +921,25 @@ add_test(NAME mem_stores_source_contract
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/mem_stores_source_contract_tests.cmake")
 
+# Hotfix 8.1: [TankPath] diagnostic for bots on a tank path.
+add_executable(tank_path_diag_policy_tests
+  "${PB_MODULE_DIR}/t/tank_path_diag_policy_tests.cpp")
+
+target_include_directories(tank_path_diag_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(tank_path_diag_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tank_path_diag_policy
+  COMMAND tank_path_diag_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tank_path_diag_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/tank_path_diag_source_contract_tests.cmake")
+
 # Train 8b: roster bots on their own skip red quests (accept/drop loops).
 add_executable(quest_accept_policy_tests
   "${PB_MODULE_DIR}/t/quest_accept_policy_tests.cpp")
