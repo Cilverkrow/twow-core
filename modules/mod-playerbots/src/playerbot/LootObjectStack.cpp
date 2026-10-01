@@ -73,6 +73,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid guid, bool debug)
                     ai->TellDebug(ai->GetMaster(), "Creature flag lootable.", "debug loot");
 
                 this->guid = guid;
+                // Hotfix 8.6 (twow-repo#471): the core makes a corpse lootable and skinnable at
+                // once (Creature.cpp, at death) and skinning fails while loot is left
+                // (TARGET_NOT_LOOTED). Normal loot first; the skinnable corpse comes back after.
+                return;
             }
             else if (debug)
             {

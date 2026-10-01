@@ -39,6 +39,20 @@ int main()
     Check(FunserverRogueArcaneEvasionResistance(80.0f, 40.0f, 45, 3) == 162, "no cap");
     Check(FunserverRogueArcaneEvasionResistance(30.0f, 20.0f, 0, 3) == 0, "no talent, no resistance");
 
+    // Hotfix 8.6: [GhostlyEvasion] / [RogueTalentTrace] windows.
+    FunserverTraceWindow window;
+    Check(!window.Due(100), "no event, no line");
+    window.Add(true, 100);
+    Check(!window.Due(100 + 3599) && window.Due(100 + 3600), "a line after one hour");
+    for (int i = 0; i < 19; ++i)
+        window.Add(false, 200);
+    Check(window.events == 20 && window.hits == 1 && window.Due(200), "the first line after 20 events");
+    window.Reset();
+    Check(window.events == 0 && !window.Due(5000), "reset");
+    for (int i = 0; i < 25; ++i)
+        window.Add(true, 6000);
+    Check(!window.Due(6000) && window.Due(6000 + 3600), "after the first line only hourly");
+
     if (failures)
         return 1;
     std::cout << "ROGUE_TALENTS_POLICY=PASS\n";
