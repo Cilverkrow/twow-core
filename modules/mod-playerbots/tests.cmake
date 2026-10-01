@@ -926,6 +926,12 @@ add_test(NAME hotfix81_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/hotfix81_source_contract_tests.cmake")
 
+# #452: discarded route candidates free their temporary (portal) nodes.
+add_test(NAME route_temp_nodes_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/route_temp_nodes_contract_tests.cmake")
+
 # Hotfix 8.3: fishing without recast loops.
 add_executable(fishing_policy_tests
   "${PB_MODULE_DIR}/t/fishing_policy_tests.cpp")
