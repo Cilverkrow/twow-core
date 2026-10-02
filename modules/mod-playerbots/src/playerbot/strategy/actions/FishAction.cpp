@@ -214,10 +214,8 @@ bool UseFishingBobberAction::Execute(Event& event)
             return true;
         }
 
-        std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_GAMEOBJ_USE));
-        *packet << obj->GetObjectGuid();
-        bot->GetSession()->QueuePacket(std::move(packet));
-        ai->GetFishingTrace().OnUse();   // Hotfix 8.7 (#472)
+        ai->UseGameObjectDirect(obj->GetObjectGuid());   // Hotfix 8.8 (#474)
+        ai->GetFishingTrace().OnUse(obj->GetLootState() != GO_READY);   // Hotfix 8.7/8.8 (#472)
 
         std::ostringstream out; out << "Opening " << chat->formatGameobject(obj);
         ai->TellPlayerNoFacing(ai->GetMaster(), out.str(), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
