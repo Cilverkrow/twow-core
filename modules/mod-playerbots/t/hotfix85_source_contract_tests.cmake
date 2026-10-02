@@ -25,7 +25,7 @@ require_text("${drop}" "    DropGreyQuestsOnItsOwn(ai, bot);" "grey drop runs in
 file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_cpp)
 require_text("${travel}" "switch (ai::gather_purpose::Decide(declared, rosterOnItsOwn, skill, value, target, now))" "declared purpose decides gathering")
 require_text("${travel}" "[Purpose] state=start" "[Purpose] start line")
-require_text("${ai_cpp}" "ai::gather_purpose::End const end = gatherPurpose.Observe(value, now);" "purpose observed in the progress watch")
+require_text("${ai_cpp}" "ai::gather_purpose::End const end = noSpot ? gatherPurpose.EndNoSpot(now) : gatherPurpose.Observe(value, now);" "purpose observed in the progress watch")
 require_text("${ai_cpp}" "[Purpose] state=end" "[Purpose] end line")
 require_text("${ai_cpp}" "travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);" "gathering target left when the purpose ends")
 string(FIND "${ai_cpp}" "SKILL_COOKING, SKILL_FIRST_AID" old_loop)
@@ -33,6 +33,8 @@ if (NOT old_loop EQUAL -1)
   message(FATAL_ERROR "undeclared skill-ups must not count as progress")
 endif()
 # Hotfix 8.7 (twow-repo#472): [Fishing] line per fishing purpose.
-require_text("${ai_cpp}" "[Fishing] bot=%u level=%u zone=%u casts=%u" "[Fishing] line")
+require_text("${ai_cpp}" "[Fishing] bot=%u level=%u zone=%u reason=%s casts=%u" "[Fishing] line")
 require_text("${ai_cpp}" "if (fishingTrace.ObserveChannel(fishing) && currentEngine)" "channel breaks observed")
+# Hotfix 8.8 (#472): use_ok and no_spot.
+require_text("${ai_cpp}" "fishingTrace.useOk" "use_ok in [Fishing]")
 message(STATUS "HOTFIX85_CONTRACT=PASS")

@@ -775,9 +775,7 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
             if (!bot->GetGameObjectIfCanInteractWith(go->GetObjectGuid(), MAX_GAMEOBJECT_TYPE))
                 continue;
 
-            std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_GAMEOBJ_USE));
-            *packet << *i;
-            bot->GetSession()->QueuePacket(std::move(packet));
+            ai->UseGameObjectDirect(*i);   // Hotfix 8.8 (#474)
             return true;
         }
 
@@ -1658,9 +1656,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                     if (!bot->GetGameObjectIfCanInteractWith(go->GetObjectGuid(), MAX_GAMEOBJECT_TYPE))
                         continue;
 
-                    std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_GAMEOBJ_USE));
-                    *packet << *i;
-                    bot->GetSession()->QueuePacket(std::move(packet));
+                    ai->UseGameObjectDirect(*i);   // Hotfix 8.8 (#474)
                     return true;
                 }
 

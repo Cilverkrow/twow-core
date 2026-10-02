@@ -35,10 +35,11 @@ int main()
     Require(trace.ObserveChannel(false) && trace.channelBreaks == 1, "channel ended without a use: a lost catch");
     trace.OnCast(true);
     trace.ObserveChannel(true);
-    trace.OnUse();
+    trace.OnUse(true);
     Require(!trace.ObserveChannel(false) && trace.channelBreaks == 1, "channel ended after the use: a catch");
     trace.OnCast(false);
-    Require(trace.casts == 2 && trace.castFailed == 1 && trace.useSent == 1, "counters");
+    trace.OnUse(false);
+    Require(trace.casts == 2 && trace.castFailed == 1 && trace.useSent == 2 && trace.useOk == 1, "counters, use_ok only when the use took");
     trace.Reset();
     Require(trace.casts == 0 && !trace.channel, "reset per purpose");
 
