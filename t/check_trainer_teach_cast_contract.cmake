@@ -25,11 +25,30 @@ if (NOT old_at EQUAL -1)
   message(FATAL_ERROR "Trainer teaching cast: visual 222 alone must not select the player self-cast")
 endif()
 
-# Money only inside the accepted branch.
+# Money only inside the accepted branches: after SPELL_CAST_OK, or (8.9) after the direct
+# teaching has left the taught spell known.
 string(FIND "${npc}" "if (cast_result == SPELL_CAST_OK)" ok_at)
-string(FIND "${npc}" "_player->ModifyMoney(-int32(nSpellCost));" money_at)
+string(FIND "${npc}" "_player->ModifyMoney(-int32(nSpellCost));" money_at REVERSE)
 if (money_at EQUAL -1 OR money_at LESS ok_at)
   message(FATAL_ERROR "Trainer teaching cast: money must be taken only after SPELL_CAST_OK")
+endif()
+
+# Hotfix 8.9 (owner test 02.10.): visual-222 teaching spells without TARGET_UNIT_CASTER are
+# taught directly - the trainer's cast of them never finished.
+foreach (required
+    "static bool IsPureTeachingSpell(SpellEntry const* proto)"
+    "proto->EffectImplicitTargetA[EFFECT_INDEX_0] != TARGET_UNIT_CASTER &&"
+    "_player->LearnSpell(proto->EffectTriggerSpell[i], false);"
+    "learned = learned && _player->HasSpell(proto->EffectTriggerSpell[i]);")
+  string(FIND "${npc}" "${required}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "Trainer direct teaching (8.9): missing ${required}")
+  endif()
+endforeach()
+string(FIND "${npc}" "if (learned)" learned_at)
+string(FIND "${npc}" "_player->ModifyMoney(-int32(nSpellCost));" first_money)
+if (first_money LESS learned_at)
+  message(FATAL_ERROR "Trainer direct teaching (8.9): money only after the spell is known")
 endif()
 
 message(STATUS "TRAINER_TEACH_CAST_CONTRACT=PASS")
