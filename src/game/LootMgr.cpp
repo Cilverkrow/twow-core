@@ -660,6 +660,9 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
                               sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY));
     }
 
+    // twow-repo#482 test build: generated loot size against the configured limit.
+    sLog.outString("[LootSlots] generated loot_id=%u items=%u quest=%u max=%u", loot_id, uint32(items.size()), uint32(m_questItems.size()), uint32(MAX_NR_LOOT_ITEMS));
+
     // Setting access rights for group loot case
     Group* group = loot_owner->GetGroup();
     if (!personal && group)
@@ -1194,6 +1197,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
 
     //update number of items shown
     b.put<uint8>(count_pos, itemsShown);
+    // twow-repo#482 test build: items written into SMSG_LOOT_RESPONSE for this viewer.
+    sLog.outString("[LootSlots] response viewer=%s shown=%u stored=%u", lv.viewer->GetName(), uint32(itemsShown), uint32(l.items.size()));
 
     return b;
 }
