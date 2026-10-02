@@ -3,6 +3,7 @@
 #include "DropQuestAction.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "Formulas.h"
 
 using namespace ai;
 
@@ -55,7 +56,8 @@ static void DropGreyQuestsOnItsOwn(PlayerbotAI* ai, Player* bot)
     if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster())
         return;
 
-    int32 const lowLevelDiff = sWorld.getConfig(CONFIG_INT32_QUEST_LOW_LEVEL_HIDE_DIFF);
+    // Hotfix 8.7: the XP grey level, not Quests.LowLevelHideDiff (-1 on this server).
+    uint32 const grayLevel = MaNGOS::XP::GetGrayLevel(bot->GetLevel());
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 const questId = bot->GetQuestSlotQuestId(slot);
@@ -63,7 +65,7 @@ static void DropGreyQuestsOnItsOwn(PlayerbotAI* ai, Player* bot)
         if (!quest)
             continue;
 
-        if (ai::quest_search::DropGreyQuest(true, bot->GetLevel(), bot->GetQuestLevelForPlayer(quest), lowLevelDiff,
+        if (ai::quest_search::DropGreyQuest(true, bot->GetQuestLevelForPlayer(quest), grayLevel,
                 bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE, quest->GetRequiredClasses() != 0))
             ai->DropQuest(questId);
     }
