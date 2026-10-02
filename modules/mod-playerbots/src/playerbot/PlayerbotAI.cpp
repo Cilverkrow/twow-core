@@ -577,6 +577,17 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 ai::gather_purpose::End const end = gatherPurpose.Observe(value, now);
                 if (end != ai::gather_purpose::End::None)
                 {
+                    // Hotfix 8.7 (twow-repo#472): one [Fishing] line per fishing purpose.
+                    if (skill == SKILL_FISHING)
+                    {
+                        sLog.outBasic("[Fishing] bot=%u level=%u zone=%u casts=%u cast_failed=%u no_pole=%u use_sent=%u channel_breaks=%u skill=%u gained=%u last_break=\"%s\"",
+                            bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), fishingTrace.casts, fishingTrace.castFailed,
+                            fishingTrace.noPole, fishingTrace.useSent, fishingTrace.channelBreaks, value,
+                            value > startValue ? value - startValue : 0, fishingLastBreak.c_str());
+                        fishingTrace.Reset();
+                        fishingLastBreak.clear();
+                    }
+
                     sLog.outBasic("[Purpose] state=end bot=%u level=%u profession=%s reason=%s skill=%u gained=%u minutes=%u blocked_min=%u",
                         bot->GetGUIDLow(), bot->GetLevel(), ai::gather_purpose::ProfessionName(skill), ai::gather_purpose::EndName(end),
                         value, value > startValue ? value - startValue : 0, (now - start) / 60,
@@ -626,6 +637,16 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 ReportIdle(questProgress.IdleSeconds(now));
             }
         }
+    }
+
+    // Hotfix 8.7 (twow-repo#472): a fishing channel that ends without a bobber use, and what
+    // the bot did last - only while a fishing purpose runs.
+    if (gatherPurpose.Active() && gatherPurpose.skill == SKILL_FISHING)
+    {
+        Spell* channel = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+        bool const fishing = channel && std::string(channel->m_spellInfo->SpellName[0]).find("Fishing") == 0;
+        if (fishingTrace.ObserveChannel(fishing) && currentEngine)
+            fishingLastBreak = currentEngine->GetLastAction().substr(0, 160);
     }
 
     // #416: phase for [BotSlowUpdate].

@@ -28,6 +28,20 @@ int main()
     Require(InGrace(100, 100) && InGrace(100, 100 + GraceSeconds - 1), "weapon stays off for 30 s after a cast");
     Require(!InGrace(100, 100 + GraceSeconds), "then done fishing may equip the weapon again");
 
+    // Hotfix 8.7: [Fishing] purpose trace.
+    PurposeTrace trace;
+    trace.OnCast(true);
+    Require(!trace.ObserveChannel(true), "channel starts");
+    Require(trace.ObserveChannel(false) && trace.channelBreaks == 1, "channel ended without a use: a lost catch");
+    trace.OnCast(true);
+    trace.ObserveChannel(true);
+    trace.OnUse();
+    Require(!trace.ObserveChannel(false) && trace.channelBreaks == 1, "channel ended after the use: a catch");
+    trace.OnCast(false);
+    Require(trace.casts == 2 && trace.castFailed == 1 && trace.useSent == 1, "counters");
+    trace.Reset();
+    Require(trace.casts == 0 && !trace.channel, "reset per purpose");
+
     std::cout << "fishing_policy_tests passed\n";
     return 0;
 }

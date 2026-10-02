@@ -249,10 +249,13 @@ inline bool GatherYieldsToTurnIn(bool rosterOnItsOwn, uint32_t finishedQuests)
     return rosterOnItsOwn && finishedQuests > 0;
 }
 
-// The grey rule of CleanQuestLogAction (CONFIG_INT32_QUEST_LOW_LEVEL_HIDE_DIFF).
-inline bool IsGreyQuest(uint32_t botLevel, uint32_t questLevel, int32_t lowLevelHideDiff)
+// Hotfix 8.7 (pin v22 acceptance): the server runs with Quests.LowLevelHideDiff = -1, so
+// the hide-diff rule called nothing grey and 8.5 dropped no grey quest (Latchigedap kept
+// 746/771 at level 15). Grey is the XP grey level, as for grind targets
+// (MaNGOS::XP::GetGrayLevel): a quest at or below it is grey.
+inline bool IsGreyQuest(uint32_t questLevel, uint32_t grayLevel)
 {
-    return lowLevelHideDiff >= 0 && botLevel > questLevel + uint32_t(lowLevelHideDiff);
+    return questLevel <= grayLevel;
 }
 
 // Hotfix 8.5: an open grey quest made its creatures "needed for quest" and so let the
@@ -260,9 +263,9 @@ inline bool IsGreyQuest(uint32_t botLevel, uint32_t questLevel, int32_t lowLevel
 // grey targets an hour). CleanQuestLogAction dropped grey quests only above 14 quests.
 // A roster bot on its own now drops them at once - finished ones are still handed in,
 // class quests stay.
-inline bool DropGreyQuest(bool rosterOnItsOwn, uint32_t botLevel, uint32_t questLevel,
-    int32_t lowLevelHideDiff, bool complete, bool classQuest)
+inline bool DropGreyQuest(bool rosterOnItsOwn, uint32_t questLevel, uint32_t grayLevel,
+    bool complete, bool classQuest)
 {
-    return rosterOnItsOwn && !complete && !classQuest && IsGreyQuest(botLevel, questLevel, lowLevelHideDiff);
+    return rosterOnItsOwn && !complete && !classQuest && IsGreyQuest(questLevel, grayLevel);
 }
 }
