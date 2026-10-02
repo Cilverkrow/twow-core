@@ -997,6 +997,10 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(loot_units_policy_test
     "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")
   add_test(NAME loot_units_policy_test COMMAND loot_units_policy_test)
+  # twow-repo#482 train 9: raid profiles, dungeon bands, mix allocation, trim rule (owner v5).
+  add_executable(loot_rules_482_policy_test
+    "${TW_CORE_ROOT}/t/loot_rules_482_policy_test.cpp")
+  add_test(NAME loot_rules_482_policy_test COMMAND loot_rules_482_policy_test)
   # twow-repo#408: Scarlet Citadel (map 45) secured, content kept.
   add_test(NAME scarlet_citadel_408_contract
     COMMAND "${CMAKE_COMMAND}"
