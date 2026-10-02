@@ -97,13 +97,14 @@ int main()
     // Hotfix 8.5: turn-ins before gathering, grey quests dropped.
     Require(GatherYieldsToTurnIn(true, 1) && !GatherYieldsToTurnIn(true, 0), "one finished quest stops gathering");
     Require(!GatherYieldsToTurnIn(false, 8), "a bot with a real player gathers as before");
-    Require(IsGreyQuest(15, 8, 4) && IsGreyQuest(15, 10, 4) && !IsGreyQuest(15, 11, 4), "grey: more than 4 levels below");
-    Require(!IsGreyQuest(60, 1, -1), "hide diff -1: nothing is grey");
-    Require(DropGreyQuest(true, 15, 8, 4, false, false), "Mazzranache (8) at level 15 is dropped");
-    Require(!DropGreyQuest(true, 15, 8, 4, true, false), "a finished grey quest is handed in, not dropped");
-    Require(!DropGreyQuest(true, 15, 8, 4, false, true), "class quests stay");
-    Require(!DropGreyQuest(false, 15, 8, 4, false, false), "only roster bots on their own");
-    Require(!DropGreyQuest(true, 15, 12, 4, false, false), "a green quest stays");
+    // Hotfix 8.7: XP grey level (level 15 -> 9, level 30 -> 22, level 60 -> 47).
+    Require(IsGreyQuest(8, 9) && IsGreyQuest(9, 9) && !IsGreyQuest(10, 9), "grey: at or below the grey level");
+    Require(DropGreyQuest(true, 8, 9, false, false), "Mazzranache (8) at level 15 is dropped");
+    Require(DropGreyQuest(true, 7, 9, false, false), "Rite of Vision (7) at level 15 is dropped");
+    Require(!DropGreyQuest(true, 8, 9, true, false), "a finished grey quest is handed in, not dropped");
+    Require(!DropGreyQuest(true, 8, 9, false, true), "class quests stay");
+    Require(!DropGreyQuest(false, 8, 9, false, false), "only roster bots on their own");
+    Require(!DropGreyQuest(true, 10, 9, false, false), "The Hunter's Way (10) at level 15 stays");
 
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
