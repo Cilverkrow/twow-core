@@ -2,6 +2,7 @@
 
 #include "FunserverRidingStages.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -77,5 +78,38 @@ inline float TravelBudgetRunSpeed(bool stagesEnabled, float currentRunSpeed, flo
     if (!stagesEnabled)
         return currentRunSpeed;
     return (currentRunSpeed > 0.0f && currentRunSpeed < baseRunSpeed) ? currentRunSpeed : baseRunSpeed;
+}
+
+// The ten racial riding trainers share trainer template 1, and the trainable spell
+// map files a template under the race of its first trainer (entry 3690, Tauren):
+// nine races found no riding trainer (train cost 0, never trained) and Tauren were
+// sent to all ten, nine of which refuse them. With riding stages the mount trainer
+// spells are filed again, each trainer under its own race: trainerRace(entry,
+// filedRace) gives the trainer's race (filedRace for an unknown entry), a spell the
+// same as one already filed for that race (same(a, b), the spell map's comparison)
+// is merged into it, and a trainer is listed once per spell.
+// SpellList is race -> (trainer spell -> trainer entries), as in TrainerValues.h.
+template <class SpellList, class TrainerRace, class SameSpell>
+SpellList MountTrainersByRace(SpellList const& filed, TrainerRace trainerRace, SameSpell same)
+{
+    SpellList byRace;
+    for (auto const& requirement : filed)
+        for (auto const& offer : requirement.second)
+            for (auto const entry : offer.second)
+            {
+                auto& raceSpells = byRace[trainerRace(entry, requirement.first)];
+                auto spell = offer.first;
+                for (auto const& known : raceSpells)
+                    if (same(known.first, offer.first))
+                    {
+                        spell = known.first;
+                        break;
+                    }
+
+                auto& trainers = raceSpells[spell];
+                if (std::find(trainers.begin(), trainers.end(), entry) == trainers.end())
+                    trainers.push_back(entry);
+            }
+    return byRace;
 }
 }

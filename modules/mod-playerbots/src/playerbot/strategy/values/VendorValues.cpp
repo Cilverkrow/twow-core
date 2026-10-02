@@ -1,6 +1,7 @@
 #include "VendorValues.h"
 #include "ItemUsageValue.h"
 #include "BudgetValues.h"
+#include "MountValues.h"
 #include "playerbot/PlayerbotAI.h"
 #include "SharedValueContext.h"
 #include "playerbot/strategy/actions/BuyAction.h"
@@ -94,6 +95,11 @@ bool VendorHasUsefulItemValue::Calculate()
     freeMoney[ItemUsage::ITEM_USAGE_AMMO] = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::ammo);
     freeMoney[ItemUsage::ITEM_USAGE_QUEST] = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::anything);
 
+    // twow-repo#295: with riding stages a mount is paid from the mount budget, as BuyAction and
+    // the mount vendor trip pay it. Priced as gear its price counted twice (the mount budget
+    // holds it), and the bot kept travelling to the mount vendor without buying.
+    bool const ridingStages = sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED);
+
     for (auto vendorItem : vendorItems)
     {
         ItemPrototype const* proto = sObjectMgr.GetItemPrototype(vendorItem->item);
@@ -103,6 +109,14 @@ bool VendorHasUsefulItemValue::Calculate()
 #endif
 
         ItemUsage usage = AI_VALUE2_LAZY(ItemUsage, "item usage", vendorItem->item);
+
+        if (ridingStages && usage == ItemUsage::ITEM_USAGE_EQUIP && MountValue::GetMountSpell(vendorItem->item))
+        {
+            if (proto->BuyPrice > AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::mount))
+                continue;
+
+            return true;
+        }
 
         if (freeMoney.find(usage) == freeMoney.end() || proto->BuyPrice > freeMoney[usage])
             continue;

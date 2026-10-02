@@ -43,6 +43,15 @@ function(require_switch_first body grant description)
   endif()
 endfunction()
 
+# `first` must come before `second` inside the text.
+function(require_order text first second description)
+  string(FIND "${text}" "${first}" first_offset)
+  string(FIND "${text}" "${second}" second_offset)
+  if(first_offset EQUAL -1 OR second_offset EQUAL -1 OR NOT first_offset LESS second_offset)
+    message(FATAL_ERROR "${description}: ${first} must come before ${second}")
+  endif()
+endfunction()
+
 file(READ "${PB_SOURCE_DIR}/RidingStagesBotPolicy.h" policy)
 file(READ "${PB_SOURCE_DIR}/strategy/values/MountValues.cpp" mount_values)
 file(READ "${PB_SOURCE_DIR}/strategy/values/BudgetValues.cpp" budget)
@@ -54,6 +63,8 @@ file(READ "${PB_SOURCE_DIR}/strategy/actions/BuyAction.cpp" buy)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/TrainerAction.cpp" trainer)
 file(READ "${PB_SOURCE_DIR}/TravelMgr.cpp" travel_mgr)
 file(READ "${PB_SOURCE_DIR}/PlayerbotFactory.cpp" factory)
+file(READ "${PB_SOURCE_DIR}/strategy/values/TrainerValues.cpp" trainer_values)
+file(READ "${PB_SOURCE_DIR}/strategy/values/VendorValues.cpp" vendor_values)
 
 # The rules are the core's (FunserverRidingStages.h), not a copy; the policy stays pure.
 require_text("${policy}" "#include \"FunserverRidingStages.h\"" "core riding rules")
@@ -69,7 +80,7 @@ require_text("${mount_values}" "FunserverRiding::FamilyOf(" "server family rule"
 require_text("${mount_values}" "player->GetSkillValuePure(SKILL_RIDING)" "same riding value as the core")
 
 # One switch, the core's Funserver.Riding.Stages.Enabled; off keeps the old behaviour.
-foreach(source mount_values budget usage buy trainer travel_mgr factory)
+foreach(source mount_values budget usage buy trainer travel_mgr factory trainer_values vendor_values)
   require_text("${${source}}" "sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED)" "riding stages switch in ${source}")
 endforeach()
 
@@ -114,9 +125,34 @@ forbid_text("${budget}" "moneyWanted += basicFlyingRidingLevel" "a level added a
 require_text("${buy}" "moneyKey = (uint32)NeedMoneyFor::mount;" "mount purchases from the mount budget")
 require_text("${buy}" "if (policyGear && !mountPurchase)" "vendor gear policy skips mounts")
 
-# G. Riding training from the mount budget.
+# F2. The vendor trigger prices a mount like BuyAction and the mount vendor trip: from the
+#     mount budget, not from the gear money or the vendor gear allowance (the mount budget
+#     holds the price, so it counted twice and the bot travelled without buying).
+require_text("${vendor_values}" "MountValue::GetMountSpell(vendorItem->item)" "mounts known at the vendor trigger")
+require_text("${vendor_values}" "proto->BuyPrice > AI_VALUE2(uint32, \"free money for\", (uint32)NeedMoneyFor::mount)" "mount priced from the mount budget")
+require_order("${vendor_values}" "(uint32)NeedMoneyFor::mount" "freeMoney.find(usage)" "mounts priced before the per-usage budgets")
+require_text("${vendor_values}" "BuyAction::VendorGearAllowance(ai)" "gear keeps the vendor gear allowance")
+
+# G. Riding training from the mount budget, each rank of a visit against fresh money.
 require_text("${trainer}" "TrainerType == TRAINER_TYPE_MOUNTS" "riding trainer")
 require_text("${trainer}" "ridingTraining ? NeedMoneyFor::mount : NeedMoneyFor::spells" "riding training from the mount budget")
+require_text("${trainer}" "RESET_AI_VALUE2(uint32, \"free money for\", moneyKey);" "free money read fresh for every rank")
+require_text("${trainer}" "ridingTraining && bot->GetMoney() < cost" "no rank paid with money the bot lacks")
+
+# G2. Every racial riding trainer under its own race: all ten share trainer template 1,
+#     which the spell map files under its first trainer's race (3690, Tauren) only.
+require_text("${policy}" "SpellList MountTrainersByRace(" "pure filing of the mount trainers by race")
+region("${trainer_values}" "trainableSpellMap* TrainableSpellMapValue::Calculate()" "std::vector<TrainerSpell const*> TrainableSpellsValue::Calculate()" spell_map)
+require_switch_first("${spell_map}" "riding_stages::MountTrainersByRace(" "TrainableSpellMapValue")
+require_text("${spell_map}" "spellMap->find(TRAINER_TYPE_MOUNTS)" "only the mount trainers are filed again")
+require_text("${spell_map}" "uint32(trainer->TrainerRace)" "each trainer's own race")
+require_text("${spell_map}" "IsSameTrainerSpell" "equal spells merged per race")
+# Trainable spells, available trainers and the train cost all read that filing by the bot's race.
+region("${trainer_values}" "std::vector<TrainerSpell const*> TrainableSpellsValue::Calculate()" "std::string TrainableSpellsValue::Format()" trainable_spells)
+require_text("${trainable_spells}" "trainerType == TRAINER_TYPE_MOUNTS && requirement != bot->getRace()" "trainable riding ranks of the own race")
+region("${trainer_values}" "std::vector<int32> AvailableTrainersValue::Calculate()" "uint32 TrainCostValue::Calculate()" available_trainers)
+require_text("${available_trainers}" "trainerType == TRAINER_TYPE_MOUNTS && requirement != bot->getRace()" "riding trainers of the own race")
+require_text("${available_trainers}" "\"trainable spells\", getQualifier()" "available trainers from the trainable spells")
 
 # H. Travel budget at the unmounted run speed.
 require_text("${travel_mgr}" "riding_stages::TravelBudgetRunSpeed(" "travel budget speed")

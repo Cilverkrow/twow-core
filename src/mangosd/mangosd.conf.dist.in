@@ -1991,8 +1991,9 @@ Funserver.Riding.Stages.Enabled = 0
 #   cast by player-controlled units - players, bots and their pets, guardians,
 #   totems, traps and charmed units - are this many percent stronger, e.g. 40
 #   turns a 50 % slow into a 70 % slow. Slows of NPCs and slows a unit puts on
-#   itself stay unchanged. Client tooltips keep showing the base values.
-#   Applies to new casts.
+#   itself stay unchanged, and so do the casts of a player or bot charmed by an
+#   NPC (Dominate Mind, Cause Insanity, Chains of Kel'Thuzad): they count as NPC
+#   casts. Client tooltips keep showing the base values. Applies to new casts.
 #   Range: 0..100. Default: 0 (off)
 #
 # Funserver.PlayerSnare.MaxSlowPct
@@ -2001,7 +2002,8 @@ Funserver.Riding.Stages.Enabled = 0
 #   Range: 0..100. Default: 90
 #
 # Funserver.PlayerSnare.RootDurationPct
-#   Roots (SPELL_AURA_MOD_ROOT) cast by player-controlled units last this many
+#   Roots (SPELL_AURA_MOD_ROOT) cast by player-controlled units (same caster
+#   rule as SlowPct, NPC-charmed players excluded) last this many
 #   percent longer, before diminishing returns: 40 turns an 8 s root into
 #   11.2 s. The whole aura of the spell lasts longer, so a damage-over-time
 #   part (Entangling Roots) deals more damage. Permanent auras stay unchanged.

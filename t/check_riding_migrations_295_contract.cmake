@@ -12,6 +12,12 @@ endif()
 #    (no INSERT IGNORE), and the rollback removes exactly the inserted keys.
 # 5. Each file asserts its end state (CHECK tail), and W2a never mentions the spell table, so
 #    its item entries cannot count as spell IDs (#455 range contract).
+# 6. Every header says that the four files are rolled back together. W1 documents the
+#    character step a rollback after go-live needs (riding capped at 150, backup first); it is
+#    not part of the world Rollback block.
+# 7. Round-2 review: the W2b conflict basepoint changes only rows backed up with the old value
+#    99 (and the tail asserts those backups); the W2a rocket cars sell back for 0 like every
+#    other racial family-1 mount (owner decision 2026-10-02).
 set(dir "${TW_CORE_ROOT}/sql/database_updates")
 set(w1 "20261002210000_world.sql")
 set(w2a "20261002211000_world.sql")
@@ -52,6 +58,13 @@ foreach (name ${w1} ${w2a} ${w2b} ${w3})
   string(REGEX MATCH "^\n-- Rollback[^\n]*\n(--   [^\n]*\n)+" rollback "${rb_tail}")
   if (NOT rollback MATCHES "\n--   (UPDATE|DELETE) [^;]*;\n")
     message(FATAL_ERROR "${name}: the Rollback block holds no SQL statement")
+  endif()
+  if (rollback MATCHES "character_")
+    message(FATAL_ERROR "${name}: the world Rollback block must not touch character tables")
+  endif()
+  string(SUBSTRING "${text}" 0 ${rb_at} header)
+  if (NOT header MATCHES "\n-- W1, W2a, W2b and W3 [^\n]*rolled back together")
+    message(FATAL_ERROR "${name}: the header must say that W1, W2a, W2b and W3 are rolled back together")
   endif()
 
   string(REGEX REPLACE "--[^\n]*" "" statements "${text}")
@@ -155,6 +168,14 @@ foreach (required
     "SELECT 61302, 61300, 33388, 4, 0 FROM DUAL")
   require_text("${w1_statements}" "${required}" "W1 riding ranks")
 endforeach()
+# After go-live the old core would unmount riding 225/300 (and drop 61300/61302/61310 at login),
+# so a rollback caps riding at 150 in the character DB (OB-40), backup first.
+foreach (required
+    "\n--   CREATE TABLE IF NOT EXISTS `character_skills_bak_295` LIKE `character_skills`;\n"
+    "\n--   INSERT IGNORE INTO `character_skills_bak_295` SELECT * FROM `character_skills` WHERE `skill` = 762;\n"
+    "\n--   UPDATE `character_skills` SET `value` = LEAST(`value`, 150), `max` = LEAST(`max`, 150) WHERE `skill` = 762;\n")
+  require_text("${text}" "${required}" "W1 character step for a rollback after go-live")
+endforeach()
 
 # W2a: item_template only.
 file(READ "${dir}/${w2a}" text)
@@ -169,13 +190,24 @@ foreach (change IN LISTS w2a_tables)
     message(FATAL_ERROR "${w2a} changes another table: ${change}")
   endif()
 endforeach()
+# The rocket cars sell back for 0 like every other racial family-1 mount (owner 2026-10-02).
+require_text("${w2a_statements}"
+  "UPDATE `item_template` SET `sell_price` = 0\n WHERE `sell_price` = 20000 AND `buy_price` = 10000 AND `entry` IN (\n  80460, 80461, 80462\n );"
+  "W2a rocket car sell price")
+if (w2a_statements MATCHES "SET `sell_price` = [1-9]")
+  message(FATAL_ERROR "${w2a}: a racial family-1 mount sells back for more than 0")
+endif()
 
-# W2b: the conflict basepoint 99 -> 59 only on mount spells with aura 32 at effect 2.
+# W2b: the conflict basepoint 99 -> 59 only on mount spells with aura 32 at effect 2, and only
+# on rows whose backup holds the old value 99, so the header rollback restores every change.
 file(READ "${dir}/${w2b}" text)
 string(REGEX REPLACE "--[^\n]*" "" w2b_statements "${text}")
 require_text("${w2b_statements}"
-  "UPDATE `spell_template` SET `effectBasePoints2` = 59\n WHERE `effectApplyAuraName1` = 78 AND `effectApplyAuraName2` = 32\n   AND `effectBasePoints2` = 99 AND `effectBaseDice2` = 1 AND `effectDieSides2` = 1"
-  "W2b conflict mount spells")
+  "UPDATE `spell_template` SET `effectBasePoints2` = 59\n WHERE `effectApplyAuraName1` = 78 AND `effectApplyAuraName2` = 32\n   AND `effectBasePoints2` = 99 AND `effectBaseDice2` = 1 AND `effectDieSides2` = 1\n   AND `entry` IN (SELECT b.`entry` FROM `spell_template_bak_295` b WHERE b.`effectBasePoints2` = 99)\n"
+  "W2b conflict mount spells (tied to their backup)")
+require_text("${w2b_statements}"
+  "AND (SELECT COUNT(*) FROM `spell_template_bak_295` WHERE `effectBasePoints2` = 99 AND `entry` IN ("
+  "W2b end-state check of the conflict backups")
 
 # W3: the Blink passive is learned with Blink; Blink 1953 itself is not changed.
 file(READ "${dir}/${w3}" text)

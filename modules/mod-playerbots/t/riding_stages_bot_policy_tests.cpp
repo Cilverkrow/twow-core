@@ -1,7 +1,10 @@
 #include "RidingStagesBotPolicy.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <map>
+#include <unordered_map>
 #include <vector>
 
 namespace
@@ -73,6 +76,59 @@ int main()
     Require(TravelBudgetRunSpeed(true, 12.6f, 7.0f) == 7.0f, "ghost wolf: the run speed");
     Require(TravelBudgetRunSpeed(true, 3.5f, 7.0f) == 3.5f, "slowed: the slower speed");
     Require(TravelBudgetRunSpeed(true, 0.0f, 7.0f) == 7.0f, "no speed: the run speed, no division by zero");
+
+    // The riding trainers by race. Trainer template 1 and its ten racial trainers (entry ->
+    // race, world DB); the spell map filed all of them under the first one's race (3690, 6).
+    struct Rank
+    {
+        std::uint32_t spell;
+        std::uint32_t cost;
+        std::uint32_t level;
+    };
+    using SpellList = std::unordered_map<std::uint32_t, std::unordered_map<Rank const*, std::vector<std::int32_t>>>;
+    std::map<std::int32_t, std::uint32_t> const trainerRaces = { { 4732, 1 }, { 4752, 2 }, { 4772, 3 }, { 4753, 4 },
+        { 4773, 5 }, { 3690, 6 }, { 7954, 7 }, { 7953, 8 }, { 80136, 9 }, { 80452, 10 } };
+    auto const raceOf = [&trainerRaces](std::int32_t entry, std::uint32_t filedRace)
+    {
+        auto const found = trainerRaces.find(entry);
+        return found == trainerRaces.end() ? filedRace : found->second;
+    };
+    auto const same = [](Rank const* a, Rank const* b) { return a->spell == b->spell && a->cost == b->cost && a->level == b->level; };
+
+    std::vector<Rank> const ranks = { { 33389, 5000, 10 }, { 33392, 50000, 20 }, { 61301, 500000, 40 }, { 61303, 5000000, 60 } };
+    SpellList template1;
+    for (Rank const& rank : ranks)
+        for (auto const& trainer : trainerRaces)
+            template1[6][&rank].push_back(trainer.first);
+
+    SpellList const byRace = MountTrainersByRace(template1, raceOf, same);
+    Require(byRace.size() == 10, "races 1-10 each have riding trainers");
+    for (auto const& trainer : trainerRaces)
+    {
+        auto const race = byRace.find(trainer.second);
+        Require(race != byRace.end(), "every race 1-10 finds a riding trainer");
+        Require(race->second.size() == ranks.size(), "every race sees the four ranks");
+        for (auto const& offer : race->second)
+            Require(offer.second == std::vector<std::int32_t>{ trainer.first }, "only the race's own trainer, once");
+    }
+
+    // An equal rank of another trainer list merges and a trainer counts once (no doubled
+    // train cost); another price is another spell; an unknown entry keeps its race.
+    Rank const listA = { 33389, 5000, 10 }, listB = { 33389, 5000, 10 }, pricier = { 33389, 9000, 10 };
+    SpellList lists;
+    lists[6][&listA] = { 4732, 4732 };
+    lists[1][&listB] = { 4732, 99999 };
+    lists[2][&pricier] = { 4732 };
+    SpellList const merged = MountTrainersByRace(lists, raceOf, same);
+    Require(merged.size() == 1 && merged.at(1).size() == 2, "human: one merged rank 1 and the pricier one");
+    for (auto const& offer : merged.at(1))
+    {
+        if (offer.first == &pricier)
+            Require(offer.second == std::vector<std::int32_t>{ 4732 }, "another price stays its own spell");
+        else
+            Require(offer.second.size() == 2 && offer.second[0] == 4732 && offer.second[1] == 99999,
+                "equal ranks merged, 4732 once, the unknown entry under the race it was filed under");
+    }
 
     return 0;
 }

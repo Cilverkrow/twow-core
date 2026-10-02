@@ -15,7 +15,14 @@ void TrainerAction::Learn(uint32 cost, ObjectGuid trainerGuid, uint32 spellId, T
 
     if (!UsesFreeTraining() && sPlayerbotAIConfig.autoTrainSpells != "free" &&  !ai->HasCheat(BotCheatMask::gold))
     {
-        if (AI_VALUE2(uint32, "free money for", (uint32)(ridingTraining ? NeedMoneyFor::mount : NeedMoneyFor::spells)) < cost)
+        uint32 const moneyKey = (uint32)(ridingTraining ? NeedMoneyFor::mount : NeedMoneyFor::spells);
+
+        // twow-repo#295: one visit can pay several riding ranks. Like BuyAction, the free money is
+        // read fresh, so each rank is checked against what is left after the rank before.
+        if (ridingTraining)
+            RESET_AI_VALUE2(uint32, "free money for", moneyKey);
+
+        if (AI_VALUE2(uint32, "free money for", moneyKey) < cost || (ridingTraining && bot->GetMoney() < cost))
         {
             msg << " - too expensive";
             return;

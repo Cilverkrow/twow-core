@@ -3,9 +3,10 @@ if (NOT DEFINED TW_CORE_ROOT)
 endif()
 
 # twow-repo#295 (owner 2026-10-02): riding in four stages, mount speed of players and bots by
-# riding rank and mount family, stronger slows and longer roots of player-controlled casters.
-# Pure rules: t/riding_stages_policy_test.cpp. This contract locks the hooks and the default-off
-# configuration.
+# riding rank and mount family, stronger slows and longer roots of player-controlled casters
+# (never of NPCs, nor of players or bots charmed by an NPC).
+# Pure rules: t/riding_stages_policy_test.cpp. This contract locks the hooks, the caster rule and
+# the default-off configuration.
 
 function(read_source path out_var)
   file(READ "${TW_CORE_ROOT}/${path}" text)
@@ -51,6 +52,7 @@ function(require_before text first second label)
 endfunction()
 
 read_source("src/game/FunserverRidingStages.h" policy)
+read_source("src/game/FunserverPlayerSnare.h" snare_h)
 read_source("src/game/Spells/SpellAuras.cpp" auras)
 read_source("src/game/Spells/SpellAuras.h" auras_h)
 read_source("src/game/Objects/Player.cpp" player)
@@ -107,30 +109,56 @@ endif()
 forbid_text("${player}" "RequiredSkillRank == 150" "legacy riding conversion exact check")
 require_text("${player}" "(proto->RequiredSkillRank >= 150)" "legacy riding conversion")
 
-# 4. Slows of player-controlled casters: scaled once where the aura amount is calculated,
+# 4. One caster rule for both snare hooks: player-controlled (player, bot, their pets, totems,
+# traps, units they charm), except a unit charmed by a non-player. IsControlledByPlayer() is true
+# for every Player, so without the charm test a player or bot under an NPC's Dominate Mind or
+# Chains of Kel'Thuzad would snare like a player with the spells the NPC AI makes it cast.
+require_text("${snare_h}" "bool IsPlayerSnareCaster(WorldObject const* caster);" "snare caster rule declaration")
+extract_between("${object}" "bool FunserverSnare::IsPlayerSnareCaster(WorldObject const* caster)\n{" "\n}\n" caster_rule)
+foreach (required
+    "if (!caster || !caster->IsControlledByPlayer())\n        return false;"
+    "if (Unit const* unit = caster->ToUnit())"
+    "ObjectGuid const charmerGuid = unit->GetCharmerGuid();"
+    "if (!charmerGuid.IsEmpty() && !charmerGuid.IsPlayer())\n            return false;")
+  require_text("${caster_rule}" "${required}" "snare caster rule (NPC-charmed casters are not player casters)")
+endforeach()
+# The positive path is locked too: the rule ends with "return true;" and has exactly these three
+# returns, so neither an early "return true;" nor a final "return false;" can slip in.
+require_text("${caster_rule}" "            return false;\n    }\n\n    return true;" "snare caster rule (player casters pass)")
+string(REGEX MATCHALL "return " caster_returns "${caster_rule}")
+list(LENGTH caster_returns caster_return_count)
+if (NOT caster_return_count EQUAL 3)
+  message(FATAL_ERROR "#295: the snare caster rule needs exactly 3 returns (found ${caster_return_count})")
+endif()
+
+# 5. Slows of player-controlled casters: scaled once where the aura amount is calculated,
 # after the caster's spell mods, only for aura 33 and never on the caster itself.
 extract_between("${object}" "int32 WorldObject::CalculateSpellDamage(" "void WorldObject::CalculateSpellDamage(SpellNonMeleeDamage*" calc)
 foreach (required
     "FunserverSnare::ScaleSlow(" "value < 0 && spellProto->EffectApplyAuraName[effect_index] == SPELL_AURA_MOD_DECREASE_SPEED"
-    "target && target != this && IsControlledByPlayer()"
+    "target && target != this && FunserverSnare::IsPlayerSnareCaster(this)"
     "CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_SLOW_PCT" "CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_MAX_SLOW_PCT")
   require_text("${calc}" "${required}" "slow hook")
 endforeach()
 require_before("${calc}" "SPELLMOD_SPEED, value, spell" "FunserverSnare::ScaleSlow(" "slow scaled after the spell mods")
+extract_between("${calc}" "value < 0 && spellProto->EffectApplyAuraName[effect_index] == SPELL_AURA_MOD_DECREASE_SPEED" "FunserverSnare::ScaleSlow(" slow_guard)
+forbid_text("${slow_guard}" "IsControlledByPlayer" "bare player-control check in the slow hook (counts NPC-charmed players)")
 
-# 5. Roots of player-controlled casters last longer, before diminishing returns.
+# 6. Roots of player-controlled casters last longer, before diminishing returns.
 extract_between("${spell}" "void Spell::DoSpellHitOnUnit(Unit *unit, uint32 effectMask)" "void Spell::DoAllEffectOnTarget(GOTargetInfo *target)" hit)
 foreach (required
     "FunserverSnare::ScaleRootDuration(" "m_auraname == SPELL_AURA_MOD_ROOT"
-    "pRealCaster != unit && pRealCaster->IsControlledByPlayer()"
+    "pRealCaster != unit && FunserverSnare::IsPlayerSnareCaster(pRealCaster)"
     "CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_ROOT_DURATION_PCT"
     "m_spellAuraHolder->SetAuraMaxDuration(duration);")
   require_text("${hit}" "${required}" "root hook")
 endforeach()
 require_before("${hit}" "FunserverSnare::ScaleRootDuration(" "unit->ApplyDiminishingToDuration(" "root scaled before diminishing returns")
 require_before("${hit}" "FunserverSnare::ScaleRootDuration(" "unit->AddSpellAuraHolder(m_spellAuraHolder)" "root duration set before the aura is added")
+extract_between("${hit}" "if (duration > 0 && pRealCaster" "FunserverSnare::ScaleRootDuration(" root_guard)
+forbid_text("${root_guard}" "IsControlledByPlayer" "bare player-control check in the root hook (counts NPC-charmed players)")
 
-# 6. Configuration: neutral defaults in code and in the shipped configuration.
+# 7. Configuration: neutral defaults in code and in the shipped configuration.
 foreach (required
     "CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED," "CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_SLOW_PCT,"
     "CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_MAX_SLOW_PCT," "CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_ROOT_DURATION_PCT,")

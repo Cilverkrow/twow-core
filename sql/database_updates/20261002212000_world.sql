@@ -13,6 +13,8 @@
 --    30019 -> 33419, 50426 -> 46446, 51249 -> 46452, 80459 -> 45049, 80460 -> 45050,
 --    80461 -> 45052, 80462 -> 45051, 83520 -> 16083. 16082 is also the spell of 16339
 --    Commander's Steed (riding 150, not obtainable), which 20261002211000 leaves unchanged.
+--    Step 1 changes only spells whose backup row holds the old value 99 (no change without a
+--    backup, so the rollback restores every changed basepoint); the tail asserts these backups.
 --    NPC check per ID (01.10 dump + 814): creature_template spell_id1-4, spawn_spell_id and
 --    auras, creature_addon auras, creature_spells 1-8, the creature_ai, creature_movement,
 --    creature_spells, event, gameobject, generic, gossip, quest_start, quest_end and spell
@@ -29,8 +31,10 @@
 --    Text only: NPC-only mount spells (e.g. 46224, Mandokir's 23243) keep their behaviour.
 -- Coupled release: client patch v7 mirrors EffectBasePoints[1] of the 11 spells and the
 -- AuraDescription of all 465 spells (builds/cli295-riding/evidence/manifest/client-rows-295.tsv).
--- Replay-safe: the backup takes only rows with an old text; the updates check the old values;
--- the tail asserts the end state.
+-- Replay-safe: the backup takes only rows with an old text; step 1 changes only backed-up rows;
+-- the updates check the old values; the tail asserts the end state.
+-- W1, W2a, W2b and W3 are rolled back together (newest file first); after go-live also with
+-- the character step in the 20261002210000 header (riding capped at 150).
 -- Rollback (exact SQL; spell_template_bak_295 stays for a later cleanup):
 --   UPDATE `spell_template` s JOIN `spell_template_bak_295` b ON b.`entry` = s.`entry`
 --      SET s.`effectBasePoints2` = b.`effectBasePoints2`, s.`auraDescription` = b.`auraDescription`
@@ -78,10 +82,13 @@ SELECT * FROM `spell_template`
   57577, 57578, 57722, 57723, 57740, 58030, 58031, 58032, 58038, 58039, 58040, 58041, 58042
  );
 
--- 1. The mount spells of the 12 riding-75 items with a +100 spell: +60 (family 1).
+-- 1. The mount spells of the 12 riding-75 items with a +100 spell: +60 (family 1), only rows
+--    backed up above with the old value (the rollback restores exactly these).
 UPDATE `spell_template` SET `effectBasePoints2` = 59
  WHERE `effectApplyAuraName1` = 78 AND `effectApplyAuraName2` = 32
-   AND `effectBasePoints2` = 99 AND `effectBaseDice2` = 1 AND `effectDieSides2` = 1 AND `entry` IN (
+   AND `effectBasePoints2` = 99 AND `effectBaseDice2` = 1 AND `effectDieSides2` = 1
+   AND `entry` IN (SELECT b.`entry` FROM `spell_template_bak_295` b WHERE b.`effectBasePoints2` = 99)
+   AND `entry` IN (
   16082, 16083, 17460, 33401, 33419, 45049, 45050, 45051, 45052, 46446, 46452
  );
 
@@ -152,6 +159,9 @@ CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_check_295_w2b` (`ok` TINYINT(1) NOT NU
 INSERT INTO `tmp_check_295_w2b` (`ok`)
 SELECT (SELECT COUNT(*) FROM `spell_template`
          WHERE `effectApplyAuraName2` = 32 AND `effectBasePoints2` = 59 AND `effectBaseDice2` = 1 AND `entry` IN (
+  16082, 16083, 17460, 33401, 33419, 45049, 45050, 45051, 45052, 46446, 46452
+         )) = 11
+   AND (SELECT COUNT(*) FROM `spell_template_bak_295` WHERE `effectBasePoints2` = 99 AND `entry` IN (
   16082, 16083, 17460, 33401, 33419, 45049, 45050, 45051, 45052, 46446, 46452
          )) = 11
    AND (SELECT COUNT(*) FROM `spell_template`

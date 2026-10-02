@@ -60,6 +60,7 @@
 #include "ScriptObjects.h"
 #include "FunserverRogueTalents.h"
 #include "FunserverRidingStages.h"
+#include "FunserverPlayerSnare.h"
 
 #include <memory>
 
@@ -1926,9 +1927,10 @@ void Spell::DoSpellHitOnUnit(Unit *unit, uint32 effectMask)
             int32 originalDuration = duration;
 
             // twow-repo#295: a root cast by a player-controlled unit (player, bot, their pets,
-            // totems, traps, charmed units) on another unit lasts longer, before diminishing
-            // returns. The holder gets the new duration below and sends it to the client.
-            if (duration > 0 && pRealCaster && pRealCaster != unit && pRealCaster->IsControlledByPlayer())
+            // totems, traps, units they charm) on another unit lasts longer, before diminishing
+            // returns; not when the caster is a player or bot charmed by an NPC. The holder gets
+            // the new duration below and sends it to the client.
+            if (duration > 0 && pRealCaster && pRealCaster != unit && FunserverSnare::IsPlayerSnareCaster(pRealCaster))
             {
                 for (int32 i = 0; i < MAX_EFFECT_INDEX; ++i)
                 {

@@ -26,6 +26,15 @@
 -- Evidence: builds/cli295-riding (dryrun/ and logs/: hashes before, apply, replay, rollback).
 -- Replay-safe: the backups take only the old rows (INSERT IGNORE), inserts are guarded by NOT
 -- EXISTS and updates by the old values; the tail asserts the end state.
+-- W1, W2a, W2b and W3 (20261002210000-213000) are rolled back together, newest file first
+-- (W3, W2b, W2a, W1), together with the core. The header rollbacks are exact only before
+-- players trained 225/300. After go-live a rollback also needs a character step (OB-40,
+-- character DB, before the old core starts): the old core unmounts every riding value other
+-- than 0/75/150, and it drops the then unknown spells 61300/61302/61310 from character_spell
+-- at login, so riding is capped at 150 (backup first):
+--   CREATE TABLE IF NOT EXISTS `character_skills_bak_295` LIKE `character_skills`;
+--   INSERT IGNORE INTO `character_skills_bak_295` SELECT * FROM `character_skills` WHERE `skill` = 762;
+--   UPDATE `character_skills` SET `value` = LEAST(`value`, 150), `max` = LEAST(`max`, 150) WHERE `skill` = 762;
 -- Rollback (exact SQL, in this order; the *_bak_295 tables stay for a later cleanup):
 --   UPDATE `npc_trainer_template` t JOIN `npc_trainer_template_bak_295` b ON b.`entry` = t.`entry` AND b.`spell` = t.`spell`
 --      SET t.`spellcost` = b.`spellcost`, t.`reqskill` = b.`reqskill`, t.`reqskillvalue` = b.`reqskillvalue`, t.`reqlevel` = b.`reqlevel`

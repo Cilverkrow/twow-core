@@ -12,9 +12,12 @@
 --   8 + 5 SPEED_100 mounts with riding 75 (the Black War mounts, level 40; Winterspring
 --     Frostsaber and the four AQ40 crystals, level 60) -> family 2, riding 225, level 40
 --   32 family-1 items of the racial vendors 1261, 1460, 62184, template 1500032
---     (384/2357/4885), 3362, 3685, 4730, 4731, 7952, 7955, 80453, 80811, 80137: buy 100000 -> 10000;
---     the rocket cars 80460-80462 also sell back for 2000 instead of 20000 (buying for 1 g and
---     selling for 2 g would create money). Family-2 racial mounts stay at 1000000.
+--     (384/2357/4885), 3362, 3685, 4730, 4731, 7952, 7955, 80453, 80137: buy 100000 -> 10000.
+--     The rocket cars 80460-80462 sell back for 0 instead of 20000, owner decision 2026-10-02:
+--     "0 wie alle Rassen-Tiere" (every other racial family-1 mount sells for 0; buying for 1 g
+--     and selling for 2 g would create money). Family-2 racial mounts stay at 1000000.
+--     Not a racial vendor: 80811 Zul'Mabe Bearclaw is a reputation vendor (faction 893
+--     Revantusk Trolls, Exalted); its family-2 bears keep their prices (1000000 / 3000000).
 --   146 + 129 ungated collection mounts (family 1 / 2 by spell speed) keep their requirements.
 --   Item text: one sentence is appended to the description of all 413 items above
 --   (198 family 1, 215 family 2); the 1.12 client shows it inside the quotes.
@@ -33,6 +36,8 @@
 -- This file touches item_template only, so its item entries never count as spell IDs.
 -- Replay-safe: the backup takes only rows without the appended sentence; every update checks
 -- the old values; the tail asserts the end state.
+-- W1, W2a, W2b and W3 are rolled back together (newest file first); after go-live also with
+-- the character step in the 20261002210000 header (riding capped at 150).
 -- Rollback (exact SQL; item_template_bak_295 stays for a later cleanup):
 --   UPDATE `item_template` i JOIN `item_template_bak_295` b ON b.`entry` = i.`entry`
 --      SET i.`required_skill` = b.`required_skill`, i.`required_skill_rank` = b.`required_skill_rank`,
@@ -116,7 +121,8 @@ UPDATE `item_template` SET `buy_price` = 10000
   8631, 8632, 12353, 12354, 13321, 13322, 13329, 13331, 13332, 13333, 15277, 15290, 80459, 80460,
   80461, 80462
  );
-UPDATE `item_template` SET `sell_price` = 2000
+-- The rocket cars sell back for 0 like every other racial family-1 mount (owner 2026-10-02).
+UPDATE `item_template` SET `sell_price` = 0
  WHERE `sell_price` = 20000 AND `buy_price` = 10000 AND `entry` IN (
   80460, 80461, 80462
  );
@@ -189,7 +195,7 @@ SELECT (SELECT COUNT(*) FROM `item_template`
   8631, 8632, 12353, 12354, 13321, 13322, 13329, 13331, 13332, 13333, 15277, 15290, 80459, 80460,
   80461, 80462
          )) = 32
-   AND (SELECT COUNT(*) FROM `item_template` WHERE `sell_price` = 2000 AND `entry` IN (
+   AND (SELECT COUNT(*) FROM `item_template` WHERE `sell_price` = 0 AND `entry` IN (
   80460, 80461, 80462
          )) = 3
    AND (SELECT COUNT(*) FROM `item_template`

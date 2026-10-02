@@ -49,16 +49,20 @@
 -- Blink: 61310 "Blink Cooldown" is a hidden passive mage spell mod, a clone of 51979
 -- Accelerated Arcana (Part 2): aura 108 (ADD_PCT_MODIFIER), SPELLMOD_COOLDOWN (11), -50 %
 -- (bp -51, dice 1), mage family (3), mask effectItemType1 0x10000 = 65536 (Blink's family bit,
--- as in 23025). A spell mod only changes its owner's own spells, so NPC Blinks keep their
--- cooldowns; Blink 1953 itself stays (NPC users: creature_ai_scripts 711503 Jaedenar Adept,
--- creature_template 50529/50531 car controllers). spell_learn_spell 1953 -> 61310 (active):
--- Player::AddSpell learns it with Blink, also when the spells load at login, so existing mages
--- get it without a character migration. Pct mods add up: with Accelerated Arcana (-6 %)
--- Blink recovers in 6.6 s.
+-- as in 23025; 61310 has no spell_affect row, so its mask is effectItemType1). A spell mod only
+-- changes its owner's own spells, so NPC Blinks keep their cooldowns; Blink 1953 itself stays
+-- (NPC users: creature_ai_scripts 711503 Jaedenar Adept, creature_template 50529/50531 car
+-- controllers). spell_learn_spell 1953 -> 61310 (active): Player::AddSpell learns it with
+-- Blink, also when the spells load at login, so existing mages get it without a character
+-- migration. 61310 halves Blink to 7.5 s; with the item spell 23025 (flat -1.5 s) it is 6.0 s
+-- (15 s - 50 % - 1.5 s, Player::ApplySpellMod). Accelerated Arcana (Part 2) 51979 has
+-- spell_affect mask 0 and affects nothing.
 -- Coupled release: client patch v7 mirrors the EffectBasePoints above, the Quickness text and
 -- the new row 61310 (builds/cli295-riding/evidence/manifest/client-rows-295.tsv).
 -- Replay-safe: the backup takes only rows with the old values; every update checks aura, old
 -- basepoints and dice; inserts are guarded by NOT EXISTS; the tail asserts the end state.
+-- W1, W2a, W2b and W3 are rolled back together (newest file first); after go-live also with
+-- the character step in the 20261002210000 header (riding capped at 150).
 -- Rollback (exact SQL; spell_template_bak_295 stays for a later cleanup):
 --   UPDATE `spell_template` s JOIN `spell_template_bak_295` b ON b.`entry` = s.`entry`
 --      SET s.`effectBasePoints1` = b.`effectBasePoints1`, s.`effectBasePoints2` = b.`effectBasePoints2`,
@@ -140,7 +144,9 @@ UPDATE `spell_template` SET `effectBasePoints2` = 1
  WHERE `entry` = 20582 AND (`effectApplyAuraName2`, `effectBasePoints2`, `effectBaseDice2`, `effectDieSides2`) = (129, 0, 1, 1);
 UPDATE `spell_template`
    SET `description` = 'Increases your attack speed, casting speed and dodge chance by $s1% and your movement speed by $s2%.'
- WHERE `entry` = 20582 AND `description` = 'Increases your attack speed, casting speed, movement speed and dodge chance by $s1%.';
+ WHERE `entry` = 20582 AND `description` = 'Increases your attack speed, casting speed, movement speed and dodge chance by $s1%.'
+   AND `entry` IN (SELECT b.`entry` FROM `spell_template_bak_295` b
+                    WHERE b.`entry` = 20582 AND b.`description` = 'Increases your attack speed, casting speed, movement speed and dodge chance by $s1%.');
 UPDATE `spell_template` SET `effectBasePoints1` = 79
  WHERE `entry` = 46240 AND (`effectApplyAuraName1`, `effectBasePoints1`, `effectBaseDice1`, `effectDieSides1`) = (31, 39, 1, 1);
 
