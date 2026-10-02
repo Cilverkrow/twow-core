@@ -32,7 +32,8 @@ name: CI
 
 # push on main (and release/**, see below), plus pull_request. Not
 # `push: branches: ['**']`, which was the first thing tried here: with a pull
-# request open, every push fires both events and the same commit is built twice on two runners for forty minutes.
+# request open, every push fires both events and the same commit is built
+# twice on two runners for forty minutes.
 # Watching eight runs of this job queue up behind four pushes is what made the
 # duplication obvious. Branch work is reviewed through a pull request in this
 # repository anyway, so pull_request is the trigger that matters; main is built
@@ -198,6 +199,13 @@ jobs:
           # BUILD_ELUNA defaults ON. A checkout without this configures for
           # about a second and then stops with "Eluna submodule is missing".
           submodules: recursive
+
+          # This job's token carries actions: write (cache prune). Do not leave
+          # it in .git/config as an extraheader: the workspace is bind-mounted
+          # into the build container, where CMake, scripts and tests from the
+          # checked-out tree run. Nothing after this step makes an
+          # authenticated git call; the prune step gets the token via GH_TOKEN.
+          persist-credentials: false
 
       # Space this build genuinely needs: mangosd links to 750 MB with
       # DEBUG_SYMBOLS=ON, on top of a ~20 GB object tree, and /build lives on the
@@ -796,7 +804,11 @@ jobs:
     #
     # Want it on a specific PR anyway? Run the workflow manually against that
     # branch with workflow_dispatch.
-    if: ${{ github.event_name != 'pull_request' }}
+    #
+    # Not on pushes to release/** either (that push trigger exists for the
+    # Debian build only, twow-repo#486 B2). Every hotfix there has a main twin,
+    # so MSVC still sees the same change on main.
+    if: ${{ github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/heads/release/') }}
 
     env:
       # Written once, used twice - to install and to key the cache. Spelling the
