@@ -563,6 +563,15 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         {
             lastQuestProgressCheck = now;
 
+            // Hotfix 8.9 (twow-repo#474): items used and opened through the handler.
+            if (itemUseTrace.Due(now))
+            {
+                sLog.outBasic("[ItemUse] bot=%u level=%u uses=%u cast_started=%u bandages=%u opens=%u window_s=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), itemUseTrace.uses, itemUseTrace.started, itemUseTrace.bandages,
+                    itemUseTrace.opens, now - itemUseTrace.start);
+                itemUseTrace.Reset();
+            }
+
             uint64 snapshot = (uint64(bot->GetLevel()) << 40) ^ uint64(bot->GetUInt32Value(PLAYER_XP));
             // Hotfix 8.5 (owner decision, replaces 8.2): profession skill-ups are progress
             // only under a declared purpose ([Purpose]); without one the rescue may act.
@@ -3767,7 +3776,8 @@ bool PlayerbotAI::SayToGuild(std::string msg, bool likePlayer)
 
                         std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(packet_template));
 
-                        bot->GetSession()->QueuePacket(std::move(packetPtr));
+                        if (sPlayerbotAIConfig.botChatDirect)   // Hotfix 8.9 (#474): queued chat never arrived; default off
+                            bot->GetSession()->HandleMessagechatOpcode(*packetPtr);
                         return true;
                     }
                     break;
@@ -4048,7 +4058,8 @@ bool PlayerbotAI::SayToParty(std::string msg, bool likePlayer)
 
                 std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(packet_template));
 
-                bot->GetSession()->QueuePacket(std::move(packetPtr));
+                if (sPlayerbotAIConfig.botChatDirect)   // Hotfix 8.9 (#474): queued chat never arrived; default off
+                    bot->GetSession()->HandleMessagechatOpcode(*packetPtr);
                 return true;
             }
         }
@@ -4108,7 +4119,8 @@ bool PlayerbotAI::Yell(std::string msg, bool likePlayer)
 
             std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(packet_template));
 
-            bot->GetSession()->QueuePacket(std::move(packetPtr));
+            if (sPlayerbotAIConfig.botChatDirect)   // Hotfix 8.9 (#474): queued chat never arrived; default off
+                bot->GetSession()->HandleMessagechatOpcode(*packetPtr);
             return true;
         }
     }
@@ -4144,7 +4156,8 @@ bool PlayerbotAI::Say(std::string msg, bool likePlayer)
 
             std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(packet_template));
 
-            bot->GetSession()->QueuePacket(std::move(packetPtr));
+            if (sPlayerbotAIConfig.botChatDirect)   // Hotfix 8.9 (#474): queued chat never arrived; default off
+                bot->GetSession()->HandleMessagechatOpcode(*packetPtr);
             return true;
         }
     }
@@ -9133,6 +9146,9 @@ void PlayerbotAI::ImbueItem(Item* item, uint32 targetFlag, ObjectGuid targetGUID
       }
    }
 
+   // Hotfix 8.9 (#474): [ItemUse] - read before the use, the item may be gone after it.
+   bool const isBandage = item->GetProto()->Class == ITEM_CLASS_CONSUMABLE && item->GetProto()->SubClass == ITEM_SUBCLASS_BANDAGE;
+
 #ifdef CMANGOS
    std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_USE_ITEM, 20));
 #endif
@@ -9165,7 +9181,11 @@ void PlayerbotAI::ImbueItem(Item* item, uint32 targetFlag, ObjectGuid targetGUID
       *packet << targetGUID.WriteAsPacked();
 
 #ifdef CMANGOS
-   bot->GetSession()->QueuePacket(std::move(packet));
+   // Hotfix 8.9 (twow-repo#474): bot sessions have no socket, so a queued CMSG_USE_ITEM was
+   // never processed - bandages, health items, poisons and weapon oils were never used.
+   // Use the item through the player's own handler (same checks), on the bot's tick.
+   bot->GetSession()->HandleUseItemOpcode(*packet);
+   itemUseTrace.OnUse(bot->IsNonMeleeSpellCasted(false), isBandage, uint32(time(nullptr)));
 #endif
 #ifdef MANGOS
    bot->GetSession()->QueuePacket(packet);

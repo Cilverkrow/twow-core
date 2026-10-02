@@ -932,6 +932,20 @@ add_test(NAME route_temp_nodes_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/route_temp_nodes_contract_tests.cmake")
 
+# Hotfix 8.9 (twow-repo#474): [ItemUse] trace window.
+add_executable(item_use_trace_tests
+  "${PB_MODULE_DIR}/t/item_use_trace_tests.cpp")
+
+target_include_directories(item_use_trace_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(item_use_trace_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME item_use_trace
+  COMMAND item_use_trace_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # Hotfix 8.8 (twow-repo#474): no queued bot packets for game objects, allowlist for the rest.
 add_test(NAME bot_queuepacket_contract
   COMMAND "${CMAKE_COMMAND}"

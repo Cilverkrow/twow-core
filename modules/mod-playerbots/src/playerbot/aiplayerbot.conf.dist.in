@@ -523,6 +523,11 @@ AiPlayerbot.SyncQuestWithPlayer = 0
 # The soft limit reserves four of the normal 20 quest-log slots for real-player
 # and catch-up interaction; it never changes the core MAX_QUEST_LOG_SIZE.
 AiPlayerbot.QuestFirstProgression.Enabled = 0
+
+# Bot chat in Say/Yell/Party/Guild (twow-repo#474). Bot sessions have no socket, so a queued
+# chat packet is never processed and bots stay silent. 1 sends it through the chat handler.
+# Default 0: nothing changes for players until the owner decides.
+AiPlayerbot.BotChat.Direct = 0
 AiPlayerbot.QuestFirstProgression.AutonomousLogSoftLimit = 16
 AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta = 4
 AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta = 6
