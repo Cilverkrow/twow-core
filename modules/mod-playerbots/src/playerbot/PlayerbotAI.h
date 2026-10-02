@@ -822,6 +822,8 @@ public:
     void Unmount();
 
     void QueuePacket(WorldPacket& pkt);
+    // Hotfix 8.8 (twow-repo#474): use a game object through the player's own handler.
+    void UseGameObjectDirect(ObjectGuid guid);
 
     float GetLevelFloat() const;
 

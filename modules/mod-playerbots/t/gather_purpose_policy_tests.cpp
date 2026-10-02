@@ -51,6 +51,14 @@ int main()
 
     Require(std::string(ProfessionName(393)) == "skinning" && std::string(EndName(End::NoSkillup)) == "no_skillup", "log names");
 
+    // Hotfix 8.8: no_spot ends the purpose and blocks the profession.
+    State f;
+    f.Start(356, 1, 75, 0);
+    Require(f.EndNoSpot(NoSpotSeconds) == End::NoSpot && !f.Active(), "no_spot ends the purpose");
+    Require(f.Blocked(356, NoSpotSeconds + 1) && !f.Blocked(356, NoSpotSeconds + BlockSeconds), "and blocks fishing for an hour");
+    Require(State().EndNoSpot(1) == End::None, "nothing to end without a purpose");
+    Require(std::string(EndName(End::NoSpot)) == "no_spot", "log name");
+
     std::cout << "gather_purpose_policy_tests passed\n";
     return 0;
 }

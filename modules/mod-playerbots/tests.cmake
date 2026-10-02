@@ -932,6 +932,12 @@ add_test(NAME route_temp_nodes_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/route_temp_nodes_contract_tests.cmake")
 
+# Hotfix 8.8 (twow-repo#474): no queued bot packets for game objects, allowlist for the rest.
+add_test(NAME bot_queuepacket_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bot_queuepacket_contract_tests.cmake")
+
 # Hotfix 8.5 (twow-repo#329): declared profession purpose.
 add_executable(gather_purpose_policy_tests
   "${PB_MODULE_DIR}/t/gather_purpose_policy_tests.cpp")

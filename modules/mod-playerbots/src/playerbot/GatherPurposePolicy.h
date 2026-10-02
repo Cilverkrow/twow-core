@@ -14,13 +14,16 @@ namespace ai::gather_purpose
 constexpr uint32_t BudgetSeconds = 30 * 60;
 constexpr uint32_t NoSkillupSeconds = 15 * 60;
 constexpr uint32_t BlockSeconds = 60 * 60;
+// Hotfix 8.8 (#472): a fishing purpose without a single cast after this long found no water.
+constexpr uint32_t NoSpotSeconds = 5 * 60;
 
 enum class End : uint8_t
 {
     None,
     TargetReached,
     Budget,
-    NoSkillup
+    NoSkillup,
+    NoSpot
 };
 
 inline char const* ProfessionName(uint32_t skill)
@@ -42,6 +45,7 @@ inline char const* EndName(End end)
         case End::TargetReached: return "target_reached";
         case End::Budget:        return "budget";
         case End::NoSkillup:     return "no_skillup";
+        case End::NoSpot:        return "no_spot";
         default:                 return "none";
     }
 }
@@ -102,6 +106,16 @@ struct State
         if (end != End::None)
             skill = 0;
         return end;
+    }
+
+    // Hotfix 8.8: ends the purpose for want of a spot; the profession is blocked like no_skillup.
+    End EndNoSpot(uint32_t now)
+    {
+        if (!Active())
+            return End::None;
+        Block(skill, now + BlockSeconds);
+        skill = 0;
+        return End::NoSpot;
     }
 
 private:

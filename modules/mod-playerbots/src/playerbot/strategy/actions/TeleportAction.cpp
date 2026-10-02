@@ -33,9 +33,7 @@ bool TeleportAction::Execute(Event& event)
 
         ai->ChangeStrategy("-follow,+stay", BotState::BOT_STATE_NON_COMBAT);
 
-        std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_GAMEOBJ_USE));
-        *packet << *i;
-        bot->GetSession()->QueuePacket(std::move(packet));
+        ai->UseGameObjectDirect(*i);   // Hotfix 8.8 (#474)
         return true;
     }
 

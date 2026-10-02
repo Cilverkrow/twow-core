@@ -37,6 +37,7 @@ struct PurposeTrace
     uint32_t castFailed = 0;
     uint32_t noPole = 0;
     uint32_t useSent = 0;
+    uint32_t useOk = 0;       // Hotfix 8.8: the bobber left GO_READY - the catch happened
     uint32_t channelBreaks = 0;
     bool channel = false;
     bool usedSinceCast = false;
@@ -54,9 +55,11 @@ struct PurposeTrace
             ++castFailed;
     }
 
-    void OnUse()
+    void OnUse(bool ok)
     {
         ++useSent;
+        if (ok)
+            ++useOk;
         usedSinceCast = true;
     }
 

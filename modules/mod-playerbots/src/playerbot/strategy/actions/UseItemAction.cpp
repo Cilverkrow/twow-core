@@ -924,9 +924,7 @@ bool UseAction::UseGameObject(Player* requester, Event& event, GameObject* gameO
         }
     }
 
-    std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_GAMEOBJ_USE));
-    *packet << guid;
-    bot->GetSession()->QueuePacket(std::move(packet));
+    ai->UseGameObjectDirect(guid);   // Hotfix 8.8 (#474)
     
     std::ostringstream out; out << "Using " << chat->formatGameobject(gameObject);
     ai->TellPlayerNoFacing(requester, out.str(), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
