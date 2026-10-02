@@ -421,7 +421,8 @@ namespace ai
         // roster bot's quest target, throttled per event, reason and target.
         void TraceQuestCommit(TravelDestination const* destination, char const* event, char const* reason);
 
-		uint32 GetMaxTravelTime() const { return (1000.0 * Distance(bot)) / bot->GetSpeed(MOVE_RUN); }
+		// twow-repo#295: with riding stages taken at the unmounted run speed (RidingStagesBotPolicy.h).
+		uint32 GetMaxTravelTime() const;
 
 		TravelStatus m_status = TravelStatus::TRAVEL_STATUS_NONE;
 

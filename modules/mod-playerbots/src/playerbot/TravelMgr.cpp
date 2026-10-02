@@ -13,6 +13,7 @@
 #include "BotTests.h"
 #include "ObjectAccessor.h"
 #include "playerbot/HomeBindPolicy.h"
+#include "playerbot/RidingStagesBotPolicy.h"
 
 using namespace ai;
 using namespace MaNGOS;
@@ -953,6 +954,15 @@ void TravelTarget::CopyTarget(TravelTarget* const target) {
     forced = target->forced;
     relevance = target->relevance;
     extendRetryCount = target->extendRetryCount;
+}
+
+uint32 TravelTarget::GetMaxTravelTime() const
+{
+    // twow-repo#295: a budget taken while mounted (up to 2.8x the run speed with riding
+    // stages) ran out once the bot dismounted for a fight on the way.
+    float const speed = riding_stages::TravelBudgetRunSpeed(sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED),
+        bot->GetSpeed(MOVE_RUN), baseMoveSpeed[MOVE_RUN]);
+    return (1000.0 * Distance(bot)) / speed;
 }
 
 void TravelTarget::SetStatus(TravelStatus status) {

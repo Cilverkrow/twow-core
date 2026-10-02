@@ -21,6 +21,7 @@
 
 #include "Object.h"
 #include "FunserverRogueTalents.h"
+#include "FunserverRidingStages.h"
 #include <mutex>
 #include <unordered_map>
 #include <shared_mutex>
@@ -4556,6 +4557,20 @@ int32 WorldObject::CalculateSpellDamage(Unit const* target, SpellEntry const* sp
             spellProto->Effect[effect_index] != SPELL_EFFECT_KNOCK_BACK &&
             (spellProto->Effect[effect_index] != SPELL_EFFECT_APPLY_AURA || spellProto->EffectApplyAuraName[effect_index] != SPELL_AURA_MOD_DECREASE_SPEED))
         value = int32(value * 0.25f * exp(GetLevel() * (70 - spellProto->spellLevel) / 1000.0f));
+
+    // twow-repo#295: a slow cast by a player-controlled unit (player, bot, their pets, totems,
+    // traps, charmed units) on another unit is stronger. Computed once when the aura is built;
+    // auras loaded at login keep their saved amount. NPC slows and self-slows stay unchanged.
+    if (value < 0 && spellProto->EffectApplyAuraName[effect_index] == SPELL_AURA_MOD_DECREASE_SPEED &&
+        target && target != this && IsControlledByPlayer())
+    {
+        int32 const slow = FunserverSnare::ScaleSlow(value, sWorld.getConfig(CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_SLOW_PCT),
+            sWorld.getConfig(CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_MAX_SLOW_PCT));
+        if (slow != value)
+            DEBUG_FILTER_LOG(LOG_FILTER_SPELL_CAST, "[PlayerSnare] spell=%u caster=%s target=%s slow=%d->%d",
+                spellProto->Id, GetGuidStr().c_str(), target->GetGuidStr().c_str(), value, slow);
+        value = slow;
+    }
 
     return value;
 }

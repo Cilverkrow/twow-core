@@ -4042,7 +4042,12 @@ void PlayerbotFactory::InitSkills()
 
 // Riding skills requirements are different
 #ifdef MANGOSBOT_ZERO
-    if (bot->GetLevel() >= 60)
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+    {
+        // twow-repo#295: with riding stages a bot trains riding at its trainer and pays
+        // for it like a player; the factory neither grants it nor takes it away.
+    }
+    else if (bot->GetLevel() >= 60)
         bot->SetSkill(SKILL_RIDING, 150, 150);
     else if (bot->GetLevel() >= 40)
         bot->SetSkill(SKILL_RIDING, 75, 75);
@@ -4492,6 +4497,15 @@ void PlayerbotFactory::InitAmmo()
 void PlayerbotFactory::InitMounts()
 {
     auto pmo = sPerformanceMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Mounts");
+
+    // twow-repo#295: with riding stages a bot buys its mounts with gold and learns them
+    // from the item, like a player; the factory hands out none.
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+    {
+        sLog.outDetail("[Riding] factory grants no mount bot=%u level=%u", bot->GetGUIDLow(), bot->GetLevel());
+        return;
+    }
+
     uint32 firstmount =
 #ifdef MANGOSBOT_ZERO
         40
