@@ -1083,6 +1083,18 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
 
     uint8 itemsShown = 0;
 
+    // twow-repo#482: the 1.12 client keeps loot slots in a fixed array of 16. More entries
+    // or a slot index >= 16 damaged the client heap (two crashes in the stage-20 test),
+    // so no SMSG_LOOT_RESPONSE ever carries more than 16 entries or an index >= 16.
+    uint32 suppressed = 0;
+    auto const clientSlotOk = [&itemsShown, &suppressed](uint32 slot)
+    {
+        if (slot < MAX_NR_LOOT_CLIENT_SLOTS && itemsShown < MAX_NR_LOOT_CLIENT_SLOTS)
+            return true;
+        ++suppressed;
+        return false;
+    };
+
     //gold
     b << uint32(l.gold);
 
@@ -1114,6 +1126,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                         // item shall not be displayed.
                         continue;
 
+                    if (!clientSlotOk(i))
+                        continue;
                     b << uint8(i) << l.items[i];
                     b << uint8(slot_type);
                     ++itemsShown;
@@ -1131,6 +1145,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                         // item shall not be displayed.
                         continue;
 
+                    if (!clientSlotOk(i))
+                        continue;
                     b << uint8(i) << l.items[i];
                     b << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT);
                     ++itemsShown;
@@ -1160,6 +1176,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
             {
                 if (!l.items[i].is_looted && !l.items[i].freeforall && l.items[i].AllowedForPlayer(lv.viewer, l.GetLootTarget()))
                 {
+                    if (!clientSlotOk(i))
+                        continue;
                     b << uint8(i) << l.items[i];
                     b << uint8(slot_type);
                     ++itemsShown;
@@ -1192,6 +1210,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                 continue;
 
             // allow loot
+            if (!clientSlotOk(uint32(l.items.size() + (qi - q_list->begin()))))
+                continue;
             b << uint8(l.items.size() + (qi - q_list->begin()));
             b << item;
             b << uint8(slot_type);
@@ -1209,6 +1229,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
             LootItem &item = l.items[fi.index];
             if (!fi.is_looted && !item.is_looted)
             {
+                if (!clientSlotOk(fi.index))
+                    continue;
                 b << uint8(fi.index) << item;
                 b << uint8(slot_type);                      // allow loot
                 ++itemsShown;
@@ -1234,6 +1256,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                 && lootPlayerNonQuestNonFFAConditionalItems.find(l.roundRobinPlayer) != lootPlayerNonQuestNonFFAConditionalItems.end())
                 continue;
 
+            if (!clientSlotOk(ci.index))
+                continue;
             b << uint8(ci.index) << item;
             b << uint8(slot_type);                          // allow loot
             ++itemsShown;
@@ -1243,7 +1267,7 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
     //update number of items shown
     b.put<uint8>(count_pos, itemsShown);
     // twow-repo#482 test build: items written into SMSG_LOOT_RESPONSE for this viewer.
-    sLog.outString("[LootSlots] response viewer=%s shown=%u stored=%u", lv.viewer->GetName(), uint32(itemsShown), uint32(l.items.size()));
+    sLog.outString("[LootSlots] response viewer=%s shown=%u stored=%u suppressed=%u", lv.viewer->GetName(), uint32(itemsShown), uint32(l.items.size()), suppressed);
 
     return b;
 }
