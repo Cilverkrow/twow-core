@@ -2041,6 +2041,9 @@ void LoadPlayerEggLoot();
         sSpellMgr.LoadSpells();
     }
 
+    // Hotfix 8.10 (twow-repo#484): own player spells created without the passive bit.
+    sSpellMgr.ApplyFunserverPassiveSpells();
+
     ///- Loads existing IDs in the database.
     sLog.outString("Loading existing IDs in the database...");
     sObjectMgr.LoadAllIdentifiers();

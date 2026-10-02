@@ -725,6 +725,8 @@ class SpellMgr
         void LoadSpells();
         void LoadSpellExtra();
         void LoadSpellsFromSpellTemplate();
+        // Hotfix 8.10 (twow-repo#484): marks FUNSERVER_FORCED_PASSIVE_SPELLS passive.
+        void ApplyFunserverPassiveSpells();
         void AssignInternalSpellFlags();
         SpellEntry const* GetSpellEntry(uint32 spellId) const { return spellId < GetMaxSpellId() ? mSpellEntryMap[spellId].get() : nullptr; }
         uint32 GetMaxSpellId() const { return mSpellEntryMap.size(); }
