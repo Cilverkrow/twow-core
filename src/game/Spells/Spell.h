@@ -39,7 +39,13 @@
 
 #include <memory>
 
-#define MAX_SPELL_ID 60000
+// Hotfix 8.10 (twow-repo#484): Spell::cast() returns at once for an id above this. With
+// 60000 every cast of our own spells (61002-61220 since train 8b, 90001+ before) passed
+// prepare() and then did nothing: trainer teaching spells, the Agitating Poison craft,
+// Shadow Dance, passive talent auras applied at learning, and script-triggered spells
+// (Shadow Edge 61193, Vigorous Fury 61192, Deep Wounds 61194). 65535 is the client's
+// 16-bit spell id limit that train 8b already respects.
+#define MAX_SPELL_ID 65535
 
 // For Plainsrunning hackfixes:
 
