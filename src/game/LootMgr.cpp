@@ -36,6 +36,11 @@
 #include <memory>
 #include <set>
 
+uint32 GetMaxLootItems()
+{
+    return sWorld.getConfig(CONFIG_UINT32_LOOT_MAX_ITEMS);
+}
+
 static eConfigFloatValues const qualityToRate[MAX_ITEM_QUALITY] =
 {
     CONFIG_FLOAT_RATE_DROP_ITEM_POOR,                                    // ITEM_QUALITY_POOR
