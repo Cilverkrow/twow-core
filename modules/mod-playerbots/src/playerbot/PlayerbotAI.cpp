@@ -574,15 +574,19 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
                 uint32 const startValue = gatherPurpose.startValue;
                 uint32 const start = gatherPurpose.start;
-                ai::gather_purpose::End const end = gatherPurpose.Observe(value, now);
+                // Hotfix 8.8 (#472): a fishing purpose that reached no water ends after 5 minutes
+                // without a single cast (8 of 14 purposes on v23 never cast in 15 minutes).
+                bool const noSpot = skill == SKILL_FISHING && !fishingTrace.casts &&
+                    now - start >= ai::gather_purpose::NoSpotSeconds;
+                ai::gather_purpose::End const end = noSpot ? gatherPurpose.EndNoSpot(now) : gatherPurpose.Observe(value, now);
                 if (end != ai::gather_purpose::End::None)
                 {
                     // Hotfix 8.7 (twow-repo#472): one [Fishing] line per fishing purpose.
                     if (skill == SKILL_FISHING)
                     {
-                        sLog.outBasic("[Fishing] bot=%u level=%u zone=%u casts=%u cast_failed=%u no_pole=%u use_sent=%u channel_breaks=%u skill=%u gained=%u last_break=\"%s\"",
-                            bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), fishingTrace.casts, fishingTrace.castFailed,
-                            fishingTrace.noPole, fishingTrace.useSent, fishingTrace.channelBreaks, value,
+                        sLog.outBasic("[Fishing] bot=%u level=%u zone=%u reason=%s casts=%u cast_failed=%u no_pole=%u use_sent=%u use_ok=%u channel_breaks=%u skill=%u gained=%u last_break=\"%s\"",
+                            bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), ai::gather_purpose::EndName(end), fishingTrace.casts, fishingTrace.castFailed,
+                            fishingTrace.noPole, fishingTrace.useSent, fishingTrace.useOk, fishingTrace.channelBreaks, value,
                             value > startValue ? value - startValue : 0, fishingLastBreak.c_str());
                         fishingTrace.Reset();
                         fishingLastBreak.clear();
@@ -9444,6 +9448,17 @@ bool PlayerbotAI::PlayAttackEmote(float chanceMultiplier)
     }
 
     return false;
+}
+
+// Hotfix 8.8 (twow-repo#474): bot sessions have no socket, so packets queued with
+// QueuePacket are never processed (WorldSession::CanProcessPackets) - the bobber, lifts,
+// buttons, portals and quest objects were never used. Game objects now go through the
+// player's own handler (same checks), called on the bot's map-thread tick from actions.
+void PlayerbotAI::UseGameObjectDirect(ObjectGuid guid)
+{
+    WorldPacket packet(CMSG_GAMEOBJ_USE, 8);
+    packet << guid;
+    bot->GetSession()->HandleGameObjectUseOpcode(packet);
 }
 
 void PlayerbotAI::QueuePacket(WorldPacket& pkt)
