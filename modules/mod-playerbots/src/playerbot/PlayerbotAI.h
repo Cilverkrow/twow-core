@@ -21,6 +21,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/FishingPolicy.h"
+#include "playerbot/ItemUseTrace.h"
 #include "playerbot/DeathSeriesPolicy.h"
 #include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/UnreachablePolicy.h"
@@ -692,6 +693,8 @@ public:
     ai::gather_purpose::State& GetGatherPurpose() { return gatherPurpose; }
     // Hotfix 8.7 (twow-repo#472): [Fishing] counters of the running fishing purpose.
     ai::fishing::PurposeTrace& GetFishingTrace() { return fishingTrace; }
+    // Hotfix 8.9 (twow-repo#474): [ItemUse] counters.
+    ai::item_use::Trace& GetItemUseTrace() { return itemUseTrace; }
     bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
     void ClearDeathLoop() { recentDeaths.clear(); }
     uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
@@ -924,6 +927,7 @@ protected:
     uint32 lastQuestProgressCheck = 0;
     ai::gather_purpose::State gatherPurpose;
     ai::fishing::PurposeTrace fishingTrace;
+    ai::item_use::Trace itemUseTrace;
     std::string fishingLastBreak;
     std::atomic<uint32> lastQuestRescue{ 0 };
     std::atomic<bool> questRescueRequested{ false };

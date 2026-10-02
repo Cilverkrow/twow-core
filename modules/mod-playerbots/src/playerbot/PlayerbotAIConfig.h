@@ -456,6 +456,10 @@ public:
     // Disabled by default. When enabled, only the GUIDs admitted by the
     // persistent roster use the quest-first progression policy.
     bool questFirstProgressionEnabled = false;
+    // Hotfix 8.9 (twow-repo#474): bot Say/Yell/Party/Guild chat. A queued chat packet was never
+    // processed, so bots were silent; on, they speak through the player's chat handler.
+    // Off by default - whether bots chat is the owner's decision.
+    bool botChatDirect = false;
     uint32 questFirstProgressionAutonomousLogSoftLimit = 16;
     uint32 questFirstProgressionRejectBelowLevelDelta = 4;
     uint32 questFirstProgressionRetireBelowLevelDelta = 6;
