@@ -33,8 +33,14 @@
 #include <map>
 #include <vector>
 
-#define MAX_NR_LOOT_ITEMS 16
-// note: the client cannot show more than 16 items total
+// twow-repo#482 feasibility test build only (not for main): the loot slot limit
+// comes from Loot.MaxItems (16..MAX_NR_LOOT_ITEMS_HARD, default 16) so the owner
+// can test 20/24/32 slots in the real 1.12 client. Slot index and item count are
+// uint8 in SMSG_LOOT_RESPONSE on the server side.
+#define MAX_NR_LOOT_ITEMS_HARD 32
+uint32 GetMaxLootItems();
+#define MAX_NR_LOOT_ITEMS (GetMaxLootItems())
+// note: the stock client is assumed to show at most 16 items total (#482 checks this)
 #define MAX_NR_QUEST_ITEMS 32
 // unrelated to the number of quest items shown, just for reserve
 
