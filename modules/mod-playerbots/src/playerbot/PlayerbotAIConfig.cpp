@@ -403,6 +403,7 @@ bool PlayerbotAIConfig::Initialize()
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));
     questFirstProgressionEnabled = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.Enabled", false);
+    botChatDirect = config.GetBoolDefault("AiPlayerbot.BotChat.Direct", false);
     questFirstProgressionAutonomousLogSoftLimit = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.AutonomousLogSoftLimit", 16);
     questFirstProgressionRejectBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta", 4);
     questFirstProgressionRetireBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta", 6);
