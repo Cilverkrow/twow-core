@@ -163,7 +163,10 @@ bool FishAction::Execute(Event& event)
     std::list<Item*> poles = AI_VALUE2(std::list<Item*>, "inventory items", "fishing pole");
 
     if (poles.empty())
+    {
+        ++ai->GetFishingTrace().noPole;   // Hotfix 8.7 (#472)
         return false;
+    }
 
     Item* pole = poles.front();
     uint8 bagIndex = pole->GetBagSlot();
@@ -180,6 +183,7 @@ bool FishAction::Execute(Event& event)
 
     Event fishCastEvent = Event("fish", std::to_string(rank) + " " + chat->formatWorldobject(bot));
     bool didCast = CastCustomSpellAction::Execute(fishCastEvent);
+    ai->GetFishingTrace().OnCast(didCast);   // Hotfix 8.7 (#472)
     if (didCast)
         SET_AI_VALUE2(int, "manual int", "last fishing cast", int(time(nullptr)));
 
@@ -213,6 +217,7 @@ bool UseFishingBobberAction::Execute(Event& event)
         std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_GAMEOBJ_USE));
         *packet << obj->GetObjectGuid();
         bot->GetSession()->QueuePacket(std::move(packet));
+        ai->GetFishingTrace().OnUse();   // Hotfix 8.7 (#472)
 
         std::ostringstream out; out << "Opening " << chat->formatGameobject(obj);
         ai->TellPlayerNoFacing(ai->GetMaster(), out.str(), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);

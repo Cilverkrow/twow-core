@@ -27,4 +27,47 @@ inline bool InGrace(uint32_t lastCast, uint32_t now)
 {
     return lastCast && now >= lastCast && now - lastCast < GraceSeconds;
 }
+
+// Hotfix 8.7 (twow-repo#472): fishing bots stay at skill 1 although the zones allow every
+// catch - the bobber is never used successfully. Counted per declared fishing purpose and
+// written as one [Fishing] line when the purpose ends.
+struct PurposeTrace
+{
+    uint32_t casts = 0;
+    uint32_t castFailed = 0;
+    uint32_t noPole = 0;
+    uint32_t useSent = 0;
+    uint32_t channelBreaks = 0;
+    bool channel = false;
+    bool usedSinceCast = false;
+
+    void Reset() { *this = PurposeTrace(); }
+
+    void OnCast(bool ok)
+    {
+        if (ok)
+        {
+            ++casts;
+            usedSinceCast = false;
+        }
+        else
+            ++castFailed;
+    }
+
+    void OnUse()
+    {
+        ++useSent;
+        usedSinceCast = true;
+    }
+
+    // True when a fishing channel ended without the bobber being used (a lost catch).
+    bool ObserveChannel(bool channelNow)
+    {
+        bool const broke = channel && !channelNow && !usedSinceCast;
+        channel = channelNow;
+        if (broke)
+            ++channelBreaks;
+        return broke;
+    }
+};
 }

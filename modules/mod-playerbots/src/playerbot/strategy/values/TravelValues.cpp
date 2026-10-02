@@ -387,6 +387,7 @@ bool NeedTravelPurposeValue::Calculate()
         {
             case ai::gather_purpose::Decision::Start:
                 declared.Start(skill, value, target, now);
+                ai->GetFishingTrace().Reset();
                 sLog.outBasic("[Purpose] state=start bot=%u level=%u profession=%s reason=skill_behind skill=%u target=%u budget_min=%u",
                     bot->GetGUIDLow(), bot->GetLevel(), ai::gather_purpose::ProfessionName(skill), value, target,
                     ai::gather_purpose::BudgetSeconds / 60);
