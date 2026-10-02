@@ -616,6 +616,47 @@ void Loot::AddItem(LootStoreItem const & item)
     }
 }
 
+// twow-repo#482 test build. Only plain items (no free-for-all, no condition) move:
+// FFA and conditional items are tracked per player by their index in `items`.
+// Moved items keep their unlootedCount share, so the corpse stays lootable.
+void Loot::MoveExcessToOverflow()
+{
+    size_t const questReserve = std::min<size_t>(m_questItems.size(), MAX_NR_LOOT_CLIENT_SLOTS);
+    size_t const visible = MAX_NR_LOOT_CLIENT_SLOTS - questReserve;
+    if (items.size() <= visible)
+        return;
+
+    LootItemList keep;
+    LootItemList moved;
+    keep.reserve(items.size());
+    for (LootItem const& item : items)
+    {
+        bool const movable = !item.freeforall && !item.conditionId;
+        if (keep.size() < visible || !movable)
+            keep.push_back(item);
+        else
+            moved.push_back(item);
+    }
+    items.swap(keep);
+    m_overflowItems.insert(m_overflowItems.end(), moved.begin(), moved.end());
+}
+
+std::vector<uint8> Loot::RefillFromOverflow()
+{
+    std::vector<uint8> refilled;
+    for (uint8 slot = 0; slot < items.size() && !m_overflowItems.empty(); ++slot)
+    {
+        LootItem const& old = items[slot];
+        // Only finished plain slots: an item under a running roll stays blocked.
+        if (!old.is_looted || old.is_blocked || old.freeforall || old.conditionId)
+            continue;
+        items[slot] = m_overflowItems.front();
+        m_overflowItems.erase(m_overflowItems.begin());
+        refilled.push_back(slot);
+    }
+    return refilled;
+}
+
 // Calls processor of corresponding LootTemplate (which handles everything including references)
 bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, bool personal, bool noEmptyError, WorldObject const* looted, WorldObject const* bonusSource)
 {
@@ -660,8 +701,11 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
                               sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY));
     }
 
+    // twow-repo#482 test build: only the client slots stay visible, the rest waits.
+    MoveExcessToOverflow();
+
     // twow-repo#482 test build: generated loot size against the configured limit.
-    sLog.outString("[LootSlots] generated loot_id=%u items=%u quest=%u max=%u", loot_id, uint32(items.size()), uint32(m_questItems.size()), uint32(MAX_NR_LOOT_ITEMS));
+    sLog.outString("[LootSlots] generated loot_id=%u items=%u overflow=%u quest=%u max=%u", loot_id, uint32(items.size()), uint32(m_overflowItems.size()), uint32(m_questItems.size()), uint32(MAX_NR_LOOT_ITEMS));
 
     // Setting access rights for group loot case
     Group* group = loot_owner->GetGroup();
@@ -757,7 +801,8 @@ QuestItemList* Loot::FillQuestLoot(Player* player)
     if (!player->IsInWorld())
         return nullptr;
 
-    if (items.size() == MAX_NR_LOOT_ITEMS) return nullptr;
+    // #482: quest items take client slots behind `items`; the client drops index >= 16.
+    if (items.size() >= MAX_NR_LOOT_CLIENT_SLOTS) return nullptr;
     QuestItemList *ql = new QuestItemList();
 
     for (uint8 i = 0; i < m_questItems.size(); ++i)
@@ -776,7 +821,7 @@ QuestItemList* Loot::FillQuestLoot(Player* player)
 
             item.is_blocked = true;
 
-            if (items.size() + ql->size() == MAX_NR_LOOT_ITEMS)
+            if (items.size() + ql->size() >= MAX_NR_LOOT_CLIENT_SLOTS)
                 break;
         }
     }
