@@ -705,6 +705,17 @@ bool CraftRandomItemAction::Execute(Event& event)
 
         uint32 castCount = AI_VALUE2(uint32, "has reagents for", spellId);
 
+        // Hotfix 8.16a (v31: 37 cast_result_40 from "rpg craft"): under RealReagents a roster
+        // bot on its own only picks a recipe whose reagents and tools are really in the bags;
+        // "has reagents for" is true for every recipe under the item cheat.
+        if (sPlayerbotAIConfig.professionUseRealReagents && IsRosterBotOnItsOwn(ai))
+        {
+            uint32 const fromBags = HasCraftTools(pSpellInfo, bot) ? CraftableFromBags(pSpellInfo, bot) : 0;
+            if (!fromBags)
+                continue;
+            castCount = std::min(castCount, fromBags);
+        }
+
         if (spellId == 61288) //Crafting random glyph
         {
             castCount = 1;
