@@ -10,6 +10,10 @@ namespace ai
 
     bool IsRosterBotOnItsOwn(PlayerbotAI* ai);
 
+    // twow-repo#485: not moving (nor on a flight path), fighting, casting,
+    // sitting or mounted - a craft cast would fail now.
+    bool IsReadyToCraft(PlayerbotAI* ai);
+
     // #333: minimal crafting loop. Active for a roster bot on its own when a
     // recipe without spell focus still gives a skill-up and its reagents are in
     // the bags, at most once per AiPlayerbot.ProfessionUse.CraftIntervalSeconds.
