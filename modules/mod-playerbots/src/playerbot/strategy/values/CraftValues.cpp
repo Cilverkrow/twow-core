@@ -107,6 +107,28 @@ uint32 HasReagentsForValue::Calculate()
     return craftCount;
 }
 
+std::shared_ptr<const CraftReagentIndex> CraftReagentIndexValue::Calculate()
+{
+    auto index = std::make_shared<CraftReagentIndex>();
+    for (uint32 spellId : AI_VALUE(std::vector<uint32>, "craft spells"))
+    {
+        SpellEntry const* spell = sServerFacade.LookupSpellInfo(spellId);
+        if (!spell)
+            continue;
+
+        for (uint8 i = 0; i < MAX_SPELL_REAGENTS; i++)
+        {
+            if (!spell->ReagentCount[i] || !spell->Reagent[i])
+                continue;
+
+            std::vector<uint32>& spells = (*index)[uint32(spell->Reagent[i])];
+            if (spells.empty() || spells.back() != spellId)
+                spells.push_back(spellId);
+        }
+    }
+    return index;
+}
+
 bool CanCraftSpellValue::Calculate()
 {
     uint32 spellId = stoi(getQualifier());

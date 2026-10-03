@@ -43,32 +43,35 @@ namespace
         }
         return 0;
     }
+}
 
-    // Every tool of the recipe is in the bags, as Spell::CheckItems demands
-    // (else SPELL_FAILED_ITEM_GONE).
-    bool HasCraftTools(SpellEntry const* spell, Player* bot)
+// Every tool of the recipe is in the bags, as Spell::CheckItems demands
+// (else SPELL_FAILED_ITEM_GONE).
+bool ai::HasCraftTools(SpellEntry const* spell, Player* bot)
+{
+    for (uint8 i = 0; i < MAX_SPELL_TOTEMS; ++i)
+        if (spell->Totem[i] && !bot->HasItemCount(spell->Totem[i], 1))
+            return false;
+    return true;
+}
+
+// Casts the reagents in the bags pay for (Spell::CheckItems, else
+// SPELL_FAILED_ITEM_NOT_READY). Unlike "has reagents for" this ignores the
+// item cheat. A recipe without reagents is not limited by them.
+uint32 ai::CraftableFromBags(SpellEntry const* spell, Player* bot)
+{
+    uint32 craftable = std::numeric_limits<uint32>::max();
+    for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
     {
-        for (uint8 i = 0; i < MAX_SPELL_TOTEMS; ++i)
-            if (spell->Totem[i] && !bot->HasItemCount(spell->Totem[i], 1))
-                return false;
-        return true;
+        if (spell->Reagent[i] <= 0 || !spell->ReagentCount[i])
+            continue;
+        craftable = std::min(craftable, bot->GetItemCount(uint32(spell->Reagent[i])) / spell->ReagentCount[i]);
     }
+    return craftable;
+}
 
-    // Casts the reagents in the bags pay for (Spell::CheckItems, else
-    // SPELL_FAILED_ITEM_NOT_READY). Unlike "has reagents for" this ignores the
-    // item cheat. A recipe without reagents is not limited by them.
-    uint32 CraftableFromBags(SpellEntry const* spell, Player* bot)
-    {
-        uint32 craftable = std::numeric_limits<uint32>::max();
-        for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
-        {
-            if (spell->Reagent[i] <= 0 || !spell->ReagentCount[i])
-                continue;
-            craftable = std::min(craftable, bot->GetItemCount(uint32(spell->Reagent[i])) / spell->ReagentCount[i]);
-        }
-        return craftable;
-    }
-
+namespace
+{
     // The bags take one product, as Spell::CheckItems demands for a craft cast
     // (else SPELL_FAILED_DONT_REPORT): no unique item already carried, room
     // left. Such a recipe is skipped without a backoff until they can.
