@@ -5,6 +5,7 @@
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 #include <algorithm>
+#include <string>
 
 using namespace ai;
 
@@ -36,10 +37,14 @@ namespace
     // CheckItems at an ended battleground (STATUS_WAIT_LEAVE) or while the bot
     // is banished or about to be stunned, which CanCastSpell does not catch.
     // The room for the product (CheckItems: unique item carried, full bags)
-    // is checked by the trigger before the pick.
-    char const* TransientReason(SpellCastResult result)
+    // is checked by the trigger before the pick. Any other refusal carries its
+    // cast result, named like hotfix 8.13's self-cast failures
+    // (CastCustomSpellAction::LogSelfCastFailure): logged, never said.
+    std::string TransientReason(SpellCastResult result)
     {
-        return result == SPELL_FAILED_DONT_REPORT ? "dont_report" : "not_castable";
+        if (result == SPELL_FAILED_DONT_REPORT)
+            return "dont_report";
+        return "cast_result_" + std::to_string(uint32(result));
     }
 }
 
@@ -75,10 +80,15 @@ bool ProfessionCraftAction::Execute(Event& event)
                 SET_AI_VALUE2(time_t, "manual time", "profession craft failed until",
                     time(nullptr) + time_t(sPlayerbotAIConfig.professionUseCraftFailBackoffSeconds));
             }
-            TraceProfessionUse(ai, "craft", "failed", backoff ? backoff : TransientReason(check), spellId);
+            std::string const reason = backoff ? std::string(backoff) : TransientReason(check);
+            TraceProfessionUse(ai, "craft", "failed", reason.c_str(), spellId);
             return false;
         }
 
+        // Hotfix 8.13 alignment: this direct cast never passes CastCustomSpellAction,
+        // so one cast gets exactly one line. "cast_started" only after
+        // Spell::SpellStart returned SPELL_CAST_OK (PlayerbotAI::CastSpell);
+        // a failure is only logged, the bot says nothing (no requester).
         bool const ok = ai->CastSpell(spellId, bot);
         TraceProfessionUse(ai, "craft", ok ? "cast_started" : "failed", ok ? "real_reagents" : "cast_failed", spellId);
         if (ok)

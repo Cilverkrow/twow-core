@@ -88,8 +88,9 @@ endforeach()
 # Review follow-up: DONT_REPORT is no lasting refusal. Spell::CheckCast also
 # returns it before CheckItems (ended battleground, banish), so no backoff.
 forbid_text("${actions}" "case SPELL_FAILED_DONT_REPORT:" "backoff on the transient DONT_REPORT")
-require_text("${actions}" "result == SPELL_FAILED_DONT_REPORT ? \"dont_report\" : \"not_castable\"" "DONT_REPORT traced without backoff")
-require_text("${actions}" "backoff ? backoff : TransientReason(check)" "transient refusals traced")
+require_text("${actions}" "if (result == SPELL_FAILED_DONT_REPORT)" "DONT_REPORT recognised")
+require_text("${actions}" "return \"dont_report\";" "DONT_REPORT traced without backoff")
+require_text("${actions}" "backoff ? std::string(backoff) : TransientReason(check)" "transient refusals traced")
 require_order("${actions}" "if (backoff)" "\"profession craft failed until\"" "backoff only after a lasting refusal")
 require_text("${triggers}" "\"profession craft failed until\"" "backoff honoured by the trigger")
 # Review: a recipe on its own or category cooldown (transmutes 24-48 h) would
@@ -110,6 +111,13 @@ forbid_text("${actions}" "\"CraftAction\"" "event name that reads like a finishe
 # Hotfix 8.13: the legacy path traces "started" only once CastCustomSpellAction began the cast.
 require_text("${actions}" "TraceProfessionUse(ai, \"craft\", \"failed\", \"cast_not_started\", uint32(bot->GetLevel()));" "legacy path traces only a request failure (8.13)")
 forbid_text("${actions}" "started ? \"started\"" "legacy started trace before the cast")
+# Review (merge with 8.13): the real-reagent cast returns before the legacy
+# request, so no cast is traced twice (cast_started here, started in
+# CastCustomSpellAction); other refusals carry the cast result like 8.13.
+require_order("${actions}" "return ok;" "DoSpecificAction(\"craft random item\"" "real-reagent path returns before the legacy request")
+require_text("${actions}" "return \"cast_result_\" + std::to_string(uint32(result));" "transient refusal traced with its cast result (8.13 naming)")
+forbid_text("${actions}" "\"not_castable\"" "reason without the cast result")
+forbid_text("${actions}" "RandomBotSayWithoutMaster" "self-cast errors said instead of logged")
 
 # Own materials are kept; a vendor reagent counts only with the reagents no
 # vendor sells.
