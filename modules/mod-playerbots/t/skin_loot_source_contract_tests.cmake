@@ -94,9 +94,9 @@ require_text("${store_loot}" "bool const clearForSkin = lootCreature && sPlayerb
 require_text("${store_loot}" "skin_loot::ShouldClearCorpseForSkinning(sPlayerbotAIConfig.professionUseClearCorpseForSkinning, IsRosterBotOnItsOwn(ai)," "clear decided by the policy, roster bots on their own")
 require_text("${store_loot}" "loot->loot_type == LOOT_CORPSE, lootCreature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE), ai->HasSkill(SKILL_SKINNING)," "corpse loot, skinnable corpse, skinning")
 require_text("${store_loot}" "bot->HasItemCount(7005, 1), int32(bot->GetSkillValue(SKILL_SKINNING)), int32(lootCreature->GetLevel()));" "knife, skill, corpse level")
-require_text("${store_loot}" "if (!skinLoot && !clearForSkin && !IsLootAllowed(itemQualifier, ai))" "money rule skipped for skin loot and cleared corpses")
+require_text("${store_loot}" "if (!skinLoot && !clearForSkin && !guid.IsItem() && !IsLootAllowed(itemQualifier, ai))" "money rule skipped for skin loot, cleared corpses and opened containers (hotfix 8.11)")
 reject_text("${loot_action}" "loot_type != LOOT_SKINNING && !IsLootAllowed(" "packet loot type check (never matched)")
-require_before("${store_loot}" "if (!skinLoot && !clearForSkin && !IsLootAllowed(itemQualifier, ai))" "if (AI_VALUE2(uint32, \"stack space for item\", itemid) < itemcount)" "stack space still checked")
+require_before("${store_loot}" "if (!skinLoot && !clearForSkin && !guid.IsItem() && !IsLootAllowed(itemQualifier, ai))" "if (AI_VALUE2(uint32, \"stack space for item\", itemid) < itemcount)" "stack space still checked")
 # The knife check is the one LootObject::IsLootPossible uses (same item, no second constant).
 require_text("${stack}" "if (skillId == SKILL_SKINNING && !bot->HasItemCount(7005, 1))" "knife check in LootObject::IsLootPossible")
 
@@ -122,6 +122,7 @@ require_before("${refresh}" "if (creature->IsTappedBy(bot))" "(TARGET_NOT_LOOTED
 require_before("${refresh}" "UNIT_DYNFLAG_LOOTABLE" "#485: loot left on the corpse - not a skinning target" "lootable branch before the #485 rule")
 require_before("${refresh}" "#485: loot left on the corpse - not a skinning target" "UNIT_FLAG_SKINNABLE" "#485 rule before the skinning branch")
 require_text("${refresh}" "if (skin_loot::IsSkinTarget(lootable, creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE)))" "skinning target only without loot")
+require_before("${refresh}" "(TARGET_NOT_LOOTED). Normal loot first" "if (skin_loot::IsSkinTarget(" "hotfix 8.6 return (own tapped corpse) before the #485 rule for foreign loot")
 reject_text("${refresh}" "if (creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE))" "skinning branch that ignores loot left on the corpse")
 
 # LootObject::IsLootPossible: the tool before the skill shortcut (level-10 corpses need skill 0).
