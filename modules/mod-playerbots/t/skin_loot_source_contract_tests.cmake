@@ -104,8 +104,16 @@ require_text("${stack}" "if (skillId == SKILL_SKINNING && !bot->HasItemCount(700
 require_text("${loot_action}" "#include \"playerbot/strategy/triggers/ProfessionUseTriggers.h\"" "throttled [ProfessionUse] trace")
 require_before("${store_loot}" "HandleAutostoreLootItemOpcode(packet);" "TraceProfessionUse(ai, \"skin\", \"looted\", \"skin_loot\", itemid);" "skin trace after the store")
 require_text("${store_loot}" "if (skinLoot && lootItem->is_looted)" "skin trace only for stored skin loot")
-require_before("${store_loot}" "bool const cleared = loot->isLooted();" "HandleLootReleaseOpcode(packet);" "cleared state read before the release")
-require_text("${store_loot}" "TraceProfessionUse(ai, \"skin\", cleared ? \"cleared\" : \"skipped\", cleared ? \"junk_taken\" : \"loot_left\", itemsTaken);" "clear trace")
+# state=cleared reason=junk_taken only when the switch stored junk (an item IsLootAllowed
+# refuses), detail = that count; not for every emptied corpse (review core#279).
+require_text("${store_loot}" "bool const junkItem = clearForSkin && !skinLoot && !IsLootAllowed(itemQualifier, ai);" "junk: refused by IsLootAllowed, asked only on a corpse being cleared")
+require_before("${store_loot}" "bool const junkItem = clearForSkin && !skinLoot && !IsLootAllowed(itemQualifier, ai);" "HandleAutostoreLootItemOpcode(packet);" "junk decided before the store")
+require_before("${store_loot}" "HandleAutostoreLootItemOpcode(packet);" "if (junkItem && lootItem->is_looted)" "junk counted after the store")
+require_before("${store_loot}" "if (junkItem && lootItem->is_looted)" "++junkTaken;" "junk counted only when stored")
+require_before("${store_loot}" "skin_loot::ClearTrace const clearTrace = skin_loot::TraceAfterClear(loot->isLooted(), itemsTaken, junkTaken);" "HandleLootReleaseOpcode(packet);" "cleared state read before the release")
+require_text("${store_loot}" "TraceProfessionUse(ai, \"skin\", clearTrace.state, clearTrace.reason, clearTrace.detail);" "clear trace from the policy")
+reject_text("${loot_action}" "\"junk_taken\"" "junk_taken decided outside the policy")
+require_before("${policy}" "if (junkTaken > 0)" "return { \"cleared\", \"junk_taken\", junkTaken };" "junk_taken only with junk stored, detail = junk count")
 
 # LootObject::Refresh: own loot first (hotfix 8.6), loot left means no skinning target.
 section("${stack}" "void LootObject::Refresh(" "WorldObject* LootObject::GetWorldObject(" refresh)

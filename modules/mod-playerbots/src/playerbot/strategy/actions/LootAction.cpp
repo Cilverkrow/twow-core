@@ -414,6 +414,8 @@ bool StoreLootAction::Execute(Event& event)
             bot->HasItemCount(7005, 1), int32(bot->GetSkillValue(SKILL_SKINNING)), int32(lootCreature->GetLevel()));
 
     uint32 itemsTaken = 0;
+    // #485: items stored only because the corpse is cleared for skinning (see junkItem).
+    uint32 junkTaken = 0;
 
     if (gold > 0)
     {
@@ -529,6 +531,11 @@ bool StoreLootAction::Execute(Event& event)
                 sRandomPlayerbotMgr.AddTradeDiscount(bot, master, price);
         }
 
+        // #485: an item IsLootAllowed refuses is taken only because the corpse is cleared for
+        // skinning (junk). Asked only on such a corpse and before the store (the answer depends
+        // on the bags), so nothing extra runs while ClearCorpseForSkinning is off (default).
+        bool const junkItem = clearForSkin && !skinLoot && !IsLootAllowed(itemQualifier, ai);
+
         WorldPacket packet(CMSG_AUTOSTORE_LOOT_ITEM, 1);
         packet << itemindex;
         bot->GetSession()->HandleAutostoreLootItemOpcode(packet);
@@ -540,6 +547,10 @@ bool StoreLootAction::Execute(Event& event)
         // bags or LOOT_ERROR_TOO_FAR leave it; free-for-all items stay unmarked - lower bound).
         if (skinLoot && lootItem->is_looted)
             TraceProfessionUse(ai, "skin", "looted", "skin_loot", itemid);
+
+        // #485: junk counts only when stored (same is_looted test, lower bound).
+        if (junkItem && lootItem->is_looted)
+            ++junkTaken;
 
         if (proto->Quality > ITEM_QUALITY_NORMAL && !urand(0, 50) && ai->HasStrategy("emote", BotState::BOT_STATE_NON_COMBAT)) ai->PlayEmote(TEXTEMOTE_CHEER);
         if (proto->Quality >= ITEM_QUALITY_RARE && !urand(0, 1) && ai->HasStrategy("emote", BotState::BOT_STATE_NON_COMBAT)) ai->PlayEmote(TEXTEMOTE_CHEER);
@@ -557,11 +568,12 @@ bool StoreLootAction::Execute(Event& event)
     }
 
     // #485: an empty corpse comes back as a skinning target after the release below;
-    // loot left on it (bags, loot rights) keeps it lootable and unskinnable.
+    // loot left on it (bags, loot rights) keeps it lootable and unskinnable. reason=junk_taken
+    // only when the switch took junk (detail = junk stored), see skin_loot::TraceAfterClear.
     if (clearForSkin)
     {
-        bool const cleared = loot->isLooted();
-        TraceProfessionUse(ai, "skin", cleared ? "cleared" : "skipped", cleared ? "junk_taken" : "loot_left", itemsTaken);
+        skin_loot::ClearTrace const clearTrace = skin_loot::TraceAfterClear(loot->isLooted(), itemsTaken, junkTaken);
+        TraceProfessionUse(ai, "skin", clearTrace.state, clearTrace.reason, clearTrace.detail);
     }
 
     AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);

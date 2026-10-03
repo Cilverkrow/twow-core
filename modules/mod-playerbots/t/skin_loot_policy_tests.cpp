@@ -1,6 +1,7 @@
 #include "SkinLootPolicy.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 
 namespace
@@ -12,6 +13,11 @@ void Require(bool condition, char const* message)
         std::cerr << "FAILED: " << message << '\n';
         std::exit(1);
     }
+}
+
+bool Is(ai::skin_loot::ClearTrace const& trace, char const* state, char const* reason, uint32_t detail)
+{
+    return std::strcmp(trace.state, state) == 0 && std::strcmp(trace.reason, reason) == 0 && trace.detail == detail;
 }
 }
 
@@ -48,6 +54,14 @@ int main()
     Require(IsSkinTarget(false, true), "looted skinnable corpse is a skinning target");
     Require(!IsSkinTarget(false, false), "corpse not skinnable");
     Require(!IsSkinTarget(true, false), "lootable, not skinnable");
+
+    // The line after a clear: junk_taken only when the switch stored junk, detail = that count.
+    Require(Is(TraceAfterClear(true, 5, 2), "cleared", "junk_taken", 2), "emptied with junk: junk_taken, detail = junk stored");
+    Require(Is(TraceAfterClear(true, 1, 1), "cleared", "junk_taken", 1), "one junk item is enough");
+    Require(Is(TraceAfterClear(true, 3, 0), "cleared", "nothing_blocked", 3), "every item allowed anyway: no junk_taken");
+    Require(Is(TraceAfterClear(true, 0, 0), "cleared", "nothing_blocked", 0), "money only: no junk_taken");
+    Require(Is(TraceAfterClear(false, 4, 1), "skipped", "loot_left", 4), "loot left: skipped even with junk taken");
+    Require(Is(TraceAfterClear(false, 0, 0), "skipped", "loot_left", 0), "nothing taken, loot left");
 
     std::cout << "skin_loot_policy_tests passed\n";
     return 0;
