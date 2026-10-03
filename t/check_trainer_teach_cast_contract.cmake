@@ -6,6 +6,8 @@ endif()
 # visual 222 and TARGET_UNIT_CASTER; visual 222 with target 0 (Turtle 47312 and the clones
 # 61213-61220) is cast by the trainer, so the player's own cast cannot hang. Money is still
 # taken only when the learning cast was accepted.
+# Train 9 (twow-repo#484): 61213-61220 have visual 107 since 20261003200000 and use the
+# trainer cast; the 8.9 direct-teaching branch below stays for Turtle's visual-222 spells.
 file(READ "${TW_CORE_ROOT}/src/game/Handlers/NPCHandler.cpp" npc)
 
 foreach (required

@@ -39,14 +39,16 @@ int main()
     Check(FunserverRogueArcaneEvasionResistance(80.0f, 40.0f, 45, 3) == 162, "no cap");
     Check(FunserverRogueArcaneEvasionResistance(30.0f, 20.0f, 0, 3) == 0, "no talent, no resistance");
 
-    // Hotfix 8.6: [GhostlyEvasion] / [RogueTalentTrace] windows.
+    // Hotfix 8.6: [GhostlyEvasion] / [RogueTalentTrace] windows; train 9 (#484): first line after 5.
     FunserverTraceWindow window;
     Check(!window.Due(100), "no event, no line");
     window.Add(true, 100);
     Check(!window.Due(100 + 3599) && window.Due(100 + 3600), "a line after one hour");
-    for (int i = 0; i < 19; ++i)
+    for (int i = 0; i < 3; ++i)
         window.Add(false, 200);
-    Check(window.events == 20 && window.hits == 1 && window.Due(200), "the first line after 20 events");
+    Check(window.events == 4 && !window.Due(200), "no line after 4 events");
+    window.Add(false, 200);
+    Check(window.events == 5 && window.hits == 1 && window.Due(200), "the first line after 5 events");
     window.Reset();
     Check(window.events == 0 && !window.Due(5000), "reset");
     for (int i = 0; i < 25; ++i)

@@ -1190,11 +1190,11 @@ AiPlayerbot.PremadeSpecLink.7.3.20 = -55552
 AiPlayerbot.PremadeSpecLink.7.3.25 = -55552532
 AiPlayerbot.PremadeSpecLink.7.3.30 = -5555253201333
 AiPlayerbot.PremadeSpecLink.7.3.35 = -55552532013352321
-AiPlayerbot.PremadeSpecLink.7.3.40 = -555525320133523231151
-AiPlayerbot.PremadeSpecLink.7.3.45 = -5555253201335232311553111
-AiPlayerbot.PremadeSpecLink.7.3.50 = 54-55552532013352323115531111
-AiPlayerbot.PremadeSpecLink.7.3.55 = 552331-55552532013352323115531111
-AiPlayerbot.PremadeSpecLink.7.3.60 = 552331300202012-55552532013352323115531111
+AiPlayerbot.PremadeSpecLink.7.3.40 = -55552532013352323143
+AiPlayerbot.PremadeSpecLink.7.3.45 = -5555253201335232314553
+AiPlayerbot.PremadeSpecLink.7.3.50 = 52-55552532013352323145530111
+AiPlayerbot.PremadeSpecLink.7.3.55 = 550331-55552532013352323145530111
+AiPlayerbot.PremadeSpecLink.7.3.60 = 550331300202012-55552532013352323145530111
 
 # --- class 8 ---
 AiPlayerbot.PremadeSpecName.8.0 = arcane

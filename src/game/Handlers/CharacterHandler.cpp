@@ -24,7 +24,6 @@
 #include "WorldPacket.h"
 #include "SharedDefines.h"
 #include "WorldSession.h"
-#include "FunserverTalentLearnSpells.h"
 #include "Opcodes.h"
 #include "Log.h"
 #include "World.h"
@@ -882,9 +881,6 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
 
     pCurrChar->SendInitialPacketsAfterAddToMap();
 
-    // Hotfix 8.4: talents that teach spells (Ancestral Arms) - characters who learned
-    // the talent before the fix get its spells at their next login.
-    LearnFunserverTalentSpells(pCurrChar);
     if (alreadyOnline)
         pCurrChar->SendInitWorldStates(pCurrChar->GetCachedZoneId());
 

@@ -1,6 +1,10 @@
 #include "scriptPCH.h"
 #include "Pet.h"
 #include "Totem.h"
+#include "FunserverRogueTalents.h"
+#include <map>
+#include <mutex>
+#include <string>
 
 namespace
 {
@@ -56,7 +60,11 @@ enum ShamanSpells
     SPELL_SHAMAN_BOT_IMBUE_MASTERY_R3    = 61114,
     SPELL_SHAMAN_BOT_RETALIATION_R1      = 61115,
     SPELL_SHAMAN_BOT_RETALIATION_R3      = 61117,
-    SPELL_SHAMAN_BOT_STORMSTRIKE_CHARGES = 61118,
+    // Charged Stormstrike ranks 1-4 (train 9, twow-repo#484): rank r consumes up to r charges.
+    SPELL_SHAMAN_CHARGED_STORMSTRIKE_R1  = 61118,
+    SPELL_SHAMAN_CHARGED_STORMSTRIKE_R2  = 61223,
+    SPELL_SHAMAN_CHARGED_STORMSTRIKE_R3  = 61224,
+    SPELL_SHAMAN_CHARGED_STORMSTRIKE_R4  = 61225,
     SPELL_SHAMAN_BOT_STORM_WISDOM_R1     = 61119,
     SPELL_SHAMAN_BOT_STORM_WISDOM_R5     = 61123,
     SPELL_SHAMAN_BOT_STORM_WISDOM_BUFF   = 61124,
@@ -66,8 +74,10 @@ enum ShamanSpells
     SPELL_SHAMAN_BOT_SHIELD_WARD         = 61130,
 };
 
-// #357 O-8: Stormstrike consumes up to 3 Lightning Shield charges, +10 % damage each.
-uint32 const STORMSTRIKE_MAX_CONSUMED_CHARGES = 3;
+// #357 O-8, owner 2026-10-03 (#484): Charged Stormstrike has 4 ranks; rank r consumes up to
+// r Lightning Shield charges, +10 % damage each (+10/20/30/40 %).
+uint32 const CHARGED_STORMSTRIKE_RANKS[]      = { SPELL_SHAMAN_CHARGED_STORMSTRIKE_R1, SPELL_SHAMAN_CHARGED_STORMSTRIKE_R2,
+                                                  SPELL_SHAMAN_CHARGED_STORMSTRIKE_R3, SPELL_SHAMAN_CHARGED_STORMSTRIKE_R4 };
 uint32 const STORMSTRIKE_PCT_PER_CHARGE       = 10;
 // #357 O-6: Retaliation fires at most once per second.
 uint32 const RETALIATION_COOLDOWN_SECONDS     = 1;
@@ -683,12 +693,47 @@ int32 GetImbueMasteryPct(Unit* owner)
     return 0;
 }
 
-uint32 GetStormstrikeConsumableCharges(Unit* caster)
+// Highest Charged Stormstrike rank the caster has (0 without the talent).
+uint32 GetChargedStormstrikeRank(Unit* caster)
 {
-    if (!caster || !caster->HasAura(SPELL_SHAMAN_BOT_STORMSTRIKE_CHARGES))
+    if (!caster)
         return 0;
 
-    return std::min(GetLightningShieldCharges(caster), STORMSTRIKE_MAX_CONSUMED_CHARGES);
+    for (uint32 rank = 4; rank > 0; --rank)
+        if (caster->HasAura(CHARGED_STORMSTRIKE_RANKS[rank - 1]))
+            return rank;
+
+    return 0;
+}
+
+uint32 GetStormstrikeConsumableCharges(Unit* caster)
+{
+    uint32 const rank = GetChargedStormstrikeRank(caster);
+    if (!rank)
+        return 0;
+
+    return std::min(GetLightningShieldCharges(caster), rank);
+}
+
+// Train 9 (twow-repo#484, owner test 03.10.2026: Storm Wisdom "funktioniert gar nicht"): one
+// [ShamanTalentTrace] line per player and talent, with the same window as [RogueTalentTrace]
+// (FunserverTraceWindow: a first line soon after the test starts, then hourly).
+void TraceShamanTalent(Unit* unit, char const* talent, bool ok, uint32 result, uint32 value)
+{
+    if (!unit || !unit->IsPlayer())
+        return;
+
+    static std::mutex mutex;
+    static std::map<std::pair<uint32, std::string>, FunserverTraceWindow> windows;
+    uint32 const now = uint32(time(nullptr));
+    std::lock_guard<std::mutex> lock(mutex);
+    FunserverTraceWindow& window = windows[{ unit->GetGUIDLow(), talent }];
+    window.Add(ok, now);
+    if (!window.Due(now))
+        return;
+    sLog.outBasic("[ShamanTalentTrace] player=%u talent=%s events=%u ok=%u last_result=%u last_value=%u window_s=%u",
+        unit->GetGUIDLow(), talent, window.events, window.hits, result, value, now - window.start);
+    window.Reset();
 }
 
 bool IsOffensiveNatureDirectSpell(Unit const* owner, Unit* victim, SpellEntry const* procSpell, uint32 procFlag, uint32 procEx, bool isVictim)
@@ -1610,7 +1655,12 @@ struct spell_shaman_retaliation : public AuraScript
         if (!shield || owner->HasSpellCooldown(aura->GetId()))
             return SPELL_AURA_PROC_FAILED;
 
-        if (victim && owner->IsValidAttackTarget(victim))
+        // #484 (audit N2): procFlags include taken ranged hits; a blocked arrow must not
+        // strike the shooter at any distance. Only melee-range attackers trigger it.
+        if (!victim || !owner->CanReachWithMeleeAutoAttack(victim))
+            return SPELL_AURA_PROC_FAILED;
+
+        if (owner->IsValidAttackTarget(victim))
             if (uint32 const damageSpellId = GetLightningShieldDamageSpell(shield->GetId()))
                 owner->CastSpell(victim, damageSpellId, true, nullptr, aura);
 
@@ -1624,8 +1674,9 @@ struct spell_shaman_retaliation : public AuraScript
     }
 };
 
-// #357 R5/C4 (O-8): with the bot aura, Stormstrike consumes up to 3 Lightning Shield
-// charges for +10 % weapon damage each. Without the aura (players) nothing changes.
+// #357 R5/C4 (O-8), owner 2026-10-03 (#484): with Charged Stormstrike rank r (talent 9005,
+// players and bots), Stormstrike consumes up to r Lightning Shield charges for +10 % weapon
+// damage each. Without the talent nothing changes.
 struct spell_shaman_stormstrike_charges : public SpellScript
 {
     void OnEffectDamageCalculate(Spell* spell, SpellEffectIndex effIdx, float& damage) const override
@@ -1643,7 +1694,12 @@ struct spell_shaman_stormstrike_charges : public SpellScript
             return;
 
         Unit* caster = spell->m_casterUnit;
+        uint32 const rank = GetChargedStormstrikeRank(caster);
+        if (!rank)
+            return;
+
         uint32 const consumed = GetStormstrikeConsumableCharges(caster);
+        TraceShamanTalent(caster, "charged_stormstrike", consumed > 0, rank, consumed);
         if (!consumed)
             return;
 
@@ -1659,9 +1715,9 @@ struct spell_shaman_stormstrike_charges : public SpellScript
     }
 };
 
-// #357 R6/C1 + R7/C1 Storm wisdom (bots): a melee crit adds a stack of -20 % cast time
-// and cost for Lightning Bolt (with Chain storm also Chain Lightning); the next such
-// cast consumes the whole stack (buff procCharges 1).
+// #357 R6/C1 + R7/C1 Storm wisdom (talents 9006/9008): a melee crit adds a stack of -20 %
+// cast time and cost for Lightning Bolt (with Chain storm also Chain Lightning); the next
+// such cast consumes the whole stack (FunserverStackedSpellMods.h, train 9).
 struct spell_shaman_storm_wisdom : public AuraScript
 {
     std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* /*victim*/, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 /*procEx*/, uint32 /*cooldown*/) override
@@ -1670,7 +1726,9 @@ struct spell_shaman_storm_wisdom : public AuraScript
             return std::nullopt;
 
         uint32 const buffId = owner->HasAura(SPELL_SHAMAN_BOT_CHAIN_STORM) ? SPELL_SHAMAN_BOT_CHAIN_STORM_BUFF : SPELL_SHAMAN_BOT_STORM_WISDOM_BUFF;
-        owner->CastSpell(owner, buffId, true, nullptr, aura);
+        SpellCastResult const result = owner->CastSpell(owner, buffId, true, nullptr, aura);
+        SpellAuraHolder* const buff = owner->GetSpellAuraHolder(buffId);
+        TraceShamanTalent(owner, "storm_wisdom", result == SPELL_CAST_OK && buff, uint32(result), buff ? buff->GetStackAmount() : 0);
         return SPELL_AURA_PROC_OK;
     }
 };

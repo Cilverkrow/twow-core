@@ -32,9 +32,9 @@ int main()
     Require(PathFor(4, "shaman tank") == 0, "only shamans");
 
     // O-12 point values (owner 2026-09-27; Ghost Wolf rank 3 is a talent for everyone):
-    // 7.1 = 14, 7.3 = 21 at 60.
+    // 7.1 = 14, 7.3 = 21 at 60; train 9 (#484): Charged Stormstrike has 4 ranks, 7.3 = 24.
     Require(ReservedPoints(7, Enhancement, 60) == 14, "7.1 pays 14 points at 60");
-    Require(ReservedPoints(7, ShamanTank, 60) == 21, "7.3 pays 21 points at 60");
+    Require(ReservedPoints(7, ShamanTank, 60) == 24, "7.3 pays 24 points at 60");
     Require(ReservedPoints(7, ShamanTank, 9) == 0, "nothing before level 10");
     Require(ReservedPoints(7, ShamanTank, 10) == 2, "L10: attack speed 1 + defense 1");
     Require(ReservedPoints(7, Enhancement, 10) == 1, "L10: attack speed 1");
@@ -53,16 +53,20 @@ int main()
     std::vector<std::uint32_t> const tank60 = WantedAuras(7, ShamanTank, 60);
     Require(tank60.size() == 7, "7.3 has seven aura talents at 60");
     Require(Has(tank60, 61105) && Has(tank60, 61110) && Has(tank60, 61114) &&
-            Has(tank60, 61117) && Has(tank60, 61118) && Has(tank60, 61129) && Has(tank60, 61130), "7.3 top ranks at 60");
+            Has(tank60, 61117) && Has(tank60, 61225) && Has(tank60, 61129) && Has(tank60, 61130), "7.3 top ranks at 60");
+    Require(!Has(tank60, 61118), "Charged Stormstrike rank 4 replaces rank 1");
+    Require(Has(WantedAuras(7, ShamanTank, 30), 61118) && Has(WantedAuras(7, ShamanTank, 31), 61223) &&
+            Has(WantedAuras(7, ShamanTank, 33), 61225), "Charged Stormstrike ranks 1-4 at 30-33");
     std::vector<std::uint32_t> const enh60 = WantedAuras(7, Enhancement, 60);
     Require(enh60.size() == 4 && Has(enh60, 61105) && Has(enh60, 61114) &&
             Has(enh60, 61123) && Has(enh60, 61125), "7.1 top ranks at 60");
 
-    // Every granted spell lies in the shaman block 61101-61130 (O-14).
+    // Every granted spell lies in the shaman block 61101-61130 (O-14) or is a Charged
+    // Stormstrike rank 2-4 (61223-61225, train 9).
     std::vector<std::uint32_t> const all = AllAuras(7);
-    Require(all.size() == 27, "27 aura ranks in the table");
+    Require(all.size() == 30, "30 aura ranks in the table");
     for (std::uint32_t id : all)
-        Require(id >= 61101 && id <= 61130, "aura ids in 61101-61130");
+        Require((id >= 61101 && id <= 61130) || (id >= 61223 && id <= 61225), "aura ids in 61101-61130 or 61223-61225");
 
     // Classes without a table get nothing.
     Require(AllAuras(1).empty() && ReservedPoints(1, 1, 60) == 0, "other classes have no auras");
