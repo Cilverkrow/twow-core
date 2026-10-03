@@ -6,6 +6,8 @@
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/RosterGuildPolicy.h"
+#include "playerbot/strategy/actions/GuildCreateActions.h"
 #include "Guild/GuildMgr.h"
 
 using namespace ai;
@@ -1265,6 +1267,31 @@ bool NeedsProfessionReagentsValue::Calculate()
 
 uint8 PetitionSignsValue::Calculate()
 {
+    // twow-repo#485 (new path): vmangos keys petition_sign by its own petition id
+    // (PetitionsHandler.cpp:147-154), so the query below - by the charter item guid - never
+    // matched and every charter looked empty. The count comes from the core's memory instead: a
+    // copy taken under the petition lock, for the bot's own petition only.
+    if (roster_guild::UsesRosterPath(sPlayerbotAIConfig.rosterGuildBotsPerGuild,
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster()))
+    {
+        if (bot->GetGuildId())
+            return 0;
+
+        // The same charter as offer and turn-in: the one whose petition the bot owns.
+        PetitionSummary petition;
+        if (!RosterGuildPlan::OwnCharter(bot, petition))
+            return 0;
+
+        return petition.signatureCount;
+    }
+
+    // Stock path: one query per value lifetime, as with the former SingleCalculatedValue (the
+    // recalculation every 5 s adds none); afterwards only PetitionOfferAction sets the value.
+    if (stockQueried)
+        return value;
+
+    stockQueried = true;
+
     if (bot->GetGuildId())
         return 0;
 

@@ -174,15 +174,16 @@ void WorldSession::HandlePetitionShowSignOpcode(WorldPacket & recv_data)
         return;
 
     uint32 petitionguid = charter->GetEnchantmentId(EnchantmentSlot(0));
-    Petition *petition = sGuildMgr.GetPetitionById(petitionguid);
 
-    if (!petition)
+    // twow-repo#485: signer list copied under the petition lock (signers move on other map threads).
+    std::vector<ObjectGuid> signers;
+    if (!sGuildMgr.GetPetitionSignerGuids(petitionguid, signers))
     {
         sLog.outError("[PetitionHandler] No petition exists for petition ID %u, yet charter exists with guid %u for owner %s", petitionguid, itemguid.GetCounter(), _player->GetGuidStr().c_str());
         return;
     }
 
-    uint8 signs = petition->GetSignatureCount();
+    uint8 signs = static_cast<uint8>(signers.size());
 
     DEBUG_LOG("CMSG_PETITION_SHOW_SIGNATURES petition: %u", petitionguid);
 
@@ -192,7 +193,11 @@ void WorldSession::HandlePetitionShowSignOpcode(WorldPacket & recv_data)
     data << petitionguid;                           // petition guid
     data << signs;                                  // sign's count
 
-    petition->BuildSignatureData(data);
+    for (ObjectGuid const& signer : signers)        // as Petition::BuildSignatureData
+    {
+        data << signer;
+        data << 0;
+    }
 
     SendPacket(&data);
 }
@@ -208,14 +213,15 @@ void WorldSession::HandlePetitionQueryOpcode(WorldPacket & recv_data)
     recv_data >> itemguid;                              // item guid
     DEBUG_LOG("CMSG_PETITION_QUERY Item %s Petition GUID %u", itemguid.GetString().c_str(), petitionguid);
 
-    Petition* petition = sGuildMgr.GetPetitionById(petitionguid);
-    if (!petition)
+    // twow-repo#485: copy under the petition lock (the owner may rename or turn in meanwhile).
+    PetitionSummary petition;
+    if (!sGuildMgr.GetPetitionSummaryById(petitionguid, petition))
         return;
 
-    WorldPacket data(SMSG_PETITION_QUERY_RESPONSE, (4 + 8 + petition->GetName().size() + 1 + 2 + 4 * 11));
+    WorldPacket data(SMSG_PETITION_QUERY_RESPONSE, (4 + 8 + petition.name.size() + 1 + 2 + 4 * 11));
     data << uint32(petitionguid);                           // petition guid
-    data << ObjectGuid(petition->GetOwnerGuid());           // charter owner guid
-    data << petition->GetName();                            // name (guild/arena team)
+    data << ObjectGuid(petition.ownerGuid);                 // charter owner guid
+    data << petition.name;                                  // name (guild/arena team)
     data << uint8(0);                                       // CString
     data << uint32(1);
     data << uint32(9);
@@ -260,14 +266,9 @@ void WorldSession::HandlePetitionRenameOpcode(WorldPacket & recv_data)
         return;
     }
 
-    std::string db_newname = newname;
-    uint32 petitionguid = charter->GetEnchantmentId(EnchantmentSlot(0));
-
-    Petition* petition = sGuildMgr.GetPetitionById(petitionguid);
-    if (!petition)
-        return;
-
-    if (petition->Rename(newname))
+    // twow-repo#485 (OB-30 review core#281): rename under the exclusive petition lock. The charter
+    // is in this player's bags, so it is the petition of this charter and its owner.
+    if (sGuildMgr.RenamePetition(charter->GetObjectGuid(), _player->GetObjectGuid(), newname))
     {
         WorldPacket data(MSG_PETITION_RENAME, (8 + newname.size() + 1));
         data << ObjectGuid(itemGuid);
@@ -286,19 +287,20 @@ void WorldSession::HandlePetitionSignOpcode(WorldPacket & recv_data)
     recv_data >> itemGuid;                              // item guid
     recv_data >> unk;
 
-    Petition* petition = sGuildMgr.GetPetitionByCharterGuid(itemGuid);
-
-    if (!petition)
+    // twow-repo#485 (OB-30 review core#281): checks on a copy taken under the petition lock; the
+    // signature itself is added (and an earlier one moved) by GuildMgr under the exclusive lock.
+    PetitionSummary petition;
+    if (!sGuildMgr.GetPetitionSummaryByCharterGuid(itemGuid, petition, GetAccountId(), _player->GetObjectGuid()))
     {
         sLog.outError("[PetitionHandler] No petition exists for charter with guid %u for signer %s",
             itemGuid.GetCounter(), _player->GetGuidStr().c_str());
         return;
     }
 
-    if (petition->IsComplete()) // reached maximum number of signatures for this petition
+    if (uint32(petition.signatureCount) == sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS)) // reached maximum number of signatures for this petition (Petition::IsComplete)
         return;
 
-    if (petition->GetOwnerGuid() == _player->GetObjectGuid())
+    if (petition.ownerGuid == _player->GetObjectGuid())
     {
         WorldPacket data(SMSG_PETITION_SIGN_RESULTS, (8 + 8 + 4));
         data << ObjectGuid(itemGuid);
@@ -309,7 +311,7 @@ void WorldSession::HandlePetitionSignOpcode(WorldPacket & recv_data)
     }
 
     // not let enemies sign guild charter
-    if (!sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_GUILD) && GetPlayer()->GetTeam() != petition->GetTeam())
+    if (!sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_GUILD) && GetPlayer()->GetTeam() != petition.team)
     {
         SendGuildCommandResult(GUILD_CREATE_S, "", ERR_GUILD_NOT_ALLIED);
         return;
@@ -326,15 +328,15 @@ void WorldSession::HandlePetitionSignOpcode(WorldPacket & recv_data)
         return;
     }
 
-    uint8 signs = petition->GetSignatureCount();
+    uint8 signs = petition.signatureCount;
 
     // Client hard limit at 9 signatures
     if (signs >= 9)
         return;
 
     //client doesn't allow to sign petition two times by one character, but not check sign by another character from same account
-    //not allow sign another player from already sign player account
-    if (PetitionSignature* signature = petition->GetSignatureForPlayer(_player))
+    //not allow sign another player from already sign player account (Petition::GetSignatureForPlayer)
+    if (petition.signedByAccount || petition.signedByPlayer)
     {
         WorldPacket data(SMSG_PETITION_SIGN_RESULTS, (8 + 8 + 4));
         data << ObjectGuid(itemGuid);
@@ -346,21 +348,16 @@ void WorldSession::HandlePetitionSignOpcode(WorldPacket & recv_data)
 
         // Update for owner if online. Note: Unsure if this is the correct message,
         // but sending SMSG_PETITION_SIGN_RESULTS does nothing for the owner here
-        if (Player *owner = sObjectMgr.GetPlayer(petition->GetOwnerGuid()))
+        if (Player *owner = sObjectMgr.GetPlayer(petition.ownerGuid))
             owner->GetSession()->SendGuildCommandResult(GUILD_INVITE_S, _player->GetName(), ERR_ALREADY_INVITED_TO_GUILD_S);
         return;
     }
 
-    // Before signing a new signature, delete any previous existing one.
-    if (PetitionSignature* signature = sGuildMgr.GetSignatureForPlayerGuid(_player->GetObjectGuid()))
+    // Before signing a new signature, delete any previous existing one: GuildMgr does both under
+    // one exclusive lock and repeats the checks above that depend on the petition.
+    if (sGuildMgr.AddPetitionSignature(petition.id, _player))
     {
-        signature->DeleteFromDB();
-        signature->GetSignaturePetition()->DeleteSignature(signature);
-    }
-
-    if (petition->AddNewSignature(_player))
-    {
-        DEBUG_LOG("PETITION SIGN: %u by %s", petition->GetId(), _player->GetGuidStr().c_str());
+        DEBUG_LOG("PETITION SIGN: %u by %s", petition.id, _player->GetGuidStr().c_str());
 
         WorldPacket data(SMSG_PETITION_SIGN_RESULTS, (8 + 8 + 4));
         data << ObjectGuid(itemGuid);
@@ -376,7 +373,7 @@ void WorldSession::HandlePetitionSignOpcode(WorldPacket & recv_data)
         //    item->SetUInt32Value(ITEM_FIELD_ENCHANTMENT+1, signs);
 
         // update for owner if online
-        if (Player *owner = sObjectMgr.GetPlayer(petition->GetOwnerGuid()))
+        if (Player *owner = sObjectMgr.GetPlayer(petition.ownerGuid))
             owner->GetSession()->SendPacket(&data);
     }
 }
@@ -391,13 +388,12 @@ void WorldSession::HandlePetitionDeclineOpcode(WorldPacket & recv_data)
 
     DEBUG_LOG("Petition %s declined by %s", itemGuid.GetString().c_str(), _player->GetGuidStr().c_str());
 
-    Petition* petition = sGuildMgr.GetPetitionByCharterGuid(itemGuid);
-
-    if (!petition)
+    PetitionSummary petition;                           // copy: no Petition* outside the lock (twow-repo#485)
+    if (!sGuildMgr.GetPetitionSummaryByCharterGuid(itemGuid, petition))
         return;
 
     // TODO: Check if this is actually used
-    Player *owner = sObjectMgr.GetPlayer(petition->GetOwnerGuid());
+    Player *owner = sObjectMgr.GetPlayer(petition.ownerGuid);
     if (owner)                                              // petition owner online
     {
         WorldPacket data(MSG_PETITION_DECLINE, 8);
@@ -444,8 +440,9 @@ void WorldSession::HandleOfferPetitionOpcode(WorldPacket & recv_data)
 
     uint32 petitionguid = charter->GetEnchantmentId(EnchantmentSlot(0));
 
-    Petition* petition = sGuildMgr.GetPetitionById(petitionguid);
-    if (!petition)
+    // twow-repo#485: signer list copied under the petition lock (signers move on other map threads).
+    std::vector<ObjectGuid> signers;
+    if (!sGuildMgr.GetPetitionSignerGuids(petitionguid, signers))
     {
         sLog.outError("[PetitionHandler] No petition exists for charter with guid %u for signer %s",
             itemGuid.GetCounter(), _player->GetGuidStr().c_str());
@@ -455,7 +452,7 @@ void WorldSession::HandleOfferPetitionOpcode(WorldPacket & recv_data)
     DEBUG_LOG("OFFER PETITION: petition %u to %s", petitionguid, playerGuid.GetString().c_str());
 
     /// Get petition signs count
-    uint8 signs = petition->GetSignatureCount();
+    uint8 signs = static_cast<uint8>(signers.size());
 
     /// Send response
     WorldPacket data(SMSG_PETITION_SHOW_SIGNATURES, (8 + 8 + 4 + 1 + signs * 12));
@@ -464,7 +461,11 @@ void WorldSession::HandleOfferPetitionOpcode(WorldPacket & recv_data)
     data << uint32(petitionguid);                           // petition guid
     data << uint8(signs);                                   // sign's count
 
-    petition->BuildSignatureData(data);
+    for (ObjectGuid const& signer : signers)                // as Petition::BuildSignatureData
+    {
+        data << signer;
+        data << 0;
+    }
     player->GetSession()->SendPacket(&data);
 }
 
@@ -526,7 +527,12 @@ lblCharterFound:
     if (_player->GetObjectGuid() != petition->GetOwnerGuid())
         return;
 
-    if (!petition->IsComplete())
+    // twow-repo#485: Petition* stays valid here - only its owner (this player, this thread) can
+    // delete it (turn-in, charter destroyed). The signature count is read as a copy under the
+    // lock, because signers add or move signatures on other map threads.
+    PetitionSummary summary;
+    if (!sGuildMgr.GetPetitionSummaryById(petitionguid, summary) ||
+        uint32(summary.signatureCount) != sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS))   // Petition::IsComplete
     {
         WorldPacket data(SMSG_TURN_IN_PETITION_RESULTS, 4);
         data << uint32(PETITION_SIGN_NEED_MORE); // need more signatures...

@@ -249,12 +249,18 @@ namespace ai
         uint32 Calculate() override;
     };
 
-    class PetitionSignsValue : public SingleCalculatedValue<uint8>
+    // twow-repo#485 (critic B5.5): re-read every few seconds; a SingleCalculatedValue was computed
+    // once and afterwards only set by PetitionOfferAction. The stock path keeps that behaviour
+    // (one query per value lifetime, see Calculate).
+    class PetitionSignsValue : public CalculatedValue<uint8>
     {
     public:
-        PetitionSignsValue(PlayerbotAI* ai) : SingleCalculatedValue<uint8>(ai, "petition signs") {}
+        PetitionSignsValue(PlayerbotAI* ai) : CalculatedValue<uint8>(ai, "petition signs", 10) {}
 
         uint8 Calculate() override;
+
+    private:
+        bool stockQueried = false;
     };
 
     class CanHandInPetitionValue : public CalculatedValue<bool>
