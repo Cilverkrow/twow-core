@@ -91,10 +91,11 @@ class RateTwoPremadePathTests(unittest.TestCase):
                                                  if value.isdigit()))
 
     def test_spec_aura_reserve_matches_the_owner_values(self):
-        # O-12 (owner 2026-09-27): 7.1 pays 14, 7.3 pays 21 talent points at 60
+        # O-12 (owner 2026-09-27): 7.1 pays 14, 7.3 pays 21 talent points at 60;
+        # train 9 (#484): Charged Stormstrike has 4 ranks, so 7.3 pays 24
         # (Ghost Wolf rank 3 is Improved Ghost Wolf 2/2 for everyone).
         self.assertEqual(14, GENERATOR_MODULE.reserved_points(7, 'enhancement', 60))
-        self.assertEqual(21, GENERATOR_MODULE.reserved_points(7, 'shaman tank', 60))
+        self.assertEqual(24, GENERATOR_MODULE.reserved_points(7, 'shaman tank', 60))
         self.assertEqual(0, GENERATOR_MODULE.reserved_points(7, 'elemental', 60))
         # #367 rogue (OB-20 IDs, OB-10 path assignment).
         self.assertEqual(9, GENERATOR_MODULE.reserved_points(4, 'combat', 60))
@@ -203,8 +204,8 @@ class ShamanStageTwoTalentTests(unittest.TestCase):
                 self.assertEqual(ranks, target[talent_id], name)
 
     def test_w_points_on_top_of_the_phase_one_reserve(self):
-        # O-12 variant A: 7.1 = 14 + W, 7.3 = 21 + W.
-        for name, reserve in (('enhancement', 14), ('shaman tank', 21)):
+        # O-12 variant A: 7.1 = 14 + W, 7.3 = 21 + W (24 + W since Charged Stormstrike has 4 ranks, #484).
+        for name, reserve in (('enhancement', 14), ('shaman tank', 24)):
             self.assertEqual(reserve, GENERATOR_MODULE.reserved_points(7, name, 60), name)
             self.assertEqual(reserve, sum(self.expected(name).values()), name)
 

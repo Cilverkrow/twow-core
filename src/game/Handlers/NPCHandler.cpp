@@ -383,6 +383,10 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket & recv_data)
     // and the trainer stayed "in progress" (SPELL_FAILED_SPELL_IN_PROGRESS for every later
     // purchase). Such a spell only teaches, so the trainer teaches it directly; money is taken
     // only when the taught spell is known afterwards.
+    // Train 9 (twow-repo#484): the cause was MAX_SPELL_ID 60000 (fixed in 8.10). The clones
+    // 61213-61220 now have visual 107 and interruptFlags 0 like the vanilla class-trainer
+    // teaching spells, so they leave this branch and take the trainer cast below. The branch
+    // stays for Turtle's own visual-222 teaching spells (47312 and others).
     if (proto->SpellVisual == 222 && proto->EffectImplicitTargetA[EFFECT_INDEX_0] != TARGET_UNIT_CASTER &&
         IsPureTeachingSpell(proto))
     {

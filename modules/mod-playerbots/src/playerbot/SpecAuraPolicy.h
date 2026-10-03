@@ -49,7 +49,7 @@ inline std::vector<AuraTalent> const& ShamanAuras()
         { "defense",             ShamanTank,  10, { 61106, 61107, 61108, 61109, 61110 } },
         { "imbue mastery",       Both,        25, { 61112, 61113, 61114 } },
         { "retaliation",         ShamanTank,  25, { 61115, 61116, 61117 } },
-        { "stormstrike charges", ShamanTank,  30, { 61118 } },
+        { "stormstrike charges", ShamanTank,  30, { 61118, 61223, 61224, 61225 } },  // 4 ranks since train 9 (#484)
         { "storm wisdom",        Enhancement, 35, { 61119, 61120, 61121, 61122, 61123 } },
         { "chain storm",         Enhancement, 40, { 61125 } },
         { "shield constitution", ShamanTank,  35, { 61127, 61128, 61129 } },

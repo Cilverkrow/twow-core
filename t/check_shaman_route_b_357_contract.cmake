@@ -58,16 +58,18 @@ foreach (forbidden "DELETE " "REPLACE " "npc_trainer" "skill_line_ability")
   forbid_text("${m}" "${forbidden}" "#357 route B scope")
 endforeach()
 
+# Train 9 (twow-repo#484): Charged Stormstrike has 4 ranks; rank r consumes up to r charges
+# (check_shaman_talents_484_contract.cmake covers the ranks in detail).
 file(READ "${TW_CORE_ROOT}/src/scripts/spells/spell_shaman.cpp" script)
 foreach (required
     "RegisterAuraScript(\"spell_shaman_retaliation\""
     "RegisterSpellScript(\"spell_shaman_stormstrike_charges\""
     "RegisterAuraScript(\"spell_shaman_storm_wisdom\""
     "RegisterAuraScript(\"spell_shaman_shield_charge_scaling\""
-    "uint32 const STORMSTRIKE_MAX_CONSUMED_CHARGES = 3;"
+    "uint32 const CHARGED_STORMSTRIKE_RANKS[]      = { SPELL_SHAMAN_CHARGED_STORMSTRIKE_R1, SPELL_SHAMAN_CHARGED_STORMSTRIKE_R2,"
     "uint32 const STORMSTRIKE_PCT_PER_CHARGE       = 10;"
     "uint32 const RETALIATION_COOLDOWN_SECONDS     = 1;"
-    "!caster->HasAura(SPELL_SHAMAN_BOT_STORMSTRIKE_CHARGES)")
+    "return std::min(GetLightningShieldCharges(caster), rank);")
   require_text("${script}" "${required}" "#357 route B script")
 endforeach()
 message(STATUS "SHAMAN_ROUTE_B_357_CONTRACT=PASS")
