@@ -865,7 +865,7 @@ struct TransactionPart
     uint32 lowGuid;
     uint32 money;
     uint32 spell;
-    uint16 itemsEntries[MAX_TRANSACTION_ITEMS];
+    uint32 itemsEntries[MAX_TRANSACTION_ITEMS];             // full item entry (twow-repo#484)
     uint8 itemsCount[MAX_TRANSACTION_ITEMS];
     uint32 itemsGuid[MAX_TRANSACTION_ITEMS];
 };

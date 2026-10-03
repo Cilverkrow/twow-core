@@ -44,7 +44,8 @@
 // prepare() and then did nothing: trainer teaching spells, the Agitating Poison craft,
 // Shadow Dance, passive talent auras applied at learning, and script-triggered spells
 // (Shadow Edge 61193, Vigorous Fury 61192, Deep Wounds 61194). 65535 is the client's
-// 16-bit spell id limit that train 8b already respects.
+// 16-bit spell id limit that train 8b already respects. Since train 9 cast() fails such a
+// cast cleanly with a [SpellIdGuard] error line instead of returning silently.
 #define MAX_SPELL_ID 65535
 
 // For Plainsrunning hackfixes:
