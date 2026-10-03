@@ -31,6 +31,9 @@ struct RejectCounts
     uint32_t dangerMap = 0;
     uint32_t rangeSkip = 0;
     uint32_t movedAway = 0;
+    // twow-repo#485: candidates a choice that ran out of time (#416) had checked
+    // and this one skipped - not judged by this choice.
+    uint32_t resumeSkipped = 0;
 
     std::string Format() const
     {
@@ -45,7 +48,8 @@ struct RejectCounts
             " zone_level=" + std::to_string(zoneLevel) +
             " danger_map=" + std::to_string(dangerMap) +
             " range_skip=" + std::to_string(rangeSkip) +
-            " moved_away=" + std::to_string(movedAway);
+            " moved_away=" + std::to_string(movedAway) +
+            " resume_skipped=" + std::to_string(resumeSkipped);
     }
 };
 
