@@ -545,6 +545,16 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
+    // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
+    // within TurnInParkWindowSeconds is parked for TurnInParkSeconds (0 = off, the
+    // old behaviour; at most 255). On, it also changes every bot's travel retries and
+    // finished-quest count (aiplayerbot.conf.dist.in).
+    uint32 questFirstProgressionTurnInParkFailures = 0;
+    uint32 questFirstProgressionTurnInParkWindowSeconds = 3600;
+    uint32 questFirstProgressionTurnInParkSeconds = 3600;
+    // twow-repo#485: true = a turn-in-only request whose takers the route danger deferred
+    // counts as no route; false = it does not (critic B1.3).
+    bool questFirstProgressionTurnInParkCountsRouteDanger = false;
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
     uint32 freeRoomForNonSpareBots;

@@ -462,6 +462,10 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
+    questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
+    questFirstProgressionTurnInParkWindowSeconds = std::min<uint32>(DAY, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkWindowSeconds", 3600)));
+    questFirstProgressionTurnInParkSeconds = std::min<uint32>(DAY, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkSeconds", 3600)));
+    questFirstProgressionTurnInParkCountsRouteDanger = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger", false);
     questFirstProgressionMinLevelForCrossMapQuestRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute", 10);
 
     // Never let configuration turn the autonomous reservation into a changed
