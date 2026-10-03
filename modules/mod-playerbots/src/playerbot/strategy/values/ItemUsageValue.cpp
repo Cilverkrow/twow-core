@@ -1069,9 +1069,16 @@ bool ItemUsageValue::IsItemUsefulForSkill(ItemPrototype const* proto)
 
 bool ItemUsageValue::IsItemNeededForUsefullCraft(ItemPrototype const* proto, bool checkAllReagents, bool vendorReagent)
 {
-    std::vector<uint32> spellIds = AI_VALUE(std::vector<uint32>, "craft spells");
+    // Hotfix 8.16a: only the recipes that use this item (CraftReagentIndexValue), no copy of
+    // "craft spells" and no walk over every recipe per query.
+    std::shared_ptr<const CraftReagentIndex> const index = AI_VALUE(std::shared_ptr<const CraftReagentIndex>, "craft reagent index");
+    if (!index)
+        return false;
+    CraftReagentIndex::const_iterator const users = index->find(proto->ItemId);
+    if (users == index->end())
+        return false;
 
-    for (uint32 spellId : spellIds)
+    for (uint32 spellId : users->second)
     {
         const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
 
