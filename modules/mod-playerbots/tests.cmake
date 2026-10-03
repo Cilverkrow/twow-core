@@ -946,6 +946,25 @@ add_test(NAME item_use_trace
   COMMAND item_use_trace_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# Hotfix 8.12: combat without progress stopped, rescue allowed.
+add_executable(stuck_combat_policy_tests
+  "${PB_MODULE_DIR}/t/stuck_combat_policy_tests.cpp")
+
+target_include_directories(stuck_combat_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(stuck_combat_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME stuck_combat_policy
+  COMMAND stuck_combat_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME stuck_combat_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/stuck_combat_source_contract_tests.cmake")
+
 # Hotfix 8.8 (twow-repo#474): no queued bot packets for game objects, allowlist for the rest.
 add_test(NAME bot_queuepacket_contract
   COMMAND "${CMAKE_COMMAND}"
