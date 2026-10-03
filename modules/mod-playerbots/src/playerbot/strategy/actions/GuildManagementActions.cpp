@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "GuildManagementActions.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/RosterGuildPolicy.h"
 
 using namespace ai;
 
@@ -108,6 +109,13 @@ bool GuildManageNearbyAction::Execute(Event& event)
 
         if (!sPlayerbotAIConfig.randomBotGuildNearby)
             return false;
+
+        // twow-repo#485 (critic B5.6): with roster guilds (BotsPerGuild > 0) a roster bot on its own
+        // invites nobody nearby, and no roster bot is invited here - this path ignores the faction
+        // target and the founding rules.
+        if (sPlayerbotAIConfig.rosterGuildBotsPerGuild && (sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()) ||
+            roster_guild::UsesRosterPath(sPlayerbotAIConfig.rosterGuildBotsPerGuild, sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster())))
+            continue;
 
         if (guild->GetMemberSize() >= sPlayerbotAIConfig.guildMaxBotLimit)
             return false;

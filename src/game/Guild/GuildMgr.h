@@ -25,6 +25,7 @@
 #include "GuildBank/GuildBank.h"
 #include "Utilities/robin_hood.h"
 #include <shared_mutex>
+#include <vector>
 
 class Guild;
 class ObjectGuid;
@@ -34,6 +35,30 @@ class PetitionSignature;
 typedef robin_hood::unordered_map<uint32, Petition*> PetitionMap;
 typedef std::list<PetitionSignature*> PetitionSignatureList;
 typedef robin_hood::unordered_map<uint32, Guild*> GuildMap;
+
+// twow-repo#485: copy of a petition, taken under m_petitionsMutex. Code on map threads (bots) keeps
+// no Petition*: a turn-in on another map thread deletes the petition (HandleTurnInPetitionOpcode ->
+// DeletePetition) as soon as the lock of GetPetitionBy*() is released.
+struct PetitionSummary
+{
+    uint32 id = 0;
+    ObjectGuid ownerGuid;
+    ObjectGuid charterGuid;
+    std::string name;
+    Team team = TEAM_NONE;
+    uint8 signatureCount = 0;
+    bool signedByAccount = false;       // the account passed to the getter has signed
+    bool signedByPlayer = false;        // the player passed to the getter has signed
+};
+
+// twow-repo#485: copy of a guild's identity, taken under m_guildMutex.
+struct GuildSummary
+{
+    uint32 id = 0;
+    ObjectGuid leaderGuid;
+    std::string name;
+};
+
 class GuildMgr
 {
     public:
@@ -77,6 +102,16 @@ class GuildMgr
         Petition* GetPetitionById(uint32 id);
         Petition* GetPetitionByOwnerGuid(const ObjectGuid& ownerGuid);
         PetitionSignature* GetSignatureForPlayerGuid(const ObjectGuid& guid);
+
+        // twow-repo#485: copies for map threads, taken under the manager's lock (see PetitionSummary).
+        bool GetPetitionSummaryByCharterGuid(ObjectGuid const& charterGuid, PetitionSummary& out, uint32 accountId = 0, ObjectGuid const& player = ObjectGuid());
+        bool GetPetitionSummaryBySigner(ObjectGuid const& signerGuid, PetitionSummary& out);
+        void CollectPetitionSummaries(std::vector<PetitionSummary>& out);
+        void CollectGuildSummaries(std::vector<GuildSummary>& out) const;
+        // Renames the petition of this charter and owner under the exclusive lock. Writes the
+        // character DB (UPDATE petition SET name, Petition::Rename). Same name checks as
+        // MSG_PETITION_RENAME; false when the name or the charter does not qualify.
+        bool RenamePetition(ObjectGuid const& charterGuid, ObjectGuid const& ownerGuid, std::string const& newName);
 
         void LoadGuilds();
         void LoadPetitions();
