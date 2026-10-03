@@ -22,6 +22,11 @@ on:
       - '.github/workflows/msvc-portability.yml'
   workflow_dispatch:
 
+# Nur Lesen (twow-repo#486, Plan B2): der Prüfer liest den Checkout und
+# schreibt nichts nach GitHub zurück.
+permissions:
+  contents: read
+
 jobs:
   check:
     name: POSIX-only-Aufrufe in den Modulen

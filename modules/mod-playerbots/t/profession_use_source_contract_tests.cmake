@@ -107,7 +107,9 @@ require_text("${actions}" "ai->CastSpell(spellId, bot)" "direct self cast")
 require_text("${actions}" "ok ? \"cast_started\" : \"failed\", ok ? \"real_reagents\" : \"cast_failed\", spellId" "trace carries the spell id")
 require_text("${actions}" "\"CraftCastStarted\"" "bot event counts cast starts")
 forbid_text("${actions}" "\"CraftAction\"" "event name that reads like a finished item")
-require_text("${actions}" "TraceProfessionUse(ai, \"craft\", started ? \"started\" : \"failed\"" "legacy trace unchanged")
+# Hotfix 8.13: the legacy path traces "started" only once CastCustomSpellAction began the cast.
+require_text("${actions}" "TraceProfessionUse(ai, \"craft\", \"failed\", \"cast_not_started\", uint32(bot->GetLevel()));" "legacy path traces only a request failure (8.13)")
+forbid_text("${actions}" "started ? \"started\"" "legacy started trace before the cast")
 
 # Own materials are kept; a vendor reagent counts only with the reagents no
 # vendor sells.
