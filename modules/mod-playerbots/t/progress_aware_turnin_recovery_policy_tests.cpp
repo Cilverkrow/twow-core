@@ -13,7 +13,7 @@ using ai::turnin_recovery::State;
 namespace
 {
 Observation At(std::uint32_t now, float x, float distance, bool paused = false, std::uint32_t map = 0,
-    std::uint32_t zone = 1)
+    std::uint32_t zone = 1, std::uint32_t targetMap = 0)
 {
     Observation observation;
     observation.now = now;
@@ -24,6 +24,7 @@ Observation At(std::uint32_t now, float x, float distance, bool paused = false, 
     observation.x = x;
     observation.distance = distance;
     observation.paused = paused;
+    observation.targetMapId = targetMap;
     return observation;
 }
 }
@@ -104,7 +105,44 @@ int main()
     State fresh;
     assert(!ai::turnin_recovery::ShouldResetProgressOnSetTarget(fresh, true, 295, 2158));
 
+    // twow-repo#485: a cross-map turn-in (bot on map 1, taker on map 0) is
+    // suppressed under the taker's map, the key the route choice asks with.
+    // Keyed by the bot's map it never matched: 30 of 101 such targets were
+    // chosen again within the 120 s.
+    State crossMap;
+    assert(ai::turnin_recovery::Observe(crossMap, At(0, 0.0f, 9000.0f, false, 1, 1, 0), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(crossMap, At(300, 0.0f, 9000.0f, false, 1, 1, 0), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    assert(ai::turnin_recovery::Observe(crossMap, At(600, 0.0f, 9000.0f, false, 1, 1, 0), stall, cooldown) == RecoveryAction::SuppressRouteAndCooldown);
+    assert(ai::turnin_recovery::IsSuppressed(crossMap, 601, 60517, 0));
+    assert(!ai::turnin_recovery::IsSuppressed(crossMap, 601, 60517, 1));
+    assert(!ai::turnin_recovery::IsSuppressed(crossMap, 721, 60517, 0));
+
+    // twow-repo#485: the death cooldown (#307) has its own slot. A stall on
+    // another turn-in used to overwrite it, so the bot was back on the deadly
+    // route after 120 s instead of 3600 s.
+    State both;
+    assert(!ai::turnin_recovery::RecordDeathOnRoute(both, 61746, 40001, 0, 100, 2, deathCooldown));
+    assert(ai::turnin_recovery::RecordDeathOnRoute(both, 61746, 40001, 0, 200, 2, deathCooldown));
+    assert(ai::turnin_recovery::Observe(both, At(300, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(both, At(600, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    assert(ai::turnin_recovery::Observe(both, At(900, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::SuppressRouteAndCooldown);
+    assert(ai::turnin_recovery::IsSuppressed(both, 901, 60517, 0));
+    assert(ai::turnin_recovery::IsSuppressed(both, 901, 61746, 0));
+    assert(!ai::turnin_recovery::IsSuppressed(both, 1021, 60517, 0));
+    assert(ai::turnin_recovery::IsSuppressed(both, 3799, 61746, 0));
+    assert(!ai::turnin_recovery::IsSuppressed(both, 3800, 61746, 0));
+
+    // ... and a later death suppression leaves a running stall suppression alone.
+    State stallThenDeath;
+    assert(ai::turnin_recovery::Observe(stallThenDeath, At(0, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(stallThenDeath, At(300, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    assert(ai::turnin_recovery::Observe(stallThenDeath, At(600, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::SuppressRouteAndCooldown);
+    assert(!ai::turnin_recovery::RecordDeathOnRoute(stallThenDeath, 61746, 40001, 0, 610, 2, deathCooldown));
+    assert(ai::turnin_recovery::RecordDeathOnRoute(stallThenDeath, 61746, 40001, 0, 620, 2, deathCooldown));
+    assert(ai::turnin_recovery::IsSuppressed(stallThenDeath, 621, 60517, 0));
+    assert(ai::turnin_recovery::IsSuppressed(stallThenDeath, 621, 61746, 0));
+
     std::cout << "progress_aware_turnin_recovery=PASS hillsbrad=PASS transport_pause=PASS "
         "stalled_route_recovery=PASS suppress_cooldown=PASS relog_state_reset=PASS death_route_suppression=PASS "
-        "same_target_churn=PASS\n";
+        "same_target_churn=PASS cross_map_stall_key=PASS death_survives_stall=PASS\n";
 }
