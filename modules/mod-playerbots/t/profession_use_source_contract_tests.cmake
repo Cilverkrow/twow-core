@@ -113,9 +113,11 @@ require_text("${actions}" "TraceProfessionUse(ai, \"craft\", \"failed\", \"cast_
 forbid_text("${actions}" "started ? \"started\"" "legacy started trace before the cast")
 # Review (merge with 8.13): the real-reagent cast returns before the legacy
 # request, so no cast is traced twice (cast_started here, started in
-# CastCustomSpellAction); other refusals carry the cast result like 8.13.
+# CastCustomSpellAction); other refusals carry the cast result like 8.13, under
+# their own prefix (8.13 uses cast_result_<n> for "rpg craft" and the legacy path).
 require_order("${actions}" "return ok;" "DoSpecificAction(\"craft random item\"" "real-reagent path returns before the legacy request")
-require_text("${actions}" "return \"cast_result_\" + std::to_string(uint32(result));" "transient refusal traced with its cast result (8.13 naming)")
+require_text("${actions}" "return \"precheck_result_\" + std::to_string(uint32(result));" "transient refusal traced with its cast result")
+forbid_text("${actions}" "\"cast_result_\"" "reason that mixes with the 8.13 legacy and rpg craft failures")
 forbid_text("${actions}" "\"not_castable\"" "reason without the cast result")
 forbid_text("${actions}" "RandomBotSayWithoutMaster" "self-cast errors said instead of logged")
 

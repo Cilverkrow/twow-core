@@ -38,13 +38,14 @@ namespace
     // is banished or about to be stunned, which CanCastSpell does not catch.
     // The room for the product (CheckItems: unique item carried, full bags)
     // is checked by the trigger before the pick. Any other refusal carries its
-    // cast result, named like hotfix 8.13's self-cast failures
-    // (CastCustomSpellAction::LogSelfCastFailure): logged, never said.
+    // cast result like hotfix 8.13's self-cast failures (logged, never said),
+    // under its own prefix: 8.13 traces "rpg craft" failures as cast_result_<n>
+    // in the same [ProfessionUse] craft failed line, and the paths stay apart.
     std::string TransientReason(SpellCastResult result)
     {
         if (result == SPELL_FAILED_DONT_REPORT)
             return "dont_report";
-        return "cast_result_" + std::to_string(uint32(result));
+        return "precheck_result_" + std::to_string(uint32(result));
     }
 }
 
