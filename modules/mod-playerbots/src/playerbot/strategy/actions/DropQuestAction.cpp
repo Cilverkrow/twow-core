@@ -67,7 +67,7 @@ static void DropGreyQuestsOnItsOwn(PlayerbotAI* ai, Player* bot)
 
         if (ai::quest_search::DropGreyQuest(true, bot->GetQuestLevelForPlayer(quest), grayLevel,
                 bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE, quest->GetRequiredClasses() != 0))
-            ai->DropQuest(questId);
+            ai->DropQuest(questId, "grey");
     }
 }
 
@@ -174,7 +174,8 @@ void CleanQuestLogAction::DropQuestType(Player* requester, uint8 &numQuest, uint
         }
 
         //Drop quest.
-        GetBotAI(bot)->DropQuest(questId);
+        GetBotAI(bot)->DropQuest(questId, bot->GetQuestStatus(questId) == QUEST_STATUS_FAILED ? "clean_failed" :
+            isComplete ? "clean_complete" : hasProgress ? "clean_progress" : isGreen ? "clean_no_progress" : "clean_grey_red");
 
         numQuest--;
 

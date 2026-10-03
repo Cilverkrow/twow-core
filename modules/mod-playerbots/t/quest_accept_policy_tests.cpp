@@ -34,6 +34,14 @@ int main()
     Require(!SkipForRosterBot(true, 15, 7, 9, true), "class quest: taken");
     Require(!SkipForRosterBot(false, 15, 7, 9, false), "led by a real player: taken");
 
+    // Hotfix 8.15: no new quest at the cleanup fill level (4 or fewer free slots).
+    Require(!SkipForRosterBot(true, 15, 12, 9, false, 5), "5 free slots: taken");
+    Require(SkipForRosterBot(true, 15, 12, 9, false, 4), "4 free slots: skipped (cleanup would drop)");
+    Require(SkipForRosterBot(true, 15, 12, 9, false, 0), "full log: skipped");
+    Require(!SkipForRosterBot(true, 15, 12, 9, true, 2), "class quest even with a fuller log: taken");
+    Require(!SkipForRosterBot(false, 15, 12, 9, false, 1), "led by a real player: taken");
+    Require(CleanFreeSlots == 4, "limit matches CleanQuestLogAction (MAX_QUEST_LOG_SIZE - totalQuests > 4)");
+
     std::cout << "quest_accept_policy_tests passed\n";
     return 0;
 }

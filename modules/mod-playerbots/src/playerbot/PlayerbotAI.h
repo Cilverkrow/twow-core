@@ -424,7 +424,8 @@ public:
     static GameObject* GetGameObject(GameObjectDataPair const* gameObjectDataPair);
     WorldObject* GetWorldObject(ObjectGuid guid);
     std::vector<Player*> GetPlayersInGroup();
-    void DropQuest(uint32 questId);
+    // Hotfix 8.15: reason goes to the [QuestDrop] line (the QuestDropped CSV event keeps its format).
+    void DropQuest(uint32 questId, char const* reason = "other");
     std::vector<const Quest*> GetAllCurrentQuests();
     std::vector<const Quest*> GetCurrentIncompleteQuests();
     std::set<uint32> GetAllCurrentQuestIds();
