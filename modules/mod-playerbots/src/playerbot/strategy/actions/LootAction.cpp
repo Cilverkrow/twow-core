@@ -463,7 +463,11 @@ bool StoreLootAction::Execute(Event& event)
 			continue;
 		}
 
-        if (!skinLoot && !clearForSkin && !IsLootAllowed(itemQualifier, ai))
+        // Hotfix 8.11 (twow-repo#474, v24: 279 container opens, 1 item loot): loot from an item in
+        // the bot's own bags (a quest container such as Bundle of Reports) is taken whole. The
+        // usefulness filter left it inside, the container stayed full and was opened again.
+        // #485: skin loot and a corpse cleared for skinning are taken whole as well.
+        if (!skinLoot && !clearForSkin && !guid.IsItem() && !IsLootAllowed(itemQualifier, ai))
         {
             sLog.outDebug("[BOT LOOT] %s: skip item=%u (IsLootAllowed=false)", bot->GetName(), itemid);
             if (traceQuestLoot)
