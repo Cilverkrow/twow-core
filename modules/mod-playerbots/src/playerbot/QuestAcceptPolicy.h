@@ -21,11 +21,23 @@ inline bool IsRed(uint32_t botLevel, uint32_t questLevel)
 // ~890 accepts and ~940 drops an hour on v24 ("The Grizzled Den" alone 205 times).
 // Accepting now uses the drop rule: no grey (XP grey level) and no red quest for a roster
 // bot on its own; class quests stay allowed, as the drop rule keeps them.
+//
+// Hotfix 8.15 (v27, 3 h: still ~275 drops an hour, e.g. one bot took and dropped the same two
+// quests within 10 seconds): CleanQuestLogAction drops random quests without progress as soon as
+// CleanFreeSlots or fewer slots are free, while the accept paths filled the log to the last slot.
+// A roster bot on its own no longer takes a new quest at that fill level.
+constexpr uint32_t CleanFreeSlots = 4;
+
+inline bool LogTooFull(uint32_t freeSlots)
+{
+    return freeSlots <= CleanFreeSlots;
+}
+
 inline bool SkipForRosterBot(bool rosterOnItsOwn, uint32_t botLevel, uint32_t questLevel, uint32_t grayLevel,
-    bool classQuest)
+    bool classQuest, uint32_t freeSlots = 25)
 {
     if (!rosterOnItsOwn || classQuest)
         return false;
-    return IsRed(botLevel, questLevel) || questLevel <= grayLevel;
+    return IsRed(botLevel, questLevel) || questLevel <= grayLevel || LogTooFull(freeSlots);
 }
 }

@@ -3511,7 +3511,7 @@ std::vector<Player*> PlayerbotAI::GetPlayersInGroup()
     return members;
 }
 
-void PlayerbotAI::DropQuest(uint32 questIdToDrop)
+void PlayerbotAI::DropQuest(uint32 questIdToDrop, char const* reason)
 {
     for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
@@ -3524,6 +3524,8 @@ void PlayerbotAI::DropQuest(uint32 questIdToDrop)
         {
             if (Quest const* q = sObjectMgr.GetQuestTemplate(questIdToDrop))
                 sPlayerbotAIConfig.logEvent(this, "QuestDropped", q->GetTitle(), std::to_string(questIdToDrop));
+            sLog.outBasic("[QuestDrop] bot=%u level=%u quest=%u status=%u reason=%s",
+                bot->GetGUIDLow(), bot->GetLevel(), questIdToDrop, uint32(status), reason);
 
             bot->SetQuestSlot(slot, 0);
 
