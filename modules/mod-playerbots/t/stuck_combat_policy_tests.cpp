@@ -36,6 +36,26 @@ int main()
     s.Observe(false, 0, 9000);
     Require(s.since == 0 && !s.stopped, "leaving combat resets");
 
+    // Hotfix 8.14: home when the bot did not get away from where it was stopped.
+    uint32_t const T = 1000 + RescueSeconds;
+    State h;
+    h.Observe(true, 99999, 1000);
+    Require(h.Observe(true, 99999, 1000 + StopSeconds) == Step::Stop, "stop");
+    Require(!h.HomeDue(0, -8583.0f, 2546.0f, T), "no stop position yet: no home");
+    h.RememberStop(0, -8583.0f, 2546.0f);
+    Require(h.Observe(true, 99999, T) == Step::Rescue, "rescue");
+    Require(!h.HomeDue(0, -8583.0f + 6.0f, 2546.0f, T), "moved 6 y: no home");
+    Require(!h.HomeDue(1, -8583.0f, 2546.0f, T), "other map: no home");
+    Require(h.HomeDue(0, -8583.0f + 3.0f, 2546.0f, T), "within 5 y: home");
+    Require(!h.HomeDue(0, -8583.0f, 2546.0f, T + 60), "home once per hour");
+    h.Observe(false, 0, T + 100);
+    Require(!h.stopSet && h.lastHome == T, "leaving combat clears the stop position, keeps the home cooldown");
+    h.Observe(true, 99999, T + 5000);
+    h.Observe(true, 99999, T + 5000 + StopSeconds);
+    h.RememberStop(0, 10.0f, 10.0f);
+    Require(!h.HomeDue(0, 10.0f, 10.0f, T + HomeCooldownSeconds - 1), "cooldown still running");
+    Require(h.HomeDue(0, 10.0f, 10.0f, T + HomeCooldownSeconds), "home again after an hour");
+
     std::cout << "stuck_combat_policy_tests passed\n";
     return 0;
 }
