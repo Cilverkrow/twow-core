@@ -4326,7 +4326,7 @@ void Player::SendInitialSpells() const
 
         data << uint16(spellCooldown.first);
 
-        data << uint16(spellCooldown.second.itemid);        // cast item id
+        data << uint16(spellCooldown.second.itemid);        // cast item id (16-bit field in the 1.12 protocol, truncation intended)
 
         uint32 category = sEntry->Category;
         if (spellCooldown.second.itemid && !category)
