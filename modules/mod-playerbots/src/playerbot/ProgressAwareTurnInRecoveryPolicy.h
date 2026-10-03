@@ -8,7 +8,8 @@ enum class RecoveryAction : std::uint8_t
 {
     None,
     RecomputeRoute,
-    SuppressRouteAndCooldown
+    SuppressRouteAndCooldown,
+    SuppressTransportAndCooldown    // hotfix 8.13: target on another map, no better distance (TransportStallPolicy.h)
 };
 
 // Value-only state deliberately keeps the recovery decision independent of

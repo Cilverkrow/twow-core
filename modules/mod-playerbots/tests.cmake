@@ -1600,3 +1600,23 @@ add_test(NAME perfmon_init_reachable
 
 set_tests_properties(perfmon_init_reachable PROPERTIES
   ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+
+# Hotfix 8.13 (twow-repo#497, #474): transport stall on cross-map quest routes; self-given cast
+# errors only logged, craft "started" only after the cast began.
+add_executable(transport_stall_policy_tests
+  "${PB_MODULE_DIR}/t/transport_stall_policy_tests.cpp")
+
+target_include_directories(transport_stall_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(transport_stall_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_stall_policy
+  COMMAND transport_stall_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME hotfix813_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/hotfix813_source_contract_tests.cmake")
