@@ -1256,6 +1256,28 @@ add_test(NAME ammo_stock_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/ammo_stock_source_contract_tests.cmake")
 
+# twow-repo#295: riding in four stages - bots train riding and buy their mounts with
+# gold like players (mount budget, vendor trip, mount choice, travel budget). The rules
+# are the core's FunserverRidingStages.h, hence the core's src/game on the path.
+add_executable(riding_stages_bot_policy_tests
+  "${PB_MODULE_DIR}/t/riding_stages_bot_policy_tests.cpp")
+
+target_include_directories(riding_stages_bot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot"
+  "${TW_CORE_ROOT}/src/game")
+
+set_target_properties(riding_stages_bot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME riding_stages_bot_policy
+  COMMAND riding_stages_bot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME riding_stages_bot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/riding_stages_bot_source_contract_tests.cmake")
+
 add_test(NAME persistent_roster_starter_outfit_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"

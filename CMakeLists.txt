@@ -993,6 +993,20 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(rare_respawn_policy_test
     "${TW_CORE_ROOT}/t/rare_respawn_policy_test.cpp")
   add_test(NAME rare_respawn_policy_test COMMAND rare_respawn_policy_test)
+  # twow-repo#295: riding stages (mount speed by rank and family) and player snares, pure rules.
+  add_executable(riding_stages_policy_test
+    "${TW_CORE_ROOT}/t/riding_stages_policy_test.cpp")
+  add_test(NAME riding_stages_policy_test COMMAND riding_stages_policy_test)
+  # twow-repo#295: mount speed, snare and root hooks, default-off configuration.
+  add_test(NAME riding_stages_295_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_riding_stages_295_contract.cmake")
+  # twow-repo#295: world migrations (riding ranks 225/300, trainer, mounts, speed values, Blink).
+  add_test(NAME riding_migrations_295_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_riding_migrations_295_contract.cmake")
   # twow-repo#323: fixed loot unit rules (weights, diminishing, BoE shortfall, level window).
   add_executable(loot_units_policy_test
     "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")

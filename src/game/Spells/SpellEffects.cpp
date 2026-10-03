@@ -1462,7 +1462,8 @@ void Spell::EffectApplyAura(SpellEffectIndex eff_idx)
         }
         if (eff_idx == EFFECT_INDEX_1)
         {
-            if (unitTarget->ToPlayer()->GetSkillValue(SKILL_RIDING) == 150)
+            // twow-repo#295: riding 225/300 keeps the journeyman value.
+            if (unitTarget->ToPlayer()->GetSkillValue(SKILL_RIDING) >= 150)
                 m_currentBasePoints[EFFECT_INDEX_1] = 40;
             else
                 m_currentBasePoints[EFFECT_INDEX_1] = 20;
@@ -1476,7 +1477,7 @@ void Spell::EffectApplyAura(SpellEffectIndex eff_idx)
         }
         if (eff_idx == EFFECT_INDEX_1)
         {
-            if (unitTarget->ToPlayer()->GetSkillValue(SKILL_RIDING) == 150)
+            if (unitTarget->ToPlayer()->GetSkillValue(SKILL_RIDING) >= 150)
                 m_currentBasePoints[EFFECT_INDEX_1] = 60;
             else
                 m_currentBasePoints[EFFECT_INDEX_1] = 40;
@@ -1490,7 +1491,7 @@ void Spell::EffectApplyAura(SpellEffectIndex eff_idx)
         }
         if (eff_idx == EFFECT_INDEX_0)
         {
-            if (unitTarget->ToPlayer()->GetSkillValue(SKILL_RIDING) == 150)
+            if (unitTarget->ToPlayer()->GetSkillValue(SKILL_RIDING) >= 150)
                 m_currentBasePoints[EFFECT_INDEX_0] = 100;
             else
                 m_currentBasePoints[EFFECT_INDEX_0] = 60;

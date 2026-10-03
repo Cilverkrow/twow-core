@@ -2,6 +2,7 @@
 #include "BudgetValues.h"
 #include "ItemUsageValue.h"
 #include "MountValues.h"
+#include "playerbot/RidingStagesBotPolicy.h"
 
 using namespace ai;
 
@@ -239,6 +240,16 @@ uint32 MoneyNeededForValue::Calculate()
 
         moneyWanted = AI_VALUE2(uint32, "train cost", TRAINER_TYPE_MOUNTS);
 
+        // twow-repo#295: the next riding rank plus mount 1 (1 g, from level 10) and mount 2
+        // (100 g, from level 40) while the bot has no mount of that family.
+        if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+        {
+            bool hasMount = false, hasSwiftMount = false;
+            MountValue::GetOwnedFamilies(AI_VALUE(std::vector<MountValue>, "mount list"), hasMount, hasSwiftMount);
+            moneyWanted = riding_stages::MountBudgetCopper(level, moneyWanted, hasMount, hasSwiftMount);
+            break;
+        }
+
         for (auto& mount : AI_VALUE(std::vector<MountValue>, "mount list"))
         {
             if (mount.GetSpeed(false) > maxMountSpeed)
@@ -283,10 +294,10 @@ uint32 MoneyNeededForValue::Calculate()
                 moneyWanted += basicMountCost;
         if (level >= epicRidingLevel && maxMountSpeed < 99)
                 moneyWanted += epicMountCost;
-        if (level >= flyingMountCost && maxFlyMountSpeed < 99)
-                moneyWanted += basicFlyingRidingLevel;
-        if(level >= epicFlyingMountCost && maxFlyMountSpeed < 279)
-                moneyWanted += EpicFlyingRidingLevel;
+        if (level >= basicFlyingRidingLevel && maxFlyMountSpeed < 99)
+                moneyWanted += flyingMountCost;
+        if(level >= EpicFlyingRidingLevel && maxFlyMountSpeed < 279)
+                moneyWanted += epicFlyingMountCost;
         //todo Wotlk frozen weather flying.
         break;
     }
@@ -301,9 +312,11 @@ uint32 TotalMoneyNeededForValue::Calculate()
 
     uint32 moneyWanted = AI_VALUE2(uint32, "money needed for", (uint32)needMoneyFor);
 
-    auto needPtr = std::find(saveMoneyFor.begin(), saveMoneyFor.end(), needMoneyFor);
+    std::vector<NeedMoneyFor> const& saveList = sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED) ? saveMoneyForRidingStages : saveMoneyFor;
 
-    while (needPtr != saveMoneyFor.begin())
+    auto needPtr = std::find(saveList.begin(), saveList.end(), needMoneyFor);
+
+    while (needPtr != saveList.begin())
     {
         needPtr--;
 

@@ -566,6 +566,10 @@ class Aura
 
         int32 GetInitialAbsorbAmount() const { return m_initialAbsorbAmount; }
 
+        // twow-repo#295: amount of a player's mount speed aura from the riding rank and the
+        // mount family; auras that do not follow the riding rank keep their current amount.
+        int32 CalculateRidingMountSpeed(Player const* player) const;
+
         // add/remove SPELL_AURA_MOD_SHAPESHIFT (36) linked auras
         void HandleShapeshiftBoosts(bool apply);
 

@@ -1968,6 +1968,51 @@ Funserver.Rare.Respawn.MinSeconds = 60
 Funserver.Rare.Respawn.MaxSeconds = 1440
 Funserver.Rare.PoolBypass.Enabled = 0
 
+# Funserver.Riding.Stages.Enabled
+#   twow-repo#295. Riding in four stages: skill 762 values 75/150/225/300,
+#   trained at level 10/20/40/60. The server picks the mounted speed of player
+#   and bot mounts from the learned rank and the mount family:
+#     slow mounts  (family 1)  +60 / +100 / +100 / +100 %
+#     swift mounts (family 2)  +60 / +100 / +140 / +180 %
+#   Family 2 is every mount spell whose own speed is +100 % or more. Mounts
+#   flagged for 100 % speed (PvP, Frostsaber, Qiraji tanks) are family 2 and
+#   never drop below +100 %; the racing cars keep their own speed. Without
+#   riding skill a mount gives level / 2 % as before. NPCs are never affected.
+#   The playerbots read the same switch (training costs, mount purchase).
+#   Takes effect at the next mount-up (a rank learned while mounted applies
+#   at once).
+#   0 keeps the inherited speeds: 75 -> +60 %, 150 and above -> +100 %.
+#   Default: 0 (off)
+
+Funserver.Riding.Stages.Enabled = 0
+
+# Funserver.PlayerSnare.SlowPct
+#   twow-repo#295. Movement slows (negative SPELL_AURA_MOD_DECREASE_SPEED)
+#   cast by player-controlled units - players, bots and their pets, guardians,
+#   totems, traps and charmed units - are this many percent stronger, e.g. 40
+#   turns a 50 % slow into a 70 % slow. Slows of NPCs and slows a unit puts on
+#   itself stay unchanged, and so do the casts of a player or bot charmed by an
+#   NPC (Dominate Mind, Cause Insanity, Chains of Kel'Thuzad): they count as NPC
+#   casts. Client tooltips keep showing the base values. Applies to new casts.
+#   Range: 0..100. Default: 0 (off)
+#
+# Funserver.PlayerSnare.MaxSlowPct
+#   Upper bound of a scaled slow in percent. A slow that is already stronger
+#   keeps its value; the scaling never weakens a slow.
+#   Range: 0..100. Default: 90
+#
+# Funserver.PlayerSnare.RootDurationPct
+#   Roots (SPELL_AURA_MOD_ROOT) cast by player-controlled units (same caster
+#   rule as SlowPct, NPC-charmed players excluded) last this many
+#   percent longer, before diminishing returns: 40 turns an 8 s root into
+#   11.2 s. The whole aura of the spell lasts longer, so a damage-over-time
+#   part (Entangling Roots) deals more damage. Permanent auras stay unchanged.
+#   Range: 0..200. Default: 0 (off)
+
+Funserver.PlayerSnare.SlowPct = 0
+Funserver.PlayerSnare.MaxSlowPct = 90
+Funserver.PlayerSnare.RootDurationPct = 0
+
 # Rate.XP. XP rates (player's favorite, haha)
 
 Rate.XP.Kill = 1
