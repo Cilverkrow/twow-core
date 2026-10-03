@@ -32,7 +32,7 @@ bool NoRoute(ai::turnin_park::RouteOutcome outcome, ai::quest_search::RejectCoun
 {
     return ai::turnin_park::CountsAsNoRoute(outcome, false,
         rejects.crossMap + rejects.zoneLevel + rejects.dangerMap, rejects.turnInSuppressed,
-        rejects.movedAway + rejects.rangeSkip + rejects.hubFilter + rejects.resumeSkipped, routeDangerCounts);
+        rejects.movedAway + rejects.rangeSkip + rejects.resumeSkipped, routeDangerCounts);
 }
 
 // Owner profile proposal: 3 failures within 3600 s park for 3600 s.
@@ -151,7 +151,7 @@ int main()
 
     // (3e) with critic B1.3: when a turn-in-only request counts as no_route. Arguments: outcome,
     // out of time, route danger deferrals (cross map + zone level + death cluster), suppressed
-    // turn-in routes, takers not judged (moved away + range skip + hub filter + resume skip),
+    // turn-in routes, takers not judged (moved away + range skip + resume skip),
     // TurnInParkCountsRouteDanger.
     Require(!CountsAsNoRoute(RouteOutcome::Taker, false, 0, 0, 0, false), "a chosen taker is no failure");
     Require(!CountsAsNoRoute(RouteOutcome::Taker, false, 0, 0, 0, true), "a chosen taker is no failure, route danger counting on");
@@ -177,13 +177,21 @@ int main()
         using ai::quest_search::RejectCounts;
 
         // Review scenario: quest A's taker in the local hub lies behind a death cluster, quest B's
-        // reachable taker farther away was skipped by the hub filter. B was never judged, so
-        // nothing counts - with the route danger switch on as well.
+        // taker farther away was hidden by the hub filter. The hub filter is no "not judged" case:
+        // a retry hides the same takers again, so the hub taker's own reason decides - a route
+        // danger deferral, which counts only with the switch on.
         RejectCounts hub;
         hub.dangerMap = 1;
         hub.hubFilter = 1;
-        Require(!NoRoute(RouteOutcome::NoTarget, hub, false), "hub filter: a taker outside the hub was not judged");
-        Require(!NoRoute(RouteOutcome::NoTarget, hub, true), "hub filter: not judged, route danger counting on as well");
+        Require(!NoRoute(RouteOutcome::NoTarget, hub, false), "hub taker behind a death cluster: a route danger deferral, switch off");
+        Require(NoRoute(RouteOutcome::NoTarget, hub, true), "switch on: the hub filter hides the same takers on every retry, so they count");
+
+        // The hub taker turned down for a reason that does not lift by itself: the takers the hub
+        // filter hid count as well (bots 44, 310, 606, 2935 and 4512 stayed in hand-in-only in v24).
+        RejectCounts hubDenied;
+        hubDenied.hubFilter = 2;
+        hubDenied.enemyZone = 1;
+        Require(NoRoute(RouteOutcome::NoTarget, hubDenied, false), "hub taker turned down: the hidden takers count");
 
         // #416: a choice resumed after a time abort skips the candidates the aborted one checked;
         // their reasons are not known to this choice.

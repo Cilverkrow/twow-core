@@ -140,9 +140,10 @@ enum class RouteOutcome : std::uint8_t
 // (3e) with critic B1.3: "no_route" counts against the offered turn-ins only when the
 // request found no way to a taker. Not when the choice ran out of time (the next list
 // resumes), not when it did not judge every taker (unjudgedRejects: a list the bot had
-// moved away from, a random skip past an acceptable taker to a farther range, the local
-// quest hub filter that skipped the takers outside the hub, or the candidates a resumed
-// choice skipped because the aborted one had checked them), and not after the stall/death
+// moved away from, a random skip past an acceptable taker to a farther range, or the
+// candidates a resumed choice skipped because the aborted one had checked them - not the
+// local quest hub filter: a retry hides the same takers again, so the hub taker's own
+// reason decides), and not after the stall/death
 // suppression of a turn-in route, which was counted already. A route danger deferral
 // (routeDangerRejects: a target on another map while the bot is below
 // MinLevelForCrossMapQuestRoute, a zone clearly above the bot, a death cluster of the danger

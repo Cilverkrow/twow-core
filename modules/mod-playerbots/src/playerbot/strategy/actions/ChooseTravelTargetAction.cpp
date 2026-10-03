@@ -344,14 +344,15 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             }
 
             // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
-            // list, a random range skip, the local quest hub filter, candidates a resumed choice
-            // skipped) or a filter that lifts by itself took one: a suppressed turn-in route (counted
-            // already) or, unless TurnInParkCountsRouteDanger, a route danger deferral (another map,
-            // a zone above the bot, a death cluster). A turn-in parked here no longer holds the next
-            // request back, so that one need not wait out the backoff.
+            // list, a random range skip, candidates a resumed choice skipped) or a filter that lifts
+            // by itself took one: a suppressed turn-in route (counted already) or, unless
+            // TurnInParkCountsRouteDanger, a route danger deferral (another map, a zone above the bot,
+            // a death cluster). The local quest hub filter is no such case: a retry hides the same
+            // takers again, so the hub taker's own reason decides. A turn-in parked here no longer
+            // holds the next request back, so that one need not wait out the backoff.
             if (NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
                 chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.hubFilter + lastRejects.resumeSkipped,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
                 sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))
             {
                 SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, false);
@@ -384,7 +385,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             newTarget.GetDestination()->GetPurpose() == TravelDestinationPurpose::QuestTaker ?
                 ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
             chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.hubFilter + lastRejects.resumeSkipped,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
             sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));
     }
 

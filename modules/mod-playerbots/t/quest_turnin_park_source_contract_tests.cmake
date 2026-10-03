@@ -146,29 +146,32 @@ require_text("${choose}" "givers=%u strategy=%s parked=%u" "parked count in the 
 # by itself took one (critic B1.3; route danger only with TurnInParkCountsRouteDanger). A park
 # there ends the backoff - only then. After a choice, the quest giver fallback counts.
 # Route danger = all three deferrals: cross map, zone level and the danger map (logged as
-# reason=route_danger detail=death_cluster). Not judged = a stale list, a random range skip, the
-# local quest hub filter and the candidates a resumed choice (#416) skipped.
+# reason=route_danger detail=death_cluster). Not judged = a stale list, a random range skip and the
+# candidates a resumed choice (#416) skipped - not the local quest hub filter.
 require_text("${choose}" "if (NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,"
   "no_route counted when the choice took nothing")
 extract_between("${choose}" "ai::turnin_park::RouteOutcome::NoTarget," "// Hotfix 8.1: a route was found - no more backoff." no_target "no_route in the no-target branch")
 require_text("${no_target}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,"
   "all route danger deferrals and suppressed routes (critic B1.3)")
 require_text("${no_target}"
-  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.hubFilter + lastRejects.resumeSkipped,\n                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))\n            {\n                SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, false);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", 0);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", 0);\n            }"
+  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,\n                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))\n            {\n                SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, false);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", 0);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", 0);\n            }"
   "every way a taker goes unjudged and the route danger switch; only a park ends the backoff")
 extract_between("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "setNewTarget(requester, &newTarget, travelTarget);" chosen "no_route after a choice")
 require_text("${chosen}" "ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback," "the quest giver fallback counts, a taker does not")
 require_text("${chosen}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,"
   "same route danger inputs after a choice")
 require_text("${chosen}"
-  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.hubFilter + lastRejects.resumeSkipped,\n            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));"
+  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,\n            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));"
   "same unjudged inputs after a choice")
 # Exactly these two calls, each with all groups - no call site with fewer reasons.
 string(REGEX MATCHALL "CountsAsNoRoute\\(" no_route_calls "${choose}")
 string(REGEX MATCHALL "lastRejects\\.crossMap \\+ lastRejects\\.zoneLevel \\+ lastRejects\\.dangerMap, lastRejects\\.turnInSuppressed,"
   route_danger_groups "${choose}")
-string(REGEX MATCHALL "lastRejects\\.movedAway \\+ lastRejects\\.rangeSkip \\+ lastRejects\\.hubFilter \\+ lastRejects\\.resumeSkipped,"
+string(REGEX MATCHALL "lastRejects\\.movedAway \\+ lastRejects\\.rangeSkip \\+ lastRejects\\.resumeSkipped,"
   unjudged_groups "${choose}")
+# The local quest hub filter is no "not judged" case: a retry hides the same takers again, so the
+# hub taker's own reason decides (bots 44, 310, 606, 2935 and 4512 stayed in hand-in-only in v24).
+reject_text("${choose}" "+ lastRejects.hubFilter" "hub filter is not unjudged: a retry hides the same takers")
 list(LENGTH no_route_calls no_route_call_count)
 list(LENGTH route_danger_groups route_danger_group_count)
 list(LENGTH unjudged_groups unjudged_group_count)
