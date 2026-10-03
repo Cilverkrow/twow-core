@@ -18,6 +18,8 @@ namespace ai
     private:
 
         bool CastSummonPlayer(Player* requester, std::string command);
+        // Hotfix 8.13: errors of self-given commands are logged, not said.
+        void LogSelfCastFailure(uint32 spell, SpellEntry const* pSpellInfo, uint32 castResult);
 
     protected:
         bool ncCast = false;

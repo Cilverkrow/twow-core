@@ -1,0 +1,30 @@
+# Hotfix 8.13: transport stall (twow-repo#497) and self-given cast errors (twow-repo#474).
+file(READ "${PB_SOURCE_DIR}/TravelMgr.cpp" travel_cpp)
+file(READ "${PB_SOURCE_DIR}/TravelMgr.h" travel_h)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/CastCustomSpellAction.cpp" cast_cpp)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/ProfessionUseActions.cpp" craft_cpp)
+
+function(require text needle what)
+  string(FIND "${text}" "${needle}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "hotfix 8.13: ${what}: missing ${needle}")
+  endif()
+endfunction()
+
+require("${travel_h}" "transport_stall::State transportStall;" "TravelTarget member")
+require("${travel_cpp}" "transportStall.Observe(observation.targetEntry, observation.questId," "observation in ObserveTurnInProgress")
+require("${travel_cpp}" "targetMapId != observation.mapId, paused, observation.distance, observation.now);" "cross-map and pause input")
+require("${travel_cpp}" "[Travel] transport_wait state=%s bot=%u" "measurement line")
+require("${travel_cpp}" "turnInRecovery.suppressedMapId = targetMapId;" "suppression on the target map")
+require("${travel_cpp}" "case turnin_recovery::RecoveryAction::SuppressTransportAndCooldown:" "CheckStatus handles the abandon")
+
+require("${cast_cpp}" "bool const selfCommand = requester == bot;" "self command detection")
+require("${cast_cpp}" "LogSelfCastFailure(spell, pSpellInfo, uint32(checkResult));" "cast check failure logged")
+require("${cast_cpp}" "TraceProfessionUse(ai, \"craft\", \"started\", \"skillup_recipe\", spell);" "craft started after the cast")
+require("${cast_cpp}" "[CastSelf] state=failed bot=%u" "non-craft self failure line")
+
+string(FIND "${craft_cpp}" "started ? \"started\"" old_trace)
+if (NOT old_trace EQUAL -1)
+  message(FATAL_ERROR "hotfix 8.13: ProfessionCraftAction must not trace started before the cast")
+endif()
+message(STATUS "HOTFIX813_CONTRACT=PASS")
