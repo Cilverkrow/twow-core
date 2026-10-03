@@ -10,8 +10,13 @@
 static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* bot, Quest const* quest)
 {
     bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+    // Hotfix 8.15: free quest log slots, for the accept limit that matches the cleanup.
+    uint32 freeSlots = 0;
+    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        if (!bot->GetQuestSlotQuestId(slot))
+            ++freeSlots;
     return ai::quest_accept::SkipForRosterBot(rosterOnItsOwn, bot->GetLevel(), bot->GetQuestLevelForPlayer(quest),
-        MaNGOS::XP::GetGrayLevel(bot->GetLevel()), quest->GetRequiredClasses() != 0);
+        MaNGOS::XP::GetGrayLevel(bot->GetLevel()), quest->GetRequiredClasses() != 0, freeSlots);
 }
 
 using namespace ai;
