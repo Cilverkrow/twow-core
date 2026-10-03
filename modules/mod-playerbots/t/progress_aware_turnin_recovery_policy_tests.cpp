@@ -2,6 +2,7 @@
 // and left this suite checking nothing. Keep assertions live in this test.
 #undef NDEBUG
 #include "playerbot/ProgressAwareTurnInRecoveryPolicy.h"
+#include "playerbot/TransportStallPolicy.h"
 
 #include <cassert>
 #include <iostream>
@@ -142,7 +143,36 @@ int main()
     assert(ai::turnin_recovery::IsSuppressed(stallThenDeath, 621, 60517, 0));
     assert(ai::turnin_recovery::IsSuppressed(stallThenDeath, 621, 61746, 0));
 
+    // Hotfix 8.13 + twow-repo#485: the transport abandon in
+    // TravelTarget::ObserveTurnInProgress writes the stall slot under the
+    // target's map (observation.targetMapId) and resets the progress. A death
+    // suppression on another turn-in keeps its own slot and its full cooldown.
+    State transport;
+    ai::transport_stall::State platform;
+    Observation const dock = At(1000, 0.0f, 9000.0f, false, 1, 1, 0);
+    std::uint32_t const abandonAt = dock.now + ai::transport_stall::StallMs;
+    assert(platform.Observe(dock.targetEntry, dock.questId, dock.targetMapId != dock.mapId, dock.paused,
+        dock.distance, dock.now) == ai::transport_stall::Step::None);
+    assert(!ai::turnin_recovery::RecordDeathOnRoute(transport, 61746, 40001, 0, abandonAt - 1000, 2, deathCooldown));
+    assert(ai::turnin_recovery::RecordDeathOnRoute(transport, 61746, 40001, 0, abandonAt - 500, 2, deathCooldown));
+    assert(platform.Observe(dock.targetEntry, dock.questId, dock.targetMapId != dock.mapId, dock.paused,
+        dock.distance, abandonAt) == ai::transport_stall::Step::Abandon);
+    transport.suppressedEntry = dock.targetEntry;
+    transport.suppressedMapId = dock.targetMapId;
+    transport.suppressUntil = abandonAt + ai::transport_stall::CooldownMs;
+    transport.ResetProgress();
+    assert(ai::turnin_recovery::IsSuppressed(transport, abandonAt + 1, 60517, 0));
+    assert(!ai::turnin_recovery::IsSuppressed(transport, abandonAt + 1, 60517, 1));
+    assert(ai::turnin_recovery::IsSuppressed(transport, abandonAt + 1, 61746, 0));
+    assert(ai::turnin_recovery::IsSuppressed(transport, abandonAt - 500 + deathCooldown - 1, 61746, 0));
+    assert(!ai::turnin_recovery::IsSuppressed(transport, abandonAt - 500 + deathCooldown, 61746, 0));
+    assert(!ai::turnin_recovery::IsSuppressed(transport, abandonAt + ai::transport_stall::CooldownMs, 60517, 0));
+    // The reset progress restarts the turn-in observation on the next pick.
+    assert(ai::turnin_recovery::Observe(transport, At(abandonAt + 10, 0.0f, 9000.0f, false, 1, 1, 0), stall, cooldown) ==
+        RecoveryAction::None);
+
     std::cout << "progress_aware_turnin_recovery=PASS hillsbrad=PASS transport_pause=PASS "
         "stalled_route_recovery=PASS suppress_cooldown=PASS relog_state_reset=PASS death_route_suppression=PASS "
-        "same_target_churn=PASS cross_map_stall_key=PASS death_survives_stall=PASS\n";
+        "same_target_churn=PASS cross_map_stall_key=PASS death_survives_stall=PASS "
+        "transport_abandon_target_map=PASS\n";
 }
