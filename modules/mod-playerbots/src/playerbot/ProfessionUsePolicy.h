@@ -35,7 +35,7 @@ struct Recipe
     std::uint32_t skillUpChance = 0; // per mille, as Player::UpdateCraftSkill rolls it
     std::uint32_t craftable = 0;     // casts the reagents in the bags pay for
     bool hasTools = true;            // every tool (SpellEntry::Totem) is in the bags
-    bool backedOff = false;          // failed for good (reagent, tool, focus, no room) or on cooldown
+    bool backedOff = false;          // failed for good (reagent, tool, focus), on cooldown or no room for the product
 };
 
 enum class CraftBlock : std::uint8_t
@@ -91,8 +91,9 @@ inline bool IsIdleForCraft(bool moving, bool inCombat, bool casting, bool sittin
 // one was queued and the core failed the cast silently (v24: 4,791 starts,
 // 0 "no_materials"). The bot now crafts a recipe without spell focus that
 // still gives a skill-up and whose reagents and tools are in the bags; a recipe
-// that failed on a missing reagent, tool, focus or room for the product waits
-// out its backoff, one on (category) cooldown waits until it is ready again.
+// that failed on a missing reagent, tool or focus waits out its backoff, one on
+// (category) cooldown or without room for its product (unique item carried)
+// waits until that has changed.
 inline bool IsCandidate(Recipe const& recipe)
 {
     return !recipe.needsFocus && recipe.givesSkillUp && recipe.hasReagents && recipe.hasTools &&
@@ -127,11 +128,25 @@ inline int Pick(std::vector<Recipe> const& recipes)
 
 // twow-repo#485: reagents bought from vendors (vials, thread, rods, flux)
 // come from AiPlayerbot.ProfessionUse.VendorReagents, parsed once at config
-// load; empty = none. Such a reagent counts as needed only once the other
-// reagents of a known recipe are in the bags.
+// load; empty = none. Such a reagent counts as needed only once the reagents
+// of a known recipe that no vendor sells are in the bags (OtherReagentRequired).
 inline bool IsVendorReagent(std::set<std::uint32_t> const& vendorReagents, std::uint32_t itemId)
 {
     return vendorReagents.find(itemId) != vendorReagents.end();
+}
+
+// twow-repo#485 (KeepCraftMaterials): whether another reagent of a recipe must
+// be in the bags before an item counts as needed for it. For a vendor reagent
+// only the gathered or crafted reagents (cloth, bolts, herbs, leather) must be
+// there; the other vendor reagents of the recipe can be bought as well. Waiting
+// for them too left thread and bleach or dye each waiting for the other, so
+// neither was ever bought (world dump 2026-10-01, proposed list: 80 tailoring,
+// 23 leatherworking, 1 alchemy recipe). A recipe made of vendor reagents only
+// (poisons) needs them right away. For any other item (forVendorReagent false:
+// the legacy check with low bag space) every other reagent counts as before.
+inline bool OtherReagentRequired(std::set<std::uint32_t> const& vendorReagents, bool forVendorReagent, std::uint32_t otherReagentId)
+{
+    return !forVendorReagent || !IsVendorReagent(vendorReagents, otherReagentId);
 }
 
 // twow-repo#485 (KeepCraftMaterials): from one stack on (below is "buy more")

@@ -721,9 +721,10 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # lowest spell id) directly on the bot itself, only while it stands still (not
 # sitting, not on a flight path), out of combat, not casting and unmounted; a
 # druid or shaman form is dropped first. A recipe on its own or category
-# cooldown (transmutes) is skipped. A recipe that fails on a missing reagent,
-# tool or spell focus or on no room for the product (unique item, full bags) is
-# skipped for CraftFailBackoffSeconds (0 = no backoff). Bot event
+# cooldown (transmutes) or without room for its product (unique item carried,
+# full bags) is skipped until that has changed. A recipe that fails on a missing
+# reagent, tool or spell focus is skipped for CraftFailBackoffSeconds (0 = no
+# backoff); any other refusal is retried after CraftIntervalSeconds. Bot event
 # "CraftCastStarted". 0 = legacy "craft random item".
 # KeepCraftMaterials: 1 = a roster bot keeps the trade goods and reagents its
 # known recipes use despite the item cheat. Below one stack they count as
@@ -733,8 +734,10 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # ReagentKeepStacks + 1 stacks they are kept; at or above that the whole amount
 # is sold as before (1 keeps 1.25 stacks, the legacy rule sold them).
 # A vendor reagent (VendorReagents, comma-separated item ids) only counts once
-# the other reagents of such a recipe are in the bags; with an empty list it
-# counts like any other reagent. Set it together with KeepCraftMaterials.
+# the reagents of such a recipe that no vendor sells are in the bags; other
+# vendor reagents of the recipe do not hold it back (thread and dye), and a
+# recipe of vendor reagents only (poisons) needs them right away. With an empty
+# list it counts like any other reagent. Set it together with KeepCraftMaterials.
 # Proposed list (vendor-sold reagents, world dump 2026-10-01):
 # 3371,3372,2320,2321,2324,2604,2605,6260,6217,2880,3466,2678,2692,3857,
 # 14341,8343,8925,4291,18256,3713,159,1179,2325,4340,4341,4342,6261,10290,

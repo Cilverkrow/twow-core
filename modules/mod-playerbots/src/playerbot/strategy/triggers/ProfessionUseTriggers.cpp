@@ -68,6 +68,15 @@ namespace
         }
         return craftable;
     }
+
+    // The bags take one product, as Spell::CheckItems demands for a craft cast
+    // (else SPELL_FAILED_DONT_REPORT): no unique item already carried, room
+    // left. Such a recipe is skipped without a backoff until they can.
+    bool HasRoomForProduct(SpellEntry const* spell, Player* bot)
+    {
+        ItemPosCountVec dest;
+        return bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, spell->EffectItemType[0], 1) == EQUIP_ERR_OK;
+    }
 }
 
 bool ai::IsRosterBotOnItsOwn(PlayerbotAI* ai)
@@ -153,9 +162,12 @@ bool ProfessionCraftTrigger::IsActive()
                 recipe.craftable = CraftableFromBags(spell, bot);
                 // A recipe on its own or category cooldown (transmutes: 24-48 h)
                 // fails with NOT_READY like Spell::CheckCast and, ranked first,
-                // would block every other recipe until it is ready again.
+                // would block every other recipe until it is ready again. So
+                // would one whose product the bags cannot take (DONT_REPORT,
+                // which backs nothing off): a unique item already carried.
                 recipe.backedOff = (failedBackoff && failedSpell == int32(spellId)) || bot->HasSpellCooldown(spellId) ||
-                    (spell->Category && bot->HasSpellCategoryCooldown(spell->Category));
+                    (spell->Category && bot->HasSpellCategoryCooldown(spell->Category)) ||
+                    (recipe.hasTools && recipe.craftable > 0 && !HasRoomForProduct(spell, bot));
             }
             recipe.hasReagents = recipe.givesSkillUp && recipe.hasTools && recipe.craftable > 0;
         }
@@ -176,7 +188,8 @@ bool ProfessionCraftTrigger::IsActive()
     if (realReagents)
     {
         // Classify does not know the backoff: when every craftable recipe is
-        // backed off or on cooldown there is no pick, so wait a full interval.
+        // backed off, on cooldown or without room for its product there is no
+        // pick, so wait a full interval.
         int const pick = profession_use::Pick(recipes);
         if (pick < 0)
         {

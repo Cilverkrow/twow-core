@@ -5,6 +5,7 @@
 #include <iostream>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -34,6 +35,32 @@ ai::profession_use::Recipe C(std::uint32_t spellId, std::uint32_t skillUpChance,
     recipe.skillUpChance = skillUpChance;
     recipe.craftable = craftable;
     return recipe;
+}
+
+// One reagent of a recipe: item id, count per cast, count in the bags.
+struct Stock
+{
+    std::uint32_t itemId;
+    std::uint32_t required;
+    std::uint32_t inBags;
+};
+
+// The reagent walk of ItemUsageValue::IsItemNeededForUsefullCraft for one
+// recipe when the other reagents are checked (low bag space or a vendor
+// reagent): true = no other reagent holds itemId back.
+bool OtherReagentsInBags(std::vector<Stock> const& recipe, std::uint32_t itemId,
+    std::set<std::uint32_t> const& vendorReagents, bool forVendorReagent)
+{
+    bool ready = true;
+    for (Stock const& reagent : recipe)
+    {
+        if (reagent.itemId == itemId ||
+            !ai::profession_use::OtherReagentRequired(vendorReagents, forVendorReagent, reagent.itemId))
+            continue;
+        if (reagent.inBags < reagent.required)
+            ready = false;
+    }
+    return ready;
 }
 }
 
@@ -101,6 +128,16 @@ int main()
         Recipe potion = C(2330, 500, 3);
         Require(Pick({ transmute, potion }) == 1, "recipe on cooldown does not block the others");
     }
+    {
+        // Review follow-up: DONT_REPORT backs nothing off (also an ended
+        // battleground or a banish). A recipe whose product the bags cannot
+        // take (Gordok Ogre Suit, unique, one carried) is marked by the trigger
+        // instead, so it does not fail every interval ahead of the others.
+        Recipe ogreSuit = C(22813, 1000, 2);
+        ogreSuit.backedOff = true;
+        Recipe shirt = C(2393, 500, 1);
+        Require(Pick({ ogreSuit, shirt }) == 1, "recipe without room for its product does not block the others");
+    }
 
     // Critic B4.2: no craft cast while moving, fighting, casting, sitting or mounted.
     Require(IsIdleForCraft(false, false, false, false, false), "standing still: craft");
@@ -115,6 +152,34 @@ int main()
     Require(IsVendorReagent(vendorReagents, 3371), "Empty Vial is a vendor reagent");
     Require(!IsVendorReagent(vendorReagents, 2447), "Peacebloom is gathered, not bought");
     Require(!IsVendorReagent({}, 3371), "empty key: no vendor reagents (neutral default)");
+
+    // Review follow-up: a vendor reagent waits only for the reagents no vendor
+    // sells. White Linen Shirt (2393, known by all 17 roster tailors, dump
+    // 2026-10-01): Bolt of Linen Cloth 2996, Coarse Thread 2320, Bleach 2324.
+    // Waiting for every other reagent left thread and bleach waiting for each
+    // other, so neither was ever bought.
+    Require(!OtherReagentRequired(vendorReagents, true, 2324), "thread does not wait for the bleach");
+    Require(!OtherReagentRequired(vendorReagents, true, 2320), "bleach does not wait for the thread");
+    Require(OtherReagentRequired(vendorReagents, true, 2996), "thread and bleach wait for the bolt");
+    Require(OtherReagentRequired(vendorReagents, false, 2320), "any other item (low bag space): every reagent counts");
+    {
+        std::vector<Stock> shirt = { { 2996, 1, 1 }, { 2320, 1, 0 }, { 2324, 1, 0 } };
+        Require(OtherReagentsInBags(shirt, 2320, vendorReagents, true), "bolt in the bags: thread needed without bleach");
+        Require(OtherReagentsInBags(shirt, 2324, vendorReagents, true), "bolt in the bags: bleach needed without thread");
+        Require(!OtherReagentsInBags(shirt, 2320, vendorReagents, false), "legacy walk: thread waited for the bleach");
+        Require(!OtherReagentsInBags(shirt, 2996, vendorReagents, false), "low bag space: the bolt still waits for thread and bleach");
+        shirt[0].inBags = 0;
+        Require(!OtherReagentsInBags(shirt, 2320, vendorReagents, true), "no bolt: thread not needed for this recipe");
+        Require(!OtherReagentsInBags(shirt, 2324, vendorReagents, true), "no bolt: bleach not needed for this recipe");
+    }
+    {
+        // Instant Poison (8681): Dust of Decay 2928 and Empty Vial 3371 only,
+        // both on the proposed list: nothing to wait for.
+        std::set<std::uint32_t> const poisonReagents = { 2928, 3371 };
+        std::vector<Stock> const poison = { { 2928, 1, 0 }, { 3371, 1, 0 } };
+        Require(OtherReagentsInBags(poison, 2928, poisonReagents, true), "vendor reagents only: dust needed right away");
+        Require(OtherReagentsInBags(poison, 3371, poisonReagents, true), "vendor reagents only: vial needed right away");
+    }
 
     // Review: KeepCraftMaterials keeps below ReagentKeepStacks + 1 stacks; the
     // legacy "== 1" sold 21 linen (1.05 stacks) and the spec's 1.25 stacks.

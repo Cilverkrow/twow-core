@@ -82,15 +82,24 @@ require_text("${actions}" "SET_AI_VALUE2(int, \"manual int\", \"profession craft
 require_order("${actions}" "ai->CanCastSpell(spellId, bot, 0, true, nullptr, false, false, false, &check)" "ai->CastSpell(spellId, bot)" "pre-check before the cast")
 # Review: trade skills carry SPELL_ATTR_NOT_SHAPESHIFT; the form goes first.
 require_order("${actions}" "ai->RemoveShapeshift();" "ai->CanCastSpell(spellId, bot, 0, true, nullptr, false, false, false, &check)" "form dropped before the pre-check")
-foreach(code SPELL_FAILED_ITEM_NOT_READY SPELL_FAILED_ITEM_GONE SPELL_FAILED_REQUIRES_SPELL_FOCUS SPELL_FAILED_DONT_REPORT)
+foreach(code SPELL_FAILED_ITEM_NOT_READY SPELL_FAILED_ITEM_GONE SPELL_FAILED_REQUIRES_SPELL_FOCUS)
   require_text("${actions}" "case ${code}:" "lasting refusal ${code}")
 endforeach()
+# Review follow-up: DONT_REPORT is no lasting refusal. Spell::CheckCast also
+# returns it before CheckItems (ended battleground, banish), so no backoff.
+forbid_text("${actions}" "case SPELL_FAILED_DONT_REPORT:" "backoff on the transient DONT_REPORT")
+require_text("${actions}" "result == SPELL_FAILED_DONT_REPORT ? \"dont_report\" : \"not_castable\"" "DONT_REPORT traced without backoff")
+require_text("${actions}" "backoff ? backoff : TransientReason(check)" "transient refusals traced")
 require_order("${actions}" "if (backoff)" "\"profession craft failed until\"" "backoff only after a lasting refusal")
 require_text("${triggers}" "\"profession craft failed until\"" "backoff honoured by the trigger")
 # Review: a recipe on its own or category cooldown (transmutes 24-48 h) would
 # fail with NOT_READY every interval and, ranked first, block all crafting.
 require_text("${triggers}" "bot->HasSpellCooldown(spellId)" "recipe on cooldown skipped")
 require_text("${triggers}" "bot->HasSpellCategoryCooldown(spell->Category)" "recipe on category cooldown skipped")
+# Review follow-up: so would a recipe whose product the bags cannot take (unique
+# item carried); the trigger checks the room like Spell::CheckItems.
+require_text("${triggers}" "bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, spell->EffectItemType[0], 1) == EQUIP_ERR_OK" "room for the product checked like Spell::CheckItems")
+require_text("${triggers}" "recipe.craftable > 0 && !HasRoomForProduct(spell, bot)" "recipe without room for its product skipped")
 # Critic B4.3: a pending pick is reused for a minute instead of a scan every 10 s.
 require_text("${triggers}" "AI_VALUE2(time_t, \"manual time\", \"profession craft scan\"), 60)" "scan at most once a minute")
 # Direct self cast, trace with the spell id, bot event for cast starts (critic B4.4).
@@ -100,13 +109,21 @@ require_text("${actions}" "\"CraftCastStarted\"" "bot event counts cast starts")
 forbid_text("${actions}" "\"CraftAction\"" "event name that reads like a finished item")
 require_text("${actions}" "TraceProfessionUse(ai, \"craft\", started ? \"started\" : \"failed\"" "legacy trace unchanged")
 
-# Own materials are kept; a vendor reagent counts only with the other reagents.
+# Own materials are kept; a vendor reagent counts only with the reagents no
+# vendor sells.
 require_text("${item_usage}" "sPlayerbotAIConfig.professionUseKeepCraftMaterials && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow())" "roster-only keep switch")
 require_text("${item_usage}" "(!ai->HasCheat(BotCheatMask::item) || keepCraft) && IsItemNeededForUsefullCraft(proto," "materials needed despite the item cheat")
 require_text("${item_usage}" "profession_use::IsVendorReagent(sPlayerbotAIConfig.professionUseVendorReagents, proto->ItemId)" "vendor reagents from the config")
+# Review follow-up: two vendor reagents of one recipe (thread and bleach or dye)
+# waited for each other and were never bought.
+require_text("${item_usage}" "bool const vendorReagent = keepCraft && profession_use::IsVendorReagent(" "vendor reagent only under KeepCraftMaterials")
+require_text("${item_usage}" "lowBagSpace || vendorReagent, vendorReagent);" "vendor reagent walk only for a vendor reagent")
+require_order("${item_usage}" "if (!profession_use::OtherReagentRequired(sPlayerbotAIConfig.professionUseVendorReagents, vendorReagent, reqProto->ItemId))" "AI_VALUE2(uint32, \"item count\", reqProto->Name1)" "other vendor reagents skipped before the count")
+require_text("${policy}" "return !forVendorReagent || !IsVendorReagent(vendorReagents, otherReagentId);" "only the reagents no vendor sells hold a vendor reagent back")
 require_text("${item_usage}" "keepCraft ? profession_use::KeepCraftStacks(stacks, sPlayerbotAIConfig.professionUseReagentKeepStacks) : stacks == 1" "kept below ReagentKeepStacks + 1 stacks")
 require_text("${policy}" "return stacks < float(keepStacks) + 1.0f;" "keep limit ReagentKeepStacks + 1, like the reagent branch")
-# Review: KeepCraftMaterials lets item-cheat roster bots reach the reagent walk.
+# Review: KeepCraftMaterials lets item-cheat roster bots reach the reagent walk;
+# the null check holds for every bot (no switch).
 require_order("${item_usage}" "if (!reqProto)" "AI_VALUE2(uint32, \"item count\", reqProto->Name1)" "reagent prototype checked before use")
 # Critic B4.6: the reagent ids are configuration, not code.
 require_text("${policy}" "inline bool IsVendorReagent(std::set<std::uint32_t> const& vendorReagents, std::uint32_t itemId)" "vendor reagent set from the config")

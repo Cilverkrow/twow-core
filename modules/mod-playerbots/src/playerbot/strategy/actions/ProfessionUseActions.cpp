@@ -12,11 +12,9 @@ namespace
 {
     // twow-repo#485: only a lasting refusal from Spell::CheckItems blocks the
     // recipe for CraftFailBackoffSeconds: a missing reagent, tool or spell
-    // focus, or no room for the product (CREATE_ITEM: a unique item already
-    // carried or full bags; a non-triggered craft cast only gets DONT_REPORT
-    // there). Any other refusal (global cooldown, loss of control) is transient
+    // focus. Any other refusal (global cooldown, loss of control) is transient
     // and retried after the craft interval; the trigger skips recipes on
-    // cooldown.
+    // cooldown and recipes whose product the bags cannot take.
     char const* BackoffReason(SpellCastResult result)
     {
         switch (result)
@@ -29,11 +27,19 @@ namespace
                 return "no_tool";
             case SPELL_FAILED_REQUIRES_SPELL_FOCUS:
                 return "no_focus";
-            case SPELL_FAILED_DONT_REPORT:
-                return "cannot_store";
             default:
                 return nullptr;
         }
+    }
+
+    // DONT_REPORT is transient as well: Spell::CheckCast returns it before
+    // CheckItems at an ended battleground (STATUS_WAIT_LEAVE) or while the bot
+    // is banished or about to be stunned, which CanCastSpell does not catch.
+    // The room for the product (CheckItems: unique item carried, full bags)
+    // is checked by the trigger before the pick.
+    char const* TransientReason(SpellCastResult result)
+    {
+        return result == SPELL_FAILED_DONT_REPORT ? "dont_report" : "not_castable";
     }
 }
 
@@ -69,7 +75,7 @@ bool ProfessionCraftAction::Execute(Event& event)
                 SET_AI_VALUE2(time_t, "manual time", "profession craft failed until",
                     time(nullptr) + time_t(sPlayerbotAIConfig.professionUseCraftFailBackoffSeconds));
             }
-            TraceProfessionUse(ai, "craft", "failed", backoff ? backoff : "not_castable", spellId);
+            TraceProfessionUse(ai, "craft", "failed", backoff ? backoff : TransientReason(check), spellId);
             return false;
         }
 
