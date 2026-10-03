@@ -469,6 +469,76 @@ bool GuildMgr::RenamePetition(ObjectGuid const& charterGuid, ObjectGuid const& o
     return false;
 }
 
+bool GuildMgr::GetPetitionSummaryById(uint32 petitionId, PetitionSummary& out, uint32 accountId, ObjectGuid const& player)
+{
+    std::shared_lock<std::shared_mutex> guard(m_petitionsMutex);
+    PetitionMap::iterator iter = m_petitionMap.find(petitionId);
+    if (iter == m_petitionMap.end())
+        return false;
+
+    CopyPetitionSummary(iter->second, out, accountId, player);
+    return true;
+}
+
+bool GuildMgr::GetPetitionSignerGuids(uint32 petitionId, std::vector<ObjectGuid>& out)
+{
+    out.clear();
+    std::shared_lock<std::shared_mutex> guard(m_petitionsMutex);
+    PetitionMap::iterator iter = m_petitionMap.find(petitionId);
+    if (iter == m_petitionMap.end())
+        return false;
+
+    PetitionSignatureList const& signatures = iter->second->GetSignatureList();
+    out.reserve(signatures.size());
+    for (PetitionSignature* signature : signatures)
+        out.push_back(signature->GetSignatureGuid());
+
+    return true;
+}
+
+bool GuildMgr::AddPetitionSignature(uint32 petitionId, Player* signer)
+{
+    std::lock_guard<std::shared_mutex> guard(m_petitionsMutex);
+    PetitionMap::iterator target = m_petitionMap.find(petitionId);
+    if (target == m_petitionMap.end())
+        return false;
+
+    Petition* petition = target->second;
+    // Same checks as HandlePetitionSignOpcode, again under the lock (another map thread may have
+    // signed in between). Client hard limit at 9 signatures.
+    if (petition->IsComplete() || petition->GetSignatureCount() >= 9 || petition->GetSignatureForPlayer(signer))
+        return false;
+
+    // Move: before signing, delete any previous signature of this player (same lock).
+    for (const auto& iter : m_petitionMap)
+    {
+        Petition* previous = iter.second;
+        if (PetitionSignature* signature = previous->GetSignatureForPlayerGuid(signer->GetObjectGuid()))
+        {
+            signature->DeleteFromDB();
+            previous->DeleteSignature(signature);
+            break;
+        }
+    }
+
+    return petition->AddNewSignature(signer);   // INSERT petition_sign
+}
+
+void GuildMgr::RemovePetitionSignature(ObjectGuid const& signerGuid)
+{
+    std::lock_guard<std::shared_mutex> guard(m_petitionsMutex);
+    for (const auto& iter : m_petitionMap)
+    {
+        Petition* petition = iter.second;
+        if (PetitionSignature* signature = petition->GetSignatureForPlayerGuid(signerGuid))
+        {
+            signature->DeleteFromDB();
+            petition->DeleteSignature(signature);
+            return;
+        }
+    }
+}
+
 bool Petition::LoadFromDB(QueryResult* result)
 {
     if (!result)

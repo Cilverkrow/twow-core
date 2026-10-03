@@ -96,4 +96,71 @@ if (update_at EQUAL -1)
   message(FATAL_ERROR "Guild petition summary: Petition::Rename no longer writes UPDATE petition SET name - update the PR text and this contract")
 endif()
 
+
+# OB-30 review core#281 (finding 1): every change of a Petition in m_petitionMap runs under the
+# exclusive m_petitionsMutex. A signature move (old one removed and deleted, new one added) is one
+# GuildMgr method under ONE lock, so no shared reader iterates a list while a signature is deleted
+# and no reader sees the signer signed nowhere.
+set(exclusive_petitions "std::lock_guard<std::shared_mutex> guard(m_petitionsMutex);")
+foreach (required
+    "bool AddPetitionSignature(uint32 petitionId, Player* signer);"
+    "void RemovePetitionSignature(ObjectGuid const& signerGuid);"
+    "bool GetPetitionSummaryById(uint32 petitionId, PetitionSummary& out, uint32 accountId = 0, ObjectGuid const& player = ObjectGuid());"
+    "bool GetPetitionSignerGuids(uint32 petitionId, std::vector<ObjectGuid>& out);")
+  string(FIND "${header}" "${required}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "Guild petition summary: missing in GuildMgr.h: ${required}")
+  endif()
+endforeach()
+
+definition_body("${source}" "bool GuildMgr::AddPetitionSignature(" add_signature)
+require_before("${add_signature}" "${exclusive_petitions}" "petition->GetSignatureForPlayer(signer)" "sign checks repeated under the exclusive lock")
+require_before("${add_signature}" "${exclusive_petitions}" "signature->DeleteFromDB();" "old signature removed under the exclusive lock")
+require_before("${add_signature}" "signature->DeleteFromDB();" "previous->DeleteSignature(signature);" "old signature row deleted before the object")
+require_before("${add_signature}" "previous->DeleteSignature(signature);" "return petition->AddNewSignature(signer);" "move = remove then add under the same lock")
+string(FIND "${add_signature}" "shared_lock" add_shared_at)
+if (NOT add_shared_at EQUAL -1)
+  message(FATAL_ERROR "Guild petition summary: AddPetitionSignature must hold only the exclusive lock")
+endif()
+
+definition_body("${source}" "void GuildMgr::RemovePetitionSignature(" remove_signature)
+require_before("${remove_signature}" "${exclusive_petitions}" "signature->DeleteFromDB();" "signature removal under the exclusive lock")
+require_before("${remove_signature}" "signature->DeleteFromDB();" "petition->DeleteSignature(signature);" "signature row deleted before the object")
+
+definition_body("${source}" "bool GuildMgr::GetPetitionSummaryById(" by_id)
+require_before("${by_id}" "${shared_petitions}" "CopyPetitionSummary(iter->second, out, accountId, player);" "id lookup copies under the petition lock")
+definition_body("${source}" "bool GuildMgr::GetPetitionSignerGuids(" signer_guids)
+require_before("${signer_guids}" "${shared_petitions}" "out.push_back(signature->GetSignatureGuid());" "signer list copied under the petition lock")
+
+# No direct Petition mutation outside GuildMgr: the handlers (map threads), guild founding and
+# character deletion call the GuildMgr methods above.
+file(READ "${TW_CORE_ROOT}/src/game/Handlers/PetitionsHandler.cpp" handler)
+file(READ "${TW_CORE_ROOT}/src/game/Guild/Guild.cpp" guild_source)
+file(READ "${TW_CORE_ROOT}/src/game/Objects/Player.cpp" player_source)
+foreach (file_name handler guild_source player_source)
+  foreach (forbidden "AddNewSignature(" "DeleteSignature(" "AddSignature(" "->Rename(")
+    string(FIND "${${file_name}}" "${forbidden}" forbidden_at)
+    if (NOT forbidden_at EQUAL -1)
+      message(FATAL_ERROR "Guild petition summary: ${file_name} mutates a petition directly (${forbidden}) - use the GuildMgr methods")
+    endif()
+  endforeach()
+endforeach()
+foreach (required
+    "sGuildMgr.AddPetitionSignature(petition.id, _player)"
+    "sGuildMgr.RenamePetition(charter->GetObjectGuid(), _player->GetObjectGuid(), newname)")
+  string(FIND "${handler}" "${required}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "Guild petition summary: PetitionsHandler.cpp misses ${required}")
+  endif()
+endforeach()
+string(FIND "${guild_source}" "sGuildMgr.RemovePetitionSignature(plGuid);" guild_remove_at)
+string(FIND "${player_source}" "sGuildMgr.RemovePetitionSignature(playerguid);" player_remove_at)
+if (guild_remove_at EQUAL -1 OR player_remove_at EQUAL -1)
+  message(FATAL_ERROR "Guild petition summary: guild join and character deletion must remove signatures via GuildMgr::RemovePetitionSignature")
+endif()
+string(FIND "${guild_source}" "sGuildMgr.GetPetitionSignerGuids(petition->GetId(), signers);" founding_at)
+if (founding_at EQUAL -1)
+  message(FATAL_ERROR "Guild petition summary: Guild::Create must copy the signers under the petition lock")
+endif()
+
 message(STATUS "GUILD_PETITION_SUMMARY_CONTRACT=PASS")

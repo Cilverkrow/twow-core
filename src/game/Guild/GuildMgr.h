@@ -112,6 +112,21 @@ class GuildMgr
         // character DB (UPDATE petition SET name, Petition::Rename). Same name checks as
         // MSG_PETITION_RENAME; false when the name or the charter does not qualify.
         bool RenamePetition(ObjectGuid const& charterGuid, ObjectGuid const& ownerGuid, std::string const& newName);
+        bool GetPetitionSummaryById(uint32 petitionId, PetitionSummary& out, uint32 accountId = 0, ObjectGuid const& player = ObjectGuid());
+        // Signer guids of a petition, copied under the shared lock (signature list packets, guild founding).
+        bool GetPetitionSignerGuids(uint32 petitionId, std::vector<ObjectGuid>& out);
+
+        // twow-repo#485 (OB-30 review core#281): every change of a Petition in m_petitionMap runs
+        // under the exclusive m_petitionsMutex, so the shared readers never see a signature list
+        // while a signature is removed and deleted on another map thread.
+        // Signs petitionId for this player. Moves an earlier signature of the player: the old one
+        // is removed (DELETE petition_sign, delete) and the new one added (INSERT petition_sign)
+        // under ONE lock, so no reader sees the player signed nowhere. The sign checks (complete,
+        // client limit 9, account or player already signed) are repeated under the lock; false
+        // when the petition is gone or a check fails, and then nothing changed.
+        bool AddPetitionSignature(uint32 petitionId, Player* signer);
+        // Removes the player's signature from any petition (DELETE petition_sign, delete).
+        void RemovePetitionSignature(ObjectGuid const& signerGuid);
 
         void LoadGuilds();
         void LoadPetitions();
