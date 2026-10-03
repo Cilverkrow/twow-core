@@ -9,6 +9,21 @@ file(READ "${PB_SOURCE_DIR}/strategy/actions/AcceptQuestAction.cpp" accept)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/DropQuestAction.cpp" drop)
 
 # Train 8b: roster bots on their own skip red quests, with the red rule of the quest log cleanup.
-require_text("${accept}" "sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&" "roster bots on their own only")
-require_text("${accept}" "ai::quest_accept::IsRed(bot->GetLevel(), bot->GetQuestLevelForPlayer(quest))" "red quests skipped")
+require_text("${accept}" "sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();" "roster bots on their own only")
+require_text("${accept}" "ai::quest_accept::SkipForRosterBot(rosterOnItsOwn, bot->GetLevel(), bot->GetQuestLevelForPlayer(quest)," "one accept rule")
+require_text("${accept}" "MaNGOS::XP::GetGrayLevel(bot->GetLevel())" "grey by the XP grey level, as the drop rule")
+# Hotfix 8.11: all three accept paths (accept all, accept by packet, quest-giver dialog).
+string(REGEX MATCHALL "if \\(SkipQuestForRosterBot\\(ai, bot, (quest|qInfo)\\)\\)" uses "${accept}")
+list(LENGTH uses use_count)
+if (NOT use_count EQUAL 3)
+  message(FATAL_ERROR "all three accept paths must use the accept rule (found ${use_count})")
+endif()
+require_text("${drop}" "uint32 const grayLevel = MaNGOS::XP::GetGrayLevel(bot->GetLevel());" "drop rule the accept filter mirrors")
 require_text("${drop}" "if (bot->GetLevel() + 5 > bot->GetQuestLevelForPlayer(quest)) //Quest is not red" "cleanup red rule the accept filter mirrors")
+# Hotfix 8.15: accept limit = cleanup fill level; drop reasons.
+require_text("${accept}" "MaNGOS::XP::GetGrayLevel(bot->GetLevel()), quest->GetRequiredClasses() != 0, freeSlots);" "free slots passed to the accept rule")
+require_text("${drop}" "if (MAX_QUEST_LOG_SIZE - totalQuests > 4)" "cleanup fill level the accept limit mirrors (CleanFreeSlots = 4)")
+require_text("${drop}" "ai->DropQuest(questId, \"grey\");" "grey drop reason")
+require_text("${drop}" "\"clean_no_progress\"" "cleanup drop reason")
+file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_cpp)
+require_text("${ai_cpp}" "[QuestDrop] bot=%u level=%u quest=%u status=%u reason=%s" "drop reason line")

@@ -3,6 +3,21 @@
 #include "AcceptQuestAction.h"
 #include "ShareQuestAction.h"
 #include "playerbot/QuestAcceptPolicy.h"
+#include "playerbot/RandomPlayerbotMgr.h"
+#include "Formulas.h"
+
+// Hotfix 8.11: the one accept rule for every accept path (see QuestAcceptPolicy.h).
+static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* bot, Quest const* quest)
+{
+    bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+    // Hotfix 8.15: free quest log slots, for the accept limit that matches the cleanup.
+    uint32 freeSlots = 0;
+    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        if (!bot->GetQuestSlotQuestId(slot))
+            ++freeSlots;
+    return ai::quest_accept::SkipForRosterBot(rosterOnItsOwn, bot->GetLevel(), bot->GetQuestLevelForPlayer(quest),
+        MaNGOS::XP::GetGrayLevel(bot->GetLevel()), quest->GetRequiredClasses() != 0, freeSlots);
+}
 
 using namespace ai;
 
@@ -33,10 +48,10 @@ bool AcceptAllQuestsAction::ProcessQuest(Player* requester, Quest const* quest, 
     if (turtleOnlyBlacklist.count(quest->GetQuestId()))
         return false;
 
-    // Train 8b: a roster bot on its own skips red quests - the quest log cleanup dropped
-    // them again right away (accept/drop loops). A bot led by a real player takes them.
-    if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
-        ai::quest_accept::IsRed(bot->GetLevel(), bot->GetQuestLevelForPlayer(quest)))
+    // Train 8b / hotfix 8.11: a roster bot on its own skips red and grey quests - the quest
+    // log cleanup drops them again right away (accept/drop loops). A bot led by a real
+    // player takes them.
+    if (SkipQuestForRosterBot(ai, bot, quest))
         return false;
 
     if (AcceptQuest(requester, quest, questGiver->GetObjectGuid()))
@@ -105,6 +120,10 @@ bool AcceptQuestAction::Execute(Event& event)
     Quest const* qInfo = sObjectMgr.GetQuestTemplate(quest);
     if (!qInfo)
         return false;
+
+    // Hotfix 8.11: same accept rule as the other paths.
+    if (SkipQuestForRosterBot(ai, bot, qInfo))
+        return hasAccept;
 
     hasAccept |= AcceptQuest(requester, qInfo, guid);
 
@@ -281,6 +300,10 @@ bool QuestDetailsAction::Execute(Event& event)
         ai->TellError(requester, BOT_TEXT("quest_cant_take"));
         return false;
     }
+
+    // Hotfix 8.11: the quest-giver dialog was the main path of the grey accept/drop loop.
+    if (SkipQuestForRosterBot(ai, bot, qInfo))
+        return false;
 
     if (bot->CanAddQuest(qInfo, false))
     {

@@ -2,6 +2,7 @@
 
 #include "ProgressAwareTurnInRecoveryPolicy.h"
 #include "QuestTurnInParkPolicy.h"
+#include "TransportStallPolicy.h"
 #include "DestinationDeathPolicy.h"
 #include "AreaLevelPolicy.h"
 #include <mutex>
@@ -452,6 +453,7 @@ namespace ai
 		GuidPosition groupMember;
 		uint32 relevance = 0;
         turnin_recovery::State turnInRecovery;
+        transport_stall::State transportStall;  // hotfix 8.13 (twow-repo#497)
         struct CommitTrace { uint32 nextAt = 0; uint32 repeats = 0; };
         std::map<std::string, CommitTrace> commitTrace;
         std::map<TravelDestination const*, destination_death::Record> destinationDeaths;
