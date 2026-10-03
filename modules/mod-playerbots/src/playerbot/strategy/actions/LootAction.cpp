@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "playerbot/LootSlotPolicy.h"
+#include "playerbot/SkinLootPolicy.h"
 #include "LootAction.h"
 
 #include "playerbot/LootObjectStack.h"
@@ -11,6 +12,7 @@
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 
 using namespace ai;
@@ -390,6 +392,27 @@ bool StoreLootAction::Execute(Event& event)
         return false;
     }
 
+    Creature* const lootCreature = guid.IsCreature() ? ai->GetCreature(guid) : nullptr;
+
+    // twow-repo#485 (#471): the core reports skin loot to the client as LOOT_PICKPOCKETING
+    // (Player::SendLoot); only the Loot keeps LOOT_SKINNING, and a skinned corpse keeps
+    // lootForSkin until it respawns (the core's own test in LootHandler.cpp, also when the
+    // skin loot is opened again). The packet type alone never matched, so leather and
+    // scraps fell under the money rule below and stayed behind. Creature loot only:
+    // Spell::EffectOpenLock opens herbs, ore, locked chests and lockboxes with LOOT_SKINNING
+    // as well (SpellEffects.cpp), and that loot keeps the normal loot rules.
+    bool const skinLoot = lootCreature && (loot_type == LOOT_SKINNING || loot->loot_type == LOOT_SKINNING ||
+        lootCreature->lootForSkin);
+
+    // #485: the core refuses to skin while loot is left on the corpse (TARGET_NOT_LOOTED),
+    // and bots leave items worth less than 1/1000 of their money. A roster skinner on its
+    // own that can skin this corpse takes everything from it. The switch comes first, so
+    // nothing extra runs while ClearCorpseForSkinning is off (default).
+    bool const clearForSkin = lootCreature && sPlayerbotAIConfig.professionUseClearCorpseForSkinning &&
+        skin_loot::ShouldClearCorpseForSkinning(sPlayerbotAIConfig.professionUseClearCorpseForSkinning, IsRosterBotOnItsOwn(ai),
+            loot->loot_type == LOOT_CORPSE, lootCreature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE), ai->HasSkill(SKILL_SKINNING),
+            bot->HasItemCount(7005, 1), int32(bot->GetSkillValue(SKILL_SKINNING)), int32(lootCreature->GetLevel()));
+
     uint32 itemsTaken = 0;
 
     if (gold > 0)
@@ -438,7 +461,7 @@ bool StoreLootAction::Execute(Event& event)
 			continue;
 		}
 
-        if (loot_type != LOOT_SKINNING && !IsLootAllowed(itemQualifier, ai))
+        if (!skinLoot && !clearForSkin && !IsLootAllowed(itemQualifier, ai))
         {
             sLog.outDebug("[BOT LOOT] %s: skip item=%u (IsLootAllowed=false)", bot->GetName(), itemid);
             if (traceQuestLoot)
@@ -512,6 +535,12 @@ bool StoreLootAction::Execute(Event& event)
         ++itemsTaken;
         sLog.outDebug("[BOT LOOT] %s: take item=%u x%u", bot->GetName(), itemid, itemcount);
 
+        // #485: skins counted per bot; loot.log showed fewer skins than the skill gains.
+        // Stored items only: the core marks an item is_looted when the store succeeds (full
+        // bags or LOOT_ERROR_TOO_FAR leave it; free-for-all items stay unmarked - lower bound).
+        if (skinLoot && lootItem->is_looted)
+            TraceProfessionUse(ai, "skin", "looted", "skin_loot", itemid);
+
         if (proto->Quality > ITEM_QUALITY_NORMAL && !urand(0, 50) && ai->HasStrategy("emote", BotState::BOT_STATE_NON_COMBAT)) ai->PlayEmote(TEXTEMOTE_CHEER);
         if (proto->Quality >= ITEM_QUALITY_RARE && !urand(0, 1) && ai->HasStrategy("emote", BotState::BOT_STATE_NON_COMBAT)) ai->PlayEmote(TEXTEMOTE_CHEER);
 
@@ -525,6 +554,14 @@ bool StoreLootAction::Execute(Event& event)
         sPlayerbotAIConfig.logEvent(ai, "StoreLootAction", proto->Name1, std::to_string(proto->ItemId));
 
         BroadcastHelper::BroadcastLootingItem(ai, bot, proto, itemQualifier);
+    }
+
+    // #485: an empty corpse comes back as a skinning target after the release below;
+    // loot left on it (bags, loot rights) keeps it lootable and unskinnable.
+    if (clearForSkin)
+    {
+        bool const cleared = loot->isLooted();
+        TraceProfessionUse(ai, "skin", cleared ? "cleared" : "skipped", cleared ? "junk_taken" : "loot_left", itemsTaken);
     }
 
     AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);

@@ -2,6 +2,7 @@
 #include "playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/SkinLootPolicy.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 
 using namespace ai;
@@ -62,7 +63,8 @@ void LootObject::Refresh(Player* bot, ObjectGuid guid, bool debug)
     Creature* creature = ai->GetCreature(guid);
     if (creature && sServerFacade.GetDeathState(creature) == CORPSE)
     {
-        if (creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE))
+        bool const lootable = creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE);
+        if (lootable)
         {
             // The lootable flag is set group-wide on a tapped corpse, so it alone does not mean
             // this bot may loot it. Require tap rights, otherwise the bot walks to and kneels on
@@ -84,7 +86,11 @@ void LootObject::Refresh(Player* bot, ObjectGuid guid, bool debug)
             }
         }
 
-        if (creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE))
+        // #485: loot left on the corpse - not a skinning target. A corpse with someone else's
+        // loot used to fall through to the skinning branch: the bot walked over, got no loot
+        // permission and picked the corpse up again every second, while the core refuses to
+        // skin it until the loot is gone (TARGET_NOT_LOOTED).
+        if (skin_loot::IsSkinTarget(lootable, creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE)))
         {
             skillId = creature->GetCreatureInfo()->GetRequiredLootSkill();
             uint32 targetLevel = creature->GetLevel();
@@ -312,17 +318,19 @@ bool LootObject::IsLootPossible(Player* bot)
     if (!ai->HasSkill((SkillType)skillId))
         return false;
 
+    // #485: the tool comes first. A level-10 corpse needs skill 0 (Refresh) and returned
+    // below before the knife check, so a skinner without a knife still targeted it.
+    if (skillId == SKILL_MINING && !bot->HasItemCount(2901, 1))
+        return false;
+
+    if (skillId == SKILL_SKINNING && !bot->HasItemCount(7005, 1))
+        return false;
+
     if (!reqSkillValue)
         return true;
 
     uint32 skillValue = uint32(bot->GetSkillValue(skillId));
     if (reqSkillValue > skillValue)
-        return false;
-
-    if (skillId == SKILL_MINING && !bot->HasItemCount(2901, 1))
-        return false;
-
-    if (skillId == SKILL_SKINNING && !bot->HasItemCount(7005, 1))
         return false;
 
     return true;
