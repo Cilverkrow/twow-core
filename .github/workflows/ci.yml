@@ -24,13 +24,16 @@
 #
 # The third job, upstream-freshness, compiles nothing and is not a third
 # toolchain. It asserts that UPSTREAM.lock still describes the branch this fork
-# actually tracks; see the comment above it.
+# actually tracks; see the comment above it. The fourth, workflow-policy,
+# compiles nothing either: it checks the workflow files themselves against the
+# runner and trigger policy of twow-repo#486.
 
 name: CI
 
-# push on main only, plus pull_request. Not `push: branches: ['**']`, which was
-# the first thing tried here: with a pull request open, every push fires both
-# events and the same commit is built twice on two runners for forty minutes.
+# push on main (and release/**, see below), plus pull_request. Not
+# `push: branches: ['**']`, which was the first thing tried here: with a pull
+# request open, every push fires both events and the same commit is built
+# twice on two runners for forty minutes.
 # Watching eight runs of this job queue up behind four pushes is what made the
 # duplication obvious. Branch work is reviewed through a pull request in this
 # repository anyway, so pull_request is the trigger that matters; main is built
@@ -48,13 +51,29 @@ name: CI
 # The freshness job below reads origin/upstream-tracking live, so pull_request
 # and the weekly schedule cover it for real. schedule is there because staleness
 # is the one failure that arrives without anybody pushing anything.
+#
+# release/** is in the push list since twow-repo#486 (plan B2). The commit a
+# twow-repo pin points to during a hotfix train lives on release/<train>.x, and
+# until then it was only ever compiled as a pull_request merge ref -- the pushed
+# SHA itself never had a result of its own, and release had no ccache entry of
+# its own either (it fell back to main's). A push to release/** builds under
+# its own key ccache-trixie-<ref_name>-. GitHub reads this file from the pushed
+# ref, so the trigger only takes effect on a release branch once this change is
+# cherry-picked there.
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
   schedule:
     - cron: '17 6 * * 1'
   workflow_dispatch:
+
+# Read-only token for every job (twow-repo#486, plan B2). This repository is
+# public, and the default GITHUB_TOKEN of a push run would otherwise be allowed
+# to write. Only `build` widens it, and only by actions: write for pruning its
+# own superseded ccache entries; see the job-level block there.
+permissions:
+  contents: read
 
 # Every run gets its own concurrency group, and nothing is ever cancelled.
 #
@@ -114,10 +133,50 @@ jobs:
         # depend on it surviving the next Windows-side edit.
         run: bash tools/ci/check-upstream-lock.sh
 
+  # Compiles nothing either. Runner and trigger policy (twow-repo#486, plan B1):
+  # every workflow here stays on literal GitHub-hosted labels, a pull_request
+  # workflow never names a self-hosted label, runs-on is never built from
+  # vars./inputs./fromJSON, pull_request_target / issue_comment / unguarded
+  # workflow_run cannot get in, and every workflow has a top-level permissions:
+  # block. The workflows under modules/** are reported as warnings only (R5):
+  # GitHub never runs nested workflow directories.
+  #
+  # .github/policy/test-workflow-runner-policy.sh is a byte-identical copy of
+  # twow-repo ops/ci/test-workflow-runner-policy.sh, and twow-repo's
+  # core-gitlink-trust job compares the two by sha256 at the pinned commit.
+  # Change it there first, then copy it here. The self-test first proves each
+  # rule still fires on its fixture, then this repository's workflows are
+  # checked against the (empty) allowlist. This guards the merged state; a
+  # pull request's own copy is guarded by the rulesets and .github/CODEOWNERS.
+  #
+  # Its own job rather than a step of `build`: a policy result should not wait
+  # forty minutes for a compile, and neither should hide the other.
+  workflow-policy:
+    name: Workflow runner policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Policy self-test (fixtures)
+        run: bash .github/policy/test-workflow-runner-policy.sh --self-test
+
+      - name: Policy check (this repository)
+        run: |
+          bash .github/policy/test-workflow-runner-policy.sh \
+            --root . \
+            --allowlist .github/policy/workflow-policy-allowlist.txt
+
   build:
     name: Build core (Debian trixie)
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: read
+      # Only this job, and only to DELETE this ref's own superseded ccache
+      # entries -- see "Prune superseded ccache entries of this ref" after the
+      # save. The workflow-level default stays read-only.
+      actions: write
 
     env:
       # A throwaway credential for the per-run disposable database container
@@ -140,6 +199,13 @@ jobs:
           # BUILD_ELUNA defaults ON. A checkout without this configures for
           # about a second and then stops with "Eluna submodule is missing".
           submodules: recursive
+
+          # This job's token carries actions: write (cache prune). Do not leave
+          # it in .git/config as an extraheader: the workspace is bind-mounted
+          # into the build container, where CMake, scripts and tests from the
+          # checked-out tree run. Nothing after this step makes an
+          # authenticated git call; the prune step gets the token via GH_TOKEN.
+          persist-credentials: false
 
       # Space this build genuinely needs: mangosd links to 750 MB with
       # DEBUG_SYMBOLS=ON, on top of a ~20 GB object tree, and /build lives on the
@@ -311,6 +377,7 @@ jobs:
             -e CCACHE_MAXSIZE=3G \
             -e CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime \
             -e DEBIAN_FRONTEND=noninteractive \
+            -e CI_BUILD_JOBS \
             -e CI_DB_PORT \
             -e MARIADB_ROOT_PASSWORD \
             -w /src \
@@ -422,7 +489,13 @@ jobs:
               # behind USE_EXTRACTORS and USE_REALMMERGE and both default OFF.
               # If that ever changes, go back to naming targets -- and name the
               # test targets too -- rather than paying for tools nobody runs here.
-              cmake --build /build -j "$(nproc)"
+              #
+              # -j from CI_BUILD_JOBS (default 4), not $(nproc) (twow-repo#486,
+              # plan B2). On a GitHub-hosted runner nproc is 4, so nothing
+              # changes there; on a bigger self-hosted machine nproc would ignore
+              # the job limit the platform repository already applies through
+              # CI_BUILD_JOBS. Passed in with -e above; unset means 4.
+              cmake --build /build -j "${CI_BUILD_JOBS:-4}"
 
               ccache --show-stats
 
@@ -582,6 +655,70 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ccache-trixie-${{ github.ref_name }}-${{ github.run_id }}
 
+      # Prune this ref's older ccache entries (twow-repo#486, plan B2). Every
+      # saving run writes a run-unique ~2.9 GB entry and nothing ever removed
+      # one: on 2026-10-02 the repository held 11.78 GB in 5 entries against
+      # GitHub's 10 GB limit, and eviction does not care which entry the next
+      # run needs. The target is one entry per ref (main, release/<train>.x)
+      # plus the MSVC vcpkg cache.
+      #
+      # Strictly per ref, never a global "keep the newest one" like twow-repo's
+      # ci-gcc-v2 prune: main and release/** save under different keys, and a
+      # global keep-1 would have each of them delete the other's only entry.
+      # A key belongs to this ref only if it is exactly
+      # ccache-trixie-<this ref_name>-<digits>, so main never matches the
+      # entries of a branch called main-something.
+      #
+      # Gated on success(): after a failed build the save above still runs
+      # (always()), but nothing is deleted, so the last good entry survives.
+      # Only entries of OLDER runs (smaller run id) are deleted, and only once
+      # this run's own key is visible in the listing -- a save that warned
+      # instead of failing must not lead to deleting the only copy. A newer
+      # run's entry is never touched; that run prunes after its own save.
+      #
+      # ref_name comes in through env, not ${{ }} inside the script, so a branch
+      # name is never shell code. `|| true` on the delete: an entry can vanish
+      # between list and delete (another run's prune, GitHub's eviction).
+      - name: Prune superseded ccache entries of this ref
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          prefix="ccache-trixie-${REF_NAME}-"
+          own="${prefix}${RUN_ID}"
+          keys=$(gh api --paginate -X GET "repos/${REPO}/actions/caches" \
+                   -f key="$prefix" -F per_page=100 \
+                   --jq '.actions_caches[].key') || {
+            # Housekeeping only: a failed listing must not fail a green build.
+            echo "::warning::could not list the cache entries - nothing pruned"
+            exit 0
+          }
+
+          if ! grep -Fqx -- "$own" <<< "$keys"; then
+            echo "::warning::own cache entry $own not listed yet - nothing pruned"
+            exit 0
+          fi
+          echo "keeping $own"
+
+          pruned=0
+          while IFS= read -r key; do
+            [ -n "$key" ] || continue
+            case "$key" in "$prefix"*) ;; *) continue ;; esac
+            id="${key#"$prefix"}"
+            case "$id" in ''|*[!0-9]*) continue ;; esac
+            [ "$id" -lt "$RUN_ID" ] || continue
+            echo "deleting $key"
+            gh cache delete "$key" --repo "$REPO" < /dev/null || true
+            pruned=$((pruned + 1))
+          done <<< "$keys"
+          echo "pruned $pruned older entr(y/ies) of ${REF_NAME}"
+
+          gh api "repos/${REPO}/actions/cache/usage" \
+            --jq '"cache usage now: \(.active_caches_size_in_bytes/1073741824*100|floor/100)GB across \(.active_caches_count) entries"' || true
+
       # The build container cannot see $GITHUB_STEP_SUMMARY (a runner path), so
       # the warning step above writes its summary into the bind-mounted workspace.
       - name: Publish the changed-TU warning summary
@@ -667,7 +804,11 @@ jobs:
     #
     # Want it on a specific PR anyway? Run the workflow manually against that
     # branch with workflow_dispatch.
-    if: ${{ github.event_name != 'pull_request' }}
+    #
+    # Not on pushes to release/** either (that push trigger exists for the
+    # Debian build only, twow-repo#486 B2). Every hotfix there has a main twin,
+    # so MSVC still sees the same change on main.
+    if: ${{ github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/heads/release/') }}
 
     env:
       # Written once, used twice - to install and to key the cache. Spelling the

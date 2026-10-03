@@ -1,0 +1,4 @@
+# Code owners (#486, B0). Changes to workflows and to the CI policy below
+# .github/ need the owner's review once the rulesets require code-owner review
+# (twow-repo docs/runbooks/github-settings-486.md). Keep it short.
+/.github/ @Cilverkrow
