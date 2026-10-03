@@ -552,8 +552,9 @@ public:
     uint32 questFirstProgressionTurnInParkFailures = 0;
     uint32 questFirstProgressionTurnInParkWindowSeconds = 3600;
     uint32 questFirstProgressionTurnInParkSeconds = 3600;
-    // twow-repo#485: true = a turn-in-only request whose takers the route danger deferred
-    // counts as no route; false = it does not (critic B1.3).
+    // twow-repo#485: true = a turn-in-only request whose takers a route danger deferral
+    // took (cross map, zone level, death cluster) counts as no route; false = it does not
+    // (critic B1.3).
     bool questFirstProgressionTurnInParkCountsRouteDanger = false;
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;

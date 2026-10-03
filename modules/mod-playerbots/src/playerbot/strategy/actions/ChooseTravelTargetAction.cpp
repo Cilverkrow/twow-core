@@ -343,12 +343,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                     int(uint32(time(nullptr)) + ai::quest_search::RouteBackoffSeconds(failures)));
             }
 
-            // twow-repo#485: no way to any offered taker - unless not every taker was judged, or a
-            // filter that lifts by itself took it. A turn-in parked here no longer holds the next
+            // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
+            // list, a random range skip, the local quest hub filter, candidates a resumed choice
+            // skipped) or a filter that lifts by itself took one: a suppressed turn-in route (counted
+            // already) or, unless TurnInParkCountsRouteDanger, a route danger deferral (another map,
+            // a zone above the bot, a death cluster). A turn-in parked here no longer holds the next
             // request back, so that one need not wait out the backoff.
             if (NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
-                chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel, lastRejects.turnInSuppressed,
-                lastRejects.movedAway + lastRejects.rangeSkip, sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))
+                chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.hubFilter + lastRejects.resumeSkipped,
+                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))
             {
                 SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, false);
                 SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
@@ -375,12 +379,13 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 bot->GetGUIDLow(), bot->GetLevel(), stage, newTarget.Distance(bot));
 
         // twow-repo#485: another target than a taker is the quest giver fallback - the job found
-        // no taker at all.
+        // no taker at all. Same inputs as in the no-target branch.
         NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(
             newTarget.GetDestination()->GetPurpose() == TravelDestinationPurpose::QuestTaker ?
                 ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
-            chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel, lastRejects.turnInSuppressed,
-            lastRejects.movedAway + lastRejects.rangeSkip, sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));
+            chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.hubFilter + lastRejects.resumeSkipped,
+            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));
     }
 
     setNewTarget(requester, &newTarget, travelTarget);
@@ -704,8 +709,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
         for (auto& [destination, position, distance] : travelPointList)
         {
             // #416: skip what an aborted choice already checked; stop when the time is up.
+            // twow-repo#485: a skipped candidate is not judged by this choice (no_route rule).
             if (candidateIndex++ < resumeSkip)
+            {
+                ++lastRejects.resumeSkipped;
                 continue;
+            }
             if (checked++ && ai::travel_choose::OverBudget(WorldTimer::getMSTimeDiffToNow(chooseStart)))
             {
                 chooseBudgetExceeded = true;

@@ -51,9 +51,11 @@ file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.h" config_header)
 file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_source)
 file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_template)
 file(READ "${PB_SOURCE_DIR}/PlayerbotAI.h" ai_header)
+file(READ "${PB_SOURCE_DIR}/QuestSearchPolicy.h" search_policy)
 # LF line ends (a Windows checkout has CRLF), so a needle below may span lines.
 string(REPLACE "\r\n" "\n" travel_mgr "${travel_mgr}")
 string(REPLACE "\r\n" "\n" choose "${choose}")
+string(REPLACE "\r\n" "\n" config_template "${config_template}")
 
 # The policy is pure: std headers only, not in the botpch.h chain.
 require_text("${policy}" "namespace ai::turnin_park" "policy namespace")
@@ -143,16 +145,43 @@ require_text("${choose}" "givers=%u strategy=%s parked=%u" "parked count in the 
 # (3e) no_route in the no-target branch: only when every taker was judged and no filter that lifts
 # by itself took one (critic B1.3; route danger only with TurnInParkCountsRouteDanger). A park
 # there ends the backoff - only then. After a choice, the quest giver fallback counts.
+# Route danger = all three deferrals: cross map, zone level and the danger map (logged as
+# reason=route_danger detail=death_cluster). Not judged = a stale list, a random range skip, the
+# local quest hub filter and the candidates a resumed choice (#416) skipped.
 require_text("${choose}" "if (NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,"
   "no_route counted when the choice took nothing")
 extract_between("${choose}" "ai::turnin_park::RouteOutcome::NoTarget," "// Hotfix 8.1: a route was found - no more backoff." no_target "no_route in the no-target branch")
-require_text("${no_target}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel, lastRejects.turnInSuppressed," "deferrals and suppressed routes (critic B1.3)")
+require_text("${no_target}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,"
+  "all route danger deferrals and suppressed routes (critic B1.3)")
 require_text("${no_target}"
-  "lastRejects.movedAway + lastRejects.rangeSkip, sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))\n            {\n                SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, false);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", 0);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", 0);\n            }"
-  "takers not judged and the route danger switch; only a park ends the backoff")
+  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.hubFilter + lastRejects.resumeSkipped,\n                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))\n            {\n                SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, false);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", 0);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", 0);\n            }"
+  "every way a taker goes unjudged and the route danger switch; only a park ends the backoff")
 extract_between("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "setNewTarget(requester, &newTarget, travelTarget);" chosen "no_route after a choice")
 require_text("${chosen}" "ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback," "the quest giver fallback counts, a taker does not")
-require_text("${chosen}" "lastRejects.movedAway + lastRejects.rangeSkip, sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));" "same inputs after a choice")
+require_text("${chosen}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,"
+  "same route danger inputs after a choice")
+require_text("${chosen}"
+  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.hubFilter + lastRejects.resumeSkipped,\n            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));"
+  "same unjudged inputs after a choice")
+# Exactly these two calls, each with all groups - no call site with fewer reasons.
+string(REGEX MATCHALL "CountsAsNoRoute\\(" no_route_calls "${choose}")
+string(REGEX MATCHALL "lastRejects\\.crossMap \\+ lastRejects\\.zoneLevel \\+ lastRejects\\.dangerMap, lastRejects\\.turnInSuppressed,"
+  route_danger_groups "${choose}")
+string(REGEX MATCHALL "lastRejects\\.movedAway \\+ lastRejects\\.rangeSkip \\+ lastRejects\\.hubFilter \\+ lastRejects\\.resumeSkipped,"
+  unjudged_groups "${choose}")
+list(LENGTH no_route_calls no_route_call_count)
+list(LENGTH route_danger_groups route_danger_group_count)
+list(LENGTH unjudged_groups unjudged_group_count)
+if(NOT no_route_call_count EQUAL 2 OR NOT route_danger_group_count EQUAL 2 OR NOT unjudged_group_count EQUAL 2)
+  message(FATAL_ERROR "Expected 2 CountsAsNoRoute calls with all reject groups, found ${no_route_call_count} calls, "
+    "${route_danger_group_count} route danger and ${unjudged_group_count} unjudged groups")
+endif()
+# The resumed choice counts what it skips; RejectCounts carries it into [QuestFirstRoute] state=rejected.
+extract_between("${choose}" "if (candidateIndex++ < resumeSkip)" "if (checked++ && ai::travel_choose::OverBudget(" resume_skip
+  "resume skip before the budget check")
+require_text("${resume_skip}" "{\n                ++lastRejects.resumeSkipped;\n                continue;\n            }" "a skipped candidate counts as not judged")
+require_text("${search_policy}" "uint32_t resumeSkipped = 0;" "resume skip counter")
+require_text("${search_policy}" "\" resume_skipped=\" + std::to_string(resumeSkipped)" "resume skip in the rejection line")
 
 # Gathering (hotfix 8.5): with the key on, only open turn-ins hold it back; 0 counts as before.
 require_text("${travel_values}" "TravelTarget const* turnIns = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures ? AI_VALUE(TravelTarget*, \"travel target\") : nullptr;"
@@ -172,5 +201,13 @@ require_text("${config_template}" "AiPlayerbot.QuestFirstProgression.TurnInParkW
 require_text("${config_template}" "AiPlayerbot.QuestFirstProgression.TurnInParkSeconds = 3600" "documented key")
 require_text("${config_template}" "AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger = 0" "documented key")
 require_text("${config_template}" "also for every bot, not only roster bots" "the effects of the key on every bot are documented")
+# The route danger switch text names all three deferrals, and a cross-map deferral is any other
+# map, not only the other continent (CrossMapContinentsOnly = 0; cross check S4).
+extract_between("${config_template}" "# With 1, a turn-in-only request whose takers a route danger deferral took"
+  "AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger = 0" route_danger_doc "route danger switch text above its key")
+require_text("${route_danger_doc}" "That covers all three deferrals:" "all deferrals governed by the switch")
+require_text("${route_danger_doc}" "detail=death_cluster" "death cluster deferrals governed by the switch")
+require_text("${route_danger_doc}" "not only the other continent" "cross map is any other map (S4)")
+reject_text("${route_danger_doc}" "another continent" "continent-only wording (S4)")
 
 message(STATUS "QUEST_TURNIN_PARK_CONTRACT=PASS")

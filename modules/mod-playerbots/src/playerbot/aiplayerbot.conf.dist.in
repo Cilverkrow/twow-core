@@ -694,10 +694,15 @@ AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 AiPlayerbot.QuestFirstProgression.TurnInParkFailures = 0
 AiPlayerbot.QuestFirstProgression.TurnInParkWindowSeconds = 3600
 AiPlayerbot.QuestFirstProgression.TurnInParkSeconds = 3600
-# With 1, a turn-in-only request whose takers the route danger below deferred
-# (another continent before MinLevelForCrossMapQuestRoute, a zone clearly above
-# the bot) counts as finding no way to a taker too, so such a turn-in is parked
-# and tried again when the park ends. 0 = a deferral does not count.
+# With 1, a turn-in-only request whose takers a route danger deferral took
+# ([QuestFirstRoute] state=deferred reason=route_danger) counts as finding no
+# way to a taker too, so such a turn-in is parked and tried again when the park
+# ends. That covers all three deferrals: a taker on another map while the bot is
+# below MinLevelForCrossMapQuestRoute (with CrossMapContinentsOnly = 0 any other
+# map, not only the other continent: also the Deeprun Tram or an instance), a
+# zone clearly above the bot, and a death cluster of the shared danger map
+# (AiPlayerbot.DangerMap.Enabled, detail=death_cluster). 0 = no such deferral
+# counts.
 AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger = 0
 # Route danger for low levels: a roster bot defers a quest giver, objective or
 # turn-in on another continent until it reaches this level (0 = off), and any

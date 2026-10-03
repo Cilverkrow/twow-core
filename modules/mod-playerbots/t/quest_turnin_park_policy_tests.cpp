@@ -1,6 +1,7 @@
 // twow-repo#485: turn-ins that keep failing are parked (QuestTurnInParkPolicy.h).
 // Hand-rolled Require(), std::exit(1) on failure, no gtest, no game library.
 #include "QuestTurnInParkPolicy.h"
+#include "QuestSearchPolicy.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -23,6 +24,15 @@ bool Has(ai::turnin_park::Book const& book, std::uint32_t questId)
         if (entry.questId == questId)
             return true;
     return false;
+}
+
+// The no_route inputs as ChooseTravelTargetAction::Execute sums up the reject counts of the
+// choice (quest_turnin_park_source_contract pins the same sums at both call sites).
+bool NoRoute(ai::turnin_park::RouteOutcome outcome, ai::quest_search::RejectCounts const& rejects, bool routeDangerCounts)
+{
+    return ai::turnin_park::CountsAsNoRoute(outcome, false,
+        rejects.crossMap + rejects.zoneLevel + rejects.dangerMap, rejects.turnInSuppressed,
+        rejects.movedAway + rejects.rangeSkip + rejects.hubFilter + rejects.resumeSkipped, routeDangerCounts);
 }
 
 // Owner profile proposal: 3 failures within 3600 s park for 3600 s.
@@ -140,8 +150,9 @@ int main()
     }
 
     // (3e) with critic B1.3: when a turn-in-only request counts as no_route. Arguments: outcome,
-    // out of time, route danger deferrals (cross map + zone level), suppressed turn-in routes,
-    // takers not judged (moved away + range skip), TurnInParkCountsRouteDanger.
+    // out of time, route danger deferrals (cross map + zone level + death cluster), suppressed
+    // turn-in routes, takers not judged (moved away + range skip + hub filter + resume skip),
+    // TurnInParkCountsRouteDanger.
     Require(!CountsAsNoRoute(RouteOutcome::Taker, false, 0, 0, 0, false), "a chosen taker is no failure");
     Require(!CountsAsNoRoute(RouteOutcome::Taker, false, 0, 0, 0, true), "a chosen taker is no failure, route danger counting on");
     Require(CountsAsNoRoute(RouteOutcome::Fallback, false, 0, 0, 0, false), "the quest giver fallback: no taker at all");
@@ -160,6 +171,47 @@ int main()
     Require(!CountsAsNoRoute(RouteOutcome::NoTarget, true, 1, 0, 0, true), "route danger counting on: out of time does not count");
     Require(!CountsAsNoRoute(RouteOutcome::NoTarget, false, 1, 1, 0, true), "route danger counting on: a suppressed route does not count");
     Require(!CountsAsNoRoute(RouteOutcome::NoTarget, false, 1, 0, 1, true), "route danger counting on: unjudged takers do not count");
+
+    // The reject counts of a choice, summed as at the call sites.
+    {
+        using ai::quest_search::RejectCounts;
+
+        // Review scenario: quest A's taker in the local hub lies behind a death cluster, quest B's
+        // reachable taker farther away was skipped by the hub filter. B was never judged, so
+        // nothing counts - with the route danger switch on as well.
+        RejectCounts hub;
+        hub.dangerMap = 1;
+        hub.hubFilter = 1;
+        Require(!NoRoute(RouteOutcome::NoTarget, hub, false), "hub filter: a taker outside the hub was not judged");
+        Require(!NoRoute(RouteOutcome::NoTarget, hub, true), "hub filter: not judged, route danger counting on as well");
+
+        // #416: a choice resumed after a time abort skips the candidates the aborted one checked;
+        // their reasons are not known to this choice.
+        RejectCounts resumed;
+        resumed.resumeSkipped = 40;
+        Require(!NoRoute(RouteOutcome::NoTarget, resumed, false), "resume skip: the skipped takers were not judged");
+        Require(!NoRoute(RouteOutcome::NoTarget, resumed, true), "resume skip: not judged, route danger counting on as well");
+
+        // A death cluster of the danger map ([QuestFirstRoute] reason=route_danger
+        // detail=death_cluster) is a route danger deferral like cross map and zone level.
+        RejectCounts cluster;
+        cluster.dangerMap = 2;
+        Require(!NoRoute(RouteOutcome::NoTarget, cluster, false), "a death cluster deferral is no failure with the switch off");
+        Require(NoRoute(RouteOutcome::NoTarget, cluster, true), "a death cluster deferral counts with the switch on");
+        RejectCounts deferred;
+        deferred.crossMap = 1;
+        deferred.zoneLevel = 1;
+        deferred.dangerMap = 1;
+        Require(!NoRoute(RouteOutcome::NoTarget, deferred, false), "all three route danger deferrals: no failure with the switch off");
+        Require(NoRoute(RouteOutcome::NoTarget, deferred, true), "all three route danger deferrals count with the switch on");
+
+        // Takers judged and turned down: no way to any of them.
+        RejectCounts judged;
+        judged.notActive = 3;
+        judged.enemyZone = 1;
+        Require(NoRoute(RouteOutcome::NoTarget, judged, false), "takers judged and turned down: no route");
+        Require(NoRoute(RouteOutcome::NoTarget, RejectCounts(), false), "an empty list: no route");
+    }
 
     std::cout << "quest_turnin_park_policy_tests passed\n";
     return 0;
