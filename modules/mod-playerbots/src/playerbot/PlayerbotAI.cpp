@@ -632,15 +632,39 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() && bot->IsAlive())
             {
                 ai::stuck_combat::Step const step = stuckCombat.Observe(bot->IsInCombat(), questProgress.IdleSeconds(now), now);
+                // Hotfix 8.14 (v27 Eloreni, victim_evade=1): an evading attacker or victim never
+                // ends the fight - release it at every stuck step.
+                uint32 released = 0;
+                if (step != ai::stuck_combat::Step::None)
+                {
+                    Unit* const evadingVictim = bot->GetVictim();
+                    if (evadingVictim && evadingVictim->ToCreature() && evadingVictim->ToCreature()->IsInEvadeMode())
+                    {
+                        bot->AttackStop();
+                        ++released;
+                    }
+                    std::vector<Unit*> const attackers(bot->GetAttackers().begin(), bot->GetAttackers().end());
+                    for (Unit* attacker : attackers)
+                    {
+                        Creature* const creature = attacker ? attacker->ToCreature() : nullptr;
+                        if (creature && creature->IsInEvadeMode() && creature->GetVictim() == bot)
+                        {
+                            creature->AttackStop();
+                            ++released;
+                        }
+                    }
+                    if (released)
+                        bot->getHostileRefManager().deleteReferences();
+                }
                 if (step == ai::stuck_combat::Step::Stop || (step == ai::stuck_combat::Step::Rescue && !stuckCombat.rescueLogged))
                 {
                     Unit* const victim = bot->GetVictim();
                     Creature* const victimCreature = victim ? victim->ToCreature() : nullptr;
-                    sLog.outBasic("[StuckCombat] state=%s bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f minutes=%u victim_entry=%u victim_evade=%u attackers=%u",
+                    sLog.outBasic("[StuckCombat] state=%s bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f minutes=%u victim_entry=%u victim_evade=%u attackers=%u released=%u",
                         step == ai::stuck_combat::Step::Stop ? "stop" : "rescue", bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(),
                         bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), stuckCombat.Minutes(now),
                         victimCreature ? victimCreature->GetEntry() : 0, victimCreature && victimCreature->IsInEvadeMode() ? 1u : 0u,
-                        uint32(bot->GetAttackers().size()));
+                        uint32(bot->GetAttackers().size()), released);
                     if (step == ai::stuck_combat::Step::Rescue)
                         stuckCombat.rescueLogged = true;
                 }
@@ -648,6 +672,22 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 {
                     bot->CombatStop(true);
                     bot->getHostileRefManager().deleteReferences();
+                    stuckCombat.RememberStop(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+                }
+                // Hotfix 8.14: still on the same spot at the rescue step - go home like a hearthstone
+                // (which cannot be cast in combat). The quest rescue teleports the same way.
+                if (step == ai::stuck_combat::Step::Rescue && bot->GetMap() && bot->GetMap()->IsContinent() &&
+                    !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported() &&
+                    stuckCombat.HomeDue(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), now))
+                {
+                    sLog.outBasic("[StuckCombat] state=home bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f minutes=%u attackers=%u home_map=%u home_x=%.0f home_y=%.0f",
+                        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+                        stuckCombat.Minutes(now), uint32(bot->GetAttackers().size()), bot->GetHomebindMapId(), bot->GetHomebindX(),
+                        bot->GetHomebindY());
+                    bot->CombatStop(true);
+                    bot->getHostileRefManager().deleteReferences();
+                    bot->GetMotionMaster()->Clear();
+                    bot->TeleportToHomebind(0, true);
                 }
                 rescueInCombat = step == ai::stuck_combat::Step::Rescue;
             }

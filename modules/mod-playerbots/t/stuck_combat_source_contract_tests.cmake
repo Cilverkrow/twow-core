@@ -5,7 +5,13 @@ foreach (needle
     "bot->CombatStop(true);"
     "bot->getHostileRefManager().deleteReferences();"
     "(!bot->IsInCombat() || rescueInCombat)"
-    "[StuckCombat] state=%s bot=%u")
+    "[StuckCombat] state=%s bot=%u"
+    "stuckCombat.RememberStop(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());"
+    "stuckCombat.HomeDue(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), now))"
+    "[StuckCombat] state=home bot=%u"
+    "bot->TeleportToHomebind(0, true);"
+    "creature->IsInEvadeMode() && creature->GetVictim() == bot"
+    "released=%u")
   string(FIND "${ai_cpp}" "${needle}" at)
   if (at EQUAL -1)
     message(FATAL_ERROR "stuck combat: missing ${needle}")
