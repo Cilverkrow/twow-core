@@ -20,6 +20,7 @@
 #include <atomic>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
+#include "playerbot/StuckCombatPolicy.h"
 #include "playerbot/FishingPolicy.h"
 #include "playerbot/ItemUseTrace.h"
 #include "playerbot/DeathSeriesPolicy.h"
@@ -925,6 +926,8 @@ protected:
     // #421 C: progress watch for the quest rescue teleport.
     ai::quest_search::ProgressTracker questProgress;
     uint32 lastQuestProgressCheck = 0;
+    // Hotfix 8.12: combat without progress (bot 27 Nilenata).
+    ai::stuck_combat::State stuckCombat;
     ai::gather_purpose::State gatherPurpose;
     ai::fishing::PurposeTrace fishingTrace;
     ai::item_use::Trace itemUseTrace;
