@@ -14,4 +14,18 @@ inline bool IsRed(uint32_t botLevel, uint32_t questLevel)
 {
     return botLevel + 5 <= questLevel;
 }
+
+// Hotfix 8.11 (owner 02.10.2026, quest churn): 8.5/8.7 drop open grey quests of a roster
+// bot on its own, but the accept paths only skipped red ones - QuestDetailsAction had no
+// filter at all. Bots took a grey quest, dropped it, and took it again at the next giver:
+// ~890 accepts and ~940 drops an hour on v24 ("The Grizzled Den" alone 205 times).
+// Accepting now uses the drop rule: no grey (XP grey level) and no red quest for a roster
+// bot on its own; class quests stay allowed, as the drop rule keeps them.
+inline bool SkipForRosterBot(bool rosterOnItsOwn, uint32_t botLevel, uint32_t questLevel, uint32_t grayLevel,
+    bool classQuest)
+{
+    if (!rosterOnItsOwn || classQuest)
+        return false;
+    return IsRed(botLevel, questLevel) || questLevel <= grayLevel;
+}
 }
