@@ -151,6 +151,8 @@ foreach (required
   require_text("${script}" "${required}" "spell_shaman.cpp")
 endforeach()
 forbid_text("${script}" "STORMSTRIKE_MAX_CONSUMED_CHARGES" "spell_shaman.cpp fixed 3-charge cap")
+# Storm Wisdom: a crit while a Lightning Bolt in flight has consumed the stack starts a new buff.
+require_text("${script}" "if (mod->GetSpellModifier() && mod->GetSpellModifier()->charges == -1)\n                    owner->RemoveAurasDueToSpell(buffId);" "spell_shaman.cpp Storm Wisdom consumed stack")
 # Retaliation (audit N2): only melee-range attackers trigger the free Lightning Shield hit.
 require_text("${script}" "if (!victim || !owner->CanReachWithMeleeAutoAttack(victim))\n            return SPELL_AURA_PROC_FAILED;" "spell_shaman.cpp Retaliation reach")
 

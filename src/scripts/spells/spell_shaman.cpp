@@ -1726,6 +1726,13 @@ struct spell_shaman_storm_wisdom : public AuraScript
             return std::nullopt;
 
         uint32 const buffId = owner->HasAura(SPELL_SHAMAN_BOT_CHAIN_STORM) ? SPELL_SHAMAN_BOT_CHAIN_STORM_BUFF : SPELL_SHAMAN_BOT_STORM_WISDOM_BUFF;
+        // A Lightning Bolt in flight has already consumed the stack (mod charges -1) but removes the
+        // buff only at Spell::finish. Adding a stack now would re-create the mod with a fresh charge
+        // and keep the old stack (#484 review): drop the consumed buff, the crit starts a new one.
+        if (SpellAuraHolder* const consumed = owner->GetSpellAuraHolder(buffId))
+            if (Aura* const mod = consumed->GetAuraByEffectIndex(EFFECT_INDEX_0))
+                if (mod->GetSpellModifier() && mod->GetSpellModifier()->charges == -1)
+                    owner->RemoveAurasDueToSpell(buffId);
         SpellCastResult const result = owner->CastSpell(owner, buffId, true, nullptr, aura);
         SpellAuraHolder* const buff = owner->GetSpellAuraHolder(buffId);
         TraceShamanTalent(owner, "storm_wisdom", result == SPELL_CAST_OK && buff, uint32(result), buff ? buff->GetStackAmount() : 0);
