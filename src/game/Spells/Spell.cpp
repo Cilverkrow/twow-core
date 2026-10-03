@@ -3784,12 +3784,23 @@ void Spell::cast(bool skipCheck)
         BotActionLog_LogCastStart(m_caster, m_spellInfo->Id, tgt.GetRawValue(), m_casttime);
     }
 
-    if (m_spellInfo->Id <= 0 || m_spellInfo->Id > MAX_SPELL_ID)
+    // twow-repo#484: a bare return here left the spell in SPELL_STATE_PREPARING, so
+    // Spell::update() called cast() again on every tick (endless "in progress" cast,
+    // passive auras never applied). Fail the cast cleanly instead, like the cast
+    // counter overflow below: the cast counter is not raised and the spell is not
+    // executing yet, so finish(false) is enough (it also writes the bot log cast
+    // result that pairs with the cast start above).
+    bool const spellKnown = sSpellMgr.GetSpellEntry(m_spellInfo->Id) != nullptr;
+    if (m_spellInfo->Id == 0 || m_spellInfo->Id > MAX_SPELL_ID || !spellKnown)
+    {
+        sLog.outError("[SpellIdGuard] Spell::cast rejected spell %u (limit %u, known %u, triggered %u, caster %s)",
+                      m_spellInfo->Id, uint32(MAX_SPELL_ID), spellKnown ? 1u : 0u, m_IsTriggeredSpell ? 1u : 0u,
+                      m_caster ? m_caster->GetGuidStr().c_str() : "none");
+        SendInterrupted();
+        SendCastResult(SPELL_FAILED_ERROR);
+        finish(false);
         return;
-
-    SpellEntry const* spellInfo = sSpellMgr.GetSpellEntry(m_spellInfo->Id);
-    if (!spellInfo)
-        return;
+    }
 
     SetExecutedCurrently(true);
 

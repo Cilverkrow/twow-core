@@ -3650,6 +3650,11 @@ void SpellMgr::LoadSpellsFromSpellTemplate()
     
     mSpellEntryMap.resize(maxEntry);
 
+    // twow-repo#484: client packets carry 16-bit spell ids and Spell::cast() rejects
+    // ids above MAX_SPELL_ID. Such rows still load (no change in semantics), but
+    // each one is named once here so it cannot fail silently in game.
+    uint32 overLimitCount = 0;
+
     do
     {
         fields = result->Fetch();
@@ -3657,6 +3662,12 @@ void SpellMgr::LoadSpellsFromSpellTemplate()
         std::unique_ptr<SpellEntry> spell = std::make_unique<SpellEntry>();
 
         uint32 spellId = fields[0].GetUInt32();
+        if (spellId > MAX_SPELL_ID)
+        {
+            sLog.outError("[SpellIdGuard] spell_template entry %u is above the 16-bit spell id limit %u; casts of it are rejected",
+                          spellId, uint32(MAX_SPELL_ID));
+            ++overLimitCount;
+        }
 
         spell->Id = spellId;
         spell->School = fields[1].GetUInt32();
@@ -3804,6 +3815,9 @@ void SpellMgr::LoadSpellsFromSpellTemplate()
         mSpellEntryMap[spellId] = std::move(spell);
 
     } while (result->NextRow());
+
+    if (overLimitCount)
+        sLog.outError("[SpellIdGuard] %u spell_template entries above %u", overLimitCount, uint32(MAX_SPELL_ID));
 
     if (sWorld.getConfig(CONFIG_BOOL_LOAD_LOCALES))
     {
