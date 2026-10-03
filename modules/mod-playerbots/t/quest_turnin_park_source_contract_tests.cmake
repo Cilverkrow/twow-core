@@ -56,6 +56,8 @@ file(READ "${PB_SOURCE_DIR}/QuestSearchPolicy.h" search_policy)
 string(REPLACE "\r\n" "\n" travel_mgr "${travel_mgr}")
 string(REPLACE "\r\n" "\n" choose "${choose}")
 string(REPLACE "\r\n" "\n" config_template "${config_template}")
+string(REPLACE "\r\n" "\n" travel_values "${travel_values}")
+string(REPLACE "\r\n" "\n" search_policy "${search_policy}")
 
 # The policy is pure: std headers only, not in the botpch.h chain.
 require_text("${policy}" "namespace ai::turnin_park" "policy namespace")
@@ -212,5 +214,81 @@ require_text("${route_danger_doc}" "That covers all three deferrals:" "all defer
 require_text("${route_danger_doc}" "detail=death_cluster" "death cluster deferrals governed by the switch")
 require_text("${route_danger_doc}" "not only the other continent" "cross map is any other map (S4)")
 reject_text("${route_danger_doc}" "another continent" "continent-only wording (S4)")
+
+# Hotfix 8.13 (merged from main): an abandoned cross-map turn-in is a failed turn-in too.
+require_order("${travel_mgr}" "TraceQuestCommit(tDestination, \"abandon\", \"transport_stall\");"
+  "NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), \"transport_stall\");"
+  "transport stall abandon of a turn-in counted")
+
+# ---------------------------------------------------------------------------------------------
+# OB-10 review: with the default TurnInParkFailures = 0 the hotfix-8.5 behaviour stays exactly.
+# ---------------------------------------------------------------------------------------------
+
+# Fails unless the body of `header` starts (comments and white space aside) with `guard`.
+function(require_first_statement text header guard description)
+  string(FIND "${text}" "${header}" header_at)
+  if(header_at EQUAL -1)
+    message(FATAL_ERROR "Missing ${description}: ${header}")
+  endif()
+  string(SUBSTRING "${text}" ${header_at} -1 body)
+  extract_between("${body}" "${header}" "${guard}" prefix "${description}")
+  string(REGEX REPLACE "//[^\n]*" "" prefix "${prefix}")
+  string(REGEX REPLACE "[ \t\r\n]" "" prefix "${prefix}")
+  string(REGEX REPLACE "[ \t\r\n]" "" expected "${header}")
+  if(NOT prefix STREQUAL "${expected}{")
+    message(FATAL_ERROR "Not the first statement (${description}): '${guard}' must open '${header}'")
+  endif()
+endfunction()
+
+# Gather gate (8.5): turnIns is nullptr at 0, so the condition reduces to the 8.5 one and the
+# unfiltered count goes to GatherYieldsToTurnIn; nothing else touches `finished` or `turnIns`.
+extract_between("${travel_values}" "// Hotfix 8.5: finished quests are handed in before the bot gathers again."
+  "if (ai::quest_search::GatherYieldsToTurnIn(rosterOnItsOwn, finished))" gather_gate "8.5 gather gate")
+require_text("${gather_gate}"
+  "        uint32 finished = 0;\n        if (rosterOnItsOwn)\n            for (auto const& [questId, status] : bot->getQuestStatusMap())\n                if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && (!turnIns || turnIns->IsTurnInOpen(questId)))\n                    ++finished;\n"
+  "key 0: the 8.5 loop with the filter skipped by turnIns == nullptr")
+string(REGEX MATCHALL "turnIns" gather_turnins "${gather_gate}")
+string(REGEX MATCHALL "finished" gather_finished "${gather_gate}")
+list(LENGTH gather_turnins gather_turnins_count)
+list(LENGTH gather_finished gather_finished_count)
+# turnIns: declaration, `!turnIns`, `turnIns->`; finished: the 8.5 comment, declaration, `++finished`.
+if(NOT gather_turnins_count EQUAL 3 OR NOT gather_finished_count EQUAL 3)
+  message(FATAL_ERROR "8.5 gather gate: expected 3 uses of turnIns and 3 of finished, found "
+    "${gather_turnins_count} and ${gather_finished_count}")
+endif()
+require_text("${search_policy}" "inline bool GatherYieldsToTurnIn(bool rosterOnItsOwn, uint32_t finishedQuests)\n{\n    return rosterOnItsOwn && finishedQuests > 0;\n}"
+  "8.5 gather rule unchanged")
+
+# Hand-in-only gate: at 0 every unrewarded COMPLETE quest counts, as before; the no_route list
+# is neither written nor read.
+extract_between("${choose}" "bool const turnInParking = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures > 0;"
+  "if ((UsesQuestFirstProgression(bot) && finished > 0) || finished >= 5 || active + 2 >= MAX_QUEST_LOG_SIZE)" handin_gate
+  "hand-in-only count before the gate")
+require_text("${handin_gate}"
+  "            if (questStatus.m_rewarded)\n                continue;\n\n            active++;\n            if (questStatus.m_status == QUEST_STATUS_COMPLETE && (!turnInParking || parkTarget->IsTurnInOpen(questId)))\n                finished++;"
+  "key 0: every COMPLETE quest counts")
+string(REGEX MATCHALL "finished\\+\\+" handin_increments "${handin_gate}")
+list(LENGTH handin_increments handin_increment_count)
+if(NOT handin_increment_count EQUAL 1)
+  message(FATAL_ERROR "hand-in-only gate: expected one finished++, found ${handin_increment_count}")
+endif()
+require_text("${choose}" "if (turnInParking)\n                    for (auto& fetch : handInOnly)" "key 0: no own turn-in list")
+require_text("${choose}" "    if (turnInParking)\n        SET_AI_VALUE2(std::string, \"manual string\", HandInQuestsValue, handInQuests);" "key 0: list not stored")
+
+# Every park entry point returns at 0 before it reads or changes anything. IsTurnInParked false
+# also keeps the taker fetch, CopyTarget (BotBrain intents) and the refresh as before.
+require_first_statement("${travel_mgr}" "bool TravelTarget::NoteTurnInFailure(uint32 questId, char const* reason)"
+  "uint32 const maxFailures = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures;\n    if (!maxFailures || !questId || !bot)\n        return false;"
+  "NoteTurnInFailure returns at 0 first")
+require_first_statement("${travel_mgr}" "bool TravelTarget::IsTurnInParked(uint32 questId) const"
+  "if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures || ai->HasRealPlayerMaster())\n        return false;"
+  "IsTurnInParked is false at 0 first")
+require_first_statement("${choose}" "bool NoteNoRouteTurnIns(AiObjectContext* context, TravelTarget* travelTarget, bool noRoute)"
+  "if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures)\n        return false;"
+  "NoteNoRouteTurnIns returns at 0 before it reads or clears the list")
+# DecRetry at 0 = the old inline one-liner (pinned above), as its first statement.
+require_first_statement("${travel_mgr}" "void TravelTarget::DecRetry(bool isMove)"
+  "if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures)\n    {\n        if (isMove && moveRetryCount > 0) moveRetryCount--; else if (extendRetryCount > 0) extendRetryCount--;\n        return;\n    }"
+  "DecRetry at 0 is the old one-liner")
 
 message(STATUS "QUEST_TURNIN_PARK_CONTRACT=PASS")
