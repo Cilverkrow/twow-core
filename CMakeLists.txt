@@ -1002,6 +1002,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_scarlet_citadel_408_contract.cmake")
+  # twow-repo#484 train 9: GM .tele marks on the 11 maps without client Map.dbc removed (backup kept).
+  add_test(NAME game_tele_484_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_game_tele_484_contract.cmake")
   # twow-repo#405: quest-item chests respawn in half the time (owner, train 8).
   add_test(NAME quest_go_respawn_405_contract
     COMMAND "${CMAKE_COMMAND}"
