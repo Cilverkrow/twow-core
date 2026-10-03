@@ -5,6 +5,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
 #include "CheckMountStateAction.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 using namespace ai;
 
@@ -97,6 +98,10 @@ bool CastCustomSpellAction::Execute(Event& event)
 
     if (!requester) //Use self as requester for permissions.
         requester = bot;
+
+    // Hotfix 8.13 (twow-repo#474): a command the bot gave itself (e.g. "craft random item") has no
+    // listener. Its errors went out as SAY (RandomBotSayWithoutMaster) with an empty reason.
+    bool const selfCommand = requester == bot;
 
     Item* itemTarget = nullptr;
     int pos = FindLastSeparator(text, " ");
@@ -239,6 +244,11 @@ bool CastCustomSpellAction::Execute(Event& event)
     const bool canCast = gameObjectTarget ? ai->CanCastSpell(spell, gameObjectTarget, 0, true, false, false, false, &checkResult) : ai->CanCastSpell(spell, target, 0, true, itemTarget, false, false, false, &checkResult);
     if (!bot->GetTrader() && !canCast)
     {
+        if (selfCommand)
+        {
+            LogSelfCastFailure(spell, pSpellInfo, uint32(checkResult));
+            return false;
+        }
         std::map<std::string, std::string> args;
         args["%spell"] = replyArgs["%spell"];
         args["%fail_reason"] = BOT_TEXT2(GetSpellCastResultString(checkResult), args);
@@ -254,6 +264,9 @@ bool CastCustomSpellAction::Execute(Event& event)
     {
         SetDuration(spellDuration);
 
+        if (selfCommand && pSpellInfo->EffectItemType[0])
+            TraceProfessionUse(ai, "craft", "started", "skillup_recipe", spell);
+
         if (castCount > 1)
         {
             std::ostringstream cmd;
@@ -266,6 +279,8 @@ bool CastCustomSpellAction::Execute(Event& event)
 
         ai->TellPlayerNoFacing(requester, BOT_TEXT2(replyStr.str(), replyArgs), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
     }
+    else if (selfCommand)
+        LogSelfCastFailure(spell, pSpellInfo, uint32(SPELL_FAILED_ERROR));
     else
     {
         std::map<std::string, std::string> args;
@@ -274,6 +289,24 @@ bool CastCustomSpellAction::Execute(Event& event)
     }
 
     return result;
+}
+
+void CastCustomSpellAction::LogSelfCastFailure(uint32 spell, SpellEntry const* pSpellInfo, uint32 castResult)
+{
+    if (pSpellInfo->EffectItemType[0])
+    {
+        std::string const reason = "cast_result_" + std::to_string(castResult);
+        TraceProfessionUse(ai, "craft", "failed", reason.c_str(), spell);
+        return;
+    }
+
+    // One line per bot and spell per 5 minutes.
+    std::string const key = "self cast failed " + std::to_string(spell);
+    time_t const now = time(nullptr);
+    if (now - AI_VALUE2(time_t, "manual time", key) < 300)
+        return;
+    SET_AI_VALUE2(time_t, "manual time", key, now);
+    sLog.outBasic("[CastSelf] state=failed bot=%u level=%u spell=%u result=%u", bot->GetGUIDLow(), bot->GetLevel(), spell, castResult);
 }
 
 bool CastCustomSpellAction::CastSummonPlayer(Player* requester, std::string command)
