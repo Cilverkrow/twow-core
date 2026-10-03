@@ -625,10 +625,37 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 snapshot += entry * 2654435761ULL;
             }
 
+            // Hotfix 8.12 (bot 27 Nilenata, >24 h in combat without progress): a roster bot on its
+            // own that stays in combat without progress is stopped after 10 minutes; after 20
+            // the rescue below may act although it is in combat.
+            bool rescueInCombat = false;
+            if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() && bot->IsAlive())
+            {
+                ai::stuck_combat::Step const step = stuckCombat.Observe(bot->IsInCombat(), questProgress.IdleSeconds(now), now);
+                if (step == ai::stuck_combat::Step::Stop || (step == ai::stuck_combat::Step::Rescue && !stuckCombat.rescueLogged))
+                {
+                    Unit* const victim = bot->GetVictim();
+                    Creature* const victimCreature = victim ? victim->ToCreature() : nullptr;
+                    sLog.outBasic("[StuckCombat] state=%s bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f minutes=%u victim_entry=%u victim_evade=%u attackers=%u",
+                        step == ai::stuck_combat::Step::Stop ? "stop" : "rescue", bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(),
+                        bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), stuckCombat.Minutes(now),
+                        victimCreature ? victimCreature->GetEntry() : 0, victimCreature && victimCreature->IsInEvadeMode() ? 1u : 0u,
+                        uint32(bot->GetAttackers().size()));
+                    if (step == ai::stuck_combat::Step::Rescue)
+                        stuckCombat.rescueLogged = true;
+                }
+                if (step == ai::stuck_combat::Step::Stop)
+                {
+                    bot->CombatStop(true);
+                    bot->getHostileRefManager().deleteReferences();
+                }
+                rescueInCombat = step == ai::stuck_combat::Step::Rescue;
+            }
+
             if (questProgress.Update(snapshot, now))
                 aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
             else if (sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
-                !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && !bot->IsInCombat() &&
+                !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && (!bot->IsInCombat() || rescueInCombat) &&
                 bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
             {
                 uint32 const stage = uint32(std::max(0, aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get()));
