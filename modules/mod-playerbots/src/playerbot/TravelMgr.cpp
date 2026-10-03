@@ -146,10 +146,12 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
     }
     else
     {
+        // twow-repo#485: IsOverWorld() checks the taker's map closest to the bot,
+        // not the bot; skip a taker inside an instance, as the objectives below do.
         //Do not try to hand-in dungeon/elite quests in instances without a group.
         if ((quest->GetType() == QUEST_TYPE_ELITE || quest->GetType() == QUEST_TYPE_DUNGEON) && !info.GetBoolValue("can fight boss"))
         {
-            if (IsOverWorld(info.GetPosition()))
+            if (!IsOverWorld(info.GetPosition()))
                 return false;
         }
     }
@@ -168,8 +170,14 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
 
     if (GetRelation() == 0)
     {
-        if (!bot->GetMap()->IsContinent() && (GetClosestPoint(bot)->getMapId() != bot->GetMapId())) //This gives issues for bot->CanTakeQuest so stop here.
-            return false;
+        if (!bot->GetMap()->IsContinent())
+        {
+            // twow-repo#485: a giver can have no point (a script-only game object with
+            // SkipScriptOnlyQuestTakers = 1); GetClosestPoint is null then.
+            WorldPosition const* closestPoint = GetClosestPoint(bot);
+            if (!closestPoint || closestPoint->getMapId() != bot->GetMapId()) //This gives issues for bot->CanTakeQuest so stop here.
+                return false;
+        }
 
         if (forceThisQuest)
         {
@@ -1038,9 +1046,12 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
     observation.y = bot->GetPositionY();
     observation.distance = Distance(bot);
     observation.paused = paused;
+    // twow-repo#485: the suppression key is the target's map, the one that
+    // IsTurnInRouteSuppressed is asked with; mapId above stays the bot's map.
+    observation.targetMapId = wPosition->getMapId();
 
     // Hotfix 8.13 (twow-repo#497): for a target on another map only a shorter distance counts.
-    uint32 const targetMapId = wPosition->getMapId();
+    uint32 const targetMapId = observation.targetMapId;
     transport_stall::Step const transportStep = transportStall.Observe(observation.targetEntry, observation.questId,
         targetMapId != observation.mapId, paused, observation.distance, observation.now);
     if (transportStep != transport_stall::Step::None)
@@ -1735,6 +1746,14 @@ void TravelMgr::LoadQuestTravelTable()
 
             if (!locs.empty())
             {
+                // twow-repo#485: a game object that is not spawned by default
+                // (spawntimesecsmin < 0) only appears when a script summons it - GO 270,
+                // the taker of quest 310, stands for 60 s after the end script of 308.
+                // As a quest giver or taker it is no travel target: bots arrived at an
+                // empty spot until the work phase ran out. Objectives keep every point.
+                bool const skipScriptOnly = sPlayerbotAIConfig.questFirstProgressionSkipScriptOnlyQuestTakers && entry < 0;
+                uint32 scriptOnlyPoints = 0;
+
                 for (auto& guidP : guidpMap.at(entry))
                 {
                     // Never send bots to custom player-only starting zones (no MMAP support).
@@ -1747,11 +1766,29 @@ void TravelMgr::LoadQuestTravelTable()
 
                     pointsMap.insert(std::make_pair(guidP.GetRawValue(), guidP));
 
+                    GameObjectData const* goData = skipScriptOnly ? guidP.GetGameObjectData() : nullptr;
+                    bool const scriptOnly = goData && goData->spawntimesecsmin < 0;
+                    bool skipped = false;
+
                     for (auto tLoc : locs)
                     {
+                        if (scriptOnly && dynamic_cast<QuestRelationTravelDestination*>(tLoc))
+                        {
+                            skipped = true;
+                            continue;
+                        }
+
                         tLoc->AddPoint(&pointsMap.at(guidP.GetRawValue()));
                     }
+
+                    if (skipped)
+                        ++scriptOnlyPoints;
                 }
+
+                // Startup only: one line per affected quest and game object.
+                if (scriptOnlyPoints)
+                    sLog.outBasic("[QuestFirstRoute] state=taker_script_only quest=%u entry=%d skipped_points=%u",
+                        questId, entry, scriptOnlyPoints);
             }
         }
     }

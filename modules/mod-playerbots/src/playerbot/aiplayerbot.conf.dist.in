@@ -553,6 +553,15 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 AiPlayerbot.QuestWorkTimeouts.Max = 0
 AiPlayerbot.QuestWorkTimeouts.CooldownSeconds = 3600
 
+# twow-repo#485: with 1, quest givers and takers that are game objects spawned
+# only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
+# quest 310 "Bitter Rivals", shown for 60 s by a quest end script) are no travel
+# targets, so bots no longer wait at an empty spot until the work phase runs
+# out. Quest objectives keep every point. Applied once when the travel table is
+# built at startup; each skipped quest and object is logged once as
+# [QuestFirstRoute] state=taker_script_only. 0 = off (old behaviour).
+AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers = 0
+
 # G4 (train 6.1): a bot that died DeathLoop.MaxDeaths times within
 # DeathLoop.WindowSeconds and DeathLoop.Radius yards of its latest death is
 # evacuated on the next death (the "repop" teleport to its spawn, travel target
@@ -681,6 +690,12 @@ AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # quest target in a zone clearly above its level (known zone level > level + 5).
 # Logged as [QuestFirstRoute] state=deferred reason=route_danger.
 AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute = 10
+# twow-repo#485: with 1, only a route to the other continent counts for
+# MinLevelForCrossMapQuestRoute. The Deeprun Tram (369) counts as the Eastern
+# Kingdoms and an instance as the continent of its entrance, so routes that stay
+# on one continent are not deferred; a switch from them to the other continent
+# still is. 0 = every other map counts (old behaviour).
+AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes
