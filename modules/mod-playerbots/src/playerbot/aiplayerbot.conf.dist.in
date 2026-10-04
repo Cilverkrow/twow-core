@@ -360,28 +360,39 @@ AiPlayerbot.RosterGuild.GuildNote = 0
 # write runs on the world thread (GuildMgr), no roster broadcast.
 AiPlayerbot.RosterGuild.NoteRefreshSeconds = 300
 
-# Fill roster guilds by role (twow-repo#485 / #518; needs BotsPerGuild > 0). Tanks, healers and DPS
-# per guild. 0/0/0 (default) = no role quota: roster guilds stay as they are (leader and charter
-# signers, nobody is invited). With any value set, a roster bot without a guild is dealt to one roster
-# guild of its faction, as OB-40's planner guild_plan.py does it (per role, class by class with the
-# rarest class first, then level band; members keep their guild), recounted every SnapshotSeconds in
-# memory. A guild officer or leader invites a nearby roster bot only into the guild it is dealt to,
-# the bot accepts only that guild, and signs a bot charter only while the charter has a free slot of
-# its role. A role at 0 gets no slot. Role: the plan file's role, else the bot's own talents (bots
-# without talents are not dealt). Proposal (owner decides): 5/10/30 or 7/10/28.
-AiPlayerbot.RosterGuild.Tanks = 0
-AiPlayerbot.RosterGuild.Healers = 0
-AiPlayerbot.RosterGuild.Dps = 0
+# Fill roster guilds by role (twow-repo#485 / #518). Active only with BotsPerGuild > 0 (default 0 = the
+# whole roster guild path is off). Tanks, healers and DPS per guild; the defaults are the owner's split
+# of 04.10. (7 tanks, 10 healers, 28 DPS in a guild of 45). 0/0/0 = no role quota: roster guilds stay
+# as they are (leader and charter signers, nobody is invited). With a quota, a roster bot without a
+# guild is dealt to one roster guild of its faction, as OB-40's planner guild_plan.py does it (per
+# role, class by class with the rarest class first, then level band; members keep their guild),
+# recounted every SnapshotSeconds in memory. A guild officer or leader invites a nearby roster bot only
+# into the guild it is dealt to, the bot accepts only that guild, and signs a bot charter only while
+# the charter has a free slot of its role. A role at 0 gets no slot. Role: the plan file's role, else
+# the bot's own talents (bots without talents are not dealt).
+AiPlayerbot.RosterGuild.Tanks = 7
+AiPlayerbot.RosterGuild.Healers = 10
+AiPlayerbot.RosterGuild.Dps = 28
 
-# Spread rules of the role fill (default 0 = off each). With all three off the deal is still class by
-# class as guild_plan.py; the switches only add hard limits. HealerClassMin: healer slots stay free for
-# every healer class of the faction the guild still lacks (buffs, dispels). TankClassSpread: at most
-# ceil(tanks of the class / guilds) per guild (no 7 warrior tanks in one guild). RareComboSpread: every
-# race x class pair at most ceil(pair count / guilds) per guild (dwarf shaman, undead paladin, druids
-# land in different guilds). While guilds of the target are still missing, a bot that fits no guild
-# waits for the next one; once all exist the deal steps back to the role slot alone when no guild fits.
+# Spread rules of the role fill. The deal is class by class as guild_plan.py in any case; these keys
+# only add hard limits. While guilds of the target are still missing, a bot that fits no guild waits
+# for the next one; once all exist the deal steps back to the role slot alone when no guild fits.
 # Charters always apply the rules.
-AiPlayerbot.RosterGuild.HealerClassMin = 0
+# HealerClassMin (owner, default 1): healer slots stay free for every healer class of the faction the
+# guild still lacks (at least one healer of each healer class per guild: buffs, dispels).
+# TankClassMix (owner default): per tank class "<class>:<min>" or "<class>:<min>-<max>" per guild, comma
+# separated (class ids 1 warrior, 2 paladin, 4 rogue, 7 shaman, 11 druid/bear). Default: 2-3 warrior
+# tanks and one bear, rogue, paladin and shaman tank each; a minimum keeps tank slots free only while
+# the faction still has an unplaced tank of that class ("as far as the faction has them"). "" = off.
+# RarePairs / RarePairMaxShare (owner default): listed rare race x class pairs "<race>:<class>"
+# (3:7 dwarf shaman, 3:9 dwarf warlock, 5:2 undead paladin, as OB-40's --rare-pairs) at most
+# round(share x guild size), at least 1, per guild (0.025 x 45 = 1): spread over the guilds. "" or 0 = off.
+# TankClassSpread and RareComboSpread (default 0): generic caps, ceil(count / guilds) per guild for
+# every tank class resp. every race x class pair.
+AiPlayerbot.RosterGuild.HealerClassMin = 1
+AiPlayerbot.RosterGuild.TankClassMix = "1:2-3,11:1,4:1,2:1,7:1"
+AiPlayerbot.RosterGuild.RarePairs = "3:7,3:9,5:2"
+AiPlayerbot.RosterGuild.RarePairMaxShare = 0.025
 AiPlayerbot.RosterGuild.TankClassSpread = 0
 AiPlayerbot.RosterGuild.RareComboSpread = 0
 

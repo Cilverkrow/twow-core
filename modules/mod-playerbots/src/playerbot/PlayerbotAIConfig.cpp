@@ -821,13 +821,18 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
     rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
     rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 300);
-    // twow-repo#485 / #518: role fill of roster guilds. 0/0/0 = no role quota; switches default off.
-    rosterGuildTanks = config.GetIntDefault("AiPlayerbot.RosterGuild.Tanks", 0);
-    rosterGuildHealers = config.GetIntDefault("AiPlayerbot.RosterGuild.Healers", 0);
-    rosterGuildDps = config.GetIntDefault("AiPlayerbot.RosterGuild.Dps", 0);
-    rosterGuildHealerClassMin = config.GetBoolDefault("AiPlayerbot.RosterGuild.HealerClassMin", false);
+    // twow-repo#485 / #518: role fill of roster guilds. Defaults = owner rules of 04.10. (assignment v3):
+    // 7/10/28, a healer of every healer class, tank mix 2-3 warriors + 1 bear/rogue/paladin/shaman, rare
+    // pairs about 2.5 %. Inactive while BotsPerGuild = 0. The generic spread switches default off.
+    rosterGuildTanks = config.GetIntDefault("AiPlayerbot.RosterGuild.Tanks", 7);
+    rosterGuildHealers = config.GetIntDefault("AiPlayerbot.RosterGuild.Healers", 10);
+    rosterGuildDps = config.GetIntDefault("AiPlayerbot.RosterGuild.Dps", 28);
+    rosterGuildHealerClassMin = config.GetBoolDefault("AiPlayerbot.RosterGuild.HealerClassMin", true);
     rosterGuildTankClassSpread = config.GetBoolDefault("AiPlayerbot.RosterGuild.TankClassSpread", false);
     rosterGuildRareComboSpread = config.GetBoolDefault("AiPlayerbot.RosterGuild.RareComboSpread", false);
+    rosterGuildTankClassMix = config.GetStringDefault("AiPlayerbot.RosterGuild.TankClassMix", "1:2-3,11:1,4:1,2:1,7:1");
+    rosterGuildRarePairs = config.GetStringDefault("AiPlayerbot.RosterGuild.RarePairs", "3:7,3:9,5:2");
+    rosterGuildRarePairMaxShare = config.GetFloatDefault("AiPlayerbot.RosterGuild.RarePairMaxShare", 0.025f);
     rosterGuildPlanFile = config.GetStringDefault("AiPlayerbot.RosterGuild.PlanFile", "");
     // Read once here (startup or config reload), never on a tick; parsed in memory by the guild plan.
     // Review 04.10 (reload): built in a local vector and published as a whole, so a map thread that

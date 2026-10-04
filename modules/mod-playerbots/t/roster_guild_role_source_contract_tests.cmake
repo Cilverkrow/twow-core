@@ -288,38 +288,75 @@ foreach(needle
   require_text("${create}" "${needle}" "plan guild gate")
 endforeach()
 
-# 9. Config: neutral defaults next to the other RosterGuild keys, members read, documented.
+# 9. Config: the owner rules of 04.10. (assignment v3) are the defaults - 7/10/28, a healer of every
+#    healer class, tank mix 2-3 warriors + 1 bear/rogue/paladin/shaman, rare pairs about 2.5 % - and
+#    stay inactive while BotsPerGuild = 0 (core#281 master switch). Keys next to the other RosterGuild
+#    keys, members read, documented.
 foreach(pair
-    "\"AiPlayerbot.RosterGuild.Tanks\", 0)"
-    "\"AiPlayerbot.RosterGuild.Healers\", 0)"
-    "\"AiPlayerbot.RosterGuild.Dps\", 0)"
-    "\"AiPlayerbot.RosterGuild.HealerClassMin\", false)"
+    "\"AiPlayerbot.RosterGuild.Tanks\", 7)"
+    "\"AiPlayerbot.RosterGuild.Healers\", 10)"
+    "\"AiPlayerbot.RosterGuild.Dps\", 28)"
+    "\"AiPlayerbot.RosterGuild.HealerClassMin\", true)"
     "\"AiPlayerbot.RosterGuild.TankClassSpread\", false)"
     "\"AiPlayerbot.RosterGuild.RareComboSpread\", false)"
+    "\"AiPlayerbot.RosterGuild.TankClassMix\", \"1:2-3,11:1,4:1,2:1,7:1\")"
+    "\"AiPlayerbot.RosterGuild.RarePairs\", \"3:7,3:9,5:2\")"
+    "\"AiPlayerbot.RosterGuild.RarePairMaxShare\", 0.025f)"
     "\"AiPlayerbot.RosterGuild.PlanFile\", \"\")")
-  require_text("${config_source}" "${pair}" "neutral config default")
+  require_text("${config_source}" "${pair}" "owner default (assignment v3)")
 endforeach()
+# Negative probes: the old neutral quota and the old switch default are no longer the defaults.
+reject_text("${config_source}" "\"AiPlayerbot.RosterGuild.Tanks\", 0)" "the old 0 quota as the code default")
+reject_text("${config_source}" "\"AiPlayerbot.RosterGuild.HealerClassMin\", false)" "the healer minimum off by default")
+require_text("${config_source}" "\"AiPlayerbot.RosterGuild.BotsPerGuild\", 0)" "the master switch stays off by default")
 require_order("${config_source}" "\"AiPlayerbot.RosterGuild.NoteRefreshSeconds\"" "\"AiPlayerbot.RosterGuild.Tanks\"" "keys next to the other RosterGuild keys")
 foreach(member "uint32 rosterGuildTanks;" "uint32 rosterGuildHealers;" "uint32 rosterGuildDps;" "bool rosterGuildHealerClassMin;"
-    "bool rosterGuildTankClassSpread;" "bool rosterGuildRareComboSpread;" "std::string rosterGuildPlanFile;" "std::shared_ptr<const std::vector<std::string>> rosterGuildPlanLines;")
+    "bool rosterGuildTankClassSpread;" "bool rosterGuildRareComboSpread;" "std::string rosterGuildTankClassMix;"
+    "std::string rosterGuildRarePairs;" "float rosterGuildRarePairMaxShare;" "std::string rosterGuildPlanFile;"
+    "std::shared_ptr<const std::vector<std::string>> rosterGuildPlanLines;")
   require_text("${config_header}" "${member}" "member declared without in-class default")
 endforeach()
 foreach(member "sPlayerbotAIConfig.rosterGuildTanks" "sPlayerbotAIConfig.rosterGuildHealers" "sPlayerbotAIConfig.rosterGuildDps"
-    "sPlayerbotAIConfig.rosterGuildHealerClassMin" "sPlayerbotAIConfig.rosterGuildTankClassSpread" "sPlayerbotAIConfig.rosterGuildRareComboSpread")
+    "sPlayerbotAIConfig.rosterGuildHealerClassMin" "sPlayerbotAIConfig.rosterGuildTankClassSpread" "sPlayerbotAIConfig.rosterGuildRareComboSpread"
+    "sPlayerbotAIConfig.rosterGuildTankClassMix" "sPlayerbotAIConfig.rosterGuildRarePairs" "sPlayerbotAIConfig.rosterGuildRarePairMaxShare")
   require_text("${create}" "${member}" "config member read by the plan")
 endforeach()
 foreach(line
-    "AiPlayerbot.RosterGuild.Tanks = 0"
-    "AiPlayerbot.RosterGuild.Healers = 0"
-    "AiPlayerbot.RosterGuild.Dps = 0"
-    "AiPlayerbot.RosterGuild.HealerClassMin = 0"
-    "AiPlayerbot.RosterGuild.TankClassSpread = 0"
-    "AiPlayerbot.RosterGuild.RareComboSpread = 0"
-    "AiPlayerbot.RosterGuild.PlanFile = \"\""
-    "Proposal (owner decides): 5/10/30 or 7/10/28.")
+    "\nAiPlayerbot.RosterGuild.Tanks = 7\n"
+    "\nAiPlayerbot.RosterGuild.Healers = 10\n"
+    "\nAiPlayerbot.RosterGuild.Dps = 28\n"
+    "\nAiPlayerbot.RosterGuild.HealerClassMin = 1\n"
+    "\nAiPlayerbot.RosterGuild.TankClassMix = \"1:2-3,11:1,4:1,2:1,7:1\"\n"
+    "\nAiPlayerbot.RosterGuild.RarePairs = \"3:7,3:9,5:2\"\n"
+    "\nAiPlayerbot.RosterGuild.RarePairMaxShare = 0.025\n"
+    "\nAiPlayerbot.RosterGuild.TankClassSpread = 0\n"
+    "\nAiPlayerbot.RosterGuild.RareComboSpread = 0\n"
+    "AiPlayerbot.RosterGuild.PlanFile = \"\"")
   require_text("${config_template}" "${line}" "documented default")
 endforeach()
-reject_text("${config_template}" "\nAiPlayerbot.RosterGuild.Tanks = 5" "a proposal as the default")
-reject_text("${config_template}" "\nAiPlayerbot.RosterGuild.Tanks = 7" "a proposal as the default")
+reject_text("${config_template}" "\nAiPlayerbot.RosterGuild.Tanks = 0\n" "the old 0 quota as the documented default")
+reject_text("${config_template}" "\nAiPlayerbot.RosterGuild.Tanks = 5\n" "the 5/10/30 candidate as the default")
+
+# 10. Owner rules in the policy: tank class mix (maximum, slots kept for classes below the minimum as far
+#     as the faction has unplaced tanks of the class) and the rare pair cap; tanks are counted as unplaced
+#     like healers; the plan builds both from the config strings.
+foreach(needle
+    "if (own != switches.tankMix.end() && own->second.second && counts.Get(roleClass) >= own->second.second)"
+    "if (inRole + 1 + MissingTankMix(counts, stats, switches.tankMix, member.cls) > quota.tanks)"
+    "missing += std::min(item.second.first - have, unplaced->second);"
+    "if (switches.rarePairCap && switches.rarePairs.count(combo) && counts.GetCombo(combo) >= switches.rarePairCap)"
+    "++stats.unplacedTanks[member.cls];"
+    "--stats.unplacedTanks[member.cls];"
+    "case Fit::TankClassMix: return \"tank_class_mix\";"
+    "case Fit::RarePairCap: return \"rare_pair_cap\";")
+  require_text("${policy}" "${needle}" "owner rule in the policy")
+endforeach()
+require_order("${policy}" "inline bool ParseUnsigned(" "inline TankMix ParseTankMix(" "the mix parser after ParseUnsigned")
+foreach(needle
+    "switches.tankMix = roster_guild_role::ParseTankMix(sPlayerbotAIConfig.rosterGuildTankClassMix);"
+    "switches.rarePairs = roster_guild_role::ParseRarePairs(sPlayerbotAIConfig.rosterGuildRarePairs);"
+    "roster_guild_role::RarePairCapFor(sPlayerbotAIConfig.rosterGuildRarePairMaxShare, quota.tanks + quota.healers + quota.dps)")
+  require_text("${create}" "${needle}" "owner rules built from the config")
+endforeach()
 
 message(STATUS "ROSTER_GUILD_ROLE_SOURCE_CONTRACT=PASS")

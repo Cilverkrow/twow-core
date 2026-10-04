@@ -129,6 +129,13 @@ namespace
         switches.healerClassMin = sPlayerbotAIConfig.rosterGuildHealerClassMin;
         switches.tankClassSpread = sPlayerbotAIConfig.rosterGuildTankClassSpread;
         switches.rareComboSpread = sPlayerbotAIConfig.rosterGuildRareComboSpread;
+        // Owner rules (assignment v3): tank class mix and rare race x class pairs. Parsed from short
+        // config strings on each call (a recount or a charter decision, never per tick).
+        switches.tankMix = roster_guild_role::ParseTankMix(sPlayerbotAIConfig.rosterGuildTankClassMix);
+        switches.rarePairs = roster_guild_role::ParseRarePairs(sPlayerbotAIConfig.rosterGuildRarePairs);
+        roster_guild_role::Quota const quota = RosterGuildQuota();
+        switches.rarePairCap = switches.rarePairs.empty() ? 0 :
+            roster_guild_role::RarePairCapFor(sPlayerbotAIConfig.rosterGuildRarePairMaxShare, quota.tanks + quota.healers + quota.dps);
         return switches;
     }
 

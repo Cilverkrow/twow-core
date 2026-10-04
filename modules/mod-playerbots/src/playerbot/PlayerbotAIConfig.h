@@ -326,14 +326,19 @@ public:
     bool rosterGuildNote;
     uint32 rosterGuildNoteRefreshSeconds;
     // twow-repo#485 / #518: fill roster guilds by role (RosterGuildRolePolicy.h, GuildCreateActions.cpp).
-    // Tanks/Healers/Dps per guild; 0/0/0 (default) = no role quota, roster guilds stay as in core#281.
-    // The three switches (default off) add the spread rules of OB-40's guild planner (PR #519).
+    // Tanks/Healers/Dps per guild; defaults are the owner's 7/10/28 (04.10.), active only with
+    // BotsPerGuild > 0; 0/0/0 = no role quota. HealerClassMin (default on), TankClassMix (owner mix)
+    // and RarePairs/RarePairMaxShare (owner: about 2.5 %) are the owner rules; TankClassSpread and
+    // RareComboSpread (default off) are the generic spread caps.
     uint32 rosterGuildTanks;
     uint32 rosterGuildHealers;
     uint32 rosterGuildDps;
     bool rosterGuildHealerClassMin;
     bool rosterGuildTankClassSpread;
     bool rosterGuildRareComboSpread;
+    std::string rosterGuildTankClassMix;
+    std::string rosterGuildRarePairs;
+    float rosterGuildRarePairMaxShare;
     // OB-40's guilds.tsv (ordinal guid faction guild role class race); "" (default) = no plan. Read
     // only in Initialize() (startup, config reload), never on a tick. The lines are published as a
     // whole (std::atomic_store) and read through RosterGuildPlanLines() (std::atomic_load), so a

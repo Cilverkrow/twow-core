@@ -372,6 +372,104 @@ int main()
         Require(SamePlanGuild("", "A2") && SamePlanGuild("A1", ""), "bots without a plan row are not ruled by the plan");
     }
 
+    // 9. Owner tank mix (assignment v3, config default "1:2-3,11:1,4:1,2:1,7:1"): 2-3 warrior tanks
+    //    and one bear, rogue, paladin and shaman tank per guild, as far as the faction has them.
+    {
+        TankMix const mix = ParseTankMix("1:2-3,11:1,4:1,2:1,7:1");
+        Require(mix.size() == 5, "five tank classes in the owner mix");
+        Require(mix.at(WARRIOR) == std::make_pair(2u, 3u), "warriors 2-3");
+        Require(mix.at(DRUID) == std::make_pair(1u, 0u) && mix.at(ROGUE) == std::make_pair(1u, 0u) &&
+            mix.at(PALADIN) == std::make_pair(1u, 0u) && mix.at(SHAMAN) == std::make_pair(1u, 0u), "one bear, rogue, paladin and shaman, no cap");
+        TankMix const sloppy = ParseTankMix(" 1 : 2 - 3 , x:1, 12:1, 4:3-2, \"7:1\" ");
+        Require(sloppy.size() == 2 && sloppy.at(WARRIOR) == std::make_pair(2u, 3u) && sloppy.count(SHAMAN),
+            "spaces and quotes ignored; bad class, class 12 and max < min skipped");
+        Require(ParseTankMix("").empty(), "empty = no mix");
+
+        // Faction: 14 tanks, 6 warriors and 2 each of bear, rogue, paladin, shaman; 2 guilds of 7 tanks.
+        Roster roster;
+        roster.Add(6, Role::Tank, WARRIOR, HUMAN);
+        roster.Add(2, Role::Tank, DRUID, NIGHTELF);
+        roster.Add(2, Role::Tank, ROGUE, HUMAN);
+        roster.Add(2, Role::Tank, PALADIN, DWARF);
+        roster.Add(2, Role::Tank, SHAMAN, DWARF);
+        std::vector<std::uint32_t> const guilds = { 11, 12 };
+        Switches owner;
+        owner.tankMix = mix;
+        Result const dealt = Count(roster, Deal(roster.members, guilds, Quota{ 7, 10, 28 }, owner, 2));
+        for (std::uint32_t guild : guilds)
+        {
+            Require(dealt.roles.at(guild).at(Role::Tank) == 7, "owner mix: 7 tanks per guild");
+            Require(dealt.classes.at(guild).at(RoleClass(Role::Tank, WARRIOR)) == 3, "owner mix: 3 warrior tanks per guild");
+            for (std::uint8_t cls : { DRUID, ROGUE, PALADIN, SHAMAN })
+                Require(dealt.classes.at(guild).at(RoleClass(Role::Tank, cls)) == 1, "owner mix: one bear, rogue, paladin and shaman tank per guild");
+        }
+
+        // Charter: 3 warrior tanks have signed; a 4th warrior hits the class maximum.
+        FactionStats const stats = MakeStats(roster.members, 2);
+        GuildCounts charter;
+        for (int i = 0; i < 3; ++i)
+            AddToCounts(charter, roster.members[i]);
+        Member warrior = roster.members[3];
+        Require(CheckFit(charter, warrior, Quota{ 7, 10, 28 }, owner, stats) == Fit::TankClassMix, "owner mix: no 4th warrior tank");
+        Require(CheckFit(charter, warrior, Quota{ 7, 10, 28 }, Switches(), stats) == Fit::Ok, "negative probe: without the mix the 4th warrior signs");
+        Require(std::string(FitName(Fit::TankClassMix)) == "tank_class_mix", "trace reason");
+
+        // Charter with 3 warriors, a rogue and a paladin (5 of 7): the 2 free slots stay for the bear and
+        // the shaman the faction still has, so a 2nd rogue does not sign ...
+        AddToCounts(charter, roster.members[8]);   // rogue
+        AddToCounts(charter, roster.members[10]);  // paladin
+        Member rogue = roster.members[9];
+        Require(CheckFit(charter, rogue, Quota{ 7, 10, 28 }, owner, stats) == Fit::TankClassMix, "owner mix: slots kept for bear and shaman");
+        Require(CheckFit(charter, roster.members[6], Quota{ 7, 10, 28 }, owner, stats) == Fit::Ok, "owner mix: the bear signs");
+        // ... unless the faction has no unplaced shaman tank left: then only the bear's slot is kept.
+        FactionStats noShaman = stats;
+        noShaman.unplacedTanks.erase(SHAMAN);
+        Require(CheckFit(charter, rogue, Quota{ 7, 10, 28 }, owner, noShaman) == Fit::Ok, "owner mix: only as far as the faction has them");
+    }
+
+    // 10. Owner rare pairs (config default "3:7,3:9,5:2", share 0.025): at most round(share x guild
+    //     size), at least 1, of a listed race x class pair per guild.
+    {
+        std::uint8_t const WARLOCK = 9;
+        std::set<RaceClass> const pairs = ParseRarePairs("3:7,3:9,5:2");
+        Require(pairs.size() == 3 && pairs.count(RaceClass(DWARF, SHAMAN)) && pairs.count(RaceClass(DWARF, WARLOCK)) && pairs.count(RaceClass(5, PALADIN)),
+            "dwarf shaman, dwarf warlock, undead paladin");
+        Require(ParseRarePairs("3:7, bad, 0:2, 5:\"2\"").size() == 2 && ParseRarePairs("").empty(), "malformed and race 0 skipped; empty = none");
+        Require(RarePairCapFor(0.025f, 45) == 1, "2.5 % of 45 = 1 per guild");
+        Require(RarePairCapFor(0.025f, 90) == 2, "2.5 % of 90 = 2 per guild");
+        Require(RarePairCapFor(0.001f, 45) == 1, "at least 1");
+        Require(RarePairCapFor(0.0f, 45) == 0 && RarePairCapFor(0.025f, 0) == 0, "no share or no guild size: no cap");
+
+        // 3 dwarf warlocks and 6 human mages (DPS), 2 guilds of 4 DPS.
+        Roster roster;
+        roster.Add(3, Role::Dps, WARLOCK, DWARF);
+        roster.Add(6, Role::Dps, MAGE, HUMAN);
+        std::vector<std::uint32_t> const guilds = { 11, 12 };
+        Switches owner;
+        owner.rarePairs = pairs;
+        owner.rarePairCap = 1;
+        RaceClass const dwarfWarlock(DWARF, WARLOCK);
+
+        // A 3rd target guild is still missing: the 3rd dwarf warlock waits for it.
+        Result const waiting = Count(roster, Deal(roster.members, guilds, Quota{ 0, 0, 4 }, owner, 3));
+        Require(waiting.combos.at(11).at(dwarfWarlock) == 1 && waiting.combos.at(12).at(dwarfWarlock) == 1, "one dwarf warlock per guild");
+        Require(waiting.unplaced == 1, "the 3rd dwarf warlock waits for the missing guild");
+        Result const plain = Count(roster, Deal(roster.members, guilds, Quota{ 0, 0, 4 }, Switches(), 3));
+        Require(plain.unplaced == 1 && (plain.combos.at(11).at(dwarfWarlock) == 2 || plain.combos.at(12).at(dwarfWarlock) == 2),
+            "negative probe: without the cap a guild takes 2 dwarf warlocks (a mage waits instead)");
+
+        // Every target guild exists: nobody waits, the cap steps back to the role slot.
+        Result const all = Count(roster, Deal(roster.members, guilds, Quota{ 0, 0, 5 }, owner, 2));
+        Require(all.unplaced == 0, "all guilds founded: the 3rd dwarf warlock still gets a role slot");
+
+        GuildCounts charter;
+        AddToCounts(charter, roster.members[0]);
+        FactionStats const stats = MakeStats(roster.members, 2);
+        Require(CheckFit(charter, roster.members[1], Quota{ 0, 0, 4 }, owner, stats) == Fit::RarePairCap, "a 2nd dwarf warlock does not sign");
+        Require(CheckFit(charter, roster.members[3], Quota{ 0, 0, 4 }, owner, stats) == Fit::Ok, "a mage signs");
+        Require(std::string(FitName(Fit::RarePairCap)) == "rare_pair_cap", "trace reason");
+    }
+
     std::cout << "ROSTER_GUILD_ROLE_POLICY=PASS\n";
     return 0;
 }

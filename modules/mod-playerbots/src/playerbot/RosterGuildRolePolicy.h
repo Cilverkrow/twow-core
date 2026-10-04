@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <cmath>
 #include <map>
+#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -14,7 +16,8 @@ namespace ai::roster_guild_role
 {
 // twow-repo#485 / #518: fill roster guilds by role. The split is configuration
 // (AiPlayerbot.RosterGuild.Tanks/Healers/Dps per guild, 0/0/0 = no role quota = the behaviour of
-// core#281), the owner still decides the numbers (candidates 5/10/30 and 7/10/28). The deal follows
+// core#281; the config default is the owner's 7/10/28 of 04.10., active only with BotsPerGuild > 0).
+// The deal follows
 // OB-40's planner twow-repo PR #519 deploy/roster/plan-360/guild_plan.py: per role (tanks, healers,
 // DPS), class by class with the rarest class first, then level band, race and ordinal; members that
 // already have a guild keep it (--keep); a new member goes to the open guild with the fewest of its
@@ -27,7 +30,14 @@ namespace ai::roster_guild_role
 //   TankClassSpread - tanks: class spread, and at most ceil(tanks of the class / guilds) per guild;
 //   RareComboSpread - every race x class pair at most ceil(pair count / guilds) per guild, so rare
 //                     pairs (dwarf shaman, undead paladin, druids) land in different guilds.
-// DPS are dealt class by class as in guild_plan.py. Pure code, std only.
+// DPS are dealt class by class as in guild_plan.py. Two owner rules (assignment v3, 04.10.), empty
+// (off) in the structs here, set by the config defaults:
+//   tankMix   - per tank class a minimum and an optional maximum per guild (owner: 2-3 warriors and one
+//               bear, rogue, paladin and shaman tank each, as far as the faction has them); a minimum
+//               keeps tank slots free only while the faction still has an unplaced tank of that class;
+//   rarePairs - listed race x class pairs (dwarf shaman, dwarf warlock, undead paladin) at most
+//               rarePairCap per guild (owner: about 2.5 % per pair, so 1 in a guild of 45).
+// Pure code, std only.
 
 enum class Role : std::uint8_t
 {
@@ -99,11 +109,20 @@ inline std::uint32_t QuotaFor(Quota const& quota, Role role)
     return 0;
 }
 
+typedef std::pair<Role, std::uint8_t> RoleClass;
+typedef std::pair<std::uint8_t, std::uint8_t> RaceClass;
+
+// Tank class -> (minimum, maximum) per guild; maximum 0 = no cap.
+typedef std::map<std::uint8_t, std::pair<std::uint32_t, std::uint32_t>> TankMix;
+
 struct Switches
 {
     bool healerClassMin = false;
     bool tankClassSpread = false;
     bool rareComboSpread = false;
+    TankMix tankMix;                    // empty = no tank class mix
+    std::set<RaceClass> rarePairs;      // (race, class) pairs under rarePairCap
+    std::uint32_t rarePairCap = 0;      // 0 = no cap
 };
 
 // Role fill only on the roster path (BotsPerGuild > 0, roster bot, no real master) and only with a
@@ -136,9 +155,6 @@ inline std::uint32_t SpreadCap(std::uint32_t total, std::uint32_t guilds)
     return guilds ? (total + guilds - 1) / guilds : total;
 }
 
-typedef std::pair<Role, std::uint8_t> RoleClass;
-typedef std::pair<std::uint8_t, std::uint8_t> RaceClass;
-
 // Counts of one guild or one charter.
 struct GuildCounts
 {
@@ -170,6 +186,7 @@ struct FactionStats
     std::map<RoleClass, std::uint32_t> roleClass;               // all members with a known role
     std::map<RaceClass, std::uint32_t> combo;
     std::map<std::uint8_t, std::uint32_t> unplacedHealers;      // healers without a guild, by class
+    std::map<std::uint8_t, std::uint32_t> unplacedTanks;        // tanks without a guild, by class
 
     std::uint32_t Get(RoleClass const& k) const { auto it = roleClass.find(k); return it == roleClass.end() ? 0 : it->second; }
     std::uint32_t GetCombo(RaceClass const& k) const { auto it = combo.find(k); return it == combo.end() ? 0 : it->second; }
@@ -187,8 +204,30 @@ inline FactionStats MakeStats(std::vector<Member> const& members, std::uint32_t 
         ++stats.combo[RaceClass(member.race, member.cls)];
         if (member.role == Role::Healer && !member.guild)
             ++stats.unplacedHealers[member.cls];
+        if (member.role == Role::Tank && !member.guild)
+            ++stats.unplacedTanks[member.cls];
     }
     return stats;
+}
+
+// Tank slots the guild keeps free for the other mix classes still below their minimum, as far as the
+// faction still has unplaced tanks of that class (owner: "soweit die Fraktion sie hat").
+inline std::uint32_t MissingTankMix(GuildCounts const& counts, FactionStats const& stats, TankMix const& mix, std::uint8_t cls)
+{
+    std::uint32_t missing = 0;
+    for (auto const& item : mix)
+    {
+        if (item.first == cls)
+            continue;
+        std::uint32_t const have = counts.Get(RoleClass(Role::Tank, item.first));
+        if (have >= item.second.first)
+            continue;
+        auto const unplaced = stats.unplacedTanks.find(item.first);
+        if (unplaced == stats.unplacedTanks.end())
+            continue;
+        missing += std::min(item.second.first - have, unplaced->second);
+    }
+    return missing;
 }
 
 // Healer classes of the faction (any healer of the class in the roster) the guild has none of,
@@ -210,6 +249,8 @@ enum class Fit
     HealerClassReserved,
     TankClassSpread,
     RareComboSpread,
+    TankClassMix,
+    RarePairCap,
 };
 
 inline char const* FitName(Fit fit)
@@ -222,6 +263,8 @@ inline char const* FitName(Fit fit)
         case Fit::HealerClassReserved: return "healer_class_reserved";
         case Fit::TankClassSpread: return "tank_class_spread";
         case Fit::RareComboSpread: return "rare_combo_spread";
+        case Fit::TankClassMix: return "tank_class_mix";
+        case Fit::RarePairCap: return "rare_pair_cap";
     }
     return "unknown";
 }
@@ -247,13 +290,26 @@ inline Fit CheckFit(GuildCounts const& counts, Member const& member, Quota const
         counts.Get(roleClass) >= SpreadCap(stats.Get(roleClass), stats.guilds))
         return Fit::TankClassSpread;
 
+    // Owner tank mix: the class maximum, and tank slots kept free for mix classes below their minimum.
+    if (member.role == Role::Tank && !switches.tankMix.empty())
+    {
+        auto const own = switches.tankMix.find(member.cls);
+        if (own != switches.tankMix.end() && own->second.second && counts.Get(roleClass) >= own->second.second)
+            return Fit::TankClassMix;
+        if (inRole + 1 + MissingTankMix(counts, stats, switches.tankMix, member.cls) > quota.tanks)
+            return Fit::TankClassMix;
+    }
+
     RaceClass const combo(member.race, member.cls);
     if (switches.rareComboSpread && counts.GetCombo(combo) >= SpreadCap(stats.GetCombo(combo), stats.guilds))
         return Fit::RareComboSpread;
 
+    // Owner rare pairs: at most rarePairCap of a listed race x class pair per guild.
+    if (switches.rarePairCap && switches.rarePairs.count(combo) && counts.GetCombo(combo) >= switches.rarePairCap)
+        return Fit::RarePairCap;
+
     return Fit::Ok;
 }
-
 // The deal: guid -> guild for every member with a guild among `guilds` (kept) and every member
 // without a guild that gets a slot. `guilds` in a fixed order (ascending id): the index is the last
 // tie-break. targetGuilds (>= guilds.size()) sets the spread caps. A member whose role slots are all
@@ -336,6 +392,8 @@ inline std::map<std::uint32_t, std::uint32_t> Deal(std::vector<Member> const& me
             assigned[member.guid] = guild;
             if (role == Role::Healer && stats.unplacedHealers[member.cls])
                 --stats.unplacedHealers[member.cls];
+            if (role == Role::Tank && stats.unplacedTanks[member.cls])
+                --stats.unplacedTanks[member.cls];
         }
     }
 
@@ -453,5 +511,72 @@ inline std::map<std::string, std::uint32_t> LabelGuilds(std::vector<std::pair<st
 inline bool SamePlanGuild(std::string const& signerLabel, std::string const& ownerLabel)
 {
     return signerLabel.empty() || ownerLabel.empty() || signerLabel == ownerLabel;
+}
+
+
+// "1:2-3,11:1,4:1,2:1,7:1" -> class -> (minimum, maximum): "<class>:<min>" or "<class>:<min>-<max>",
+// maximum 0 = no cap. Malformed entries and classes outside 1..11 are skipped; "" = no mix.
+inline TankMix ParseTankMix(std::string const& text)
+{
+    TankMix mix;
+    std::string::size_type start = 0;
+    while (start <= text.size())
+    {
+        std::string::size_type const comma = text.find(',', start);
+        std::string entry = text.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        start = comma == std::string::npos ? text.size() + 1 : comma + 1;
+
+        std::string clean;
+        for (char c : entry)
+            if (c != ' ' && c != '\t' && c != '"')
+                clean += c;
+        std::string::size_type const colon = clean.find(':');
+        if (colon == std::string::npos)
+            continue;
+        std::string const range = clean.substr(colon + 1);
+        std::string::size_type const dash = range.find('-');
+        std::uint32_t cls = 0, minimum = 0, maximum = 0;
+        if (!ParseUnsigned(clean.substr(0, colon), cls) || cls < 1 || cls > 11 ||
+            !ParseUnsigned(range.substr(0, dash), minimum) ||
+            (dash != std::string::npos && (!ParseUnsigned(range.substr(dash + 1), maximum) || maximum < minimum)))
+            continue;
+        mix[std::uint8_t(cls)] = std::make_pair(minimum, maximum);
+    }
+    return mix;
+}
+
+// "3:7,3:9,5:2" -> (race, class) pairs. Malformed entries are skipped; "" = no pair.
+inline std::set<RaceClass> ParseRarePairs(std::string const& text)
+{
+    std::set<RaceClass> pairs;
+    std::string::size_type start = 0;
+    while (start <= text.size())
+    {
+        std::string::size_type const comma = text.find(',', start);
+        std::string entry = text.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        start = comma == std::string::npos ? text.size() + 1 : comma + 1;
+
+        std::string clean;
+        for (char c : entry)
+            if (c != ' ' && c != '\t' && c != '"')
+                clean += c;
+        std::string::size_type const colon = clean.find(':');
+        std::uint32_t race = 0, cls = 0;
+        if (colon == std::string::npos || !ParseUnsigned(clean.substr(0, colon), race) ||
+            !ParseUnsigned(clean.substr(colon + 1), cls) || !race || race > 255 || !cls || cls > 255)
+            continue;
+        pairs.insert(RaceClass(std::uint8_t(race), std::uint8_t(cls)));
+    }
+    return pairs;
+}
+
+// Per-guild cap of a rare pair: share of the guild size, rounded, at least 1 (owner: about 2.5 % per
+// pair, 1 in a guild of 45). share <= 0 or no guild size = no cap (0).
+inline std::uint32_t RarePairCapFor(float share, std::uint32_t guildSize)
+{
+    if (!(share > 0.0f) || !guildSize)
+        return 0;
+    std::uint32_t const cap = std::uint32_t(std::lround(double(share) * double(guildSize)));
+    return cap ? cap : 1;
 }
 }
