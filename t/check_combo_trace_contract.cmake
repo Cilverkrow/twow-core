@@ -29,7 +29,8 @@ endforeach()
 file(READ "${TW_CORE_ROOT}/src/game/Objects/Player.h" player_h)
 foreach (needle
     "void ClearComboPoints(ComboClearReason reason = COMBO_CLEAR_OTHER);"
-    "void TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget);")
+    "void AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId = 0, bool fromProc = false);"
+    "void TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget, ObjectGuid const& newTarget = ObjectGuid(), uint32 sourceSpellId = 0);")
   require_text("${player_h}" "${needle}" "Player.h")
 endforeach()
 
@@ -38,6 +39,8 @@ file(READ "${TW_CORE_ROOT}/src/game/Spells/Spell.cpp" spell_cpp)
 require_text("${spell_cpp}" "((Player*)m_caster)->ClearComboPoints(COMBO_CLEAR_FINISHER);" "Spell.cpp finisher")
 file(READ "${TW_CORE_ROOT}/src/game/Handlers/MiscHandler.cpp" misc_cpp)
 require_text("${misc_cpp}" "_player->ClearComboPoints(COMBO_CLEAR_SELECT);" "MiscHandler.cpp select")
+file(READ "${TW_CORE_ROOT}/src/game/Spells/SpellEffects.cpp" effects_cpp)
+require_text("${effects_cpp}" "((Player*)m_caster)->AddComboPoints(unitTarget, damage, m_spellInfo->Id, m_triggeredByAuraSpell != nullptr);" "SpellEffects.cpp proc source")
 file(READ "${TW_CORE_ROOT}/src/game/Objects/Unit.cpp" unit_cpp)
 foreach (needle
     "ClearComboPointHolders(COMBO_CLEAR_TARGET_DIED);"
@@ -50,9 +53,10 @@ file(READ "${TW_CORE_ROOT}/src/game/Objects/Player.cpp" player_cpp)
 foreach (needle
     "ClearComboPoints(COMBO_CLEAR_DEATH);"
     "ClearComboPoints(COMBO_CLEAR_DUEL);"
-    "TraceComboPoints(\"retarget\", uint8(m_comboPoints), m_comboTargetGuid);"
+    "TraceComboPoints(fromProc ? \"proc_other_target\" : \"retarget\", uint8(m_comboPoints), m_comboTargetGuid,"
+    "void Player::AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId, bool fromProc)"
     "{ \"other\", \"finisher\", \"select\", \"target_died\", \"death\", \"duel\" }"
-    "[ComboTrace] player=%u reason=%s cp=%u target=%s selection=%s map=%u"
+    "[ComboTrace] player=%u reason=%s cp=%u target=%s new_target=%s spell=%u selection=%s map=%u"
     "[ComboTrace] player=%u suppressed=%u window_s=%u"
     "if (!pointsBefore || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))"
     "if (!GetSession() || !GetSession()->GetSocket())"
@@ -77,7 +81,7 @@ foreach (needle
     "m_comboTargetGuid.Clear();")
   require_text("${clear_body}" "${needle}" "ClearComboPoints behaviour")
 endforeach()
-string(FIND "${player_cpp}" "void Player::AddComboPoints(Unit* target, int8 count)" add_at)
+string(FIND "${player_cpp}" "void Player::AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId, bool fromProc)" add_at)
 math(EXPR add_len "${clear_at} - ${add_at}")
 string(SUBSTRING "${player_cpp}" ${add_at} ${add_len} add_body)
 foreach (needle

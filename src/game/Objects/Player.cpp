@@ -21344,7 +21344,7 @@ void Player::SetComboPoints()
     }*/
 }
 
-void Player::AddComboPoints(Unit* target, int8 count)
+void Player::AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId, bool fromProc)
 {
     if (!count)
         return;
@@ -21358,7 +21358,8 @@ void Player::AddComboPoints(Unit* target, int8 count)
     {
         // Hotfix 8.24 (#484): points built on another target are dropped here.
         if (m_comboTargetGuid && m_comboPoints > 0)
-            TraceComboPoints("retarget", uint8(m_comboPoints), m_comboTargetGuid);
+            TraceComboPoints(fromProc ? "proc_other_target" : "retarget", uint8(m_comboPoints), m_comboTargetGuid,
+                target->GetObjectGuid(), sourceSpellId);
 
         if (m_comboTargetGuid)
             if (Unit* target2 = ObjectAccessor::GetUnit(*this, m_comboTargetGuid))
@@ -21405,7 +21406,8 @@ void Player::ClearComboPoints(ComboClearReason reason)
 // Hotfix 8.24 (twow-repo#484, owner: "combo points just disappear"): one greppable line per
 // lost combo point set of a real player (rogue/druid; bots have no socket), at most 30 lines
 // per player and minute, then a suppressed count. Logging only.
-void Player::TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget)
+void Player::TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget,
+    ObjectGuid const& newTarget, uint32 sourceSpellId)
 {
     if (!pointsBefore || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))
         return;
@@ -21430,9 +21432,9 @@ void Player::TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid
     ++m_comboTraceLines;
 
     ObjectGuid const selection = GetSelectionGuid();
-    sLog.outBasic("[ComboTrace] player=%u reason=%s cp=%u target=%s selection=%s map=%u",
+    sLog.outBasic("[ComboTrace] player=%u reason=%s cp=%u target=%s new_target=%s spell=%u selection=%s map=%u",
         GetGUIDLow(), reason, uint32(pointsBefore), comboTarget.GetString().c_str(),
-        selection.GetString().c_str(), GetMapId());
+        newTarget.GetString().c_str(), sourceSpellId, selection.GetString().c_str(), GetMapId());
 }
 
 void Player::SetGroup(Group *group, int8 subgroup)
