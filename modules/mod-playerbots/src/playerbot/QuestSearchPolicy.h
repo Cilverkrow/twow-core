@@ -8,6 +8,14 @@
 
 namespace ai::quest_search
 {
+// Hotfix 8.26: a roster bot on its own that the quest rescue moves binds its hearthstone there,
+// so a later hearthstone does not undo the rescue. Only bots without a real player; any map
+// (the rescue target is always of the bot's own faction).
+inline bool RebindAtRescue(bool rosterBot, bool realMaster, uint32_t /*homebindMap*/, uint32_t /*targetMap*/)
+{
+    return rosterBot && !realMaster;
+}
+
 // twow-repo#421 (train 8), owner decision 2026-09-29: a roster bot without a
 // quest target does not fall back to grinding - it searches for quests, and as
 // a last resort, after ~20 min without progress, it is teleported to another
