@@ -1752,21 +1752,27 @@ void LoadFunserverBoePool()
     if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_RULES_482))
     {
         using namespace FunserverLootRules;
-        for (auto const& entry : ParseMapNames(sConfig.GetStringDefault("Funserver.Loot.Raid.Maps", DEFAULT_RAID_MAPS)))
+        // An empty or missing key means the built-in default (mangosd.conf.dist lists them as "").
+        auto const configOr = [](char const* key, char const* fallback)
+        {
+            std::string const value = sConfig.GetStringDefault(key, "");
+            return value.empty() ? std::string(fallback) : value;
+        };
+        for (auto const& entry : ParseMapNames(configOr("Funserver.Loot.Raid.Maps", DEFAULT_RAID_MAPS)))
         {
             if (RaidProfile const* profile = FindRaidProfile(entry.second))
                 sFunserverRaidProfiles[entry.first] = profile;
             else
                 sLog.outError("Funserver.Loot.Raid.Maps: map %u names unknown profile %s", entry.first, entry.second.c_str());
         }
-        for (auto const& entry : ParseMapNames(sConfig.GetStringDefault("Funserver.Loot.Dungeon.Maps", DEFAULT_DUNGEON_MAPS)))
+        for (auto const& entry : ParseMapNames(configOr("Funserver.Loot.Dungeon.Maps", DEFAULT_DUNGEON_MAPS)))
         {
             if (DungeonBand const* band = FindDungeonBand(entry.second))
                 sFunserverDungeonBands[entry.first] = band;
             else
                 sLog.outError("Funserver.Loot.Dungeon.Maps: map %u names unknown band %s", entry.first, entry.second.c_str());
         }
-        for (auto const& entry : ParseTokenLists(sConfig.GetStringDefault("Funserver.Loot.Raid.Tokens", DEFAULT_RAID_TOKENS)))
+        for (auto const& entry : ParseTokenLists(configOr("Funserver.Loot.Raid.Tokens", DEFAULT_RAID_TOKENS)))
             sFunserverRaidTokens[entry.first].insert(entry.second.begin(), entry.second.end());
         sLog.outString("Funserver loot rules #482: %u raid profiles, %u dungeon bands, %u token raids",
             uint32(sFunserverRaidProfiles.size()), uint32(sFunserverDungeonBands.size()), uint32(sFunserverRaidTokens.size()));

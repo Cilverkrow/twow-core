@@ -1006,6 +1006,10 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(loot_rules_482_policy_test
     "${TW_CORE_ROOT}/t/loot_rules_482_policy_test.cpp")
   add_test(NAME loot_rules_482_policy_test COMMAND loot_rules_482_policy_test)
+  add_test(NAME loot_rules_482_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_loot_rules_482_contract.cmake")
   # twow-repo#408: Scarlet Citadel (map 45) secured, content kept.
   add_test(NAME scarlet_citadel_408_contract
     COMMAND "${CMAKE_COMMAND}"
