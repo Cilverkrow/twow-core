@@ -17,7 +17,7 @@ namespace
     // Player::UpdateCraftSkill does (skill_line_ability min/max values,
     // SkillChance.*); a skill at its rank cap is skipped like in
     // ShouldCraftSpellValue::SpellGivesSkillUp.
-    uint32 CraftSkillUpChance(uint32 spellId, Player* bot)
+    uint32 CraftSkillUpChance(uint32 spellId, Player* bot, uint32* outSkillId = nullptr, uint32* outSkillValue = nullptr)
     {
         SkillLineAbilityMapBounds const bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spellId);
         for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
@@ -39,7 +39,13 @@ namespace
                 chance = sWorld.getConfig(CONFIG_UINT32_SKILL_CHANCE_YELLOW);
 
             if (chance)
+            {
+                if (outSkillId)
+                    *outSkillId = skill->skillId;
+                if (outSkillValue)
+                    *outSkillValue = skillValue;
                 return chance * 10;
+            }
         }
         return 0;
     }
@@ -160,7 +166,7 @@ bool ProfessionCraftTrigger::IsActive()
             recipe.spellId = spellId;
             if (recipe.givesSkillUp)
             {
-                recipe.skillUpChance = CraftSkillUpChance(spellId, bot);
+                recipe.skillUpChance = CraftSkillUpChance(spellId, bot, &recipe.skillId, &recipe.skillValue);
                 recipe.hasTools = HasCraftTools(spell, bot);
                 recipe.craftable = CraftableFromBags(spell, bot);
                 // A recipe on its own or category cooldown (transmutes: 24-48 h)
@@ -193,7 +199,9 @@ bool ProfessionCraftTrigger::IsActive()
         // Classify does not know the backoff: when every craftable recipe is
         // backed off, on cooldown or without room for its product there is no
         // pick, so wait a full interval.
-        int const pick = profession_use::Pick(recipes);
+        // Hotfix 8.20: lowest profession first, the profession crafted last time loses a tie.
+        uint32 const lastSkill = uint32(std::max(0, AI_VALUE2(int, "manual int", "profession craft last skill")));
+        int const pick = profession_use::Pick(recipes, lastSkill);
         if (pick < 0)
         {
             SET_AI_VALUE2(time_t, "manual time", "profession craft", now);
@@ -202,6 +210,7 @@ bool ProfessionCraftTrigger::IsActive()
         }
 
         SET_AI_VALUE2(int, "manual int", "profession craft spell", int32(recipes[std::size_t(pick)].spellId));
+        SET_AI_VALUE2(int, "manual int", "profession craft last skill", int32(recipes[std::size_t(pick)].skillId));
         SET_AI_VALUE2(time_t, "manual time", "profession craft scan", now);
     }
 
