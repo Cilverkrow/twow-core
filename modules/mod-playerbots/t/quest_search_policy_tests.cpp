@@ -106,6 +106,11 @@ int main()
     Require(!DropGreyQuest(false, 8, 9, false, false), "only roster bots on their own");
     Require(!DropGreyQuest(true, 10, 9, false, false), "The Hunter's Way (10) at level 15 stays");
 
+    // Hotfix 8.26: rebind the hearthstone at the rescue target, roster bots on their own only.
+    Require(RebindAtRescue(true, false, 0, 0), "roster bot: rebind");
+    Require(!RebindAtRescue(true, true, 0, 0), "led by a real player: keep the hearthstone");
+    Require(!RebindAtRescue(false, false, 0, 1), "not a roster bot: keep the hearthstone");
+
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
 }

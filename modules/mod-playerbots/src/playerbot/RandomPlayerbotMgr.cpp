@@ -3696,6 +3696,20 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
 
         bot->GetMotionMaster()->Clear();
         bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);
+
+        // Hotfix 8.26 (v33, Rollotheo 4140): the hearthstone stayed bound to the start area, so the
+        // next "long stuck" hearthstone (or the 8.14 home step) took the bot straight back to where
+        // its route had failed. A rescued roster bot binds its hearthstone at the rescue target
+        // (an inn or a level hub of its faction).
+        if (ai::quest_search::RebindAtRescue(IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster(),
+                bot->GetHomebindMapId(), target.mapid))
+        {
+            AreaTableEntry const* area = WorldPosition(target).GetArea();
+            bot->SetHomebindToLocation(target, area ? area->ID : 0);
+            sLog.outBasic("[QuestRescue] state=rebind bot=%u level=%u to_map=%u to_x=%.0f to_y=%.0f area=%u",
+                bot->GetGUIDLow(), bot->GetLevel(), target.mapid, target.coord_x, target.coord_y, area ? area->ID : 0);
+        }
+
         bot->SendHeartBeat();
         ai->Reset(true);
         ai->OnQuestRescued(now);
