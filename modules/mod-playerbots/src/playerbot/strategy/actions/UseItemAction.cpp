@@ -14,10 +14,86 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/HomeBindPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/ConsumablesPolicy.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 using namespace ai;
 
 constexpr std::string_view LOS_GOS_PARAM = "los gos";
+
+// twow-repo#485 (RosterConsumables.UseReal): the config check first, so the default costs nothing.
+bool ai::UsesRealConsumables(PlayerbotAI* ai)
+{
+    return sPlayerbotAIConfig.rosterConsumablesUseReal && IsRosterBotOnItsOwn(ai);
+}
+
+namespace
+{
+    consumables::Kind ConsumableKind(ItemPrototype const* proto)
+    {
+        return consumables::Classify(ItemUsageValue::IsHealingPotion(proto), ItemUsageValue::IsManaPotion(proto),
+            ItemUsageValue::IsBandage(proto));
+    }
+
+    // [Consumable]: the first use of a kind logs, later ones are counted until the cooldown ran
+    // (one line per bot and kind per TraceCooldownSeconds, two value lookups per use, no SQL).
+    void TraceRealConsumable(PlayerbotAI* ai, ItemPrototype const* proto)
+    {
+        if (!sPlayerbotAIConfig.rosterConsumablesTrace)
+            return;
+
+        Player* bot = ai->GetBot();
+        AiObjectContext* context = ai->GetAiObjectContext();
+        consumables::Kind const kind = ConsumableKind(proto);
+        std::string const name = consumables::Name(kind);
+        std::string const countKey = "consumable uses " + name;
+        std::string const timeKey = "consumable trace " + name;
+
+        int const uses = AI_VALUE2(int, "manual int", countKey) + 1;
+        time_t const now = time(nullptr);
+        if (!consumables::TraceDue(now, AI_VALUE2(time_t, "manual time", timeKey), sPlayerbotAIConfig.rosterConsumablesTraceCooldownSeconds))
+        {
+            SET_AI_VALUE2(int, "manual int", countKey, uses);
+            return;
+        }
+
+        SET_AI_VALUE2(int, "manual int", countKey, 0);
+        SET_AI_VALUE2(time_t, "manual time", timeKey, now);
+        sLog.outBasic("[Consumable] used=%s item=%u hp_pct=%u mana_pct=%u combat=%u uses=%d left=%u bot=%u level=%u",
+            name.c_str(), proto->ItemId, uint32(bot->GetHealthPercent()),
+            bot->GetMaxPower(POWER_MANA) ? uint32(bot->GetPowerPercent(POWER_MANA)) : 0, bot->IsInCombat() ? 1 : 0,
+            uses, bot->GetItemCount(proto->ItemId), bot->GetGUIDLow(), bot->GetLevel());
+    }
+}
+
+bool ai::UsesRealConsumable(PlayerbotAI* ai, ItemPrototype const* proto)
+{
+    return proto && sPlayerbotAIConfig.rosterConsumablesUseReal &&
+        consumables::UsesReal(true, IsRosterBotOnItsOwn(ai), ConsumableKind(proto));
+}
+
+uint32 ai::BestBandageInBags(PlayerbotAI* ai)
+{
+    Player* bot = ai->GetBot();
+    AiObjectContext* context = ai->GetAiObjectContext();
+    uint32 best = 0;
+    uint32 bestRank = 0;
+    uint32 bestLevel = 0;
+    for (Item* item : AI_VALUE2(std::list<Item*>, "inventory items", "bandage"))
+    {
+        ItemPrototype const* proto = item ? item->GetProto() : nullptr;
+        if (!proto || !ItemUsageValue::IsBandage(proto) || bot->CanUseItem(proto) != EQUIP_ERR_OK)
+            continue;
+
+        if (!best || proto->RequiredSkillRank > bestRank || (proto->RequiredSkillRank == bestRank && proto->ItemLevel > bestLevel))
+        {
+            best = proto->ItemId;
+            bestRank = proto->RequiredSkillRank;
+            bestLevel = proto->ItemLevel;
+        }
+    }
+    return best;
+}
 
 SpellCastResult BotUseItemSpell::ForceSpellStart(SpellCastTargets const* targets, Aura* triggeredByAura)
 {
@@ -202,7 +278,12 @@ bool RequiresItemToUse(const ItemPrototype* itemProto, PlayerbotAI* ai, Player* 
     if (!ai->HasCheat(BotCheatMask::item))
         return true;
 
-    // Exception items                                  Jujus                                            Holy water    
+    // twow-repo#485 (RosterConsumables.UseReal): bandages and potions of a roster bot on its own
+    // are used from the bags and consumed, the item cheat notwithstanding.
+    if (UsesRealConsumable(ai, itemProto))
+        return true;
+
+    // Exception items                                 Jujus                                            Holy water    
     const std::unordered_set<uint32> itemExceptions = { 12450, 12451, 12455, 12457, 12458, 12459, 12460, 13180, 7189 };
     if (itemExceptions.find(itemProto->ItemId) != itemExceptions.end())
         return false;
@@ -720,6 +801,13 @@ bool UseAction::UseItemInternal(Player* requester, uint32 itemId, Unit* unit, Ga
         }
     }
 
+    // twow-repo#485: [Consumable] for a bandage or potion used from the bags (itemUsed is only
+    // compared, not read: the cast may already have consumed it).
+    if (successCasts > 0 && itemUsed && UsesRealConsumable(ai, proto))
+    {
+        TraceRealConsumable(ai, proto);
+    }
+
     if (successCasts > 0)
     {
         if (verbose)
@@ -1180,7 +1268,8 @@ bool UseItemIdAction::isPossible()
     if (HasItemCooldown(itemId))
         return false;
 
-        if (!ai->HasCheat(BotCheatMask::item) && !bot->HasItemCount(itemId, 1))
+        // twow-repo#485: under RosterConsumables.UseReal a bandage or potion must be in the bags.
+        if ((!ai->HasCheat(BotCheatMask::item) || UsesRealConsumable(ai, proto)) && !bot->HasItemCount(itemId, 1))
         return false;
 
 
@@ -1245,6 +1334,24 @@ bool UseItemIdAction::isUseful()
     }
 
     return false;
+}
+
+bool UsePotionAction::isUseful()
+{
+    if (!UseItemIdAction::isUseful() || !AI_VALUE2(bool, "combat", "self target"))
+        return false;
+
+    // twow-repo#485 (RosterConsumables.UseReal): HealingPotionPct / ManaPotionPct, 100 = the trigger alone.
+    if (!UsesRealConsumables(ai))
+        return true;
+
+    if (effect == SPELL_EFFECT_HEAL)
+        return consumables::AtOrBelow(bot->GetHealthPercent(), sPlayerbotAIConfig.rosterConsumablesHealingPotionPct);
+
+    if (effect == SPELL_EFFECT_ENERGIZE)
+        return consumables::AtOrBelow(bot->GetPowerPercent(POWER_MANA), sPlayerbotAIConfig.rosterConsumablesManaPotionPct);
+
+    return true;
 }
 
 bool UseSpellItemAction::isUseful()

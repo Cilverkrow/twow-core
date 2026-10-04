@@ -324,6 +324,18 @@ public:
     // NoteRefreshSeconds per bot (default 300, used as 60-3600), written only on a change.
     bool rosterGuildNote;
     uint32 rosterGuildNoteRefreshSeconds;
+    // twow-repo#485 (owner decision 9): roster bots on their own use bandages, healing and mana
+    // potions from their bags (ConsumablesPolicy.h). UseReal 0 = off (default, legacy: cast
+    // without an item under the item cheat, sold). Pct 100 = no gate beyond the trigger;
+    // KeepStacks used as at least 2; Buy 0 = no purchase; ClothReserve 0 = no reserve.
+    bool rosterConsumablesUseReal;
+    uint32 rosterConsumablesHealingPotionPct;
+    uint32 rosterConsumablesManaPotionPct;
+    uint32 rosterConsumablesKeepStacks;
+    bool rosterConsumablesBuy;
+    uint32 rosterConsumablesTailoringClothReserve;
+    bool rosterConsumablesTrace;
+    uint32 rosterConsumablesTraceCooldownSeconds;
     bool randomBotRandomPassword;
     bool inviteChat;
     bool botsSilent;

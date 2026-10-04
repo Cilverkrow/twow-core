@@ -4,6 +4,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
+#include "playerbot/ConsumablesPolicy.h"
 #include "playerbot/strategy/values/CraftValues.h"
 
 #include <algorithm>
@@ -58,14 +59,40 @@ bool ai::HasCraftTools(SpellEntry const* spell, Player* bot)
 // Casts the reagents in the bags pay for (Spell::CheckItems, else
 // SPELL_FAILED_ITEM_NOT_READY). Unlike "has reagents for" this ignores the
 // item cheat. A recipe without reagents is not limited by them.
+namespace
+{
+    // twow-repo#485: the recipe belongs to First Aid (skill line 129).
+    bool IsFirstAidRecipe(uint32 spellId)
+    {
+        SkillLineAbilityMapBounds const bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spellId);
+        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+            if (itr->second->skillId == SKILL_FIRST_AID)
+                return true;
+        return false;
+    }
+}
+
 uint32 ai::CraftableFromBags(SpellEntry const* spell, Player* bot)
 {
+    // twow-repo#485 (RosterConsumables.TailoringClothReserve, 0 = off): First Aid of a roster bot
+    // that knows Tailoring sees only the cloth above the reserve, so bandages leave Tailoring its
+    // cloth. Config check first: the default costs nothing.
+    uint32 const reserve = sPlayerbotAIConfig.rosterConsumablesTailoringClothReserve;
+    bool const keepCloth = reserve && consumables::ReserveApplies(reserve, IsFirstAidRecipe(spell->Id),
+        bot->HasSkill(SKILL_TAILORING), sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()));
+
     uint32 craftable = std::numeric_limits<uint32>::max();
     for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
     {
         if (spell->Reagent[i] <= 0 || !spell->ReagentCount[i])
             continue;
-        craftable = std::min(craftable, bot->GetItemCount(uint32(spell->Reagent[i])) / spell->ReagentCount[i]);
+        uint32 count = bot->GetItemCount(uint32(spell->Reagent[i]));
+        if (keepCloth)
+        {
+            ItemPrototype const* reagent = sObjectMgr.GetItemPrototype(uint32(spell->Reagent[i]));
+            count = consumables::CountAfterReserve(count, reserve, reagent && reagent->Class == ITEM_CLASS_TRADE_GOODS);
+        }
+        craftable = std::min(craftable, count / spell->ReagentCount[i]);
     }
     return craftable;
 }
