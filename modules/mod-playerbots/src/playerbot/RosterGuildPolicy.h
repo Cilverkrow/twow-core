@@ -184,11 +184,11 @@ inline bool UsesGuildNote(bool enabled, bool rosterMember, bool inGuild)
     return enabled && rosterMember && inGuild;
 }
 
-// AiPlayerbot.RosterGuild.NoteRefreshSeconds as used: 60-3600 (0 or a wrapped negative value would
-// check on every trigger pass or never again).
+// AiPlayerbot.RosterGuild.NoteRefreshSeconds as used: 60-604800 s (default 86400 = 24 h, owner 04.10.;
+// 0 or a wrapped negative value would check on every trigger pass or never again).
 inline std::uint32_t NoteRefreshInterval(std::uint32_t configuredSeconds)
 {
-    return configuredSeconds < 60 ? 60 : (configuredSeconds > 3600 ? 3600 : configuredSeconds);
+    return configuredSeconds < 60 ? 60 : (configuredSeconds > 604800 ? 604800 : configuredSeconds);
 }
 
 // Class ids of the 1.12 client (SharedDefines.h Classes: 1 warrior ... 11 druid); "" = unknown.

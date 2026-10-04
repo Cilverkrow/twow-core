@@ -236,9 +236,11 @@ foreach(needle
     "constexpr std::size_t kGuildNoteMaxLength = 31;"
     "inline std::string FormatGuildNote(std::uint8_t cls, int specTab, bool tank, std::uint32_t itemLevel)"
     "return enabled && rosterMember && inGuild;"
-    "configuredSeconds < 60 ? 60 : (configuredSeconds > 3600 ? 3600 : configuredSeconds)")
+    "configuredSeconds < 60 ? 60 : (configuredSeconds > 604800 ? 604800 : configuredSeconds)")
   require_text("${policy}" "${needle}" "guild note policy")
 endforeach()
+# Negative probe (owner 04.10.: 24 h): the former 3600 cap would cut the 86400 default to one hour.
+reject_text("${policy}" "configuredSeconds > 3600 ? 3600 : configuredSeconds)" "former 3600 s cap on the note refresh")
 require_text("${triggers_h}" "Trigger(ai, \"roster guild note\", 60)" "note trigger looked at once a minute")
 text_between("${triggers}" "bool RosterGuildNoteTrigger::IsActive()" "return true;" note_trigger)
 require_order("${note_trigger}" "roster_guild::UsesGuildNote(sPlayerbotAIConfig.rosterGuildNote, sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), bot->GetGuildId() != 0)"
@@ -296,13 +298,14 @@ endforeach()
 
 foreach(pair
     "\"AiPlayerbot.RosterGuild.GuildNote\", false)"
-    "\"AiPlayerbot.RosterGuild.NoteRefreshSeconds\", 300)")
+    "\"AiPlayerbot.RosterGuild.NoteRefreshSeconds\", 86400)")
   require_text("${config_source}" "${pair}" "guild note config default")
 endforeach()
+reject_text("${config_source}" "\"AiPlayerbot.RosterGuild.NoteRefreshSeconds\", 300)" "former 300 s note refresh default (owner 04.10.: 24 h)")
 foreach(member "bool rosterGuildNote;" "uint32 rosterGuildNoteRefreshSeconds;")
   require_text("${config_header}" "${member}" "guild note member")
 endforeach()
-foreach(line "AiPlayerbot.RosterGuild.GuildNote = 0" "AiPlayerbot.RosterGuild.NoteRefreshSeconds = 300" "(60-3600, other values are clamped")
+foreach(line "AiPlayerbot.RosterGuild.GuildNote = 0" "AiPlayerbot.RosterGuild.NoteRefreshSeconds = 86400" "(60-604800, other values are clamped")
   require_text("${config_template}" "${line}" "documented guild note default")
 endforeach()
 
