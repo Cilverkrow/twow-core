@@ -16,11 +16,14 @@
 --      via customFlags 0x40 (64, SPELL_CUSTOM_BEHIND_TARGET -> SpellEntry::IsFromBehindOnlySpell) and the 60 %
 --      exception (IsFunserverFrontalBackstab). spell_extra gets the same flag (only read by the DBC load path).
 --   5. Riposte Flow (talent 9169, 61170-61172 unchanged): named strikes 61221 (main hand, after a dodge) and 61222
---      (off hand, after a parry; attributesEx3 0x01000000 = 16777216 REQUIRES_OFFHAND_WEAPON) instead of a white
+--      (off hand, after a parry; attributesEx3 0x01000000 REQUIRES_OFFHAND_WEAPON) instead of a white
 --      extra swing, so the combat log shows "Riposte Flow". Clone of Riposte 14251 without its disarm effect,
 --      aura state, energy cost, cooldown, category and family flags (no Riposte spell mods); 100 % weapon damage
 --      (effect 31, bp 99), melee damage class kept (dodge/parry/crit like a melee ability). Double threat via
 --      spell_threat multiplier 2 (Unit::DealDamage). Script: spell_rogue.cpp spell_rogue_riposte_flow.
+--      Owner 2026-10-04 (#484 issuecomment-5977848252): the strikes trigger procs (poisons, Shadow Edge):
+--      attributesEx3 0x200 = 512 SPELL_ATTR_EX3_NOT_A_PROC (Spell.cpp m_canTrigger); the script refuses a
+--      Riposte Flow proc caused by a Riposte Flow strike (no recursion).
 --   6. Shadow Dance dodge buff 61146 (CLI-484 audit N1): same effects, aura, misc value and family (8) as Evasion
 --      5277/15087, so SpellMgr's generic no-stack rule ("identical effects + same family") made a parry during
 --      Evasion replace Evasion with the 3 s +5 % buff (and Evasion remove the buff). Family 0 ends that rule; the
@@ -97,7 +100,7 @@ UPDATE `tmp_spell` SET `entry` = 61221, `name` = 'Riposte Flow', `nameSubtext` =
        `description` = 'A counterstrike after you dodge: deals $s1% main-hand weapon damage and causes double threat.',
        `auraDescription` = '', `category` = 0, `casterAuraState` = 0, `recoveryTime` = 0, `categoryRecoveryTime` = 0,
        `startRecoveryCategory` = 0, `startRecoveryTime` = 0, `durationIndex` = 0, `powerType` = 0, `manaCost` = 0,
-       `attributesEx3` = 0, `attributesEx4` = 0, `spellFamilyFlags` = 0, `script_name` = '',
+       `attributesEx3` = 512, `attributesEx4` = 0, `spellFamilyFlags` = 0, `script_name` = '',
        `effectBasePoints1` = 99,
        `effect2` = 0, `effectApplyAuraName2` = 0, `effectMechanic2` = 0, `effectImplicitTargetA2` = 0;
 INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
@@ -110,7 +113,7 @@ UPDATE `tmp_spell` SET `entry` = 61222, `name` = 'Riposte Flow', `nameSubtext` =
        `description` = 'A counterstrike after you parry: deals $s1% off-hand weapon damage and causes double threat.',
        `auraDescription` = '', `category` = 0, `casterAuraState` = 0, `recoveryTime` = 0, `categoryRecoveryTime` = 0,
        `startRecoveryCategory` = 0, `startRecoveryTime` = 0, `durationIndex` = 0, `powerType` = 0, `manaCost` = 0,
-       `attributesEx3` = 16777216, `attributesEx4` = 0, `spellFamilyFlags` = 0, `script_name` = '',
+       `attributesEx3` = 16777728, `attributesEx4` = 0, `spellFamilyFlags` = 0, `script_name` = '',
        `effectBasePoints1` = 99,
        `effect2` = 0, `effectApplyAuraName2` = 0, `effectMechanic2` = 0, `effectImplicitTargetA2` = 0;
 INSERT IGNORE INTO `spell_template` SELECT * FROM `tmp_spell`;
@@ -147,8 +150,8 @@ SELECT (SELECT COUNT(*) FROM `spell_template`
          WHERE `entry` IN (53, 2589, 2590, 2591, 8721, 11279, 11280, 11281, 25300) AND (`customFlags` & 64) = 0) = 0
    AND (SELECT COUNT(*) FROM `spell_template`
          WHERE (`entry`, `attributesEx3`, `description`) IN
-               ((61221, 0, 'A counterstrike after you dodge: deals $s1% main-hand weapon damage and causes double threat.'),
-                (61222, 16777216, 'A counterstrike after you parry: deals $s1% off-hand weapon damage and causes double threat.'))
+               ((61221, 512, 'A counterstrike after you dodge: deals $s1% main-hand weapon damage and causes double threat.'),
+                (61222, 16777728, 'A counterstrike after you parry: deals $s1% off-hand weapon damage and causes double threat.'))
            AND `name` = 'Riposte Flow' AND `effect1` = 31 AND `effectBasePoints1` = 99 AND `effectImplicitTargetA1` = 6
            AND `effect2` = 0 AND `effectApplyAuraName2` = 0 AND `effect3` = 0 AND `dmgClass` = 2
            AND `casterAuraState` = 0 AND `category` = 0 AND `recoveryTime` = 0 AND `categoryRecoveryTime` = 0

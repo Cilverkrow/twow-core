@@ -893,9 +893,14 @@ struct spell_rogue_seal_fate_echo : public SpellScript
 // aura, SpecAuraPolicy "riposte strikes") take the same path.
 struct spell_rogue_riposte_flow : public AuraScript
 {
-    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 procEx, uint32 /*cooldown*/) override
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* procSpell, uint32 /*procFlag*/, uint32 procEx, uint32 /*cooldown*/) override
     {
         if (!owner || !victim || !aura || !victim->IsAlive() || owner->HasSpellCooldown(aura->GetId()))
+            return SPELL_AURA_PROC_FAILED;
+
+        // The strikes trigger procs (attributesEx3 NOT_A_PROC, owner 2026-10-04), so a dodged or
+        // parried Riposte Flow strike must not start another one: no rogue-vs-rogue ping-pong.
+        if (procSpell && (procSpell->Id == ROGUE_TALENT_RIPOSTE_FLOW_MAIN_HAND || procSpell->Id == ROGUE_TALENT_RIPOSTE_FLOW_OFF_HAND))
             return SPELL_AURA_PROC_FAILED;
 
         uint32 strike;
@@ -922,8 +927,8 @@ struct spell_rogue_riposte_flow : public AuraScript
         }
 
         // The cooldown is set before the cast, so nothing re-entering OnProc during the cast
-        // can strike twice. (Cast with triggeredByAura: no cost, and the strike itself does
-        // not trigger procs - m_canTrigger is false - so two Riposte Flow rogues cannot chain.)
+        // can strike twice. (Cast with triggeredByAura: no cost; the strike triggers procs such
+        // as poisons and Shadow Edge via SPELL_ATTR_EX3_NOT_A_PROC, the guard above stops chains.)
         owner->AddSpellCooldown(aura->GetId(), 0, time(nullptr) + 1);
         SpellCastResult const result = owner->CastSpell(victim, strike, true, nullptr, aura);
         if (result != SPELL_CAST_OK)

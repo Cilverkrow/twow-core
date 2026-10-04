@@ -145,10 +145,10 @@ require_text("${m}" "deals $s1% main-hand weapon damage and causes double threat
 require_text("${m}" "deals $s1% off-hand weapon damage and causes double threat.',\n       `auraDescription` = '', `category` = 0" "#484 Riposte Flow OH text")
 string(FIND "${m}" "SET `entry` = 61221," mh_at)
 string(FIND "${m}" "SET `entry` = 61222," oh_at)
-string(FIND "${m}" "`attributesEx3` = 0, `attributesEx4` = 0" mh_bits)
-string(FIND "${m}" "`attributesEx3` = 16777216, `attributesEx4` = 0" oh_bits)
+string(FIND "${m}" "`attributesEx3` = 512, `attributesEx4` = 0" mh_bits)
+string(FIND "${m}" "`attributesEx3` = 16777728, `attributesEx4` = 0" oh_bits)
 if (mh_bits LESS mh_at OR mh_bits GREATER oh_at OR oh_bits LESS oh_at)
-  message(FATAL_ERROR "#484 Riposte Flow: REQUIRES_OFFHAND_WEAPON (16777216) only on 61222")
+  message(FATAL_ERROR "#484 Riposte Flow: REQUIRES_OFFHAND_WEAPON (16777216) only on 61222, NOT_A_PROC (512) on both")
 endif()
 require_text("${m}" "INSERT IGNORE INTO `spell_threat` (`entry`, `Threat`, `multiplier`, `ap_bonus`) VALUES\n  (61221, 0, 2, 0),\n  (61222, 0, 2, 0);" "#484 Riposte Flow double threat")
 
@@ -172,7 +172,8 @@ foreach (needle
     "`spellVisual1` = 107 AND `interruptFlags` = 0) = 8"
     "AND (`attributesEx2` & 1048576) = 0 AND (`customFlags` & 64) = 64) = 9"
     "FROM `spell_extra`"
-    "(61222, 16777216, "
+    "(61221, 512, "
+    "(61222, 16777728, "
     "`spellFamilyFlags` = 0 AND `script_name` = '') = 2"
     "`Threat` = 0 AND `multiplier` = 2 AND `ap_bonus` = 0) = 2"
     "`script_name` = 'spell_rogue_riposte_flow' AND `procFlags` = 680) = 3"
@@ -195,6 +196,7 @@ foreach (forbidden "AttackerStateUpdate" "OnThreatCalculate" "m_extraAttack")
   forbid_text("${rf}" "${forbidden}" "Riposte Flow script (train 9: named strike, threat via spell_threat)")
 endforeach()
 foreach (needle
+    "if (procSpell && (procSpell->Id == ROGUE_TALENT_RIPOSTE_FLOW_MAIN_HAND || procSpell->Id == ROGUE_TALENT_RIPOSTE_FLOW_OFF_HAND))"
     "strike = ROGUE_TALENT_RIPOSTE_FLOW_OFF_HAND;"
     "strike = ROGUE_TALENT_RIPOSTE_FLOW_MAIN_HAND;"
     "if (!owner->CanReachWithMeleeAutoAttack(victim))"
