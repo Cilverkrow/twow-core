@@ -66,6 +66,7 @@
 #include "Spell.h"
 #include "ScriptMgr.h"
 #include "FunserverTalentLearnSpells.h"
+#include "FunserverQuestSpellRegrant.h"
 #include "ScriptObjects.h"
 #include "SocialMgr.h"
 #include "Mail.h"
@@ -23354,6 +23355,24 @@ void Player::LearnTalent(uint32 talentId, uint32 talentRank)
 
     // Hotfix 8.4: talents that teach spells through LEARN_SPELL effects (Ancestral Arms).
     LearnFunserverTalentSpells(this);
+}
+
+void RegrantFunserverQuestSpells(Player* player)
+{
+    if (!player)
+        return;
+
+    for (FunserverQuestSpellRegrant const& entry : FUNSERVER_QUEST_SPELL_REGRANTS)
+    {
+        if (!(player->GetRaceMask() & entry.raceMask) || !(player->GetClassMask() & entry.classMask))
+            continue;
+        if (!player->GetQuestRewardStatus(entry.questId) || player->HasSpell(entry.spellId))
+            continue;
+
+        player->LearnSpell(entry.spellId, false);
+        sLog.outString("[RacialRegrant] player=%s guid=%u quest=%u spell=%u", player->GetName(),
+            player->GetGUIDLow(), entry.questId, entry.spellId);
+    }
 }
 
 void LearnFunserverTalentSpells(Player* player)
