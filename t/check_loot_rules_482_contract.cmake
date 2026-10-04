@@ -16,7 +16,8 @@ foreach (required
     "if (HasFunserverLootRules482(unitsContent, bonusOwner->GetMapId()))"
     "tab->ProcessRules482(*this, loot_owner, bonusOwner, unitsContent"
     "return value.empty() ? std::string(fallback) : value;"
-    "LootCounts const kept = Trim(counts, MAX_NR_LOOT_ITEMS, setNeed);")
+    "LootCounts const kept = Trim(counts, MAX_NR_LOOT_ITEMS, setNeed);"
+    "if (proto->Quality >= ITEM_QUALITY_EPIC && proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR)")
   string(FIND "${loot}" "${required}" at)
   if (at EQUAL -1)
     message(FATAL_ERROR "#482 rules wiring missing: ${required}")

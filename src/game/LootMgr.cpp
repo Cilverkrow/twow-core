@@ -2086,6 +2086,11 @@ namespace
             return LootCategory482::Set;
         if (proto->StartQuest || proto->Class == ITEM_CLASS_QUEST)
             return LootCategory482::Mandatory;              // heads and quest drops are never trimmed
+        // Epic and legendary non-equipment (Bindings of the Windseeker, Eye of Sulfuras, Sulfuron
+        // Ingot, mounts) is no "normal loot" either: the trim rule must never cut it (MC check
+        // with Rate.Drop.Item.Legendary 10, 2026-10-04).
+        if (proto->Quality >= ITEM_QUALITY_EPIC && proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR)
+            return LootCategory482::Mandatory;
         if (mode == FunserverLootRules::SetMode::Mix && proto->ItemSet)
             return LootCategory482::Set;
         if (IsRaidOwnItem482(proto))
