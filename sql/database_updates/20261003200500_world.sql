@@ -23,6 +23,12 @@
 --      removes them. SpellMgr::LoadSpellLearnSpells logs one "record in `spell_learn_spell` is redundant" line per
 --      row at startup (the DBC LEARN_SPELL pair is then not added; the DB row is kept) - expected, harmless.
 --      The sword skill starts at 1 (Player::UpdateSpellTrainedSkills, AlwaysMaxSkillForLevel = 0) and rises with use.
+--   6. Sword proficiency rows for shamans (#455 issuecomment-5978063722, #484 issuecomment-5978067665, OB-00/OB-15
+--      2026-10-04): skill_line_ability 5 (skill 43 -> spell 201) and 7 (skill 55 -> spell 202) lacked the shaman
+--      bit 0x40 (class_mask 399 = 0x18f, 7 = 0x7), so the client paired no weapon proficiency with the sword skill
+--      and showed "Melee Attack 0" for Ancestral Arms shamans (server damage was fine). 463 = 0x1cf, 71 = 0x47,
+--      like Turtle's own shaman talent weapons (197: 0x47). Client parity: twow-repo PR #514 (patch 8,
+--      changes/SkillLineAbility/0484_shaman_sword_proficiency.csv, sql:skill_line_ability.class_mask).
 -- IDs (CLI-484 spec): 61221/61222 Riposte Flow (rogue migration 20261003200000); 61223-61225 here;
 -- 61226-61229 reserve #484; free from 61230. All below 65536 (16-bit client spell IDs, #455).
 -- Coupling: client patch 8 (twow-repo, with riding #488) mirrors 61101-61105, 61118, the new 61223-61225,
@@ -42,6 +48,7 @@
 --          s.`spellIconId` = b.`spellIconId`, s.`stackAmount` = b.`stackAmount`;
 --   DELETE FROM `spell_template` WHERE `entry` IN (61223, 61224, 61225);
 --   DELETE FROM `spell_learn_spell` WHERE `entry` = 61131 AND `SpellID` IN (201, 202, 61132);
+--   UPDATE `skill_line_ability` s JOIN `bak_484_skill_line_ability` b ON b.`id` = s.`id` SET s.`class_mask` = b.`class_mask`;
 --   (the core rollback brings FunserverTalentLearnSpells.h back; keep the backup table until the client patch 8
 --   rollback is done, then DROP TABLE it)
 
@@ -55,6 +62,12 @@ SELECT * FROM `spell_template`
         AND `auraDescription` = 'Your next elemental damage spell has its mana cost reduced by $s1%.')
     OR ((`entry`, `stackAmount`) IN ((52967, 2), (52968, 4), (52969, 6)))
     OR (`entry` IN (29079, 29080) AND `description` LIKE '%Stacks up to $52967u times.%');
+
+CREATE TABLE IF NOT EXISTS `bak_484_skill_line_ability` LIKE `skill_line_ability`;
+INSERT IGNORE INTO `bak_484_skill_line_ability`
+SELECT * FROM `skill_line_ability`
+ WHERE (`id` = 5 AND `spell_id` = 201 AND `class_mask` = 399)
+    OR (`id` = 7 AND `spell_id` = 202 AND `class_mask` = 7);
 
 -- 1. Attack Speed: drop the +2 % spell haste leftover (effect 3).
 UPDATE `spell_template`
@@ -122,6 +135,10 @@ INSERT IGNORE INTO `spell_learn_spell` (`entry`, `SpellID`, `Active`) VALUES
   (61131, 202, 1),
   (61131, 61132, 1);
 
+-- 6. Sword proficiency rows also for shamans (weapon skill display "Melee Attack").
+UPDATE `skill_line_ability` SET `class_mask` = 463 WHERE `id` = 5 AND `spell_id` = 201 AND `class_mask` = 399;
+UPDATE `skill_line_ability` SET `class_mask` = 71  WHERE `id` = 7 AND `spell_id` = 202 AND `class_mask` = 7;
+
 -- End state. The updater ignores statement results, so a failed or skipped step must fail
 -- here: the CHECK turns a wrong end state into an error (temporary table, no cleanup needed).
 CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_check_484_shaman` (`ok` TINYINT(1) NOT NULL CHECK (`ok` = 1));
@@ -152,4 +169,7 @@ SELECT (SELECT COUNT(*) FROM `spell_template`
    AND (SELECT COUNT(*) FROM `spell_learn_spell`
          WHERE `entry` = 61131 AND `SpellID` IN (201, 202, 61132) AND `Active` = 1) = 3
    AND (SELECT COUNT(*) FROM `spell_template_bak_484_shaman`
-         WHERE `entry` IN (61101, 61102, 61103, 61104, 61105, 61118, 61124, 61126, 52967, 52968, 52969, 29079, 29080)) = 13;
+         WHERE `entry` IN (61101, 61102, 61103, 61104, 61105, 61118, 61124, 61126, 52967, 52968, 52969, 29079, 29080)) = 13
+   AND (SELECT COUNT(*) FROM `skill_line_ability`
+         WHERE (`id`, `spell_id`, `class_mask`) IN ((5, 201, 463), (7, 202, 71))) = 2
+   AND (SELECT COUNT(*) FROM `bak_484_skill_line_ability` WHERE `id` IN (5, 7)) = 2;

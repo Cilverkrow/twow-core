@@ -100,9 +100,26 @@ foreach (required
     "-- Rollback (exact, in this order):"
     "JOIN `spell_template_bak_484_shaman` b ON b.`entry` = s.`entry`"
     "DELETE FROM `spell_template` WHERE `entry` IN (61223, 61224, 61225);"
-    "DELETE FROM `spell_learn_spell` WHERE `entry` = 61131 AND `SpellID` IN (201, 202, 61132);")
+    "DELETE FROM `spell_learn_spell` WHERE `entry` = 61131 AND `SpellID` IN (201, 202, 61132);"
+    "UPDATE `skill_line_ability` s JOIN `bak_484_skill_line_ability` b ON b.`id` = s.`id` SET s.`class_mask` = b.`class_mask`;")
   require_text("${m}" "${required}" "${migration_name} rollback")
 endforeach()
+
+# Sword proficiency rows for shamans (#455 / OB-15): backup first, old-value guards, both rows, end state.
+foreach (required
+    "CREATE TABLE IF NOT EXISTS `bak_484_skill_line_ability` LIKE `skill_line_ability`;"
+    "WHERE (`id` = 5 AND `spell_id` = 201 AND `class_mask` = 399)"
+    "OR (`id` = 7 AND `spell_id` = 202 AND `class_mask` = 7);"
+    "UPDATE `skill_line_ability` SET `class_mask` = 463 WHERE `id` = 5 AND `spell_id` = 201 AND `class_mask` = 399;"
+    "UPDATE `skill_line_ability` SET `class_mask` = 71  WHERE `id` = 7 AND `spell_id` = 202 AND `class_mask` = 7;"
+    "WHERE (`id`, `spell_id`, `class_mask`) IN ((5, 201, 463), (7, 202, 71))) = 2")
+  require_text("${m}" "${required}" "${migration_name} shaman sword proficiency")
+endforeach()
+string(FIND "${m}" "INSERT IGNORE INTO `bak_484_skill_line_ability`" sla_backup_at)
+string(FIND "${m}" "UPDATE `skill_line_ability` SET `class_mask` = 463" sla_update_at)
+if (sla_backup_at EQUAL -1 OR sla_update_at LESS sla_backup_at)
+  message(FATAL_ERROR "${migration_name}: skill_line_ability backup must come before its UPDATE")
+endif()
 
 # --- Storm Wisdom consume-on-use (core) --------------------------------------------------
 file(READ "${TW_CORE_ROOT}/src/game/FunserverStackedSpellMods.h" stacked)
