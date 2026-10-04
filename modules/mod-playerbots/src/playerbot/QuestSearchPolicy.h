@@ -233,6 +233,49 @@ struct RescueLimiter
 // -> Darkshore / Auberdine (quest 41259 "Journey to Auberdine"), goblin 9 ->
 // Ratchet (The Barrens). The target is the spawn point of these NPCs
 // (innkeepers / quest givers), looked up once in the creature data.
+// Hotfix 8.29 (twow-repo#532, owner 04.10.2026): goblins leave Blackstone Island (zone 5536) only by
+// "Gazzik's Flying Machine" (creature 50597, gossip script npc_flying_machine -> taxi path 311 to
+// Sparkwater Port; 50598 flies back on path 322). Neither travel nor follow knew it: every goblin
+// waited 30-60 minutes for the quest rescue, which sent it to a random horde start area.
+namespace goblin_island
+{
+constexpr uint32_t IslandZone = 5536;
+constexpr uint32_t IslandPath = 311;          // Blackstone Island -> Sparkwater Port
+constexpr uint32_t ReturnPath = 322;          // Sparkwater Port -> Blackstone Island
+constexpr float IslandMachineX = -571.0f, IslandMachineY = -7850.0f, IslandMachineZ = 52.0f;
+constexpr float PortMachineX = 819.0f, PortMachineY = -5006.0f, PortMachineZ = 20.0f;
+constexpr float RazorHillX = 340.0f, RazorHillY = -4686.0f, RazorHillZ = 17.0f;
+constexpr uint32_t LeaveLevel = 10;
+constexpr uint32_t LeaveIdleSeconds = 15 * 60;
+constexpr float BoardDistance = 8.0f;          // close enough to "use" the machine
+constexpr float FollowDistance = 30.0f;        // a follower this close to a machine flies along
+
+// A roster bot on its own leaves the island from LeaveLevel on, or earlier when it has made no
+// progress for LeaveIdleSeconds (no quest left there).
+inline bool ShouldLeaveIsland(uint32_t zone, uint32_t level, uint32_t idleSeconds)
+{
+    return zone == IslandZone && (level >= LeaveLevel || idleSeconds >= LeaveIdleSeconds);
+}
+
+// The flight a follower takes when its real master flies off from a machine: by the machine
+// the follower stands at (0 = none in reach).
+inline uint32_t FollowPath(float distToIslandMachine, float distToPortMachine)
+{
+    if (distToIslandMachine <= FollowDistance)
+        return IslandPath;
+    if (distToPortMachine <= FollowDistance)
+        return ReturnPath;
+    return 0;
+}
+
+// The quest rescue sends a goblin below level 11 to Durotar (Sparkwater Port, Razor Hill) instead
+// of another race's start area.
+inline bool UsesGoblinStartRescue(uint32_t race, uint32_t level)
+{
+    return race == 9 && level <= 10;
+}
+}
+
 inline bool UsesRescueAnchors(uint32_t race, uint32_t level)
 {
     return level > StartAreaMaxLevel && level <= 20 && (race == 9 || race == 10);
