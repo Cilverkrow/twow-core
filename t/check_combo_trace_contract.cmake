@@ -58,7 +58,7 @@ foreach (needle
     "{ \"other\", \"finisher\", \"select\", \"target_died\", \"death\", \"duel\" }"
     "[ComboTrace] player=%u reason=%s cp=%u target=%s new_target=%s spell=%u selection=%s map=%u"
     "[ComboTrace] player=%u suppressed=%u window_s=%u"
-    "if (!pointsBefore || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))"
+    "if ((!pointsBefore && !redirect) || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))"
     "if (!GetSession() || !GetSession()->GetSocket())"
     "if (m_comboTraceLines >= 30)")
   require_text("${player_cpp}" "${needle}" "Player.cpp")
