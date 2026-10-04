@@ -205,12 +205,13 @@ int main()
         Require(Pick({ bandage, heavy }) == 0, "same profession: more casts first, as before");
         Require(CapGap(bandage) == 230 && CapGap(bolt) == 277, "gap to the profession cap");
     }
-    Require(CanBeDisenchanted(true, 2, 1), "green armor: disenchant");
-    Require(CanBeDisenchanted(true, 4, 1), "epic weapon: disenchant");
-    Require(!CanBeDisenchanted(true, 1, 1), "white: no");
-    Require(!CanBeDisenchanted(true, 5, 1), "legendary: no");
-    Require(!CanBeDisenchanted(false, 2, 1), "no weapon or armor: no");
-    Require(!CanBeDisenchanted(true, 3, 0), "no disenchant loot: no");
+    Require(CanBeDisenchanted(true, 2, 1, false), "green armor: disenchant");
+    Require(CanBeDisenchanted(true, 4, 1, false), "epic weapon: disenchant");
+    Require(!CanBeDisenchanted(true, 1, 1, false), "white: no");
+    Require(!CanBeDisenchanted(true, 5, 1, false), "legendary: no");
+    Require(!CanBeDisenchanted(false, 2, 1, false), "no weapon or armor: no");
+    Require(!CanBeDisenchanted(true, 3, 0, false), "no disenchant loot: no");
+    Require(!CanBeDisenchanted(true, 2, 21, true), "hotfix 8.30: ITEM_FLAG_NO_DISENCHANT (Lesser Magic Wand): no");
 
     std::cout << "profession_use_policy_tests passed\n";
     return 0;
