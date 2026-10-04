@@ -3672,6 +3672,9 @@ static RaceMaskName const raceMaskNames[] =
     { "tauren", (1 << (RACE_TAUREN - 1))  },
     { "gnome", (1 << (RACE_GNOME - 1))   },
     { "troll", (1 << (RACE_TROLL - 1))   },
+    // twow-repo#379 (hotfix 8.21): the Turtle races.
+    { "goblin", (1 << (RACE_GOBLIN - 1))  },
+    { "highelf", (1 << (RACE_HIGH_ELF - 1)) },
 
     // masks
     { "alliance", RACEMASK_ALLIANCE },
