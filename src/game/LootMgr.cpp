@@ -647,8 +647,10 @@ std::vector<uint8> Loot::RefillFromOverflow()
     for (uint8 slot = 0; slot < items.size() && !m_overflowItems.empty(); ++slot)
     {
         LootItem const& old = items[slot];
-        // Only finished plain slots: an item under a running roll stays blocked.
-        if (!old.is_looted || old.is_blocked || old.freeforall || old.conditionId)
+        // Only finished plain slots. A won roll leaves is_blocked set (Group::CountTheRoll only
+        // sets is_looted), so is_looted alone marks a finished slot; an item under a running roll
+        // is never looted yet (test 2026-10-04: group loot left 16 overflow items stuck).
+        if (!old.is_looted || old.freeforall || old.conditionId)
             continue;
         items[slot] = m_overflowItems.front();
         m_overflowItems.erase(m_overflowItems.begin());
