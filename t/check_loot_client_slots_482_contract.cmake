@@ -36,6 +36,13 @@ if (NOT write_count EQUAL 6 OR NOT guarded_count EQUAL write_count)
   message(FATAL_ERROR "Every loot slot write needs the client slot guard: ${guarded_count} of ${write_count} (expected 6)")
 endif()
 
+# Refill (test 2026-10-04): a won group roll keeps is_blocked, so the refill must not skip blocked
+# slots, otherwise every overflow item stays on the corpse after group loot.
+string(FIND "${loot_cpp}" "if (!old.is_looted || old.is_blocked" blocked_skip)
+if (NOT blocked_skip EQUAL -1)
+  message(FATAL_ERROR "RefillFromOverflow must refill looted slots even when a won roll left is_blocked set")
+endif()
+
 # Quest items sit behind `items` and must stay inside the client slots as well.
 string(REGEX MATCHALL "MAX_NR_LOOT_CLIENT_SLOTS" quest_caps "${loot_cpp}")
 list(LENGTH quest_caps cap_count)
