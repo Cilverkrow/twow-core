@@ -1,3 +1,7 @@
+# Quoted arguments are strings, not variable names (CMP0054). cmake -P scripts in CI (cmake 3.x)
+# default to OLD, so if(target STREQUAL "policy") would dereference the variable policy.
+cmake_policy(SET CMP0054 NEW)
+
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
