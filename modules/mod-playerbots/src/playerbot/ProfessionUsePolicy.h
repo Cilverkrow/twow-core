@@ -33,6 +33,8 @@ struct Recipe
     // not from "can craft spell", which the item cheat makes true for all.
     std::uint32_t spellId = 0;
     std::uint32_t skillUpChance = 0; // per mille, as Player::UpdateCraftSkill rolls it
+    std::uint32_t skillId = 0;       // hotfix 8.20: profession of the recipe
+    std::uint32_t skillValue = 0;    // hotfix 8.20: the bot's current value in it
     std::uint32_t craftable = 0;     // casts the reagents in the bags pay for
     bool hasTools = true;            // every tool (SpellEntry::Totem) is in the bags
     bool backedOff = false;          // failed for good (reagent, tool, focus), on cooldown or no room for the product
@@ -100,10 +102,25 @@ inline bool IsCandidate(Recipe const& recipe)
         recipe.craftable > 0 && !recipe.backedOff;
 }
 
-// Highest skill-up chance first (orange before grey), then the most casts the
-// bags pay for, then the smallest spell id, so the pick is deterministic.
-inline bool RanksBefore(Recipe const& a, Recipe const& b)
+// Hotfix 8.20 (owner 04.10.: tailoring Ø 23, enchanting Ø 17, first aid Ø 70): the pick ranked
+// all professions together by skill-up chance and then by casts, so a linen bandage (1 cloth)
+// always beat a bolt of linen (2 cloth) - 942 bandages against 60 bolts on v31. Now the
+// profession furthest below the profession cap (ProfessionCap - skill, i.e. the lowest skill)
+// goes first; on a tie between two professions the one not crafted last time; inside a
+// profession as before: highest skill-up chance, most casts, smallest spell id.
+constexpr std::uint32_t ProfessionCap = 300;
+
+inline std::uint32_t CapGap(Recipe const& recipe)
 {
+    return recipe.skillValue < ProfessionCap ? ProfessionCap - recipe.skillValue : 0;
+}
+
+inline bool RanksBefore(Recipe const& a, Recipe const& b, std::uint32_t lastSkillId = 0)
+{
+    if (CapGap(a) != CapGap(b))
+        return CapGap(a) > CapGap(b);
+    if (a.skillId != b.skillId && lastSkillId && (a.skillId == lastSkillId || b.skillId == lastSkillId))
+        return b.skillId == lastSkillId;
     if (a.skillUpChance != b.skillUpChance)
         return a.skillUpChance > b.skillUpChance;
     if (a.craftable != b.craftable)
@@ -113,14 +130,14 @@ inline bool RanksBefore(Recipe const& a, Recipe const& b)
 
 // Index of the recipe to craft, -1 = none. Classify does not know the backoff:
 // it says None even when every craftable recipe is backed off.
-inline int Pick(std::vector<Recipe> const& recipes)
+inline int Pick(std::vector<Recipe> const& recipes, std::uint32_t lastSkillId = 0)
 {
     int best = -1;
     for (std::size_t i = 0; i < recipes.size(); ++i)
     {
         if (!IsCandidate(recipes[i]))
             continue;
-        if (best < 0 || RanksBefore(recipes[i], recipes[std::size_t(best)]))
+        if (best < 0 || RanksBefore(recipes[i], recipes[std::size_t(best)], lastSkillId))
             best = int(i);
     }
     return best;
@@ -130,6 +147,13 @@ inline int Pick(std::vector<Recipe> const& recipes)
 // come from AiPlayerbot.ProfessionUse.VendorReagents, parsed once at config
 // load; empty = none. Such a reagent counts as needed only once the reagents
 // of a known recipe that no vendor sells are in the bags (OtherReagentRequired).
+// Hotfix 8.20: what Spell::CheckItems lets a disenchant touch (else CANT_BE_DISENCHANTED):
+// a weapon or armor of uncommon (2) to epic (4) quality with a disenchant loot id.
+inline bool CanBeDisenchanted(bool weaponOrArmor, std::uint32_t quality, std::uint32_t disenchantId)
+{
+    return weaponOrArmor && disenchantId && quality >= 2 && quality <= 4;
+}
+
 inline bool IsVendorReagent(std::set<std::uint32_t> const& vendorReagents, std::uint32_t itemId)
 {
     return vendorReagents.find(itemId) != vendorReagents.end();
