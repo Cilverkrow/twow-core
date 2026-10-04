@@ -94,3 +94,21 @@ the scan runs and stays until the next scan.
 - Real players are in the list too; `/who` has no bot marker.
 - Class and race splitting know the enUS/enGB and deDE names; other client
   languages split by level only.
+
+## Bot surnames (1.7, twow-repo#518)
+
+Bots keep one-word character names: whisper, `/invite`, chat links and the
+server's name lookup only work with those (a space breaks all of them in the
+1.12 client). The surname is therefore display only:
+
+- `BotSurnames.lua` maps the character name to its surname. It is generated,
+  never edited by hand:
+
+      tools/gen_botmenu_surnames.sh <twow-repo>/deploy/roster/names-518/addon-surnames-810.tsv <sha256> \
+          > addon/BotMenu-1.12/BotSurnames.lua
+
+- The unit tooltip (mouseover in the world, target/party/raid frames) shows
+  "Name Surname"; if the name line carries a title, the surname is an extra
+  grey line. Nothing is ever sent to the server.
+- `/botmenu surnames off` hides it, `/botmenu surnames on` shows it again.
+- A new roster table (new hash) means: regenerate, bump the version, release.

@@ -116,7 +116,35 @@ end
 
 -- Load the addon the way the client does: Lua files, then the XML OnLoads.
 SlashCmdList = {}
-local chunk, err = loadfile(dir.."/BotMenu.lua")
+local chunk, err = loadfile(dir.."/BotSurnames.lua")
+require_true(chunk, "BotSurnames.lua does not parse: "..tostring(err))
+chunk()
+require_true(BOTMENU_SURNAMES_COUNT and BOTMENU_SURNAMES_COUNT > 0, "the surname table is loaded")
+
+-- #518: a GameTooltip stand-in (lines GameTooltipTextLeft<n>, SetUnit, AddLine)
+-- and units: "mouseover" is a bot from the surname table, "target" a player
+-- with a title on the name line, "party1" someone not in the table.
+local units = {}
+function UnitIsPlayer(unit) return units[unit] ~= nil end
+function UnitName(unit) return units[unit] and units[unit].name end
+local function tooltipLine(n)
+    local name = "GameTooltipTextLeft"..n
+    frames[name] = frames[name] or { text = nil, SetText = function(self, t) self.text = t end,
+        GetText = function(self) return self.text end }
+    return frames[name]
+end
+GameTooltip = { lines = 0, shows = 0 }
+function GameTooltip:GetName() return "GameTooltip" end
+function GameTooltip:NumLines() return self.lines end
+function GameTooltip:Show() self.shows = self.shows + 1 end
+function GameTooltip:AddLine(text) self.lines = self.lines + 1; tooltipLine(self.lines):SetText(text) end
+function GameTooltip:SetUnit(unit)
+    self.lines = 1
+    tooltipLine(1):SetText(units[unit] and units[unit].line or "")
+    for i = 2, 5 do tooltipLine(i):SetText(nil) end
+end
+
+chunk, err = loadfile(dir.."/BotMenu.lua")
 require_true(chunk, "BotMenu.lua does not parse: "..tostring(err))
 chunk()
 chunk, err = loadfile(dir.."/BotList.lua")
@@ -138,6 +166,30 @@ end
 event = "VARIABLES_LOADED"
 BotMenu_OnEvent()
 require_true(BotMenuDB and BotMenuDB.enabled == 1, "the menu is on by default")
+
+-- #518 surnames: the name line gets the surname once, a title line gets an
+-- extra line, unknown players stay untouched, and the switch turns it off.
+local botName, botSurname
+for name, surname in pairs(BOTMENU_SURNAMES) do botName, botSurname = name, surname break end
+units.mouseover = { name = botName, line = botName }
+units.target = { name = botName, line = "Sergeant "..botName.." <Guild>" }
+units.party1 = { name = "Somebody", line = "Somebody" }
+GameTooltip:SetUnit("mouseover")
+require_true(tooltipLine(1):GetText() == botName.." "..botSurname, "SetUnit shows 'Name Surname'")
+event = "UPDATE_MOUSEOVER_UNIT"; BotMenu_OnEvent()
+require_true(tooltipLine(1):GetText() == botName.." "..botSurname and GameTooltip:NumLines() == 1,
+    "a second fill of the same tooltip adds nothing")
+GameTooltip:SetUnit("target")
+require_true(GameTooltip:NumLines() == 2 and tooltipLine(2):GetText() == botSurname,
+    "a name line with a title gets the surname as an extra line")
+GameTooltip:SetUnit("party1")
+require_true(tooltipLine(1):GetText() == "Somebody" and GameTooltip:NumLines() == 1, "unknown players are untouched")
+SlashCmdList["BOTMENU"]("surnames off")
+GameTooltip:SetUnit("mouseover")
+require_true(tooltipLine(1):GetText() == botName and BotMenuDB.surnames == 0, "/botmenu surnames off")
+SlashCmdList["BOTMENU"]("surnames on")
+require_true(BotMenuDB.surnames == 1, "/botmenu surnames on")
+event = "VARIABLES_LOADED"
 require_true(ChatMenu.numButtons == 11, "exactly one entry is added to ChatMenu")
 local bots = getglobal("ChatMenuButton11")
 require_true(bots.text == "Bots" and bots.nested == "BotMenu" and bots.shown, "the entry is 'Bots' and opens BotMenu")

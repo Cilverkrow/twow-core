@@ -8,7 +8,7 @@
 --
 -- Lua 5.0 / 1.12 client: no '#', no '%', handlers read `this`, no SetSize.
 
-BOTMENU_VERSION = "1.6";
+BOTMENU_VERSION = "1.7";
 
 -- Categories in menu order (owner 2026-09-27, twow-repo#290). `menu` is the
 -- frame from BotMenu.xml; each entry is { label, command }. Commands are the
@@ -244,7 +244,54 @@ local function BotMenu_ShowEntry(show)
 	ChatMenu:SetHeight((ChatMenu.numButtons * UIMENU_BUTTON_HEIGHT) + (UIMENU_BORDER_HEIGHT * 2));
 end
 
+-- Surnames (twow-repo#518). Bots keep one-word names - whisper, /invite,
+-- chat links and the server's name lookup only work with those - so the
+-- surname is display only: BotSurnames.lua (generated from the roster table)
+-- maps the character name to it, and the unit tooltip shows "Name Surname".
+-- Nothing is ever sent. /botmenu surnames off hides it.
+function BotMenu_Surname(name)
+	if ( not name or not BOTMENU_SURNAMES or (BotMenuDB and BotMenuDB.surnames == 0) ) then
+		return nil;
+	end
+	return BOTMENU_SURNAMES[name];
+end
+
+function BotMenu_TooltipSurname(tooltip, unit)
+	if ( not tooltip or not unit or not UnitIsPlayer(unit) ) then
+		return;
+	end
+	local name = UnitName(unit);
+	local surname = BotMenu_Surname(name);
+	if ( not surname ) then
+		return;
+	end
+	local first = getglobal(tooltip:GetName().."TextLeft1");
+	local text = first and first:GetText();
+	if ( not text ) then
+		return;
+	end
+	-- Shown already (the client may fill the same tooltip twice)?
+	for i = 1, tooltip:NumLines() do
+		local line = getglobal(tooltip:GetName().."TextLeft"..i);
+		local lineText = line and line:GetText();
+		if ( lineText and string.find(lineText, surname, 1, true) ) then
+			return;
+		end
+	end
+	if ( string.sub(text, -string.len(name)) == name ) then
+		first:SetText(text.." "..surname);
+	else
+		-- The name line carries something else (a title): add a line instead.
+		tooltip:AddLine(surname, 0.75, 0.75, 0.75);
+	end
+	tooltip:Show();
+end
+
 function BotMenu_OnEvent()
+	if ( event == "UPDATE_MOUSEOVER_UNIT" ) then
+		BotMenu_TooltipSurname(GameTooltip, "mouseover");
+		return;
+	end
 	if ( event ~= "VARIABLES_LOADED" ) then
 		return;
 	end
@@ -255,6 +302,14 @@ function BotMenu_OnEvent()
 	BotMenu_Fill();
 	botMenuButton = BotMenu_AddButton(ChatMenu, "Bots", nil, "BotMenu");
 	BotMenu_ShowEntry(BotMenuDB.enabled == 1);
+
+	-- Unit frames (target, party, raid) fill the tooltip through SetUnit; the
+	-- world mouseover comes as UPDATE_MOUSEOVER_UNIT (see BotMenu.xml).
+	local setUnit = GameTooltip.SetUnit;
+	GameTooltip.SetUnit = function(self, unit)
+		setUnit(self, unit);
+		BotMenu_TooltipSurname(self, unit);
+	end
 
 	-- ChatMenu only hides EmoteMenu when it opens; hide ours too, or an
 	-- old submenu would reappear with it.
@@ -279,6 +334,12 @@ SlashCmdList["BOTMENU"] = function(msg)
 		BotMenuDB.enabled = 0;
 		BotMenu_ShowEntry(false);
 		BotMenu_Print("off.");
+	elseif ( msg == "surnames on" or msg == "nachnamen an" ) then
+		BotMenuDB.surnames = 1;
+		BotMenu_Print("Bot surnames in the tooltip: on.");
+	elseif ( msg == "surnames off" or msg == "nachnamen aus" ) then
+		BotMenuDB.surnames = 0;
+		BotMenu_Print("Bot surnames in the tooltip: off.");
 	elseif ( msg == "list" or msg == "liste" ) then
 		BotMenu_ShowList();
 	elseif ( string.sub(msg, 1, 4) == "pace" or string.sub(msg, 1, 4) == "takt" ) then
@@ -288,7 +349,7 @@ SlashCmdList["BOTMENU"] = function(msg)
 		BotMenu_Print("Bot list pace: "..(value and (value.." s") or "automatic")..".");
 	else
 		BotMenu_Print("Version "..BOTMENU_VERSION..", "..((BotMenuDB and BotMenuDB.enabled == 1) and "on" or "off")..
-			". /botmenu on | off | list | pace <s>|auto. The active chat channel decides which bots get the command: "..
+			". /botmenu on | off | list | pace <s>|auto | surnames on|off. The active chat channel decides which bots get the command: "..
 			"/w name = one bot, /p = party, /raid = raid.");
 	end
 end
