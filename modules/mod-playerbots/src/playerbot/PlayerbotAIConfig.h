@@ -434,6 +434,10 @@ public:
     // these vendor reagents (item ids). false / empty = legacy.
     bool professionUseKeepCraftMaterials = false;
     uint32 professionUseReagentKeepStacks = 1;
+    // Hotfix 8.27: quest log rotation of stuck roster bots (8.17), tunable by reload config.
+    bool questRotateEnabled = true;
+    uint32 questRotateIdleSeconds = 2400;
+    uint32 questRotateGraceSeconds = 1800;
     // twow-repo#524: wool rule - tailoring below WoolTierSkill keeps every linen, then first aid
     // only uses linen above FirstAidClothReserve.
     uint32 professionUseWoolTierSkill = 75;
