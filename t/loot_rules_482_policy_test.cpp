@@ -1,7 +1,9 @@
 // twow-repo#482 owner rule table v5: raid profiles, dungeon bands, mix allocation, trim rule.
 #include "../src/game/FunserverLootRules.h"
 
+#include <cmath>
 #include <iostream>
+#include <map>
 #include <vector>
 
 using namespace FunserverLootRules;
@@ -147,6 +149,28 @@ int main()
     LootCounts small2;
     small2.ownMin = 4; small2.normal = 3;
     Check(Trim(small2, 16, 0).Total() == 7, "under the limit nothing is cut");
+
+    // Legendary presets (owner 2026-10-04): A default, B, C; counts drop always.
+    LegendaryPreset const* a = FindLegendaryPreset("A");
+    Check(a && FindLegendaryPreset("B") && FindLegendaryPreset("C") && !FindLegendaryPreset("D"), "presets A, B, C");
+    std::map<uint32_t, float> const ac = ParseItemValues(a->chances);
+    Check(ac.at(18563) == 63.0f && ac.at(18564) == 63.0f && ac.at(17204) == 40.0f && ac.at(22726) == 100.0f, "preset A chances");
+    Check(ParseItemValues(a->counts).at(17203) == 4.0f, "preset A 4 ingots");
+    std::map<uint32_t, float> const cc = ParseItemValues(FindLegendaryPreset("C")->chances);
+    Check(cc.at(18563) == 30.5f && cc.at(17204) == 21.0f && ParseItemValues(FindLegendaryPreset("C")->counts).at(17203) == 2.0f, "preset C");
+    Check(ParseItemValues("1:2.5,x:3,4,5:-1,6:7").size() == 2, "malformed item values skipped");
+
+    // Dungeon epic cap: any epic over n draws stays at or below the cap.
+    auto anyEpic = [](float epic, float other, uint32_t n)
+    {
+        float const share = epic / (epic + other);
+        return 1.0f - std::pow(1.0f - share, float(n));
+    };
+    float const s = EpicWeightScale(200.0f, 100.0f, 4, 0.35f);
+    Check(s < 1.0f && std::fabs(anyEpic(200.0f * s, 100.0f, 4) - 0.35f) < 0.001f, "cap scales epics to 35 %");
+    Check(EpicWeightScale(1.0f, 100.0f, 4, 0.35f) == 1.0f, "under the cap nothing changes");
+    Check(EpicWeightScale(5.0f, 0.0f, 4, 0.35f) == 1.0f && EpicWeightScale(5.0f, 1.0f, 0, 0.35f) == 1.0f &&
+          EpicWeightScale(5.0f, 1.0f, 4, 0.0f) == 1.0f, "no cap without other items, draws or cap");
 
     if (failures)
     {

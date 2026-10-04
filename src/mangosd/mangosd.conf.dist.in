@@ -1950,6 +1950,17 @@ Funserver.Loot.Units.BoePool.EpicShare = 0.2
 #   Dungeon map -> level band (10-20, 20-30, 30-40, 40-50, 50-60, 60+). Empty = built-in default.
 # Funserver.Loot.Raid.Tokens
 #   Token items per raid map, "map:id,id-id;map:...". Empty = built-in default (live data 2026-10-04).
+# Funserver.Loot.Rules482.LegendaryPreset
+#   Legendary parts with their own chance instead of Rate.Drop.Item.Legendary (A, B, C, off).
+#   A: Bindings 63 %, Eye of Sulfuras 40 %, 4 Sulfuron Ingots, Splinter of Atiesh 100 %;
+#   B: 40 % / 33 % / 2 / 75 %; C: 30.5 % / 21 % / 2 / 55 %. Empty = A.
+# Funserver.Loot.Rules482.LegendaryChance
+#   Per-item override "item:percent,..." on top of the preset. Empty = none.
+# Funserver.Loot.Rules482.LegendaryCount
+#   Per-item fixed count "item:count,..." (drops always). Empty = none.
+# Funserver.Loot.Rules482.DungeonEpicMaxChance
+#   Dungeons: at most this chance (percent) for any own epic per boss; 0 = no cap.
+#   Default: 35
 # Loot.MaxItems
 #   Total loot of one corpse or chest (16..32). Beyond the 16 client slots items wait in the
 #   overflow and refill looted slots when the loot is opened again. The trim rule cuts against it.
@@ -1959,6 +1970,10 @@ Funserver.Loot.Rules482.Enabled = 0
 Funserver.Loot.Raid.Maps = ""
 Funserver.Loot.Dungeon.Maps = ""
 Funserver.Loot.Raid.Tokens = ""
+Funserver.Loot.Rules482.LegendaryPreset = ""
+Funserver.Loot.Rules482.LegendaryChance = ""
+Funserver.Loot.Rules482.LegendaryCount = ""
+Funserver.Loot.Rules482.DungeonEpicMaxChance = 35
 Loot.MaxItems = 16
 
 # Funserver.Rare.Respawn.Enabled

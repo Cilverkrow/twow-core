@@ -1593,6 +1593,33 @@ void LootTemplate::AddEntry(LootStoreItem& item)
         Entries.push_back(item);
 }
 
+// twow-repo#482 round 2 (owner 2026-10-04): legendary parts roll with their own chance
+// (Funserver.Loot.Rules482.LegendaryPreset plus per-item overrides), never with the rates;
+// count items drop always with a fixed count. Filled by LoadFunserverBoePool.
+static std::map<uint32, float> sFunserverLegendaryChance;
+static std::map<uint32, uint32> sFunserverLegendaryCount;
+
+// True when the item is a legendary part; then rolled tells whether it drops and dropItem
+// carries the count to add.
+static bool RollFunserverLegendary(LootStoreItem const& item, LootStoreItem& dropItem, bool& rolled)
+{
+    if (item.mincountOrRef <= 0 || item.needs_quest)
+        return false;
+    auto const count = sFunserverLegendaryCount.find(item.itemid);
+    if (count != sFunserverLegendaryCount.end())
+    {
+        dropItem.mincountOrRef = int32(count->second);
+        dropItem.maxcount = uint8(count->second);
+        rolled = true;
+        return true;
+    }
+    auto const chance = sFunserverLegendaryChance.find(item.itemid);
+    if (chance == sFunserverLegendaryChance.end())
+        return false;
+    rolled = roll_chance_f(chance->second);
+    return true;
+}
+
 // Rolls for every item in the template and adds the rolled items the the loot
 void LootTemplate::Process(Loot& loot, LootStore const& store, bool rate, Player const* lootOwner, uint8 groupId) const
 {
@@ -1608,6 +1635,15 @@ void LootTemplate::Process(Loot& loot, LootStore const& store, bool rate, Player
     // Rolling non-grouped items
     for (const auto& itr : Entries)
     {
+        LootStoreItem legendary = itr;
+        bool legendaryRolled = false;
+        if (RollFunserverLegendary(itr, legendary, legendaryRolled))
+        {
+            if (legendaryRolled)
+                loot.AddItem(legendary);
+            continue;
+        }
+
         if (!itr.Roll(rate, lootOwner))
             continue;                                       // Bad luck for the entry
 
@@ -1698,6 +1734,8 @@ static std::map<uint32, FunserverLootRange> sFunserverRaidRanges;
 static std::map<uint32, FunserverLootRules::RaidProfile const*> sFunserverRaidProfiles;
 static std::map<uint32, FunserverLootRules::DungeonBand const*> sFunserverDungeonBands;
 static std::map<uint32, std::set<uint32>> sFunserverRaidTokens;
+// Funserver.Loot.Rules482.DungeonEpicMaxChance as a fraction (0 = no cap).
+static float sFunserverDungeonEpicCap = 0.35f;
 
 // Normal raid loot: weapons and armour outside item sets. Set pieces and tokens
 // (non-equipment) come only from the normal roll, never from the fill.
@@ -1740,6 +1778,8 @@ void LoadFunserverBoePool()
     sFunserverRaidProfiles.clear();
     sFunserverDungeonBands.clear();
     sFunserverRaidTokens.clear();
+    sFunserverLegendaryChance.clear();
+    sFunserverLegendaryCount.clear();
 
     if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED))
         return;
@@ -1776,6 +1816,30 @@ void LoadFunserverBoePool()
             sFunserverRaidTokens[entry.first].insert(entry.second.begin(), entry.second.end());
         sLog.outString("Funserver loot rules #482: %u raid profiles, %u dungeon bands, %u token raids",
             uint32(sFunserverRaidProfiles.size()), uint32(sFunserverDungeonBands.size()), uint32(sFunserverRaidTokens.size()));
+
+        // Legendary parts: preset (A default, "off" = none), then per-item overrides.
+        std::string const presetName = configOr("Funserver.Loot.Rules482.LegendaryPreset", "A");
+        if (LegendaryPreset const* preset = FindLegendaryPreset(presetName))
+        {
+            sFunserverLegendaryChance = ParseItemValues(preset->chances);
+            for (auto const& entry : ParseItemValues(preset->counts))
+                sFunserverLegendaryCount[entry.first] = uint32(entry.second);
+        }
+        else if (presetName != "off")
+            sLog.outError("Funserver.Loot.Rules482.LegendaryPreset: unknown preset %s", presetName.c_str());
+        for (auto const& entry : ParseItemValues(sConfig.GetStringDefault("Funserver.Loot.Rules482.LegendaryChance", "")))
+        {
+            sFunserverLegendaryChance[entry.first] = entry.second;
+            sFunserverLegendaryCount.erase(entry.first);
+        }
+        for (auto const& entry : ParseItemValues(sConfig.GetStringDefault("Funserver.Loot.Rules482.LegendaryCount", "")))
+        {
+            sFunserverLegendaryCount[entry.first] = std::min<uint32>(uint32(entry.second), 255);
+            sFunserverLegendaryChance.erase(entry.first);
+        }
+        sFunserverDungeonEpicCap = std::min(std::max(sConfig.GetFloatDefault("Funserver.Loot.Rules482.DungeonEpicMaxChance", 35.0f), 0.0f), 100.0f) / 100.0f;
+        sLog.outString("Funserver loot rules #482: legendary preset %s, %u chance and %u count items, dungeon epic cap %.0f %%",
+            presetName.c_str(), uint32(sFunserverLegendaryChance.size()), uint32(sFunserverLegendaryCount.size()), sFunserverDungeonEpicCap * 100.0f);
     }
 
     // Items that already drop somewhere in the world; the prototype filter
@@ -2199,14 +2263,31 @@ void LootTemplate::ProcessRules482(Loot& loot, Player const* lootOwner, WorldObj
         DungeonPlan const plan = PlanDungeon(band, uint32(own.size()), RollChance482);
 
         // Own items: distinct, weighted by base chance and the dungeon quality weights.
+        auto const ownWeight = [](FunserverUnitCandidate const& c, bool& epic)
+        {
+            ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
+            epic = proto->Quality >= ITEM_QUALITY_EPIC;
+            return c.baseChance * sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
+                (FUNSERVER_LOOT_DUNGEON - FUNSERVER_LOOT_RARE) * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(proto->Quality)));
+        };
+        // Epic cap per boss (owner 2026-10-04): scale the epic weights so that "any epic"
+        // stays at or below Funserver.Loot.Rules482.DungeonEpicMaxChance.
+        float epicWeight = 0.0f;
+        float otherWeight = 0.0f;
+        for (FunserverUnitCandidate const& c : own)
+        {
+            bool epic = false;
+            float const weight = ownWeight(c, epic);
+            (epic ? epicWeight : otherWeight) += weight;
+        }
+        float const epicScale = EpicWeightScale(epicWeight, otherWeight, plan.own, sFunserverDungeonEpicCap);
         for (uint32 n = 0; n < plan.own && !own.empty(); ++n)
         {
             std::vector<float> weights(own.size());
             for (size_t i = 0; i < own.size(); ++i)
             {
-                ItemPrototype const* proto = sObjectMgr.GetItemPrototype(own[i].item->itemid);
-                weights[i] = own[i].baseChance * sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
-                    (FUNSERVER_LOOT_DUNGEON - FUNSERVER_LOOT_RARE) * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(proto->Quality)));
+                bool epic = false;
+                weights[i] = ownWeight(own[i], epic) * (epic ? epicScale : 1.0f);
             }
             size_t const pick = PickWeighted482(weights);
             if (pick >= own.size())
@@ -2240,7 +2321,7 @@ void LootTemplate::ProcessRules482(Loot& loot, Player const* lootOwner, WorldObj
             pool[pick] = pool.back();
             pool.pop_back();
         }
-        DEBUG_LOG("[LootRules482] dungeon map=%u band=%s own=%u boe=%u", mapId, band.name, plan.own, plan.boe);
+        DEBUG_LOG("[LootRules482] dungeon map=%u band=%s own=%u boe=%u epicScale=%.3f", mapId, band.name, plan.own, plan.boe, epicScale);
         return;
     }
 

@@ -2,6 +2,7 @@
 #define TW_FUNSERVER_LOOT_RULES_H
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <sstream>
@@ -337,6 +338,70 @@ namespace FunserverLootRules
         cut(in.set, std::min(setNeed, in.set));
         cut(in.ownExtra, 0);
         return in;
+    }
+
+    // Legendary parts (owner 2026-10-04, #482 round 2): own chance per item instead of
+    // Rate.Drop.Item.Legendary; count items drop always with a fixed count. Expected MC/Naxx
+    // runs: A Thunderfury ~2.0, Sulfuras ~2.9, Atiesh ~3.3; B ~3.4/~4.6/~4.4; C ~4.6/~5.8/~6.1.
+    struct LegendaryPreset
+    {
+        char const* name;
+        char const* chances;    // item:percent
+        char const* counts;     // item:count (100 %)
+    };
+
+    // 18563/18564 Bindings (Geddon/Garr), 17204 Eye of Sulfuras, 22726 Splinter of Atiesh,
+    // 17203 Sulfuron Ingot.
+    LegendaryPreset constexpr LEGENDARY_PRESETS[] = {
+        { "A", "18563:63,18564:63,17204:40,22726:100",     "17203:4" },
+        { "B", "18563:40,18564:40,17204:33,22726:75",      "17203:2" },
+        { "C", "18563:30.5,18564:30.5,17204:21,22726:55",  "17203:2" },
+    };
+
+    inline LegendaryPreset const* FindLegendaryPreset(std::string const& name)
+    {
+        for (LegendaryPreset const& preset : LEGENDARY_PRESETS)
+            if (name == preset.name)
+                return &preset;
+        return nullptr;
+    }
+
+    // "1:2.5,3:4" -> {1: 2.5, 3: 4}; malformed parts are skipped.
+    inline std::map<uint32_t, float> ParseItemValues(std::string const& text)
+    {
+        std::map<uint32_t, float> out;
+        std::stringstream parts(text);
+        std::string part;
+        while (std::getline(parts, part, ','))
+        {
+            size_t const colon = part.find(':');
+            if (colon == std::string::npos)
+                continue;
+            try
+            {
+                uint32_t const item = uint32_t(std::stoul(part.substr(0, colon)));
+                float const value = std::stof(part.substr(colon + 1));
+                if (item && value >= 0.0f)
+                    out[item] = value;
+            }
+            catch (...)
+            {
+            }
+        }
+        return out;
+    }
+
+    // Dungeon epic cap (owner 2026-10-04: at most 35 % "any epic" per boss). With n own draws
+    // and epic weight share e, P(any epic) ~ 1 - (1 - e)^n. Returns the factor for the epic
+    // weights that keeps this at or below cap (1 when it already holds).
+    inline float EpicWeightScale(float epicWeight, float otherWeight, uint32_t draws, float cap)
+    {
+        if (!draws || cap <= 0.0f || cap >= 1.0f || epicWeight <= 0.0f || otherWeight <= 0.0f)
+            return 1.0f;
+        float const maxShare = 1.0f - std::pow(1.0f - cap, 1.0f / float(draws));
+        if (epicWeight / (epicWeight + otherWeight) <= maxShare)
+            return 1.0f;
+        return maxShare * otherWeight / ((1.0f - maxShare) * epicWeight);
     }
 }
 
