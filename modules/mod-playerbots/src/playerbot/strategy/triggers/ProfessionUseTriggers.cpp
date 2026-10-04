@@ -86,13 +86,14 @@ uint32 ai::CraftableFromBags(SpellEntry const* spell, Player* bot)
     {
         if (spell->Reagent[i] <= 0 || !spell->ReagentCount[i])
             continue;
-        uint32 count = bot->GetItemCount(uint32(spell->Reagent[i]));
+        craftable = std::min(craftable, bot->GetItemCount(uint32(spell->Reagent[i])) / spell->ReagentCount[i]);
         if (keepCloth)
         {
             ItemPrototype const* reagent = sObjectMgr.GetItemPrototype(uint32(spell->Reagent[i]));
-            count = consumables::CountAfterReserve(count, reserve, reagent && reagent->Class == ITEM_CLASS_TRADE_GOODS);
+            uint32 const usable = consumables::CountAfterReserve(bot->GetItemCount(uint32(spell->Reagent[i])), reserve,
+                reagent && reagent->Class == ITEM_CLASS_TRADE_GOODS);
+            craftable = std::min(craftable, usable / spell->ReagentCount[i]);
         }
-        craftable = std::min(craftable, count / spell->ReagentCount[i]);
     }
     return craftable;
 }
