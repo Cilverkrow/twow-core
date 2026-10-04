@@ -686,21 +686,29 @@ bool CraftRandomItemAction::Execute(Event& event)
             continue;
 
         const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
+        if (!pSpellInfo)
+            continue;
+
+        // Hotfix 8.16b (v32 SIGSEGV 08:51:29Z, GetUInt64Value in this function): the target was
+        // nulled for a recipe without focus and the loop then went on (8.16a added a "continue"
+        // for recipes without material); the next recipe with a focus read GuidPosition(nullptr).
+        // The target of one recipe no longer changes the target of the next.
+        WorldObject* spellTarget = wot;
 
         if (pSpellInfo->RequiresSpellFocus)
         {
-            if (!GuidPosition(wot).IsGameObject())
+            if (!spellTarget || !GuidPosition(spellTarget).IsGameObject())
                 continue;
 
-            if (GuidPosition(wot).GetGameObjectInfo()->type != GAMEOBJECT_TYPE_SPELL_FOCUS)
+            if (GuidPosition(spellTarget).GetGameObjectInfo()->type != GAMEOBJECT_TYPE_SPELL_FOCUS)
                 continue;
 
-            if (GuidPosition(wot).GetGameObjectInfo()->spellFocus.focusId != pSpellInfo->RequiresSpellFocus)
+            if (GuidPosition(spellTarget).GetGameObjectInfo()->spellFocus.focusId != pSpellInfo->RequiresSpellFocus)
                 continue;
         }
-        else if(wot != bot)
+        else if (spellTarget != bot)
         {
-            wot = nullptr;
+            spellTarget = nullptr;
         }
 
         uint32 castCount = AI_VALUE2(uint32, "has reagents for", spellId);
@@ -739,9 +747,9 @@ bool CraftRandomItemAction::Execute(Event& event)
         std::ostringstream cmd;
         cmd << "castnc ";
 
-        if (((wot && sServerFacade.IsInFront(bot, wot, sPlayerbotAIConfig.sightDistance, CAST_ANGLE_IN_FRONT))))
+        if (spellTarget && sServerFacade.IsInFront(bot, spellTarget, sPlayerbotAIConfig.sightDistance, CAST_ANGLE_IN_FRONT))
         {
-            cmd << chat->formatWorldobject(wot) << " ";
+            cmd << chat->formatWorldobject(spellTarget) << " ";
         }
 
         cmd << spellId << " " << castCount;
