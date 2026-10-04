@@ -694,6 +694,25 @@ add_test(NAME profession_use_policy
   COMMAND profession_use_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#524: material reservation, one place.
+add_executable(material_reserve_policy_tests
+  "${PB_MODULE_DIR}/t/material_reserve_policy_tests.cpp")
+
+target_include_directories(material_reserve_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(material_reserve_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME material_reserve_policy
+  COMMAND material_reserve_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME material_reserve_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/material_reserve_source_contract_tests.cmake")
+
 # Hotfix 8.16a: no per-query walk over every recipe in ItemUsageValue.
 add_test(NAME craft_reagent_index_contract
   COMMAND "${CMAKE_COMMAND}"

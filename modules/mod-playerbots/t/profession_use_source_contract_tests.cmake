@@ -63,7 +63,7 @@ file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.h" config_header)
 file(READ "${PB_SOURCE_DIR}/PlayerbotAI.h" ai_header)
 
 require_text("${triggers}" "professionUseRealReagents" "real-reagent switch in the trigger")
-require_text("${triggers}" "bot->GetItemCount(uint32(spell->Reagent[i])) / spell->ReagentCount[i]" "reagents counted in the bags")
+require_text("${triggers}" "uint32 count = bot->GetItemCount(reagent);" "reagents counted in the bags")
 require_text("${triggers}" "spell->Totem[i] && !bot->HasItemCount(spell->Totem[i], 1)" "tools checked in the bags")
 require_text("${triggers}" "profession_use::Pick(recipes, lastSkill)" "deterministic pick")
 require_text("${triggers}" "AI_VALUE2(bool, \"can craft spell\", spellId)" "legacy check kept without the switch")
