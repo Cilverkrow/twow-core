@@ -256,6 +256,9 @@ class LootTemplate
         // twow-repo#323: fill the loot up to the fixed unit count of `content`
         // (FunserverLootContent) by weighted own-table draws, then the BoE pool.
         void ProcessUnits(Loot& loot, Player const* lootOwner, uint8 content, uint32 level, uint32 mapId) const;
+        // twow-repo#482 (train 9): rule table v5 for raids with a profile and dungeons with a
+        // band (FunserverLootRules.h); `looted` decides who counts as present (reward distance).
+        void ProcessRules482(Loot& loot, Player const* lootOwner, WorldObject const* looted, uint8 content, uint32 level, uint32 mapId) const;
         void CollectUnitCandidates(std::vector<FunserverUnitCandidate>& out, float scale, bool followReferences) const;
         // Adds an entry to the group (at loading stage)
         void AddEntry(LootStoreItem& item);
@@ -523,6 +526,8 @@ void LoadLootTemplates_Reference(LootIdSet& ids_set);
 // twow-repo#323: BoE blue/epic weapons and armour that drop from world loot
 // tables; loaded only when Funserver.Loot.Units.Enabled is on.
 void LoadFunserverBoePool();
+// twow-repo#482: true when rule table v5 handles this content on this map (switch, profile or band).
+bool HasFunserverLootRules482(uint8 content, uint32 mapId);
 
 void CheckLootTemplates_Reference(LootIdSet& ids_set); // has to be split due to bg usage
 

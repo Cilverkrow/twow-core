@@ -92,6 +92,59 @@ namespace FunserverLootRules
         "349:50-60,109:50-60,808:50-60,230:50-60,"
         "289:60+,329:60+,429:60+,229:60+,800:60+,269:60+";
 
+    // Token items of the token raids (Funserver.Loot.Raid.Tokens). Built from the live data
+    // 2026-10-04 (#482): epic own-table items that a class quest requires (AQ40, Naxx, Tower of
+    // Karazhan, ZG) plus the AQ20 drapes/rings/hilts and the Timbermaw "Ritualistic" items, whose
+    // quests are open to every class. Heads, Atiesh parts and other quest items are no tokens.
+    char const* constexpr DEFAULT_RAID_TOKENS =
+        "531:20926,20928-20930,20932-20933;"
+        "533:22352-22372,55581-55583;"
+        "814:55482-55490;"
+        "309:19716-19724;"
+        "509:20884-20886,20888-20890;"
+        "819:33335,33338-33340";
+
+    // "531:1,3-5;533:7" -> {531: [1, 3, 4, 5], 533: [7]}; malformed parts are skipped,
+    // a range spans at most 1000 ids.
+    inline std::map<uint32_t, std::vector<uint32_t>> ParseTokenLists(std::string const& text)
+    {
+        std::map<uint32_t, std::vector<uint32_t>> out;
+        std::stringstream maps(text);
+        std::string mapPart;
+        while (std::getline(maps, mapPart, ';'))
+        {
+            std::string::size_type const colon = mapPart.find(':');
+            if (colon == std::string::npos || colon == 0)
+                continue;
+            std::string const id = mapPart.substr(0, colon);
+            if (id.find_first_not_of("0123456789 ") != std::string::npos)
+                continue;
+            uint32_t const mapId = uint32_t(std::stoul(id));
+            std::stringstream items(mapPart.substr(colon + 1));
+            std::string item;
+            while (std::getline(items, item, ','))
+            {
+                if (item.empty() || item.find_first_not_of("0123456789- ") != std::string::npos)
+                    continue;
+                std::string::size_type const dash = item.find('-');
+                if (dash == std::string::npos)
+                {
+                    out[mapId].push_back(uint32_t(std::stoul(item)));
+                    continue;
+                }
+                if (dash == 0 || dash + 1 >= item.size())
+                    continue;
+                uint32_t const lo = uint32_t(std::stoul(item.substr(0, dash)));
+                uint32_t const hi = uint32_t(std::stoul(item.substr(dash + 1)));
+                if (lo > hi || hi - lo > 1000)
+                    continue;
+                for (uint32_t v = lo; v <= hi; ++v)
+                    out[mapId].push_back(v);
+            }
+        }
+        return out;
+    }
+
     inline RaidProfile const* FindRaidProfile(std::string const& name)
     {
         for (RaidProfile const& p : RAID_PROFILES)

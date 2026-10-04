@@ -69,6 +69,19 @@ int main()
     auto odd = ParseMapNames("x:T1,12,:T2, 7 :T3,8:");
     Check(odd.size() == 1 && odd[7] == "T3", "malformed map entries skipped");
 
+    // Token lists of the token raids.
+    auto tokens = ParseTokenLists(DEFAULT_RAID_TOKENS);
+    Check(tokens[531].size() == 6 && tokens[533].size() == 24 && tokens[814].size() == 9, "AQ40 6, Naxx 24, K40 9 tokens");
+    Check(tokens[309].size() == 9 && tokens[509].size() == 6 && tokens[819].size() == 4, "ZG 9, AQ20 6, Timbermaw 4 tokens");
+    Check(tokens[533].front() == 22352 && tokens[533].back() == 55583, "Naxx range and rings");
+    for (auto const& t : tokens)
+    {
+        auto const profile = raids.find(t.first);
+        Check(profile != raids.end() && FindRaidProfile(profile->second)->setMode == SetMode::Tokens, "token lists only for token profiles");
+    }
+    auto badTokens = ParseTokenLists("x:1;5:9-3,7,a,2-;6:1-5000;8:4");
+    Check(badTokens.size() == 2 && badTokens[5].size() == 1 && badTokens[5][0] == 7 && badTokens[8][0] == 4, "malformed token parts skipped");
+
     // Min sure, then 33 % per further slot.
     Check(RollCount(6, 12, EXTRA_CHANCE, Rolls{}) == 6, "T1 own: all extra rolls miss -> 6");
     Check(RollCount(6, 12, EXTRA_CHANCE, Rolls{ { HIT, HIT, HIT, HIT, HIT, HIT } }) == 12, "T1 own: all hit -> 12");
