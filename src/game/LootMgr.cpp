@@ -36,6 +36,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <unordered_map>
 
 uint32 GetMaxLootItems()
 {
@@ -52,6 +53,22 @@ static eConfigFloatValues const qualityToRate[MAX_ITEM_QUALITY] =
     CONFIG_FLOAT_RATE_DROP_ITEM_LEGENDARY,                               // ITEM_QUALITY_LEGENDARY
     CONFIG_FLOAT_RATE_DROP_ITEM_ARTIFACT,                                // ITEM_QUALITY_ARTIFACT
 };
+
+// twow-repo#482 (owner 2026-10-04): world BoE drops outside instances. Blue and epic BoE
+// weapons and armour with a world-drop chance (below Funserver.Loot.World.BoeMaxBase) roll
+// with Funserver.Loot.World.BoeScale.Rare / .Epic instead of the quality rate, also inside
+// loot groups. Filled by LoadFunserverBoePool; empty = off.
+static std::unordered_map<uint32, float> sFunserverWorldBoeScale;
+static float sFunserverWorldBoeMaxBase = 0.05f;
+
+static float FunserverWorldBoeScale(LootStoreItem const& item, Player const* lootOwner)
+{
+    if (sFunserverWorldBoeScale.empty() || item.chance >= sFunserverWorldBoeMaxBase || !lootOwner ||
+        !lootOwner->IsInWorld() || lootOwner->GetMap()->IsDungeon())
+        return 0.0f;
+    auto const scale = sFunserverWorldBoeScale.find(item.itemid);
+    return scale != sFunserverWorldBoeScale.end() ? scale->second : 0.0f;
+}
 
 LootStore LootTemplates_Creature(     "creature_loot_template",      "creature entry",                     true);
 LootStore LootTemplates_Disenchant(   "disenchant_loot_template",    "item disenchant id",                 true);
@@ -404,6 +421,8 @@ bool LootStoreItem::Roll(bool rate, Player const* lootOwner) const
     ItemPrototype const *pProto = sObjectMgr.GetItemPrototype(itemid);
 
     float qualityModifier = pProto && rate ? sWorld.getConfig(qualityToRate[pProto->Quality]) : 1.0f;
+    if (float const worldScale = rate ? FunserverWorldBoeScale(*this, lootOwner) : 0.0f)
+        qualityModifier = worldScale;                       // world BoE: the scale replaces the rate
 
     return roll_chance_f(chance * qualityModifier * (100.0f + GetGatheringItemChanceMod(lootOwner, itemid)) / 100.0f);
 }
@@ -1372,7 +1391,8 @@ LootStoreItem const * LootTemplate::LootGroup::Roll(Loot const& loot, Player con
             if (i.chance >= 100.0f)
                 return &i;
 
-            Roll -= i.chance * (100.0f + GetGatheringItemChanceMod(lootOwner, i.itemid)) / 100.0f;
+            float const worldScale = FunserverWorldBoeScale(i, lootOwner);
+            Roll -= i.chance * (worldScale ? worldScale : 1.0f) * (100.0f + GetGatheringItemChanceMod(lootOwner, i.itemid)) / 100.0f;
             if (Roll < 0)
                 return &i;
         }
@@ -1736,6 +1756,8 @@ static std::map<uint32, FunserverLootRules::DungeonBand const*> sFunserverDungeo
 static std::map<uint32, std::set<uint32>> sFunserverRaidTokens;
 // Funserver.Loot.Rules482.DungeonEpicMaxChance as a fraction (0 = no cap).
 static float sFunserverDungeonEpicCap = 0.35f;
+// Funserver.Loot.Rules482.DungeonWorldEpicMaxBase: epics below this base chance (percent) count as world drops.
+static float sFunserverDungeonWorldEpicMaxBase = 0.05f;
 
 // Normal raid loot: weapons and armour outside item sets. Set pieces and tokens
 // (non-equipment) come only from the normal roll, never from the fill.
@@ -1780,6 +1802,35 @@ void LoadFunserverBoePool()
     sFunserverRaidTokens.clear();
     sFunserverLegendaryChance.clear();
     sFunserverLegendaryCount.clear();
+    sFunserverWorldBoeScale.clear();
+
+    // World BoE scale (owner 2026-10-04, #482): 1 = off for that quality.
+    float const worldRare = std::max(sConfig.GetFloatDefault("Funserver.Loot.World.BoeScale.Rare", 1.0f), 0.0f);
+    float const worldEpic = std::max(sConfig.GetFloatDefault("Funserver.Loot.World.BoeScale.Epic", 1.0f), 0.0f);
+    sFunserverWorldBoeMaxBase = std::max(sConfig.GetFloatDefault("Funserver.Loot.World.BoeMaxBase", 0.05f), 0.0f);
+    if (worldRare != 1.0f || worldEpic != 1.0f)
+    {
+        std::unique_ptr<QueryResult> dropped(WorldDatabase.Query(
+            "SELECT DISTINCT `item` FROM `creature_loot_template` WHERE `mincountOrRef` > 0 "
+            "UNION SELECT DISTINCT `item` FROM `reference_loot_template` WHERE `mincountOrRef` > 0"));
+        if (dropped)
+        {
+            do
+            {
+                uint32 const itemId = dropped->Fetch()[0].GetUInt32();
+                ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
+                if (!proto || proto->Bonding != BIND_WHEN_EQUIPPED ||
+                    (proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR))
+                    continue;
+                float const scale = proto->Quality == ITEM_QUALITY_RARE ? worldRare : proto->Quality == ITEM_QUALITY_EPIC ? worldEpic : 1.0f;
+                if (scale != 1.0f)
+                    sFunserverWorldBoeScale[itemId] = scale;
+            }
+            while (dropped->NextRow());
+        }
+        sLog.outString("Funserver world BoE scale: blue x%.2f, epic x%.2f below %.3f %% base, %u items",
+            worldRare, worldEpic, sFunserverWorldBoeMaxBase, uint32(sFunserverWorldBoeScale.size()));
+    }
 
     if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED))
         return;
@@ -1838,6 +1889,7 @@ void LoadFunserverBoePool()
             sFunserverLegendaryChance.erase(entry.first);
         }
         sFunserverDungeonEpicCap = std::min(std::max(sConfig.GetFloatDefault("Funserver.Loot.Rules482.DungeonEpicMaxChance", 35.0f), 0.0f), 100.0f) / 100.0f;
+        sFunserverDungeonWorldEpicMaxBase = std::max(sConfig.GetFloatDefault("Funserver.Loot.Rules482.DungeonWorldEpicMaxBase", 0.05f), 0.0f);
         sLog.outString("Funserver loot rules #482: legendary preset %s, %u chance and %u count items, dungeon epic cap %.0f %%",
             presetName.c_str(), uint32(sFunserverLegendaryChance.size()), uint32(sFunserverLegendaryCount.size()), sFunserverDungeonEpicCap * 100.0f);
     }
@@ -2263,12 +2315,32 @@ void LootTemplate::ProcessRules482(Loot& loot, Player const* lootOwner, WorldObj
         DungeonPlan const plan = PlanDungeon(band, uint32(own.size()), RollChance482);
 
         // Own items: distinct, weighted by base chance and the dungeon quality weights.
-        auto const ownWeight = [](FunserverUnitCandidate const& c, bool& epic)
+        auto const qualityWeight = [](uint32 quality)
+        {
+            return sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
+                (FUNSERVER_LOOT_DUNGEON - FUNSERVER_LOOT_RARE) * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(quality)));
+        };
+        // World epics in a boss table (owner 2026-10-04, #482 a): epics with a world-drop base
+        // chance weigh like the table's world-drop blues (mean base, blue weight), so a given
+        // world epic drops about as often as a given world blue.
+        float worldBlueBase = 0.0f;
+        uint32 worldBlues = 0;
+        for (FunserverUnitCandidate const& c : own)
+            if (c.baseChance < sFunserverDungeonWorldEpicMaxBase && sObjectMgr.GetItemPrototype(c.item->itemid)->Quality == ITEM_QUALITY_RARE)
+            {
+                worldBlueBase += c.baseChance;
+                ++worldBlues;
+            }
+        if (worldBlues)
+            worldBlueBase /= float(worldBlues);
+        auto const ownWeight = [&](FunserverUnitCandidate const& c, bool& epic)
         {
             ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
             epic = proto->Quality >= ITEM_QUALITY_EPIC;
-            return c.baseChance * sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
-                (FUNSERVER_LOOT_DUNGEON - FUNSERVER_LOOT_RARE) * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(proto->Quality)));
+            if (proto->Quality == ITEM_QUALITY_EPIC && c.baseChance < sFunserverDungeonWorldEpicMaxBase &&
+                (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR))  // mounts keep weight 100
+                return (worldBlues ? worldBlueBase : c.baseChance) * qualityWeight(ITEM_QUALITY_RARE);
+            return c.baseChance * qualityWeight(proto->Quality);
         };
         // Epic cap per boss (owner 2026-10-04): scale the epic weights so that "any epic"
         // stays at or below Funserver.Loot.Rules482.DungeonEpicMaxChance.

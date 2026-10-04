@@ -20,7 +20,11 @@ foreach (required
     "if (proto->Quality >= ITEM_QUALITY_EPIC && proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR)"
     "if (RollFunserverLegendary(itr, legendary, legendaryRolled))"
     "configOr(\"Funserver.Loot.Rules482.LegendaryPreset\", \"A\")"
-    "float const epicScale = EpicWeightScale(epicWeight, otherWeight, plan.own, sFunserverDungeonEpicCap);")
+    "float const epicScale = EpicWeightScale(epicWeight, otherWeight, plan.own, sFunserverDungeonEpicCap);"
+    "qualityModifier = worldScale;"
+    "float const worldScale = FunserverWorldBoeScale(i, lootOwner);"
+    "return (worldBlues ? worldBlueBase : c.baseChance) * qualityWeight(ITEM_QUALITY_RARE);"
+    "lootOwner->GetMap()->IsDungeon())")
   string(FIND "${loot}" "${required}" at)
   if (at EQUAL -1)
     message(FATAL_ERROR "#482 rules wiring missing: ${required}")
@@ -43,7 +47,8 @@ endif()
 file(READ "${TW_CORE_ROOT}/src/mangosd/mangosd.conf.dist.in" dist)
 foreach (key "Funserver.Loot.Rules482.Enabled = 0" "Funserver.Loot.Raid.Maps = \"\"" "Funserver.Loot.Dungeon.Maps = \"\""
              "Funserver.Loot.Raid.Tokens = \"\"" "Funserver.Loot.Rules482.LegendaryPreset = \"\""
-             "Funserver.Loot.Rules482.DungeonEpicMaxChance = 35" "Loot.MaxItems = 16")
+             "Funserver.Loot.Rules482.DungeonEpicMaxChance = 35" "Funserver.Loot.World.BoeScale.Rare = 1"
+             "Funserver.Loot.World.BoeScale.Epic = 1" "Loot.MaxItems = 16")
   string(FIND "${dist}" "${key}" at)
   if (at EQUAL -1)
     message(FATAL_ERROR "mangosd.conf.dist.in must document: ${key}")

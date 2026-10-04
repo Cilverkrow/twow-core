@@ -1961,6 +1961,16 @@ Funserver.Loot.Units.BoePool.EpicShare = 0.2
 # Funserver.Loot.Rules482.DungeonEpicMaxChance
 #   Dungeons: at most this chance (percent) for any own epic per boss; 0 = no cap.
 #   Default: 35
+# Funserver.Loot.Rules482.DungeonWorldEpicMaxBase
+#   Dungeons: epic weapons and armour below this base chance (percent) are world drops and weigh
+#   like the table's world-drop blues (mean base, blue weight). Default: 0.05
+# Funserver.Loot.World.BoeScale.Rare
+# Funserver.Loot.World.BoeScale.Epic
+#   Outside instances: blue / epic BoE weapons and armour with a world-drop chance (below
+#   Funserver.Loot.World.BoeMaxBase) roll with this factor instead of the quality rate, also in
+#   loot groups. 1 = off. Default: 1
+# Funserver.Loot.World.BoeMaxBase
+#   Base chance (percent) below which a BoE entry counts as a world drop. Default: 0.05
 # Loot.MaxItems
 #   Total loot of one corpse or chest (16..32). Beyond the 16 client slots items wait in the
 #   overflow and refill looted slots when the loot is opened again. The trim rule cuts against it.
@@ -1974,6 +1984,10 @@ Funserver.Loot.Rules482.LegendaryPreset = ""
 Funserver.Loot.Rules482.LegendaryChance = ""
 Funserver.Loot.Rules482.LegendaryCount = ""
 Funserver.Loot.Rules482.DungeonEpicMaxChance = 35
+Funserver.Loot.Rules482.DungeonWorldEpicMaxBase = 0.05
+Funserver.Loot.World.BoeScale.Rare = 1
+Funserver.Loot.World.BoeScale.Epic = 1
+Funserver.Loot.World.BoeMaxBase = 0.05
 Loot.MaxItems = 16
 
 # Funserver.Rare.Respawn.Enabled
