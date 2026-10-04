@@ -9,6 +9,11 @@
 -- Not here: maps 44 (game_tele 621, 622, 809, 810, 827) and 806 (811) are handled by core#252
 -- (20261001120000/20261001121000, redirected by UPDATE). They are excluded by the explicit
 -- (id, map) list below, whether #252 runs before this file, after it, or not at all.
+-- OB-00 2026-10-04 (core#295 comments 5978302467 / 5978303950): only the GM teleports are blocked,
+-- all map data (map_template, spawns) stays as a template for own content (#412). Map 45 (Scarlet
+-- Citadel) belongs to the same block: its marks 500/819 were already removed in train 8 (#408,
+-- 20260927220000), so this file only asserts that map 45 has no mark left (end-state CHECK).
+-- 806 "frostmane" is redirected to map 822 by core#252, not blocked here.
 -- No areatrigger_teleport or spell_target_position leads to these maps, and no code or script
 -- uses these names (LFT FindInstanceEntrance only loses non-matching candidates; read-only check
 -- on cli484-db 2026-10-03). Spawns on these maps stay untouched. `.go xyz <map>` stays possible.
@@ -67,4 +72,5 @@ INSERT INTO `tmp_check_484_tele` (`ok`)
 SELECT (SELECT COUNT(*) FROM `game_tele` WHERE `map` IN (13, 25, 29, 31, 37, 42, 49, 50, 150, 804, 809)) = 0
    AND (SELECT COUNT(*) FROM `game_tele_bak_484`
          WHERE `map` IN (13, 25, 29, 31, 37, 42, 49, 50, 150, 804, 809)) = 41
-   AND (SELECT COUNT(*) FROM `game_tele_bak_484` WHERE `id` IN (621, 622, 809, 810, 827, 811)) = 0;
+   AND (SELECT COUNT(*) FROM `game_tele_bak_484` WHERE `id` IN (621, 622, 809, 810, 827, 811)) = 0
+   AND (SELECT COUNT(*) FROM `game_tele` WHERE `map` = 45) = 0;

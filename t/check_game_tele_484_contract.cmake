@@ -118,7 +118,8 @@ endforeach()
 foreach (required
     "SELECT (SELECT COUNT(*) FROM `game_tele` WHERE `map` IN (13, 25, 29, 31, 37, 42, 49, 50, 150, 804, 809)) = 0"
     "WHERE `map` IN (13, 25, 29, 31, 37, 42, 49, 50, 150, 804, 809)) = 41"
-    "FROM `game_tele_bak_484` WHERE `id` IN (621, 622, 809, 810, 827, 811)) = 0")
+    "FROM `game_tele_bak_484` WHERE `id` IN (621, 622, 809, 810, 827, 811)) = 0"
+    "AND (SELECT COUNT(*) FROM `game_tele` WHERE `map` = 45) = 0;")
   string(FIND "${sql}" "${required}" at)
   if (at EQUAL -1)
     message(FATAL_ERROR "#484 game_tele: end-state CHECK lacks: ${required}")
