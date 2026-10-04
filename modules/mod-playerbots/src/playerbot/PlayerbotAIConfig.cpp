@@ -820,7 +820,7 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildNamesHorde = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesHorde", "");
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
     rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
-    rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 300);
+    rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 86400);
     // twow-repo#485 / #518: role fill of roster guilds. Defaults = owner rules of 04.10. (assignment v3):
     // 7/10/28, a healer of every healer class, tank mix 2-3 warriors + 1 bear/rogue/paladin/shaman, rare
     // pairs about 2.5 %. Inactive while BotsPerGuild = 0. The generic spread switches default off.
