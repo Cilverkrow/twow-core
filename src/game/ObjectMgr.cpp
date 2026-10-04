@@ -8209,8 +8209,11 @@ void ObjectMgr::LoadGameTele()
     while (result->NextRow());
 }
 
-GameTele const* ObjectMgr::GetGameTele(std::string const& name) const
+GameTele const* ObjectMgr::GetGameTele(std::string const& name, uint32* matches) const
 {
+    if (matches)
+        *matches = 0;
+
     // explicit name case
     std::wstring wname;
     if (!Utf8toWStr(name, wname))
@@ -8218,16 +8221,29 @@ GameTele const* ObjectMgr::GetGameTele(std::string const& name) const
 
     // converting string that we try to find to lower case
     wstrToLower(wname);
+    if (wname.empty())
+        return nullptr;
 
-    // Alternative first GameTele what contains wnameLow as substring in case no GameTele location found
-    const GameTele* alt = nullptr;
+    // twow-repo#484 (hotfix 8.19): the substring fallback used to take the first match in hash
+    // order, so `.tele the barrens` (searching "the") landed on a random one of ~33 marks, e.g.
+    // the Turtle development island (map 451). An exact name still wins; a substring only
+    // counts when exactly one mark contains it.
+    GameTele const* alt = nullptr;
+    uint32 found = 0;
     for (const auto& itr : m_GameTeleMap)
+    {
         if (itr.second.wnameLow == wname)
             return &itr.second;
-        else if (alt == nullptr && itr.second.wnameLow.find(wname) != std::wstring::npos)
+        if (itr.second.wnameLow.find(wname) != std::wstring::npos)
+        {
             alt = &itr.second;
+            ++found;
+        }
+    }
 
-    return alt;
+    if (matches)
+        *matches = found;
+    return found == 1 ? alt : nullptr;
 }
 
 bool ObjectMgr::AddGameTele(GameTele& tele)
