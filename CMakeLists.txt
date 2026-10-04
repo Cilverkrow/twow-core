@@ -1002,6 +1002,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_tele_lookup_unique_484_contract.cmake")
+  # twow-repo#379 hotfix 8.21: high elf/goblin in faction and race lists, tauren shaman racial.
+  add_test(NAME race_faction_379_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_race_faction_379_contract.cmake")
   # twow-repo#408: Scarlet Citadel (map 45) secured, content kept.
   add_test(NAME scarlet_citadel_408_contract
     COMMAND "${CMAKE_COMMAND}"
