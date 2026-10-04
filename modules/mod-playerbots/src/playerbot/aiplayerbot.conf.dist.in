@@ -360,6 +360,35 @@ AiPlayerbot.RosterGuild.GuildNote = 0
 # write runs on the world thread (GuildMgr), no roster broadcast.
 AiPlayerbot.RosterGuild.NoteRefreshSeconds = 300
 
+# Fill roster guilds by role (twow-repo#485 / #518; needs BotsPerGuild > 0). Tanks, healers and DPS
+# per guild. 0/0/0 (default) = no role quota: roster guilds stay as they are (leader and charter
+# signers, nobody is invited). With any value set, a roster bot without a guild is dealt to one roster
+# guild of its faction, as OB-40's planner guild_plan.py does it (per role, class by class with the
+# rarest class first, then level band; members keep their guild), recounted every SnapshotSeconds in
+# memory. A guild officer or leader invites a nearby roster bot only into the guild it is dealt to,
+# the bot accepts only that guild, and signs a bot charter only while the charter has a free slot of
+# its role. A role at 0 gets no slot. Role: the plan file's role, else the bot's own talents (bots
+# without talents are not dealt). Proposal (owner decides): 5/10/30 or 7/10/28.
+AiPlayerbot.RosterGuild.Tanks = 0
+AiPlayerbot.RosterGuild.Healers = 0
+AiPlayerbot.RosterGuild.Dps = 0
+
+# Spread rules of the role fill (default 0 = off each). HealerClassMin: healer slots stay free for every
+# healer class of the faction the guild still lacks (buffs, dispels). TankClassSpread: tanks are dealt
+# class by class, at most ceil(tanks of the class / guilds) per guild (no 7 warrior tanks in one guild).
+# RareComboSpread: every race x class pair at most ceil(pair count / guilds) per guild (dwarf shaman,
+# undead paladin, druids land in different guilds). The deal steps back to the role slot alone when no
+# guild fits; charters always apply the rules.
+AiPlayerbot.RosterGuild.HealerClassMin = 0
+AiPlayerbot.RosterGuild.TankClassSpread = 0
+AiPlayerbot.RosterGuild.RareComboSpread = 0
+
+# OB-40's guild plan (guild_plan.py output guilds.tsv: ordinal guid faction guild role class race, tab
+# separated). "" (default) = no plan. Set: the file is read once at startup and is authoritative for the
+# bots it lists: a guild belongs to the plan guild of its leader, a listed bot founds, signs, is invited
+# into and accepts only its plan guild, and its plan role counts. Unlisted bots follow the quotas.
+AiPlayerbot.RosterGuild.PlanFile = ""
+
 # Bots will chat in say/guild when they invite other bots to groups/raids/guilds
 AiPlayerbot.InviteChat = 1
 

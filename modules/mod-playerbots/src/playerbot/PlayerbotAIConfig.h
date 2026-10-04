@@ -324,6 +324,19 @@ public:
     // NoteRefreshSeconds per bot (default 300, used as 60-3600), written only on a change.
     bool rosterGuildNote;
     uint32 rosterGuildNoteRefreshSeconds;
+    // twow-repo#485 / #518: fill roster guilds by role (RosterGuildRolePolicy.h, GuildCreateActions.cpp).
+    // Tanks/Healers/Dps per guild; 0/0/0 (default) = no role quota, roster guilds stay as in core#281.
+    // The three switches (default off) add the spread rules of OB-40's guild planner (PR #519).
+    uint32 rosterGuildTanks;
+    uint32 rosterGuildHealers;
+    uint32 rosterGuildDps;
+    bool rosterGuildHealerClassMin;
+    bool rosterGuildTankClassSpread;
+    bool rosterGuildRareComboSpread;
+    // OB-40's guilds.tsv (ordinal guid faction guild role class race); "" (default) = no plan. Read
+    // once in Initialize() into rosterGuildPlanLines, never on a tick.
+    std::string rosterGuildPlanFile;
+    std::vector<std::string> rosterGuildPlanLines;
     bool randomBotRandomPassword;
     bool inviteChat;
     bool botsSilent;

@@ -95,6 +95,14 @@ class GuildMgr
                 return GetGuildById(it->second);
             return nullptr;
         }
+        // twow-repo#485 (role fill of roster guilds): the guild id of a character, 0 = none. A copy
+        // under the shared lock of m_guid2guild, no Guild* - for bot code on map threads.
+        uint32 GetPlayerGuildId(uint32 lowguid)
+        {
+            std::shared_lock<std::shared_mutex> guard(m_guid2GuildMutex);
+            std::map<uint32, uint32>::const_iterator it = m_guid2guild.find(lowguid);
+            return it != m_guid2guild.end() ? it->second : 0;
+        }
 
         void CreatePetition(uint32 id, Player* player, const ObjectGuid& charterGuid, std::string& name);
         void DeletePetition(Petition* petition);

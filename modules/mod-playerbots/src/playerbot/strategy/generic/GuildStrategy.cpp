@@ -30,6 +30,11 @@ void GuildStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
         "roster guild note",
         NextAction::array(0, new NextAction("roster guild note", 4.0f), NULL)));
 
+    // twow-repo#485 / #518: role report for the role fill of roster guilds (default off).
+    triggers.push_back(new TriggerNode(
+        "roster guild role",
+        NextAction::array(0, new NextAction("roster guild role", 4.0f), NULL)));
+
     triggers.push_back(new TriggerNode(
         "very often",
         NextAction::array(0, new NextAction("guild craft order", 10.0f), NULL)));

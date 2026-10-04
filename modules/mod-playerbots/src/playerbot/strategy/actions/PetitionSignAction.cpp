@@ -110,6 +110,20 @@ bool PetitionSignAction::Execute(Event& event)
                     sLog.outBasic("[RosterGuild] event=sign_declined bot=%u charter=%u reason=%s offered=%u current=%d",
                         bot->GetGUIDLow(), petitionGuid.GetCounter(), roster_guild::SignDecisionName(decision), uint32(offered.signatureCount), currentSigned);
             }
+            else if (!IsRealPlayer(_inviter))
+            {
+                // twow-repo#485 / #518 (role fill, RosterGuild.Tanks/Healers/Dps or PlanFile): a bot
+                // charter only with a free slot of the bot's role (spread switches included) and only
+                // of its own plan guild. Without quota and plan this always passes.
+                char const* reason = "";
+                if (!RosterGuildPlan::MaySignForRole(bot, offered, reason))
+                {
+                    accept = false;
+                    if (RosterGuildPlan::IsDue(ai, "roster guild sign trace", HOUR))
+                        sLog.outBasic("[RosterGuild] event=sign_declined bot=%u charter=%u reason=%s offered=%u",
+                            bot->GetGUIDLow(), petitionGuid.GetCounter(), reason, uint32(offered.signatureCount));
+                }
+            }
         }
     }
 

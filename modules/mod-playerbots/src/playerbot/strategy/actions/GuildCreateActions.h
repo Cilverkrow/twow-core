@@ -35,6 +35,20 @@ namespace ai
         // The charter item (5863) whose petition the bot owns, with a copy of that petition (and
         // whether accountId signed it); nullptr when there is none.
         static Item* OwnCharter(Player* bot, PetitionSummary& out, uint32 accountId = 0);
+
+        // twow-repo#485 / #518: role fill (AiPlayerbot.RosterGuild.Tanks/Healers/Dps, the spread
+        // switches, PlanFile; RosterGuildRolePolicy.h). On the roster path with a quota or a plan.
+        static bool UsesRoleFill(PlayerbotAI* ai);
+        // Stores the role of the bot's own talents (its own thread); returns the role that counts
+        // (the plan's first) as roster_guild_role::Role.
+        static uint8 ReportOwnRole(Player* bot);
+        // The roster guild this roster bot is dealt to (plan guild or quota deal), 0 = none.
+        static uint32 AssignedGuild(uint32 guidLow, Team team);
+        // A bot charter: the owner's plan guild, and a free slot of the bot's role under the spread
+        // rules; false with reason otherwise. Always true without quota and plan.
+        static bool MaySignForRole(Player* bot, PetitionSummary const& offered, char const*& reason);
+        // After a roster bot joined a guild: recount on the next call, trace.
+        static void NoteJoined(Player* bot, uint32 guildId);
     };
 
     class BuyPetitionAction : public Action 

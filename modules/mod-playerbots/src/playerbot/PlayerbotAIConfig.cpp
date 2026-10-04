@@ -821,6 +821,29 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
     rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
     rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 300);
+    // twow-repo#485 / #518: role fill of roster guilds. 0/0/0 = no role quota; switches default off.
+    rosterGuildTanks = config.GetIntDefault("AiPlayerbot.RosterGuild.Tanks", 0);
+    rosterGuildHealers = config.GetIntDefault("AiPlayerbot.RosterGuild.Healers", 0);
+    rosterGuildDps = config.GetIntDefault("AiPlayerbot.RosterGuild.Dps", 0);
+    rosterGuildHealerClassMin = config.GetBoolDefault("AiPlayerbot.RosterGuild.HealerClassMin", false);
+    rosterGuildTankClassSpread = config.GetBoolDefault("AiPlayerbot.RosterGuild.TankClassSpread", false);
+    rosterGuildRareComboSpread = config.GetBoolDefault("AiPlayerbot.RosterGuild.RareComboSpread", false);
+    rosterGuildPlanFile = config.GetStringDefault("AiPlayerbot.RosterGuild.PlanFile", "");
+    // Read once here (startup or config reload), never on a tick; parsed in memory by the guild plan.
+    rosterGuildPlanLines.clear();
+    if (!rosterGuildPlanFile.empty())
+    {
+        std::ifstream planFile(rosterGuildPlanFile);
+        if (!planFile.is_open())
+            sLog.outError("[RosterGuild] event=plan_file path=%s result=unreadable (no plan, quotas only)", rosterGuildPlanFile.c_str());
+        else
+        {
+            std::string planLine;
+            while (rosterGuildPlanLines.size() < 10000 && std::getline(planFile, planLine))
+                rosterGuildPlanLines.push_back(planLine);
+            sLog.outBasic("[RosterGuild] event=plan_file path=%s lines=%u", rosterGuildPlanFile.c_str(), uint32(rosterGuildPlanLines.size()));
+        }
+    }
 
     boostFollow = config.GetBoolDefault("AiPlayerbot.BoostFollow", false);
     turnInRpg = config.GetBoolDefault("AiPlayerbot.TurnInRpg", false);

@@ -3,6 +3,7 @@
 #include "GuildTriggers.h"
 #include "Guild/GuildMgr.h"
 #include "playerbot/RosterGuildPolicy.h"
+#include "playerbot/strategy/actions/GuildCreateActions.h"
 
 using namespace ai;
 
@@ -56,6 +57,19 @@ bool RosterGuildNoteTrigger::IsActive()
 		return false;
 
 	lastNoteCheck = now;
+	return true;
+}
+
+bool RosterGuildRoleTrigger::IsActive()
+{
+	if (!RosterGuildPlan::UsesRoleFill(ai))
+		return false;
+
+	time_t const now = time(nullptr);
+	if (!roster_guild::IsDue(now, lastRoleReport, roster_guild::SnapshotInterval(sPlayerbotAIConfig.rosterGuildSnapshotSeconds)))
+		return false;
+
+	lastRoleReport = now;
 	return true;
 }
 

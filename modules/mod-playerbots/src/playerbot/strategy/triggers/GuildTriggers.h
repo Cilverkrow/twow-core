@@ -40,4 +40,18 @@ namespace ai
     private:
         time_t lastNoteCheck = 0;
     };
+
+    // twow-repo#485 / #518 (role fill): a roster bot reports the role of its own talents at most every
+    // AiPlayerbot.RosterGuild.SnapshotSeconds, so the guild deal knows it without touching its Player*
+    // from another thread. Only with RosterGuild.Tanks/Healers/Dps or PlanFile set.
+    class RosterGuildRoleTrigger : public Trigger {
+    public:
+        RosterGuildRoleTrigger(PlayerbotAI* ai) :
+            Trigger(ai, "roster guild role", 60) {}
+
+        bool IsActive() override;
+
+    private:
+        time_t lastRoleReport = 0;
+    };
 }

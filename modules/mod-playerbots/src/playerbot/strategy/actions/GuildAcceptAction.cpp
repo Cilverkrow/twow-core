@@ -3,6 +3,7 @@
 #include "GuildAcceptAction.h"
 #include "playerbot/ServerFacade.h"
 #include "Guild/GuildMgr.h"
+#include "GuildCreateActions.h"
 
 using namespace ai;
 
@@ -66,6 +67,22 @@ bool GuildAcceptAction::Execute(Event& event)
         accept = false;
     }
 
+    // twow-repo#485 / #518 (role fill, RosterGuild.Tanks/Healers/Dps or PlanFile): a roster bot on its
+    // own accepts a bot's invite only into the guild it is dealt to (its plan guild, or the role deal
+    // with the spread switches). Invites of real players stay as they are.
+    bool const roleFill = accept && !IsRealPlayer(inviter) && RosterGuildPlan::UsesRoleFill(ai);
+    if (roleFill)
+    {
+        RosterGuildPlan::ReportOwnRole(bot);
+        uint32 const assigned = RosterGuildPlan::AssignedGuild(bot->GetGUIDLow(), bot->GetTeam());
+        if (assigned != guildId)
+        {
+            accept = false;
+            if (RosterGuildPlan::IsDue(ai, "roster guild accept trace", HOUR))
+                sLog.outBasic("[RosterGuild] event=invite_declined bot=%u guild=%u dealt_to=%u", bot->GetGUIDLow(), guildId, assigned);
+        }
+    }
+
     if (accept && sPlayerbotAIConfig.inviteChat && sServerFacade.GetDistance2d(bot, inviter) < sPlayerbotAIConfig.spellDistance * 1.5 && GetBotAI(inviter) && (sRandomPlayerbotMgr.IsFreeBot(bot) || !ai->HasActivePlayerMaster()))
     {
         if (urand(0, 3))
@@ -78,6 +95,9 @@ bool GuildAcceptAction::Execute(Event& event)
     if (accept)
     {
         bot->GetSession()->HandleGuildAcceptOpcode(packet);
+
+        if (roleFill && bot->GetGuildId() == guildId)
+            RosterGuildPlan::NoteJoined(bot, guildId);
 
         TalentSpec::SetPublicNote(bot);
 
