@@ -54,6 +54,7 @@ ChatCommand * ChatHandler::getCommandTable()
 #ifdef USE_ANTICHEAT
     //Private table, must be in module
 #include "Anticheat/AnticheatChatCommands.h"
+#include <cctype>
 #else
     //Public table
     static ChatCommand anticheatCommandTable[] =
@@ -3128,6 +3129,31 @@ uint32 ChatHandler::ExtractSpellIdFromLink(char** text)
 
 GameTele const* ChatHandler::ExtractGameTeleFromLink(char** text)
 {
+    if (!text || !*text)
+        return nullptr;
+
+    // twow-repo#484 (hotfix 8.19): a plain name takes the whole rest of the command as one
+    // name without spaces or double quotes (".tele the barrens" -> "thebarrens"); before,
+    // only the first word was read. Shift-links and numeric ids keep the old path below.
+    char* p = *text;
+    while (*p == ' ')
+        ++p;
+    if (*p && *p != '|' && *p != '[' && !isdigit(static_cast<unsigned char>(*p)))
+    {
+        std::string name;
+        for (; *p; ++p)
+            if (*p != ' ' && *p != '"')
+                name += *p;
+        *text = p;
+
+        uint32 matches = 0;
+        GameTele const* tele = sObjectMgr.GetGameTele(name, &matches);
+        if (!tele && matches > 1)
+            PSendSysMessage("Teleport name '%s' is ambiguous: %u marks contain it. Use a longer name or .lookup tele %s",
+                name.c_str(), matches, name.c_str());
+        return tele;
+    }
+
     // id, or string, or [name] Shift-click form |color|Htele:id|h[name]|h|r
     char* cId = ExtractKeyFromLink(text, "Htele");
     if (!cId)
