@@ -9506,6 +9506,12 @@ Races ObjectMgr::GetOppositeRace(Races origRace) const
             return RACE_TAUREN;
         case RACE_TROLL:
             return RACE_DWARF;
+        // twow-repo#379 (hotfix 8.21): the Turtle races map onto each other (mount translation on a
+        // race change); a goblin used to map onto itself.
+        case RACE_GOBLIN:
+            return RACE_HIGH_ELF;
+        case RACE_HIGH_ELF:
+            return RACE_GOBLIN;
         default:
             return RACE_GOBLIN;
     }
