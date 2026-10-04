@@ -748,6 +748,14 @@ AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds = 1800
 AiPlayerbot.ProfessionUse.KeepCraftMaterials = 0
 AiPlayerbot.ProfessionUse.ReagentKeepStacks = 1
 AiPlayerbot.ProfessionUse.VendorReagents =
+# WoolTierSkill / FirstAidClothReserve (twow-repo#524, owner 04.10.2026, only with RealReagents, roster
+# bots on their own): a bot that knows Tailoring keeps every Linen Cloth for Tailoring while its
+# Tailoring skill is below WoolTierSkill (no linen bandages), from then on First Aid only uses the
+# linen above FirstAidClothReserve. Secondary professions (First Aid, Cooking, Fishing) also leave
+# the reagents of the bot's green-or-better main-profession recipes (5 casts) alone, and those
+# reagents are not sold below ReagentKeepStacks + 1 stacks. 0 / 0 = no wool rule.
+AiPlayerbot.ProfessionUse.WoolTierSkill = 75
+AiPlayerbot.ProfessionUse.FirstAidClothReserve = 20
 
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full
