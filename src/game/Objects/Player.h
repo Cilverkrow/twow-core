@@ -1851,7 +1851,7 @@ class Player final: public Unit
         uint32 m_comboTraceWindowStart = 0;     // hotfix 8.24 [ComboTrace] throttle window (unix s)
         uint32 m_comboTraceLines = 0;           // lines written in the current window
         uint32 m_comboTraceSuppressed = 0;      // lines dropped in the current window
-        void TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget);
+        void TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget, ObjectGuid const& newTarget = ObjectGuid(), uint32 sourceSpellId = 0);
         uint32 m_weaponChangeTimer;
         bool m_canParry;
         bool m_canBlock;
@@ -1895,7 +1895,7 @@ class Player final: public Unit
         float GetManaRegen() const { return m_modManaRegen; }
         ObjectGuid const& GetComboTargetGuid() const { return m_comboTargetGuid; }
 
-        void AddComboPoints(Unit* target, int8 count);
+        void AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId = 0, bool fromProc = false);
         void ClearComboPoints(ComboClearReason reason = COMBO_CLEAR_OTHER);
         void SetComboPoints();
 
