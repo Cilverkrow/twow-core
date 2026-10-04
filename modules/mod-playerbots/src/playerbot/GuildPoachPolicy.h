@@ -118,4 +118,20 @@ inline bool IsTracedRefusal(PoachDecision decision)
     return decision != PoachDecision::Allow && decision != PoachDecision::Disabled &&
         decision != PoachDecision::NotRosterBot && decision != PoachDecision::NotInGuild;
 }
+
+// No ping-pong on the charter path: after a switch by charter the bot is guildless and its only tie
+// is its signature on the player's charter, so DecidePoach (guild members only) no longer guards it.
+// Within the cooldown that signature stays: the bot signs no other charter (the roster sign path,
+// roster_guild::DecideSign, accepts every real player's charter and moves to fuller bot charters),
+// takes no guild invitation and buys no charter of its own. Neutral for every bot that has not
+// switched since the server start (lastSwitch 0) or signs no charter; the same charter again is no
+// move. signsCharter: the bot's signature is on an open charter; offeredIsSigned: the offered
+// charter is that one.
+inline bool KeepsPoachedCharter(bool signsCharter, bool offeredIsSigned, std::time_t now, std::time_t lastSwitch,
+    std::uint32_t cooldownSeconds)
+{
+    if (!signsCharter || offeredIsSigned || !lastSwitch)
+        return false;
+    return now < lastSwitch + std::time_t(cooldownSeconds);
+}
 }

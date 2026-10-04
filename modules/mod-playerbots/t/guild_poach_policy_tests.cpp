@@ -122,6 +122,17 @@ int main()
     in.lastSwitch = in.now;
     Require(DecidePoach(in) == PoachDecision::PlayerGuild, "player guild before cooldown");
 
+    // No ping-pong on the charter path: a bot that switched by charter is guildless (DecidePoach no
+    // longer applies) and keeps its signature within the cooldown.
+    std::time_t const now = 1000000;
+    Require(KeepsPoachedCharter(true, false, now, now - 60, 86400), "a second player's charter right after the switch is refused");
+    Require(KeepsPoachedCharter(true, false, now, now - 86399, 86400), "kept within 24 h");
+    Require(!KeepsPoachedCharter(true, false, now, now - 86400, 86400), "after 24 h the normal sign path applies");
+    Require(!KeepsPoachedCharter(true, true, now, now - 60, 86400), "the same charter again is no move");
+    Require(!KeepsPoachedCharter(false, false, now, now - 60, 86400), "no signature: nothing to keep (charter turned in or gone)");
+    Require(!KeepsPoachedCharter(true, false, now, 0, 86400), "neutral for bots without a switch");
+    Require(KeepsPoachedCharter(true, false, now, now, PoachCooldown(0)), "the clamped minimum cooldown still keeps it");
+
     // Cooldown as used: 1 h to 30 days.
     Require(PoachCooldown(0) == 3600, "0 is clamped to 1 h (no ping-pong)");
     Require(PoachCooldown(86400) == 86400, "default 24 h kept");

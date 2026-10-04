@@ -21,5 +21,10 @@ namespace ai
     {
     public:
         static char const* Refusal(Player* inviter, ObjectGuid const& invitee, uint32 targetGuildId, bool charterOfInviter, char const* path);
+        // No ping-pong on the charter path (guild_poach::KeepsPoachedCharter): the petition id the
+        // bot keeps its signature on within the poaching cooldown, 0 = none (it may sign, join or
+        // buy as usual). offeredCharter: the charter offered now, empty for an invitation or a
+        // purchase. Copies only (GuildMgr petition summary, switch stamp, config).
+        static uint32 KeptCharter(ObjectGuid const& bot, ObjectGuid const& offeredCharter);
     };
 }

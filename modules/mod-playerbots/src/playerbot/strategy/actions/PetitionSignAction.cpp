@@ -101,6 +101,22 @@ bool PetitionSignAction::Execute(Event& event)
     if (_inviter == bot)
         return false;
 
+    // twow-repo#485 (poaching, no ping-pong): within the poaching cooldown a bot that switched by
+    // charter keeps its signature on that charter. Without this the sign paths below would move it
+    // at once to a second player's charter (roster_guild::DecideSign accepts every real player) or
+    // back to a fuller bot charter. Any master, roster path or not; neutral for bots without a switch.
+    if (accept && !isArena && !poach)
+    {
+        uint32 const keptCharter = RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), petitionGuid);
+        if (keptCharter)
+        {
+            accept = false;
+            if (RosterGuildPlan::IsDue(ai, "roster guild keep charter trace", HOUR))
+                sLog.outBasic("[RosterGuild] event=sign_declined bot=%u charter=%u reason=poached_keeps_charter kept=%u",
+                    bot->GetGUIDLow(), petitionGuid.GetCounter(), keptCharter);
+        }
+    }
+
     // twow-repo#485 (new path): a roster bot on its own signs only towards the faction's guild
     // target, and its signature moves only to a fuller charter (88 % of the 3,122 v24 signatures
     // were moves between bot charters). Counts are copies taken under the petition lock.

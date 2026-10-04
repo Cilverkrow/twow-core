@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "GuildAcceptAction.h"
+#include "GuildCreateActions.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/GuildPoachPolicy.h"
 #include "Guild/GuildMgr.h"
@@ -71,6 +72,23 @@ char const* RosterGuildPoach::Refusal(Player* inviter, ObjectGuid const& invitee
     return guild_poach::PoachDecisionName(decision);
 }
 
+uint32 RosterGuildPoach::KeptCharter(ObjectGuid const& bot, ObjectGuid const& offeredCharter)
+{
+    // Only a bot that switched since the server start can keep a charter; the stamp is read first,
+    // so every other bot skips the petition scan.
+    time_t const lastSwitch = sGuildMgr.GetLastGuildSwitch(bot.GetCounter());
+    if (!lastSwitch)
+        return 0;
+
+    PetitionSummary signedCharter;
+    bool const signsCharter = sGuildMgr.GetPetitionSummaryBySigner(bot, signedCharter);
+    bool const offeredIsSigned = signsCharter && !offeredCharter.IsEmpty() && signedCharter.charterGuid == offeredCharter;
+    if (!guild_poach::KeepsPoachedCharter(signsCharter, offeredIsSigned, time(nullptr), lastSwitch,
+            guild_poach::PoachCooldown(sPlayerbotAIConfig.rosterGuildPoachCooldownSeconds)))
+        return 0;
+    return signedCharter.id;
+}
+
 bool GuildAcceptAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
@@ -114,6 +132,16 @@ bool GuildAcceptAction::Execute(Event& event)
             bot->Say(BOT_TEXT2("Sorry, I am in a guild already %name.", placeholders), (bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH));
 
         accept = false;
+    }
+    else if (!fromGuildId && RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))
+    {
+        // twow-repo#485 (poaching, no ping-pong): within the cooldown a bot that switched by charter
+        // keeps its signature on that charter and joins no other guild.
+        ai->TellError(requester, "Sorry, I signed a charter already");
+        accept = false;
+        if (RosterGuildPlan::IsDue(ai, "roster guild keep charter trace", HOUR))
+            sLog.outBasic("[RosterGuild] event=invite_declined bot=%u inviter=%u guild=%u reason=poached_keeps_charter",
+                bot->GetGUIDLow(), inviter->GetGUIDLow(), guildId);
     }
     else if (!ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_GUILD, false, inviter, true))
     {

@@ -173,6 +173,62 @@ foreach(forbidden "HandlePetitionSignOpcode(" "HandleGuildLeaveOpcode(" "DelMemb
   reject_text("${sign_poach}" "${forbidden}" "guild or petition change on the bot's map thread")
 endforeach()
 
+# 6b. No ping-pong on the charter path: after a switch by charter the bot is guildless and only
+#     signed the player's charter. Within the cooldown it signs no other charter (on every path, also
+#     outside the roster path), joins no other guild and buys no charter. The rule is pure
+#     (KeepsPoachedCharter, policy test); the glue reads copies only (section 3 scans it too).
+text_between("${policy}" "inline bool KeepsPoachedCharter(" "\n}\n" keeps_rule)
+foreach(needle
+    "if (!signsCharter || offeredIsSigned || !lastSwitch)"
+    "return now < lastSwitch + std::time_t(cooldownSeconds);")
+  require_text("${keeps_rule}" "${needle}" "keep-charter rule")
+endforeach()
+text_between("${accept}" "uint32 RosterGuildPoach::KeptCharter(" "bool GuildAcceptAction::Execute(" kept_glue)
+foreach(needle
+    "sGuildMgr.GetLastGuildSwitch(bot.GetCounter())"
+    "sGuildMgr.GetPetitionSummaryBySigner(bot, signedCharter)"
+    "signedCharter.charterGuid == offeredCharter"
+    "guild_poach::PoachCooldown(sPlayerbotAIConfig.rosterGuildPoachCooldownSeconds)"
+    "guild_poach::KeepsPoachedCharter(")
+  require_text("${kept_glue}" "${needle}" "keep-charter input")
+endforeach()
+require_text("${accept_h}" "static uint32 KeptCharter(ObjectGuid const& bot, ObjectGuid const& offeredCharter);" "keep-charter declaration")
+# found: "" when the sign action keeps a poached bot's charter before both sign paths, else the gap.
+function(find_keep_charter_gap text gap)
+  set(${gap} "" PARENT_SCOPE)
+  set(guard "if (accept && !isArena && !poach)\n    {\n        uint32 const keptCharter = RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), petitionGuid);")
+  string(FIND "${text}" "${guard}" guard_at)
+  if(guard_at EQUAL -1)
+    set(${gap} "keep-charter guard" PARENT_SCOPE)
+    return()
+  endif()
+  foreach(later
+      "reason=poached_keeps_charter"
+      "if (accept && !isArena && !poach && RosterGuildPlan::UsesRosterPath(ai))"
+      "bot->GetSession()->HandlePetitionSignOpcode(data);")
+    string(FIND "${text}" "${later}" later_at)
+    if(later_at EQUAL -1 OR NOT guard_at LESS later_at)
+      set(${gap} "${later}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+endfunction()
+find_keep_charter_gap("${sign}" keep_gap)
+if(NOT keep_gap STREQUAL "")
+  message(FATAL_ERROR "Poached bot's charter not kept before the sign paths: ${keep_gap}")
+endif()
+# Negative probe: the review's ping-pong (guard removed, DecideSign moves the signature) must be caught.
+string(REPLACE "uint32 const keptCharter = RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), petitionGuid);" "uint32 const keptCharter = 0;" probe_sign "${sign}")
+find_keep_charter_gap("${probe_sign}" probe_keep_gap)
+if(probe_keep_gap STREQUAL "")
+  message(FATAL_ERROR "negative probe not caught: keep-charter guard removed - the scan is broken")
+endif()
+require_text("${accept_execute}" "else if (!fromGuildId && RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))" "poached bot joins no other guild within the cooldown")
+require_order("${accept_execute}" "else if (!fromGuildId && RosterGuildPoach::KeptCharter(" "else if (accept)" "keep-charter refusal before the accept")
+file(READ "${PB_SOURCE_DIR}/strategy/actions/GuildCreateActions.cpp" create_actions)
+text_between("${create_actions}" "bool BuyPetitionAction::canBuyPetition(Player* bot)" "\n}" can_buy)
+require_text("${can_buy}" "if (RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))" "poached bot buys no charter within the cooldown")
+
 # 7. Config: neutral defaults, read into members without in-class defaults, documented.
 foreach(pair
     "\"AiPlayerbot.RosterGuild.AllowPoaching\", false)"
