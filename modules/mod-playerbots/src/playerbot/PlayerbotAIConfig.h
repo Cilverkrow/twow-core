@@ -342,7 +342,8 @@ public:
     // OB-40's guilds.tsv (ordinal guid faction guild role class race); "" (default) = no plan. Read
     // only in Initialize() (startup, config reload), never on a tick. The lines are published as a
     // whole (std::atomic_store) and read through RosterGuildPlanLines() (std::atomic_load), so a
-    // reload never changes lines a map thread is parsing. nullptr = no plan.
+    // reload never changes lines a map thread is parsing. nullptr = no PlanFile; empty = set but
+    // unreadable (twow-repo#518: rejected, fail-closed).
     std::string rosterGuildPlanFile;
     std::shared_ptr<const std::vector<std::string>> rosterGuildPlanLines;
     std::shared_ptr<const std::vector<std::string>> RosterGuildPlanLines() const { return std::atomic_load(&rosterGuildPlanLines); }

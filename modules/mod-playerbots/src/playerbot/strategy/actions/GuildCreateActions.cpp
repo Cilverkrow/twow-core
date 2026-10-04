@@ -63,11 +63,12 @@ namespace
         std::unordered_map<uint32, roster_guild_role::Member> members;      // roster guid -> class, race, level, role, guild
         std::unordered_map<uint32, uint32> assigned;                        // roster guid -> guild it is dealt to
         roster_guild_role::FactionStats stats[2];
+        bool planRejected = false;                                          // PlanFile set but rejected: fail-closed
+        roster_guild_role::FounderLinks founderLinks;                       // guild -> plan guild of its founder
         std::set<std::string> foundedLabels;                                // plan guilds with a guild
         std::set<std::string> charterLabels;                                // plan guilds with an open charter
         std::map<uint32, std::array<uint32, 6>> tracedRoles;                // guild -> last event=roles line
         std::array<uint32, 5> tracedDeal[2] = {};                            // last event=deal line per faction
-        std::array<uint32, 2> tracedPlan = {};                               // last event=plan_rows line
     };
 
     RosterGuildState& GetRosterGuildState()
@@ -139,17 +140,17 @@ namespace
         return switches;
     }
 
-    // A plan file with lines is loaded (a snapshot of the published lines, see PlayerbotAIConfig.h).
-    bool RosterGuildPlanLoaded()
+    // A plan file is set (a snapshot of the published lines, see PlayerbotAIConfig.h): non-null lines,
+    // empty when the file was unreadable. A set plan file always rules, a rejected one fail-closed.
+    bool RosterGuildPlanSet()
     {
-        std::shared_ptr<const std::vector<std::string>> const lines = sPlayerbotAIConfig.RosterGuildPlanLines();
-        return lines && !lines->empty();
+        return sPlayerbotAIConfig.RosterGuildPlanLines() != nullptr;
     }
 
     // A quota or a plan file is set (the roster path is checked by the callers).
     bool RoleFillConfigured()
     {
-        return roster_guild_role::QuotaActive(RosterGuildQuota()) || RosterGuildPlanLoaded();
+        return roster_guild_role::QuotaActive(RosterGuildQuota()) || RosterGuildPlanSet();
     }
 
     // Caller holds state.lock. The plan label of a bot, "" = not in the plan.
@@ -180,9 +181,12 @@ namespace
     }
 
     // Caller holds state.lock. Plan mode: the bot's plan guild has no guild yet (and, for a purchase,
-    // no open charter either). Bots without a plan row are not ruled by the plan.
+    // no open charter either). Bots without a plan row are not ruled by the plan. A rejected plan file
+    // (fail-closed) keeps every roster bot from buying, turning in or founding.
     bool PlanLabelOpen(RosterGuildState const& state, uint32 guid, bool countCharters)
     {
+        if (state.planRejected)
+            return false;
         std::string const label = PlanLabel(state, guid);
         return label.empty() || (!state.foundedLabels.count(label) && (!countCharters || !state.charterLabels.count(label)));
     }
@@ -200,16 +204,25 @@ namespace
         if (planLines != state.planSource)
         {
             state.planSource = planLines;
-            uint32 rejected = 0;
+            state.plan.clear();
+            state.planRejected = false;
             if (planLines)
-                state.plan = roster_guild_role::ParsePlan(*planLines, rejected);
-            else
-                state.plan.clear();
-            if (state.tracedPlan[0] != uint32(state.plan.size()) || state.tracedPlan[1] != rejected)
             {
-                state.tracedPlan[0] = uint32(state.plan.size());
-                state.tracedPlan[1] = rejected;
-                sLog.outBasic("[RosterGuild] event=plan_rows rows=%u rejected=%u", uint32(state.plan.size()), rejected);
+                // twow-repo#518 spec: exact header, guid key, every row valid - else the whole file is
+                // rejected (fail-closed): no role deal, no charter, no founding of roster bots until a
+                // config reload brings a valid plan. Guilds that exist stay as they are.
+                roster_guild_role::PlanParse const parsed = roster_guild_role::ParsePlan(*planLines);
+                if (parsed.Usable())
+                {
+                    state.plan = parsed.rows;
+                    sLog.outBasic("[RosterGuild] event=plan_rows result=ok rows=%u", uint32(state.plan.size()));
+                }
+                else
+                {
+                    state.planRejected = true;
+                    sLog.outError("[RosterGuild] event=plan_rows result=rejected reason=%s lines=%u bad_rows=%u duplicate_guids=%u (fail-closed: no role deal, charter or founding)",
+                        roster_guild_role::PlanRejectReason(parsed), uint32(planLines->size()), parsed.badRows, parsed.duplicateGuids);
+                }
             }
         }
 
@@ -219,28 +232,32 @@ namespace
         state.charterLabels.clear();
 
         // Roster guilds of each faction (the leader is a roster bot), ascending id = deal order.
+        // Plan guild <-> guild via the founder: links kept while the guild exists; a guild without a
+        // link (after a restart) takes its leader's plan guild (RefreshFounderLinks).
         std::vector<uint32> factionGuilds[2];
         std::vector<std::pair<uint32, std::string>> leaderLabels;
         for (GuildSummary const& guild : guilds)
         {
+            leaderLabels.push_back(std::make_pair(guild.id, PlanLabel(state, guild.leaderGuid.GetCounter())));
             auto it = rosterFaction.find(guild.leaderGuid.GetCounter());
             if (it == rosterFaction.end())
                 continue;
             factionGuilds[it->second].push_back(guild.id);
-            std::string const label = PlanLabel(state, guild.leaderGuid.GetCounter());
-            if (!label.empty())
-            {
-                leaderLabels.push_back(std::make_pair(guild.id, label));
-                state.foundedLabels.insert(label);
-            }
         }
+        std::sort(leaderLabels.begin(), leaderLabels.end());
+        state.founderLinks = roster_guild_role::RefreshFounderLinks(state.founderLinks, leaderLabels);
+        for (auto const& link : state.founderLinks)
+            state.foundedLabels.insert(link.second);
         for (PetitionSummary const& petition : petitions)
         {
             std::string const label = PlanLabel(state, petition.ownerGuid.GetCounter());
             if (!label.empty())
                 state.charterLabels.insert(label);
         }
-        std::map<std::string, uint32> const labelGuild = roster_guild_role::LabelGuilds(leaderLabels);
+        std::map<std::string, uint32> const labelGuild = roster_guild_role::LabelGuilds(state.founderLinks);
+        // Fail-closed: a rejected plan file deals nobody (every roster bot declines bot invites).
+        if (state.planRejected)
+            return;
 
         roster_guild_role::Quota const quota = RosterGuildQuota();
         roster_guild_role::Switches const switches = RosterGuildSwitches();
@@ -260,13 +277,23 @@ namespace
                 if (member.role == roster_guild_role::Role::Unknown)
                     ++unknownRole;
 
+                // A bot listed in the plan is never dealt by quota or switches: it goes to the guild of
+                // its plan guild (or waits for it). In the quota deal it only counts - as a member of its
+                // guild, or as a seat held in its plan guild - so unlisted bots fill the remaining slots.
                 if (planIt != state.plan.end())
                 {
                     auto labelIt = labelGuild.find(planIt->second.guild);
                     if (labelIt != labelGuild.end())
                         state.assigned[member.guid] = labelIt->second;
                     if (!member.guild)
-                        continue;   // plan bots without a guild follow the plan, not the quota deal
+                    {
+                        if (labelIt == labelGuild.end())
+                            continue;   // plan guild not founded yet: the bot waits for it
+                        roster_guild_role::Member seat = member;
+                        seat.guild = labelIt->second;
+                        quotaMembers.push_back(seat);
+                        continue;
+                    }
                 }
                 quotaMembers.push_back(member);
             }
@@ -413,6 +440,13 @@ namespace
         // twow-repo#485 / #518: role fill only with a quota or a plan file (default: nothing changes).
         if (roleFill)
             DealRosterGuildRoles(state, roleMembers, guilds, petitions, rosterFaction);
+        else
+        {
+            // Neither quota nor plan file: no plan state survives a reload that unset the PlanFile.
+            state.plan.clear();
+            state.planSource.reset();
+            state.planRejected = false;
+        }
 
         state.builtAt = now;
         state.dirty = false;
@@ -504,7 +538,7 @@ bool RosterGuildPlan::MayBuyCharter(Player* bot, char const*& reason)
     // twow-repo#485 / #518 (PlanFile): one charter per plan guild, none once it has a guild.
     if (!PlanLabelOpen(state, bot->GetGUIDLow(), true))
     {
-        reason = "plan_guild_taken";
+        reason = state.planRejected ? "plan_rejected" : "plan_guild_taken";
         return false;
     }
 
@@ -564,7 +598,7 @@ bool RosterGuildPlan::ReserveFounding(Player* bot, std::string const& charterNam
     // twow-repo#485 / #518 (PlanFile): no second guild of one plan guild.
     if (!PlanLabelOpen(state, bot->GetGUIDLow(), false))
     {
-        reason = "plan_guild_taken";
+        reason = state.planRejected ? "plan_rejected" : "plan_guild_taken";
         return false;
     }
 
@@ -602,8 +636,10 @@ void RosterGuildPlan::FinishFounding(Player* bot, std::string const& name, bool 
     state.guildNames.insert(name);
     if (fs.openCharters)
         --fs.openCharters;
+    // twow-repo#518: the first founder of a plan guild links the new guild to it (kept while the guild
+    // exists, whoever leads it later); a second guild of the same plan guild gets no link.
     std::string const label = PlanLabel(state, bot->GetGUIDLow());
-    if (!label.empty())
+    if (roster_guild_role::LinkFounding(state.founderLinks, bot->GetGuildId(), label))
         state.foundedLabels.insert(label);
 
     // The new guild is in GuildMgr now: recount on the next call.
@@ -641,7 +677,7 @@ Item* RosterGuildPlan::OwnCharter(Player* bot, PetitionSummary& out, uint32 acco
 // twow-repo#485 / #518: role fill of roster guilds.
 bool RosterGuildPlan::UsesRoleFill(PlayerbotAI* ai)
 {
-    return roster_guild_role::UsesRoleFill(UsesRosterPath(ai), RosterGuildQuota(), RosterGuildPlanLoaded());
+    return roster_guild_role::UsesRoleFill(UsesRosterPath(ai), RosterGuildQuota(), RosterGuildPlanSet());
 }
 
 uint8 RosterGuildPlan::ReportOwnRole(Player* bot)
@@ -682,6 +718,13 @@ bool RosterGuildPlan::MaySignForRole(Player* bot, PetitionSummary const& offered
     RosterGuildState& state = GetRosterGuildState();
     std::lock_guard<std::mutex> guard(state.lock);
     FreshRosterGuildFaction(state, bot->GetTeam());
+
+    // Fail-closed: a rejected plan file - no roster bot signs a bot charter.
+    if (state.planRejected)
+    {
+        reason = "plan_rejected";
+        return false;
+    }
 
     // PlanFile: only a charter of the bot's own plan guild.
     std::string const ownLabel = PlanLabel(state, bot->GetGUIDLow());

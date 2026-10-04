@@ -837,21 +837,28 @@ bool PlayerbotAIConfig::Initialize()
     // Read once here (startup or config reload), never on a tick; parsed in memory by the guild plan.
     // Review 04.10 (reload): built in a local vector and published as a whole, so a map thread that
     // still parses the previous lines keeps its own reference (no clear() under a reader).
+    // twow-repo#518 (fail-closed): a set PlanFile always publishes lines; an unreadable or oversized
+    // file publishes none, and the guild plan rejects it (no role deal, charter or founding) instead
+    // of falling back to the quotas. Only an empty PlanFile means "no plan".
     std::shared_ptr<std::vector<std::string>> planLines;
     if (!rosterGuildPlanFile.empty())
     {
+        planLines = std::make_shared<std::vector<std::string>>();
         std::ifstream planFile(rosterGuildPlanFile);
         if (!planFile.is_open())
-            sLog.outError("[RosterGuild] event=plan_file path=%s result=unreadable (no plan, quotas only)", rosterGuildPlanFile.c_str());
+            sLog.outError("[RosterGuild] event=plan_file path=%s result=unreadable (fail-closed: plan rejected)", rosterGuildPlanFile.c_str());
         else
         {
-            planLines = std::make_shared<std::vector<std::string>>();
             std::string planLine;
             while (planLines->size() < 10000 && std::getline(planFile, planLine))
                 planLines->push_back(planLine);
-            sLog.outBasic("[RosterGuild] event=plan_file path=%s lines=%u", rosterGuildPlanFile.c_str(), uint32(planLines->size()));
-            if (planLines->empty())
-                planLines.reset();
+            if (planLines->size() >= 10000 && std::getline(planFile, planLine))
+            {
+                planLines->clear();
+                sLog.outError("[RosterGuild] event=plan_file path=%s result=too_long (over 10000 lines, fail-closed: plan rejected)", rosterGuildPlanFile.c_str());
+            }
+            else
+                sLog.outBasic("[RosterGuild] event=plan_file path=%s lines=%u", rosterGuildPlanFile.c_str(), uint32(planLines->size()));
         }
     }
     std::atomic_store(&rosterGuildPlanLines, std::shared_ptr<const std::vector<std::string>>(planLines));

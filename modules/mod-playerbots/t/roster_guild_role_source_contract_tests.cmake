@@ -132,7 +132,7 @@ require_text("${policy}" "namespace ai::roster_guild_role" "policy namespace")
 reject_text("${policy}" "#include \"" "game or playerbot include in the pure policy")
 foreach(needle
     "return quota.tanks || quota.healers || quota.dps;"
-    "return rosterPath && (QuotaActive(quota) || planLoaded);"
+    "return rosterPath && (QuotaActive(quota) || planSet);"
     "return std::make_tuple(perClass[a.cls], a.cls, Band(a.level), a.race, a.ordinal, a.guid) <"
     "c.Get(role), c.GetBand(role, band), i);"
     "inRole + 1 + MissingHealerClasses(counts, stats, member.cls) > quota.healers"
@@ -179,7 +179,7 @@ text_between("${create}" "// --- twow-repo#485 / #518: role fill of roster guild
 text_between("${create}" "// twow-repo#485 / #518: role fill of roster guilds.\nbool RosterGuildPlan::UsesRoleFill(" "// --- end of the roster guild plan" role_api)
 foreach(needle
     "std::shared_ptr<const std::vector<std::string>> const planLines = sPlayerbotAIConfig.RosterGuildPlanLines();"
-    "state.plan = roster_guild_role::ParsePlan(*planLines, rejected);"
+    "roster_guild_role::PlanParse const parsed = roster_guild_role::ParsePlan(*planLines);"
     "member.guild = sGuildMgr.GetPlayerGuildId(member.guid);"
     "roster_guild_role::Deal(quotaMembers, factionGuilds[f], quota, switches, target)"
     "state.assigned.emplace(item.first, item.second);"
@@ -283,7 +283,7 @@ foreach(source_name create accept manage sign triggers)
 endforeach()
 # One plan guild = one guild: purchase and founding gates.
 foreach(needle
-    "if (!PlanLabelOpen(state, bot->GetGUIDLow(), true))\n    {\n        reason = \"plan_guild_taken\";"
+    "if (!PlanLabelOpen(state, bot->GetGUIDLow(), true))\n    {\n        reason = state.planRejected ? \"plan_rejected\" : \"plan_guild_taken\";"
     "    // twow-repo#485 / #518 (PlanFile): no second guild of one plan guild.\n    if (!PlanLabelOpen(state, bot->GetGUIDLow(), false))")
   require_text("${create}" "${needle}" "plan guild gate")
 endforeach()
@@ -358,5 +358,88 @@ foreach(needle
     "roster_guild_role::RarePairCapFor(sPlayerbotAIConfig.rosterGuildRarePairMaxShare, quota.tanks + quota.healers + quota.dps)")
   require_text("${create}" "${needle}" "owner rules built from the config")
 endforeach()
+
+# 11. Plan file spec of twow-repo#518 (OB-40, 04.10.): exact header and every row valid, else the whole
+#     file is rejected with an error line (fail-closed: no deal, charter, signature or founding); guid
+#     key; plan guild <-> guild via the founder; a listed bot only ever holds a seat in its plan guild,
+#     never a free slot of the quota deal. Returns the first problem, "" when the code follows the spec.
+function(check_plan_spec policy create config_source problem)
+  set(${problem} "" PARENT_SCOPE)
+  foreach(needle
+      [=[char const* const PlanHeader = "ordinal\tguid\tfaction\tguild\trole\tclass\trace";]=]
+      "if (lines.empty() || lines.front() != PlanHeader)"
+      "if (!parse.rows.emplace(entry.guid, entry).second)"
+      "bool Usable() const { return headerOk && !badRows && !duplicateGuids && !rows.empty(); }"
+      "if (!parse.Usable())\n        parse.rows.clear();"
+      "if (!guild || founderLabel.empty() || links.count(guild) || LabelGuilds(links).count(founderLabel))")
+    string(FIND "${policy}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${problem} "policy missing: ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  foreach(needle
+      "sLog.outError(\"[RosterGuild] event=plan_rows result=rejected reason=%s"
+      "if (state.planRejected)\n            return;"
+      "        if (state.planRejected)\n            return false;\n        std::string const label = PlanLabel(state, guid);"
+      "    if (state.planRejected)\n    {\n        reason = \"plan_rejected\";\n        return false;\n    }"
+      "state.founderLinks = roster_guild_role::RefreshFounderLinks(state.founderLinks, leaderLabels);"
+      "std::map<std::string, uint32> const labelGuild = roster_guild_role::LabelGuilds(state.founderLinks);"
+      "if (roster_guild_role::LinkFounding(state.founderLinks, bot->GetGuildId(), label))"
+      "continue;   // plan guild not founded yet: the bot waits for it"
+      "seat.guild = labelIt->second;\n                        quotaMembers.push_back(seat);\n                        continue;"
+      "return sPlayerbotAIConfig.RosterGuildPlanLines() != nullptr;")
+    string(FIND "${create}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${problem} "guild plan missing: ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  string(FIND "${config_source}" "planLines = std::make_shared<std::vector<std::string>>();\n        std::ifstream planFile(rosterGuildPlanFile);" published_at)
+  string(FIND "${config_source}" "planLines.reset();" reset_at)
+  if(published_at EQUAL -1 OR NOT reset_at EQUAL -1)
+    set(${problem} "a set but unreadable or empty PlanFile must publish (empty) lines, never nullptr" PARENT_SCOPE)
+  endif()
+endfunction()
+
+check_plan_spec("${policy}" "${create}" "${config_source}" plan_spec_problem)
+if(NOT plan_spec_problem STREQUAL "")
+  message(FATAL_ERROR "Plan file spec (twow-repo#518): ${plan_spec_problem}")
+endif()
+
+# Negative probes: one mutation of the policy, the guild plan or the config load; the spec check must
+# fail on it.
+function(probe_plan_spec target original replacement)
+  set(m_policy "${policy}")
+  set(m_create "${create}")
+  set(m_config "${config_source}")
+  if(target STREQUAL "policy")
+    string(REPLACE "${original}" "${replacement}" m_policy "${policy}")
+  elseif(target STREQUAL "create")
+    string(REPLACE "${original}" "${replacement}" m_create "${create}")
+  else()
+    string(REPLACE "${original}" "${replacement}" m_config "${config_source}")
+  endif()
+  if("${m_policy}" STREQUAL "${policy}" AND "${m_create}" STREQUAL "${create}" AND "${m_config}" STREQUAL "${config_source}")
+    message(FATAL_ERROR "negative probe did not apply (${target}): ${original}")
+  endif()
+  check_plan_spec("${m_policy}" "${m_create}" "${m_config}" spec_probe)
+  if(spec_probe STREQUAL "")
+    message(FATAL_ERROR "negative probe not caught (${target}): ${replacement} - the plan spec check is broken")
+  endif()
+endfunction()
+# The old lenient header (any line starting with "ordinal") must be rejected.
+probe_plan_spec(policy "if (lines.empty() || lines.front() != PlanHeader)" "if (lines.empty() || lines.front().compare(0, 7, \"ordinal\") != 0)")
+# Half a plan: a bad row only skipped instead of rejecting the file.
+probe_plan_spec(policy "if (!parse.Usable())\n        parse.rows.clear();" "")
+# A listed bot re-dealt by quota and switches (no seat in its plan guild).
+probe_plan_spec(create "seat.guild = labelIt->second;" "seat.guild = 0;")
+# Links taken from the current leader at every recount instead of the founder.
+probe_plan_spec(create "RefreshFounderLinks(state.founderLinks, leaderLabels)" "RefreshFounderLinks(roster_guild_role::FounderLinks(), leaderLabels)")
+# A rejected plan that still deals, and one that still lets bots sign.
+probe_plan_spec(create "if (state.planRejected)\n            return;" "if (false)\n            return;")
+probe_plan_spec(create "    if (state.planRejected)\n    {\n        reason = \"plan_rejected\";" "    if (false)\n    {\n        reason = \"plan_rejected\";")
+# An unreadable file treated as "no plan" (quota fallback) instead of a rejected plan.
+probe_plan_spec(config "planLines = std::make_shared<std::vector<std::string>>();\n        std::ifstream planFile(rosterGuildPlanFile);" "std::ifstream planFile(rosterGuildPlanFile);")
 
 message(STATUS "ROSTER_GUILD_ROLE_SOURCE_CONTRACT=PASS")

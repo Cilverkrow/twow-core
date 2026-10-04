@@ -345,31 +345,104 @@ int main()
         Require(assigned.at(roster.members[2].guid) == 12, "the level 33 hunter goes to the guild without a member of level 31-35");
     }
 
-    // 8. Plan file (guilds.tsv of OB-40): header, tabs, CRLF, malformed lines.
+    // 8. Plan file roster-guilds.tsv (twow-repo#518 spec, OB-40 04.10.): exact header, LF, guid key,
+    //    fail-closed - any defect rejects the whole file.
     {
-        std::vector<std::string> const lines = {
-            "ordinal\tguid\tfaction\tguild\trole\tclass\trace",
-            "1\t1001\tA\tA1\tTANK\t1\t1\r",
+        std::string const header = "ordinal\tguid\tfaction\tguild\trole\tclass\trace";
+        Require(header == PlanHeader, "header as in the spec");
+        std::vector<std::string> const good = {
+            header,
+            "1\t1001\tA\tA1\tTANK\t1\t1",
             "2\t1002\tA\tA2\tHEALER\t5\t1",
             "3\t1003\tH\tH1\tDPS\t8\t5",
             "",
-            "# comment",
-            "4\t1004\tX\tA1\tDPS\t8\t1",
-            "5\t1005\tA\tA1\tHEALS\t5\t1",
-            "6\tabc\tA\tA1\tDPS\t8\t1",
         };
-        std::uint32_t rejected = 0;
-        std::map<std::uint32_t, PlanEntry> const plan = ParsePlan(lines, rejected);
-        Require(plan.size() == 3, "3 valid plan rows");
-        Require(rejected == 3, "3 malformed rows counted");
-        Require(plan.at(1001).guild == "A1" && plan.at(1001).role == Role::Tank && plan.at(1001).cls == 1 && plan.at(1001).race == 1, "row with CRLF");
-        Require(plan.at(1003).faction == "H" && plan.at(1003).role == Role::Dps, "horde row");
+        PlanParse const plan = ParsePlan(good);
+        Require(plan.Usable() && plan.rows.size() == 3, "3 plan rows, usable");
+        Require(std::string(PlanRejectReason(plan)) == "ok", "ok reason");
+        Require(plan.rows.at(1001).guild == "A1" && plan.rows.at(1001).role == Role::Tank && plan.rows.at(1001).cls == 1 &&
+            plan.rows.at(1001).race == 1 && plan.rows.at(1001).ordinal == 1, "row keyed by guid");
+        Require(plan.rows.at(1003).faction == "H" && plan.rows.at(1003).role == Role::Dps, "horde row");
 
-        // A guild belongs to its leader's label; the lowest guild id wins a shared label.
-        std::map<std::string, std::uint32_t> const labels = LabelGuilds({ { 21, "A1" }, { 20, "A1" }, { 22, "A2" }, { 23, "" } });
-        Require(labels.at("A1") == 20 && labels.at("A2") == 22 && labels.size() == 2, "label -> guild");
+        // Negative probes, header: a wrong header rejects the file and keeps no row.
+        for (std::string const& bad : { std::string("ordinal\tguid\tfaction\tguild\trole\tclass\trace\r"),
+                 std::string("guid\tordinal\tfaction\tguild\trole\tclass\trace"),
+                 std::string("ordinal guid faction guild role class race"),
+                 std::string("ordinal\tguid\tfaction\tguild\trole\tclass\trace\tname"),
+                 std::string("1\t1001\tA\tA1\tTANK\t1\t1") })
+        {
+            std::vector<std::string> lines = good;
+            lines[0] = bad;
+            PlanParse const rejected = ParsePlan(lines);
+            Require(!rejected.Usable() && !rejected.headerOk && rejected.rows.empty(), "wrong header rejected (fail-closed)");
+            Require(std::string(PlanRejectReason(rejected)) == "header", "reason header");
+        }
+        Require(!ParsePlan({}).Usable() && std::string(PlanRejectReason(ParsePlan({}))) == "header", "empty or unreadable file rejected");
+        Require(!ParsePlan({ header }).Usable() && std::string(PlanRejectReason(ParsePlan({ header }))) == "no_rows", "header without rows rejected");
+
+        // Negative probes, rows: one bad row rejects the whole file.
+        for (std::string const& bad : { std::string("4\t1004\tX\tA1\tDPS\t8\t1"),     // faction
+                 std::string("4\t1004\tA\tH1\tDPS\t8\t1"),                           // plan guild of the other faction
+                 std::string("4\t1004\tA\tA0\tDPS\t8\t1"),                           // plan guild ids start at 1
+                 std::string("4\t1004\tA\tWardens\tDPS\t8\t1"),                      // a guild name instead of the id
+                 std::string("4\t1004\tA\tA1\tHEALS\t5\t1"),                         // role
+                 std::string("4\tabc\tA\tA1\tDPS\t8\t1"),                            // guid
+                 std::string("4\t1004\tA\tA1\tDPS\t0\t1"),                           // class 0
+                 std::string("4\t1004\tA\tA1\tDPS\t8\t1\r"),                         // CRLF
+                 std::string("4\t1004\tA\tA1\tDPS\t8\t1\textra"),                    // 8 columns
+                 std::string("# comment") })
+        {
+            std::vector<std::string> lines = good;
+            lines.push_back(bad);
+            PlanParse const rejected = ParsePlan(lines);
+            Require(rejected.headerOk && rejected.badRows == 1 && !rejected.Usable() && rejected.rows.empty(), "bad row rejects the file");
+            Require(std::string(PlanRejectReason(rejected)) == "bad_rows", "reason bad_rows");
+        }
+        {
+            std::vector<std::string> lines = good;
+            lines.push_back("4\t1002\tA\tA3\tDPS\t8\t1");
+            PlanParse const duplicate = ParsePlan(lines);
+            Require(duplicate.duplicateGuids == 1 && !duplicate.Usable() && duplicate.rows.empty(), "a guid listed twice rejects the file");
+            Require(std::string(PlanRejectReason(duplicate)) == "duplicate_guid", "reason duplicate_guid");
+        }
+
+        // Plan guild <-> guild via the founder: the first founder links, a second guild of the same
+        // plan guild does not, and the link holds whoever leads the guild later.
+        FounderLinks links;
+        Require(LinkFounding(links, 20, "A1"), "first founder of A1 links guild 20");
+        Require(!LinkFounding(links, 21, "A1"), "second guild of A1: no link");
+        Require(!LinkFounding(links, 22, ""), "founder without a plan row: no link");
+        Require(!LinkFounding(links, 20, "A2"), "a linked guild keeps its plan guild");
+        Require(LabelGuilds(links).at("A1") == 20 && LabelGuilds(links).size() == 1, "A1 -> guild 20");
+        // Recount: guild 20 now led by a bot of A2, guild 21 led by A1's bot - the founder link stays.
+        FounderLinks const kept = RefreshFounderLinks(links, { { 20, "A2" }, { 21, "A1" }, { 23, "A3" } });
+        Require(kept.at(20) == "A1" && !kept.count(21) && kept.at(23) == "A3", "leader change keeps the founder link; unlinked guild takes its leader's free plan guild");
+        // Guild 20 disbanded: its link goes, A1 is free again.
+        FounderLinks const gone = RefreshFounderLinks(kept, { { 21, "A1" }, { 23, "A3" } });
+        Require(gone.at(21) == "A1" && gone.at(23) == "A3" && gone.size() == 2, "a disbanded guild frees its plan guild");
+        // Restart (no links): leaders' plan guilds, lowest guild id first.
+        FounderLinks const restart = RefreshFounderLinks(FounderLinks(), { { 30, "H1" }, { 31, "H1" }, { 32, "" } });
+        Require(restart.size() == 1 && restart.at(30) == "H1", "restart: lowest guild id of a plan guild links");
         Require(SamePlanGuild("A1", "A1") && !SamePlanGuild("A1", "A2"), "charter of the same plan guild only");
         Require(SamePlanGuild("", "A2") && SamePlanGuild("A1", ""), "bots without a plan row are not ruled by the plan");
+
+        // A listed bot is never re-dealt by quota or switches: it enters the deal only as a seat in its
+        // plan guild (member.guild set) and keeps that seat even where every switch would refuse it.
+        Roster roster;
+        roster.Add(Role::Healer, PRIEST, HUMAN, 11);
+        roster.Add(Role::Healer, PRIEST, HUMAN, 11);
+        roster.Add(Role::Healer, SHAMAN, DWARF, 12);
+        Member& listed = roster.Add(Role::Healer, PRIEST, HUMAN, 11);   // seat in plan guild 11
+        Switches all;
+        all.healerClassMin = true;
+        all.tankClassSpread = true;
+        all.rareComboSpread = true;
+        std::map<std::uint32_t, std::uint32_t> const seated = Deal(roster.members, { 11, 12 }, Quota{ 0, 2, 0 }, all, 2);
+        Require(seated.at(listed.guid) == 11, "listed bot keeps its plan seat, quota and switches notwithstanding");
+        listed.guild = 0;
+        std::map<std::uint32_t, std::uint32_t> const dealt = Deal(roster.members, { 11, 12 }, Quota{ 0, 2, 0 }, all, 2);
+        Require(!dealt.count(listed.guid) || dealt.at(listed.guid) != 11,
+            "negative probe: without the seat the deal would move or drop the bot - the seat is what protects it");
     }
 
     // 9. Owner tank mix (assignment v3, config default "1:2-3,11:1,4:1,2:1,7:1"): 2-3 warrior tanks

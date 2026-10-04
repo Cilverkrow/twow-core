@@ -17,6 +17,8 @@ namespace ai::roster_guild_role
 // twow-repo#485 / #518: fill roster guilds by role. The split is configuration
 // (AiPlayerbot.RosterGuild.Tanks/Healers/Dps per guild, 0/0/0 = no role quota = the behaviour of
 // core#281; the config default is the owner's 7/10/28 of 04.10., active only with BotsPerGuild > 0).
+// With a plan file set the server follows the plan for every bot it lists; quota and switches only
+// deal the bots the file does not list.
 // The deal follows
 // OB-40's planner twow-repo PR #519 deploy/roster/plan-360/guild_plan.py: per role (tanks, healers,
 // DPS), class by class with the rarest class first, then level band, race and ordinal; members that
@@ -126,10 +128,11 @@ struct Switches
 };
 
 // Role fill only on the roster path (BotsPerGuild > 0, roster bot, no real master) and only with a
-// quota or a plan file; otherwise everything stays as in core#281.
-inline bool UsesRoleFill(bool rosterPath, Quota const& quota, bool planLoaded)
+// quota or a plan file set (a set but rejected plan file too: fail-closed, see ParsePlan); otherwise
+// everything stays as in core#281.
+inline bool UsesRoleFill(bool rosterPath, Quota const& quota, bool planSet)
 {
-    return rosterPath && (QuotaActive(quota) || planLoaded);
+    return rosterPath && (QuotaActive(quota) || planSet);
 }
 
 struct Member
@@ -400,15 +403,19 @@ inline std::map<std::uint32_t, std::uint32_t> Deal(std::vector<Member> const& me
     return assigned;
 }
 
-// --- Plan file (AiPlayerbot.RosterGuild.PlanFile): OB-40's guilds.tsv, columns
-//     ordinal guid faction guild role class race (tab separated, header line "ordinal ..."). ---------
+// --- Plan file (AiPlayerbot.RosterGuild.PlanFile): OB-40's roster-guilds.tsv (twow-repo#518, spec of
+//     04.10.): TAB separated, LF, exactly one header line, one row per roster member, key = guid. ------
+//     Fail-closed: a wrong header, a malformed row or a guid listed twice rejects the whole file, so no
+//     bot is ever dealt from half a plan. Blank lines carry no row and are skipped.
+
+char const* const PlanHeader = "ordinal\tguid\tfaction\tguild\trole\tclass\trace";
 
 struct PlanEntry
 {
     std::uint32_t ordinal = 0;
     std::uint32_t guid = 0;
     std::string faction;       // "A" / "H"
-    std::string guild;         // plan label, e.g. "A1"
+    std::string guild;         // stable plan id, "A1".."An" / "H1".."Hn"
     Role role = Role::Unknown;
     std::uint8_t cls = 0;
     std::uint8_t race = 0;
@@ -429,12 +436,19 @@ inline bool ParseUnsigned(std::string const& text, std::uint32_t& out)
     return true;
 }
 
-// One data line; false for the header, blank lines, comments and malformed lines.
-inline bool ParsePlanLine(std::string line, PlanEntry& out)
+// A plan guild id: the faction letter, then a number from 1 ("A1", "H12").
+inline bool IsPlanGuildId(std::string const& guild, std::string const& faction)
 {
-    while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
-        line.pop_back();
-    if (line.empty() || line[0] == '#' || line.compare(0, 7, "ordinal") == 0)
+    std::uint32_t number = 0;
+    return guild.size() >= 2 && guild.compare(0, 1, faction) == 0 && guild[1] != '0' &&
+        ParseUnsigned(guild.substr(1), number) && number > 0;
+}
+
+// One data row: exactly 7 columns, no CR (the file is LF), faction A/H, guild id of that faction, role
+// TANK/HEALER/DPS, class and race numeric (1-255). False for anything else.
+inline bool ParsePlanLine(std::string const& line, PlanEntry& out)
+{
+    if (line.find('\r') != std::string::npos)
         return false;
 
     std::vector<std::string> cols;
@@ -447,15 +461,15 @@ inline bool ParsePlanLine(std::string line, PlanEntry& out)
             break;
         start = tab + 1;
     }
-    if (cols.size() < 7)
+    if (cols.size() != 7)
         return false;
 
     PlanEntry entry;
     std::uint32_t cls = 0;
     std::uint32_t race = 0;
     if (!ParseUnsigned(cols[0], entry.ordinal) || !ParseUnsigned(cols[1], entry.guid) || !entry.guid ||
-        (cols[2] != "A" && cols[2] != "H") || cols[3].empty() || !ParseUnsigned(cols[5], cls) || !ParseUnsigned(cols[6], race) ||
-        cls > 255 || race > 255)
+        (cols[2] != "A" && cols[2] != "H") || !IsPlanGuildId(cols[3], cols[2]) ||
+        !ParseUnsigned(cols[5], cls) || !ParseUnsigned(cols[6], race) || !cls || cls > 255 || !race || race > 255)
         return false;
     entry.faction = cols[2];
     entry.guild = cols[3];
@@ -468,41 +482,98 @@ inline bool ParsePlanLine(std::string line, PlanEntry& out)
     return true;
 }
 
-// guid -> entry; rejected counts the malformed data lines (header, blanks and comments not counted).
-inline std::map<std::uint32_t, PlanEntry> ParsePlan(std::vector<std::string> const& lines, std::uint32_t& rejected)
+struct PlanParse
 {
-    std::map<std::uint32_t, PlanEntry> plan;
-    rejected = 0;
-    for (std::string const& line : lines)
-    {
-        PlanEntry entry;
-        if (ParsePlanLine(line, entry))
-        {
-            plan[entry.guid] = entry;
-            continue;
-        }
-        std::string trimmed = line;
-        while (!trimmed.empty() && (trimmed.back() == '\r' || trimmed.back() == ' ' || trimmed.back() == '\t'))
-            trimmed.pop_back();
-        if (!trimmed.empty() && trimmed[0] != '#' && trimmed.compare(0, 7, "ordinal") != 0)
-            ++rejected;
-    }
-    return plan;
+    std::map<std::uint32_t, PlanEntry> rows;   // guid -> row; empty unless Usable()
+    bool headerOk = false;
+    std::uint32_t badRows = 0;
+    std::uint32_t duplicateGuids = 0;
+
+    bool Usable() const { return headerOk && !badRows && !duplicateGuids && !rows.empty(); }
+};
+
+// The trace reason of a rejected plan ("ok" for a usable one).
+inline char const* PlanRejectReason(PlanParse const& parse)
+{
+    if (!parse.headerOk)
+        return "header";
+    if (parse.badRows)
+        return "bad_rows";
+    if (parse.duplicateGuids)
+        return "duplicate_guid";
+    if (parse.rows.empty())
+        return "no_rows";
+    return "ok";
 }
 
-// Plan mode: a guild belongs to the label of its leader; the lowest guild id wins when two guilds
-// carry one label. Returns label -> guild.
-inline std::map<std::string, std::uint32_t> LabelGuilds(std::vector<std::pair<std::uint32_t, std::string>> const& guildLeaderLabels)
+// The whole file: the first line must be exactly PlanHeader; then rows, blank lines skipped. A rejected
+// file keeps no row (fail-closed); the counters say why.
+inline PlanParse ParsePlan(std::vector<std::string> const& lines)
+{
+    PlanParse parse;
+    if (lines.empty() || lines.front() != PlanHeader)
+        return parse;
+    parse.headerOk = true;
+
+    for (std::size_t i = 1; i < lines.size(); ++i)
+    {
+        if (lines[i].empty())
+            continue;
+        PlanEntry entry;
+        if (!ParsePlanLine(lines[i], entry))
+        {
+            ++parse.badRows;
+            continue;
+        }
+        if (!parse.rows.emplace(entry.guid, entry).second)
+            ++parse.duplicateGuids;
+    }
+    if (!parse.Usable())
+        parse.rows.clear();
+    return parse;
+}
+
+// Plan guild <-> guild via the founder (spec 04.10.): the first bot of plan guild X that founds a guild
+// links that guild to X; a link holds as long as the guild exists, whoever leads it later, and a plan
+// guild links at most one guild. FounderLinks: guild -> plan guild id.
+typedef std::map<std::uint32_t, std::string> FounderLinks;
+
+// Plan guild -> its linked guild.
+inline std::map<std::string, std::uint32_t> LabelGuilds(FounderLinks const& links)
 {
     std::map<std::string, std::uint32_t> out;
-    for (auto const& item : guildLeaderLabels)
-    {
-        if (item.second.empty())
-            continue;
-        auto it = out.find(item.second);
-        if (it == out.end() || item.first < it->second)
+    for (auto const& item : links)
+        if (!item.second.empty() && !out.count(item.second))
             out[item.second] = item.first;
+    return out;
+}
+
+// A founding: links the new guild when the founder has a plan guild, the guild has no link yet and the
+// plan guild has no guild yet. True when linked.
+inline bool LinkFounding(FounderLinks& links, std::uint32_t guild, std::string const& founderLabel)
+{
+    if (!guild || founderLabel.empty() || links.count(guild) || LabelGuilds(links).count(founderLabel))
+        return false;
+    links[guild] = founderLabel;
+    return true;
+}
+
+// At each recount: links of guilds that no longer exist are dropped. A guild without a link (after a
+// restart the links are gone; the core keeps no founder) takes its leader's plan guild - the leader is
+// the founder until a hand-over - in ascending guild id, only while that plan guild has no guild.
+// existing: every guild (ascending id) with its leader's plan guild ("" = none).
+inline FounderLinks RefreshFounderLinks(FounderLinks const& links, std::vector<std::pair<std::uint32_t, std::string>> const& existing)
+{
+    FounderLinks out;
+    for (auto const& item : existing)
+    {
+        auto it = links.find(item.first);
+        if (it != links.end())
+            out[item.first] = it->second;
     }
+    for (auto const& item : existing)
+        if (!out.count(item.first))
+            LinkFounding(out, item.first, item.second);
     return out;
 }
 

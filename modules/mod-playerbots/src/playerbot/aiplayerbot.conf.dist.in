@@ -387,7 +387,7 @@ AiPlayerbot.RosterGuild.Dps = 28
 # RarePairs / RarePairMaxShare (owner default): listed rare race x class pairs "<race>:<class>"
 # (3:7 dwarf shaman, 3:9 dwarf warlock, 5:2 undead paladin, as OB-40's --rare-pairs) at most
 # round(share x guild size), at least 1, per guild (0.025 x 45 = 1): spread over the guilds. "" or 0 = off.
-# TankClassSpread and RareComboSpread (default 0): generic caps, ceil(count / guilds) per guild for
+# TankClassSpread and RareComboSpread (default 0, owner profile 1): generic caps, ceil(count / guilds) per guild for
 # every tank class resp. every race x class pair.
 AiPlayerbot.RosterGuild.HealerClassMin = 1
 AiPlayerbot.RosterGuild.TankClassMix = "1:2-3,11:1,4:1,2:1,7:1"
@@ -396,10 +396,21 @@ AiPlayerbot.RosterGuild.RarePairMaxShare = 0.025
 AiPlayerbot.RosterGuild.TankClassSpread = 0
 AiPlayerbot.RosterGuild.RareComboSpread = 0
 
-# OB-40's guild plan (guild_plan.py output guilds.tsv: ordinal guid faction guild role class race, tab
-# separated). "" (default) = no plan. Set: the file is read at startup and on a config reload (swapped
-# as a whole) and is authoritative for the bots it lists: a guild belongs to the plan guild of its leader, a listed bot founds, signs, is invited
-# into and accepts only its plan guild, and its plan role counts. Unlisted bots follow the quotas.
+# OB-40's guild plan roster-guilds.tsv (twow-repo#518, spec 04.10.): TAB separated, LF, exactly one
+# header line "ordinal<TAB>guid<TAB>faction<TAB>guild<TAB>role<TAB>class<TAB>race", one row per roster
+# member, key = guid; faction A/H; guild = stable plan id A1..An / H1..Hn (no guild names: the name comes
+# from NamesAlliance/NamesHorde); role TANK/HEALER/DPS; class and race numeric. Mounted read-only; the
+# server never writes it. "" (default) = no plan. Set: read at startup and on a config reload (swapped
+# as a whole) and authoritative for every bot it lists: the first bot of plan guild X that founds a guild
+# links that guild to X (kept while the guild exists, whoever leads it later); a listed bot buys, founds,
+# signs, is invited into and accepts only its plan guild and is never dealt by the quotas or the spread
+# switches; its plan role counts. Bots the file does not list follow Tanks/Healers/Dps and the switches.
+# Fail-closed: an unreadable file, a wrong header, a malformed row or a guid listed twice rejects the
+# whole file (error line "[RosterGuild] event=plan_rows result=rejected reason=..."); then no roster bot
+# is dealt, buys, signs or founds until a reload brings a valid file. Existing guilds stay.
+# Owner profile of 04.10. (profile PR after the train-9 pin, together with BotsPerGuild > 0):
+#   Tanks = 7, Healers = 10, Dps = 28, HealerClassMin = 1, TankClassSpread = 1, RareComboSpread = 1,
+#   PlanFile = "/opt/turtle/etc/roster-guilds.tsv"
 AiPlayerbot.RosterGuild.PlanFile = ""
 
 # Bots will chat in say/guild when they invite other bots to groups/raids/guilds
