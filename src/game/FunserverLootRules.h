@@ -62,7 +62,7 @@ namespace FunserverLootRules
         { "TOK20", SetMode::Tokens,  0, 1, 8, 2,  6 },   // Timbermaw Hold, Zul'Gurub, AQ20
     };
 
-    char const* constexpr DEFAULT_RAID_MAPS =
+    constexpr char const* DEFAULT_RAID_MAPS =
         "409:T1,249:T2,469:T2,807:T2ES,532:LK10,531:T25,533:T3,814:T35,819:TOK20,309:TOK20,509:TOK20";
 
     struct DungeonBand
@@ -84,7 +84,7 @@ namespace FunserverLootRules
     };
 
     // Wiki rule with the endgame rule (#482 v3/v4, owner: Uldaman 40-50, BRS 60+).
-    char const* constexpr DEFAULT_DUNGEON_MAPS =
+    constexpr char const* DEFAULT_DUNGEON_MAPS =
         "389:10-20,822:10-20,"
         "36:20-30,43:20-30,33:20-30,34:20-30,48:20-30,820:20-30,816:20-30,"
         "90:30-40,47:30-40,802:30-40,818:30-40,189:30-40,"
@@ -96,7 +96,7 @@ namespace FunserverLootRules
     // 2026-10-04 (#482): epic own-table items that a class quest requires (AQ40, Naxx, Tower of
     // Karazhan, ZG) plus the AQ20 drapes/rings/hilts and the Timbermaw "Ritualistic" items, whose
     // quests are open to every class. Heads, Atiesh parts and other quest items are no tokens.
-    char const* constexpr DEFAULT_RAID_TOKENS =
+    constexpr char const* DEFAULT_RAID_TOKENS =
         "531:20926,20928-20930,20932-20933;"
         "533:22352-22372,55581-55583;"
         "814:55482-55490;"
