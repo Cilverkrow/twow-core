@@ -85,6 +85,17 @@ int main()
     Require(CountAfterReserve(15, 20, true) == 0, "cloth below the reserve: none for First Aid");
     Require(CountAfterReserve(15, 20, false) == 15, "other reagents untouched");
 
+    // Wool rule (owner decision 04.10): Tailoring to the wool tier (75) before First Aid takes linen.
+    // Linen Bandage = 1 linen cloth (2589) per craft.
+    Require(LinenClothItemId == 2589, "linen cloth item id");
+    Require(FirstAidUsableCount(30, LinenClothItemId, true, 20, 23, 75) / 1 == 0, "Tailoring 23: Linen Bandage craftable 0");
+    Require(FirstAidUsableCount(100, LinenClothItemId, true, 20, 74, 75) == 0, "Tailoring 74: still no linen for First Aid");
+    Require(FirstAidUsableCount(30, LinenClothItemId, true, 20, 80, 75) / 1 == 10, "Tailoring 80 with 30 linen: 10 Linen Bandages");
+    Require(FirstAidUsableCount(30, LinenClothItemId, true, 20, 75, 75) == 10, "at the wool tier: the reserve applies");
+    Require(FirstAidUsableCount(30, 2592, true, 20, 23, 75) == 10, "wool cloth below the tier: only the reserve");
+    Require(FirstAidUsableCount(30, LinenClothItemId, false, 20, 23, 75) == 30, "not cloth (not trade goods): untouched");
+    Require(FirstAidUsableCount(30, LinenClothItemId, true, 20, 23, 0) == 10, "WoolTierSkill 0: reserve only");
+
     // Trace throttle.
     Require(TraceDue(1000, 0, 300), "first use logs");
     Require(!TraceDue(1200, 1000, 300), "inside the cooldown: counted only");

@@ -118,6 +118,21 @@ inline std::uint32_t CountAfterReserve(std::uint32_t count, std::uint32_t reserv
     return count > reserve ? count - reserve : 0;
 }
 
+// Wool rule (owner decision 04.10, OB-10 direction in twow-repo#524): a roster tailor levels Tailoring
+// up to the wool tier before First Aid takes linen. Below woolTierSkill First Aid sees no linen at all;
+// from woolTierSkill on (and for every other cloth) only the cloth above the reserve. Only for a First
+// Aid recipe where ReserveApplies. twow-repo#524 replaces this by MaterialReservePolicy::UsableForRecipe
+// without changing the caller (CraftableFromBags).
+constexpr std::uint32_t LinenClothItemId = 2589;
+
+inline std::uint32_t FirstAidUsableCount(std::uint32_t count, std::uint32_t itemId, bool cloth, std::uint32_t reserve,
+    std::uint32_t tailoringSkill, std::uint32_t woolTierSkill)
+{
+    if (cloth && itemId == LinenClothItemId && tailoringSkill < woolTierSkill)
+        return 0;
+    return CountAfterReserve(count, reserve, cloth);
+}
+
 // Throttled [Consumable] line: the first use logs, later ones are counted until the cooldown ran.
 inline bool TraceDue(std::time_t now, std::time_t last, std::uint32_t cooldownSeconds)
 {

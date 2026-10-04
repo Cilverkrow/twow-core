@@ -65,6 +65,17 @@ function(find_buy_guard text out)
   endif()
 endfunction()
 
+# The wool rule in CraftableFromBags: the cloth count must come from FirstAidUsableCount with the
+# Tailoring skill and the WoolTierSkill key; the plain reserve count (CountAfterReserve) alone misses it.
+function(find_wool_rule section out)
+  set(${out} "" PARENT_SCOPE)
+  string(FIND "${section}" "consumables::FirstAidUsableCount(" call_at)
+  string(FIND "${section}" "tailoringSkill, sPlayerbotAIConfig.rosterConsumablesWoolTierSkill)" args_at)
+  if(NOT call_at EQUAL -1 AND NOT args_at EQUAL -1 AND call_at LESS args_at)
+    set(${out} "found" PARENT_SCOPE)
+  endif()
+endfunction()
+
 file(READ "${PB_SOURCE_DIR}/ConsumablesPolicy.h" policy)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/UseItemAction.h" use_h)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/UseItemAction.cpp" use_cpp)
@@ -129,6 +140,18 @@ require_text("${craftable_section}" "sPlayerbotAIConfig.rosterConsumablesTailori
 require_text("${craftable_section}" "bot->HasSkill(SKILL_TAILORING)" "only for tailors")
 require_text("${craftable_section}" "reagent->Class == ITEM_CLASS_TRADE_GOODS" "only cloth / trade goods")
 require_text("${triggers}" "itr->second->skillId == SKILL_FIRST_AID" "only First Aid recipes")
+# 6b. Wool rule (owner decision 04.10): the First Aid cloth count goes through the policy with the
+# Tailoring skill and WoolTierSkill, inside CraftableFromBags only (the single place of all craft paths).
+find_wool_rule("${craftable_section}" wool_found)
+if(wool_found STREQUAL "")
+  message(FATAL_ERROR "Missing wool rule in CraftableFromBags: consumables::FirstAidUsableCount(..., tailoringSkill, sPlayerbotAIConfig.rosterConsumablesWoolTierSkill)")
+endif()
+require_text("${craftable_section}" "bot->GetSkillValuePure(SKILL_TAILORING)" "Tailoring skill for the wool rule")
+require_text("${policy}" "if (cloth && itemId == LinenClothItemId && tailoringSkill < woolTierSkill)" "no linen below the wool tier")
+require_text("${policy}" "constexpr std::uint32_t LinenClothItemId = 2589;" "linen cloth item id")
+string(REPLACE "${craftable_section}" "" pb_outside_craftable "${triggers}${usage}${use_cpp}${use_h}")
+reject_text("${pb_outside_craftable}" "FirstAidUsableCount" "wool rule outside CraftableFromBags")
+reject_text("${pb_outside_craftable}" "rosterConsumablesWoolTierSkill" "WoolTierSkill outside CraftableFromBags")
 
 # 7. Config: neutral defaults, documented in the template.
 foreach(entry
@@ -138,11 +161,12 @@ foreach(entry
     "rosterConsumablesKeepStacks = config.GetIntDefault(\"AiPlayerbot.RosterConsumables.KeepStacks\", 2)"
     "rosterConsumablesBuy = config.GetBoolDefault(\"AiPlayerbot.RosterConsumables.Buy\", false)"
     "rosterConsumablesTailoringClothReserve = config.GetIntDefault(\"AiPlayerbot.RosterConsumables.TailoringClothReserve\", 0)"
+    "rosterConsumablesWoolTierSkill = config.GetIntDefault(\"AiPlayerbot.RosterConsumables.WoolTierSkill\", 75)"
     "rosterConsumablesTrace = config.GetBoolDefault(\"AiPlayerbot.RosterConsumables.Trace\", false)"
     "rosterConsumablesTraceCooldownSeconds = config.GetIntDefault(\"AiPlayerbot.RosterConsumables.TraceCooldownSeconds\", 300)")
   require_text("${config_source}" "${entry}" "neutral config default")
 endforeach()
-foreach(key UseReal HealingPotionPct ManaPotionPct KeepStacks Buy TailoringClothReserve Trace TraceCooldownSeconds)
+foreach(key UseReal HealingPotionPct ManaPotionPct KeepStacks Buy TailoringClothReserve WoolTierSkill Trace TraceCooldownSeconds)
   require_text("${config_template}" "AiPlayerbot.RosterConsumables.${key} = " "documented key ${key}")
 endforeach()
 require_text("${config_template}" "AiPlayerbot.RosterConsumables.UseReal = 0" "UseReal off by default")
@@ -162,4 +186,11 @@ endif()
 find_buy_guard("                sPlayerbotAIConfig.rosterConsumablesKeepStacks, sPlayerbotAIConfig.rosterConsumablesBuy))" buy_probe_found)
 if(NOT buy_probe_found STREQUAL "")
   message(FATAL_ERROR "negative probe not caught: a raw Buy flag passed as the purchase guard - the scan is broken")
+endif()
+
+# Negative probe: CraftableFromBags with the plain reserve count only (wool rule removed) must fail.
+find_wool_rule("            uint32 const usable = consumables::CountAfterReserve(bot->GetItemCount(uint32(spell->Reagent[i])), reserve,
+                reagent && reagent->Class == ITEM_CLASS_TRADE_GOODS);" wool_probe_found)
+if(NOT wool_probe_found STREQUAL "")
+  message(FATAL_ERROR "negative probe not caught: a reserve-only cloth count passed as the wool rule - the scan is broken")
 endif()

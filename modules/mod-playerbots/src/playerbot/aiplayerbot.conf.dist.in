@@ -386,9 +386,15 @@ AiPlayerbot.RosterConsumables.Buy = 0
 # First Aid must not take Tailoring's cloth: a roster bot that knows Tailoring crafts First Aid
 # recipes only with the cloth (trade goods reagents) above this many items per cloth kind. Works
 # with ProfessionUse.RealReagents (hotfix 8.20 ranks the lower profession first). 0 (default) = off.
-# Proposed: 20 (one stack; owner decision 04.10). The wool-tier linen rule (Tailoring first) is
-# twow-repo#524 (central material reservation, OB-10), not this key.
+# Proposed: 20 (one stack; owner decision 04.10).
 AiPlayerbot.RosterConsumables.TailoringClothReserve = 0
+# Wool rule (owner decision 04.10): with the reserve active (TailoringClothReserve > 0), a roster bot
+# whose Tailoring skill is below this value levels Tailoring to the wool tier first - its First Aid
+# recipes see no linen cloth (2589) at all. From this skill on the reserve above applies (Tailoring
+# keeps 20, First Aid uses the rest). TailoringClothReserve 0 keeps today's behaviour. twow-repo#524
+# (OB-10, central material reservation) moves this to ProfessionUse.WoolTierSkill /
+# ProfessionUse.FirstAidClothReserve. Proposed: 75.
+AiPlayerbot.RosterConsumables.WoolTierSkill = 75
 # Trace: [Consumable] lines at BASIC level, at most one per bot and kind per TraceCooldownSeconds
 # (uses = items used since the previous line). Never per tick.
 AiPlayerbot.RosterConsumables.Trace = 0

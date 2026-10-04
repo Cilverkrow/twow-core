@@ -334,6 +334,7 @@ public:
     uint32 rosterConsumablesKeepStacks;
     bool rosterConsumablesBuy;
     uint32 rosterConsumablesTailoringClothReserve;
+    uint32 rosterConsumablesWoolTierSkill;
     bool rosterConsumablesTrace;
     uint32 rosterConsumablesTraceCooldownSeconds;
     bool randomBotRandomPassword;

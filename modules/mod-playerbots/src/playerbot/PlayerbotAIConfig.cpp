@@ -828,6 +828,7 @@ bool PlayerbotAIConfig::Initialize()
     rosterConsumablesKeepStacks = config.GetIntDefault("AiPlayerbot.RosterConsumables.KeepStacks", 2);
     rosterConsumablesBuy = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Buy", false);
     rosterConsumablesTailoringClothReserve = config.GetIntDefault("AiPlayerbot.RosterConsumables.TailoringClothReserve", 0);
+    rosterConsumablesWoolTierSkill = config.GetIntDefault("AiPlayerbot.RosterConsumables.WoolTierSkill", 75);
     rosterConsumablesTrace = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Trace", false);
     rosterConsumablesTraceCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterConsumables.TraceCooldownSeconds", 300);
 

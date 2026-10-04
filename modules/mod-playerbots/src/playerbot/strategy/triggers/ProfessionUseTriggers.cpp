@@ -77,9 +77,14 @@ uint32 ai::CraftableFromBags(SpellEntry const* spell, Player* bot)
     // twow-repo#485 (RosterConsumables.TailoringClothReserve, 0 = off): First Aid of a roster bot
     // that knows Tailoring sees only the cloth above the reserve, so bandages leave Tailoring its
     // cloth. Config check first: the default costs nothing.
+    // Wool rule (RosterConsumables.WoolTierSkill, owner decision 04.10): below that Tailoring skill
+    // First Aid sees no linen at all (Tailoring levels to the wool tier first). The single place for
+    // every craft path (8.16 trigger, rpg craft, enchanting, bandages); twow-repo#524 replaces the
+    // policy call by its central MaterialReservePolicy without changing callers.
     uint32 const reserve = sPlayerbotAIConfig.rosterConsumablesTailoringClothReserve;
     bool const keepCloth = reserve && consumables::ReserveApplies(reserve, IsFirstAidRecipe(spell->Id),
         bot->HasSkill(SKILL_TAILORING), sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()));
+    uint32 const tailoringSkill = keepCloth ? uint32(bot->GetSkillValuePure(SKILL_TAILORING)) : 0;
 
     uint32 craftable = std::numeric_limits<uint32>::max();
     for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
@@ -90,8 +95,9 @@ uint32 ai::CraftableFromBags(SpellEntry const* spell, Player* bot)
         if (keepCloth)
         {
             ItemPrototype const* reagent = sObjectMgr.GetItemPrototype(uint32(spell->Reagent[i]));
-            uint32 const usable = consumables::CountAfterReserve(bot->GetItemCount(uint32(spell->Reagent[i])), reserve,
-                reagent && reagent->Class == ITEM_CLASS_TRADE_GOODS);
+            uint32 const usable = consumables::FirstAidUsableCount(bot->GetItemCount(uint32(spell->Reagent[i])),
+                uint32(spell->Reagent[i]), reagent && reagent->Class == ITEM_CLASS_TRADE_GOODS, reserve,
+                tailoringSkill, sPlayerbotAIConfig.rosterConsumablesWoolTierSkill);
             craftable = std::min(craftable, usable / spell->ReagentCount[i]);
         }
     }
