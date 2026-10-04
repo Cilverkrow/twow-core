@@ -4,6 +4,7 @@
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "GenericActions.h"
 #include "playerbot/RandomItemMgr.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 namespace ai
 {
@@ -80,6 +81,10 @@ namespace ai
         EnchantRandomItemAction(PlayerbotAI* ai) : CastRandomSpellAction(ai, "enchant random item") {}
         virtual bool isUseful() override { return ai->HasSkill(SKILL_ENCHANTING); }
 
+        // Hotfix 8.20: a started or failed enchant is traced ([ProfessionUse] stage=enchant).
+        virtual bool castSpell(uint32 spellId, WorldObject* wo, Player* requester) override;
+        bool UseRealReagents();
+
         virtual bool AcceptSpell(const SpellEntry* pSpellInfo) override
         {
             return pSpellInfo->Effect[0] == SPELL_EFFECT_ENCHANT_ITEM && pSpellInfo->ReagentCount[0] > 0;
@@ -98,6 +103,11 @@ namespace ai
                 return 0;
 
             uint32 castCount = AI_VALUE2(uint32, "has reagents for", pSpellInfo->Id);
+
+            // Hotfix 8.20: under RealReagents a roster bot on its own counts the reagents and
+            // tools really in the bags ("has reagents for" is true under the item cheat).
+            if (UseRealReagents())
+                castCount = HasCraftTools(pSpellInfo, bot) ? CraftableFromBags(pSpellInfo, bot) : 0;
 
             if (!castCount)
                 return 0;
