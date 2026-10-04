@@ -330,8 +330,9 @@ void WorldSession::HandlePetitionSignOpcode(WorldPacket & recv_data)
 
     uint8 signs = petition.signatureCount;
 
-    // Client hard limit at 9 signatures
-    if (signs >= 9)
+    // Client hard limit at 9 signatures; twow-repo#485: the same limit as GuildMgr::AddPetitionSignature
+    // (MinPetitionSigns, at most 9).
+    if (signs >= sGuildMgr.GetPetitionSignsRequired())
         return;
 
     //client doesn't allow to sign petition two times by one character, but not check sign by another character from same account

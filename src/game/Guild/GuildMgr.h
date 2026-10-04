@@ -24,7 +24,9 @@
 #include "World.h"
 #include "GuildBank/GuildBank.h"
 #include "Utilities/robin_hood.h"
+#include <mutex>
 #include <shared_mutex>
+#include <unordered_map>
 #include <vector>
 
 class Guild;
@@ -121,18 +123,45 @@ class GuildMgr
         // while a signature is removed and deleted on another map thread.
         // Signs petitionId for this player. Moves an earlier signature of the player: the old one
         // is removed (DELETE petition_sign, delete) and the new one added (INSERT petition_sign)
-        // under ONE lock, so no reader sees the player signed nowhere. The sign checks (complete,
-        // client limit 9, account or player already signed) are repeated under the lock; false
-        // when the petition is gone or a check fails, and then nothing changed.
+        // under ONE lock, so no reader sees the player signed nowhere. The sign checks (full, see
+        // GetPetitionSignsRequired; account or player already signed) are repeated under the lock;
+        // false when the petition is gone or a check fails, and then nothing changed.
         bool AddPetitionSignature(uint32 petitionId, Player* signer);
         // Removes the player's signature from any petition (DELETE petition_sign, delete).
         void RemovePetitionSignature(ObjectGuid const& signerGuid);
 
+        // twow-repo#485 (OB-10 review core#281): signatures that make a petition full, the one
+        // limit for signing: MinPetitionSigns, at most the client's 9 (SMSG_PETITION_SHOW_SIGNATURES
+        // shows no more; World.cpp clamps the config to 0-9 as well).
+        uint32 GetPetitionSignsRequired() const;
+
+        // twow-repo#485 (owner 04.10.: roster bots keep their class, role and item level in their
+        // public guild note). Bots run on map threads, while every guild opcode, the roster packets
+        // and the note handlers run on the world thread without a lock on MemberSlot. So the note
+        // is only queued here, under the exclusive m_pendingNotesMutex (one entry per member, the
+        // latest wins), and GuildMgr::Update writes it on the world thread
+        // (MemberSlot::SetPublicNote: no-op when unchanged, else UPDATE guild_member SET pnote,
+        // asynchronous). Cut to GUILD_NOTE_MAX_LENGTH. No roster broadcast: clients ask for the
+        // roster when the guild window is open.
+        void SetMemberPublicNote(uint32 guildId, ObjectGuid const& member, std::string const& note);
+
         void LoadGuilds();
         void LoadPetitions();
-		
+
     private:
         void CleanUpPetitions();
+        // World thread (Update): writes the queued notes; the queue is swapped out under the lock.
+        void ApplyPendingPublicNotes();
+
+        struct PendingPublicNote
+        {
+            uint32 guildId = 0;
+            ObjectGuid member;
+            std::string note;
+        };
+        std::mutex m_pendingNotesMutex;
+        std::unordered_map<uint32, PendingPublicNote> m_pendingPublicNotes;     // member guid low -> note
+
         mutable std::shared_mutex m_guildMutex;
         GuildMap m_GuildMap;
         std::shared_mutex m_guid2GuildMutex;

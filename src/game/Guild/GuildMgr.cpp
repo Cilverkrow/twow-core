@@ -304,6 +304,53 @@ void GuildMgr::Update(uint32 diff)
     {
         guild->UpdateCaches(diff);
     }
+
+    // twow-repo#485: public notes queued by bots on map threads (SetMemberPublicNote).
+    ApplyPendingPublicNotes();
+}
+
+void GuildMgr::SetMemberPublicNote(uint32 guildId, ObjectGuid const& member, std::string const& note)
+{
+    if (!guildId || member.IsEmpty())
+        return;
+
+    PendingPublicNote pending;
+    pending.guildId = guildId;
+    pending.member = member;
+    pending.note = note.substr(0, GUILD_NOTE_MAX_LENGTH);
+
+    std::lock_guard<std::mutex> guard(m_pendingNotesMutex);
+    m_pendingPublicNotes[member.GetCounter()] = std::move(pending);
+}
+
+void GuildMgr::ApplyPendingPublicNotes()
+{
+    std::unordered_map<uint32, PendingPublicNote> pending;
+    {
+        std::lock_guard<std::mutex> guard(m_pendingNotesMutex);
+        if (m_pendingPublicNotes.empty())
+            return;
+        pending.swap(m_pendingPublicNotes);
+    }
+
+    // World thread, like HandleGuildSetPublicNoteOpcode; no lock held while writing.
+    for (auto const& item : pending)
+    {
+        PendingPublicNote const& entry = item.second;
+        Guild* guild = GetGuildById(entry.guildId);
+        if (!guild)
+            continue;
+
+        // The member may have left the guild since the note was queued.
+        if (MemberSlot* slot = guild->GetMemberSlot(entry.member))
+            slot->SetPublicNote(entry.note);   // UPDATE guild_member SET pnote, only on a change
+    }
+}
+
+uint32 GuildMgr::GetPetitionSignsRequired() const
+{
+    // The client shows at most 9 signatures (PetitionsHandler: "Client hard limit at 9 signatures").
+    return std::min<uint32>(9, sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS));
 }
 
 void GuildMgr::SaveGuildBanks()
@@ -505,8 +552,9 @@ bool GuildMgr::AddPetitionSignature(uint32 petitionId, Player* signer)
 
     Petition* petition = target->second;
     // Same checks as HandlePetitionSignOpcode, again under the lock (another map thread may have
-    // signed in between). Client hard limit at 9 signatures.
-    if (petition->IsComplete() || petition->GetSignatureCount() >= 9 || petition->GetSignatureForPlayer(signer))
+    // signed in between). One limit: MinPetitionSigns, at most the client's 9 (OB-10 review core#281:
+    // no second hard-coded 9 next to the config).
+    if (petition->GetSignatureCount() >= GetPetitionSignsRequired() || petition->GetSignatureForPlayer(signer))
         return false;
 
     // Move: before signing, delete any previous signature of this player (same lock).

@@ -139,6 +139,48 @@ int main()
     Require(SnapshotInterval(0) == 10, "0 does not recount on every call");
     Require(SnapshotInterval(4294967295u) == 3600, "a negative config value (wrapped) does not freeze the counts");
 
+    // Guild note (owner 04.10.): only with the switch, for roster bots in a guild.
+    Require(!UsesGuildNote(false, true, true), "GuildNote 0 (default) leaves notes alone");
+    Require(!UsesGuildNote(true, false, true), "only roster bots");
+    Require(!UsesGuildNote(true, true, false), "only bots in a guild");
+    Require(UsesGuildNote(true, true, true), "roster bot in a guild with the switch");
+
+    Require(NoteRefreshInterval(300) == 300 && NoteRefreshInterval(60) == 60 && NoteRefreshInterval(3600) == 3600, "configured refresh kept");
+    Require(NoteRefreshInterval(0) == 60, "0 does not check on every pass");
+    Require(NoteRefreshInterval(4294967295u) == 3600, "a wrapped negative refresh does not stop the notes");
+
+    // Format: the owner's examples.
+    Require(FormatGuildNote(5, 1, false, 23) == "Priest Holy iLvl 23", "Priest Holy iLvl 23");
+    Require(FormatGuildNote(1, 2, true, 31) == "Warrior Tank iLvl 31", "Warrior Tank iLvl 31");
+    Require(FormatGuildNote(1, 0, true, 31) == "Warrior Tank iLvl 31", "the tank role wins over the tree");
+    Require(FormatGuildNote(11, 1, true, 40) == "Druid Tank iLvl 40", "feral tank");
+    Require(FormatGuildNote(7, 2, false, 45) == "Shaman Restoration iLvl 45", "healer tree by name");
+    Require(FormatGuildNote(4, 0, false, 12) == "Rogue Assassination iLvl 12", "readable tree names");
+    // Unknown spec or class: the part is left out, no double blank.
+    Require(FormatGuildNote(8, -1, false, 5) == "Mage iLvl 5", "no talents yet: no tree");
+    Require(FormatGuildNote(8, 3, false, 5) == "Mage iLvl 5", "tab out of range: no tree");
+    Require(FormatGuildNote(6, 0, false, 10) == "iLvl 10", "unknown class: item level only");
+    Require(FormatGuildNote(9, 2, false, 0) == "Warlock Destruction iLvl 0", "no items: iLvl 0");
+    // 31-character limit: every class and tree fits even with a 3-digit item level ...
+    for (std::uint8_t cls = 0; cls < 13; ++cls)
+        for (int tab = -1; tab < 4; ++tab)
+            for (bool tank : { false, true })
+            {
+                std::string const note = FormatGuildNote(cls, tab, tank, 999);
+                Require(note.size() <= kGuildNoteMaxLength, "note within 31 characters");
+                Require(!note.empty() && note.back() != ' ' && note.find("  ") == std::string::npos, "no stray blanks");
+                Require(tank || !*NoteTreeName(cls, tab) || note.find(NoteTreeName(cls, tab)) != std::string::npos, "tree kept when it fits");
+            }
+    Require(FormatGuildNote(3, 0, false, 999) == "Hunter Beast Mastery iLvl 999", "longest tree fits (29)");
+    // ... and a too long note drops the tree first instead of cutting the item level.
+    Require(FormatGuildNote(3, 0, false, 4294967295u) == "Hunter iLvl 4294967295", "tree dropped when too long");
+
+    // Average item level, rounded half up; empty slots are not passed in.
+    Require(AverageItemLevel(0, 0) == 0, "no items: 0");
+    Require(AverageItemLevel(45, 2) == 23 && AverageItemLevel(44, 2) == 22, "x.5 rounds up");
+    Require(AverageItemLevel(67, 3) == 22 && AverageItemLevel(68, 3) == 23, "rounded to the nearest level");
+    Require(AverageItemLevel(17 * 60, 17) == 60, "17 worn items at 60");
+
     std::cout << "roster_guild_policy_tests passed\n";
     return 0;
 }

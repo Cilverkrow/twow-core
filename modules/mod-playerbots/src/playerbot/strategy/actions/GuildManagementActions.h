@@ -105,4 +105,19 @@ namespace ai
         virtual bool Execute(Event& event) override;
         virtual bool isUseful() override { return bot->GetGuildId(); }
     };
+
+    // twow-repo#485 (owner 04.10.): a roster bot in a guild keeps "<Class> <Tank|tree> iLvl <n>" in its
+    // public guild note (RosterGuildPolicy.h). Computed from the bot's own items and talents, queued
+    // through GuildMgr::SetMemberPublicNote (written on the world thread) only when it changed.
+    class RosterGuildNoteAction : public Action
+    {
+    public:
+        RosterGuildNoteAction(PlayerbotAI* ai) : Action(ai, "roster guild note") {}
+        virtual bool Execute(Event& event) override;
+        virtual bool isUseful() override;
+
+    private:
+        std::string lastNote;
+        uint32 lastGuildId = 0;
+    };
 }

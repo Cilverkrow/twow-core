@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <set>
@@ -169,5 +170,99 @@ inline bool IsDue(std::time_t now, std::time_t last, std::uint32_t intervalSecon
 inline std::uint32_t SnapshotInterval(std::uint32_t configuredSeconds)
 {
     return configuredSeconds < 10 ? 10 : (configuredSeconds > 3600 ? 3600 : configuredSeconds);
+}
+
+// --- Guild note (owner 04.10.: the bot keeps its class and item level in its own guild note;
+// OB-10 / assignment v3: class, role or talent tree, item level, no surname). --------------------
+
+// GUILD_NOTE_MAX_LENGTH in Guild/Guild.h (the 1.12 client limit).
+constexpr std::size_t kGuildNoteMaxLength = 31;
+
+// AiPlayerbot.RosterGuild.GuildNote = 1, a persistent roster bot, in a guild.
+inline bool UsesGuildNote(bool enabled, bool rosterMember, bool inGuild)
+{
+    return enabled && rosterMember && inGuild;
+}
+
+// AiPlayerbot.RosterGuild.NoteRefreshSeconds as used: 60-3600 (0 or a wrapped negative value would
+// check on every trigger pass or never again).
+inline std::uint32_t NoteRefreshInterval(std::uint32_t configuredSeconds)
+{
+    return configuredSeconds < 60 ? 60 : (configuredSeconds > 3600 ? 3600 : configuredSeconds);
+}
+
+// Class ids of the 1.12 client (SharedDefines.h Classes: 1 warrior ... 11 druid); "" = unknown.
+inline char const* NoteClassName(std::uint8_t cls)
+{
+    switch (cls)
+    {
+        case 1: return "Warrior";
+        case 2: return "Paladin";
+        case 3: return "Hunter";
+        case 4: return "Rogue";
+        case 5: return "Priest";
+        case 7: return "Shaman";
+        case 8: return "Mage";
+        case 9: return "Warlock";
+        case 11: return "Druid";
+    }
+    return "";
+}
+
+// Talent tree by class and tab (0-2, the order of ChatHelper's specs table); "" = unknown.
+inline char const* NoteTreeName(std::uint8_t cls, int tab)
+{
+    static char const* const trees[12][3] = {
+        { "", "", "" },
+        { "Arms", "Fury", "Protection" },                       // 1 warrior
+        { "Holy", "Protection", "Retribution" },                // 2 paladin
+        { "Beast Mastery", "Marksmanship", "Survival" },        // 3 hunter
+        { "Assassination", "Combat", "Subtlety" },              // 4 rogue
+        { "Discipline", "Holy", "Shadow" },                     // 5 priest
+        { "", "", "" },
+        { "Elemental", "Enhancement", "Restoration" },          // 7 shaman
+        { "Arcane", "Fire", "Frost" },                          // 8 mage
+        { "Affliction", "Demonology", "Destruction" },          // 9 warlock
+        { "", "", "" },
+        { "Balance", "Feral", "Restoration" },                  // 11 druid
+    };
+    if (cls >= 12 || tab < 0 || tab > 2)
+        return "";
+    return trees[cls][tab];
+}
+
+// Average item level of the worn items, rounded half up; 0 without items.
+inline std::uint32_t AverageItemLevel(std::uint32_t sum, std::uint32_t count)
+{
+    return count ? (sum + count / 2) / count : 0;
+}
+
+// "<Class> <Tank|tree> iLvl <n>", e.g. "Priest Holy iLvl 23" or "Warrior Tank iLvl 31". tank: the
+// role the bot plays (AiFactory::GetPlayerRoles, tank paths included); otherwise the talent tree
+// (specTab -1 = no talents yet: no tree). At most kGuildNoteMaxLength characters: a too long note
+// drops the tree first, then it is cut (ASCII only, no trailing blank). No name, no surname.
+inline std::string FormatGuildNote(std::uint8_t cls, int specTab, bool tank, std::uint32_t itemLevel)
+{
+    std::string const className = NoteClassName(cls);
+    std::string const role = tank ? std::string("Tank") : std::string(NoteTreeName(cls, specTab));
+    std::string const level = "iLvl " + std::to_string(itemLevel);
+
+    std::string note;
+    for (std::string const* part : { &className, &role, &level })
+    {
+        if (part->empty())
+            continue;
+        if (!note.empty())
+            note += ' ';
+        note += *part;
+    }
+
+    if (note.size() > kGuildNoteMaxLength && !role.empty())
+        note = className.empty() ? level : className + " " + level;
+    if (note.size() > kGuildNoteMaxLength)
+        note.resize(kGuildNoteMaxLength);
+    while (!note.empty() && note.back() == ' ')
+        note.pop_back();
+    return note;
 }
 }

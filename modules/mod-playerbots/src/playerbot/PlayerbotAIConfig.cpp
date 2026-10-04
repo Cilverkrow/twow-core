@@ -819,6 +819,8 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildNamesAlliance = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesAlliance", "");
     rosterGuildNamesHorde = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesHorde", "");
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
+    rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
+    rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 300);
 
     boostFollow = config.GetBoolDefault("AiPlayerbot.BoostFollow", false);
     turnInRpg = config.GetBoolDefault("AiPlayerbot.TurnInRpg", false);

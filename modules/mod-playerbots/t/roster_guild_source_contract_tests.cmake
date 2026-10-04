@@ -224,4 +224,86 @@ require_order("${config_template}" "# AiPlayerbot.RandomBotFormGuild = 1" "AiPla
 reject_text("${config_template}" "\nAiPlayerbot.RosterGuild.NamesAlliance = \"W" "proposed names as a default")
 reject_text("${config_template}" "\nAiPlayerbot.RosterGuild.NamesHorde = \"R" "proposed names as a default")
 
+# 12. Guild note (owner 04.10.): "<Class> <Tank|tree> iLvl <n>", at most 31 characters, no name;
+#     checked at most every NoteRefreshSeconds per bot, queued only on a change, and written by
+#     GuildMgr on the world thread - never a MemberSlot write from a bot's map thread.
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/GuildTriggers.h" triggers_h)
+file(READ "${PB_SOURCE_DIR}/strategy/generic/GuildStrategy.cpp" guild_strategy)
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/TriggerContext.h" trigger_context)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/ActionContext.h" action_context)
+file(READ "${PB_SOURCE_DIR}/Talentspec.cpp" talentspec)
+foreach(needle
+    "constexpr std::size_t kGuildNoteMaxLength = 31;"
+    "inline std::string FormatGuildNote(std::uint8_t cls, int specTab, bool tank, std::uint32_t itemLevel)"
+    "return enabled && rosterMember && inGuild;"
+    "configuredSeconds < 60 ? 60 : (configuredSeconds > 3600 ? 3600 : configuredSeconds)")
+  require_text("${policy}" "${needle}" "guild note policy")
+endforeach()
+require_text("${triggers_h}" "Trigger(ai, \"roster guild note\", 60)" "note trigger looked at once a minute")
+text_between("${triggers}" "bool RosterGuildNoteTrigger::IsActive()" "return true;" note_trigger)
+require_order("${note_trigger}" "roster_guild::UsesGuildNote(sPlayerbotAIConfig.rosterGuildNote, sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), bot->GetGuildId() != 0)"
+  "roster_guild::IsDue(now, lastNoteCheck, roster_guild::NoteRefreshInterval(sPlayerbotAIConfig.rosterGuildNoteRefreshSeconds))" "switch and roster gate before the per-bot throttle")
+require_text("${note_trigger}" "lastNoteCheck = now;" "per-bot throttle advanced")
+require_text("${trigger_context}" "creators[\"roster guild note\"] = [](PlayerbotAI* ai) { return new RosterGuildNoteTrigger(ai); };" "note trigger registered")
+require_text("${action_context}" "creators[\"roster guild note\"] = [](PlayerbotAI* ai) { return new RosterGuildNoteAction(ai); };" "note action registered")
+require_order("${guild_strategy}" "\"roster guild note\"," "new NextAction(\"roster guild note\", 4.0f)" "note trigger node in the guild strategy")
+text_between("${manage}" "bool RosterGuildNoteAction::Execute(Event& event)" "return true;" note_action)
+foreach(needle
+    "if (slot == EQUIPMENT_SLOT_BODY || slot == EQUIPMENT_SLOT_TABARD)"
+    "itemLevelSum += item->GetProto()->ItemLevel;"
+    "int const specTab = hasTalents ? AiFactory::GetPlayerSpecTab(bot) : -1;"
+    "bool const tank = hasTalents && (AiFactory::GetPlayerRoles(bot) & BOT_ROLE_TANK) != 0;"
+    "roster_guild::AverageItemLevel(itemLevelSum, itemCount)"
+    "[RosterGuild] event=note bot=%u guild=%u note=\\\"%s\\\"")
+  require_text("${note_action}" "${needle}" "guild note action")
+endforeach()
+require_order("${note_action}" "roster_guild::FormatGuildNote(bot->getClass(), specTab, tank," "if (note == lastNote && guildId == lastGuildId)" "note computed before the change check")
+require_order("${note_action}" "if (note == lastNote && guildId == lastGuildId)" "sGuildMgr.SetMemberPublicNote(guildId, bot->GetObjectGuid(), note);" "queued only on a change")
+foreach(forbidden "CharacterDatabase" "GetMemberSlot(" "GetGuildById(" "GetName()")
+  reject_text("${note_action}" "${forbidden}" "SQL, a Guild*/MemberSlot or a name in the note action")
+endforeach()
+# The stock TalentsInPublicNote path goes through GuildMgr as well, and yields to the roster note.
+require_order("${talentspec}" "if (sPlayerbotAIConfig.rosterGuildNote && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))" "sGuildMgr.SetMemberPublicNote(bot->GetGuildId(), bot->GetObjectGuid()," "roster note before the talent note")
+
+# No MemberSlot note write anywhere in the module: only GuildMgr::SetMemberPublicNote.
+function(find_direct_note_write text found)
+  set(${found} "" PARENT_SCOPE)
+  foreach(forbidden "->SetPublicNote(" ".SetPublicNote(" "->SetOfficerNote(" ".SetOfficerNote(" "->PublicNote =" ".PublicNote =")
+    string(FIND "${text}" "${forbidden}" at)
+    if(NOT at EQUAL -1)
+      set(${found} "${forbidden}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+endfunction()
+# Negative probe: the scan must catch the former TalentSpec line.
+find_direct_note_write("            member->SetPublicNote(ChatHelper::specName(bot) + \" (\");" probe_found)
+if(probe_found STREQUAL "")
+  message(FATAL_ERROR "negative probe not caught: direct MemberSlot note write - the scan is broken")
+endif()
+file(GLOB_RECURSE module_sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
+list(LENGTH module_sources module_source_count)
+if(module_source_count LESS 100)
+  message(FATAL_ERROR "module source scan found only ${module_source_count} files under ${PB_SOURCE_DIR}")
+endif()
+foreach(source_file ${module_sources})
+  file(READ "${source_file}" source_text)
+  find_direct_note_write("${source_text}" direct_write)
+  if(NOT direct_write STREQUAL "")
+    message(FATAL_ERROR "Forbidden direct guild note write (${direct_write}) in ${source_file} - use sGuildMgr.SetMemberPublicNote")
+  endif()
+endforeach()
+
+foreach(pair
+    "\"AiPlayerbot.RosterGuild.GuildNote\", false)"
+    "\"AiPlayerbot.RosterGuild.NoteRefreshSeconds\", 300)")
+  require_text("${config_source}" "${pair}" "guild note config default")
+endforeach()
+foreach(member "bool rosterGuildNote;" "uint32 rosterGuildNoteRefreshSeconds;")
+  require_text("${config_header}" "${member}" "guild note member")
+endforeach()
+foreach(line "AiPlayerbot.RosterGuild.GuildNote = 0" "AiPlayerbot.RosterGuild.NoteRefreshSeconds = 300" "(60-3600, other values are clamped")
+  require_text("${config_template}" "${line}" "documented guild note default")
+endforeach()
+
 message(STATUS "ROSTER_GUILD_SOURCE_CONTRACT=PASS")

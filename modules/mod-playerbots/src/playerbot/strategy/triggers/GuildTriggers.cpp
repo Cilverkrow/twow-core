@@ -46,3 +46,16 @@ bool LeaveLargeGuildTrigger::IsActive()
 	return members > maxMembers;
 }
 
+bool RosterGuildNoteTrigger::IsActive()
+{
+	if (!roster_guild::UsesGuildNote(sPlayerbotAIConfig.rosterGuildNote, sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), bot->GetGuildId() != 0))
+		return false;
+
+	time_t const now = time(nullptr);
+	if (!roster_guild::IsDue(now, lastNoteCheck, roster_guild::NoteRefreshInterval(sPlayerbotAIConfig.rosterGuildNoteRefreshSeconds)))
+		return false;
+
+	lastNoteCheck = now;
+	return true;
+}
+

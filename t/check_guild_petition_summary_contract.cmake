@@ -163,4 +163,81 @@ if (founding_at EQUAL -1)
   message(FATAL_ERROR "Guild petition summary: Guild::Create must copy the signers under the petition lock")
 endif()
 
+# OB-10 review core#281: one signature limit, MinPetitionSigns capped at the client's 9 - no second
+# hard-coded 9 next to the config in the sign paths.
+# found: the first hard-coded limit in text, "" when none.
+function(find_hardcoded_nine text found)
+  set(${found} "" PARENT_SCOPE)
+  foreach (forbidden ">= 9)" ">= 9 ||" "signs >= 9")
+    string(FIND "${text}" "${forbidden}" nine_at)
+    if (NOT nine_at EQUAL -1)
+      set(${found} "${forbidden}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+endfunction()
+function(reject_hardcoded_nine text where)
+  find_hardcoded_nine("${text}" nine)
+  if (NOT nine STREQUAL "")
+    message(FATAL_ERROR "Guild petition summary: hard-coded signature limit (${nine}) in ${where} - use GuildMgr::GetPetitionSignsRequired")
+  endif()
+endfunction()
+# Negative probes: the check must catch both former lines.
+foreach (probe
+    "if (petition->IsComplete() || petition->GetSignatureCount() >= 9 || petition->GetSignatureForPlayer(signer))"
+    "    if (signs >= 9)\n        return;")
+  find_hardcoded_nine("${probe}" probe_found)
+  if (probe_found STREQUAL "")
+    message(FATAL_ERROR "Guild petition summary: negative probe not caught (${probe}) - the check is broken")
+  endif()
+endforeach()
+string(FIND "${header}" "uint32 GetPetitionSignsRequired() const;" signs_required_decl)
+if (signs_required_decl EQUAL -1)
+  message(FATAL_ERROR "Guild petition summary: missing in GuildMgr.h: uint32 GetPetitionSignsRequired() const;")
+endif()
+definition_body("${source}" "uint32 GuildMgr::GetPetitionSignsRequired() const" signs_required)
+string(FIND "${signs_required}" "std::min<uint32>(9, sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS))" signs_min_at)
+if (signs_min_at EQUAL -1)
+  message(FATAL_ERROR "Guild petition summary: GetPetitionSignsRequired must be min(9, MinPetitionSigns)")
+endif()
+require_before("${add_signature}" "${exclusive_petitions}" "petition->GetSignatureCount() >= GetPetitionSignsRequired()" "signature limit checked under the exclusive lock")
+reject_hardcoded_nine("${add_signature}" "GuildMgr::AddPetitionSignature")
+string(FIND "${handler}" "if (signs >= sGuildMgr.GetPetitionSignsRequired())" handler_limit_at)
+if (handler_limit_at EQUAL -1)
+  message(FATAL_ERROR "Guild petition summary: HandlePetitionSignOpcode must use GuildMgr::GetPetitionSignsRequired")
+endif()
+reject_hardcoded_nine("${handler}" "PetitionsHandler.cpp")
+
+# twow-repo#485 (owner 04.10., guild note): bots on map threads only queue a public note under the
+# exclusive m_pendingNotesMutex; GuildMgr::Update (world thread, where every guild opcode and the
+# roster packets run) writes the MemberSlot. No MemberSlot write on the caller's thread.
+foreach (required
+    "void SetMemberPublicNote(uint32 guildId, ObjectGuid const& member, std::string const& note);"
+    "void ApplyPendingPublicNotes();"
+    "std::mutex m_pendingNotesMutex;"
+    "std::unordered_map<uint32, PendingPublicNote> m_pendingPublicNotes;")
+  string(FIND "${header}" "${required}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "Guild petition summary: missing in GuildMgr.h: ${required}")
+  endif()
+endforeach()
+definition_body("${source}" "void GuildMgr::SetMemberPublicNote(" queue_note)
+require_before("${queue_note}" "pending.note = note.substr(0, GUILD_NOTE_MAX_LENGTH);" "std::lock_guard<std::mutex> guard(m_pendingNotesMutex);" "note cut to the client limit")
+require_before("${queue_note}" "std::lock_guard<std::mutex> guard(m_pendingNotesMutex);" "m_pendingPublicNotes[member.GetCounter()] = std::move(pending);" "note queued under the exclusive lock")
+foreach (forbidden "SetPublicNote(" "GetMemberSlot(" "GetGuildById(" "CharacterDatabase")
+  string(FIND "${queue_note}" "${forbidden}" forbidden_at)
+  if (NOT forbidden_at EQUAL -1)
+    message(FATAL_ERROR "Guild petition summary: SetMemberPublicNote must only queue (${forbidden} on the caller's map thread)")
+  endif()
+endforeach()
+definition_body("${source}" "void GuildMgr::ApplyPendingPublicNotes(" apply_notes)
+require_before("${apply_notes}" "std::lock_guard<std::mutex> guard(m_pendingNotesMutex);" "pending.swap(m_pendingPublicNotes);" "queue swapped out under the lock")
+require_before("${apply_notes}" "pending.swap(m_pendingPublicNotes);" "Guild* guild = GetGuildById(entry.guildId);" "notes written after the swap")
+require_before("${apply_notes}" "guild->GetMemberSlot(entry.member)" "slot->SetPublicNote(entry.note);" "only a current member's slot is written")
+definition_body("${source}" "void GuildMgr::Update(" guild_update)
+string(FIND "${guild_update}" "ApplyPendingPublicNotes();" apply_at)
+if (apply_at EQUAL -1)
+  message(FATAL_ERROR "Guild petition summary: GuildMgr::Update (world thread) must apply the queued notes")
+endif()
+
 message(STATUS "GUILD_PETITION_SUMMARY_CONTRACT=PASS")

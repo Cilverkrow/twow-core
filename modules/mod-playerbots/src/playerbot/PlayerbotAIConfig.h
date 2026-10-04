@@ -319,6 +319,11 @@ public:
     std::string rosterGuildNamesAlliance;
     std::string rosterGuildNamesHorde;
     uint32 rosterGuildSnapshotSeconds;
+    // twow-repo#485 (owner 04.10.): roster bots in a guild keep "<Class> <Tank|tree> iLvl <n>" in
+    // their public guild note. 0 = off (default, notes untouched); checked at most every
+    // NoteRefreshSeconds per bot (default 300, used as 60-3600), written only on a change.
+    bool rosterGuildNote;
+    uint32 rosterGuildNoteRefreshSeconds;
     bool randomBotRandomPassword;
     bool inviteChat;
     bool botsSilent;

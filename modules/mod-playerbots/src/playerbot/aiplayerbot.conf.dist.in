@@ -348,6 +348,18 @@ AiPlayerbot.RosterGuild.NamesHorde = ""
 # (10-3600, other values are clamped; in memory, no database query; also recounted after each founding).
 AiPlayerbot.RosterGuild.SnapshotSeconds = 60
 
+# Guild note of roster bots (twow-repo#485, owner 04.10.). 0 = off (default): guild notes stay as they
+# are. 1: every persistent roster bot in a guild keeps its public guild note as
+# "<Class> <Tank|talent tree> iLvl <average item level of the worn items>", e.g. "Priest Holy iLvl 23"
+# or "Warrior Tank iLvl 31" (at most 31 characters, no name). Bots without talents yet show no tree.
+# Independent of BotsPerGuild. Takes precedence over TalentsInPublicNote for roster bots.
+AiPlayerbot.RosterGuild.GuildNote = 0
+
+# Seconds between two note checks per bot (60-3600, other values are clamped). The note is computed
+# from the bot's own items and talents (no database query) and written only when it changed; the
+# write runs on the world thread (GuildMgr), no roster broadcast.
+AiPlayerbot.RosterGuild.NoteRefreshSeconds = 300
+
 # Bots will chat in say/guild when they invite other bots to groups/raids/guilds
 AiPlayerbot.InviteChat = 1
 
