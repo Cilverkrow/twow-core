@@ -6560,11 +6560,13 @@ void PlayerbotAI::DurabilityLoss(Item* item, double percent)
 
 bool IsAlliance(uint8 race)
 {
-    return race == RACE_HUMAN || race == RACE_DWARF || race == RACE_NIGHTELF ||
+    // twow-repo#379 (hotfix 8.21): the core mask knows every Alliance race, including the Turtle
+    // high elf (10), which the old list missed (wrong faction in IsOpposing, security, AH, say).
 #ifndef MANGOSBOT_ZERO
-           race == RACE_DRAENEI ||
+    if (race == RACE_DRAENEI)
+        return true;
 #endif
-           race == RACE_GNOME;
+    return race > 0 && race < MAX_RACES && ((1u << (race - 1)) & RACEMASK_ALLIANCE) != 0;
 }
 
 uint32 PlayerbotAI::GetFixedBotNumber(BotTypeNumber typeNumber, uint32 maxNum, float cyclePerMin, bool ignoreGuid)
