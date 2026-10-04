@@ -4565,7 +4565,7 @@ void Spell::finish(bool ok)
             }
         }
         if (needDrop)
-            ((Player*)m_caster)->ClearComboPoints();
+            ((Player*)m_caster)->ClearComboPoints(COMBO_CLEAR_FINISHER);
     }
 
     // call triggered spell only at successful cast (after clear combo points -> for add some if need)

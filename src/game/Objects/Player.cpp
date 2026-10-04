@@ -2181,7 +2181,7 @@ void Player::SetDeathState(DeathState s)
         // drunken state is cleared on death
         SetDrunkValue(0);
         // lost combo points at any target (targeted combo points clear in Unit::SetDeathState)
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DEATH);
 
         ClearResurrectRequestData();
 
@@ -8549,16 +8549,16 @@ void Player::DuelComplete(DuelCompleteType type)
 
     // Cleanup combo points
     if (GetComboTargetGuid() == m_duel->opponent)
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DUEL);
     else if (GetComboTargetGuid().IsPet())
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DUEL);
 
     if (pOpponent)
     {
         if (pOpponent->GetComboTargetGuid() == GetObjectGuid())
-            pOpponent->ClearComboPoints();
+            pOpponent->ClearComboPoints(COMBO_CLEAR_DUEL);
         else if (pOpponent->GetComboTargetGuid() == GetPetGuid())
-            pOpponent->ClearComboPoints();
+            pOpponent->ClearComboPoints(COMBO_CLEAR_DUEL);
     }
 
     // Reset extraAttacks counter
@@ -21344,7 +21344,7 @@ void Player::SetComboPoints()
     }*/
 }
 
-void Player::AddComboPoints(Unit* target, int8 count)
+void Player::AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId, bool fromProc)
 {
     if (!count)
         return;
@@ -21356,6 +21356,11 @@ void Player::AddComboPoints(Unit* target, int8 count)
         m_comboPoints += count;
     else
     {
+        // Hotfix 8.24 (#484): points built on another target are dropped here.
+        if (m_comboTargetGuid && m_comboPoints > 0)
+            TraceComboPoints(fromProc ? "proc_other_target" : "retarget", uint8(m_comboPoints), m_comboTargetGuid,
+                target->GetObjectGuid(), sourceSpellId);
+
         if (m_comboTargetGuid)
             if (Unit* target2 = ObjectAccessor::GetUnit(*this, m_comboTargetGuid))
                 target2->RemoveComboPointHolder(GetGUIDLow());
@@ -21372,10 +21377,18 @@ void Player::AddComboPoints(Unit* target, int8 count)
     SetComboPoints();
 }
 
-void Player::ClearComboPoints()
+void Player::ClearComboPoints(ComboClearReason reason)
 {
     if (!m_comboTargetGuid)
         return;
+
+    // Hotfix 8.24 (#484): diagnostics only, the behaviour below is unchanged.
+    if (m_comboPoints > 0)
+    {
+        static char const* const reasonNames[] = { "other", "finisher", "select", "target_died", "death", "duel" };
+        TraceComboPoints(reason < sizeof(reasonNames) / sizeof(reasonNames[0]) ? reasonNames[reason] : "other",
+            uint8(m_comboPoints), m_comboTargetGuid);
+    }
 
     // without combopoints lost (duration checked in aura)
     RemoveSpellsCausingAura(SPELL_AURA_RETAIN_COMBO_POINTS);
@@ -21388,6 +21401,40 @@ void Player::ClearComboPoints()
         target->RemoveComboPointHolder(GetGUIDLow());
 
     m_comboTargetGuid.Clear();
+}
+
+// Hotfix 8.24 (twow-repo#484, owner: "combo points just disappear"): one greppable line per
+// lost combo point set of a real player (rogue/druid; bots have no socket), at most 30 lines
+// per player and minute, then a suppressed count. Logging only.
+void Player::TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget,
+    ObjectGuid const& newTarget, uint32 sourceSpellId)
+{
+    if (!pointsBefore || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))
+        return;
+    if (!GetSession() || !GetSession()->GetSocket())
+        return;
+
+    uint32 const now = uint32(time(nullptr));
+    if (!m_comboTraceWindowStart || now - m_comboTraceWindowStart >= 60)
+    {
+        if (m_comboTraceSuppressed)
+            sLog.outBasic("[ComboTrace] player=%u suppressed=%u window_s=%u",
+                GetGUIDLow(), m_comboTraceSuppressed, now - m_comboTraceWindowStart);
+        m_comboTraceWindowStart = now;
+        m_comboTraceLines = 0;
+        m_comboTraceSuppressed = 0;
+    }
+    if (m_comboTraceLines >= 30)
+    {
+        ++m_comboTraceSuppressed;
+        return;
+    }
+    ++m_comboTraceLines;
+
+    ObjectGuid const selection = GetSelectionGuid();
+    sLog.outBasic("[ComboTrace] player=%u reason=%s cp=%u target=%s new_target=%s spell=%u selection=%s map=%u",
+        GetGUIDLow(), reason, uint32(pointsBefore), comboTarget.GetString().c_str(),
+        newTarget.GetString().c_str(), sourceSpellId, selection.GetString().c_str(), GetMapId());
 }
 
 void Player::SetGroup(Group *group, int8 subgroup)
