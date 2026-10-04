@@ -232,7 +232,7 @@ ItemUsage ItemUsageValue::Calculate()
     // only with RosterConsumables.Buy. Outclassed or above KeepStacks: the old rules.
     if (proto->Class == ITEM_CLASS_CONSUMABLE && sPlayerbotAIConfig.rosterConsumablesUseReal && IsRosterBotOnItsOwn(ai))
     {
-        consumables::Kind const kind = consumables::Classify(IsHealingPotion(proto), IsManaPotion(proto), IsBandage(proto));
+        consumables::Kind const kind = consumables::Classify(IsHealingPotion(proto), IsManaPotion(proto), IsBandage(proto) && !IsAntiVenom(proto));
         if (kind != consumables::Kind::None)
         {
             bool const appropriate = proto->RequiredLevel <= bot->GetLevel() &&

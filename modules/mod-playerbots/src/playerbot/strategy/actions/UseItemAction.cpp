@@ -32,7 +32,7 @@ namespace
     consumables::Kind ConsumableKind(ItemPrototype const* proto)
     {
         return consumables::Classify(ItemUsageValue::IsHealingPotion(proto), ItemUsageValue::IsManaPotion(proto),
-            ItemUsageValue::IsBandage(proto));
+            ItemUsageValue::IsBandage(proto) && !ItemUsageValue::IsAntiVenom(proto));
     }
 
     // [Consumable]: the first use of a kind logs, later ones are counted until the cooldown ran
@@ -82,7 +82,7 @@ uint32 ai::BestBandageInBags(PlayerbotAI* ai)
     for (Item* item : AI_VALUE2(std::list<Item*>, "inventory items", "bandage"))
     {
         ItemPrototype const* proto = item ? item->GetProto() : nullptr;
-        if (!proto || !ItemUsageValue::IsBandage(proto) || bot->CanUseItem(proto) != EQUIP_ERR_OK)
+        if (!proto || !ItemUsageValue::IsBandage(proto) || ItemUsageValue::IsAntiVenom(proto) || bot->CanUseItem(proto) != EQUIP_ERR_OK)
             continue;
 
         if (!best || proto->RequiredSkillRank > bestRank || (proto->RequiredSkillRank == bestRank && proto->ItemLevel > bestLevel))
