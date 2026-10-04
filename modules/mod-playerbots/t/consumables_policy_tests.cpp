@@ -63,6 +63,18 @@ int main()
         for (float own = 0.0f; own <= 1.5f; own += 0.05f)
             Require(Decide(true, own, 0.0f, keep, true) != Stock::Legacy, "a bought stack is never sold again");
 
+    // Purchase (owner decision 04.10): only vendor goods, bandages never bought.
+    Require(BuyAllowed(true, Kind::Healing, true), "vendor healing potion with Buy: bought");
+    Require(BuyAllowed(true, Kind::Mana, true), "vendor mana potion with Buy: bought");
+    Require(!BuyAllowed(false, Kind::Healing, true), "Buy 0: nothing bought");
+    Require(!BuyAllowed(true, Kind::Healing, false), "not sold by any vendor: not bought");
+    Require(!BuyAllowed(true, Kind::Bandage, true), "a vendor bandage is never bought");
+    Require(!BuyAllowed(true, Kind::Bandage, false), "a bandage is never bought");
+    Require(!BuyAllowed(true, Kind::None, true), "no consumable kind: not bought");
+    Require(Decide(true, 0.0f, 0.0f, 2, BuyAllowed(true, Kind::Bandage, true)) == Stock::Keep, "no bandage in the bags: kept, not bought");
+    Require(Decide(true, 0.0f, 0.0f, 2, BuyAllowed(true, Kind::Healing, false)) == Stock::Keep, "non-vendor potion: kept, not bought");
+    Require(Decide(true, 0.0f, 0.0f, 2, BuyAllowed(true, Kind::Mana, true)) == Stock::Buy, "vendor mana potion: bought");
+
     // Cloth reserve for Tailoring.
     Require(!ReserveApplies(0, true, true, true), "reserve 0 (default) = off");
     Require(!ReserveApplies(20, false, true, true), "only First Aid recipes");

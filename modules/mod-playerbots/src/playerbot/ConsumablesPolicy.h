@@ -80,6 +80,14 @@ inline float KeepLimit(std::uint32_t keepStacks)
     return keepStacks < 2 ? 2.0f : float(keepStacks);
 }
 
+// Purchase under RosterConsumables.Buy (owner decision 04.10): only vendor goods (an item some
+// vendor sells, npc_vendor) and never a bandage - bandages are only self-made (First Aid).
+// The result is the buy flag for Decide; false turns a Buy into a Keep.
+inline bool BuyAllowed(bool buy, Kind kind, bool soldByVendor)
+{
+    return buy && kind != Kind::Bandage && kind != Kind::None && soldByVendor;
+}
+
 // appropriate: the bot can use it now (level, skill, mana user). better: stacks of a better item
 // of the same kind - then this one is outclassed and goes the old way (sold).
 inline Stock Decide(bool appropriate, float ownStacks, float betterStacks, std::uint32_t keepStacks, bool buy)

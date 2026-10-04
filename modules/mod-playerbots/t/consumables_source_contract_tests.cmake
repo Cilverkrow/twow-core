@@ -54,6 +54,17 @@ function(find_real_item_gate section out)
   endif()
 endfunction()
 
+# The purchase gate of the stock decision: the Buy key must reach Decide through BuyAllowed with the
+# vendor check, never directly (a raw Buy would buy bandages and non-vendor items).
+function(find_buy_guard text out)
+  set(${out} "" PARENT_SCOPE)
+  string(FIND "${text}" "consumables::BuyAllowed(sPlayerbotAIConfig.rosterConsumablesBuy, kind, IsItemSoldByAnyVendor(proto))" guard_at)
+  string(FIND "${text}" "sPlayerbotAIConfig.rosterConsumablesKeepStacks, sPlayerbotAIConfig.rosterConsumablesBuy" raw_at)
+  if(NOT guard_at EQUAL -1 AND raw_at EQUAL -1)
+    set(${out} "found" PARENT_SCOPE)
+  endif()
+endfunction()
+
 file(READ "${PB_SOURCE_DIR}/ConsumablesPolicy.h" policy)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/UseItemAction.h" use_h)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/UseItemAction.cpp" use_cpp)
@@ -102,8 +113,15 @@ require_text("${use_cpp}" "if (successCasts > 0 && itemUsed && UsesRealConsumabl
 
 # 5. Stock: kept instead of sold, bought only with Buy; before the legacy (non-cheat) block.
 require_order("${usage}" "sPlayerbotAIConfig.rosterConsumablesUseReal && IsRosterBotOnItsOwn(ai)" "if (proto->Class == ITEM_CLASS_CONSUMABLE && !ai->HasCheat(BotCheatMask::item))" "roster stock before the legacy consumable block")
-require_text("${usage}" "sPlayerbotAIConfig.rosterConsumablesKeepStacks, sPlayerbotAIConfig.rosterConsumablesBuy" "stock keys")
+require_text("${usage}" "sPlayerbotAIConfig.rosterConsumablesKeepStacks," "stock key KeepStacks")
 require_text("${policy}" "return keepStacks < 2 ? 2.0f : float(keepStacks);" "keep limit of at least two stacks (no buy/sell loop)")
+# 5b. Purchase (owner decision 04.10): only vendor goods, bandages never bought. The Buy key reaches
+# Decide only through BuyAllowed; the policy refuses bandages and non-vendor items.
+find_buy_guard("${usage}" buy_guard_found)
+if(buy_guard_found STREQUAL "")
+  message(FATAL_ERROR "Missing purchase guard: Buy must reach Decide only through consumables::BuyAllowed(..., kind, IsItemSoldByAnyVendor(proto))")
+endif()
+require_text("${policy}" "return buy && kind != Kind::Bandage && kind != Kind::None && soldByVendor;" "bandages never bought, vendor goods only")
 
 # 6. Cloth reserve, inside CraftableFromBags only (not the 8.20 recipe ranking).
 text_between("${triggers}" "uint32 ai::CraftableFromBags(" "return craftable;" craftable_section)
@@ -138,4 +156,10 @@ reject_text("${triggers_outside}" "rosterConsumables" "consumables switch in the
 find_real_item_gate("        if (!ai->HasCheat(BotCheatMask::item) && !bot->HasItemCount(itemId, 1))" probe_found)
 if(NOT probe_found STREQUAL "")
   message(FATAL_ERROR "negative probe not caught: the legacy cheat gate passed as the UseReal gate - the scan is broken")
+endif()
+
+# Negative probe: the raw Buy flag (bandages and non-vendor items bought) must fail the purchase guard.
+find_buy_guard("                sPlayerbotAIConfig.rosterConsumablesKeepStacks, sPlayerbotAIConfig.rosterConsumablesBuy))" buy_probe_found)
+if(NOT buy_probe_found STREQUAL "")
+  message(FATAL_ERROR "negative probe not caught: a raw Buy flag passed as the purchase guard - the scan is broken")
 endif()

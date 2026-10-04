@@ -371,21 +371,23 @@ AiPlayerbot.RosterGuild.NoteRefreshSeconds = 300
 AiPlayerbot.RosterConsumables.UseReal = 0
 # Extra gate on top of the trigger: a healing potion only at or below this health percent, a mana
 # potion only at or below this mana percent. 100 (default) = the trigger alone decides.
-# Proposed: 35 / 25 (owner decision).
+# Proposed: 35 / 25 (owner decision 04.10).
 AiPlayerbot.RosterConsumables.HealingPotionPct = 100
 AiPlayerbot.RosterConsumables.ManaPotionPct = 100
 # Stock under UseReal: a usable potion or bandage (level, First Aid skill, mana user) that no better
 # one of the same kind outclasses is kept, not sold, below KeepStacks stacks (used as at least 2,
 # since buying stops at one stack: no buy/sell loop). From KeepStacks on, or when outclassed, the
 # old rules apply (sold). Buy 1: below one stack it is bought at vendors from the existing
-# consumables budget (with AuctionHouse.Enabled also bid on). 0 (default) = never bought.
-# Proposed: KeepStacks 2, Buy 0 first, 1 after the first measurement (owner decision).
+# consumables budget (with AuctionHouse.Enabled also bid on) - only vendor goods (items some vendor
+# sells) and never bandages: bandages are only self-made (First Aid). 0 (default) = never bought.
+# Proposed: KeepStacks 2, Buy 1 (owner decision 04.10).
 AiPlayerbot.RosterConsumables.KeepStacks = 2
 AiPlayerbot.RosterConsumables.Buy = 0
 # First Aid must not take Tailoring's cloth: a roster bot that knows Tailoring crafts First Aid
 # recipes only with the cloth (trade goods reagents) above this many items per cloth kind. Works
 # with ProfessionUse.RealReagents (hotfix 8.20 ranks the lower profession first). 0 (default) = off.
-# Proposed: 20 (one stack; owner decision).
+# Proposed: 20 (one stack; owner decision 04.10). The wool-tier linen rule (Tailoring first) is
+# twow-repo#524 (central material reservation, OB-10), not this key.
 AiPlayerbot.RosterConsumables.TailoringClothReserve = 0
 # Trace: [Consumable] lines at BASIC level, at most one per bot and kind per TraceCooldownSeconds
 # (uses = items used since the previous line). Never per tick.
