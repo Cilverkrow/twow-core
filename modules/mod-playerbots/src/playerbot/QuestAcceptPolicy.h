@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace ai::quest_accept
 {
@@ -39,5 +41,49 @@ inline bool SkipForRosterBot(bool rosterOnItsOwn, uint32_t botLevel, uint32_t qu
     if (!rosterOnItsOwn || classQuest)
         return false;
     return IsRed(botLevel, questLevel) || questLevel <= grayLevel || LogTooFull(freeSlots);
+}
+
+// Hotfix 8.17 (v30, 153 min: 127 roster bots held 16-18 quests, took none since 8.15 and
+// CleanQuestLogAction keeps 16; quest updates -20 %, XP events -14 %, more idle bots): a roster
+// bot on its own that made no progress for IdleRotateSeconds out of combat with a full log
+// (at least MaxLog - CleanFreeSlots quests) drops exactly one quest without progress, at most
+// once per IdleRotateSeconds, so it can take a nearer one.
+constexpr uint32_t IdleRotateSeconds = 20 * 60;
+
+inline bool IdleRotateDue(bool rosterOnItsOwn, bool inCombat, uint32_t idleSeconds, uint32_t questCount,
+    uint32_t maxLog, uint32_t lastRotate, uint32_t now)
+{
+    if (!rosterOnItsOwn || inCombat || idleSeconds < IdleRotateSeconds)
+        return false;
+    if (questCount + CleanFreeSlots < maxLog)
+        return false;
+    return !lastRotate || now - lastRotate >= IdleRotateSeconds;
+}
+
+// A quest without progress, not complete and no class quest (the caller filters).
+struct RotateCandidate
+{
+    uint32_t slot = 0;
+    bool otherZone = false;     // its zone (ZoneOrSort > 0) is not the bot's zone: far away
+};
+
+// Index of the quest to drop, -1 = none: a quest of another zone first, then the lowest slot
+// (the log fills from the top, so the lowest slot is the oldest entry).
+inline int PickIdleRotate(std::vector<RotateCandidate> const& candidates)
+{
+    int best = -1;
+    for (std::size_t i = 0; i < candidates.size(); ++i)
+    {
+        if (best < 0)
+        {
+            best = int(i);
+            continue;
+        }
+        RotateCandidate const& c = candidates[i];
+        RotateCandidate const& b = candidates[std::size_t(best)];
+        if (c.otherZone != b.otherZone ? c.otherZone : c.slot < b.slot)
+            best = int(i);
+    }
+    return best;
 }
 }

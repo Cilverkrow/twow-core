@@ -9,6 +9,7 @@
 #include "playerbot/RandomItemMgr.h"
 #include "playerbot/AmmoStockPolicy.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/ProfessionUsePolicy.h"
 
 using namespace ai;
 
@@ -171,6 +172,12 @@ ItemUsage ItemUsageValue::Calculate()
     else
     {
         bool needItem = false;
+        // twow-repo#485: under the item cheat a roster bot sold the materials of
+        // its own recipes (v24: 89 linen, 46 herbs in 2.67 h) and never bought a
+        // vendor reagent. With KeepCraftMaterials it keeps them; a vendor reagent
+        // counts only once the reagents of the recipe that no vendor sells are
+        // in the bags.
+        bool const keepCraft = sPlayerbotAIConfig.professionUseKeepCraftMaterials && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
 
         if (IsItemNeededForSkill(proto))
         {
@@ -185,7 +192,12 @@ ItemUsage ItemUsageValue::Calculate()
             bool lowBagSpace = AI_VALUE(uint8, "bag space") > 50;
 
             if (proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_MISC || proto->Class == ITEM_CLASS_REAGENT)
-                needItem =!ai->HasCheat(BotCheatMask::item) && IsItemNeededForUsefullCraft(proto, lowBagSpace);
+            {
+                // false (KeepCraftMaterials off, empty list): the legacy walk.
+                bool const vendorReagent = keepCraft && profession_use::IsVendorReagent(sPlayerbotAIConfig.professionUseVendorReagents, proto->ItemId);
+                needItem = (!ai->HasCheat(BotCheatMask::item) || keepCraft) && IsItemNeededForUsefullCraft(proto,
+                    lowBagSpace || vendorReagent, vendorReagent);
+            }
             else if (proto->Class == ITEM_CLASS_RECIPE)
             {
                 if (bot->HasSpell(GetRecipeSpell(proto)))
@@ -204,7 +216,7 @@ ItemUsage ItemUsageValue::Calculate()
 
             if (stacks < 1)
                 return ItemUsage::ITEM_USAGE_SKILL; //Buy more.
-            else if (stacks == 1)
+            else if (keepCraft ? profession_use::KeepCraftStacks(stacks, sPlayerbotAIConfig.professionUseReagentKeepStacks) : stacks == 1)
                 return ItemUsage::ITEM_USAGE_KEEP; //Do not buy more.
         }
     }
@@ -1055,11 +1067,18 @@ bool ItemUsageValue::IsItemUsefulForSkill(ItemPrototype const* proto)
     return false;
 }
 
-bool ItemUsageValue::IsItemNeededForUsefullCraft(ItemPrototype const* proto, bool checkAllReagents)
+bool ItemUsageValue::IsItemNeededForUsefullCraft(ItemPrototype const* proto, bool checkAllReagents, bool vendorReagent)
 {
-    std::vector<uint32> spellIds = AI_VALUE(std::vector<uint32>, "craft spells");
+    // Hotfix 8.16a: only the recipes that use this item (CraftReagentIndexValue), no copy of
+    // "craft spells" and no walk over every recipe per query.
+    std::shared_ptr<const CraftReagentIndex> const index = AI_VALUE(std::shared_ptr<const CraftReagentIndex>, "craft reagent index");
+    if (!index)
+        return false;
+    CraftReagentIndex::const_iterator const users = index->find(proto->ItemId);
+    if (users == index->end())
+        return false;
 
-    for (uint32 spellId : spellIds)
+    for (uint32 spellId : users->second)
     {
         const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
 
@@ -1081,6 +1100,21 @@ bool ItemUsageValue::IsItemNeededForUsefullCraft(ItemPrototype const* proto, boo
             else if (checkAllReagents)
             {
                 const ItemPrototype* reqProto = sObjectMgr.GetItemPrototype(pSpellInfo->Reagent[i]);
+
+                // twow-repo#485, for every bot (no switch): KeepCraftMaterials
+                // also brings item-cheat roster bots here; a reagent without
+                // item_template row is never in the bags.
+                if (!reqProto)
+                {
+                    hasOtherReagents = false;
+                    continue;
+                }
+
+                // twow-repo#485 (VendorReagents): a vendor reagent waits only for
+                // the reagents no vendor sells; thread and bleach no longer wait
+                // for each other.
+                if (!profession_use::OtherReagentRequired(sPlayerbotAIConfig.professionUseVendorReagents, vendorReagent, reqProto->ItemId))
+                    continue;
 
                 uint32 count = AI_VALUE2(uint32, "item count", reqProto->Name1);
 

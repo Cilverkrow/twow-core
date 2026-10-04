@@ -855,6 +855,17 @@ bool PlayerbotAIConfig::Initialize()
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
     professionUseTrace = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Trace", false);
     professionUseTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.TraceCooldownSeconds", 300));
+    professionUseRealReagents = config.GetBoolDefault("AiPlayerbot.ProfessionUse.RealReagents", false);
+    // Clamped as int32 first: a negative value must not wrap to ~136 years.
+    professionUseCraftFailBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds", 1800)));
+    professionUseKeepCraftMaterials = config.GetBoolDefault("AiPlayerbot.ProfessionUse.KeepCraftMaterials", false);
+    professionUseReagentKeepStacks = uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.ReagentKeepStacks", 1)));
+    {
+        // Parsed once here; the item usage only looks the item id up.
+        std::list<uint32> vendorReagents;
+        LoadList<std::list<uint32> >(config.GetStringDefault("AiPlayerbot.ProfessionUse.VendorReagents", ""), vendorReagents);
+        professionUseVendorReagents = std::set<uint32>(vendorReagents.begin(), vendorReagents.end());
+    }
     autoPickTalents = config.GetStringDefault("AiPlayerbot.AutoPickTalents", "no");
     autoLearnTrainerSpells = config.GetBoolDefault("AiPlayerbot.AutoLearnTrainerSpells", false);
     autoLearnQuestSpells = config.GetBoolDefault("AiPlayerbot.AutoLearnQuestSpells", false);
