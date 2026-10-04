@@ -111,6 +111,20 @@ int main()
     Require(!RebindAtRescue(true, true, 0, 0), "led by a real player: keep the hearthstone");
     Require(!RebindAtRescue(false, false, 0, 1), "not a roster bot: keep the hearthstone");
 
+    // Hotfix 8.29: Blackstone Island flying machine.
+    {
+        namespace gi = goblin_island;
+        Require(gi::ShouldLeaveIsland(5536, 10, 0), "level 10 on the island: fly off");
+        Require(gi::ShouldLeaveIsland(5536, 7, gi::LeaveIdleSeconds), "no progress for 15 min: fly off");
+        Require(!gi::ShouldLeaveIsland(5536, 7, gi::LeaveIdleSeconds - 1), "still questing on the island: stay");
+        Require(!gi::ShouldLeaveIsland(14, 12, 99999), "not on the island: nothing");
+        Require(gi::FollowPath(10.0f, 5000.0f) == gi::IslandPath, "follower at the island machine: path 311");
+        Require(gi::FollowPath(5000.0f, 12.0f) == gi::ReturnPath, "follower at the port machine: path 322");
+        Require(gi::FollowPath(40.0f, 5000.0f) == 0, "too far from any machine: no flight");
+        Require(gi::UsesGoblinStartRescue(9, 9) && !gi::UsesGoblinStartRescue(9, 11) && !gi::UsesGoblinStartRescue(10, 9),
+            "goblins below 11 rescued to Durotar only");
+    }
+
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
 }
