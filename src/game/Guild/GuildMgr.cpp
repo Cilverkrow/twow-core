@@ -25,6 +25,9 @@
 #include "World.h"
 #include "ObjectMgr.h"
 #include "Player.h"
+#include "WorldPacket.h"
+#include "WorldSession.h"
+#include "Opcodes.h"
 
 #define GUILD_BANK_SAVE_INTERVAL 1 * MINUTE * IN_MILLISECONDS
 
@@ -307,6 +310,193 @@ void GuildMgr::Update(uint32 diff)
 
     // twow-repo#485: public notes queued by bots on map threads (SetMemberPublicNote).
     ApplyPendingPublicNotes();
+    // twow-repo#485: guild switches queued by bots on map threads (RequestGuildSwitch).
+    ApplyPendingGuildSwitches();
+}
+
+void GuildMgr::RequestGuildSwitch(ObjectGuid const& member, uint32 fromGuildId, uint32 toGuildId, uint32 petitionId)
+{
+    // Exactly one target: a guild invitation or a charter.
+    if (member.IsEmpty() || !fromGuildId || (toGuildId == 0) == (petitionId == 0))
+        return;
+
+    PendingGuildSwitch pending;
+    pending.member = member;
+    pending.fromGuildId = fromGuildId;
+    pending.toGuildId = toGuildId;
+    pending.petitionId = petitionId;
+
+    std::lock_guard<std::mutex> guard(m_guildSwitchMutex);
+    m_pendingGuildSwitches[member.GetCounter()] = pending;
+}
+
+time_t GuildMgr::GetLastGuildSwitch(uint32 memberLowGuid)
+{
+    std::lock_guard<std::mutex> guard(m_guildSwitchMutex);
+    auto it = m_lastGuildSwitch.find(memberLowGuid);
+    return it != m_lastGuildSwitch.end() ? it->second : 0;
+}
+
+void GuildMgr::ApplyPendingGuildSwitches()
+{
+    std::unordered_map<uint32, PendingGuildSwitch> pending;
+    {
+        std::lock_guard<std::mutex> guard(m_guildSwitchMutex);
+        if (m_pendingGuildSwitches.empty())
+            return;
+        pending.swap(m_pendingGuildSwitches);
+    }
+
+    // World thread, after the map update (no map thread runs), like the guild opcodes; no lock is
+    // held while the guilds change. At most one entry per member and tick.
+    for (auto const& item : pending)
+    {
+        PendingGuildSwitch const& entry = item.second;
+        char const* reason = "";
+        bool const switched = ApplyGuildSwitch(entry.member, entry.fromGuildId, entry.toGuildId, entry.petitionId, reason);
+        if (switched)
+        {
+            std::lock_guard<std::mutex> guard(m_guildSwitchMutex);
+            m_lastGuildSwitch[entry.member.GetCounter()] = time(nullptr);
+        }
+
+        // One line per request; requests follow real players' invitations (cooldown per bot).
+        sLog.outBasic("[RosterGuild] event=%s bot=%u from=%u to=%u via=%s%s%s", switched ? "poached" : "poach_failed",
+            entry.member.GetCounter(), entry.fromGuildId, entry.petitionId ? entry.petitionId : entry.toGuildId,
+            entry.petitionId ? "charter" : "invite", switched ? "" : " reason=", reason);
+    }
+}
+
+bool GuildMgr::ApplyGuildSwitch(ObjectGuid const& member, uint32 fromGuildId, uint32 toGuildId, uint32 petitionId, char const*& reason)
+{
+    Player* player = sObjectMgr.GetPlayer(member);
+    if (!player || !player->IsInWorld())
+    {
+        reason = "offline";
+        return false;
+    }
+
+    // An open invitation to toGuildId is dropped when the switch does not happen (as CMSG_GUILD_DECLINE).
+    auto dropInvite = [&]()
+    {
+        if (toGuildId && player->GetGuildIdInvited() == toGuildId)
+            player->SetGuildIdInvited(0);
+    };
+
+    Guild* from = GetGuildById(fromGuildId);
+    if (!from || player->GetGuildId() != fromGuildId)
+    {
+        dropInvite();
+        reason = "not_in_guild";
+        return false;
+    }
+
+    // CMSG_GUILD_LEAVE: the guild master cannot leave a guild with members.
+    if (from->GetLeaderGuid() == member)
+    {
+        dropInvite();
+        reason = "guild_master";
+        return false;
+    }
+
+    Guild* to = nullptr;
+    PetitionSummary petition;
+    if (petitionId)
+    {
+        // CMSG_PETITION_SIGN, checked before leaving: the charter exists, is not full, is not the
+        // member's own, neither the member nor its account signed it, no open guild invitation, same
+        // team unless two-side guilds. AddPetitionSignature repeats the petition checks under the lock.
+        if (!GetPetitionSummaryById(petitionId, petition, player->GetSession()->GetAccountId(), member))
+        {
+            reason = "no_petition";
+            return false;
+        }
+        if (uint32(petition.signatureCount) >= GetPetitionSignsRequired() || petition.ownerGuid == member ||
+            petition.signedByAccount || petition.signedByPlayer || player->GetGuildIdInvited())
+        {
+            reason = "petition_closed";
+            return false;
+        }
+        if (!sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_GUILD) && player->GetTeam() != petition.team)
+        {
+            reason = "faction";
+            return false;
+        }
+    }
+    else
+    {
+        // CMSG_GUILD_ACCEPT: still invited to that guild, which still exists.
+        to = GetGuildById(toGuildId);
+        if (!to || to == from || player->GetGuildIdInvited() != toGuildId)
+        {
+            dropInvite();
+            reason = "invite_gone";
+            return false;
+        }
+        if (!sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_GUILD) && player->GetTeam() != sObjectMgr.GetPlayerTeamByGUID(to->GetLeaderGuid()))
+        {
+            dropInvite();
+            reason = "faction";
+            return false;
+        }
+    }
+
+    // Leave, as CMSG_GUILD_LEAVE (not the guild master, so DelMember keeps the guild).
+    std::string const name = player->GetName();
+    player->GetSession()->SendGuildCommandResult(GUILD_QUIT_S, from->GetName(), ERR_PLAYER_NO_MORE_IN_GUILD);
+    if (from->DelMember(member))
+    {
+        from->Disband();
+        delete from;
+    }
+    else
+    {
+        from->LogGuildEvent(GUILD_EVENT_LOG_LEAVE_GUILD, member);
+        from->BroadcastEvent(GE_LEFT, member, name.c_str());
+    }
+
+    if (to)
+    {
+        // Join, as CMSG_GUILD_ACCEPT.
+        if (to->AddMember(member, to->GetLowestRank()) != GuildAddStatus::OK)
+        {
+            dropInvite();
+            reason = "join_failed";
+            return false;
+        }
+        to->LogGuildEvent(GUILD_EVENT_LOG_JOIN_GUILD, member);
+        to->BroadcastEvent(GE_JOINED, member, name.c_str());
+        return true;
+    }
+
+    // Sign, as CMSG_PETITION_SIGN (exclusive petition lock inside).
+    if (!AddPetitionSignature(petitionId, player))
+    {
+        reason = "sign_failed";
+        return false;
+    }
+
+    WorldPacket data(SMSG_PETITION_SIGN_RESULTS, (8 + 8 + 4));
+    data << petition.charterGuid;
+    data << member;
+    data << uint32(PETITION_SIGN_OK);
+    player->GetSession()->SendPacket(&data);
+    if (Player* owner = sObjectMgr.GetPlayer(petition.ownerGuid))
+        owner->GetSession()->SendPacket(&data);
+    return true;
+}
+
+bool GuildMgr::GetGuildSummary(uint32 guildId, GuildSummary& out) const
+{
+    std::shared_lock<std::shared_mutex> guard(m_guildMutex);
+    GuildMap::const_iterator itr = m_GuildMap.find(guildId);
+    if (itr == m_GuildMap.end())
+        return false;
+
+    out.id = itr->second->GetId();
+    out.leaderGuid = itr->second->GetLeaderGuid();
+    out.name = itr->second->GetName();
+    return true;
 }
 
 void GuildMgr::SetMemberPublicNote(uint32 guildId, ObjectGuid const& member, std::string const& note)

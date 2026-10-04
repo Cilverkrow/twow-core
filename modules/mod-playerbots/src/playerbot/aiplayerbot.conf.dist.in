@@ -360,6 +360,20 @@ AiPlayerbot.RosterGuild.GuildNote = 0
 # write runs on the world thread (GuildMgr), no roster broadcast.
 AiPlayerbot.RosterGuild.NoteRefreshSeconds = 300
 
+# Poaching (twow-repo#485, owner decision 5). 0 = off (default): a bot in a guild answers every guild
+# invitation and charter with "already in a guild", as before. 1: a persistent roster bot in a bot
+# guild (its guild master is a roster bot) takes the guild invitation or the charter of a real player
+# of the same faction whose guild is no bot guild, leaves its bot guild and joins (or signs). Never:
+# the guild master of a bot guild, a bot in a player guild (a bot never leaves a player guild on its
+# own), towards another bot or bot guild. PlayerbotSecurity still applies. The switch runs on the
+# world thread (GuildMgr); trace "[RosterGuild] event=poached bot=... from=... to=... via=invite|charter".
+# Independent of BotsPerGuild.
+AiPlayerbot.RosterGuild.AllowPoaching = 0
+
+# At most one switch per bot within this many seconds (3600-2592000, other values are clamped; in
+# memory, so a server restart clears it).
+AiPlayerbot.RosterGuild.PoachCooldownSeconds = 86400
+
 # Bots will chat in say/guild when they invite other bots to groups/raids/guilds
 AiPlayerbot.InviteChat = 1
 

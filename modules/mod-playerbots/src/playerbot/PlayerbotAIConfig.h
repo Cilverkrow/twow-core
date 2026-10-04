@@ -324,6 +324,12 @@ public:
     // NoteRefreshSeconds per bot (default 300, used as 60-3600), written only on a change.
     bool rosterGuildNote;
     uint32 rosterGuildNoteRefreshSeconds;
+    // twow-repo#485 (owner decision 5, poaching): a roster bot in a bot guild takes a real player's
+    // guild invitation or charter and switches (GuildPoachPolicy.h). 0 = off (default: "already in
+    // a guild" as today); at most one switch per bot and PoachCooldownSeconds (default 86400, used
+    // as 3600-2592000).
+    bool rosterGuildAllowPoaching;
+    uint32 rosterGuildPoachCooldownSeconds;
     bool randomBotRandomPassword;
     bool inviteChat;
     bool botsSilent;

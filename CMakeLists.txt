@@ -1053,6 +1053,12 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_guild_petition_summary_contract.cmake")
+  # twow-repo#485 (owner decision 5, poaching): the core asks a module before "already in a guild";
+  # leaving and joining run queued in GuildMgr::Update on the world thread.
+  add_test(NAME guild_switch_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_guild_switch_contract.cmake")
   # twow-repo#455 (train 8b): custom spell IDs stay below 65536 (16-bit client spell IDs).
   add_test(NAME custom_spell_id_range_contract
     COMMAND "${CMAKE_COMMAND}"

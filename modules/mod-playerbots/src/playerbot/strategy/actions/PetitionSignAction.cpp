@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "PetitionSignAction.h"
 #include "GuildCreateActions.h"
+#include "GuildAcceptAction.h"
 #include "playerbot/RosterGuildPolicy.h"
 #include "Guild/GuildMgr.h"
 #ifndef MANGOSBOT_ZERO
@@ -39,6 +40,9 @@ bool PetitionSignAction::Execute(Event& event)
 #endif
 
     bool accept = true;
+    // twow-repo#485 (owner decision 5, poaching): sign a real player's charter from a bot guild.
+    bool poach = false;
+    uint32 poachPetitionId = 0;
 
     if (type != 9)
     {
@@ -57,8 +61,20 @@ bool PetitionSignAction::Execute(Event& event)
     {
         if (bot->GetGuildId())
         {
-            ai->TellError(requester, "Sorry, I am in a guild already");
-            accept = false;
+            // A roster bot of a bot guild signs a real player's own charter (the core let the offer
+            // through, PlayerScript::CanSwitchGuild); the same rule again here, on copies.
+            PetitionSummary poachCharter;
+            Player* charterOwner = sObjectMgr.GetPlayer(inviter);
+            poach = !bot->GetGuildIdInvited() && charterOwner && charterOwner != bot &&
+                sGuildMgr.GetPetitionSummaryByCharterGuid(petitionGuid, poachCharter) &&
+                !RosterGuildPoach::Refusal(charterOwner, bot->GetObjectGuid(), 0, poachCharter.ownerGuid == inviter, "sign");
+            poachPetitionId = poach ? poachCharter.id : 0;
+
+            if (!poach)
+            {
+                ai->TellError(requester, "Sorry, I am in a guild already");
+                accept = false;
+            }
         }
 
         if (bot->GetGuildIdInvited())
@@ -88,7 +104,7 @@ bool PetitionSignAction::Execute(Event& event)
     // twow-repo#485 (new path): a roster bot on its own signs only towards the faction's guild
     // target, and its signature moves only to a fuller charter (88 % of the 3,122 v24 signatures
     // were moves between bot charters). Counts are copies taken under the petition lock.
-    if (accept && !isArena && RosterGuildPlan::UsesRosterPath(ai))
+    if (accept && !isArena && !poach && RosterGuildPlan::UsesRosterPath(ai))
     {
         PetitionSummary offered;
         if (!sGuildMgr.GetPetitionSummaryByCharterGuid(petitionGuid, offered))
@@ -120,6 +136,17 @@ bool PetitionSignAction::Execute(Event& event)
         bot->GetSession()->HandlePetitionDeclineOpcode(data);
         sLog.outDetail("Bot #%d <%s> declines %s invite", bot->GetGUIDLow(), bot->GetName(), isArena ? "Arena" : "Guild");
         return false;
+    }
+    if (accept && poach)
+    {
+        // Leave the bot guild and sign on the world thread (GuildMgr::Update): the sign handler
+        // stays closed to guild members, and guild changes never run on this map thread. The result
+        // is traced there (event=poached / poach_failed).
+        uint32 const fromGuildId = bot->GetGuildId();
+        sGuildMgr.RequestGuildSwitch(bot->GetObjectGuid(), fromGuildId, 0, poachPetitionId);
+        sLog.outBasic("[RosterGuild] event=poach_accepted bot=%u inviter=%u from=%u to=%u via=charter",
+            bot->GetGUIDLow(), _inviter->GetGUIDLow(), fromGuildId, poachPetitionId);
+        return true;
     }
     if (accept)
     {

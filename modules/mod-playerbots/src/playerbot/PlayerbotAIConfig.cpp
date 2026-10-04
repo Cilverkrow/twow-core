@@ -821,6 +821,8 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
     rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
     rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 300);
+    rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", false);
+    rosterGuildPoachCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.PoachCooldownSeconds", 86400);
 
     boostFollow = config.GetBoolDefault("AiPlayerbot.BoostFollow", false);
     turnInRpg = config.GetBoolDefault("AiPlayerbot.TurnInRpg", false);

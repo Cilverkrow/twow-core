@@ -3295,6 +3295,17 @@ void Script_SetForcedRole(Player* player, uint8 role)
     });
 }
 
+bool Script_CanSwitchGuild(Player* inviter, ObjectGuid const& invitee, uint32 guildId)
+{
+    if (!inviter || invitee.IsEmpty())
+        return false;
+
+    return ScriptRegistry<PlayerScript>::ForEachEnabledHookWithReturn(PLAYERHOOK_CAN_SWITCH_GUILD, [&](PlayerScript* script)
+    {
+        return script->CanSwitchGuild(inviter, invitee, guildId);
+    });
+}
+
 bool Script_IsMachineDriven(Player const* player)
 {
     if (!player)
