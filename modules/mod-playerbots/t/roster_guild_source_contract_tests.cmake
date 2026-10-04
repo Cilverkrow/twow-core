@@ -240,7 +240,10 @@ foreach(needle
   require_text("${policy}" "${needle}" "guild note policy")
 endforeach()
 # Negative probe (owner 04.10.: 24 h): the former 3600 cap would cut the 86400 default to one hour.
-reject_text("${policy}" "configuredSeconds > 3600 ? 3600 : configuredSeconds)" "former 3600 s cap on the note refresh")
+# Only within NoteRefreshInterval - SnapshotInterval keeps its own 10-3600 clamp.
+text_between("${policy}" "inline std::uint32_t NoteRefreshInterval(std::uint32_t configuredSeconds)" "\n}" note_refresh)
+require_text("${note_refresh}" "configuredSeconds > 604800 ? 604800" "24 h default within the note refresh clamp")
+reject_text("${note_refresh}" "3600" "former 3600 s cap on the note refresh")
 require_text("${triggers_h}" "Trigger(ai, \"roster guild note\", 60)" "note trigger looked at once a minute")
 text_between("${triggers}" "bool RosterGuildNoteTrigger::IsActive()" "return true;" note_trigger)
 require_order("${note_trigger}" "roster_guild::UsesGuildNote(sPlayerbotAIConfig.rosterGuildNote, sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), bot->GetGuildId() != 0)"
