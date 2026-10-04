@@ -694,6 +694,12 @@ add_test(NAME profession_use_policy
   COMMAND profession_use_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# Hotfix 8.28: no self cast without the item it names.
+add_test(NAME self_cast_item_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/self_cast_item_contract_tests.cmake")
+
 # Hotfix 8.26: the quest rescue binds the hearthstone at the rescue target.
 add_test(NAME rescue_rebind_contract
   COMMAND "${CMAKE_COMMAND}"
