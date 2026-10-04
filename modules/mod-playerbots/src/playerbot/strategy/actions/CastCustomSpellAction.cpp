@@ -6,6 +6,7 @@
 #include "playerbot/ServerFacade.h"
 #include "CheckMountStateAction.h"
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
+#include "playerbot/ProfessionUsePolicy.h"
 
 using namespace ai;
 
@@ -763,6 +764,18 @@ bool CraftRandomItemAction::Execute(Event& event)
     return false;
 }
 
+bool EnchantRandomItemAction::UseRealReagents()
+{
+    return sPlayerbotAIConfig.professionUseRealReagents && IsRosterBotOnItsOwn(ai);
+}
+
+bool EnchantRandomItemAction::castSpell(uint32 spellId, WorldObject* wo, Player* requester)
+{
+    bool const cast = CastRandomSpellAction::castSpell(spellId, wo, requester);
+    TraceProfessionUse(ai, "enchant", cast ? "cast_started" : "failed", cast ? "real_reagents" : "cast_failed", spellId);
+    return cast;
+}
+
 bool DisenchantRandomItemAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
@@ -788,6 +801,12 @@ bool DisenchantRandomItemAction::Execute(Event& event)
             continue;
 
         if (!proto->DisenchantID)
+            continue;
+
+        // Hotfix 8.20 (v31: 96x SPELL_FAILED_CANT_BE_DISENCHANTED): Spell::CheckItems only
+        // disenchants weapons and armor of uncommon to epic quality.
+        if (!ai::profession_use::CanBeDisenchanted(proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR,
+                proto->Quality, proto->DisenchantID))
             continue;
 
 #ifndef MANGOSBOT_ZERO

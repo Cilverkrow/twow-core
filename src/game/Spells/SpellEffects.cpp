@@ -4186,7 +4186,7 @@ void Spell::EffectAddComboPoints(SpellEffectIndex /*eff_idx*/)
     if (damage <= 0)
         return;
 
-    ((Player*)m_caster)->AddComboPoints(unitTarget, damage);
+    ((Player*)m_caster)->AddComboPoints(unitTarget, damage, m_spellInfo->Id, m_triggeredByAuraSpell != nullptr);
     ((Player*)m_caster)->SetUInt64Value(PLAYER_FIELD_COMBO_TARGET, unitTarget->GetGUID());
 }
 
