@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AmmoStockPolicy.h"
+#include <memory>
 #include <unordered_set>
 #include "Config/Config.h"
 #include "Talentspec.h"
@@ -334,9 +335,12 @@ public:
     bool rosterGuildTankClassSpread;
     bool rosterGuildRareComboSpread;
     // OB-40's guilds.tsv (ordinal guid faction guild role class race); "" (default) = no plan. Read
-    // once in Initialize() into rosterGuildPlanLines, never on a tick.
+    // only in Initialize() (startup, config reload), never on a tick. The lines are published as a
+    // whole (std::atomic_store) and read through RosterGuildPlanLines() (std::atomic_load), so a
+    // reload never changes lines a map thread is parsing. nullptr = no plan.
     std::string rosterGuildPlanFile;
-    std::vector<std::string> rosterGuildPlanLines;
+    std::shared_ptr<const std::vector<std::string>> rosterGuildPlanLines;
+    std::shared_ptr<const std::vector<std::string>> RosterGuildPlanLines() const { return std::atomic_load(&rosterGuildPlanLines); }
     bool randomBotRandomPassword;
     bool inviteChat;
     bool botsSilent;

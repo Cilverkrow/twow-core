@@ -19,7 +19,9 @@ namespace ai::roster_guild_role
 // DPS), class by class with the rarest class first, then level band, race and ordinal; members that
 // already have a guild keep it (--keep); a new member goes to the open guild with the fewest of its
 // class in that role, then the fewest of its role, then the fewest of its level band, then the
-// first guild. Three switches, default off, add the rules of assignment v3:
+// first guild. This deal holds for every role with or without switches, so with the switches off
+// the core deals exactly as guild_plan.py. Three switches, default off, only add hard limits
+// (assignment v3):
 //   HealerClassMin  - healers: class spread, and healer slots stay free for every healer class of
 //                     the faction that the guild still lacks (buffs, dispels);
 //   TankClassSpread - tanks: class spread, and at most ceil(tanks of the class / guilds) per guild;
@@ -252,21 +254,12 @@ inline Fit CheckFit(GuildCounts const& counts, Member const& member, Quota const
     return Fit::Ok;
 }
 
-// guild_plan.py's class key: always for DPS, for tanks and healers with their switch.
-inline bool UsesClassKey(Role role, Switches const& switches)
-{
-    if (role == Role::Tank)
-        return switches.tankClassSpread;
-    if (role == Role::Healer)
-        return switches.healerClassMin;
-    return true;
-}
-
 // The deal: guid -> guild for every member with a guild among `guilds` (kept) and every member
 // without a guild that gets a slot. `guilds` in a fixed order (ascending id): the index is the last
 // tie-break. targetGuilds (>= guilds.size()) sets the spread caps. A member whose role slots are all
-// taken stays without a guild. The spread rules are hard where a fitting guild exists and step back
-// (only the role slot counts) where none does, so nobody waits for a guild that cannot come.
+// taken stays without a guild. The spread rules are hard while guilds of the target are still missing
+// (the member waits for the next guild, as a charter does); once every target guild exists they step
+// back to the role slot alone where no guild fits, so nobody waits for a guild that cannot come.
 inline std::map<std::uint32_t, std::uint32_t> Deal(std::vector<Member> const& members, std::vector<std::uint32_t> const& guilds,
     Quota const& quota, Switches const& switches, std::uint32_t targetGuilds)
 {
@@ -276,6 +269,8 @@ inline std::map<std::uint32_t, std::uint32_t> Deal(std::vector<Member> const& me
         counts[guild];
 
     FactionStats stats = MakeStats(members, std::max<std::uint32_t>(targetGuilds, std::uint32_t(guilds.size())));
+    // Fall back to the role slot alone only when no further guild of the target can come.
+    bool const allGuilds = guilds.size() >= targetGuilds;
     for (Member const& member : members)
     {
         if (!member.guild || !counts.count(member.guild))
@@ -297,14 +292,13 @@ inline std::map<std::uint32_t, std::uint32_t> Deal(std::vector<Member> const& me
                 fresh.push_back(member);
         }
 
-        // Rarest class first, then class, level band, race, ordinal (guild_plan.py).
+        // Rarest class first, then class, level band, race, ordinal (guild_plan.py, every role).
         std::sort(fresh.begin(), fresh.end(), [&perClass](Member const& a, Member const& b)
         {
             return std::make_tuple(perClass[a.cls], a.cls, Band(a.level), a.race, a.ordinal, a.guid) <
                 std::make_tuple(perClass[b.cls], b.cls, Band(b.level), b.race, b.ordinal, b.guid);
         });
 
-        bool const classKey = UsesClassKey(role, switches);
         for (Member const& member : fresh)
         {
             std::vector<std::size_t> open;
@@ -318,17 +312,18 @@ inline std::map<std::uint32_t, std::uint32_t> Deal(std::vector<Member> const& me
                 if (fit == Fit::Ok)
                     fitting.push_back(i);
             }
-            std::vector<std::size_t> const& candidates = fitting.empty() ? open : fitting;
+            std::vector<std::size_t> const& candidates = (fitting.empty() && allGuilds) ? open : fitting;
             if (candidates.empty())
                 continue;
 
             RoleClass const roleClass(role, member.cls);
             RaceClass const combo(member.race, member.cls);
             std::uint32_t const band = Band(member.level);
+            // guild_plan.py: (cls_count, count, band_count, index); RareComboSpread puts the pair second.
             auto key = [&](std::size_t i)
             {
                 GuildCounts const& c = counts[guilds[i]];
-                return std::make_tuple(classKey ? c.Get(roleClass) : 0u, switches.rareComboSpread ? c.GetCombo(combo) : 0u,
+                return std::make_tuple(c.Get(roleClass), switches.rareComboSpread ? c.GetCombo(combo) : 0u,
                     c.Get(role), c.GetBand(role, band), i);
             };
             std::size_t best = candidates.front();

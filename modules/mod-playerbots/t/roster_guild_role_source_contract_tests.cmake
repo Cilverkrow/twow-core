@@ -69,6 +69,48 @@ function(check_accept_gate text problem)
   endif()
 endfunction()
 
+# Review 04.10, defects 1 and 2: the deal is guild_plan.py's for every role (class count first, also
+# with the switches off), and the spread rules only fall back to the role slot once every target
+# guild exists. Returns the first problem, "" when the policy deals as the planner.
+function(check_deal_rules text problem)
+  set(${problem} "" PARENT_SCOPE)
+  foreach(needle
+      "return std::make_tuple(c.Get(roleClass), switches.rareComboSpread ? c.GetCombo(combo) : 0u,"
+      "bool const allGuilds = guilds.size() >= targetGuilds;"
+      "std::vector<std::size_t> const& candidates = (fitting.empty() && allGuilds) ? open : fitting;")
+    string(FIND "${text}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${problem} "missing: ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  foreach(forbidden "UsesClassKey" "classKey ?" "fitting.empty() ? open : fitting")
+    string(FIND "${text}" "${forbidden}" at)
+    if(NOT at EQUAL -1)
+      set(${problem} "forbidden: ${forbidden}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+endfunction()
+
+# Review 04.10 (config reload): the plan lines are published as a whole and read through a snapshot;
+# nobody clears or reads the member in place. Returns the first problem, "" when clean.
+function(check_plan_publish config_source config_header create problem)
+  set(${problem} "" PARENT_SCOPE)
+  string(FIND "${config_source}" "std::atomic_store(&rosterGuildPlanLines, std::shared_ptr<const std::vector<std::string>>(planLines));" store_at)
+  string(FIND "${config_header}" "return std::atomic_load(&rosterGuildPlanLines);" load_at)
+  string(FIND "${config_source}" "rosterGuildPlanLines.clear();" clear_at)
+  string(FIND "${config_source}" "rosterGuildPlanLines.push_back(" push_at)
+  string(FIND "${create}" "sPlayerbotAIConfig.rosterGuildPlanLines" member_at)
+  if(store_at EQUAL -1 OR load_at EQUAL -1)
+    set(${problem} "plan lines not swapped atomically" PARENT_SCOPE)
+  elseif(NOT clear_at EQUAL -1 OR NOT push_at EQUAL -1)
+    set(${problem} "plan lines changed in place on reload" PARENT_SCOPE)
+  elseif(NOT member_at EQUAL -1)
+    set(${problem} "guild code reads the plan member without a snapshot" PARENT_SCOPE)
+  endif()
+endfunction()
+
 file(READ "${PB_SOURCE_DIR}/RosterGuildRolePolicy.h" policy)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/GuildCreateActions.cpp" create)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/GuildCreateActions.h" create_h)
@@ -98,6 +140,21 @@ foreach(needle
     "counts.GetCombo(combo) >= SpreadCap(stats.GetCombo(combo), stats.guilds)")
   require_text("${policy}" "${needle}" "role fill policy (guild_plan.py rules)")
 endforeach()
+check_deal_rules("${policy}" deal_problem)
+if(NOT deal_problem STREQUAL "")
+  message(FATAL_ERROR "Role deal differs from guild_plan.py: ${deal_problem}")
+endif()
+# Negative probes: the old switch-gated class key and the early fallback must be caught.
+string(REPLACE "std::make_tuple(c.Get(roleClass)," "std::make_tuple(classKey ? c.Get(roleClass) : 0u," class_key_mutant "${policy}")
+check_deal_rules("${class_key_mutant}" class_key_probe)
+if(class_key_probe STREQUAL "")
+  message(FATAL_ERROR "negative probe not caught: class key only with a switch - the check is broken")
+endif()
+string(REPLACE "(fitting.empty() && allGuilds) ? open : fitting" "fitting.empty() ? open : fitting" fallback_mutant "${policy}")
+check_deal_rules("${fallback_mutant}" fallback_probe)
+if(fallback_probe STREQUAL "")
+  message(FATAL_ERROR "negative probe not caught: fallback before every target guild exists - the check is broken")
+endif()
 file(GLOB_RECURSE module_sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
 list(LENGTH module_sources module_source_count)
 if(module_source_count LESS 100)
@@ -121,7 +178,8 @@ endif()
 text_between("${create}" "// --- twow-repo#485 / #518: role fill of roster guilds (RosterGuildRolePolicy.h)" "void RecountRosterGuilds(RosterGuildState& state, time_t now)" role_helpers)
 text_between("${create}" "// twow-repo#485 / #518: role fill of roster guilds.\nbool RosterGuildPlan::UsesRoleFill(" "// --- end of the roster guild plan" role_api)
 foreach(needle
-    "roster_guild_role::ParsePlan(sPlayerbotAIConfig.rosterGuildPlanLines, rejected)"
+    "std::shared_ptr<const std::vector<std::string>> const planLines = sPlayerbotAIConfig.RosterGuildPlanLines();"
+    "state.plan = roster_guild_role::ParsePlan(*planLines, rejected);"
     "member.guild = sGuildMgr.GetPlayerGuildId(member.guid);"
     "roster_guild_role::Deal(quotaMembers, factionGuilds[f], quota, switches, target)"
     "state.assigned.emplace(item.first, item.second);"
@@ -207,7 +265,17 @@ require_text("${create_h}" "static uint32 AssignedGuild(uint32 guidLow, Team tea
 
 # 8. Plan file (PlanFile): read once in PlayerbotAIConfig::Initialize, never by the guild code.
 require_text("${config_source}" "std::ifstream planFile(rosterGuildPlanFile);" "plan file read in Initialize")
-require_text("${config_source}" "rosterGuildPlanLines.clear();" "plan lines reset on reload")
+check_plan_publish("${config_source}" "${config_header}" "${create}" plan_problem)
+if(NOT plan_problem STREQUAL "")
+  message(FATAL_ERROR "Plan file reload: ${plan_problem}")
+endif()
+# Negative probe: the old in-place reset must be caught.
+string(REPLACE "std::shared_ptr<std::vector<std::string>> planLines;" "rosterGuildPlanLines.clear();" reload_mutant "${config_source}")
+check_plan_publish("${reload_mutant}" "${config_header}" "${create}" reload_probe)
+if(reload_probe STREQUAL "")
+  message(FATAL_ERROR "negative probe not caught: plan lines cleared under a reader - the check is broken")
+endif()
+require_text("${create}" "if (planLines != state.planSource)" "plan parsed again only after a reload")
 foreach(source_name create accept manage sign triggers)
   foreach(io "std::ifstream" "fopen(" "rosterGuildPlanFile")
     reject_text("${${source_name}}" "${io}" "plan file IO outside Initialize (${source_name})")
@@ -233,7 +301,7 @@ foreach(pair
 endforeach()
 require_order("${config_source}" "\"AiPlayerbot.RosterGuild.NoteRefreshSeconds\"" "\"AiPlayerbot.RosterGuild.Tanks\"" "keys next to the other RosterGuild keys")
 foreach(member "uint32 rosterGuildTanks;" "uint32 rosterGuildHealers;" "uint32 rosterGuildDps;" "bool rosterGuildHealerClassMin;"
-    "bool rosterGuildTankClassSpread;" "bool rosterGuildRareComboSpread;" "std::string rosterGuildPlanFile;" "std::vector<std::string> rosterGuildPlanLines;")
+    "bool rosterGuildTankClassSpread;" "bool rosterGuildRareComboSpread;" "std::string rosterGuildPlanFile;" "std::shared_ptr<const std::vector<std::string>> rosterGuildPlanLines;")
   require_text("${config_header}" "${member}" "member declared without in-class default")
 endforeach()
 foreach(member "sPlayerbotAIConfig.rosterGuildTanks" "sPlayerbotAIConfig.rosterGuildHealers" "sPlayerbotAIConfig.rosterGuildDps"

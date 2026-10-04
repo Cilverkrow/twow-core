@@ -830,7 +830,9 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildRareComboSpread = config.GetBoolDefault("AiPlayerbot.RosterGuild.RareComboSpread", false);
     rosterGuildPlanFile = config.GetStringDefault("AiPlayerbot.RosterGuild.PlanFile", "");
     // Read once here (startup or config reload), never on a tick; parsed in memory by the guild plan.
-    rosterGuildPlanLines.clear();
+    // Review 04.10 (reload): built in a local vector and published as a whole, so a map thread that
+    // still parses the previous lines keeps its own reference (no clear() under a reader).
+    std::shared_ptr<std::vector<std::string>> planLines;
     if (!rosterGuildPlanFile.empty())
     {
         std::ifstream planFile(rosterGuildPlanFile);
@@ -838,12 +840,16 @@ bool PlayerbotAIConfig::Initialize()
             sLog.outError("[RosterGuild] event=plan_file path=%s result=unreadable (no plan, quotas only)", rosterGuildPlanFile.c_str());
         else
         {
+            planLines = std::make_shared<std::vector<std::string>>();
             std::string planLine;
-            while (rosterGuildPlanLines.size() < 10000 && std::getline(planFile, planLine))
-                rosterGuildPlanLines.push_back(planLine);
-            sLog.outBasic("[RosterGuild] event=plan_file path=%s lines=%u", rosterGuildPlanFile.c_str(), uint32(rosterGuildPlanLines.size()));
+            while (planLines->size() < 10000 && std::getline(planFile, planLine))
+                planLines->push_back(planLine);
+            sLog.outBasic("[RosterGuild] event=plan_file path=%s lines=%u", rosterGuildPlanFile.c_str(), uint32(planLines->size()));
+            if (planLines->empty())
+                planLines.reset();
         }
     }
+    std::atomic_store(&rosterGuildPlanLines, std::shared_ptr<const std::vector<std::string>>(planLines));
 
     boostFollow = config.GetBoolDefault("AiPlayerbot.BoostFollow", false);
     turnInRpg = config.GetBoolDefault("AiPlayerbot.TurnInRpg", false);

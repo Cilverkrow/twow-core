@@ -19,6 +19,7 @@
 #include "Guild/GuildMgr.h"
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <mutex>
 
 using namespace ai;
@@ -58,6 +59,7 @@ namespace
         // recount from the player cache, GuildMgr copies and the bots' own role reports.
         std::unordered_map<uint32, uint8> selfRoles;                        // guid -> Role the bot reported itself
         std::map<uint32, roster_guild_role::PlanEntry> plan;                // guid -> row of the plan file
+        std::shared_ptr<const std::vector<std::string>> planSource;         // the plan lines `plan` was parsed from
         std::unordered_map<uint32, roster_guild_role::Member> members;      // roster guid -> class, race, level, role, guild
         std::unordered_map<uint32, uint32> assigned;                        // roster guid -> guild it is dealt to
         roster_guild_role::FactionStats stats[2];
@@ -130,10 +132,17 @@ namespace
         return switches;
     }
 
+    // A plan file with lines is loaded (a snapshot of the published lines, see PlayerbotAIConfig.h).
+    bool RosterGuildPlanLoaded()
+    {
+        std::shared_ptr<const std::vector<std::string>> const lines = sPlayerbotAIConfig.RosterGuildPlanLines();
+        return lines && !lines->empty();
+    }
+
     // A quota or a plan file is set (the roster path is checked by the callers).
     bool RoleFillConfigured()
     {
-        return roster_guild_role::QuotaActive(RosterGuildQuota()) || !sPlayerbotAIConfig.rosterGuildPlanLines.empty();
+        return roster_guild_role::QuotaActive(RosterGuildQuota()) || RosterGuildPlanLoaded();
     }
 
     // Caller holds state.lock. The plan label of a bot, "" = not in the plan.
@@ -178,13 +187,23 @@ namespace
         std::vector<GuildSummary> const& guilds, std::vector<PetitionSummary> const& petitions,
         std::unordered_map<uint32, uint8> const& rosterFaction)
     {
-        uint32 rejected = 0;
-        state.plan = roster_guild_role::ParsePlan(sPlayerbotAIConfig.rosterGuildPlanLines, rejected);
-        if (state.tracedPlan[0] != uint32(state.plan.size()) || state.tracedPlan[1] != rejected)
+        // Review 04.10 (reload): a local snapshot of the published plan lines; parsed again only when
+        // a config reload published new lines, not at every recount.
+        std::shared_ptr<const std::vector<std::string>> const planLines = sPlayerbotAIConfig.RosterGuildPlanLines();
+        if (planLines != state.planSource)
         {
-            state.tracedPlan[0] = uint32(state.plan.size());
-            state.tracedPlan[1] = rejected;
-            sLog.outBasic("[RosterGuild] event=plan_rows rows=%u rejected=%u", uint32(state.plan.size()), rejected);
+            state.planSource = planLines;
+            uint32 rejected = 0;
+            if (planLines)
+                state.plan = roster_guild_role::ParsePlan(*planLines, rejected);
+            else
+                state.plan.clear();
+            if (state.tracedPlan[0] != uint32(state.plan.size()) || state.tracedPlan[1] != rejected)
+            {
+                state.tracedPlan[0] = uint32(state.plan.size());
+                state.tracedPlan[1] = rejected;
+                sLog.outBasic("[RosterGuild] event=plan_rows rows=%u rejected=%u", uint32(state.plan.size()), rejected);
+            }
         }
 
         state.members.clear();
@@ -615,7 +634,7 @@ Item* RosterGuildPlan::OwnCharter(Player* bot, PetitionSummary& out, uint32 acco
 // twow-repo#485 / #518: role fill of roster guilds.
 bool RosterGuildPlan::UsesRoleFill(PlayerbotAI* ai)
 {
-    return roster_guild_role::UsesRoleFill(UsesRosterPath(ai), RosterGuildQuota(), !sPlayerbotAIConfig.rosterGuildPlanLines.empty());
+    return roster_guild_role::UsesRoleFill(UsesRosterPath(ai), RosterGuildQuota(), RosterGuildPlanLoaded());
 }
 
 uint8 RosterGuildPlan::ReportOwnRole(Player* bot)

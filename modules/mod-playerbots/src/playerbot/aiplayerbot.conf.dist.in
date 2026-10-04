@@ -373,19 +373,21 @@ AiPlayerbot.RosterGuild.Tanks = 0
 AiPlayerbot.RosterGuild.Healers = 0
 AiPlayerbot.RosterGuild.Dps = 0
 
-# Spread rules of the role fill (default 0 = off each). HealerClassMin: healer slots stay free for every
-# healer class of the faction the guild still lacks (buffs, dispels). TankClassSpread: tanks are dealt
-# class by class, at most ceil(tanks of the class / guilds) per guild (no 7 warrior tanks in one guild).
-# RareComboSpread: every race x class pair at most ceil(pair count / guilds) per guild (dwarf shaman,
-# undead paladin, druids land in different guilds). The deal steps back to the role slot alone when no
-# guild fits; charters always apply the rules.
+# Spread rules of the role fill (default 0 = off each). With all three off the deal is still class by
+# class as guild_plan.py; the switches only add hard limits. HealerClassMin: healer slots stay free for
+# every healer class of the faction the guild still lacks (buffs, dispels). TankClassSpread: at most
+# ceil(tanks of the class / guilds) per guild (no 7 warrior tanks in one guild). RareComboSpread: every
+# race x class pair at most ceil(pair count / guilds) per guild (dwarf shaman, undead paladin, druids
+# land in different guilds). While guilds of the target are still missing, a bot that fits no guild
+# waits for the next one; once all exist the deal steps back to the role slot alone when no guild fits.
+# Charters always apply the rules.
 AiPlayerbot.RosterGuild.HealerClassMin = 0
 AiPlayerbot.RosterGuild.TankClassSpread = 0
 AiPlayerbot.RosterGuild.RareComboSpread = 0
 
 # OB-40's guild plan (guild_plan.py output guilds.tsv: ordinal guid faction guild role class race, tab
-# separated). "" (default) = no plan. Set: the file is read once at startup and is authoritative for the
-# bots it lists: a guild belongs to the plan guild of its leader, a listed bot founds, signs, is invited
+# separated). "" (default) = no plan. Set: the file is read at startup and on a config reload (swapped
+# as a whole) and is authoritative for the bots it lists: a guild belongs to the plan guild of its leader, a listed bot founds, signs, is invited
 # into and accepts only its plan guild, and its plan role counts. Unlisted bots follow the quotas.
 AiPlayerbot.RosterGuild.PlanFile = ""
 

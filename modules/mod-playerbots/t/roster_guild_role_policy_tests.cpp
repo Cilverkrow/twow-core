@@ -167,9 +167,11 @@ int main()
         Require(result.unplaced == 3, "2 tanks and 1 unknown stay out");
     }
 
-    // 3. TankClassSpread (assignment v3: not 7 warrior tanks in one guild). Guild 11 was founded with
-    //    3 warrior tanks among the signers (kept); 4 warriors, 2 bears, 2 paladins, 2 rogues and 1
-    //    shaman tank come; 7 tank slots per guild.
+    // 3. Tanks class by class as guild_plan.py, switches off (review 04.10, defect 1). Guild 11 was
+    //    founded with 3 warrior tanks among the signers (kept); 4 warriors, 2 bears, 2 paladins, 2
+    //    rogues and 1 shaman tank come; 7 tank slots per guild. guild_plan.py --keep --per-guild 7,10,28
+    //    deals shaman -> 12, paladins 12/11, rogues 12/11, bears 12/11, then the 4 warriors to the
+    //    guild with the fewest warriors: 12, 12, 12, 11 -> 11 = 4 warriors, 12 = 3 warriors.
     {
         Roster roster;
         roster.Add(3, Role::Tank, WARRIOR, HUMAN, 11);
@@ -182,7 +184,13 @@ int main()
         RoleClass const warrior(Role::Tank, WARRIOR);
 
         Result const off = Count(roster, Deal(roster.members, guilds, Quota{ 7, 10, 28 }, Switches(), 2));
-        Require(off.classes.at(11).at(warrior) == 5, "switch off: 5 warrior tanks end up in guild 11 (counts only)");
+        Require(off.classes.at(11).at(warrior) == 4 && off.classes.at(12).at(warrior) == 3, "switch off: warriors 4/3 as guild_plan.py (class count first)");
+        for (std::uint32_t guild : guilds)
+            for (std::uint8_t cls : { DRUID, PALADIN, ROGUE })
+                Require(off.classes.at(guild).count(RoleClass(Role::Tank, cls)) == 1, "switch off: bear, paladin and rogue tank in every guild (guild_plan.py)");
+        Require(off.classes.at(12).count(RoleClass(Role::Tank, SHAMAN)) == 1 && !off.classes.at(11).count(RoleClass(Role::Tank, SHAMAN)),
+            "switch off: the single shaman tank goes to the guild with fewer tanks (guild_plan.py)");
+        Require(off.roles.at(11).at(Role::Tank) == 7 && off.roles.at(12).at(Role::Tank) == 7, "switch off: 7 tanks each");
 
         Switches on;
         on.tankClassSpread = true;
@@ -192,6 +200,9 @@ int main()
             for (std::uint8_t cls : { DRUID, PALADIN, ROGUE })
                 Require(spread.classes.at(guild).count(RoleClass(Role::Tank, cls)) == 1, "switch on: bear, paladin and rogue tank in every guild");
         Require(spread.roles.at(11).at(Role::Tank) == 7 && spread.roles.at(12).at(Role::Tank) == 7, "switch on: role counts unchanged");
+        // All target guilds exist and guild_plan.py already spreads: the switch changes nothing here.
+        Require(Deal(roster.members, guilds, Quota{ 7, 10, 28 }, on, 2) == Deal(roster.members, guilds, Quota{ 7, 10, 28 }, Switches(), 2),
+            "switch on, every guild founded: the same deal as guild_plan.py");
 
         // Charter (signing): 4 warrior tanks have signed, a 5th warrior tank offers; faction has 7, 2 guilds.
         FactionStats const stats = MakeStats(roster.members, 2);
@@ -216,8 +227,14 @@ int main()
         roster.Add(2, Role::Healer, PRIEST, HUMAN);
         std::vector<std::uint32_t> const guilds = { 11, 12 };
 
+        // guild_plan.py --keep --per-guild 0,4,0 (healers): shamans 12/11, druids 12/11, priests 12/12.
         Result const off = Count(roster, Deal(roster.members, guilds, Quota{ 0, 4, 0 }, Switches(), 2));
-        Require(!off.classes.at(11).count(RoleClass(Role::Healer, SHAMAN)), "switch off: guild 11 gets no shaman");
+        for (std::uint32_t guild : guilds)
+            Require(off.classes.at(guild).at(RoleClass(Role::Healer, SHAMAN)) == 1 && off.classes.at(guild).at(RoleClass(Role::Healer, DRUID)) == 1,
+                "switch off: one shaman and one druid in every guild (guild_plan.py)");
+        Require(off.classes.at(11).at(RoleClass(Role::Healer, PRIEST)) == 2 && off.classes.at(12).at(RoleClass(Role::Healer, PRIEST)) == 2,
+            "switch off: priests 2/2 (guild_plan.py)");
+        Require(off.roles.at(11).at(Role::Healer) == 4 && off.roles.at(12).at(Role::Healer) == 4, "switch off: 4 healers each");
 
         Switches on;
         on.healerClassMin = true;
@@ -276,6 +293,46 @@ int main()
         on.tankClassSpread = true;
         Result const result = Count(roster, Deal(roster.members, { 11, 12 }, Quota{ 5, 10, 30 }, on, 2));
         Require(result.unplaced == 0, "a 5th warrior tank still gets a slot above the spread cap");
+        // While a third guild of the target can still come, the cap stays hard: the warrior waits.
+        Result const waiting = Count(roster, Deal(roster.members, { 11, 12 }, Quota{ 5, 10, 30 }, on, 3));
+        Require(waiting.unplaced == 1, "target 3, 2 guilds founded: the warrior above the cap waits for the third guild");
+    }
+
+    // 6b. Build-up of core#281 (review 04.10, defect 2): target 2 guilds, only guild 11 founded yet.
+    //     7 warrior, 2 paladin and 1 bear tank without a guild, 7 tank slots per guild.
+    {
+        Roster roster;
+        roster.Add(7, Role::Tank, WARRIOR, HUMAN);
+        roster.Add(2, Role::Tank, PALADIN, DWARF);
+        roster.Add(1, Role::Tank, DRUID, NIGHTELF);
+        RoleClass const warrior(Role::Tank, WARRIOR);
+        RoleClass const paladin(Role::Tank, PALADIN);
+
+        // Switch off: only the role slot counts, the first guild takes 7 (bear, 2 paladins, 4 warriors).
+        Result const off = Count(roster, Deal(roster.members, { 11 }, Quota{ 7, 10, 28 }, Switches(), 2));
+        Require(off.roles.at(11).at(Role::Tank) == 7 && off.classes.at(11).at(paladin) == 2 && off.unplaced == 3,
+            "switch off, 1 of 2 guilds: 7 tanks by role slot alone");
+
+        // Switch on: caps ceil(7/2) = 4 warriors and ceil(2/2) = 1 paladin hold although guild 12 is missing.
+        Switches on;
+        on.tankClassSpread = true;
+        std::map<std::uint32_t, std::uint32_t> const first = Deal(roster.members, { 11 }, Quota{ 7, 10, 28 }, on, 2);
+        Result const early = Count(roster, first);
+        Require(early.classes.at(11).at(paladin) == 1, "switch on, 1 of 2 guilds: the second paladin does not go to guild 11");
+        Require(early.classes.at(11).at(warrior) == 4, "switch on, 1 of 2 guilds: at most 4 warrior tanks in guild 11");
+        Require(early.roles.at(11).at(Role::Tank) == 6 && early.unplaced == 4, "switch on, 1 of 2 guilds: the rest waits without a guild");
+
+        // Guild 12 is founded: the members dealt to guild 11 joined it; the rest goes to guild 12.
+        Roster later = roster;
+        for (Member& member : later.members)
+        {
+            auto it = first.find(member.guid);
+            if (it != first.end())
+                member.guild = it->second;
+        }
+        Result const second = Count(later, Deal(later.members, { 11, 12 }, Quota{ 7, 10, 28 }, on, 2));
+        Require(second.classes.at(12).at(paladin) == 1 && second.classes.at(12).at(warrior) == 3, "guild 12 gets the waiting paladin and 3 warriors");
+        Require(second.classes.at(11).at(paladin) == 1 && second.unplaced == 0, "one paladin per guild, everybody placed");
     }
 
     // 7. Level band as guild_plan.py: equal counts, the guild with fewer of the band wins.
