@@ -66,6 +66,8 @@
 #include "Spell.h"
 #include "ScriptMgr.h"
 #include "FunserverTalentLearnSpells.h"
+#include "FunserverComboPolicy.h"
+#include <cstring>
 #include "ScriptObjects.h"
 #include "SocialMgr.h"
 #include "Mail.h"
@@ -21349,6 +21351,32 @@ void Player::AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId, bool
     if (!count)
         return;
 
+    // Hotfix 8.25 (#484, Rogue.ProcComboPointsToCurrentTarget, default off): a proc point
+    // meant for another unit (e.g. Setup on a second attacker) goes to the current target.
+    if (fromProc && count > 0 && sWorld.getConfig(CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET))
+    {
+        Unit* comboTarget = m_comboTargetGuid ? ObjectAccessor::GetUnit(*this, m_comboTargetGuid) : nullptr;
+        Unit* selection = GetSelectionGuid() ? ObjectAccessor::GetUnit(*this, GetSelectionGuid()) : nullptr;
+
+        ComboProcRedirectInput in;
+        in.switchOn = true;
+        in.fromProc = true;
+        in.isRogue = GetClass() == CLASS_ROGUE;
+        in.procTargetIsComboTarget = target->GetObjectGuid() == m_comboTargetGuid;
+        in.comboPoints = m_comboPoints > 0 ? uint8(m_comboPoints) : 0;
+        in.comboTargetValid = comboTarget && comboTarget->IsAlive() && IsValidAttackTarget(comboTarget);
+        in.selectionValid = selection && selection->IsAlive() && IsValidAttackTarget(selection);
+        in.selectionIsProcTarget = selection == target;
+
+        ComboProcRedirect const redirect = DecideComboProcRedirect(in);
+        if (redirect != ComboProcRedirect::None)
+        {
+            Unit* current = redirect == ComboProcRedirect::ComboTarget ? comboTarget : selection;
+            TraceComboPoints("proc_redirect", uint8(in.comboPoints), current->GetObjectGuid(), target->GetObjectGuid(), sourceSpellId);
+            target = current;
+        }
+    }
+
     // without combo points lost (duration checked in aura)
     RemoveSpellsCausingAura(SPELL_AURA_RETAIN_COMBO_POINTS);
 
@@ -21409,7 +21437,8 @@ void Player::ClearComboPoints(ComboClearReason reason)
 void Player::TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget,
     ObjectGuid const& newTarget, uint32 sourceSpellId)
 {
-    if (!pointsBefore || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))
+    bool const redirect = std::strcmp(reason, "proc_redirect") == 0;   // 8.25: logged even without points
+    if ((!pointsBefore && !redirect) || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))
         return;
     if (!GetSession() || !GetSession()->GetSocket())
         return;
