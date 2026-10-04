@@ -3147,11 +3147,29 @@ GameTele const* ChatHandler::ExtractGameTeleFromLink(char** text)
         *text = p;
 
         uint32 matches = 0;
+        std::string shown = name;
         GameTele const* tele = sObjectMgr.GetGameTele(name, &matches);
+
+        // The marks drop the article ("Barrens"), so "the barrens" -> "thebarrens" finds
+        // nothing: try once more without a leading "the", with the same uniqueness rule.
+        if (!tele && name.size() > 3 && tolower(static_cast<unsigned char>(name[0])) == 't' &&
+            tolower(static_cast<unsigned char>(name[1])) == 'h' && tolower(static_cast<unsigned char>(name[2])) == 'e')
+        {
+            uint32 retryMatches = 0;
+            std::string const withoutThe = name.substr(3);
+            tele = sObjectMgr.GetGameTele(withoutThe, &retryMatches);
+            if (!tele && retryMatches > 1 && matches <= 1)
+            {
+                matches = retryMatches;
+                shown = withoutThe;
+            }
+        }
+
         if (!tele && matches > 1)
             PSendSysMessage("Teleport name '%s' is ambiguous: %u marks contain it. Use a longer name or .lookup tele %s",
-                name.c_str(), matches, name.c_str());
+                shown.c_str(), matches, shown.c_str());
         return tele;
+
     }
 
     // id, or string, or [name] Shift-click form |color|Htele:id|h[name]|h|r
