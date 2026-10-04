@@ -4,7 +4,8 @@ endif()
 
 # twow-repo#484 (hotfix 8.19): `.tele the barrens` searched only "the" and took the first of ~33
 # substring matches in hash order (e.g. the Turtle development island, map 451). A plain name now
-# takes the whole rest of the command; a substring match counts only when it is unique.
+# takes the whole rest of the command; a substring match counts only when it is unique; a
+# failed "the..." name is tried once without the leading "the" ("the barrens" -> "barrens").
 file(READ "${TW_CORE_ROOT}/src/game/ObjectMgr.cpp" om)
 string(FIND "${om}" "GameTele const* ObjectMgr::GetGameTele(std::string const& name, uint32* matches) const" begin)
 if (begin EQUAL -1)
@@ -29,11 +30,13 @@ string(FIND "${chat}" "GameTele const* ChatHandler::ExtractGameTeleFromLink(char
 if (begin EQUAL -1)
   message(FATAL_ERROR "ExtractGameTeleFromLink not found")
 endif()
-string(SUBSTRING "${chat}" ${begin} 2000 body)
+string(SUBSTRING "${chat}" ${begin} 3500 body)
 foreach (required
     "if (*p != ' ' && *p != '\"')"
     "sObjectMgr.GetGameTele(name, &matches)"
-    "is ambiguous")
+    "is ambiguous"
+    "std::string const withoutThe = name.substr(3);"
+    "tele = sObjectMgr.GetGameTele(withoutThe, &retryMatches);")
   string(FIND "${body}" "${required}" at)
   if (at EQUAL -1)
     message(FATAL_ERROR "ExtractGameTeleFromLink must join the whole name and report ambiguity: ${required}")
