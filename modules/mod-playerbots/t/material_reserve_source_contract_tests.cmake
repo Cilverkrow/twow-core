@@ -1,0 +1,31 @@
+# twow-repo#524: one place for material reservations.
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/ProfessionUseTriggers.cpp" triggers)
+file(READ "${PB_SOURCE_DIR}/strategy/values/ItemUsageValue.cpp" usage)
+foreach (pair
+    "triggers|material_reserve::UsableForRecipe(reagent, count, recipeSkill, mainNeed,"
+    "triggers|TraceProfessionUse(botAi, \"reserve\", \"held\""
+    "usage|material_reserve::MaySell(true, stacks, sPlayerbotAIConfig.professionUseReagentKeepStacks)")
+  string(FIND "${pair}" "|" bar)
+  string(SUBSTRING "${pair}" 0 ${bar} var)
+  math(EXPR start "${bar} + 1")
+  string(SUBSTRING "${pair}" ${start} -1 needle)
+  string(FIND "${${var}}" "${needle}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "material reserve: missing ${needle}")
+  endif()
+endforeach()
+# No second reserve rule outside the policy (core#307 TailoringClothReserve / ReserveApplies).
+file(GLOB_RECURSE sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
+foreach (source ${sources})
+  if (source MATCHES "MaterialReservePolicy\\.h$")
+    continue()
+  endif()
+  file(READ "${source}" text)
+  foreach (forbidden "TailoringClothReserve" "ClothReserveApplies" "ReserveApplies(")
+    string(FIND "${text}" "${forbidden}" at)
+    if (NOT at EQUAL -1)
+      message(FATAL_ERROR "material reserve: ${forbidden} outside MaterialReservePolicy.h (${source})")
+    endif()
+  endforeach()
+endforeach()
+message(STATUS "MATERIAL_RESERVE_CONTRACT=PASS")

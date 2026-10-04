@@ -434,6 +434,10 @@ public:
     // these vendor reagents (item ids). false / empty = legacy.
     bool professionUseKeepCraftMaterials = false;
     uint32 professionUseReagentKeepStacks = 1;
+    // twow-repo#524: wool rule - tailoring below WoolTierSkill keeps every linen, then first aid
+    // only uses linen above FirstAidClothReserve.
+    uint32 professionUseWoolTierSkill = 75;
+    uint32 professionUseFirstAidClothReserve = 20;
     std::set<uint32> professionUseVendorReagents;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;

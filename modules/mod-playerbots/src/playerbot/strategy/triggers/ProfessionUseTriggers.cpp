@@ -4,6 +4,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
+#include "playerbot/MaterialReservePolicy.h"
 #include "playerbot/strategy/values/CraftValues.h"
 
 #include <algorithm>
@@ -66,12 +67,46 @@ bool ai::HasCraftTools(SpellEntry const* spell, Player* bot)
 // item cheat. A recipe without reagents is not limited by them.
 uint32 ai::CraftableFromBags(SpellEntry const* spell, Player* bot)
 {
+    // twow-repo#524: the one place for material reservations - every craft path counts here
+    // (8.16 trigger, rpg craft, enchanting, bandages). Roster bots on their own under RealReagents.
+    PlayerbotAI* const botAi = GetBotAI(bot);
+    bool const reserve = botAi && sPlayerbotAIConfig.professionUseRealReagents && IsRosterBotOnItsOwn(botAi);
+    uint32 recipeSkill = 0;
+    std::shared_ptr<const material_reserve::Memory> memory;
+    material_reserve::Config config;
+    if (reserve)
+    {
+        SkillLineAbilityMapBounds const bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spell->Id);
+        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second && !recipeSkill; ++itr)
+            recipeSkill = itr->second->skillId;
+        memory = botAi->GetAiObjectContext()->GetValue<std::shared_ptr<const material_reserve::Memory>>("material memory")->Get();
+        config.woolTierSkill = sPlayerbotAIConfig.professionUseWoolTierSkill;
+        config.firstAidClothReserve = sPlayerbotAIConfig.professionUseFirstAidClothReserve;
+    }
+
     uint32 craftable = std::numeric_limits<uint32>::max();
     for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
     {
         if (spell->Reagent[i] <= 0 || !spell->ReagentCount[i])
             continue;
-        craftable = std::min(craftable, bot->GetItemCount(uint32(spell->Reagent[i])) / spell->ReagentCount[i]);
+        uint32 const reagent = uint32(spell->Reagent[i]);
+        uint32 count = bot->GetItemCount(reagent);
+        if (reserve && recipeSkill)
+        {
+            uint32 mainNeed = 0;
+            if (memory)
+            {
+                material_reserve::Memory::const_iterator const need = memory->find(reagent);
+                if (need != memory->end())
+                    mainNeed = need->second.mainNeed;
+            }
+            material_reserve::Decision const decision = material_reserve::UsableForRecipe(reagent, count, recipeSkill, mainNeed,
+                bot->HasSkill(SKILL_TAILORING), bot->GetSkillValuePure(SKILL_TAILORING), config);
+            if (decision.usable < count)
+                TraceProfessionUse(botAi, "reserve", "held", material_reserve::Name(decision.reason), reagent);
+            count = decision.usable;
+        }
+        craftable = std::min(craftable, count / spell->ReagentCount[i]);
     }
     return craftable;
 }
