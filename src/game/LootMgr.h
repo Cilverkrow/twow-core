@@ -33,10 +33,9 @@
 #include <map>
 #include <vector>
 
-// twow-repo#482 feasibility test build only (not for main): the loot slot limit
-// comes from Loot.MaxItems (16..MAX_NR_LOOT_ITEMS_HARD, default 16) so the owner
-// can test 20/24/32 slots in the real 1.12 client. Slot index and item count are
-// uint8 in SMSG_LOOT_RESPONSE on the server side.
+// twow-repo#482 (train 9): the total loot of one corpse or chest comes from Loot.MaxItems
+// (16..MAX_NR_LOOT_ITEMS_HARD, default 16). Beyond the 16 client slots it waits in the
+// overflow and refills looted slots when the loot is opened again (owner test 2026-10-04).
 #define MAX_NR_LOOT_ITEMS_HARD 32
 uint32 GetMaxLootItems();
 #define MAX_NR_LOOT_ITEMS (GetMaxLootItems())
@@ -321,7 +320,7 @@ struct Loot
 
     bool m_personal;
     LootItemList items;
-    // twow-repo#482 test build: items beyond the client slots (never FFA or conditional).
+    // twow-repo#482: items beyond the client slots (never FFA or conditional).
     LootItemList m_overflowItems;
     uint32 gold;
     uint8 unlootedCount;
@@ -444,7 +443,7 @@ struct Loot
     // Inserts the item into the loot (called by LootTemplate processors)
     void AddItem(LootStoreItem const & item);
 
-    // twow-repo#482 test build: keep at most MAX_NR_LOOT_CLIENT_SLOTS (minus quest items)
+    // twow-repo#482: keep at most MAX_NR_LOOT_CLIENT_SLOTS (minus quest items)
     // in `items`, move the rest to m_overflowItems; RefillFromOverflow() puts waiting
     // items into looted normal slots (same index for every looter) and returns them.
     void MoveExcessToOverflow();

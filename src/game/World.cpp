@@ -1440,7 +1440,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RARE, "Funserver.Loot.Units.Rare", 6, 1, 16);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_DUNGEON, "Funserver.Loot.Units.Dungeon", 8, 1, 16);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RAID, "Funserver.Loot.Units.Raid", 16, 1, 16);
-    // twow-repo#482 test build: loot slot limit, see LootMgr.h (MAX_NR_LOOT_ITEMS_HARD = 32).
+    // twow-repo#482: total loot per corpse or chest, see LootMgr.h (MAX_NR_LOOT_ITEMS_HARD = 32).
     setConfigMinMax(CONFIG_UINT32_LOOT_MAX_ITEMS, "Loot.MaxItems", 16, 16, 32);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RARE, "Funserver.Loot.Units.Floor.Rare", 3, 0, 5);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_DUNGEON, "Funserver.Loot.Units.Floor.Dungeon", 3, 0, 5);

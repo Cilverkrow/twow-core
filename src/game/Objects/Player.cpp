@@ -9847,15 +9847,16 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type, Player* pVictim)
             break;
     }
 
-    // twow-repo#482 test build: the 1.12 client drops loot slot index >= 16. Items
+    // twow-repo#482: the 1.12 client drops loot slot index >= 16. Items
     // waiting in the overflow refill looted plain slots at the same index for every
     // looter; group loot starts the normal roll for a refilled item over the threshold.
-    if (permission != NONE_PERMISSION && loot->HasOverflow() && guid.IsCreatureOrPet())
+    // Corpses and chests (boss chests carry raid loot too); rolls only exist for creatures.
+    if (permission != NONE_PERMISSION && loot->HasOverflow() && (guid.IsCreatureOrPet() || guid.IsGameObject()))
     {
         std::vector<uint8> const refilled = loot->RefillFromOverflow();
         if (!refilled.empty())
         {
-            Creature* lootCreature = GetMap()->GetCreature(guid);
+            Creature* lootCreature = guid.IsCreatureOrPet() ? GetMap()->GetCreature(guid) : nullptr;
             Group* lootGroup = (lootCreature && !loot->m_personal) ? lootCreature->GetGroupLootRecipient() : nullptr;
             for (uint8 slot : refilled)
             {
@@ -9869,7 +9870,7 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type, Player* pVictim)
                 else if (method == GROUP_LOOT || method == NEED_BEFORE_GREED)
                     lootGroup->StartLootRoll(lootCreature, method, loot, slot);
             }
-            sLog.outString("[LootSlots] refill viewer=%s slots=%u overflow_left=%u", GetName(),
+            DEBUG_LOG("[LootSlots] refill viewer=%s slots=%u overflow_left=%u", GetName(),
                            uint32(refilled.size()), uint32(loot->m_overflowItems.size()));
         }
     }

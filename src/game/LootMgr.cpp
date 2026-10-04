@@ -616,7 +616,7 @@ void Loot::AddItem(LootStoreItem const & item)
     }
 }
 
-// twow-repo#482 test build. Only plain items (no free-for-all, no condition) move:
+// twow-repo#482 (train 9). Only plain items (no free-for-all, no condition) move:
 // FFA and conditional items are tracked per player by their index in `items`.
 // Moved items keep their unlootedCount share, so the corpse stays lootable.
 void Loot::MoveExcessToOverflow()
@@ -703,11 +703,11 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
                               sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY));
     }
 
-    // twow-repo#482 test build: only the client slots stay visible, the rest waits.
+    // twow-repo#482: only the 16 client slots stay visible, the rest waits in the overflow.
     MoveExcessToOverflow();
 
-    // twow-repo#482 test build: generated loot size against the configured limit.
-    sLog.outString("[LootSlots] generated loot_id=%u items=%u overflow=%u quest=%u max=%u", loot_id, uint32(items.size()), uint32(m_overflowItems.size()), uint32(m_questItems.size()), uint32(MAX_NR_LOOT_ITEMS));
+    // twow-repo#482: generated loot size against the configured limit (debug only).
+    DEBUG_LOG("[LootSlots] generated loot_id=%u items=%u overflow=%u quest=%u max=%u", loot_id, uint32(items.size()), uint32(m_overflowItems.size()), uint32(m_questItems.size()), uint32(MAX_NR_LOOT_ITEMS));
 
     // Setting access rights for group loot case
     Group* group = loot_owner->GetGroup();
@@ -1268,8 +1268,11 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
 
     //update number of items shown
     b.put<uint8>(count_pos, itemsShown);
-    // twow-repo#482 test build: items written into SMSG_LOOT_RESPONSE for this viewer.
-    sLog.outString("[LootSlots] response viewer=%s shown=%u stored=%u suppressed=%u", lv.viewer->GetName(), uint32(itemsShown), uint32(l.items.size()), suppressed);
+    // twow-repo#482: a suppressed entry means the 16-slot guard caught a loot that did not fit.
+    if (suppressed)
+        sLog.outError("[LootSlots] response viewer=%s shown=%u stored=%u suppressed=%u", lv.viewer->GetName(), uint32(itemsShown), uint32(l.items.size()), suppressed);
+    else
+        DEBUG_LOG("[LootSlots] response viewer=%s shown=%u stored=%u", lv.viewer->GetName(), uint32(itemsShown), uint32(l.items.size()));
 
     return b;
 }
