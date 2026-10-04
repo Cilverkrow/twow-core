@@ -51,6 +51,7 @@
 #include "GameEventMgr.h"
 #include "Anticheat/Warden/Warden.hpp"
 #include "TWDebuff/TWDebuff.hpp"
+#include "FunserverComboPolicy.h"
 
 #ifdef WIN32
 #include "..\zlib\zlib.h"
@@ -507,7 +508,10 @@ void WorldSession::HandleSetSelectionOpcode(WorldPacket & recv_data)
 
     // Drop combo points only for rogues and druids
     // Warriors use combo points internally, do no reset for everyone
-    if ((_player->GetClass() == CLASS_ROGUE || _player->GetClass() == CLASS_DRUID) && unit && guid != _player->GetComboTargetGuid())
+    // Hotfix 8.25 (#484): Rogue.KeepComboPointsOnSelect keeps them (FunserverComboPolicy.h).
+    if (ShouldClearComboPointsOnSelect(sWorld.getConfig(CONFIG_BOOL_ROGUE_KEEP_COMBO_ON_SELECT),
+            _player->GetClass() == CLASS_ROGUE || _player->GetClass() == CLASS_DRUID,
+            unit != nullptr, guid == _player->GetComboTargetGuid()))
         _player->ClearComboPoints(COMBO_CLEAR_SELECT);
 
     // Update autoshot if need
