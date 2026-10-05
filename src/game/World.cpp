@@ -1099,6 +1099,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RAID_BOSS, "Funserver.Loot.Bonus.RaidBoss", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_BOSS_CHEST, "Funserver.Loot.Bonus.BossChest", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED, "Funserver.Loot.Units.Enabled", false);
+    // twow-repo#482 (train 9): raid profiles, dungeon bands and the trim rule (FunserverLootRules.h).
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_RULES_482, "Funserver.Loot.Rules482.Enabled", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_INSTANCE_POOL, "Funserver.Loot.Units.InstancePool", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_DUNGEON_RANGE, "Funserver.Loot.Units.Dungeon.Range", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_RESPAWN_ENABLED, "Funserver.Rare.Respawn.Enabled", false);
@@ -1442,6 +1444,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RARE, "Funserver.Loot.Units.Rare", 6, 1, 16);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_DUNGEON, "Funserver.Loot.Units.Dungeon", 8, 1, 16);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RAID, "Funserver.Loot.Units.Raid", 16, 1, 16);
+    // twow-repo#482: total loot per corpse or chest, see LootMgr.h (MAX_NR_LOOT_ITEMS_HARD = 32).
+    setConfigMinMax(CONFIG_UINT32_LOOT_MAX_ITEMS, "Loot.MaxItems", 16, 16, 32);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RARE, "Funserver.Loot.Units.Floor.Rare", 3, 0, 5);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_DUNGEON, "Funserver.Loot.Units.Floor.Dungeon", 3, 0, 5);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RAID, "Funserver.Loot.Units.Floor.Raid", 4, 0, 5);

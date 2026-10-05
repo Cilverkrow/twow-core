@@ -1002,6 +1002,14 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_tele_lookup_unique_484_contract.cmake")
+  # twow-repo#482 train 9: raid profiles, dungeon bands, mix allocation, trim rule (owner v5).
+  add_executable(loot_rules_482_policy_test
+    "${TW_CORE_ROOT}/t/loot_rules_482_policy_test.cpp")
+  add_test(NAME loot_rules_482_policy_test COMMAND loot_rules_482_policy_test)
+  add_test(NAME loot_rules_482_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_loot_rules_482_contract.cmake")
   # twow-repo#379 hotfix 8.21: high elf/goblin in faction and race lists, tauren shaman racial.
   add_test(NAME race_faction_379_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1052,6 +1060,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_alarus_once_338_contract.cmake")
+  # twow-repo#482 test build: no loot packet with more than 16 entries or a slot index >= 16.
+  add_test(NAME loot_client_slots_482_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_loot_client_slots_482_contract.cmake")
   # twow-repo#427/#461/#459 train 9: switch off unreachable content with backups, Frostmane fixes.
   add_test(NAME world_disable_zug9_contract
     COMMAND "${CMAKE_COMMAND}"
