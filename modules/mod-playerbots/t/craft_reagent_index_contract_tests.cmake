@@ -55,4 +55,23 @@ string(FIND "${craft_body}" "GuidPosition(wot)" shared_focus)
 if (reassign OR NOT shared_focus EQUAL -1)
   message(FATAL_ERROR "craft random item: the loop must not null or focus-check the shared target wot (v32 crash)")
 endif()
+# Hotfix 8.20: profession priority, enchanting with real reagents (traced), disenchant filter.
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/ProfessionUseTriggers.cpp" triggers)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/CastCustomSpellAction.h" cast_h)
+foreach (pair
+    "triggers|int const pick = profession_use::Pick(recipes, lastSkill);"
+    "triggers|CraftSkillUpChance(spellId, bot, &recipe.skillId, &recipe.skillValue);"
+    "triggers|SET_AI_VALUE2(int, \"manual int\", \"profession craft last skill\""
+    "cast_h|castCount = HasCraftTools(pSpellInfo, bot) ? CraftableFromBags(pSpellInfo, bot) : 0;"
+    "cast|TraceProfessionUse(ai, \"enchant\", cast ? \"cast_started\" : \"failed\""
+    "cast|ai::profession_use::CanBeDisenchanted(proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR,")
+  string(FIND "${pair}" "|" bar)
+  string(SUBSTRING "${pair}" 0 ${bar} var)
+  math(EXPR start "${bar} + 1")
+  string(SUBSTRING "${pair}" ${start} -1 needle)
+  string(FIND "${${var}}" "${needle}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "hotfix 8.20: missing ${needle}")
+  endif()
+endforeach()
 message(STATUS "CRAFT_REAGENT_INDEX_CONTRACT=PASS")

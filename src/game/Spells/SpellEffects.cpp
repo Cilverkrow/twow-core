@@ -4186,8 +4186,10 @@ void Spell::EffectAddComboPoints(SpellEffectIndex /*eff_idx*/)
     if (damage <= 0)
         return;
 
-    ((Player*)m_caster)->AddComboPoints(unitTarget, damage);
-    ((Player*)m_caster)->SetUInt64Value(PLAYER_FIELD_COMBO_TARGET, unitTarget->GetGUID());
+    ((Player*)m_caster)->AddComboPoints(unitTarget, damage, m_spellInfo->Id, m_triggeredByAuraSpell != nullptr);
+    // 8.25: the combo target may differ from unitTarget (Rogue.ProcComboPointsToCurrentTarget);
+    // with the switch off it is unitTarget, as before.
+    ((Player*)m_caster)->SetGuidValue(PLAYER_FIELD_COMBO_TARGET, ((Player*)m_caster)->GetComboTargetGuid());
 }
 
 void Spell::EffectDuel(SpellEffectIndex eff_idx)

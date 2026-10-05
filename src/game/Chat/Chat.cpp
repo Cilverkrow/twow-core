@@ -54,6 +54,7 @@ ChatCommand * ChatHandler::getCommandTable()
 #ifdef USE_ANTICHEAT
     //Private table, must be in module
 #include "Anticheat/AnticheatChatCommands.h"
+#include <cctype>
 #else
     //Public table
     static ChatCommand anticheatCommandTable[] =
@@ -3128,6 +3129,49 @@ uint32 ChatHandler::ExtractSpellIdFromLink(char** text)
 
 GameTele const* ChatHandler::ExtractGameTeleFromLink(char** text)
 {
+    if (!text || !*text)
+        return nullptr;
+
+    // twow-repo#484 (hotfix 8.19): a plain name takes the whole rest of the command as one
+    // name without spaces or double quotes (".tele the barrens" -> "thebarrens"); before,
+    // only the first word was read. Shift-links and numeric ids keep the old path below.
+    char* p = *text;
+    while (*p == ' ')
+        ++p;
+    if (*p && *p != '|' && *p != '[' && !isdigit(static_cast<unsigned char>(*p)))
+    {
+        std::string name;
+        for (; *p; ++p)
+            if (*p != ' ' && *p != '"')
+                name += *p;
+        *text = p;
+
+        uint32 matches = 0;
+        std::string shown = name;
+        GameTele const* tele = sObjectMgr.GetGameTele(name, &matches);
+
+        // The marks drop the article ("Barrens"), so "the barrens" -> "thebarrens" finds
+        // nothing: try once more without a leading "the", with the same uniqueness rule.
+        if (!tele && name.size() > 3 && tolower(static_cast<unsigned char>(name[0])) == 't' &&
+            tolower(static_cast<unsigned char>(name[1])) == 'h' && tolower(static_cast<unsigned char>(name[2])) == 'e')
+        {
+            uint32 retryMatches = 0;
+            std::string const withoutThe = name.substr(3);
+            tele = sObjectMgr.GetGameTele(withoutThe, &retryMatches);
+            if (!tele && retryMatches > 1 && matches <= 1)
+            {
+                matches = retryMatches;
+                shown = withoutThe;
+            }
+        }
+
+        if (!tele && matches > 1)
+            PSendSysMessage("Teleport name '%s' is ambiguous: %u marks contain it. Use a longer name or .lookup tele %s",
+                shown.c_str(), matches, shown.c_str());
+        return tele;
+
+    }
+
     // id, or string, or [name] Shift-click form |color|Htele:id|h[name]|h|r
     char* cId = ExtractKeyFromLink(text, "Htele");
     if (!cId)
@@ -3628,6 +3672,9 @@ static RaceMaskName const raceMaskNames[] =
     { "tauren", (1 << (RACE_TAUREN - 1))  },
     { "gnome", (1 << (RACE_GNOME - 1))   },
     { "troll", (1 << (RACE_TROLL - 1))   },
+    // twow-repo#379 (hotfix 8.21): the Turtle races.
+    { "goblin", (1 << (RACE_GOBLIN - 1))  },
+    { "highelf", (1 << (RACE_HIGH_ELF - 1)) },
 
     // masks
     { "alliance", RACEMASK_ALLIANCE },
