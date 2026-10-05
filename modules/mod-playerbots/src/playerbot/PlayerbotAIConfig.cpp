@@ -193,6 +193,7 @@ bool PlayerbotAIConfig::Initialize()
     lootDistance = config.GetFloatDefault("AiPlayerbot.LootDistance", 25.0f);
     groupMemberLootDistance = config.GetFloatDefault("AiPlayerbot.GroupMemberLootDistance", 15.0f);
     groupMemberLootDistanceWithActiveMaster = config.GetFloatDefault("AiPlayerbot.GroupMemberLootDistanceWithActiveMaster", 10.0f);
+    professionUseClearCorpseForSkinning = config.GetBoolDefault("AiPlayerbot.ProfessionUse.ClearCorpseForSkinning", false);
     gatheringDistance = config.GetFloatDefault("AiPlayerbot.GatheringDistance", 15.0f);
     groupMemberGatheringDistance = config.GetFloatDefault("AiPlayerbot.GroupMemberGatheringDistance", 10.0f);
     groupMemberGatheringDistanceWithActiveMaster = config.GetFloatDefault("AiPlayerbot.GroupMemberGatheringDistanceWithActiveMaster", 5.0f);

@@ -1510,6 +1510,13 @@ AiPlayerbot.MaxAlternateGraveyardDistance = 2500
 #AiPlayerbot.GroupMemberLootDistance = 15.0
 #loot distance when bot is a group member (not leader) and has active player master (if player is group leader)
 #AiPlayerbot.GroupMemberLootDistanceWithActiveMaster = 10.0
+# Skinners clear the corpse (twow-repo#485, #471). The core refuses to skin while loot is
+# left on a corpse (TARGET_NOT_LOOTED), and bots leave items worth less than 1/1000 of
+# their money behind. 1: a persistent roster bot without a real-player master that can
+# skin the corpse right now (skill, Skinning Knife) takes every item from it, junk
+# included. Default 0: corpse loot rules unchanged. Independent of this switch, skin loot
+# is always kept and a corpse with loot left on it is never a skinning target.
+AiPlayerbot.ProfessionUse.ClearCorpseForSkinning = 0
 #overall gathering distance
 #AiPlayerbot.GatheringDistance = 15.0
 #gathering distance when bot is a group member (not leader)

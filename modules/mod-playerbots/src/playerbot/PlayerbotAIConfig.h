@@ -133,6 +133,10 @@ public:
         gatheringDistance, groupMemberGatheringDistance, groupMemberGatheringDistanceWithActiveMaster, shootDistance,
         fleeDistance, tooCloseDistance, meleeDistance, followDistance, raidFollowDistance, wanderMinDistance, wanderMaxDistance, whisperDistance, contactDistance,
         aoeRadius, rpgDistance, targetPosRecalcDistance, farDistance, healDistance, healDistanceBg, aggroDistance, proximityDistance, maxFreeMoveDistance, freeMoveDelay, walkDistance;
+    // twow-repo#485 (#471): a roster skinner on its own takes every item from a corpse it can
+    // skin, so leftover junk no longer blocks skinning (core: TARGET_NOT_LOOTED).
+    // Off by default - corpse loot rules stay unchanged; skin loot is always kept (#485).
+    bool professionUseClearCorpseForSkinning = false;
     // #276: bound for any graveyard other than the one nearest the corpse
     // (alternate after repeated deaths, or near the travel target).
     float maxAlternateGraveyardDistance = 2500.0f;

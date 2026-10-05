@@ -762,6 +762,28 @@ add_test(NAME profession_use_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/profession_use_source_contract_tests.cmake")
 
+# twow-repo#485 (#471): skinners clear their own skinnable corpse, skin loot is always kept,
+# no skinning target under foreign loot. The contract pins the core skinning rule too
+# (core root from PB_MODULE_DIR, so both the core and the twow-repo layout work).
+add_executable(skin_loot_policy_tests
+  "${PB_MODULE_DIR}/t/skin_loot_policy_tests.cpp")
+
+target_include_directories(skin_loot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(skin_loot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME skin_loot_policy
+  COMMAND skin_loot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME skin_loot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/skin_loot_source_contract_tests.cmake")
+
 # #301: a self-led one-member group is left (disbanded) on leave instead of
 # stranding the roster bot as "already grouped".
 add_executable(singleton_group_policy_tests
