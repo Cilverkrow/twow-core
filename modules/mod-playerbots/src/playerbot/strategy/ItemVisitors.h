@@ -1,6 +1,7 @@
 #pragma once
 #include "playerbot/ServerFacade.h"
 #include "values/ItemUsageValue.h"
+#include "values/MountValues.h"
 
 #include "playerbot/BotSlots.h"
 char * strstri (const char* str1, const char* str2);
@@ -387,6 +388,11 @@ namespace ai
             if (proto->Spells[0].SpellId == SPELL_ID_GENERIC_LEARN_PET && bot->HasSpell(proto->Spells[1].SpellId))
                 return false; //Do not include mount items the bot already learned.
 #endif
+
+            // twow-repo#295: a Turtle collection item is a mount until the bot has learned
+            // its spell from it (riding stages only).
+            if (uint32 collectionSpell = MountValue::GetCollectionMountSpell(proto))
+                return !bot->HasSpell(collectionSpell);
 
             for (int j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)
             {

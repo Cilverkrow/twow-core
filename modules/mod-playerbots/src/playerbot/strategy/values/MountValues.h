@@ -21,6 +21,20 @@ namespace ai
         static uint32 GetMountSpell(uint32 itemId);
         bool IsValidLocation(Player* bot);
 
+        // twow-repo#295: with Funserver.Riding.Stages.Enabled the speed the server gives
+        // this player on the mount (riding rank and mount family, forms from their spell
+        // data); without it, or without a player, the DBC value of GetSpeed.
+        uint32 GetEffectiveSpeed(Player* player, bool canFly) { return GetEffectiveSpeed(player, spellId, canFly); }
+        static uint32 GetEffectiveSpeed(Player* player, uint32 spellId, bool canFly);
+        static uint32 GetEffectiveSpeed(Player* player, uint32 spellId) { return std::max(GetEffectiveSpeed(player, spellId, false), GetEffectiveSpeed(player, spellId, true)); };
+        // 1 slow, 2 swift (FunserverRiding::MountFamily) for a mount spell; 0 for forms and other spells.
+        static uint32 GetFamily(uint32 spellId);
+        static void GetOwnedFamilies(std::vector<MountValue> const& mounts, bool& hasMount, bool& hasSwiftMount);
+        // The mount a Turtle collection item (spell 46499 "Add Mount to Collection") teaches,
+        // from collection_mount; 0 without riding stages and for every other item.
+        static uint32 GetCollectionMountSpell(const ItemPrototype* proto);
+        static constexpr uint32 COLLECTION_LEARN_SPELL = 46499;
+
     private:
         const ItemPrototype* proto = nullptr;
         uint32 spellId = 0;

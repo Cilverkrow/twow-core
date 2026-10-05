@@ -7382,9 +7382,32 @@ void Player::SetSkill(uint16 id, uint16 currVal, uint16 maxVal, uint16 step /*=0
 
                 // Learn all spells auto-trained by this skill
                 UpdateSkillTrainedSpells(id, currVal);
-                return;
+                break;
             }
         }
+    }
+
+    // twow-repo#295: a riding rank learned or lost while mounted changes the speed at once. Only
+    // the amounts of the mount speed auras are set again (Aura::CalculateRidingMountSpeed), then
+    // the normal speed change is sent. Login loads auras before spells: amounts stay the same.
+    if (id == SKILL_RIDING && IsMounted())
+    {
+        bool changed = false;
+        AuraList const& mountSpeedAuras = GetAurasByType(SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED);
+        for (const auto aura : mountSpeedAuras)
+        {
+            int32 const amount = aura->CalculateRidingMountSpeed(this);
+            if (amount == aura->GetModifier()->m_amount)
+                continue;
+
+            sLog.outBasic("[RidingStages] player=%u riding=%u mount_spell=%u speed=%d->%d", GetGUIDLow(),
+                uint32(GetSkillValuePure(SKILL_RIDING)), aura->GetId(), aura->GetModifier()->m_amount, amount);
+            aura->GetModifier()->m_amount = amount;
+            changed = true;
+        }
+
+        if (changed)
+            UpdateSpeed(MOVE_RUN, false, GetSpeedRatePersistance(MOVE_RUN));
     }
 }
 
@@ -17785,7 +17808,8 @@ void Player::_LoadInventory(QueryResult *result, uint32 timediff, bool &has_epic
             }
 
             // Needed for riding skill replacement in patch 1.12.
-            if ((proto->RequiredSkill == SKILL_RIDING) && (proto->RequiredSkillRank == 150))
+            // twow-repo#295: swift mounts can need riding 225 now.
+            if ((proto->RequiredSkill == SKILL_RIDING) && (proto->RequiredSkillRank >= 150))
                 has_epic_mount = true;
 
             // Duplicate check. Player listed item in AH and then immediately relogged, before the item
