@@ -12,6 +12,7 @@
 #include "playerbot/RouteDangerPolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/QuestTurnInParkPolicy.h"
+#include "playerbot/StartupTravelPolicy.h"
 #include "Guild/GuildMgr.h"
 #include <iomanip>
 
@@ -423,6 +424,18 @@ bool ChooseTravelTargetAction::isUseful()
 
     if (AI_VALUE(bool, "travel target active"))
         return false;
+
+    // twow-repo#540: a roster bot on its own chooses its first journey 0..JitterSeconds after login
+    // (by guid), so a server start does not send 180 bots onto long journeys at once. Also holds
+    // BotBrain intents, whose action inherits this check.
+    if (sPlayerbotAIConfig.startupTravelJitterSeconds && !ai->HasRealPlayerMaster() &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+        !startup_travel::JitterDone(uint64(time(nullptr)), uint64(bot->GetLoginTime()), bot->GetGUIDLow(),
+            sPlayerbotAIConfig.startupTravelJitterSeconds))
+    {
+        startup_travel::SharedCounters().jitter.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
 
     return true;
 }

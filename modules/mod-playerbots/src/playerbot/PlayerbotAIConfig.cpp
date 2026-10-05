@@ -866,6 +866,9 @@ bool PlayerbotAIConfig::Initialize()
     questRotateGraceSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestRotate.GraceSeconds", 1800)));
     professionUseWoolTierSkill = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.WoolTierSkill", 75)));
     professionUseFirstAidClothReserve = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.FirstAidClothReserve", 20)));
+    startupTravelJitterSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.StartupTravel.JitterSeconds", 300)));
+    startupTravelWindowSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.StartupTravel.WindowSeconds", 900)));
+    startupTravelMaxLongMovesPerSlot = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.StartupTravel.MaxLongMovesPerSlot", 4)));
     {
         // Parsed once here; the item usage only looks the item id up.
         std::list<uint32> vendorReagents;
