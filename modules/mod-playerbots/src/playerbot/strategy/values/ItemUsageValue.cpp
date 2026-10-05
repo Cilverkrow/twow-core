@@ -193,25 +193,24 @@ ItemUsage ItemUsageValue::Calculate()
 
             if (proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_MISC || proto->Class == ITEM_CLASS_REAGENT)
             {
-                // twow-repo#524: what a green-or-better recipe needs is not sold below the keep limit
-                // (material memory); only the reagents with that need are looked up.
-                if (keepCraft)
-                {
-                    std::shared_ptr<const material_reserve::Memory> const memory =
-                        AI_VALUE(std::shared_ptr<const material_reserve::Memory>, "material memory");
-                    material_reserve::Memory::const_iterator const need = memory ? memory->find(proto->ItemId) : material_reserve::Memory::const_iterator();
-                    if (memory && need != memory->end() && need->second.needed)
-                    {
-                        float const stacks = CurrentStacks(ai, proto);
-                        if (!material_reserve::MaySell(true, stacks, sPlayerbotAIConfig.professionUseReagentKeepStacks))
-                            return stacks < 1 ? ItemUsage::ITEM_USAGE_SKILL : ItemUsage::ITEM_USAGE_KEEP;
-                    }
-                }
-
                 // false (KeepCraftMaterials off, empty list): the legacy walk.
                 bool const vendorReagent = keepCraft && profession_use::IsVendorReagent(sPlayerbotAIConfig.professionUseVendorReagents, proto->ItemId);
                 needItem = (!ai->HasCheat(BotCheatMask::item) || keepCraft) && IsItemNeededForUsefullCraft(proto,
                     lowBagSpace || vendorReagent, vendorReagent);
+
+                // twow-repo#524 / hotfix 8.22a: what a green-or-better recipe needs is not SOLD below the
+                // keep limit (material memory). It never triggers buying: v34 bought 1637 items an hour
+                // (thread, spices for cooking without a fire) when the memory answered "buy more" -
+                // buying stays with the walk above (vendor reagents only once the other reagents are there).
+                if (keepCraft && !needItem)
+                {
+                    std::shared_ptr<const material_reserve::Memory> const memory =
+                        AI_VALUE(std::shared_ptr<const material_reserve::Memory>, "material memory");
+                    material_reserve::Memory::const_iterator const need = memory ? memory->find(proto->ItemId) : material_reserve::Memory::const_iterator();
+                    if (memory && need != memory->end() && need->second.needed &&
+                        !material_reserve::MaySell(true, CurrentStacks(ai, proto), sPlayerbotAIConfig.professionUseReagentKeepStacks))
+                        return ItemUsage::ITEM_USAGE_KEEP;  // kept from sale, never "buy more"
+                }
             }
             else if (proto->Class == ITEM_CLASS_RECIPE)
             {
@@ -352,7 +351,9 @@ ItemUsage ItemUsageValue::Calculate()
     if ((proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) && proto->Bonding != BIND_WHEN_PICKED_UP &&
         ai->HasSkill(SKILL_ENCHANTING) && proto->Quality >= ITEM_QUALITY_UNCOMMON)
     {
-        if (proto->DisenchantID)
+        // Hotfix 8.30a: an item the core refuses to disenchant (ITEM_FLAG_NO_DISENCHANT, e.g. Lesser
+        // Magic Wand 11287) is no disenchant material; else "disenchant random item" stays useful forever.
+        if (proto->DisenchantID && !(proto->Flags & ITEM_FLAG_NO_DISENCHANT))
         {
 
 #ifndef MANGOSBOT_ZERO

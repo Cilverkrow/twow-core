@@ -1105,6 +1105,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_DUNGEON_RANGE, "Funserver.Loot.Units.Dungeon.Range", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_RESPAWN_ENABLED, "Funserver.Rare.Respawn.Enabled", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED, "Funserver.Rare.PoolBypass.Enabled", false);
+    setConfig(CONFIG_BOOL_ROGUE_KEEP_COMBO_ON_SELECT, "Rogue.KeepComboPointsOnSelect", false);
+    setConfig(CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET, "Rogue.ProcComboPointsToCurrentTarget", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
     setConfigMinMax(CONFIG_UINT32_MIN_LEVEL_STAT_SAVE, "PlayerSave.Stats.MinLevel", 0, 0, MAX_LEVEL);
     setConfig(CONFIG_BOOL_STATS_SAVE_ONLY_ON_LOGOUT, "PlayerSave.Stats.SaveOnlyOnLogout", true);

@@ -107,10 +107,18 @@ bool CastCustomSpellAction::Execute(Event& event)
     Item* itemTarget = nullptr;
     int pos = FindLastSeparator(text, " ");
     int castCount = 1;
+    // Hotfix 8.28: an item link that names no item in the bags (v34: disenchant self-casts without
+    // an item target, CANT_BE_DISENCHANTED); a self command must not cast without its item.
+    uint32 missingItem = 0;
     if (pos != std::string::npos)
     {
         std::string param = text.substr(pos + 1);
         std::list<Item*> items = ai->InventoryParseItems(param, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);
+        if (items.empty() && param.find("Hitem:") != std::string::npos)
+        {
+            ItemIds const ids = chat->parseItems(param);
+            missingItem = ids.empty() ? 1 : *ids.begin();
+        }
         if (!items.empty()) itemTarget = *items.begin();
         else
         {
@@ -136,6 +144,13 @@ bool CastCustomSpellAction::Execute(Event& event)
         std::map<std::string, std::string> args;
         args["%spell"] = text;
         ai->TellPlayerNoFacing(requester, BOT_TEXT2("cast_spell_command_error_unknown_spell", args));
+        return false;
+    }
+
+    if (selfCommand && missingItem && !itemTarget)
+    {
+        sLog.outBasic("[CastSelf] state=no_item_target bot=%u level=%u spell=%u item=%u", bot->GetGUIDLow(), bot->GetLevel(),
+            spell, missingItem);
         return false;
     }
 
@@ -803,10 +818,24 @@ bool DisenchantRandomItemAction::Execute(Event& event)
         if (!proto->DisenchantID)
             continue;
 
+        // Hotfix 8.30a: ItemUsageValue no longer offers such items; should one still come through,
+        // say so (throttled) instead of skipping silently.
+        if (proto->Flags & ITEM_FLAG_NO_DISENCHANT)
+        {
+            uint32 const now = uint32(time(nullptr));
+            if (now - lastNoFlagSkipLog >= 600)
+            {
+                lastNoFlagSkipLog = now;
+                sLog.outBasic("[ProfessionUse] stage=disenchant state=skipped reason=no_disenchant_flag bot=%u level=%u item=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), item);
+            }
+            continue;
+        }
+
         // Hotfix 8.20 (v31: 96x SPELL_FAILED_CANT_BE_DISENCHANTED): Spell::CheckItems only
         // disenchants weapons and armor of uncommon to epic quality.
         if (!ai::profession_use::CanBeDisenchanted(proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR,
-                proto->Quality, proto->DisenchantID))
+                proto->Quality, proto->DisenchantID, (proto->Flags & ITEM_FLAG_NO_DISENCHANT) != 0))
             continue;
 
 #ifndef MANGOSBOT_ZERO
@@ -821,6 +850,11 @@ bool DisenchantRandomItemAction::Execute(Event& event)
         {
             continue;
         }
+
+        // Hotfix 8.28: the usage list can name an item that is not in the bags (equipped or gone);
+        // the cast then had no item target. Only items the bags hold.
+        if (ai->InventoryParseItems(chat->formatQItem(item), IterateItemsMask::ITERATE_ITEMS_IN_BAGS).empty())
+            continue;
 
         ItemQualifier itemQualifier(item);
 
