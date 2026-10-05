@@ -123,6 +123,11 @@ int main()
         Require(gi::FollowPath(40.0f, 5000.0f) == 0, "too far from any machine: no flight");
         Require(gi::UsesGoblinStartRescue(9, 9) && !gi::UsesGoblinStartRescue(9, 11) && !gi::UsesGoblinStartRescue(10, 9),
             "goblins below 11 rescued to Durotar only");
+        // Hotfix 8.29a: the island box gate (start point and machine inside, Durotar and others outside).
+        Require(gi::MayBeOnIsland(9, 1, -233.0f, -7177.0f) && gi::MayBeOnIsland(9, 1, -571.0f, -7850.0f), "goblin on the island: check");
+        Require(!gi::MayBeOnIsland(9, 1, 819.0f, -5006.0f) && !gi::MayBeOnIsland(9, 1, 340.0f, -4686.0f), "goblin in Durotar: skip");
+        Require(!gi::MayBeOnIsland(2, 1, -233.0f, -7177.0f), "orc: skip");
+        Require(!gi::MayBeOnIsland(9, 0, -233.0f, -7177.0f), "other map: skip");
     }
 
     std::cout << "quest_search_policy_tests passed\n";

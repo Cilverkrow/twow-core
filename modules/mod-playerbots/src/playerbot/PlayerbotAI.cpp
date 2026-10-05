@@ -629,10 +629,13 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             // own that stays in combat without progress is stopped after 10 minutes; after 20
             // the rescue below may act although it is in combat.
             // Hotfix 8.29 (twow-repo#532): Blackstone Island has no travel edge, only the flying machine.
-            if (bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
+            // Hotfix 8.29a: only a goblin in the island's box or a bot with a real master enters.
+            namespace gi = ai::quest_search::goblin_island;
+            bool const islandCandidate = gi::MayBeOnIsland(bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+            if ((islandCandidate || HasRealPlayerMaster()) &&
+                bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
             {
-                namespace gi = ai::quest_search::goblin_island;
-                if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() &&
+                if (islandCandidate && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() &&
                     gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now)))
                 {
                     float const dist = bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ);
