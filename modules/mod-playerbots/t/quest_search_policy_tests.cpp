@@ -134,6 +134,11 @@ int main()
         Require(!gi::MayBeOnIsland(9, 0, -233.0f, -7177.0f), "other map: skip");
     }
 
+    // Hotfix 8.32: grind fallback after repeated empty quest route searches.
+    Require(!GrindFallback(true, 1, 2) && GrindFallback(true, 2, 2) && GrindFallback(true, 5, 2), "from the 2nd empty search");
+    Require(!GrindFallback(true, 9, 0), "0 = off");
+    Require(!GrindFallback(false, 9, 2), "not quest-first: unaffected (stock grind rules)");
+
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
 }
