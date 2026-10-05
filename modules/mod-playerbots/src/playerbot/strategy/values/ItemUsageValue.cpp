@@ -351,7 +351,9 @@ ItemUsage ItemUsageValue::Calculate()
     if ((proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) && proto->Bonding != BIND_WHEN_PICKED_UP &&
         ai->HasSkill(SKILL_ENCHANTING) && proto->Quality >= ITEM_QUALITY_UNCOMMON)
     {
-        if (proto->DisenchantID)
+        // Hotfix 8.30a: an item the core refuses to disenchant (ITEM_FLAG_NO_DISENCHANT, e.g. Lesser
+        // Magic Wand 11287) is no disenchant material; else "disenchant random item" stays useful forever.
+        if (proto->DisenchantID && !(proto->Flags & ITEM_FLAG_NO_DISENCHANT))
         {
 
 #ifndef MANGOSBOT_ZERO

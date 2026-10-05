@@ -73,6 +73,8 @@ namespace ai
         DisenchantRandomItemAction(PlayerbotAI* ai) : CastCustomSpellAction(ai, "disenchant random item")  {}
         virtual bool isUseful() override { return ai->HasSkill(SKILL_ENCHANTING) && !bot->IsInCombat() && AI_VALUE2(uint32, "item count", "usage " + std::to_string((uint8)ItemUsage::ITEM_USAGE_DISENCHANT)) > 0; }
         virtual bool Execute(Event& event) override;
+    private:
+        uint32 lastNoFlagSkipLog = 0;  // hotfix 8.30a: skip line at most once per 10 minutes
     };
 
     class EnchantRandomItemAction : public CastRandomSpellAction
