@@ -625,10 +625,116 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 snapshot += entry * 2654435761ULL;
             }
 
+            // Hotfix 8.12 (bot 27 Nilenata, >24 h in combat without progress): a roster bot on its
+            // own that stays in combat without progress is stopped after 10 minutes; after 20
+            // the rescue below may act although it is in combat.
+            // Hotfix 8.29 (twow-repo#532): Blackstone Island has no travel edge, only the flying machine.
+            // Hotfix 8.29a: only a goblin in the island's box or a bot with a real master enters.
+            namespace gi = ai::quest_search::goblin_island;
+            bool const islandCandidate = gi::MayBeOnIsland(bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+            if ((islandCandidate || HasRealPlayerMaster()) &&
+                bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
+            {
+                if (islandCandidate && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() &&
+                    gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now)))
+                {
+                    float const dist = bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ);
+                    if (dist <= gi::BoardDistance)
+                    {
+                        sLog.outBasic("[Travel] state=island_flight bot=%u level=%u from=%u path=%u", bot->GetGUIDLow(),
+                            bot->GetLevel(), gi::IslandZone, gi::IslandPath);
+                        bot->GetMotionMaster()->Clear();
+                        bot->ActivateTaxiPathTo(gi::IslandPath, 0, true);
+                    }
+                    else
+                        bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);
+                }
+                else if (Player* const realMaster = HasRealPlayerMaster() ? GetMaster() : nullptr)
+                {
+                    // A follower whose real master flew off from a machine takes the same flight.
+                    if (realMaster->IsTaxiFlying())
+                    {
+                        uint32 const path = gi::FollowPath(bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ),
+                            bot->GetDistance(gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ));
+                        if (path)
+                        {
+                            sLog.outBasic("[Travel] state=follow_script_taxi bot=%u level=%u master=%u path=%u", bot->GetGUIDLow(),
+                                bot->GetLevel(), realMaster->GetGUIDLow(), path);
+                            bot->GetMotionMaster()->Clear();
+                            bot->ActivateTaxiPathTo(path, 0, true);
+                        }
+                    }
+                }
+            }
+
+            bool rescueInCombat = false;
+            if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() && bot->IsAlive())
+            {
+                ai::stuck_combat::Step const step = stuckCombat.Observe(bot->IsInCombat(), questProgress.IdleSeconds(now), now);
+                // Hotfix 8.14 (v27 Eloreni, victim_evade=1): an evading attacker or victim never
+                // ends the fight - release it at every stuck step.
+                uint32 released = 0;
+                if (step != ai::stuck_combat::Step::None)
+                {
+                    Unit* const evadingVictim = bot->GetVictim();
+                    if (evadingVictim && evadingVictim->ToCreature() && evadingVictim->ToCreature()->IsInEvadeMode())
+                    {
+                        bot->AttackStop();
+                        ++released;
+                    }
+                    std::vector<Unit*> const attackers(bot->GetAttackers().begin(), bot->GetAttackers().end());
+                    for (Unit* attacker : attackers)
+                    {
+                        Creature* const creature = attacker ? attacker->ToCreature() : nullptr;
+                        if (creature && creature->IsInEvadeMode() && creature->GetVictim() == bot)
+                        {
+                            creature->AttackStop();
+                            ++released;
+                        }
+                    }
+                    if (released)
+                        bot->getHostileRefManager().deleteReferences();
+                }
+                if (step == ai::stuck_combat::Step::Stop || (step == ai::stuck_combat::Step::Rescue && !stuckCombat.rescueLogged))
+                {
+                    Unit* const victim = bot->GetVictim();
+                    Creature* const victimCreature = victim ? victim->ToCreature() : nullptr;
+                    sLog.outBasic("[StuckCombat] state=%s bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f minutes=%u victim_entry=%u victim_evade=%u attackers=%u released=%u",
+                        step == ai::stuck_combat::Step::Stop ? "stop" : "rescue", bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(),
+                        bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), stuckCombat.Minutes(now),
+                        victimCreature ? victimCreature->GetEntry() : 0, victimCreature && victimCreature->IsInEvadeMode() ? 1u : 0u,
+                        uint32(bot->GetAttackers().size()), released);
+                    if (step == ai::stuck_combat::Step::Rescue)
+                        stuckCombat.rescueLogged = true;
+                }
+                if (step == ai::stuck_combat::Step::Stop)
+                {
+                    bot->CombatStop(true);
+                    bot->getHostileRefManager().deleteReferences();
+                    stuckCombat.RememberStop(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+                }
+                // Hotfix 8.14: still on the same spot at the rescue step - go home like a hearthstone
+                // (which cannot be cast in combat). The quest rescue teleports the same way.
+                if (step == ai::stuck_combat::Step::Rescue && bot->GetMap() && bot->GetMap()->IsContinent() &&
+                    !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported() &&
+                    stuckCombat.HomeDue(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), now))
+                {
+                    sLog.outBasic("[StuckCombat] state=home bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f minutes=%u attackers=%u home_map=%u home_x=%.0f home_y=%.0f",
+                        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+                        stuckCombat.Minutes(now), uint32(bot->GetAttackers().size()), bot->GetHomebindMapId(), bot->GetHomebindX(),
+                        bot->GetHomebindY());
+                    bot->CombatStop(true);
+                    bot->getHostileRefManager().deleteReferences();
+                    bot->GetMotionMaster()->Clear();
+                    bot->TeleportToHomebind(0, true);
+                }
+                rescueInCombat = step == ai::stuck_combat::Step::Rescue;
+            }
+
             if (questProgress.Update(snapshot, now))
                 aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
             else if (sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
-                !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && !bot->IsInCombat() &&
+                !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && (!bot->IsInCombat() || rescueInCombat) &&
                 bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
             {
                 uint32 const stage = uint32(std::max(0, aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get()));
@@ -3444,7 +3550,7 @@ std::vector<Player*> PlayerbotAI::GetPlayersInGroup()
     return members;
 }
 
-void PlayerbotAI::DropQuest(uint32 questIdToDrop)
+void PlayerbotAI::DropQuest(uint32 questIdToDrop, char const* reason)
 {
     for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
@@ -3457,6 +3563,8 @@ void PlayerbotAI::DropQuest(uint32 questIdToDrop)
         {
             if (Quest const* q = sObjectMgr.GetQuestTemplate(questIdToDrop))
                 sPlayerbotAIConfig.logEvent(this, "QuestDropped", q->GetTitle(), std::to_string(questIdToDrop));
+            sLog.outBasic("[QuestDrop] bot=%u level=%u quest=%u status=%u reason=%s",
+                bot->GetGUIDLow(), bot->GetLevel(), questIdToDrop, uint32(status), reason);
 
             bot->SetQuestSlot(slot, 0);
 
@@ -6491,11 +6599,13 @@ void PlayerbotAI::DurabilityLoss(Item* item, double percent)
 
 bool IsAlliance(uint8 race)
 {
-    return race == RACE_HUMAN || race == RACE_DWARF || race == RACE_NIGHTELF ||
+    // twow-repo#379 (hotfix 8.21): the core mask knows every Alliance race, including the Turtle
+    // high elf (10), which the old list missed (wrong faction in IsOpposing, security, AH, say).
 #ifndef MANGOSBOT_ZERO
-           race == RACE_DRAENEI ||
+    if (race == RACE_DRAENEI)
+        return true;
 #endif
-           race == RACE_GNOME;
+    return race > 0 && race < MAX_RACES && ((1u << (race - 1)) & RACEMASK_ALLIANCE) != 0;
 }
 
 uint32 PlayerbotAI::GetFixedBotNumber(BotTypeNumber typeNumber, uint32 maxNum, float cyclePerMin, bool ignoreGuid)

@@ -94,7 +94,9 @@ namespace ai
     private:        
         bool IsItemNeededForSkill(ItemPrototype const* proto);
         bool IsItemUsefulForSkill(ItemPrototype const* proto);
-        bool IsItemNeededForUsefullCraft(ItemPrototype const* proto, bool checkAllReagents);
+        // twow-repo#485: vendorReagent = a VendorReagents item under
+        // KeepCraftMaterials; only the reagents no vendor sells must be there.
+        bool IsItemNeededForUsefullCraft(ItemPrototype const* proto, bool checkAllReagents, bool vendorReagent = false);
         float BetterStacks(ItemPrototype const* proto, std::string usageType = "");
 
 #ifdef GenerateBotHelp

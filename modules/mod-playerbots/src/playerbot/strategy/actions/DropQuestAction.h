@@ -46,5 +46,7 @@ namespace ai
         void DropQuestType(Player* requester, uint8& numQuest, uint8 wantNum = 100, bool isGreen = false, bool hasProgress = false, bool isComplete = false);
 
         static bool HasProgress(Player* bot, Quest const* quest);
+        // Hotfix 8.17: one quest without progress dropped while the bot is stuck with a full log.
+        void IdleRotateOnItsOwn();
     };
 }

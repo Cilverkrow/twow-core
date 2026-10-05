@@ -19,6 +19,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include "FunserverPassiveSpells.h"
 #include "SpellMgr.h"
 #include "ObjectMgr.h"
 #include "SpellAuraDefines.h"
@@ -3604,6 +3605,25 @@ void SpellMgr::LoadSpellExtra()
     } while (result->NextRow());
 
     sLog.outString("Loaded %u spell extra records.", count);
+}
+
+// Hotfix 8.10 (twow-repo#484): own spells that players learn but that were created without
+// SPELL_ATTR_PASSIVE (Shadow Dance) are made passive after loading, whichever source the
+// spells came from (spell_template or Spell.dbc).
+void SpellMgr::ApplyFunserverPassiveSpells()
+{
+    uint32 count = 0;
+    for (uint32 spellId : FUNSERVER_FORCED_PASSIVE_SPELLS)
+    {
+        if (spellId >= mSpellEntryMap.size() || !mSpellEntryMap[spellId])
+        {
+            sLog.outError("ApplyFunserverPassiveSpells: spell %u does not exist", spellId);
+            continue;
+        }
+        mSpellEntryMap[spellId]->Attributes |= SPELL_ATTR_PASSIVE;
+        ++count;
+    }
+    sLog.outString(">> %u funserver spells marked passive (twow-repo#484)", count);
 }
 
 void SpellMgr::LoadSpellsFromSpellTemplate()

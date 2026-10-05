@@ -2013,6 +2013,23 @@ Funserver.PlayerSnare.SlowPct = 0
 Funserver.PlayerSnare.MaxSlowPct = 90
 Funserver.PlayerSnare.RootDurationPct = 0
 
+# Rogue.KeepComboPointsOnSelect
+#   Selecting another unit no longer drops the combo points of a rogue or druid;
+#   they stay on their target and show again when it is selected. Finishers and
+#   combo builders on another target behave as before (twow-repo#484, hotfix 8.25).
+#   Default: 0 (off, upstream behaviour)
+#
+# Rogue.ProcComboPointsToCurrentTarget
+#   A combo point that an aura-triggered spell (e.g. Setup after a dodge) would put
+#   on another unit goes to the rogue's current target instead (+1, max 5) and the
+#   existing points stay. Current target = the combo target that holds points, else
+#   the selection; it must be alive and attackable, otherwise nothing changes
+#   (twow-repo#484, hotfix 8.25).
+#   Default: 0 (off, upstream behaviour)
+
+Rogue.KeepComboPointsOnSelect = 0
+Rogue.ProcComboPointsToCurrentTarget = 0
+
 # Rate.XP. XP rates (player's favorite, haha)
 
 Rate.XP.Kill = 1

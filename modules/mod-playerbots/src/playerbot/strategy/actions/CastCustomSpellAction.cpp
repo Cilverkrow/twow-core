@@ -5,6 +5,8 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
 #include "CheckMountStateAction.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
+#include "playerbot/ProfessionUsePolicy.h"
 
 using namespace ai;
 
@@ -98,13 +100,25 @@ bool CastCustomSpellAction::Execute(Event& event)
     if (!requester) //Use self as requester for permissions.
         requester = bot;
 
+    // Hotfix 8.13 (twow-repo#474): a command the bot gave itself (e.g. "craft random item") has no
+    // listener. Its errors went out as SAY (RandomBotSayWithoutMaster) with an empty reason.
+    bool const selfCommand = requester == bot;
+
     Item* itemTarget = nullptr;
     int pos = FindLastSeparator(text, " ");
     int castCount = 1;
+    // Hotfix 8.28: an item link that names no item in the bags (v34: disenchant self-casts without
+    // an item target, CANT_BE_DISENCHANTED); a self command must not cast without its item.
+    uint32 missingItem = 0;
     if (pos != std::string::npos)
     {
         std::string param = text.substr(pos + 1);
         std::list<Item*> items = ai->InventoryParseItems(param, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);
+        if (items.empty() && param.find("Hitem:") != std::string::npos)
+        {
+            ItemIds const ids = chat->parseItems(param);
+            missingItem = ids.empty() ? 1 : *ids.begin();
+        }
         if (!items.empty()) itemTarget = *items.begin();
         else
         {
@@ -130,6 +144,13 @@ bool CastCustomSpellAction::Execute(Event& event)
         std::map<std::string, std::string> args;
         args["%spell"] = text;
         ai->TellPlayerNoFacing(requester, BOT_TEXT2("cast_spell_command_error_unknown_spell", args));
+        return false;
+    }
+
+    if (selfCommand && missingItem && !itemTarget)
+    {
+        sLog.outBasic("[CastSelf] state=no_item_target bot=%u level=%u spell=%u item=%u", bot->GetGUIDLow(), bot->GetLevel(),
+            spell, missingItem);
         return false;
     }
 
@@ -239,6 +260,11 @@ bool CastCustomSpellAction::Execute(Event& event)
     const bool canCast = gameObjectTarget ? ai->CanCastSpell(spell, gameObjectTarget, 0, true, false, false, false, &checkResult) : ai->CanCastSpell(spell, target, 0, true, itemTarget, false, false, false, &checkResult);
     if (!bot->GetTrader() && !canCast)
     {
+        if (selfCommand)
+        {
+            LogSelfCastFailure(spell, pSpellInfo, uint32(checkResult));
+            return false;
+        }
         std::map<std::string, std::string> args;
         args["%spell"] = replyArgs["%spell"];
         args["%fail_reason"] = BOT_TEXT2(GetSpellCastResultString(checkResult), args);
@@ -254,6 +280,9 @@ bool CastCustomSpellAction::Execute(Event& event)
     {
         SetDuration(spellDuration);
 
+        if (selfCommand && pSpellInfo->EffectItemType[0])
+            TraceProfessionUse(ai, "craft", "started", "skillup_recipe", spell);
+
         if (castCount > 1)
         {
             std::ostringstream cmd;
@@ -266,6 +295,8 @@ bool CastCustomSpellAction::Execute(Event& event)
 
         ai->TellPlayerNoFacing(requester, BOT_TEXT2(replyStr.str(), replyArgs), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
     }
+    else if (selfCommand)
+        LogSelfCastFailure(spell, pSpellInfo, uint32(SPELL_FAILED_ERROR));
     else
     {
         std::map<std::string, std::string> args;
@@ -274,6 +305,24 @@ bool CastCustomSpellAction::Execute(Event& event)
     }
 
     return result;
+}
+
+void CastCustomSpellAction::LogSelfCastFailure(uint32 spell, SpellEntry const* pSpellInfo, uint32 castResult)
+{
+    if (pSpellInfo->EffectItemType[0])
+    {
+        std::string const reason = "cast_result_" + std::to_string(castResult);
+        TraceProfessionUse(ai, "craft", "failed", reason.c_str(), spell);
+        return;
+    }
+
+    // One line per bot and spell per 5 minutes.
+    std::string const key = "self cast failed " + std::to_string(spell);
+    time_t const now = time(nullptr);
+    if (now - AI_VALUE2(time_t, "manual time", key) < 300)
+        return;
+    SET_AI_VALUE2(time_t, "manual time", key, now);
+    sLog.outBasic("[CastSelf] state=failed bot=%u level=%u spell=%u result=%u", bot->GetGUIDLow(), bot->GetLevel(), spell, castResult);
 }
 
 bool CastCustomSpellAction::CastSummonPlayer(Player* requester, std::string command)
@@ -653,24 +702,43 @@ bool CraftRandomItemAction::Execute(Event& event)
             continue;
 
         const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
+        if (!pSpellInfo)
+            continue;
+
+        // Hotfix 8.16b (v32 SIGSEGV 08:51:29Z, GetUInt64Value in this function): the target was
+        // nulled for a recipe without focus and the loop then went on (8.16a added a "continue"
+        // for recipes without material); the next recipe with a focus read GuidPosition(nullptr).
+        // The target of one recipe no longer changes the target of the next.
+        WorldObject* spellTarget = wot;
 
         if (pSpellInfo->RequiresSpellFocus)
         {
-            if (!GuidPosition(wot).IsGameObject())
+            if (!spellTarget || !GuidPosition(spellTarget).IsGameObject())
                 continue;
 
-            if (GuidPosition(wot).GetGameObjectInfo()->type != GAMEOBJECT_TYPE_SPELL_FOCUS)
+            if (GuidPosition(spellTarget).GetGameObjectInfo()->type != GAMEOBJECT_TYPE_SPELL_FOCUS)
                 continue;
 
-            if (GuidPosition(wot).GetGameObjectInfo()->spellFocus.focusId != pSpellInfo->RequiresSpellFocus)
+            if (GuidPosition(spellTarget).GetGameObjectInfo()->spellFocus.focusId != pSpellInfo->RequiresSpellFocus)
                 continue;
         }
-        else if(wot != bot)
+        else if (spellTarget != bot)
         {
-            wot = nullptr;
+            spellTarget = nullptr;
         }
 
         uint32 castCount = AI_VALUE2(uint32, "has reagents for", spellId);
+
+        // Hotfix 8.16a (v31: 37 cast_result_40 from "rpg craft"): under RealReagents a roster
+        // bot on its own only picks a recipe whose reagents and tools are really in the bags;
+        // "has reagents for" is true for every recipe under the item cheat.
+        if (sPlayerbotAIConfig.professionUseRealReagents && IsRosterBotOnItsOwn(ai))
+        {
+            uint32 const fromBags = HasCraftTools(pSpellInfo, bot) ? CraftableFromBags(pSpellInfo, bot) : 0;
+            if (!fromBags)
+                continue;
+            castCount = std::min(castCount, fromBags);
+        }
 
         if (spellId == 61288) //Crafting random glyph
         {
@@ -695,9 +763,9 @@ bool CraftRandomItemAction::Execute(Event& event)
         std::ostringstream cmd;
         cmd << "castnc ";
 
-        if (((wot && sServerFacade.IsInFront(bot, wot, sPlayerbotAIConfig.sightDistance, CAST_ANGLE_IN_FRONT))))
+        if (spellTarget && sServerFacade.IsInFront(bot, spellTarget, sPlayerbotAIConfig.sightDistance, CAST_ANGLE_IN_FRONT))
         {
-            cmd << chat->formatWorldobject(wot) << " ";
+            cmd << chat->formatWorldobject(spellTarget) << " ";
         }
 
         cmd << spellId << " " << castCount;
@@ -709,6 +777,18 @@ bool CraftRandomItemAction::Execute(Event& event)
     }
 
     return false;
+}
+
+bool EnchantRandomItemAction::UseRealReagents()
+{
+    return sPlayerbotAIConfig.professionUseRealReagents && IsRosterBotOnItsOwn(ai);
+}
+
+bool EnchantRandomItemAction::castSpell(uint32 spellId, WorldObject* wo, Player* requester)
+{
+    bool const cast = CastRandomSpellAction::castSpell(spellId, wo, requester);
+    TraceProfessionUse(ai, "enchant", cast ? "cast_started" : "failed", cast ? "real_reagents" : "cast_failed", spellId);
+    return cast;
 }
 
 bool DisenchantRandomItemAction::Execute(Event& event)
@@ -738,6 +818,26 @@ bool DisenchantRandomItemAction::Execute(Event& event)
         if (!proto->DisenchantID)
             continue;
 
+        // Hotfix 8.30a: ItemUsageValue no longer offers such items; should one still come through,
+        // say so (throttled) instead of skipping silently.
+        if (proto->Flags & ITEM_FLAG_NO_DISENCHANT)
+        {
+            uint32 const now = uint32(time(nullptr));
+            if (now - lastNoFlagSkipLog >= 600)
+            {
+                lastNoFlagSkipLog = now;
+                sLog.outBasic("[ProfessionUse] stage=disenchant state=skipped reason=no_disenchant_flag bot=%u level=%u item=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), item);
+            }
+            continue;
+        }
+
+        // Hotfix 8.20 (v31: 96x SPELL_FAILED_CANT_BE_DISENCHANTED): Spell::CheckItems only
+        // disenchants weapons and armor of uncommon to epic quality.
+        if (!ai::profession_use::CanBeDisenchanted(proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR,
+                proto->Quality, proto->DisenchantID, (proto->Flags & ITEM_FLAG_NO_DISENCHANT) != 0))
+            continue;
+
 #ifndef MANGOSBOT_ZERO
         // 2.0.x addon: Check player enchanting level against the item disenchanting requirements
         int32 item_disenchantskilllevel = proto->RequiredDisenchantSkill;
@@ -750,6 +850,11 @@ bool DisenchantRandomItemAction::Execute(Event& event)
         {
             continue;
         }
+
+        // Hotfix 8.28: the usage list can name an item that is not in the bags (equipped or gone);
+        // the cast then had no item target. Only items the bags hold.
+        if (ai->InventoryParseItems(chat->formatQItem(item), IterateItemsMask::ITERATE_ITEMS_IN_BAGS).empty())
+            continue;
 
         ItemQualifier itemQualifier(item);
 

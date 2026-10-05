@@ -20,6 +20,7 @@
 #include <atomic>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
+#include "playerbot/StuckCombatPolicy.h"
 #include "playerbot/FishingPolicy.h"
 #include "playerbot/ItemUseTrace.h"
 #include "playerbot/DeathSeriesPolicy.h"
@@ -423,7 +424,8 @@ public:
     static GameObject* GetGameObject(GameObjectDataPair const* gameObjectDataPair);
     WorldObject* GetWorldObject(ObjectGuid guid);
     std::vector<Player*> GetPlayersInGroup();
-    void DropQuest(uint32 questId);
+    // Hotfix 8.15: reason goes to the [QuestDrop] line (the QuestDropped CSV event keeps its format).
+    void DropQuest(uint32 questId, char const* reason = "other");
     std::vector<const Quest*> GetAllCurrentQuests();
     std::vector<const Quest*> GetCurrentIncompleteQuests();
     std::set<uint32> GetAllCurrentQuestIds();
@@ -925,6 +927,8 @@ protected:
     // #421 C: progress watch for the quest rescue teleport.
     ai::quest_search::ProgressTracker questProgress;
     uint32 lastQuestProgressCheck = 0;
+    // Hotfix 8.12: combat without progress (bot 27 Nilenata).
+    ai::stuck_combat::State stuckCombat;
     ai::gather_purpose::State gatherPurpose;
     ai::fishing::PurposeTrace fishingTrace;
     ai::item_use::Trace itemUseTrace;

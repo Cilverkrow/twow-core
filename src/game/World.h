@@ -800,6 +800,8 @@ enum eConfigBoolValues
     CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED,
     // twow-repo#295: riding in four stages, read by the core and the playerbots.
     CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED,
+    CONFIG_BOOL_ROGUE_KEEP_COMBO_ON_SELECT,             // hotfix 8.25 (#484), FunserverComboPolicy.h
+    CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET,     // hotfix 8.25 (#484), FunserverComboPolicy.h
     CONFIG_BOOL_VALUE_COUNT
 };
 

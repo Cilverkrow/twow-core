@@ -1107,6 +1107,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     // twow-repo#295 (owner 2026-10-02): riding in four stages, mount speed of players and bots by
     // riding rank and mount family. Read by the core and the playerbots.
     setConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED, "Funserver.Riding.Stages.Enabled", false);
+    setConfig(CONFIG_BOOL_ROGUE_KEEP_COMBO_ON_SELECT, "Rogue.KeepComboPointsOnSelect", false);
+    setConfig(CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET, "Rogue.ProcComboPointsToCurrentTarget", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
     setConfigMinMax(CONFIG_UINT32_MIN_LEVEL_STAT_SAVE, "PlayerSave.Stats.MinLevel", 0, 0, MAX_LEVEL);
     setConfig(CONFIG_BOOL_STATS_SAVE_ONLY_ON_LOGOUT, "PlayerSave.Stats.SaveOnlyOnLogout", true);
@@ -2049,6 +2051,9 @@ void LoadPlayerEggLoot();
         sLog.outString("Loading spells...");
         sSpellMgr.LoadSpells();
     }
+
+    // Hotfix 8.10 (twow-repo#484): own player spells created without the passive bit.
+    sSpellMgr.ApplyFunserverPassiveSpells();
 
     ///- Loads existing IDs in the database.
     sLog.outString("Loading existing IDs in the database...");

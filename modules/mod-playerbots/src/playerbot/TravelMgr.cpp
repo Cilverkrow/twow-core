@@ -1048,6 +1048,27 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
     observation.y = bot->GetPositionY();
     observation.distance = Distance(bot);
     observation.paused = paused;
+
+    // Hotfix 8.13 (twow-repo#497): for a target on another map only a shorter distance counts.
+    uint32 const targetMapId = wPosition->getMapId();
+    transport_stall::Step const transportStep = transportStall.Observe(observation.targetEntry, observation.questId,
+        targetMapId != observation.mapId, paused, observation.distance, observation.now);
+    if (transportStep != transport_stall::Step::None)
+    {
+        sLog.outBasic("[Travel] transport_wait state=%s bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f target_map=%u target_entry=%u quest=%u distance=%.0f minutes=%u",
+            transportStep == transport_stall::Step::Abandon ? "abandon" : "wait", bot->GetGUIDLow(), bot->GetLevel(),
+            observation.mapId, observation.zoneId, observation.x, observation.y, targetMapId, observation.targetEntry,
+            observation.questId, observation.distance, transportStall.minutes);
+        if (transportStep == transport_stall::Step::Abandon)
+        {
+            turnInRecovery.suppressedEntry = observation.targetEntry;
+            turnInRecovery.suppressedMapId = targetMapId;
+            turnInRecovery.suppressUntil = observation.now + transport_stall::CooldownMs;
+            turnInRecovery.ResetProgress();
+            return turnin_recovery::RecoveryAction::SuppressTransportAndCooldown;
+        }
+    }
+
     return turnin_recovery::Observe(turnInRecovery, observation,
         sPlayerbotAIConfig.questFirstProgressionTurnInStallSeconds * IN_MILLISECONDS,
         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
@@ -1300,6 +1321,11 @@ void TravelTarget::CheckStatus()
                         bot->GetGUIDLow(), static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry(),
                         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds);
                 TraceQuestCommit(tDestination, "abandon", "stall_suppressed");
+                SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+                SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
+                return;
+            case turnin_recovery::RecoveryAction::SuppressTransportAndCooldown:
+                TraceQuestCommit(tDestination, "abandon", "transport_stall");
                 SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
                 SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
                 return;
