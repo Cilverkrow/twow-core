@@ -133,6 +133,10 @@ public:
         gatheringDistance, groupMemberGatheringDistance, groupMemberGatheringDistanceWithActiveMaster, shootDistance,
         fleeDistance, tooCloseDistance, meleeDistance, followDistance, raidFollowDistance, wanderMinDistance, wanderMaxDistance, whisperDistance, contactDistance,
         aoeRadius, rpgDistance, targetPosRecalcDistance, farDistance, healDistance, healDistanceBg, aggroDistance, proximityDistance, maxFreeMoveDistance, freeMoveDelay, walkDistance;
+    // twow-repo#485 (#471): a roster skinner on its own takes every item from a corpse it can
+    // skin, so leftover junk no longer blocks skinning (core: TARGET_NOT_LOOTED).
+    // Off by default - corpse loot rules stay unchanged; skin loot is always kept (#485).
+    bool professionUseClearCorpseForSkinning = false;
     // #276: bound for any graveyard other than the one nearest the corpse
     // (alternate after repeated deaths, or near the travel target).
     float maxAlternateGraveyardDistance = 2500.0f;
@@ -518,6 +522,10 @@ public:
     // #405: quest objectives whose work phase ran out Max times are skipped.
     uint32 questWorkTimeoutsMax = 0;
     uint32 questWorkTimeoutsCooldownSeconds = 3600;
+    // twow-repo#485: game-object quest givers and takers spawned only by a script
+    // (gameobject.spawntimesecsmin < 0, e.g. GO 270 of quest 310) are no travel targets.
+    // false = old behaviour.
+    bool questFirstProgressionSkipScriptOnlyQuestTakers = false;
     // G4: evacuate a bot that died DeathLoop.MaxDeaths times within WindowSeconds
     // and Radius yards (0 = off); not reset by XP like "death count".
     uint32 deathLoopMaxDeaths = 0;
@@ -587,8 +595,23 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
+    // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
+    // within TurnInParkWindowSeconds is parked for TurnInParkSeconds (0 = off, the
+    // old behaviour; at most 255). On, it also changes every bot's travel retries and
+    // finished-quest count (aiplayerbot.conf.dist.in).
+    uint32 questFirstProgressionTurnInParkFailures = 0;
+    uint32 questFirstProgressionTurnInParkWindowSeconds = 3600;
+    uint32 questFirstProgressionTurnInParkSeconds = 3600;
+    // twow-repo#485: true = a turn-in-only request whose takers a route danger deferral
+    // took (cross map, zone level, death cluster) counts as no route; false = it does not
+    // (critic B1.3).
+    bool questFirstProgressionTurnInParkCountsRouteDanger = false;
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
+    // twow-repo#485: true = only a route to the other continent counts for the
+    // rule above; the Deeprun Tram counts as the Eastern Kingdoms and an instance
+    // as the continent of its entrance. false = any other map counts (old behaviour).
+    bool questFirstProgressionCrossMapContinentsOnly = false;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;

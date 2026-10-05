@@ -193,6 +193,7 @@ bool PlayerbotAIConfig::Initialize()
     lootDistance = config.GetFloatDefault("AiPlayerbot.LootDistance", 25.0f);
     groupMemberLootDistance = config.GetFloatDefault("AiPlayerbot.GroupMemberLootDistance", 15.0f);
     groupMemberLootDistanceWithActiveMaster = config.GetFloatDefault("AiPlayerbot.GroupMemberLootDistanceWithActiveMaster", 10.0f);
+    professionUseClearCorpseForSkinning = config.GetBoolDefault("AiPlayerbot.ProfessionUse.ClearCorpseForSkinning", false);
     gatheringDistance = config.GetFloatDefault("AiPlayerbot.GatheringDistance", 15.0f);
     groupMemberGatheringDistance = config.GetFloatDefault("AiPlayerbot.GroupMemberGatheringDistance", 10.0f);
     groupMemberGatheringDistanceWithActiveMaster = config.GetFloatDefault("AiPlayerbot.GroupMemberGatheringDistanceWithActiveMaster", 5.0f);
@@ -413,6 +414,7 @@ bool PlayerbotAIConfig::Initialize()
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
     questWorkTimeoutsMax = (uint32)config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.Max", 0);
     questWorkTimeoutsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.CooldownSeconds", 3600));
+    questFirstProgressionSkipScriptOnlyQuestTakers = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers", false);
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
     specAuraEnabled = config.GetBoolDefault("AiPlayerbot.SpecAura.Enabled", false);
     LoadList<std::vector<uint32> >(config.GetStringDefault("AiPlayerbot.SpecAura.TalentClasses", ""), specAuraTalentClasses);
@@ -462,7 +464,12 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
+    questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
+    questFirstProgressionTurnInParkWindowSeconds = std::min<uint32>(DAY, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkWindowSeconds", 3600)));
+    questFirstProgressionTurnInParkSeconds = std::min<uint32>(DAY, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkSeconds", 3600)));
+    questFirstProgressionTurnInParkCountsRouteDanger = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger", false);
     questFirstProgressionMinLevelForCrossMapQuestRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute", 10);
+    questFirstProgressionCrossMapContinentsOnly = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly", false);
 
     // Never let configuration turn the autonomous reservation into a changed
     // core quest-log limit. The Player limit remains MAX_QUEST_LOG_SIZE (20).

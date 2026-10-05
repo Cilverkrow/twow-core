@@ -63,6 +63,8 @@ namespace ai
         virtual uint32 Calculate() override;
     private:
         std::vector<NeedMoneyFor> saveMoneyFor = { NeedMoneyFor::repair,NeedMoneyFor::ammo, NeedMoneyFor::ah, NeedMoneyFor::guild, NeedMoneyFor::spells, NeedMoneyFor::travel };
+        // twow-repo#295: with riding stages bots also save for riding training and mounts (up to 500 g at level 60).
+        std::vector<NeedMoneyFor> saveMoneyForRidingStages = { NeedMoneyFor::repair,NeedMoneyFor::ammo, NeedMoneyFor::ah, NeedMoneyFor::guild, NeedMoneyFor::spells, NeedMoneyFor::travel, NeedMoneyFor::mount };
     };
 
     class FreeMoneyForValue : public Uint32CalculatedValue, public Qualified

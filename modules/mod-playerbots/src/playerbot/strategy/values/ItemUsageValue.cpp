@@ -8,6 +8,7 @@
 
 #include "playerbot/RandomItemMgr.h"
 #include "playerbot/AmmoStockPolicy.h"
+#include "playerbot/RidingStagesBotPolicy.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
 #include "playerbot/ConsumablesPolicy.h"
@@ -327,7 +328,34 @@ ItemUsage ItemUsageValue::Calculate()
     }
 
     //EQUIP
-    if (MountValue::GetMountSpell(itemId) && bot->CanUseItem(proto) == EQUIP_ERR_OK && MountValue::GetSpeed(MountValue::GetMountSpell(itemId)))
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+    {
+        // twow-repo#295: a mount is worth the speed the server gives this bot on it (riding
+        // rank and family) against its own mounts, not the DBC value. A mount it already
+        // knows (a collection item learned before) is not needed; one the vendor would refuse
+        // for reputation is no upgrade, or the bot would travel to that vendor again and again.
+        uint32 const mountSpell = MountValue::GetMountSpell(itemId);
+        bool const reputationMissing = mountSpell && proto->RequiredReputationFaction &&
+            uint32(bot->GetReputationRank(proto->RequiredReputationFaction)) < proto->RequiredReputationRank;
+        if (mountSpell && !bot->HasSpell(mountSpell) && !reputationMissing && bot->CanUseItem(proto) == EQUIP_ERR_OK)
+        {
+            std::vector<uint32> ownedSpeeds;
+            for (auto& mount : AI_VALUE(std::vector<MountValue>, "mount list"))
+                if (MountValue::GetFamily(mount.GetSpellId())) //Forms do not replace a mount.
+                    ownedSpeeds.push_back(mount.GetEffectiveSpeed(bot, false));
+
+            switch (riding_stages::ClassifyMountOffer(MountValue::GetEffectiveSpeed(bot, mountSpell, false), ownedSpeeds))
+            {
+            case riding_stages::MountOffer::Upgrade:
+                return ItemUsage::ITEM_USAGE_EQUIP;
+            case riding_stages::MountOffer::Keep:
+                return ItemUsage::ITEM_USAGE_KEEP;
+            default:
+                break;
+            }
+        }
+    }
+    else if (MountValue::GetMountSpell(itemId) && bot->CanUseItem(proto) == EQUIP_ERR_OK && MountValue::GetSpeed(MountValue::GetMountSpell(itemId)))
     {
         std::vector<MountValue> mounts = AI_VALUE(std::vector<MountValue>, "mount list");
 

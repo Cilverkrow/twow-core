@@ -192,11 +192,18 @@ bool BuyAction::Execute(Event& event)
                     if (!usageAllowed)
                         break;
 
+                    // twow-repo#295: a mount is paid from the mount budget and is no vendor gear
+                    // (CanEquipUnseenItem finds no slot for it, so mounts were blocked up to level 30).
+                    bool const mountPurchase = usage == ItemUsage::ITEM_USAGE_EQUIP &&
+                        sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED) && MountValue::GetMountSpell(proto->ItemId);
+                    if (mountPurchase)
+                        moneyKey = (uint32)NeedMoneyFor::mount;
+
                     bool const policyGear = gearPolicy && usage == ItemUsage::ITEM_USAGE_EQUIP;
                     uint32 gearSlot = 0;
                     vendor_gear::Offer offer;
                     vendor_gear::Decision gearDecision;
-                    if (policyGear)
+                    if (policyGear && !mountPurchase)
                     {
                         offer.equipUpgrade = true;
                         offer.price = price;
@@ -290,19 +297,28 @@ bool BuyAction::Execute(Event& event)
                     result |= didBuy;
                     if (!didBuy)
                     {
-                        if (policyGear)
+                        if (policyGear && !mountPurchase)
                             LogVendorGear(bot, false, "buy_failed", proto->ItemId, gearSlot, price,
                                 offer.newScore, offer.oldScore, gearAllowance, gearSpent);
                         break;
                     }
 
-                    if (policyGear)
+                    if (policyGear && !mountPurchase)
                     {
                         gearSpent += price;
                         gearMemory.Record(proto->ItemId, gearSlot, VendorGearNowMs());
                         vendor_gear::Store::Instance().Put(bot->GetGUIDLow(), gearMemory);
                         LogVendorGear(bot, true, gearDecision.reason, proto->ItemId, gearSlot, price,
                             offer.newScore, offer.oldScore, gearAllowance, gearSpent);
+                    }
+
+                    if (mountPurchase)
+                    {
+                        sLog.outBasic("[Riding] buy bot=%u level=%u item=%u spell=%u price=%u skill=%u",
+                            bot->GetGUIDLow(), bot->GetLevel(), proto->ItemId, MountValue::GetMountSpell(proto->ItemId), price, uint32(bot->GetSkillValuePure(SKILL_RIDING)));
+                        // Every other mount offer is worth less now: no second mount on this visit.
+                        RESET_AI_VALUE2(std::list<Item*>, "inventory items", "mount");
+                        context->ClearValues("item usage");
                     }
 
                     RESET_AI_VALUE2(ItemUsage, "item usage", tItem->item);

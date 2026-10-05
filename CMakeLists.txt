@@ -993,6 +993,20 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(rare_respawn_policy_test
     "${TW_CORE_ROOT}/t/rare_respawn_policy_test.cpp")
   add_test(NAME rare_respawn_policy_test COMMAND rare_respawn_policy_test)
+  # twow-repo#295: riding stages (mount speed by rank and family) and player snares, pure rules.
+  add_executable(riding_stages_policy_test
+    "${TW_CORE_ROOT}/t/riding_stages_policy_test.cpp")
+  add_test(NAME riding_stages_policy_test COMMAND riding_stages_policy_test)
+  # twow-repo#295: mount speed, snare and root hooks, default-off configuration.
+  add_test(NAME riding_stages_295_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_riding_stages_295_contract.cmake")
+  # twow-repo#295: world migrations (riding ranks 225/300, trainer, mounts, speed values, Blink).
+  add_test(NAME riding_migrations_295_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_riding_migrations_295_contract.cmake")
   # twow-repo#323: fixed loot unit rules (weights, diminishing, BoE shortfall, level window).
   add_executable(loot_units_policy_test
     "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")
@@ -1002,6 +1016,14 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_tele_lookup_unique_484_contract.cmake")
+  # twow-repo#482 train 9: raid profiles, dungeon bands, mix allocation, trim rule (owner v5).
+  add_executable(loot_rules_482_policy_test
+    "${TW_CORE_ROOT}/t/loot_rules_482_policy_test.cpp")
+  add_test(NAME loot_rules_482_policy_test COMMAND loot_rules_482_policy_test)
+  add_test(NAME loot_rules_482_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_loot_rules_482_contract.cmake")
   # twow-repo#379 hotfix 8.21: high elf/goblin in faction and race lists, tauren shaman racial.
   add_test(NAME race_faction_379_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1017,6 +1039,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_scarlet_citadel_408_contract.cmake")
+  # twow-repo#484 train 9: GM .tele marks on the 11 maps without client Map.dbc removed (backup kept).
+  add_test(NAME game_tele_484_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_game_tele_484_contract.cmake")
   # twow-repo#405: quest-item chests respawn in half the time (owner, train 8).
   add_test(NAME quest_go_respawn_405_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1052,6 +1079,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_alarus_once_338_contract.cmake")
+  # twow-repo#482 test build: no loot packet with more than 16 entries or a slot index >= 16.
+  add_test(NAME loot_client_slots_482_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_loot_client_slots_482_contract.cmake")
   # twow-repo#427/#461/#459 train 9: switch off unreachable content with backups, Frostmane fixes.
   add_test(NAME world_disable_zug9_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1168,6 +1200,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_shaman_talents_357_stage2_contract.cmake")
+  # twow-repo#511 train 9: Alterac event item spells 61002-61007 without donor leftovers.
+  add_test(NAME av_item_spells_511_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_av_item_spells_511_contract.cmake")
 
   include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
