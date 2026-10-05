@@ -375,6 +375,33 @@ AiPlayerbot.RosterGuild.AllowPoaching = 0
 # At most one switch per bot within this many seconds (3600-2592000, other values are clamped; in
 # memory, so a server restart clears it).
 AiPlayerbot.RosterGuild.PoachCooldownSeconds = 86400
+# Bandages and potions of roster bots (twow-repo#485, owner decision 9). Applies to persistent
+# roster bots without a real-player master only. UseReal 0 = off (default, legacy: under the item
+# cheat "item" a healing or mana potion, healthstone or bandage is cast without an item, and such
+# items in the bags are sold). 1: bandages, healing items (potions, healthstones) and mana potions
+# are used only from the bags and consumed; without one in the bags the action is not possible and
+# the next alternative runs. Healing/mana potions in combat at the existing triggers (critical
+# health, low mana), bandages at low health without attackers and without a damage-over-time
+# effect (Recently Bandaged respected), i.e. mostly right after a fight. Proposed: 1.
+AiPlayerbot.RosterConsumables.UseReal = 0
+# Extra gate on top of the trigger: a healing potion only at or below this health percent, a mana
+# potion only at or below this mana percent. 100 (default) = the trigger alone decides.
+# Proposed: 35 / 25 (owner decision 04.10).
+AiPlayerbot.RosterConsumables.HealingPotionPct = 100
+AiPlayerbot.RosterConsumables.ManaPotionPct = 100
+# Stock under UseReal: a usable potion or bandage (level, First Aid skill, mana user) that no better
+# one of the same kind outclasses is kept, not sold, below KeepStacks stacks (used as at least 2,
+# since buying stops at one stack: no buy/sell loop). From KeepStacks on, or when outclassed, the
+# old rules apply (sold). Buy 1: below one stack it is bought at vendors from the existing
+# consumables budget (with AuctionHouse.Enabled also bid on) - only vendor goods (items some vendor
+# sells) and never bandages: bandages are only self-made (First Aid). 0 (default) = never bought.
+# Proposed: KeepStacks 2, Buy 1 (owner decision 04.10).
+AiPlayerbot.RosterConsumables.KeepStacks = 2
+AiPlayerbot.RosterConsumables.Buy = 0
+# Trace: [Consumable] lines at BASIC level, at most one per bot and kind per TraceCooldownSeconds
+# (uses = items used since the previous line). Never per tick.
+AiPlayerbot.RosterConsumables.Trace = 0
+AiPlayerbot.RosterConsumables.TraceCooldownSeconds = 300
 
 # Bots will chat in say/guild when they invite other bots to groups/raids/guilds
 AiPlayerbot.InviteChat = 1
@@ -1301,11 +1328,11 @@ AiPlayerbot.PremadeSpecLink.7.3.20 = -55552
 AiPlayerbot.PremadeSpecLink.7.3.25 = -55552532
 AiPlayerbot.PremadeSpecLink.7.3.30 = -5555253201333
 AiPlayerbot.PremadeSpecLink.7.3.35 = -55552532013352321
-AiPlayerbot.PremadeSpecLink.7.3.40 = -555525320133523231151
-AiPlayerbot.PremadeSpecLink.7.3.45 = -5555253201335232311553111
-AiPlayerbot.PremadeSpecLink.7.3.50 = 54-55552532013352323115531111
-AiPlayerbot.PremadeSpecLink.7.3.55 = 552331-55552532013352323115531111
-AiPlayerbot.PremadeSpecLink.7.3.60 = 552331300202012-55552532013352323115531111
+AiPlayerbot.PremadeSpecLink.7.3.40 = -55552532013352323143
+AiPlayerbot.PremadeSpecLink.7.3.45 = -5555253201335232314553
+AiPlayerbot.PremadeSpecLink.7.3.50 = 52-55552532013352323145530111
+AiPlayerbot.PremadeSpecLink.7.3.55 = 550331-55552532013352323145530111
+AiPlayerbot.PremadeSpecLink.7.3.60 = 550331300202012-55552532013352323145530111
 
 # --- class 8 ---
 AiPlayerbot.PremadeSpecName.8.0 = arcane

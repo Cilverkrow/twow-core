@@ -830,6 +830,14 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 86400);
     rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", false);
     rosterGuildPoachCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.PoachCooldownSeconds", 86400);
+    // twow-repo#485: bandages and potions of roster bots from the bags. 0 / 100 / 2 = legacy.
+    rosterConsumablesUseReal = config.GetBoolDefault("AiPlayerbot.RosterConsumables.UseReal", false);
+    rosterConsumablesHealingPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.HealingPotionPct", 100);
+    rosterConsumablesManaPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.ManaPotionPct", 100);
+    rosterConsumablesKeepStacks = config.GetIntDefault("AiPlayerbot.RosterConsumables.KeepStacks", 2);
+    rosterConsumablesBuy = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Buy", false);
+    rosterConsumablesTrace = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Trace", false);
+    rosterConsumablesTraceCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterConsumables.TraceCooldownSeconds", 300);
 
     boostFollow = config.GetBoolDefault("AiPlayerbot.BoostFollow", false);
     turnInRpg = config.GetBoolDefault("AiPlayerbot.TurnInRpg", false);

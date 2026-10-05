@@ -845,6 +845,26 @@ add_test(NAME guild_poach_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/guild_poach_source_contract_tests.cmake")
 
+# twow-repo#485 (owner decision 9): bandages, healing and mana potions of roster bots from the bags,
+# stock kept instead of sold, optional purchase, cloth reserve for Tailoring (RosterConsumables.*).
+add_executable(consumables_policy_tests
+  "${PB_MODULE_DIR}/t/consumables_policy_tests.cpp")
+
+target_include_directories(consumables_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(consumables_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME consumables_policy
+  COMMAND consumables_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME consumables_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/consumables_source_contract_tests.cmake")
+
 # #357 O-12: route B talent auras for 7.1 / 7.3 and the premade budget.
 add_executable(spec_aura_policy_tests
   "${PB_MODULE_DIR}/t/spec_aura_policy_tests.cpp")
