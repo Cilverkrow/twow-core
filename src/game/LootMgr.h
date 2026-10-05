@@ -33,8 +33,16 @@
 #include <map>
 #include <vector>
 
-#define MAX_NR_LOOT_ITEMS 16
-// note: the client cannot show more than 16 items total
+// twow-repo#482 (train 9): the total loot of one corpse or chest comes from Loot.MaxItems
+// (16..MAX_NR_LOOT_ITEMS_HARD, default 16). Beyond the 16 client slots it waits in the
+// overflow and refills looted slots when the loot is opened again (owner test 2026-10-04).
+#define MAX_NR_LOOT_ITEMS_HARD 32
+uint32 GetMaxLootItems();
+#define MAX_NR_LOOT_ITEMS (GetMaxLootItems())
+// twow-repo#482 test 2026-10-02: the 1.12 client drops every loot slot index >= 16
+// (server sent 20, client showed and looted slots 0-15 only). Loot beyond these
+// client slots waits in Loot::m_overflowItems and refills looted slots on reopen.
+#define MAX_NR_LOOT_CLIENT_SLOTS 16
 #define MAX_NR_QUEST_ITEMS 32
 // unrelated to the number of quest items shown, just for reserve
 
@@ -248,6 +256,9 @@ class LootTemplate
         // twow-repo#323: fill the loot up to the fixed unit count of `content`
         // (FunserverLootContent) by weighted own-table draws, then the BoE pool.
         void ProcessUnits(Loot& loot, Player const* lootOwner, uint8 content, uint32 level, uint32 mapId) const;
+        // twow-repo#482 (train 9): rule table v5 for raids with a profile and dungeons with a
+        // band (FunserverLootRules.h); `looted` decides who counts as present (reward distance).
+        void ProcessRules482(Loot& loot, Player const* lootOwner, WorldObject const* looted, uint8 content, uint32 level, uint32 mapId) const;
         void CollectUnitCandidates(std::vector<FunserverUnitCandidate>& out, float scale, bool followReferences) const;
         // Adds an entry to the group (at loading stage)
         void AddEntry(LootStoreItem& item);
@@ -312,6 +323,8 @@ struct Loot
 
     bool m_personal;
     LootItemList items;
+    // twow-repo#482: items beyond the client slots (never FFA or conditional).
+    LootItemList m_overflowItems;
     uint32 gold;
     uint8 unlootedCount;
     ObjectGuid groupLeaderGuid;
@@ -350,6 +363,10 @@ struct Loot
             if (!item.is_looted && item.AllowedForPlayer(player, m_lootTarget))
                 return true;
         }
+        // #482: waiting overflow items refill looted slots when the loot is opened again.
+        for (LootItem const& item : m_overflowItems)
+            if (item.AllowedForPlayer(player, m_lootTarget))
+                return true;
         return false;
     }
     // Release: cmangos clears loot reservation. Stub no-op.
@@ -391,6 +408,7 @@ struct Loot
 
         m_playersLooting.clear();
         items.clear();
+        m_overflowItems.clear();
         gold = 0;
         unlootedCount = 0;
         m_LootValidatorRefManager.clearReferences();
@@ -427,6 +445,13 @@ struct Loot
 
     // Inserts the item into the loot (called by LootTemplate processors)
     void AddItem(LootStoreItem const & item);
+
+    // twow-repo#482: keep at most MAX_NR_LOOT_CLIENT_SLOTS (minus quest items)
+    // in `items`, move the rest to m_overflowItems; RefillFromOverflow() puts waiting
+    // items into looted normal slots (same index for every looter) and returns them.
+    void MoveExcessToOverflow();
+    std::vector<uint8> RefillFromOverflow();
+    bool HasOverflow() const { return !m_overflowItems.empty(); }
 
     LootItem* LootItemInSlot(uint32 lootslot, uint32 playerGuid, QuestItem** qitem = nullptr, QuestItem** ffaitem = nullptr, QuestItem** conditem = nullptr);
     uint32 GetMaxSlotInLootFor(uint32 playerGuid) const;
@@ -501,6 +526,8 @@ void LoadLootTemplates_Reference(LootIdSet& ids_set);
 // twow-repo#323: BoE blue/epic weapons and armour that drop from world loot
 // tables; loaded only when Funserver.Loot.Units.Enabled is on.
 void LoadFunserverBoePool();
+// twow-repo#482: true when rule table v5 handles this content on this map (switch, profile or band).
+bool HasFunserverLootRules482(uint8 content, uint32 mapId);
 
 void CheckLootTemplates_Reference(LootIdSet& ids_set); // has to be split due to bg usage
 

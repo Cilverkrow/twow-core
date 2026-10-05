@@ -5,9 +5,26 @@
 #include "playerbot/PlayerbotHelpMgr.h"
 #include "playerbot/PersistentRosterProfessionTrainingPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/RidingStagesBotPolicy.h"
 
 using namespace ai;
 
+namespace
+{
+    // twow-repo#295: the fields the trainable spell map below compares to merge equal
+    // spells of different trainer lists, for the mount trainers filed by race.
+    bool IsSameTrainerSpell(TrainerSpell const* a, TrainerSpell const* b)
+    {
+        return a->spell == b->spell && a->spellCost == b->spellCost && a->reqSkill == b->reqSkill &&
+            a->reqSkillValue == b->reqSkillValue && a->reqLevel == b->reqLevel &&
+#ifndef MANGOSBOT_TWO
+            a->learnedSpell == b->learnedSpell &&
+#else
+            a->learnedSpell[0] == b->learnedSpell[0] &&
+#endif
+            a->conditionId == b->conditionId;
+    }
+}
 
 trainableSpellMap* TrainableSpellMapValue::Calculate()
 {
@@ -105,6 +122,22 @@ trainableSpellMap* TrainableSpellMapValue::Calculate()
             for (auto& trainer : trainers)
                 (*spellMap)[trainerType][spellRequirement][sameTrainerSpell].push_back(trainer->Entry);
         }
+    }
+
+    // twow-repo#295: all racial riding trainers share trainer template 1, filed above under
+    // the race of its first trainer (3690, Tauren). With riding stages every mount trainer
+    // goes under its own race, so each race finds its riding trainer and its train cost.
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+    {
+        auto mounts = spellMap->find(TRAINER_TYPE_MOUNTS);
+        if (mounts != spellMap->end())
+            mounts->second = riding_stages::MountTrainersByRace(mounts->second,
+                [](int32 entry, uint32 filedRace)
+                {
+                    CreatureInfo const* trainer = sCreatureStorage.LookupEntry<CreatureInfo>(uint32(entry));
+                    return trainer ? uint32(trainer->TrainerRace) : filedRace;
+                },
+                IsSameTrainerSpell);
     }
 
     return spellMap;

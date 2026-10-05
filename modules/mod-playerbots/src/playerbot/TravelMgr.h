@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ProgressAwareTurnInRecoveryPolicy.h"
+#include "QuestTurnInParkPolicy.h"
 #include "TransportStallPolicy.h"
 #include "DestinationDeathPolicy.h"
 #include "AreaLevelPolicy.h"
@@ -396,13 +397,24 @@ namespace ai
 		void SetGroupCopy(GuidPosition member) { groupMember = member; }
 
 		void IncRetry(bool isMove) { if (isMove) moveRetryCount+=2; else extendRetryCount++; }
-		void DecRetry(bool isMove) { if (isMove && moveRetryCount > 0) moveRetryCount--; else if (extendRetryCount > 0) extendRetryCount--; }
+        void DecRetry(bool isMove);
 
-		void CopyTarget(TravelTarget* const target);
+        // twow-repo#485: false when the choice is the taker of a parked turn-in; the target then expires.
+        bool CopyTarget(TravelTarget* const target);
         bool IsProgressAwareTurnIn() const;
         // #329: completed turn-ins and incomplete roster quest objectives.
         bool IsProgressAwareQuestTravel() const;
         bool IsTurnInRouteSuppressed(TravelDestination const* destination, WorldPosition const* position) const;
+        // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times within
+        // TurnInParkWindowSeconds is parked for TurnInParkSeconds (roster bots on their own).
+        // True when this failure parked the quest.
+        bool NoteTurnInFailure(uint32 questId, char const* reason);
+        bool IsTurnInParked(uint32 questId) const;
+        uint32 ParkedTurnInCount() const;
+        // The bot can hand the quest in now and has not parked it (what the taker fetch offers).
+        bool IsTurnInOpen(uint32 questId) const;
+        // The move retries ran out; the target goes into cooldown.
+        void OnMoveRetryCooldown();
         turnin_recovery::RecoveryAction ObserveTurnInProgress();
         // Counts a death against the current completed-quest turn-in route and
         // puts the route on the death cooldown after too many (#307).
@@ -422,7 +434,8 @@ namespace ai
         // roster bot's quest target, throttled per event, reason and target.
         void TraceQuestCommit(TravelDestination const* destination, char const* event, char const* reason);
 
-		uint32 GetMaxTravelTime() const { return (1000.0 * Distance(bot)) / bot->GetSpeed(MOVE_RUN); }
+		// twow-repo#295: with riding stages taken at the unmounted run speed (RidingStagesBotPolicy.h).
+		uint32 GetMaxTravelTime() const;
 
 		TravelStatus m_status = TravelStatus::TRAVEL_STATUS_NONE;
 
@@ -448,6 +461,8 @@ namespace ai
         // #405: quest objectives whose work phase ran out without progress
         // (same counting rule as the destination deaths, own map).
         std::map<TravelDestination const*, destination_death::Record> workTimeouts;
+        // twow-repo#485: parked turn-ins of this bot (at most 16 quests, in memory only).
+        turnin_park::Book turnInParks;
         void OnWorkTimeout();
 	};
 

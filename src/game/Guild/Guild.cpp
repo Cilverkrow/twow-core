@@ -104,15 +104,17 @@ bool Guild::Create(Petition* petition, Player* leader)
     if (!Create(leader, petition->GetName()))
         return false;
 
-    PetitionSignatureList signatures = petition->GetSignatureList();
-    for (auto iter = signatures.cbegin(); iter != signatures.cend(); ++iter)
+    // twow-repo#485 (OB-30 review core#281): signer guids copied under the petition lock - the
+    // signature list changes on other map threads, and AddMember removes each signer's signature
+    // (GuildMgr::RemovePetitionSignature, exclusive lock), so no lock is held while adding members.
+    std::vector<ObjectGuid> signers;
+    sGuildMgr.GetPetitionSignerGuids(petition->GetId(), signers);
+    for (ObjectGuid const& signerGuid : signers)
     {
-        PetitionSignature* signature = *iter;
-
-        if (signature->GetSignatureGuid().IsEmpty())
+        if (signerGuid.IsEmpty())
             continue;
 
-        AddMember(signature->GetSignatureGuid(), GetLowestRank());
+        AddMember(signerGuid, GetLowestRank());
     }
 
     return true;
@@ -213,12 +215,9 @@ GuildAddStatus Guild::AddMember(ObjectGuid plGuid, uint32 plRank)
             return GuildAddStatus::ALREADY_IN_GUILD;
     }
 
-    // When joining a guild, remove this player from any petition that could have previously signed.
-    if (PetitionSignature* signature = sGuildMgr.GetSignatureForPlayerGuid(plGuid))
-    {
-        signature->DeleteFromDB();
-        signature->GetSignaturePetition()->DeleteSignature(signature);
-    }
+    // When joining a guild, remove this player from any petition that could have previously signed
+    // (under the exclusive petition lock, twow-repo#485).
+    sGuildMgr.RemovePetitionSignature(plGuid);
 
     uint32 lowguid = plGuid.GetCounter();
 

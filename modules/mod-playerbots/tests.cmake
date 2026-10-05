@@ -213,6 +213,26 @@ add_test(NAME progress_aware_turnin_recovery_policy
   COMMAND progress_aware_turnin_recovery_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#485: turn-ins that keep failing are parked - the park book (policy) and the
+# hooks that count failures, skip parked turn-ins and refuse a parked taker (contract).
+add_executable(quest_turnin_park_policy_tests
+  "${PB_MODULE_DIR}/t/quest_turnin_park_policy_tests.cpp")
+
+target_include_directories(quest_turnin_park_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_turnin_park_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_turnin_park_policy
+  COMMAND quest_turnin_park_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_turnin_park_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_turnin_park_source_contract_tests.cmake")
+
 # #354/#292: who may direct a bot without GM rank, and which `.bot`/`.rndbot`
 # commands stay GM tools. Decision table plus the call sites that use it.
 add_executable(roster_control_policy_tests
@@ -742,6 +762,28 @@ add_test(NAME profession_use_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/profession_use_source_contract_tests.cmake")
 
+# twow-repo#485 (#471): skinners clear their own skinnable corpse, skin loot is always kept,
+# no skinning target under foreign loot. The contract pins the core skinning rule too
+# (core root from PB_MODULE_DIR, so both the core and the twow-repo layout work).
+add_executable(skin_loot_policy_tests
+  "${PB_MODULE_DIR}/t/skin_loot_policy_tests.cpp")
+
+target_include_directories(skin_loot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(skin_loot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME skin_loot_policy
+  COMMAND skin_loot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME skin_loot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/skin_loot_source_contract_tests.cmake")
+
 # #301: a self-led one-member group is left (disbanded) on leave instead of
 # stranding the roster bot as "already grouped".
 add_executable(singleton_group_policy_tests
@@ -762,6 +804,26 @@ add_test(NAME singleton_group_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
     -P "${PB_MODULE_DIR}/t/singleton_group_source_contract_tests.cmake")
+
+# twow-repo#485: roster guild founding - target per faction, charter stop, signatures only to a
+# fuller charter, approved names, no founding beyond the target.
+add_executable(roster_guild_policy_tests
+  "${PB_MODULE_DIR}/t/roster_guild_policy_tests.cpp")
+
+target_include_directories(roster_guild_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(roster_guild_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_guild_policy
+  COMMAND roster_guild_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_guild_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_guild_source_contract_tests.cmake")
 
 # #357 O-12: route B talent auras for 7.1 / 7.3 and the premade budget.
 add_executable(spec_aura_policy_tests
@@ -828,6 +890,14 @@ add_test(NAME quest_work_timeout_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_work_timeout_source_contract_tests.cmake")
+
+# twow-repo#485: quest givers and takers bots cannot use are no travel targets
+# (instance hand-in check, script-only game objects, cross-map stall key, death
+# cooldown slot, continents-only cross-map rule).
+add_test(NAME quest_taker_usable_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_taker_usable_source_contract_tests.cmake")
 
 # #414: gather destinations are real herb/ore nodes only.
 add_executable(gather_node_policy_tests
@@ -1298,6 +1368,28 @@ add_test(NAME ammo_stock_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/ammo_stock_source_contract_tests.cmake")
+
+# twow-repo#295: riding in four stages - bots train riding and buy their mounts with
+# gold like players (mount budget, vendor trip, mount choice, travel budget). The rules
+# are the core's FunserverRidingStages.h, hence the core's src/game on the path.
+add_executable(riding_stages_bot_policy_tests
+  "${PB_MODULE_DIR}/t/riding_stages_bot_policy_tests.cpp")
+
+target_include_directories(riding_stages_bot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot"
+  "${TW_CORE_ROOT}/src/game")
+
+set_target_properties(riding_stages_bot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME riding_stages_bot_policy
+  COMMAND riding_stages_bot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME riding_stages_bot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/riding_stages_bot_source_contract_tests.cmake")
 
 add_test(NAME persistent_roster_starter_outfit_source_contract
   COMMAND "${CMAKE_COMMAND}"
