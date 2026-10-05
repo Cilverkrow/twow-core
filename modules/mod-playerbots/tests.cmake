@@ -726,6 +726,25 @@ add_test(NAME self_cast_item_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/self_cast_item_contract_tests.cmake")
 
+# twow-repo#540: start-phase spread of journeys (jitter after login, long-move budget).
+add_executable(startup_travel_policy_tests
+  "${PB_MODULE_DIR}/t/startup_travel_policy_tests.cpp")
+
+target_include_directories(startup_travel_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(startup_travel_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME startup_travel_policy
+  COMMAND startup_travel_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME startup_travel_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/startup_travel_source_contract_tests.cmake")
+
 # Hotfix 8.26: the quest rescue binds the hearthstone at the rescue target.
 add_test(NAME rescue_rebind_contract
   COMMAND "${CMAKE_COMMAND}"

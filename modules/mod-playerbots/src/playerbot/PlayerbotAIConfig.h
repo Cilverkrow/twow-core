@@ -500,6 +500,10 @@ public:
     // only uses linen above FirstAidClothReserve.
     uint32 professionUseWoolTierSkill = 75;
     uint32 professionUseFirstAidClothReserve = 20;
+    // twow-repo#540: start-phase spread of journeys (jitter after login, long-move budget after start).
+    uint32 startupTravelJitterSeconds = 300;
+    uint32 startupTravelWindowSeconds = 900;
+    uint32 startupTravelMaxLongMovesPerSlot = 4;
     std::set<uint32> professionUseVendorReagents;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
