@@ -7,9 +7,26 @@
 #include "Maps/PathFinder.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
+#include "playerbot/StartupTravelPolicy.h"
+#include <chrono>
 #include <iomanip>
 
 using namespace ai;
+
+namespace
+{
+// twow-repo#540: one [StartupTravel] line a minute while anything was deferred.
+void LogStartupTravel()
+{
+    startup_travel::Counters& counters = startup_travel::SharedCounters();
+    if (!counters.LogDue(uint64(time(nullptr))))
+        return;
+    uint32 const jitter = counters.jitter.exchange(0, std::memory_order_relaxed);
+    uint32 const budget = counters.budget.exchange(0, std::memory_order_relaxed);
+    if (jitter || budget)
+        sLog.outBasic("[StartupTravel] uptime=%u deferred_jitter=%u deferred_budget=%u", sWorld.GetUptime(), jitter, budget);
+}
+}
 
 bool MoveToTravelTargetAction::Execute(Event& event)
 {
@@ -144,6 +161,25 @@ bool MoveToTravelTargetAction::Execute(Event& event)
         }
     }
 
+    // twow-repo#540: in the first minutes after a server start only a few long moves without a
+    // cached route (node route / path finder) start per 100 ms slot; the rest wait for a later slot
+    // without a retry or cooldown.
+    if (sPlayerbotAIConfig.startupTravelMaxLongMovesPerSlot &&
+        startup_travel::InWindow(sWorld.GetUptime(), sPlayerbotAIConfig.startupTravelWindowSeconds))
+    {
+        LastMovement& lastMove = *context->GetValue<LastMovement&>("last movement");
+        bool const sameMap = botLocation.getMapId() == location.getMapId();
+        bool const cached = !lastMove.lastPath.empty() && lastMove.lastPath.getBack().distance(location) < 20.0f;
+        uint64 const nowMs = uint64(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+        if (startup_travel::IsLongMove(sameMap, sameMap ? botLocation.distance(location) : 0.0f, cached) &&
+            !startup_travel::SharedBudget().TryTake(nowMs, sPlayerbotAIConfig.startupTravelMaxLongMovesPerSlot))
+        {
+            startup_travel::SharedCounters().budget.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+    }
+
     bool canMove = MoveTo(mapId, x, y, z, false, false);
 
     if (!canMove)
@@ -190,6 +226,8 @@ bool MoveToTravelTargetAction::Execute(Event& event)
 
 bool MoveToTravelTargetAction::isUseful()
 {
+    LogStartupTravel();
+
     if (!ai->AllowActivity(TRAVEL_ACTIVITY))
         return false;
 
