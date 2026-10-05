@@ -1379,7 +1379,9 @@ class ObjectMgr
             return &itr->second;
         }
 
-        GameTele const* GetGameTele(std::string const& name) const;
+        // twow-repo#484 (hotfix 8.19): exact name first; a substring only when it is unique.
+        // matches (optional) receives the number of substring matches (0 for an exact hit).
+        GameTele const* GetGameTele(std::string const& name, uint32* matches = nullptr) const;
         GameTeleMap const& GetGameTeleMap() const { return m_GameTeleMap; }
         bool AddGameTele(GameTele& data);
         bool DeleteGameTele(std::string const& name);

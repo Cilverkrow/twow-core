@@ -2276,13 +2276,16 @@ bool QuestRewarded_npc_ancestor_of_wisdom(Player* pPlayer, Creature* pCreature, 
     enum spells
     {
         QUEST_WAY_OF_SPIRITWALKING_5 = 40348,
-        SPELL_SPIRITWALKING = 47262
+        // twow-repo#379 (hotfix 8.21): the tauren racial is Ethereal Form 45502 (client SLA 6187,
+        // race 0x20). The old id 47262 exists in no spell_template, so tauren shamans never got it.
+        // LearnSpell needs the spell itself; the teach spell 47341 would only work when cast.
+        SPELL_ETHEREAL_FORM = 45502
     };
 
     Quest const* quest = sObjectMgr.GetQuestTemplate(QUEST_WAY_OF_SPIRITWALKING_5);
 
     if (pQuest == quest)
-        pPlayer->LearnSpell(SPELL_SPIRITWALKING, false);
+        pPlayer->LearnSpell(SPELL_ETHEREAL_FORM, false);
 
     return true;
 }
