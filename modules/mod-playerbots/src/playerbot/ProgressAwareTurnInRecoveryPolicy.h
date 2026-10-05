@@ -26,6 +26,10 @@ struct Observation
     float y = 0.0f;
     float distance = 0.0f;
     bool paused = false;
+    // twow-repo#485: map of the travel target. mapId (the bot's map) drives the
+    // progress check; a stall suppression is keyed by the target's map, the
+    // one the route choice asks about, so it also holds for cross-map turn-ins.
+    std::uint32_t targetMapId = 0;
 };
 
 struct State
@@ -43,6 +47,11 @@ struct State
     std::uint32_t suppressedEntry = 0;
     std::uint32_t suppressedMapId = 0;
     std::uint32_t suppressUntil = 0;
+    // twow-repo#485: the death cooldown (#307, an hour live) has its own slot,
+    // so a stall on another target (two minutes live) never overwrites it.
+    std::uint32_t deathSuppressedEntry = 0;
+    std::uint32_t deathSuppressedMapId = 0;
+    std::uint32_t deathSuppressedUntil = 0;
     // Deaths on the way to one turn-in. Kept apart from the progress fields:
     // the graveyard teleport looks like progress and a revived bot re-selects
     // the same target, so ResetProgress must not clear it (#307).
@@ -78,9 +87,9 @@ inline bool RecordDeathOnRoute(State& state, std::uint32_t targetEntry, std::uin
         return false;
 
     state.deathsOnRoute = 0;
-    state.suppressedEntry = targetEntry;
-    state.suppressedMapId = mapId;
-    state.suppressUntil = now + cooldownMs;
+    state.deathSuppressedEntry = targetEntry;
+    state.deathSuppressedMapId = mapId;
+    state.deathSuppressedUntil = now + cooldownMs;
     return true;
 }
 
@@ -145,14 +154,18 @@ inline RecoveryAction Observe(State& state, Observation const& current, std::uin
         return RecoveryAction::RecomputeRoute;
 
     state.suppressedEntry = current.targetEntry;
-    state.suppressedMapId = current.mapId;
+    state.suppressedMapId = current.targetMapId;
     state.suppressUntil = current.now + cooldownSeconds;
     return RecoveryAction::SuppressRouteAndCooldown;
 }
 
+// A route is suppressed by a stall (above) or by deaths (RecordDeathOnRoute).
 inline bool IsSuppressed(State const& state, std::uint32_t now, std::uint32_t entry, std::uint32_t mapId)
 {
-    return state.suppressUntil > now && state.suppressedEntry == entry && state.suppressedMapId == mapId;
+    bool const stalled = state.suppressUntil > now && state.suppressedEntry == entry && state.suppressedMapId == mapId;
+    bool const died = state.deathSuppressedUntil > now && state.deathSuppressedEntry == entry &&
+        state.deathSuppressedMapId == mapId;
+    return stalled || died;
 }
 
 // #329: a target that is dropped and picked again every few seconds must not

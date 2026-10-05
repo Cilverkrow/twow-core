@@ -368,10 +368,13 @@ bool NeedTravelPurposeValue::Calculate()
     {
         // Hotfix 8.5: finished quests are handed in before the bot gathers again.
         bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+        // twow-repo#485: with turn-in parking on, only a quest the bot can hand in and has not
+        // parked holds gathering back (the test of the taker fetch); 0 counts every completed one.
+        TravelTarget const* turnIns = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures ? AI_VALUE(TravelTarget*, "travel target") : nullptr;
         uint32 finished = 0;
         if (rosterOnItsOwn)
             for (auto const& [questId, status] : bot->getQuestStatusMap())
-                if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE)
+                if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && (!turnIns || turnIns->IsTurnInOpen(questId)))
                     ++finished;
         if (ai::quest_search::GatherYieldsToTurnIn(rosterOnItsOwn, finished))
             return false;
