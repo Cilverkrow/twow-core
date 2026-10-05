@@ -746,9 +746,18 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     // Area (sub-zone) level: a zone row such as Redridge has 0, its
                     // Lakeshire sub-area 15. getAreaLevel() resolves the real one.
                     int32 const areaLevel = std::max<int32>(0, position->getAreaLevel());
+                    // twow-repo#485: CrossMapContinentsOnly limits the cross-map rule to
+                    // a route to the other continent; the tram counts as the Eastern
+                    // Kingdoms and an instance as the continent of its entrance.
+                    MapEntry const* const botMapEntry = bot->GetMap()->GetMapEntry();
+                    MapEntry const* const targetMapEntry = position->getMapEntry();
                     route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
                         bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
-                        uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()));
+                        uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()),
+                        sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly,
+                        route_danger::IsContinentSwitch(
+                            route_danger::ContinentOf(bot->GetMapId(), botMapEntry ? botMapEntry->ghostEntranceMap : -1),
+                            route_danger::ContinentOf(position->getMapId(), targetMapEntry ? targetMapEntry->ghostEntranceMap : -1)));
                     if (danger == route_danger::Reason::CrossMap)
                     {
                         ++deferredCrossMap;

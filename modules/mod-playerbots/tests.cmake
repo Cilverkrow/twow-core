@@ -823,6 +823,14 @@ add_test(NAME quest_work_timeout_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_work_timeout_source_contract_tests.cmake")
 
+# twow-repo#485: quest givers and takers bots cannot use are no travel targets
+# (instance hand-in check, script-only game objects, cross-map stall key, death
+# cooldown slot, continents-only cross-map rule).
+add_test(NAME quest_taker_usable_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_taker_usable_source_contract_tests.cmake")
+
 # #414: gather destinations are real herb/ore nodes only.
 add_executable(gather_node_policy_tests
   "${PB_MODULE_DIR}/t/gather_node_policy_tests.cpp")
