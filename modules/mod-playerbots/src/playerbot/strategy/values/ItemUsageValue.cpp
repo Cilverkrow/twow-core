@@ -11,6 +11,8 @@
 #include "playerbot/RidingStagesBotPolicy.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
+#include "playerbot/ConsumablesPolicy.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 using namespace ai;
 
@@ -239,6 +241,31 @@ ItemUsage ItemUsageValue::Calculate()
     //USE
     if (proto->Class == ITEM_CLASS_KEY)
         return ItemUsage::ITEM_USAGE_USE;
+
+    // twow-repo#485 (RosterConsumables.UseReal): a roster bot on its own keeps its usable potions
+    // and bandages instead of selling them (the item cheat skipped the block below), buys them
+    // only with RosterConsumables.Buy - and then only vendor goods, never bandages (BuyAllowed,
+    // owner decision 04.10). Outclassed or above KeepStacks: the old rules.
+    if (proto->Class == ITEM_CLASS_CONSUMABLE && sPlayerbotAIConfig.rosterConsumablesUseReal && IsRosterBotOnItsOwn(ai))
+    {
+        consumables::Kind const kind = consumables::Classify(IsHealingPotion(proto), IsManaPotion(proto), IsBandage(proto) && !IsAntiVenom(proto));
+        if (kind != consumables::Kind::None)
+        {
+            bool const appropriate = proto->RequiredLevel <= bot->GetLevel() &&
+                (kind != consumables::Kind::Mana || bot->HasMana()) && bot->CanUseItem(proto) == EQUIP_ERR_OK;
+            switch (consumables::Decide(appropriate, CurrentStacks(ai, proto), BetterStacks(proto, consumables::InventoryQuery(kind)),
+                sPlayerbotAIConfig.rosterConsumablesKeepStacks,
+                consumables::BuyAllowed(sPlayerbotAIConfig.rosterConsumablesBuy, kind, IsItemSoldByAnyVendor(proto))))
+            {
+            case consumables::Stock::Buy:
+                return ItemUsage::ITEM_USAGE_USE;
+            case consumables::Stock::Keep:
+                return ItemUsage::ITEM_USAGE_KEEP;
+            default:
+                break;
+            }
+        }
+    }
 
     if (proto->Class == ITEM_CLASS_CONSUMABLE && !ai->HasCheat(BotCheatMask::item))
     {
