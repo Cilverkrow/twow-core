@@ -145,9 +145,12 @@ int main()
     Require(!UsesGuildNote(true, true, false), "only bots in a guild");
     Require(UsesGuildNote(true, true, true), "roster bot in a guild with the switch");
 
+    // Refresh (owner 04.10.: every 24 h is enough): 60-604800 s, default 86400.
+    Require(NoteRefreshInterval(86400) == 86400, "the 24 h default is kept, not cut to the former 3600 cap");
     Require(NoteRefreshInterval(300) == 300 && NoteRefreshInterval(60) == 60 && NoteRefreshInterval(3600) == 3600, "configured refresh kept");
+    Require(NoteRefreshInterval(604800) == 604800 && NoteRefreshInterval(604801) == 604800, "at most one week");
     Require(NoteRefreshInterval(0) == 60, "0 does not check on every pass");
-    Require(NoteRefreshInterval(4294967295u) == 3600, "a wrapped negative refresh does not stop the notes");
+    Require(NoteRefreshInterval(4294967295u) == 604800, "a wrapped negative refresh does not stop the notes");
 
     // Format: the owner's examples.
     Require(FormatGuildNote(5, 1, false, 23) == "Priest Holy iLvl 23", "Priest Holy iLvl 23");

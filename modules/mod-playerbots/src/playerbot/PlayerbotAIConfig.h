@@ -321,7 +321,7 @@ public:
     uint32 rosterGuildSnapshotSeconds;
     // twow-repo#485 (owner 04.10.): roster bots in a guild keep "<Class> <Tank|tree> iLvl <n>" in
     // their public guild note. 0 = off (default, notes untouched); checked at most every
-    // NoteRefreshSeconds per bot (default 300, used as 60-3600), written only on a change.
+    // NoteRefreshSeconds per bot (default 86400 = 24 h, used as 60-604800), written only on a change.
     bool rosterGuildNote;
     uint32 rosterGuildNoteRefreshSeconds;
     // twow-repo#485 (owner decision 5, poaching): a roster bot in a bot guild takes a real player's
