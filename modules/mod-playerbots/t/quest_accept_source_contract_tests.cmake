@@ -30,6 +30,16 @@ require_text("${ai_cpp}" "[QuestDrop] bot=%u level=%u quest=%u status=%u reason=
 # Hotfix 8.17: rotation while stuck with a full log, from the quest log cleanup, one quest, own reason.
 require_text("${drop}" "IdleRotateOnItsOwn();" "rotation runs in the cleanup")
 require_text("${drop}" "ai::quest_accept::IdleRotateDue(rosterOnItsOwn, bot->IsInCombat(), idleSeconds, questCount," "rotation conditions")
-require_text("${drop}" "HasProgress(bot, quest))" "only quests without progress")
+require_text("${drop}" "HasProgress(bot, quest) ||" "only quests without progress")
 require_text("${drop}" "ai->DropQuest(questId, \"idle_rotate\");" "rotation drop reason")
 require_text("${drop}" "[QuestRotate] bot=%u level=%u quest=%u" "rotation line")
+# Hotfix 8.27: grace period, never the travel target's quest, configurable.
+require_text("${drop}" "MAX_QUEST_LOG_SIZE, firstSeen, lastRotate, now, config))" "grace and config in the rotation check")
+require_text("${drop}" "HasProgress(bot, quest) || questId == travelQuest)" "travel target quest is never rotated")
+require_text("${drop}" "config.idleSeconds = sPlayerbotAIConfig.questRotateIdleSeconds;" "threshold from the config")
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
+require_text("${config_cpp}" "AiPlayerbot.QuestRotate.Enabled" "rotation switch")
+require_text("${config_cpp}" "AiPlayerbot.QuestRotate.IdleSeconds" "rotation threshold")
+require_text("${config_cpp}" "AiPlayerbot.QuestRotate.GraceSeconds" "rotation grace")
+file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" dist)
+require_text("${dist}" "AiPlayerbot.QuestRotate.IdleSeconds = 2400" "documented default")
