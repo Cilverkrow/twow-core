@@ -461,6 +461,7 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTurnInRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInRouteCooldownSeconds", 120));
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
+    questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionMinLevelForCrossMapQuestRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute", 10);
 

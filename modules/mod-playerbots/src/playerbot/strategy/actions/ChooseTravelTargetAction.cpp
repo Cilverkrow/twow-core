@@ -335,6 +335,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             sLog.outBasic("[QuestSearch] state=found bot=%u level=%u stage=%d distance=%.0f",
                 bot->GetGUIDLow(), bot->GetLevel(), stage, newTarget.Distance(bot));
     }
+    else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot))
+    {
+        // Hotfix 8.32 (twow-repo#544): a quest-first bot grinds after empty quest route searches.
+        sLog.outBasic("[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d distance=%.0f",
+            bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"), newTarget.Distance(bot));
+    }
 
     setNewTarget(requester, &newTarget, travelTarget);
     

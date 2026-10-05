@@ -565,6 +565,7 @@ public:
     // generic travel budget while travelling.
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
+    uint32 questFirstProgressionGrindFallbackFailures = 0;  // hotfix 8.32 (#544), 0 = off
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;

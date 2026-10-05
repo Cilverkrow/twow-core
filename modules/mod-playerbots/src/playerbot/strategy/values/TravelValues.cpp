@@ -419,7 +419,13 @@ bool NeedTravelPurposeValue::Calculate()
         // Grind bit. This branch is only the generic travel-purpose fallback;
         // objective destinations are built independently by the quest path.
         if (UsesQuestFirstProgression(bot))
-            return false;
+        {
+            // Hotfix 8.32 (twow-repo#544): after repeated empty quest route searches a quest-first
+            // bot grinds instead of idling ("no destination").
+            uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures")));
+            return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&
+                !AI_VALUE2(bool, "manual bool", "is travel refresh");
+        }
 
         uint32 rpgPhase = ai->GetFixedBotNumber(BotTypeNumber::RPG_PHASE_NUMBER, 60, 1);
 

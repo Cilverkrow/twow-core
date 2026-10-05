@@ -675,6 +675,10 @@ AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives = 1
 # skipped for TurnInDeathRouteCooldownSeconds, so the bot levels elsewhere
 # instead of dying on it again and again.
 AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
+# Hotfix 8.32 (twow-repo#544): a quest-first bot whose quest route search found nothing this many
+# times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
+# idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
+AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # Route danger for low levels: a roster bot defers a quest giver, objective or
 # turn-in on another continent until it reaches this level (0 = off), and any

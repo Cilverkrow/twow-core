@@ -719,6 +719,12 @@ add_test(NAME startup_travel_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/startup_travel_source_contract_tests.cmake")
 
+# Hotfix 8.32: grind fallback for quest-first bots after empty quest route searches.
+add_test(NAME grind_fallback_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_fallback_contract_tests.cmake")
+
 # Hotfix 8.26: the quest rescue binds the hearthstone at the rescue target.
 add_test(NAME rescue_rebind_contract
   COMMAND "${CMAKE_COMMAND}"
