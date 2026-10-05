@@ -939,6 +939,18 @@ AiPlayerbot.QuestRotate.GraceSeconds = 1800
 AiPlayerbot.ProfessionUse.WoolTierSkill = 75
 AiPlayerbot.ProfessionUse.FirstAidClothReserve = 20
 
+# StartupTravel (twow-repo#540): after a server start with BotBrain many roster bots started long
+# journeys at once and their move updates piled up in the map thread for 10-12 minutes (test realm:
+# 650-860 ticks/min). JitterSeconds: a roster bot on its own chooses its first journey (and takes its
+# first BotBrain travel intent) 0..JitterSeconds after its login, spread by guid. WindowSeconds /
+# MaxLongMovesPerSlot: in the first WindowSeconds of uptime at most MaxLongMovesPerSlot long moves
+# (another map or > 100 yd, no cached route) start per 100 ms slot across all maps; the others wait
+# for a later slot without retry or cooldown. [StartupTravel] logs the deferrals once a minute.
+# 0 switches the respective part off.
+AiPlayerbot.StartupTravel.JitterSeconds = 300
+AiPlayerbot.StartupTravel.WindowSeconds = 900
+AiPlayerbot.StartupTravel.MaxLongMovesPerSlot = 4
+
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full
 
