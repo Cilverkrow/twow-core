@@ -748,6 +748,21 @@ AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds = 1800
 AiPlayerbot.ProfessionUse.KeepCraftMaterials = 0
 AiPlayerbot.ProfessionUse.ReagentKeepStacks = 1
 AiPlayerbot.ProfessionUse.VendorReagents =
+# QuestRotate (hotfix 8.17/8.27): a roster bot on its own, out of combat, with at least 16 quests and
+# no progress for IdleSeconds drops exactly one quest without progress (not a class quest, not complete,
+# not the quest of its current travel target; the oldest first), at most once per IdleSeconds and not
+# within GraceSeconds of its first check after login. Enabled = 0 turns the rotation off.
+AiPlayerbot.QuestRotate.Enabled = 1
+AiPlayerbot.QuestRotate.IdleSeconds = 2400
+AiPlayerbot.QuestRotate.GraceSeconds = 1800
+# WoolTierSkill / FirstAidClothReserve (twow-repo#524, owner 04.10.2026, only with RealReagents, roster
+# bots on their own): a bot that knows Tailoring keeps every Linen Cloth for Tailoring while its
+# Tailoring skill is below WoolTierSkill (no linen bandages), from then on First Aid only uses the
+# linen above FirstAidClothReserve. Secondary professions (First Aid, Cooking, Fishing) also leave
+# the reagents of the bot's green-or-better main-profession recipes (5 casts) alone, and those
+# reagents are not sold below ReagentKeepStacks + 1 stacks. 0 / 0 = no wool rule.
+AiPlayerbot.ProfessionUse.WoolTierSkill = 75
+AiPlayerbot.ProfessionUse.FirstAidClothReserve = 20
 
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full

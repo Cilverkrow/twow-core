@@ -997,6 +997,21 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(loot_units_policy_test
     "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")
   add_test(NAME loot_units_policy_test COMMAND loot_units_policy_test)
+  # twow-repo#484 hotfix 8.19: `.tele` joins the whole name, substring only when unique.
+  add_test(NAME tele_lookup_unique_484_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_tele_lookup_unique_484_contract.cmake")
+  # twow-repo#379 hotfix 8.21: high elf/goblin in faction and race lists, tauren shaman racial.
+  add_test(NAME race_faction_379_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_race_faction_379_contract.cmake")
+  # twow-repo#527 hotfix 8.23: quest spell rewards that never arrived, learned at login.
+  add_test(NAME quest_spell_regrant_527_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_quest_spell_regrant_527_contract.cmake")
   # twow-repo#408: Scarlet Citadel (map 45) secured, content kept.
   add_test(NAME scarlet_citadel_408_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1037,6 +1052,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_alarus_once_338_contract.cmake")
+  # twow-repo#427/#461/#459 train 9: switch off unreachable content with backups, Frostmane fixes.
+  add_test(NAME world_disable_zug9_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_world_disable_zug9_contract.cmake")
   # twow-repo#367: skill_line_ability.id is smallint unsigned; no migration id above 65535.
   add_test(NAME skill_line_ability_id_range_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1072,6 +1092,19 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_passive_spells_contract.cmake")
+  # twow-repo#484 hotfix 8.24: [ComboTrace] reasons for lost combo points (logging only).
+  add_test(NAME combo_trace_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_combo_trace_contract.cmake")
+  # twow-repo#484 hotfix 8.25: combo point switches (default off), policy unit test + wiring contract.
+  add_executable(combo_policy_test
+    "${TW_CORE_ROOT}/t/combo_policy_test.cpp")
+  add_test(NAME combo_policy_test COMMAND combo_policy_test)
+  add_test(NAME combo_switches_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_combo_switches_contract.cmake")
   # twow-repo#367: the owner rogue talent line (bot auras 90150-90193), pure rules and data contract.
   add_executable(rogue_talents_policy_test
     "${TW_CORE_ROOT}/t/rogue_talents_policy_test.cpp")

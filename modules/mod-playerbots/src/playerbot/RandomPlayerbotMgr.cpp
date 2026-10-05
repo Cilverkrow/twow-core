@@ -3621,6 +3621,15 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     };
     PlayerInfo const* own = firstInfo(bot->getRace());
 
+    // Hotfix 8.29 (twow-repo#532): a goblin below 11 goes to Durotar, where its route continues.
+    if (ai::quest_search::goblin_island::UsesGoblinStartRescue(bot->getRace(), level))
+    {
+        namespace gi = ai::quest_search::goblin_island;
+        targets.push_back(WorldLocation(1, gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ, 0.0f));
+        targets.push_back(WorldLocation(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f));
+        return targets;
+    }
+
     for (uint32 race = 1; race < MAX_RACES; ++race)
     {
         PlayerInfo const* info = firstInfo(race);
@@ -3696,6 +3705,20 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
 
         bot->GetMotionMaster()->Clear();
         bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);
+
+        // Hotfix 8.26 (v33, Rollotheo 4140): the hearthstone stayed bound to the start area, so the
+        // next "long stuck" hearthstone (or the 8.14 home step) took the bot straight back to where
+        // its route had failed. A rescued roster bot binds its hearthstone at the rescue target
+        // (an inn or a level hub of its faction).
+        if (ai::quest_search::RebindAtRescue(IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster(),
+                bot->GetHomebindMapId(), target.mapid))
+        {
+            AreaTableEntry const* area = WorldPosition(target).GetArea();
+            bot->SetHomebindToLocation(target, area ? area->ID : 0);
+            sLog.outBasic("[QuestRescue] state=rebind bot=%u level=%u to_map=%u to_x=%.0f to_y=%.0f area=%u",
+                bot->GetGUIDLow(), bot->GetLevel(), target.mapid, target.coord_x, target.coord_y, area ? area->ID : 0);
+        }
+
         bot->SendHeartBeat();
         ai->Reset(true);
         ai->OnQuestRescued(now);
