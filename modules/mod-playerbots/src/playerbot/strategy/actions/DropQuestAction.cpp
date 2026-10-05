@@ -2,6 +2,8 @@
 #include "playerbot/playerbot.h"
 #include "DropQuestAction.h"
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/QuestAcceptPolicy.h"
+#include "playerbot/TravelMgr.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Formulas.h"
 
@@ -79,6 +81,7 @@ bool CleanQuestLogAction::Execute(Event& event)
         return false;
 
     DropGreyQuestsOnItsOwn(ai, bot);
+    IdleRotateOnItsOwn();
 
     uint8 totalQuests = 0;
 
@@ -181,6 +184,71 @@ void CleanQuestLogAction::DropQuestType(Player* requester, uint8 &numQuest, uint
 
         ai->TellPlayer(requester, BOT_TEXT("quest_remove") + " " + chat->formatQuest(quest), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
     }
+}
+
+// Hotfix 8.17: rotation only while the bot is stuck with a full log (see QuestAcceptPolicy.h).
+void CleanQuestLogAction::IdleRotateOnItsOwn()
+{
+    bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+    uint32 const now = uint32(time(nullptr));
+    uint32 questCount = 0;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        if (bot->GetQuestSlotQuestId(slot))
+            ++questCount;
+
+    // Hotfix 8.27: grace period from the bot's first check (the idle time counts from login).
+    uint32 firstSeen = uint32(std::max<time_t>(0, AI_VALUE2(time_t, "manual time", "quest idle rotate seen")));
+    if (!firstSeen)
+    {
+        firstSeen = now;
+        SET_AI_VALUE2(time_t, "manual time", "quest idle rotate seen", time_t(now));
+    }
+
+    ai::quest_accept::RotateConfig config;
+    config.enabled = sPlayerbotAIConfig.questRotateEnabled;
+    config.idleSeconds = sPlayerbotAIConfig.questRotateIdleSeconds;
+    config.graceSeconds = sPlayerbotAIConfig.questRotateGraceSeconds;
+
+    uint32 const lastRotate = uint32(std::max<time_t>(0, AI_VALUE2(time_t, "manual time", "quest idle rotate")));
+    uint32 const idleSeconds = ai->GetQuestIdleSeconds(now);
+    if (!ai::quest_accept::IdleRotateDue(rosterOnItsOwn, bot->IsInCombat(), idleSeconds, questCount,
+            MAX_QUEST_LOG_SIZE, firstSeen, lastRotate, now, config))
+        return;
+
+    // Hotfix 8.27: never the quest of the current travel target (the bot is on its way to it).
+    uint32 travelQuest = 0;
+    if (TravelTarget* travel = AI_VALUE(TravelTarget*, "travel target"))
+        if (QuestTravelDestination const* destination = dynamic_cast<QuestTravelDestination const*>(travel->GetDestination()))
+            travelQuest = destination->GetQuestId();
+
+    std::vector<ai::quest_accept::RotateCandidate> candidates;
+    std::vector<uint32> questIds;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        Quest const* quest = questId ? sObjectMgr.GetQuestTemplate(questId) : nullptr;
+        if (!quest || quest->GetRequiredClasses() || bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE ||
+            HasProgress(bot, quest) || questId == travelQuest)
+            continue;
+
+        ai::quest_accept::RotateCandidate candidate;
+        candidate.slot = slot;
+        candidate.otherZone = quest->GetZoneOrSort() > 0 && uint32(quest->GetZoneOrSort()) != bot->GetZoneId();
+        candidates.push_back(candidate);
+        questIds.push_back(questId);
+    }
+
+    // Checked once per interval also when nothing qualifies, so the log is not walked every time.
+    SET_AI_VALUE2(time_t, "manual time", "quest idle rotate", time_t(now));
+    int const pick = ai::quest_accept::PickIdleRotate(candidates);
+    if (pick < 0)
+        return;
+
+    uint32 const questId = questIds[std::size_t(pick)];
+    sLog.outBasic("[QuestRotate] bot=%u level=%u quest=%u slot=%u other_zone=%u quests=%u idle_min=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), questId, candidates[std::size_t(pick)].slot,
+        candidates[std::size_t(pick)].otherZone ? 1u : 0u, questCount, idleSeconds / 60);
+    ai->DropQuest(questId, "idle_rotate");
 }
 
 bool CleanQuestLogAction::HasProgress(Player* bot, Quest const* quest)

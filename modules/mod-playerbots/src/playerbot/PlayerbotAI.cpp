@@ -628,6 +628,45 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             // Hotfix 8.12 (bot 27 Nilenata, >24 h in combat without progress): a roster bot on its
             // own that stays in combat without progress is stopped after 10 minutes; after 20
             // the rescue below may act although it is in combat.
+            // Hotfix 8.29 (twow-repo#532): Blackstone Island has no travel edge, only the flying machine.
+            // Hotfix 8.29a: only a goblin in the island's box or a bot with a real master enters.
+            namespace gi = ai::quest_search::goblin_island;
+            bool const islandCandidate = gi::MayBeOnIsland(bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+            if ((islandCandidate || HasRealPlayerMaster()) &&
+                bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
+            {
+                if (islandCandidate && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() &&
+                    gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now)))
+                {
+                    float const dist = bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ);
+                    if (dist <= gi::BoardDistance)
+                    {
+                        sLog.outBasic("[Travel] state=island_flight bot=%u level=%u from=%u path=%u", bot->GetGUIDLow(),
+                            bot->GetLevel(), gi::IslandZone, gi::IslandPath);
+                        bot->GetMotionMaster()->Clear();
+                        bot->ActivateTaxiPathTo(gi::IslandPath, 0, true);
+                    }
+                    else
+                        bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);
+                }
+                else if (Player* const realMaster = HasRealPlayerMaster() ? GetMaster() : nullptr)
+                {
+                    // A follower whose real master flew off from a machine takes the same flight.
+                    if (realMaster->IsTaxiFlying())
+                    {
+                        uint32 const path = gi::FollowPath(bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ),
+                            bot->GetDistance(gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ));
+                        if (path)
+                        {
+                            sLog.outBasic("[Travel] state=follow_script_taxi bot=%u level=%u master=%u path=%u", bot->GetGUIDLow(),
+                                bot->GetLevel(), realMaster->GetGUIDLow(), path);
+                            bot->GetMotionMaster()->Clear();
+                            bot->ActivateTaxiPathTo(path, 0, true);
+                        }
+                    }
+                }
+            }
+
             bool rescueInCombat = false;
             if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() && bot->IsAlive())
             {
@@ -6560,11 +6599,13 @@ void PlayerbotAI::DurabilityLoss(Item* item, double percent)
 
 bool IsAlliance(uint8 race)
 {
-    return race == RACE_HUMAN || race == RACE_DWARF || race == RACE_NIGHTELF ||
+    // twow-repo#379 (hotfix 8.21): the core mask knows every Alliance race, including the Turtle
+    // high elf (10), which the old list missed (wrong faction in IsOpposing, security, AH, say).
 #ifndef MANGOSBOT_ZERO
-           race == RACE_DRAENEI ||
+    if (race == RACE_DRAENEI)
+        return true;
 #endif
-           race == RACE_GNOME;
+    return race > 0 && race < MAX_RACES && ((1u << (race - 1)) & RACEMASK_ALLIANCE) != 0;
 }
 
 uint32 PlayerbotAI::GetFixedBotNumber(BotTypeNumber typeNumber, uint32 maxNum, float cyclePerMin, bool ignoreGuid)
