@@ -250,6 +250,15 @@ constexpr uint32_t LeaveIdleSeconds = 15 * 60;
 constexpr float BoardDistance = 8.0f;          // close enough to "use" the machine
 constexpr float FollowDistance = 30.0f;        // a follower this close to a machine flies along
 
+// Hotfix 8.29a (v36 smoke: over100 145/min vs 25): the island check runs for a goblin on map 1
+// inside the island's box (position only, no terrain lookup); every other bot skips it.
+constexpr uint32_t GoblinRace = 9;
+constexpr float BoxMinX = -1500.0f, BoxMaxX = 600.0f, BoxMinY = -8600.0f, BoxMaxY = -6600.0f;
+inline bool MayBeOnIsland(uint32_t race, uint32_t mapId, float x, float y)
+{
+    return race == GoblinRace && mapId == 1 && x >= BoxMinX && x <= BoxMaxX && y >= BoxMinY && y <= BoxMaxY;
+}
+
 // A roster bot on its own leaves the island from LeaveLevel on, or earlier when it has made no
 // progress for LeaveIdleSeconds (no quest left there).
 inline bool ShouldLeaveIsland(uint32_t zone, uint32_t level, uint32_t idleSeconds)
