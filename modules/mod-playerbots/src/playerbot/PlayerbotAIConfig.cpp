@@ -820,7 +820,7 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildNamesHorde = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesHorde", "");
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
     rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
-    rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 300);
+    rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 86400);
     // twow-repo#485: bandages and potions of roster bots from the bags. 0 / 100 / 2 = legacy.
     rosterConsumablesUseReal = config.GetBoolDefault("AiPlayerbot.RosterConsumables.UseReal", false);
     rosterConsumablesHealingPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.HealingPotionPct", 100);

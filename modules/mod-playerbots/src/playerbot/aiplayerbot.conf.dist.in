@@ -355,10 +355,12 @@ AiPlayerbot.RosterGuild.SnapshotSeconds = 60
 # Independent of BotsPerGuild. Takes precedence over TalentsInPublicNote for roster bots.
 AiPlayerbot.RosterGuild.GuildNote = 0
 
-# Seconds between two note checks per bot (60-3600, other values are clamped). The note is computed
-# from the bot's own items and talents (no database query) and written only when it changed; the
-# write runs on the world thread (GuildMgr), no roster broadcast.
-AiPlayerbot.RosterGuild.NoteRefreshSeconds = 300
+# Seconds between two note checks per bot (60-604800, other values are clamped; default 86400 = once
+# every 24 h, owner 04.10.: the item level is the only part that changes often). The first check runs
+# right after login. The trigger only compares a timestamp once a minute; the note is computed from
+# the bot's own items and talents (no database query) and written only when it changed; the write
+# runs on the world thread (GuildMgr), no roster broadcast.
+AiPlayerbot.RosterGuild.NoteRefreshSeconds = 86400
 
 # Bandages and potions of roster bots (twow-repo#485, owner decision 9). Applies to persistent
 # roster bots without a real-player master only. UseReal 0 = off (default, legacy: under the item
