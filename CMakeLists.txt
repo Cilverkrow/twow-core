@@ -1052,6 +1052,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_alarus_once_338_contract.cmake")
+  # twow-repo#427/#461/#459 train 9: switch off unreachable content with backups, Frostmane fixes.
+  add_test(NAME world_disable_zug9_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_world_disable_zug9_contract.cmake")
   # twow-repo#367: skill_line_ability.id is smallint unsigned; no migration id above 65535.
   add_test(NAME skill_line_ability_id_range_contract
     COMMAND "${CMAKE_COMMAND}"
