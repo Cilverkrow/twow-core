@@ -236,7 +236,7 @@ struct SpellCooldown
     time_t end;
     uint32 cat;
     time_t categoryEnd;
-    uint16 itemid;
+    uint32 itemid;                                          // full item entry (twow-repo#484: items above 65535 exist)
 };
 
 typedef std::map<uint32, SpellCooldown> SpellCooldowns;
