@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include "playerbot/strategy/Value.h"
+#include "playerbot/MaterialReservePolicy.h"
 #include "playerbot/strategy/NamedObjectContext.h"
 
 namespace ai
@@ -87,6 +88,15 @@ namespace ai
         CraftReagentIndexValue(PlayerbotAI* ai, std::string name = "craft reagent index", int checkInterval = 60) :
             CalculatedValue<std::shared_ptr<const CraftReagentIndex>>(ai, name, checkInterval) {}
         virtual std::shared_ptr<const CraftReagentIndex> Calculate() override;
+    };
+
+    // twow-repo#524: what the bot's green-or-better craft recipes need, per reagent (material memory).
+    class MaterialMemoryValue : public CalculatedValue<std::shared_ptr<const material_reserve::Memory>>
+    {
+    public:
+        MaterialMemoryValue(PlayerbotAI* ai, std::string name = "material memory", int checkInterval = 60) :
+            CalculatedValue<std::shared_ptr<const material_reserve::Memory>>(ai, name, checkInterval) {}
+        virtual std::shared_ptr<const material_reserve::Memory> Calculate() override;
     };
 
     class EnchantSpellsValue : public CalculatedValue<std::vector<uint32>> //All enchanting spells

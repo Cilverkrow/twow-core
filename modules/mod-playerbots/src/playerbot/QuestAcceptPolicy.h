@@ -48,16 +48,28 @@ inline bool SkipForRosterBot(bool rosterOnItsOwn, uint32_t botLevel, uint32_t qu
 // bot on its own that made no progress for IdleRotateSeconds out of combat with a full log
 // (at least MaxLog - CleanFreeSlots quests) drops exactly one quest without progress, at most
 // once per IdleRotateSeconds, so it can take a nearer one.
-constexpr uint32_t IdleRotateSeconds = 20 * 60;
+//
+// Hotfix 8.27 (v33, 45 min: 141 rotations, 88 of them 20 minutes after the world start because the
+// idle time counts from login; 112 of another zone - often the quest the bot travelled to; quest
+// updates -64 %): a grace period after the bot's first check, a longer threshold, never the quest
+// of the current travel target, the oldest first. All of it configurable (AiPlayerbot.QuestRotate.*).
+struct RotateConfig
+{
+    bool enabled = true;
+    uint32_t idleSeconds = 40 * 60;     // no progress for this long (also the per-bot interval)
+    uint32_t graceSeconds = 30 * 60;    // no rotation this soon after the bot was first seen
+};
 
 inline bool IdleRotateDue(bool rosterOnItsOwn, bool inCombat, uint32_t idleSeconds, uint32_t questCount,
-    uint32_t maxLog, uint32_t lastRotate, uint32_t now)
+    uint32_t maxLog, uint32_t firstSeen, uint32_t lastRotate, uint32_t now, RotateConfig const& config)
 {
-    if (!rosterOnItsOwn || inCombat || idleSeconds < IdleRotateSeconds)
+    if (!config.enabled || !rosterOnItsOwn || inCombat || idleSeconds < config.idleSeconds)
         return false;
     if (questCount + CleanFreeSlots < maxLog)
         return false;
-    return !lastRotate || now - lastRotate >= IdleRotateSeconds;
+    if (!firstSeen || now - firstSeen < config.graceSeconds)
+        return false;
+    return !lastRotate || now - lastRotate >= config.idleSeconds;
 }
 
 // A quest without progress, not complete and no class quest (the caller filters).
@@ -67,8 +79,8 @@ struct RotateCandidate
     bool otherZone = false;     // its zone (ZoneOrSort > 0) is not the bot's zone: far away
 };
 
-// Index of the quest to drop, -1 = none: a quest of another zone first, then the lowest slot
-// (the log fills from the top, so the lowest slot is the oldest entry).
+// Index of the quest to drop, -1 = none: the lowest slot (the log fills from the top, so the lowest
+// slot is the oldest entry); another zone only breaks a tie (hotfix 8.27).
 inline int PickIdleRotate(std::vector<RotateCandidate> const& candidates)
 {
     int best = -1;
@@ -81,7 +93,7 @@ inline int PickIdleRotate(std::vector<RotateCandidate> const& candidates)
         }
         RotateCandidate const& c = candidates[i];
         RotateCandidate const& b = candidates[std::size_t(best)];
-        if (c.otherZone != b.otherZone ? c.otherZone : c.slot < b.slot)
+        if (c.slot != b.slot ? c.slot < b.slot : (c.otherZone && !b.otherZone))
             best = int(i);
     }
     return best;

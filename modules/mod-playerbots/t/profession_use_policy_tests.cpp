@@ -190,6 +190,29 @@ int main()
     Require(KeepCraftStacks(2.5f, 2), "2.5 stacks kept with ReagentKeepStacks 2");
     Require(!KeepCraftStacks(3.0f, 2), "three stacks with ReagentKeepStacks 2: sold");
 
+    // Hotfix 8.20: the lowest profession first, then rotation, then the old order.
+    {
+        Recipe bandage = C(3275, 1000, 8); bandage.skillId = 129; bandage.skillValue = 70;
+        Recipe bolt = C(2963, 1000, 4);    bolt.skillId = 197;    bolt.skillValue = 23;
+        Require(Pick({ bandage, bolt }) == 1, "tailoring 23 before first aid 70 (bolt, not bandage)");
+        Recipe rod = C(7421, 1000, 1);     rod.skillId = 333;     rod.skillValue = 17;
+        Require(Pick({ bandage, bolt, rod }) == 2, "enchanting 17 first");
+        Recipe other = C(2149, 650, 3);    other.skillId = 165;   other.skillValue = 23;
+        Require(Pick({ bolt, other }, 197) == 1, "tie 23/23: the profession not crafted last time");
+        Require(Pick({ bolt, other }, 165) == 0, "tie 23/23, other last: tailoring");
+        Require(Pick({ bolt, other }) == 0, "tie without history: higher chance");
+        Recipe heavy = C(3276, 1000, 4);   heavy.skillId = 129;   heavy.skillValue = 70;
+        Require(Pick({ bandage, heavy }) == 0, "same profession: more casts first, as before");
+        Require(CapGap(bandage) == 230 && CapGap(bolt) == 277, "gap to the profession cap");
+    }
+    Require(CanBeDisenchanted(true, 2, 1, false), "green armor: disenchant");
+    Require(CanBeDisenchanted(true, 4, 1, false), "epic weapon: disenchant");
+    Require(!CanBeDisenchanted(true, 1, 1, false), "white: no");
+    Require(!CanBeDisenchanted(true, 5, 1, false), "legendary: no");
+    Require(!CanBeDisenchanted(false, 2, 1, false), "no weapon or armor: no");
+    Require(!CanBeDisenchanted(true, 3, 0, false), "no disenchant loot: no");
+    Require(!CanBeDisenchanted(true, 2, 21, true), "hotfix 8.30: ITEM_FLAG_NO_DISENCHANT (Lesser Magic Wand): no");
+
     std::cout << "profession_use_policy_tests passed\n";
     return 0;
 }
