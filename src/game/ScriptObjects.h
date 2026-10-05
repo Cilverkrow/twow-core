@@ -150,6 +150,7 @@ enum PlayerHook
     PLAYERHOOK_CAN_USE_GROUP_CHAT,
     PLAYERHOOK_ON_REPOP_AT_GRAVEYARD,
     PLAYERHOOK_ON_QUEST_SHARE_REFUSED,
+    PLAYERHOOK_CAN_SWITCH_GUILD,
     PLAYERHOOK_END
 };
 
@@ -260,6 +261,16 @@ class PlayerScript : public ScriptObject
         // Return true once the member was admitted: the core then sends no
         // "not eligible" line to the sharer; the module answers for it.
         virtual bool OnQuestShareRefused(Player* /*sharer*/, Player* /*member*/, Quest const* /*quest*/) { return false; }
+
+        // A player invites a character that is already in a guild: a guild
+        // invitation (guildId = the inviter's guild) or his own charter
+        // (guildId = 0). The core answers "already in a guild"; a module may let
+        // the invitation through for a character it drives - the playerbot
+        // poaching rule, twow-repo#485. The invitee then decides itself, and the
+        // switch goes through GuildMgr::RequestGuildSwitch (world thread).
+        // invitee is a guid on purpose: the charter offer runs on the inviter's
+        // map thread, and the invitee may be updated by another one.
+        virtual bool CanSwitchGuild(Player* /*inviter*/, ObjectGuid const& /*invitee*/, uint32 /*guildId*/) { return false; }
 };
 
 class CreatureScript : public ScriptObject, public UpdatableScript<Creature>

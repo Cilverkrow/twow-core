@@ -95,6 +95,13 @@ class GuildMgr
                 return GetGuildById(it->second);
             return nullptr;
         }
+        // twow-repo#485: the guild id only (0 = none), no Guild* for map threads.
+        uint32 GetPlayerGuildId(uint32 lowguid)
+        {
+            std::shared_lock<std::shared_mutex> guard(m_guid2GuildMutex);
+            std::map<uint32, uint32>::const_iterator it = m_guid2guild.find(lowguid);
+            return it != m_guid2guild.end() ? it->second : 0;
+        }
 
         void CreatePetition(uint32 id, Player* player, const ObjectGuid& charterGuid, std::string& name);
         void DeletePetition(Petition* petition);
@@ -110,6 +117,8 @@ class GuildMgr
         bool GetPetitionSummaryBySigner(ObjectGuid const& signerGuid, PetitionSummary& out);
         void CollectPetitionSummaries(std::vector<PetitionSummary>& out);
         void CollectGuildSummaries(std::vector<GuildSummary>& out) const;
+        // One guild as a copy (twow-repo#485, poaching rule); false when there is no such guild.
+        bool GetGuildSummary(uint32 guildId, GuildSummary& out) const;
         // Renames the petition of this charter and owner under the exclusive lock. Writes the
         // character DB (UPDATE petition SET name, Petition::Rename). Same name checks as
         // MSG_PETITION_RENAME; false when the name or the charter does not qualify.
@@ -145,6 +154,21 @@ class GuildMgr
         // roster when the guild window is open.
         void SetMemberPublicNote(uint32 guildId, ObjectGuid const& member, std::string const& note);
 
+        // twow-repo#485 (owner decision 5, poaching): a member of fromGuildId takes a guild
+        // invitation (toGuildId, petitionId 0) or signs a charter (petitionId, toGuildId 0). Called
+        // on the member's map thread; only queued here (one entry per member, the latest wins).
+        // GuildMgr::Update applies it on the world thread, where no map thread runs and the guild
+        // opcodes run too: the checks of CMSG_GUILD_LEAVE (not the guild master) and of
+        // CMSG_GUILD_ACCEPT (still invited to toGuildId) or CMSG_PETITION_SIGN (GuildMgr::
+        // AddPetitionSignature) are repeated first; when one fails, nothing changes (an open
+        // invitation to toGuildId is dropped). Then the member leaves fromGuildId (DelMember, guild
+        // log, GE_LEFT) and joins toGuildId (AddMember, GE_JOINED) or signs the charter. Writes the
+        // character DB like those opcodes. Trace: [RosterGuild] event=poached / poach_failed.
+        void RequestGuildSwitch(ObjectGuid const& member, uint32 fromGuildId, uint32 toGuildId, uint32 petitionId);
+        // Unix time of the member's last switch through RequestGuildSwitch since the server start,
+        // 0 = none (memory only; the poaching cooldown).
+        time_t GetLastGuildSwitch(uint32 memberLowGuid);
+
         void LoadGuilds();
         void LoadPetitions();
 
@@ -161,6 +185,21 @@ class GuildMgr
         };
         std::mutex m_pendingNotesMutex;
         std::unordered_map<uint32, PendingPublicNote> m_pendingPublicNotes;     // member guid low -> note
+
+        // World thread (Update): applies the queued guild switches (RequestGuildSwitch).
+        void ApplyPendingGuildSwitches();
+        bool ApplyGuildSwitch(ObjectGuid const& member, uint32 fromGuildId, uint32 toGuildId, uint32 petitionId, char const*& reason);
+
+        struct PendingGuildSwitch
+        {
+            ObjectGuid member;
+            uint32 fromGuildId = 0;
+            uint32 toGuildId = 0;
+            uint32 petitionId = 0;
+        };
+        std::mutex m_guildSwitchMutex;
+        std::unordered_map<uint32, PendingGuildSwitch> m_pendingGuildSwitches;  // member guid low -> request
+        std::unordered_map<uint32, time_t> m_lastGuildSwitch;                   // member guid low -> unix time
 
         mutable std::shared_mutex m_guildMutex;
         GuildMap m_GuildMap;

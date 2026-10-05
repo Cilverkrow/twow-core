@@ -26,6 +26,7 @@
 #include "playerbot/AiFactory.h"
 #include "playerbot/strategy/actions/ChangeTalentsAction.h"
 #include "playerbot/strategy/actions/ShareQuestAction.h"
+#include "playerbot/strategy/actions/GuildAcceptAction.h"
 #include "ahbot/AhBot.h"
 #include "BotDiagnostics.h"
 #include "playerbot/BotSlots.h"
@@ -240,6 +241,20 @@ class PlayerbotPlayerScript : public PlayerScript
             sharer->SendPushToPartyResponse(member, QUEST_PARTY_MSG_ACCEPT_QUEST);
             ai->TellPlayer(sharer, BOT_TEXT("quest_accept"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
             return true;
+        }
+
+        // twow-repo#485 (owner decision 5, poaching): a real player invites a roster bot of a bot
+        // guild (guildId: his guild) or offers it his charter (guildId 0). True lets the invitation
+        // reach the bot instead of "already in a guild"; the bot decides again in GuildAcceptAction
+        // / PetitionSignAction, and GuildMgr switches on the world thread. AllowPoaching = 0 (default)
+        // keeps the core's answer. The charter offer runs on the inviter's map thread: the rule reads
+        // the invitee only by guid, through copies.
+        bool CanSwitchGuild(Player* inviter, ObjectGuid const& invitee, uint32 guildId) override
+        {
+            if (!inviter || !sPlayerbotAIConfig.enabled || !sPlayerbotAIConfig.rosterGuildAllowPoaching)
+                return false;
+
+            return !ai::RosterGuildPoach::Refusal(inviter, invitee, guildId, true, guildId ? "core_invite" : "core_charter");
         }
 
         // Was the CreatePlayerbotMgr() call in HandlePlayerLogin. Only a person
