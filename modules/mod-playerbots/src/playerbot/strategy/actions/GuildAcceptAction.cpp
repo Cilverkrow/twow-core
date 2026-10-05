@@ -4,6 +4,7 @@
 #include "GuildCreateActions.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/GuildPoachPolicy.h"
+#include "playerbot/RosterGuildPolicy.h"
 #include "Guild/GuildMgr.h"
 #include "GuildCreateActions.h"
 #include <mutex>
@@ -143,6 +144,16 @@ bool GuildAcceptAction::Execute(Event& event)
         if (RosterGuildPlan::IsDue(ai, "roster guild keep charter trace", HOUR))
             sLog.outBasic("[RosterGuild] event=invite_declined bot=%u inviter=%u guild=%u reason=poached_keeps_charter",
                 bot->GetGUIDLow(), inviter->GetGUIDLow(), guildId);
+    }
+    else if (!roster_guild::JoinAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster(), IsRealPlayer(inviter)))
+    {
+        // Owner 05.10.2026: no bot guild below AiPlayerbot.RosterGuild.MinLevel (players reserve first).
+        ai->TellError(requester, "Sorry, I am too young for a guild");
+        accept = false;
+        if (RosterGuildPlan::IsDue(ai, "roster guild min level trace", HOUR))
+            sLog.outBasic("[RosterGuild] event=join_deferred bot=%u level=%u inviter=%u guild=%u path=accept reason=min_level",
+                bot->GetGUIDLow(), bot->GetLevel(), inviter->GetGUIDLow(), guildId);
     }
     else if (!ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_GUILD, false, inviter, true))
     {

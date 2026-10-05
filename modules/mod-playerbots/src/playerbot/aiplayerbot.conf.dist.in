@@ -427,6 +427,12 @@ AiPlayerbot.RosterGuild.AllowPoaching = 0
 # At most one switch per bot within this many seconds (3600-2592000, other values are clamped; in
 # memory, so a server restart clears it).
 AiPlayerbot.RosterGuild.PoachCooldownSeconds = 86400
+# Minimum level for bot guilds (owner 05.10.2026): a persistent roster bot below it founds no
+# charter, signs no bot charter, accepts no bot guild's invitation and is not invited by bot
+# officers, so players can reserve their bots first. A real player's invitation or charter is
+# allowed at any level. [RosterGuild] event=join_deferred reason=min_level (at most hourly per bot).
+# 0 = off (default).
+AiPlayerbot.RosterGuild.MinLevel = 0
 # Bandages and potions of roster bots (twow-repo#485, owner decision 9). Applies to persistent
 # roster bots without a real-player master only. UseReal 0 = off (default, legacy: under the item
 # cheat "item" a healing or mana potion, healthstone or bandage is cast without an item, and such

@@ -844,6 +844,12 @@ add_test(NAME roster_guild_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/roster_guild_source_contract_tests.cmake")
 
+# Owner 05.10.2026: bot guilds only from AiPlayerbot.RosterGuild.MinLevel.
+add_test(NAME guild_min_level_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/guild_min_level_contract_tests.cmake")
+
 # twow-repo#485 / #518: fill roster guilds by role (Tanks/Healers/Dps, spread switches, PlanFile) -
 # the deal of OB-40's guild_plan.py in memory; invites, accepts and signatures follow it.
 add_executable(roster_guild_role_policy_tests

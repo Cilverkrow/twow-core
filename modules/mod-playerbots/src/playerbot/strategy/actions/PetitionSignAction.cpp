@@ -117,6 +117,17 @@ bool PetitionSignAction::Execute(Event& event)
         }
     }
 
+    // Owner 05.10.2026: a roster bot below AiPlayerbot.RosterGuild.MinLevel signs no bot charter;
+    // a real player's charter is signed at any level.
+    if (accept && !isArena && !roster_guild::JoinAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
+            sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster(), IsRealPlayer(_inviter)))
+    {
+        accept = false;
+        if (RosterGuildPlan::IsDue(ai, "roster guild min level trace", HOUR))
+            sLog.outBasic("[RosterGuild] event=join_deferred bot=%u level=%u inviter=%u charter=%u path=sign reason=min_level",
+                bot->GetGUIDLow(), bot->GetLevel(), _inviter->GetGUIDLow(), petitionGuid.GetCounter());
+    }
+
     // twow-repo#485 (new path): a roster bot on its own signs only towards the faction's guild
     // target, and its signature moves only to a fuller charter (88 % of the 3,122 v24 signatures
     // were moves between bot charters). Counts are copies taken under the petition lock.

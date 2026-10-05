@@ -844,6 +844,11 @@ bool BuyPetitionAction::canBuyPetition(Player* bot)
     if (bot->GetGuildId())
         return false;
 
+    // Owner 05.10.2026: a roster bot founds no guild below AiPlayerbot.RosterGuild.MinLevel.
+    if (!roster_guild::FoundAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
+            sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && GetBotAI(bot) && !GetBotAI(bot)->HasRealPlayerMaster()))
+        return false;
+
     if (bot->GetGuildIdInvited())
         return false;    
 
@@ -988,6 +993,12 @@ bool PetitionOfferNearbyAction::Execute(Event& event)
             continue;
 
         if (player->GetGuildIdInvited())
+            continue;
+
+        // Owner 05.10.2026: no charter offer to a roster bot below AiPlayerbot.RosterGuild.MinLevel
+        // (it would refuse to sign anyway).
+        if (!IsRealPlayer(player) && !roster_guild::JoinAllowed(player->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
+                sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()), false))
             continue;
 
         if (!sPlayerbotAIConfig.randomBotInvitePlayer && IsRealPlayer(player))
