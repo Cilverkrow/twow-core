@@ -30,6 +30,7 @@
 #include "GuildMgr.h"
 #include "GossipDef.h"
 #include "SocialMgr.h"
+#include "ScriptMgr.h"
 
 void WorldSession::HandleGuildQueryOpcode(WorldPacket& recvPacket)
 {
@@ -103,7 +104,10 @@ void WorldSession::HandleGuildInviteOpcode(WorldPacket& recvPacket)
         return;
     }
 
-    if (player->GetGuildId())
+    // twow-repo#485 (owner decision 5, poaching): a module may let the invitation reach a member
+    // of another guild (playerbots: a roster bot of a bot guild, invited by a real player). The
+    // invitee decides itself; leaving and joining run in GuildMgr::RequestGuildSwitch.
+    if (player->GetGuildId() && !Script_CanSwitchGuild(GetPlayer(), player->GetObjectGuid(), GetPlayer()->GetGuildId()))
     {
         plname = player->GetName();
         SendGuildCommandResult(GUILD_INVITE_S, plname, ERR_ALREADY_IN_GUILD_S);

@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "GuildCreateActions.h"
+#include "GuildAcceptAction.h"
 #include "playerbot/RandomPlayerbotFactory.h"
 #include "playerbot/LootObjectStack.h"
 #ifndef MANGOSBOT_ZERO
@@ -857,6 +858,11 @@ bool BuyPetitionAction::canBuyPetition(Player* bot)
         return false;
 
     if (sGuildMgr.GetPetitionByOwnerGuid(bot->GetObjectGuid()))
+        return false;
+
+    // twow-repo#485 (poaching, no ping-pong): within the cooldown a bot that switched by charter
+    // keeps its signature there and founds no guild of its own.
+    if (RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))
         return false;
 
     if (ai->GetGuilderType() == GuilderType::SOLO)

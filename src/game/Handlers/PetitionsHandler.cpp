@@ -32,6 +32,7 @@
 #include "GossipDef.h"
 #include "SocialMgr.h"
 #include "Anticheat.h"
+#include "ScriptMgr.h"
 
 // Charters ID in item_template
 #define GUILD_CHARTER 5863
@@ -423,7 +424,12 @@ void WorldSession::HandleOfferPetitionOpcode(WorldPacket & recv_data)
         return;
     }
 
-    if (player->GetGuildId())
+    // twow-repo#485 (owner decision 5, poaching): a module may let the charter reach a member of
+    // another guild (playerbots: a roster bot of a bot guild, offered by a real player). The
+    // invitee decides itself; leaving and signing run in GuildMgr::RequestGuildSwitch, the sign
+    // handler below stays closed to guild members. Only the invitee's guid goes to the hook: this
+    // handler runs on the inviter's map thread.
+    if (player->GetGuildId() && !Script_CanSwitchGuild(_player, player->GetObjectGuid(), 0))
     {
         SendGuildCommandResult(GUILD_INVITE_S, _player->GetName(), ERR_ALREADY_IN_GUILD_S);
         return;

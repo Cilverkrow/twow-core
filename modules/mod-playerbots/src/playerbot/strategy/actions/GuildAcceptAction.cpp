@@ -1,11 +1,94 @@
 
 #include "playerbot/playerbot.h"
 #include "GuildAcceptAction.h"
+#include "GuildCreateActions.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/GuildPoachPolicy.h"
 #include "Guild/GuildMgr.h"
 #include "GuildCreateActions.h"
+#include <mutex>
+#include <unordered_map>
 
 using namespace ai;
+
+char const* RosterGuildPoach::Refusal(Player* inviter, ObjectGuid const& invitee, uint32 targetGuildId, bool charterOfInviter, char const* path)
+{
+    guild_poach::PoachInput in;
+    in.enabled = sPlayerbotAIConfig.enabled && sPlayerbotAIConfig.rosterGuildAllowPoaching;
+    in.rosterBot = !invitee.IsEmpty() && sRandomPlayerbotMgr.IsPersistentRosterMember(invitee.GetCounter());
+    if (!in.enabled || !in.rosterBot || !inviter)
+        return guild_poach::PoachDecisionName(guild_poach::DecidePoach(in));
+
+    // Copies only: the invitee may be updated on another map thread.
+    in.inviterRealPlayer = IsRealPlayer(inviter);
+    PlayerCacheData const* inviteeData = sObjectMgr.GetPlayerDataByGUID(invitee.GetCounter());
+    PlayerCacheData const* inviterData = sObjectMgr.GetPlayerDataByGUID(inviter->GetGUIDLow());
+    in.sameFaction = inviteeData && inviterData &&
+        Player::TeamForRace(uint8(inviteeData->uiRace)) == Player::TeamForRace(uint8(inviterData->uiRace));
+
+    in.currentGuildId = sGuildMgr.GetPlayerGuildId(invitee.GetCounter());
+    GuildSummary current;
+    if (in.currentGuildId && sGuildMgr.GetGuildSummary(in.currentGuildId, current))
+    {
+        in.currentGuildIsBotGuild = sRandomPlayerbotMgr.IsPersistentRosterMember(current.leaderGuid.GetCounter());
+        in.leadsCurrentGuild = current.leaderGuid == invitee;
+    }
+
+    in.targetGuildId = targetGuildId;
+    GuildSummary target;
+    if (targetGuildId && sGuildMgr.GetGuildSummary(targetGuildId, target))
+        in.targetIsBotGuild = sRandomPlayerbotMgr.IsPersistentRosterMember(target.leaderGuid.GetCounter());
+    in.charterOfInviter = charterOfInviter;
+
+    in.now = time(nullptr);
+    in.lastSwitch = sGuildMgr.GetLastGuildSwitch(invitee.GetCounter());
+    in.cooldownSeconds = guild_poach::PoachCooldown(sPlayerbotAIConfig.rosterGuildPoachCooldownSeconds);
+
+    guild_poach::PoachDecision const decision = guild_poach::DecidePoach(in);
+    if (decision == guild_poach::PoachDecision::Allow)
+        return nullptr;
+
+    if (guild_poach::IsTracedRefusal(decision))
+    {
+        // At most one line a minute per roster bot (the map is bounded by the roster size); only
+        // invitations of players reach this point.
+        static std::mutex traceLock;
+        static std::unordered_map<uint32, time_t> lastTrace;
+        bool due = false;
+        {
+            std::lock_guard<std::mutex> guard(traceLock);
+            time_t& last = lastTrace[invitee.GetCounter()];
+            if (!last || in.now >= last + 60)
+            {
+                last = in.now;
+                due = true;
+            }
+        }
+        if (due)
+            sLog.outBasic("[RosterGuild] event=poach_refused bot=%u inviter=%u from=%u to=%u path=%s reason=%s",
+                invitee.GetCounter(), inviter->GetGUIDLow(), in.currentGuildId, targetGuildId, path,
+                guild_poach::PoachDecisionName(decision));
+    }
+
+    return guild_poach::PoachDecisionName(decision);
+}
+
+uint32 RosterGuildPoach::KeptCharter(ObjectGuid const& bot, ObjectGuid const& offeredCharter)
+{
+    // Only a bot that switched since the server start can keep a charter; the stamp is read first,
+    // so every other bot skips the petition scan.
+    time_t const lastSwitch = sGuildMgr.GetLastGuildSwitch(bot.GetCounter());
+    if (!lastSwitch)
+        return 0;
+
+    PetitionSummary signedCharter;
+    bool const signsCharter = sGuildMgr.GetPetitionSummaryBySigner(bot, signedCharter);
+    bool const offeredIsSigned = signsCharter && !offeredCharter.IsEmpty() && signedCharter.charterGuid == offeredCharter;
+    if (!guild_poach::KeepsPoachedCharter(signsCharter, offeredIsSigned, time(nullptr), lastSwitch,
+            guild_poach::PoachCooldown(sPlayerbotAIConfig.rosterGuildPoachCooldownSeconds)))
+        return 0;
+    return signedCharter.id;
+}
 
 bool GuildAcceptAction::Execute(Event& event)
 {
@@ -27,6 +110,12 @@ bool GuildAcceptAction::Execute(Event& event)
 
     bool accept = true;
     uint32 guildId = inviter->GetGuildId();
+    // twow-repo#485 (owner decision 5, poaching): a roster bot of a bot guild takes a real player's
+    // invitation (the core let it through, PlayerScript::CanSwitchGuild); the same rule again here.
+    uint32 const fromGuildId = bot->GetGuildId();
+    uint32 const invitedGuildId = bot->GetGuildIdInvited();
+    bool const poach = guildId && fromGuildId && invitedGuildId &&
+        !RosterGuildPoach::Refusal(inviter, bot->GetObjectGuid(), invitedGuildId, false, "accept");
     if (!guildId)
     {
         ai->TellError(requester, "You are not in a guild!");
@@ -36,7 +125,7 @@ bool GuildAcceptAction::Execute(Event& event)
 
         accept = false;
     }
-    else if (bot->GetGuildId())
+    else if (fromGuildId && !poach)
     {
         ai->TellError(requester, "Sorry, I am in a guild already");
 
@@ -44,6 +133,16 @@ bool GuildAcceptAction::Execute(Event& event)
             bot->Say(BOT_TEXT2("Sorry, I am in a guild already %name.", placeholders), (bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH));
 
         accept = false;
+    }
+    else if (!fromGuildId && RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))
+    {
+        // twow-repo#485 (poaching, no ping-pong): within the cooldown a bot that switched by charter
+        // keeps its signature on that charter and joins no other guild.
+        ai->TellError(requester, "Sorry, I signed a charter already");
+        accept = false;
+        if (RosterGuildPlan::IsDue(ai, "roster guild keep charter trace", HOUR))
+            sLog.outBasic("[RosterGuild] event=invite_declined bot=%u inviter=%u guild=%u reason=poached_keeps_charter",
+                bot->GetGUIDLow(), inviter->GetGUIDLow(), guildId);
     }
     else if (!ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_GUILD, false, inviter, true))
     {
@@ -92,7 +191,16 @@ bool GuildAcceptAction::Execute(Event& event)
     }
 
     WorldPacket packet;
-    if (accept)
+    if (accept && poach)
+    {
+        // Leave the bot guild and join on the world thread (GuildMgr::Update), never from this map
+        // thread: guild opcodes and roster packets run there. The result is traced there
+        // (event=poached / poach_failed).
+        sGuildMgr.RequestGuildSwitch(bot->GetObjectGuid(), fromGuildId, invitedGuildId, 0);
+        sLog.outBasic("[RosterGuild] event=poach_accepted bot=%u inviter=%u from=%u to=%u via=invite",
+            bot->GetGUIDLow(), inviter->GetGUIDLow(), fromGuildId, invitedGuildId);
+    }
+    else if (accept)
     {
         bot->GetSession()->HandleGuildAcceptOpcode(packet);
 
@@ -102,6 +210,13 @@ bool GuildAcceptAction::Execute(Event& event)
         TalentSpec::SetPublicNote(bot);
 
         sPlayerbotAIConfig.logEvent(ai, "GuildAcceptAction", guild->GetName(), std::to_string(guild->GetMemberSize()));
+    }
+    else if (fromGuildId)
+    {
+        // HandleGuildDeclineOpcode ignores guild members, so an invitation the core let through for
+        // poaching would block every later one ("already invited"): drop it here.
+        if (invitedGuildId)
+            bot->SetGuildIdInvited(0);
     }
     else
     {

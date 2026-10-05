@@ -1938,6 +1938,9 @@ bool Script_IsMachineDriven(Player const* player);
 bool Script_HasAIFollowers(Player const* player);
 uint8 Script_GetAllowedRoles(Player const* player);
 void Script_SetForcedRole(Player* player, uint8 role);
+// twow-repo#485: may this guild member take the inviter's guild invitation (guildId) or
+// charter (guildId = 0)? False unless a module says so (PlayerScript::CanSwitchGuild).
+bool Script_CanSwitchGuild(Player* inviter, ObjectGuid const& invitee, uint32 guildId);
 
 uint32 GetAreaTriggerScriptId(uint32 triggerId);
 uint32 GetEventIdScriptId(uint32 eventId);

@@ -351,6 +351,12 @@ public:
     std::string rosterGuildPlanFile;
     std::shared_ptr<const std::vector<std::string>> rosterGuildPlanLines;
     std::shared_ptr<const std::vector<std::string>> RosterGuildPlanLines() const { return std::atomic_load(&rosterGuildPlanLines); }
+    // twow-repo#485 (owner decision 5, poaching): a roster bot in a bot guild takes a real player's
+    // guild invitation or charter and switches (GuildPoachPolicy.h). 0 = off (default: "already in
+    // a guild" as today); at most one switch per bot and PoachCooldownSeconds (default 86400, used
+    // as 3600-2592000).
+    bool rosterGuildAllowPoaching;
+    uint32 rosterGuildPoachCooldownSeconds;
     // twow-repo#485 (owner decision 9): roster bots on their own use bandages, healing and mana
     // potions from their bags (ConsumablesPolicy.h). UseReal 0 = off (default, legacy: cast
     // without an item under the item cheat, sold). Pct 100 = no gate beyond the trigger;

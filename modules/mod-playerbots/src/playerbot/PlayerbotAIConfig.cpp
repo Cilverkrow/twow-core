@@ -869,6 +869,8 @@ bool PlayerbotAIConfig::Initialize()
         }
     }
     std::atomic_store(&rosterGuildPlanLines, std::shared_ptr<const std::vector<std::string>>(planLines));
+    rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", false);
+    rosterGuildPoachCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.PoachCooldownSeconds", 86400);
     // twow-repo#485: bandages and potions of roster bots from the bags. 0 / 100 / 2 = legacy.
     rosterConsumablesUseReal = config.GetBoolDefault("AiPlayerbot.RosterConsumables.UseReal", false);
     rosterConsumablesHealingPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.HealingPotionPct", 100);
