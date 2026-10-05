@@ -131,13 +131,21 @@ void TalentSpec::ApplyTalents(Player* bot, std::ostringstream* out)
 
 void TalentSpec::SetPublicNote(Player* bot)
 {
-    TalentSpec spec(bot);
     if (sPlayerbotAIConfig.talentsInPublicNote && bot->GetGuildId())
     {
+        // twow-repo#485: with AiPlayerbot.RosterGuild.GuildNote the roster bot's note is
+        // "<Class> <Tank|tree> iLvl <n>" (RosterGuildNoteAction); this note would overwrite it.
+        if (sPlayerbotAIConfig.rosterGuildNote && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+            return;
+
         Guild* guild = sGuildMgr.GetGuildById(bot->GetGuildId());
-        MemberSlot* member = guild->GetMemberSlot(bot->GetObjectGuid());
-        if (guild->HasRankRight(member->RankId, GR_RIGHT_EPNOTE))
-            member->SetPublicNote(ChatHelper::specName(bot) + " (" + std::to_string(spec.GetTalentPoints(0)) + "/" + std::to_string(spec.GetTalentPoints(1)) + "/" + std::to_string(spec.GetTalentPoints(2)) + ")");
+        MemberSlot* member = guild ? guild->GetMemberSlot(bot->GetObjectGuid()) : nullptr;
+        if (member && guild->HasRankRight(member->RankId, GR_RIGHT_EPNOTE))
+        {
+            TalentSpec spec(bot);
+            // twow-repo#485: written on the world thread by GuildMgr (this runs on the bot's map thread).
+            sGuildMgr.SetMemberPublicNote(bot->GetGuildId(), bot->GetObjectGuid(), ChatHelper::specName(bot) + " (" + std::to_string(spec.GetTalentPoints(0)) + "/" + std::to_string(spec.GetTalentPoints(1)) + "/" + std::to_string(spec.GetTalentPoints(2)) + ")");
+        }
     }
 }
 

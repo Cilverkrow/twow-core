@@ -805,6 +805,26 @@ add_test(NAME singleton_group_source_contract
     "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
     -P "${PB_MODULE_DIR}/t/singleton_group_source_contract_tests.cmake")
 
+# twow-repo#485: roster guild founding - target per faction, charter stop, signatures only to a
+# fuller charter, approved names, no founding beyond the target.
+add_executable(roster_guild_policy_tests
+  "${PB_MODULE_DIR}/t/roster_guild_policy_tests.cpp")
+
+target_include_directories(roster_guild_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(roster_guild_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_guild_policy
+  COMMAND roster_guild_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_guild_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_guild_source_contract_tests.cmake")
+
 # #357 O-12: route B talent auras for 7.1 / 7.3 and the premade budget.
 add_executable(spec_aura_policy_tests
   "${PB_MODULE_DIR}/t/spec_aura_policy_tests.cpp")

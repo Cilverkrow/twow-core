@@ -5529,12 +5529,9 @@ void Player::DeleteFromDB(ObjectGuid playerguid, uint32 accountId, bool updateRe
     if (Petition* petition = sGuildMgr.GetPetitionByOwnerGuid(playerguid))
         sGuildMgr.DeletePetition(petition);
 
-    // Remove this player from any petition that could have previously signed.
-    if (PetitionSignature* signature = sGuildMgr.GetSignatureForPlayerGuid(playerguid))
-    {
-        signature->DeleteFromDB();
-        signature->GetSignaturePetition()->DeleteSignature(signature);
-    }
+    // Remove this player from any petition that could have previously signed
+    // (under the exclusive petition lock, twow-repo#485).
+    sGuildMgr.RemovePetitionSignature(playerguid);
 
     if (data)
         sObjectMgr.DecreaseActivePlayersCount(Player::TeamForRace(data->uiRace));

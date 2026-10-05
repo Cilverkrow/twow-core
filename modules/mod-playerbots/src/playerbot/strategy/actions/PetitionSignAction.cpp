@@ -1,6 +1,9 @@
 
 #include "playerbot/playerbot.h"
 #include "PetitionSignAction.h"
+#include "GuildCreateActions.h"
+#include "playerbot/RosterGuildPolicy.h"
+#include "Guild/GuildMgr.h"
 #ifndef MANGOSBOT_ZERO
 #ifdef CMANGOS
 #include "Arena/ArenaTeam.h"
@@ -82,6 +85,34 @@ bool PetitionSignAction::Execute(Event& event)
     if (_inviter == bot)
         return false;
 
+    // twow-repo#485 (new path): a roster bot on its own signs only towards the faction's guild
+    // target, and its signature moves only to a fuller charter (88 % of the 3,122 v24 signatures
+    // were moves between bot charters). Counts are copies taken under the petition lock.
+    if (accept && !isArena && RosterGuildPlan::UsesRosterPath(ai))
+    {
+        PetitionSummary offered;
+        if (!sGuildMgr.GetPetitionSummaryByCharterGuid(petitionGuid, offered))
+        {
+            // Critic B5.2: the charter is gone (v24: 7x "No petition exists for charter").
+            accept = false;
+            sLog.outBasic("[RosterGuild] event=sign_declined bot=%u charter=%u reason=no_petition", bot->GetGUIDLow(), petitionGuid.GetCounter());
+        }
+        else
+        {
+            PetitionSummary current;
+            int const currentSigned = sGuildMgr.GetPetitionSummaryBySigner(bot->GetObjectGuid(), current) ? int(current.signatureCount) : -1;
+            roster_guild::SignDecision const decision = roster_guild::DecideSign(IsRealPlayer(_inviter), offered.team == bot->GetTeam(),
+                !RosterGuildPlan::MayFound(bot), currentSigned, offered.signatureCount);
+            if (decision != roster_guild::SignDecision::Accept)
+            {
+                accept = false;
+                if (RosterGuildPlan::IsDue(ai, "roster guild sign trace", HOUR))
+                    sLog.outBasic("[RosterGuild] event=sign_declined bot=%u charter=%u reason=%s offered=%u current=%d",
+                        bot->GetGUIDLow(), petitionGuid.GetCounter(), roster_guild::SignDecisionName(decision), uint32(offered.signatureCount), currentSigned);
+            }
+        }
+    }
+
     if (!accept || !ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_GUILD, false, _inviter, true))
     {
         WorldPacket data(MSG_PETITION_DECLINE);
@@ -95,7 +126,9 @@ bool PetitionSignAction::Execute(Event& event)
         WorldPacket data(CMSG_PETITION_SIGN, 20);
         data << petitionGuid << unk;
         bot->GetSession()->HandlePetitionSignOpcode(data);
-        bot->Say("Thanks for the invite!", LANG_UNIVERSAL);
+        // twow-repo#485/#478 (owner 02.10., point 7): no /say towards bots, and only with InviteChat.
+        if (sPlayerbotAIConfig.inviteChat && IsRealPlayer(_inviter))
+            bot->Say("Thanks for the invite!", LANG_UNIVERSAL);
         sLog.outDetail("Bot #%d <%s> accepts %s invite", bot->GetGUIDLow(), bot->GetName(), isArena ? "Arena" : "Guild");
         return true;
     }

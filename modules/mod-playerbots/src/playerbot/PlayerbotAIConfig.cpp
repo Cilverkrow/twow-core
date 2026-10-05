@@ -821,6 +821,13 @@ bool PlayerbotAIConfig::Initialize()
     botAcceptDuelMinimumLevel = config.GetIntDefault("AiPlayerbot.BotAcceptDuelMinimumLevel", 10);
 
     randomBotFormGuild = config.GetBoolDefault("AiPlayerbot.RandomBotFormGuild", true);
+    // twow-repo#485: roster guilds. 0 = off (stock petition path); names: comma separated lists.
+    rosterGuildBotsPerGuild = config.GetIntDefault("AiPlayerbot.RosterGuild.BotsPerGuild", 0);
+    rosterGuildNamesAlliance = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesAlliance", "");
+    rosterGuildNamesHorde = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesHorde", "");
+    rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
+    rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
+    rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 86400);
 
     boostFollow = config.GetBoolDefault("AiPlayerbot.BoostFollow", false);
     turnInRpg = config.GetBoolDefault("AiPlayerbot.TurnInRpg", false);

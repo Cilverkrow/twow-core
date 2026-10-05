@@ -314,6 +314,20 @@ public:
     bool randomBotRaidNearby;
     bool randomBotGuildNearby;
     bool randomBotFormGuild;
+    // twow-repo#485: guilds of persistent roster bots (GuildCreateActions.cpp, RosterGuildPolicy.h).
+    // 0 = off (default), the stock petition path stays. N > 0 (needs randomBotFormGuild): per faction
+    // ceil(roster bots / N) bot guilds, approved names only, recounted every SnapshotSeconds (default
+    // 60, used as 10-3600). Defaults are set in Initialize() only, like the neighbours, so that
+    // playerbot_config_key_usage still sees whether the members are read.
+    uint32 rosterGuildBotsPerGuild;
+    std::string rosterGuildNamesAlliance;
+    std::string rosterGuildNamesHorde;
+    uint32 rosterGuildSnapshotSeconds;
+    // twow-repo#485 (owner 04.10.): roster bots in a guild keep "<Class> <Tank|tree> iLvl <n>" in
+    // their public guild note. 0 = off (default, notes untouched); checked at most every
+    // NoteRefreshSeconds per bot (default 86400 = 24 h, used as 60-604800), written only on a change.
+    bool rosterGuildNote;
+    uint32 rosterGuildNoteRefreshSeconds;
     bool randomBotRandomPassword;
     bool inviteChat;
     bool botsSilent;

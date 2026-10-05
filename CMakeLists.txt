@@ -1094,6 +1094,12 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_petition_sign_delete_contract.cmake")
+  # twow-repo#485: bots read petitions and guilds only as copies taken under the GuildMgr locks;
+  # the charter rename (UPDATE petition SET name) runs under the exclusive petition lock.
+  add_test(NAME guild_petition_summary_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_guild_petition_summary_contract.cmake")
   # twow-repo#455 (train 8b): custom spell IDs stay below 65536 (16-bit client spell IDs).
   add_test(NAME custom_spell_id_range_contract
     COMMAND "${CMAKE_COMMAND}"
