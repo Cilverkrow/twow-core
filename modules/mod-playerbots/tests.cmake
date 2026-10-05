@@ -213,6 +213,26 @@ add_test(NAME progress_aware_turnin_recovery_policy
   COMMAND progress_aware_turnin_recovery_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#485: turn-ins that keep failing are parked - the park book (policy) and the
+# hooks that count failures, skip parked turn-ins and refuse a parked taker (contract).
+add_executable(quest_turnin_park_policy_tests
+  "${PB_MODULE_DIR}/t/quest_turnin_park_policy_tests.cpp")
+
+target_include_directories(quest_turnin_park_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_turnin_park_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_turnin_park_policy
+  COMMAND quest_turnin_park_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_turnin_park_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_turnin_park_source_contract_tests.cmake")
+
 # #354/#292: who may direct a bot without GM rank, and which `.bot`/`.rndbot`
 # commands stay GM tools. Decision table plus the call sites that use it.
 add_executable(roster_control_policy_tests
@@ -847,6 +867,14 @@ add_test(NAME quest_work_timeout_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_work_timeout_source_contract_tests.cmake")
+
+# twow-repo#485: quest givers and takers bots cannot use are no travel targets
+# (instance hand-in check, script-only game objects, cross-map stall key, death
+# cooldown slot, continents-only cross-map rule).
+add_test(NAME quest_taker_usable_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_taker_usable_source_contract_tests.cmake")
 
 # #414: gather destinations are real herb/ore nodes only.
 add_executable(gather_node_policy_tests

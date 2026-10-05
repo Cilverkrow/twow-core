@@ -11,6 +11,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RouteDangerPolicy.h"
 #include "playerbot/DangerMapPolicy.h"
+#include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/StartupTravelPolicy.h"
 #include "Guild/GuildMgr.h"
 #include <iomanip>
@@ -226,6 +227,33 @@ void TraceQuestRouteRejection(Player* bot, std::string const& strategy, uint32 r
         GetZoneId(source), rangeCount, reason, detail.empty() ? "" : " ", detail.c_str());
 }
 
+// twow-repo#485: the finished quests of this bot a turn-in-only quest route request offered
+// takers for (comma separated, written by RequestQuestTravelTargetAction::Execute).
+char const* const HandInQuestsValue = "future travel handin quests";
+
+// Each of them counts as a failed turn-in when the request found no way to a taker
+// (ai::turnin_park::CountsAsNoRoute). The list is read once and cleared. True when one of
+// them was parked now.
+bool NoteNoRouteTurnIns(AiObjectContext* context, TravelTarget* travelTarget, bool noRoute)
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures)
+        return false;
+
+    std::string const quests = AI_VALUE2(std::string, "manual string", HandInQuestsValue);
+    if (quests.empty())
+        return false;
+
+    SET_AI_VALUE2(std::string, "manual string", HandInQuestsValue, std::string());
+    if (!noRoute)
+        return false;
+
+    bool parked = false;
+    for (std::string const& questId : split(quests, ','))
+        if (travelTarget->NoteTurnInFailure(uint32(atoi(questId.c_str())), "no_route"))
+            parked = true;
+    return parked;
+}
+
 }
 
 inline std::string GetTravelPurposeName(std::string purpose)
@@ -315,6 +343,23 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 SET_AI_VALUE2(int, "manual int", "quest route backoff until",
                     int(uint32(time(nullptr)) + ai::quest_search::RouteBackoffSeconds(failures)));
             }
+
+            // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
+            // list, a random range skip, candidates a resumed choice skipped) or a filter that lifts
+            // by itself took one: a suppressed turn-in route (counted already) or, unless
+            // TurnInParkCountsRouteDanger, a route danger deferral (another map, a zone above the bot,
+            // a death cluster). The local quest hub filter is no such case: a retry hides the same
+            // takers again, so the hub taker's own reason decides. A turn-in parked here no longer
+            // holds the next request back, so that one need not wait out the backoff.
+            if (NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
+                chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))
+            {
+                SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, false);
+                SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
+                SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
+            }
         }
 
         return false;
@@ -334,6 +379,15 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (stage > 0 && UsesQuestFirstProgression(bot))
             sLog.outBasic("[QuestSearch] state=found bot=%u level=%u stage=%d distance=%.0f",
                 bot->GetGUIDLow(), bot->GetLevel(), stage, newTarget.Distance(bot));
+
+        // twow-repo#485: another target than a taker is the quest giver fallback - the job found
+        // no taker at all. Same inputs as in the no-target branch.
+        NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(
+            newTarget.GetDestination()->GetPurpose() == TravelDestinationPurpose::QuestTaker ?
+                ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
+            chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));
     }
 
     setNewTarget(requester, &newTarget, travelTarget);
@@ -408,7 +462,9 @@ void ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* new
     }
 
     //Actually apply the new target to the travel target used by the bot.
-    oldTarget->CopyTarget(newTarget);
+    // twow-repo#485: refused (and the old target expired) for the taker of a parked turn-in.
+    if (!oldTarget->CopyTarget(newTarget))
+        return;
 
     if (oldTarget->IsForced()) //Make sure travel goes into cooldown after getting to the destination.
         oldTarget->SetExpireIn(HOUR * IN_MILLISECONDS);
@@ -667,8 +723,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
         for (auto& [destination, position, distance] : travelPointList)
         {
             // #416: skip what an aborted choice already checked; stop when the time is up.
+            // twow-repo#485: a skipped candidate is not judged by this choice (no_route rule).
             if (candidateIndex++ < resumeSkip)
+            {
+                ++lastRejects.resumeSkipped;
                 continue;
+            }
             if (checked++ && ai::travel_choose::OverBudget(WorldTimer::getMSTimeDiffToNow(chooseStart)))
             {
                 chooseBudgetExceeded = true;
@@ -759,9 +819,18 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     // Area (sub-zone) level: a zone row such as Redridge has 0, its
                     // Lakeshire sub-area 15. getAreaLevel() resolves the real one.
                     int32 const areaLevel = std::max<int32>(0, position->getAreaLevel());
+                    // twow-repo#485: CrossMapContinentsOnly limits the cross-map rule to
+                    // a route to the other continent; the tram counts as the Eastern
+                    // Kingdoms and an instance as the continent of its entrance.
+                    MapEntry const* const botMapEntry = bot->GetMap()->GetMapEntry();
+                    MapEntry const* const targetMapEntry = position->getMapEntry();
                     route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
                         bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
-                        uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()));
+                        uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()),
+                        sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly,
+                        route_danger::IsContinentSwitch(
+                            route_danger::ContinentOf(bot->GetMapId(), botMapEntry ? botMapEntry->ghostEntranceMap : -1),
+                            route_danger::ContinentOf(position->getMapId(), targetMapEntry ? targetMapEntry->ghostEntranceMap : -1)));
                     if (danger == route_danger::Reason::CrossMap)
                     {
                         ++deferredCrossMap;
@@ -1087,6 +1156,14 @@ bool RefreshTravelTargetAction::Execute(Event& event)
     if (target->IsTurnInRouteSuppressed(oldDestination, target->GetPosition()) || target->IsDestinationDeathSuppressed(oldDestination))
     {
         ai->TellDebug(requester, "Old destination is on the death cooldown.", "debug travel");
+        return false;
+    }
+
+    // twow-repo#485: nor may the taker of a parked turn-in (the refresh bypasses CopyTarget).
+    QuestRelationTravelDestination const* oldTaker = dynamic_cast<QuestRelationTravelDestination const*>(oldDestination);
+    if (oldTaker && oldTaker->GetRelation() && target->IsTurnInParked(oldTaker->GetQuestId()))
+    {
+        ai->TellDebug(requester, "Old destination is a parked turn-in.", "debug travel");
         return false;
     }
 
@@ -1916,6 +1993,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     std::vector<std::tuple<uint32, int32, float>> destinationFetches = { {(uint32)TravelDestinationPurpose::QuestGiver, 0,
         ai::quest_search::GiverRadius(bot->GetLevel(), searchStage)} };
 
+    // twow-repo#485: this bot's parked turn-ins (TravelTarget::NoteTurnInFailure).
+    TravelTarget* parkTarget = AI_VALUE(TravelTarget*, "travel target");
+
     for (ObjectGuid guid : AI_VALUE(std::list<ObjectGuid>, "group members"))
     {
         Player* player = sObjectMgr.GetPlayer(guid);
@@ -1946,7 +2026,15 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 continue;
 
             if (player->CanRewardQuest(questTemplate, false))
+            {
+                // twow-repo#485: a turn-in this bot parked gets no taker fetch, and neither does
+                // a group member's copy of that quest (its CopyTarget would refuse the taker on
+                // every request). The targets of the other quests come back.
+                if (parkTarget->IsTurnInParked(questId))
+                    continue;
+
                 flag = (uint32)TravelDestinationPurpose::QuestTaker;
+            }
             else
             {
                 for (uint32 objective = 0; objective < 4; objective++)
@@ -2003,6 +2091,13 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     // getQuestStatusMap().size(), which includes already rewarded entries and
     // reads above the cap - the probe below saw an average of 22 against a
     // limit of 20.
+    //
+    // twow-repo#485: with turn-in parking on, a finished quest counts only while the taker
+    // fetch above offers it (the bot can hand it in and has not parked it); 0 counts every
+    // completed one. The quests a turn-in-only request offers takers for are noted for
+    // ChooseTravelTargetAction::Execute, which counts them as no_route if no taker is reached.
+    bool const turnInParking = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures > 0;
+    std::string handInQuests;
     {
         uint32 finished = 0, active = 0;
         for (auto& [questId, questStatus] : bot->getQuestStatusMap())
@@ -2011,7 +2106,7 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 continue;
 
             active++;
-            if (questStatus.m_status == QUEST_STATUS_COMPLETE)
+            if (questStatus.m_status == QUEST_STATUS_COMPLETE && (!turnInParking || parkTarget->IsTurnInOpen(questId)))
                 finished++;
         }
 
@@ -2026,9 +2121,25 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             // through to the QuestGiver fetch below and send a bot that cannot
             // accept anything off to collect more.
             if (!handInOnly.empty())
+            {
                 destinationFetches = handInOnly;
+
+                // Own open turn-ins only, as counted above, each once: a group member's turn-in
+                // may be offered too, also for a quest this bot handed in already (it stays
+                // QUEST_STATUS_COMPLETE) or cannot hand in.
+                std::set<uint32> ownQuests;
+                if (turnInParking)
+                    for (auto& fetch : handInOnly)
+                        if (parkTarget->IsTurnInOpen(uint32(std::get<1>(fetch))))
+                            ownQuests.insert(uint32(std::get<1>(fetch)));
+                for (uint32 questId : ownQuests)
+                    handInQuests += (handInQuests.empty() ? "" : ",") + std::to_string(questId);
+            }
         }
     }
+
+    if (turnInParking)
+        SET_AI_VALUE2(std::string, "manual string", HandInQuestsValue, handInQuests);
 
     // TEMPORARY probe. 20529 finished quests sit unhanded-in across the bot
     // population and 786 bots have a full quest log, yet the log records only a
@@ -2051,10 +2162,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 readyToHandIn++;
 
         sLog.outBasic("[QuestFirstRoute] state=request bot=%u level=%u source_map=%u source_zone=%u finished=%u active=%u "
-            "offered_takers=%u objectives=%u givers=%u strategy=%s",
+            "offered_takers=%u objectives=%u givers=%u strategy=%s parked=%u",
             bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(),
             sTerrainMgr.GetZoneId(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()), readyToHandIn,
-            uint32(bot->getQuestStatusMap().size()), takers, objectives, givers, event.getSource().c_str());
+            uint32(bot->getQuestStatusMap().size()), takers, objectives, givers, event.getSource().c_str(),
+            parkTarget->ParkedTurnInCount());
     }
 
     *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
