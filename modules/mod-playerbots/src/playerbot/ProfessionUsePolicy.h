@@ -149,9 +149,11 @@ inline int Pick(std::vector<Recipe> const& recipes, std::uint32_t lastSkillId = 
 // of a known recipe that no vendor sells are in the bags (OtherReagentRequired).
 // Hotfix 8.20: what Spell::CheckItems lets a disenchant touch (else CANT_BE_DISENCHANTED):
 // a weapon or armor of uncommon (2) to epic (4) quality with a disenchant loot id.
-inline bool CanBeDisenchanted(bool weaponOrArmor, std::uint32_t quality, std::uint32_t disenchantId)
+// Hotfix 8.30 (v35: Lesser Magic Wand 11287 retried every 6 min): and without
+// ITEM_FLAG_NO_DISENCHANT, which Spell::CheckItems refuses as well.
+inline bool CanBeDisenchanted(bool weaponOrArmor, std::uint32_t quality, std::uint32_t disenchantId, bool noDisenchantFlag)
 {
-    return weaponOrArmor && disenchantId && quality >= 2 && quality <= 4;
+    return weaponOrArmor && disenchantId && !noDisenchantFlag && quality >= 2 && quality <= 4;
 }
 
 inline bool IsVendorReagent(std::set<std::uint32_t> const& vendorReagents, std::uint32_t itemId)

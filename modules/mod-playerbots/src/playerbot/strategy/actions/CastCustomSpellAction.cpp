@@ -821,7 +821,7 @@ bool DisenchantRandomItemAction::Execute(Event& event)
         // Hotfix 8.20 (v31: 96x SPELL_FAILED_CANT_BE_DISENCHANTED): Spell::CheckItems only
         // disenchants weapons and armor of uncommon to epic quality.
         if (!ai::profession_use::CanBeDisenchanted(proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR,
-                proto->Quality, proto->DisenchantID))
+                proto->Quality, proto->DisenchantID, (proto->Flags & ITEM_FLAG_NO_DISENCHANT) != 0))
             continue;
 
 #ifndef MANGOSBOT_ZERO
