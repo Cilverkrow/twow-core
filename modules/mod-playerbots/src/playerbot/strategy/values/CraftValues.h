@@ -1,5 +1,9 @@
 #pragma once
+#include <map>
+#include <memory>
+#include <vector>
 #include "playerbot/strategy/Value.h"
+#include "playerbot/MaterialReservePolicy.h"
 #include "playerbot/strategy/NamedObjectContext.h"
 
 namespace ai
@@ -70,6 +74,29 @@ namespace ai
     public:
         CraftSpellsValue(PlayerbotAI* ai, std::string name = "craft spells", int checkInterval = 10) : CalculatedValue<std::vector<uint32>>(ai, name, checkInterval) {}
         virtual std::vector<uint32> Calculate() override;
+    };
+
+    // Hotfix 8.16a (v31 ticks, KeepCraftMaterials): reagent item id -> the craft spells that use it,
+    // in "craft spells" order. ItemUsageValue recalculates on almost every query (checkInterval 1,
+    // 0.1 s) and walked every recipe of the bot for every trade good, reagent and misc item; it now
+    // looks the item up here. Shared pointer: handing the index out is a pointer copy.
+    typedef std::map<uint32, std::vector<uint32>> CraftReagentIndex;
+
+    class CraftReagentIndexValue : public CalculatedValue<std::shared_ptr<const CraftReagentIndex>>
+    {
+    public:
+        CraftReagentIndexValue(PlayerbotAI* ai, std::string name = "craft reagent index", int checkInterval = 60) :
+            CalculatedValue<std::shared_ptr<const CraftReagentIndex>>(ai, name, checkInterval) {}
+        virtual std::shared_ptr<const CraftReagentIndex> Calculate() override;
+    };
+
+    // twow-repo#524: what the bot's green-or-better craft recipes need, per reagent (material memory).
+    class MaterialMemoryValue : public CalculatedValue<std::shared_ptr<const material_reserve::Memory>>
+    {
+    public:
+        MaterialMemoryValue(PlayerbotAI* ai, std::string name = "material memory", int checkInterval = 60) :
+            CalculatedValue<std::shared_ptr<const material_reserve::Memory>>(ai, name, checkInterval) {}
+        virtual std::shared_ptr<const material_reserve::Memory> Calculate() override;
     };
 
     class EnchantSpellsValue : public CalculatedValue<std::vector<uint32>> //All enchanting spells
