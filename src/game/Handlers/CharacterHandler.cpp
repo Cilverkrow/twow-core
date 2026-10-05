@@ -24,7 +24,6 @@
 #include "WorldPacket.h"
 #include "SharedDefines.h"
 #include "WorldSession.h"
-#include "FunserverTalentLearnSpells.h"
 #include "FunserverQuestSpellRegrant.h"
 #include "Opcodes.h"
 #include "Log.h"
@@ -883,9 +882,6 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
 
     pCurrChar->SendInitialPacketsAfterAddToMap();
 
-    // Hotfix 8.4: talents that teach spells (Ancestral Arms) - characters who learned
-    // the talent before the fix get its spells at their next login.
-    LearnFunserverTalentSpells(pCurrChar);
     // Hotfix 8.23 (#527): quest spell rewards that never arrived (tauren Ethereal Form, quest 40348).
     RegrantFunserverQuestSpells(pCurrChar);
     if (alreadyOnline)

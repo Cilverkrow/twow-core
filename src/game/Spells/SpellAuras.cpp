@@ -56,6 +56,7 @@
 #include "LoveIsInTheAir.h"
 #include "ScriptObjects.h"
 #include "SpellClassMask.h"
+#include "FunserverStackedSpellMods.h"
 #include "FunserverRidingStages.h"
 
 using namespace Spells;
@@ -1090,6 +1091,12 @@ void Aura::HandleAddModifier(bool apply, bool Real)
                 break;
         }
 
+        // Train 9 (twow-repo#484): our stacking buffs that the next cast consumes as a whole
+        // stack (Storm Wisdom) get one charge although they stack.
+        int16 charges = GetSpellProto()->StackAmount > 1 ? 0 : int16(GetHolder()->GetAuraCharges());
+        if (IsFunserverConsumeOnUseStackMod(GetSpellProto()->Id))
+            charges = 1;
+
         m_spellmod = new SpellModifier(
             SpellModOp(m_modifier.m_miscvalue),
             SpellModType(m_modifier.m_auraname),            // SpellModType value == spell aura types
@@ -1097,7 +1104,7 @@ void Aura::HandleAddModifier(bool apply, bool Real)
             this,
             // prevent expire spell mods with (charges > 0 && m_stackAmount > 1)
             // all this spell expected expire not at use but at spell proc event check
-            GetSpellProto()->StackAmount > 1 ? 0 : GetHolder()->GetAuraCharges());
+            charges);
 
     }
     else

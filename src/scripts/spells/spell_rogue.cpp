@@ -824,7 +824,8 @@ struct spell_rogue_cooldown_flow : public AuraScript
 
 // Hotfix 8.6 (twow-repo#367, owner tests with Luigi): Vigorous Fury, Deep Wounds and
 // Shadow Edge showed nothing in game although the client knows 61192-61194. One
-// [RogueTalentTrace] line per player and talent (first after 20 events, then hourly).
+// [RogueTalentTrace] line per player and talent (first after FUNSERVER_TRACE_FIRST_LINE_EVENTS
+// events, then hourly). Train 9 (#484): talent=riposte_flow, last_value = strike spell.
 void TraceRogueTalent(Unit* unit, char const* talent, bool ok, uint32 result, uint32 value)
 {
     if (!unit || !unit->IsPlayer())
@@ -880,40 +881,60 @@ struct spell_rogue_seal_fate_echo : public SpellScript
     }
 };
 
-// Combat R2/C4: parry -> an off-hand attack, dodge -> a main-hand attack, at most once per
-// second; these attacks cause double threat (owner question 1, proposal).
+// Combat R2/C4: parry -> an off-hand strike, dodge -> a main-hand strike, at most once per
+// second, double threat (owner question 1, proposal).
+// Train 9 (twow-repo#484, owner test after 8.10: "no output in chat or combat log"): the
+// strike is the named spell 61221/61222 "Riposte Flow" (100 % weapon damage) instead of a
+// white extra swing, so the combat log shows it. Its double threat comes from spell_threat
+// (multiplier 2, applied in Unit::DealDamage); the old OnThreatCalculate doubling only
+// caught threat without a spell and is gone. A triggered cast skips the range and facing
+// checks (Spell::CheckCast), and 61170-61172 also proc on a dodged ranged attack, so reach
+// and facing are checked here; a failed check or cast costs no cooldown. Bots (ClassGrant
+// aura, SpecAuraPolicy "riposte strikes") take the same path.
 struct spell_rogue_riposte_flow : public AuraScript
 {
-    bool m_extraAttack = false;
-
-    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 procEx, uint32 /*cooldown*/) override
+    std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* procSpell, uint32 /*procFlag*/, uint32 procEx, uint32 /*cooldown*/) override
     {
         if (!owner || !victim || !aura || !victim->IsAlive() || owner->HasSpellCooldown(aura->GetId()))
             return SPELL_AURA_PROC_FAILED;
 
-        WeaponAttackType attackType;
+        // The strikes trigger procs (attributesEx3 NOT_A_PROC, owner 2026-10-04), so a dodged or
+        // parried Riposte Flow strike must not start another one: no rogue-vs-rogue ping-pong.
+        if (procSpell && (procSpell->Id == ROGUE_TALENT_RIPOSTE_FLOW_MAIN_HAND || procSpell->Id == ROGUE_TALENT_RIPOSTE_FLOW_OFF_HAND))
+            return SPELL_AURA_PROC_FAILED;
+
+        uint32 strike;
         if (procEx & PROC_EX_PARRY)
         {
             if (!owner->HaveOffhandWeapon())
                 return SPELL_AURA_PROC_FAILED;
-            attackType = OFF_ATTACK;
+            strike = ROGUE_TALENT_RIPOSTE_FLOW_OFF_HAND;
         }
         else if (procEx & PROC_EX_DODGE)
-            attackType = BASE_ATTACK;
+            strike = ROGUE_TALENT_RIPOSTE_FLOW_MAIN_HAND;
         else
             return SPELL_AURA_PROC_FAILED;
 
-        owner->AddSpellCooldown(aura->GetId(), 0, time(nullptr) + 1);
-        m_extraAttack = true;
-        owner->AttackerStateUpdate(victim, attackType, true, true);
-        m_extraAttack = false;
-        return SPELL_AURA_PROC_OK;
-    }
+        if (!owner->CanReachWithMeleeAutoAttack(victim))
+        {
+            TraceRogueTalent(owner, "riposte_flow", false, uint32(SPELL_FAILED_OUT_OF_RANGE), strike);
+            return SPELL_AURA_PROC_FAILED;
+        }
+        if (!owner->HasInArc(victim))
+        {
+            TraceRogueTalent(owner, "riposte_flow", false, uint32(SPELL_FAILED_UNIT_NOT_INFRONT), strike);
+            return SPELL_AURA_PROC_FAILED;
+        }
 
-    void OnThreatCalculate(Aura* /*aura*/, SpellEntry const* threatSpell, SpellSchoolMask /*schoolMask*/, float& threat) override
-    {
-        if (m_extraAttack && !threatSpell)
-            threat *= 2.0f;
+        // The cooldown is set before the cast, so nothing re-entering OnProc during the cast
+        // can strike twice. (Cast with triggeredByAura: no cost; the strike triggers procs such
+        // as poisons and Shadow Edge via SPELL_ATTR_EX3_NOT_A_PROC, the guard above stops chains.)
+        owner->AddSpellCooldown(aura->GetId(), 0, time(nullptr) + 1);
+        SpellCastResult const result = owner->CastSpell(victim, strike, true, nullptr, aura);
+        if (result != SPELL_CAST_OK)
+            owner->RemoveSpellCooldown(aura->GetId());
+        TraceRogueTalent(owner, "riposte_flow", result == SPELL_CAST_OK, uint32(result), strike);
+        return result == SPELL_CAST_OK ? SPELL_AURA_PROC_OK : SPELL_AURA_PROC_FAILED;
     }
 };
 
@@ -956,7 +977,9 @@ struct spell_rogue_arcane_evasion : public AuraScript
     }
 };
 
-// Subtlety R6/C4: each Hemorrhage adds a stack of its bonus (up to 5 with the original), 15 s.
+// Subtlety R6/C4: each Hemorrhage adds a stack of Deep Wounds 61194 (+2 % physical damage
+// taken per stack, up to 5, 15 s). Train 9 (#484): 61194 no longer shares Hemorrhage's
+// visual, so the two no longer remove each other; also bound to the old ranks 17347/17348.
 struct spell_rogue_hemorrhage_stacks : public SpellScript
 {
     void OnHit(Spell* spell, SpellMissInfo missInfo) const override
