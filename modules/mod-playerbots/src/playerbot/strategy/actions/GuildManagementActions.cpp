@@ -4,6 +4,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/RosterGuildPolicy.h"
 #include "playerbot/AiFactory.h"
+#include "GuildCreateActions.h"
 
 using namespace ai;
 
@@ -116,7 +117,34 @@ bool GuildManageNearbyAction::Execute(Event& event)
         // target and the founding rules.
         if (sPlayerbotAIConfig.rosterGuildBotsPerGuild && (sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()) ||
             roster_guild::UsesRosterPath(sPlayerbotAIConfig.rosterGuildBotsPerGuild, sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster())))
+        {
+            // twow-repo#485 / #518 (role fill, RosterGuild.Tanks/Healers/Dps or PlanFile): the one
+            // exception. A roster bot on its own invites a nearby roster bot of its faction without a
+            // guild, only into the guild that bot is dealt to (plan guild or role deal; the invited bot
+            // checks the same again). No /say towards bots, no preferred-size checks (that path would
+            // dereference the other bot's AI).
+            if (!sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()) || !RosterGuildPlan::UsesRoleFill(ai))
+                continue;
+
+            if (player->GetTeam() != bot->GetTeam() || player->GetGuildIdInvited() || !guild->HasRankRight(botMember->RankId, GR_RIGHT_INVITE) ||
+                guild->GetMemberSize() >= sPlayerbotAIConfig.guildMaxBotLimit)
+                continue;
+
+            if (RosterGuildPlan::AssignedGuild(player->GetGUIDLow(), player->GetTeam()) != bot->GetGuildId())
+                continue;
+
+            bool const inGroup = bot->GetGroup() && bot->GetGroup()->IsMember(player->GetObjectGuid());
+            if (!inGroup && sServerFacade.GetDistance2d(bot, player) > sPlayerbotAIConfig.spellDistance)
+                continue;
+
+            if (ai->DoSpecificAction("guild invite", Event("guild management", guid), true))
+            {
+                if (RosterGuildPlan::IsDue(ai, "roster guild invite trace", 600))
+                    sLog.outBasic("[RosterGuild] event=invite bot=%u guild=%u member=%u", bot->GetGUIDLow(), bot->GetGuildId(), player->GetGUIDLow());
+                found++;
+            }
             continue;
+        }
 
         if (guild->GetMemberSize() >= sPlayerbotAIConfig.guildMaxBotLimit)
             return false;
@@ -324,5 +352,16 @@ bool RosterGuildNoteAction::Execute(Event& event)
 
     // At most one line per bot and NoteRefreshSeconds (RosterGuildNoteTrigger), and only on a change.
     sLog.outBasic("[RosterGuild] event=note bot=%u guild=%u note=\"%s\"", bot->GetGUIDLow(), guildId, note.c_str());
+    return true;
+}
+
+bool RosterGuildRoleAction::isUseful()
+{
+    return RosterGuildPlan::UsesRoleFill(ai);
+}
+
+bool RosterGuildRoleAction::Execute(Event& event)
+{
+    RosterGuildPlan::ReportOwnRole(bot);
     return true;
 }

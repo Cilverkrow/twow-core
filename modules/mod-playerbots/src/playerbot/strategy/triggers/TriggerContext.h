@@ -246,6 +246,7 @@ namespace ai
             creators["buy tabard"] = [](PlayerbotAI* ai) { return new BuyTabardTrigger(ai); };
             creators["leave large guild"] = [](PlayerbotAI* ai) { return new LeaveLargeGuildTrigger(ai); };
             creators["roster guild note"] = [](PlayerbotAI* ai) { return new RosterGuildNoteTrigger(ai); };
+            creators["roster guild role"] = [](PlayerbotAI* ai) { return new RosterGuildRoleTrigger(ai); };
             creators["in pvp"] = [](PlayerbotAI* ai) { return new InPvpTrigger(ai); };
             creators["in pve"] = [](PlayerbotAI* ai) { return new InPveTrigger(ai); };
             creators["in raid fight"] = [](PlayerbotAI* ai) { return new InRaidFightTrigger(ai); };

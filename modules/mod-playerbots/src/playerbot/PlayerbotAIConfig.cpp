@@ -828,6 +828,47 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
     rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
     rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 86400);
+    // twow-repo#485 / #518: role fill of roster guilds. Defaults = owner rules of 04.10. (assignment v3):
+    // 7/10/28, a healer of every healer class, tank mix 2-3 warriors + 1 bear/rogue/paladin/shaman, rare
+    // pairs about 2.5 %. Inactive while BotsPerGuild = 0. The generic spread switches default off.
+    rosterGuildTanks = config.GetIntDefault("AiPlayerbot.RosterGuild.Tanks", 7);
+    rosterGuildHealers = config.GetIntDefault("AiPlayerbot.RosterGuild.Healers", 10);
+    rosterGuildDps = config.GetIntDefault("AiPlayerbot.RosterGuild.Dps", 28);
+    rosterGuildHealerClassMin = config.GetBoolDefault("AiPlayerbot.RosterGuild.HealerClassMin", true);
+    rosterGuildTankClassSpread = config.GetBoolDefault("AiPlayerbot.RosterGuild.TankClassSpread", false);
+    rosterGuildRareComboSpread = config.GetBoolDefault("AiPlayerbot.RosterGuild.RareComboSpread", false);
+    rosterGuildTankClassMix = config.GetStringDefault("AiPlayerbot.RosterGuild.TankClassMix", "1:2-3,11:1,4:1,2:1,7:1");
+    rosterGuildRarePairs = config.GetStringDefault("AiPlayerbot.RosterGuild.RarePairs", "3:7,3:9,5:2");
+    rosterGuildRarePairMaxShare = config.GetFloatDefault("AiPlayerbot.RosterGuild.RarePairMaxShare", 0.025f);
+    rosterGuildPlanFile = config.GetStringDefault("AiPlayerbot.RosterGuild.PlanFile", "");
+    // Read once here (startup or config reload), never on a tick; parsed in memory by the guild plan.
+    // Review 04.10 (reload): built in a local vector and published as a whole, so a map thread that
+    // still parses the previous lines keeps its own reference (no clear() under a reader).
+    // twow-repo#518 (fail-closed): a set PlanFile always publishes lines; an unreadable or oversized
+    // file publishes none, and the guild plan rejects it (no role deal, charter or founding) instead
+    // of falling back to the quotas. Only an empty PlanFile means "no plan".
+    std::shared_ptr<std::vector<std::string>> planLines;
+    if (!rosterGuildPlanFile.empty())
+    {
+        planLines = std::make_shared<std::vector<std::string>>();
+        std::ifstream planFile(rosterGuildPlanFile);
+        if (!planFile.is_open())
+            sLog.outError("[RosterGuild] event=plan_file path=%s result=unreadable (fail-closed: plan rejected)", rosterGuildPlanFile.c_str());
+        else
+        {
+            std::string planLine;
+            while (planLines->size() < 10000 && std::getline(planFile, planLine))
+                planLines->push_back(planLine);
+            if (planLines->size() >= 10000 && std::getline(planFile, planLine))
+            {
+                planLines->clear();
+                sLog.outError("[RosterGuild] event=plan_file path=%s result=too_long (over 10000 lines, fail-closed: plan rejected)", rosterGuildPlanFile.c_str());
+            }
+            else
+                sLog.outBasic("[RosterGuild] event=plan_file path=%s lines=%u", rosterGuildPlanFile.c_str(), uint32(planLines->size()));
+        }
+    }
+    std::atomic_store(&rosterGuildPlanLines, std::shared_ptr<const std::vector<std::string>>(planLines));
     rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", false);
     rosterGuildPoachCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.PoachCooldownSeconds", 86400);
     // twow-repo#485: bandages and potions of roster bots from the bags. 0 / 100 / 2 = legacy.

@@ -362,6 +362,58 @@ AiPlayerbot.RosterGuild.GuildNote = 0
 # runs on the world thread (GuildMgr), no roster broadcast.
 AiPlayerbot.RosterGuild.NoteRefreshSeconds = 86400
 
+# Fill roster guilds by role (twow-repo#485 / #518). Active only with BotsPerGuild > 0 (default 0 = the
+# whole roster guild path is off). Tanks, healers and DPS per guild; the defaults are the owner's split
+# of 04.10. (7 tanks, 10 healers, 28 DPS in a guild of 45). 0/0/0 = no role quota: roster guilds stay
+# as they are (leader and charter signers, nobody is invited). With a quota, a roster bot without a
+# guild is dealt to one roster guild of its faction, as OB-40's planner guild_plan.py does it (per
+# role, class by class with the rarest class first, then level band; members keep their guild),
+# recounted every SnapshotSeconds in memory. A guild officer or leader invites a nearby roster bot only
+# into the guild it is dealt to, the bot accepts only that guild, and signs a bot charter only while
+# the charter has a free slot of its role. A role at 0 gets no slot. Role: the plan file's role, else
+# the bot's own talents (bots without talents are not dealt).
+AiPlayerbot.RosterGuild.Tanks = 7
+AiPlayerbot.RosterGuild.Healers = 10
+AiPlayerbot.RosterGuild.Dps = 28
+
+# Spread rules of the role fill. The deal is class by class as guild_plan.py in any case; these keys
+# only add hard limits. While guilds of the target are still missing, a bot that fits no guild waits
+# for the next one; once all exist the deal steps back to the role slot alone when no guild fits.
+# Charters always apply the rules.
+# HealerClassMin (owner, default 1): healer slots stay free for every healer class of the faction the
+# guild still lacks (at least one healer of each healer class per guild: buffs, dispels).
+# TankClassMix (owner default): per tank class "<class>:<min>" or "<class>:<min>-<max>" per guild, comma
+# separated (class ids 1 warrior, 2 paladin, 4 rogue, 7 shaman, 11 druid/bear). Default: 2-3 warrior
+# tanks and one bear, rogue, paladin and shaman tank each; a minimum keeps tank slots free only while
+# the faction still has an unplaced tank of that class ("as far as the faction has them"). "" = off.
+# RarePairs / RarePairMaxShare (owner default): listed rare race x class pairs "<race>:<class>"
+# (3:7 dwarf shaman, 3:9 dwarf warlock, 5:2 undead paladin, as OB-40's --rare-pairs) at most
+# round(share x guild size), at least 1, per guild (0.025 x 45 = 1): spread over the guilds. "" or 0 = off.
+# TankClassSpread and RareComboSpread (default 0, owner profile 1): generic caps, ceil(count / guilds) per guild for
+# every tank class resp. every race x class pair.
+AiPlayerbot.RosterGuild.HealerClassMin = 1
+AiPlayerbot.RosterGuild.TankClassMix = "1:2-3,11:1,4:1,2:1,7:1"
+AiPlayerbot.RosterGuild.RarePairs = "3:7,3:9,5:2"
+AiPlayerbot.RosterGuild.RarePairMaxShare = 0.025
+AiPlayerbot.RosterGuild.TankClassSpread = 0
+AiPlayerbot.RosterGuild.RareComboSpread = 0
+
+# OB-40's guild plan roster-guilds.tsv (twow-repo#518, spec 04.10.): TAB separated, LF, exactly one
+# header line "ordinal<TAB>guid<TAB>faction<TAB>guild<TAB>role<TAB>class<TAB>race", one row per roster
+# member, key = guid; faction A/H; guild = stable plan id A1..An / H1..Hn (no guild names: the name comes
+# from NamesAlliance/NamesHorde); role TANK/HEALER/DPS; class and race numeric. Mounted read-only; the
+# server never writes it. "" (default) = no plan. Set: read at startup and on a config reload (swapped
+# as a whole) and authoritative for every bot it lists: the first bot of plan guild X that founds a guild
+# links that guild to X (kept while the guild exists, whoever leads it later); a listed bot buys, founds,
+# signs, is invited into and accepts only its plan guild and is never dealt by the quotas or the spread
+# switches; its plan role counts. Bots the file does not list follow Tanks/Healers/Dps and the switches.
+# Fail-closed: an unreadable file, a wrong header, a malformed row or a guid listed twice rejects the
+# whole file (error line "[RosterGuild] event=plan_rows result=rejected reason=..."); then no roster bot
+# is dealt, buys, signs or founds until a reload brings a valid file. Existing guilds stay.
+# Owner profile of 04.10. (profile PR after the train-9 pin, together with BotsPerGuild > 0):
+#   Tanks = 7, Healers = 10, Dps = 28, HealerClassMin = 1, TankClassSpread = 1, RareComboSpread = 1,
+#   PlanFile = "/opt/turtle/etc/roster-guilds.tsv"
+AiPlayerbot.RosterGuild.PlanFile = ""
 # Poaching (twow-repo#485, owner decision 5). 0 = off (default): a bot in a guild answers every guild
 # invitation and charter with "already in a guild", as before. 1: a persistent roster bot in a bot
 # guild (its guild master is a roster bot) takes the guild invitation or the charter of a real player

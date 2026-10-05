@@ -120,4 +120,14 @@ namespace ai
         std::string lastNote;
         uint32 lastGuildId = 0;
     };
+
+    // twow-repo#485 / #518 (role fill): stores the role of the bot's own talents for the guild deal
+    // (RosterGuildPlan::ReportOwnRole; no database, no other bot's Player*).
+    class RosterGuildRoleAction : public Action
+    {
+    public:
+        RosterGuildRoleAction(PlayerbotAI* ai) : Action(ai, "roster guild role") {}
+        virtual bool Execute(Event& event) override;
+        virtual bool isUseful() override;
+    };
 }

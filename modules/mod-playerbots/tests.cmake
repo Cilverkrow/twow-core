@@ -825,6 +825,26 @@ add_test(NAME roster_guild_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/roster_guild_source_contract_tests.cmake")
 
+# twow-repo#485 / #518: fill roster guilds by role (Tanks/Healers/Dps, spread switches, PlanFile) -
+# the deal of OB-40's guild_plan.py in memory; invites, accepts and signatures follow it.
+add_executable(roster_guild_role_policy_tests
+  "${PB_MODULE_DIR}/t/roster_guild_role_policy_tests.cpp")
+
+target_include_directories(roster_guild_role_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(roster_guild_role_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_guild_role_policy
+  COMMAND roster_guild_role_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_guild_role_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_guild_role_source_contract_tests.cmake")
+
 # twow-repo#485 (owner decision 5): poaching - a roster bot of a bot guild takes a real player's guild
 # invitation or charter; one rule for the core hook and both bot actions, switch via GuildMgr.
 add_executable(guild_poach_policy_tests

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AmmoStockPolicy.h"
+#include <memory>
 #include <unordered_set>
 #include "Config/Config.h"
 #include "Talentspec.h"
@@ -328,6 +329,28 @@ public:
     // NoteRefreshSeconds per bot (default 86400 = 24 h, used as 60-604800), written only on a change.
     bool rosterGuildNote;
     uint32 rosterGuildNoteRefreshSeconds;
+    // twow-repo#485 / #518: fill roster guilds by role (RosterGuildRolePolicy.h, GuildCreateActions.cpp).
+    // Tanks/Healers/Dps per guild; defaults are the owner's 7/10/28 (04.10.), active only with
+    // BotsPerGuild > 0; 0/0/0 = no role quota. HealerClassMin (default on), TankClassMix (owner mix)
+    // and RarePairs/RarePairMaxShare (owner: about 2.5 %) are the owner rules; TankClassSpread and
+    // RareComboSpread (default off) are the generic spread caps.
+    uint32 rosterGuildTanks;
+    uint32 rosterGuildHealers;
+    uint32 rosterGuildDps;
+    bool rosterGuildHealerClassMin;
+    bool rosterGuildTankClassSpread;
+    bool rosterGuildRareComboSpread;
+    std::string rosterGuildTankClassMix;
+    std::string rosterGuildRarePairs;
+    float rosterGuildRarePairMaxShare;
+    // OB-40's guilds.tsv (ordinal guid faction guild role class race); "" (default) = no plan. Read
+    // only in Initialize() (startup, config reload), never on a tick. The lines are published as a
+    // whole (std::atomic_store) and read through RosterGuildPlanLines() (std::atomic_load), so a
+    // reload never changes lines a map thread is parsing. nullptr = no PlanFile; empty = set but
+    // unreadable (twow-repo#518: rejected, fail-closed).
+    std::string rosterGuildPlanFile;
+    std::shared_ptr<const std::vector<std::string>> rosterGuildPlanLines;
+    std::shared_ptr<const std::vector<std::string>> RosterGuildPlanLines() const { return std::atomic_load(&rosterGuildPlanLines); }
     // twow-repo#485 (owner decision 5, poaching): a roster bot in a bot guild takes a real player's
     // guild invitation or charter and switches (GuildPoachPolicy.h). 0 = off (default: "already in
     // a guild" as today); at most one switch per bot and PoachCooldownSeconds (default 86400, used
