@@ -403,6 +403,7 @@ bool PlayerbotAIConfig::Initialize()
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));
     questFirstProgressionEnabled = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.Enabled", false);
+    botChatDirect = config.GetBoolDefault("AiPlayerbot.BotChat.Direct", false);
     questFirstProgressionAutonomousLogSoftLimit = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.AutonomousLogSoftLimit", 16);
     questFirstProgressionRejectBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RejectBelowLevelDelta", 4);
     questFirstProgressionRetireBelowLevelDelta = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.RetireBelowLevelDelta", 6);
@@ -849,6 +850,22 @@ bool PlayerbotAIConfig::Initialize()
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
     professionUseTrace = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Trace", false);
     professionUseTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.TraceCooldownSeconds", 300));
+    professionUseRealReagents = config.GetBoolDefault("AiPlayerbot.ProfessionUse.RealReagents", false);
+    // Clamped as int32 first: a negative value must not wrap to ~136 years.
+    professionUseCraftFailBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds", 1800)));
+    professionUseKeepCraftMaterials = config.GetBoolDefault("AiPlayerbot.ProfessionUse.KeepCraftMaterials", false);
+    professionUseReagentKeepStacks = uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.ReagentKeepStacks", 1)));
+    questRotateEnabled = config.GetBoolDefault("AiPlayerbot.QuestRotate.Enabled", true);
+    questRotateIdleSeconds = uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestRotate.IdleSeconds", 2400)));
+    questRotateGraceSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestRotate.GraceSeconds", 1800)));
+    professionUseWoolTierSkill = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.WoolTierSkill", 75)));
+    professionUseFirstAidClothReserve = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.FirstAidClothReserve", 20)));
+    {
+        // Parsed once here; the item usage only looks the item id up.
+        std::list<uint32> vendorReagents;
+        LoadList<std::list<uint32> >(config.GetStringDefault("AiPlayerbot.ProfessionUse.VendorReagents", ""), vendorReagents);
+        professionUseVendorReagents = std::set<uint32>(vendorReagents.begin(), vendorReagents.end());
+    }
     autoPickTalents = config.GetStringDefault("AiPlayerbot.AutoPickTalents", "no");
     autoLearnTrainerSpells = config.GetBoolDefault("AiPlayerbot.AutoLearnTrainerSpells", false);
     autoLearnQuestSpells = config.GetBoolDefault("AiPlayerbot.AutoLearnQuestSpells", false);

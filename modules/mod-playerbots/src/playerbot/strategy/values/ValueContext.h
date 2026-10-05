@@ -367,6 +367,8 @@ namespace ai
 
             creators["vendor has useful item"] = [](PlayerbotAI* ai) { return new VendorHasUsefulItemValue(ai); };
             creators["craft spells"] = [](PlayerbotAI* ai) { return new CraftSpellsValue(ai); };
+            creators["craft reagent index"] = [](PlayerbotAI* ai) { return new CraftReagentIndexValue(ai); };
+            creators["material memory"] = [](PlayerbotAI* ai) { return new MaterialMemoryValue(ai); };
             creators["enchant spells"] = [](PlayerbotAI* ai) { return new EnchantSpellsValue(ai); };
             creators["has reagents for"] = [](PlayerbotAI* ai) { return new HasReagentsForValue(ai); };
             creators["can craft spell"] = [](PlayerbotAI* ai) { return new CanCraftSpellValue(ai); };
@@ -473,6 +475,7 @@ namespace ai
             creators["quest stage active"] = [](PlayerbotAI* ai) { return new QuestStageActiveValue(ai); };
 
             creators["can fish"] = [](PlayerbotAI* ai) { return new CanFishValue(ai); };
+            creators["fishing in progress"] = [](PlayerbotAI* ai) { return new FishingInProgressValue(ai); };
             creators["can open fishing dobber"] = [](PlayerbotAI* ai) { return new CanOpenFishingDobberValue(ai); };
             creators["done fishing"] = [](PlayerbotAI* ai) { return new DoneFishingValue(ai); };
             creators["world buff travel step"] = [](PlayerbotAI* ai) { return new WorldBuffTravelStepValue(ai); };

@@ -282,6 +282,21 @@ void WorldSession::SendTrainingFailure(ObjectGuid guid, uint32 serviceId, uint32
     SendPacket(&data);
 }
 
+// Hotfix 8.9: a teaching spell whose every effect only teaches another spell.
+static bool IsPureTeachingSpell(SpellEntry const* proto)
+{
+    bool teaches = false;
+    for (uint32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+    {
+        if (!proto->Effect[i])
+            continue;
+        if (proto->Effect[i] != SPELL_EFFECT_LEARN_SPELL || !proto->EffectTriggerSpell[i])
+            return false;
+        teaches = true;
+    }
+    return teaches;
+}
+
 void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket & recv_data)
 {
     ObjectGuid guid;
@@ -356,8 +371,46 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket & recv_data)
     // the spell is on this trainer's list, that it can be learned, and money.
     bool const seatedTrainer = !unit->IsStandingUp();
 
+    // Hotfix 8.3 (twow-repo#455): the player casts a teaching spell himself only when it
+    // is a real self-cast (visual 222 and TARGET_UNIT_CASTER, the vanilla recipe teachers).
+    // Visual 222 with target 0 (Turtle's 47312 and its clones 61213-61220: Spit, Shadow
+    // Dance, Agitating Poison recipes) left the player's own cast hanging - "another action
+    // is in progress" and no spell learned. Those are now cast by the trainer like every
+    // other teaching spell. Recipe items ("Use: Teaches ...") do not come through here.
+    // Hotfix 8.9 (owner test 02.10., v23: Agitating Poison, Shadow Dance, Spit): a visual-222
+    // teaching spell that is no self-cast (Turtle 47312 and its clones 61213-61220) never
+    // finished when the trainer cast it - the first purchase was charged, nothing was learned,
+    // and the trainer stayed "in progress" (SPELL_FAILED_SPELL_IN_PROGRESS for every later
+    // purchase). Such a spell only teaches, so the trainer teaches it directly; money is taken
+    // only when the taught spell is known afterwards.
+    if (proto->SpellVisual == 222 && proto->EffectImplicitTargetA[EFFECT_INDEX_0] != TARGET_UNIT_CASTER &&
+        IsPureTeachingSpell(proto))
+    {
+        bool learned = true;
+        for (uint32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+        {
+            if (proto->Effect[i] != SPELL_EFFECT_LEARN_SPELL)
+                continue;
+            _player->LearnSpell(proto->EffectTriggerSpell[i], false);
+            learned = learned && _player->HasSpell(proto->EffectTriggerSpell[i]);
+        }
+
+        if (learned)
+        {
+            _player->ModifyMoney(-int32(nSpellCost));
+            SendTrainingSuccess(guid, spellId);
+        }
+        else
+        {
+            sLog.outError("HandleTrainerBuySpellOpcode: %s could not learn spell %u from %s (direct teaching).",
+                _player->GetGuidStr().c_str(), spellId, guid.GetString().c_str());
+            SendTrainingFailure(guid, spellId, TRAIN_FAIL_UNAVAILABLE);
+        }
+        return;
+    }
+
     Spell *spell;
-    if (proto->SpellVisual == 222)
+    if (proto->SpellVisual == 222 && proto->EffectImplicitTargetA[EFFECT_INDEX_0] == TARGET_UNIT_CASTER)
         spell = new Spell(_player, proto, false);
     else
         spell = new Spell(unit, proto, seatedTrainer);

@@ -4950,11 +4950,9 @@ void Unit::HandleTriggers(Unit* pVictim, uint32 procExtra, uint32 amount, int32 
         if (useCharges && procSuccess && anyAuraProc && !triggeredByHolder->IsDeleted())
         {
             // If last charge dropped add spell to remove list
+            // Hotfix 8.4: DropAuraCharge notifies the aura script itself.
             if (triggeredByHolder->DropAuraCharge())
                 removedSpells.push_back(RemovedSpellData(triggeredByHolder->GetId(), caster));
-
-            if (triggeredByHolder->GetAuraScript())
-                triggeredByHolder->GetAuraScript()->OnAuraChargesChanged(triggeredByHolder);
         }
 
         triggeredByHolder->SetInUse(false);
@@ -8025,7 +8023,7 @@ void Unit::SetDeathState(DeathState s)
             // This fixes Relentless Strikes not triggering when the finishing move kills the target.
             m_Events.AddLambdaEventAtOffset([this]
             {
-                ClearComboPointHolders();
+                ClearComboPointHolders(COMBO_CLEAR_TARGET_DIED);
             }, 1);
         }
 
@@ -10060,7 +10058,7 @@ void Unit::UpdateModelData()
     }
 }
 
-void Unit::ClearComboPointHolders()
+void Unit::ClearComboPointHolders(ComboClearReason reason)
 {
     while (!m_ComboPointHolders.empty())
     {
@@ -10068,7 +10066,7 @@ void Unit::ClearComboPointHolders()
 
         Player* plr = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, lowguid));
         if (plr && plr->GetComboTargetGuid() == GetObjectGuid())// recheck for safe
-            plr->ClearComboPoints();                        // remove also guid from m_ComboPointHolders;
+            plr->ClearComboPoints(reason);                  // remove also guid from m_ComboPointHolders;
         else
             m_ComboPointHolders.erase(lowguid);             // or remove manually
     }

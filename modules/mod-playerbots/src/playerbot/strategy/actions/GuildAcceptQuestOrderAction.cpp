@@ -91,7 +91,7 @@ bool GuildAcceptQuestOrderAction::Execute(Event& event)
 
         Quest const* droppedQuest = sObjectMgr.GetQuestTemplate(dropQuestId);
         ai->TellDebug(ai->GetMaster(), "Dropping quest [" + (droppedQuest ? droppedQuest->GetTitle() : std::to_string(dropQuestId)) + "] to make room for guild order quest", "debug travel");
-        ai->DropQuest(dropQuestId);
+        ai->DropQuest(dropQuestId, "guild_order");
 
         if (!bot->SatisfyQuestLog(false))
             return false;

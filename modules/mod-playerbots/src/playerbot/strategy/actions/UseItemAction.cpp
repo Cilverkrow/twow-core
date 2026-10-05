@@ -924,9 +924,7 @@ bool UseAction::UseGameObject(Player* requester, Event& event, GameObject* gameO
         }
     }
 
-    std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_GAMEOBJ_USE));
-    *packet << guid;
-    bot->GetSession()->QueuePacket(std::move(packet));
+    ai->UseGameObjectDirect(guid);   // Hotfix 8.8 (#474)
     
     std::ostringstream out; out << "Using " << chat->formatGameobject(gameObject);
     ai->TellPlayerNoFacing(requester, out.str(), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
@@ -1004,7 +1002,11 @@ bool UseAction::OpenItem(Player* requester, Item* item)
         std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_OPEN_ITEM, 2));
         *packet << item->GetBagSlot();
         *packet << item->GetSlot();
-        bot->GetSession()->QueuePacket(std::move(packet)); // queue the packet to get around race condition
+        // Hotfix 8.9 (twow-repo#474): a queued packet is never processed for a bot session, so
+        // quest containers were never opened. The caller returns right after, the item is not
+        // touched again, so the handler is called directly.
+        ai->GetItemUseTrace().OnOpen(uint32(time(nullptr)));
+        bot->GetSession()->HandleOpenItemOpcode(*packet);
         return true;
 }
 

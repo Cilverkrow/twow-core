@@ -563,12 +563,60 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         {
             lastQuestProgressCheck = now;
 
+            // Hotfix 8.9 (twow-repo#474): items used and opened through the handler.
+            if (itemUseTrace.Due(now))
+            {
+                sLog.outBasic("[ItemUse] bot=%u level=%u uses=%u cast_started=%u bandages=%u opens=%u window_s=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), itemUseTrace.uses, itemUseTrace.started, itemUseTrace.bandages,
+                    itemUseTrace.opens, now - itemUseTrace.start);
+                itemUseTrace.Reset();
+            }
+
             uint64 snapshot = (uint64(bot->GetLevel()) << 40) ^ uint64(bot->GetUInt32Value(PLAYER_XP));
-            // Hotfix 8.2: profession skill-ups are progress too - a bot fishing or
-            // gathering for an hour is busy, not stuck (8.1 rescued it after 60 min).
-            for (uint16 skill : { SKILL_FISHING, SKILL_HERBALISM, SKILL_MINING, SKILL_SKINNING, SKILL_COOKING, SKILL_FIRST_AID,
-                SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_LEATHERWORKING, SKILL_TAILORING })
-                snapshot += uint64(bot->GetSkillValue(skill)) * (uint64(skill) * 2654435761ULL + 1ULL);
+            // Hotfix 8.5 (owner decision, replaces 8.2): profession skill-ups are progress
+            // only under a declared purpose ([Purpose]); without one the rescue may act.
+            if (gatherPurpose.Active())
+            {
+                uint32 const skill = gatherPurpose.skill;
+                uint32 const value = bot->GetSkillValue(uint16(skill));
+                snapshot += uint64(value) * (uint64(skill) * 2654435761ULL + 1ULL);
+
+                uint32 const startValue = gatherPurpose.startValue;
+                uint32 const start = gatherPurpose.start;
+                // Hotfix 8.8 (#472): a fishing purpose that reached no water ends after 5 minutes
+                // without a single cast (8 of 14 purposes on v23 never cast in 15 minutes).
+                bool const noSpot = skill == SKILL_FISHING && !fishingTrace.casts &&
+                    now - start >= ai::gather_purpose::NoSpotSeconds;
+                ai::gather_purpose::End const end = noSpot ? gatherPurpose.EndNoSpot(now) : gatherPurpose.Observe(value, now);
+                if (end != ai::gather_purpose::End::None)
+                {
+                    // Hotfix 8.7 (twow-repo#472): one [Fishing] line per fishing purpose.
+                    if (skill == SKILL_FISHING)
+                    {
+                        sLog.outBasic("[Fishing] bot=%u level=%u zone=%u reason=%s casts=%u cast_failed=%u no_pole=%u use_sent=%u use_ok=%u channel_breaks=%u skill=%u gained=%u last_break=\"%s\"",
+                            bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), ai::gather_purpose::EndName(end), fishingTrace.casts, fishingTrace.castFailed,
+                            fishingTrace.noPole, fishingTrace.useSent, fishingTrace.useOk, fishingTrace.channelBreaks, value,
+                            value > startValue ? value - startValue : 0, fishingLastBreak.c_str());
+                        fishingTrace.Reset();
+                        fishingLastBreak.clear();
+                    }
+
+                    sLog.outBasic("[Purpose] state=end bot=%u level=%u profession=%s reason=%s skill=%u gained=%u minutes=%u blocked_min=%u",
+                        bot->GetGUIDLow(), bot->GetLevel(), ai::gather_purpose::ProfessionName(skill), ai::gather_purpose::EndName(end),
+                        value, value > startValue ? value - startValue : 0, (now - start) / 60,
+                        end == ai::gather_purpose::End::TargetReached ? 0 : ai::gather_purpose::BlockSeconds / 60);
+
+                    // Back to quests and travel: leave a gathering target of this profession.
+                    uint32 const gatherFlag = skill == SKILL_SKINNING ? uint32(TravelDestinationPurpose::GatherSkinning) :
+                        skill == SKILL_MINING ? uint32(TravelDestinationPurpose::GatherMining) :
+                        skill == SKILL_HERBALISM ? uint32(TravelDestinationPurpose::GatherHerbalism) :
+                        uint32(TravelDestinationPurpose::GatherFishing);
+                    TravelTarget* travelTarget = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
+                    if (travelTarget && travelTarget->GetDestination() &&
+                        (uint32(travelTarget->GetDestination()->GetPurpose()) & gatherFlag))
+                        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                }
+            }
             for (auto const& [questId, status] : bot->getQuestStatusMap())
             {
                 uint64 entry = uint64(questId) * 1000003ULL + uint64(status.m_status) * 131ULL + (status.m_rewarded ? 7ULL : 0ULL);
@@ -577,10 +625,116 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 snapshot += entry * 2654435761ULL;
             }
 
+            // Hotfix 8.12 (bot 27 Nilenata, >24 h in combat without progress): a roster bot on its
+            // own that stays in combat without progress is stopped after 10 minutes; after 20
+            // the rescue below may act although it is in combat.
+            // Hotfix 8.29 (twow-repo#532): Blackstone Island has no travel edge, only the flying machine.
+            // Hotfix 8.29a: only a goblin in the island's box or a bot with a real master enters.
+            namespace gi = ai::quest_search::goblin_island;
+            bool const islandCandidate = gi::MayBeOnIsland(bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+            if ((islandCandidate || HasRealPlayerMaster()) &&
+                bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
+            {
+                if (islandCandidate && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() &&
+                    gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now)))
+                {
+                    float const dist = bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ);
+                    if (dist <= gi::BoardDistance)
+                    {
+                        sLog.outBasic("[Travel] state=island_flight bot=%u level=%u from=%u path=%u", bot->GetGUIDLow(),
+                            bot->GetLevel(), gi::IslandZone, gi::IslandPath);
+                        bot->GetMotionMaster()->Clear();
+                        bot->ActivateTaxiPathTo(gi::IslandPath, 0, true);
+                    }
+                    else
+                        bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);
+                }
+                else if (Player* const realMaster = HasRealPlayerMaster() ? GetMaster() : nullptr)
+                {
+                    // A follower whose real master flew off from a machine takes the same flight.
+                    if (realMaster->IsTaxiFlying())
+                    {
+                        uint32 const path = gi::FollowPath(bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ),
+                            bot->GetDistance(gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ));
+                        if (path)
+                        {
+                            sLog.outBasic("[Travel] state=follow_script_taxi bot=%u level=%u master=%u path=%u", bot->GetGUIDLow(),
+                                bot->GetLevel(), realMaster->GetGUIDLow(), path);
+                            bot->GetMotionMaster()->Clear();
+                            bot->ActivateTaxiPathTo(path, 0, true);
+                        }
+                    }
+                }
+            }
+
+            bool rescueInCombat = false;
+            if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() && bot->IsAlive())
+            {
+                ai::stuck_combat::Step const step = stuckCombat.Observe(bot->IsInCombat(), questProgress.IdleSeconds(now), now);
+                // Hotfix 8.14 (v27 Eloreni, victim_evade=1): an evading attacker or victim never
+                // ends the fight - release it at every stuck step.
+                uint32 released = 0;
+                if (step != ai::stuck_combat::Step::None)
+                {
+                    Unit* const evadingVictim = bot->GetVictim();
+                    if (evadingVictim && evadingVictim->ToCreature() && evadingVictim->ToCreature()->IsInEvadeMode())
+                    {
+                        bot->AttackStop();
+                        ++released;
+                    }
+                    std::vector<Unit*> const attackers(bot->GetAttackers().begin(), bot->GetAttackers().end());
+                    for (Unit* attacker : attackers)
+                    {
+                        Creature* const creature = attacker ? attacker->ToCreature() : nullptr;
+                        if (creature && creature->IsInEvadeMode() && creature->GetVictim() == bot)
+                        {
+                            creature->AttackStop();
+                            ++released;
+                        }
+                    }
+                    if (released)
+                        bot->getHostileRefManager().deleteReferences();
+                }
+                if (step == ai::stuck_combat::Step::Stop || (step == ai::stuck_combat::Step::Rescue && !stuckCombat.rescueLogged))
+                {
+                    Unit* const victim = bot->GetVictim();
+                    Creature* const victimCreature = victim ? victim->ToCreature() : nullptr;
+                    sLog.outBasic("[StuckCombat] state=%s bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f minutes=%u victim_entry=%u victim_evade=%u attackers=%u released=%u",
+                        step == ai::stuck_combat::Step::Stop ? "stop" : "rescue", bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(),
+                        bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), stuckCombat.Minutes(now),
+                        victimCreature ? victimCreature->GetEntry() : 0, victimCreature && victimCreature->IsInEvadeMode() ? 1u : 0u,
+                        uint32(bot->GetAttackers().size()), released);
+                    if (step == ai::stuck_combat::Step::Rescue)
+                        stuckCombat.rescueLogged = true;
+                }
+                if (step == ai::stuck_combat::Step::Stop)
+                {
+                    bot->CombatStop(true);
+                    bot->getHostileRefManager().deleteReferences();
+                    stuckCombat.RememberStop(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+                }
+                // Hotfix 8.14: still on the same spot at the rescue step - go home like a hearthstone
+                // (which cannot be cast in combat). The quest rescue teleports the same way.
+                if (step == ai::stuck_combat::Step::Rescue && bot->GetMap() && bot->GetMap()->IsContinent() &&
+                    !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported() &&
+                    stuckCombat.HomeDue(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), now))
+                {
+                    sLog.outBasic("[StuckCombat] state=home bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f minutes=%u attackers=%u home_map=%u home_x=%.0f home_y=%.0f",
+                        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+                        stuckCombat.Minutes(now), uint32(bot->GetAttackers().size()), bot->GetHomebindMapId(), bot->GetHomebindX(),
+                        bot->GetHomebindY());
+                    bot->CombatStop(true);
+                    bot->getHostileRefManager().deleteReferences();
+                    bot->GetMotionMaster()->Clear();
+                    bot->TeleportToHomebind(0, true);
+                }
+                rescueInCombat = step == ai::stuck_combat::Step::Rescue;
+            }
+
             if (questProgress.Update(snapshot, now))
                 aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
             else if (sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
-                !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && !bot->IsInCombat() &&
+                !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && (!bot->IsInCombat() || rescueInCombat) &&
                 bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
             {
                 uint32 const stage = uint32(std::max(0, aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get()));
@@ -602,6 +756,16 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 ReportIdle(questProgress.IdleSeconds(now));
             }
         }
+    }
+
+    // Hotfix 8.7 (twow-repo#472): a fishing channel that ends without a bobber use, and what
+    // the bot did last - only while a fishing purpose runs.
+    if (gatherPurpose.Active() && gatherPurpose.skill == SKILL_FISHING)
+    {
+        Spell* channel = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+        bool const fishing = channel && std::string(channel->m_spellInfo->SpellName[0]).find("Fishing") == 0;
+        if (fishingTrace.ObserveChannel(fishing) && currentEngine)
+            fishingLastBreak = currentEngine->GetLastAction().substr(0, 160);
     }
 
     // #416: phase for [BotSlowUpdate].
@@ -3386,7 +3550,7 @@ std::vector<Player*> PlayerbotAI::GetPlayersInGroup()
     return members;
 }
 
-void PlayerbotAI::DropQuest(uint32 questIdToDrop)
+void PlayerbotAI::DropQuest(uint32 questIdToDrop, char const* reason)
 {
     for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
@@ -3399,6 +3563,8 @@ void PlayerbotAI::DropQuest(uint32 questIdToDrop)
         {
             if (Quest const* q = sObjectMgr.GetQuestTemplate(questIdToDrop))
                 sPlayerbotAIConfig.logEvent(this, "QuestDropped", q->GetTitle(), std::to_string(questIdToDrop));
+            sLog.outBasic("[QuestDrop] bot=%u level=%u quest=%u status=%u reason=%s",
+                bot->GetGUIDLow(), bot->GetLevel(), questIdToDrop, uint32(status), reason);
 
             bot->SetQuestSlot(slot, 0);
 
@@ -3718,7 +3884,8 @@ bool PlayerbotAI::SayToGuild(std::string msg, bool likePlayer)
 
                         std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(packet_template));
 
-                        bot->GetSession()->QueuePacket(std::move(packetPtr));
+                        if (sPlayerbotAIConfig.botChatDirect)   // Hotfix 8.9 (#474): queued chat never arrived; default off
+                            bot->GetSession()->HandleMessagechatOpcode(*packetPtr);
                         return true;
                     }
                     break;
@@ -3999,7 +4166,8 @@ bool PlayerbotAI::SayToParty(std::string msg, bool likePlayer)
 
                 std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(packet_template));
 
-                bot->GetSession()->QueuePacket(std::move(packetPtr));
+                if (sPlayerbotAIConfig.botChatDirect)   // Hotfix 8.9 (#474): queued chat never arrived; default off
+                    bot->GetSession()->HandleMessagechatOpcode(*packetPtr);
                 return true;
             }
         }
@@ -4059,7 +4227,8 @@ bool PlayerbotAI::Yell(std::string msg, bool likePlayer)
 
             std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(packet_template));
 
-            bot->GetSession()->QueuePacket(std::move(packetPtr));
+            if (sPlayerbotAIConfig.botChatDirect)   // Hotfix 8.9 (#474): queued chat never arrived; default off
+                bot->GetSession()->HandleMessagechatOpcode(*packetPtr);
             return true;
         }
     }
@@ -4095,7 +4264,8 @@ bool PlayerbotAI::Say(std::string msg, bool likePlayer)
 
             std::unique_ptr<WorldPacket> packetPtr(new WorldPacket(packet_template));
 
-            bot->GetSession()->QueuePacket(std::move(packetPtr));
+            if (sPlayerbotAIConfig.botChatDirect)   // Hotfix 8.9 (#474): queued chat never arrived; default off
+                bot->GetSession()->HandleMessagechatOpcode(*packetPtr);
             return true;
         }
     }
@@ -6429,11 +6599,13 @@ void PlayerbotAI::DurabilityLoss(Item* item, double percent)
 
 bool IsAlliance(uint8 race)
 {
-    return race == RACE_HUMAN || race == RACE_DWARF || race == RACE_NIGHTELF ||
+    // twow-repo#379 (hotfix 8.21): the core mask knows every Alliance race, including the Turtle
+    // high elf (10), which the old list missed (wrong faction in IsOpposing, security, AH, say).
 #ifndef MANGOSBOT_ZERO
-           race == RACE_DRAENEI ||
+    if (race == RACE_DRAENEI)
+        return true;
 #endif
-           race == RACE_GNOME;
+    return race > 0 && race < MAX_RACES && ((1u << (race - 1)) & RACEMASK_ALLIANCE) != 0;
 }
 
 uint32 PlayerbotAI::GetFixedBotNumber(BotTypeNumber typeNumber, uint32 maxNum, float cyclePerMin, bool ignoreGuid)
@@ -9084,6 +9256,9 @@ void PlayerbotAI::ImbueItem(Item* item, uint32 targetFlag, ObjectGuid targetGUID
       }
    }
 
+   // Hotfix 8.9 (#474): [ItemUse] - read before the use, the item may be gone after it.
+   bool const isBandage = item->GetProto()->Class == ITEM_CLASS_CONSUMABLE && item->GetProto()->SubClass == ITEM_SUBCLASS_BANDAGE;
+
 #ifdef CMANGOS
    std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_USE_ITEM, 20));
 #endif
@@ -9116,7 +9291,11 @@ void PlayerbotAI::ImbueItem(Item* item, uint32 targetFlag, ObjectGuid targetGUID
       *packet << targetGUID.WriteAsPacked();
 
 #ifdef CMANGOS
-   bot->GetSession()->QueuePacket(std::move(packet));
+   // Hotfix 8.9 (twow-repo#474): bot sessions have no socket, so a queued CMSG_USE_ITEM was
+   // never processed - bandages, health items, poisons and weapon oils were never used.
+   // Use the item through the player's own handler (same checks), on the bot's tick.
+   bot->GetSession()->HandleUseItemOpcode(*packet);
+   itemUseTrace.OnUse(bot->IsNonMeleeSpellCasted(false), isBandage, uint32(time(nullptr)));
 #endif
 #ifdef MANGOS
    bot->GetSession()->QueuePacket(packet);
@@ -9399,6 +9578,17 @@ bool PlayerbotAI::PlayAttackEmote(float chanceMultiplier)
     }
 
     return false;
+}
+
+// Hotfix 8.8 (twow-repo#474): bot sessions have no socket, so packets queued with
+// QueuePacket are never processed (WorldSession::CanProcessPackets) - the bobber, lifts,
+// buttons, portals and quest objects were never used. Game objects now go through the
+// player's own handler (same checks), called on the bot's map-thread tick from actions.
+void PlayerbotAI::UseGameObjectDirect(ObjectGuid guid)
+{
+    WorldPacket packet(CMSG_GAMEOBJ_USE, 8);
+    packet << guid;
+    bot->GetSession()->HandleGameObjectUseOpcode(packet);
 }
 
 void PlayerbotAI::QueuePacket(WorldPacket& pkt)

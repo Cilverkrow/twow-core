@@ -4,8 +4,21 @@
 # fork_point only when this branch is genuinely rebased or merged onto a newer
 # upstream commit -- it is the answer to "what does our delta apply to".
 
-upstream_url    = https://github.com/Shyalya/tortoise-wow.git
-upstream_branch = playerbots-integration-gh
+# The upstream of record, Shyalya/tortoise-wow (branch playerbots-integration-gh),
+# announced its retirement (ADR-0026 amendment of 2026-09-27) and was removed from
+# GitHub on 2026-10-01: the repository answers 404 and `git ls-remote` reports
+# "Repository not found". Its history had been snapshotted into this repository
+# beforehand as tag upstream-archive/shyalya-playerbots-integration-gh-2026-09-27
+# (tip f2df1b6aff7ea589db4682836d7652ada77f9377, 945 commits). The checks below need
+# a branch to fetch (tools/ci/check-upstream-lock.sh fetches refs/heads only), so
+# the same commit is published as the branch named here. It is FROZEN: nobody pushes
+# to it, and since nothing can arrive after f2df1b6a, max_drift_commits below now
+# measures a fixed distance (49) rather than staleness.
+#
+# Former values: upstream_url = https://github.com/Shyalya/tortoise-wow.git
+#                upstream_branch = playerbots-integration-gh
+upstream_url    = https://github.com/Cilverkrow/twow-core.git
+upstream_branch = upstream-archive-playerbots-integration-gh
 
 # The commit this fork's delta is applied on top of: the merge base between our
 # history and the branch we track. Re-derive it rather than trusting this line --
@@ -111,3 +124,18 @@ upstream_tracking_commit  = 3f9a0622fd8f5fad1737b14a71a38497fc27ea09
 # check that gets switched off. Not unbounded either -- be3e6cd sat here for
 # the life of the fork and was 385 commits stale by the time anyone measured.
 max_drift_commits         = 50
+
+# ---------------------------------------------------------------------------
+# Tracking mode (ADR-0026, owner decision 2026-10-01: variant (a)).
+#
+# "We are our own trunk from now on." Upstream tracking is retired: this file
+# stays as the historical record of where the fork came from, pointed at the
+# frozen archive branch above. check-upstream-lock.sh skips the drift check
+# (check 4) in this mode -- nothing can arrive after the archive tip, so a budget
+# against it would measure a constant -- and keeps the history checks 1-3 and
+# 5-7, which still catch a moved tracking branch, a dead-branch merge and a
+# forgotten fork_point. Upstream content (Penqle/tortoise-wow and related
+# projects, reviewed monthly per ADR-0026) arrives only by deliberate
+# cherry-pick, never by merging a branch. `live` would re-enable check 4 and is
+# only meaningful with a live upstream_url.
+upstream_tracking_mode    = retired

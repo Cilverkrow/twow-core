@@ -65,6 +65,10 @@
 #include "Database/DatabaseImpl.h"
 #include "Spell.h"
 #include "ScriptMgr.h"
+#include "FunserverTalentLearnSpells.h"
+#include "FunserverComboPolicy.h"
+#include <cstring>
+#include "FunserverQuestSpellRegrant.h"
 #include "ScriptObjects.h"
 #include "SocialMgr.h"
 #include "Mail.h"
@@ -2180,7 +2184,7 @@ void Player::SetDeathState(DeathState s)
         // drunken state is cleared on death
         SetDrunkValue(0);
         // lost combo points at any target (targeted combo points clear in Unit::SetDeathState)
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DEATH);
 
         ClearResurrectRequestData();
 
@@ -8548,16 +8552,16 @@ void Player::DuelComplete(DuelCompleteType type)
 
     // Cleanup combo points
     if (GetComboTargetGuid() == m_duel->opponent)
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DUEL);
     else if (GetComboTargetGuid().IsPet())
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DUEL);
 
     if (pOpponent)
     {
         if (pOpponent->GetComboTargetGuid() == GetObjectGuid())
-            pOpponent->ClearComboPoints();
+            pOpponent->ClearComboPoints(COMBO_CLEAR_DUEL);
         else if (pOpponent->GetComboTargetGuid() == GetPetGuid())
-            pOpponent->ClearComboPoints();
+            pOpponent->ClearComboPoints(COMBO_CLEAR_DUEL);
     }
 
     // Reset extraAttacks counter
@@ -21343,10 +21347,36 @@ void Player::SetComboPoints()
     }*/
 }
 
-void Player::AddComboPoints(Unit* target, int8 count)
+void Player::AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId, bool fromProc)
 {
     if (!count)
         return;
+
+    // Hotfix 8.25 (#484, Rogue.ProcComboPointsToCurrentTarget, default off): a proc point
+    // meant for another unit (e.g. Setup on a second attacker) goes to the current target.
+    if (fromProc && count > 0 && sWorld.getConfig(CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET))
+    {
+        Unit* comboTarget = m_comboTargetGuid ? ObjectAccessor::GetUnit(*this, m_comboTargetGuid) : nullptr;
+        Unit* selection = GetSelectionGuid() ? ObjectAccessor::GetUnit(*this, GetSelectionGuid()) : nullptr;
+
+        ComboProcRedirectInput in;
+        in.switchOn = true;
+        in.fromProc = true;
+        in.isRogue = GetClass() == CLASS_ROGUE;
+        in.procTargetIsComboTarget = target->GetObjectGuid() == m_comboTargetGuid;
+        in.comboPoints = m_comboPoints > 0 ? uint8(m_comboPoints) : 0;
+        in.comboTargetValid = comboTarget && comboTarget->IsAlive() && IsValidAttackTarget(comboTarget);
+        in.selectionValid = selection && selection->IsAlive() && IsValidAttackTarget(selection);
+        in.selectionIsProcTarget = selection == target;
+
+        ComboProcRedirect const redirect = DecideComboProcRedirect(in);
+        if (redirect != ComboProcRedirect::None)
+        {
+            Unit* current = redirect == ComboProcRedirect::ComboTarget ? comboTarget : selection;
+            TraceComboPoints("proc_redirect", uint8(in.comboPoints), current->GetObjectGuid(), target->GetObjectGuid(), sourceSpellId);
+            target = current;
+        }
+    }
 
     // without combo points lost (duration checked in aura)
     RemoveSpellsCausingAura(SPELL_AURA_RETAIN_COMBO_POINTS);
@@ -21355,6 +21385,11 @@ void Player::AddComboPoints(Unit* target, int8 count)
         m_comboPoints += count;
     else
     {
+        // Hotfix 8.24 (#484): points built on another target are dropped here.
+        if (m_comboTargetGuid && m_comboPoints > 0)
+            TraceComboPoints(fromProc ? "proc_other_target" : "retarget", uint8(m_comboPoints), m_comboTargetGuid,
+                target->GetObjectGuid(), sourceSpellId);
+
         if (m_comboTargetGuid)
             if (Unit* target2 = ObjectAccessor::GetUnit(*this, m_comboTargetGuid))
                 target2->RemoveComboPointHolder(GetGUIDLow());
@@ -21371,10 +21406,18 @@ void Player::AddComboPoints(Unit* target, int8 count)
     SetComboPoints();
 }
 
-void Player::ClearComboPoints()
+void Player::ClearComboPoints(ComboClearReason reason)
 {
     if (!m_comboTargetGuid)
         return;
+
+    // Hotfix 8.24 (#484): diagnostics only, the behaviour below is unchanged.
+    if (m_comboPoints > 0)
+    {
+        static char const* const reasonNames[] = { "other", "finisher", "select", "target_died", "death", "duel" };
+        TraceComboPoints(reason < sizeof(reasonNames) / sizeof(reasonNames[0]) ? reasonNames[reason] : "other",
+            uint8(m_comboPoints), m_comboTargetGuid);
+    }
 
     // without combopoints lost (duration checked in aura)
     RemoveSpellsCausingAura(SPELL_AURA_RETAIN_COMBO_POINTS);
@@ -21387,6 +21430,41 @@ void Player::ClearComboPoints()
         target->RemoveComboPointHolder(GetGUIDLow());
 
     m_comboTargetGuid.Clear();
+}
+
+// Hotfix 8.24 (twow-repo#484, owner: "combo points just disappear"): one greppable line per
+// lost combo point set of a real player (rogue/druid; bots have no socket), at most 30 lines
+// per player and minute, then a suppressed count. Logging only.
+void Player::TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget,
+    ObjectGuid const& newTarget, uint32 sourceSpellId)
+{
+    bool const redirect = std::strcmp(reason, "proc_redirect") == 0;   // 8.25: logged even without points
+    if ((!pointsBefore && !redirect) || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))
+        return;
+    if (!GetSession() || !GetSession()->GetSocket())
+        return;
+
+    uint32 const now = uint32(time(nullptr));
+    if (!m_comboTraceWindowStart || now - m_comboTraceWindowStart >= 60)
+    {
+        if (m_comboTraceSuppressed)
+            sLog.outBasic("[ComboTrace] player=%u suppressed=%u window_s=%u",
+                GetGUIDLow(), m_comboTraceSuppressed, now - m_comboTraceWindowStart);
+        m_comboTraceWindowStart = now;
+        m_comboTraceLines = 0;
+        m_comboTraceSuppressed = 0;
+    }
+    if (m_comboTraceLines >= 30)
+    {
+        ++m_comboTraceSuppressed;
+        return;
+    }
+    ++m_comboTraceLines;
+
+    ObjectGuid const selection = GetSelectionGuid();
+    sLog.outBasic("[ComboTrace] player=%u reason=%s cp=%u target=%s new_target=%s spell=%u selection=%s map=%u",
+        GetGUIDLow(), reason, uint32(pointsBefore), comboTarget.GetString().c_str(),
+        newTarget.GetString().c_str(), sourceSpellId, selection.GetString().c_str(), GetMapId());
 }
 
 void Player::SetGroup(Group *group, int8 subgroup)
@@ -23303,6 +23381,43 @@ void Player::LearnTalent(uint32 talentId, uint32 talentRank)
     // learn! (other talent ranks will unlearned at learning)
     LearnSpell(spellid, false, true);
     DETAIL_LOG("TalentID: %u Rank: %u Spell: %u\n", talentId, talentRank, spellid);
+
+    // Hotfix 8.4: talents that teach spells through LEARN_SPELL effects (Ancestral Arms).
+    LearnFunserverTalentSpells(this);
+}
+
+void RegrantFunserverQuestSpells(Player* player)
+{
+    if (!player)
+        return;
+
+    for (FunserverQuestSpellRegrant const& entry : FUNSERVER_QUEST_SPELL_REGRANTS)
+    {
+        if (!(player->GetRaceMask() & entry.raceMask) || !(player->GetClassMask() & entry.classMask))
+            continue;
+        if (!player->GetQuestRewardStatus(entry.questId) || player->HasSpell(entry.spellId))
+            continue;
+
+        player->LearnSpell(entry.spellId, false);
+        sLog.outString("[RacialRegrant] player=%s guid=%u quest=%u spell=%u", player->GetName(),
+            player->GetGUIDLow(), entry.questId, entry.spellId);
+    }
+}
+
+void LearnFunserverTalentSpells(Player* player)
+{
+    if (!player)
+        return;
+
+    for (FunserverTalentLearn const& entry : FUNSERVER_TALENT_LEARN_SPELLS)
+    {
+        if (!player->HasSpell(entry.talentSpell))
+            continue;
+
+        for (uint32 spellId : entry.taught)
+            if (spellId && !player->HasSpell(spellId))
+                player->LearnSpell(spellId, false);
+    }
 }
 
 void Player::UnsummonPetTemporaryIfAny()

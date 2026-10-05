@@ -6,6 +6,7 @@
 #include "EquipAction.h"
 #include "playerbot/HomeBindPolicy.h"
 #include "Maps/GridMap.h"
+#include "playerbot/FishingPolicy.h"
 
 using namespace ai;
 
@@ -122,6 +123,11 @@ bool FishAction::isUseful()
     if (!AI_VALUE(bool, "can fish"))
         return false;
 
+    // Hotfix 8.3: never recast while fishing - every recast replaced the bobber before a
+    // fish could bite, so no bot ever caught anything.
+    if (AI_VALUE(bool, "fishing in progress"))
+        return false;
+
     if (fishSpot.distance(bot) > 1.0f)
         return false;
 
@@ -157,7 +163,10 @@ bool FishAction::Execute(Event& event)
     std::list<Item*> poles = AI_VALUE2(std::list<Item*>, "inventory items", "fishing pole");
 
     if (poles.empty())
+    {
+        ++ai->GetFishingTrace().noPole;   // Hotfix 8.7 (#472)
         return false;
+    }
 
     Item* pole = poles.front();
     uint8 bagIndex = pole->GetBagSlot();
@@ -166,8 +175,17 @@ bool FishAction::Execute(Event& event)
     if (slot != EQUIPMENT_SLOT_MAINHAND)
         EquipAction::EquipItem(ai, GetMaster(), pole);
 
-    Event fishCastEvent = Event("fish", "7731 " + chat->formatWorldobject(bot));
+    // Hotfix 8.3: the highest fishing rank the bot knows (was 7731 for everyone).
+    uint32 const rank = ai::fishing::KnownRank(bot->HasSpell(ai::fishing::Artisan), bot->HasSpell(ai::fishing::Expert),
+        bot->HasSpell(ai::fishing::Journeyman), bot->HasSpell(ai::fishing::Apprentice));
+    if (!rank)
+        return false;
+
+    Event fishCastEvent = Event("fish", std::to_string(rank) + " " + chat->formatWorldobject(bot));
     bool didCast = CastCustomSpellAction::Execute(fishCastEvent);
+    ai->GetFishingTrace().OnCast(didCast);   // Hotfix 8.7 (#472)
+    if (didCast)
+        SET_AI_VALUE2(int, "manual int", "last fishing cast", int(time(nullptr)));
 
     SetDuration(sPlayerbotAIConfig.globalCoolDown);
 
@@ -196,9 +214,8 @@ bool UseFishingBobberAction::Execute(Event& event)
             return true;
         }
 
-        std::unique_ptr<WorldPacket> packet(new WorldPacket(CMSG_GAMEOBJ_USE));
-        *packet << obj->GetObjectGuid();
-        bot->GetSession()->QueuePacket(std::move(packet));
+        ai->UseGameObjectDirect(obj->GetObjectGuid());   // Hotfix 8.8 (#474)
+        ai->GetFishingTrace().OnUse(obj->GetLootState() != GO_READY);   // Hotfix 8.7/8.8 (#472)
 
         std::ostringstream out; out << "Opening " << chat->formatGameobject(obj);
         ai->TellPlayerNoFacing(ai->GetMaster(), out.str(), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);

@@ -8429,3 +8429,30 @@ void Aura::ExclusiveAuraUnapply()
         mostImportant->ApplyModifier(true, true, true);
     }
 }
+
+// Hotfix 8.4 (twow-repo#357, Shield Constitution / Shield Ward): every change of the
+// charges reaches the aura script. Before, only the proc path in Unit::ProcDamageAndSpellFor
+// called OnAuraChargesChanged; charges dropped by spell mods (Object.cpp) or by absorb
+// (Unit.cpp) left the charge-scaled talent auras on their old value.
+void SpellAuraHolder::SetAuraCharges(uint32 charges)
+{
+    if (m_procCharges == charges)
+        return;
+    m_procCharges = charges;
+
+    UpdateAuraApplication();
+    if (m_auraScript)
+        m_auraScript->OnAuraChargesChanged(this);
+}
+
+bool SpellAuraHolder::DropAuraCharge()
+{
+    if (m_procCharges == 0)
+        return false;
+
+    m_procCharges--;
+    UpdateAuraApplication();
+    if (m_auraScript)
+        m_auraScript->OnAuraChargesChanged(this);
+    return m_procCharges == 0;
+}

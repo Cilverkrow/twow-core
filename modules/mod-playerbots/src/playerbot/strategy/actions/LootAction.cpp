@@ -125,7 +125,8 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return false;
     }
 
-    if (creature && creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE) && !creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE))
+    // Hotfix 8.6 (twow-repo#471): loot a lootable corpse even when it is skinnable too.
+    if (creature && creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE))
     {
         if (!lootObject.IsLootPossible(bot)) //Clear loot if bot can't loot it.
         {
@@ -437,7 +438,10 @@ bool StoreLootAction::Execute(Event& event)
 			continue;
 		}
 
-        if (loot_type != LOOT_SKINNING && !IsLootAllowed(itemQualifier, ai))
+        // Hotfix 8.11 (twow-repo#474, v24: 279 container opens, 1 item loot): loot from an item in
+        // the bot's own bags (a quest container such as Bundle of Reports) is taken whole. The
+        // usefulness filter left it inside, the container stayed full and was opened again.
+        if (loot_type != LOOT_SKINNING && !guid.IsItem() && !IsLootAllowed(itemQualifier, ai))
         {
             sLog.outDebug("[BOT LOOT] %s: skip item=%u (IsLootAllowed=false)", bot->GetName(), itemid);
             if (traceQuestLoot)

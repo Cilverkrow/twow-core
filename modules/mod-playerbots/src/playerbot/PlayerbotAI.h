@@ -19,6 +19,10 @@
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/GatherPurposePolicy.h"
+#include "playerbot/StuckCombatPolicy.h"
+#include "playerbot/FishingPolicy.h"
+#include "playerbot/ItemUseTrace.h"
 #include "playerbot/DeathSeriesPolicy.h"
 #include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/UnreachablePolicy.h"
@@ -420,7 +424,8 @@ public:
     static GameObject* GetGameObject(GameObjectDataPair const* gameObjectDataPair);
     WorldObject* GetWorldObject(ObjectGuid guid);
     std::vector<Player*> GetPlayersInGroup();
-    void DropQuest(uint32 questId);
+    // Hotfix 8.15: reason goes to the [QuestDrop] line (the QuestDropped CSV event keeps its format).
+    void DropQuest(uint32 questId, char const* reason = "other");
     std::vector<const Quest*> GetAllCurrentQuests();
     std::vector<const Quest*> GetCurrentIncompleteQuests();
     std::set<uint32> GetAllCurrentQuestIds();
@@ -686,6 +691,12 @@ public:
     // Hotfix 8.1: [TankPath] diagnostic for bots on a tank path (4.3 / 7.3).
     void UpdateTankPathDiag(uint32 now);
     bool IsCautious() const { return deathSeries.Cautious(uint32(time(nullptr))); }
+    // Hotfix 8.5: the declared profession purpose ([Purpose]).
+    ai::gather_purpose::State& GetGatherPurpose() { return gatherPurpose; }
+    // Hotfix 8.7 (twow-repo#472): [Fishing] counters of the running fishing purpose.
+    ai::fishing::PurposeTrace& GetFishingTrace() { return fishingTrace; }
+    // Hotfix 8.9 (twow-repo#474): [ItemUse] counters.
+    ai::item_use::Trace& GetItemUseTrace() { return itemUseTrace; }
     bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
     void ClearDeathLoop() { recentDeaths.clear(); }
     uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
@@ -816,6 +827,8 @@ public:
     void Unmount();
 
     void QueuePacket(WorldPacket& pkt);
+    // Hotfix 8.8 (twow-repo#474): use a game object through the player's own handler.
+    void UseGameObjectDirect(ObjectGuid guid);
 
     float GetLevelFloat() const;
 
@@ -914,6 +927,12 @@ protected:
     // #421 C: progress watch for the quest rescue teleport.
     ai::quest_search::ProgressTracker questProgress;
     uint32 lastQuestProgressCheck = 0;
+    // Hotfix 8.12: combat without progress (bot 27 Nilenata).
+    ai::stuck_combat::State stuckCombat;
+    ai::gather_purpose::State gatherPurpose;
+    ai::fishing::PurposeTrace fishingTrace;
+    ai::item_use::Trace itemUseTrace;
+    std::string fishingLastBreak;
     std::atomic<uint32> lastQuestRescue{ 0 };
     std::atomic<bool> questRescueRequested{ false };
     std::atomic<bool> questRescueDone{ false };

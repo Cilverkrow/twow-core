@@ -694,6 +694,49 @@ add_test(NAME profession_use_policy
   COMMAND profession_use_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# Hotfix 8.29: Blackstone Island flying machine.
+add_test(NAME goblin_island_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/goblin_island_contract_tests.cmake")
+
+# Hotfix 8.28: no self cast without the item it names.
+add_test(NAME self_cast_item_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/self_cast_item_contract_tests.cmake")
+
+# Hotfix 8.26: the quest rescue binds the hearthstone at the rescue target.
+add_test(NAME rescue_rebind_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rescue_rebind_contract_tests.cmake")
+
+# twow-repo#524: material reservation, one place.
+add_executable(material_reserve_policy_tests
+  "${PB_MODULE_DIR}/t/material_reserve_policy_tests.cpp")
+
+target_include_directories(material_reserve_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(material_reserve_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME material_reserve_policy
+  COMMAND material_reserve_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME material_reserve_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/material_reserve_source_contract_tests.cmake")
+
+# Hotfix 8.16a: no per-query walk over every recipe in ItemUsageValue.
+add_test(NAME craft_reagent_index_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/craft_reagent_index_contract_tests.cmake")
+
 add_test(NAME profession_use_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
@@ -925,6 +968,90 @@ add_test(NAME hotfix81_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/hotfix81_source_contract_tests.cmake")
+
+# #452: discarded route candidates free their temporary (portal) nodes.
+add_test(NAME route_temp_nodes_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/route_temp_nodes_contract_tests.cmake")
+
+# Hotfix 8.9 (twow-repo#474): [ItemUse] trace window.
+add_executable(item_use_trace_tests
+  "${PB_MODULE_DIR}/t/item_use_trace_tests.cpp")
+
+target_include_directories(item_use_trace_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(item_use_trace_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME item_use_trace
+  COMMAND item_use_trace_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# Hotfix 8.12: combat without progress stopped, rescue allowed.
+add_executable(stuck_combat_policy_tests
+  "${PB_MODULE_DIR}/t/stuck_combat_policy_tests.cpp")
+
+target_include_directories(stuck_combat_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(stuck_combat_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME stuck_combat_policy
+  COMMAND stuck_combat_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME stuck_combat_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/stuck_combat_source_contract_tests.cmake")
+
+# Hotfix 8.8 (twow-repo#474): no queued bot packets for game objects, allowlist for the rest.
+add_test(NAME bot_queuepacket_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bot_queuepacket_contract_tests.cmake")
+
+# Hotfix 8.5 (twow-repo#329): declared profession purpose.
+add_executable(gather_purpose_policy_tests
+  "${PB_MODULE_DIR}/t/gather_purpose_policy_tests.cpp")
+
+target_include_directories(gather_purpose_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(gather_purpose_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME gather_purpose_policy
+  COMMAND gather_purpose_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# Hotfix 8.5 (twow-repo#329): turn-ins before gathering, grey quests dropped.
+add_test(NAME hotfix85_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/hotfix85_source_contract_tests.cmake")
+
+# Hotfix 8.3: fishing without recast loops.
+add_executable(fishing_policy_tests
+  "${PB_MODULE_DIR}/t/fishing_policy_tests.cpp")
+
+target_include_directories(fishing_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(fishing_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME fishing_policy
+  COMMAND fishing_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME fishing_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/fishing_source_contract_tests.cmake")
 
 # Hotfix 8.2: unreachable targets.
 add_executable(unreachable_policy_tests
@@ -1516,3 +1643,23 @@ add_test(NAME perfmon_init_reachable
 
 set_tests_properties(perfmon_init_reachable PROPERTIES
   ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+
+# Hotfix 8.13 (twow-repo#497, #474): transport stall on cross-map quest routes; self-given cast
+# errors only logged, craft "started" only after the cast began.
+add_executable(transport_stall_policy_tests
+  "${PB_MODULE_DIR}/t/transport_stall_policy_tests.cpp")
+
+target_include_directories(transport_stall_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(transport_stall_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_stall_policy
+  COMMAND transport_stall_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME hotfix813_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/hotfix813_source_contract_tests.cmake")

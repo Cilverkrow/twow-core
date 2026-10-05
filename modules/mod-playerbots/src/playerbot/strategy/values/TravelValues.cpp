@@ -8,6 +8,8 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Guild/GuildMgr.h"
 #include "playerbot/TravelChoosePolicy.h"
+#include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/GatherPurposePolicy.h"
 
 using namespace ai;
 
@@ -363,13 +365,39 @@ bool NeedTravelPurposeValue::Calculate()
     case TravelDestinationPurpose::GatherSkinning:
     case TravelDestinationPurpose::GatherMining:
     case TravelDestinationPurpose::GatherHerbalism:
-        skill = gatheringSkills.at(purpose);
-        if (bot->GetSkillValue(skill) < std::min(bot->GetSkillMax(skill), bot->GetSkillMaxForLevel(bot)))
-        {
-            return true;
-        }
+    {
+        // Hotfix 8.5: finished quests are handed in before the bot gathers again.
+        bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+        uint32 finished = 0;
+        if (rosterOnItsOwn)
+            for (auto const& [questId, status] : bot->getQuestStatusMap())
+                if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE)
+                    ++finished;
+        if (ai::quest_search::GatherYieldsToTurnIn(rosterOnItsOwn, finished))
+            return false;
 
-        return false;
+        // Hotfix 8.5 (owner decision): a roster bot on its own gathers only under a
+        // declared purpose with a skill target and a budget.
+        skill = gatheringSkills.at(purpose);
+        uint32 const value = bot->GetSkillValue(skill);
+        uint32 const target = std::min<uint32>(bot->GetSkillMax(skill), bot->GetSkillMaxForLevel(bot));
+        uint32 const now = uint32(time(nullptr));
+        ai::gather_purpose::State& declared = ai->GetGatherPurpose();
+        switch (ai::gather_purpose::Decide(declared, rosterOnItsOwn, skill, value, target, now))
+        {
+            case ai::gather_purpose::Decision::Start:
+                declared.Start(skill, value, target, now);
+                ai->GetFishingTrace().Reset();
+                sLog.outBasic("[Purpose] state=start bot=%u level=%u profession=%s reason=skill_behind skill=%u target=%u budget_min=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), ai::gather_purpose::ProfessionName(skill), value, target,
+                    ai::gather_purpose::BudgetSeconds / 60);
+                return true;
+            case ai::gather_purpose::Decision::Yes:
+                return true;
+            default:
+                return false;
+        }
+    }
     case TravelDestinationPurpose::Boss:
         return AI_VALUE(bool, "can fight boss");
     case TravelDestinationPurpose::Mail:
