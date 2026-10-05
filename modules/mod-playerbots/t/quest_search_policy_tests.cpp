@@ -27,6 +27,10 @@ int main()
     Require(line.find("not_active=7") != std::string::npos, "not_active counted");
     Require(line.find("zone_level=2") != std::string::npos, "zone_level counted");
     Require(line.find("moved_away=0") != std::string::npos, "all reasons listed");
+    Require(line.find(" resume_skipped=0") != std::string::npos, "the resume skip is listed (twow-repo#485)");
+    rejects.resumeSkipped = 40;
+    Require(rejects.Format().find(" resume_skipped=40") != std::string::npos,
+            "candidates a resumed choice skipped are counted (twow-repo#485)");
 
     // B) the search widens in steps, at most once per two minutes.
     Require(GiverRadius(1, 0) == 2000.f, "stage 0: today's radius (level 1)");
