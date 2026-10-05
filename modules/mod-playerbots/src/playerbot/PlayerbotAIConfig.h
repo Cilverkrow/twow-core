@@ -357,6 +357,7 @@ public:
     // as 3600-2592000).
     bool rosterGuildAllowPoaching;
     uint32 rosterGuildPoachCooldownSeconds;
+    uint32 rosterGuildMinLevel;  // owner 05.10.2026: bot guilds only from this level, 0 = off
     // twow-repo#485 (owner decision 9): roster bots on their own use bandages, healing and mana
     // potions from their bags (ConsumablesPolicy.h). UseReal 0 = off (default, legacy: cast
     // without an item under the item cheat, sold). Pct 100 = no gate beyond the trigger;

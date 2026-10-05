@@ -22,6 +22,20 @@ inline bool UsesRosterPath(std::uint32_t botsPerGuild, bool rosterMember, bool r
     return botsPerGuild && rosterMember && !realPlayerMaster;
 }
 
+// Owner 05.10.2026 (OB-00, #338 comment 6003267432): bot guilds only from a minimum level
+// (AiPlayerbot.RosterGuild.MinLevel, 0 = off), so players can reserve their bots before. A roster bot
+// below it founds no charter, signs no bot charter and accepts no bot guild's invitation; bot officers
+// do not invite it. A real player's invitation or charter stays allowed at any level.
+inline bool JoinAllowed(std::uint32_t level, std::uint32_t minLevel, bool rosterMember, bool inviterRealPlayer)
+{
+    return !rosterMember || inviterRealPlayer || !minLevel || level >= minLevel;
+}
+
+inline bool FoundAllowed(std::uint32_t level, std::uint32_t minLevel, bool rosterMember)
+{
+    return JoinAllowed(level, minLevel, rosterMember, false);
+}
+
 // Guild target of one faction: ceil(roster bots of the faction / bots per guild). The configured
 // roster counts, not the online bots (login waves would move the target).
 inline std::uint32_t TargetGuilds(std::uint32_t rosterBots, std::uint32_t botsPerGuild)

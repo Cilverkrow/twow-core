@@ -184,6 +184,14 @@ int main()
     Require(AverageItemLevel(67, 3) == 22 && AverageItemLevel(68, 3) == 23, "rounded to the nearest level");
     Require(AverageItemLevel(17 * 60, 17) == 60, "17 worn items at 60");
 
+    // Guild minimum level (owner 05.10.): roster bots below it join and found no bot guild;
+    // a real player's invitation or charter is always allowed; 0 = off; other bots unaffected.
+    Require(!JoinAllowed(19, 20, true, false) && JoinAllowed(20, 20, true, false), "roster bot: bot guild from level 20");
+    Require(JoinAllowed(5, 20, true, true), "real player's invitation at any level");
+    Require(JoinAllowed(5, 0, true, false), "MinLevel 0 = off");
+    Require(JoinAllowed(5, 20, false, false), "not a roster bot: unaffected");
+    Require(!FoundAllowed(24, 25, true) && FoundAllowed(25, 25, true) && FoundAllowed(1, 0, true), "founding from the same level");
+
     std::cout << "roster_guild_policy_tests passed\n";
     return 0;
 }
