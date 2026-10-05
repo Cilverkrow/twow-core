@@ -947,8 +947,25 @@ void TravelTarget::TraceQuestCommit(TravelDestination const* destination, char c
         event, reason, distance, repeats);
 }
 
-void TravelTarget::CopyTarget(TravelTarget* const target) {
+bool TravelTarget::CopyTarget(TravelTarget* const target) {
     // Every applied choice (stock or BotBrain intent) passes here.
+    // twow-repo#485: so the taker of a parked turn-in is refused here - a BotBrain
+    // turn_in_quest intent, or a list fetched before the park. A group copy follows a
+    // member's target and is taken up.
+    QuestRelationTravelDestination const* taker = dynamic_cast<QuestRelationTravelDestination const*>(target->tDestination);
+    if (taker && taker->GetRelation() && !target->IsGroupCopy() && IsTurnInParked(taker->GetQuestId()))
+    {
+        TraceQuestCommit(taker, "drop", "parked_intent");
+        SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+        return false;
+    }
+
+    // twow-repo#485: move retries belong to one destination. Carried over, they sent a new
+    // turn-in into cooldown after one failed move and counted it as move_failed. Only with
+    // turn-in parking on; 0 keeps the old counter.
+    if (sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures && target->tDestination != tDestination)
+        SetRetry(true, 0);
+
     QuestTravelDestination const* oldQuest = dynamic_cast<QuestTravelDestination const*>(tDestination);
     QuestTravelDestination const* newQuest = dynamic_cast<QuestTravelDestination const*>(target->tDestination);
     if (newQuest)
@@ -961,6 +978,7 @@ void TravelTarget::CopyTarget(TravelTarget* const target) {
     forced = target->forced;
     relevance = target->relevance;
     extendRetryCount = target->extendRetryCount;
+    return true;
 }
 
 void TravelTarget::SetStatus(TravelStatus status) {
@@ -1105,6 +1123,9 @@ void TravelTarget::OnDeathOnTurnInRoute()
         sPlayerbotAIConfig.questFirstProgressionTurnInMaxDeathsOnRoute,
         sPlayerbotAIConfig.questFirstProgressionTurnInDeathRouteCooldownSeconds);
 
+    // twow-repo#485: and a failed turn-in.
+    NoteTurnInFailure(questId, "death");
+
     // Drop the route now; target selection skips it until the cooldown ends,
     // so the revived bot picks level-appropriate work instead.
     TraceQuestCommit(tDestination, "abandon", "death_suppressed");
@@ -1148,6 +1169,14 @@ void TravelTarget::OnDeathAtDestination()
 
 void TravelTarget::OnWorkTimeout()
 {
+    // twow-repo#485: a turn-in whose work phase ran out is a failed turn-in (v24: quest 310
+    // "Bitter Rivals", whose taker only a script spawns - 510 work timeouts, 0 turn-ins).
+    if (IsProgressAwareTurnIn())
+    {
+        NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "work_timeout");
+        return;
+    }
+
     // #405 (live 2026-09-27): 93 % of the quest-objective work phases at world
     // objects (lock 43 chests: Cactus Apple, Tirisfal Pumpkin, Water Pitcher...)
     // ran out without a loot, and the bot picked the same objective again: Juzika
@@ -1191,6 +1220,109 @@ bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destina
 {
     auto const it = destinationDeaths.find(destination);
     return it != destinationDeaths.end() && destination_death::IsSuppressed(it->second, WorldTimer::getMSTime());
+}
+
+bool TravelTarget::NoteTurnInFailure(uint32 questId, char const* reason)
+{
+    uint32 const maxFailures = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures;
+    if (!maxFailures || !questId || !bot)
+        return false;
+
+    // Roster bots on their own only; a real master decides for his bot.
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster())
+        return false;
+
+    // Only a finished quest not handed in yet: a handed-in quest stays QUEST_STATUS_COMPLETE
+    // with m_rewarded set (Player::RewardQuest).
+    if (bot->GetQuestStatus(questId) != QUEST_STATUS_COMPLETE || bot->GetQuestRewardStatus(questId))
+        return false;
+
+    if (!turnin_park::RecordFailure(turnInParks, questId, WorldTimer::getMSTime(), maxFailures,
+            sPlayerbotAIConfig.questFirstProgressionTurnInParkWindowSeconds * IN_MILLISECONDS,
+            sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds * IN_MILLISECONDS))
+        return false;
+
+    // Always visible (BASIC): the acceptance signal for #485. One line per park, so at most
+    // turnin_park::BookSize lines per bot and park duration.
+    sLog.outBasic("[QuestFirstRoute] state=parked bot=%u level=%u quest=%u reason=%s park_seconds=%u parked=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), questId, reason, sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds,
+        ParkedTurnInCount());
+    return true;
+}
+
+bool TravelTarget::IsTurnInParked(uint32 questId) const
+{
+    // Off, or a real master leads the bot: no park applies. Nor once the quest is no longer
+    // finished and open in the bot's log (dropped, or handed in: it then stays
+    // QUEST_STATUS_COMPLETE with m_rewarded set, Player::RewardQuest).
+    if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures || ai->HasRealPlayerMaster())
+        return false;
+
+    return turnin_park::IsParked(turnInParks, questId, WorldTimer::getMSTime()) &&
+        bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE && !bot->GetQuestRewardStatus(questId);
+}
+
+uint32 TravelTarget::ParkedTurnInCount() const
+{
+    // The parks that apply (IsTurnInParked), not every entry of the book.
+    uint32 count = 0;
+    for (turnin_park::Entry const& entry : turnInParks.entries)
+        if (entry.questId && IsTurnInParked(entry.questId))
+            ++count;
+    return count;
+}
+
+bool TravelTarget::IsTurnInOpen(uint32 questId) const
+{
+    Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+    if (!quest)
+        return false;
+
+    // Player::CanRewardQuest(.., false) still sends SMSG_QUESTGIVER_QUEST_INVALID when the bot
+    // lacks the money a quest asks for: the same answer here, without the packet.
+    int32 const money = quest->GetRewOrReqMoney();
+    if (money < 0 && bot->GetMoney() < uint32(-money))
+        return false;
+
+    return bot->CanRewardQuest(quest, false) && !IsTurnInParked(questId);
+}
+
+void TravelTarget::OnMoveRetryCooldown()
+{
+    // twow-repo#485: this cooldown was silent (v24: 3,110 of 3,932 cooldown expiries had
+    // no logged start).
+    TraceQuestCommit(tDestination, "blocked", "move_retry_cooldown");
+
+    if (!IsProgressAwareTurnIn())
+        return;
+
+    // A turn-in the bot cannot move to is a failed turn-in - unless the bot is held up for
+    // a good reason (the pauses of ObserveTurnInProgress).
+    if (bot->IsInCombat() || !bot->IsAlive() || bot->IsTaxiFlying() || bot->GetTransport() || ai->HasRealPlayerMaster())
+        return;
+
+    NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "move_failed");
+}
+
+void TravelTarget::DecRetry(bool isMove)
+{
+    // twow-repo#485: with no move retry left, a successful move took one off the refresh
+    // retries instead (extendRetryCount), so RefreshTravelTargetAction never reached its
+    // limit on a target the bot kept walking to. Corrected with turn-in parking on; 0 keeps
+    // the old form for every bot.
+    if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures)
+    {
+        if (isMove && moveRetryCount > 0) moveRetryCount--; else if (extendRetryCount > 0) extendRetryCount--;
+        return;
+    }
+
+    if (isMove)
+    {
+        if (moveRetryCount)
+            --moveRetryCount;
+    }
+    else if (extendRetryCount)
+        --extendRetryCount;
 }
 
 bool TravelTarget::IsDestinationActive()
@@ -1322,11 +1454,17 @@ void TravelTarget::CheckStatus()
                         bot->GetGUIDLow(), static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry(),
                         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds);
                 TraceQuestCommit(tDestination, "abandon", "stall_suppressed");
+                // twow-repo#485: a stalled turn-in (not an objective) is a failed turn-in.
+                if (IsProgressAwareTurnIn())
+                    NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "stall");
                 SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
                 SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
                 return;
             case turnin_recovery::RecoveryAction::SuppressTransportAndCooldown:
                 TraceQuestCommit(tDestination, "abandon", "transport_stall");
+                // twow-repo#485: an abandoned cross-map turn-in (not an objective) is a failed turn-in.
+                if (IsProgressAwareTurnIn())
+                    NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "transport_stall");
                 SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
                 SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
                 return;
