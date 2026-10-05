@@ -107,6 +107,57 @@ uint32 HasReagentsForValue::Calculate()
     return craftCount;
 }
 
+std::shared_ptr<const CraftReagentIndex> CraftReagentIndexValue::Calculate()
+{
+    auto index = std::make_shared<CraftReagentIndex>();
+    for (uint32 spellId : AI_VALUE(std::vector<uint32>, "craft spells"))
+    {
+        SpellEntry const* spell = sServerFacade.LookupSpellInfo(spellId);
+        if (!spell)
+            continue;
+
+        for (uint8 i = 0; i < MAX_SPELL_REAGENTS; i++)
+        {
+            if (!spell->ReagentCount[i] || !spell->Reagent[i])
+                continue;
+
+            std::vector<uint32>& spells = (*index)[uint32(spell->Reagent[i])];
+            if (spells.empty() || spells.back() != spellId)
+                spells.push_back(spellId);
+        }
+    }
+    return index;
+}
+
+std::shared_ptr<const material_reserve::Memory> MaterialMemoryValue::Calculate()
+{
+    auto memory = std::make_shared<material_reserve::Memory>();
+    for (uint32 spellId : AI_VALUE(std::vector<uint32>, "craft spells"))
+    {
+        SpellEntry const* spell = sServerFacade.LookupSpellInfo(spellId);
+        if (!spell)
+            continue;
+
+        SkillLineAbilityMapBounds const bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spellId);
+        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+        {
+            SkillLineAbilityEntry const* ability = itr->second;
+            if (!ability->skillId || !bot->HasSkill(ability->skillId))
+                continue;
+
+            if (!material_reserve::GreenOrBetter(bot->GetSkillValuePure(ability->skillId), bot->GetSkillMaxPure(ability->skillId),
+                    ability->max_value))
+                break;
+
+            for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
+                if (spell->Reagent[i] > 0 && spell->ReagentCount[i])
+                    material_reserve::Remember(*memory, uint32(spell->Reagent[i]), spell->ReagentCount[i], ability->skillId);
+            break;
+        }
+    }
+    return memory;
+}
+
 bool CanCraftSpellValue::Calculate()
 {
     uint32 spellId = stoi(getQualifier());

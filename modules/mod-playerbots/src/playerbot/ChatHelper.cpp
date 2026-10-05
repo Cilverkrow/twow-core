@@ -206,6 +206,11 @@ ChatHelper::ChatHelper(PlayerbotAI* ai) : PlayerbotAIAware(ai)
     races[RACE_TAUREN] = "Tauren";
     races[RACE_TROLL] = "Troll";
     races[RACE_UNDEAD] = "Undead";
+#ifdef MANGOSBOT_ZERO
+    // twow-repo#379 (hotfix 8.21): the Turtle races (an empty name in bot texts before).
+    races[RACE_GOBLIN] = "Goblin";
+    races[RACE_HIGH_ELF] = "High Elf";
+#endif
 #ifndef MANGOSBOT_ZERO
     races[RACE_BLOODELF] = "Blood Elf";
     races[RACE_DRAENEI] = "Draenei";

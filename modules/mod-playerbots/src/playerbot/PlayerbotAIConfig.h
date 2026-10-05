@@ -426,6 +426,23 @@ public:
     uint32 professionUseCraftIntervalSeconds = 300;
     bool professionUseTrace = false;
     uint32 professionUseTraceCooldownSeconds = 300;
+    // twow-repo#485: craft with real reagents from the bags (the item cheat
+    // made every recipe look craftable). false = legacy "craft random item".
+    bool professionUseRealReagents = false;
+    uint32 professionUseCraftFailBackoffSeconds = 1800;
+    // twow-repo#485: roster bots keep the materials of their recipes and buy
+    // these vendor reagents (item ids). false / empty = legacy.
+    bool professionUseKeepCraftMaterials = false;
+    uint32 professionUseReagentKeepStacks = 1;
+    // Hotfix 8.27: quest log rotation of stuck roster bots (8.17), tunable by reload config.
+    bool questRotateEnabled = true;
+    uint32 questRotateIdleSeconds = 2400;
+    uint32 questRotateGraceSeconds = 1800;
+    // twow-repo#524: wool rule - tailoring below WoolTierSkill keeps every linen, then first aid
+    // only uses linen above FirstAidClothReserve.
+    uint32 professionUseWoolTierSkill = 75;
+    uint32 professionUseFirstAidClothReserve = 20;
+    std::set<uint32> professionUseVendorReagents;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;

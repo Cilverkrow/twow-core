@@ -742,6 +742,55 @@ AiPlayerbot.ProfessionUse.Craft = 0
 AiPlayerbot.ProfessionUse.CraftIntervalSeconds = 300
 AiPlayerbot.ProfessionUse.Trace = 0
 AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
+# RealReagents (twow-repo#485): under the item cheat (RndBotCheats "item") every
+# recipe counts as having its reagents, a random one is queued and the core
+# fails the cast silently. 1 = check reagents and tools in the bags and cast
+# the recipe with the best skill-up chance (then the most casts, then the
+# lowest spell id) directly on the bot itself, only while it stands still (not
+# sitting, not on a flight path), out of combat, not casting and unmounted; a
+# druid or shaman form is dropped first. A recipe on its own or category
+# cooldown (transmutes) or without room for its product (unique item carried,
+# full bags) is skipped until that has changed. A recipe that fails on a missing
+# reagent, tool or spell focus is skipped for CraftFailBackoffSeconds (0 = no
+# backoff); any other refusal is retried after CraftIntervalSeconds. Bot event
+# "CraftCastStarted". 0 = legacy "craft random item".
+# KeepCraftMaterials: 1 = a roster bot keeps the trade goods and reagents its
+# known recipes use despite the item cheat. Below one stack they count as
+# needed and are bought from vendors (tradeskill budget, up to one stack); with
+# AuctionHouse.Enabled = 1 the bot also bids on them in the auction house
+# (tradeskill budget, delivered by mail, several bids per visit). Below
+# ReagentKeepStacks + 1 stacks they are kept; at or above that the whole amount
+# is sold as before (1 keeps 1.25 stacks, the legacy rule sold them).
+# A vendor reagent (VendorReagents, comma-separated item ids) only counts once
+# the reagents of such a recipe that no vendor sells are in the bags; other
+# vendor reagents of the recipe do not hold it back (thread and dye), and a
+# recipe of vendor reagents only (poisons) needs them right away. With an empty
+# list it counts like any other reagent. Set it together with KeepCraftMaterials.
+# Proposed list (vendor-sold reagents, world dump 2026-10-01):
+# 3371,3372,2320,2321,2324,2604,2605,6260,6217,2880,3466,2678,2692,3857,
+# 14341,8343,8925,4291,18256,3713,159,1179,2325,4340,4341,4342,6261,10290,
+# 4289,2928,2930,2931,5173,8923,8924
+# 0 / empty = legacy.
+AiPlayerbot.ProfessionUse.RealReagents = 0
+AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds = 1800
+AiPlayerbot.ProfessionUse.KeepCraftMaterials = 0
+AiPlayerbot.ProfessionUse.ReagentKeepStacks = 1
+AiPlayerbot.ProfessionUse.VendorReagents =
+# QuestRotate (hotfix 8.17/8.27): a roster bot on its own, out of combat, with at least 16 quests and
+# no progress for IdleSeconds drops exactly one quest without progress (not a class quest, not complete,
+# not the quest of its current travel target; the oldest first), at most once per IdleSeconds and not
+# within GraceSeconds of its first check after login. Enabled = 0 turns the rotation off.
+AiPlayerbot.QuestRotate.Enabled = 1
+AiPlayerbot.QuestRotate.IdleSeconds = 2400
+AiPlayerbot.QuestRotate.GraceSeconds = 1800
+# WoolTierSkill / FirstAidClothReserve (twow-repo#524, owner 04.10.2026, only with RealReagents, roster
+# bots on their own): a bot that knows Tailoring keeps every Linen Cloth for Tailoring while its
+# Tailoring skill is below WoolTierSkill (no linen bandages), from then on First Aid only uses the
+# linen above FirstAidClothReserve. Secondary professions (First Aid, Cooking, Fishing) also leave
+# the reagents of the bot's green-or-better main-profession recipes (5 casts) alone, and those
+# reagents are not sold below ReagentKeepStacks + 1 stacks. 0 / 0 = no wool rule.
+AiPlayerbot.ProfessionUse.WoolTierSkill = 75
+AiPlayerbot.ProfessionUse.FirstAidClothReserve = 20
 
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full
