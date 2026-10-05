@@ -7379,9 +7379,32 @@ void Player::SetSkill(uint16 id, uint16 currVal, uint16 maxVal, uint16 step /*=0
 
                 // Learn all spells auto-trained by this skill
                 UpdateSkillTrainedSpells(id, currVal);
-                return;
+                break;
             }
         }
+    }
+
+    // twow-repo#295: a riding rank learned or lost while mounted changes the speed at once. Only
+    // the amounts of the mount speed auras are set again (Aura::CalculateRidingMountSpeed), then
+    // the normal speed change is sent. Login loads auras before spells: amounts stay the same.
+    if (id == SKILL_RIDING && IsMounted())
+    {
+        bool changed = false;
+        AuraList const& mountSpeedAuras = GetAurasByType(SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED);
+        for (const auto aura : mountSpeedAuras)
+        {
+            int32 const amount = aura->CalculateRidingMountSpeed(this);
+            if (amount == aura->GetModifier()->m_amount)
+                continue;
+
+            sLog.outBasic("[RidingStages] player=%u riding=%u mount_spell=%u speed=%d->%d", GetGUIDLow(),
+                uint32(GetSkillValuePure(SKILL_RIDING)), aura->GetId(), aura->GetModifier()->m_amount, amount);
+            aura->GetModifier()->m_amount = amount;
+            changed = true;
+        }
+
+        if (changed)
+            UpdateSpeed(MOVE_RUN, false, GetSpeedRatePersistance(MOVE_RUN));
     }
 }
 
@@ -9845,6 +9868,34 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type, Player* pVictim)
             break;
         default:
             break;
+    }
+
+    // twow-repo#482: the 1.12 client drops loot slot index >= 16. Items
+    // waiting in the overflow refill looted plain slots at the same index for every
+    // looter; group loot starts the normal roll for a refilled item over the threshold.
+    // Corpses and chests (boss chests carry raid loot too); rolls only exist for creatures.
+    if (permission != NONE_PERMISSION && loot->HasOverflow() && (guid.IsCreatureOrPet() || guid.IsGameObject()))
+    {
+        std::vector<uint8> const refilled = loot->RefillFromOverflow();
+        if (!refilled.empty())
+        {
+            Creature* lootCreature = guid.IsCreatureOrPet() ? GetMap()->GetCreature(guid) : nullptr;
+            Group* lootGroup = (lootCreature && !loot->m_personal) ? lootCreature->GetGroupLootRecipient() : nullptr;
+            for (uint8 slot : refilled)
+            {
+                LootItem& item = loot->items[slot];
+                ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid);
+                if (!lootGroup || !proto)
+                    continue;
+                LootMethod const method = lootGroup->GetLootMethod();
+                if (proto->Quality < uint32(lootGroup->GetLootThreshold()))
+                    item.is_underthreshold = true;
+                else if (method == GROUP_LOOT || method == NEED_BEFORE_GREED)
+                    lootGroup->StartLootRoll(lootCreature, method, loot, slot);
+            }
+            DEBUG_LOG("[LootSlots] refill viewer=%s slots=%u overflow_left=%u", GetName(),
+                           uint32(refilled.size()), uint32(loot->m_overflowItems.size()));
+        }
     }
 
     WorldPacket data(SMSG_LOOT_RESPONSE, (9 + 50));         // we guess size
@@ -17754,7 +17805,8 @@ void Player::_LoadInventory(QueryResult *result, uint32 timediff, bool &has_epic
             }
 
             // Needed for riding skill replacement in patch 1.12.
-            if ((proto->RequiredSkill == SKILL_RIDING) && (proto->RequiredSkillRank == 150))
+            // twow-repo#295: swift mounts can need riding 225 now.
+            if ((proto->RequiredSkill == SKILL_RIDING) && (proto->RequiredSkillRank >= 150))
                 has_epic_mount = true;
 
             // Duplicate check. Player listed item in AH and then immediately relogged, before the item

@@ -153,6 +153,8 @@ bool MoveToTravelTargetAction::Execute(Event& event)
         if (target->IsMaxRetry(true))
         {
             ai->TellDebug(ai->GetMaster(), "The target is cooling down because we failed to move to it a few times in a row.", "debug travel");
+            // twow-repo#485: visible, and a failed turn-in when the target is one.
+            target->OnMoveRetryCooldown();
             target->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);      
             target->SetForced(false);
         }

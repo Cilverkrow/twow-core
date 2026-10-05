@@ -56,6 +56,7 @@
 #include "LoveIsInTheAir.h"
 #include "ScriptObjects.h"
 #include "SpellClassMask.h"
+#include "FunserverRidingStages.h"
 
 using namespace Spells;
 
@@ -3878,47 +3879,36 @@ void Aura::HandleAuraModIncreaseSpeed(bool apply, bool Real)
     GetTarget()->UpdateSpeed(MOVE_RUN, false, GetTarget()->GetSpeedRatePersistance(MOVE_RUN));
 }
 
-void Aura::HandleAuraModIncreaseMountedSpeed(bool /*apply*/, bool Real)
+// twow-repo#295: speed of a player's mount aura (aura 32 of a spell whose effect 0 is
+// SPELL_AURA_MOUNTED) from the pure riding skill and the mount family, see
+// FunserverRidingStages.h. Other auras and the racing cars
+// (SPELL_CUSTOM_IGNORE_RIDING_SKILL_MOUNT_SPEED) keep their current amount.
+int32 Aura::CalculateRidingMountSpeed(Player const* player) const
+{
+    SpellEntry const* spellProto = GetSpellProto();
+    if (m_modifier.m_auraname != SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED ||
+        spellProto->EffectApplyAuraName[EFFECT_INDEX_0] != SPELL_AURA_MOUNTED ||
+        (spellProto->Custom & SPELL_CUSTOM_IGNORE_RIDING_SKILL_MOUNT_SPEED))
+        return m_modifier.m_amount;
+
+    return FunserverRiding::MountedSpeedPct(sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED),
+        player->GetSkillValuePure(SKILL_RIDING), player->GetLevel(),
+        spellProto->CalculateSimpleValue(GetEffIndex()),
+        (spellProto->Custom & SPELL_CUSTOM_MOUNT_SPEED_100) != 0);
+}
+
+void Aura::HandleAuraModIncreaseMountedSpeed(bool apply, bool Real)
 {
     // all applied/removed only at real aura add/remove
     if (!Real)
         return;
 
-    // Turtle WoW specific feature: all mounts will have dynamic speed:
-    if (Player* player = GetTarget()->ToPlayer())
-    {
-        bool mountAura = GetSpellProto()->EffectApplyAuraName[0] == SPELL_AURA_MOUNTED;
-
-        if (mountAura)
-        {
-            switch (GetId())
-            {
-                default:
-                    if (GetSpellProto()->Custom & SPELL_CUSTOM_MOUNT_SPEED_100)
-                    {
-                        m_modifier.m_amount = 100;
-                        break;
-                    }
-
-                    if (GetSpellProto()->Custom & SPELL_CUSTOM_IGNORE_RIDING_SKILL_MOUNT_SPEED)
-                        break;
-
-                    uint32 skillValue = player->GetSkillValue(762);
-
-                    switch (skillValue)
-                    {
-                        case 0: m_modifier.m_amount = static_cast<int32>(ceil(player->GetLevel() / 2)); break;
-                        case 75: m_modifier.m_amount = 60; break;
-                        case 150: m_modifier.m_amount = 100; break;
-                        default:
-                            // TODO If the player logs out and logs back in, riding skill value is not loaded yet. Unmounting in order to prevent wrong speed.
-                            player->Unmount();
-                            player->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
-                            return;
-                    }
-            }
-        }
-    }
+    // Turtle WoW specific feature: all mounts will have dynamic speed. twow-repo#295: picked on
+    // apply from the riding rank and the mount family, for players and bots only (skills are
+    // loaded before auras at login). A rank changed while mounted: Player::SetSkill.
+    if (apply)
+        if (Player* player = GetTarget()->ToPlayer())
+            m_modifier.m_amount = CalculateRidingMountSpeed(player);
 
     GetTarget()->UpdateSpeed(MOVE_RUN, false, GetTarget()->GetSpeedRatePersistance(MOVE_RUN));
 }

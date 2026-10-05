@@ -59,6 +59,8 @@
 #include "CompanionManager.hpp"
 #include "ScriptObjects.h"
 #include "FunserverRogueTalents.h"
+#include "FunserverRidingStages.h"
+#include "FunserverPlayerSnare.h"
 
 #include <memory>
 
@@ -1923,6 +1925,26 @@ void Spell::DoSpellHitOnUnit(Unit *unit, uint32 effectMask)
         {
             int32 duration = m_spellAuraHolder->GetAuraMaxDuration();
             int32 originalDuration = duration;
+
+            // twow-repo#295: a root cast by a player-controlled unit (player, bot, their pets,
+            // totems, traps, units they charm) on another unit lasts longer, before diminishing
+            // returns; not when the caster is a player or bot charmed by an NPC. The holder gets
+            // the new duration below and sends it to the client.
+            if (duration > 0 && pRealCaster && pRealCaster != unit && FunserverSnare::IsPlayerSnareCaster(pRealCaster))
+            {
+                for (int32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+                {
+                    Aura const* aura = m_spellAuraHolder->GetAuraByEffectIndex(SpellEffectIndex(i));
+                    if (aura && aura->GetModifier()->m_auraname == SPELL_AURA_MOD_ROOT)
+                    {
+                        duration = FunserverSnare::ScaleRootDuration(duration, sWorld.getConfig(CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_ROOT_DURATION_PCT));
+                        if (duration != originalDuration)
+                            DEBUG_FILTER_LOG(LOG_FILTER_SPELL_CAST, "[PlayerSnare] spell=%u caster=%s target=%s root_ms=%d->%d",
+                                m_spellInfo->Id, pRealCaster->GetGuidStr().c_str(), unit->GetGuidStr().c_str(), originalDuration, duration);
+                        break;
+                    }
+                }
+            }
 
             if (duration > 0)
             {
