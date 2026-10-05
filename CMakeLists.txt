@@ -993,15 +993,57 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(rare_respawn_policy_test
     "${TW_CORE_ROOT}/t/rare_respawn_policy_test.cpp")
   add_test(NAME rare_respawn_policy_test COMMAND rare_respawn_policy_test)
+  # twow-repo#295: riding stages (mount speed by rank and family) and player snares, pure rules.
+  add_executable(riding_stages_policy_test
+    "${TW_CORE_ROOT}/t/riding_stages_policy_test.cpp")
+  add_test(NAME riding_stages_policy_test COMMAND riding_stages_policy_test)
+  # twow-repo#295: mount speed, snare and root hooks, default-off configuration.
+  add_test(NAME riding_stages_295_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_riding_stages_295_contract.cmake")
+  # twow-repo#295: world migrations (riding ranks 225/300, trainer, mounts, speed values, Blink).
+  add_test(NAME riding_migrations_295_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_riding_migrations_295_contract.cmake")
   # twow-repo#323: fixed loot unit rules (weights, diminishing, BoE shortfall, level window).
   add_executable(loot_units_policy_test
     "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")
   add_test(NAME loot_units_policy_test COMMAND loot_units_policy_test)
+  # twow-repo#484 hotfix 8.19: `.tele` joins the whole name, substring only when unique.
+  add_test(NAME tele_lookup_unique_484_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_tele_lookup_unique_484_contract.cmake")
+  # twow-repo#482 train 9: raid profiles, dungeon bands, mix allocation, trim rule (owner v5).
+  add_executable(loot_rules_482_policy_test
+    "${TW_CORE_ROOT}/t/loot_rules_482_policy_test.cpp")
+  add_test(NAME loot_rules_482_policy_test COMMAND loot_rules_482_policy_test)
+  add_test(NAME loot_rules_482_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_loot_rules_482_contract.cmake")
+  # twow-repo#379 hotfix 8.21: high elf/goblin in faction and race lists, tauren shaman racial.
+  add_test(NAME race_faction_379_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_race_faction_379_contract.cmake")
+  # twow-repo#527 hotfix 8.23: quest spell rewards that never arrived, learned at login.
+  add_test(NAME quest_spell_regrant_527_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_quest_spell_regrant_527_contract.cmake")
   # twow-repo#408: Scarlet Citadel (map 45) secured, content kept.
   add_test(NAME scarlet_citadel_408_contract
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_scarlet_citadel_408_contract.cmake")
+  # twow-repo#484 train 9: GM .tele marks on the 11 maps without client Map.dbc removed (backup kept).
+  add_test(NAME game_tele_484_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_game_tele_484_contract.cmake")
   # twow-repo#405: quest-item chests respawn in half the time (owner, train 8).
   add_test(NAME quest_go_respawn_405_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1037,6 +1079,16 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_alarus_once_338_contract.cmake")
+  # twow-repo#482 test build: no loot packet with more than 16 entries or a slot index >= 16.
+  add_test(NAME loot_client_slots_482_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_loot_client_slots_482_contract.cmake")
+  # twow-repo#427/#461/#459 train 9: switch off unreachable content with backups, Frostmane fixes.
+  add_test(NAME world_disable_zug9_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_world_disable_zug9_contract.cmake")
   # twow-repo#367: skill_line_ability.id is smallint unsigned; no migration id above 65535.
   add_test(NAME skill_line_ability_id_range_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1047,6 +1099,12 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_petition_sign_delete_contract.cmake")
+  # twow-repo#485: bots read petitions and guilds only as copies taken under the GuildMgr locks;
+  # the charter rename (UPDATE petition SET name) runs under the exclusive petition lock.
+  add_test(NAME guild_petition_summary_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_guild_petition_summary_contract.cmake")
   # twow-repo#455 (train 8b): custom spell IDs stay below 65536 (16-bit client spell IDs).
   add_test(NAME custom_spell_id_range_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1072,6 +1130,19 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_passive_spells_contract.cmake")
+  # twow-repo#484 hotfix 8.24: [ComboTrace] reasons for lost combo points (logging only).
+  add_test(NAME combo_trace_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_combo_trace_contract.cmake")
+  # twow-repo#484 hotfix 8.25: combo point switches (default off), policy unit test + wiring contract.
+  add_executable(combo_policy_test
+    "${TW_CORE_ROOT}/t/combo_policy_test.cpp")
+  add_test(NAME combo_policy_test COMMAND combo_policy_test)
+  add_test(NAME combo_switches_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_combo_switches_contract.cmake")
   # twow-repo#484 (train 9): invalid spell ids fail the cast cleanly, full item ids in cooldowns.
   add_test(NAME spell_id_guard_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1134,6 +1205,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_shaman_talents_357_stage2_contract.cmake")
+  # twow-repo#511 train 9: Alterac event item spells 61002-61007 without donor leftovers.
+  add_test(NAME av_item_spells_511_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_av_item_spells_511_contract.cmake")
 
   include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is

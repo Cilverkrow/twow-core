@@ -26,4 +26,18 @@ namespace ai
 
         bool IsActive();
     };
+
+    // twow-repo#485 (owner 04.10.): a roster bot in a guild checks its guild note at most every
+    // AiPlayerbot.RosterGuild.NoteRefreshSeconds (time compare only; the trigger itself is looked at
+    // once a minute). The action writes the note only when it changed.
+    class RosterGuildNoteTrigger : public Trigger {
+    public:
+        RosterGuildNoteTrigger(PlayerbotAI* ai) :
+            Trigger(ai, "roster guild note", 60) {}
+
+        bool IsActive() override;
+
+    private:
+        time_t lastNoteCheck = 0;
+    };
 }

@@ -66,6 +66,9 @@
 #include "Spell.h"
 #include "ScriptMgr.h"
 #include "FunserverTalentLearnSpells.h"
+#include "FunserverComboPolicy.h"
+#include <cstring>
+#include "FunserverQuestSpellRegrant.h"
 #include "ScriptObjects.h"
 #include "SocialMgr.h"
 #include "Mail.h"
@@ -2181,7 +2184,7 @@ void Player::SetDeathState(DeathState s)
         // drunken state is cleared on death
         SetDrunkValue(0);
         // lost combo points at any target (targeted combo points clear in Unit::SetDeathState)
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DEATH);
 
         ClearResurrectRequestData();
 
@@ -5526,12 +5529,9 @@ void Player::DeleteFromDB(ObjectGuid playerguid, uint32 accountId, bool updateRe
     if (Petition* petition = sGuildMgr.GetPetitionByOwnerGuid(playerguid))
         sGuildMgr.DeletePetition(petition);
 
-    // Remove this player from any petition that could have previously signed.
-    if (PetitionSignature* signature = sGuildMgr.GetSignatureForPlayerGuid(playerguid))
-    {
-        signature->DeleteFromDB();
-        signature->GetSignaturePetition()->DeleteSignature(signature);
-    }
+    // Remove this player from any petition that could have previously signed
+    // (under the exclusive petition lock, twow-repo#485).
+    sGuildMgr.RemovePetitionSignature(playerguid);
 
     if (data)
         sObjectMgr.DecreaseActivePlayersCount(Player::TeamForRace(data->uiRace));
@@ -7379,9 +7379,32 @@ void Player::SetSkill(uint16 id, uint16 currVal, uint16 maxVal, uint16 step /*=0
 
                 // Learn all spells auto-trained by this skill
                 UpdateSkillTrainedSpells(id, currVal);
-                return;
+                break;
             }
         }
+    }
+
+    // twow-repo#295: a riding rank learned or lost while mounted changes the speed at once. Only
+    // the amounts of the mount speed auras are set again (Aura::CalculateRidingMountSpeed), then
+    // the normal speed change is sent. Login loads auras before spells: amounts stay the same.
+    if (id == SKILL_RIDING && IsMounted())
+    {
+        bool changed = false;
+        AuraList const& mountSpeedAuras = GetAurasByType(SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED);
+        for (const auto aura : mountSpeedAuras)
+        {
+            int32 const amount = aura->CalculateRidingMountSpeed(this);
+            if (amount == aura->GetModifier()->m_amount)
+                continue;
+
+            sLog.outBasic("[RidingStages] player=%u riding=%u mount_spell=%u speed=%d->%d", GetGUIDLow(),
+                uint32(GetSkillValuePure(SKILL_RIDING)), aura->GetId(), aura->GetModifier()->m_amount, amount);
+            aura->GetModifier()->m_amount = amount;
+            changed = true;
+        }
+
+        if (changed)
+            UpdateSpeed(MOVE_RUN, false, GetSpeedRatePersistance(MOVE_RUN));
     }
 }
 
@@ -8549,16 +8572,16 @@ void Player::DuelComplete(DuelCompleteType type)
 
     // Cleanup combo points
     if (GetComboTargetGuid() == m_duel->opponent)
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DUEL);
     else if (GetComboTargetGuid().IsPet())
-        ClearComboPoints();
+        ClearComboPoints(COMBO_CLEAR_DUEL);
 
     if (pOpponent)
     {
         if (pOpponent->GetComboTargetGuid() == GetObjectGuid())
-            pOpponent->ClearComboPoints();
+            pOpponent->ClearComboPoints(COMBO_CLEAR_DUEL);
         else if (pOpponent->GetComboTargetGuid() == GetPetGuid())
-            pOpponent->ClearComboPoints();
+            pOpponent->ClearComboPoints(COMBO_CLEAR_DUEL);
     }
 
     // Reset extraAttacks counter
@@ -9845,6 +9868,34 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type, Player* pVictim)
             break;
         default:
             break;
+    }
+
+    // twow-repo#482: the 1.12 client drops loot slot index >= 16. Items
+    // waiting in the overflow refill looted plain slots at the same index for every
+    // looter; group loot starts the normal roll for a refilled item over the threshold.
+    // Corpses and chests (boss chests carry raid loot too); rolls only exist for creatures.
+    if (permission != NONE_PERMISSION && loot->HasOverflow() && (guid.IsCreatureOrPet() || guid.IsGameObject()))
+    {
+        std::vector<uint8> const refilled = loot->RefillFromOverflow();
+        if (!refilled.empty())
+        {
+            Creature* lootCreature = guid.IsCreatureOrPet() ? GetMap()->GetCreature(guid) : nullptr;
+            Group* lootGroup = (lootCreature && !loot->m_personal) ? lootCreature->GetGroupLootRecipient() : nullptr;
+            for (uint8 slot : refilled)
+            {
+                LootItem& item = loot->items[slot];
+                ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid);
+                if (!lootGroup || !proto)
+                    continue;
+                LootMethod const method = lootGroup->GetLootMethod();
+                if (proto->Quality < uint32(lootGroup->GetLootThreshold()))
+                    item.is_underthreshold = true;
+                else if (method == GROUP_LOOT || method == NEED_BEFORE_GREED)
+                    lootGroup->StartLootRoll(lootCreature, method, loot, slot);
+            }
+            DEBUG_LOG("[LootSlots] refill viewer=%s slots=%u overflow_left=%u", GetName(),
+                           uint32(refilled.size()), uint32(loot->m_overflowItems.size()));
+        }
     }
 
     WorldPacket data(SMSG_LOOT_RESPONSE, (9 + 50));         // we guess size
@@ -17754,7 +17805,8 @@ void Player::_LoadInventory(QueryResult *result, uint32 timediff, bool &has_epic
             }
 
             // Needed for riding skill replacement in patch 1.12.
-            if ((proto->RequiredSkill == SKILL_RIDING) && (proto->RequiredSkillRank == 150))
+            // twow-repo#295: swift mounts can need riding 225 now.
+            if ((proto->RequiredSkill == SKILL_RIDING) && (proto->RequiredSkillRank >= 150))
                 has_epic_mount = true;
 
             // Duplicate check. Player listed item in AH and then immediately relogged, before the item
@@ -21344,10 +21396,36 @@ void Player::SetComboPoints()
     }*/
 }
 
-void Player::AddComboPoints(Unit* target, int8 count)
+void Player::AddComboPoints(Unit* target, int8 count, uint32 sourceSpellId, bool fromProc)
 {
     if (!count)
         return;
+
+    // Hotfix 8.25 (#484, Rogue.ProcComboPointsToCurrentTarget, default off): a proc point
+    // meant for another unit (e.g. Setup on a second attacker) goes to the current target.
+    if (fromProc && count > 0 && sWorld.getConfig(CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET))
+    {
+        Unit* comboTarget = m_comboTargetGuid ? ObjectAccessor::GetUnit(*this, m_comboTargetGuid) : nullptr;
+        Unit* selection = GetSelectionGuid() ? ObjectAccessor::GetUnit(*this, GetSelectionGuid()) : nullptr;
+
+        ComboProcRedirectInput in;
+        in.switchOn = true;
+        in.fromProc = true;
+        in.isRogue = GetClass() == CLASS_ROGUE;
+        in.procTargetIsComboTarget = target->GetObjectGuid() == m_comboTargetGuid;
+        in.comboPoints = m_comboPoints > 0 ? uint8(m_comboPoints) : 0;
+        in.comboTargetValid = comboTarget && comboTarget->IsAlive() && IsValidAttackTarget(comboTarget);
+        in.selectionValid = selection && selection->IsAlive() && IsValidAttackTarget(selection);
+        in.selectionIsProcTarget = selection == target;
+
+        ComboProcRedirect const redirect = DecideComboProcRedirect(in);
+        if (redirect != ComboProcRedirect::None)
+        {
+            Unit* current = redirect == ComboProcRedirect::ComboTarget ? comboTarget : selection;
+            TraceComboPoints("proc_redirect", uint8(in.comboPoints), current->GetObjectGuid(), target->GetObjectGuid(), sourceSpellId);
+            target = current;
+        }
+    }
 
     // without combo points lost (duration checked in aura)
     RemoveSpellsCausingAura(SPELL_AURA_RETAIN_COMBO_POINTS);
@@ -21356,6 +21434,11 @@ void Player::AddComboPoints(Unit* target, int8 count)
         m_comboPoints += count;
     else
     {
+        // Hotfix 8.24 (#484): points built on another target are dropped here.
+        if (m_comboTargetGuid && m_comboPoints > 0)
+            TraceComboPoints(fromProc ? "proc_other_target" : "retarget", uint8(m_comboPoints), m_comboTargetGuid,
+                target->GetObjectGuid(), sourceSpellId);
+
         if (m_comboTargetGuid)
             if (Unit* target2 = ObjectAccessor::GetUnit(*this, m_comboTargetGuid))
                 target2->RemoveComboPointHolder(GetGUIDLow());
@@ -21372,10 +21455,18 @@ void Player::AddComboPoints(Unit* target, int8 count)
     SetComboPoints();
 }
 
-void Player::ClearComboPoints()
+void Player::ClearComboPoints(ComboClearReason reason)
 {
     if (!m_comboTargetGuid)
         return;
+
+    // Hotfix 8.24 (#484): diagnostics only, the behaviour below is unchanged.
+    if (m_comboPoints > 0)
+    {
+        static char const* const reasonNames[] = { "other", "finisher", "select", "target_died", "death", "duel" };
+        TraceComboPoints(reason < sizeof(reasonNames) / sizeof(reasonNames[0]) ? reasonNames[reason] : "other",
+            uint8(m_comboPoints), m_comboTargetGuid);
+    }
 
     // without combopoints lost (duration checked in aura)
     RemoveSpellsCausingAura(SPELL_AURA_RETAIN_COMBO_POINTS);
@@ -21388,6 +21479,41 @@ void Player::ClearComboPoints()
         target->RemoveComboPointHolder(GetGUIDLow());
 
     m_comboTargetGuid.Clear();
+}
+
+// Hotfix 8.24 (twow-repo#484, owner: "combo points just disappear"): one greppable line per
+// lost combo point set of a real player (rogue/druid; bots have no socket), at most 30 lines
+// per player and minute, then a suppressed count. Logging only.
+void Player::TraceComboPoints(char const* reason, uint8 pointsBefore, ObjectGuid const& comboTarget,
+    ObjectGuid const& newTarget, uint32 sourceSpellId)
+{
+    bool const redirect = std::strcmp(reason, "proc_redirect") == 0;   // 8.25: logged even without points
+    if ((!pointsBefore && !redirect) || (GetClass() != CLASS_ROGUE && GetClass() != CLASS_DRUID))
+        return;
+    if (!GetSession() || !GetSession()->GetSocket())
+        return;
+
+    uint32 const now = uint32(time(nullptr));
+    if (!m_comboTraceWindowStart || now - m_comboTraceWindowStart >= 60)
+    {
+        if (m_comboTraceSuppressed)
+            sLog.outBasic("[ComboTrace] player=%u suppressed=%u window_s=%u",
+                GetGUIDLow(), m_comboTraceSuppressed, now - m_comboTraceWindowStart);
+        m_comboTraceWindowStart = now;
+        m_comboTraceLines = 0;
+        m_comboTraceSuppressed = 0;
+    }
+    if (m_comboTraceLines >= 30)
+    {
+        ++m_comboTraceSuppressed;
+        return;
+    }
+    ++m_comboTraceLines;
+
+    ObjectGuid const selection = GetSelectionGuid();
+    sLog.outBasic("[ComboTrace] player=%u reason=%s cp=%u target=%s new_target=%s spell=%u selection=%s map=%u",
+        GetGUIDLow(), reason, uint32(pointsBefore), comboTarget.GetString().c_str(),
+        newTarget.GetString().c_str(), sourceSpellId, selection.GetString().c_str(), GetMapId());
 }
 
 void Player::SetGroup(Group *group, int8 subgroup)
@@ -23307,6 +23433,24 @@ void Player::LearnTalent(uint32 talentId, uint32 talentRank)
 
     // Hotfix 8.4: talents that teach spells through LEARN_SPELL effects (Ancestral Arms).
     LearnFunserverTalentSpells(this);
+}
+
+void RegrantFunserverQuestSpells(Player* player)
+{
+    if (!player)
+        return;
+
+    for (FunserverQuestSpellRegrant const& entry : FUNSERVER_QUEST_SPELL_REGRANTS)
+    {
+        if (!(player->GetRaceMask() & entry.raceMask) || !(player->GetClassMask() & entry.classMask))
+            continue;
+        if (!player->GetQuestRewardStatus(entry.questId) || player->HasSpell(entry.spellId))
+            continue;
+
+        player->LearnSpell(entry.spellId, false);
+        sLog.outString("[RacialRegrant] player=%s guid=%u quest=%u spell=%u", player->GetName(),
+            player->GetGUIDLow(), entry.questId, entry.spellId);
+    }
 }
 
 void LearnFunserverTalentSpells(Player* player)

@@ -8,9 +8,21 @@ using namespace ai;
 
 void TrainerAction::Learn(uint32 cost, ObjectGuid trainerGuid, uint32 spellId, TrainerSpell const* tSpell, std::ostringstream& msg)
 {
+    // twow-repo#295: with riding stages, riding training is paid from the mount budget
+    // (the one the trainer trigger checks and the bot saves into).
+    Creature* trainer = sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED) ? ai->GetCreature(trainerGuid) : nullptr;
+    bool const ridingTraining = trainer && trainer->GetCreatureInfo()->TrainerType == TRAINER_TYPE_MOUNTS;
+
     if (!UsesFreeTraining() && sPlayerbotAIConfig.autoTrainSpells != "free" &&  !ai->HasCheat(BotCheatMask::gold))
     {
-        if (AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::spells) < cost)
+        uint32 const moneyKey = (uint32)(ridingTraining ? NeedMoneyFor::mount : NeedMoneyFor::spells);
+
+        // twow-repo#295: one visit can pay several riding ranks. Like BuyAction, the free money is
+        // read fresh, so each rank is checked against what is left after the rank before.
+        if (ridingTraining)
+            RESET_AI_VALUE2(uint32, "free money for", moneyKey);
+
+        if (AI_VALUE2(uint32, "free money for", moneyKey) < cost || (ridingTraining && bot->GetMoney() < cost))
         {
             msg << " - too expensive";
             return;
@@ -58,6 +70,10 @@ void TrainerAction::Learn(uint32 cost, ObjectGuid trainerGuid, uint32 spellId, T
 #endif
 
     sPlayerbotAIConfig.logEvent(ai, "TrainerAction", proto->SpellName[0], std::to_string(proto->Id));
+
+    if (ridingTraining)
+        sLog.outBasic("[Riding] train bot=%u level=%u spell=%u cost=%u skill=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), proto->Id, cost, uint32(bot->GetSkillValuePure(SKILL_RIDING)));
 
     msg << " - learned";
 }

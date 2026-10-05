@@ -24,7 +24,10 @@
 #include "World.h"
 #include "GuildBank/GuildBank.h"
 #include "Utilities/robin_hood.h"
+#include <mutex>
 #include <shared_mutex>
+#include <unordered_map>
+#include <vector>
 
 class Guild;
 class ObjectGuid;
@@ -34,6 +37,30 @@ class PetitionSignature;
 typedef robin_hood::unordered_map<uint32, Petition*> PetitionMap;
 typedef std::list<PetitionSignature*> PetitionSignatureList;
 typedef robin_hood::unordered_map<uint32, Guild*> GuildMap;
+
+// twow-repo#485: copy of a petition, taken under m_petitionsMutex. Code on map threads (bots) keeps
+// no Petition*: a turn-in on another map thread deletes the petition (HandleTurnInPetitionOpcode ->
+// DeletePetition) as soon as the lock of GetPetitionBy*() is released.
+struct PetitionSummary
+{
+    uint32 id = 0;
+    ObjectGuid ownerGuid;
+    ObjectGuid charterGuid;
+    std::string name;
+    Team team = TEAM_NONE;
+    uint8 signatureCount = 0;
+    bool signedByAccount = false;       // the account passed to the getter has signed
+    bool signedByPlayer = false;        // the player passed to the getter has signed
+};
+
+// twow-repo#485: copy of a guild's identity, taken under m_guildMutex.
+struct GuildSummary
+{
+    uint32 id = 0;
+    ObjectGuid leaderGuid;
+    std::string name;
+};
+
 class GuildMgr
 {
     public:
@@ -78,11 +105,63 @@ class GuildMgr
         Petition* GetPetitionByOwnerGuid(const ObjectGuid& ownerGuid);
         PetitionSignature* GetSignatureForPlayerGuid(const ObjectGuid& guid);
 
+        // twow-repo#485: copies for map threads, taken under the manager's lock (see PetitionSummary).
+        bool GetPetitionSummaryByCharterGuid(ObjectGuid const& charterGuid, PetitionSummary& out, uint32 accountId = 0, ObjectGuid const& player = ObjectGuid());
+        bool GetPetitionSummaryBySigner(ObjectGuid const& signerGuid, PetitionSummary& out);
+        void CollectPetitionSummaries(std::vector<PetitionSummary>& out);
+        void CollectGuildSummaries(std::vector<GuildSummary>& out) const;
+        // Renames the petition of this charter and owner under the exclusive lock. Writes the
+        // character DB (UPDATE petition SET name, Petition::Rename). Same name checks as
+        // MSG_PETITION_RENAME; false when the name or the charter does not qualify.
+        bool RenamePetition(ObjectGuid const& charterGuid, ObjectGuid const& ownerGuid, std::string const& newName);
+        bool GetPetitionSummaryById(uint32 petitionId, PetitionSummary& out, uint32 accountId = 0, ObjectGuid const& player = ObjectGuid());
+        // Signer guids of a petition, copied under the shared lock (signature list packets, guild founding).
+        bool GetPetitionSignerGuids(uint32 petitionId, std::vector<ObjectGuid>& out);
+
+        // twow-repo#485 (OB-30 review core#281): every change of a Petition in m_petitionMap runs
+        // under the exclusive m_petitionsMutex, so the shared readers never see a signature list
+        // while a signature is removed and deleted on another map thread.
+        // Signs petitionId for this player. Moves an earlier signature of the player: the old one
+        // is removed (DELETE petition_sign, delete) and the new one added (INSERT petition_sign)
+        // under ONE lock, so no reader sees the player signed nowhere. The sign checks (full, see
+        // GetPetitionSignsRequired; account or player already signed) are repeated under the lock;
+        // false when the petition is gone or a check fails, and then nothing changed.
+        bool AddPetitionSignature(uint32 petitionId, Player* signer);
+        // Removes the player's signature from any petition (DELETE petition_sign, delete).
+        void RemovePetitionSignature(ObjectGuid const& signerGuid);
+
+        // twow-repo#485 (OB-10 review core#281): signatures that make a petition full, the one
+        // limit for signing: MinPetitionSigns, at most the client's 9 (SMSG_PETITION_SHOW_SIGNATURES
+        // shows no more; World.cpp clamps the config to 0-9 as well).
+        uint32 GetPetitionSignsRequired() const;
+
+        // twow-repo#485 (owner 04.10.: roster bots keep their class, role and item level in their
+        // public guild note). Bots run on map threads, while every guild opcode, the roster packets
+        // and the note handlers run on the world thread without a lock on MemberSlot. So the note
+        // is only queued here, under the exclusive m_pendingNotesMutex (one entry per member, the
+        // latest wins), and GuildMgr::Update writes it on the world thread
+        // (MemberSlot::SetPublicNote: no-op when unchanged, else UPDATE guild_member SET pnote,
+        // asynchronous). Cut to GUILD_NOTE_MAX_LENGTH. No roster broadcast: clients ask for the
+        // roster when the guild window is open.
+        void SetMemberPublicNote(uint32 guildId, ObjectGuid const& member, std::string const& note);
+
         void LoadGuilds();
         void LoadPetitions();
-		
+
     private:
         void CleanUpPetitions();
+        // World thread (Update): writes the queued notes; the queue is swapped out under the lock.
+        void ApplyPendingPublicNotes();
+
+        struct PendingPublicNote
+        {
+            uint32 guildId = 0;
+            ObjectGuid member;
+            std::string note;
+        };
+        std::mutex m_pendingNotesMutex;
+        std::unordered_map<uint32, PendingPublicNote> m_pendingPublicNotes;     // member guid low -> note
+
         mutable std::shared_mutex m_guildMutex;
         GuildMap m_GuildMap;
         std::shared_mutex m_guid2GuildMutex;

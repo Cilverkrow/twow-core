@@ -8,6 +8,7 @@
 
 #include "playerbot/RandomItemMgr.h"
 #include "playerbot/AmmoStockPolicy.h"
+#include "playerbot/RidingStagesBotPolicy.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
 
@@ -197,6 +198,20 @@ ItemUsage ItemUsageValue::Calculate()
                 bool const vendorReagent = keepCraft && profession_use::IsVendorReagent(sPlayerbotAIConfig.professionUseVendorReagents, proto->ItemId);
                 needItem = (!ai->HasCheat(BotCheatMask::item) || keepCraft) && IsItemNeededForUsefullCraft(proto,
                     lowBagSpace || vendorReagent, vendorReagent);
+
+                // twow-repo#524 / hotfix 8.22a: what a green-or-better recipe needs is not SOLD below the
+                // keep limit (material memory). It never triggers buying: v34 bought 1637 items an hour
+                // (thread, spices for cooking without a fire) when the memory answered "buy more" -
+                // buying stays with the walk above (vendor reagents only once the other reagents are there).
+                if (keepCraft && !needItem)
+                {
+                    std::shared_ptr<const material_reserve::Memory> const memory =
+                        AI_VALUE(std::shared_ptr<const material_reserve::Memory>, "material memory");
+                    material_reserve::Memory::const_iterator const need = memory ? memory->find(proto->ItemId) : material_reserve::Memory::const_iterator();
+                    if (memory && need != memory->end() && need->second.needed &&
+                        !material_reserve::MaySell(true, CurrentStacks(ai, proto), sPlayerbotAIConfig.professionUseReagentKeepStacks))
+                        return ItemUsage::ITEM_USAGE_KEEP;  // kept from sale, never "buy more"
+                }
             }
             else if (proto->Class == ITEM_CLASS_RECIPE)
             {
@@ -286,7 +301,34 @@ ItemUsage ItemUsageValue::Calculate()
     }
 
     //EQUIP
-    if (MountValue::GetMountSpell(itemId) && bot->CanUseItem(proto) == EQUIP_ERR_OK && MountValue::GetSpeed(MountValue::GetMountSpell(itemId)))
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+    {
+        // twow-repo#295: a mount is worth the speed the server gives this bot on it (riding
+        // rank and family) against its own mounts, not the DBC value. A mount it already
+        // knows (a collection item learned before) is not needed; one the vendor would refuse
+        // for reputation is no upgrade, or the bot would travel to that vendor again and again.
+        uint32 const mountSpell = MountValue::GetMountSpell(itemId);
+        bool const reputationMissing = mountSpell && proto->RequiredReputationFaction &&
+            uint32(bot->GetReputationRank(proto->RequiredReputationFaction)) < proto->RequiredReputationRank;
+        if (mountSpell && !bot->HasSpell(mountSpell) && !reputationMissing && bot->CanUseItem(proto) == EQUIP_ERR_OK)
+        {
+            std::vector<uint32> ownedSpeeds;
+            for (auto& mount : AI_VALUE(std::vector<MountValue>, "mount list"))
+                if (MountValue::GetFamily(mount.GetSpellId())) //Forms do not replace a mount.
+                    ownedSpeeds.push_back(mount.GetEffectiveSpeed(bot, false));
+
+            switch (riding_stages::ClassifyMountOffer(MountValue::GetEffectiveSpeed(bot, mountSpell, false), ownedSpeeds))
+            {
+            case riding_stages::MountOffer::Upgrade:
+                return ItemUsage::ITEM_USAGE_EQUIP;
+            case riding_stages::MountOffer::Keep:
+                return ItemUsage::ITEM_USAGE_KEEP;
+            default:
+                break;
+            }
+        }
+    }
+    else if (MountValue::GetMountSpell(itemId) && bot->CanUseItem(proto) == EQUIP_ERR_OK && MountValue::GetSpeed(MountValue::GetMountSpell(itemId)))
     {
         std::vector<MountValue> mounts = AI_VALUE(std::vector<MountValue>, "mount list");
 
@@ -337,7 +379,9 @@ ItemUsage ItemUsageValue::Calculate()
     if ((proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) && proto->Bonding != BIND_WHEN_PICKED_UP &&
         ai->HasSkill(SKILL_ENCHANTING) && proto->Quality >= ITEM_QUALITY_UNCOMMON)
     {
-        if (proto->DisenchantID)
+        // Hotfix 8.30a: an item the core refuses to disenchant (ITEM_FLAG_NO_DISENCHANT, e.g. Lesser
+        // Magic Wand 11287) is no disenchant material; else "disenchant random item" stays useful forever.
+        if (proto->DisenchantID && !(proto->Flags & ITEM_FLAG_NO_DISENCHANT))
         {
 
 #ifndef MANGOSBOT_ZERO
@@ -1069,9 +1113,16 @@ bool ItemUsageValue::IsItemUsefulForSkill(ItemPrototype const* proto)
 
 bool ItemUsageValue::IsItemNeededForUsefullCraft(ItemPrototype const* proto, bool checkAllReagents, bool vendorReagent)
 {
-    std::vector<uint32> spellIds = AI_VALUE(std::vector<uint32>, "craft spells");
+    // Hotfix 8.16a: only the recipes that use this item (CraftReagentIndexValue), no copy of
+    // "craft spells" and no walk over every recipe per query.
+    std::shared_ptr<const CraftReagentIndex> const index = AI_VALUE(std::shared_ptr<const CraftReagentIndex>, "craft reagent index");
+    if (!index)
+        return false;
+    CraftReagentIndex::const_iterator const users = index->find(proto->ItemId);
+    if (users == index->end())
+        return false;
 
-    for (uint32 spellId : spellIds)
+    for (uint32 spellId : users->second)
     {
         const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
 

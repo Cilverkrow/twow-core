@@ -3,8 +3,29 @@
 #include "playerbot/strategy/AiObjectContext.h"
 #include "BudgetValues.h"
 #include "SharedValueContext.h"
+#include "playerbot/RidingStagesBotPolicy.h"
+#include "FunserverRidingStages.h"
+#include "MountManager.hpp"
 
 using namespace ai;
+
+namespace
+{
+    // twow-repo#295: run speed of a shapeshift form (aura 31) from its spell data,
+    // so the doubled Ghost Wolf / Travel Form values reach the bot.
+    uint32 FormRunSpeed(uint32 spellId)
+    {
+        SpellEntry const* const spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
+        if (!spellInfo)
+            return 0;
+
+        for (int i = 0; i < 3; i++)
+            if (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_SPEED)
+                return uint32(std::max(spellInfo->CalculateSimpleValue(SpellEffectIndex(i)), 0));
+
+        return 0;
+    }
+}
 
 uint32 MountValue::GetSpeed(uint32 spellId, bool canFly)
 {
@@ -92,6 +113,10 @@ uint32 MountValue::GetMountSpell(uint32 itemId)
     if (!proto)
         return 0;
 
+    // twow-repo#295: a Turtle collection item teaches its mount instead of casting it.
+    if (uint32 collectionSpell = GetCollectionMountSpell(proto))
+        return collectionSpell;
+
     uint32 speed = 0;
     for (int j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)
     {
@@ -103,6 +128,99 @@ uint32 MountValue::GetMountSpell(uint32 itemId)
     }
 
     return 0;
+}
+
+uint32 MountValue::GetEffectiveSpeed(Player* player, uint32 spellId, bool canFly)
+{
+    uint32 const speed = GetSpeed(spellId, canFly);
+
+    if (!speed || !player || !sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+        return speed;
+
+    // twow-repo#295: the server sets a player's mounted speed from the riding rank and the
+    // mount family; the spell's own value only tells the family. Same inputs as the core.
+    uint32 const skill = player->GetSkillValuePure(SKILL_RIDING);
+    int32 effective = int32(speed);
+
+    switch (spellId)
+    {
+    case 783:   //travel form: the speed is on its passive
+        effective = int32(FormRunSpeed(5419));
+        break;
+    case 2645:  //ghost wolf
+        effective = int32(FormRunSpeed(2645));
+        break;
+    case 26656: //Black AQ mount: the script casts the swift 25863/26655
+        effective = FunserverRiding::MountedSpeedPct(true, skill, player->GetLevel(), FunserverRiding::FAMILY2_MIN_BASE_SPEED, false);
+        break;
+    default:
+        if (const SpellEntry* const spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(spellId))
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                if (spellInfo->EffectApplyAuraName[i] != SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED)
+                    continue;
+
+                effective = spellInfo->CalculateSimpleValue(SpellEffectIndex(i));
+
+                // Racing cars, and spells that are no mount aura, keep their spell value.
+                if (spellInfo->EffectApplyAuraName[0] == SPELL_AURA_MOUNTED && !(spellInfo->Custom & SPELL_CUSTOM_IGNORE_RIDING_SKILL_MOUNT_SPEED))
+                    effective = FunserverRiding::MountedSpeedPct(true, skill, player->GetLevel(), effective, (spellInfo->Custom & SPELL_CUSTOM_MOUNT_SPEED_100) != 0);
+                break;
+            }
+        }
+        break;
+    }
+
+    // Never 0 for a mount: 0 reads as "not mounted" (riding 0 on level 1 gives level / 2 = 0).
+    return uint32(std::max(effective, 1));
+}
+
+uint32 MountValue::GetFamily(uint32 spellId)
+{
+    if (spellId == 26656) //Black AQ mount: the script casts the swift 25863/26655
+        return uint32(FunserverRiding::MountFamily::Swift);
+
+    const SpellEntry* const spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
+
+    if (!spellInfo || spellInfo->EffectApplyAuraName[0] != SPELL_AURA_MOUNTED)
+        return 0;
+
+    for (int i = 0; i < 3; i++)
+        if (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED)
+            return uint32(FunserverRiding::FamilyOf(spellInfo->CalculateSimpleValue(SpellEffectIndex(i)), (spellInfo->Custom & SPELL_CUSTOM_MOUNT_SPEED_100) != 0));
+
+    return 0;
+}
+
+void MountValue::GetOwnedFamilies(std::vector<MountValue> const& mounts, bool& hasMount, bool& hasSwiftMount)
+{
+    hasMount = false;
+    hasSwiftMount = false;
+
+    for (MountValue const& mount : mounts)
+    {
+        uint32 const family = GetFamily(mount.spellId);
+        if (!family)
+            continue;
+
+        hasMount = true;
+        if (family == uint32(FunserverRiding::MountFamily::Swift))
+            hasSwiftMount = true;
+    }
+}
+
+uint32 MountValue::GetCollectionMountSpell(const ItemPrototype* proto)
+{
+    if (!proto || proto->Spells[0].SpellId != COLLECTION_LEARN_SPELL || !sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+        return 0;
+
+    // The core script spell_turtle_mount_collection learns this spell and consumes the item.
+    std::optional<uint32> const spellId = sMountMgr.GetMountSpellId(proto->ItemId);
+    if (!spellId || !IsMountSpell(*spellId))
+        return 0;
+
+    return *spellId;
 }
 
 bool MountValue::IsValidLocation(Player* bot)
@@ -177,6 +295,8 @@ uint32 CurrentMountSpeedValue::Calculate()
     if (!unit)
         return 0;
 
+    Player* player = dynamic_cast<Player*>(unit);
+
     uint32 mountSpeed = 0;
 
     for (uint32 auraType = SPELL_AURA_BIND_SIGHT; auraType < TOTAL_AURAS; auraType++)
@@ -194,7 +314,7 @@ uint32 CurrentMountSpeedValue::Calculate()
 
             SpellEntry const* auraSpell = aura->GetSpellProto();
 
-            uint32 auraSpeed = MountValue::GetSpeed(auraSpell->Id);
+            uint32 auraSpeed = MountValue::GetEffectiveSpeed(player, auraSpell->Id);
 
             if (auraSpeed < mountSpeed)
                 continue;
@@ -263,7 +383,7 @@ uint32 MaxMountSpeedValue::Calculate()
     uint32 maxSpeed = 0;
 
     for (auto& mount : mounts)
-        maxSpeed = std::max(maxSpeed, mount.GetSpeed(canFly));
+        maxSpeed = std::max(maxSpeed, mount.GetEffectiveSpeed(bot, canFly));
 
     return maxSpeed;
 }
@@ -271,9 +391,12 @@ uint32 MaxMountSpeedValue::Calculate()
 std::string MountListValue::Format()
 {
     std::ostringstream out; out << "{";
+    bool const ridingStages = sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED);
     for (auto& mount : this->Calculate())
     {
         std::string speed = std::to_string(mount.GetSpeed(false) + 1) + "%" + (mount.GetSpeed(true) ? ("/" + (std::to_string(mount.GetSpeed(true) + 1) + "%")) : "");
+        if (ridingStages) //twow-repo#295: the speed this bot gets, already in percent.
+            speed = std::to_string(mount.GetEffectiveSpeed(bot, false)) + "%";
         out << (mount.IsItem() ? "(item)" : "(spell)") << chat->formatSpell(mount.GetSpellId()) << "(" << speed << "),";
     }
     out << "}";
@@ -283,6 +406,10 @@ std::string MountListValue::Format()
 uint32 MountSkillTypeValue::Calculate()
 {
 #ifdef MANGOSBOT_ZERO
+    // twow-repo#295: trainers and mount items use the one riding skill 762.
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+        return SKILL_RIDING;
+
     switch (bot->getRace())
     {
     case RACE_HUMAN:
@@ -321,13 +448,21 @@ std::vector<int32> AvailableMountVendors::Calculate()
 {
     std::vector<int32> mountVendors;
     std::vector<MountValue> mountList = GAI_VALUE(std::vector<MountValue>, "full mount list");
-    
+
+    // twow-repo#295: most collection mounts have no vendor, and a mount the mount budget
+    // cannot pay is no reason to travel (a trip without a purchase would repeat).
+    bool const ridingStages = sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED);
+    uint32 const mountMoney = ridingStages ? AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::mount) : 0;
+
     for (auto& mount : mountList)
     {
         if (!mount.IsItem())
             continue;
 
         uint32 itemId = mount.GetItemProto()->ItemId;
+
+        if (ridingStages && (mount.GetItemProto()->BuyPrice > mountMoney || GAI_VALUE2(std::list<int32>, "item vendor list", itemId).empty()))
+            continue;
 
         ItemUsage usage = AI_VALUE2_LAZY(ItemUsage, "item usage", itemId);
 
@@ -364,7 +499,15 @@ bool CanBuyMountValue::Calculate()
 #ifdef MANGOSBOT_TWO
     uint8 minRidingLevel = 20;
 #endif
-    if (bot->GetLevel() < minRidingLevel)
+    // twow-repo#295: mount 1 from level 10 with riding 75, mount 2 from level 40 with riding 225.
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED))
+    {
+        bool hasMount = false, hasSwiftMount = false;
+        MountValue::GetOwnedFamilies(AI_VALUE(std::vector<MountValue>, "mount list"), hasMount, hasSwiftMount);
+        if (!riding_stages::MayBuyMount(bot->GetLevel(), bot->GetSkillValuePure(SKILL_RIDING), hasMount, hasSwiftMount))
+            return false;
+    }
+    else if (bot->GetLevel() < minRidingLevel)
         return false;
 
     if (!AI_VALUE(bool, "can buy"))

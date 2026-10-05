@@ -133,6 +133,10 @@ public:
         gatheringDistance, groupMemberGatheringDistance, groupMemberGatheringDistanceWithActiveMaster, shootDistance,
         fleeDistance, tooCloseDistance, meleeDistance, followDistance, raidFollowDistance, wanderMinDistance, wanderMaxDistance, whisperDistance, contactDistance,
         aoeRadius, rpgDistance, targetPosRecalcDistance, farDistance, healDistance, healDistanceBg, aggroDistance, proximityDistance, maxFreeMoveDistance, freeMoveDelay, walkDistance;
+    // twow-repo#485 (#471): a roster skinner on its own takes every item from a corpse it can
+    // skin, so leftover junk no longer blocks skinning (core: TARGET_NOT_LOOTED).
+    // Off by default - corpse loot rules stay unchanged; skin loot is always kept (#485).
+    bool professionUseClearCorpseForSkinning = false;
     // #276: bound for any graveyard other than the one nearest the corpse
     // (alternate after repeated deaths, or near the travel target).
     float maxAlternateGraveyardDistance = 2500.0f;
@@ -310,6 +314,20 @@ public:
     bool randomBotRaidNearby;
     bool randomBotGuildNearby;
     bool randomBotFormGuild;
+    // twow-repo#485: guilds of persistent roster bots (GuildCreateActions.cpp, RosterGuildPolicy.h).
+    // 0 = off (default), the stock petition path stays. N > 0 (needs randomBotFormGuild): per faction
+    // ceil(roster bots / N) bot guilds, approved names only, recounted every SnapshotSeconds (default
+    // 60, used as 10-3600). Defaults are set in Initialize() only, like the neighbours, so that
+    // playerbot_config_key_usage still sees whether the members are read.
+    uint32 rosterGuildBotsPerGuild;
+    std::string rosterGuildNamesAlliance;
+    std::string rosterGuildNamesHorde;
+    uint32 rosterGuildSnapshotSeconds;
+    // twow-repo#485 (owner 04.10.): roster bots in a guild keep "<Class> <Tank|tree> iLvl <n>" in
+    // their public guild note. 0 = off (default, notes untouched); checked at most every
+    // NoteRefreshSeconds per bot (default 86400 = 24 h, used as 60-604800), written only on a change.
+    bool rosterGuildNote;
+    uint32 rosterGuildNoteRefreshSeconds;
     bool randomBotRandomPassword;
     bool inviteChat;
     bool botsSilent;
@@ -434,6 +452,14 @@ public:
     // these vendor reagents (item ids). false / empty = legacy.
     bool professionUseKeepCraftMaterials = false;
     uint32 professionUseReagentKeepStacks = 1;
+    // Hotfix 8.27: quest log rotation of stuck roster bots (8.17), tunable by reload config.
+    bool questRotateEnabled = true;
+    uint32 questRotateIdleSeconds = 2400;
+    uint32 questRotateGraceSeconds = 1800;
+    // twow-repo#524: wool rule - tailoring below WoolTierSkill keeps every linen, then first aid
+    // only uses linen above FirstAidClothReserve.
+    uint32 professionUseWoolTierSkill = 75;
+    uint32 professionUseFirstAidClothReserve = 20;
     std::set<uint32> professionUseVendorReagents;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
@@ -485,6 +511,10 @@ public:
     // #405: quest objectives whose work phase ran out Max times are skipped.
     uint32 questWorkTimeoutsMax = 0;
     uint32 questWorkTimeoutsCooldownSeconds = 3600;
+    // twow-repo#485: game-object quest givers and takers spawned only by a script
+    // (gameobject.spawntimesecsmin < 0, e.g. GO 270 of quest 310) are no travel targets.
+    // false = old behaviour.
+    bool questFirstProgressionSkipScriptOnlyQuestTakers = false;
     // G4: evacuate a bot that died DeathLoop.MaxDeaths times within WindowSeconds
     // and Radius yards (0 = off); not reset by XP like "death count".
     uint32 deathLoopMaxDeaths = 0;
@@ -554,8 +584,23 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
+    // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
+    // within TurnInParkWindowSeconds is parked for TurnInParkSeconds (0 = off, the
+    // old behaviour; at most 255). On, it also changes every bot's travel retries and
+    // finished-quest count (aiplayerbot.conf.dist.in).
+    uint32 questFirstProgressionTurnInParkFailures = 0;
+    uint32 questFirstProgressionTurnInParkWindowSeconds = 3600;
+    uint32 questFirstProgressionTurnInParkSeconds = 3600;
+    // twow-repo#485: true = a turn-in-only request whose takers a route danger deferral
+    // took (cross map, zone level, death cluster) counts as no route; false = it does not
+    // (critic B1.3).
+    bool questFirstProgressionTurnInParkCountsRouteDanger = false;
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
+    // twow-repo#485: true = only a route to the other continent counts for the
+    // rule above; the Deeprun Tram counts as the Eastern Kingdoms and an instance
+    // as the continent of its entrance. false = any other map counts (old behaviour).
+    bool questFirstProgressionCrossMapContinentsOnly = false;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;

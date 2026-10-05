@@ -304,6 +304,53 @@ void GuildMgr::Update(uint32 diff)
     {
         guild->UpdateCaches(diff);
     }
+
+    // twow-repo#485: public notes queued by bots on map threads (SetMemberPublicNote).
+    ApplyPendingPublicNotes();
+}
+
+void GuildMgr::SetMemberPublicNote(uint32 guildId, ObjectGuid const& member, std::string const& note)
+{
+    if (!guildId || member.IsEmpty())
+        return;
+
+    PendingPublicNote pending;
+    pending.guildId = guildId;
+    pending.member = member;
+    pending.note = note.substr(0, GUILD_NOTE_MAX_LENGTH);
+
+    std::lock_guard<std::mutex> guard(m_pendingNotesMutex);
+    m_pendingPublicNotes[member.GetCounter()] = std::move(pending);
+}
+
+void GuildMgr::ApplyPendingPublicNotes()
+{
+    std::unordered_map<uint32, PendingPublicNote> pending;
+    {
+        std::lock_guard<std::mutex> guard(m_pendingNotesMutex);
+        if (m_pendingPublicNotes.empty())
+            return;
+        pending.swap(m_pendingPublicNotes);
+    }
+
+    // World thread, like HandleGuildSetPublicNoteOpcode; no lock held while writing.
+    for (auto const& item : pending)
+    {
+        PendingPublicNote const& entry = item.second;
+        Guild* guild = GetGuildById(entry.guildId);
+        if (!guild)
+            continue;
+
+        // The member may have left the guild since the note was queued.
+        if (MemberSlot* slot = guild->GetMemberSlot(entry.member))
+            slot->SetPublicNote(entry.note);   // UPDATE guild_member SET pnote, only on a change
+    }
+}
+
+uint32 GuildMgr::GetPetitionSignsRequired() const
+{
+    // The client shows at most 9 signatures (PetitionsHandler: "Client hard limit at 9 signatures").
+    return std::min<uint32>(9, sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS));
 }
 
 void GuildMgr::SaveGuildBanks()
@@ -371,6 +418,173 @@ PetitionSignature* GuildMgr::GetSignatureForPlayerGuid(const ObjectGuid& guid)
     }
 
     return nullptr;
+}
+
+// twow-repo#485: callers hold m_petitionsMutex (shared or exclusive).
+static void CopyPetitionSummary(Petition* petition, PetitionSummary& out, uint32 accountId, ObjectGuid const& player)
+{
+    out.id = petition->GetId();
+    out.ownerGuid = petition->GetOwnerGuid();
+    out.charterGuid = petition->GetCharterGuid();
+    out.name = petition->GetName();
+    out.team = petition->GetTeam();
+    out.signatureCount = petition->GetSignatureCount();
+    out.signedByAccount = accountId && petition->GetSignatureForAccount(accountId);
+    out.signedByPlayer = !player.IsEmpty() && petition->GetSignatureForPlayerGuid(player);
+}
+
+bool GuildMgr::GetPetitionSummaryByCharterGuid(ObjectGuid const& charterGuid, PetitionSummary& out, uint32 accountId, ObjectGuid const& player)
+{
+    std::shared_lock<std::shared_mutex> guard(m_petitionsMutex);
+    for (const auto& iter : m_petitionMap)
+    {
+        Petition* petition = iter.second;
+        if (petition->GetCharterGuid() == charterGuid)
+        {
+            CopyPetitionSummary(petition, out, accountId, player);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool GuildMgr::GetPetitionSummaryBySigner(ObjectGuid const& signerGuid, PetitionSummary& out)
+{
+    std::shared_lock<std::shared_mutex> guard(m_petitionsMutex);
+    for (const auto& iter : m_petitionMap)
+    {
+        Petition* petition = iter.second;
+        if (petition->GetSignatureForPlayerGuid(signerGuid))
+        {
+            CopyPetitionSummary(petition, out, 0, signerGuid);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void GuildMgr::CollectPetitionSummaries(std::vector<PetitionSummary>& out)
+{
+    out.clear();
+    std::shared_lock<std::shared_mutex> guard(m_petitionsMutex);
+    out.reserve(m_petitionMap.size());
+    for (const auto& iter : m_petitionMap)
+    {
+        PetitionSummary summary;
+        CopyPetitionSummary(iter.second, summary, 0, ObjectGuid());
+        out.push_back(std::move(summary));
+    }
+}
+
+void GuildMgr::CollectGuildSummaries(std::vector<GuildSummary>& out) const
+{
+    out.clear();
+    std::shared_lock<std::shared_mutex> guard(m_guildMutex);
+    out.reserve(m_GuildMap.size());
+    for (const auto& itr : m_GuildMap)
+    {
+        GuildSummary summary;
+        summary.id = itr.second->GetId();
+        summary.leaderGuid = itr.second->GetLeaderGuid();
+        summary.name = itr.second->GetName();
+        out.push_back(std::move(summary));
+    }
+}
+
+bool GuildMgr::RenamePetition(ObjectGuid const& charterGuid, ObjectGuid const& ownerGuid, std::string const& newName)
+{
+    // Same checks as HandlePetitionRenameOpcode, before the petition lock (GetGuildByName takes the guild lock).
+    if (GetGuildByName(newName) || sObjectMgr.IsReservedName(newName) || !ObjectMgr::IsValidCharterName(newName))
+        return false;
+
+    std::lock_guard<std::shared_mutex> guard(m_petitionsMutex);
+    for (const auto& iter : m_petitionMap)
+    {
+        Petition* petition = iter.second;
+        if (petition->GetCharterGuid() != charterGuid)
+            continue;
+
+        if (petition->GetOwnerGuid() != ownerGuid)
+            return false;
+
+        std::string name = newName;
+        return petition->Rename(name);  // UPDATE petition SET name
+    }
+
+    return false;
+}
+
+bool GuildMgr::GetPetitionSummaryById(uint32 petitionId, PetitionSummary& out, uint32 accountId, ObjectGuid const& player)
+{
+    std::shared_lock<std::shared_mutex> guard(m_petitionsMutex);
+    PetitionMap::iterator iter = m_petitionMap.find(petitionId);
+    if (iter == m_petitionMap.end())
+        return false;
+
+    CopyPetitionSummary(iter->second, out, accountId, player);
+    return true;
+}
+
+bool GuildMgr::GetPetitionSignerGuids(uint32 petitionId, std::vector<ObjectGuid>& out)
+{
+    out.clear();
+    std::shared_lock<std::shared_mutex> guard(m_petitionsMutex);
+    PetitionMap::iterator iter = m_petitionMap.find(petitionId);
+    if (iter == m_petitionMap.end())
+        return false;
+
+    PetitionSignatureList const& signatures = iter->second->GetSignatureList();
+    out.reserve(signatures.size());
+    for (PetitionSignature* signature : signatures)
+        out.push_back(signature->GetSignatureGuid());
+
+    return true;
+}
+
+bool GuildMgr::AddPetitionSignature(uint32 petitionId, Player* signer)
+{
+    std::lock_guard<std::shared_mutex> guard(m_petitionsMutex);
+    PetitionMap::iterator target = m_petitionMap.find(petitionId);
+    if (target == m_petitionMap.end())
+        return false;
+
+    Petition* petition = target->second;
+    // Same checks as HandlePetitionSignOpcode, again under the lock (another map thread may have
+    // signed in between). One limit: MinPetitionSigns, at most the client's 9 (OB-10 review core#281:
+    // no second hard-coded 9 next to the config).
+    if (petition->GetSignatureCount() >= GetPetitionSignsRequired() || petition->GetSignatureForPlayer(signer))
+        return false;
+
+    // Move: before signing, delete any previous signature of this player (same lock).
+    for (const auto& iter : m_petitionMap)
+    {
+        Petition* previous = iter.second;
+        if (PetitionSignature* signature = previous->GetSignatureForPlayerGuid(signer->GetObjectGuid()))
+        {
+            signature->DeleteFromDB();
+            previous->DeleteSignature(signature);
+            break;
+        }
+    }
+
+    return petition->AddNewSignature(signer);   // INSERT petition_sign
+}
+
+void GuildMgr::RemovePetitionSignature(ObjectGuid const& signerGuid)
+{
+    std::lock_guard<std::shared_mutex> guard(m_petitionsMutex);
+    for (const auto& iter : m_petitionMap)
+    {
+        Petition* petition = iter.second;
+        if (PetitionSignature* signature = petition->GetSignatureForPlayerGuid(signerGuid))
+        {
+            signature->DeleteFromDB();
+            petition->DeleteSignature(signature);
+            return;
+        }
+    }
 }
 
 bool Petition::LoadFromDB(QueryResult* result)

@@ -2,6 +2,8 @@
 #include "playerbot/playerbot.h"
 #include "GuildManagementActions.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/RosterGuildPolicy.h"
+#include "playerbot/AiFactory.h"
 
 using namespace ai;
 
@@ -108,6 +110,13 @@ bool GuildManageNearbyAction::Execute(Event& event)
 
         if (!sPlayerbotAIConfig.randomBotGuildNearby)
             return false;
+
+        // twow-repo#485 (critic B5.6): with roster guilds (BotsPerGuild > 0) a roster bot on its own
+        // invites nobody nearby, and no roster bot is invited here - this path ignores the faction
+        // target and the founding rules.
+        if (sPlayerbotAIConfig.rosterGuildBotsPerGuild && (sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()) ||
+            roster_guild::UsesRosterPath(sPlayerbotAIConfig.rosterGuildBotsPerGuild, sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster())))
+            continue;
 
         if (guild->GetMemberSize() >= sPlayerbotAIConfig.guildMaxBotLimit)
             return false;
@@ -264,5 +273,56 @@ bool GuildLeaveAction::Execute(Event& event)
 
     WorldPacket packet;
     bot->GetSession()->HandleGuildLeaveOpcode(packet);
+    return true;
+}
+
+bool RosterGuildNoteAction::isUseful()
+{
+    return roster_guild::UsesGuildNote(sPlayerbotAIConfig.rosterGuildNote, sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), bot->GetGuildId() != 0);
+}
+
+bool RosterGuildNoteAction::Execute(Event& event)
+{
+    uint32 const guildId = bot->GetGuildId();
+    if (!guildId)
+        return false;
+
+    // Average item level of the worn items: weapons, off hand and ranged included, empty slots
+    // skipped. Shirt and tabard are cosmetic (item level 1-ish) and do not count.
+    uint32 itemLevelSum = 0;
+    uint32 itemCount = 0;
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+    {
+        if (slot == EQUIPMENT_SLOT_BODY || slot == EQUIPMENT_SLOT_TABARD)
+            continue;
+
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item || !item->GetProto())
+            continue;
+
+        itemLevelSum += item->GetProto()->ItemLevel;
+        ++itemCount;
+    }
+
+    // Role or tree the bot plays: the AI's own spec tab and roles (tank paths included). Without
+    // spent talents GetPlayerSpecTab returns a class default, so no tree and no role yet.
+    std::map<uint32, int32> tabs = AiFactory::GetPlayerSpecTabs(bot);
+    bool const hasTalents = tabs[0] + tabs[1] + tabs[2] > 0;
+    int const specTab = hasTalents ? AiFactory::GetPlayerSpecTab(bot) : -1;
+    bool const tank = hasTalents && (AiFactory::GetPlayerRoles(bot) & BOT_ROLE_TANK) != 0;
+
+    std::string const note = roster_guild::FormatGuildNote(bot->getClass(), specTab, tank,
+        roster_guild::AverageItemLevel(itemLevelSum, itemCount));
+    if (note == lastNote && guildId == lastGuildId)
+        return false;
+
+    // Only through GuildMgr: the MemberSlot is written on the world thread (guild opcodes and roster
+    // packets run there), never from this map thread.
+    sGuildMgr.SetMemberPublicNote(guildId, bot->GetObjectGuid(), note);
+    lastNote = note;
+    lastGuildId = guildId;
+
+    // At most one line per bot and NoteRefreshSeconds (RosterGuildNoteTrigger), and only on a change.
+    sLog.outBasic("[RosterGuild] event=note bot=%u guild=%u note=\"%s\"", bot->GetGUIDLow(), guildId, note.c_str());
     return true;
 }

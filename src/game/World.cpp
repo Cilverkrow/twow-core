@@ -130,6 +130,7 @@ namespace HttpApi
 
 #include <chrono>
 #include "FunserverRareRespawn.h"
+#include "FunserverRidingStages.h"
 
 volatile bool World::m_stopEvent = false;
 uint8 World::m_ExitCode = SHUTDOWN_EXIT_CODE;
@@ -1099,10 +1100,17 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_RAID_BOSS, "Funserver.Loot.Bonus.RaidBoss", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_BONUS_BOSS_CHEST, "Funserver.Loot.Bonus.BossChest", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED, "Funserver.Loot.Units.Enabled", false);
+    // twow-repo#482 (train 9): raid profiles, dungeon bands and the trim rule (FunserverLootRules.h).
+    setConfig(CONFIG_BOOL_FUNSERVER_LOOT_RULES_482, "Funserver.Loot.Rules482.Enabled", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_INSTANCE_POOL, "Funserver.Loot.Units.InstancePool", false);
     setConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_DUNGEON_RANGE, "Funserver.Loot.Units.Dungeon.Range", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_RESPAWN_ENABLED, "Funserver.Rare.Respawn.Enabled", false);
     setConfig(CONFIG_BOOL_FUNSERVER_RARE_POOL_BYPASS_ENABLED, "Funserver.Rare.PoolBypass.Enabled", false);
+    // twow-repo#295 (owner 2026-10-02): riding in four stages, mount speed of players and bots by
+    // riding rank and mount family. Read by the core and the playerbots.
+    setConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED, "Funserver.Riding.Stages.Enabled", false);
+    setConfig(CONFIG_BOOL_ROGUE_KEEP_COMBO_ON_SELECT, "Rogue.KeepComboPointsOnSelect", false);
+    setConfig(CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET, "Rogue.ProcComboPointsToCurrentTarget", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
     setConfigMinMax(CONFIG_UINT32_MIN_LEVEL_STAT_SAVE, "PlayerSave.Stats.MinLevel", 0, 0, MAX_LEVEL);
     setConfig(CONFIG_BOOL_STATS_SAVE_ONLY_ON_LOGOUT, "PlayerSave.Stats.SaveOnlyOnLogout", true);
@@ -1440,6 +1448,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RARE, "Funserver.Loot.Units.Rare", 6, 1, 16);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_DUNGEON, "Funserver.Loot.Units.Dungeon", 8, 1, 16);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RAID, "Funserver.Loot.Units.Raid", 16, 1, 16);
+    // twow-repo#482: total loot per corpse or chest, see LootMgr.h (MAX_NR_LOOT_ITEMS_HARD = 32).
+    setConfigMinMax(CONFIG_UINT32_LOOT_MAX_ITEMS, "Loot.MaxItems", 16, 16, 32);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RARE, "Funserver.Loot.Units.Floor.Rare", 3, 0, 5);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_DUNGEON, "Funserver.Loot.Units.Floor.Dungeon", 3, 0, 5);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_RAID, "Funserver.Loot.Units.Floor.Raid", 4, 0, 5);
@@ -1454,6 +1464,11 @@ void World::LoadConfigSettingsFromFile(bool reload)
             getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS), getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS));
         setConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS, getConfig(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS));
     }
+    // twow-repo#295 (owner 2026-10-02): slows of player-controlled casters (players, bots and
+    // their pets, totems and traps) are stronger and their roots last longer; NPC spells stay.
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_SLOW_PCT, "Funserver.PlayerSnare.SlowPct", FunserverSnare::DEFAULT_SLOW_PCT, 0, 100);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_MAX_SLOW_PCT, "Funserver.PlayerSnare.MaxSlowPct", FunserverSnare::DEFAULT_MAX_SLOW_PCT, 0, 100);
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_PLAYER_SNARE_ROOT_DURATION_PCT, "Funserver.PlayerSnare.RootDurationPct", FunserverSnare::DEFAULT_ROOT_DURATION_PCT, 0, 200);
     setConfig(CONFIG_BOOL_PREVENT_ITEM_DATAMINING, "Item.PreventDataMining", true);
 
     setConfig(CONFIG_UINT32_MAILSPAM_EXPIRE_SECS, "MailSpam.ExpireSecs", 0);

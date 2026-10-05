@@ -27,6 +27,10 @@ int main()
     Require(line.find("not_active=7") != std::string::npos, "not_active counted");
     Require(line.find("zone_level=2") != std::string::npos, "zone_level counted");
     Require(line.find("moved_away=0") != std::string::npos, "all reasons listed");
+    Require(line.find(" resume_skipped=0") != std::string::npos, "the resume skip is listed (twow-repo#485)");
+    rejects.resumeSkipped = 40;
+    Require(rejects.Format().find(" resume_skipped=40") != std::string::npos,
+            "candidates a resumed choice skipped are counted (twow-repo#485)");
 
     // B) the search widens in steps, at most once per two minutes.
     Require(GiverRadius(1, 0) == 2000.f, "stage 0: today's radius (level 1)");
@@ -105,6 +109,30 @@ int main()
     Require(!DropGreyQuest(true, 8, 9, false, true), "class quests stay");
     Require(!DropGreyQuest(false, 8, 9, false, false), "only roster bots on their own");
     Require(!DropGreyQuest(true, 10, 9, false, false), "The Hunter's Way (10) at level 15 stays");
+
+    // Hotfix 8.26: rebind the hearthstone at the rescue target, roster bots on their own only.
+    Require(RebindAtRescue(true, false, 0, 0), "roster bot: rebind");
+    Require(!RebindAtRescue(true, true, 0, 0), "led by a real player: keep the hearthstone");
+    Require(!RebindAtRescue(false, false, 0, 1), "not a roster bot: keep the hearthstone");
+
+    // Hotfix 8.29: Blackstone Island flying machine.
+    {
+        namespace gi = goblin_island;
+        Require(gi::ShouldLeaveIsland(5536, 10, 0), "level 10 on the island: fly off");
+        Require(gi::ShouldLeaveIsland(5536, 7, gi::LeaveIdleSeconds), "no progress for 15 min: fly off");
+        Require(!gi::ShouldLeaveIsland(5536, 7, gi::LeaveIdleSeconds - 1), "still questing on the island: stay");
+        Require(!gi::ShouldLeaveIsland(14, 12, 99999), "not on the island: nothing");
+        Require(gi::FollowPath(10.0f, 5000.0f) == gi::IslandPath, "follower at the island machine: path 311");
+        Require(gi::FollowPath(5000.0f, 12.0f) == gi::ReturnPath, "follower at the port machine: path 322");
+        Require(gi::FollowPath(40.0f, 5000.0f) == 0, "too far from any machine: no flight");
+        Require(gi::UsesGoblinStartRescue(9, 9) && !gi::UsesGoblinStartRescue(9, 11) && !gi::UsesGoblinStartRescue(10, 9),
+            "goblins below 11 rescued to Durotar only");
+        // Hotfix 8.29a: the island box gate (start point and machine inside, Durotar and others outside).
+        Require(gi::MayBeOnIsland(9, 1, -233.0f, -7177.0f) && gi::MayBeOnIsland(9, 1, -571.0f, -7850.0f), "goblin on the island: check");
+        Require(!gi::MayBeOnIsland(9, 1, 819.0f, -5006.0f) && !gi::MayBeOnIsland(9, 1, 340.0f, -4686.0f), "goblin in Durotar: skip");
+        Require(!gi::MayBeOnIsland(2, 1, -233.0f, -7177.0f), "orc: skip");
+        Require(!gi::MayBeOnIsland(9, 0, -233.0f, -7177.0f), "other map: skip");
+    }
 
     std::cout << "quest_search_policy_tests passed\n";
     return 0;

@@ -189,6 +189,18 @@ enum AttackPowerModIndex
     AP_MODS_COUNT,
 };
 
+// Hotfix 8.24 (twow-repo#484): why a player's combo points were dropped. Diagnostics only,
+// logged as [ComboTrace] by Player::ClearComboPoints / Player::AddComboPoints.
+enum ComboClearReason : uint8
+{
+    COMBO_CLEAR_OTHER       = 0,    // any other caller (e.g. warrior reactives, despawn)
+    COMBO_CLEAR_FINISHER    = 1,    // finishing move completed (Spell::finish)
+    COMBO_CLEAR_SELECT      = 2,    // rogue/druid selected another unit (CMSG_SET_SELECTION)
+    COMBO_CLEAR_TARGET_DIED = 3,    // the combo target died
+    COMBO_CLEAR_DEATH       = 4,    // the player died
+    COMBO_CLEAR_DUEL        = 5,    // duel ended
+};
+
 uint32 CreateProcExtendMask(SpellNonMeleeDamage* damageInfo, SpellMissInfo missCondition);
 
 typedef SpellAuraProcResult(Unit::*pAuraProcHandler)(Unit* pVictim, uint32 damage, int32 originalAmount, Aura* triggeredByAura, SpellEntry const *procSpell, uint32 procFlag, uint32 procEx, uint32 cooldown);
@@ -557,7 +569,7 @@ class Unit : public WorldObject
     public:
         void AddComboPointHolder(uint32 lowguid) { m_ComboPointHolders.insert(lowguid); }
         void RemoveComboPointHolder(uint32 lowguid) { m_ComboPointHolders.erase(lowguid); }
-        void ClearComboPointHolders();
+        void ClearComboPointHolders(ComboClearReason reason = COMBO_CLEAR_OTHER);
 
         /*********************************************************/
         /***                   STATE SYSTEM                    ***/

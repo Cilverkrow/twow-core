@@ -323,6 +323,45 @@ AiPlayerbot.DeadWaitForRealMasterInstanceSeconds = 600
 # Randombots will form guilds by buying a charter, getting signatures and handing it in.
 # AiPlayerbot.RandomBotFormGuild = 1
 
+# Guilds of persistent roster bots (twow-repo#485). 0 = off (default): the stock charter behaviour
+# stays unchanged. N > 0 (needs RandomBotFormGuild = 1) applies to roster bots without a real master:
+# per faction ceil(roster bots / N) bot guilds, counted from the configured roster, not the online
+# bots. Roster bots buy a charter only while bot guilds + open bot charters of their faction stay
+# below that target, offer and sign only below it (a signature moves only to a fuller charter, real
+# players' charters are always signed), and found a guild only below it, with an approved name (a
+# charter with another name is renamed first: UPDATE petition SET name). With N > 0 roster bots no
+# longer invite nearby players into guilds, are not invited that way, and never leave a guild by
+# themselves. N sets the number of guilds only: a founded guild has its leader and the signers of the
+# charter (MinPetitionSigns), nothing fills it up to N yet. Proposal 45 (2 guilds per faction at 180
+# roster bots), alternative 30.
+AiPlayerbot.RosterGuild.BotsPerGuild = 0
+
+# Approved guild names per faction, comma separated, in quotes. At most 24 letters and spaces each;
+# the core also checks them (StrictCharterNames, reserved names). Empty list = roster bots neither
+# buy charters nor found guilds in the new path. Example (proposal of 02.10., not approved yet):
+# AiPlayerbot.RosterGuild.NamesAlliance = "Wardens of Elwynn, Northshire Vigil, Lakeshire Bannermen, Westfall Harvestguard, Thelsamar Stoneguard, Ironforge Hearthguard, Gnomeregan Gearwrights, Menethil Tidewatch, Stromgarde Shieldbearers, Auberdine Moonwatch, Sentinels of Astranaar, Thalassian Spellwardens"
+# AiPlayerbot.RosterGuild.NamesHorde = "Razor Hill Bladeguard, Durotar Dustriders, Bloodhoof Drummers, Mulgore Hornbearers, Sun Rock Trailwardens, Crossroads Wayguard, Echo Isles Shadowhunters, Brill Lanternwatch, Sepulcher Gravewardens, Hammerfall Warbanner, Stonard Swampblades, Kezan Sparkwrights"
+AiPlayerbot.RosterGuild.NamesAlliance = ""
+AiPlayerbot.RosterGuild.NamesHorde = ""
+
+# Seconds between two recounts of roster bots, bot guilds, open charters and used names per faction
+# (10-3600, other values are clamped; in memory, no database query; also recounted after each founding).
+AiPlayerbot.RosterGuild.SnapshotSeconds = 60
+
+# Guild note of roster bots (twow-repo#485, owner 04.10.). 0 = off (default): guild notes stay as they
+# are. 1: every persistent roster bot in a guild keeps its public guild note as
+# "<Class> <Tank|talent tree> iLvl <average item level of the worn items>", e.g. "Priest Holy iLvl 23"
+# or "Warrior Tank iLvl 31" (at most 31 characters, no name). Bots without talents yet show no tree.
+# Independent of BotsPerGuild. Takes precedence over TalentsInPublicNote for roster bots.
+AiPlayerbot.RosterGuild.GuildNote = 0
+
+# Seconds between two note checks per bot (60-604800, other values are clamped; default 86400 = once
+# every 24 h, owner 04.10.: the item level is the only part that changes often). The first check runs
+# right after login. The trigger only compares a timestamp once a minute; the note is computed from
+# the bot's own items and talents (no database query) and written only when it changed; the write
+# runs on the world thread (GuildMgr), no roster broadcast.
+AiPlayerbot.RosterGuild.NoteRefreshSeconds = 86400
+
 # Bots will chat in say/guild when they invite other bots to groups/raids/guilds
 AiPlayerbot.InviteChat = 1
 
@@ -553,6 +592,15 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 AiPlayerbot.QuestWorkTimeouts.Max = 0
 AiPlayerbot.QuestWorkTimeouts.CooldownSeconds = 3600
 
+# twow-repo#485: with 1, quest givers and takers that are game objects spawned
+# only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
+# quest 310 "Bitter Rivals", shown for 60 s by a quest end script) are no travel
+# targets, so bots no longer wait at an empty spot until the work phase runs
+# out. Quest objectives keep every point. Applied once when the travel table is
+# built at startup; each skipped quest and object is logged once as
+# [QuestFirstRoute] state=taker_script_only. 0 = off (old behaviour).
+AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers = 0
+
 # G4 (train 6.1): a bot that died DeathLoop.MaxDeaths times within
 # DeathLoop.WindowSeconds and DeathLoop.Radius yards of its latest death is
 # evacuated on the next death (the "repop" teleport to its spawn, travel target
@@ -676,11 +724,45 @@ AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives = 1
 # instead of dying on it again and again.
 AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
+# twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
+# of holding the bot. A failure of a roster bot on its own is: a stall (recovery
+# stage 2), a death suppression on the route, a work phase at the taker that ran
+# out, the move retries running out ([QuestCommit] reason=move_retry_cooldown),
+# or a turn-in-only quest route request that found no way to any taker. After
+# TurnInParkFailures failures within TurnInParkWindowSeconds the quest is parked
+# for TurnInParkSeconds: no trip to its taker, it no longer forces turn-in-only
+# quest routes or stops gathering, and it stays in the log to be tried again when
+# the park ends. Logged as [QuestFirstRoute] state=parked. At most 255 failures;
+# both times are capped at one day; parks live in memory only. 0 = off (old
+# behaviour). With parking on, also for every bot, not only roster bots: move
+# retries restart at each new travel destination; a successful move no longer
+# takes a refresh retry off (a target is refreshed at most 5 times, then chosen
+# anew); and only completed quests the bot can hand in count as finished for
+# turn-in-only quest routes (and for a roster bot's gathering).
+AiPlayerbot.QuestFirstProgression.TurnInParkFailures = 0
+AiPlayerbot.QuestFirstProgression.TurnInParkWindowSeconds = 3600
+AiPlayerbot.QuestFirstProgression.TurnInParkSeconds = 3600
+# With 1, a turn-in-only request whose takers a route danger deferral took
+# ([QuestFirstRoute] state=deferred reason=route_danger) counts as finding no
+# way to a taker too, so such a turn-in is parked and tried again when the park
+# ends. That covers all three deferrals: a taker on another map while the bot is
+# below MinLevelForCrossMapQuestRoute (with CrossMapContinentsOnly = 0 any other
+# map, not only the other continent: also the Deeprun Tram or an instance), a
+# zone clearly above the bot, and a death cluster of the shared danger map
+# (AiPlayerbot.DangerMap.Enabled, detail=death_cluster). 0 = no such deferral
+# counts.
+AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger = 0
 # Route danger for low levels: a roster bot defers a quest giver, objective or
 # turn-in on another continent until it reaches this level (0 = off), and any
 # quest target in a zone clearly above its level (known zone level > level + 5).
 # Logged as [QuestFirstRoute] state=deferred reason=route_danger.
 AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute = 10
+# twow-repo#485: with 1, only a route to the other continent counts for
+# MinLevelForCrossMapQuestRoute. The Deeprun Tram (369) counts as the Eastern
+# Kingdoms and an instance as the continent of its entrance, so routes that stay
+# on one continent are not deferred; a switch from them to the other continent
+# still is. 0 = every other map counts (old behaviour).
+AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes
@@ -748,6 +830,21 @@ AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds = 1800
 AiPlayerbot.ProfessionUse.KeepCraftMaterials = 0
 AiPlayerbot.ProfessionUse.ReagentKeepStacks = 1
 AiPlayerbot.ProfessionUse.VendorReagents =
+# QuestRotate (hotfix 8.17/8.27): a roster bot on its own, out of combat, with at least 16 quests and
+# no progress for IdleSeconds drops exactly one quest without progress (not a class quest, not complete,
+# not the quest of its current travel target; the oldest first), at most once per IdleSeconds and not
+# within GraceSeconds of its first check after login. Enabled = 0 turns the rotation off.
+AiPlayerbot.QuestRotate.Enabled = 1
+AiPlayerbot.QuestRotate.IdleSeconds = 2400
+AiPlayerbot.QuestRotate.GraceSeconds = 1800
+# WoolTierSkill / FirstAidClothReserve (twow-repo#524, owner 04.10.2026, only with RealReagents, roster
+# bots on their own): a bot that knows Tailoring keeps every Linen Cloth for Tailoring while its
+# Tailoring skill is below WoolTierSkill (no linen bandages), from then on First Aid only uses the
+# linen above FirstAidClothReserve. Secondary professions (First Aid, Cooking, Fishing) also leave
+# the reagents of the bot's green-or-better main-profession recipes (5 casts) alone, and those
+# reagents are not sold below ReagentKeepStacks + 1 stacks. 0 / 0 = no wool rule.
+AiPlayerbot.ProfessionUse.WoolTierSkill = 75
+AiPlayerbot.ProfessionUse.FirstAidClothReserve = 20
 
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full
@@ -1452,6 +1549,13 @@ AiPlayerbot.MaxAlternateGraveyardDistance = 2500
 #AiPlayerbot.GroupMemberLootDistance = 15.0
 #loot distance when bot is a group member (not leader) and has active player master (if player is group leader)
 #AiPlayerbot.GroupMemberLootDistanceWithActiveMaster = 10.0
+# Skinners clear the corpse (twow-repo#485, #471). The core refuses to skin while loot is
+# left on a corpse (TARGET_NOT_LOOTED), and bots leave items worth less than 1/1000 of
+# their money behind. 1: a persistent roster bot without a real-player master that can
+# skin the corpse right now (skill, Skinning Knife) takes every item from it, junk
+# included. Default 0: corpse loot rules unchanged. Independent of this switch, skin loot
+# is always kept and a corpse with loot left on it is never a skinning target.
+AiPlayerbot.ProfessionUse.ClearCorpseForSkinning = 0
 #overall gathering distance
 #AiPlayerbot.GatheringDistance = 15.0
 #gathering distance when bot is a group member (not leader)
