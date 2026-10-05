@@ -432,11 +432,13 @@ bool CheckMountStateAction::Mount(Player* requester, bool limitSpeedToGroup)
     std::vector<MountValue> mountList = AI_VALUE(std::vector<MountValue>, "mount list");
 
     std::shuffle(mountList.begin(), mountList.end(), *GetRandomGenerator());
-    std::sort(mountList.begin(), mountList.end(), [canFly](MountValue i, MountValue j) {return i.GetSpeed(canFly) > j.GetSpeed(canFly); });
+    // twow-repo#295: by the speed the server gives this bot (riding rank and mount family),
+    // so a bot changes to its swift mount once it has trained rank 3.
+    std::sort(mountList.begin(), mountList.end(), [canFly, this](MountValue i, MountValue j) {return i.GetEffectiveSpeed(bot, canFly) > j.GetEffectiveSpeed(bot, canFly); });
 
     for (auto& mount : mountList)
     {
-        if (mount.GetSpeed(canFly) > maxSpeed)
+        if (mount.GetEffectiveSpeed(bot, canFly) > maxSpeed)
             continue;
 
         if (currentSpeed > maxSpeed)
@@ -449,7 +451,7 @@ bool CheckMountStateAction::Mount(Player* requester, bool limitSpeedToGroup)
         if (ai->HasStrategy("debug mount", BotState::BOT_STATE_NON_COMBAT))
             ai->TellPlayerNoFacing(requester, "Try to mount with " + chat->formatSpell(mount.GetSpellId()));
 
-        if (currentSpeed >= mount.GetSpeed(canFly))
+        if (currentSpeed >= mount.GetEffectiveSpeed(bot, canFly))
         {
             if (ai->HasStrategy("debug mount", BotState::BOT_STATE_NON_COMBAT))
                 ai->TellPlayerNoFacing(requester, "Speed not faster than current.");
@@ -495,6 +497,12 @@ bool CheckMountStateAction::Mount(Player* requester, bool limitSpeedToGroup)
             {
                 SetDuration(3000U); // 3s
                 didMount = true;
+
+                // twow-repo#295: a collection item teaches its mount and is used up; the bot
+                // rides the learned spell from then on.
+                if (MountValue::GetCollectionMountSpell(mount.GetItemProto()))
+                    sLog.outBasic("[Riding] learn bot=%u level=%u item=%u spell=%u skill=%u",
+                        bot->GetGUIDLow(), bot->GetLevel(), mount.GetItemProto()->ItemId, mount.GetSpellId(), uint32(bot->GetSkillValuePure(SKILL_RIDING)));
             }
             else
             {
@@ -513,7 +521,7 @@ bool CheckMountStateAction::Mount(Player* requester, bool limitSpeedToGroup)
             uint32 castDuration;
             if (ai->CastSpell(mount.GetSpellId(), bot, nullptr, true, &castDuration))
             {
-                sPlayerbotAIConfig.logEvent(ai, "CheckMountStateAction", sServerFacade.LookupSpellInfo(mount.GetSpellId())->SpellName[0], std::to_string(mount.GetSpeed(canFly)));
+                sPlayerbotAIConfig.logEvent(ai, "CheckMountStateAction", sServerFacade.LookupSpellInfo(mount.GetSpellId())->SpellName[0], std::to_string(mount.GetEffectiveSpeed(bot, canFly)));
                 SetDuration(castDuration);
                 didMount = true;
             }

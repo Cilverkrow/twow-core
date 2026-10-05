@@ -50,9 +50,10 @@ string(FIND "${ai_cpp}" "[ItemUse] bot=%u level=%u uses=%u" item_use_line)
 if (item_use_line EQUAL -1)
   message(FATAL_ERROR "[ItemUse] line missing (#474 acceptance)")
 endif()
-# Hotfix 8.11: an opened container's loot is taken whole (no reopen loop).
+# Hotfix 8.11: an opened container's loot is taken whole (no reopen loop). Only the tail of the
+# condition is pinned: #485 (core#279) put the skin loot exceptions in front of it.
 file(READ "${PB_SOURCE_DIR}/strategy/actions/LootAction.cpp" loot_cpp)
-string(FIND "${loot_cpp}" "if (loot_type != LOOT_SKINNING && !guid.IsItem() && !IsLootAllowed(itemQualifier, ai))" own_item)
+string(FIND "${loot_cpp}" "!guid.IsItem() && !IsLootAllowed(itemQualifier, ai))" own_item)
 if (own_item EQUAL -1)
   message(FATAL_ERROR "StoreLoot must take an opened container's loot whole (#474)")
 endif()

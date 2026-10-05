@@ -1935,6 +1935,61 @@ Funserver.Loot.Units.BoePool.LevelWindow = 4
 Funserver.Loot.Units.BoePool.ItemLevelMargin = 5
 Funserver.Loot.Units.BoePool.EpicShare = 0.2
 
+# Funserver.Loot.Rules482.Enabled
+#   twow-repo#482 (train 9), owner rule table v5. Raids listed in Funserver.Loot.Raid.Maps and
+#   dungeons listed in Funserver.Loot.Dungeon.Maps use these rules instead of the units above;
+#   rares and unlisted maps keep the units. Needs Funserver.Loot.Units.Enabled = 1.
+#   Raids: set pieces by the class mix of the members present (only classes where a member would
+#   upgrade, +5 item level from 2 set pieces worn) or tokens; own epic items OwnMin sure, then 33 %
+#   per further slot, duplicates at 25 % weight; no BoE pool. Dungeons: own table first, then the
+#   BoE pool up to the band maximum. Profiles and bands: src/game/FunserverLootRules.h.
+#   Default: 0 (off)
+# Funserver.Loot.Raid.Maps
+#   Raid map -> profile (T1, T2, T2ES, LK10, T25, T3, T35, TOK20). Empty = built-in default.
+# Funserver.Loot.Dungeon.Maps
+#   Dungeon map -> level band (10-20, 20-30, 30-40, 40-50, 50-60, 60+). Empty = built-in default.
+# Funserver.Loot.Raid.Tokens
+#   Token items per raid map, "map:id,id-id;map:...". Empty = built-in default (live data 2026-10-04).
+# Funserver.Loot.Rules482.LegendaryPreset
+#   Legendary parts with their own chance instead of Rate.Drop.Item.Legendary (A, B, C, off).
+#   A: Bindings 63 %, Eye of Sulfuras 40 %, 4 Sulfuron Ingots, Splinter of Atiesh 100 %;
+#   B: 40 % / 33 % / 2 / 75 %; C: 30.5 % / 21 % / 2 / 55 %. Empty = A.
+# Funserver.Loot.Rules482.LegendaryChance
+#   Per-item override "item:percent,..." on top of the preset. Empty = none.
+# Funserver.Loot.Rules482.LegendaryCount
+#   Per-item fixed count "item:count,..." (drops always). Empty = none.
+# Funserver.Loot.Rules482.DungeonEpicMaxChance
+#   Dungeons: at most this chance (percent) for any own epic per boss; 0 = no cap.
+#   Default: 35
+# Funserver.Loot.Rules482.DungeonWorldEpicMaxBase
+#   Dungeons: epic weapons and armour below this base chance (percent) are world drops and weigh
+#   like the table's world-drop blues (mean base, blue weight). Default: 0.05
+# Funserver.Loot.World.BoeScale.Rare
+# Funserver.Loot.World.BoeScale.Epic
+#   Outside instances: blue / epic BoE weapons and armour with a world-drop chance (below
+#   Funserver.Loot.World.BoeMaxBase) roll with this factor instead of the quality rate, also in
+#   loot groups. 1 = off. Default: 1
+# Funserver.Loot.World.BoeMaxBase
+#   Base chance (percent) below which a BoE entry counts as a world drop. Default: 0.05
+# Loot.MaxItems
+#   Total loot of one corpse or chest (16..32). Beyond the 16 client slots items wait in the
+#   overflow and refill looted slots when the loot is opened again. The trim rule cuts against it.
+#   Default: 16
+
+Funserver.Loot.Rules482.Enabled = 0
+Funserver.Loot.Raid.Maps = ""
+Funserver.Loot.Dungeon.Maps = ""
+Funserver.Loot.Raid.Tokens = ""
+Funserver.Loot.Rules482.LegendaryPreset = ""
+Funserver.Loot.Rules482.LegendaryChance = ""
+Funserver.Loot.Rules482.LegendaryCount = ""
+Funserver.Loot.Rules482.DungeonEpicMaxChance = 35
+Funserver.Loot.Rules482.DungeonWorldEpicMaxBase = 0.05
+Funserver.Loot.World.BoeScale.Rare = 1
+Funserver.Loot.World.BoeScale.Epic = 1
+Funserver.Loot.World.BoeMaxBase = 0.05
+Loot.MaxItems = 16
+
 # Funserver.Rare.Respawn.Enabled
 #   Accelerated respawn for the audited open-world rare spawns listed in
 #   `creature_rare_respawn_registry` (twow-repo#298) only:
@@ -1967,6 +2022,51 @@ Funserver.Rare.Respawn.Divisor = 60
 Funserver.Rare.Respawn.MinSeconds = 60
 Funserver.Rare.Respawn.MaxSeconds = 1440
 Funserver.Rare.PoolBypass.Enabled = 0
+
+# Funserver.Riding.Stages.Enabled
+#   twow-repo#295. Riding in four stages: skill 762 values 75/150/225/300,
+#   trained at level 10/20/40/60. The server picks the mounted speed of player
+#   and bot mounts from the learned rank and the mount family:
+#     slow mounts  (family 1)  +60 / +100 / +100 / +100 %
+#     swift mounts (family 2)  +60 / +100 / +140 / +180 %
+#   Family 2 is every mount spell whose own speed is +100 % or more. Mounts
+#   flagged for 100 % speed (PvP, Frostsaber, Qiraji tanks) are family 2 and
+#   never drop below +100 %; the racing cars keep their own speed. Without
+#   riding skill a mount gives level / 2 % as before. NPCs are never affected.
+#   The playerbots read the same switch (training costs, mount purchase).
+#   Takes effect at the next mount-up (a rank learned while mounted applies
+#   at once).
+#   0 keeps the inherited speeds: 75 -> +60 %, 150 and above -> +100 %.
+#   Default: 0 (off)
+
+Funserver.Riding.Stages.Enabled = 0
+
+# Funserver.PlayerSnare.SlowPct
+#   twow-repo#295. Movement slows (negative SPELL_AURA_MOD_DECREASE_SPEED)
+#   cast by player-controlled units - players, bots and their pets, guardians,
+#   totems, traps and charmed units - are this many percent stronger, e.g. 40
+#   turns a 50 % slow into a 70 % slow. Slows of NPCs and slows a unit puts on
+#   itself stay unchanged, and so do the casts of a player or bot charmed by an
+#   NPC (Dominate Mind, Cause Insanity, Chains of Kel'Thuzad): they count as NPC
+#   casts. Client tooltips keep showing the base values. Applies to new casts.
+#   Range: 0..100. Default: 0 (off)
+#
+# Funserver.PlayerSnare.MaxSlowPct
+#   Upper bound of a scaled slow in percent. A slow that is already stronger
+#   keeps its value; the scaling never weakens a slow.
+#   Range: 0..100. Default: 90
+#
+# Funserver.PlayerSnare.RootDurationPct
+#   Roots (SPELL_AURA_MOD_ROOT) cast by player-controlled units (same caster
+#   rule as SlowPct, NPC-charmed players excluded) last this many
+#   percent longer, before diminishing returns: 40 turns an 8 s root into
+#   11.2 s. The whole aura of the spell lasts longer, so a damage-over-time
+#   part (Entangling Roots) deals more damage. Permanent auras stay unchanged.
+#   Range: 0..200. Default: 0 (off)
+
+Funserver.PlayerSnare.SlowPct = 0
+Funserver.PlayerSnare.MaxSlowPct = 90
+Funserver.PlayerSnare.RootDurationPct = 0
 
 # Rogue.KeepComboPointsOnSelect
 #   Selecting another unit no longer drops the combo points of a rogue or druid;

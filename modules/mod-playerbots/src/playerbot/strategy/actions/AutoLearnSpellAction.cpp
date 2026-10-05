@@ -252,6 +252,7 @@ void AutoLearnSpellAction::LearnTrainerSpells(std::ostringstream* out)
 void AutoLearnSpellAction::LearnQuestSpells(std::ostringstream* out)
 {
     // #351: cached class quests (RequiredClasses matching, not repeatable).
+    // twow-repo#295 (owner 2026-10-02): class mounts stay quest rewards; this path is not behind the riding stages switch.
     for (auto const& [questId, quest] : LearnCacheFor(bot->getClass()).quests)
     {
 

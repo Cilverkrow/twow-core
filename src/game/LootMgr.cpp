@@ -30,11 +30,18 @@
 #include "SpellAuraDefines.h"
 #include "SpellAuras.h"
 #include "FunserverLootUnits.h"
+#include "FunserverLootRules.h"
 #include "Config/Config.h"
 
 #include <map>
 #include <memory>
 #include <set>
+#include <unordered_map>
+
+uint32 GetMaxLootItems()
+{
+    return sWorld.getConfig(CONFIG_UINT32_LOOT_MAX_ITEMS);
+}
 
 static eConfigFloatValues const qualityToRate[MAX_ITEM_QUALITY] =
 {
@@ -46,6 +53,22 @@ static eConfigFloatValues const qualityToRate[MAX_ITEM_QUALITY] =
     CONFIG_FLOAT_RATE_DROP_ITEM_LEGENDARY,                               // ITEM_QUALITY_LEGENDARY
     CONFIG_FLOAT_RATE_DROP_ITEM_ARTIFACT,                                // ITEM_QUALITY_ARTIFACT
 };
+
+// twow-repo#482 (owner 2026-10-04): world BoE drops outside instances. Blue and epic BoE
+// weapons and armour with a world-drop chance (below Funserver.Loot.World.BoeMaxBase) roll
+// with Funserver.Loot.World.BoeScale.Rare / .Epic instead of the quality rate, also inside
+// loot groups. Filled by LoadFunserverBoePool; empty = off.
+static std::unordered_map<uint32, float> sFunserverWorldBoeScale;
+static float sFunserverWorldBoeMaxBase = 0.05f;
+
+static float FunserverWorldBoeScale(LootStoreItem const& item, Player const* lootOwner)
+{
+    if (sFunserverWorldBoeScale.empty() || item.chance >= sFunserverWorldBoeMaxBase || !lootOwner ||
+        !lootOwner->IsInWorld() || lootOwner->GetMap()->IsDungeon())
+        return 0.0f;
+    auto const scale = sFunserverWorldBoeScale.find(item.itemid);
+    return scale != sFunserverWorldBoeScale.end() ? scale->second : 0.0f;
+}
 
 LootStore LootTemplates_Creature(     "creature_loot_template",      "creature entry",                     true);
 LootStore LootTemplates_Disenchant(   "disenchant_loot_template",    "item disenchant id",                 true);
@@ -398,6 +421,8 @@ bool LootStoreItem::Roll(bool rate, Player const* lootOwner) const
     ItemPrototype const *pProto = sObjectMgr.GetItemPrototype(itemid);
 
     float qualityModifier = pProto && rate ? sWorld.getConfig(qualityToRate[pProto->Quality]) : 1.0f;
+    if (float const worldScale = rate ? FunserverWorldBoeScale(*this, lootOwner) : 0.0f)
+        qualityModifier = worldScale;                       // world BoE: the scale replaces the rate
 
     return roll_chance_f(chance * qualityModifier * (100.0f + GetGatheringItemChanceMod(lootOwner, itemid)) / 100.0f);
 }
@@ -611,6 +636,49 @@ void Loot::AddItem(LootStoreItem const & item)
     }
 }
 
+// twow-repo#482 (train 9). Only plain items (no free-for-all, no condition) move:
+// FFA and conditional items are tracked per player by their index in `items`.
+// Moved items keep their unlootedCount share, so the corpse stays lootable.
+void Loot::MoveExcessToOverflow()
+{
+    size_t const questReserve = std::min<size_t>(m_questItems.size(), MAX_NR_LOOT_CLIENT_SLOTS);
+    size_t const visible = MAX_NR_LOOT_CLIENT_SLOTS - questReserve;
+    if (items.size() <= visible)
+        return;
+
+    LootItemList keep;
+    LootItemList moved;
+    keep.reserve(items.size());
+    for (LootItem const& item : items)
+    {
+        bool const movable = !item.freeforall && !item.conditionId;
+        if (keep.size() < visible || !movable)
+            keep.push_back(item);
+        else
+            moved.push_back(item);
+    }
+    items.swap(keep);
+    m_overflowItems.insert(m_overflowItems.end(), moved.begin(), moved.end());
+}
+
+std::vector<uint8> Loot::RefillFromOverflow()
+{
+    std::vector<uint8> refilled;
+    for (uint8 slot = 0; slot < items.size() && !m_overflowItems.empty(); ++slot)
+    {
+        LootItem const& old = items[slot];
+        // Only finished plain slots. A won roll leaves is_blocked set (Group::CountTheRoll only
+        // sets is_looted), so is_looted alone marks a finished slot; an item under a running roll
+        // is never looted yet (test 2026-10-04: group loot left 16 overflow items stuck).
+        if (!old.is_looted || old.freeforall || old.conditionId)
+            continue;
+        items[slot] = m_overflowItems.front();
+        m_overflowItems.erase(m_overflowItems.begin());
+        refilled.push_back(slot);
+    }
+    return refilled;
+}
+
 // Calls processor of corresponding LootTemplate (which handles everything including references)
 bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, bool personal, bool noEmptyError, WorldObject const* looted, WorldObject const* bonusSource)
 {
@@ -645,7 +713,12 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
     if (unitsContent != FUNSERVER_LOOT_NONE)
     {
         Unit const* levelSource = bonusOwner->IsUnit() ? static_cast<Unit const*>(bonusOwner) : loot_owner;
-        tab->ProcessUnits(*this, loot_owner, unitsContent, levelSource->GetLevel(), bonusOwner->GetMapId());
+        // twow-repo#482 (train 9): raids with a profile and dungeons with a band follow rule
+        // table v5; everything else (rares, unlisted maps) keeps the #323 units.
+        if (HasFunserverLootRules482(unitsContent, bonusOwner->GetMapId()))
+            tab->ProcessRules482(*this, loot_owner, bonusOwner, unitsContent, levelSource->GetLevel(), bonusOwner->GetMapId());
+        else
+            tab->ProcessUnits(*this, loot_owner, unitsContent, levelSource->GetLevel(), bonusOwner->GetMapId());
     }
     else
     {
@@ -654,6 +727,12 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* loot_owner, 
             tab->ProcessBonus(*this, store.IsRatesAllowed(), loot_owner, selectionMultiplier,
                               sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BONUS_DUPLICATE_DECAY));
     }
+
+    // twow-repo#482: only the 16 client slots stay visible, the rest waits in the overflow.
+    MoveExcessToOverflow();
+
+    // twow-repo#482: generated loot size against the configured limit (debug only).
+    DEBUG_LOG("[LootSlots] generated loot_id=%u items=%u overflow=%u quest=%u max=%u", loot_id, uint32(items.size()), uint32(m_overflowItems.size()), uint32(m_questItems.size()), uint32(MAX_NR_LOOT_ITEMS));
 
     // Setting access rights for group loot case
     Group* group = loot_owner->GetGroup();
@@ -749,7 +828,8 @@ QuestItemList* Loot::FillQuestLoot(Player* player)
     if (!player->IsInWorld())
         return nullptr;
 
-    if (items.size() == MAX_NR_LOOT_ITEMS) return nullptr;
+    // #482: quest items take client slots behind `items`; the client drops index >= 16.
+    if (items.size() >= MAX_NR_LOOT_CLIENT_SLOTS) return nullptr;
     QuestItemList *ql = new QuestItemList();
 
     for (uint8 i = 0; i < m_questItems.size(); ++i)
@@ -768,7 +848,7 @@ QuestItemList* Loot::FillQuestLoot(Player* player)
 
             item.is_blocked = true;
 
-            if (items.size() + ql->size() == MAX_NR_LOOT_ITEMS)
+            if (items.size() + ql->size() >= MAX_NR_LOOT_CLIENT_SLOTS)
                 break;
         }
     }
@@ -1030,6 +1110,18 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
 
     uint8 itemsShown = 0;
 
+    // twow-repo#482: the 1.12 client keeps loot slots in a fixed array of 16. More entries
+    // or a slot index >= 16 damaged the client heap (two crashes in the stage-20 test),
+    // so no SMSG_LOOT_RESPONSE ever carries more than 16 entries or an index >= 16.
+    uint32 suppressed = 0;
+    auto const clientSlotOk = [&itemsShown, &suppressed](uint32 slot)
+    {
+        if (slot < MAX_NR_LOOT_CLIENT_SLOTS && itemsShown < MAX_NR_LOOT_CLIENT_SLOTS)
+            return true;
+        ++suppressed;
+        return false;
+    };
+
     //gold
     b << uint32(l.gold);
 
@@ -1061,6 +1153,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                         // item shall not be displayed.
                         continue;
 
+                    if (!clientSlotOk(i))
+                        continue;
                     b << uint8(i) << l.items[i];
                     b << uint8(slot_type);
                     ++itemsShown;
@@ -1078,6 +1172,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                         // item shall not be displayed.
                         continue;
 
+                    if (!clientSlotOk(i))
+                        continue;
                     b << uint8(i) << l.items[i];
                     b << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT);
                     ++itemsShown;
@@ -1107,6 +1203,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
             {
                 if (!l.items[i].is_looted && !l.items[i].freeforall && l.items[i].AllowedForPlayer(lv.viewer, l.GetLootTarget()))
                 {
+                    if (!clientSlotOk(i))
+                        continue;
                     b << uint8(i) << l.items[i];
                     b << uint8(slot_type);
                     ++itemsShown;
@@ -1139,6 +1237,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                 continue;
 
             // allow loot
+            if (!clientSlotOk(uint32(l.items.size() + (qi - q_list->begin()))))
+                continue;
             b << uint8(l.items.size() + (qi - q_list->begin()));
             b << item;
             b << uint8(slot_type);
@@ -1156,6 +1256,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
             LootItem &item = l.items[fi.index];
             if (!fi.is_looted && !item.is_looted)
             {
+                if (!clientSlotOk(fi.index))
+                    continue;
                 b << uint8(fi.index) << item;
                 b << uint8(slot_type);                      // allow loot
                 ++itemsShown;
@@ -1181,6 +1283,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                 && lootPlayerNonQuestNonFFAConditionalItems.find(l.roundRobinPlayer) != lootPlayerNonQuestNonFFAConditionalItems.end())
                 continue;
 
+            if (!clientSlotOk(ci.index))
+                continue;
             b << uint8(ci.index) << item;
             b << uint8(slot_type);                          // allow loot
             ++itemsShown;
@@ -1189,6 +1293,11 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
 
     //update number of items shown
     b.put<uint8>(count_pos, itemsShown);
+    // twow-repo#482: a suppressed entry means the 16-slot guard caught a loot that did not fit.
+    if (suppressed)
+        sLog.outError("[LootSlots] response viewer=%s shown=%u stored=%u suppressed=%u", lv.viewer->GetName(), uint32(itemsShown), uint32(l.items.size()), suppressed);
+    else
+        DEBUG_LOG("[LootSlots] response viewer=%s shown=%u stored=%u", lv.viewer->GetName(), uint32(itemsShown), uint32(l.items.size()));
 
     return b;
 }
@@ -1282,7 +1391,8 @@ LootStoreItem const * LootTemplate::LootGroup::Roll(Loot const& loot, Player con
             if (i.chance >= 100.0f)
                 return &i;
 
-            Roll -= i.chance * (100.0f + GetGatheringItemChanceMod(lootOwner, i.itemid)) / 100.0f;
+            float const worldScale = FunserverWorldBoeScale(i, lootOwner);
+            Roll -= i.chance * (worldScale ? worldScale : 1.0f) * (100.0f + GetGatheringItemChanceMod(lootOwner, i.itemid)) / 100.0f;
             if (Roll < 0)
                 return &i;
         }
@@ -1503,6 +1613,33 @@ void LootTemplate::AddEntry(LootStoreItem& item)
         Entries.push_back(item);
 }
 
+// twow-repo#482 round 2 (owner 2026-10-04): legendary parts roll with their own chance
+// (Funserver.Loot.Rules482.LegendaryPreset plus per-item overrides), never with the rates;
+// count items drop always with a fixed count. Filled by LoadFunserverBoePool.
+static std::map<uint32, float> sFunserverLegendaryChance;
+static std::map<uint32, uint32> sFunserverLegendaryCount;
+
+// True when the item is a legendary part; then rolled tells whether it drops and dropItem
+// carries the count to add.
+static bool RollFunserverLegendary(LootStoreItem const& item, LootStoreItem& dropItem, bool& rolled)
+{
+    if (item.mincountOrRef <= 0 || item.needs_quest)
+        return false;
+    auto const count = sFunserverLegendaryCount.find(item.itemid);
+    if (count != sFunserverLegendaryCount.end())
+    {
+        dropItem.mincountOrRef = int32(count->second);
+        dropItem.maxcount = uint8(count->second);
+        rolled = true;
+        return true;
+    }
+    auto const chance = sFunserverLegendaryChance.find(item.itemid);
+    if (chance == sFunserverLegendaryChance.end())
+        return false;
+    rolled = roll_chance_f(chance->second);
+    return true;
+}
+
 // Rolls for every item in the template and adds the rolled items the the loot
 void LootTemplate::Process(Loot& loot, LootStore const& store, bool rate, Player const* lootOwner, uint8 groupId) const
 {
@@ -1518,6 +1655,15 @@ void LootTemplate::Process(Loot& loot, LootStore const& store, bool rate, Player
     // Rolling non-grouped items
     for (const auto& itr : Entries)
     {
+        LootStoreItem legendary = itr;
+        bool legendaryRolled = false;
+        if (RollFunserverLegendary(itr, legendary, legendaryRolled))
+        {
+            if (legendaryRolled)
+                loot.AddItem(legendary);
+            continue;
+        }
+
         if (!itr.Roll(rate, lootOwner))
             continue;                                       // Bad luck for the entry
 
@@ -1603,6 +1749,16 @@ static std::map<uint32, std::vector<uint32>> sFunserverInstanceBossLoot;
 // Funserver.Loot.Units.Raid.Range; maps not listed keep the fixed #323 unit count.
 static std::map<uint32, FunserverLootRange> sFunserverRaidRanges;
 
+// twow-repo#482 (train 9): raid profile, dungeon band and token items per map, from
+// Funserver.Loot.Raid.Maps / Funserver.Loot.Dungeon.Maps / Funserver.Loot.Raid.Tokens.
+static std::map<uint32, FunserverLootRules::RaidProfile const*> sFunserverRaidProfiles;
+static std::map<uint32, FunserverLootRules::DungeonBand const*> sFunserverDungeonBands;
+static std::map<uint32, std::set<uint32>> sFunserverRaidTokens;
+// Funserver.Loot.Rules482.DungeonEpicMaxChance as a fraction (0 = no cap).
+static float sFunserverDungeonEpicCap = 0.35f;
+// Funserver.Loot.Rules482.DungeonWorldEpicMaxBase: epics below this base chance (percent) count as world drops.
+static float sFunserverDungeonWorldEpicMaxBase = 0.05f;
+
 // Normal raid loot: weapons and armour outside item sets. Set pieces and tokens
 // (non-equipment) come only from the normal roll, never from the fill.
 static bool IsFunserverNormalRaidLoot(ItemPrototype const* proto)
@@ -1641,6 +1797,40 @@ void LoadFunserverBoePool()
     sFunserverBoePool.clear();
     sFunserverInstanceBossLoot.clear();
     sFunserverRaidRanges.clear();
+    sFunserverRaidProfiles.clear();
+    sFunserverDungeonBands.clear();
+    sFunserverRaidTokens.clear();
+    sFunserverLegendaryChance.clear();
+    sFunserverLegendaryCount.clear();
+    sFunserverWorldBoeScale.clear();
+
+    // World BoE scale (owner 2026-10-04, #482): 1 = off for that quality.
+    float const worldRare = std::max(sConfig.GetFloatDefault("Funserver.Loot.World.BoeScale.Rare", 1.0f), 0.0f);
+    float const worldEpic = std::max(sConfig.GetFloatDefault("Funserver.Loot.World.BoeScale.Epic", 1.0f), 0.0f);
+    sFunserverWorldBoeMaxBase = std::max(sConfig.GetFloatDefault("Funserver.Loot.World.BoeMaxBase", 0.05f), 0.0f);
+    if (worldRare != 1.0f || worldEpic != 1.0f)
+    {
+        std::unique_ptr<QueryResult> dropped(WorldDatabase.Query(
+            "SELECT DISTINCT `item` FROM `creature_loot_template` WHERE `mincountOrRef` > 0 "
+            "UNION SELECT DISTINCT `item` FROM `reference_loot_template` WHERE `mincountOrRef` > 0"));
+        if (dropped)
+        {
+            do
+            {
+                uint32 const itemId = dropped->Fetch()[0].GetUInt32();
+                ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
+                if (!proto || proto->Bonding != BIND_WHEN_EQUIPPED ||
+                    (proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR))
+                    continue;
+                float const scale = proto->Quality == ITEM_QUALITY_RARE ? worldRare : proto->Quality == ITEM_QUALITY_EPIC ? worldEpic : 1.0f;
+                if (scale != 1.0f)
+                    sFunserverWorldBoeScale[itemId] = scale;
+            }
+            while (dropped->NextRow());
+        }
+        sLog.outString("Funserver world BoE scale: blue x%.2f, epic x%.2f below %.3f %% base, %u items",
+            worldRare, worldEpic, sFunserverWorldBoeMaxBase, uint32(sFunserverWorldBoeScale.size()));
+    }
 
     if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_UNITS_ENABLED))
         return;
@@ -1649,6 +1839,60 @@ void LoadFunserverBoePool()
     sFunserverRaidRanges = FunserverParseMapRanges(sConfig.GetStringDefault("Funserver.Loot.Units.Raid.Range", ""));
     for (auto const& range : sFunserverRaidRanges)
         sLog.outString("Funserver raid loot range: map %u, %u..%u normal items", range.first, range.second.min, range.second.max);
+
+    if (sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_RULES_482))
+    {
+        using namespace FunserverLootRules;
+        // An empty or missing key means the built-in default (mangosd.conf.dist lists them as "").
+        auto const configOr = [](char const* key, char const* fallback)
+        {
+            std::string const value = sConfig.GetStringDefault(key, "");
+            return value.empty() ? std::string(fallback) : value;
+        };
+        for (auto const& entry : ParseMapNames(configOr("Funserver.Loot.Raid.Maps", DEFAULT_RAID_MAPS)))
+        {
+            if (RaidProfile const* profile = FindRaidProfile(entry.second))
+                sFunserverRaidProfiles[entry.first] = profile;
+            else
+                sLog.outError("Funserver.Loot.Raid.Maps: map %u names unknown profile %s", entry.first, entry.second.c_str());
+        }
+        for (auto const& entry : ParseMapNames(configOr("Funserver.Loot.Dungeon.Maps", DEFAULT_DUNGEON_MAPS)))
+        {
+            if (DungeonBand const* band = FindDungeonBand(entry.second))
+                sFunserverDungeonBands[entry.first] = band;
+            else
+                sLog.outError("Funserver.Loot.Dungeon.Maps: map %u names unknown band %s", entry.first, entry.second.c_str());
+        }
+        for (auto const& entry : ParseTokenLists(configOr("Funserver.Loot.Raid.Tokens", DEFAULT_RAID_TOKENS)))
+            sFunserverRaidTokens[entry.first].insert(entry.second.begin(), entry.second.end());
+        sLog.outString("Funserver loot rules #482: %u raid profiles, %u dungeon bands, %u token raids",
+            uint32(sFunserverRaidProfiles.size()), uint32(sFunserverDungeonBands.size()), uint32(sFunserverRaidTokens.size()));
+
+        // Legendary parts: preset (A default, "off" = none), then per-item overrides.
+        std::string const presetName = configOr("Funserver.Loot.Rules482.LegendaryPreset", "A");
+        if (LegendaryPreset const* preset = FindLegendaryPreset(presetName))
+        {
+            sFunserverLegendaryChance = ParseItemValues(preset->chances);
+            for (auto const& entry : ParseItemValues(preset->counts))
+                sFunserverLegendaryCount[entry.first] = uint32(entry.second);
+        }
+        else if (presetName != "off")
+            sLog.outError("Funserver.Loot.Rules482.LegendaryPreset: unknown preset %s", presetName.c_str());
+        for (auto const& entry : ParseItemValues(sConfig.GetStringDefault("Funserver.Loot.Rules482.LegendaryChance", "")))
+        {
+            sFunserverLegendaryChance[entry.first] = entry.second;
+            sFunserverLegendaryCount.erase(entry.first);
+        }
+        for (auto const& entry : ParseItemValues(sConfig.GetStringDefault("Funserver.Loot.Rules482.LegendaryCount", "")))
+        {
+            sFunserverLegendaryCount[entry.first] = std::min<uint32>(uint32(entry.second), 255);
+            sFunserverLegendaryChance.erase(entry.first);
+        }
+        sFunserverDungeonEpicCap = std::min(std::max(sConfig.GetFloatDefault("Funserver.Loot.Rules482.DungeonEpicMaxChance", 35.0f), 0.0f), 100.0f) / 100.0f;
+        sFunserverDungeonWorldEpicMaxBase = std::max(sConfig.GetFloatDefault("Funserver.Loot.Rules482.DungeonWorldEpicMaxBase", 0.05f), 0.0f);
+        sLog.outString("Funserver loot rules #482: legendary preset %s, %u chance and %u count items, dungeon epic cap %.0f %%",
+            presetName.c_str(), uint32(sFunserverLegendaryChance.size()), uint32(sFunserverLegendaryCount.size()), sFunserverDungeonEpicCap * 100.0f);
+    }
 
     // Items that already drop somewhere in the world; the prototype filter
     // below keeps BoE blue/epic weapons and armour for levels 10..60.
@@ -1923,6 +2167,441 @@ void LootTemplate::ProcessUnits(Loot& loot, Player const* /*lootOwner*/, uint8 c
         loot.AddItem(poolItem);
         ++selected[pool[pick]->itemId];
     }
+}
+
+// ---------- twow-repo#482 (train 9): owner rule table v5 ----------
+
+bool HasFunserverLootRules482(uint8 content, uint32 mapId)
+{
+    if (!sWorld.getConfig(CONFIG_BOOL_FUNSERVER_LOOT_RULES_482))
+        return false;
+    if (content == FUNSERVER_LOOT_RAID)
+        return sFunserverRaidProfiles.find(mapId) != sFunserverRaidProfiles.end();
+    if (content == FUNSERVER_LOOT_DUNGEON)
+        return sFunserverDungeonBands.find(mapId) != sFunserverDungeonBands.end();
+    return false;
+}
+
+namespace
+{
+    float RollChance482() { return frand(0.0f, 1.0f); }
+
+    // Own boss items of a raid: epic weapons and armour outside item sets.
+    bool IsRaidOwnItem482(ItemPrototype const* proto)
+    {
+        return proto && proto->Quality >= ITEM_QUALITY_EPIC && IsFunserverNormalRaidLoot(proto);
+    }
+
+    enum class LootCategory482 { Mandatory, Set, Own, Normal };
+
+    LootCategory482 Classify482(ItemPrototype const* proto, FunserverLootRules::SetMode mode, std::set<uint32> const* tokens)
+    {
+        if (!proto)
+            return LootCategory482::Normal;
+        if (mode == FunserverLootRules::SetMode::Tokens && tokens && tokens->count(proto->ItemId))
+            return LootCategory482::Set;
+        if (proto->StartQuest || proto->Class == ITEM_CLASS_QUEST)
+            return LootCategory482::Mandatory;              // heads and quest drops are never trimmed
+        // Epic and legendary non-equipment (Bindings of the Windseeker, Eye of Sulfuras, Sulfuron
+        // Ingot, mounts) is no "normal loot" either: the trim rule must never cut it (MC check
+        // with Rate.Drop.Item.Legendary 10, 2026-10-04).
+        if (proto->Quality >= ITEM_QUALITY_EPIC && proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR)
+            return LootCategory482::Mandatory;
+        if (mode == FunserverLootRules::SetMode::Mix && proto->ItemSet)
+            return LootCategory482::Set;
+        if (IsRaidOwnItem482(proto))
+            return LootCategory482::Own;
+        return LootCategory482::Normal;
+    }
+
+    // Weighted pick; weights.size() when every weight is 0.
+    size_t PickWeighted482(std::vector<float> const& weights)
+    {
+        float total = 0.0f;
+        for (float w : weights)
+            total += w;
+        if (total <= 0.0f)
+            return weights.size();
+        float roll = frand(0.0f, total);
+        for (size_t i = 0; i < weights.size(); ++i)
+        {
+            roll -= weights[i];
+            if (roll < 0.0f && weights[i] > 0.0f)
+                return i;
+        }
+        for (size_t i = weights.size(); i > 0; --i)         // boundary roll: last drawable entry
+            if (weights[i - 1] > 0.0f)
+                return i - 1;
+        return weights.size();
+    }
+
+    // Single class of a class-restricted item (set pieces), 0 when it is not exactly one class.
+    uint32 SingleClassOf482(uint32 allowableClass)
+    {
+        for (uint32 c = 1; c <= MAX_CLASSES; ++c)
+            if (allowableClass == (1u << (c - 1)))
+                return c;
+        return 0;
+    }
+
+    // A present member upgrades with this set piece: usable by class and race, equippable,
+    // and better than the equipped item of its slot (+5 item level from 2 pieces of the set worn).
+    bool IsSetUpgradeFor482(Player const* member, ItemPrototype const* proto)
+    {
+        if (!(proto->AllowableClass & member->GetClassMask()) || !(proto->AllowableRace & member->getRaceMask()))
+            return false;
+        uint8 const slot = member->FindEquipSlot(proto, NULL_SLOT, true);
+        if (slot == NULL_SLOT)
+            return false;
+        Item const* equipped = member->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        uint32 const equippedLevel = equipped ? equipped->GetProto()->ItemLevel : 0;
+        uint32 worn = 0;
+        for (uint8 s = EQUIPMENT_SLOT_START; s < EQUIPMENT_SLOT_END; ++s)
+            if (Item const* item = member->GetItemByPos(INVENTORY_SLOT_BAG_0, s))
+                if (item->GetProto()->ItemSet == proto->ItemSet)
+                    ++worn;
+        return FunserverLootRules::IsSetUpgrade(proto->ItemLevel, equippedLevel, worn);
+    }
+
+    // Removes up to `count` normal items from the end of the loot (before the per-player lists
+    // are built), keeping unlootedCount in step with Loot::AddItem.
+    void TrimNormal482(Loot& loot, uint32 count, FunserverLootRules::SetMode mode, std::set<uint32> const* tokens)
+    {
+        for (size_t i = loot.items.size(); i > 0 && count; --i)
+        {
+            LootItem const& item = loot.items[i - 1];
+            ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid);
+            if (Classify482(proto, mode, tokens) != LootCategory482::Normal || item.freeforall)
+                continue;
+            if (!item.conditionId && (!proto || !(proto->Flags & ITEM_FLAG_PARTY_LOOT)) && loot.unlootedCount)
+                --loot.unlootedCount;
+            loot.items.erase(loot.items.begin() + (i - 1));
+            --count;
+        }
+    }
+}
+
+void LootTemplate::ProcessRules482(Loot& loot, Player const* lootOwner, WorldObject const* looted, uint8 content, uint32 level, uint32 mapId) const
+{
+    using namespace FunserverLootRules;
+
+    std::vector<FunserverUnitCandidate> raw;
+    CollectUnitCandidates(raw, 1.0f, true);
+
+    std::map<uint32, uint32> selected;                      // copies already in the loot
+    for (LootItem const& item : loot.items)
+        ++selected[item.itemid];
+
+    // ---------------- dungeons: own table first, then the BoE pool ----------------
+    if (content == FUNSERVER_LOOT_DUNGEON)
+    {
+        DungeonBand const& band = *sFunserverDungeonBands.at(mapId);
+        uint32 const minQuality = std::max<uint32>(band.minQuality, ITEM_QUALITY_UNCOMMON);
+
+        std::vector<FunserverUnitCandidate> own;
+        std::set<uint32> ownIds;
+        uint32 ownMaxItemLevel = 0;
+        for (FunserverUnitCandidate const& c : raw)
+        {
+            if (c.baseChance <= 0.0f || !IsUnitLootItemAllowed(*c.item, loot))
+                continue;
+            ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
+            if (!proto || proto->Quality < minQuality || selected[c.item->itemid] || !ownIds.insert(c.item->itemid).second)
+                continue;
+            own.push_back(c);
+            ownMaxItemLevel = std::max(ownMaxItemLevel, proto->ItemLevel);
+        }
+
+        DungeonPlan const plan = PlanDungeon(band, uint32(own.size()), RollChance482);
+
+        // Own items: distinct, weighted by base chance and the dungeon quality weights.
+        auto const qualityWeight = [](uint32 quality)
+        {
+            return sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
+                (FUNSERVER_LOOT_DUNGEON - FUNSERVER_LOOT_RARE) * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(quality)));
+        };
+        // World epics in a boss table (owner 2026-10-04, #482 a): epics with a world-drop base
+        // chance weigh like the table's world-drop blues (mean base, blue weight), so a given
+        // world epic drops about as often as a given world blue.
+        float worldBlueBase = 0.0f;
+        uint32 worldBlues = 0;
+        for (FunserverUnitCandidate const& c : own)
+            if (c.baseChance < sFunserverDungeonWorldEpicMaxBase && sObjectMgr.GetItemPrototype(c.item->itemid)->Quality == ITEM_QUALITY_RARE)
+            {
+                worldBlueBase += c.baseChance;
+                ++worldBlues;
+            }
+        if (worldBlues)
+            worldBlueBase /= float(worldBlues);
+        auto const ownWeight = [&](FunserverUnitCandidate const& c, bool& epic)
+        {
+            ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
+            epic = proto->Quality >= ITEM_QUALITY_EPIC;
+            if (proto->Quality == ITEM_QUALITY_EPIC && c.baseChance < sFunserverDungeonWorldEpicMaxBase &&
+                (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR))  // mounts keep weight 100
+                return (worldBlues ? worldBlueBase : c.baseChance) * qualityWeight(ITEM_QUALITY_RARE);
+            return c.baseChance * qualityWeight(proto->Quality);
+        };
+        // Epic cap per boss (owner 2026-10-04): scale the epic weights so that "any epic"
+        // stays at or below Funserver.Loot.Rules482.DungeonEpicMaxChance.
+        float epicWeight = 0.0f;
+        float otherWeight = 0.0f;
+        for (FunserverUnitCandidate const& c : own)
+        {
+            bool epic = false;
+            float const weight = ownWeight(c, epic);
+            (epic ? epicWeight : otherWeight) += weight;
+        }
+        float const epicScale = EpicWeightScale(epicWeight, otherWeight, plan.own, sFunserverDungeonEpicCap);
+        for (uint32 n = 0; n < plan.own && !own.empty(); ++n)
+        {
+            std::vector<float> weights(own.size());
+            for (size_t i = 0; i < own.size(); ++i)
+            {
+                bool epic = false;
+                weights[i] = ownWeight(own[i], epic) * (epic ? epicScale : 1.0f);
+            }
+            size_t const pick = PickWeighted482(weights);
+            if (pick >= own.size())
+                break;
+            loot.AddItem(*own[pick].item);
+            ++selected[own[pick].item->itemid];
+            own[pick] = own.back();
+            own.pop_back();
+        }
+
+        // BoE pool (core#190 rules: level window, item level of the own table, epic share).
+        uint32 const window = sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BOE_LEVEL_WINDOW);
+        uint32 const margin = sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_BOE_ITEM_LEVEL_MARGIN);
+        float const epicShare = sWorld.getConfig(CONFIG_FLOAT_FUNSERVER_LOOT_BOE_EPIC_SHARE);
+        uint32 const floorQuality = sWorld.getConfig(CONFIG_UINT32_FUNSERVER_LOOT_FLOOR_DUNGEON);
+        std::vector<FunserverBoePoolItem const*> pool;
+        for (FunserverBoePoolItem const& item : sFunserverBoePool)
+            if (item.quality >= floorQuality && !selected[item.itemId] && FunserverBoeLevelMatch(item.requiredLevel, level, window) &&
+                FunserverBoeItemLevelMatch(item.itemLevel, ownMaxItemLevel, margin))
+                pool.push_back(&item);
+        for (uint32 n = 0; n < plan.boe && !pool.empty(); ++n)
+        {
+            std::vector<float> weights(pool.size());
+            for (size_t i = 0; i < pool.size(); ++i)
+                weights[i] = (pool[i]->quality >= ITEM_QUALITY_EPIC && floorQuality < ITEM_QUALITY_EPIC) ? epicShare : 1.0f;
+            size_t const pick = PickWeighted482(weights);
+            if (pick >= pool.size())
+                break;
+            LootStoreItem const poolItem(pool[pick]->itemId, 100.0f, 0, 0, 1, 1);
+            loot.AddItem(poolItem);
+            pool[pick] = pool.back();
+            pool.pop_back();
+        }
+        DEBUG_LOG("[LootRules482] dungeon map=%u band=%s own=%u boe=%u epicScale=%.3f", mapId, band.name, plan.own, plan.boe, epicScale);
+        return;
+    }
+
+    // ---------------- raids: set pieces or tokens, own items, trim; no BoE ----------------
+    if (content != FUNSERVER_LOOT_RAID)
+        return;
+    RaidProfile const& profile = *sFunserverRaidProfiles.at(mapId);
+    auto const tokenAt = sFunserverRaidTokens.find(mapId);
+    std::set<uint32> const* tokens = tokenAt != sFunserverRaidTokens.end() ? &tokenAt->second : nullptr;
+
+    // What the normal roll already brought.
+    LootCounts counts;
+    std::map<uint32, uint32> fixedPerClass;
+    for (LootItem const& item : loot.items)
+    {
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item.itemid);
+        switch (Classify482(proto, profile.setMode, tokens))
+        {
+            case LootCategory482::Mandatory: ++counts.mandatory; break;
+            case LootCategory482::Set:
+                ++counts.fixedSet;
+                if (uint32 const cls = SingleClassOf482(proto->AllowableClass))
+                    ++fixedPerClass[cls];
+                break;
+            case LootCategory482::Own: ++counts.ownMin; break;   // split into min/extra below
+            case LootCategory482::Normal: ++counts.normal; break;
+        }
+    }
+    uint32 const ownHave = counts.ownMin;
+
+    // Own items: OwnMin sure, then 33 % per further slot; the normal roll counts.
+    uint32 const ownTarget = std::max(RollCount(profile.ownMin, profile.ownMax, EXTRA_CHANCE, RollChance482), ownHave);
+    counts.ownMin = std::min(profile.ownMin, ownTarget);
+    counts.ownExtra = ownTarget - counts.ownMin;
+
+    // Set pieces (Mix) or tokens.
+    std::vector<LootStoreItem const*> setItems;             // own-table set pieces or tokens, distinct
+    {
+        std::set<uint32> seen;
+        for (FunserverUnitCandidate const& c : raw)
+        {
+            if (!IsUnitLootItemAllowed(*c.item, loot) || !seen.insert(c.item->itemid).second)
+                continue;
+            ItemPrototype const* proto = sObjectMgr.GetItemPrototype(c.item->itemid);
+            if (Classify482(proto, profile.setMode, tokens) == LootCategory482::Set)
+                setItems.push_back(c.item);
+        }
+    }
+    std::vector<LootStoreItem> mapTokens;                   // bosses without own tokens draw the raid's list
+    if (profile.setMode == SetMode::Tokens && setItems.empty() && tokens)
+        for (uint32 id : *tokens)
+            if (sObjectMgr.GetItemPrototype(id))
+                mapTokens.emplace_back(id, 100.0f, 0, 0, 1, 1);
+
+    std::vector<uint32> mixExtra;                           // Mix: pieces per class index below
+    std::vector<ClassNeed> needs;
+    std::vector<Player const*> present;
+    uint32 setNeed = 0;
+    uint32 setPlanned = 0;
+    if (profile.setMode == SetMode::Mix)
+    {
+        // FillLoot holds the owner as a non-const Player; the group walk needs the non-const API.
+        if (Group* group = const_cast<Player*>(lootOwner)->GetGroup())
+        {
+            for (GroupReference* itr = group->GetFirstMember(); itr != nullptr; itr = itr->next())
+                if (Player const* member = itr->getSource())
+                    if (member->IsInWorld() && (!looted || member->IsAtGroupRewardDistance(looted)))
+                        present.push_back(member);
+        }
+        else
+            present.push_back(lootOwner);
+
+        std::map<uint32, ClassNeed> byClass;
+        for (Player const* member : present)
+        {
+            ClassNeed& need = byClass[member->GetClass()];
+            need.classId = member->GetClass();
+            ++need.members;
+            for (LootStoreItem const* item : setItems)
+                if (ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item->itemid))
+                    if (IsSetUpgradeFor482(member, proto))
+                    {
+                        ++need.upgraders;
+                        break;
+                    }
+        }
+        for (auto& entry : byClass)
+        {
+            entry.second.fixedDrops = fixedPerClass[entry.first];
+            needs.push_back(entry.second);
+            if (entry.second.upgraders > entry.second.fixedDrops)
+                ++setNeed;
+        }
+        mixExtra = AllocateMix(needs, profile.setMax);
+        for (uint32 e : mixExtra)
+            setPlanned += e;
+    }
+    else if (profile.setMode == SetMode::Tokens)
+    {
+        uint32 const tokenTarget = RollCount(profile.tokenMin, profile.tokenMax, EXTRA_CHANCE, RollChance482);
+        setPlanned = tokenTarget > counts.fixedSet ? tokenTarget - counts.fixedSet : 0;
+        setNeed = std::min<uint32>(setPlanned, uint32(setItems.empty() ? mapTokens.size() : setItems.size()));
+    }
+    counts.set = setPlanned;
+
+    // Trim rule against the total loot limit (Loot.MaxItems; beyond 16 it waits in the overflow).
+    uint32 const normalBefore = counts.normal;
+    LootCounts const kept = Trim(counts, MAX_NR_LOOT_ITEMS, setNeed);
+    TrimNormal482(loot, normalBefore - kept.normal, profile.setMode, tokens);
+
+    // Add set pieces or tokens.
+    uint32 setToAdd = kept.set;
+    if (profile.setMode == SetMode::Mix)
+    {
+        // Trimming down to need keeps one piece per class with an upgrader first.
+        std::vector<uint32> perClass = mixExtra;
+        if (setToAdd < setPlanned)
+        {
+            std::fill(perClass.begin(), perClass.end(), 0);
+            uint32 left = setToAdd;
+            for (size_t i = 0; i < needs.size() && left; ++i)
+                if (mixExtra[i])
+                {
+                    perClass[i] = 1;
+                    --left;
+                }
+            for (size_t i = 0; i < needs.size() && left; ++i)
+                while (perClass[i] < mixExtra[i] && left)
+                {
+                    ++perClass[i];
+                    --left;
+                }
+        }
+        for (size_t i = 0; i < needs.size(); ++i)
+        {
+            uint32 const mask = 1u << (needs[i].classId - 1);
+            std::vector<LootStoreItem const*> pieces;       // this class's pieces, upgrades first
+            std::vector<LootStoreItem const*> others;
+            for (LootStoreItem const* item : setItems)
+                if (ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item->itemid))
+                    if (proto->AllowableClass & mask)
+                    {
+                        bool upgrade = false;
+                        for (Player const* member : present)
+                            if (member->GetClass() == needs[i].classId && IsSetUpgradeFor482(member, proto))
+                                upgrade = true;
+                        (upgrade ? pieces : others).push_back(item);
+                    }
+            pieces.insert(pieces.end(), others.begin(), others.end());
+            for (uint32 n = 0; n < perClass[i] && !pieces.empty(); ++n)
+            {
+                std::vector<float> weights(pieces.size());
+                for (size_t k = 0; k < pieces.size(); ++k)
+                    weights[k] = FunserverUnitWeightCapped(1.0f, 1.0f, selected[pieces[k]->itemid], DUPLICATE_FACTOR, 0);
+                size_t const pick = PickWeighted482(weights);
+                if (pick >= pieces.size())
+                    break;
+                loot.AddItem(*pieces[pick]);
+                ++selected[pieces[pick]->itemid];
+            }
+        }
+    }
+    else if (profile.setMode == SetMode::Tokens)
+    {
+        std::vector<LootStoreItem const*> pool = setItems;
+        for (LootStoreItem const& item : mapTokens)
+            pool.push_back(&item);
+        for (uint32 n = 0; n < setToAdd && !pool.empty(); ++n)
+        {
+            std::vector<float> weights(pool.size());
+            for (size_t k = 0; k < pool.size(); ++k)
+                weights[k] = FunserverUnitWeightCapped(1.0f, 1.0f, selected[pool[k]->itemid], DUPLICATE_FACTOR, 0);
+            size_t const pick = PickWeighted482(weights);
+            if (pick >= pool.size())
+                break;
+            loot.AddItem(*pool[pick]);
+            ++selected[pool[pick]->itemid];
+        }
+    }
+
+    // Add own items up to the kept total (normal roll included), duplicates at 25 % weight.
+    uint32 const ownKept = kept.ownMin + kept.ownExtra;
+    uint32 ownToAdd = ownKept > ownHave ? ownKept - ownHave : 0;
+    std::vector<FunserverUnitCandidate> own;
+    for (FunserverUnitCandidate const& c : raw)
+        if (c.baseChance > 0.0f && IsUnitLootItemAllowed(*c.item, loot) && IsRaidOwnItem482(sObjectMgr.GetItemPrototype(c.item->itemid)))
+            own.push_back(c);
+    while (ownToAdd && !own.empty())
+    {
+        std::vector<float> weights(own.size());
+        for (size_t i = 0; i < own.size(); ++i)
+        {
+            ItemPrototype const* proto = sObjectMgr.GetItemPrototype(own[i].item->itemid);
+            float const qualityWeight = sWorld.getConfig(eConfigFloatValues(CONFIG_FLOAT_FUNSERVER_LOOT_WEIGHT_RARE_POOR +
+                (FUNSERVER_LOOT_RAID - FUNSERVER_LOOT_RARE) * FUNSERVER_LOOT_QUALITY_COUNT + FunserverLootQualityIndex(proto->Quality)));
+            weights[i] = FunserverUnitWeightCapped(own[i].baseChance, qualityWeight, selected[own[i].item->itemid],
+                DUPLICATE_FACTOR, GetUnitLootMaxCopies(proto));
+        }
+        size_t const pick = PickWeighted482(weights);
+        if (pick >= own.size())
+            break;
+        loot.AddItem(*own[pick].item);
+        ++selected[own[pick].item->itemid];
+        --ownToAdd;
+    }
+
+    DEBUG_LOG("[LootRules482] raid map=%u profile=%s set=%u/%u own=%u normal=%u->%u level=%u",
+        mapId, profile.name, kept.set, setPlanned, ownKept, normalBefore, kept.normal, level);
 }
 
 // True if template includes at least 1 quest drop entry

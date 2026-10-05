@@ -645,6 +645,15 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 AiPlayerbot.QuestWorkTimeouts.Max = 0
 AiPlayerbot.QuestWorkTimeouts.CooldownSeconds = 3600
 
+# twow-repo#485: with 1, quest givers and takers that are game objects spawned
+# only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
+# quest 310 "Bitter Rivals", shown for 60 s by a quest end script) are no travel
+# targets, so bots no longer wait at an empty spot until the work phase runs
+# out. Quest objectives keep every point. Applied once when the travel table is
+# built at startup; each skipped quest and object is logged once as
+# [QuestFirstRoute] state=taker_script_only. 0 = off (old behaviour).
+AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers = 0
+
 # G4 (train 6.1): a bot that died DeathLoop.MaxDeaths times within
 # DeathLoop.WindowSeconds and DeathLoop.Radius yards of its latest death is
 # evacuated on the next death (the "repop" teleport to its spawn, travel target
@@ -768,11 +777,45 @@ AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives = 1
 # instead of dying on it again and again.
 AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
+# twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
+# of holding the bot. A failure of a roster bot on its own is: a stall (recovery
+# stage 2), a death suppression on the route, a work phase at the taker that ran
+# out, the move retries running out ([QuestCommit] reason=move_retry_cooldown),
+# or a turn-in-only quest route request that found no way to any taker. After
+# TurnInParkFailures failures within TurnInParkWindowSeconds the quest is parked
+# for TurnInParkSeconds: no trip to its taker, it no longer forces turn-in-only
+# quest routes or stops gathering, and it stays in the log to be tried again when
+# the park ends. Logged as [QuestFirstRoute] state=parked. At most 255 failures;
+# both times are capped at one day; parks live in memory only. 0 = off (old
+# behaviour). With parking on, also for every bot, not only roster bots: move
+# retries restart at each new travel destination; a successful move no longer
+# takes a refresh retry off (a target is refreshed at most 5 times, then chosen
+# anew); and only completed quests the bot can hand in count as finished for
+# turn-in-only quest routes (and for a roster bot's gathering).
+AiPlayerbot.QuestFirstProgression.TurnInParkFailures = 0
+AiPlayerbot.QuestFirstProgression.TurnInParkWindowSeconds = 3600
+AiPlayerbot.QuestFirstProgression.TurnInParkSeconds = 3600
+# With 1, a turn-in-only request whose takers a route danger deferral took
+# ([QuestFirstRoute] state=deferred reason=route_danger) counts as finding no
+# way to a taker too, so such a turn-in is parked and tried again when the park
+# ends. That covers all three deferrals: a taker on another map while the bot is
+# below MinLevelForCrossMapQuestRoute (with CrossMapContinentsOnly = 0 any other
+# map, not only the other continent: also the Deeprun Tram or an instance), a
+# zone clearly above the bot, and a death cluster of the shared danger map
+# (AiPlayerbot.DangerMap.Enabled, detail=death_cluster). 0 = no such deferral
+# counts.
+AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger = 0
 # Route danger for low levels: a roster bot defers a quest giver, objective or
 # turn-in on another continent until it reaches this level (0 = off), and any
 # quest target in a zone clearly above its level (known zone level > level + 5).
 # Logged as [QuestFirstRoute] state=deferred reason=route_danger.
 AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute = 10
+# twow-repo#485: with 1, only a route to the other continent counts for
+# MinLevelForCrossMapQuestRoute. The Deeprun Tram (369) counts as the Eastern
+# Kingdoms and an instance as the continent of its entrance, so routes that stay
+# on one continent are not deferred; a switch from them to the other continent
+# still is. 0 = every other map counts (old behaviour).
+AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes
@@ -1559,6 +1602,13 @@ AiPlayerbot.MaxAlternateGraveyardDistance = 2500
 #AiPlayerbot.GroupMemberLootDistance = 15.0
 #loot distance when bot is a group member (not leader) and has active player master (if player is group leader)
 #AiPlayerbot.GroupMemberLootDistanceWithActiveMaster = 10.0
+# Skinners clear the corpse (twow-repo#485, #471). The core refuses to skin while loot is
+# left on a corpse (TARGET_NOT_LOOTED), and bots leave items worth less than 1/1000 of
+# their money behind. 1: a persistent roster bot without a real-player master that can
+# skin the corpse right now (skill, Skinning Knife) takes every item from it, junk
+# included. Default 0: corpse loot rules unchanged. Independent of this switch, skin loot
+# is always kept and a corpse with loot left on it is never a skinning target.
+AiPlayerbot.ProfessionUse.ClearCorpseForSkinning = 0
 #overall gathering distance
 #AiPlayerbot.GatheringDistance = 15.0
 #gathering distance when bot is a group member (not leader)

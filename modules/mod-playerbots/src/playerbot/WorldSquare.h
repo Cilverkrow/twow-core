@@ -391,7 +391,8 @@ namespace ai
                 sq.printWKT(out, squares);
         }
 
-        virtual uint32 GetSize() const override { return subSquares.begin()->second.GetSize(); }
+        // twow-repo#485: a destination without points (travel_destinations.csv export) has no sub-square.
+        virtual uint32 GetSize() const override { return subSquares.empty() ? 0 : subSquares.begin()->second.GetSize(); }
     protected:
         virtual uint32 GetSubSquareId(const WorldPosition& point) const = 0;
 
