@@ -327,14 +327,12 @@ public:
     // twow-repo#485 (owner decision 9): roster bots on their own use bandages, healing and mana
     // potions from their bags (ConsumablesPolicy.h). UseReal 0 = off (default, legacy: cast
     // without an item under the item cheat, sold). Pct 100 = no gate beyond the trigger;
-    // KeepStacks used as at least 2; Buy 0 = no purchase; ClothReserve 0 = no reserve.
+    // KeepStacks used as at least 2; Buy 0 = no purchase.
     bool rosterConsumablesUseReal;
     uint32 rosterConsumablesHealingPotionPct;
     uint32 rosterConsumablesManaPotionPct;
     uint32 rosterConsumablesKeepStacks;
     bool rosterConsumablesBuy;
-    uint32 rosterConsumablesTailoringClothReserve;
-    uint32 rosterConsumablesWoolTierSkill;
     bool rosterConsumablesTrace;
     uint32 rosterConsumablesTraceCooldownSeconds;
     bool randomBotRandomPassword;
@@ -461,6 +459,14 @@ public:
     // these vendor reagents (item ids). false / empty = legacy.
     bool professionUseKeepCraftMaterials = false;
     uint32 professionUseReagentKeepStacks = 1;
+    // Hotfix 8.27: quest log rotation of stuck roster bots (8.17), tunable by reload config.
+    bool questRotateEnabled = true;
+    uint32 questRotateIdleSeconds = 2400;
+    uint32 questRotateGraceSeconds = 1800;
+    // twow-repo#524: wool rule - tailoring below WoolTierSkill keeps every linen, then first aid
+    // only uses linen above FirstAidClothReserve.
+    uint32 professionUseWoolTierSkill = 75;
+    uint32 professionUseFirstAidClothReserve = 20;
     std::set<uint32> professionUseVendorReagents;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;

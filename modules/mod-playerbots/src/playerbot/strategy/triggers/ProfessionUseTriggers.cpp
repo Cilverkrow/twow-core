@@ -4,7 +4,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
-#include "playerbot/ConsumablesPolicy.h"
+#include "playerbot/MaterialReservePolicy.h"
 #include "playerbot/strategy/values/CraftValues.h"
 
 #include <algorithm>
@@ -18,7 +18,7 @@ namespace
     // Player::UpdateCraftSkill does (skill_line_ability min/max values,
     // SkillChance.*); a skill at its rank cap is skipped like in
     // ShouldCraftSpellValue::SpellGivesSkillUp.
-    uint32 CraftSkillUpChance(uint32 spellId, Player* bot)
+    uint32 CraftSkillUpChance(uint32 spellId, Player* bot, uint32* outSkillId = nullptr, uint32* outSkillValue = nullptr)
     {
         SkillLineAbilityMapBounds const bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spellId);
         for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
@@ -40,7 +40,13 @@ namespace
                 chance = sWorld.getConfig(CONFIG_UINT32_SKILL_CHANCE_YELLOW);
 
             if (chance)
+            {
+                if (outSkillId)
+                    *outSkillId = skill->skillId;
+                if (outSkillValue)
+                    *outSkillValue = skillValue;
                 return chance * 10;
+            }
         }
         return 0;
     }
@@ -59,47 +65,48 @@ bool ai::HasCraftTools(SpellEntry const* spell, Player* bot)
 // Casts the reagents in the bags pay for (Spell::CheckItems, else
 // SPELL_FAILED_ITEM_NOT_READY). Unlike "has reagents for" this ignores the
 // item cheat. A recipe without reagents is not limited by them.
-namespace
-{
-    // twow-repo#485: the recipe belongs to First Aid (skill line 129).
-    bool IsFirstAidRecipe(uint32 spellId)
-    {
-        SkillLineAbilityMapBounds const bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spellId);
-        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
-            if (itr->second->skillId == SKILL_FIRST_AID)
-                return true;
-        return false;
-    }
-}
-
 uint32 ai::CraftableFromBags(SpellEntry const* spell, Player* bot)
 {
-    // twow-repo#485 (RosterConsumables.TailoringClothReserve, 0 = off): First Aid of a roster bot
-    // that knows Tailoring sees only the cloth above the reserve, so bandages leave Tailoring its
-    // cloth. Config check first: the default costs nothing.
-    // Wool rule (RosterConsumables.WoolTierSkill, owner decision 04.10): below that Tailoring skill
-    // First Aid sees no linen at all (Tailoring levels to the wool tier first). The single place for
-    // every craft path (8.16 trigger, rpg craft, enchanting, bandages); twow-repo#524 replaces the
-    // policy call by its central MaterialReservePolicy without changing callers.
-    uint32 const reserve = sPlayerbotAIConfig.rosterConsumablesTailoringClothReserve;
-    bool const keepCloth = reserve && consumables::ReserveApplies(reserve, IsFirstAidRecipe(spell->Id),
-        bot->HasSkill(SKILL_TAILORING), sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()));
-    uint32 const tailoringSkill = keepCloth ? uint32(bot->GetSkillValuePure(SKILL_TAILORING)) : 0;
+    // twow-repo#524: the one place for material reservations - every craft path counts here
+    // (8.16 trigger, rpg craft, enchanting, bandages). Roster bots on their own under RealReagents.
+    PlayerbotAI* const botAi = GetBotAI(bot);
+    bool const reserve = botAi && sPlayerbotAIConfig.professionUseRealReagents && IsRosterBotOnItsOwn(botAi);
+    uint32 recipeSkill = 0;
+    std::shared_ptr<const material_reserve::Memory> memory;
+    material_reserve::Config config;
+    if (reserve)
+    {
+        SkillLineAbilityMapBounds const bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spell->Id);
+        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second && !recipeSkill; ++itr)
+            recipeSkill = itr->second->skillId;
+        memory = botAi->GetAiObjectContext()->GetValue<std::shared_ptr<const material_reserve::Memory>>("material memory")->Get();
+        config.woolTierSkill = sPlayerbotAIConfig.professionUseWoolTierSkill;
+        config.firstAidClothReserve = sPlayerbotAIConfig.professionUseFirstAidClothReserve;
+    }
 
     uint32 craftable = std::numeric_limits<uint32>::max();
     for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
     {
         if (spell->Reagent[i] <= 0 || !spell->ReagentCount[i])
             continue;
-        craftable = std::min(craftable, bot->GetItemCount(uint32(spell->Reagent[i])) / spell->ReagentCount[i]);
-        if (keepCloth)
+        uint32 const reagent = uint32(spell->Reagent[i]);
+        uint32 count = bot->GetItemCount(reagent);
+        if (reserve && recipeSkill)
         {
-            ItemPrototype const* reagent = sObjectMgr.GetItemPrototype(uint32(spell->Reagent[i]));
-            uint32 const usable = consumables::FirstAidUsableCount(bot->GetItemCount(uint32(spell->Reagent[i])),
-                uint32(spell->Reagent[i]), reagent && reagent->Class == ITEM_CLASS_TRADE_GOODS, reserve,
-                tailoringSkill, sPlayerbotAIConfig.rosterConsumablesWoolTierSkill);
-            craftable = std::min(craftable, usable / spell->ReagentCount[i]);
+            uint32 mainNeed = 0;
+            if (memory)
+            {
+                material_reserve::Memory::const_iterator const need = memory->find(reagent);
+                if (need != memory->end())
+                    mainNeed = need->second.mainNeed;
+            }
+            material_reserve::Decision const decision = material_reserve::UsableForRecipe(reagent, count, recipeSkill, mainNeed,
+                bot->HasSkill(SKILL_TAILORING), bot->GetSkillValuePure(SKILL_TAILORING), config);
+            if (decision.usable < count)
+                TraceProfessionUse(botAi, "reserve", "held", material_reserve::Name(decision.reason), reagent);
+            count = decision.usable;
         }
+        craftable = std::min(craftable, count / spell->ReagentCount[i]);
     }
     return craftable;
 }
@@ -194,7 +201,7 @@ bool ProfessionCraftTrigger::IsActive()
             recipe.spellId = spellId;
             if (recipe.givesSkillUp)
             {
-                recipe.skillUpChance = CraftSkillUpChance(spellId, bot);
+                recipe.skillUpChance = CraftSkillUpChance(spellId, bot, &recipe.skillId, &recipe.skillValue);
                 recipe.hasTools = HasCraftTools(spell, bot);
                 recipe.craftable = CraftableFromBags(spell, bot);
                 // A recipe on its own or category cooldown (transmutes: 24-48 h)
@@ -227,7 +234,9 @@ bool ProfessionCraftTrigger::IsActive()
         // Classify does not know the backoff: when every craftable recipe is
         // backed off, on cooldown or without room for its product there is no
         // pick, so wait a full interval.
-        int const pick = profession_use::Pick(recipes);
+        // Hotfix 8.20: lowest profession first, the profession crafted last time loses a tie.
+        uint32 const lastSkill = uint32(std::max(0, AI_VALUE2(int, "manual int", "profession craft last skill")));
+        int const pick = profession_use::Pick(recipes, lastSkill);
         if (pick < 0)
         {
             SET_AI_VALUE2(time_t, "manual time", "profession craft", now);
@@ -236,6 +245,7 @@ bool ProfessionCraftTrigger::IsActive()
         }
 
         SET_AI_VALUE2(int, "manual int", "profession craft spell", int32(recipes[std::size_t(pick)].spellId));
+        SET_AI_VALUE2(int, "manual int", "profession craft last skill", int32(recipes[std::size_t(pick)].skillId));
         SET_AI_VALUE2(time_t, "manual time", "profession craft scan", now);
     }
 

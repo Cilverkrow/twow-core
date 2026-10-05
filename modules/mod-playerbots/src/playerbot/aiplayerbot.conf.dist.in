@@ -383,18 +383,6 @@ AiPlayerbot.RosterConsumables.ManaPotionPct = 100
 # Proposed: KeepStacks 2, Buy 1 (owner decision 04.10).
 AiPlayerbot.RosterConsumables.KeepStacks = 2
 AiPlayerbot.RosterConsumables.Buy = 0
-# First Aid must not take Tailoring's cloth: a roster bot that knows Tailoring crafts First Aid
-# recipes only with the cloth (trade goods reagents) above this many items per cloth kind. Works
-# with ProfessionUse.RealReagents (hotfix 8.20 ranks the lower profession first). 0 (default) = off.
-# Proposed: 20 (one stack; owner decision 04.10).
-AiPlayerbot.RosterConsumables.TailoringClothReserve = 0
-# Wool rule (owner decision 04.10): with the reserve active (TailoringClothReserve > 0), a roster bot
-# whose Tailoring skill is below this value levels Tailoring to the wool tier first - its First Aid
-# recipes see no linen cloth (2589) at all. From this skill on the reserve above applies (Tailoring
-# keeps 20, First Aid uses the rest). TailoringClothReserve 0 keeps today's behaviour. twow-repo#524
-# (OB-10, central material reservation) moves this to ProfessionUse.WoolTierSkill /
-# ProfessionUse.FirstAidClothReserve. Proposed: 75.
-AiPlayerbot.RosterConsumables.WoolTierSkill = 75
 # Trace: [Consumable] lines at BASIC level, at most one per bot and kind per TraceCooldownSeconds
 # (uses = items used since the previous line). Never per tick.
 AiPlayerbot.RosterConsumables.Trace = 0
@@ -825,6 +813,21 @@ AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds = 1800
 AiPlayerbot.ProfessionUse.KeepCraftMaterials = 0
 AiPlayerbot.ProfessionUse.ReagentKeepStacks = 1
 AiPlayerbot.ProfessionUse.VendorReagents =
+# QuestRotate (hotfix 8.17/8.27): a roster bot on its own, out of combat, with at least 16 quests and
+# no progress for IdleSeconds drops exactly one quest without progress (not a class quest, not complete,
+# not the quest of its current travel target; the oldest first), at most once per IdleSeconds and not
+# within GraceSeconds of its first check after login. Enabled = 0 turns the rotation off.
+AiPlayerbot.QuestRotate.Enabled = 1
+AiPlayerbot.QuestRotate.IdleSeconds = 2400
+AiPlayerbot.QuestRotate.GraceSeconds = 1800
+# WoolTierSkill / FirstAidClothReserve (twow-repo#524, owner 04.10.2026, only with RealReagents, roster
+# bots on their own): a bot that knows Tailoring keeps every Linen Cloth for Tailoring while its
+# Tailoring skill is below WoolTierSkill (no linen bandages), from then on First Aid only uses the
+# linen above FirstAidClothReserve. Secondary professions (First Aid, Cooking, Fishing) also leave
+# the reagents of the bot's green-or-better main-profession recipes (5 casts) alone, and those
+# reagents are not sold below ReagentKeepStacks + 1 stacks. 0 / 0 = no wool rule.
+AiPlayerbot.ProfessionUse.WoolTierSkill = 75
+AiPlayerbot.ProfessionUse.FirstAidClothReserve = 20
 
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full

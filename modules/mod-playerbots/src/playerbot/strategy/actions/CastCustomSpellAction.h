@@ -4,6 +4,7 @@
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "GenericActions.h"
 #include "playerbot/RandomItemMgr.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 namespace ai
 {
@@ -72,6 +73,8 @@ namespace ai
         DisenchantRandomItemAction(PlayerbotAI* ai) : CastCustomSpellAction(ai, "disenchant random item")  {}
         virtual bool isUseful() override { return ai->HasSkill(SKILL_ENCHANTING) && !bot->IsInCombat() && AI_VALUE2(uint32, "item count", "usage " + std::to_string((uint8)ItemUsage::ITEM_USAGE_DISENCHANT)) > 0; }
         virtual bool Execute(Event& event) override;
+    private:
+        uint32 lastNoFlagSkipLog = 0;  // hotfix 8.30a: skip line at most once per 10 minutes
     };
 
     class EnchantRandomItemAction : public CastRandomSpellAction
@@ -79,6 +82,10 @@ namespace ai
     public:
         EnchantRandomItemAction(PlayerbotAI* ai) : CastRandomSpellAction(ai, "enchant random item") {}
         virtual bool isUseful() override { return ai->HasSkill(SKILL_ENCHANTING); }
+
+        // Hotfix 8.20: a started or failed enchant is traced ([ProfessionUse] stage=enchant).
+        virtual bool castSpell(uint32 spellId, WorldObject* wo, Player* requester) override;
+        bool UseRealReagents();
 
         virtual bool AcceptSpell(const SpellEntry* pSpellInfo) override
         {
@@ -98,6 +105,11 @@ namespace ai
                 return 0;
 
             uint32 castCount = AI_VALUE2(uint32, "has reagents for", pSpellInfo->Id);
+
+            // Hotfix 8.20: under RealReagents a roster bot on its own counts the reagents and
+            // tools really in the bags ("has reagents for" is true under the item cheat).
+            if (UseRealReagents())
+                castCount = HasCraftTools(pSpellInfo, bot) ? CraftableFromBags(pSpellInfo, bot) : 0;
 
             if (!castCount)
                 return 0;

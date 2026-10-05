@@ -1,0 +1,27 @@
+# Hotfix 8.26: the quest rescue binds the hearthstone at the rescue target.
+file(READ "${PB_SOURCE_DIR}/RandomPlayerbotMgr.cpp" mgr)
+file(READ "${PB_SOURCE_DIR}/QuestSearchPolicy.h" policy)
+string(FIND "${mgr}" "void RandomPlayerbotMgr::ProcessQuestRescues()" rescue_at)
+if (rescue_at EQUAL -1)
+  message(FATAL_ERROR "rescue rebind: ProcessQuestRescues missing")
+endif()
+string(SUBSTRING "${mgr}" ${rescue_at} 4000 rescue)
+foreach (needle
+    "ai::quest_search::RebindAtRescue(IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster(),"
+    "bot->SetHomebindToLocation(target, area ? area->ID : 0);"
+    "[QuestRescue] state=rebind bot=%u")
+  string(FIND "${rescue}" "${needle}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "rescue rebind: missing ${needle}")
+  endif()
+endforeach()
+string(FIND "${rescue}" "bot->TeleportTo(target.mapid" teleport)
+string(FIND "${rescue}" "bot->SetHomebindToLocation(target" rebind)
+if (rebind LESS teleport)
+  message(FATAL_ERROR "rescue rebind: bind after the teleport decision")
+endif()
+string(FIND "${policy}" "return rosterBot && !realMaster;" rule)
+if (rule EQUAL -1)
+  message(FATAL_ERROR "rescue rebind: roster bots without a real player only")
+endif()
+message(STATUS "RESCUE_REBIND_CONTRACT=PASS")

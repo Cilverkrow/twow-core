@@ -827,8 +827,6 @@ bool PlayerbotAIConfig::Initialize()
     rosterConsumablesManaPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.ManaPotionPct", 100);
     rosterConsumablesKeepStacks = config.GetIntDefault("AiPlayerbot.RosterConsumables.KeepStacks", 2);
     rosterConsumablesBuy = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Buy", false);
-    rosterConsumablesTailoringClothReserve = config.GetIntDefault("AiPlayerbot.RosterConsumables.TailoringClothReserve", 0);
-    rosterConsumablesWoolTierSkill = config.GetIntDefault("AiPlayerbot.RosterConsumables.WoolTierSkill", 75);
     rosterConsumablesTrace = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Trace", false);
     rosterConsumablesTraceCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterConsumables.TraceCooldownSeconds", 300);
 
@@ -872,6 +870,11 @@ bool PlayerbotAIConfig::Initialize()
     professionUseCraftFailBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds", 1800)));
     professionUseKeepCraftMaterials = config.GetBoolDefault("AiPlayerbot.ProfessionUse.KeepCraftMaterials", false);
     professionUseReagentKeepStacks = uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.ReagentKeepStacks", 1)));
+    questRotateEnabled = config.GetBoolDefault("AiPlayerbot.QuestRotate.Enabled", true);
+    questRotateIdleSeconds = uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestRotate.IdleSeconds", 2400)));
+    questRotateGraceSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestRotate.GraceSeconds", 1800)));
+    professionUseWoolTierSkill = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.WoolTierSkill", 75)));
+    professionUseFirstAidClothReserve = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.FirstAidClothReserve", 20)));
     {
         // Parsed once here; the item usage only looks the item id up.
         std::list<uint32> vendorReagents;
