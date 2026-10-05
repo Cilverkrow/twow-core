@@ -125,7 +125,7 @@ SPEC_AURAS = [
     (7, 'defense',             10, 5, {'shaman tank'}),
     (7, 'imbue mastery',       25, 3, {'enhancement', 'shaman tank'}),
     (7, 'retaliation',         25, 3, {'shaman tank'}),
-    (7, 'stormstrike charges', 30, 1, {'shaman tank'}),
+    (7, 'stormstrike charges', 30, 4, {'shaman tank'}),  # 4 ranks since train 9 (#484)
     (7, 'storm wisdom',        35, 5, {'enhancement'}),
     (7, 'chain storm',         40, 1, {'enhancement'}),
     (7, 'shield constitution', 35, 3, {'shaman tank'}),

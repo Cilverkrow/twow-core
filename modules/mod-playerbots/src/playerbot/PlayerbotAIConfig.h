@@ -351,6 +351,17 @@ public:
     std::string rosterGuildPlanFile;
     std::shared_ptr<const std::vector<std::string>> rosterGuildPlanLines;
     std::shared_ptr<const std::vector<std::string>> RosterGuildPlanLines() const { return std::atomic_load(&rosterGuildPlanLines); }
+    // twow-repo#485 (owner decision 9): roster bots on their own use bandages, healing and mana
+    // potions from their bags (ConsumablesPolicy.h). UseReal 0 = off (default, legacy: cast
+    // without an item under the item cheat, sold). Pct 100 = no gate beyond the trigger;
+    // KeepStacks used as at least 2; Buy 0 = no purchase.
+    bool rosterConsumablesUseReal;
+    uint32 rosterConsumablesHealingPotionPct;
+    uint32 rosterConsumablesManaPotionPct;
+    uint32 rosterConsumablesKeepStacks;
+    bool rosterConsumablesBuy;
+    bool rosterConsumablesTrace;
+    uint32 rosterConsumablesTraceCooldownSeconds;
     bool randomBotRandomPassword;
     bool inviteChat;
     bool botsSilent;

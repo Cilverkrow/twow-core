@@ -32,7 +32,9 @@ enum FunserverRogueTalentSpell : uint32_t
     ROGUE_TALENT_SHADOW_EDGE_R3       = 61191,
     ROGUE_TALENT_VIGOR_FURY_BUFF      = 61192,  // helper: +2 % damage, 8 s, 10 stacks
     ROGUE_TALENT_SHADOW_EDGE_DAMAGE   = 61193,  // helper: the Shadow part
-    ROGUE_TALENT_HEMORRHAGE_STACK     = 61194,  // helper: extra Hemorrhage stacks
+    ROGUE_TALENT_HEMORRHAGE_STACK     = 61194,  // helper: Deep Wounds debuff, up to 5 stacks (train 9)
+    ROGUE_TALENT_RIPOSTE_FLOW_MAIN_HAND = 61221, // helper: named main-hand strike after a dodge (train 9, #484)
+    ROGUE_TALENT_RIPOSTE_FLOW_OFF_HAND  = 61222, // helper: named off-hand strike after a parry (train 9, #484)
 
     SPELL_ROGUE_COLD_BLOOD_FUNSERVER  = 14177,  // existing Cold Blood (next ability crits)
     SPELL_ROGUE_GHOSTLY_STRIKE_FUNSERVER = 14278, // existing Ghostly Strike (dodge buff on self)
@@ -74,7 +76,11 @@ inline int32_t FunserverRogueArcaneEvasionResistance(float dodgePct, float parry
 
 // Hotfix 8.6 (twow-repo#367, owner tests with Luigi): measuring windows for the rogue
 // talents that showed nothing in game ([GhostlyEvasion], [RogueTalentTrace]). The first
-// line comes after 20 events, so a test gets it quickly; after that one line per hour.
+// line comes after FUNSERVER_TRACE_FIRST_LINE_EVENTS events, so a test gets it quickly;
+// after that one line per hour. Train 9 (twow-repo#484): 5 instead of 20 - an owner test
+// with a few procs (Deep Wounds, Riposte Flow) never reached 20 and left no line.
+uint32_t constexpr FUNSERVER_TRACE_FIRST_LINE_EVENTS = 5;
+
 struct FunserverTraceWindow
 {
     uint32_t events = 0;
@@ -91,7 +97,7 @@ struct FunserverTraceWindow
             ++hits;
     }
 
-    bool Due(uint32_t now) const { return (!logged && events >= 20) || (events && now - start >= 3600); }
+    bool Due(uint32_t now) const { return (!logged && events >= FUNSERVER_TRACE_FIRST_LINE_EVENTS) || (events && now - start >= 3600); }
 
     void Reset()
     {

@@ -1143,10 +1143,24 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_combo_switches_contract.cmake")
+  # twow-repo#484 (train 9): invalid spell ids fail the cast cleanly, full item ids in cooldowns.
+  add_test(NAME spell_id_guard_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_spell_id_guard_contract.cmake")
   # twow-repo#367: the owner rogue talent line (bot auras 90150-90193), pure rules and data contract.
   add_executable(rogue_talents_policy_test
     "${TW_CORE_ROOT}/t/rogue_talents_policy_test.cpp")
   add_test(NAME rogue_talents_policy_test COMMAND rogue_talents_policy_test)
+  # twow-repo#484 train 9: rogue and shaman talent fixes (migrations 20261003200000/200500, scripts).
+  add_test(NAME rogue_talents_484_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_rogue_talents_484_contract.cmake")
+  add_test(NAME shaman_talents_484_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_shaman_talents_484_contract.cmake")
   add_test(NAME rogue_talents_367_contract
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"

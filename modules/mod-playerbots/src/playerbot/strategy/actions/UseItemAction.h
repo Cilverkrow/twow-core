@@ -30,6 +30,15 @@ namespace ai
         bool itemCheats;
     };
 
+    // twow-repo#485 (AiPlayerbot.RosterConsumables.UseReal, owner decision 9): a persistent roster
+    // bot on its own uses bandages, healing and mana potions only from its bags, even under the
+    // item cheat. UsesRealConsumables: the switch and the bot; UsesRealConsumable: also the item
+    // is such a consumable (ConsumablesPolicy.h). BestBandageInBags: the usable bandage of the
+    // highest First Aid rank in the bags, 0 = none.
+    bool UsesRealConsumables(PlayerbotAI* ai);
+    bool UsesRealConsumable(PlayerbotAI* ai, ItemPrototype const* proto);
+    uint32 BestBandageInBags(PlayerbotAI* ai);
+
     class UseAction : public ChatCommandAction, public Qualified
     {
     public:
@@ -92,13 +101,18 @@ namespace ai
     public:
         UsePotionAction(PlayerbotAI* ai, std::string name, SpellEffects effect) : UseItemIdAction(ai, name), effect(effect) {}
 
-        bool isUseful() override { return UseItemIdAction::isUseful() && AI_VALUE2(bool, "combat", "self target"); }
+        // twow-repo#485: under RosterConsumables.UseReal also the HealingPotionPct / ManaPotionPct gate.
+        bool isUseful() override;
 
         virtual uint32 GetItemId() override
         {
             std::list<Item*> items = AI_VALUE2(std::list<Item*>, "inventory items", getName());
             if (items.empty())
             {
+                // twow-repo#485: a roster bot under UseReal drinks no potion it does not own.
+                if (UsesRealConsumables(ai))
+                    return 0;
+
                 return sRandomItemMgr.GetRandomPotion(bot->GetLevel(), effect);
             }
 
@@ -504,6 +518,11 @@ namespace ai
 
         virtual uint32 GetItemId() override
         {
+            // twow-repo#485: under RosterConsumables.UseReal only a bandage from the bags (best
+            // First Aid rank first); none = not possible, the legacy id would be cast for free.
+            if (UsesRealConsumables(ai))
+                return BestBandageInBags(ai);
+
             int firstAidSkillValue = bot->GetSkillValue(129);
 #ifdef MANGOSBOT_TWO
             if (firstAidSkillValue >= 400)
