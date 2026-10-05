@@ -3621,15 +3621,6 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     };
     PlayerInfo const* own = firstInfo(bot->getRace());
 
-    // Hotfix 8.29 (twow-repo#532): a goblin below 11 goes to Durotar, where its route continues.
-    if (ai::quest_search::goblin_island::UsesGoblinStartRescue(bot->getRace(), level))
-    {
-        namespace gi = ai::quest_search::goblin_island;
-        targets.push_back(WorldLocation(1, gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ, 0.0f));
-        targets.push_back(WorldLocation(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f));
-        return targets;
-    }
-
     for (uint32 race = 1; race < MAX_RACES; ++race)
     {
         PlayerInfo const* info = firstInfo(race);
