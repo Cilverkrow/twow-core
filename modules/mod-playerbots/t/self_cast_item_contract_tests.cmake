@@ -20,4 +20,11 @@ string(FIND "${cast}" "proto->Quality, proto->DisenchantID, (proto->Flags & ITEM
 if (noflag EQUAL -1)
   message(FATAL_ERROR "self cast item: disenchant filter ignores ITEM_FLAG_NO_DISENCHANT")
 endif()
+# Hotfix 8.30a: NO_DISENCHANT items are no disenchant usage; a skip is logged (throttled).
+file(READ "${PB_SOURCE_DIR}/strategy/values/ItemUsageValue.cpp" usage)
+string(FIND "${usage}" "if (proto->DisenchantID && !(proto->Flags & ITEM_FLAG_NO_DISENCHANT))" usage_flag)
+string(FIND "${cast}" "[ProfessionUse] stage=disenchant state=skipped reason=no_disenchant_flag bot=%u" skip_log)
+if (usage_flag EQUAL -1 OR skip_log EQUAL -1)
+  message(FATAL_ERROR "self cast item: 8.30a usage flag or skip line missing")
+endif()
 message(STATUS "SELF_CAST_ITEM_CONTRACT=PASS")
