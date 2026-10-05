@@ -493,6 +493,10 @@ public:
     // #405: quest objectives whose work phase ran out Max times are skipped.
     uint32 questWorkTimeoutsMax = 0;
     uint32 questWorkTimeoutsCooldownSeconds = 3600;
+    // twow-repo#485: game-object quest givers and takers spawned only by a script
+    // (gameobject.spawntimesecsmin < 0, e.g. GO 270 of quest 310) are no travel targets.
+    // false = old behaviour.
+    bool questFirstProgressionSkipScriptOnlyQuestTakers = false;
     // G4: evacuate a bot that died DeathLoop.MaxDeaths times within WindowSeconds
     // and Radius yards (0 = off); not reset by XP like "death count".
     uint32 deathLoopMaxDeaths = 0;
@@ -564,6 +568,10 @@ public:
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
+    // twow-repo#485: true = only a route to the other continent counts for the
+    // rule above; the Deeprun Tram counts as the Eastern Kingdoms and an instance
+    // as the continent of its entrance. false = any other map counts (old behaviour).
+    bool questFirstProgressionCrossMapContinentsOnly = false;
     uint32 freeRoomForNonSpareBots;
     uint32 loginBotsNearPlayerRange;
     std::vector<std::string> defaultLoginCriteria;
