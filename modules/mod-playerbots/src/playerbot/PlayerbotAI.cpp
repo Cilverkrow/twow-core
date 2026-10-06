@@ -6984,6 +6984,17 @@ std::pair<uint32, uint32> PlayerbotAI::GetPriorityBracket(ActivePiorityType type
 
 bool PlayerbotAI::AllowActive(ActivityType activityType)
 {
+    // Hotfix 8.33 (twow-repo#544, v37 test realm: "move to travel target" 11 ms per tick with
+    // DisableActivityPriorities = 1, every bot path-finding every step): a roster bot on its own,
+    // out of combat on a continent and with no player within visibility + react distance, moves the
+    // cheap way (MovementAction without detailed move: timed hops along the route). Any player
+    // nearby, a real master or combat keeps the detailed move. AiPlayerbot.RosterFarMove = 0: off.
+    if (activityType == DETAILED_MOVE_ACTIVITY && sPlayerbotAIConfig.rosterFarMove && !HasRealPlayerMaster() &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !sServerFacade.IsInCombat(bot) &&
+        WorldPosition(bot).isOverworld() &&
+        !HasPlayerNearby(WorldPosition(bot).getVisibilityDistance() + sPlayerbotAIConfig.reactDistance))
+        return false;
+
     ActivePiorityType type = GetPriorityType();
 
     if (activityType == DETAILED_MOVE_ACTIVITY)
