@@ -612,6 +612,11 @@ AiPlayerbot.DangerMap.WindowSeconds = 7200
 AiPlayerbot.DangerMap.MinDeaths = 3
 AiPlayerbot.DangerMap.LevelMargin = 3
 AiPlayerbot.DangerMap.LineSamples = 20
+# Hotfix 8.35 (twow-repo#544): with 1 a bot death without a creature killer (fall, drowning, lava,
+# fatigue) also feeds the danger map, as a killer above every bot. MinDeaths different bots at one
+# cell within WindowSeconds then keep routes and targets away from it. [DangerMap] state=environment.
+# v35: 34 % of all deaths had no killer and no attacker. 0 = off (default, creature deaths only).
+AiPlayerbot.DangerMap.CountEnvironmentDeaths = 0
 # Grinding of persistent roster bots without a real-player master (#307).
 # Below GrindCap.LowLevelBelow a bot attacks mobs at most LowLevelMargin levels
 # above itself (otherwise 4). 0 = off.

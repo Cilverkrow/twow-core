@@ -109,7 +109,10 @@ void RecordGrindDeath(PlayerbotAI* ai, Player* bot, Unit* killer)
 
 void RecordDangerMapDeath(Player* bot, Unit* killer)
 {
-    if (!killer || killer->GetTypeId() != TYPEID_UNIT)
+    // Hotfix 8.35 (twow-repo#544): a death without a target and without attackers (fall, drowning,
+    // lava, fatigue) counts as a killer above every bot when CountEnvironmentDeaths is on.
+    bool const environment = !killer && bot->getAttackers().empty() && sPlayerbotAIConfig.dangerMapCountEnvironmentDeaths;
+    if (!environment && (!killer || killer->GetTypeId() != TYPEID_UNIT))
         return;
 
     danger_map::Params const params = DangerMapParams();
@@ -118,7 +121,11 @@ void RecordDangerMapDeath(Player* bot, Unit* killer)
     danger_map::Death death;
     death.time = now;
     death.victim = bot->GetGUIDLow();
-    death.killerLevel = uint8(std::min<uint32>(255, killer->GetLevel()));
+    death.killerLevel = environment ? danger_map::EnvironmentKillerLevel : uint8(std::min<uint32>(255, killer->GetLevel()));
+    if (environment)
+        sLog.outBasic("[DangerMap] state=environment bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f z=%.0f",
+            bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+            bot->GetPositionZ());
     death.victimLevel = uint8(std::min<uint32>(255, bot->GetLevel()));
     danger_map::Instance().Record(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), death, params);
 
