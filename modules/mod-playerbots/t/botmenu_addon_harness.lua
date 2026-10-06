@@ -116,7 +116,86 @@ end
 
 -- Load the addon the way the client does: Lua files, then the XML OnLoads.
 SlashCmdList = {}
-local chunk, err = loadfile(dir.."/BotMenu.lua")
+local chunk, err = loadfile(dir.."/BotSurnames.lua")
+require_true(chunk, "BotSurnames.lua does not parse: "..tostring(err))
+chunk()
+require_true(BOTMENU_SURNAMES_COUNT and BOTMENU_SURNAMES_COUNT > 0, "the surname table is loaded")
+
+-- #518 name fix: stand-ins for the calls it wraps, then BotNameFix.lua.
+local sent = {}
+function SendChatMessage(msg, chatType, language, target) table.insert(sent, { "chat", chatType, target }) end
+function AddFriend(name) table.insert(sent, { "friend", name }) end
+function AddOrDelIgnore(name) table.insert(sent, { "ignore", name }) end
+function SendMail(recipient, subject, body) table.insert(sent, { "mail", recipient, subject }) end
+local originalInviteStandIn = InviteByName
+chunk, err = loadfile(dir.."/BotNameFix.lua")
+require_true(chunk, "BotNameFix.lua does not parse: "..tostring(err))
+chunk()
+
+-- #518: a GameTooltip stand-in (lines GameTooltipTextLeft<n>, SetUnit, AddLine)
+-- and units: "mouseover" is a bot from the surname table, "target" a player
+-- with a title on the name line, "party1" someone not in the table.
+local units = {}
+function UnitIsPlayer(unit) return units[unit] ~= nil end
+function UnitName(unit) return units[unit] and units[unit].name end
+local function tooltipLine(n)
+    local name = "GameTooltipTextLeft"..n
+    frames[name] = frames[name] or { text = nil, SetText = function(self, t) self.text = t end,
+        GetText = function(self) return self.text end }
+    return frames[name]
+end
+GameTooltip = { lines = 0, shows = 0 }
+function GameTooltip:GetName() return "GameTooltip" end
+function GameTooltip:NumLines() return self.lines end
+function GameTooltip:Show() self.shows = self.shows + 1 end
+function GameTooltip:AddLine(text) self.lines = self.lines + 1; tooltipLine(self.lines):SetText(text) end
+function GameTooltip:SetUnit(unit)
+    self.lines = 1
+    tooltipLine(1):SetText(units[unit] and units[unit].line or "")
+    for i = 2, 5 do tooltipLine(i):SetText(nil) end
+end
+
+-- 1.8 nameplates: WorldFrame children; a plate is an unnamed frame whose first
+-- region is the nameplate border texture and whose first FontString is the name.
+local function region(kind, value)
+    local r = { kind = kind, value = value }
+    function r:GetObjectType() return self.kind end
+    function r:GetTexture() return self.value end
+    function r:GetText() return self.value end
+    function r:SetText(t) self.value = t end
+    return r
+end
+local worldChildren = {}
+local function newPlate(name, visible)
+    local p = { regions = { region("Texture", "Interface\\Tooltips\\Nameplate-Border"), region("Texture", "glow"),
+        region("FontString", name), region("FontString", "60") }, visible = visible ~= false }
+    function p:GetName() return nil end
+    function p:GetRegions() return unpack(self.regions) end
+    function p:IsVisible() return self.visible end
+    table.insert(worldChildren, p)
+    return p
+end
+local function newOther(named)
+    local o = { regions = { region("Texture", "something") } }
+    function o:GetName() return named end
+    function o:GetRegions() return unpack(self.regions) end
+    function o:IsVisible() return true end
+    table.insert(worldChildren, o)
+    return o
+end
+WorldFrame = {}
+function WorldFrame:GetNumChildren() return table.getn(worldChildren) end
+function WorldFrame:GetChildren() return unpack(worldChildren) end
+UIParent = {}
+local createdFrames = {}
+function CreateFrame(kind, name, parent)
+    local f = { scripts = {} }
+    function f:SetScript(which, fn) self.scripts[which] = fn end
+    table.insert(createdFrames, f)
+    return f
+end
+
+chunk, err = loadfile(dir.."/BotMenu.lua")
 require_true(chunk, "BotMenu.lua does not parse: "..tostring(err))
 chunk()
 chunk, err = loadfile(dir.."/BotList.lua")
@@ -138,6 +217,90 @@ end
 event = "VARIABLES_LOADED"
 BotMenu_OnEvent()
 require_true(BotMenuDB and BotMenuDB.enabled == 1, "the menu is on by default")
+
+-- #518 surnames: the name line gets the surname once, a title line gets an
+-- extra line, unknown players stay untouched, and the switch turns it off.
+local botName, botSurname
+for name, surname in pairs(BOTMENU_SURNAMES) do botName, botSurname = name, surname break end
+units.mouseover = { name = botName, line = botName }
+units.target = { name = botName, line = "Sergeant "..botName.." <Guild>" }
+units.party1 = { name = "Somebody", line = "Somebody" }
+GameTooltip:SetUnit("mouseover")
+require_true(tooltipLine(1):GetText() == botName.." "..botSurname, "SetUnit shows 'Name Surname'")
+event = "UPDATE_MOUSEOVER_UNIT"; BotMenu_OnEvent()
+require_true(tooltipLine(1):GetText() == botName.." "..botSurname and GameTooltip:NumLines() == 1,
+    "a second fill of the same tooltip adds nothing")
+GameTooltip:SetUnit("target")
+require_true(GameTooltip:NumLines() == 2 and tooltipLine(2):GetText() == botSurname,
+    "a name line with a title gets the surname as an extra line")
+GameTooltip:SetUnit("party1")
+require_true(tooltipLine(1):GetText() == "Somebody" and GameTooltip:NumLines() == 1, "unknown players are untouched")
+SlashCmdList["BOTMENU"]("surnames off")
+GameTooltip:SetUnit("mouseover")
+require_true(tooltipLine(1):GetText() == botName and BotMenuDB.surnames == 0, "/botmenu surnames off")
+SlashCmdList["BOTMENU"]("surnames on")
+require_true(BotMenuDB.surnames == 1, "/botmenu surnames on")
+
+-- 1.8 nameplates: bot plates get "Name Surname" (once), others stay, recycled
+-- plates follow the new name, the scan is throttled, "plates off" restores.
+local plateFrame = createdFrames[table.getn(createdFrames)]
+require_true(plateFrame and plateFrame.scripts.OnUpdate, "a visible frame runs the nameplate scan")
+local otherBot, otherSurname
+for name, surname in pairs(BOTMENU_SURNAMES) do if name ~= botName then otherBot, otherSurname = name, surname break end end
+newOther("SomeAddonFrame")
+local botPlate = newPlate(botName)
+local playerPlate = newPlate("Somebody")
+local hiddenPlate = newPlate(otherBot, false)
+arg1 = 0.1; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == botName, "the scan waits for its interval")
+arg1 = 0.2; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == botName.." "..botSurname, "a bot plate shows 'Name Surname'")
+require_true(playerPlate.regions[3]:GetText() == "Somebody", "a plate without a surname stays unchanged")
+require_true(hiddenPlate.regions[3]:GetText() == otherBot, "hidden plates are left alone")
+arg1 = 0.3; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == botName.." "..botSurname, "the surname is added once")
+botPlate.regions[3]:SetText(otherBot) -- the client recycles the plate for another bot
+playerPlate.regions[3]:SetText(botName)
+local latePlate = newPlate(botName)
+arg1 = 0.3; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == otherBot.." "..otherSurname, "a recycled plate follows the new bot")
+require_true(playerPlate.regions[3]:GetText() == botName.." "..botSurname, "a recycled player plate gets the bot surname")
+require_true(latePlate.regions[3]:GetText() == botName.." "..botSurname, "plates created later are found")
+SlashCmdList["BOTMENU"]("plates off")
+require_true(botPlate.regions[3]:GetText() == otherBot and latePlate.regions[3]:GetText() == botName,
+    "/botmenu plates off restores the names")
+arg1 = 0.3; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == otherBot, "no scan while plates are off")
+SlashCmdList["BOTMENU"]("plates on")
+arg1 = 0.3; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == otherBot.." "..otherSurname, "/botmenu plates on")
+
+-- #518 name fix: display names (and the last word from a chat link) go out as
+-- the character name; other names and other chat types pass unchanged.
+local display = botName.." "..botSurname
+local lastWord = botSurname
+local cut = string.find(lastWord, " [^ ]*$")
+if cut then lastWord = string.sub(lastWord, cut + 1) end
+sent = {}
+SendChatMessage("hi", "WHISPER", nil, display)
+SendChatMessage("hi", "WHISPER", nil, "Somebody Else")
+SendChatMessage("hi", "SAY", nil, display)
+AddFriend(display); AddOrDelIgnore(display); SendMail(display, "s", "b")
+local before = table.getn(invited); InviteByName(display)
+require_true(sent[1][3] == botName, "/r and right-click whisper reach the character name")
+require_true(sent[2][3] == "Somebody Else", "unknown names pass unchanged")
+require_true(sent[3][3] == display, "non-whisper chat is untouched")
+require_true(sent[4][2] == botName and sent[5][2] == botName and sent[6][2] == botName, "friend, ignore, mail")
+require_true(invited[before + 1] == botName, "invite reaches the character name")
+if BOTNAMEFIX_LASTWORD[lastWord] == botName then
+    sent = {}; SendChatMessage("hi", "WHISPER", nil, lastWord)
+    require_true(sent[1][3] == botName, "a chat link's last word resolves to the character name")
+end
+SlashCmdList["BOTMENU"]("namefix off")
+sent = {}; SendChatMessage("hi", "WHISPER", nil, display)
+require_true(sent[1][3] == display and BotMenuDB.nameFix == 0, "/botmenu namefix off")
+SlashCmdList["BOTMENU"]("namefix on")
+event = "VARIABLES_LOADED"
 require_true(ChatMenu.numButtons == 11, "exactly one entry is added to ChatMenu")
 local bots = getglobal("ChatMenuButton11")
 require_true(bots.text == "Bots" and bots.nested == "BotMenu" and bots.shown, "the entry is 'Bots' and opens BotMenu")

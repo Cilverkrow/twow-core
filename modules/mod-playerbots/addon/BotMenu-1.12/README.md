@@ -94,3 +94,49 @@ the scan runs and stays until the next scan.
 - Real players are in the list too; `/who` has no bot marker.
 - Class and race splitting know the enUS/enGB and deDE names; other client
   languages split by level only.
+
+## Bot surnames (1.7, twow-repo#518)
+
+Bots keep one-word character names: whisper, `/invite`, chat links and the
+server's name lookup only work with those (a space breaks all of them in the
+1.12 client). The surname is therefore display only:
+
+- `BotSurnames.lua` maps the character name to its surname. It is generated,
+  never edited by hand:
+
+      tools/gen_botmenu_surnames.sh <twow-repo>/deploy/roster/names-518/addon-surnames-810.tsv <sha256> \
+          > addon/BotMenu-1.12/BotSurnames.lua
+
+- The unit tooltip (mouseover in the world, target/party/raid frames) shows
+  "Name Surname"; if the name line carries a title, the surname is an extra
+  grey line. Nothing is ever sent to the server.
+- `/botmenu surnames off` hides it, `/botmenu surnames on` shows it again.
+- A new roster table (new hash) means: regenerate, bump the version, release.
+
+## Nameplates (1.8, twow-repo#518)
+
+With nameplates on (V hostile, Shift+V friendly), a bot's plate shows
+"Name Surname" from the same table. Players without an entry stay unchanged.
+
+- The plates are unnamed children of `WorldFrame` whose first region is the
+  nameplate border texture; their first FontString holds the name. New
+  children are inspected once; the visible plates are checked every
+  `BOTMENU_PLATE_INTERVAL` (0.25 s) on a small frame of its own.
+- The client recycles plates and writes the new name itself; the next scan
+  extends it again if it is a bot.
+- `/botmenu plates off` restores the plain names; `/botmenu surnames off` turns
+  off tooltip and plates.
+- Other nameplate addons that replace the stock plate (pfUI, ShaguPlates and
+  similar) read the name from the same FontString, so they usually show the
+  surname too; addons that hide the stock text and keep their own copy of the
+  name do not. Nothing else is touched.
+
+## Name fix (1.8, twow-repo#518 probe)
+
+Only relevant while the server shows bots as "Name Surname" (core probe
+`Debug.NameQueryDisplayNames`, test realm). The 1.12 client sends that display
+name back as the target of a right-click whisper, `/r`, `/invite`, `/friend`,
+`/ignore` and mail - or only its last word from a chat link. `BotNameFix.lua`
+wraps exactly those calls and turns a known display name back into the
+character name; it never sends anything itself. `/botmenu namefix off` turns
+it off (to measure what the server side covers alone).
