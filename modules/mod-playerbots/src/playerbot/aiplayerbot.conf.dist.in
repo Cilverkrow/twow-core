@@ -688,6 +688,12 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+# Hotfix 8.33 (twow-repo#544): with 1 a persistent roster bot on its own, out of combat on a
+# continent and with no player within visibility + react distance, moves without detailed path
+# finding (timed hops along its route, as with activity priorities). A player nearby, a real master
+# or combat keeps the detailed move. Cuts the "move to travel target" cost of many bots travelling
+# at once (v37 test realm: 11 ms per tick). 0 = off (default, every bot detailed).
+AiPlayerbot.RosterFarMove = 0
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
 # of holding the bot. A failure of a roster bot on its own is: a stall (recovery

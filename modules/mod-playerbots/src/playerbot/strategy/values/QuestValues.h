@@ -105,6 +105,16 @@ namespace ai
         virtual std::list<GuidPosition> Calculate() override;
     };
 
+    // Hotfix 8.33 (twow-repo#544, v37 test realm: "need for quest [grind target]" 3.3 ms per call,
+    // 9 ms per tick): every creature/object entry the bot's incomplete quest objectives point at,
+    // collected once (sorted) instead of walking all quests and destinations per asked entry.
+    class NeededQuestEntriesValue : public CalculatedValue<std::vector<int32>>
+    {
+    public:
+        NeededQuestEntriesValue(PlayerbotAI* ai) : CalculatedValue<std::vector<int32>>(ai, "needed quest entries", 5) {}
+        virtual std::vector<int32> Calculate() override;
+    };
+
     //Check if a specific entry is a quest objective that the bot has to complete.
     class NeedForQuestValue : public BoolCalculatedValue, public Qualified
     {

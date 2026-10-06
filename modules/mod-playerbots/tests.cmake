@@ -751,6 +751,12 @@ add_test(NAME grind_fallback_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_fallback_contract_tests.cmake")
 
+# Hotfix 8.33: cost side - needed quest entries index, roster far move.
+add_test(NAME cost_833_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/cost_833_contract_tests.cmake")
+
 # Hotfix 8.26: the quest rescue binds the hearthstone at the rescue target.
 add_test(NAME rescue_rebind_contract
   COMMAND "${CMAKE_COMMAND}"

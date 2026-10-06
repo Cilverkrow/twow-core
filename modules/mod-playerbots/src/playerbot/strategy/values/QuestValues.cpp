@@ -4,6 +4,7 @@
 #include "SharedValueContext.h"
 #include "ItemUsageValue.h"
 #include "playerbot/TravelMgr.h"
+#include <algorithm>
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/strategy/deathknight/DKActions.h"
 
@@ -407,9 +408,17 @@ bool NeedForQuestValue::Calculate()
 
 	int32 entry = stoi(getQualifier());
 
-	const PlayerTravelInfo& info(bot);
+	// Hotfix 8.33 (twow-repo#544): one shared, sorted list per bot instead of a quest and destination
+	// walk per asked entry; the same answer (an entry of a quest with a still needed objective).
+	std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, "needed quest entries");
+	return std::binary_search(needed.begin(), needed.end(), entry);
+}
 
-	std::list<GuidPosition> retQuestObjectives;
+std::vector<int32> NeededQuestEntriesValue::Calculate()
+{
+	std::vector<int32> needed;
+
+	const PlayerTravelInfo& info(bot);
 
 	QuestStatusMap& questStatusMap = bot->getQuestStatusMap();
 
@@ -436,18 +445,19 @@ bool NeedForQuestValue::Calculate()
 			if (!AI_VALUE2(bool, "need quest objective", Qualified::MultiQualify(qualifier, ",")))
 				continue;
 
+			// The destinations are those of the whole quest (all objectives): one walk per quest is enough.
 			DestinationList destinations = sTravelMgr.GetDestinations(info, uint32(TravelDestinationPurpose::QuestAllObjective), {int32(questId)}, false, 0);
-			
-			for (auto destination : destinations)
-			{
-                if (entry == destination->GetEntry())
-					return true;
 
-			}
+			for (auto destination : destinations)
+				needed.push_back(destination->GetEntry());
+
+			break;
 		}
 	}
 
-	return false;
+	std::sort(needed.begin(), needed.end());
+	needed.erase(std::unique(needed.begin(), needed.end()), needed.end());
+	return needed;
 }
 
 uint8 FreeQuestLogSlotValue::Calculate()
