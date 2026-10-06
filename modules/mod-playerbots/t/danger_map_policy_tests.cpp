@@ -44,6 +44,11 @@ int main()
     std::vector<Death> old{ DeathOf(now - 7200, 1, 10), DeathOf(now - 20, 2, 10), DeathOf(now - 30, 3, 10) };
     Require(DangerousKillerLevel(old, now, 5, params) == 0, "deaths outside the window do not count");
 
+    // Hotfix 8.35: environment deaths (no killer) count as a killer above every bot.
+    std::vector<Death> cliff{ DeathOf(now - 10, 1, EnvironmentKillerLevel), DeathOf(now - 20, 2, EnvironmentKillerLevel),
+        DeathOf(now - 30, 3, EnvironmentKillerLevel) };
+    Require(DangerousKillerLevel(cliff, now, 60, params) == EnvironmentKillerLevel, "three bots fell at one cliff: danger for every level");
+
     Params off = params;
     off.minDeaths = 0;
     Require(DangerousKillerLevel(riverpaw, now, 5, off) == 0, "MinDeaths 0 disables the rule");
