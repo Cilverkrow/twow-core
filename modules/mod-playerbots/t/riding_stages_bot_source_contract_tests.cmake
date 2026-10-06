@@ -114,6 +114,19 @@ require_text("${usage}" "riding_stages::ClassifyMountOffer(" "mount offer by eff
 require_text("${usage}" "!bot->HasSpell(mountSpell)" "known mounts are not needed")
 require_text("${usage}" "RequiredReputationFaction" "no upgrade the vendor refuses for reputation")
 
+# D2. twow-repo#537: the learn spell 46499 has a 3 s cast that movement interrupts; a moving bot
+#     used the item every 3 s and never learned. The bot learns the mount directly (as the core
+#     script does), uses the item up only after a successful learn, mounts the learned spell and
+#     skips an item whose learn failed for 10 minutes.
+region("${check_mount}" "if (mount.IsItem())" "Bot does not have this mount spell." item_mount)
+require_text("${item_mount}" "MountValue::GetCollectionMountSpell(mount.GetItemProto())" "collection item branch")
+require_order("${item_mount}" "bot->LearnSpell(collectionSpell, false);" "bot->DestroyItemCount(itemId, 1, true);" "item used up only after the learn")
+require_order("${item_mount}" "if (!bot->HasSpell(collectionSpell))" "bot->DestroyItemCount(itemId, 1, true);" "learn checked before the item is used up")
+require_text("${item_mount}" "collectionLearnBlocked[itemId] = now + 600;" "failed learn skips the item for 10 minutes")
+require_text("${item_mount}" "ai->CastSpell(collectionSpell, bot, nullptr, true, &castDuration)" "the learned mount is ridden")
+require_order("${item_mount}" "[Riding] learn bot=%u" "else if (UseItem(requester, mount.GetItemProto()->ItemId))" "collection items never go through UseItem")
+require_text("${check_mount}" "[Riding] learn_failed bot=%u" "failed learn line")
+
 # E. Budget: next rank plus the missing mount, saved for; the flying lines fixed.
 require_text("${budget}" "riding_stages::MountBudgetCopper(level, moneyWanted, hasMount, hasSwiftMount)" "mount budget")
 require_text("${budget_header}" "NeedMoneyFor::travel, NeedMoneyFor::mount }" "bots save for riding")

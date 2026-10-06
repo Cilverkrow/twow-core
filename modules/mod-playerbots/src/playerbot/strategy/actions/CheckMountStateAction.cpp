@@ -493,16 +493,47 @@ bool CheckMountStateAction::Mount(Player* requester, bool limitSpeedToGroup)
                 continue;
             }
 
-            if (UseItem(requester, mount.GetItemProto()->ItemId))
+            // twow-repo#295/#537: a collection item teaches its mount and is used up; the bot
+            // rides the learned spell from then on. Its learn spell 46499 has a 3 s cast that
+            // movement interrupts, so a bot on the move used the item every 3 s and never
+            // learned the mount. The bot learns it the way spell_turtle_mount_collection does
+            // and mounts it at once; a failed learn skips the item for 10 minutes.
+            if (uint32 const collectionSpell = MountValue::GetCollectionMountSpell(mount.GetItemProto()))
+            {
+                uint32 const itemId = mount.GetItemProto()->ItemId;
+                time_t const now = time(nullptr);
+                auto const blocked = collectionLearnBlocked.find(itemId);
+                if (blocked != collectionLearnBlocked.end() && blocked->second > now)
+                    continue;
+
+                if (bot->HasSpell(collectionSpell))
+                    continue;
+
+                bot->LearnSpell(collectionSpell, false);
+                if (!bot->HasSpell(collectionSpell))
+                {
+                    collectionLearnBlocked[itemId] = now + 600;
+                    sLog.outBasic("[Riding] learn_failed bot=%u level=%u item=%u spell=%u skill=%u",
+                        bot->GetGUIDLow(), bot->GetLevel(), itemId, collectionSpell, uint32(bot->GetSkillValuePure(SKILL_RIDING)));
+                    continue;
+                }
+
+                bot->DestroyItemCount(itemId, 1, true);
+                sLog.outBasic("[Riding] learn bot=%u level=%u item=%u spell=%u skill=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), itemId, collectionSpell, uint32(bot->GetSkillValuePure(SKILL_RIDING)));
+
+                uint32 castDuration;
+                if (ai->CastSpell(collectionSpell, bot, nullptr, true, &castDuration))
+                {
+                    sPlayerbotAIConfig.logEvent(ai, "CheckMountStateAction", sServerFacade.LookupSpellInfo(collectionSpell)->SpellName[0], std::to_string(mount.GetEffectiveSpeed(bot, canFly)));
+                    SetDuration(castDuration);
+                    didMount = true;
+                }
+            }
+            else if (UseItem(requester, mount.GetItemProto()->ItemId))
             {
                 SetDuration(3000U); // 3s
                 didMount = true;
-
-                // twow-repo#295: a collection item teaches its mount and is used up; the bot
-                // rides the learned spell from then on.
-                if (MountValue::GetCollectionMountSpell(mount.GetItemProto()))
-                    sLog.outBasic("[Riding] learn bot=%u level=%u item=%u spell=%u skill=%u",
-                        bot->GetGUIDLow(), bot->GetLevel(), mount.GetItemProto()->ItemId, mount.GetSpellId(), uint32(bot->GetSkillValuePure(SKILL_RIDING)));
             }
             else
             {

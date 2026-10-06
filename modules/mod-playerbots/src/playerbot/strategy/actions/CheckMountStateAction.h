@@ -39,5 +39,8 @@ namespace ai
     private:
         bool Mount(Player* requester, bool limitSpeedToGroup = false);
         bool UnMount() const;
+
+        // twow-repo#537: collection items whose direct learn failed, skipped until the time given.
+        std::map<uint32, time_t> collectionLearnBlocked;
     };
 }
