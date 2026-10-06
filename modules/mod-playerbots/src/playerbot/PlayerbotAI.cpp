@@ -16,6 +16,7 @@
 #include "Maps/GridNotifiersImpl.h"
 #include "Maps/CellImpl.h"
 #include "strategy/values/LastMovementValue.h"
+#include "playerbot/FarMovePolicy.h"
 #include "strategy/actions/LogLevelAction.h"
 #include "strategy/actions/SayAction.h"
 #include "strategy/actions/EmoteAction.h"
@@ -1619,6 +1620,13 @@ void PlayerbotAI::OnDeath()
         if (!HasActivePlayerMaster() && !bot->InBattleGround())
         {
             SET_AI_VALUE(uint32, "death count", AI_VALUE(uint32, "death count") + 1);
+
+            // Hotfix 8.36 (twow-repo#544): a death soon after a far-move arrival (owner: no ambush on arrival).
+            {
+                LastMovement& farMove = AI_VALUE(LastMovement&, "last movement");
+                if (farMove.farMoveArrivedAt && time(nullptr) - farMove.farMoveArrivedAt <= time_t(far_move::ArriveDeathSeconds))
+                    far_move::SharedCounters().arriveDeaths.fetch_add(1, std::memory_order_relaxed);
+            }
 
             if (sPlayerbotAIConfig.hasLog("deaths.csv"))
             {

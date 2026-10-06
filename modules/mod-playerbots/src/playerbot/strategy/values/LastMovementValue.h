@@ -33,6 +33,7 @@ namespace ai
             farMoveDeclined = other.farMoveDeclined;
             farMoveArriveSet = other.farMoveArriveSet;
             farMoveDeclinedSet = other.farMoveDeclinedSet;
+            farMoveArrivedAt = other.farMoveArrivedAt;
             fleeCount = other.fleeCount;
             lastFleeAttempt = other.lastFleeAttempt;
             moveEvent = Event();
@@ -97,6 +98,7 @@ namespace ai
         WorldPosition farMoveDeclined;
         bool farMoveArriveSet = false;
         bool farMoveDeclinedSet = false;
+        time_t farMoveArrivedAt = 0;  // hotfix 8.36: last far-move arrival (arrive_deaths)
         Event moveEvent;
     };
 
