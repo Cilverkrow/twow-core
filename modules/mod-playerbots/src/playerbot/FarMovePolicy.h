@@ -42,6 +42,7 @@ struct Counters
     std::atomic<std::uint32_t> watched{0};     // hotfix 8.36: a player near the route - walked instead
     std::atomic<std::uint32_t> arriveAlt{0};   // hotfix 8.36: first arrival point in danger, second one used
     std::atomic<std::uint32_t> arriveWalk{0};  // hotfix 8.36: no safe arrival point (danger / no ground) - walked
+    std::atomic<std::uint32_t> arriveDeaths{0};  // hotfix 8.36: deaths within ArriveDeathSeconds after a far-move arrival
     std::atomic<std::uint64_t> lastLogMinute{0};
 
     bool LogDue(std::uint64_t nowSeconds)
@@ -60,6 +61,7 @@ inline Counters& SharedCounters() { static Counters counters; return counters; }
 //   walks the rest with path finding and its normal awareness of mobs;
 // - a real player within visibility of the straight route (not only at its ends) sees the bot walk.
 constexpr float ArriveAltYards = 120.0f;   // second try when the first arrival point is in danger
+constexpr std::uint32_t ArriveDeathSeconds = 60;  // a death this soon after arriving counts as arrive_deaths
 
 struct Point2
 {

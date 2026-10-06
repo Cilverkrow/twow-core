@@ -1187,9 +1187,10 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 uint32 const watched = counters.watched.exchange(0, std::memory_order_relaxed);
                 uint32 const arriveAlt = counters.arriveAlt.exchange(0, std::memory_order_relaxed);
                 uint32 const arriveWalk = counters.arriveWalk.exchange(0, std::memory_order_relaxed);
-                if (started || retargeted || arrived || watched || arriveAlt || arriveWalk)
-                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u",
-                        started, retargeted, arrived, watched, arriveAlt, arriveWalk);
+                uint32 const arriveDeaths = counters.arriveDeaths.exchange(0, std::memory_order_relaxed);
+                if (started || retargeted || arrived || watched || arriveAlt || arriveWalk || arriveDeaths)
+                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u",
+                        started, retargeted, arrived, watched, arriveAlt, arriveWalk, arriveDeaths);
             }
 
             if (step == far_move::Step::Start)
@@ -1246,6 +1247,7 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 lastMove.clear();
                 lastMove.farMoveAt = 0;
                 counters.arrived.fetch_add(1, std::memory_order_relaxed);
+                lastMove.farMoveArrivedAt = now;
                 return bot->TeleportTo(arrive.getMapId(), arrive.getX(), arrive.getY(), arrive.getZ(), farStart.getAngleTo(endPos));
             }
         }
