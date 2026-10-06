@@ -613,10 +613,85 @@ bool World::RemoveQueuedSession(WorldSession* sess)
 
 }
 
+namespace
+{
+    std::string AsciiLower(std::string text)
+    {
+        for (char& c : text)
+            if (c >= 'A' && c <= 'Z')
+                c = char(c - 'A' + 'a');
+        return text;
+    }
+}
+
+// twow-repo#518 probe: "Name=Name Surname;Other=Other of Place". A display name
+// must start with the character name and a space (it only extends the name) and
+// stay within 32 characters (the client's name query field is a CString(48)).
+void World::LoadNameQueryDisplayNames(std::string const& config)
+{
+    m_nameQueryDisplay.clear();
+    m_nameQueryByFirst.clear();
+    m_nameQueryByLast.clear();
+    std::string::size_type start = 0;
+    while (start < config.size())
+    {
+        std::string::size_type end = config.find(';', start);
+        std::string entry = config.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        start = end == std::string::npos ? config.size() : end + 1;
+        std::string::size_type eq = entry.find('=');
+        if (entry.empty() || eq == std::string::npos)
+            continue;
+        std::string name = entry.substr(0, eq);
+        std::string display = entry.substr(eq + 1);
+        if (name.empty() || display.size() > 32 || display.compare(0, name.size() + 1, name + " ") != 0)
+        {
+            sLog.outError("Debug.NameQueryDisplayNames: ignoring '%s' (display must be '%s <surname>', at most 32 characters)",
+                entry.c_str(), name.c_str());
+            continue;
+        }
+        m_nameQueryDisplay[name] = display;
+        m_nameQueryByFirst[AsciiLower(name)] = name;
+        m_nameQueryByLast[AsciiLower(display.substr(display.rfind(' ') + 1))] = name;
+    }
+    if (!m_nameQueryDisplay.empty())
+        sLog.outString("Debug.NameQueryDisplayNames: %u display name(s) active (twow-repo#518 probe).",
+            uint32(m_nameQueryDisplay.size()));
+}
+
+std::string const& World::NameQueryDisplayName(std::string const& name) const
+{
+    auto itr = m_nameQueryDisplay.find(name);
+    return itr == m_nameQueryDisplay.end() ? name : itr->second;
+}
+
+// Incoming names: "Name Surname" (right-click whisper, /r, /invite with the cached
+// display name) -> "Name"; the last word alone (chat links keep only that) -> "Name".
+bool World::ResolveNameQueryDisplayName(std::string& name) const
+{
+    if (m_nameQueryDisplay.empty())
+        return false;
+    std::string::size_type space = name.find(' ');
+    if (space != std::string::npos)
+    {
+        auto itr = m_nameQueryByFirst.find(AsciiLower(name.substr(0, space)));
+        if (itr == m_nameQueryByFirst.end())
+            return false;
+        name = itr->second;
+        return true;
+    }
+    auto itr = m_nameQueryByLast.find(AsciiLower(name));
+    if (itr == m_nameQueryByLast.end())
+        return false;
+    name = itr->second;
+    return true;
+}
+
 void World::LoadConfigSettingsCommonPart(bool reload)
 {
     if (!reload)
         m_lastDiffs.resize(50);
+
+    LoadNameQueryDisplayNames(sConfig.GetStringDefault("Debug.NameQueryDisplayNames", ""));
 
 #ifdef USE_ANTICHEAT
     sAnticheatConfig.SetSource("anticheat.conf");

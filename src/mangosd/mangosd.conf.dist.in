@@ -1669,6 +1669,15 @@ GM.InWhoList.Level = 3
 
 WhoList.RequestCooldownSeconds = 30
 
+# Debug.NameQueryDisplayNames. twow-repo#518 probe, TEST REALM ONLY. Display-only
+# surnames: "Name=Name Surname;Other=Other of Place". The name query (overhead
+# name, target and party frames, chat sender) shows the display name; incoming
+# names - the display name, or its last word from a chat link - resolve to the
+# character name. The character name stays the key everywhere. A display must
+# start with "Name " and have at most 32 characters. Default empty = off.
+
+Debug.NameQueryDisplayNames = ""
+
 # GM.LogTrade. Include GM trade and trade slot enchanting operations in GM log if it enable.
 
 GM.LogTrade = 1
