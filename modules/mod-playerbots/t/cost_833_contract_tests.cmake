@@ -1,0 +1,45 @@
+# Hotfix 8.33 (twow-repo#544): cost side for productive bots.
+# 1. "need for quest" answers from one shared sorted list per bot ("needed quest entries"),
+#    no quest/destination walk per asked entry.
+# 2. AiPlayerbot.RosterFarMove (default 0): roster bots without a player nearby move without the
+#    detailed path finding.
+file(READ "${PB_SOURCE_DIR}/strategy/values/QuestValues.cpp" quest)
+file(READ "${PB_SOURCE_DIR}/strategy/values/ValueContext.h" context)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_cpp)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
+file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_dist)
+foreach (pair
+    "quest|return std::binary_search(needed.begin(), needed.end(), entry);"
+    "quest|std::vector<int32> NeededQuestEntriesValue::Calculate()"
+    "context|creators[\"needed quest entries\"]"
+    "ai_cpp|if (activityType == DETAILED_MOVE_ACTIVITY && sPlayerbotAIConfig.rosterFarMove && !HasRealPlayerMaster() &&"
+    "ai_cpp|!HasPlayerNearby(WorldPosition(bot).getVisibilityDistance() + sPlayerbotAIConfig.reactDistance))"
+    "config_cpp|AiPlayerbot.RosterFarMove\", false"
+    "config_dist|AiPlayerbot.RosterFarMove = 0")
+  string(FIND "${pair}" "|" bar)
+  string(SUBSTRING "${pair}" 0 ${bar} var)
+  math(EXPR start "${bar} + 1")
+  string(SUBSTRING "${pair}" ${start} -1 needle)
+  string(FIND "${${var}}" "${needle}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "hotfix 8.33: missing ${needle}")
+  endif()
+endforeach()
+# NeedForQuestValue itself must no longer walk the destinations per entry.
+string(FIND "${quest}" "bool NeedForQuestValue::Calculate()" nfq)
+string(FIND "${quest}" "std::vector<int32> NeededQuestEntriesValue::Calculate()" idx)
+string(SUBSTRING "${quest}" ${nfq} -1 nfq_tail)
+string(FIND "${nfq_tail}" "if (entry == destination->GetEntry())" old_walk)
+if (NOT old_walk EQUAL -1 OR idx LESS nfq)
+  message(FATAL_ERROR "hotfix 8.33: need for quest still walks destinations per entry")
+endif()
+# The far-move gate comes before the priority evaluation (cheap early return).
+string(FIND "${ai_cpp}" "sPlayerbotAIConfig.rosterFarMove && !HasRealPlayerMaster()" gate)
+string(FIND "${ai_cpp}" "bool PlayerbotAI::AllowActive(ActivityType activityType)" fn)
+string(SUBSTRING "${ai_cpp}" ${fn} -1 fn_tail)
+string(FIND "${fn_tail}" "ActivePiorityType type = GetPriorityType();" prio)
+string(FIND "${fn_tail}" "sPlayerbotAIConfig.rosterFarMove && !HasRealPlayerMaster()" gate_in_fn)
+if (gate_in_fn EQUAL -1 OR gate_in_fn GREATER prio)
+  message(FATAL_ERROR "hotfix 8.33: far-move gate must open AllowActive")
+endif()
+message(STATUS "COST_833_CONTRACT=PASS")
