@@ -27,6 +27,8 @@ namespace ai
             lastPath = other.lastPath;
             lastMoveShort = other.lastMoveShort;
             nextTeleport = other.nextTeleport;
+            farMoveTarget = other.farMoveTarget;
+            farMoveAt = other.farMoveAt;
             fleeCount = other.fleeCount;
             lastFleeAttempt = other.lastFleeAttempt;
             moveEvent = Event();
@@ -43,6 +45,8 @@ namespace ai
             lastFleeAttempt = 0;
             lastMoveShort = WorldPosition();
             nextTeleport = 0;
+            farMoveTarget = WorldPosition();
+            farMoveAt = 0;
             moveEvent = Event();
         }
 
@@ -81,6 +85,10 @@ namespace ai
         TravelPath lastPath;
         WorldPosition lastMoveShort;
         time_t nextTeleport;
+        // Hotfix 8.33a (twow-repo#544): RosterFarMove - the target of a pending far move and when the
+        // bot may arrive there (walking time, see MovementAction::MoveTo2).
+        WorldPosition farMoveTarget;
+        time_t farMoveAt = 0;
         Event moveEvent;
     };
 

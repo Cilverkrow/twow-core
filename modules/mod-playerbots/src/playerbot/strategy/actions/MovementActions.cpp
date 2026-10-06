@@ -18,6 +18,7 @@
 #endif
 #include "playerbot/strategy/generic/CombatStrategy.h"
 #include "playerbot/FarFollowPolicy.h"
+#include "playerbot/FarMovePolicy.h"
 
 using namespace ai;
 
@@ -1113,6 +1114,50 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
 
     if (WaitForTransport())
         return true;
+
+    // Hotfix 8.33a (twow-repo#544): RosterFarMove - no route at all for a far move nobody watches.
+    // The bot waits the walking time (capped below the turn-in stall window) and then appears at
+    // the target; a player at either end, a real master or combat (detailedMove) keeps the route.
+    if (!detailedMove && sPlayerbotAIConfig.rosterFarMove && endPos.getMapId() == bot->GetMapId() && !bot->GetTransport())
+    {
+        WorldPosition const farStart(bot);
+        float const farDistance = farStart.distance(endPos);
+        if (farDistance > sPlayerbotAIConfig.reactDistance && !ai->HasPlayerNearby(farStart) && !ai->HasPlayerNearby(endPos))
+        {
+            time_t const now = time(nullptr);
+            far_move::Step const step = far_move::Next(uint64(now), uint64(lastMove.farMoveAt),
+                lastMove.farMoveAt && lastMove.farMoveTarget.distance(endPos) <= far_move::SameTargetYards);
+            far_move::Counters& counters = far_move::SharedCounters();
+            if (counters.LogDue(uint64(now)))
+            {
+                uint32 const started = counters.started.exchange(0, std::memory_order_relaxed);
+                uint32 const arrived = counters.arrived.exchange(0, std::memory_order_relaxed);
+                if (started || arrived)
+                    sLog.outBasic("[FarMove] started=%u arrived=%u", started, arrived);
+            }
+
+            if (step == far_move::Step::Start)
+            {
+                lastMove.farMoveTarget = endPos;
+                lastMove.farMoveAt = now + far_move::WaitSeconds(farDistance, bot->GetSpeed(MOVE_RUN));
+                counters.started.fetch_add(1, std::memory_order_relaxed);
+                if (mover == bot)
+                    ai->StopMoving();
+                SetDuration(std::min<uint32>(uint32(lastMove.farMoveAt - now), 10) * IN_MILLISECONDS);
+                return true;
+            }
+            if (step == far_move::Step::Wait)
+            {
+                SetDuration(std::min<uint32>(uint32(lastMove.farMoveAt - now), 10) * IN_MILLISECONDS);
+                return true;
+            }
+
+            lastMove.clear();
+            counters.arrived.fetch_add(1, std::memory_order_relaxed);
+            return bot->TeleportTo(endPos.getMapId(), endPos.getX(), endPos.getY(), endPos.getZ(), farStart.getAngleTo(endPos));
+        }
+    }
+    lastMove.farMoveAt = 0;
 
     WorldPosition startPos(bot);
     float totalDistance = startPos.distance(endPos);

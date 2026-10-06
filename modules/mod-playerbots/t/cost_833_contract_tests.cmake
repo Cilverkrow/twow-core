@@ -42,4 +42,12 @@ string(FIND "${fn_tail}" "sPlayerbotAIConfig.rosterFarMove && !HasRealPlayerMast
 if (gate_in_fn EQUAL -1 OR gate_in_fn GREATER prio)
   message(FATAL_ERROR "hotfix 8.33: far-move gate must open AllowActive")
 endif()
+# Hotfix 8.33a: the far move skips the route (ResolveMovePath) - it is decided before it in MoveTo2.
+file(READ "${PB_SOURCE_DIR}/strategy/actions/MovementActions.cpp" move)
+string(FIND "${move}" "if (!detailedMove && sPlayerbotAIConfig.rosterFarMove && endPos.getMapId() == bot->GetMapId() && !bot->GetTransport())" far)
+string(FIND "${move}" "[FarMove] started=%u arrived=%u" farlog)
+string(FIND "${move}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove);" resolve)
+if (far EQUAL -1 OR farlog EQUAL -1 OR resolve EQUAL -1 OR far GREATER resolve)
+  message(FATAL_ERROR "hotfix 8.33a: far move must be decided before the route is resolved")
+endif()
 message(STATUS "COST_833_CONTRACT=PASS")

@@ -828,9 +828,11 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
 # Hotfix 8.33 (twow-repo#544): with 1 a persistent roster bot on its own, out of combat on a
 # continent and with no player within visibility + react distance, moves without detailed path
-# finding (timed hops along its route, as with activity priorities). A player nearby, a real master
+# finding: for a target on its map farther than react distance with no player at either end it
+# computes no route, waits the walking time (max 240 s, below the turn-in stall window) and then
+# appears at the target; otherwise timed hops along the route. A player nearby, a real master
 # or combat keeps the detailed move. Cuts the "move to travel target" cost of many bots travelling
-# at once (v37 test realm: 11 ms per tick). 0 = off (default, every bot detailed).
+# at once (v37 test realm: 11 ms per tick). [FarMove] started arrived once a minute. 0 = off (default).
 AiPlayerbot.RosterFarMove = 0
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
