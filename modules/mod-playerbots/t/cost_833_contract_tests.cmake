@@ -45,7 +45,7 @@ endif()
 # Hotfix 8.33a: the far move skips the route (ResolveMovePath) - it is decided before it in MoveTo2.
 file(READ "${PB_SOURCE_DIR}/strategy/actions/MovementActions.cpp" move)
 string(FIND "${move}" "if (!detailedMove && sPlayerbotAIConfig.rosterFarMove && endPos.getMapId() == bot->GetMapId() && !bot->GetTransport())" far)
-string(FIND "${move}" "[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u" farlog)
+string(FIND "${move}" "[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u" farlog)
 string(FIND "${move}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove);" resolve)
 if (far EQUAL -1 OR farlog EQUAL -1 OR resolve EQUAL -1 OR far GREATER resolve)
   message(FATAL_ERROR "hotfix 8.33a: far move must be decided before the route is resolved")
@@ -67,7 +67,8 @@ foreach (needle
     "!(sPlayerbotAIConfig.rosterFarMoveWatchRoute && FarMoveRouteWatched(farStart, endPos))"
     "bool found = FarMoveArrivalPoint(bot, farStart, endPos, sPlayerbotAIConfig.rosterFarMoveArriveBackYards, arrive);"
     "WorldPosition const arrive = lastMove.farMoveArriveSet ? lastMove.farMoveArrive : endPos;"
-    "if (!point.ClosestCorrectPoint(20.0f, 50.0f, bot->GetInstanceId()))")
+    "if (!point.ClosestCorrectPoint(20.0f, 50.0f, bot->GetInstanceId()))"
+    "lastMove.farMoveArrivedAt = now;")
   string(FIND "${move}" "${needle}" at)
   if (at EQUAL -1)
     message(FATAL_ERROR "hotfix 8.36: missing ${needle}")
@@ -76,5 +77,10 @@ endforeach()
 string(FIND "${move}" "return bot->TeleportTo(endPos.getMapId(), endPos.getX(), endPos.getY(), endPos.getZ(), farStart.getAngleTo(endPos));" to_target)
 if (NOT to_target EQUAL -1)
   message(FATAL_ERROR "hotfix 8.36: the far move must not end on the target itself")
+endif()
+file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_death)
+string(FIND "${ai_death}" "far_move::SharedCounters().arriveDeaths.fetch_add(1, std::memory_order_relaxed);" arrive_deaths)
+if (arrive_deaths EQUAL -1)
+  message(FATAL_ERROR "hotfix 8.36: deaths after a far-move arrival are not counted")
 endif()
 message(STATUS "COST_833_CONTRACT=PASS")
