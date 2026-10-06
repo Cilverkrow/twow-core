@@ -688,6 +688,12 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+# Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
+# its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost
+# starts there) or enemies stand near the corpse - those two shortcuts apply only from the second
+# death in a row. Resurrection sickness, low durability, many deaths and a long time dead still use
+# the spirit healer. v35: 506 spirit-healer revives vs 13 corpse runs in 6.56 h. 0 = off (default).
+AiPlayerbot.Revive.PreferCorpseRun = 0
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
 # of holding the bot. A failure of a roster bot on its own is: a stall (recovery
