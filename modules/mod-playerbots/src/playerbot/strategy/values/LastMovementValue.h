@@ -45,8 +45,6 @@ namespace ai
             lastFleeAttempt = 0;
             lastMoveShort = WorldPosition();
             nextTeleport = 0;
-            farMoveTarget = WorldPosition();
-            farMoveAt = 0;
             moveEvent = Event();
         }
 

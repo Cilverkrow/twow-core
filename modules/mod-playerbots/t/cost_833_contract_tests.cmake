@@ -45,9 +45,20 @@ endif()
 # Hotfix 8.33a: the far move skips the route (ResolveMovePath) - it is decided before it in MoveTo2.
 file(READ "${PB_SOURCE_DIR}/strategy/actions/MovementActions.cpp" move)
 string(FIND "${move}" "if (!detailedMove && sPlayerbotAIConfig.rosterFarMove && endPos.getMapId() == bot->GetMapId() && !bot->GetTransport())" far)
-string(FIND "${move}" "[FarMove] started=%u arrived=%u" farlog)
+string(FIND "${move}" "[FarMove] started=%u retargeted=%u arrived=%u" farlog)
 string(FIND "${move}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove);" resolve)
 if (far EQUAL -1 OR farlog EQUAL -1 OR resolve EQUAL -1 OR far GREATER resolve)
   message(FATAL_ERROR "hotfix 8.33a: far move must be decided before the route is resolved")
+endif()
+# Hotfix 8.33b: a pending far move survives other moves; only arrival or another far target end it.
+file(READ "${PB_SOURCE_DIR}/strategy/values/LastMovementValue.h" lastmove)
+string(FIND "${lastmove}" "void clear()" clear_at)
+string(SUBSTRING "${lastmove}" ${clear_at} 400 clear_body)
+string(FIND "${clear_body}" "farMoveAt" clear_resets)
+string(FIND "${move}" "    lastMove.farMoveAt = 0;
+
+    WorldPosition startPos(bot);" unconditional_reset)
+if (NOT clear_resets EQUAL -1 OR NOT unconditional_reset EQUAL -1)
+  message(FATAL_ERROR "hotfix 8.33b: other moves must not cancel a pending far move")
 endif()
 message(STATUS "COST_833_CONTRACT=PASS")

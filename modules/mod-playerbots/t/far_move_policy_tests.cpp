@@ -29,6 +29,7 @@ int main()
     Require(Next(1000, 1100, true) == Step::Wait, "before the walking time: wait");
     Require(Next(1100, 1100, true) == Step::Arrive, "walking time over: arrive");
     Require(Next(1100, 1100, false) == Step::Start, "other target: start again");
+    Require(SameTargetYards >= 25.0f, "8.33b: small target shifts stay the same trip");
 
     Counters counters;
     Require(counters.LogDue(120) && !counters.LogDue(130) && counters.LogDue(180), "one [FarMove] line a minute");
