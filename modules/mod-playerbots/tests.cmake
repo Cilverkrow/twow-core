@@ -789,6 +789,12 @@ add_test(NAME revive_choice_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/revive_choice_contract_tests.cmake")
 
+# Hotfix 8.35: environment deaths feed the danger map.
+add_test(NAME env_death_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/env_death_contract_tests.cmake")
+
 # Hotfix 8.26: the quest rescue binds the hearthstone at the rescue target.
 add_test(NAME rescue_rebind_contract
   COMMAND "${CMAKE_COMMAND}"

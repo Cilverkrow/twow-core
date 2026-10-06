@@ -17,6 +17,11 @@ namespace ai::danger_map
 // Bot deaths are pooled per map cell; a roster bot skips a destination whose
 // cell, neighbours or straight route contain a recent cluster of deaths caused
 // by mobs clearly above its level.
+// Hotfix 8.35 (twow-repo#544): a death without a creature killer (fall, drowning, lava) counts as
+// a killer far above every bot - AiPlayerbot.DangerMap.CountEnvironmentDeaths. v35: 182 of 543
+// deaths had no killer and no attacker; four bots died at one cliff on the way to Sara Timberlain.
+constexpr std::uint8_t EnvironmentKillerLevel = 255;
+
 struct Death
 {
     std::uint32_t time = 0;         // seconds

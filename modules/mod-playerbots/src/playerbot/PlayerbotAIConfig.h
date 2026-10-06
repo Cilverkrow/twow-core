@@ -585,6 +585,7 @@ public:
     uint32 dangerMapMinDeaths = 3;
     uint32 dangerMapLevelMargin = 3;
     uint32 dangerMapLineSamples = 20;
+    bool dangerMapCountEnvironmentDeaths = false;  // hotfix 8.35 (#544)
     // #307: grind cap for low-level roster bots and per-bot avoidance of killers.
     uint32 grindCapLowLevelBelow = 0;     // 0 = off
     int32 grindCapLowLevelMargin = 2;
