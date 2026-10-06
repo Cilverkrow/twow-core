@@ -432,6 +432,12 @@ SlashCmdList["BOTMENU"] = function(msg)
 		BotMenuDB.surnames = 0;
 		BotMenu_RestorePlates();
 		BotMenu_Print("Bot surnames in the tooltip and on nameplates: off.");
+	elseif ( msg == "namefix on" ) then
+		BotMenuDB.nameFix = 1;
+		BotMenu_Print("Whisper/invite/friend/mail: bot display names are sent as the character name.");
+	elseif ( msg == "namefix off" ) then
+		BotMenuDB.nameFix = 0;
+		BotMenu_Print("Name fix off: names are sent as the client has them.");
 	elseif ( msg == "plates on" or msg == "plaketten an" ) then
 		BotMenuDB.plates = 1;
 		BotMenu_Print("Bot surnames on nameplates: on.");

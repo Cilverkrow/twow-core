@@ -121,6 +121,17 @@ require_true(chunk, "BotSurnames.lua does not parse: "..tostring(err))
 chunk()
 require_true(BOTMENU_SURNAMES_COUNT and BOTMENU_SURNAMES_COUNT > 0, "the surname table is loaded")
 
+-- #518 name fix: stand-ins for the calls it wraps, then BotNameFix.lua.
+local sent = {}
+function SendChatMessage(msg, chatType, language, target) table.insert(sent, { "chat", chatType, target }) end
+function AddFriend(name) table.insert(sent, { "friend", name }) end
+function AddOrDelIgnore(name) table.insert(sent, { "ignore", name }) end
+function SendMail(recipient, subject, body) table.insert(sent, { "mail", recipient, subject }) end
+local originalInviteStandIn = InviteByName
+chunk, err = loadfile(dir.."/BotNameFix.lua")
+require_true(chunk, "BotNameFix.lua does not parse: "..tostring(err))
+chunk()
+
 -- #518: a GameTooltip stand-in (lines GameTooltipTextLeft<n>, SetUnit, AddLine)
 -- and units: "mouseover" is a bot from the surname table, "target" a player
 -- with a title on the name line, "party1" someone not in the table.
@@ -263,6 +274,32 @@ require_true(botPlate.regions[3]:GetText() == otherBot, "no scan while plates ar
 SlashCmdList["BOTMENU"]("plates on")
 arg1 = 0.3; plateFrame.scripts.OnUpdate()
 require_true(botPlate.regions[3]:GetText() == otherBot.." "..otherSurname, "/botmenu plates on")
+
+-- #518 name fix: display names (and the last word from a chat link) go out as
+-- the character name; other names and other chat types pass unchanged.
+local display = botName.." "..botSurname
+local lastWord = botSurname
+local cut = string.find(lastWord, " [^ ]*$")
+if cut then lastWord = string.sub(lastWord, cut + 1) end
+sent = {}
+SendChatMessage("hi", "WHISPER", nil, display)
+SendChatMessage("hi", "WHISPER", nil, "Somebody Else")
+SendChatMessage("hi", "SAY", nil, display)
+AddFriend(display); AddOrDelIgnore(display); SendMail(display, "s", "b")
+local before = table.getn(invited); InviteByName(display)
+require_true(sent[1][3] == botName, "/r and right-click whisper reach the character name")
+require_true(sent[2][3] == "Somebody Else", "unknown names pass unchanged")
+require_true(sent[3][3] == display, "non-whisper chat is untouched")
+require_true(sent[4][2] == botName and sent[5][2] == botName and sent[6][2] == botName, "friend, ignore, mail")
+require_true(invited[before + 1] == botName, "invite reaches the character name")
+if BOTNAMEFIX_LASTWORD[lastWord] == botName then
+    sent = {}; SendChatMessage("hi", "WHISPER", nil, lastWord)
+    require_true(sent[1][3] == botName, "a chat link's last word resolves to the character name")
+end
+SlashCmdList["BOTMENU"]("namefix off")
+sent = {}; SendChatMessage("hi", "WHISPER", nil, display)
+require_true(sent[1][3] == display and BotMenuDB.nameFix == 0, "/botmenu namefix off")
+SlashCmdList["BOTMENU"]("namefix on")
 event = "VARIABLES_LOADED"
 require_true(ChatMenu.numButtons == 11, "exactly one entry is added to ChatMenu")
 local bots = getglobal("ChatMenuButton11")

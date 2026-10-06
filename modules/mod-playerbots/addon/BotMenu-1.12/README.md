@@ -130,3 +130,13 @@ With nameplates on (V hostile, Shift+V friendly), a bot's plate shows
   similar) read the name from the same FontString, so they usually show the
   surname too; addons that hide the stock text and keep their own copy of the
   name do not. Nothing else is touched.
+
+## Name fix (1.8, twow-repo#518 probe)
+
+Only relevant while the server shows bots as "Name Surname" (core probe
+`Debug.NameQueryDisplayNames`, test realm). The 1.12 client sends that display
+name back as the target of a right-click whisper, `/r`, `/invite`, `/friend`,
+`/ignore` and mail - or only its last word from a chat link. `BotNameFix.lua`
+wraps exactly those calls and turns a known display name back into the
+character name; it never sends anything itself. `/botmenu namefix off` turns
+it off (to measure what the server side covers alone).
