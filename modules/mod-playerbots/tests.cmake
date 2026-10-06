@@ -770,6 +770,25 @@ add_test(NAME cost_833_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/cost_833_contract_tests.cmake")
 
+# Hotfix 8.34: corpse run before the spirit-healer shortcuts.
+add_executable(revive_choice_policy_tests
+  "${PB_MODULE_DIR}/t/revive_choice_policy_tests.cpp")
+
+target_include_directories(revive_choice_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(revive_choice_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME revive_choice_policy
+  COMMAND revive_choice_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME revive_choice_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/revive_choice_contract_tests.cmake")
+
 # Hotfix 8.26: the quest rescue binds the hearthstone at the rescue target.
 add_test(NAME rescue_rebind_contract
   COMMAND "${CMAKE_COMMAND}"
