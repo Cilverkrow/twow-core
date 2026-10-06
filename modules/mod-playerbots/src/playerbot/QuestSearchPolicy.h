@@ -202,6 +202,14 @@ inline uint32_t RouteBackoffSeconds(uint32_t failures)
     return seconds < RouteBackoffMaxSeconds ? seconds : RouteBackoffMaxSeconds;
 }
 
+// Hotfix 8.32 (twow-repo#544): a quest-first roster bot whose quest route search found nothing
+// MinFailures times in a row (backoff 2+4 min) may travel to a grind spot instead of idling
+// (v35: ~13 % of bot time "no destination", the bots that grind progress ~5x faster). 0 = off.
+inline bool GrindFallback(bool questFirst, uint32_t routeFailures, uint32_t minFailures)
+{
+    return questFirst && minFailures && routeFailures >= minFailures;
+}
+
 // Hotfix 8.1 [MemStores]: a bot whose UpdateAI did not run for this long counts as stale.
 constexpr uint32_t StaleUpdateSeconds = 10 * 60;
 inline bool UpdateStale(uint32_t lastUpdate, uint32_t now)

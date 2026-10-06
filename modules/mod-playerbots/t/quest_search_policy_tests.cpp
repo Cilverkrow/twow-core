@@ -115,6 +115,11 @@ int main()
     Require(!RebindAtRescue(true, true, 0, 0), "led by a real player: keep the hearthstone");
     Require(!RebindAtRescue(false, false, 0, 1), "not a roster bot: keep the hearthstone");
 
+    // Hotfix 8.32: grind fallback after repeated empty quest route searches.
+    Require(!GrindFallback(true, 1, 2) && GrindFallback(true, 2, 2) && GrindFallback(true, 5, 2), "from the 2nd empty search");
+    Require(!GrindFallback(true, 9, 0), "0 = off");
+    Require(!GrindFallback(false, 9, 2), "not quest-first: unaffected (stock grind rules)");
+
     // Hotfix 8.29: Blackstone Island flying machine.
     {
         namespace gi = goblin_island;
