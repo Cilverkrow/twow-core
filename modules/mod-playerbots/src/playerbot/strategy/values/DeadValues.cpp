@@ -3,6 +3,8 @@
 #include "DeadValues.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GraveyardSelectionPolicy.h"
+#include "playerbot/ReviveChoicePolicy.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 
 using namespace ai;
 
@@ -232,12 +234,17 @@ bool ShouldSpiritHealerValue::Calculate()
     if (deadTime > 20 * MINUTE)
         return true;
 
+    // Hotfix 8.34 (twow-repo#544): the two shortcuts below (enemies near the corpse, graveyard in
+    // sight) only from the second death in a row for a roster bot on its own above level 10.
+    bool const shortcutAllowed = revive_choice::ShortcutToSpiritHealerAllowed(sPlayerbotAIConfig.revivePreferCorpseRun,
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster(), bot->GetLevel(), deathCount);
+
     //If there are enemies near grave and corpse we go to corpse first.
     if (AI_VALUE2(bool, "manual bool", "enemies near graveyard"))
         return false;
 
     //Enemies near corpse so try grave first.
-    if (AI_VALUE2(bool, "manual bool", "enemies near corpse"))
+    if (shortcutAllowed && AI_VALUE2(bool, "manual bool", "enemies near corpse"))
         return true;
 
     GuidPosition graveyard = AI_VALUE(GuidPosition, "best graveyard");
@@ -255,7 +262,7 @@ bool ShouldSpiritHealerValue::Calculate()
             SET_AI_VALUE2(bool, "manual bool", "enemies near graveyard", true);
             return false;
         }
-        if (corpseInSight)
+        if (corpseInSight && shortcutAllowed)
         {
             SET_AI_VALUE2(bool, "manual bool", "enemies near corpse", true);
             return true;
@@ -263,7 +270,7 @@ bool ShouldSpiritHealerValue::Calculate()
     }
 
     //If grave is near and no ress sickness go there.
-    if (graveInSight && !corpseInSight && ai->HasCheat(BotCheatMask::repair))
+    if (shortcutAllowed && graveInSight && !corpseInSight && ai->HasCheat(BotCheatMask::repair))
         return true;
 
     //Stick to corpse.
