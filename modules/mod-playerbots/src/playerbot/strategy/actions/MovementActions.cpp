@@ -1131,16 +1131,22 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
             if (counters.LogDue(uint64(now)))
             {
                 uint32 const started = counters.started.exchange(0, std::memory_order_relaxed);
+                uint32 const retargeted = counters.retargeted.exchange(0, std::memory_order_relaxed);
                 uint32 const arrived = counters.arrived.exchange(0, std::memory_order_relaxed);
-                if (started || arrived)
-                    sLog.outBasic("[FarMove] started=%u arrived=%u", started, arrived);
+                if (started || retargeted || arrived)
+                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u", started, retargeted, arrived);
             }
 
             if (step == far_move::Step::Start)
             {
+                // Hotfix 8.33b: a pending far move is only replaced by another far target; started
+                // counts fresh trips, retargeted the replaced ones (target re-chosen elsewhere).
+                if (lastMove.farMoveAt)
+                    counters.retargeted.fetch_add(1, std::memory_order_relaxed);
+                else
+                    counters.started.fetch_add(1, std::memory_order_relaxed);
                 lastMove.farMoveTarget = endPos;
                 lastMove.farMoveAt = now + far_move::WaitSeconds(farDistance, bot->GetSpeed(MOVE_RUN));
-                counters.started.fetch_add(1, std::memory_order_relaxed);
                 if (mover == bot)
                     ai->StopMoving();
                 SetDuration(std::min<uint32>(uint32(lastMove.farMoveAt - now), 10) * IN_MILLISECONDS);
@@ -1153,11 +1159,14 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
             }
 
             lastMove.clear();
+            lastMove.farMoveAt = 0;
             counters.arrived.fetch_add(1, std::memory_order_relaxed);
             return bot->TeleportTo(endPos.getMapId(), endPos.getX(), endPos.getY(), endPos.getZ(), farStart.getAngleTo(endPos));
         }
     }
-    lastMove.farMoveAt = 0;
+    // Hotfix 8.33b (v37 test realm f2: 93-223 far moves started per minute, 5-32 arrived): a short
+    // move, combat or a player in view (no far branch above) no longer cancels the pending far move;
+    // the walking time keeps running and the trip resumes. Only arrival or another far target end it.
 
     WorldPosition startPos(bot);
     float totalDistance = startPos.distance(endPos);

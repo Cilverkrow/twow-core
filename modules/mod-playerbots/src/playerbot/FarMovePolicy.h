@@ -8,10 +8,11 @@ namespace ai::far_move
 // Hotfix 8.33a (twow-repo#544): with AiPlayerbot.RosterFarMove a roster bot without a player at its
 // start or at its target (same map, farther than react distance) does not compute a route at all
 // (MoveTo2's ResolveMovePath was the cost of "move to travel target", 11 ms per tick on the v37 test
-// realm). It waits the walking time and then appears at the target. The wait is capped below the
+// realm). It waits the walking time and then appears at the target (8.33b: other moves in between do
+// not cancel the trip, only another far target does). The wait is capped below the
 // turn-in stall window (300 s without 25 yd progress), so a long trip never looks like a stall.
 constexpr std::uint32_t MaxWaitSeconds = 240;
-constexpr float SameTargetYards = 5.0f;
+constexpr float SameTargetYards = 30.0f;  // hotfix 8.33b: same trip despite small target shifts
 
 inline std::uint32_t WaitSeconds(float distance, float speedYardsPerSecond)
 {
@@ -35,6 +36,7 @@ inline Step Next(std::uint64_t now, std::uint64_t pendingAt, bool sameTarget)
 struct Counters
 {
     std::atomic<std::uint32_t> started{0};
+    std::atomic<std::uint32_t> retargeted{0};  // hotfix 8.33b: a pending far move replaced by another far target
     std::atomic<std::uint32_t> arrived{0};
     std::atomic<std::uint64_t> lastLogMinute{0};
 
