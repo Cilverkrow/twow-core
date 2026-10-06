@@ -839,6 +839,13 @@ AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
 # or combat keeps the detailed move. Cuts the "move to travel target" cost of many bots travelling
 # at once (v37 test realm: 11 ms per tick). [FarMove] started arrived once a minute. 0 = off (default).
 AiPlayerbot.RosterFarMove = 0
+# Hotfix 8.36 (twow-repo#544, owner 06.10.2026): the far move ends ArriveBackYards before its target
+# (straight line, navmesh ground, not in a danger-map cell; else 120 yd; else the bot walks) and the bot
+# walks the rest with its normal mob awareness - no appearing right at Hogger. WatchRoute: a real player
+# within visibility of the straight route (not only at its ends) sees the bot walk the whole way.
+# [FarMove] ... watched arrive_alt arrive_walk. ArriveBackYards 0 = arrive at the target (8.33 behaviour).
+AiPlayerbot.RosterFarMove.ArriveBackYards = 60
+AiPlayerbot.RosterFarMove.WatchRoute = 1
 # Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
 # its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost
 # starts there) or enemies stand near the corpse - those two shortcuts apply only from the second

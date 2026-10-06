@@ -19,8 +19,55 @@
 #include "playerbot/strategy/generic/CombatStrategy.h"
 #include "playerbot/FarFollowPolicy.h"
 #include "playerbot/FarMovePolicy.h"
+#include "playerbot/DangerMapPolicy.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 
 using namespace ai;
+
+namespace
+{
+// Hotfix 8.36 (twow-repo#544): a real player within visibility of the straight route start -> target
+// (same map) sees the bot walk; the few online real players are checked against the segment.
+bool FarMoveRouteWatched(WorldPosition const& from, WorldPosition const& to)
+{
+    float const range = WorldPosition(from).getVisibilityDistance();
+    for (auto const& [guid, player] : sRandomPlayerbotMgr.GetPlayers())
+    {
+        if (!player || !player->IsInWorld() || player->GetMapId() != from.getMapId())
+            continue;
+        if (far_move::SegmentDistance({ player->GetPositionX(), player->GetPositionY() }, { from.getX(), from.getY() },
+                { to.getX(), to.getY() }) <= range)
+            return true;
+    }
+    return false;
+}
+
+// Hotfix 8.36: the arrival point backYards before the target, on the navmesh and outside a
+// danger-map cell; false = no safe point there.
+bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition const& to, float backYards, WorldPosition& out)
+{
+    far_move::Point2 const p = far_move::ArrivalPoint({ from.getX(), from.getY() }, { to.getX(), to.getY() }, backYards);
+    WorldPosition point(to.getMapId(), p.x, p.y, to.getZ(), 0.0f);
+    if (!point.ClosestCorrectPoint(20.0f, 50.0f, bot->GetInstanceId()))
+        return false;
+
+    if (sPlayerbotAIConfig.dangerMapEnabled)
+    {
+        danger_map::Params params;
+        params.cellSize = sPlayerbotAIConfig.dangerMapCellSize;
+        params.windowSeconds = sPlayerbotAIConfig.dangerMapWindowSeconds;
+        params.minDeaths = sPlayerbotAIConfig.dangerMapMinDeaths;
+        params.levelMargin = sPlayerbotAIConfig.dangerMapLevelMargin;
+        params.lineSamples = sPlayerbotAIConfig.dangerMapLineSamples;
+        if (danger_map::Instance().Query(point.getMapId(), point.getX(), point.getY(), point.getX(), point.getY(), bot->GetLevel(),
+                uint32(time(nullptr)), params).cells)
+            return false;
+    }
+
+    out = point;
+    return true;
+}
+}
 
 // #303: [FollowDiag] snapshot, defined next to FollowOnTransport.
 static void LogFollowDiag(PlayerbotAI* ai, Player* bot, Unit* target, char const* point);
@@ -1122,47 +1169,89 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     {
         WorldPosition const farStart(bot);
         float const farDistance = farStart.distance(endPos);
-        if (farDistance > sPlayerbotAIConfig.reactDistance && !ai->HasPlayerNearby(farStart) && !ai->HasPlayerNearby(endPos))
+        far_move::Counters& counters = far_move::SharedCounters();
+        // Hotfix 8.36: a target without a safe arrival point is walked until the target changes.
+        bool const declined = lastMove.farMoveDeclinedSet &&
+            lastMove.farMoveDeclined.getMapId() == endPos.getMapId() && lastMove.farMoveDeclined.distance(endPos) <= far_move::SameTargetYards;
+        if (farDistance > sPlayerbotAIConfig.reactDistance && !declined && !ai->HasPlayerNearby(farStart) && !ai->HasPlayerNearby(endPos) &&
+            !(sPlayerbotAIConfig.rosterFarMoveWatchRoute && FarMoveRouteWatched(farStart, endPos)))
         {
             time_t const now = time(nullptr);
             far_move::Step const step = far_move::Next(uint64(now), uint64(lastMove.farMoveAt),
                 lastMove.farMoveAt && lastMove.farMoveTarget.distance(endPos) <= far_move::SameTargetYards);
-            far_move::Counters& counters = far_move::SharedCounters();
             if (counters.LogDue(uint64(now)))
             {
                 uint32 const started = counters.started.exchange(0, std::memory_order_relaxed);
                 uint32 const retargeted = counters.retargeted.exchange(0, std::memory_order_relaxed);
                 uint32 const arrived = counters.arrived.exchange(0, std::memory_order_relaxed);
-                if (started || retargeted || arrived)
-                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u", started, retargeted, arrived);
+                uint32 const watched = counters.watched.exchange(0, std::memory_order_relaxed);
+                uint32 const arriveAlt = counters.arriveAlt.exchange(0, std::memory_order_relaxed);
+                uint32 const arriveWalk = counters.arriveWalk.exchange(0, std::memory_order_relaxed);
+                if (started || retargeted || arrived || watched || arriveAlt || arriveWalk)
+                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u",
+                        started, retargeted, arrived, watched, arriveAlt, arriveWalk);
             }
 
             if (step == far_move::Step::Start)
             {
-                // Hotfix 8.33b: a pending far move is only replaced by another far target; started
-                // counts fresh trips, retargeted the replaced ones (target re-chosen elsewhere).
-                if (lastMove.farMoveAt)
-                    counters.retargeted.fetch_add(1, std::memory_order_relaxed);
-                else
-                    counters.started.fetch_add(1, std::memory_order_relaxed);
-                lastMove.farMoveTarget = endPos;
-                lastMove.farMoveAt = now + far_move::WaitSeconds(farDistance, bot->GetSpeed(MOVE_RUN));
-                if (mover == bot)
-                    ai->StopMoving();
-                SetDuration(std::min<uint32>(uint32(lastMove.farMoveAt - now), 10) * IN_MILLISECONDS);
-                return true;
+                // Hotfix 8.36: the trip ends ArriveBackYards before the target (navmesh ground, no
+                // danger-map cell); else a second point further back; else the bot walks.
+                WorldPosition arrive = endPos;
+                bool useArrive = true;
+                if (sPlayerbotAIConfig.rosterFarMoveArriveBackYards > 0.0f)
+                {
+                    bool found = FarMoveArrivalPoint(bot, farStart, endPos, sPlayerbotAIConfig.rosterFarMoveArriveBackYards, arrive);
+                    if (!found && FarMoveArrivalPoint(bot, farStart, endPos, far_move::ArriveAltYards, arrive))
+                    {
+                        found = true;
+                        counters.arriveAlt.fetch_add(1, std::memory_order_relaxed);
+                    }
+                    if (!found)
+                    {
+                        counters.arriveWalk.fetch_add(1, std::memory_order_relaxed);
+                        lastMove.farMoveDeclined = endPos;
+                        lastMove.farMoveDeclinedSet = true;
+                        lastMove.farMoveAt = 0;
+                        useArrive = false;
+                    }
+                }
+
+                if (useArrive)
+                {
+                    // Hotfix 8.33b: a pending far move is only replaced by another far target; started
+                    // counts fresh trips, retargeted the replaced ones (target re-chosen elsewhere).
+                    if (lastMove.farMoveAt)
+                        counters.retargeted.fetch_add(1, std::memory_order_relaxed);
+                    else
+                        counters.started.fetch_add(1, std::memory_order_relaxed);
+                    lastMove.farMoveTarget = endPos;
+                    lastMove.farMoveArrive = arrive;
+                    lastMove.farMoveArriveSet = true;
+                    lastMove.farMoveAt = now + far_move::WaitSeconds(farStart.distance(arrive), bot->GetSpeed(MOVE_RUN));
+                    if (mover == bot)
+                        ai->StopMoving();
+                    SetDuration(std::min<uint32>(uint32(lastMove.farMoveAt - now), 10) * IN_MILLISECONDS);
+                    return true;
+                }
             }
-            if (step == far_move::Step::Wait)
+            else if (step == far_move::Step::Wait)
             {
                 SetDuration(std::min<uint32>(uint32(lastMove.farMoveAt - now), 10) * IN_MILLISECONDS);
                 return true;
             }
-
-            lastMove.clear();
-            lastMove.farMoveAt = 0;
-            counters.arrived.fetch_add(1, std::memory_order_relaxed);
-            return bot->TeleportTo(endPos.getMapId(), endPos.getX(), endPos.getY(), endPos.getZ(), farStart.getAngleTo(endPos));
+            else
+            {
+                WorldPosition const arrive = lastMove.farMoveArriveSet ? lastMove.farMoveArrive : endPos;
+                lastMove.farMoveArriveSet = false;
+                lastMove.clear();
+                lastMove.farMoveAt = 0;
+                counters.arrived.fetch_add(1, std::memory_order_relaxed);
+                return bot->TeleportTo(arrive.getMapId(), arrive.getX(), arrive.getY(), arrive.getZ(), farStart.getAngleTo(endPos));
+            }
         }
+        else if (farDistance > sPlayerbotAIConfig.reactDistance && !declined && sPlayerbotAIConfig.rosterFarMoveWatchRoute &&
+            !ai->HasPlayerNearby(farStart) && !ai->HasPlayerNearby(endPos))
+            counters.watched.fetch_add(1, std::memory_order_relaxed);   // a player near the route: walk visibly
     }
     // Hotfix 8.33b (v37 test realm f2: 93-223 far moves started per minute, 5-32 arrived): a short
     // move, combat or a player in view (no far branch above) no longer cancels the pending far move;
