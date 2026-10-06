@@ -826,6 +826,14 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+# Hotfix 8.33 (twow-repo#544): with 1 a persistent roster bot on its own, out of combat on a
+# continent and with no player within visibility + react distance, moves without detailed path
+# finding: for a target on its map farther than react distance with no player at either end it
+# computes no route, waits the walking time (max 240 s, below the turn-in stall window) and then
+# appears at the target; otherwise timed hops along the route. A player nearby, a real master
+# or combat keeps the detailed move. Cuts the "move to travel target" cost of many bots travelling
+# at once (v37 test realm: 11 ms per tick). [FarMove] started arrived once a minute. 0 = off (default).
+AiPlayerbot.RosterFarMove = 0
 # Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
 # its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost
 # starts there) or enemies stand near the corpse - those two shortcuts apply only from the second
