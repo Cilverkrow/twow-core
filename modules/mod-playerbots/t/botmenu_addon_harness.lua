@@ -144,6 +144,46 @@ function GameTooltip:SetUnit(unit)
     for i = 2, 5 do tooltipLine(i):SetText(nil) end
 end
 
+-- 1.8 nameplates: WorldFrame children; a plate is an unnamed frame whose first
+-- region is the nameplate border texture and whose first FontString is the name.
+local function region(kind, value)
+    local r = { kind = kind, value = value }
+    function r:GetObjectType() return self.kind end
+    function r:GetTexture() return self.value end
+    function r:GetText() return self.value end
+    function r:SetText(t) self.value = t end
+    return r
+end
+local worldChildren = {}
+local function newPlate(name, visible)
+    local p = { regions = { region("Texture", "Interface\\Tooltips\\Nameplate-Border"), region("Texture", "glow"),
+        region("FontString", name), region("FontString", "60") }, visible = visible ~= false }
+    function p:GetName() return nil end
+    function p:GetRegions() return unpack(self.regions) end
+    function p:IsVisible() return self.visible end
+    table.insert(worldChildren, p)
+    return p
+end
+local function newOther(named)
+    local o = { regions = { region("Texture", "something") } }
+    function o:GetName() return named end
+    function o:GetRegions() return unpack(self.regions) end
+    function o:IsVisible() return true end
+    table.insert(worldChildren, o)
+    return o
+end
+WorldFrame = {}
+function WorldFrame:GetNumChildren() return table.getn(worldChildren) end
+function WorldFrame:GetChildren() return unpack(worldChildren) end
+UIParent = {}
+local createdFrames = {}
+function CreateFrame(kind, name, parent)
+    local f = { scripts = {} }
+    function f:SetScript(which, fn) self.scripts[which] = fn end
+    table.insert(createdFrames, f)
+    return f
+end
+
 chunk, err = loadfile(dir.."/BotMenu.lua")
 require_true(chunk, "BotMenu.lua does not parse: "..tostring(err))
 chunk()
@@ -189,6 +229,40 @@ GameTooltip:SetUnit("mouseover")
 require_true(tooltipLine(1):GetText() == botName and BotMenuDB.surnames == 0, "/botmenu surnames off")
 SlashCmdList["BOTMENU"]("surnames on")
 require_true(BotMenuDB.surnames == 1, "/botmenu surnames on")
+
+-- 1.8 nameplates: bot plates get "Name Surname" (once), others stay, recycled
+-- plates follow the new name, the scan is throttled, "plates off" restores.
+local plateFrame = createdFrames[table.getn(createdFrames)]
+require_true(plateFrame and plateFrame.scripts.OnUpdate, "a visible frame runs the nameplate scan")
+local otherBot, otherSurname
+for name, surname in pairs(BOTMENU_SURNAMES) do if name ~= botName then otherBot, otherSurname = name, surname break end end
+newOther("SomeAddonFrame")
+local botPlate = newPlate(botName)
+local playerPlate = newPlate("Somebody")
+local hiddenPlate = newPlate(otherBot, false)
+arg1 = 0.1; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == botName, "the scan waits for its interval")
+arg1 = 0.2; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == botName.." "..botSurname, "a bot plate shows 'Name Surname'")
+require_true(playerPlate.regions[3]:GetText() == "Somebody", "a plate without a surname stays unchanged")
+require_true(hiddenPlate.regions[3]:GetText() == otherBot, "hidden plates are left alone")
+arg1 = 0.3; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == botName.." "..botSurname, "the surname is added once")
+botPlate.regions[3]:SetText(otherBot) -- the client recycles the plate for another bot
+playerPlate.regions[3]:SetText(botName)
+local latePlate = newPlate(botName)
+arg1 = 0.3; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == otherBot.." "..otherSurname, "a recycled plate follows the new bot")
+require_true(playerPlate.regions[3]:GetText() == botName.." "..botSurname, "a recycled player plate gets the bot surname")
+require_true(latePlate.regions[3]:GetText() == botName.." "..botSurname, "plates created later are found")
+SlashCmdList["BOTMENU"]("plates off")
+require_true(botPlate.regions[3]:GetText() == otherBot and latePlate.regions[3]:GetText() == botName,
+    "/botmenu plates off restores the names")
+arg1 = 0.3; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == otherBot, "no scan while plates are off")
+SlashCmdList["BOTMENU"]("plates on")
+arg1 = 0.3; plateFrame.scripts.OnUpdate()
+require_true(botPlate.regions[3]:GetText() == otherBot.." "..otherSurname, "/botmenu plates on")
 event = "VARIABLES_LOADED"
 require_true(ChatMenu.numButtons == 11, "exactly one entry is added to ChatMenu")
 local bots = getglobal("ChatMenuButton11")

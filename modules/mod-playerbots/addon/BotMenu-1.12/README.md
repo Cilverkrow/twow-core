@@ -112,3 +112,21 @@ server's name lookup only work with those (a space breaks all of them in the
   grey line. Nothing is ever sent to the server.
 - `/botmenu surnames off` hides it, `/botmenu surnames on` shows it again.
 - A new roster table (new hash) means: regenerate, bump the version, release.
+
+## Nameplates (1.8, twow-repo#518)
+
+With nameplates on (V hostile, Shift+V friendly), a bot's plate shows
+"Name Surname" from the same table. Players without an entry stay unchanged.
+
+- The plates are unnamed children of `WorldFrame` whose first region is the
+  nameplate border texture; their first FontString holds the name. New
+  children are inspected once; the visible plates are checked every
+  `BOTMENU_PLATE_INTERVAL` (0.25 s) on a small frame of its own.
+- The client recycles plates and writes the new name itself; the next scan
+  extends it again if it is a bot.
+- `/botmenu plates off` restores the plain names; `/botmenu surnames off` turns
+  off tooltip and plates.
+- Other nameplate addons that replace the stock plate (pfUI, ShaguPlates and
+  similar) read the name from the same FontString, so they usually show the
+  surname too; addons that hide the stock text and keep their own copy of the
+  name do not. Nothing else is touched.

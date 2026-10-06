@@ -8,7 +8,7 @@
 --
 -- Lua 5.0 / 1.12 client: no '#', no '%', handlers read `this`, no SetSize.
 
-BOTMENU_VERSION = "1.7";
+BOTMENU_VERSION = "1.8";
 
 -- Categories in menu order (owner 2026-09-27, twow-repo#290). `menu` is the
 -- frame from BotMenu.xml; each entry is { label, command }. Commands are the
@@ -287,6 +287,92 @@ function BotMenu_TooltipSurname(tooltip, unit)
 	tooltip:Show();
 end
 
+-- Nameplates (1.8, twow-repo#518). The overhead name cannot be changed in
+-- 1.12, the nameplates (V / Shift+V) can: they are unnamed children of
+-- WorldFrame whose first region is the nameplate border texture, and their
+-- first FontString holds the unit name. The client recycles plates and writes
+-- the new unit's name itself, so the scan only appends the surname when the
+-- text is a known bot name. New children are inspected once; the visible
+-- plates are checked every BOTMENU_PLATE_INTERVAL seconds.
+BOTMENU_PLATE_INTERVAL = 0.25;
+local PLATE_BORDER = "Interface\\Tooltips\\Nameplate-Border";
+local plates = {};         -- known nameplate frames (list)
+local plateName = {};      -- plate -> its name FontString
+local plateOriginal = {};  -- plate -> the name we extended (to restore on "off")
+local seenChildren = 0;
+local plateElapsed = 0;
+
+local function BotMenu_PlateNameString(frame)
+	if ( frame:GetName() ) then
+		return nil;
+	end
+	local regions = { frame:GetRegions() };
+	local first = regions[1];
+	if ( not first or first:GetObjectType() ~= "Texture" or first:GetTexture() ~= PLATE_BORDER ) then
+		return nil;
+	end
+	for i = 2, table.getn(regions) do
+		if ( regions[i]:GetObjectType() == "FontString" ) then
+			return regions[i];
+		end
+	end
+	return nil;
+end
+
+function BotMenu_PlatesEnabled()
+	return BOTMENU_SURNAMES and BotMenuDB and BotMenuDB.plates ~= 0 and BotMenuDB.surnames ~= 0;
+end
+
+function BotMenu_ScanPlates()
+	local count = WorldFrame:GetNumChildren();
+	if ( count ~= seenChildren ) then
+		local children = { WorldFrame:GetChildren() };
+		for i = seenChildren + 1, table.getn(children) do
+			local name = BotMenu_PlateNameString(children[i]);
+			if ( name ) then
+				table.insert(plates, children[i]);
+				plateName[children[i]] = name;
+			end
+		end
+		seenChildren = count;
+	end
+	for i = 1, table.getn(plates) do
+		local plate = plates[i];
+		if ( plate:IsVisible() ) then
+			local fontString = plateName[plate];
+			local text = fontString:GetText();
+			local surname = text and BOTMENU_SURNAMES[text];
+			if ( surname ) then
+				fontString:SetText(text.." "..surname);
+				plateOriginal[plate] = text;
+			elseif ( text and plateOriginal[plate] and text ~= plateOriginal[plate].." "..(BOTMENU_SURNAMES[plateOriginal[plate]] or "") ) then
+				plateOriginal[plate] = nil; -- recycled for another unit
+			end
+		end
+	end
+end
+
+function BotMenu_RestorePlates()
+	for i = 1, table.getn(plates) do
+		local plate = plates[i];
+		if ( plateOriginal[plate] ) then
+			plateName[plate]:SetText(plateOriginal[plate]);
+			plateOriginal[plate] = nil;
+		end
+	end
+end
+
+function BotMenu_PlateUpdate(elapsed)
+	plateElapsed = plateElapsed + (elapsed or 0);
+	if ( plateElapsed < BOTMENU_PLATE_INTERVAL ) then
+		return;
+	end
+	plateElapsed = 0;
+	if ( BotMenu_PlatesEnabled() ) then
+		BotMenu_ScanPlates();
+	end
+end
+
 function BotMenu_OnEvent()
 	if ( event == "UPDATE_MOUSEOVER_UNIT" ) then
 		BotMenu_TooltipSurname(GameTooltip, "mouseover");
@@ -310,6 +396,11 @@ function BotMenu_OnEvent()
 		setUnit(self, unit);
 		BotMenu_TooltipSurname(self, unit);
 	end
+
+	-- Nameplate scan (1.8). A frame of its own: BotMenuEventFrame is hidden and
+	-- hidden frames get no OnUpdate. 1.12 passes the elapsed time in arg1.
+	local plateFrame = CreateFrame("Frame", "BotMenuPlateFrame", UIParent);
+	plateFrame:SetScript("OnUpdate", function() BotMenu_PlateUpdate(arg1); end);
 
 	-- ChatMenu only hides EmoteMenu when it opens; hide ours too, or an
 	-- old submenu would reappear with it.
@@ -339,7 +430,15 @@ SlashCmdList["BOTMENU"] = function(msg)
 		BotMenu_Print("Bot surnames in the tooltip: on.");
 	elseif ( msg == "surnames off" or msg == "nachnamen aus" ) then
 		BotMenuDB.surnames = 0;
-		BotMenu_Print("Bot surnames in the tooltip: off.");
+		BotMenu_RestorePlates();
+		BotMenu_Print("Bot surnames in the tooltip and on nameplates: off.");
+	elseif ( msg == "plates on" or msg == "plaketten an" ) then
+		BotMenuDB.plates = 1;
+		BotMenu_Print("Bot surnames on nameplates: on.");
+	elseif ( msg == "plates off" or msg == "plaketten aus" ) then
+		BotMenuDB.plates = 0;
+		BotMenu_RestorePlates();
+		BotMenu_Print("Bot surnames on nameplates: off.");
 	elseif ( msg == "list" or msg == "liste" ) then
 		BotMenu_ShowList();
 	elseif ( string.sub(msg, 1, 4) == "pace" or string.sub(msg, 1, 4) == "takt" ) then
@@ -349,7 +448,7 @@ SlashCmdList["BOTMENU"] = function(msg)
 		BotMenu_Print("Bot list pace: "..(value and (value.." s") or "automatic")..".");
 	else
 		BotMenu_Print("Version "..BOTMENU_VERSION..", "..((BotMenuDB and BotMenuDB.enabled == 1) and "on" or "off")..
-			". /botmenu on | off | list | pace <s>|auto | surnames on|off. The active chat channel decides which bots get the command: "..
+			". /botmenu on | off | list | pace <s>|auto | surnames on|off | plates on|off. The active chat channel decides which bots get the command: "..
 			"/w name = one bot, /p = party, /raid = raid.");
 	end
 end
