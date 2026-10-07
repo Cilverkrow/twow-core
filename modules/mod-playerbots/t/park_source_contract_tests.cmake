@@ -74,4 +74,14 @@ require_text("${mgr}" "!ai->TakeQuestRescueRequest() || IsParkedBot(guid)" "no r
 require_order("${ai}" "if (!ai::park::AiUpdateDue(bot->IsInCombat(), nowMs, lastParkedUpdateMs))" "SlowUpdateProbe const slowUpdateProbe" "parked check before the AI update")
 require_text("${ai_h}" "std::atomic<bool> parked{ false };" "parked flag set by the world thread")
 
+
+# Deep dive L1 (#541): a bot log line below the active level is dropped before the 4 KB format and
+# before BotLog's global mutex (all map threads used to serialise on it for every disabled outDebug).
+file(READ "${PB_SOURCE_DIR}/BotLog.cpp" botlog)
+foreach(fn "outDetail" "outDebug" "outBasic")
+  region("${botlog}" "void BotLog::${fn}(const char* fmt, ...)" "\n}" fn_body)
+  require_text("${fn_body}" "BOTLOG_SKIP_BELOW(" "level check first in ${fn}")
+  require_order("${fn_body}" "BOTLOG_SKIP_BELOW(" "BOTLOG_IMPL(" "level check before format and lock in ${fn}")
+endforeach()
+require_text("${botlog}" "if (!m_file && !Log::Instance().HasLogLevelOrHigher(level))" "skip only without bot log file and below both log levels")
 message(STATUS "PARK_SOURCE_CONTRACT=PASS")
