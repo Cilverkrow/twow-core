@@ -7,6 +7,7 @@
 #include "playerbot/strategy/values/TravelValues.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
+#include "GuildCreateActions.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RouteDangerPolicy.h"
@@ -313,6 +314,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     {
         newTarget.SetForced(true);
         newTarget.SetRelevance(std::max<uint32>(targetRelevance, 198u));
+    }
+    // Hotfix 9.2 (twow-repo#485, RosterGuild.FoundTravel): a quest-first roster bot dropped its trip to
+    // a guild master within seconds (local quest hub filter, local quest preference) and asked for a
+    // quest route again: v41 founders with 9 signatures restarted the turn-in trip every 10 min and
+    // never arrived. Forced like a guild meeting: no quest filters on the way, it ends after an hour
+    // (SetExpireIn) or when its condition (can hand in / may buy a charter) turns false.
+    else if (futureTravelPurpose == "petition" && sPlayerbotAIConfig.rosterGuildFoundTravel && RosterGuildPlan::UsesRosterPath(ai))
+    {
+        newTarget.SetForced(true);
+        newTarget.SetRelevance(std::max<uint32>(targetRelevance, 197u));
     }
     else
     {
