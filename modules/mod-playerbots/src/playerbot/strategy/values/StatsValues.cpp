@@ -34,10 +34,18 @@ bool PetIsDeadValue::Calculate()
 #endif
     if (!bot->GetPet())
     {
-        uint32 ownerid = bot->GetGUIDLow();
-        auto result = CharacterDatabase.PQuery("SELECT id FROM character_pet WHERE owner = '%u'", ownerid);
-        std::unique_ptr<QueryResult> result_guard(result);
-        return result != nullptr;
+        // twow-repo#541 (H4): the stored pet is asked at most every StoredPetCheckSeconds instead of on
+        // every recalculation (once a second, synchronously in the map thread, per bot without a pet).
+        time_t const now = time(nullptr);
+        if (!lastStoredPetCheck || now - lastStoredPetCheck >= StoredPetCheckSeconds)
+        {
+            lastStoredPetCheck = now;
+            uint32 ownerid = bot->GetGUIDLow();
+            auto result = CharacterDatabase.PQuery("SELECT id FROM character_pet WHERE owner = '%u'", ownerid);
+            std::unique_ptr<QueryResult> result_guard(result);
+            hasStoredPet = result != nullptr;
+        }
+        return hasStoredPet;
     }
     if (bot->GetPetGuid() && !bot->GetPet())
         return true;
