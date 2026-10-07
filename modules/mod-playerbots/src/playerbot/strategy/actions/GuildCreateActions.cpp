@@ -1403,7 +1403,7 @@ bool RosterGuildFoundTripAction::Execute(Event& event)
     sLog.outBasic("[RosterGuild] event=buy_travel bot=%u level=%u map=%u zone=%u", bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId());
 
     AI_VALUE(TravelTarget*, "travel target")->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
-    return ai->DoSpecificAction("request named travel target::petition", Event("roster guild found trip"), true);
+    return ai->DoSpecificAction("request named travel target::petition", Event("roster guild may buy charter"), true);
 }
 
 bool RosterGuildOfferRemoteAction::isUseful()

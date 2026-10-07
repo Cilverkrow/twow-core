@@ -126,7 +126,7 @@ namespace ai
             }
 
             QuestStatus status = bot->GetQuestStatus(order.questId);
-            // Quest already in log (incomplete or complete) — no need to accept.
+            // Quest already in log (incomplete or complete) ï¿½ no need to accept.
             if (status == QUEST_STATUS_INCOMPLETE || status == QUEST_STATUS_COMPLETE)
                 return false;
 
@@ -269,6 +269,16 @@ namespace ai
         CanHandInPetitionValue(PlayerbotAI* ai) : CalculatedValue<bool>(ai, "can hand in guild petition") {}
 
         bool Calculate() override { return !bot->GetGuildId() && AI_VALUE2(uint32, "item count", chat->formatQItem(5863)) && AI_VALUE(uint8, "petition signs") >= sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS); };
+    };
+
+    // Hotfix 9.2 (twow-repo#485): the travel condition of the roster founding trip (purchase). 9.1 passed
+    // the action name, which is no value, so TravelTarget::IsConditionsActive dropped the trip at once.
+    class RosterGuildMayBuyCharterValue : public CalculatedValue<bool>
+    {
+    public:
+        RosterGuildMayBuyCharterValue(PlayerbotAI* ai) : CalculatedValue<bool>(ai, "roster guild may buy charter") {}
+
+        bool Calculate() override { return !bot->GetGuildId() && !bot->HasItemCount(5863, 1); };
     };
 
     class CanBuyTabard : public CalculatedValue<bool>
