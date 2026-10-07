@@ -1254,6 +1254,13 @@ class World
         static float GetRelocationLowerLimitSq() { return m_relocation_lower_limit_sq; }
         static uint32 GetRelocationAINotifyDelay() { return m_relocation_ai_notify_delay; }
 
+        // Hotfix 9.3 (twow-repo#518): display-only bot surnames from the read-only
+        // file Funserver.BotSurnames.File (default empty = off). The character name
+        // stays the key everywhere; only the name query shows "Name Surname", and
+        // that full display name is mapped back on incoming names.
+        std::string const& NameQueryDisplayName(std::string const& name) const;
+        bool ResolveNameQueryDisplayName(std::string& name) const;
+        void LoadNameQueryDisplayNames(std::string const& path);
         std::string const& GetWardenModuleDirectory() const { return m_wardenModuleDirectory; }
         std::string const& GetPDumpDirectory() const { return m_autoPDumpDirectory; }
         std::string const& GetWorldUpdatesDirectory() const { return m_worldUpdatesDirectory; }
@@ -1471,6 +1478,8 @@ class World
         std::string m_dataPath;
         std::string m_honorPath;
         std::string m_wardenModuleDirectory;
+        std::unordered_map<std::string, std::string> m_nameQueryDisplay;    // character name -> "Name Surname"
+        std::unordered_map<std::string, std::string> m_nameQueryByDisplay;  // lower-case "name surname" -> character name
         std::string m_autoPDumpDirectory;
         std::string m_worldUpdatesDirectory;
         std::string m_worldUpdatesMigration;

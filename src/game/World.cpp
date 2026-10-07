@@ -613,10 +613,120 @@ bool World::RemoveQueuedSession(WorldSession* sess)
 
 }
 
+namespace
+{
+    std::string AsciiLower(std::string text)
+    {
+        for (char& c : text)
+            if (c >= 'A' && c <= 'Z')
+                c = char(c - 'A' + 'a');
+        return text;
+    }
+}
+
+// Hotfix 9.3 (twow-repo#518): bot surnames, display only. Funserver.BotSurnames.File
+// names a read-only tab-separated file with the header columns first_name and
+// surname (deploy/roster/names-518/addon-surnames-810.tsv); it is read once at
+// startup into hash maps, no database table. A display name is "first_name surname"
+// and must stay within 32 characters (the client's name query field is a
+// CString(48)); first names must be plain letters. Empty path = off.
+void World::LoadNameQueryDisplayNames(std::string const& path)
+{
+    m_nameQueryDisplay.clear();
+    m_nameQueryByDisplay.clear();
+    if (path.empty())
+        return;
+    std::ifstream file(path);
+    if (!file)
+    {
+        sLog.outError("Funserver.BotSurnames.File: cannot read '%s'; bot surnames stay off.", path.c_str());
+        return;
+    }
+    auto split = [](std::string const& line)
+    {
+        std::vector<std::string> cells;
+        std::string::size_type start = 0;
+        while (true)
+        {
+            std::string::size_type tab = line.find('\t', start);
+            cells.push_back(line.substr(start, tab == std::string::npos ? std::string::npos : tab - start));
+            if (tab == std::string::npos)
+                return cells;
+            start = tab + 1;
+        }
+    };
+    std::string line;
+    if (!std::getline(file, line))
+        return;
+    if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+    std::vector<std::string> header = split(line);
+    size_t firstCol = header.size(), surnameCol = header.size();
+    for (size_t i = 0; i < header.size(); ++i)
+    {
+        if (header[i] == "first_name")
+            firstCol = i;
+        else if (header[i] == "surname")
+            surnameCol = i;
+    }
+    if (firstCol == header.size() || surnameCol == header.size())
+    {
+        sLog.outError("Funserver.BotSurnames.File: '%s' has no first_name/surname header; bot surnames stay off.", path.c_str());
+        return;
+    }
+    uint32 skipped = 0;
+    while (std::getline(file, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        std::vector<std::string> cells = split(line);
+        if (cells.size() <= std::max(firstCol, surnameCol))
+            continue;
+        std::string const& name = cells[firstCol];
+        std::string const& surname = cells[surnameCol];
+        std::string display = name + " " + surname;
+        bool plain = !name.empty() && !surname.empty();
+        for (char c : name)
+            plain = plain && ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
+        if (!plain || display.size() > 32)
+        {
+            ++skipped;
+            continue;
+        }
+        m_nameQueryDisplay[name] = display;
+        m_nameQueryByDisplay[AsciiLower(display)] = name;
+    }
+    sLog.outString("Funserver.BotSurnames.File: %u bot surname(s) loaded from '%s', %u row(s) skipped (twow-repo#518).",
+        uint32(m_nameQueryDisplay.size()), path.c_str(), skipped);
+}
+
+std::string const& World::NameQueryDisplayName(std::string const& name) const
+{
+    auto itr = m_nameQueryDisplay.find(name);
+    return itr == m_nameQueryDisplay.end() ? name : itr->second;
+}
+
+// Incoming names: only the full display name "Name Surname" (right-click whisper,
+// /r, /invite, friend, mail with the cached display name) resolves to "Name". The
+// owner decided against mapping the last word alone (2026-10-07): it could take
+// whispers meant for a real player of that name.
+bool World::ResolveNameQueryDisplayName(std::string& name) const
+{
+    if (m_nameQueryByDisplay.empty() || name.find(' ') == std::string::npos)
+        return false;
+    auto itr = m_nameQueryByDisplay.find(AsciiLower(name));
+    if (itr == m_nameQueryByDisplay.end())
+        return false;
+    name = itr->second;
+    return true;
+}
+
 void World::LoadConfigSettingsCommonPart(bool reload)
 {
     if (!reload)
         m_lastDiffs.resize(50);
+
+    LoadNameQueryDisplayNames(sConfig.GetStringDefault("Funserver.BotSurnames.File", ""));
 
 #ifdef USE_ANTICHEAT
     sAnticheatConfig.SetSource("anticheat.conf");
