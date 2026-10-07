@@ -1890,3 +1890,22 @@ add_test(NAME hotfix813_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/hotfix813_source_contract_tests.cmake")
+
+# twow-repo#541: [WorldBots] per-minute world-thread cost of the bot manager (pure window + hooks).
+add_executable(world_bots_trace_policy_tests
+  "${PB_MODULE_DIR}/t/world_bots_trace_policy_tests.cpp")
+
+target_include_directories(world_bots_trace_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(world_bots_trace_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME world_bots_trace_policy
+  COMMAND world_bots_trace_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME world_bots_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/world_bots_trace_source_contract_tests.cmake")

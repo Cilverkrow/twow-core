@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/WorldBotsTracePolicy.h"
 #include "Common.h"
 #include <unordered_set>
 #include "PlayerbotAIBase.h"
@@ -328,6 +329,9 @@ public:
         // #421 C: global rate limit of the rescue teleport.
         ai::quest_search::RescueLimiter questRescueLimiter;
         uint32 lastQuestRescueScan = 0;
+        // twow-repo#541: [WorldBots] per-minute cost of UpdateAIInternal in the world thread.
+        ai::world_bots::Window worldBotsWindow;
+        void TraceWorldBots(uint64 desiredBots, uint64 sessionsUs, uint64 processUs, uint64 otherUs, uint32 logins, uint32 acks);
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;

@@ -41,6 +41,8 @@ public:
 
     virtual void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
     void UpdateSessions(uint32 elapsed);
+    // twow-repo#541: far-teleport ACKs driven by UpdateSessions since start ([WorldBots]).
+    uint32 TeleportAcks() const { return teleportAcks; }
 
     void ForEachPlayerbot(std::function<void(Player*)> fct) const;
 
@@ -70,7 +72,8 @@ protected:
     virtual void OnBotLoginInternal(Player * const bot) = 0;
     virtual void OnBotDeleted(uint32 botGuid, uint32 accountId);
     virtual uint32 GetOrCreateAccount(Player* master, std::string& error);
-    void Cleanup();   
+    void Cleanup();
+    uint32 teleportAcks = 0;  // twow-repo#541: far-teleport ACKs driven by UpdateSessions
 private:
     typedef std::list<std::string> (PlayerbotHolder::*HolderCommandHandler)(Player* master, const std::string param, AccountTypes security);
     typedef std::string (PlayerbotHolder::*BotCommandHandler)(Player* bot, Player* master, const std::string param);

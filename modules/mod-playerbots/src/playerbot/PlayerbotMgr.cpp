@@ -472,6 +472,7 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
         if (GetBotAI(bot) && bot->IsBeingTeleported())
         {
             GetBotAI(bot)->HandleTeleportAck();
+            ++teleportAcks;
         }
         else if (bot->IsInWorld())
         {
