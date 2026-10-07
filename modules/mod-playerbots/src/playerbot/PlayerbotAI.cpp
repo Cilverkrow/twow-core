@@ -1,6 +1,7 @@
 #include "PlayerbotMgr.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/AiContextAugment.h"
+#include "playerbot/ParkPolicy.h"
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/MemStoresPolicy.h"
@@ -503,6 +504,15 @@ void PlayerbotAI::ReportGroupBuff(uint32 now)
 
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
+    // twow-repo#541/#551 (rndbot park): a parked bot out of combat thinks every ai::park::AiIntervalMs.
+    if (parked)
+    {
+        uint32 const nowMs = WorldTimer::getMSTime();
+        if (!ai::park::AiUpdateDue(bot->IsInCombat(), nowMs, lastParkedUpdateMs))
+            return;
+        lastParkedUpdateMs = nowMs;
+    }
+
     SlowUpdateProbe const slowUpdateProbe{ this, WorldTimer::getMSTime() };
 
     // Hotfix 8.1: [MemStores] stale_bots - UpdateAI ran for this bot.

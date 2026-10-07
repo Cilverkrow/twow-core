@@ -1909,3 +1909,23 @@ add_test(NAME world_bots_trace_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/world_bots_trace_source_contract_tests.cmake")
+
+# twow-repo#541/#551: rndbot park / unpark (inn of the own faction and level band, verified bind,
+# reduced AI tick).
+add_executable(park_policy_tests
+  "${PB_MODULE_DIR}/t/park_policy_tests.cpp")
+
+target_include_directories(park_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(park_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME park_policy
+  COMMAND park_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME park_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_source_contract_tests.cmake")

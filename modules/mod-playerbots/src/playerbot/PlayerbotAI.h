@@ -936,6 +936,9 @@ protected:
     std::atomic<uint32> lastQuestRescue{ 0 };
     std::atomic<bool> questRescueRequested{ false };
     std::atomic<bool> questRescueDone{ false };
+    // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
+    std::atomic<bool> parked{ false };
+    uint32 lastParkedUpdateMs = 0;
     ai::stall_guard::TopActions updateActions;
     uint32 firstUpdateTime = 0;
     uint32 lastReviveTime = 0;
@@ -972,6 +975,9 @@ public:
     // #421 C: set on the bot's thread, taken and acted on by the world thread.
     bool TakeQuestRescueRequest() { return questRescueRequested.exchange(false); }
     void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
+    // twow-repo#541/#551 (rndbot park): a parked bot updates its AI every ai::park::AiIntervalMs only.
+    bool IsParked() const { return parked; }
+    void SetParked(bool value) { parked = value; lastParkedUpdateMs = 0; }
     uint32 GetQuestIdleSeconds(uint32 now) const { return questProgress.IdleSeconds(now); }
     // #416: time of one executed action (ms > 0), for the top-3 of this update.
     void RecordActionTime(std::string const& name, uint32 ms) { updateActions.Add(name, ms); }
