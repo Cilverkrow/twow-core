@@ -53,6 +53,14 @@ void BotLog::Initialize(const char* logFile, const char* logsDir, bool debugEnab
     fflush(m_file);
 }
 
+// twow-repo#541 (deep dive L1): without a bot log file every call is routed to Log, which drops it
+// below its level - but only after the 4 KB vsnprintf and this class's global mutex, taken from all
+// map threads (SetAIInternalUpdateDelay alone logs outDebug several times per bot and second). A
+// message neither the console nor the server log file would keep is dropped before both.
+#define BOTLOG_SKIP_BELOW(level)                                            \
+    if (!m_file && !Log::Instance().HasLogLevelOrHigher(level))            \
+        return;
+
 // Format the message into a fixed buffer, then route to file or sLog.
 // Using a macro to keep the call-sites DRY while still being able to do
 // va_start / va_end in the caller function (va_list can't cross helpers cleanly).
@@ -122,6 +130,7 @@ void BotLog::outInfo(const char* fmt, ...)
 
 void BotLog::outDetail(const char* fmt, ...)
 {
+    BOTLOG_SKIP_BELOW(LOG_LVL_DETAIL)
     BOTLOG_IMPL("[DETAIL] ", outDetail)
 }
 
@@ -132,6 +141,10 @@ void BotLog::outError(const char* fmt, ...)
 
 void BotLog::outDebug(const char* fmt, ...)
 {
+    BOTLOG_SKIP_BELOW(LOG_LVL_DEBUG)
+    // Debug suppressed for the bot log file: nothing is written, so no lock either.
+    if (!m_debugEnabled && m_file)
+        return;
     if (!m_debugEnabled)
     {
         // Debug suppressed by default; fall through to sLog when no file is open.
@@ -152,6 +165,7 @@ void BotLog::outDebug(const char* fmt, ...)
 
 void BotLog::outBasic(const char* fmt, ...)
 {
+    BOTLOG_SKIP_BELOW(LOG_LVL_BASIC)
     BOTLOG_IMPL("[BASIC] ", outBasic)
 }
 
