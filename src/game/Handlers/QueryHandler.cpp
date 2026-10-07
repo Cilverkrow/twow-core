@@ -44,7 +44,7 @@ void WorldSession::SendNameQueryOpcode(Player *p)
     // guess size
     WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + 25 + 1 + 4 + 4 + 4));   // guess size
     data << ObjectGuid(p->GetObjectGuid());
-    data << sWorld.NameQueryDisplayName(p->GetName());                                   // CString(48): played name (twow-repo#518 probe: display name)
+    data << sWorld.NameQueryDisplayName(p->GetName());                                   // CString(48): played name (hotfix 9.3, twow-repo#518: bot display name)
     data << uint8(0);                                       // CString(256): realm name for cross realm BG usage
 
     data << uint32(p->GetRace());
@@ -59,7 +59,7 @@ void WorldSession::SendNameQueryOpcodeFromDB(ObjectGuid guid)
     // Avec la mise en cache...
     if (PlayerCacheData* pData = sObjectMgr.GetPlayerDataByGUID(guid.GetCounter()))
     {
-        std::string name = sWorld.NameQueryDisplayName(pData->sName);   // twow-repo#518 probe
+        std::string name = sWorld.NameQueryDisplayName(pData->sName);   // hotfix 9.3, twow-repo#518
 
         WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + (name.size() + 1) + 1 + 4 + 4 + 4));
         data << ObjectGuid(HIGHGUID_PLAYER, pData->uiGuid);
@@ -97,7 +97,7 @@ void WorldSession::SendNameQueryOpcodeFromDBCallBack(QueryResult *result, uint32
     Field *fields = result->Fetch();
     uint32 lowguid      = fields[0].GetUInt32();
     std::string name = fields[1].GetCppString();
-    name = sWorld.NameQueryDisplayName(name);                // twow-repo#518 probe
+    name = sWorld.NameQueryDisplayName(name);                // hotfix 9.3, twow-repo#518
     uint8 pRace = 0, pGender = 0, pClass = 0;
     if (!name.empty())
     {
