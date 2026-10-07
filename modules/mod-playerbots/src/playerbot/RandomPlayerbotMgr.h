@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/ParkPolicy.h"
 #include "playerbot/WorldBotsTracePolicy.h"
 #include "Common.h"
 #include <unordered_set>
@@ -12,6 +13,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "WorldPosition.h"
 #include <map>
+#include <set>
 #include <list>
 #include <memory>
 #include <chrono>
@@ -258,6 +260,12 @@ public:
         std::list<std::string> HandleConsoleUpdate(std::string param);
         std::list<std::string> HandleConsolePid(std::string param);
         std::list<std::string> HandleConsoleDiff(std::string param);
+        // twow-repo#541/#551: rndbot park <name|count> [game_tele name], rndbot unpark <name|count|all>.
+        std::list<std::string> HandleConsolePark(std::string param);
+        std::list<std::string> HandleConsoleUnpark(std::string param);
+        bool IsParkedBot(uint32 guid) const { return parkedBots.count(guid) != 0; }
+        // Async database check of a parked bot's homebind (world thread, UpdateResultQueue).
+        static void ParkBindCheck(QueryResult* result, uint32 guid);
         std::list<std::string> HandleConsoleCleanMap(std::string param);
         std::list<std::string> HandleConsoleLoginDebug(std::string param);
         std::list<std::string> HandleConsolePathCheck(std::string param);
@@ -329,6 +337,26 @@ public:
         // #421 C: global rate limit of the rescue teleport.
         ai::quest_search::RescueLimiter questRescueLimiter;
         uint32 lastQuestRescueScan = 0;
+        // twow-repo#541/#551 (rndbot park): parked bots, world thread only.
+        struct ParkEntry
+        {
+            ai::park::Stage stage = ai::park::Stage::Travel;
+            WorldLocation inn;
+            uint32 area = 0;
+            uint32 tries = 0;
+            uint32 since = 0;
+            uint32 checkAt = 0;
+            bool checkPending = false;
+            uint64 spotKey = 0;    // the inn or city spot (capacity count), see ParkSpotKey
+            uint32 slot = 0;
+        };
+        std::map<uint32, ParkEntry> parkedBots;
+        std::map<uint64, std::set<uint32>> parkSpotSlots;  // spot key -> taken slots (capacity ai::park::SpotCapacity)
+        void ReleaseParkSpot(ParkEntry const& entry);
+        void ProcessParkedBots();
+        bool ParkBot(Player* bot, std::string const& teleName, std::string& reason);
+        void UnparkBot(Player* bot);
+        void OnParkBindChecked(uint32 guid, bool found, ai::park::Point const& stored);
         // twow-repo#541: [WorldBots] per-minute cost of UpdateAIInternal in the world thread.
         ai::world_bots::Window worldBotsWindow;
         void TraceWorldBots(uint64 desiredBots, uint64 sessionsUs, uint64 processUs, uint64 otherUs, uint32 logins, uint32 acks);
