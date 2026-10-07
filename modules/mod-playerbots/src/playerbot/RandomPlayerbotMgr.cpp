@@ -915,8 +915,20 @@ void ReportMemStores(PlayerBotMap const& bots)
 }
 }
 
+// twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
+// UpdateAIInternal: perfmon_init_reachable reads the first `return` of that body as an early return.
+using WorldBotsClock = std::chrono::steady_clock;
+static uint64 usSince(WorldBotsClock::time_point from, WorldBotsClock::time_point to)
+{
+    return uint64(std::chrono::duration_cast<std::chrono::microseconds>(to - from).count());
+}
+
 void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
+    // twow-repo#541 ([WorldBots], AiPlayerbot.WorldBotsTrace): timing of this pass in the world thread.
+    WorldBotsClock::time_point const passStart = WorldBotsClock::now();
+    uint32 const acksBefore = TeleportAcks();
+
     ReportMemStores(GetAllBots());
     ProcessQuestRescues();
 
@@ -929,7 +941,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     // teleport ACKs (HandleTeleportAck) and queued packets get processed.
     // See PlayerbotMgr::UpdateAIInternal for the rationale — same call,
     // same purpose, applied to the random-bot pool.
+    WorldBotsClock::time_point const sessionsStart = WorldBotsClock::now();
     UpdateSessions(elapsed);
+    WorldBotsClock::time_point const sessionsEnd = WorldBotsClock::now();
 
     // Register the performance monitor's per-map buckets.
     //
@@ -987,6 +1001,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         if (!LoginWaves().built)
             BuildRosterLoginWaves(persistentRoster->Desired(), [this](uint32 guid) { return IsPersistentRosterMember(guid); });
         uint32 maxLogins = sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval;
+        uint32 const loginsAllowed = maxLogins;
+        WorldBotsClock::time_point const processStart = WorldBotsClock::now();
         for (uint32 bot : desiredBots)
         {
             if (GetPlayerBot(bot))
@@ -1000,9 +1016,14 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
                     --maxLogins;
             }
         }
+        WorldBotsClock::time_point const processEnd = WorldBotsClock::now();
         SetAIInternalUpdateDelay(sPlayerbotAIConfig.randomBotUpdateInterval);
         LoginFreeBots();
         PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
+        if (sPlayerbotAIConfig.worldBotsTrace)
+            TraceWorldBots(desiredBots.size(), usSince(sessionsStart, sessionsEnd), usSince(processStart, processEnd),
+                usSince(passStart, sessionsStart) + usSince(sessionsEnd, processStart) + usSince(processEnd, WorldBotsClock::now()),
+                loginsAllowed - maxLogins, TeleportAcks() - acksBefore);
         return;
     }
 
@@ -1072,6 +1093,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     uint32 updateBots = sPlayerbotAIConfig.randomBotsPerInterval == 0 ? UINT32_MAX : sPlayerbotAIConfig.randomBotsPerInterval;
 
+    // twow-repo#541: the free random-bot path is timed like the roster path above.
+    WorldBotsClock::time_point const legacyProcessStart = WorldBotsClock::now();
+
     //Update bots
     for (auto bot : availableBots)
     {
@@ -1115,6 +1139,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
                 break;
         }
     }
+    WorldBotsClock::time_point const legacyProcessEnd = WorldBotsClock::now();
 
     LoginFreeBots();
 
@@ -1134,6 +1159,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     CharacterDatabase.AsyncPQuery(&RandomPlayerbotMgr::DatabasePing, sWorld.GetCurrentMSTime(), std::string("CharacterDatabase"), "SELECT 1");
 
     PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
+    if (sPlayerbotAIConfig.worldBotsTrace)
+        TraceWorldBots(availableBotCount, usSince(sessionsStart, sessionsEnd), usSince(legacyProcessStart, legacyProcessEnd),
+            usSince(passStart, sessionsStart) + usSince(sessionsEnd, legacyProcessStart) + usSince(legacyProcessEnd, WorldBotsClock::now()),
+            sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval - maxLogins, TeleportAcks() - acksBefore);
 }
 
 void RandomPlayerbotMgr::ScaleBotActivity()
@@ -1214,6 +1243,23 @@ void RandomPlayerbotMgr::ScaleBotActivity()
 
         sPlayerbotAIConfig.log("activity_pid.csv", out.str().c_str());
     }
+}
+
+// twow-repo#541: one [WorldBots] line per minute - what UpdateAIInternal cost the serial world thread.
+// share_pm = busy time of the minute in per mille of 60 s; teleport_ack_calls counts HandleTeleportAck
+// calls (a bot mid-teleport is called once per pass until it arrives).
+void RandomPlayerbotMgr::TraceWorldBots(uint64 desiredBots, uint64 sessionsUs, uint64 processUs, uint64 otherUs, uint32 logins, uint32 acks)
+{
+    uint64 const now = uint64(time(nullptr));
+    if (worldBotsWindow.Due(now))
+    {
+        ai::world_bots::Window const& w = worldBotsWindow;
+        sLog.outBasic("[WorldBots] passes=%u bots_avg=%u sessions_ms=%u process_ms=%u other_ms=%u max_pass_ms=%u share_pm=%u logins=%u teleport_ack_calls=%u online=%u",
+            w.passes, w.passes ? uint32(w.bots / w.passes) : 0u, uint32(w.sessionsUs / 1000), uint32(w.processUs / 1000),
+            uint32(w.otherUs / 1000), uint32(w.maxPassUs / 1000), w.PerMille(), w.logins, w.teleportAcks, uint32(GetPlayerbotsAmount()));
+        worldBotsWindow.Reset(now);
+    }
+    worldBotsWindow.Add(desiredBots, sessionsUs, processUs, otherUs, logins, acks);
 }
 
 void RandomPlayerbotMgr::LoginFreeBots()
