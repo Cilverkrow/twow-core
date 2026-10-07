@@ -35,6 +35,16 @@ void GuildStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
         "roster guild role",
         NextAction::array(0, new NextAction("roster guild role", 4.0f), NULL)));
 
+    // Hotfix 9.1 (twow-repo#485, AiPlayerbot.RosterGuild.FoundTravel, default off): founding trip to
+    // a guild master and the charter offered to the online bots of the plan guild.
+    triggers.push_back(new TriggerNode(
+        "very often",
+        NextAction::array(0, new NextAction("roster guild found trip", 4.0f), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "very often",
+        NextAction::array(0, new NextAction("roster guild offer remote", 4.0f), NULL)));
+
     triggers.push_back(new TriggerNode(
         "very often",
         NextAction::array(0, new NextAction("guild craft order", 10.0f), NULL)));

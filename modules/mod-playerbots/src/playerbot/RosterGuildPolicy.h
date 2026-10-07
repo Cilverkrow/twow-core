@@ -36,6 +36,29 @@ inline bool FoundAllowed(std::uint32_t level, std::uint32_t minLevel, bool roste
     return JoinAllowed(level, minLevel, rosterMember, false);
 }
 
+// Hotfix 9.1 (#485, AiPlayerbot.RosterGuild.FoundTravel): a charter was bought only when a bot's
+// random rpg target happened to be a guild master, which quest-first bots practically never pick.
+// One bot per plan guild (or per faction without a plan) holds the founding trip for
+// FoundTripHoldSeconds: it travels to the nearest guild master and buys there. Another bot takes
+// the trip over only when the holder did not renew it in time (offline, dead, busy elsewhere).
+constexpr std::uint32_t FoundTripHoldSeconds = 1800;
+
+struct FoundTrip
+{
+    std::uint32_t holder = 0;  // bot guid, 0 = nobody
+    std::time_t since = 0;     // last claim or renewal of the holder
+};
+
+// True when guid holds the trip afterwards (claimed, renewed or taken over); trip is updated.
+inline bool ClaimFoundTrip(FoundTrip& trip, std::uint32_t guid, std::time_t now, std::uint32_t holdSeconds = FoundTripHoldSeconds)
+{
+    if (trip.holder && trip.holder != guid && now < trip.since + std::time_t(holdSeconds))
+        return false;
+    trip.holder = guid;
+    trip.since = now;
+    return true;
+}
+
 // Guild target of one faction: ceil(roster bots of the faction / bots per guild). The configured
 // roster counts, not the online bots (login waves would move the target).
 inline std::uint32_t TargetGuilds(std::uint32_t rosterBots, std::uint32_t botsPerGuild)
