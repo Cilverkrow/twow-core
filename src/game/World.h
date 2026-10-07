@@ -36,6 +36,7 @@
 #include "WorldPacket.h"
 #include "Opcodes.h"
 #include "Utilities/robin_hood.h"
+#include "WorldTickTrace.h"
 
 //#include "Creature.h"
 
@@ -777,6 +778,7 @@ enum eConfigBoolValues
     CONFIG_BOOL_HOLIDAY_EVENT,
     CONFIG_BOOL_PERFORMANCE_ENABLE,
     CONFIG_BOOL_PERFLOG_TICK_STATS,
+    CONFIG_BOOL_PERFLOG_WORLD_TICK,  // twow-repo#541: [WorldTick]/[MapTick] phase and region timing
     // Solo dungeon resurrection, see Player::RepopAtGraveyard
     CONFIG_BOOL_SOLO_DUNGEON_REPOP_ALIVE,
     // Dungeon finder: fill a waiting player's group with random bots.
@@ -1048,6 +1050,15 @@ class World
         std::atomic<uint32> loggedRegionSessions = 0;
 
         uint32 GetLastDiff() const { return m_lastDiff; }
+
+        // twow-repo#541: [WorldTick]/[MapTick] (PerformanceLog.WorldTick, default off). Latched once per
+        // tick in Update(); all calls come from the world thread.
+        bool WorldTickOn() const { return m_worldTickOn; }
+        void WorldTickAdd(world_tick::Phase phase, uint64 us) { if (m_worldTickOn) m_worldTick.Add(phase, us); }
+        void MapTickAdd(std::vector<std::pair<uint64, uint32>> const& regions) { if (m_worldTickOn) m_mapTick.AddTick(regions); }
+        // Called by WorldRunnable after the sleep: closes the tick, one block per minute.
+        void WorldTickEnd(uint64 updateUs, uint64 sleepUs);
+        static uint64 WorldTickNowUs() { return uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 
         /// Get the active session server limit (or security level limitations)
         uint32 GetPlayerAmountLimit() const { return m_playerLimit >= 0 ? m_playerLimit : 0; }
@@ -1455,6 +1466,12 @@ class World
 
         uint32 m_diffThresholdHits = 0;
         uint32 m_lastDiff = 0;
+        // twow-repo#541 (PerformanceLog.WorldTick): world thread only.
+        bool m_worldTickOn = false;
+        world_tick::PhaseWindow m_worldTick;
+        world_tick::RegionWindow m_mapTick;
+        std::chrono::steady_clock::time_point m_worldTickWindowStart{};
+        void LogWorldTickWindow(uint32 windowMs);
         SessionMap m_sessions;
         SessionSet m_disconnectedSessions;
         robin_hood::unordered_map<uint32 /*accountId*/, time_t /*last logout*/> m_accountsLastLogout;

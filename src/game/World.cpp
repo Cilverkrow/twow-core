@@ -1516,6 +1516,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
     // twow-repo#351: one aggregated tick line per interval (count, percentiles,
     // max, ticks over 100 and 200 ms). Off by default; at least 10 s.
     setConfig(CONFIG_BOOL_PERFLOG_TICK_STATS, "PerformanceLog.TickStats", false);
+    setConfig(CONFIG_BOOL_PERFLOG_WORLD_TICK, "PerformanceLog.WorldTick", false);
     setConfigMin(CONFIG_UINT32_PERFLOG_TICK_STATS_INTERVAL, "PerformanceLog.TickStatsInterval", 60, 10);
     setConfig(CONFIG_UINT32_LOG_MONEY_TRADES_TRESHOLD, "LogMoneyTreshold", 10000);
 
@@ -2880,6 +2881,8 @@ void World::UpdateWorldBuffTimer(uint32 diff, WorldBuffTimerState& state, uint32
 void World::Update(uint32 diff)
 {
     XScopeStatTimer ScopeStatTimer(sPerfMonitor.WorldTick);
+    // twow-repo#541: latched once per tick so a tick is measured completely or not at all.
+    m_worldTickOn = getConfig(CONFIG_BOOL_PERFLOG_WORLD_TICK);
 
     ///- Update the different timers
     for (auto& timer : m_timers)
@@ -2920,7 +2923,10 @@ void World::Update(uint32 diff)
     }
 
     /// <li> Handle session updates
+    uint64 const sessionsStartUs = m_worldTickOn ? WorldTickNowUs() : 0;
     UpdateSessions(diff);
+    if (m_worldTickOn)
+        WorldTickAdd(world_tick::Sessions, WorldTickNowUs() - sessionsStartUs);
     m_canProcessAsyncPackets = true;
 
     /// <li> Update uptime table
@@ -2953,8 +2959,12 @@ void World::Update(uint32 diff)
     _asyncTasks.clear();
     lock.unlock();
 
+    // twow-repo#541: everything here but sMapMgr (which times its own phases) counts as "managers".
+    uint64 const managersStartUs = m_worldTickOn ? WorldTickNowUs() : 0;
     sTransportMgr.Update(diff);
+    uint64 const mapMgrStartUs = m_worldTickOn ? WorldTickNowUs() : 0;
     sMapMgr.Update(diff);
+    uint64 const mapMgrEndUs = m_worldTickOn ? WorldTickNowUs() : 0;
     sBattleGroundMgr.Update(diff);
     sLFGMgr.Update(diff);
     sLFTMgr.Update(diff);
@@ -2982,9 +2992,15 @@ void World::Update(uint32 diff)
         }
     }
 
+    uint64 const managersEndUs = m_worldTickOn ? WorldTickNowUs() : 0;
+    if (m_worldTickOn)
+        WorldTickAdd(world_tick::Managers, (mapMgrStartUs - managersStartUs) + (managersEndUs - mapMgrEndUs));
+
     uint32 asyncWaitBegin = WorldTimer::getMSTime();
     if (job.valid())
         job.wait();
+    if (m_worldTickOn)
+        WorldTickAdd(world_tick::AsyncTasks, WorldTickNowUs() - managersEndUs);
 
     updateMapSystemTime = WorldTimer::getMSTimeDiffToNow(updateMapSystemTime);
     if (getConfig(CONFIG_UINT32_PERFLOG_SLOW_MAPSYSTEM_UPDATE) && updateMapSystemTime > getConfig(CONFIG_UINT32_PERFLOG_SLOW_MAPSYSTEM_UPDATE))
@@ -2999,7 +3015,10 @@ void World::Update(uint32 diff)
 
     // execute callbacks from sql queries that were queued recently
     uint32 asyncQueriesTime = WorldTimer::getMSTime();
+    uint64 const resultsStartUs = m_worldTickOn ? WorldTickNowUs() : 0;
     UpdateResultQueue();
+    if (m_worldTickOn)
+        WorldTickAdd(world_tick::Results, WorldTickNowUs() - resultsStartUs);
     asyncQueriesTime = WorldTimer::getMSTimeDiffToNow(asyncQueriesTime);
     if (getConfig(CONFIG_UINT32_PERFLOG_SLOW_ASYNC_QUERIES) && asyncQueriesTime > getConfig(CONFIG_UINT32_PERFLOG_SLOW_ASYNC_QUERIES))
         sLog.out(LOG_PERFORMANCE, "Update async queries: %ums", asyncQueriesTime);
@@ -5367,5 +5386,71 @@ void World::DeleteOldPDumps()
             for (auto const& file : filesToDelete)
                 remove(file.c_str());
         }
+    }
+}
+
+// twow-repo#541 (PerformanceLog.WorldTick): close the tick (WorldRunnable, after the sleep) and write
+// one block per minute into the performance log. World thread only.
+void World::WorldTickEnd(uint64 updateUs, uint64 sleepUs)
+{
+    if (!m_worldTickOn)
+    {
+        // Switched off (possibly by a reload): start the next window clean.
+        if (m_worldTick.Ticks() || m_mapTick.Ticks())
+        {
+            m_worldTick.Clear();
+            m_mapTick.Clear();
+        }
+        m_worldTickWindowStart = std::chrono::steady_clock::time_point{};
+        return;
+    }
+
+    auto const now = std::chrono::steady_clock::now();
+    if (m_worldTickWindowStart == std::chrono::steady_clock::time_point{})
+        m_worldTickWindowStart = now;
+
+    m_worldTick.EndTick(updateUs, sleepUs);
+
+    uint32 const windowMs = uint32(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_worldTickWindowStart).count());
+    if (windowMs < 60 * IN_MILLISECONDS)
+        return;
+
+    LogWorldTickWindow(windowMs);
+    m_worldTick.Clear();
+    m_mapTick.Clear();
+    m_worldTickWindowStart = now;
+}
+
+void World::LogWorldTickWindow(uint32 windowMs)
+{
+    // [WorldTick]: per phase avg/p95/max in ms (one decimal) over the ticks of the window.
+    std::string line = "[WorldTick] interval=" + std::to_string(windowMs / 1000) + "s ticks=" + std::to_string(m_worldTick.Ticks());
+    char buf[96];
+    for (int p = 0; p < world_tick::PhaseCount; ++p)
+    {
+        world_tick::PhaseStat const s = world_tick::Summarize(m_worldTick.samples[p]);
+        snprintf(buf, sizeof(buf), " %s=%.1f/%.1f/%.1f", world_tick::PhaseName(world_tick::Phase(p)),
+            s.avgUs / 1000.0, s.p95Us / 1000.0, s.maxUs / 1000.0);
+        line += buf;
+    }
+    sLog.out(LOG_PERFORMANCE, "%s", line.c_str());
+
+    if (!m_mapTick.Ticks())
+        return;
+
+    // [MapTick]: barrier spread (slowest region - average) and slowest region per tick, then one line
+    // per continent region; slowest= how often that region was the slowest one.
+    world_tick::PhaseStat const waste = world_tick::Summarize(m_mapTick.waste);
+    world_tick::PhaseStat const slowest = world_tick::Summarize(m_mapTick.slowest);
+    sLog.out(LOG_PERFORMANCE, "[MapTick] ticks=%u regions=%u waste_ms=%.1f/%.1f/%.1f slowest_ms=%.1f/%.1f/%.1f",
+        m_mapTick.Ticks(), uint32(m_mapTick.byRegion.size()), waste.avgUs / 1000.0, waste.p95Us / 1000.0, waste.maxUs / 1000.0,
+        slowest.avgUs / 1000.0, slowest.p95Us / 1000.0, slowest.maxUs / 1000.0);
+    for (auto& [key, samples] : m_mapTick.byRegion)
+    {
+        world_tick::PhaseStat const s = world_tick::Summarize(samples);
+        auto const it = m_mapTick.slowestCount.find(key);
+        sLog.out(LOG_PERFORMANCE, "[MapTick] region=%u.%u updates=%u ms=%.1f/%.1f/%.1f slowest=%u",
+            uint32(key >> 32), uint32(key & 0xFFFFFFFF), uint32(samples.size()), s.avgUs / 1000.0, s.p95Us / 1000.0,
+            s.maxUs / 1000.0, it == m_mapTick.slowestCount.end() ? 0u : it->second);
     }
 }

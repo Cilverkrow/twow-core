@@ -637,6 +637,20 @@ PerformanceLog.SlowPacketBroadcast = 0
 PerformanceLog.TickStats = 0
 PerformanceLog.TickStatsInterval = 60
 
+# PerformanceLog.WorldTick
+#   Wait analysis (twow-repo#541). One block per minute in the performance log:
+#   "[WorldTick] interval=60s ticks=N <phase>=avg/p95/max ..." in ms for every phase
+#   of the world period: sessions, teleports, maps_pre (UpdateSync, starting the
+#   updaters), instances (instance updates while waiting), wait_continents (the
+#   barrier on the slowest region), switch_instances, maps_post, managers, async_tasks,
+#   results (async query callbacks), rest, sleep. "[MapTick] ticks=N regions=N
+#   waste_ms=avg/p95/max slowest_ms=..." (waste = slowest region minus the average per
+#   tick) and one "[MapTick] region=<map>.<instance> updates ms=avg/p95/max slowest=N"
+#   line per continent region. Region threads take the name "Reg<map>.<inst>" while
+#   they update a region. Pure measurement, clock reads only.
+#   Default: 0 (off)
+PerformanceLog.WorldTick = 0
+
 # RaLogFile. Log file of RA commands.
 
 RaLogFile = ""

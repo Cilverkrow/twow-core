@@ -36,6 +36,7 @@
 #include "MoveMap.h"
 #include "ChannelBroadcaster.h"
 #include "PerformanceMonitor.h"
+#include "Util.h"
 
 typedef MaNGOS::ClassLevelLockable<MapManager, std::recursive_mutex> MapManagerLock;
 INSTANTIATE_SINGLETON_2(MapManager, MapManagerLock);
@@ -339,9 +340,23 @@ void MapManager::Update(uint32 diff)
         return;
 
     XScopeStatTimer ScopeStatTimer{sPerfMonitor.MapManager};
+    // twow-repo#541 ([WorldTick]/[MapTick], PerformanceLog.WorldTick): phase clocks, only when on.
+    bool const worldTickOn = sWorld.WorldTickOn();
+    uint64 phaseStartUs = worldTickOn ? World::WorldTickNowUs() : 0;
+    auto const endPhase = [&](world_tick::Phase phase)
+    {
+        if (!worldTickOn)
+            return;
+        uint64 const nowUs = World::WorldTickNowUs();
+        sWorld.WorldTickAdd(phase, nowUs - phaseStartUs);
+        phaseStartUs = nowUs;
+    };
+    std::vector<Map*> continentMaps;
+
     // Execute any teleports scheduled in the main thread prior to map update
     // eg. area triggers, world port acks
     ExecuteDelayedPlayerTeleports();
+    endPhase(world_tick::Teleports);
 
     uint32 mapsDiff = (uint32)i_timer.GetCurrent();
     asyncMapUpdating = true;
@@ -373,10 +388,24 @@ void MapManager::Update(uint32 diff)
         }
         else // One threat per continent part
         {
-            continentsUpdaters.emplace_back([iter,mapsDiff](){
+            iter->second->SetRegionUpdateUs(0);
+            if (worldTickOn)
+                continentMaps.push_back(iter->second);
+            continentsUpdaters.emplace_back([iter,mapsDiff,worldTickOn](){
                 Map *m = iter->second;
+                // twow-repo#541: the pool thread takes the region's name while it updates it, and the
+                // region's duration is kept in the map (read by the world thread after continents.wait()).
+                uint64 const regionStartUs = worldTickOn ? World::WorldTickNowUs() : 0;
+                if (worldTickOn)
+                {
+                    char name[16];
+                    snprintf(name, sizeof(name), "Reg%u.%u", m->GetId(), m->GetInstanceId());
+                    thread_name(name);
+                }
                 if (!m->IsUpdateFinished() || !sMapMgr.IsContinentUpdateFinished())
                     m->DoUpdate(mapsDiff);
+                if (worldTickOn)
+                    m->SetRegionUpdateUs(uint32(World::WorldTickNowUs() - regionStartUs));
             });
             continentsIdx++;
         }
@@ -392,10 +421,15 @@ void MapManager::Update(uint32 diff)
     }
     std::future<void> continents = m_continentThreads->processWorkload(std::move(continentsUpdaters),
                                                                        ThreadPool::Callable());
+    endPhase(world_tick::MapsPre);
 
+    // twow-repo#541: instance updates run here while the world thread waits for the continents; the
+    // rest of the wait (incl. continents.wait()) is the barrier on the slowest region.
+    uint64 instancesUs = 0;
     std::chrono::high_resolution_clock::time_point start;
     do {
         start = std::chrono::high_resolution_clock::now();
+        uint64 const instancesStartUs = worldTickOn ? World::WorldTickNowUs() : 0;
         std::future<void> f = m_threads->processWorkload(instancesUpdaters,
                                                          ThreadPool::Callable());
 
@@ -403,20 +437,39 @@ void MapManager::Update(uint32 diff)
             f.wait();
         else
             break;
+        if (worldTickOn)
+            instancesUs += World::WorldTickNowUs() - instancesStartUs;
     } while(!sMapMgr.waitContinentUpdateFinishedUntil(start + std::chrono::milliseconds(sWorld.getConfig(CONFIG_UINT32_INTERVAL_MAPUPDATE))));
 
 
     if (continents.valid())
         continents.wait();
+    if (worldTickOn)
+    {
+        uint64 const nowUs = World::WorldTickNowUs();
+        uint64 const waitUs = nowUs - phaseStartUs;
+        sWorld.WorldTickAdd(world_tick::Instances, instancesUs);
+        sWorld.WorldTickAdd(world_tick::WaitContinents, waitUs > instancesUs ? waitUs - instancesUs : 0);
+        phaseStartUs = nowUs;
+
+        std::vector<std::pair<uint64, uint32>> regions;
+        regions.reserve(continentMaps.size());
+        for (Map* m : continentMaps)
+            if (m->GetRegionUpdateUs())
+                regions.emplace_back(world_tick::RegionWindow::Key(m->GetId(), m->GetInstanceId()), m->GetRegionUpdateUs());
+        sWorld.MapTickAdd(regions);
+    }
 
     sWorld.GetChannelBroadcaster()->DisableSendingMessages();
     SwitchPlayersInstances();
     asyncMapUpdating = false;
 
     CreateNewInstancesForPlayersSync();
+    endPhase(world_tick::SwitchInstances);
 
     // Execute far teleports after all map updates have finished
     ExecuteDelayedPlayerTeleports();
+    endPhase(world_tick::Teleports);
 
     MapMapType::iterator crashedMapsIter = i_maps.begin();
     while (crashedMapsIter != i_maps.end())
@@ -452,6 +505,7 @@ void MapManager::Update(uint32 diff)
         else
             ++iter;
     }
+    endPhase(world_tick::MapsPost);
 
     i_timer.SetCurrent(0);
 }
