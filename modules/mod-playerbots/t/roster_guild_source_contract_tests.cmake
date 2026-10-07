@@ -338,4 +338,16 @@ text_between("${create}" "bool RosterGuildOfferRemoteAction::Execute(" "[RosterG
 require_text("${offer_exec}" "RosterGuildPlan::PlanMates(bot)" "only bots of the founder's plan guild")
 require_text("${offer_exec}" "PetitionOfferAction::Execute(offerEvent)" "the same offer path as nearby (faction, signatures, account)")
 reject_text("${offer_exec}" "HandlePetitionSignOpcode" "the signer signs on its own thread")
+
+# Hotfix 9.2 (#485): the guild-master trips of FoundTravel are forced (quest filters dropped them
+# within seconds) and the purchase trip has a real travel condition (9.1 passed a non-value name).
+file(READ "${PB_SOURCE_DIR}/strategy/actions/ChooseTravelTargetAction.cpp" choose_travel)
+file(READ "${PB_SOURCE_DIR}/strategy/values/ValueContext.h" value_context)
+text_between("${choose_travel}" "bool ChooseTravelTargetAction::Execute(Event& event)" "if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))" choose_exec)
+require_text("${choose_exec}" "futureTravelPurpose == \"petition\" && sPlayerbotAIConfig.rosterGuildFoundTravel && RosterGuildPlan::UsesRosterPath(ai)" "petition trip forced only with the switch on the roster path")
+require_order("${choose_exec}" "futureTravelPurpose == \"petition\"" "newTarget.SetForced(true);\n        newTarget.SetRelevance(std::max<uint32>(targetRelevance, 197u));" "petition trip forced")
+require_text("${values_h}" "CalculatedValue<bool>(ai, \"roster guild may buy charter\")" "purchase trip condition value")
+require_text("${value_context}" "creators[\"roster guild may buy charter\"]" "purchase trip condition registered")
+require_text("${trip_exec}" "Event(\"roster guild may buy charter\")" "purchase trip conditioned on a real value")
+reject_text("${trip_exec}" "Event(\"roster guild found trip\")" "no action name as travel condition")
 message(STATUS "ROSTER_GUILD_SOURCE_CONTRACT=PASS")
