@@ -67,9 +67,9 @@ bool normalizePlayerName(std::string& name, size_t max_len, bool checkCaps)
     if (name.empty())
         return false;
 
-    // twow-repo#518 probe (test realm, Debug.NameQueryDisplayNames): a display name
-    // the client sends back (whisper, /r, /invite, friend, mail, guild invite) or
-    // the last word of it (chat links) resolves to the character name.
+    // Hotfix 9.3 (twow-repo#518): the full bot display name "Name Surname" the
+    // client sends back (whisper, /r, /invite, friend, mail, guild invite)
+    // resolves to the character name (Funserver.BotSurnames.File).
     sWorld.ResolveNameQueryDisplayName(name);
 
     if (name[0] == -61 && name[1] == -97)

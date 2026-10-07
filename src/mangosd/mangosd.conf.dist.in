@@ -1669,14 +1669,16 @@ GM.InWhoList.Level = 3
 
 WhoList.RequestCooldownSeconds = 30
 
-# Debug.NameQueryDisplayNames. twow-repo#518 probe, TEST REALM ONLY. Display-only
-# surnames: "Name=Name Surname;Other=Other of Place". The name query (overhead
-# name, target and party frames, chat sender) shows the display name; incoming
-# names - the display name, or its last word from a chat link - resolve to the
-# character name. The character name stays the key everywhere. A display must
-# start with "Name " and have at most 32 characters. Default empty = off.
+# Funserver.BotSurnames.File. Hotfix 9.3 (twow-repo#518): display-only bot surnames.
+# Path of a read-only tab-separated file with the header columns first_name and
+# surname (twow-repo deploy/roster/names-518/addon-surnames-810.tsv), read once at
+# startup. The name query (overhead name, target and party frames, chat sender)
+# shows "Name Surname"; that full display name resolves back to the character
+# name on incoming whispers, invites, friend and mail. The character name stays the
+# key everywhere. Display names longer than 32 characters are skipped.
+# Default empty = off.
 
-Debug.NameQueryDisplayNames = ""
+Funserver.BotSurnames.File = ""
 
 # GM.LogTrade. Include GM trade and trade slot enchanting operations in GM log if it enable.
 

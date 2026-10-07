@@ -1254,13 +1254,13 @@ class World
         static float GetRelocationLowerLimitSq() { return m_relocation_lower_limit_sq; }
         static uint32 GetRelocationAINotifyDelay() { return m_relocation_ai_notify_delay; }
 
-        // twow-repo#518 probe (test realm only): display-only surnames for listed
-        // characters. Debug.NameQueryDisplayNames = "Name=Name Surname;...", default
-        // empty = off. The character name stays the key everywhere; only the name
-        // query shows the display name, and incoming names are mapped back.
+        // Hotfix 9.3 (twow-repo#518): display-only bot surnames from the read-only
+        // file Funserver.BotSurnames.File (default empty = off). The character name
+        // stays the key everywhere; only the name query shows "Name Surname", and
+        // that full display name is mapped back on incoming names.
         std::string const& NameQueryDisplayName(std::string const& name) const;
         bool ResolveNameQueryDisplayName(std::string& name) const;
-        void LoadNameQueryDisplayNames(std::string const& config);
+        void LoadNameQueryDisplayNames(std::string const& path);
         std::string const& GetWardenModuleDirectory() const { return m_wardenModuleDirectory; }
         std::string const& GetPDumpDirectory() const { return m_autoPDumpDirectory; }
         std::string const& GetWorldUpdatesDirectory() const { return m_worldUpdatesDirectory; }
@@ -1478,9 +1478,8 @@ class World
         std::string m_dataPath;
         std::string m_honorPath;
         std::string m_wardenModuleDirectory;
-        std::map<std::string, std::string> m_nameQueryDisplay;   // character name -> display name
-        std::map<std::string, std::string> m_nameQueryByFirst;   // lower-case character name -> character name
-        std::map<std::string, std::string> m_nameQueryByLast;    // lower-case last word of the display -> character name
+        std::unordered_map<std::string, std::string> m_nameQueryDisplay;    // character name -> "Name Surname"
+        std::unordered_map<std::string, std::string> m_nameQueryByDisplay;  // lower-case "name surname" -> character name
         std::string m_autoPDumpDirectory;
         std::string m_worldUpdatesDirectory;
         std::string m_worldUpdatesMigration;

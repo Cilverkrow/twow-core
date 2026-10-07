@@ -624,38 +624,80 @@ namespace
     }
 }
 
-// twow-repo#518 probe: "Name=Name Surname;Other=Other of Place". A display name
-// must start with the character name and a space (it only extends the name) and
-// stay within 32 characters (the client's name query field is a CString(48)).
-void World::LoadNameQueryDisplayNames(std::string const& config)
+// Hotfix 9.3 (twow-repo#518): bot surnames, display only. Funserver.BotSurnames.File
+// names a read-only tab-separated file with the header columns first_name and
+// surname (deploy/roster/names-518/addon-surnames-810.tsv); it is read once at
+// startup into hash maps, no database table. A display name is "first_name surname"
+// and must stay within 32 characters (the client's name query field is a
+// CString(48)); first names must be plain letters. Empty path = off.
+void World::LoadNameQueryDisplayNames(std::string const& path)
 {
     m_nameQueryDisplay.clear();
-    m_nameQueryByFirst.clear();
-    m_nameQueryByLast.clear();
-    std::string::size_type start = 0;
-    while (start < config.size())
+    m_nameQueryByDisplay.clear();
+    if (path.empty())
+        return;
+    std::ifstream file(path);
+    if (!file)
     {
-        std::string::size_type end = config.find(';', start);
-        std::string entry = config.substr(start, end == std::string::npos ? std::string::npos : end - start);
-        start = end == std::string::npos ? config.size() : end + 1;
-        std::string::size_type eq = entry.find('=');
-        if (entry.empty() || eq == std::string::npos)
-            continue;
-        std::string name = entry.substr(0, eq);
-        std::string display = entry.substr(eq + 1);
-        if (name.empty() || display.size() > 32 || display.compare(0, name.size() + 1, name + " ") != 0)
+        sLog.outError("Funserver.BotSurnames.File: cannot read '%s'; bot surnames stay off.", path.c_str());
+        return;
+    }
+    auto split = [](std::string const& line)
+    {
+        std::vector<std::string> cells;
+        std::string::size_type start = 0;
+        while (true)
         {
-            sLog.outError("Debug.NameQueryDisplayNames: ignoring '%s' (display must be '%s <surname>', at most 32 characters)",
-                entry.c_str(), name.c_str());
+            std::string::size_type tab = line.find('\t', start);
+            cells.push_back(line.substr(start, tab == std::string::npos ? std::string::npos : tab - start));
+            if (tab == std::string::npos)
+                return cells;
+            start = tab + 1;
+        }
+    };
+    std::string line;
+    if (!std::getline(file, line))
+        return;
+    if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+    std::vector<std::string> header = split(line);
+    size_t firstCol = header.size(), surnameCol = header.size();
+    for (size_t i = 0; i < header.size(); ++i)
+    {
+        if (header[i] == "first_name")
+            firstCol = i;
+        else if (header[i] == "surname")
+            surnameCol = i;
+    }
+    if (firstCol == header.size() || surnameCol == header.size())
+    {
+        sLog.outError("Funserver.BotSurnames.File: '%s' has no first_name/surname header; bot surnames stay off.", path.c_str());
+        return;
+    }
+    uint32 skipped = 0;
+    while (std::getline(file, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        std::vector<std::string> cells = split(line);
+        if (cells.size() <= std::max(firstCol, surnameCol))
+            continue;
+        std::string const& name = cells[firstCol];
+        std::string const& surname = cells[surnameCol];
+        std::string display = name + " " + surname;
+        bool plain = !name.empty() && !surname.empty();
+        for (char c : name)
+            plain = plain && ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
+        if (!plain || display.size() > 32)
+        {
+            ++skipped;
             continue;
         }
         m_nameQueryDisplay[name] = display;
-        m_nameQueryByFirst[AsciiLower(name)] = name;
-        m_nameQueryByLast[AsciiLower(display.substr(display.rfind(' ') + 1))] = name;
+        m_nameQueryByDisplay[AsciiLower(display)] = name;
     }
-    if (!m_nameQueryDisplay.empty())
-        sLog.outString("Debug.NameQueryDisplayNames: %u display name(s) active (twow-repo#518 probe).",
-            uint32(m_nameQueryDisplay.size()));
+    sLog.outString("Funserver.BotSurnames.File: %u bot surname(s) loaded from '%s', %u row(s) skipped (twow-repo#518).",
+        uint32(m_nameQueryDisplay.size()), path.c_str(), skipped);
 }
 
 std::string const& World::NameQueryDisplayName(std::string const& name) const
@@ -664,23 +706,16 @@ std::string const& World::NameQueryDisplayName(std::string const& name) const
     return itr == m_nameQueryDisplay.end() ? name : itr->second;
 }
 
-// Incoming names: "Name Surname" (right-click whisper, /r, /invite with the cached
-// display name) -> "Name"; the last word alone (chat links keep only that) -> "Name".
+// Incoming names: only the full display name "Name Surname" (right-click whisper,
+// /r, /invite, friend, mail with the cached display name) resolves to "Name". The
+// owner decided against mapping the last word alone (2026-10-07): it could take
+// whispers meant for a real player of that name.
 bool World::ResolveNameQueryDisplayName(std::string& name) const
 {
-    if (m_nameQueryDisplay.empty())
+    if (m_nameQueryByDisplay.empty() || name.find(' ') == std::string::npos)
         return false;
-    std::string::size_type space = name.find(' ');
-    if (space != std::string::npos)
-    {
-        auto itr = m_nameQueryByFirst.find(AsciiLower(name.substr(0, space)));
-        if (itr == m_nameQueryByFirst.end())
-            return false;
-        name = itr->second;
-        return true;
-    }
-    auto itr = m_nameQueryByLast.find(AsciiLower(name));
-    if (itr == m_nameQueryByLast.end())
+    auto itr = m_nameQueryByDisplay.find(AsciiLower(name));
+    if (itr == m_nameQueryByDisplay.end())
         return false;
     name = itr->second;
     return true;
@@ -691,7 +726,7 @@ void World::LoadConfigSettingsCommonPart(bool reload)
     if (!reload)
         m_lastDiffs.resize(50);
 
-    LoadNameQueryDisplayNames(sConfig.GetStringDefault("Debug.NameQueryDisplayNames", ""));
+    LoadNameQueryDisplayNames(sConfig.GetStringDefault("Funserver.BotSurnames.File", ""));
 
 #ifdef USE_ANTICHEAT
     sAnticheatConfig.SetSource("anticheat.conf");
