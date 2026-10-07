@@ -226,7 +226,8 @@ endif()
 require_text("${accept_execute}" "else if (!fromGuildId && RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))" "poached bot joins no other guild within the cooldown")
 require_order("${accept_execute}" "else if (!fromGuildId && RosterGuildPoach::KeptCharter(" "else if (accept)" "keep-charter refusal before the accept")
 file(READ "${PB_SOURCE_DIR}/strategy/actions/GuildCreateActions.cpp" create_actions)
-text_between("${create_actions}" "bool BuyPetitionAction::canBuyPetition(Player* bot)" "\n}" can_buy)
+# Hotfix 9.1: the gates moved into the overload with a reason; the plain one only forwards.
+text_between("${create_actions}" "bool BuyPetitionAction::canBuyPetition(Player* bot, char const*& reason)" "\n}" can_buy)
 require_text("${can_buy}" "if (RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))" "poached bot buys no charter within the cooldown")
 
 # 7. Config: neutral defaults, read into members without in-class defaults, documented.

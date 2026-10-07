@@ -49,15 +49,35 @@ namespace ai
         static bool MaySignForRole(Player* bot, PetitionSummary const& offered, char const*& reason);
         // After a roster bot joined a guild: recount on the next call, trace.
         static void NoteJoined(Player* bot, uint32 guildId);
+
+        // Hotfix 9.1 (AiPlayerbot.RosterGuild.FoundTravel): the founding trip of the bot's plan guild
+        // (or faction without a plan); true when this bot holds it (roster_guild::ClaimFoundTrip).
+        static bool ClaimFoundTrip(Player* bot);
+        // The other roster bots of the bot's plan guild (plan file rows); empty without a plan.
+        static std::vector<uint32> PlanMates(Player* bot);
     };
 
-    class BuyPetitionAction : public Action 
+    class BuyPetitionAction : public Action
     {
     public:
         BuyPetitionAction(PlayerbotAI* ai) : Action(ai, "buy petition") {}
         virtual bool Execute(Event& event) override;
         virtual bool isUseful() override;
         static bool canBuyPetition(Player* bot);
+        static bool canBuyPetition(Player* bot, char const*& reason);
+    };
+
+    // Hotfix 9.1 (twow-repo#485, AiPlayerbot.RosterGuild.FoundTravel): a charter was bought only when
+    // a random rpg target was a guild master. The holder of its plan guild's founding trip travels to
+    // the nearest guild master and buys the charter there.
+    class RosterGuildFoundTripAction : public ChooseTravelTargetAction
+    {
+    public:
+        RosterGuildFoundTripAction(PlayerbotAI* ai) : ChooseTravelTargetAction(ai, "roster guild found trip") {}
+        virtual bool Execute(Event& event) override;
+        virtual bool isUseful() override;
+    private:
+        bool PetitionerNearby();
     };
 
     class PetitionOfferAction : public Action 
@@ -76,7 +96,19 @@ namespace ai
         virtual bool isUseful() override { return sPlayerbotAIConfig.randomBotFormGuild && !bot->GetGuildId() && AI_VALUE2(uint32, "item count", chat->formatQItem(5863)) && AI_VALUE(uint8, "petition signs") < sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS) && RosterGuildPlan::MayOfferNearby(ai); };
     };
 
-    class PetitionTurnInAction : public ChooseTravelTargetAction 
+    // Hotfix 9.1 (twow-repo#485, AiPlayerbot.RosterGuild.FoundTravel): the 9 signatures came only
+    // from roster bots in sight of the founder, but only the bots of its plan guild may sign. The
+    // founder offers its charter to the online bots of its plan guild wherever they are (the core
+    // checks no distance); each signer decides on its own thread with the role rules.
+    class RosterGuildOfferRemoteAction : public PetitionOfferAction
+    {
+    public:
+        RosterGuildOfferRemoteAction(PlayerbotAI* ai) : PetitionOfferAction(ai, "roster guild offer remote") {}
+        virtual bool Execute(Event& event) override;
+        virtual bool isUseful() override;
+    };
+
+    class PetitionTurnInAction : public ChooseTravelTargetAction
     {
     public:
         PetitionTurnInAction(PlayerbotAI* ai) : ChooseTravelTargetAction(ai, "turn in petition") {}

@@ -20,6 +20,7 @@
 #include "Guild/GuildMgr.h"
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <memory>
 #include <mutex>
 
@@ -70,6 +71,7 @@ namespace
         std::set<std::string> charterLabels;                                // plan guilds with an open charter
         std::map<uint32, std::array<uint32, 6>> tracedRoles;                // guild -> last event=roles line
         std::array<uint32, 5> tracedDeal[2] = {};                            // last event=deal line per faction
+        std::map<std::string, roster_guild::FoundTrip> foundTrips;          // hotfix 9.1: plan guild (or faction) -> trip holder
     };
 
     RosterGuildState& GetRosterGuildState()
@@ -705,6 +707,30 @@ uint32 RosterGuildPlan::AssignedGuild(uint32 guidLow, Team team)
     return it == state.assigned.end() ? 0 : it->second;
 }
 
+bool RosterGuildPlan::ClaimFoundTrip(Player* bot)
+{
+    RosterGuildState& state = GetRosterGuildState();
+    std::lock_guard<std::mutex> guard(state.lock);
+    std::string key = PlanLabel(state, bot->GetGUIDLow());
+    if (key.empty())
+        key = RosterGuildFactionName(bot->GetTeam());
+    return roster_guild::ClaimFoundTrip(state.foundTrips[key], bot->GetGUIDLow(), time(nullptr));
+}
+
+std::vector<uint32> RosterGuildPlan::PlanMates(Player* bot)
+{
+    std::vector<uint32> mates;
+    RosterGuildState& state = GetRosterGuildState();
+    std::lock_guard<std::mutex> guard(state.lock);
+    std::string const label = PlanLabel(state, bot->GetGUIDLow());
+    if (label.empty())
+        return mates;
+    for (auto const& row : state.plan)
+        if (row.first != bot->GetGUIDLow() && row.second.guild == label)
+            mates.push_back(row.first);
+    return mates;
+}
+
 bool RosterGuildPlan::MaySignForRole(Player* bot, PetitionSummary const& offered, char const*& reason)
 {
     if (!RoleFillConfigured())
@@ -838,19 +864,38 @@ bool BuyPetitionAction::isUseful()
 
 bool BuyPetitionAction::canBuyPetition(Player* bot)
 {
+    char const* reason = "";
+    return canBuyPetition(bot, reason);
+}
+
+// Hotfix 9.1 (#485): the same gates with the first failing one as reason (event=buy_gate).
+bool BuyPetitionAction::canBuyPetition(Player* bot, char const*& reason)
+{
     if (!sPlayerbotAIConfig.randomBotFormGuild)
+    {
+        reason = "form_guild_off";
         return false;
+    }
 
     if (bot->GetGuildId())
+    {
+        reason = "in_guild";
         return false;
+    }
 
     // Owner 05.10.2026: a roster bot founds no guild below AiPlayerbot.RosterGuild.MinLevel.
     if (!roster_guild::FoundAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
             sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && GetBotAI(bot) && !GetBotAI(bot)->HasRealPlayerMaster()))
+    {
+        reason = "min_level";
         return false;
+    }
 
     if (bot->GetGuildIdInvited())
-        return false;    
+    {
+        reason = "invited";
+        return false;
+    }
 
     PlayerbotAI* ai = GetBotAI(bot);
     AiObjectContext* context = ai->GetAiObjectContext();
@@ -860,35 +905,55 @@ bool BuyPetitionAction::canBuyPetition(Player* bot)
     // 256 futile purchase attempts per 2.68 h on v24, each with two guild-name queries. Presence
     // checks only - no Petition* is dereferenced.
     if (bot->HasItemCount(5863, 1))
+    {
+        reason = "has_charter";
         return false;
+    }
 
     if (sGuildMgr.GetPetitionByOwnerGuid(bot->GetObjectGuid()))
+    {
+        reason = "own_petition";
         return false;
+    }
 
     // twow-repo#485 (poaching, no ping-pong): within the cooldown a bot that switched by charter
     // keeps its signature there and founds no guild of its own.
     if (RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))
+    {
+        reason = "kept_charter";
         return false;
+    }
 
     if (ai->GetGuilderType() == GuilderType::SOLO)
+    {
+        reason = "solo_guilder";
         return false;
+    }
 
     if (ai->GetGrouperType() == GrouperType::SOLO)
+    {
+        reason = "solo_grouper";
         return false;
+    }
 
     if (!ai->HasStrategy("guild", BotState::BOT_STATE_NON_COMBAT))
+    {
+        reason = "no_guild_strategy";
         return false;
+    }
 
     uint32 cost = 1000; //GUILD_CHARTER_COST;
 
     if (AI_VALUE2(uint32, "free money for", uint32(NeedMoneyFor::guild)) < cost)
+    {
+        reason = "money";
         return false;
+    }
 
     // twow-repo#485 (new path): no charter once bot guilds + open bot charters cover the faction
     // target, and none without a free approved name.
     if (RosterGuildPlan::UsesRosterPath(ai))
     {
-        char const* reason = "";
         if (!RosterGuildPlan::MayBuyCharter(bot, reason))
         {
             if (RosterGuildPlan::IsDue(ai, "roster guild buy trace", HOUR))
@@ -1258,3 +1323,128 @@ bool BuyTabardAction::isUseful()
 
     return inCity && bot->GetGuildId() && !AI_VALUE2(uint32, "item count", chat->formatQItem(5976)) && AI_VALUE2(uint32, "free money for", uint32(NeedMoneyFor::guild)) >= 10000 && !AI_VALUE(bool, "travel target traveling");
 };
+
+// --- Hotfix 9.1 (twow-repo#485, AiPlayerbot.RosterGuild.FoundTravel): organic founding --------------
+
+namespace
+{
+    // Gates that block a purchase for long (logged hourly as event=buy_gate). In a guild, holding a
+    // charter or a petition are normal states; the plan's own reasons are logged as event=buy_blocked.
+    bool IsLastingBuyGate(char const* reason)
+    {
+        static char const* const gates[] = { "form_guild_off", "min_level", "invited", "kept_charter",
+            "solo_guilder", "solo_grouper", "no_guild_strategy", "money" };
+        for (char const* gate : gates)
+            if (!strcmp(reason, gate))
+                return true;
+        return false;
+    }
+}
+
+bool RosterGuildFoundTripAction::PetitionerNearby()
+{
+    for (ObjectGuid const& guid : AI_VALUE(std::list<ObjectGuid>, "nearest npcs"))
+        if (bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_PETITIONER))
+            return true;
+    return false;
+}
+
+bool RosterGuildFoundTripAction::isUseful()
+{
+    if (!sPlayerbotAIConfig.rosterGuildFoundTravel || bot->GetGuildId() || !RosterGuildPlan::UsesRosterPath(ai))
+        return false;
+
+    if (!ai->HasStrategy("travel", BotState::BOT_STATE_NON_COMBAT))
+        return false;
+
+    // At the guild master: buy (the plan's lock only here and once a minute below).
+    if (PetitionerNearby())
+        return BuyPetitionAction::canBuyPetition(bot);
+
+    if (!RosterGuildPlan::IsDue(ai, "roster guild found check", MINUTE))
+        return false;
+
+    char const* reason = "";
+    if (!BuyPetitionAction::canBuyPetition(bot, reason))
+    {
+        if (IsLastingBuyGate(reason) && RosterGuildPlan::IsDue(ai, "roster guild buy gate trace", HOUR))
+            sLog.outBasic("[RosterGuild] event=buy_gate bot=%u level=%u reason=%s", bot->GetGUIDLow(), bot->GetLevel(), reason);
+        return false;
+    }
+
+    TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
+    if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
+        return false;
+
+    // Already on the way to a guild master.
+    EntryTravelDestination* destination = dynamic_cast<EntryTravelDestination*>(target->GetDestination());
+    if (destination && destination->HasNpcFlag(UNIT_NPC_FLAG_PETITIONER))
+        return false;
+
+    // At most one trip request per RosterGuildRetrySeconds (a failed or overridden search must not
+    // expire the current target every minute).
+    return roster_guild::IsDue(time(nullptr), AI_VALUE2(time_t, "manual time", "roster guild buy travel"), RosterGuildRetrySeconds);
+}
+
+bool RosterGuildFoundTripAction::Execute(Event& event)
+{
+    if (PetitionerNearby())
+    {
+        bool const sent = ai->DoSpecificAction("buy petition", event, true);
+        sLog.outBasic("[RosterGuild] event=bought bot=%u level=%u result=%s", bot->GetGUIDLow(), bot->GetLevel(), sent ? "sent" : "failed");
+        return sent;
+    }
+
+    // One bot per plan guild travels; the others keep questing.
+    if (!RosterGuildPlan::ClaimFoundTrip(bot))
+        return false;
+
+    SET_AI_VALUE2(time_t, "manual time", "roster guild buy travel", time(nullptr));
+    sLog.outBasic("[RosterGuild] event=buy_travel bot=%u level=%u map=%u zone=%u", bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId());
+
+    AI_VALUE(TravelTarget*, "travel target")->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+    return ai->DoSpecificAction("request named travel target::petition", Event("roster guild found trip"), true);
+}
+
+bool RosterGuildOfferRemoteAction::isUseful()
+{
+    if (!sPlayerbotAIConfig.rosterGuildFoundTravel || !sPlayerbotAIConfig.randomBotFormGuild || bot->GetGuildId() || !RosterGuildPlan::UsesRosterPath(ai))
+        return false;
+
+    if (!AI_VALUE2(uint32, "item count", chat->formatQItem(5863)))
+        return false;
+
+    if (AI_VALUE(uint8, "petition signs") >= sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS))
+        return false;
+
+    return RosterGuildPlan::IsDue(ai, "roster guild offer remote", 5 * MINUTE);
+}
+
+bool RosterGuildOfferRemoteAction::Execute(Event& event)
+{
+    std::vector<uint32> const mates = RosterGuildPlan::PlanMates(bot);
+    uint32 online = 0, offered = 0;
+    for (uint32 mate : mates)
+    {
+        Player* player = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, mate));
+        if (!player || !player->IsInWorld())
+            continue;
+
+        ++online;
+        if (player->GetGuildId() || player->GetGuildIdInvited())
+            continue;
+
+        // The same offer as "petition offer nearby": the core checks faction, guild and signer,
+        // PetitionOfferAction the charter's signatures and account.
+        WorldPacket p(CMSG_QUESTGIVER_ACCEPT_QUEST);
+        p << player->GetObjectGuid();
+        p.rpos(0);
+        Event offerEvent = Event("roster guild offer remote", p);
+        if (PetitionOfferAction::Execute(offerEvent))
+            ++offered;
+    }
+
+    sLog.outBasic("[RosterGuild] event=offer_remote bot=%u mates=%u online=%u offered=%u signs=%u", bot->GetGUIDLow(),
+        uint32(mates.size()), online, offered, uint32(AI_VALUE(uint8, "petition signs")));
+    return offered > 0;
+}
