@@ -931,6 +931,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     ReportMemStores(GetAllBots());
     ProcessQuestRescues();
+    ProcessParkedBots();  // twow-repo#541/#551 (rndbot park), no-op without parked bots
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
@@ -2930,6 +2931,9 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
 
 bool RandomPlayerbotMgr::ProcessBot(Player* player)
 {
+    // twow-repo#541/#551: no randomize, strategy change or teleport for a parked bot.
+    if (player && IsParkedBot(player->GetGUIDLow()))
+        return false;
     // Same harness guard as the guid overload - this one is the entry point
     // for callers that already hold the player.
     if (player && IsExternallyManaged(player->GetGUIDLow()))
@@ -3728,7 +3732,8 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
     for (auto const& [guid, bot] : GetAllBots())
     {
         PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
-        if (!ai || !ai->TakeQuestRescueRequest())
+        // twow-repo#541/#551: a parked bot stands still on purpose - no rescue teleport.
+        if (!ai || !ai->TakeQuestRescueRequest() || IsParkedBot(guid))
             continue;
 
         // The bot asks again next minute while it stays stuck.
@@ -4450,6 +4455,8 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
     handlers["diff "] = &RandomPlayerbotMgr::HandleConsoleDiff;
     handlers["clean map"] = &RandomPlayerbotMgr::HandleConsoleCleanMap;
     handlers["login debug"] = &RandomPlayerbotMgr::HandleConsoleLoginDebug;
+    handlers["park"] = &RandomPlayerbotMgr::HandleConsolePark;
+    handlers["unpark"] = &RandomPlayerbotMgr::HandleConsoleUnpark;
 
     for (auto& [prefix, consoleHandler] : handlers)
     {
@@ -5960,4 +5967,415 @@ void RandomPlayerbotMgr::OnBotDeleted(uint32 botGuid, uint32 accountId)
             }
         }
     }
+}
+
+// --- twow-repo#541/#551 (owner 07.10.2026): rndbot park / unpark ------------------------------------
+// A parked bot stands at an inn of its own faction for its level band nearest to where it is, its
+// hearthstone bound there and checked in the database, with no travel, quest, grind or rpg and an AI
+// update every ai::park::AiIntervalMs (PlayerbotAI::UpdateAI). World thread only.
+
+namespace
+{
+    ai::park::Point ParkPoint(WorldLocation const& loc)
+    {
+        return ai::park::Point{ loc.mapid, loc.coord_x, loc.coord_y, loc.coord_z };
+    }
+
+    ai::park::Point ParkPoint(Player const* bot)
+    {
+        return ai::park::Point{ bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() };
+    }
+
+    // Strategies a parked bot drops (non-combat); an attacked bot still defends itself.
+    char const* const ParkDroppedStrategies =
+        "-travel,-rpg,-grind,-quest,-wander,-tfish,-rpg craft,-bot brain,-maintenance,-group,-guild,-bg,-lfg,-explore";
+
+    // Capacity key of a spot: map and position rounded to whole yards.
+    uint64 ParkSpotKey(WorldLocation const& loc)
+    {
+        return (uint64(loc.mapid) << 48) ^ (uint64(uint32(int32(loc.coord_x)) & 0xFFFFFF) << 24) ^ uint64(uint32(int32(loc.coord_y)) & 0xFFFFFF);
+    }
+
+    bool IsCapitalSpot(WorldLocation const& loc)
+    {
+        AreaTableEntry const* area = WorldPosition(loc).GetArea();
+        if (area && area->zone)
+            area = GetAreaEntryByAreaID(area->zone);
+        return area && (area->flags & AREA_FLAG_CAPITAL);
+    }
+}
+
+void RandomPlayerbotMgr::ReleaseParkSpot(ParkEntry const& entry)
+{
+    auto const it = parkSpotSlots.find(entry.spotKey);
+    if (it == parkSpotSlots.end())
+        return;
+    it->second.erase(entry.slot);
+    if (it->second.empty())
+        parkSpotSlots.erase(it);
+}
+
+bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::string& reason)
+{
+    PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+    if (!ai)
+    {
+        reason = "no_ai";
+        return false;
+    }
+    if (IsParkedBot(bot->GetGUIDLow()))
+    {
+        reason = "already_parked";
+        return false;
+    }
+    if (ai->HasRealPlayerMaster() || bot->GetGroup() || !bot->IsInWorld() || bot->IsBeingTeleported() ||
+        bot->InBattleGround() || bot->GetMap()->Instanceable() || bot->IsTaxiFlying() || !bot->IsAlive())
+    {
+        reason = "busy";
+        return false;
+    }
+
+    // The spot: a game_tele name if given; else the nearest inn of the bot's race and level band with
+    // room (innCacheLevel, innkeepers per area level and faction); a full inn overflows to the next
+    // inn, then to a capital spot of the race (rpg cache, bank/auction/trainer NPCs), each spot with
+    // at most ai::park::SpotCapacity parked bots (owner: "ab 25 ist ein gasthaus voll").
+    WorldLocation spot;
+    std::string via;
+    auto const pick = [&](std::vector<WorldLocation> const& candidates) -> int
+    {
+        std::vector<ai::park::Point> points;
+        std::vector<uint32> occupied;
+        for (WorldLocation const& loc : candidates)
+        {
+            points.push_back(ParkPoint(loc));
+            auto const it = parkSpotSlots.find(ParkSpotKey(loc));
+            occupied.push_back(it == parkSpotSlots.end() ? 0 : uint32(it->second.size()));
+        }
+        return ai::park::ChooseSpot(ParkPoint(bot), points, occupied);
+    };
+
+    // "here" (OB-00 test variant): park where the bot stands - no travel, no bind, no capacity.
+    if (teleName == "here")
+    {
+        ParkEntry entry;
+        entry.inn = WorldLocation(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation());
+        entry.stage = ai::park::Stage::Parked;
+        entry.since = uint32(time(nullptr));
+        parkedBots[bot->GetGUIDLow()] = entry;
+        ai->SetParked(true);
+        ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
+        AiObjectContext* context = ai->GetAiObjectContext();
+        sTravelMgr.SetNullTravelTarget(AI_VALUE(TravelTarget*, "travel target"));
+        ai->StopMoving();
+        bot->GetMotionMaster()->Clear();
+        sLog.outBasic("[Park] state=parked bot=%u level=%u via=here map=%u zone=%u", bot->GetGUIDLow(), bot->GetLevel(),
+            bot->GetMapId(), bot->GetZoneId());
+        return true;
+    }
+
+    if (!teleName.empty())
+    {
+        GameTele const* tele = sObjectMgr.GetGameTele(teleName);
+        if (!tele)
+        {
+            reason = "unknown_tele";
+            return false;
+        }
+        spot = WorldLocation(tele->mapId, tele->x, tele->y, tele->z, tele->o);
+        if (pick({ spot }) < 0)
+        {
+            reason = "spot_full";
+            return false;
+        }
+        via = "tele";
+    }
+    else
+    {
+        std::vector<WorldLocation> inns;
+        for (auto const& [innGuid, innLocation] : innCacheLevel[bot->getRace()][bot->GetLevel()])
+            inns.push_back(innLocation);
+        int index = pick(inns);
+        if (index >= 0)
+        {
+            spot = inns[index];
+            via = "inn";
+        }
+        else
+        {
+            std::vector<WorldLocation> cities;
+            for (WorldLocation const& loc : rpgLocsCacheLevel[bot->getRace()][bot->GetLevel()])
+                if (IsCapitalSpot(loc))
+                    cities.push_back(loc);
+            index = pick(cities);
+            if (index < 0)
+            {
+                reason = inns.empty() && cities.empty() ? "no_inn" : "all_full";
+                return false;
+            }
+            spot = cities[index];
+            via = "city";
+        }
+    }
+
+    // The bot's own place at the spot: rings around it, >= 2 yd from the others (owner).
+    uint64 const spotKey = ParkSpotKey(spot);
+    std::set<uint32>& takenSlots = parkSpotSlots[spotKey];
+    uint32 slot = 0;
+    while (takenSlots.count(slot))
+        ++slot;
+    takenSlots.insert(slot);
+    ai::park::Point const place = ai::park::SlotOffset(ParkPoint(spot), slot);
+    WorldLocation const target(place.map, place.x, place.y, place.z, spot.orientation);
+
+    AreaTableEntry const* area = WorldPosition(spot).GetArea();
+
+    ParkEntry entry;
+    entry.inn = target;
+    entry.area = area ? area->ID : 0;
+    entry.since = uint32(time(nullptr));
+    entry.spotKey = spotKey;
+    entry.slot = slot;
+    parkedBots[bot->GetGUIDLow()] = entry;
+
+    ai->SetParked(true);
+    ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
+    AiObjectContext* context = ai->GetAiObjectContext();
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    sTravelMgr.SetNullTravelTarget(travelTarget);
+    ai->StopMoving();
+    bot->GetMotionMaster()->Clear();
+    bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);
+
+    sLog.outBasic("[Park] state=travel bot=%u level=%u via=%s map=%u x=%.0f y=%.0f area=%u slot=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), via.c_str(), target.mapid, target.coord_x, target.coord_y, entry.area, slot);
+    return true;
+}
+
+void RandomPlayerbotMgr::UnparkBot(Player* bot)
+{
+    auto const it = parkedBots.find(bot->GetGUIDLow());
+    if (it == parkedBots.end())
+        return;
+    ReleaseParkSpot(it->second);
+    parkedBots.erase(it);
+
+    if (PlayerbotAI* ai = GetBotAI(bot))
+    {
+        ai->SetParked(false);
+        ai->ResetStrategies();
+    }
+    bot->SetStandState(UNIT_STAND_STATE_STAND);
+    sLog.outBasic("[Park] state=unparked bot=%u level=%u", bot->GetGUIDLow(), bot->GetLevel());
+}
+
+void RandomPlayerbotMgr::ProcessParkedBots()
+{
+    uint32 const now = uint32(time(nullptr));
+    for (auto it = parkedBots.begin(); it != parkedBots.end();)
+    {
+        uint32 const guid = it->first;
+        ParkEntry& entry = it->second;
+        Player* bot = GetPlayerBot(guid);
+        if (!bot)
+        {
+            sLog.outBasic("[Park] state=lost bot=%u", guid);
+            ReleaseParkSpot(entry);
+            it = parkedBots.erase(it);
+            continue;
+        }
+        ++it;
+
+        if (!bot->IsInWorld() || bot->IsBeingTeleported())
+            continue;
+
+        switch (entry.stage)
+        {
+            case ai::park::Stage::Travel:
+                if (ai::park::Arrived(ParkPoint(bot), ParkPoint(entry.inn)))
+                    entry.stage = ai::park::Stage::Bind;
+                else if (now - entry.since >= ai::park::ArriveTimeoutSeconds)
+                {
+                    entry.since = now;
+                    bot->TeleportTo(entry.inn.mapid, entry.inn.coord_x, entry.inn.coord_y, entry.inn.coord_z, entry.inn.orientation);
+                }
+                break;
+            case ai::park::Stage::Bind:
+                // Server side and written to the database (Player::SetHomebindToLocation); the former
+                // random-bot "bind" only sent a trainer packet to the bot and bound nothing.
+                bot->SetHomebindToLocation(entry.inn, entry.area);
+                ++entry.tries;
+                entry.checkAt = now + ai::park::BindCheckDelaySeconds;
+                entry.checkPending = false;
+                entry.stage = ai::park::Stage::Verify;
+                sLog.outBasic("[Park] state=bind bot=%u try=%u map=%u area=%u", guid, entry.tries, entry.inn.mapid, entry.area);
+                break;
+            case ai::park::Stage::Verify:
+                if (!entry.checkPending && now >= entry.checkAt)
+                {
+                    entry.checkPending = true;
+                    CharacterDatabase.AsyncPQuery(&RandomPlayerbotMgr::ParkBindCheck, guid,
+                        "SELECT `map`, `position_x`, `position_y`, `position_z` FROM `character_homebind` WHERE `guid` = '%u'", guid);
+                }
+                break;
+            case ai::park::Stage::Parked:
+            case ai::park::Stage::BindFailed:
+                if (bot->getStandState() != UNIT_STAND_STATE_SIT && !bot->IsInCombat() && !bot->IsMoving())
+                    bot->SetStandState(UNIT_STAND_STATE_SIT);
+                break;
+        }
+    }
+}
+
+void RandomPlayerbotMgr::ParkBindCheck(QueryResult* result, uint32 guid)
+{
+    ai::park::Point stored;
+    bool const found = result != nullptr;
+    if (result)
+    {
+        Field* fields = result->Fetch();
+        stored.map = fields[0].GetUInt32();
+        stored.x = fields[1].GetFloat();
+        stored.y = fields[2].GetFloat();
+        stored.z = fields[3].GetFloat();
+        delete result;
+    }
+    sRandomPlayerbotMgr.OnParkBindChecked(guid, found, stored);
+}
+
+void RandomPlayerbotMgr::OnParkBindChecked(uint32 guid, bool found, ai::park::Point const& stored)
+{
+    auto const it = parkedBots.find(guid);
+    if (it == parkedBots.end() || it->second.stage != ai::park::Stage::Verify)
+        return;
+    ParkEntry& entry = it->second;
+    Player* bot = GetPlayerBot(guid);
+
+    if (found && ai::park::BindMatches(stored, ParkPoint(entry.inn)))
+    {
+        entry.stage = ai::park::Stage::Parked;
+        sLog.outBasic("[Park] state=bound bot=%u try=%u map=%u x=%.0f y=%.0f", guid, entry.tries, stored.map, stored.x, stored.y);
+        if (bot)
+        {
+            bot->SetStandState(UNIT_STAND_STATE_SIT);
+            sLog.outBasic("[Park] state=parked bot=%u level=%u area=%u", guid, bot->GetLevel(), entry.area);
+        }
+        return;
+    }
+
+    if (ai::park::RetryBind(entry.tries))
+    {
+        entry.stage = ai::park::Stage::Bind;
+        sLog.outBasic("[Park] state=bind_retry bot=%u try=%u found=%u", guid, entry.tries, found ? 1u : 0u);
+        return;
+    }
+
+    entry.stage = ai::park::Stage::BindFailed;
+    sLog.outBasic("[Park] state=bind_failed bot=%u tries=%u found=%u stored_map=%u", guid, entry.tries, found ? 1u : 0u, stored.map);
+    if (bot)
+        bot->SetStandState(UNIT_STAND_STATE_SIT);
+}
+
+// rndbot park <name|count> [game_tele name]
+std::list<std::string> RandomPlayerbotMgr::HandleConsolePark(std::string param)
+{
+    std::list<std::string> messages;
+    std::string target = param, teleName;
+    size_t const space = param.find(' ');
+    if (space != std::string::npos)
+    {
+        target = param.substr(0, space);
+        teleName = param.substr(space + 1);
+    }
+    if (target.empty())
+    {
+        messages.push_back("Usage: rndbot park <name|count> [game_tele name | here]");
+        return messages;
+    }
+
+    uint32 parked = 0, refused = 0;
+    std::map<std::string, uint32> reasons;
+    bool const byCount = target.find_first_not_of("0123456789") == std::string::npos;
+    if (byCount)
+    {
+        uint32 const wanted = uint32(std::stoul(target));
+        for (auto const& [guid, bot] : GetAllBots())
+        {
+            if (parked >= wanted)
+                break;
+            if (!bot || IsParkedBot(guid))
+                continue;
+            std::string reason;
+            if (ParkBot(bot, teleName, reason))
+                ++parked;
+            else
+            {
+                ++reasons[reason];
+                ++refused;
+            }
+        }
+    }
+    else
+    {
+        std::string reason = "not_found";
+        Player* bot = ObjectAccessor::FindPlayerByName(target.c_str());
+        if (bot && GetPlayerBot(bot->GetGUIDLow()) && ParkBot(bot, teleName, reason))
+            ++parked;
+        else
+        {
+            ++reasons[reason];
+            ++refused;
+        }
+    }
+
+    std::string text = "park: parked=" + std::to_string(parked) + " refused=" + std::to_string(refused) +
+        " total_parked=" + std::to_string(parkedBots.size());
+    for (auto const& [reason, count] : reasons)
+        text += " " + reason + "=" + std::to_string(count);
+    messages.push_back(text);
+    return messages;
+}
+
+// rndbot unpark <name|count|all>
+std::list<std::string> RandomPlayerbotMgr::HandleConsoleUnpark(std::string param)
+{
+    std::list<std::string> messages;
+    std::vector<uint32> guids;
+    if (param == "all" || param.empty())
+    {
+        for (auto const& [guid, entry] : parkedBots)
+            guids.push_back(guid);
+    }
+    else if (param.find_first_not_of("0123456789") == std::string::npos)
+    {
+        uint32 const wanted = uint32(std::stoul(param));
+        for (auto const& [guid, entry] : parkedBots)
+        {
+            if (guids.size() >= wanted)
+                break;
+            guids.push_back(guid);
+        }
+    }
+    else if (Player* bot = ObjectAccessor::FindPlayerByName(param.c_str()))
+        guids.push_back(bot->GetGUIDLow());
+
+    uint32 unparked = 0;
+    for (uint32 guid : guids)
+    {
+        if (Player* bot = GetPlayerBot(guid))
+        {
+            UnparkBot(bot);
+            ++unparked;
+        }
+        else
+        {
+            auto const lost = parkedBots.find(guid);
+            if (lost != parkedBots.end())
+            {
+                ReleaseParkSpot(lost->second);
+                parkedBots.erase(lost);
+            }
+        }
+    }
+    messages.push_back("unpark: unparked=" + std::to_string(unparked) + " total_parked=" + std::to_string(parkedBots.size()));
+    return messages;
 }

@@ -38,6 +38,12 @@ namespace ai
     public:
         PetIsDeadValue(PlayerbotAI* ai, std::string name = "pet dead") : BoolCalculatedValue(ai, name) {}
         virtual bool Calculate() override;
+    private:
+        // twow-repo#541 (H4): a bot without an active pet asked the database once a second, synchronously
+        // in its map thread; the answer is now kept for StoredPetCheckSeconds.
+        static constexpr time_t StoredPetCheckSeconds = 60;
+        time_t lastStoredPetCheck = 0;
+        bool hasStoredPet = false;
     };
 
     class PetIsHappyValue : public BoolCalculatedValue
