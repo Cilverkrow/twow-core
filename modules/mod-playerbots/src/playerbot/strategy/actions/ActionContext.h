@@ -234,6 +234,8 @@ namespace ai
             creators["guild manage nearby"] = [](PlayerbotAI* ai) { return new GuildManageNearbyAction(ai); };
             creators["roster guild note"] = [](PlayerbotAI* ai) { return new RosterGuildNoteAction(ai); };
             creators["roster guild role"] = [](PlayerbotAI* ai) { return new RosterGuildRoleAction(ai); };
+            creators["roster guild found trip"] = [](PlayerbotAI* ai) { return new RosterGuildFoundTripAction(ai); };
+            creators["roster guild offer remote"] = [](PlayerbotAI* ai) { return new RosterGuildOfferRemoteAction(ai); };
             creators["guild share item"] = [](PlayerbotAI* ai) { return new GuildShareItemAction(ai); };
             creators["guild ah buy"] = [](PlayerbotAI* ai) { return new GuildShareAhBuyAction(ai); };
             creators["guild accept quest order"] = [](PlayerbotAI* ai) { return new GuildAcceptQuestOrderAction(ai); };

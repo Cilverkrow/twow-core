@@ -192,6 +192,19 @@ int main()
     Require(JoinAllowed(5, 20, false, false), "not a roster bot: unaffected");
     Require(!FoundAllowed(24, 25, true) && FoundAllowed(25, 25, true) && FoundAllowed(1, 0, true), "founding from the same level");
 
+    // Hotfix 9.1: one founding trip per plan guild; renewed by its holder, taken over only after
+    // FoundTripHoldSeconds without renewal.
+    {
+        FoundTrip trip;
+        Require(ClaimFoundTrip(trip, 7, 1000) && trip.holder == 7 && trip.since == 1000, "free trip claimed");
+        Require(!ClaimFoundTrip(trip, 8, 1000 + FoundTripHoldSeconds - 1) && trip.holder == 7, "held trip not taken over");
+        Require(ClaimFoundTrip(trip, 7, 2000) && trip.since == 2000, "holder renews");
+        Require(!ClaimFoundTrip(trip, 8, 2000 + FoundTripHoldSeconds - 1), "renewal restarts the hold");
+        Require(ClaimFoundTrip(trip, 8, 2000 + FoundTripHoldSeconds) && trip.holder == 8, "stale trip taken over");
+        FoundTrip shortHold;
+        Require(ClaimFoundTrip(shortHold, 1, 0, 10) && !ClaimFoundTrip(shortHold, 2, 9, 10) && ClaimFoundTrip(shortHold, 2, 10, 10), "hold seconds honoured");
+    }
+
     std::cout << "roster_guild_policy_tests passed\n";
     return 0;
 }
