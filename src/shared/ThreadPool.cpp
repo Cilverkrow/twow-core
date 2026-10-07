@@ -125,9 +125,12 @@ ThreadPool::worker::~worker()
 
 void ThreadPool::worker::loop_wrapper()
 {
-    char ThreadName[128];
-    sprintf(ThreadName, "PoolThread %s %d", Name.c_str(), id);
-    thread_name(ThreadName);
+    // twow-repo#541: Linux takes at most 15 characters (pthread_setname_np fails with ERANGE above
+    // that and the thread kept its inherited name, so every pool thread showed as "MainThread" in
+    // /proc). "<pool name>-<id>", the pool name cut so that the id always fits.
+    std::string const idText = "-" + std::to_string(id);
+    std::string const shortName = Name.substr(0, idText.size() < 15 ? 15 - idText.size() : 0) + idText;
+    thread_name(shortName.c_str());
     
     if (pool->m_errorHandling == ErrorHandling::NONE)
         loop();

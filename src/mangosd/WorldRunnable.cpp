@@ -96,7 +96,9 @@ void WorldRunnable::operator()()
                 anticrashRearmTimer -= diff;
         }
 
+        uint64 const updateStartUs = World::WorldTickNowUs();  // twow-repo#541 ([WorldTick])
         sWorld.Update(diff);
+        uint64 const updateEndUs = World::WorldTickNowUs();
 		sPerfMonitor.Tick.End();
 
         // diff is the actual time since last tick
@@ -118,6 +120,9 @@ void WorldRunnable::operator()()
         if (updateTime < WORLD_SLEEP_CONST)
             std::this_thread::sleep_for(std::chrono::milliseconds(WORLD_SLEEP_CONST - updateTime));
         sPerfMonitor.WorldSleep.End();
+
+        // twow-repo#541: close the tick ([WorldTick]/[MapTick], no-op unless PerformanceLog.WorldTick).
+        sWorld.WorldTickEnd(updateEndUs - updateStartUs, World::WorldTickNowUs() - updateEndUs);
 
 		sPerfMonitor.FrameEnd(diff);
     }

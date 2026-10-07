@@ -769,6 +769,10 @@ class Map : public GridRefManager<NGridType>
 
         bool ShouldUpdateMap(uint32 now, uint32 inactiveTimeLimit);
         uint32 GetLastMapUpdate() const { return _lastMapUpdate; }
+        // twow-repo#541 ([MapTick]): duration of this continent region's last update, written by its
+        // region thread, read by the world thread after continents.wait().
+        uint32 GetRegionUpdateUs() const { return m_regionUpdateUs; }
+        void SetRegionUpdateUs(uint32 us) { m_regionUpdateUs = us; }
         void RemoveBones(Corpse* corpse);
         void ScheduleCorpseRemoval();
 
@@ -921,6 +925,7 @@ class Map : public GridRefManager<NGridType>
         uint32 _lastPlayerLeftTime = 0;
         uint32 _lastPlayersUpdate;
         uint32 _inactivePlayersSkippedUpdates = 0;
+        uint32 m_regionUpdateUs = 0;  // twow-repo#541
         uint32 _lastCellsUpdate;
 
         int8 _updateIdx;
