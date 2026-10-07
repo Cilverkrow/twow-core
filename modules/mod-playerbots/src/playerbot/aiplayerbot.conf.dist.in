@@ -433,6 +433,13 @@ AiPlayerbot.RosterGuild.PoachCooldownSeconds = 86400
 # allowed at any level. [RosterGuild] event=join_deferred reason=min_level (at most hourly per bot).
 # 0 = off (default).
 AiPlayerbot.RosterGuild.MinLevel = 0
+# Hotfix 9.1 (twow-repo#485): organic founding of roster guilds. 1 = one roster bot per plan guild
+# (per faction without a plan file) travels to the nearest guild master and buys the charter there
+# ([RosterGuild] event=buy_travel / bought); the founder offers it to the online roster bots dealt
+# to the same plan guild wherever they are (event=offer_remote; signing keeps the role rules), then
+# hands it in as before. A roster bot that cannot buy logs why, at most hourly (event=buy_gate).
+# Without it a charter is bought only when a random rpg target is a guild master. 0 = off (default).
+AiPlayerbot.RosterGuild.FoundTravel = 0
 # Bandages and potions of roster bots (twow-repo#485, owner decision 9). Applies to persistent
 # roster bots without a real-player master only. UseReal 0 = off (default, legacy: under the item
 # cheat "item" a healing or mana potion, healthstone or bandage is cast without an item, and such

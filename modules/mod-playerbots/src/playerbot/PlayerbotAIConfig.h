@@ -358,6 +358,7 @@ public:
     bool rosterGuildAllowPoaching;
     uint32 rosterGuildPoachCooldownSeconds;
     uint32 rosterGuildMinLevel;  // owner 05.10.2026: bot guilds only from this level, 0 = off
+    bool rosterGuildFoundTravel;  // hotfix 9.1 (#485): founding trip to a guild master + charter offered to online plan members
     // twow-repo#485 (owner decision 9): roster bots on their own use bandages, healing and mana
     // potions from their bags (ConsumablesPolicy.h). UseReal 0 = off (default, legacy: cast
     // without an item under the item cheat, sold). Pct 100 = no gate beyond the trigger;
