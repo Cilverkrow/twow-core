@@ -74,4 +74,11 @@ require_text("${mgr}" "!ai->TakeQuestRescueRequest() || IsParkedBot(guid)" "no r
 require_order("${ai}" "if (!ai::park::AiUpdateDue(bot->IsInCombat(), nowMs, lastParkedUpdateMs))" "SlowUpdateProbe const slowUpdateProbe" "parked check before the AI update")
 require_text("${ai_h}" "std::atomic<bool> parked{ false };" "parked flag set by the world thread")
 
+# Visibility stage 2 (#541/#551, owner approval 07.10.): with AiPlayerbot.Park.HideFromBots (default
+# off) a parked bot is hidden from other bots (core Player flag); unpark always clears it.
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
+require_text("${config_cpp}" "config.GetBoolDefault(\"AiPlayerbot.Park.HideFromBots\", false)" "HideFromBots default off")
+require_text("${park_bot}" "bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);" "flag set on park only by the switch")
+region("${mgr}" "void RandomPlayerbotMgr::UnparkBot(" "void RandomPlayerbotMgr::ProcessParkedBots()" unpark)
+require_text("${unpark}" "    bot->SetHiddenFromBots(false);" "flag cleared on every unpark")
 message(STATUS "PARK_SOURCE_CONTRACT=PASS")
