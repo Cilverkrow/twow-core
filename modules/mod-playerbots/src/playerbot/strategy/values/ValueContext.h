@@ -395,6 +395,7 @@ namespace ai
 
             creators["petition signs"] = [](PlayerbotAI* ai) { return new PetitionSignsValue(ai); };
             creators["can hand in petition"] = [](PlayerbotAI* ai) { return new CanHandInPetitionValue(ai); };
+            creators["roster guild may buy charter"] = [](PlayerbotAI* ai) { return new RosterGuildMayBuyCharterValue(ai); };
             creators["can buy tabard"] = [](PlayerbotAI* ai) { return new CanBuyTabard(ai); };
             creators["guild order"] = [](PlayerbotAI* ai) { return new GuildOrderValue(ai); };
             creators["has guild travel order"] = [](PlayerbotAI* ai) { return new HasGuildTravelOrderValue(ai); };
