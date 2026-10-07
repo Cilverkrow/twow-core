@@ -1776,6 +1776,10 @@ AiPlayerbot.NonCombatStrategies = +grind,+loot,+custom::say,+return,+delayed rol
 
 # Intervals
 AiPlayerbot.RandomBotUpdateInterval = 500
+# twow-repo#541: 1 = one [WorldBots] line per minute with what the bot manager cost the serial world
+# thread (UpdateSessions, ProcessBot loop incl. logins, rest; max pass, share in per mille, logins,
+# teleport ACK calls). Log only, persistent roster path. 0 = off (default).
+AiPlayerbot.WorldBotsTrace = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
