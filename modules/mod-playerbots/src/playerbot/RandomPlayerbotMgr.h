@@ -2,6 +2,7 @@
 #define _RandomPlayerbotMgr_H
 
 #include <mutex>
+#include <atomic>
 #include "playerbot/QuestSearchPolicy.h"
 #include "Common.h"
 #include <unordered_set>
@@ -180,6 +181,9 @@ public:
         std::map<uint32, std::map<uint32, std::map<uint32, uint32> > > Supporters;
         std::map<Team, std::vector<uint32>> LfgDungeons;
         void CheckBgQueue();
+        // twow-repo#517: true once CheckBgQueue filled every BG count key in the world thread; before
+        // that a bot thread's operator[] read would insert into these maps concurrently.
+        std::atomic<bool> bgCountsReady{false};
         void CheckLfgQueue();
         void CheckPlayers();
         void SaveCurTime();

@@ -43,6 +43,12 @@ AiPlayerbot.RandomBotJoinLfg = 1
 
 # Enable BG/Arena for random Bots
 AiPlayerbot.RandomBotJoinBG = 1
+# twow-repo#517 (owner 04.10.2026): 1 = with a persistent roster, roster bots fill a battleground or
+# the 3v3 (Blood Ring) when a real player queues for it: only free roster bots (no group, not in an
+# instance, on a taxi or a transport) in the player's bracket, at most the team size per side, the
+# player's side first (BGJoinAction). Needs RandomBotJoinBG = 1. Roster bots get no Refresh (no free
+# repair, money or consumables) when they queue. [BGFill] state=queue|join lines. 0 = off (default).
+AiPlayerbot.RosterBgFill = 0
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0

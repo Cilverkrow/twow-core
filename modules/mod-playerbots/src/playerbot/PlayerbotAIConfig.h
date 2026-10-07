@@ -528,6 +528,7 @@ public:
     // Fail-closed, versioned GUID roster. Default is false so the legacy
     // random-bot behavior remains the complete disabled-feature path.
     bool persistentActiveRosterEnabled = false;
+    bool rosterBgFill = false;  // twow-repo#517: roster bots fill a battleground a real player queues for
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

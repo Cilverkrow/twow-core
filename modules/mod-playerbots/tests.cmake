@@ -1890,3 +1890,9 @@ add_test(NAME hotfix813_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/hotfix813_source_contract_tests.cmake")
+
+# twow-repo#517: roster bots fill a battleground a real player queues for (AiPlayerbot.RosterBgFill).
+add_test(NAME roster_bg_fill_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_bg_fill_source_contract_tests.cmake")

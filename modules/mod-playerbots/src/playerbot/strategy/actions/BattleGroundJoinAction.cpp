@@ -627,6 +627,18 @@ bool BGJoinAction::isUseful()
     if (bot->InBattleGround())
         return false;
 
+    // twow-repo#517: a roster bot fills a BG only with RosterBgFill, only once the world thread has
+    // filled the BG count maps (a read before that inserts into them from a map thread), and only
+    // when it is free: no group (a group leader would queue its whole quest group), not in an
+    // instance, on a taxi or a transport.
+    if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+    {
+        if (!sPlayerbotAIConfig.rosterBgFill || !sRandomPlayerbotMgr.bgCountsReady)
+            return false;
+        if (bot->GetGroup() || bot->GetMap()->Instanceable() || bot->IsTaxiFlying() || bot->GetTransport())
+            return false;
+    }
+
     // do not try right after login
     if ((time(0) - bot->GetInGameTime()) < 30)
         return false;
@@ -885,7 +897,13 @@ bool BGJoinAction::JoinQueue(uint32 type)
 #endif
 
    // refresh food/regs
-   sRandomPlayerbotMgr.Refresh(bot);
+   // twow-repo#517: not for roster bots - Refresh repairs, heals, refills consumables, grants money
+   // and resets the AI; roster bots keep their own economy and state.
+   if (sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+       sLog.outBasic("[BGFill] state=join bot=%u level=%u bg=%u bracket=%u side=%s", bot->GetGUIDLow(), bot->GetLevel(),
+           uint32(sServerFacade.BgTemplateId(queueTypeId)), uint32(bracketId), bot->GetTeam() == ALLIANCE ? "A" : "H");
+   else
+       sRandomPlayerbotMgr.Refresh(bot);
 
    if (isArena)
    {

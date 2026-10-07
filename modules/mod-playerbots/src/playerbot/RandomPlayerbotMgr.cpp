@@ -1002,6 +1002,11 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         }
         SetAIInternalUpdateDelay(sPlayerbotAIConfig.randomBotUpdateInterval);
         LoginFreeBots();
+        // twow-repo#517: the roster path returned before CheckBgQueue, so the BG counts stayed empty
+        // and every roster bot's "bg join" was useless. Every 30 s (its own timer); bots join only
+        // when a real player queues (BGJoinAction::shouldJoinBg). No CheckLfgQueue: dungeons are #548.
+        if (sPlayerbotAIConfig.rosterBgFill && sPlayerbotAIConfig.randomBotJoinBG)
+            CheckBgQueue();
         PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
         return;
     }
@@ -1846,6 +1851,7 @@ void RandomPlayerbotMgr::CheckBgQueue()
             NeedBots[j][i][1] = false;
         }
     }
+    bgCountsReady = true;
 
     for (auto i : players)
     {
@@ -1988,6 +1994,24 @@ void RandomPlayerbotMgr::CheckBgQueue()
         }
     }
 
+    // twow-repo#517 (RosterBgFill): with a persistent roster only a queue with a real player matters
+    // (roster bots never queue alone), so the loop over all bots is skipped without one; with one,
+    // one [BGFill] line per queue and bracket every 30 s.
+    if (sPlayerbotAIConfig.persistentActiveRosterEnabled)
+    {
+        bool realPlayerQueued = false;
+        for (int i = BG_BRACKET_ID_FIRST; i < MAX_BATTLEGROUND_BRACKETS; ++i)
+            for (int j = BATTLEGROUND_QUEUE_AV; j < MAX_BATTLEGROUND_QUEUE_TYPES; ++j)
+                if (BgPlayers[j][i][0] + BgPlayers[j][i][1])
+                {
+                    realPlayerQueued = true;
+                    sLog.outBasic("[BGFill] state=queue bg=%u bracket=%u real_a=%u real_h=%u",
+                        uint32(sServerFacade.BgTemplateId(BattleGroundQueueTypeId(j))), uint32(i), BgPlayers[j][i][0], BgPlayers[j][i][1]);
+                }
+        if (!realPlayerQueued)
+            return;
+    }
+
     ForEachPlayerbot([&](Player* bot)
     {
         if (!bot || !bot->IsInWorld())
@@ -1996,7 +2020,8 @@ void RandomPlayerbotMgr::CheckBgQueue()
         if (!bot->InBattleGroundQueue())
             return;
 
-        if (!IsFreeBot(bot))
+        // twow-repo#517: roster bots count like free random bots (queued and in a BG).
+        if (!IsFreeBot(bot) && !IsPersistentRosterMember(bot->GetGUIDLow()))
             return;
 
         if (bot->InBattleGround() && bot->GetBattleGround() && bot->GetBattleGround()->GetStatus() == STATUS_WAIT_LEAVE)
