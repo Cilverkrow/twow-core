@@ -49,9 +49,13 @@ require_text("${pre_init}" "
 
 # Inn of the bot's race and level band, nearest; hearthstone bound server side, checked in the DB.
 region("${mgr}" "bool RandomPlayerbotMgr::ParkBot(" "void RandomPlayerbotMgr::UnparkBot(" park_bot)
-require_text("${park_bot}" "innCacheLevel[bot->getRace()][bot->GetLevel()]" "inn of race and level band")
+require_text("${park_bot}" "level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack" "inn of the faction for the level band (+-ParkLevelSlack)")
+require_text("${park_bot}" "return ParkBot(bot, \"here\", reason);" "last resort: park in place")
+region("${mgr}" "void RandomPlayerbotMgr::BuildParkSpots()" "void RandomPlayerbotMgr::ReleaseParkSpot(" build_spots)
+require_text("${build_spots}" "Player::TeamForRace(uint8(race))" "spots of every race of the faction")
+require_text("${build_spots}" "IsCapitalSpot(loc)" "capital spots for the overflow")
 require_text("${park_bot}" "ai::park::ChooseSpot(ParkPoint(bot), points, occupied)" "nearest spot with room (capacity)")
-require_order("${park_bot}" "spot = inns[index];" "spot = cities[index];" "inns first, capital spots as overflow")
+require_order("${park_bot}" "spot = inns[index];" "spot = parkCities[team][index];" "inns first, capital spots as overflow")
 require_text("${park_bot}" "ai::park::SlotOffset(ParkPoint(spot), slot)" "own place >= 2 yd from the others")
 require_text("${park_bot}" "ai->HasRealPlayerMaster() || bot->GetGroup()" "no bot of a real player and no group member")
 region("${mgr}" "void RandomPlayerbotMgr::ProcessParkedBots()" "void RandomPlayerbotMgr::ParkBindCheck(" process)

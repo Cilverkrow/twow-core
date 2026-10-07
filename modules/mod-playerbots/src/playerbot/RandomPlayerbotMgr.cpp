@@ -6005,6 +6005,58 @@ namespace
     }
 }
 
+// Levels an inn may lie above or below the bot's level and still be chosen (ParkBot).
+static constexpr uint32 ParkLevelSlack = 5;
+
+void RandomPlayerbotMgr::BuildParkSpots()
+{
+    if (parkSpotsBuilt)
+        return;
+    parkSpotsBuilt = true;
+
+    // Inns: every innkeeper of the cache once per faction, with the level range it serves.
+    std::map<uint64, size_t> innIndex[2];
+    for (auto const& [race, byLevel] : innCacheLevel)
+    {
+        if (!race)
+            continue;
+        uint32 const team = Player::TeamForRace(uint8(race)) == ALLIANCE ? 0 : 1;
+        for (auto const& [level, inns] : byLevel)
+            for (auto const& [innGuid, loc] : inns)
+            {
+                uint64 const key = ParkSpotKey(loc);
+                auto const it = innIndex[team].find(key);
+                if (it == innIndex[team].end())
+                {
+                    innIndex[team][key] = parkInns[team].size();
+                    parkInns[team].push_back(ParkInn{ loc, level, level });
+                }
+                else
+                {
+                    ParkInn& inn = parkInns[team][it->second];
+                    inn.minLevel = std::min(inn.minLevel, uint32(level));
+                    inn.maxLevel = std::max(inn.maxLevel, uint32(level));
+                }
+            }
+    }
+
+    // Capital spots (bank, auction house, trainers of the faction's capitals), any level, once each.
+    std::set<uint64> citySeen[2];
+    for (auto const& [race, byLevel] : rpgLocsCacheLevel)
+    {
+        if (!race)
+            continue;
+        uint32 const team = Player::TeamForRace(uint8(race)) == ALLIANCE ? 0 : 1;
+        for (auto const& [level, locs] : byLevel)
+            for (WorldLocation const& loc : locs)
+                if (citySeen[team].insert(ParkSpotKey(loc)).second && IsCapitalSpot(loc))
+                    parkCities[team].push_back(loc);
+    }
+
+    sLog.outBasic("[Park] state=spots alliance_inns=%u horde_inns=%u alliance_city=%u horde_city=%u",
+        uint32(parkInns[0].size()), uint32(parkInns[1].size()), uint32(parkCities[0].size()), uint32(parkCities[1].size()));
+}
+
 void RandomPlayerbotMgr::ReleaseParkSpot(ParkEntry const& entry)
 {
     auto const it = parkSpotSlots.find(entry.spotKey);
@@ -6092,9 +6144,17 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     }
     else
     {
+        // OB-30 test 08.10. (park 800 of 1600, level 1-20): the exact race x level cache key found no inn
+        // for 668 bots and the capital overflow, keyed the same way, nothing for 498. Inns of every race of
+        // the bot's faction whose level range is within ParkLevelSlack of the bot, then the faction's
+        // capital spots of any level, then the bot parks where it stands.
+        BuildParkSpots();
+        uint32 const team = bot->GetTeam() == ALLIANCE ? 0 : 1;
+        uint32 const level = bot->GetLevel();
         std::vector<WorldLocation> inns;
-        for (auto const& [innGuid, innLocation] : innCacheLevel[bot->getRace()][bot->GetLevel()])
-            inns.push_back(innLocation);
+        for (ParkInn const& inn : parkInns[team])
+            if (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack)
+                inns.push_back(inn.loc);
         int index = pick(inns);
         if (index >= 0)
         {
@@ -6103,17 +6163,14 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         }
         else
         {
-            std::vector<WorldLocation> cities;
-            for (WorldLocation const& loc : rpgLocsCacheLevel[bot->getRace()][bot->GetLevel()])
-                if (IsCapitalSpot(loc))
-                    cities.push_back(loc);
-            index = pick(cities);
+            index = pick(parkCities[team]);
             if (index < 0)
             {
-                reason = inns.empty() && cities.empty() ? "no_inn" : "all_full";
-                return false;
+                sLog.outBasic("[Park] state=fallback_here bot=%u level=%u reason=%s", bot->GetGUIDLow(), level,
+                    inns.empty() && parkCities[team].empty() ? "no_inn" : "all_full");
+                return ParkBot(bot, "here", reason);
             }
-            spot = cities[index];
+            spot = parkCities[team][index];
             via = "city";
         }
     }

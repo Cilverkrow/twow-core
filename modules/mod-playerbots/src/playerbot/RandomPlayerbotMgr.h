@@ -353,6 +353,18 @@ public:
         std::map<uint32, ParkEntry> parkedBots;
         std::map<uint64, std::set<uint32>> parkSpotSlots;  // spot key -> taken slots (capacity ai::park::SpotCapacity)
         void ReleaseParkSpot(ParkEntry const& entry);
+        // twow-repo#541/#551: park spots per faction (0 alliance, 1 horde), built once from the inn and rpg caches:
+        // inns with the level range they serve, capital spots for the overflow.
+        struct ParkInn
+        {
+            WorldLocation loc;
+            uint32 minLevel = 0;
+            uint32 maxLevel = 0;
+        };
+        std::vector<ParkInn> parkInns[2];
+        std::vector<WorldLocation> parkCities[2];
+        bool parkSpotsBuilt = false;
+        void BuildParkSpots();
         void ProcessParkedBots();
         bool ParkBot(Player* bot, std::string const& teleName, std::string& reason);
         void UnparkBot(Player* bot);
