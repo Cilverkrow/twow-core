@@ -1121,6 +1121,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_trainer_teach_cast_contract.cmake")
+  # Hotfix 9.3 (twow-repo#518): display-only bot surnames from a read-only file.
+  add_test(NAME bot_surnames_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_bot_surnames_contract.cmake")
   # Hotfix 8.4 (twow-repo#357): Ancestral Arms spells for players, charge changes reach aura scripts.
   add_test(NAME shaman_84_contract
     COMMAND "${CMAKE_COMMAND}"
