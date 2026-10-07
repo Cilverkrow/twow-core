@@ -177,10 +177,13 @@ Map::Map(uint32 id, time_t expiry, uint32 InstanceId)
             visibilityThreads = 0;
         }
 #endif
-        m_motionThreads.reset(new ThreadPool(motionThreads, "MotionUpdate"));
-        m_objectThreads.reset(new ThreadPool(objectThreads, "ObjectUpdate"));
-        m_visibilityThreads.reset(new ThreadPool(visibilityThreads, "Visibility"));
-        m_cellThreads.reset(new ThreadPool(std::max((int)sWorld.getConfig(CONFIG_UINT32_MTCELLS_THREADS) - 1, 0), "CellUpdate"));
+        // twow-repo#541: the region (map.instance) in the pool name, so /proc shows CPU per region and
+        // role ("Cell0.3-5"; ThreadPool cuts names to Linux's 15 characters).
+        std::string const regionTag = std::to_string(id) + "." + std::to_string(InstanceId);
+        m_motionThreads.reset(new ThreadPool(motionThreads, "Mov" + regionTag));
+        m_objectThreads.reset(new ThreadPool(objectThreads, "Obj" + regionTag));
+        m_visibilityThreads.reset(new ThreadPool(visibilityThreads, "Vis" + regionTag));
+        m_cellThreads.reset(new ThreadPool(std::max((int)sWorld.getConfig(CONFIG_UINT32_MTCELLS_THREADS) - 1, 0), "Cell" + regionTag));
         m_visibilityThreads->start<ThreadPool::MySQL<ThreadPool::MultiQueue>>();
         m_cellThreads->start();
         m_motionThreads->start();
