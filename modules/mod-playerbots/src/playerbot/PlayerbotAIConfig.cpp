@@ -466,6 +466,8 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
+    rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
+    rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
     revivePreferCorpseRun = config.GetBoolDefault("AiPlayerbot.Revive.PreferCorpseRun", false);
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));

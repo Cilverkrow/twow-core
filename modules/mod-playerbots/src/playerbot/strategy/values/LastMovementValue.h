@@ -29,6 +29,11 @@ namespace ai
             nextTeleport = other.nextTeleport;
             farMoveTarget = other.farMoveTarget;
             farMoveAt = other.farMoveAt;
+            farMoveArrive = other.farMoveArrive;
+            farMoveDeclined = other.farMoveDeclined;
+            farMoveArriveSet = other.farMoveArriveSet;
+            farMoveDeclinedSet = other.farMoveDeclinedSet;
+            farMoveArrivedAt = other.farMoveArrivedAt;
             fleeCount = other.fleeCount;
             lastFleeAttempt = other.lastFleeAttempt;
             moveEvent = Event();
@@ -87,6 +92,13 @@ namespace ai
         // bot may arrive there (walking time, see MovementAction::MoveTo2).
         WorldPosition farMoveTarget;
         time_t farMoveAt = 0;
+        // Hotfix 8.36: where the far move ends (before the target) and a target for which no safe
+        // arrival point was found (walked instead, until the target changes).
+        WorldPosition farMoveArrive;
+        WorldPosition farMoveDeclined;
+        bool farMoveArriveSet = false;
+        bool farMoveDeclinedSet = false;
+        time_t farMoveArrivedAt = 0;  // hotfix 8.36: last far-move arrival (arrive_deaths)
         Event moveEvent;
     };
 

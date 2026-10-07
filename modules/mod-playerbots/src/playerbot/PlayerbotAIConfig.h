@@ -631,6 +631,8 @@ public:
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionGrindFallbackFailures = 0;  // hotfix 8.32 (#544), 0 = off
     bool rosterFarMove = false;  // hotfix 8.33 (#544): cheap movement without a player nearby, 0 = off
+    float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
+    bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route
     bool revivePreferCorpseRun = false;  // hotfix 8.34 (#544): corpse run before the spirit-healer shortcuts
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
