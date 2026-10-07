@@ -915,14 +915,17 @@ void ReportMemStores(PlayerBotMap const& bots)
 }
 }
 
+// twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
+// UpdateAIInternal: perfmon_init_reachable reads the first `return` of that body as an early return.
+using WorldBotsClock = std::chrono::steady_clock;
+static uint64 usSince(WorldBotsClock::time_point from, WorldBotsClock::time_point to)
+{
+    return uint64(std::chrono::duration_cast<std::chrono::microseconds>(to - from).count());
+}
+
 void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
     // twow-repo#541 ([WorldBots], AiPlayerbot.WorldBotsTrace): timing of this pass in the world thread.
-    using WorldBotsClock = std::chrono::steady_clock;
-    auto const usSince = [](WorldBotsClock::time_point from, WorldBotsClock::time_point to)
-    {
-        return uint64(std::chrono::duration_cast<std::chrono::microseconds>(to - from).count());
-    };
     WorldBotsClock::time_point const passStart = WorldBotsClock::now();
     uint32 const acksBefore = TeleportAcks();
 
@@ -1090,6 +1093,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     uint32 updateBots = sPlayerbotAIConfig.randomBotsPerInterval == 0 ? UINT32_MAX : sPlayerbotAIConfig.randomBotsPerInterval;
 
+    // twow-repo#541: the free random-bot path is timed like the roster path above.
+    WorldBotsClock::time_point const legacyProcessStart = WorldBotsClock::now();
+
     //Update bots
     for (auto bot : availableBots)
     {
@@ -1133,6 +1139,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
                 break;
         }
     }
+    WorldBotsClock::time_point const legacyProcessEnd = WorldBotsClock::now();
 
     LoginFreeBots();
 
@@ -1152,6 +1159,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     CharacterDatabase.AsyncPQuery(&RandomPlayerbotMgr::DatabasePing, sWorld.GetCurrentMSTime(), std::string("CharacterDatabase"), "SELECT 1");
 
     PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
+    if (sPlayerbotAIConfig.worldBotsTrace)
+        TraceWorldBots(availableBotCount, usSince(sessionsStart, sessionsEnd), usSince(legacyProcessStart, legacyProcessEnd),
+            usSince(passStart, sessionsStart) + usSince(sessionsEnd, legacyProcessStart) + usSince(legacyProcessEnd, WorldBotsClock::now()),
+            sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval - maxLogins, TeleportAcks() - acksBefore);
 }
 
 void RandomPlayerbotMgr::ScaleBotActivity()

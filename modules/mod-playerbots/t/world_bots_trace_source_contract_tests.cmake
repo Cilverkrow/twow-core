@@ -37,6 +37,12 @@ require_order("${mgr}" "WorldBotsClock::time_point const sessionsStart = WorldBo
 require_order("${mgr}" "UpdateSessions(elapsed);" "WorldBotsClock::time_point const sessionsEnd = WorldBotsClock::now();" "sessions timed until after the call")
 require_order("${mgr}" "WorldBotsClock::time_point const processStart = WorldBotsClock::now();" "for (uint32 bot : desiredBots)" "ProcessBot loop timed")
 require_text("${mgr}" "if (sPlayerbotAIConfig.worldBotsTrace)\n            TraceWorldBots(" "line only with the switch")
+# The free random-bot path (PersistentActiveRoster 0, OB-30 limit tests) is timed and traced too.
+require_order("${mgr}" "WorldBotsClock::time_point const legacyProcessStart = WorldBotsClock::now();" "//Update bots" "free random-bot path timed")
+require_text("${mgr}" "if (sPlayerbotAIConfig.worldBotsTrace)\n        TraceWorldBots(availableBotCount" "free random-bot path traced with the switch")
+# The timing helper is a free function: a lambda's `return` inside UpdateAIInternal reads as an early
+# return before sPerformanceMonitor.Init() to perfmon_init_reachable.
+require_text("${mgr}" "static uint64 usSince(" "timing helper outside UpdateAIInternal")
 require_text("${mgr}" "[WorldBots] passes=%u bots_avg=%u sessions_ms=%u process_ms=%u other_ms=%u max_pass_ms=%u share_pm=%u" "WorldBots line")
 require_text("${mgr_h}" "ai::world_bots::Window worldBotsWindow;" "per-minute window")
 require_text("${holder}" "GetBotAI(bot)->HandleTeleportAck();\n            ++teleportAcks;" "teleport ACK calls counted")
