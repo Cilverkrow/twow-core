@@ -81,4 +81,14 @@ require_text("${config_cpp}" "config.GetBoolDefault(\"AiPlayerbot.Park.HideFromB
 require_text("${park_bot}" "bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);" "flag set on park only by the switch")
 region("${mgr}" "void RandomPlayerbotMgr::UnparkBot(" "void RandomPlayerbotMgr::ProcessParkedBots()" unpark)
 require_text("${unpark}" "    bot->SetHiddenFromBots(false);" "flag cleared on every unpark")
+
+# Deep dive L1 (#541): a bot log line below the active level is dropped before the 4 KB format and
+# before BotLog's global mutex (all map threads used to serialise on it for every disabled outDebug).
+file(READ "${PB_SOURCE_DIR}/BotLog.cpp" botlog)
+foreach(fn "outDetail" "outDebug" "outBasic")
+  region("${botlog}" "void BotLog::${fn}(const char* fmt, ...)" "\n}" fn_body)
+  require_text("${fn_body}" "BOTLOG_SKIP_BELOW(" "level check first in ${fn}")
+  require_order("${fn_body}" "BOTLOG_SKIP_BELOW(" "BOTLOG_IMPL(" "level check before format and lock in ${fn}")
+endforeach()
+require_text("${botlog}" "if (!m_file && !Log::Instance().HasLogLevelOrHigher(level))" "skip only without bot log file and below both log levels")
 message(STATUS "PARK_SOURCE_CONTRACT=PASS")
