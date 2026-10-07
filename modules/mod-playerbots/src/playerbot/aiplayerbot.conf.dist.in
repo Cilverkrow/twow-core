@@ -43,6 +43,10 @@ AiPlayerbot.RandomBotJoinLfg = 1
 
 # Enable BG/Arena for random Bots
 AiPlayerbot.RandomBotJoinBG = 1
+# twow-repo#541/#551 (console rndbot park / unpark): 1 = a parked bot is not visible to other bots and
+# sees only real players and units fighting it (core Player flag, real players see it as always).
+# Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).
+AiPlayerbot.Park.HideFromBots = 0
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0

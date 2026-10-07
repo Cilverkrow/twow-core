@@ -6063,6 +6063,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         entry.since = uint32(time(nullptr));
         parkedBots[bot->GetGUIDLow()] = entry;
         ai->SetParked(true);
+        bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
         ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
         AiObjectContext* context = ai->GetAiObjectContext();
         sTravelMgr.SetNullTravelTarget(AI_VALUE(TravelTarget*, "travel target"));
@@ -6138,6 +6139,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     parkedBots[bot->GetGUIDLow()] = entry;
 
     ai->SetParked(true);
+    bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
     ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
     AiObjectContext* context = ai->GetAiObjectContext();
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
@@ -6146,8 +6148,9 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     bot->GetMotionMaster()->Clear();
     bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);
 
-    sLog.outBasic("[Park] state=travel bot=%u level=%u via=%s map=%u x=%.0f y=%.0f area=%u slot=%u",
-        bot->GetGUIDLow(), bot->GetLevel(), via.c_str(), target.mapid, target.coord_x, target.coord_y, entry.area, slot);
+    sLog.outBasic("[Park] state=travel bot=%u level=%u via=%s map=%u x=%.0f y=%.0f area=%u slot=%u hidden=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), via.c_str(), target.mapid, target.coord_x, target.coord_y, entry.area, slot,
+        bot->IsHiddenFromBots() ? 1u : 0u);
     return true;
 }
 
@@ -6164,6 +6167,7 @@ void RandomPlayerbotMgr::UnparkBot(Player* bot)
         ai->SetParked(false);
         ai->ResetStrategies();
     }
+    bot->SetHiddenFromBots(false);  // twow-repo#541/#551: visible again to every bot
     bot->SetStandState(UNIT_STAND_STATE_STAND);
     sLog.outBasic("[Park] state=unparked bot=%u level=%u", bot->GetGUIDLow(), bot->GetLevel());
 }
