@@ -502,8 +502,29 @@ void PlayerbotAI::ReportGroupBuff(uint32 now)
     groupBuffWindow.Reset(now);
 }
 
+// twow-repo#563 (X1): WorldSession::SendPacket into this bot runs on the sender's thread - a world
+// channel message reaches every listening bot from the talking bot's region thread. Handling it
+// there changed this bot's value map, chat queue and movement while the bot updated on its own
+// thread (SIGSEGV 08.10.2026 09:56Z). So the packet is only copied into the inbox here.
+void PlayerbotAI::QueueBotOutgoingPacket(const WorldPacket& packet)
+{
+    botPacketInbox.Push(std::make_unique<WorldPacket>(packet));
+}
+
+// On the bot's own thread, first thing in UpdateAI: handle what arrived since the last update.
+void PlayerbotAI::HandleQueuedBotPackets()
+{
+    std::vector<std::unique_ptr<WorldPacket>> packets;
+    botPacketInbox.Drain(packets);
+    for (std::unique_ptr<WorldPacket> const& packet : packets)
+        HandleBotOutgoingPacket(*packet);
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
+    // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
+    HandleQueuedBotPackets();
+
     // twow-repo#541/#551 (rndbot park): a parked bot out of combat thinks every ai::park::AiIntervalMs.
     if (parked)
     {

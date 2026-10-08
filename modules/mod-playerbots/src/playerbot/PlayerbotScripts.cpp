@@ -101,7 +101,8 @@ class PlayerbotServerScript : public ServerScript
             if (!ai)
                 return true;
 
-            ai->HandleBotOutgoingPacket(packet);
+            // twow-repo#563 (X1): this runs on the sender's thread; the bot handles it in its own UpdateAI.
+            ai->QueueBotOutgoingPacket(packet);
             return false;
         }
 
