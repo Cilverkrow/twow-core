@@ -995,6 +995,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_world_tick_541_contract.cmake")
+  # twow-repo#541 (C3): DB lock-wait counters behind AiPlayerbot.LockWaitTrace, default off.
+  add_test(NAME db_lock_wait_541_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_db_lock_wait_541_contract.cmake")
   # twow-repo#541/#551: parked bots hidden from other bots (Player flag, AiPlayerbot.Park.HideFromBots).
   add_test(NAME park_hide_541_contract
     COMMAND "${CMAKE_COMMAND}"

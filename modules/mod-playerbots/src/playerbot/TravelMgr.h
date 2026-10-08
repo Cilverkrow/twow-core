@@ -6,6 +6,8 @@
 #include "DestinationDeathPolicy.h"
 #include "AreaLevelPolicy.h"
 #include <mutex>
+#include <atomic>
+#include <vector>
 
 #include "strategy/AiObject.h"
 #include <boost/functional/hash.hpp>
@@ -551,6 +553,11 @@ namespace ai
 		std::unordered_map<uint32, int32> areaLevels;
 		// #416 (7.3): areaLevels is read from the map threads and the destination jobs.
 		std::recursive_mutex areaLevelMutex;
+		// twow-repo#541 (deep dive C1): every valid area id, filled once at the end of LoadAreaLevels and read
+		// without the lock afterwards (the lock on every call, cache hits included, serialised the travel
+		// searches of all map threads). Unknown ids still take the locked path.
+		std::vector<int32> frozenAreaLevels;
+		std::atomic<bool> areaLevelsFrozen{ false };
 		ai::area_level::CreatureLevels creatureAreaLevels;
 		bool loadingAreaLevels = false;
 
