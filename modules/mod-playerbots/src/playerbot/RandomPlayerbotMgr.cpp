@@ -43,7 +43,6 @@
 #include "PersistentActiveRosterDatabase.h"
 #include "LoginWavePolicy.h"
 #include "playerbot/MemStoresPolicy.h"
-#include "playerbot/LockWaitTrace.h"
 #if defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -914,47 +913,6 @@ void ReportMemStores(PlayerBotMap const& bots)
         (long long)TrackedCount<DynamicObject>::Total(), (unsigned long long)whispers, (unsigned long long)chatQueue,
         (unsigned long long)packetQueue, (unsigned long long)recorded, (unsigned long long)createdObjects, staleBots);
 }
-
-// twow-repo#541 (deep dive C1-C3, AiPlayerbot.LockWaitTrace): one [LockWait] line per minute - how
-// often and how long region/map threads waited on the shared locks, plus travel searches started.
-// Counters are reset on every line; with the switch off nothing is counted and nothing is written.
-void ReportLockWaits()
-{
-    static uint32 lastReport = 0;
-    uint32 const now = uint32(time(nullptr));
-    if (!ai::lock_wait::Enabled().load(std::memory_order_relaxed) || now < lastReport + 60)
-        return;
-    bool const first = lastReport == 0;
-    lastReport = now;
-
-    ai::lock_wait::Snapshot const area = ai::lock_wait::Take(ai::lock_wait::Get(ai::lock_wait::AreaLevel));
-    ai::lock_wait::Snapshot const botLog = ai::lock_wait::Take(ai::lock_wait::Get(ai::lock_wait::BotLogMutex));
-    uint64 const asyncStarts = ai::lock_wait::AsyncStarts().exchange(0, std::memory_order_relaxed);
-    Database::LockWaitStats const charConn = CharacterDatabase.TakeLockWaits(Database::LOCK_WAIT_CONNECTION);
-    Database::LockWaitStats const charEnq = CharacterDatabase.TakeLockWaits(Database::LOCK_WAIT_ENQUEUE);
-    Database::LockWaitStats const worldConn = WorldDatabase.TakeLockWaits(Database::LOCK_WAIT_CONNECTION);
-    Database::LockWaitStats const worldEnq = WorldDatabase.TakeLockWaits(Database::LOCK_WAIT_ENQUEUE);
-    Database::LockWaitStats const loginConn = LoginDatabase.TakeLockWaits(Database::LOCK_WAIT_CONNECTION);
-    Database::LockWaitStats const loginEnq = LoginDatabase.TakeLockWaits(Database::LOCK_WAIT_ENQUEUE);
-    // The first window starts whenever the switch was read; it is reset, not reported.
-    if (first)
-        return;
-
-    auto ms = [](uint64 us) { return (unsigned long long)(us / 1000); };
-    sLog.outBasic("[LockWait] area_level=%llu/%llums/max%lluus botlog=%llu/%llums/max%lluus async_starts=%llu"
-        " db_char=%llu/%llums/max%lluus db_char_enq=%llu/%llums/max%lluus"
-        " db_world=%llu/%llums/max%lluus db_world_enq=%llu/%llums/max%lluus"
-        " db_login=%llu/%llums/max%lluus db_login_enq=%llu/%llums/max%lluus",
-        (unsigned long long)area.waits, ms(area.waitUs), (unsigned long long)area.maxUs,
-        (unsigned long long)botLog.waits, ms(botLog.waitUs), (unsigned long long)botLog.maxUs,
-        (unsigned long long)asyncStarts,
-        (unsigned long long)charConn.waits, ms(charConn.waitUs), (unsigned long long)charConn.maxUs,
-        (unsigned long long)charEnq.waits, ms(charEnq.waitUs), (unsigned long long)charEnq.maxUs,
-        (unsigned long long)worldConn.waits, ms(worldConn.waitUs), (unsigned long long)worldConn.maxUs,
-        (unsigned long long)worldEnq.waits, ms(worldEnq.waitUs), (unsigned long long)worldEnq.maxUs,
-        (unsigned long long)loginConn.waits, ms(loginConn.waitUs), (unsigned long long)loginConn.maxUs,
-        (unsigned long long)loginEnq.waits, ms(loginEnq.waitUs), (unsigned long long)loginEnq.maxUs);
-}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -974,7 +932,6 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportMemStores(GetAllBots());
     ProcessQuestRescues();
     ProcessParkedBots();  // twow-repo#541/#551 (rndbot park), no-op without parked bots
-    ReportLockWaits();    // twow-repo#541 (AiPlayerbot.LockWaitTrace), no-op when off
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
