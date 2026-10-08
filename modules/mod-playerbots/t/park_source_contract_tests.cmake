@@ -78,13 +78,6 @@ require_text("${mgr}" "!ai->TakeQuestRescueRequest() || IsParkedBot(guid)" "no r
 require_order("${ai}" "if (!ai::park::AiUpdateDue(bot->IsInCombat(), nowMs, lastParkedUpdateMs))" "SlowUpdateProbe const slowUpdateProbe" "parked check before the AI update")
 require_text("${ai_h}" "std::atomic<bool> parked{ false };" "parked flag set by the world thread")
 
-# Visibility stage 2 (#541/#551, owner approval 07.10.): with AiPlayerbot.Park.HideFromBots (default
-# off) a parked bot is hidden from other bots (core Player flag); unpark always clears it.
-file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
-require_text("${config_cpp}" "config.GetBoolDefault(\"AiPlayerbot.Park.HideFromBots\", false)" "HideFromBots default off")
-require_text("${park_bot}" "bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);" "flag set on park only by the switch")
-region("${mgr}" "void RandomPlayerbotMgr::UnparkBot(" "void RandomPlayerbotMgr::ProcessParkedBots()" unpark)
-require_text("${unpark}" "    bot->SetHiddenFromBots(false);" "flag cleared on every unpark")
 
 # Deep dive L1 (#541): a bot log line below the active level is dropped before the 4 KB format and
 # before BotLog's global mutex (all map threads used to serialise on it for every disabled outDebug).
@@ -95,4 +88,17 @@ foreach(fn "outDetail" "outDebug" "outBasic")
   require_order("${fn_body}" "BOTLOG_SKIP_BELOW(" "BOTLOG_IMPL(" "level check before format and lock in ${fn}")
 endforeach()
 require_text("${botlog}" "if (!m_file && !Log::Instance().HasLogLevelOrHigher(level))" "skip only without bot log file and below both log levels")
+
+# Visibility stage 2 (#541/#551, owner approval 07.10.): with AiPlayerbot.Park.HideFromBots (default
+# off) a parked bot is hidden from other bots (core Player flag); unpark always clears it.
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
+require_text("${config_cpp}" "config.GetBoolDefault(\"AiPlayerbot.Park.HideFromBots\", false)" "HideFromBots default off")
+require_text("${park_bot}" "bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);" "flag set on park only by the switch")
+region("${mgr}" "void RandomPlayerbotMgr::UnparkBot(" "void RandomPlayerbotMgr::ProcessParkedBots()" unpark)
+require_text("${unpark}" "    bot->SetHiddenFromBots(false);" "flag cleared on every unpark")
+
+# HERE:1600 (33 lost): the random-bot lease logout skips parked bots, after the roster bookkeeping.
+region("${mgr}" "bool RandomPlayerbotMgr::ProcessBot(uint32 bot)" "bool RandomPlayerbotMgr::ProcessBot(Player* player)" process_bot_id)
+require_order("${process_bot_id}" "persistentRoster->RecordOnline(bot);" "if (IsParkedBot(bot))\n        return false;" "roster bookkeeping before the parked guard")
+require_order("${process_bot_id}" "if (IsParkedBot(bot))\n        return false;" "LogoutPlayerBot(bot);" "no lease logout for a parked bot")
 message(STATUS "PARK_SOURCE_CONTRACT=PASS")
