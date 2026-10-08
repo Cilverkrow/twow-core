@@ -893,6 +893,7 @@ bool PlayerbotAIConfig::Initialize()
     boostFollow = config.GetBoolDefault("AiPlayerbot.BoostFollow", false);
     turnInRpg = config.GetBoolDefault("AiPlayerbot.TurnInRpg", false);
     shareTargets = config.GetBoolDefault("AiPlayerbot.ShareTargets", true);
+    soloOwnAttackersOnly = config.GetBoolDefault("AiPlayerbot.SoloOwnAttackersOnly", true);
     globalSoundEffects = config.GetBoolDefault("AiPlayerbot.GlobalSoundEffects", false);
     nonGmFreeSummon = config.GetBoolDefault("AiPlayerbot.NonGmFreeSummon", false);
     // #354: account level from which bot admin commands bypass the roster-control
