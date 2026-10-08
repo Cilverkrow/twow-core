@@ -2860,7 +2860,13 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
         persistentRoster->RecordOnline(bot);
     }
 
-    bool botsAllowedInWorld = !sPlayerbotAIConfig.randomBotLoginWithPlayer || (!players.empty() && sWorld.GetActiveSessionCount() > 0);
+    // twow-repo#541/#551 (HERE:1600, 33 [Park] state=lost): with random bots (PersistentActiveRoster 0)
+    // the timed logout below logged parked bots out when their lease ran out. A parked bot stays; the
+    // roster bookkeeping above still runs.
+    if (IsParkedBot(bot))
+        return false;
+
+    bool botsAllowedInWorld =!sPlayerbotAIConfig.randomBotLoginWithPlayer || (!players.empty() && sWorld.GetActiveSessionCount() > 0);
 
     bool isValid = true;
 
@@ -6048,6 +6054,58 @@ namespace
     }
 }
 
+// Levels an inn may lie above or below the bot's level and still be chosen (ParkBot).
+static constexpr uint32 ParkLevelSlack = 5;
+
+void RandomPlayerbotMgr::BuildParkSpots()
+{
+    if (parkSpotsBuilt)
+        return;
+    parkSpotsBuilt = true;
+
+    // Inns: every innkeeper of the cache once per faction, with the level range it serves.
+    std::map<uint64, size_t> innIndex[2];
+    for (auto const& [race, byLevel] : innCacheLevel)
+    {
+        if (!race)
+            continue;
+        uint32 const team = Player::TeamForRace(uint8(race)) == ALLIANCE ? 0 : 1;
+        for (auto const& [level, inns] : byLevel)
+            for (auto const& [innGuid, loc] : inns)
+            {
+                uint64 const key = ParkSpotKey(loc);
+                auto const it = innIndex[team].find(key);
+                if (it == innIndex[team].end())
+                {
+                    innIndex[team][key] = parkInns[team].size();
+                    parkInns[team].push_back(ParkInn{ loc, level, level });
+                }
+                else
+                {
+                    ParkInn& inn = parkInns[team][it->second];
+                    inn.minLevel = std::min(inn.minLevel, uint32(level));
+                    inn.maxLevel = std::max(inn.maxLevel, uint32(level));
+                }
+            }
+    }
+
+    // Capital spots (bank, auction house, trainers of the faction's capitals), any level, once each.
+    std::set<uint64> citySeen[2];
+    for (auto const& [race, byLevel] : rpgLocsCacheLevel)
+    {
+        if (!race)
+            continue;
+        uint32 const team = Player::TeamForRace(uint8(race)) == ALLIANCE ? 0 : 1;
+        for (auto const& [level, locs] : byLevel)
+            for (WorldLocation const& loc : locs)
+                if (citySeen[team].insert(ParkSpotKey(loc)).second && IsCapitalSpot(loc))
+                    parkCities[team].push_back(loc);
+    }
+
+    sLog.outBasic("[Park] state=spots alliance_inns=%u horde_inns=%u alliance_city=%u horde_city=%u",
+        uint32(parkInns[0].size()), uint32(parkInns[1].size()), uint32(parkCities[0].size()), uint32(parkCities[1].size()));
+}
+
 void RandomPlayerbotMgr::ReleaseParkSpot(ParkEntry const& entry)
 {
     auto const it = parkSpotSlots.find(entry.spotKey);
@@ -6106,6 +6164,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         entry.since = uint32(time(nullptr));
         parkedBots[bot->GetGUIDLow()] = entry;
         ai->SetParked(true);
+        bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
         ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
         AiObjectContext* context = ai->GetAiObjectContext();
         sTravelMgr.SetNullTravelTarget(AI_VALUE(TravelTarget*, "travel target"));
@@ -6134,9 +6193,17 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     }
     else
     {
+        // OB-30 test 08.10. (park 800 of 1600, level 1-20): the exact race x level cache key found no inn
+        // for 668 bots and the capital overflow, keyed the same way, nothing for 498. Inns of every race of
+        // the bot's faction whose level range is within ParkLevelSlack of the bot, then the faction's
+        // capital spots of any level, then the bot parks where it stands.
+        BuildParkSpots();
+        uint32 const team = bot->GetTeam() == ALLIANCE ? 0 : 1;
+        uint32 const level = bot->GetLevel();
         std::vector<WorldLocation> inns;
-        for (auto const& [innGuid, innLocation] : innCacheLevel[bot->getRace()][bot->GetLevel()])
-            inns.push_back(innLocation);
+        for (ParkInn const& inn : parkInns[team])
+            if (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack)
+                inns.push_back(inn.loc);
         int index = pick(inns);
         if (index >= 0)
         {
@@ -6145,17 +6212,14 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         }
         else
         {
-            std::vector<WorldLocation> cities;
-            for (WorldLocation const& loc : rpgLocsCacheLevel[bot->getRace()][bot->GetLevel()])
-                if (IsCapitalSpot(loc))
-                    cities.push_back(loc);
-            index = pick(cities);
+            index = pick(parkCities[team]);
             if (index < 0)
             {
-                reason = inns.empty() && cities.empty() ? "no_inn" : "all_full";
-                return false;
+                sLog.outBasic("[Park] state=fallback_here bot=%u level=%u reason=%s", bot->GetGUIDLow(), level,
+                    inns.empty() && parkCities[team].empty() ? "no_inn" : "all_full");
+                return ParkBot(bot, "here", reason);
             }
-            spot = cities[index];
+            spot = parkCities[team][index];
             via = "city";
         }
     }
@@ -6181,6 +6245,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     parkedBots[bot->GetGUIDLow()] = entry;
 
     ai->SetParked(true);
+    bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
     ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
     AiObjectContext* context = ai->GetAiObjectContext();
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
@@ -6189,8 +6254,9 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     bot->GetMotionMaster()->Clear();
     bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);
 
-    sLog.outBasic("[Park] state=travel bot=%u level=%u via=%s map=%u x=%.0f y=%.0f area=%u slot=%u",
-        bot->GetGUIDLow(), bot->GetLevel(), via.c_str(), target.mapid, target.coord_x, target.coord_y, entry.area, slot);
+    sLog.outBasic("[Park] state=travel bot=%u level=%u via=%s map=%u x=%.0f y=%.0f area=%u slot=%u hidden=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), via.c_str(), target.mapid, target.coord_x, target.coord_y, entry.area, slot,
+        bot->IsHiddenFromBots() ? 1u : 0u);
     return true;
 }
 
@@ -6207,6 +6273,7 @@ void RandomPlayerbotMgr::UnparkBot(Player* bot)
         ai->SetParked(false);
         ai->ResetStrategies();
     }
+    bot->SetHiddenFromBots(false);  // twow-repo#541/#551: visible again to every bot
     bot->SetStandState(UNIT_STAND_STATE_STAND);
     sLog.outBasic("[Park] state=unparked bot=%u level=%u", bot->GetGUIDLow(), bot->GetLevel());
 }

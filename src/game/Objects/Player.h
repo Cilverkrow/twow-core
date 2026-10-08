@@ -2034,6 +2034,7 @@ class Player final: public Unit
         uint32 m_DelayedOperations;
         bool m_bCanDelayTeleport;
         bool m_bHasDelayedTeleport;
+        bool m_hiddenFromBots = false;  // twow-repo#541/#551
         bool m_bHasBeenAliveAtDelayedTeleport;
         uint32 m_areaCheckTimer; // Trigger call to UpdateTerainEnvironmentFlags/CheckAreaExploreAndOutdoor
 
@@ -2160,6 +2161,13 @@ class Player final: public Unit
         bool IsBeingTeleported() const { return mSemaphoreTeleport_Near || mSemaphoreTeleport_Far || mPendingFarTeleport; }
         bool IsBeingTeleportedNear() const { return mSemaphoreTeleport_Near; }
         bool IsBeingTeleportedFar() const { return mSemaphoreTeleport_Far; }
+
+        // twow-repo#541/#551 (park, AiPlayerbot.Park.HideFromBots): a parked bot is not visible to other bots
+        // (players without a client socket) and sees only real players and units fighting it; real players
+        // see it normally. Set and cleared by the bot module; the next map update rebuilds visibility.
+        bool IsHiddenFromBots() const { return m_hiddenFromBots; }
+        void SetHiddenFromBots(bool hidden);
+        bool HasClientSocket() const;
         void SetSemaphoreTeleportNear(bool semphsetting);
         void SetSemaphoreTeleportFar(bool semphsetting);
         void SetPendingFarTeleport(bool pending) { mPendingFarTeleport = pending; }

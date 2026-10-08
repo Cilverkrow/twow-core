@@ -23567,6 +23567,24 @@ bool Player::HasMovementFlag(MovementFlags f) const
     return m_movementInfo.HasMovementFlag(f);
 }
 
+// twow-repo#541/#551 (park, AiPlayerbot.Park.HideFromBots): see Player.h. The visibility of the player
+// and of everything around it is rebuilt by the next map update (UNIT_STAT_PENDING_VIS_UPDATE), in the
+// map thread, so nothing stays visible or hidden after the flag changes.
+void Player::SetHiddenFromBots(bool hidden)
+{
+    if (m_hiddenFromBots == hidden)
+        return;
+    m_hiddenFromBots = hidden;
+    if (IsInWorld() && !HasUnitState(UNIT_STAT_PENDING_VIS_UPDATE))
+        AddUnitState(UNIT_STAT_PENDING_VIS_UPDATE);
+}
+
+// A real client: bots run free-floating sessions without a socket.
+bool Player::HasClientSocket() const
+{
+    return GetSession() && GetSession()->GetSocket();
+}
+
 void Player::SetHomebindToLocation(WorldLocation const& loc, uint32 area_id)
 {
     m_homebindMapId = loc.mapId;
