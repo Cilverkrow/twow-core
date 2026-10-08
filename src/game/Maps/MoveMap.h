@@ -107,13 +107,22 @@ namespace MMAP
         private:
             bool loadMapData(uint32 mapId);
             static uint32 packTileID(int32 x, int32 y);
+            // twow-repo#560 (R1/R3): the calling thread's query for one mesh,
+            // created on first use; navMeshQueries is read and written under
+            // the mesh's navMeshQueries_lock.
+            static dtNavMeshQuery const* QueryForThread(MMapData* mmap, char const* kind, uint32 id);
 
+            // twow-repo#560: every read and write of loadedMMaps holds
+            // loadedMMaps_lock, of loadedModels loadedModels_lock (shared to
+            // read, unique to insert or erase). MMapData* stays valid after the
+            // lookup: entries are only erased by unloadMap(mapId), which is
+            // off with MMapTileUnload = 0.
             MMapDataSet loadedMMaps;
             std::shared_mutex loadedMMaps_lock;
             MMapDataSet loadedModels;
+            std::shared_mutex loadedModels_lock;
 
             uint32 loadedTiles;
-            std::mutex lockForModels;
     };
 
     // static class
