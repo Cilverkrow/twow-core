@@ -1148,6 +1148,12 @@ add_test(NAME area_level_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/area_level_source_contract_tests.cmake")
 
+# #541 (deep dive C1 + [LockWait]): frozen area levels read without the lock, lock-wait counters.
+add_test(NAME lock_wait_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/lock_wait_source_contract_tests.cmake")
+
 # #416 (7.3): hourly [MemStores] diagnostic.
 add_executable(mem_stores_policy_tests
   "${PB_MODULE_DIR}/t/mem_stores_policy_tests.cpp")

@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 
 namespace
 {
@@ -34,6 +35,22 @@ int main()
     Require(levels.Average(221) == 1, "an area with only level-0 creatures counts as 1");
     Require(levels.Average(999) == 0, "no creature in the area: 0");
     Require(levels.Size() == 2, "two areas filled");
+
+    // #541 (C1): the frozen table.
+    std::vector<std::pair<uint32_t, int32_t>> const loaded = {{12, 5}, {5225, 7}, {40, -2}, {41, -1}, {42, 0}, {9000, 60}};
+    std::vector<int32_t> const table = FreezeLevels(loaded, 5736);
+    Require(table.size() == 5736, "one slot per area id");
+    int32_t level = 99;
+    Require(FrozenLookup(table, 12, level) && level == 5, "a loaded level");
+    Require(FrozenLookup(table, 5225, level) && level == 7, "a Turtle area above the record count");
+    Require(FrozenLookup(table, 40, level) && level == -2, "-2 (no area entry) is kept");
+    Require(FrozenLookup(table, 41, level) && level == -1, "-1 (no level) is kept");
+    Require(FrozenLookup(table, 42, level) && level == 0, "0 is a value, not unset");
+    level = 99;
+    Require(!FrozenLookup(table, 13, level) && level == 99, "an id the load did not fill takes the locked path");
+    Require(!FrozenLookup(table, 9000, level), "ids past the end are dropped and take the locked path");
+    Require(!FrozenLookup(table, 0xFFFFFFFFu, level), "no out-of-range read");
+    Require(!FrozenLookup(std::vector<int32_t>(), 12, level), "an empty table knows nothing");
 
     std::cout << "area_level_policy_tests passed\n";
     return 0;

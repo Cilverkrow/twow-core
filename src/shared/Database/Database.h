@@ -79,13 +79,15 @@ class SqlConnection
         class Lock
         {
             public:
-                Lock(SqlConnection * conn) : m_pConn(conn) {}
+                // twow-repo#541: out of line, it times a contended lock when
+                // Database::LockWaitTrace() is on (Database is incomplete here).
+                Lock(SqlConnection * conn);
 
                 SqlConnection* operator->() const { return m_pConn; }
 
             private:
                 SqlConnection * const m_pConn;
-                std::unique_lock<std::recursive_mutex> m_lock{m_pConn->m_mutex};
+                std::unique_lock<std::recursive_mutex> m_lock;
         };
 
         //get DB object
@@ -271,7 +273,7 @@ class Database
         //you should call it explicitly after your server successfully started up
         //NO ASYNC TRANSACTIONS DURING SERVER STARTUP - ONLY DURING RUNTIME!!!
         void AllowAsyncTransactions() { m_bAllowAsyncTransactions = true; }
-        inline void AddToDelayQueue(SqlOperation* op) { m_delayQueue->add(op); }
+        void AddToDelayQueue(SqlOperation* op);
         inline bool NextDelayedOperation(SqlOperation*& op) { return m_delayQueue->next(op); }
 
         inline void AddToSerialDelayQueue(int workerId, SqlOperation* op) { m_threadsBodies[workerId]->addSerialOperation(op); }
@@ -283,6 +285,16 @@ class Database
 
         // Frees data, cancels scheduled queries, closes connection
         void StopServer();
+
+        // twow-repo#541 (deep dive C3): with LockWaitTrace() on, a contended
+        // connection lock (sync queries, async worker) and every enqueue into
+        // the delay queue that takes >= 10 us are counted; the playerbot module
+        // writes and resets them once per minute ([LockWait]). Off by default.
+        enum LockWaitSite { LOCK_WAIT_CONNECTION = 0, LOCK_WAIT_ENQUEUE = 1, LOCK_WAIT_SITES = 2 };
+        struct LockWaitStats { uint64 waits = 0; uint64 waitUs = 0; uint64 maxUs = 0; };
+        static std::atomic<bool>& LockWaitTrace();
+        void RecordLockWait(LockWaitSite site, uint64 us);
+        LockWaitStats TakeLockWaits(LockWaitSite site);
     protected:
         Database() : m_nQueryConnPoolSize(1), m_delayQueue(new SqlQueue()), m_pAsyncConn(nullptr),
                      m_pResultQueue(nullptr), m_numAsyncWorkers(0),
@@ -367,5 +379,9 @@ class Database
         bool m_logSQL;
         std::string m_logsDir;
         uint32 m_pingIntervallms;
+
+        std::atomic<uint64> m_lockWaits[LOCK_WAIT_SITES]{};
+        std::atomic<uint64> m_lockWaitUs[LOCK_WAIT_SITES]{};
+        std::atomic<uint64> m_lockWaitMaxUs[LOCK_WAIT_SITES]{};
 };
 #endif
