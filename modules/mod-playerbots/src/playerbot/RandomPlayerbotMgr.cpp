@@ -913,6 +913,22 @@ void ReportMemStores(PlayerBotMap const& bots)
         (long long)TrackedCount<DynamicObject>::Total(), (unsigned long long)whispers, (unsigned long long)chatQueue,
         (unsigned long long)packetQueue, (unsigned long long)recorded, (unsigned long long)createdObjects, staleBots);
 }
+
+// twow-repo#563: one [BotInbox] line per minute - packets for bots dropped past the inbox bound
+// and the largest batch one bot handled in a single update. Both are reset per line.
+void ReportBotInbox()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    uint64 const dropped = ai::InboxDroppedTotal().exchange(0, std::memory_order_relaxed);
+    uint64 const largest = ai::InboxLargestDrain().exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u",
+        (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity));
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -932,6 +948,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportMemStores(GetAllBots());
     ProcessQuestRescues();
     ProcessParkedBots();  // twow-repo#541/#551 (rndbot park), no-op without parked bots
+    ReportBotInbox();     // twow-repo#563: [BotInbox] once per minute
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();

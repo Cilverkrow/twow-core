@@ -1935,3 +1935,25 @@ add_test(NAME rpg_target_cache_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/rpg_target_cache_source_contract_tests.cmake")
+
+# twow-repo#563: packets for a bot are queued (any thread) and handled in its own UpdateAI;
+# ListSpellsAction's shared tables are filled once.
+add_executable(bot_packet_inbox_tests
+  "${PB_MODULE_DIR}/t/bot_packet_inbox_tests.cpp")
+
+target_include_directories(bot_packet_inbox_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(bot_packet_inbox_tests PRIVATE Threads::Threads)
+
+set_target_properties(bot_packet_inbox_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_packet_inbox
+  COMMAND bot_packet_inbox_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cross_thread_bot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/cross_thread_bot_source_contract_tests.cmake")
