@@ -57,6 +57,9 @@ bool ChooseRpgTargetAction::HasSameTarget(ObjectGuid guid, uint32 max, std::list
 
 std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* requester, bool debug)
 {
+    // twow-repo#541 (R1): one rpg trigger list for every candidate of this call.
+    RpgTriggerCacheScope rpgTriggerScope(this);
+
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
     focusQuestTravelList focusList = AI_VALUE(focusQuestTravelList, "focus travel target");
 
@@ -299,19 +302,13 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
     return targets;
 }
 
-//This method will temporary set the rpg target and finds the highest rpg action relevance that 'could' be triggered when near the target.
-float ChooseRpgTargetAction::getMaxRelevance(GuidPosition guidP)
+// twow-repo#541 (deep dive R1): the rpg trigger nodes of every active rpg strategy, in strategy order,
+// with their relevance and whether a handler is an rpg action - the same for every candidate target.
+void ChooseRpgTargetAction::BuildRpgTriggers()
 {
-    GuidPosition currentRpgTarget = AI_VALUE(GuidPosition, "rpg target");
-    SET_AI_VALUE(GuidPosition, "rpg target", guidP);
+    ClearRpgTriggers();
+    rpgTriggersBuilt = true;
 
-    Strategy* rpgStrategy;
-
-    std::list<TriggerNode*> triggerNodes;
-
-    float maxRelevance = 0.0f;
-
-    //Loop over all strategies containing rpg that are enabled.
     std::set<std::string> strategies;
     ai->GetAiObjectContext()->GetSupportedStrategies(strategies);
     for (auto& strategy : strategies)
@@ -322,68 +319,92 @@ float ChooseRpgTargetAction::getMaxRelevance(GuidPosition guidP)
         if (!ai->HasStrategy(strategy, BotState::BOT_STATE_NON_COMBAT))
             continue;
 
-        rpgStrategy = ai->GetAiObjectContext()->GetStrategy(strategy);
+        Strategy* rpgStrategy = ai->GetAiObjectContext()->GetStrategy(strategy);
 
+        std::list<TriggerNode*> triggerNodes;
         rpgStrategy->InitTriggers(triggerNodes, BotState::BOT_STATE_NON_COMBAT);
 
-        //Loop over all triggers of this strategy.
-        for (auto& triggerNode : triggerNodes)
+        for (TriggerNode* triggerNode : triggerNodes)
         {
             Trigger* trigger = context->GetTrigger(triggerNode->getName());
-
-            if (trigger)
+            if (!trigger)
             {
-                triggerNode->setTrigger(trigger);
-
-                if (triggerNode->getFirstRelevance() < maxRelevance || triggerNode->getFirstRelevance() > 2.0f)
-                    continue;
-
-                Trigger* trigger = triggerNode->getTrigger();
-
-                if (!trigger->IsActive())
-                    continue;
-
-                NextAction** nextActions = triggerNode->getHandlers();
-
-                bool isRpg = false;
-
-                //Loop over all actions triggered by this trigger and check if any is an 'rpg action'.
-                for (int32 i = 0; i < NextAction::size(nextActions); i++)
-                {
-                    NextAction* nextAction = nextActions[i];
-
-                    Action* action = ai->GetAiObjectContext()->GetAction(nextAction->getName());
-
-                    if (dynamic_cast<RpgEnabled*>(action))
-                        isRpg = true;
-
-                    RpgSubAction* subAction = dynamic_cast<RpgSubAction*>(action);
-
-                    if (subAction)
-                        rgpActionReason[guidP] = subAction->GetRpgActionName();
-                }
-                NextAction::destroy(nextActions);
-
-                //Note the highest relevance of this node and the reason it triggers.
-                if (isRpg)
-                {
-                    maxRelevance = triggerNode->getFirstRelevance();
-                    if (rgpActionReason[guidP].empty())
-                        rgpActionReason[guidP] = triggerNode->getName();
-                }
+                delete triggerNode;
+                continue;
             }
-        }
 
-        for (std::list<TriggerNode*>::iterator i = triggerNodes.begin(); i != triggerNodes.end(); i++)
+            triggerNode->setTrigger(trigger);
+
+            RpgTriggerEntry entry;
+            entry.node = triggerNode;
+            entry.trigger = trigger;
+            entry.relevance = triggerNode->getFirstRelevance();
+
+            //Check once if any action triggered by this trigger is an 'rpg action'.
+            NextAction** nextActions = triggerNode->getHandlers();
+            for (int32 i = 0; i < NextAction::size(nextActions); i++)
+            {
+                Action* action = ai->GetAiObjectContext()->GetAction(nextActions[i]->getName());
+
+                if (dynamic_cast<RpgEnabled*>(action))
+                    entry.isRpg = true;
+
+                if (RpgSubAction* subAction = dynamic_cast<RpgSubAction*>(action))
+                    entry.lastSubAction = subAction;
+            }
+            NextAction::destroy(nextActions);
+
+            rpgTriggers.push_back(entry);
+        }
+    }
+}
+
+void ChooseRpgTargetAction::ClearRpgTriggers()
+{
+    for (RpgTriggerEntry& entry : rpgTriggers)
+        delete entry.node;
+    rpgTriggers.clear();
+    rpgTriggersBuilt = false;
+}
+
+//This method will temporary set the rpg target and finds the highest rpg action relevance that 'could' be triggered when near the target.
+float ChooseRpgTargetAction::getMaxRelevance(GuidPosition guidP)
+{
+    // Outside a GetTargets call (no cache scope) the list is built for this call alone.
+    bool const ownList = !rpgTriggerCacheActive;
+    if (!rpgTriggersBuilt)
+        BuildRpgTriggers();
+
+    GuidPosition currentRpgTarget = AI_VALUE(GuidPosition, "rpg target");
+    SET_AI_VALUE(GuidPosition, "rpg target", guidP);
+
+    float maxRelevance = 0.0f;
+
+    //Loop over all triggers of the enabled rpg strategies (built once per GetTargets call).
+    for (RpgTriggerEntry const& entry : rpgTriggers)
+    {
+        if (entry.relevance < maxRelevance || entry.relevance > 2.0f)
+            continue;
+
+        if (!entry.trigger->IsActive())
+            continue;
+
+        if (entry.lastSubAction)
+            rgpActionReason[guidP] = entry.lastSubAction->GetRpgActionName();
+
+        //Note the highest relevance of this node and the reason it triggers.
+        if (entry.isRpg)
         {
-            TriggerNode* trigger = *i;
-            delete trigger;
+            maxRelevance = entry.relevance;
+            if (rgpActionReason[guidP].empty())
+                rgpActionReason[guidP] = entry.node->getName();
         }
-
-        triggerNodes.clear();
     }
 
     SET_AI_VALUE(GuidPosition,"rpg target", currentRpgTarget);
+
+    if (ownList)
+        ClearRpgTriggers();
 
     if (!maxRelevance)
         return 0.0;
