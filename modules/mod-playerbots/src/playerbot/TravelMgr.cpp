@@ -1,6 +1,5 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
-#include "playerbot/LockWaitTrace.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include <iomanip>
@@ -1569,19 +1568,7 @@ void TravelMgr::Clear()
 
 int32 TravelMgr::GetAreaLevel(uint32 area_id)
 {
-    // twow-repo#541 (deep dive C1): after the startup load every valid area is in the frozen table, read
-    // without the lock (configured overrides keep priority, as below).
-    if (areaLevelsFrozen.load(std::memory_order_acquire))
-    {
-        auto const configured = sPlayerbotAIConfig.areaLevelOverrides.find(area_id);
-        if (configured != sPlayerbotAIConfig.areaLevelOverrides.end())
-            return configured->second;
-        int32 frozenLevel = 0;
-        if (ai::area_level::FrozenLookup(frozenAreaLevels, area_id, frozenLevel))
-            return frozenLevel;
-    }
-
-    ai::lock_wait::TimedLock<std::recursive_mutex> lock(areaLevelMutex, ai::lock_wait::AreaLevel);
+    std::lock_guard<std::recursive_mutex> lock(areaLevelMutex);
 
     // #307: configured levels for areas the generated table misses (Turtle
     // zones such as the high elf start 5225 Thalassian Highlands).
@@ -1707,17 +1694,7 @@ void TravelMgr::LoadAreaLevels()
     std::lock_guard<std::recursive_mutex> lock(areaLevelMutex);
 
     if (!areaLevels.empty())
-    {
-        // twow-repo#541 (C1): a reload, or levels asked before the load - freeze once, never rewrite
-        // (readers use the table only after the flag, which is set exactly once).
-        if (!areaLevelsFrozen.load(std::memory_order_acquire))
-        {
-            std::vector<std::pair<uint32, int32>> levels(areaLevels.begin(), areaLevels.end());
-            frozenAreaLevels = ai::area_level::FreezeLevels(levels, ai::area_level::AreaIdEnd(sAreaStore.GetMaxEntry(), sAreaStore.GetNumRows()));
-            areaLevelsFrozen.store(true, std::memory_order_release);
-        }
         return;
-    }
 
     // #416 (7.3): the creature levels may only be used during this load.
     struct LoadingFlag
@@ -1775,12 +1752,6 @@ void TravelMgr::LoadAreaLevels()
         if(areaLevels.size() > loadedAreas.size())
             sLog.outString(">> Generated " SIZEFMTD " areas.", areaLevels.size()- loadedAreas.size());
     }
-
-    // twow-repo#541 (deep dive C1): freeze every loaded or generated level for the lock-free read path.
-    std::vector<std::pair<uint32, int32>> levels(areaLevels.begin(), areaLevels.end());
-    frozenAreaLevels = ai::area_level::FreezeLevels(levels, ai::area_level::AreaIdEnd(sAreaStore.GetMaxEntry(), sAreaStore.GetNumRows()));
-    areaLevelsFrozen.store(true, std::memory_order_release);
-    sLog.outString(">> Area levels frozen for lock-free reads (%u entries).", uint32(levels.size()));
 }
 
 void TravelMgr::SetMobAvoidArea()

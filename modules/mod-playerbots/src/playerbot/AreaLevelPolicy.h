@@ -4,8 +4,6 @@
 #include <cstdint>
 #include <unordered_map>
 #include <utility>
-#include <vector>
-#include <climits>
 
 namespace ai::area_level
 {
@@ -60,26 +58,4 @@ struct CreatureLevels
         return uint32_t(sums.size());
     }
 };
-
-// twow-repo#541 (deep dive C1): the area levels as a table by area id, frozen at the end of the startup
-// load and read without a lock. Unset marks an id the load did not fill (it takes the locked path).
-constexpr int32_t FrozenUnset = INT32_MIN;
-
-inline std::vector<int32_t> FreezeLevels(std::vector<std::pair<uint32_t, int32_t>> const& levels, uint32_t areaIdEnd)
-{
-    std::vector<int32_t> table(areaIdEnd, FrozenUnset);
-    for (auto const& [id, level] : levels)
-        if (id < areaIdEnd)
-            table[id] = level;
-    return table;
-}
-
-// True with the level when the frozen table knows the area.
-inline bool FrozenLookup(std::vector<int32_t> const& table, uint32_t areaId, int32_t& level)
-{
-    if (areaId >= table.size() || table[areaId] == FrozenUnset)
-        return false;
-    level = table[areaId];
-    return true;
-}
 }

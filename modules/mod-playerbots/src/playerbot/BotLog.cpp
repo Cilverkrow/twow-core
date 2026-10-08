@@ -1,5 +1,4 @@
 #include "BotLog.h"
-#include "playerbot/LockWaitTrace.h"
 
 #include <chrono>
 #include <cstdarg>
@@ -71,7 +70,7 @@ void BotLog::Initialize(const char* logFile, const char* logsDir, bool debugEnab
     va_start(_ap, fmt);                                 \
     vsnprintf(_msg, sizeof(_msg), fmt, _ap);            \
     va_end(_ap);                                        \
-    ai::lock_wait::TimedLock<std::mutex> _g(m_mutex, ai::lock_wait::BotLogMutex); \
+    std::lock_guard<std::mutex> _g(m_mutex);            \
     if (m_file) {                                       \
         std::time_t _now = std::time(nullptr);          \
         std::tm _lt{};                                  \
@@ -93,7 +92,7 @@ void BotLog::Initialize(const char* logFile, const char* logsDir, bool debugEnab
     va_start(_ap, fmt);                                 \
     vsnprintf(_msg, sizeof(_msg), fmt, _ap);            \
     va_end(_ap);                                        \
-    ai::lock_wait::TimedLock<std::mutex> _g(m_mutex, ai::lock_wait::BotLogMutex); \
+    std::lock_guard<std::mutex> _g(m_mutex);            \
     if (m_file) {                                       \
         std::time_t _now = std::time(nullptr);          \
         std::tm _lt{};                                  \
