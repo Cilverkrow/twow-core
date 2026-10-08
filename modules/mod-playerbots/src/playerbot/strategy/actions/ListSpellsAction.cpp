@@ -3,11 +3,17 @@
 #include "ListSpellsAction.h"
 #include "playerbot/strategy/ItemVisitors.h"
 #include "playerbot/ServerFacade.h"
+#include <mutex>
 
 using namespace ai;
 
 std::map<uint32, SkillLineAbilityEntry const*> ListSpellsAction::skillSpells;
 std::set<uint32> ListSpellsAction::vendorItems;
+
+// twow-repo#563 (X2): both tables are shared by every bot and were filled on first use without a
+// lock; two region threads filling them at once crashed in std::set insert (07.10.2026 16:57Z).
+// They are filled exactly once now and only read afterwards.
+static std::once_flag listSpellsTablesOnce;
 
 bool CompareSpells(std::pair<uint32, std::string>& s1, std::pair<uint32, std::string>& s2)
 {
@@ -54,8 +60,8 @@ bool CompareSpells(std::pair<uint32, std::string>& s1, std::pair<uint32, std::st
 }
 
 std::list<std::pair<uint32, std::string> > ListSpellsAction::GetSpellList(std::string filter)
-{    
-    if (skillSpells.empty())
+{
+    std::call_once(listSpellsTablesOnce, []()
     {
         for (uint32 j = 0; j < sSkillLineAbilityStore.GetNumRows(); ++j)
         {
@@ -63,10 +69,7 @@ std::list<std::pair<uint32, std::string> > ListSpellsAction::GetSpellList(std::s
             if (skillLine)
                 skillSpells[skillLine->spellId] = skillLine;
         }
-    }
 
-    if (vendorItems.empty())
-    {
         auto results = WorldDatabase.PQuery("SELECT item FROM npc_vendor where maxcount = 0");
         if (results)
         {
@@ -76,7 +79,7 @@ std::list<std::pair<uint32, std::string> > ListSpellsAction::GetSpellList(std::s
                 vendorItems.insert(fields[0].GetUInt32());
             } while (results->NextRow());
         }
-    }
+    });
 
     std::ostringstream posOut;
     std::ostringstream negOut;
@@ -134,7 +137,9 @@ std::list<std::pair<uint32, std::string> > ListSpellsAction::GetSpellList(std::s
         if (!pSpellInfo)
             continue;
 
-        SkillLineAbilityEntry const* skillLine = skillSpells[spellId];
+        // twow-repo#563 (X2): find, not operator[] - that inserted into the shared table from every thread.
+        auto const skillSpell = skillSpells.find(spellId);
+        SkillLineAbilityEntry const* skillLine = skillSpell != skillSpells.end() ? skillSpell->second : nullptr;
         if (skill != SKILL_NONE && (!skillLine || skillLine->skillId != skill))
             continue;
 
