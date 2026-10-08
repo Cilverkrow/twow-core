@@ -24,7 +24,6 @@
 #include "Config/Config.h"
 #include "Database/SqlOperations.h"
 
-#include <chrono>
 #include <ctime>
 #include <iostream>
 #include <fstream>
@@ -32,66 +31,6 @@
 
 #define MIN_CONNECTION_POOL_SIZE 1
 #define MAX_CONNECTION_POOL_SIZE 16
-
-//////////////////////////////////////////////////////////////////////////
-// twow-repo#541 (deep dive C3): lock-wait trace, off by default.
-std::atomic<bool>& Database::LockWaitTrace()
-{
-    static std::atomic<bool> enabled{false};
-    return enabled;
-}
-
-void Database::RecordLockWait(LockWaitSite site, uint64 us)
-{
-    m_lockWaits[site].fetch_add(1, std::memory_order_relaxed);
-    m_lockWaitUs[site].fetch_add(us, std::memory_order_relaxed);
-    uint64 seen = m_lockWaitMaxUs[site].load(std::memory_order_relaxed);
-    while (us > seen && !m_lockWaitMaxUs[site].compare_exchange_weak(seen, us, std::memory_order_relaxed))
-    {
-    }
-}
-
-Database::LockWaitStats Database::TakeLockWaits(LockWaitSite site)
-{
-    LockWaitStats stats;
-    stats.waits = m_lockWaits[site].exchange(0, std::memory_order_relaxed);
-    stats.waitUs = m_lockWaitUs[site].exchange(0, std::memory_order_relaxed);
-    stats.maxUs = m_lockWaitMaxUs[site].exchange(0, std::memory_order_relaxed);
-    return stats;
-}
-
-static uint64 LockWaitUsSince(std::chrono::steady_clock::time_point start)
-{
-    return uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
-}
-
-SqlConnection::Lock::Lock(SqlConnection* conn) : m_pConn(conn), m_lock(conn->m_mutex, std::defer_lock)
-{
-    if (!Database::LockWaitTrace().load(std::memory_order_relaxed))
-    {
-        m_lock.lock();
-        return;
-    }
-    if (m_lock.try_lock())
-        return;
-    auto const start = std::chrono::steady_clock::now();
-    m_lock.lock();
-    m_pConn->m_db.RecordLockWait(Database::LOCK_WAIT_CONNECTION, LockWaitUsSince(start));
-}
-
-void Database::AddToDelayQueue(SqlOperation* op)
-{
-    if (!LockWaitTrace().load(std::memory_order_relaxed))
-    {
-        m_delayQueue->add(op);
-        return;
-    }
-    auto const start = std::chrono::steady_clock::now();
-    m_delayQueue->add(op);
-    uint64 const us = LockWaitUsSince(start);
-    if (us >= 10)
-        RecordLockWait(LOCK_WAIT_ENQUEUE, us);
-}
 
 //////////////////////////////////////////////////////////////////////////
 SqlPreparedStatement * SqlConnection::CreateStatement( const std::string& fmt )

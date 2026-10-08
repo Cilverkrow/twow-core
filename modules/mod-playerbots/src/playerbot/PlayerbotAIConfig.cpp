@@ -5,8 +5,6 @@
 #include <cstdlib>
 #include <cstring>
 #include "BotLog.h"
-#include "playerbot/LockWaitTrace.h"
-#include "Database/Database.h"
 #include "RandomPlayerbotFactory.h"
 #include "AccountMgr.h"
 #include "playerbot/PlayerbotFactory.h"
@@ -397,12 +395,6 @@ bool PlayerbotAIConfig::Initialize()
 
     commandServerPort = config.GetIntDefault("AiPlayerbot.CommandServerPort", 0);
     perfMonEnabled = config.GetBoolDefault("AiPlayerbot.PerfMonEnabled", false);
-    // twow-repo#541: lock-wait counters (module locks + core DB), one [LockWait] line per minute.
-    {
-        bool const lockWaitTrace = config.GetBoolDefault("AiPlayerbot.LockWaitTrace", false);
-        ai::lock_wait::Enabled().store(lockWaitTrace, std::memory_order_relaxed);
-        Database::LockWaitTrace().store(lockWaitTrace, std::memory_order_relaxed);
-    }
     bExplicitDbStoreSave = config.GetBoolDefault("AiPlayerbot.ExplicitDbStoreSave", false);
 
     randomBotLoginWithPlayer = config.GetBoolDefault("AiPlayerbot.RandomBotLoginWithPlayer", false);
