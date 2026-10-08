@@ -508,7 +508,50 @@ void PlayerbotAI::ReportGroupBuff(uint32 now)
 // thread (SIGSEGV 08.10.2026 09:56Z). So the packet is only copied into the inbox here.
 void PlayerbotAI::QueueBotOutgoingPacket(const WorldPacket& packet)
 {
-    botPacketInbox.Push(std::make_unique<WorldPacket>(packet));
+    // Only what the packet handler below reacts to. Everything else (object updates, movement of
+    // others, ...) did nothing before and is not copied: HERE:1600 queued ~1 M of them per run.
+    if (!WantsBotOutgoingPacket(packet.GetOpcode()))
+        return;
+
+    std::unique_ptr<WorldPacket> const dropped = botPacketInbox.Push(std::make_unique<WorldPacket>(packet));
+    if (dropped)
+    {
+        ai::InboxDropClass dropClass = ai::InboxDropHandler;
+        switch (dropped->GetOpcode())
+        {
+        case SMSG_MESSAGECHAT:
+        case SMSG_EMOTE:
+            dropClass = ai::InboxDropChat;
+            break;
+        case SMSG_SPELL_FAILURE:
+        case SMSG_SPELL_DELAYED:
+            dropClass = ai::InboxDropSpell;
+            break;
+        case SMSG_MOVE_KNOCK_BACK:
+            dropClass = ai::InboxDropKnockback;
+            break;
+        default:
+            break;
+        }
+        ai::InboxDroppedByClass(dropClass).fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+// The opcodes HandleBotOutgoingPacket handles: its own cases, and the default path that hands
+// registered opcodes to botOutgoingPacketHandlers (AddPacket drops unregistered ones).
+bool PlayerbotAI::WantsBotOutgoingPacket(uint16 opcode) const
+{
+    switch (opcode)
+    {
+    case SMSG_SPELL_FAILURE:
+    case SMSG_SPELL_DELAYED:
+    case SMSG_EMOTE:
+    case SMSG_MESSAGECHAT:
+    case SMSG_MOVE_KNOCK_BACK:
+        return true;
+    default:
+        return botOutgoingPacketHandlers.HasHandler(opcode);
+    }
 }
 
 // On the bot's own thread, first thing in UpdateAI: handle what arrived since the last update.
