@@ -7068,6 +7068,28 @@ bool Unit::IsVisibleForOrDetect(WorldObject const* pDetector, WorldObject const*
     Unit const* pDetectorUnit = pDetector->ToUnit();
     Player const* pDetectorPlayer = pDetector->ToPlayer();
 
+    // twow-repo#541/#551 (park, AiPlayerbot.Park.HideFromBots; limit test PARK:1600: 60-130 bots per
+    // spot made visibility the cost, quadratic in the bots there). Only between players: a parked bot
+    // is not visible to other bots (players without a client socket), and a parked bot sees only real
+    // players and units in combat with it. Creatures and real players see a parked bot as always, so
+    // aggro and combat are unchanged.
+    if (pDetectorPlayer)
+    {
+        Player const* self = ToPlayer();
+        if (self && self->IsHiddenFromBots() && !pDetectorPlayer->HasClientSocket())
+            return false;
+        if (pDetectorPlayer->IsHiddenFromBots())
+        {
+            if (self)
+            {
+                if (!self->HasClientSocket())
+                    return false;
+            }
+            else if (GetVictim() != pDetectorUnit && pDetectorUnit->GetVictim() != this)
+                return false;
+        }
+    }
+
     // Grid dead/alive checks
     if (pDetectorPlayer)
     {
