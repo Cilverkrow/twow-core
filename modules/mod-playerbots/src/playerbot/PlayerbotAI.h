@@ -1,6 +1,7 @@
 #pragma once
 #include "PlayerbotMgr.h"
 #include "playerbot/ValueEvictPolicy.h"
+#include "playerbot/BotPacketInbox.h"
 #include "PlayerbotAIBase.h"
 #include "strategy/AiObjectContext.h"
 #include "strategy/ReactionEngine.h"
@@ -393,6 +394,9 @@ public:
     void HandleCommand(uint32 type, const std::string& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
     void QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid guid2, std::string message, std::string chanName, std::string name, bool noDelay = false);
 	void HandleBotOutgoingPacket(const WorldPacket& packet);
+    // twow-repo#563 (X1): any thread may queue a packet for this bot; UpdateAI handles it on the bot's thread.
+    void QueueBotOutgoingPacket(const WorldPacket& packet);
+    void HandleQueuedBotPackets();
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
@@ -1007,6 +1011,8 @@ protected:
     std::queue<ChatQueuedReply> chatReplies;
     std::mutex chatRepliesMutex;
     PacketHandlingHelper botOutgoingPacketHandlers;
+    // twow-repo#563 (X1): packets for this bot from any thread, handled in UpdateAI.
+    ai::BoundedInbox<std::unique_ptr<WorldPacket>> botPacketInbox{ ai::BotPacketInboxCapacity };
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;
     CompositeChatFilter chatFilter;
