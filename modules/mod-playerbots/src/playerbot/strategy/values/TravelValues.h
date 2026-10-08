@@ -1,6 +1,7 @@
 #pragma once
 #include "playerbot/strategy/Value.h"
 #include "playerbot/strategy/AiObjectContext.h"
+#include "playerbot/LockWaitTrace.h"
 
 namespace ai
 {
@@ -109,7 +110,7 @@ namespace ai
         FutureDestinations(FutureDestinations const&) = delete;
         FutureDestinations& operator=(FutureDestinations const&) = delete;
         FutureDestinations& operator=(FutureDestinations&& other) { if (this != &other) { Park(); future = std::move(other.future); } return *this; }
-        FutureDestinations& operator=(std::future<PartitionedTravelList>&& job) { Park(); future = std::move(job); return *this; }
+        FutureDestinations& operator=(std::future<PartitionedTravelList>&& job) { if (job.valid()) ai::lock_wait::AsyncStarts().fetch_add(1, std::memory_order_relaxed); Park(); future = std::move(job); return *this; }
         ~FutureDestinations() { Park(); }
 
         bool valid() const { return future.valid(); }
