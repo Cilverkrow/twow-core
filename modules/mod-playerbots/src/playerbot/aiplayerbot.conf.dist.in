@@ -1867,11 +1867,6 @@ AiPlayerbot.UseKnockback = 1
 
 AiPlayerbot.PerfMonEnabled = 0
 
-# Lock-wait trace (twow-repo#541): counts waits on the area-level and bot-log locks,
-# DB connection locks and slow DB enqueues, plus travel searches started; writes one
-# [LockWait] line per minute. Costs nothing measurable when off.
-#AiPlayerbot.LockWaitTrace = 0
-
 
 ##################################################################################
 #                                                                                #
