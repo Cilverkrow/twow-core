@@ -2817,7 +2817,13 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
         persistentRoster->RecordOnline(bot);
     }
 
-    bool botsAllowedInWorld = !sPlayerbotAIConfig.randomBotLoginWithPlayer || (!players.empty() && sWorld.GetActiveSessionCount() > 0);
+    // twow-repo#541/#551 (HERE:1600, 33 [Park] state=lost): with random bots (PersistentActiveRoster 0)
+    // the timed logout below logged parked bots out when their lease ran out. A parked bot stays; the
+    // roster bookkeeping above still runs.
+    if (IsParkedBot(bot))
+        return false;
+
+    bool botsAllowedInWorld =!sPlayerbotAIConfig.randomBotLoginWithPlayer || (!players.empty() && sWorld.GetActiveSessionCount() > 0);
 
     bool isValid = true;
 

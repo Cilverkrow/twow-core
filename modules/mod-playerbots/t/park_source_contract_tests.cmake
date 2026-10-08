@@ -96,4 +96,9 @@ require_text("${config_cpp}" "config.GetBoolDefault(\"AiPlayerbot.Park.HideFromB
 require_text("${park_bot}" "bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);" "flag set on park only by the switch")
 region("${mgr}" "void RandomPlayerbotMgr::UnparkBot(" "void RandomPlayerbotMgr::ProcessParkedBots()" unpark)
 require_text("${unpark}" "    bot->SetHiddenFromBots(false);" "flag cleared on every unpark")
+
+# HERE:1600 (33 lost): the random-bot lease logout skips parked bots, after the roster bookkeeping.
+region("${mgr}" "bool RandomPlayerbotMgr::ProcessBot(uint32 bot)" "bool RandomPlayerbotMgr::ProcessBot(Player* player)" process_bot_id)
+require_order("${process_bot_id}" "persistentRoster->RecordOnline(bot);" "if (IsParkedBot(bot))\n        return false;" "roster bookkeeping before the parked guard")
+require_order("${process_bot_id}" "if (IsParkedBot(bot))\n        return false;" "LogoutPlayerBot(bot);" "no lease logout for a parked bot")
 message(STATUS "PARK_SOURCE_CONTRACT=PASS")
