@@ -38,7 +38,14 @@ std::list<ObjectGuid> AttackersValue::Calculate()
         return result;
     }
 
-    if (sPlayerbotAIConfig.shareTargets)
+    // twow-repo#541 (deep dive R2b, owner 08.10.2026): a solo bot - no group, no master - counts
+    // only its own attackers. It skips the shared-targets lookup below ("nearest friendly players",
+    // a search around the bot plus a loop over the players found). That lookup never copies a value
+    // today: valueName below parses as ("attackers" + bool) ? "::" + qualifier : "", and no value is
+    // called "::...". So this saves its cost without changing the result. Groups and bots with a
+    // master keep the old path. Switch AiPlayerbot.SoloOwnAttackersOnly (default 1).
+    bool const soloBot = !bot->GetGroup() && !GetMaster();
+    if (sPlayerbotAIConfig.shareTargets && !(soloBot && sPlayerbotAIConfig.soloOwnAttackersOnly))
     {
         // Try to get the value from nearby friendly bots.
         std::list<ObjectGuid> nearGuids = ai->GetAiObjectContext()->GetValue<std::list<ObjectGuid> >("nearest friendly players")->Get();
