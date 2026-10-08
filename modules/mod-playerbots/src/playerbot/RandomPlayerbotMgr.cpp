@@ -926,8 +926,14 @@ void ReportBotInbox()
 
     uint64 const dropped = ai::InboxDroppedTotal().exchange(0, std::memory_order_relaxed);
     uint64 const largest = ai::InboxLargestDrain().exchange(0, std::memory_order_relaxed);
-    sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u",
-        (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity));
+    auto take = [](ai::InboxDropClass dropClass) { return (unsigned long long)ai::InboxDroppedByClass(dropClass).exchange(0, std::memory_order_relaxed); };
+    unsigned long long const chat = take(ai::InboxDropChat);
+    unsigned long long const spell = take(ai::InboxDropSpell);
+    unsigned long long const knockback = take(ai::InboxDropKnockback);
+    unsigned long long const handler = take(ai::InboxDropHandler);
+    sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu",
+        (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
+        chat, spell, knockback, handler);
 }
 }
 
