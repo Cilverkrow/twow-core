@@ -1889,6 +1889,14 @@ AiPlayerbot.Perf.TrainableSpellsPrecheck = 0
 # action logging on the public "try: mana tap unknown" say disappears. Enable only after an OB-30
 # measurement and owner go. 0 = all nodes as before (default).
 AiPlayerbot.Perf.RacialsSkipUnbuildable = 0
+# twow-repo#541 (audit A14): 1 = while the bot's hazards list is empty (open world, nearly always), the
+# chase movement (reach melee / reach spell / reach pull / reach party member) skips the hazard checks:
+# two navmesh path searches and one line-of-sight ray whose results could only be logged. Same end
+# position, same MoveChase, same movement decisions. With hazards present the old checks run unchanged.
+# Side effects that go away: the mmap tile loads those path searches triggered (already loaded around
+# the bot in practice, assessed negligible) and, at log level >= 2, the "[BOT CHASE] ... no hazard-
+# avoidance path" / "endPos invalid" lines, replaced by "hazard path checks skipped". 0 = off (default).
+AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
