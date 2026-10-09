@@ -404,6 +404,7 @@ bool PlayerbotAIConfig::Initialize()
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
+    checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));
