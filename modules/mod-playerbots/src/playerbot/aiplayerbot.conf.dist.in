@@ -1862,6 +1862,10 @@ AiPlayerbot.UseKnockback = 1
 #AiPlayerbot.LogValuesPerTick = 0
 #AiPlayerbot.RandomChangeMultiplier = 1
 
+# Solo bots (no group, no master) count only their own attackers and skip the
+# shared-targets lookup around them (twow-repo#541, R2b). 0 = old lookup for every bot.
+#AiPlayerbot.SoloOwnAttackersOnly = 1
+
 # Command server port, 0 - disabled
 #AiPlayerbot.CommandServerPort = 8888
 
