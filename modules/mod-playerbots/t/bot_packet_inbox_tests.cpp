@@ -40,8 +40,10 @@ int main()
     // Capacity: the oldest are dropped and counted.
     {
         BoundedInbox<int> inbox(3);
-        for (int i = 1; i <= 5; ++i)
-            inbox.Push(i);
+        for (int i = 1; i <= 3; ++i)
+            Require(inbox.Push(i) == 0, "nothing dropped below the bound");
+        Require(inbox.Push(4) == 1, "Push hands back the dropped (oldest) item");
+        Require(inbox.Push(5) == 2, "and the next oldest");
         Require(inbox.Size() == 3, "bounded");
         Require(inbox.Dropped() == 2, "two dropped");
         std::vector<int> out;

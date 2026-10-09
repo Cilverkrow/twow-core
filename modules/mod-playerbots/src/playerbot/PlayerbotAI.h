@@ -335,6 +335,8 @@ public:
     void AddHandler(uint16 opcode, std::string handler, bool shouldDelay = false);
     void Handle(ExternalEventHelper &helper);
     void AddPacket(const WorldPacket& packet);
+    // twow-repo#563: handlers are only added in the PlayerbotAI constructor, so any thread may read.
+    bool HasHandler(uint16 opcode) const { return handlers.find(opcode) != handlers.end(); }
 
 private:
     std::map<uint16, std::string> handlers;
@@ -396,6 +398,7 @@ public:
 	void HandleBotOutgoingPacket(const WorldPacket& packet);
     // twow-repo#563 (X1): any thread may queue a packet for this bot; UpdateAI handles it on the bot's thread.
     void QueueBotOutgoingPacket(const WorldPacket& packet);
+    bool WantsBotOutgoingPacket(uint16 opcode) const;
     void HandleQueuedBotPackets();
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
