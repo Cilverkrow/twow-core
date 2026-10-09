@@ -1992,6 +1992,17 @@ AiPlayerbot.Perf.LazyEngineInit = 0
 # targets that out of combat were ignored (hard hostiles more than 5 levels above a travelling/following bot).
 # Change it by restart, not by reload (a flip to 1 by reload can cost one early combat end per bot). 0 = off (default).
 AiPlayerbot.Perf.AttackersSingleList = 0
+# twow-repo#541 (audit A25, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go): 1 = the
+# party-target values (party member to heal/protect/remove roots/dispel/resurrect, ... without (my) aura, friendly
+# unit without aura, tank without aura/lifebloom, with daybreak, without item/food/water) keep their result inside
+# one AI pass of the bot until its next executed or failed action, instead of repeating the group scan on every read
+# (trigger, isUseful, reach spell, isPossible, Execute). A kept unit is resolved again by guid and must still be in
+# world on the bot's map, else the value recomputes as today. Differences: health/aura/death changes made by other
+# threads inside the pass (sub-ms) and a mount change by isPossible's in-combat Unmount (out-of-group buff allowance)
+# are seen at the next action or pass. "party member to soulstone" (D20 stagger roll) is never kept. Reads outside
+# the pass (chat, packets, reactions) and from other threads recompute as before. A reload flip 1->0->1 inside one
+# pass can give at most one stale read. 0 = off (default).
+AiPlayerbot.Perf.PartyTargetMemo = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

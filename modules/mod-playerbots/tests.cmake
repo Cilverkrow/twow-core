@@ -2317,3 +2317,26 @@ add_test(NAME attackers_single_list_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/attackers_single_list_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A25): party-target memo window behind AiPlayerbot.Perf.PartyTargetMemo (default 0, behaviour-changing in timing).
+add_executable(value_memo_window_tests
+  "${PB_MODULE_DIR}/t/value_memo_window_tests.cpp")
+
+target_include_directories(value_memo_window_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+find_package(Threads REQUIRED)
+target_link_libraries(value_memo_window_tests PRIVATE Threads::Threads)
+
+set_target_properties(value_memo_window_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME value_memo_window
+  COMMAND value_memo_window_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME party_target_memo_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/party_target_memo_source_contract_tests.cmake")
