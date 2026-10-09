@@ -530,6 +530,7 @@ public:
     bool persistentActiveRosterEnabled = false;
     bool parkHideFromBots = false;  // twow-repo#541/#551: parked bots invisible to other bots (core Player flag)
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
+    bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

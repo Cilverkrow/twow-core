@@ -1784,6 +1784,10 @@ AiPlayerbot.RandomBotUpdateInterval = 500
 # thread (UpdateSessions, ProcessBot loop incl. logins, rest; max pass, share in per mille, logins,
 # teleport ACK calls). Log only; persistent roster and free random-bot path. 0 = off (default).
 AiPlayerbot.WorldBotsTrace = 0
+# twow-repo#541: 1 = one [BotUpdate] line per minute: distribution (p50/p90/p99/p999, max) of the wall
+# time of one bot AI update on the map threads, plus the five slowest calls with bot, map, combat
+# and last action. Log only. 0 = off (default).
+AiPlayerbot.BotUpdateTrace = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
