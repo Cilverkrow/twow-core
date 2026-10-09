@@ -1800,6 +1800,10 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
+# enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
+# and restoration Flametongue, before that Rockbiter. 0 = old per-strategy choice (default).
+AiPlayerbot.Shaman.ImbueBySpec = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

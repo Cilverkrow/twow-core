@@ -2032,3 +2032,22 @@ set_target_properties(x3_context_lock_tests PROPERTIES
 add_test(NAME x3_context_lock
   COMMAND x3_context_lock_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541: shaman weapon imbue per spec (AiPlayerbot.Shaman.ImbueBySpec).
+add_test(NAME shaman_imbue_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/shaman_imbue_source_contract_tests.cmake")
+
+add_executable(shaman_imbue_policy_tests
+  "${PB_MODULE_DIR}/t/shaman_imbue_policy_tests.cpp")
+
+target_include_directories(shaman_imbue_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(shaman_imbue_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME shaman_imbue_policy
+  COMMAND shaman_imbue_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")

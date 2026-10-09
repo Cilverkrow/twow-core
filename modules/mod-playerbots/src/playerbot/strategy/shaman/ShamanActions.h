@@ -72,10 +72,17 @@ namespace ai
 		CastLightningShieldAction(PlayerbotAI* ai) : CastBuffSpellAction(ai, "lightning shield") {}
 	};
 
-    class CastEarthlivingWeaponAction : public CastEnchantItemAction 
+    // twow-repo#541 (AiPlayerbot.Shaman.ImbueBySpec): the imbue for this shaman's spec and learned spells,
+    // chosen on every check (ShamanImbuePolicy.h). Replaces Earthliving Weapon, which Turtle does not have.
+    class CastShamanWeaponImbueAction : public CastEnchantItemAction
     {
     public:
-        CastEarthlivingWeaponAction(PlayerbotAI* ai) : CastEnchantItemAction(ai, "earthliving weapon") {}
+        CastShamanWeaponImbueAction(PlayerbotAI* ai) : CastEnchantItemAction(ai, "shaman weapon imbue") {}
+        virtual bool isUseful() override;
+        virtual bool isPossible() override;
+
+    private:
+        bool ChooseImbue();
     };
 
     class CastRockbiterWeaponAction : public CastEnchantItemAction 
