@@ -941,6 +941,7 @@ bool PlayerbotAIConfig::Initialize()
     startupTravelJitterSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.StartupTravel.JitterSeconds", 300)));
     startupTravelWindowSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.StartupTravel.WindowSeconds", 900)));
     startupTravelMaxLongMovesPerSlot = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.StartupTravel.MaxLongMovesPerSlot", 4)));
+    longMoveBudgetMaxPerSlot = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.LongMoveBudget.MaxPerSlot", 0)));
     {
         // Parsed once here; the item usage only looks the item id up.
         std::list<uint32> vendorReagents;

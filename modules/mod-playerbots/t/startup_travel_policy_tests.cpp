@@ -56,6 +56,14 @@ int main()
     Counters counters;
     Require(counters.LogDue(120) && !counters.LogDue(150) && counters.LogDue(180), "log once per minute");
 
+    // twow-repo#541 (b): the runtime budget is its own instance - using up one does not touch the other.
+    Require(&RuntimeBudget() != &SharedBudget(), "separate budget instances");
+    Require(SharedBudget().TryTake(9000, 1) && !SharedBudget().TryTake(9010, 1), "startup budget used up");
+    Require(RuntimeBudget().TryTake(9020, 1), "runtime budget still free in the same slot");
+    Require(!RuntimeBudget().TryTake(9030, 1) && RuntimeBudget().TryTake(9100, 1), "runtime budget: one per slot, refilled");
+    RuntimeBudgetCounters runtimeCounters;
+    Require(runtimeCounters.LogDue(600) && !runtimeCounters.LogDue(659) && runtimeCounters.LogDue(660), "runtime line once per minute");
+
     std::cout << "startup_travel_policy_tests passed\n";
     return 0;
 }

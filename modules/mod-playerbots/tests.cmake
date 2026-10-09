@@ -745,6 +745,12 @@ add_test(NAME startup_travel_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/startup_travel_source_contract_tests.cmake")
 
+# twow-repo#541 (budget (b)): long moves per 100 ms slot after the startup window (AiPlayerbot.LongMoveBudget.MaxPerSlot).
+add_test(NAME long_move_budget_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/long_move_budget_source_contract_tests.cmake")
+
 # Hotfix 8.32: grind fallback for quest-first bots after empty quest route searches.
 add_test(NAME grind_fallback_contract
   COMMAND "${CMAKE_COMMAND}"
