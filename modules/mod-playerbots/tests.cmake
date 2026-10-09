@@ -2003,3 +2003,9 @@ add_test(NAME ai_jitter_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/ai_jitter_source_contract_tests.cmake")
+
+# twow-repo#541: "check values" without its forced searches (AiPlayerbot.CheckValues.SkipSearches).
+add_test(NAME check_values_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/check_values_source_contract_tests.cmake")

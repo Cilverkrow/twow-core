@@ -31,6 +31,12 @@ bool CheckValuesAction::Execute(Event& event)
         sTravelNodeMap.manageNodes(bot, ai->HasStrategy("map full", BotState::BOT_STATE_NON_COMBAT));
     }
 
+    // twow-repo#541 (roster spikes, OB-30 roster A/B 10.10.2026): this idle action was 17.8 % of the slowest
+    // bot updates (~54 ms each) - six grid searches in one go whose results are thrown away; the actions
+    // that need these lists compute them on demand anyway. AiPlayerbot.CheckValues.SkipSearches (default 0).
+    if (sPlayerbotAIConfig.checkValuesSkipSearches)
+        return true;
+
     std::list<ObjectGuid> possible_targets = AI_VALUE(std::list<ObjectGuid>, "possible targets");
     std::list<ObjectGuid> all_targets = AI_VALUE(std::list<ObjectGuid>, "all targets");
     std::list<ObjectGuid> npcs = AI_VALUE(std::list<ObjectGuid>, "nearest npcs");

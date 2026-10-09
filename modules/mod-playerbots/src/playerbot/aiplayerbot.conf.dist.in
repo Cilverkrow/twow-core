@@ -1792,6 +1792,11 @@ AiPlayerbot.BotUpdateTrace = 0
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
 AiPlayerbot.AiDelayJitterPct = 0
+# twow-repo#541: the idle action "check values" forces six values in one update (possible targets, all
+# targets, nearest npcs, nearest corpses, nearest game objects no los, nearest friendly players) and
+# throws the results away; the actions compute them on demand anyway. 1 = skip those searches (only the
+# debug move / map parts stay). 0 = as before (default).
+AiPlayerbot.CheckValues.SkipSearches = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
