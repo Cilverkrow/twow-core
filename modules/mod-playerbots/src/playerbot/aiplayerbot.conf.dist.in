@@ -1800,6 +1800,10 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#563 (X3b): 1 = a bot no longer computes "possible targets" or reads "current/old target" on a
+# group member's or master bot's context; every bot publishes its own targets after computing its
+# attackers and the others read that snapshot (ignored when older than 3 s). 0 = old cross-bot read (default).
+AiPlayerbot.X3b.PublishedTargets = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
