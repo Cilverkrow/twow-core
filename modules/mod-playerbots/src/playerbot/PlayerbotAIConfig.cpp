@@ -423,6 +423,7 @@ bool PlayerbotAIConfig::Initialize()
     perfRacialsSkipUnbuildable = config.GetBoolDefault("AiPlayerbot.Perf.RacialsSkipUnbuildable", false);
     chaseSkipHazardPathWhenNoHazards = config.GetBoolDefault("AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards", false);
     perfGiveItemGroupOnlyScan = config.GetBoolDefault("AiPlayerbot.Perf.GiveItemGroupOnlyScan", false);
+    perfStaticSpellLists = config.GetBoolDefault("AiPlayerbot.Perf.StaticSpellLists", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

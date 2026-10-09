@@ -551,6 +551,7 @@ public:
     bool perfRacialsSkipUnbuildable = false;  // twow-repo#541 (audit A13): racials strategy does not register gift of the naaru / mana tap / arcane torrent (no action in this vanilla build); NOT strictly neutral, engine queue path in rare ticks (0 = off)
     bool chaseSkipHazardPathWhenNoHazards = false;  // twow-repo#541 (audit A14): ChaseTo skips the hazard path / LOS checks while the bot's hazards list is empty; same chase decisions, only the detail log line differs (0 = off)
     bool perfGiveItemGroupOnlyScan = false;  // twow-repo#541 (audit A15): give water / food / item value of a bot without group skips the out-of-group classification and list scan; same result, disclosed: no GetPet()/eventCache side effects on foreign players (0 = off)
+    bool perfStaticSpellLists = false;  // twow-repo#541 (audit A16): CanCastSpell / CheckSpellTargetAlignment take the neutral and out-of-control spell ids from constant arrays instead of a per-call std::list; same ids, same answers (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
