@@ -386,6 +386,7 @@ public:
     void HandleCommands();
 private:
     void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
+    bool AllowDelayJitter() const override;
 public:    
     static std::string BotStateToString(BotState state);
     std::string GetDefaultMovementStrategy();
@@ -981,7 +982,8 @@ public:
     void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
     // twow-repo#541/#551 (rndbot park): a parked bot updates its AI every ai::park::AiIntervalMs only.
     bool IsParked() const { return parked; }
-    void SetParked(bool value) { parked = value; lastParkedUpdateMs = 0; }
+    // twow-repo#541 (jitter): with AiPlayerbot.AiDelayJitterPct the first parked update is spread over an interval.
+    void SetParked(bool value);
     uint32 GetQuestIdleSeconds(uint32 now) const { return questProgress.IdleSeconds(now); }
     // #416: time of one executed action (ms > 0), for the top-3 of this update.
     void RecordActionTime(std::string const& name, uint32 ms) { updateActions.Add(name, ms); }

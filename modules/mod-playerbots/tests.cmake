@@ -1978,3 +1978,22 @@ add_test(NAME bot_update_trace_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bot_update_trace_source_contract_tests.cmake")
+
+# twow-repo#541: AI delay jitter (AiPlayerbot.AiDelayJitterPct, default 0).
+add_executable(ai_jitter_policy_tests
+  "${PB_MODULE_DIR}/t/ai_jitter_policy_tests.cpp")
+
+target_include_directories(ai_jitter_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(ai_jitter_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME ai_jitter_policy
+  COMMAND ai_jitter_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME ai_jitter_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/ai_jitter_source_contract_tests.cmake")

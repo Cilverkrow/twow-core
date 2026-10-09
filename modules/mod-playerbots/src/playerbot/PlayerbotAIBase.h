@@ -25,8 +25,10 @@ public:
 
 protected:
     virtual void UpdateAIInternal(uint32 elapsed, bool minimal = false);
+    // twow-repo#541 (jitter): whether SetAIInternalUpdateDelay may spread this delay (bots out of combat).
+    virtual bool AllowDelayJitter() const { return false; }
     bool CanUpdateAIInternal() const { return aiInternalUpdateDelay < 100U; }
-    void SetAIInternalUpdateDelay(const uint32 delay);
+    void SetAIInternalUpdateDelay(uint32 delay);
     void ResetAIInternalUpdateDelay() { aiInternalUpdateDelay = 0U; }
     void IncreaseAIInternalUpdateDelay(uint32 delay);
     void YieldAIInternalThread(bool minimal = false);
