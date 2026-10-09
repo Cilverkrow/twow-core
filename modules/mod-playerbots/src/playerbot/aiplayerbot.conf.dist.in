@@ -1948,6 +1948,16 @@ AiPlayerbot.CastSpell.RefreshOnLearn = 0
 # leaves melee reach or the auto attack stops (not on new attackers or trigger changes). Reactions and the
 # 500 ms facing correction are unchanged. One [CombatIdle] line per minute. 0 = as before (default).
 AiPlayerbot.Perf.CombatIdleYield = 0
+# twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
+# request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
+# their condition while the bot's travel target is being prepared or is active. The request actions are rejected
+# in that state anyway; the saving is the condition work (trainer spell scans, gathering checks, guild orders).
+# Behaviour change: a gathering purpose ([Purpose] state=start) is then declared only at a travel decision point
+# (no prepared or active target), no longer every 2 s in the background while the bot travels to another target;
+# request baskets pushed while a target is active no longer linger up to ExpireActionTime and run later with a
+# stale condition. Read whenever a bot's non-combat strategies are (re)built; toggle it with a restart, not with
+# a reload (a reload switches logged-in bots over one by one). 0 = as before (default).
+AiPlayerbot.Perf.TravelRequestGate = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

@@ -2263,3 +2263,23 @@ add_test(NAME combat_idle_yield_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/combat_idle_yield_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A18): travel request gate behind AiPlayerbot.Perf.TravelRequestGate (default 0, behaviour-changing).
+add_executable(travel_request_policy_tests
+  "${PB_MODULE_DIR}/t/travel_request_policy_tests.cpp")
+
+target_include_directories(travel_request_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(travel_request_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME travel_request_policy
+  COMMAND travel_request_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME travel_request_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/travel_request_gate_source_contract_tests.cmake")
