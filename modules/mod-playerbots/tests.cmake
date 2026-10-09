@@ -2025,3 +2025,24 @@ set_target_properties(x3_context_lock_tests PROPERTIES
 add_test(NAME x3_context_lock
   COMMAND x3_context_lock_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#563 (X3b variant 2): published target snapshots instead of cross-bot value reads.
+add_test(NAME x3b_published_targets_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/x3b_published_targets_source_contract_tests.cmake")
+
+add_executable(x3b_snapshot_policy_tests
+  "${PB_MODULE_DIR}/t/x3b_snapshot_policy_tests.cpp")
+
+target_include_directories(x3b_snapshot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(x3b_snapshot_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(x3b_snapshot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME x3b_snapshot_policy
+  COMMAND x3b_snapshot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")

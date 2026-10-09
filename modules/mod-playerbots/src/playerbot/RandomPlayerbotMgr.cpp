@@ -938,6 +938,16 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // twow-repo#563 (X3b): reads of other bots' published targets in the last minute.
+    if (sPlayerbotAIConfig.x3bPublishedTargets)
+    {
+        auto takeRead = [](ai::x3b::SnapshotRead read) { return (unsigned long long)ai::x3b::SnapshotCount(read).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const hit = takeRead(ai::x3b::SnapshotHit);
+        unsigned long long const stale = takeRead(ai::x3b::SnapshotStale);
+        unsigned long long const missing = takeRead(ai::x3b::SnapshotMissing);
+        sLog.outBasic("[X3bSnapshot] hit=%llu stale=%llu missing=%llu max_age_ms=%u", hit, stale, missing, uint32(ai::x3b::MaxAgeMs));
+    }
 }
 
 // twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute

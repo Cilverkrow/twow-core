@@ -609,6 +609,23 @@ void PlayerbotAI::QueueContextWriteTo(Player* target, std::function<void(ai::AiO
     targetAi->QueueContextWrite(std::move(write));
 }
 
+void PlayerbotAI::PublishTargets(std::shared_ptr<PublishedTargets const> snapshot)
+{
+    std::shared_ptr<PublishedTargets const> previous;
+    {
+        std::scoped_lock lock(publishedTargetsMutex);
+        previous.swap(publishedTargets);
+        publishedTargets = std::move(snapshot);
+    }
+    // previous is released here, outside the lock (a reader may still hold its own copy).
+}
+
+std::shared_ptr<PlayerbotAI::PublishedTargets const> PlayerbotAI::GetPublishedTargets() const
+{
+    std::scoped_lock lock(publishedTargetsMutex);
+    return publishedTargets;
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.

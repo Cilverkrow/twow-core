@@ -2,6 +2,7 @@
 #include "PlayerbotMgr.h"
 #include "playerbot/ValueEvictPolicy.h"
 #include "playerbot/BotPacketInbox.h"
+#include "playerbot/X3bSnapshotPolicy.h"
 #include "PlayerbotAIBase.h"
 #include "strategy/AiObjectContext.h"
 #include "strategy/ReactionEngine.h"
@@ -407,6 +408,11 @@ public:
     void QueueContextWrite(std::function<void(ai::AiObjectContext*)> write);
     // For the callers: queues on the target's AI, or counts the write as dropped when the target has none.
     static void QueueContextWriteTo(Player* target, std::function<void(ai::AiObjectContext*)> write);
+    // twow-repo#563 (X3b variant 2, AiPlayerbot.X3b.PublishedTargets): the owner publishes, other bots read a
+    // copy of the pointer - never this bot's Value objects. The mutex only guards the pointer swap.
+    typedef ai::x3b::PublishedTargets<ObjectGuid> PublishedTargets;
+    void PublishTargets(std::shared_ptr<PublishedTargets const> snapshot);
+    std::shared_ptr<PublishedTargets const> GetPublishedTargets() const;
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
@@ -1026,6 +1032,9 @@ protected:
     ai::BoundedInbox<std::unique_ptr<WorldPacket>> botPacketInbox{ ai::BotPacketInboxCapacity };
     // twow-repo#563 (X3c): value writes from other bots, applied in UpdateAI.
     ai::BoundedInbox<std::function<void(ai::AiObjectContext*)>> contextWriteInbox{ ai::ContextWriteInboxCapacity };
+    // twow-repo#563 (X3b): this bot's last published targets, read by other bots.
+    mutable std::mutex publishedTargetsMutex;
+    std::shared_ptr<PublishedTargets const> publishedTargets;
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;
     CompositeChatFilter chatFilter;
