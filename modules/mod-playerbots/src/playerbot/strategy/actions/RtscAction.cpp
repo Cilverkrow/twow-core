@@ -256,7 +256,17 @@ bool RTSCAction::Execute(Event& event)
 
 					WorldPosition p(tokens[2]);
 
-					SET_PAI_VALUE2(WorldPosition, "RTSC saved location", tokens[1], p);
+					// twow-repo#563 (X3c): the selected bot may update on another region thread.
+					if (sPlayerbotAIConfig.x3cInboxWrites)
+					{
+						std::string const locationName = tokens[1];
+						PlayerbotAI::QueueContextWriteTo(player, [locationName, p](AiObjectContext* other)
+						{
+							other->GetValue<WorldPosition>("RTSC saved location", locationName)->Set(p);
+						});
+					}
+					else
+						SET_PAI_VALUE2(WorldPosition, "RTSC saved location", tokens[1], p);
 
 					cnt++;
 				} while (in.good());

@@ -1792,6 +1792,14 @@ AiPlayerbot.BotUpdateTrace = 0
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
 AiPlayerbot.AiDelayJitterPct = 0
+# twow-repo#563 (X3a): 1 = every bot's value map is guarded by its own lock (shared to look up, unique to
+# insert or erase), because other bots read and create values in it from their region threads. The lock
+# is held only for the map access, never while a value is computed. 0 = no lock (default).
+AiPlayerbot.X3a.ContextLock = 0
+# twow-repo#563 (X3c): 1 = a bot no longer sets values in another bot's context from its own thread
+# (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
+# its own update. 0 = direct write as before (default).
+AiPlayerbot.X3c.InboxWrites = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
