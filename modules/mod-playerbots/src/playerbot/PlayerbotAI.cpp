@@ -40,6 +40,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/GrindCapPolicy.h"
+#include "playerbot/SpellPowerGatePolicy.h"
 #include "Movement/spline/MoveSplineInitArgs.h"
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
@@ -5218,6 +5219,25 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
     spell->SetCastItem(itemTarget ? itemTarget : aiObjectContext->GetValue<Item*>("item for spell", spellid)->Get());
     spell->m_targets.setItemTarget(spell->GetCastItem());
 
+    // twow-repo#541 (audit A33, AiPlayerbot.CanCastSpell.CheckPower): CheckCast below compares the power
+    // against m_powerCost, which only Spell::prepare fills, so here it is 0 and every cost passes.
+    // Cost exactly as prepare computes it: the same Spell (SPELLMOD_COST incl. Clearcasting and
+    // Inner Focus), then every mod charge that computation dropped is handed back. Done BEFORE
+    // CheckCast so only cost mods are restored and CheckCast sees the state it sees today.
+    ai::spellpower::PowerVerdict powerVerdict = ai::spellpower::PowerVerdict::Unchecked;
+    if (checkHasSpell && sPlayerbotAIConfig.canCastSpellChecksPower)
+    {
+        uint32 powerCost = Spell::CalculatePowerCost(spellInfo, bot, spell, spell->GetCastItem());
+        bot->RestoreSpellMods(spell);
+        if (bot->HasOption(PLAYER_CHEAT_NO_POWER))
+            powerCost = 0;
+
+        bool const healthCost = spellInfo->powerType == POWER_HEALTH;
+        bool const knownPowerType = spellInfo->powerType < MAX_POWERS;
+        powerVerdict = ai::spellpower::Evaluate(spell->GetCastItem() != nullptr, healthCost, knownPowerType, powerCost,
+            bot->GetHealth(), knownPowerType ? bot->GetPower(Powers(spellInfo->powerType)) : 0);
+    }
+
     SpellCastResult result = spell->CheckCast(true);
     delete spell;
 	//if (oldSel)
@@ -5228,6 +5248,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
         *checkResult = result;
     }
 
+    bool canCast = false;
     switch (result)
     {
         case SPELL_FAILED_NOT_INFRONT:
@@ -5236,17 +5257,35 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
         case SPELL_FAILED_MOVING:
         case SPELL_FAILED_TRY_AGAIN:
         case SPELL_CAST_OK:
-            return true;
+            canCast = true;
+            break;
         case SPELL_FAILED_OUT_OF_RANGE:
         case SPELL_FAILED_LINE_OF_SIGHT:
-            return ignoreRange;
+            canCast = ignoreRange;
+            break;
         case SPELL_FAILED_AFFECTING_COMBAT:
-            return ignoreInCombat;
+            canCast = ignoreInCombat;
+            break;
         case SPELL_FAILED_NOT_MOUNTED:
-            return ignoreMount;
+            canCast = ignoreMount;
+            break;
         default:
-            return false;
+            break;
     }
+
+    // twow-repo#541 (audit A33): only a pass can turn into a fail (Unchecked = switch off, cast item, unknown
+    // power type keeps the old answer); checkResult changes only in that case.
+    if (canCast && ai::spellpower::Blocks(powerVerdict))
+    {
+        if (checkResult)
+        {
+            *checkResult = powerVerdict == ai::spellpower::PowerVerdict::NoHealth ? SPELL_FAILED_CASTER_AURASTATE : SPELL_FAILED_NO_POWER;
+        }
+
+        return false;
+    }
+
+    return canCast;
 }
 
 bool PlayerbotAI::CanCastSpell(uint32 spellid, GameObject* goTarget, uint8 effectMask, bool checkHasSpell, bool ignoreRange, bool ignoreInCombat, bool ignoreMount, SpellCastResult* checkResult)
