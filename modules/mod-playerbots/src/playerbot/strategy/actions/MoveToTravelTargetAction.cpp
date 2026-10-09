@@ -26,6 +26,21 @@ void LogStartupTravel()
     if (jitter || budget)
         sLog.outBasic("[StartupTravel] uptime=%u deferred_jitter=%u deferred_budget=%u", sWorld.GetUptime(), jitter, budget);
 }
+
+// twow-repo#541: one [LongMoveBudget] line a minute while the runtime budget is on - long moves that
+// started and those deferred to a later slot (to calibrate MaxPerSlot).
+void LogLongMoveBudget()
+{
+    if (!sPlayerbotAIConfig.longMoveBudgetMaxPerSlot)
+        return;
+    startup_travel::RuntimeBudgetCounters& counters = startup_travel::RuntimeCounters();
+    if (!counters.LogDue(uint64(time(nullptr))))
+        return;
+    uint32 const taken = counters.taken.exchange(0, std::memory_order_relaxed);
+    uint32 const deferred = counters.deferred.exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[LongMoveBudget] long_moves=%u deferred=%u max_per_slot=%u slot_ms=%u",
+        taken, deferred, sPlayerbotAIConfig.longMoveBudgetMaxPerSlot, uint32(startup_travel::SlotMs));
+}
 }
 
 bool MoveToTravelTargetAction::Execute(Event& event)
@@ -179,6 +194,28 @@ bool MoveToTravelTargetAction::Execute(Event& event)
             return true;
         }
     }
+    // twow-repo#541 (deep dive, budget (b), OB-00 go 10.10.2026): [BotUpdateSlow] showed the slowest bot
+    // updates are mostly "move to travel target" (52 %, ~97 ms each): the node route / path search of a
+    // long move without a cached route. Outside the startup window the same server-wide cap per 100 ms
+    // slot applies with its own limit (AiPlayerbot.LongMoveBudget.MaxPerSlot, default 0 = off), so such
+    // searches do not pile up in one tick; the rest wait for a later slot without retry or cooldown.
+    else if (sPlayerbotAIConfig.longMoveBudgetMaxPerSlot)
+    {
+        LastMovement& lastMove = *context->GetValue<LastMovement&>("last movement");
+        bool const sameMap = botLocation.getMapId() == location.getMapId();
+        bool const cached = !lastMove.lastPath.empty() && lastMove.lastPath.getBack().distance(location) < 20.0f;
+        if (startup_travel::IsLongMove(sameMap, sameMap ? botLocation.distance(location) : 0.0f, cached))
+        {
+            uint64 const nowMs = uint64(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+            if (!startup_travel::RuntimeBudget().TryTake(nowMs, sPlayerbotAIConfig.longMoveBudgetMaxPerSlot))
+            {
+                startup_travel::RuntimeCounters().deferred.fetch_add(1, std::memory_order_relaxed);
+                return true;
+            }
+            startup_travel::RuntimeCounters().taken.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
 
     bool canMove = MoveTo(mapId, x, y, z, false, false);
 
@@ -229,6 +266,7 @@ bool MoveToTravelTargetAction::Execute(Event& event)
 bool MoveToTravelTargetAction::isUseful()
 {
     LogStartupTravel();
+    LogLongMoveBudget();
 
     if (!ai->AllowActivity(TRAVEL_ACTIVITY))
         return false;

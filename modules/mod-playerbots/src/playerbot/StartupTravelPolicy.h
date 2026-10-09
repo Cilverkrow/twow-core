@@ -82,4 +82,23 @@ struct Counters
 // One budget and one set of counters for the whole server (inline: a single instance across TUs).
 inline LongMoveBudget& SharedBudget() { static LongMoveBudget budget; return budget; }
 inline Counters& SharedCounters() { static Counters counters; return counters; }
+
+// twow-repo#541 (budget (b)): the same cap after the startup window, with its own instance and limit
+// (AiPlayerbot.LongMoveBudget.MaxPerSlot), counted for the [LongMoveBudget] minute line.
+struct RuntimeBudgetCounters
+{
+    std::atomic<std::uint32_t> taken{0};
+    std::atomic<std::uint32_t> deferred{0};
+    std::atomic<std::uint64_t> lastLogMinute{0};
+
+    bool LogDue(std::uint64_t nowSeconds)
+    {
+        std::uint64_t const minute = nowSeconds / 60;
+        std::uint64_t seen = lastLogMinute.load(std::memory_order_relaxed);
+        return seen != minute && lastLogMinute.compare_exchange_strong(seen, minute, std::memory_order_relaxed);
+    }
+};
+
+inline LongMoveBudget& RuntimeBudget() { static LongMoveBudget budget; return budget; }
+inline RuntimeBudgetCounters& RuntimeCounters() { static RuntimeBudgetCounters counters; return counters; }
 }

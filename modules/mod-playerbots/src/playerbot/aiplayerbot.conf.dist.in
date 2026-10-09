@@ -997,6 +997,11 @@ AiPlayerbot.ProfessionUse.FirstAidClothReserve = 20
 AiPlayerbot.StartupTravel.JitterSeconds = 300
 AiPlayerbot.StartupTravel.WindowSeconds = 900
 AiPlayerbot.StartupTravel.MaxLongMovesPerSlot = 4
+# twow-repo#541: the same cap for the whole runtime after the startup window: at most N long moves
+# without a cached route (node route / path search) start per 100 ms slot, server-wide; the rest wait
+# for a later slot without retry or cooldown. [LongMoveBudget] logs started and deferred moves once a
+# minute. 0 = off (default).
+AiPlayerbot.LongMoveBudget.MaxPerSlot = 0
 
 # Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
 AiPlayerbot.AutoPickTalents = full

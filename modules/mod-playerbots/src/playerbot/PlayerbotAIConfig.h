@@ -508,6 +508,7 @@ public:
     uint32 startupTravelJitterSeconds = 300;
     uint32 startupTravelWindowSeconds = 900;
     uint32 startupTravelMaxLongMovesPerSlot = 4;
+    uint32 longMoveBudgetMaxPerSlot = 0;  // twow-repo#541 (b): long moves per 100 ms slot after the startup window (0 = off)
     std::set<uint32> professionUseVendorReagents;
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
