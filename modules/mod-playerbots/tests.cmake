@@ -2050,3 +2050,10 @@ add_test(NAME find_corpse_lazy_spot_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/find_corpse_lazy_spot_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A03): nearest-units values run the pure filter before the LOS raycast (AiPlayerbot.Perf.NearestUnitsAcceptFirst, default 0).
+add_test(NAME nearest_units_accept_first_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/nearest_units_accept_first_source_contract_tests.cmake")

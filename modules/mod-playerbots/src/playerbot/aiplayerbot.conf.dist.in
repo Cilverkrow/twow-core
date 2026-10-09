@@ -1820,6 +1820,13 @@ AiPlayerbot.Perf.FleeMemo = 0
 # random point) that they never use. Same decisions, less work; only the random number stream shifts.
 # 0 = off (default).
 AiPlayerbot.FindCorpseLazySpot = 0
+# twow-repo#541 (audit A03): 1 = "nearest friendly players", "closest friendly players", "nearest npcs" and
+# "nearest stealthed units" run their cheap filter (player? hostile? stealthed?) before the line-of-sight
+# raycast, "nearest npcs" rejects players before the hostility check, and "nearest friendly players"
+# searches only the player container instead of every grid creature. Same lists in the same order, fewer
+# raycasts and VMAP lock acquisitions; only core error-log lines for units with an invalid faction
+# template can differ. 0 = off (default).
+AiPlayerbot.Perf.NearestUnitsAcceptFirst = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
