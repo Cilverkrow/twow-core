@@ -184,7 +184,7 @@ namespace DcTestDriver
             // The rotation logs its own accounts' characters in and out on its
             // own schedule, which would pull the driver out from under a live
             // run. Refuse rather than produce an intermittently broken harness.
-            auto const& rnd = sPlayerbotAIConfig.randomBotAccounts;
+            auto const rnd = sPlayerbotAIConfig.RandomBotAccountsSnapshot();   // twow-repo#563 audit A31
             if (std::find(rnd.begin(), rnd.end(), accountId) != rnd.end())
             {
                 *why = "test driver account '" + account +

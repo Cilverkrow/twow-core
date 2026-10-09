@@ -2010,6 +2010,13 @@ add_test(NAME x3_context_lock_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/x3_context_lock_source_contract_tests.cmake")
 
+# twow-repo#563 audit A28/A29/A31/A51/A52: shared statics, chat queue, event cache, account lists.
+add_test(NAME audit_statics_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/audit_statics_source_contract_tests.cmake")
+
 add_executable(x3_context_lock_tests
   "${PB_MODULE_DIR}/t/x3_context_lock_tests.cpp")
 

@@ -2,6 +2,7 @@
 #define _RandomPlayerbotMgr_H
 
 #include <mutex>
+#include <shared_mutex>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/WorldBotsTracePolicy.h"
@@ -376,6 +377,11 @@ public:
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;
         std::map<uint32, std::map<std::string, CachedEvent> > eventCache;
+        // Audit A28 (twow-repo#563): GetEventValue/SetEventValue run on region threads and the world thread at
+        // once; operator[] inserted into both map levels. Guarded with AiPlayerbot.X3a.ContextLock; the DB load
+        // runs outside the lock.
+        mutable std::shared_mutex eventCacheMutex;
+        bool HasCachedEvents(uint32 bot) const;
         BarGoLink* loginProgressBar;
         std::list<uint32> currentBots;
         std::unique_ptr<ai::roster::Service> persistentRoster;
