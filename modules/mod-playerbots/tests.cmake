@@ -2310,3 +2310,10 @@ add_test(NAME lazy_engine_init_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/lazy_engine_init_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A23): "has attackers" / "possible attack targets::1" read the full "attackers" list behind AiPlayerbot.Perf.AttackersSingleList (default 0, behaviour-changing within the 1 s cache granularity).
+add_test(NAME attackers_single_list_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/attackers_single_list_source_contract_tests.cmake")

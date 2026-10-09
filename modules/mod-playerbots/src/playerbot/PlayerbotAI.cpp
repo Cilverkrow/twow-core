@@ -1746,7 +1746,12 @@ void PlayerbotAI::OnCombatStarted()
             StopMoving();
         }
 
-        aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers", 1)->Reset();
+        // twow-repo#541 (audit A23): with the single list "has attackers" reads the full "attackers"; reset that
+        // one, so the first check after the bot's own attack/pull sees the new target.
+        if (sPlayerbotAIConfig.perfAttackersSingleList)
+            aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers")->Reset();
+        else
+            aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers", 1)->Reset();
         aiObjectContext->GetValue<bool>("has attackers")->Reset();
 
         ChangeEngine(BotState::BOT_STATE_COMBAT);
