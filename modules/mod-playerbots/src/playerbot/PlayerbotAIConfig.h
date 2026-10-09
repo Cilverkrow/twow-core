@@ -552,6 +552,7 @@ public:
     bool chaseSkipHazardPathWhenNoHazards = false;  // twow-repo#541 (audit A14): ChaseTo skips the hazard path / LOS checks while the bot's hazards list is empty; same chase decisions, only the detail log line differs (0 = off)
     bool perfGiveItemGroupOnlyScan = false;  // twow-repo#541 (audit A15): give water / food / item value of a bot without group skips the out-of-group classification and list scan; same result, disclosed: no GetPet()/eventCache side effects on foreign players (0 = off)
     bool perfStaticSpellLists = false;  // twow-repo#541 (audit A16): CanCastSpell / CheckSpellTargetAlignment take the neutral and out-of-control spell ids from constant arrays instead of a per-call std::list; same ids, same answers (0 = off)
+    bool petDeadNoWorldPetFalse = false;  // twow-repo#541 (audit A07): hunter without a world pet never counts as having a dead pet (no character_pet SELECT, no doomed Revive Pet)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

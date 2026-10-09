@@ -424,6 +424,7 @@ bool PlayerbotAIConfig::Initialize()
     chaseSkipHazardPathWhenNoHazards = config.GetBoolDefault("AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards", false);
     perfGiveItemGroupOnlyScan = config.GetBoolDefault("AiPlayerbot.Perf.GiveItemGroupOnlyScan", false);
     perfStaticSpellLists = config.GetBoolDefault("AiPlayerbot.Perf.StaticSpellLists", false);
+    petDeadNoWorldPetFalse = config.GetBoolDefault("AiPlayerbot.PetDeadNoWorldPetFalse", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

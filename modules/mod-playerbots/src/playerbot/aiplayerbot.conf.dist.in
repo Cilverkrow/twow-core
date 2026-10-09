@@ -1915,6 +1915,13 @@ AiPlayerbot.Perf.GiveItemGroupOnlyScan = 0
 # cast results: no behaviour change, only fewer heap allocations (about 0.5-2 us per call; not expected to
 # move [BotUpdate] or [MapTick] measurably on its own). 0 = the old per-call lists (default).
 AiPlayerbot.Perf.StaticSpellLists = 0
+# twow-repo#541 (audit A07): 1 = a hunter without a pet in the world never counts as having a dead pet: no
+# character_pet SELECT on the map thread (once a minute per such hunter) and no doomed Revive Pet attempt
+# each AI tick (Revive Pet needs the dead pet in the world). Behaviour change: a grouped hunter whose master
+# sits no longer flickers sit/stand every AI tick; the attempt no longer selects the hunter itself or resets
+# its last movement / stay time; a stale revive attempt no longer dismounts it. A dead pet in the world (also
+# one Call Pet brought back dead) is still revived. 0 = as before (default).
+AiPlayerbot.PetDeadNoWorldPetFalse = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

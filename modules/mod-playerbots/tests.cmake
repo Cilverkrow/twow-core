@@ -2196,3 +2196,10 @@ add_test(NAME static_spell_lists_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/static_spell_lists_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A07): hunter "no world pet => no dead pet" behind AiPlayerbot.PetDeadNoWorldPetFalse (default 0).
+add_test(NAME pet_dead_no_world_pet_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/pet_dead_no_world_pet_source_contract_tests.cmake")
