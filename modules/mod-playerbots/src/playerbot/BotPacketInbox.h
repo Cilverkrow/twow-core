@@ -24,6 +24,15 @@ inline std::atomic<std::uint64_t>& InboxLargestDrain()
     return largest;
 }
 
+// Drops by kind of packet (counted by the caller, only past the bound).
+enum InboxDropClass : std::uint8_t { InboxDropChat, InboxDropSpell, InboxDropKnockback, InboxDropHandler, InboxDropClasses };
+
+inline std::atomic<std::uint64_t>& InboxDroppedByClass(InboxDropClass dropClass)
+{
+    static std::atomic<std::uint64_t> counters[InboxDropClasses]{};
+    return counters[dropClass < InboxDropClasses ? dropClass : InboxDropHandler];
+}
+
 // twow-repo#563 (X1): packets sent to a bot's session arrive on the sender's thread (a world
 // channel message reaches every bot from the talking bot's region thread). They are only queued
 // here, under a lock; the bot drains the queue at the start of its own update and handles them on
@@ -35,16 +44,21 @@ class BoundedInbox
 public:
     explicit BoundedInbox(std::size_t capacity) : capacity(capacity ? capacity : 1) {}
 
-    void Push(T item)
+    // Returns the item dropped to make room (a default T when nothing was dropped), so the caller
+    // can classify drops; that only happens past the bound.
+    T Push(T item)
     {
         std::lock_guard<std::mutex> lock(mutex);
+        T droppedItem{};
         if (queue.size() >= capacity)
         {
+            droppedItem = std::move(queue.front());
             queue.pop_front();
             ++dropped;
             InboxDroppedTotal().fetch_add(1, std::memory_order_relaxed);
         }
         queue.push_back(std::move(item));
+        return droppedItem;
     }
 
     // Moves every queued item into out (in arrival order) and leaves the inbox empty.
