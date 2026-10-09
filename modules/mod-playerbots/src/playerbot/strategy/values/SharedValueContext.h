@@ -8,6 +8,8 @@
 #include "LootValues.h"
 #include "MountValues.h"
 #include "playerbot/PlayerbotAI.h"
+#include <mutex>
+#include <shared_mutex>
 
 namespace ai
 {
@@ -52,8 +54,23 @@ namespace ai
         SharedObjectContext() { valueContexts.Add(new SharedValueContext()); };
 
     public:
+        // twow-repo#563 (X4a): one context for all bots, called from every region thread. The lookup
+        // inserts into a std::map (new qualified names such as "loot chance::<item>" keep coming), so it
+        // was a race between threads. Existing values: shared lock, no insert. Creating: unique lock,
+        // double-checked; the PlayerbotAI dummy the factories need is built only then (it was built and
+        // destroyed on every call).
         virtual UntypedValue* GetUntypedValue(const std::string& name)
         {
+            {
+                std::shared_lock<std::shared_mutex> lock(valuesMutex);
+                if (UntypedValue* existing = valueContexts.Find(name))
+                    return existing;
+            }
+
+            std::unique_lock<std::shared_mutex> lock(valuesMutex);
+            if (UntypedValue* existing = valueContexts.Find(name))
+                return existing;
+
             PlayerbotAI* ai = new PlayerbotAI();
             UntypedValue* value = valueContexts.GetObject(name, ai);
             delete ai;
@@ -80,6 +97,7 @@ namespace ai
         }
     protected:
         NamedObjectContextList<UntypedValue> valueContexts;
+        std::shared_mutex valuesMutex;   // twow-repo#563 (X4a): guards valueContexts
     };
 #define sSharedObjectContext MaNGOS::Singleton<SharedObjectContext>::Instance()
 }

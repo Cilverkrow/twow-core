@@ -1154,6 +1154,12 @@ add_test(NAME solo_attackers_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/solo_attackers_source_contract_tests.cmake")
 
+# twow-repo#563 (X4a): shared value context locked, SingleCalculatedValue computed once.
+add_test(NAME shared_context_lock_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/shared_context_lock_source_contract_tests.cmake")
+
 # #416 (7.3): hourly [MemStores] diagnostic.
 add_executable(mem_stores_policy_tests
   "${PB_MODULE_DIR}/t/mem_stores_policy_tests.cpp")
