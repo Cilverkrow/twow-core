@@ -1788,6 +1788,10 @@ AiPlayerbot.WorldBotsTrace = 0
 # time of one bot AI update on the map threads, plus the five slowest calls with bot, map, combat
 # and last action. Log only. 0 = off (default).
 AiPlayerbot.BotUpdateTrace = 0
+# twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
+# start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
+# (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
+AiPlayerbot.AiDelayJitterPct = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

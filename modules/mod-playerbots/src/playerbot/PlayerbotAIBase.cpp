@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/AiJitterPolicy.h"
 
 using namespace ai;
 
@@ -30,8 +31,13 @@ void PlayerbotAIBase::UpdateAI(uint32 elapsed)
     YieldAIInternalThread();
 }
 
-void PlayerbotAIBase::SetAIInternalUpdateDelay(const uint32 delay)
+void PlayerbotAIBase::SetAIInternalUpdateDelay(uint32 delay)
 {
+    // twow-repo#541 (AiPlayerbot.AiDelayJitterPct, default 0): +-pct around the fixed delays so bots in
+    // phase drift apart; the mean stays the same.
+    if (sPlayerbotAIConfig.aiDelayJitterPct && AllowDelayJitter())
+        delay = ai::jitter::JitteredDelay(delay, sPlayerbotAIConfig.aiDelayJitterPct, urand(0, ai::jitter::RollRange));
+
     if (aiInternalUpdateDelay < delay)
         sLog.outDebug("Setting lesser ai internal update delay %d -> %d", aiInternalUpdateDelay, delay);
 
