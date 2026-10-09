@@ -589,6 +589,13 @@ void PlayerbotAI::HandleQueuedBotPackets()
     for (std::function<void(ai::AiObjectContext*)> const& write : writes)
         if (write)
             write(aiObjectContext);
+
+    // twow-repo#563 (X3b site 2): answer the conditions other bots asked about, on this bot's own context.
+    if (sPlayerbotAIConfig.x3bPublishedConditions && conditionBoard.HasRequests())
+        conditionBoard.Refresh(WorldTimer::getMSTime(), [this](std::string const& condition)
+        {
+            return aiObjectContext->GetValue<bool>("and", condition)->Get();
+        });
 }
 
 // twow-repo#563 (X3c): instead of setting a value in another bot's context from this thread, queue it.

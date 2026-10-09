@@ -1804,6 +1804,10 @@ AiPlayerbot.X3c.InboxWrites = 0
 # group member's or master bot's context; every bot publishes its own targets after computing its
 # attackers and the others read that snapshot (ignored when older than 3 s). 0 = old cross-bot read (default).
 AiPlayerbot.X3b.PublishedTargets = 0
+# twow-repo#563 (X3b site 2): 1 = "group and/or/count" no longer evaluate a condition on another bot's
+# context; they ask the member, the member answers on its own thread and the answer is read (at most
+# 3 s old; a member without an answer yet is skipped, like a member without bot AI). 0 = old (default).
+AiPlayerbot.X3b.PublishedConditions = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

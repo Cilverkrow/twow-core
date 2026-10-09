@@ -6,6 +6,24 @@
 
 using namespace ai;
 
+namespace
+{
+    // twow-repo#563 (X3b site 2, AiPlayerbot.X3b.PublishedConditions): the condition of one group member.
+    // 1 = true, 0 = false, -1 = no fresh answer from that member yet (the caller skips the member, as it
+    // skips members without bot AI). Off, or for this bot itself: evaluated on the member's context as before.
+    int MemberCondition(PlayerbotAI* ai, PlayerbotAI* memberAi, std::string const& condition)
+    {
+        if (memberAi != ai && sPlayerbotAIConfig.x3bPublishedConditions)
+        {
+            std::optional<bool> const answer = memberAi->GetConditionBoard().Read(condition, WorldTimer::getMSTime());
+            if (!answer)
+                return -1;
+            return *answer ? 1 : 0;
+        }
+        return memberAi->GetAiObjectContext()->GetValue<bool>("and", condition)->Get() ? 1 : 0;
+    }
+}
+
 std::list<ObjectGuid> GroupMembersValue::Calculate()
 {
     std::list<ObjectGuid> members;
@@ -67,7 +85,11 @@ uint32 GroupBoolCountValue::Calculate()
         if (!GetBotAI(player))
             continue;
 
-        if (PAI_VALUE2(bool, "and", getQualifier()))
+        int const condition = MemberCondition(ai, GetBotAI(player), getQualifier());
+        if (condition < 0)
+            continue;
+
+        if (condition)
             return count++;
     }
 
@@ -89,7 +111,11 @@ bool GroupBoolANDValue::Calculate()
         if (!GetBotAI(player))
             continue;
 
-        if (!PAI_VALUE2(bool,"and", getQualifier()))
+        int const condition = MemberCondition(ai, GetBotAI(player), getQualifier());
+        if (condition < 0)
+            continue;
+
+        if (!condition)
             return false;
     }
 
@@ -111,7 +137,11 @@ bool GroupBoolORValue::Calculate()
         if (!GetBotAI(player))
             continue;
 
-        if (PAI_VALUE2(bool, "and", getQualifier()))
+        int const condition = MemberCondition(ai, GetBotAI(player), getQualifier());
+        if (condition < 0)
+            continue;
+
+        if (condition)
             return true;
     }
 
