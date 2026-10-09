@@ -110,4 +110,19 @@ require_text("${say}" "else\n                memberAi->GetAiObjectContext()->Get
 require_order("${rtsc}" "if (sPlayerbotAIConfig.x3cInboxWrites)" "PlayerbotAI::QueueContextWriteTo(player, [locationName, p](AiObjectContext* other)" "RTSC queued")
 require_text("${rtsc}" "else\n\t\t\t\t\t\tSET_PAI_VALUE2(WorldPosition, \"RTSC saved location\", tokens[1], p);" "old RTSC in else")
 
+# Audit A30 (owner OK 09.10.2026): GuildValues static caches, locked with the same switch, the search outside.
+read_source("strategy/values/GuildValues.cpp" guild)
+between("${guild}" "uint32 GuildOrderValue::FindItemByName(const std::string& name)" "std::vector<std::pair<uint32, int8>> ai::FindRepeatableQuestsRewardingItem(uint32 itemId)" find_item)
+require_order("${find_item}" "context_lock::Shared const lock(s_cacheMutex, context_lock::On());" "for (uint32 itemId = 0; itemId < sItemStorage.GetMaxEntry(); ++itemId)" "lookup locked, scan after the lock")
+require_text("${find_item}" "context_lock::Unique const lock(s_cacheMutex, context_lock::On());
+        s_cache[lowerName] = found;" "store locked")
+string(FIND "${find_item}" "s_cache[lowerName] = itemId;" find_item_raw)
+if(NOT find_item_raw EQUAL -1)
+  message(FATAL_ERROR "#563 X3: FindItemByName must store through remember()")
+endif()
+between("${guild}" "std::vector<std::pair<uint32, int8>> ai::FindRepeatableQuestsRewardingItem(uint32 itemId)" "uint32 ai::CountGuildFinishedItemDeficit(" find_quests)
+require_order("${find_quests}" "context_lock::Shared const lock(s_cacheMutex, context_lock::On());" "for (auto& [questId, questPtr] : questMap)" "quest cache lookup locked, scan after")
+require_order("${find_quests}" "for (auto& [questId, questPtr] : questMap)" "context_lock::Unique const lock(s_cacheMutex, context_lock::On());
+        s_cache[itemId] = result;" "quest cache store locked")
+
 message(STATUS "x3_context_lock source contract passed")
