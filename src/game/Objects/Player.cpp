@@ -1909,8 +1909,12 @@ void Player::Update(uint32 update_diff, uint32 p_time)
         bool transition = false;
         uint16 newInstanceId = sMapMgr.GetContinentInstanceId(GetMap()->GetId(), GetPositionX(), GetPositionY(), &transition);
         if (newInstanceId != GetInstanceId())
+        {
             if (!transition || !IsInCombat())
                 sMapMgr.ScheduleInstanceSwitch(this, newInstanceId);
+            else
+                sMapMgr.CountRegionSwitchDeferred();  // twow-repo#541 part C: border cell, fight goes on
+        }
     }
 
     SC_PHASE_PLAYER("Player::Update.beforeIsInWorldBlock");
