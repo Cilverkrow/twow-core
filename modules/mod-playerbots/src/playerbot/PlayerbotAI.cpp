@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/ParkPolicy.h"
+#include "playerbot/AiJitterPolicy.h"
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/MemStoresPolicy.h"
@@ -318,6 +319,26 @@ PlayerbotAI::PlayerbotAI(Player* bot) :
     {
         DoSpecificAction("auto talents");
     }
+
+    // twow-repo#541 (jitter): a login wave would otherwise start every bot's AI in the same tick.
+    if (sPlayerbotAIConfig.aiDelayJitterPct)
+        aiInternalUpdateDelay += ai::jitter::StartOffset(sPlayerbotAIConfig.globalCoolDown * 2, urand(0, ai::jitter::RollRange));
+}
+
+void PlayerbotAI::SetParked(bool value)
+{
+    parked = value;
+    lastParkedUpdateMs = 0;
+    // twow-repo#541 (jitter): without a spread every bot parked by one command thinks in the same tick,
+    // every ai::park::AiIntervalMs.
+    if (value && sPlayerbotAIConfig.aiDelayJitterPct)
+        lastParkedUpdateMs = ai::jitter::SpreadLastUpdate(WorldTimer::getMSTime(), ai::park::AiIntervalMs, urand(0, ai::jitter::RollRange));
+}
+
+bool PlayerbotAI::AllowDelayJitter() const
+{
+    // Out of combat only: in combat the delays follow cast times and the global cooldown.
+    return bot && !bot->IsInCombat();
 }
 
 PlayerbotAI::~PlayerbotAI()

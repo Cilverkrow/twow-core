@@ -23,6 +23,9 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RandomPlayerbotFactory.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/BotUpdateTrace.h"
+#include "playerbot/strategy/Engine.h"
+#include <chrono>
 #include "playerbot/AiFactory.h"
 #include "playerbot/strategy/actions/ChangeTalentsAction.h"
 #include "playerbot/strategy/actions/ShareQuestAction.h"
@@ -308,7 +311,23 @@ class PlayerbotPlayerScript : public PlayerScript
             if (PlayerbotAI* ai = GetBotAI(player))
             {
                 SC_PHASE("Player::UpdatePlayerbotHooks/ai.UpdateAI", player->GetName());
-                ai->UpdateAI(diff);
+                if (!sPlayerbotAIConfig.botUpdateTrace)
+                    ai->UpdateAI(diff);
+                else
+                {
+                    // twow-repo#541: [BotUpdate] - wall time of this bot's update, the slowest by name.
+                    auto const start = std::chrono::steady_clock::now();
+                    ai->UpdateAI(diff);
+                    uint64 const us = uint64(std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - start).count());
+                    ai::bot_update::Global().Add(us, [player, ai]()
+                    {
+                        ai::Engine* engine = ai->GetCurrentEngine();
+                        return std::string(player->GetName()) + " map=" + std::to_string(player->GetMapId()) +
+                            " combat=" + std::to_string(player->IsInCombat() ? 1 : 0) +
+                            " action=" + (engine ? engine->GetLastAction() : std::string("-"));
+                    });
+                }
             }
             if (PlayerbotMgr* mgr = GetBotMgr(player))
             {
