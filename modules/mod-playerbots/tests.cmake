@@ -2003,3 +2003,22 @@ add_test(NAME ai_jitter_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/ai_jitter_source_contract_tests.cmake")
+
+# twow-repo#541: "initialize pet" with a static tameable list, cache and cooldown (AiPlayerbot.InitPet.Cache).
+add_executable(init_pet_policy_tests
+  "${PB_MODULE_DIR}/t/init_pet_policy_tests.cpp")
+
+target_include_directories(init_pet_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(init_pet_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME init_pet_policy
+  COMMAND init_pet_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME init_pet_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/init_pet_source_contract_tests.cmake")
