@@ -134,6 +134,9 @@ void Engine::Init()
     if (!Reset())
         return;
 
+    // twow-repo#541 (audit A21): a real rebuild settles a change that was put off while the engine was inactive.
+    initStale = false;
+
     for (std::map<std::string, Strategy*>::iterator i = strategies.begin(); i != strategies.end(); i++)
     {
         Strategy* strategy = i->second;
@@ -162,6 +165,18 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
     // the queue while we are walking it; Reset() parks the re-init instead and
     // we run it below, after the walk.
     bool const wasInDoNextAction = inDoNextAction;
+
+    // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): a strategy change made while this engine was not
+    // running only marked it stale. PlayerbotAI::Reset(false) activates the non-combat engine without Init(), so the
+    // owed rebuild runs here, before the first ProcessTriggers. ChangeEngine and Reset(true) already rebuilt it. This
+    // also covers an engine marked stale during its own walk (mid-walk ChangeEngine): it is rebuilt on its next walk.
+    if (initStale && !wasInDoNextAction)
+    {
+        ai::lazy_engine_init::caught.fetch_add(1, std::memory_order_relaxed);
+        LogAction("S:stale init");
+        Init();
+    }
+
     inDoNextAction = true;
 
     time_t currentTime = time(0);
@@ -1015,7 +1030,7 @@ void Engine::LogAction(const char* format, ...)
     }
 }
 
-void Engine::ChangeStrategy(const std::string& names)
+void Engine::ChangeStrategy(const std::string& names, bool deferInitWhileInactive)
 {
     std::vector<std::string> splitted = split(names, ',');
 
@@ -1067,8 +1082,22 @@ void Engine::ChangeStrategy(const std::string& names)
     // relevance-70 `bg check flag` action and killed the rest of the tick, so
     // `bg move to objective` at relevance 1.0 was queued 23,908 times and
     // popped none.
+    //
+    // twow-repo#541 (audit A21): an engine that is not running gets the new set now (HasStrategy, OnStrategyAdded/
+    // Removed already ran) but rebuilds its triggers only on activation; its triggers and queue are not read until then.
     if (!initMode && StrategySetToken() != tokenBefore)
-        Init();
+    {
+        if (deferInitWhileInactive)
+        {
+            initStale = true;
+            ai::lazy_engine_init::deferred.fetch_add(1, std::memory_order_relaxed);
+            LogAction("S:init deferred");
+        }
+        else
+        {
+            Init();
+        }
+    }
 }
 
 void Engine::PrintStrategies(Player* requester, const std::string& engineType)
