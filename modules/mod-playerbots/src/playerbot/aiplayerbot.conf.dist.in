@@ -1853,6 +1853,12 @@ AiPlayerbot.Perf.ActionNodeOwnerCache = 0
 # calculation of "rpg bg type"). Same results and decisions, only fewer allocations on the map threads.
 # 0 = old copy (default).
 AiPlayerbot.Perf.BgMasterCacheRef = 0
+# twow-repo#541 (audit A10): 1 = a travel choice builds one travel snapshot of the bot (PlayerTravelInfo)
+# instead of one per checked destination, reuses an "is active" answer it already has and checks the cheap
+# local quest hub conditions first. The destination lookup for exactly one quest or entry (needed quest
+# entries, quest list, quest objective travel) reads that key instead of walking all keys. Same choices,
+# less work on the map threads. 0 = old path (default).
+AiPlayerbot.Perf.TravelInfoReuse = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

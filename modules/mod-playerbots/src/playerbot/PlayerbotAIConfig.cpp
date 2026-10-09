@@ -416,6 +416,7 @@ bool PlayerbotAIConfig::Initialize()
     perfAttackersLazyChecks = uint32(std::min<int32>(2, std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Perf.AttackersLazyChecks", 0))));
     perfActionNodeOwnerCache = config.GetBoolDefault("AiPlayerbot.Perf.ActionNodeOwnerCache", false);
     perfBgMasterCacheRef = config.GetBoolDefault("AiPlayerbot.Perf.BgMasterCacheRef", false);
+    perfTravelInfoReuse = config.GetBoolDefault("AiPlayerbot.Perf.TravelInfoReuse", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));
