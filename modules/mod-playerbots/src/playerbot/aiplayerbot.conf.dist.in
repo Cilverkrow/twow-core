@@ -1792,6 +1792,10 @@ AiPlayerbot.BotUpdateTrace = 0
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
 AiPlayerbot.AiDelayJitterPct = 0
+# twow-repo#541: 1 = "initialize pet" picks the hunter pet from a tameable list built once (instead of
+# scanning every creature template per call), keeps the character_pet answer of its check for 60 s,
+# and waits 60 s after a try that left the hunter without a pet. Same pets. 0 = as before (default).
+AiPlayerbot.InitPet.Cache = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
