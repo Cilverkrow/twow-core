@@ -1958,6 +1958,18 @@ AiPlayerbot.Perf.CombatIdleYield = 0
 # stale condition. Read whenever a bot's non-combat strategies are (re)built; toggle it with a restart, not with
 # a reload (a reload switches logged-in bots over one by one). 0 = as before (default).
 AiPlayerbot.Perf.TravelRequestGate = 0
+# twow-repo#541 (audit A22, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = five party
+# buff/cure triggers skip their party scan while the bot knows no rank of the spell their action casts: priest
+# "divine spirit on party" and "shadow protection on party", shaman "water breathing on party" and "water walking
+# on party" (these two check swimming before the scan), paladin "cleanse party member cure magic". Today such a
+# trigger fires anyway and its action ends IMPOSSIBLE. With 1 the action object is first built once the spell is
+# known, so its cached spell id is right: a bot that learns the spell while online (Water Breathing 22, Water
+# Walking 28, Shadow Protection 30, Cleanse 42, the Divine Spirit talent) really casts it on party members instead
+# of walking to them and failing until a relog. This overlaps AiPlayerbot.CastSpell.RefreshOnLearn only for the
+# first rank learned online; unlike it, this switch does not refresh the cached spell id and range on later
+# rank-ups (the first known rank stays until a relog). Custom strategies (cs) that bind these trigger names to
+# other actions are suppressed too while the spell is unknown. 0 = as before (default).
+AiPlayerbot.Perf.PartyBuffKnownSpellGate = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

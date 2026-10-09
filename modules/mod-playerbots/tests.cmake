@@ -2283,3 +2283,23 @@ add_test(NAME travel_request_gate_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/travel_request_gate_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A22): party buff/cure known-spell gate behind AiPlayerbot.Perf.PartyBuffKnownSpellGate (default 0, behaviour-changing).
+add_executable(known_spell_gate_policy_tests
+  "${PB_MODULE_DIR}/t/known_spell_gate_policy_tests.cpp")
+
+target_include_directories(known_spell_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(known_spell_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME known_spell_gate_policy
+  COMMAND known_spell_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME party_buff_spell_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/party_buff_spell_gate_source_contract_tests.cmake")
