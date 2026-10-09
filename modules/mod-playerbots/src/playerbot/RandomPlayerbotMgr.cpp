@@ -939,14 +939,20 @@ void ReportBotInbox()
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
 
-    // twow-repo#563 (X3b): reads of other bots' published targets in the last minute.
-    if (sPlayerbotAIConfig.x3bPublishedTargets)
+    // twow-repo#563 (X3b): reads of other bots' published targets and group conditions in the last minute.
+    if (sPlayerbotAIConfig.x3bPublishedTargets || sPlayerbotAIConfig.x3bPublishedConditions)
     {
         auto takeRead = [](ai::x3b::SnapshotRead read) { return (unsigned long long)ai::x3b::SnapshotCount(read).exchange(0, std::memory_order_relaxed); };
+        auto takeCondition = [](ai::x3b::ConditionRead read) { return (unsigned long long)ai::x3b::ConditionCount(read).exchange(0, std::memory_order_relaxed); };
         unsigned long long const hit = takeRead(ai::x3b::SnapshotHit);
         unsigned long long const stale = takeRead(ai::x3b::SnapshotStale);
         unsigned long long const missing = takeRead(ai::x3b::SnapshotMissing);
-        sLog.outBasic("[X3bSnapshot] hit=%llu stale=%llu missing=%llu max_age_ms=%u", hit, stale, missing, uint32(ai::x3b::MaxAgeMs));
+        unsigned long long const condHit = takeCondition(ai::x3b::ConditionHit);
+        unsigned long long const condMiss = takeCondition(ai::x3b::ConditionMiss);
+        unsigned long long const condDropped = takeCondition(ai::x3b::ConditionDropped);
+        unsigned long long const condEvaluated = takeCondition(ai::x3b::ConditionEvaluated);
+        sLog.outBasic("[X3bSnapshot] hit=%llu stale=%llu missing=%llu max_age_ms=%u cond_hit=%llu cond_miss=%llu cond_dropped=%llu cond_evaluated=%llu",
+            hit, stale, missing, uint32(ai::x3b::MaxAgeMs), condHit, condMiss, condDropped, condEvaluated);
     }
 }
 

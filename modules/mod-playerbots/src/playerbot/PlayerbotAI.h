@@ -413,6 +413,9 @@ public:
     typedef ai::x3b::PublishedTargets<ObjectGuid> PublishedTargets;
     void PublishTargets(std::shared_ptr<PublishedTargets const> snapshot);
     std::shared_ptr<PublishedTargets const> GetPublishedTargets() const;
+    // X3b site 2 (AiPlayerbot.X3b.PublishedConditions): conditions other bots ask about this bot, answered by
+    // this bot on its own thread (HandleQueuedBotPackets).
+    ai::x3b::ConditionBoard& GetConditionBoard() { return conditionBoard; }
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
@@ -1035,6 +1038,7 @@ protected:
     // twow-repo#563 (X3b): this bot's last published targets, read by other bots.
     mutable std::mutex publishedTargetsMutex;
     std::shared_ptr<PublishedTargets const> publishedTargets;
+    ai::x3b::ConditionBoard conditionBoard;
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;
     CompositeChatFilter chatFilter;
