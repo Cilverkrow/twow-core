@@ -8,6 +8,7 @@
 #include "Objects/ItemPrototype.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PersistentRosterTalentSpecPolicy.h"
+#include "playerbot/InitPetPolicy.h"
 #include "AccountMgr.h"
 #include "Database/DBCStore.h"
 #include "SharedDefines.h"
@@ -613,6 +614,28 @@ void PlayerbotFactory::InitPet()
             return;
 
         std::vector<uint32> ids;
+#ifndef MANGOSBOT_TWO
+        // twow-repo#541 (AiPlayerbot.InitPet.Cache): the tameable entries once, sorted by MinLevel, instead of
+        // a scan over every creature template per call (~70 ms); same candidates, so the same random pick.
+        if (sPlayerbotAIConfig.initPetCache)
+        {
+            static ai::init_pet::TameList const tameList = []()
+            {
+                ai::init_pet::TameList list;
+                for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
+                    if (CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id))
+                        if (co->isTameable())
+                            list.emplace_back(co->MinLevel, id);
+                ai::init_pet::SortTameList(list);
+                return list;
+            }();
+            std::size_t const count = ai::init_pet::CandidatesFor(tameList, bot->GetLevel());
+            ids.reserve(count);
+            for (std::size_t i = 0; i < count; ++i)
+                ids.push_back(tameList[i].second);
+        }
+        else
+#endif
         for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
         {
             CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id);
