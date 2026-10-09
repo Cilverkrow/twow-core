@@ -1930,6 +1930,14 @@ AiPlayerbot.PetDeadNoWorldPetFalse = 0
 # instead of failing inside the cast. Casts with a cast item (also spells on an item target, e.g. weapon enchants and
 # poisons), pet spells and the GameObject/position overloads unchanged. 0 = as before (default).
 AiPlayerbot.CanCastSpell.CheckPower = 0
+# twow-repo#541 (audit A27, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a class spell
+# action re-reads its spell id and range when the bot learned a spell or rank, levelled, or spent or got back a
+# talent point since the action last looked (pet spell actions also: another pet; not while no pet is out). A
+# spell learned while online (trainer, level-up, talent, quest reward) is then used without a relog: spells on
+# other targets (party heals, resurrection, dispels, buffs on members, interrupts, CC, Charge) stop being
+# impossible. No per-cast spell name lookup: a few field reads and one compare per isPossible. Logs
+# [SpellIdRefresh] when the id changed, [SpellRangeRefresh] when only the range changed. 0 = as before (default).
+AiPlayerbot.CastSpell.RefreshOnLearn = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
