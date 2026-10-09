@@ -52,6 +52,12 @@ AiPlayerbot.Park.HideFromBots = 0
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
 # [Park] state=share logs where bots were parked (inn / city / here) once a minute.
 AiPlayerbot.Park.AnyLevelInn = 0
+# twow-repo#541 (grid sleep): 1 = a parked bot (and its pet) does not activate the map cells around it, so
+# the creatures there are not updated unless a real player or an active bot is near. The bot wakes the cells
+# again as soon as it fights, dies, teleports or is unparked. Its grid stays loaded; saving, logout and the
+# roster are unchanged. [ParkSleep] logs sleeping/woken bots and marked cells once a minute (also with
+# AiPlayerbot.BotUpdateTrace = 1 and this switch off, for the A/B). 0 = off (default).
+AiPlayerbot.Park.SleepGrid = 0
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0

@@ -377,6 +377,9 @@ public:
         void ProcessParkedBots();
         bool ParkBot(Player* bot, std::string const& teleName, std::string& reason);
         void UnparkBot(Player* bot);
+        // twow-repo#541 (AiPlayerbot.Park.SleepGrid): core switches and the [ParkSleep] minute line.
+        uint32 parkSleepUnparkWakes = 0;  // world thread: unparked bots that carried the sleep flag
+        void ReportParkSleep();
         void OnParkBindChecked(uint32 guid, bool found, ai::park::Point const& stored);
         // twow-repo#541: [WorldBots] per-minute cost of UpdateAIInternal in the world thread.
         ai::world_bots::Window worldBotsWindow;
