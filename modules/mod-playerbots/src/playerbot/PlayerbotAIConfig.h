@@ -545,6 +545,8 @@ public:
     bool perfActionNodeOwnerCache = false;  // twow-repo#541 (audit A08): Engine::CreateActionNode on the bot's own AI tick asks only the strategy that answered a base action name first (0 = off)
     bool perfBgMasterCacheRef = false;  // twow-repo#541 (audit A09): "rpg bg type" / "bg masters" read the battlemaster cache by const reference with find(), no deep copy (0 = off)
     bool perfTravelInfoReuse = false;  // twow-repo#541 (audit A10): a travel choice builds one PlayerTravelInfo, reuses a known IsActive answer and checks the cheap hub conditions first; GetDestinations looks one asked entry up by key (0 = off)
+    bool perfLogActionFastPath = false;  // twow-repo#541 (audit A11): no action-log lookup while no file can be written, PerfMon action/trigger keys only with PerfMon on (0 = off)
+    bool botUpdateTraceTailFix = false;  // twow-repo#541 (audit A11): engine last-action trail keeps the newest 512 characters, cut at an entry (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
