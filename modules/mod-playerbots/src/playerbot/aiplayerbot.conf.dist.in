@@ -1815,6 +1815,11 @@ AiPlayerbot.X3c.InboxWrites = 0
 # each candidate angle once per search and reuses that result when a later distance ring repeats the
 # same angle. Same candidate points, same chosen point, fewer height/water/LOS checks. 0 = off (default).
 AiPlayerbot.Perf.FleeMemo = 0
+# twow-repo#541 (audit A02): 1 = a ghost near its corpse first decides whether it only waits out the teleport
+# delay or is already moving, and in those two cases skips the search for a safe revive spot (FleeManager,
+# random point) that they never use. Same decisions, less work; only the random number stream shifts.
+# 0 = off (default).
+AiPlayerbot.FindCorpseLazySpot = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
