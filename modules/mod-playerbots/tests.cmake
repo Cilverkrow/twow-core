@@ -1963,3 +1963,24 @@ add_test(NAME cross_thread_bot_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/cross_thread_bot_source_contract_tests.cmake")
+
+# twow-repo#541: [BotUpdate] - distribution of PlayerbotAI::UpdateAI wall time (AiPlayerbot.BotUpdateTrace).
+add_executable(bot_update_trace_tests
+  "${PB_MODULE_DIR}/t/bot_update_trace_tests.cpp")
+
+target_include_directories(bot_update_trace_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(bot_update_trace_tests PRIVATE Threads::Threads)
+
+set_target_properties(bot_update_trace_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_update_trace
+  COMMAND bot_update_trace_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_update_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bot_update_trace_source_contract_tests.cmake")

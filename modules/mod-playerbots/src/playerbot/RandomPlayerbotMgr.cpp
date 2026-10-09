@@ -43,6 +43,7 @@
 #include "PersistentActiveRosterDatabase.h"
 #include "LoginWavePolicy.h"
 #include "playerbot/MemStoresPolicy.h"
+#include "playerbot/BotUpdateTrace.h"
 #if defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -929,6 +930,33 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity));
 }
+
+// twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute
+// with the distribution of one bot's UpdateAI wall time over all map threads, and one [BotUpdateSlow]
+// line per slowest call (bot, map, combat, last action). Nothing is timed or written when off.
+void ReportBotUpdate()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.botUpdateTrace || now < lastReport + 60)
+        return;
+    bool const first = lastReport == 0;
+    lastReport = now;
+
+    ai::bot_update::Snapshot const s = ai::bot_update::Global().Take();
+    // The first window starts whenever the switch was read; it is reset, not reported.
+    if (first)
+        return;
+
+    sLog.outBasic("[BotUpdate] calls=%llu avg_us=%llu p50_us=%llu p90_us=%llu p99_us=%llu p999_us=%llu max_us=%llu over10ms=%llu over20ms=%llu",
+        (unsigned long long)s.calls, (unsigned long long)(s.calls ? s.totalUs / s.calls : 0),
+        (unsigned long long)ai::bot_update::PercentileUs(s, 0.50), (unsigned long long)ai::bot_update::PercentileUs(s, 0.90),
+        (unsigned long long)ai::bot_update::PercentileUs(s, 0.99), (unsigned long long)ai::bot_update::PercentileUs(s, 0.999),
+        (unsigned long long)s.maxUs,
+        (unsigned long long)ai::bot_update::CallsAtLeastUs(s, 10000), (unsigned long long)ai::bot_update::CallsAtLeastUs(s, 20000));
+    for (ai::bot_update::Slow const& slow : s.slowest)
+        sLog.outBasic("[BotUpdateSlow] us=%llu %s", (unsigned long long)slow.us, slow.who.c_str());
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -949,6 +977,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ProcessQuestRescues();
     ProcessParkedBots();  // twow-repo#541/#551 (rndbot park), no-op without parked bots
     ReportBotInbox();     // twow-repo#563: [BotInbox] once per minute
+    ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
