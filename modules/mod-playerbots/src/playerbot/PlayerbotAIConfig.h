@@ -284,6 +284,8 @@ public:
     bool turnInRpg;
     bool globalSoundEffects;
     bool shareTargets;
+    // twow-repo#541 (R2b): a bot without group and master skips the shared-targets lookup.
+    bool soloOwnAttackersOnly;
     std::list<uint32> randomBotGuilds;
 	std::list<uint32> pvpProhibitedZoneIds;
     bool enableGreet;
