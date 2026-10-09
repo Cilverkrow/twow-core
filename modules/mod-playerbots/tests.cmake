@@ -2196,3 +2196,9 @@ add_test(NAME static_spell_lists_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/static_spell_lists_source_contract_tests.cmake")
+
+# twow-repo#541: microseconds per action and for the trigger phase in the engine trace (BotUpdateTrace).
+add_test(NAME trace_action_us_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
