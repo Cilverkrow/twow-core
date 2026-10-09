@@ -3,6 +3,7 @@
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/AiJitterPolicy.h"
+#include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/MemStoresPolicy.h"
@@ -341,6 +342,39 @@ bool PlayerbotAI::AllowDelayJitter() const
 {
     // Out of combat only: in combat the delays follow cast times and the global cooldown.
     return bot && !bot->IsInCombat();
+}
+
+// twow-repo#541 (audit A17, AiPlayerbot.Perf.CombatIdleYield, default 0, behaviour-changing): the combat pass just
+// executed no action. While the bot auto-attacks its current target (melee swing with the victim in melee reach,
+// auto shot or wand) and is not casting, the next pass waits ai::combat_idle::StretchedDelay instead of ReactDelay.
+// Bots with a heal strategy keep ReactDelay. Own bot and own context only. UpdateAI ends the wait early when the
+// auto attack changes.
+void PlayerbotAI::StretchCombatIdle()
+{
+    // The DoNextAction tail can switch engines (ResetStrategies) after the engine call: no stretch then.
+    if (currentEngine != engines[(uint8)BotState::BOT_STATE_COMBAT])
+        return;
+
+    Unit* const victim = bot->GetVictim();
+    if (!victim || bot->IsNonMeleeSpellCasted(true, false, true))
+        return;
+
+    // A melee state kept from an earlier approach (casters, hunter dead zone) only counts while the victim is in reach.
+    bool const meleeSwing = bot->hasUnitState(UNIT_STAT_MELEE_ATTACKING) && bot->CanReachWithMeleeAutoAttack(victim);
+    bool const autoRepeat = bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL) != nullptr;
+    if (!meleeSwing && !autoRepeat)
+        return;
+
+    if (ContainsStrategy(STRATEGY_TYPE_HEAL))
+        return;
+
+    bool const victimIsTarget = victim == aiObjectContext->GetValue<Unit*>("current target")->Get();
+    if (!ai::combat_idle::IsAutoAttacking(victimIsTarget, meleeSwing, autoRepeat))
+        return;
+
+    aiInternalUpdateDelay = ai::combat_idle::StretchedDelay(sPlayerbotAIConfig.reactDelay);
+    combatIdleVictim = victim->GetObjectGuid();
+    ai::combat_idle::stretched.fetch_add(1, std::memory_order_relaxed);
 }
 
 PlayerbotAI::~PlayerbotAI()
@@ -939,6 +973,24 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         isWaiting = false;
     }
 
+    // twow-repo#541 (audit A17): a stretched combat-idle wait ends as soon as the auto attack it waited on changed
+    // (victim changed or gone, victim out of melee reach, swing and autorepeat stopped).
+    if (!combatIdleVictim.IsEmpty())
+    {
+        Unit* const victim = bot->GetVictim();
+        bool const meleeSwing = victim && bot->hasUnitState(UNIT_STAT_MELEE_ATTACKING) && bot->CanReachWithMeleeAutoAttack(victim);
+        if (ai::combat_idle::ShouldWake(combatIdleVictim.GetRawValue(), victim ? victim->GetObjectGuid().GetRawValue() : 0,
+            meleeSwing, bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL) != nullptr))
+        {
+            combatIdleVictim.Clear();
+            if (ai::combat_idle::WakeResets(aiInternalUpdateDelay, ai::combat_idle::StretchedDelay(sPlayerbotAIConfig.reactDelay)))
+            {
+                ResetAIInternalUpdateDelay();
+                ai::combat_idle::woken.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    }
+
     // cancel logout in combat
     if (bot->IsStunnedByLogout() || bot->GetSession()->isLogingOut())
     {
@@ -1304,6 +1356,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     SC_PHASE("UpdateAI.UpdateAIReaction", bot ? bot->GetName() : "(null)");
     if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())
     {
+        // twow-repo#541 (audit A17): this pass ends any stretched combat-idle wait.
+        combatIdleVictim.Clear();
+
         // Update the delay with the spell cast time
         Spell* currentSpell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
         if (currentSpell && (currentSpell->getState() == SPELL_STATE_CASTING) && (currentSpell->GetCastedTime() > 0U))
@@ -1318,6 +1373,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         }
 
         SC_PHASE("UpdateAI.UpdateAIInternal", bot ? bot->GetName() : "(null)");
+        // twow-repo#541 (audit A17): set by DoNextAction when the combat engine executed nothing.
+        combatIdleTick = false;
         UpdateAIInternal(elapsed, minimal);
 
         bool min = minimal;
@@ -1329,7 +1386,13 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             min = false;
 
         SC_PHASE("UpdateAI.YieldAIInternalThread", bot ? bot->GetName() : "(null)");
+        bool const yieldSetDelay = aiInternalUpdateDelay < sPlayerbotAIConfig.reactDelay;
         YieldAIInternalThread(min);
+
+        // twow-repo#541 (audit A17, AiPlayerbot.Perf.CombatIdleYield, default 0, behaviour-changing): a combat pass
+        // without an action while the bot auto-attacks waits 3x ReactDelay instead of ReactDelay.
+        if (ai::combat_idle::MayStretch(sPlayerbotAIConfig.perfCombatIdleYield, combatIdleTick, yieldSetDelay, min) && !HasRealPlayerMaster())
+            StretchCombatIdle();
     }
     SC_PHASE("UpdateAI.exit", bot ? bot->GetName() : "(null)");
 }
@@ -2862,7 +2925,10 @@ void PlayerbotAI::DoNextAction(bool min)
     bool minimal = !AllowActivity();
 
     SC_PHASE("DoNextAction.engineDoNextAction", bot ? bot->GetName() : "(null)");
-    currentEngine->DoNextAction(NULL, 0, (minimal || min), bot->IsTaxiFlying());
+    Engine* const engine = currentEngine;
+    bool const executed = engine->DoNextAction(NULL, 0, (minimal || min), bot->IsTaxiFlying());
+    // twow-repo#541 (audit A17): read by UpdateAI only when AiPlayerbot.Perf.CombatIdleYield is on.
+    combatIdleTick = !executed && engine == engines[(uint8)BotState::BOT_STATE_COMBAT] && currentEngine == engine;
     SC_PHASE("DoNextAction.afterEngine", bot ? bot->GetName() : "(null)");
 
     if (!bot->IsInWorld()) //Teleport out of bg

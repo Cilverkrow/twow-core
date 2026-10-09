@@ -1938,6 +1938,16 @@ AiPlayerbot.CanCastSpell.CheckPower = 0
 # impossible. No per-cast spell name lookup: a few field reads and one compare per isPossible. Logs
 # [SpellIdRefresh] when the id changed, [SpellRangeRefresh] when only the range changed. 0 = as before (default).
 AiPlayerbot.CastSpell.RefreshOnLearn = 0
+# twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
+# combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
+# pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,
+# auto shot or wand) waits 3x ReactDelay (300 ms) before the next AI pass instead of ReactDelay. Not for bots
+# with a heal strategy or while casting or channeling. The whole internal AI pass waits: every combat trigger
+# (abilities, procs, interrupts, low health, flee/avoid aoe, dispels, buffs, taunts) and the bot's packet and
+# chat handling come up to about 200 ms later. The wait ends at the next update when the victim changes or
+# leaves melee reach or the auto attack stops (not on new attackers or trigger changes). Reactions and the
+# 500 ms facing correction are unchanged. One [CombatIdle] line per minute. 0 = as before (default).
+AiPlayerbot.Perf.CombatIdleYield = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

@@ -2243,3 +2243,23 @@ add_test(NAME spell_refresh_on_learn_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/spell_refresh_on_learn_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A17): combat-idle yield behind AiPlayerbot.Perf.CombatIdleYield (default 0, behaviour-changing).
+add_executable(combat_idle_policy_tests
+  "${PB_MODULE_DIR}/t/combat_idle_policy_tests.cpp")
+
+target_include_directories(combat_idle_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(combat_idle_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME combat_idle_policy
+  COMMAND combat_idle_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME combat_idle_yield_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/combat_idle_yield_source_contract_tests.cmake")
