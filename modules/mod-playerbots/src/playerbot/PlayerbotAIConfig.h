@@ -548,6 +548,7 @@ public:
     bool perfLogActionFastPath = false;  // twow-repo#541 (audit A11): no action-log lookup while no file can be written, PerfMon action/trigger keys only with PerfMon on (0 = off)
     bool botUpdateTraceTailFix = false;  // twow-repo#541 (audit A11): engine last-action trail keeps the newest 512 characters, cut at an entry (0 = off)
     bool perfTrainableSpellsPrecheck = false;  // twow-repo#541 (audit A12): "trainable spells" skips a spell that fails the core's own skill RED check before the trainer state walk, roster state read once per call (0 = off)
+    bool perfRacialsSkipUnbuildable = false;  // twow-repo#541 (audit A13): racials strategy does not register gift of the naaru / mana tap / arcane torrent (no action in this vanilla build); NOT strictly neutral, engine queue path in rare ticks (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

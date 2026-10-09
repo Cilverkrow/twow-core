@@ -1877,6 +1877,18 @@ AiPlayerbot.BotUpdateTraceTailFix = 0
 # the full trainer state walk, and reads the roster flag / profession pair once per calculation, at the
 # first GREEN spell. Same trainable spells, same order, less CPU. 0 = old path (default).
 AiPlayerbot.Perf.TrainableSpellsPrecheck = 0
+# twow-repo#541 (audit A13): 1 = the racials strategy no longer registers "gift of the naaru" (on low
+# health), "mana tap" and "arcane torrent". These spells have no bot action in this (vanilla) build, so
+# the bot could never cast them; their queue entries only ended as "UNKNOWN". Saves three trigger-node
+# checks (mana tap, arcane torrent, racials low health), the dead queue entry and its action lookup.
+# NOT strictly behaviour-neutral: today a lingering racial entry (relevance 71) can make the engine
+# re-push another action without its prerequisites (or end it IMPOSSIBLE and run its alternatives);
+# with 1 that action takes its normal prerequisite path, as it already does against targets without
+# mana. One-tick difference in rare combat ticks, no new actions. Player-visible text also changes: the
+# "action" chat command reply and [BotUpdateSlow] no longer list these three UNKNOWN entries, and with
+# action logging on the public "try: mana tap unknown" say disappears. Enable only after an OB-30
+# measurement and owner go. 0 = all nodes as before (default).
+AiPlayerbot.Perf.RacialsSkipUnbuildable = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
