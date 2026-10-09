@@ -8,6 +8,7 @@
 #endif
 #include "playerbot/TravelMgr.h"
 #include "SharedValueContext.h"
+#include "playerbot/BgMasterCachePolicy.h"
 
 using namespace ai;
 
@@ -16,10 +17,21 @@ std::list<CreatureDataPair const*> BgMastersValue::Calculate()
     BattleGroundTypeId bgTypeId = (BattleGroundTypeId)stoi(qualifier);
 
     std::vector<uint32> entries;
-    std::map<Team, std::map<BattleGroundTypeId, std::list<uint32>>> battleMastersCache = sRandomPlayerbotMgr.getBattleMastersCache();
-    entries.insert(entries.end(), battleMastersCache[TEAM_BOTH_ALLOWED][bgTypeId].begin(), battleMastersCache[TEAM_BOTH_ALLOWED][bgTypeId].end());
-    entries.insert(entries.end(), battleMastersCache[ALLIANCE][bgTypeId].begin(), battleMastersCache[ALLIANCE][bgTypeId].end());
-    entries.insert(entries.end(), battleMastersCache[HORDE][bgTypeId].begin(), battleMastersCache[HORDE][bgTypeId].end());
+    if (sPlayerbotAIConfig.perfBgMasterCacheRef)
+    {
+        // twow-repo#541 (audit A09): no deep copy of the global cache; same entries in the same order (absent key = nothing).
+        auto const& battleMastersCacheRef = sRandomPlayerbotMgr.getBattleMastersCacheRef();
+        ai::bgmaster::Append(entries, ai::bgmaster::FindEntries(battleMastersCacheRef, TEAM_BOTH_ALLOWED, bgTypeId));
+        ai::bgmaster::Append(entries, ai::bgmaster::FindEntries(battleMastersCacheRef, ALLIANCE, bgTypeId));
+        ai::bgmaster::Append(entries, ai::bgmaster::FindEntries(battleMastersCacheRef, HORDE, bgTypeId));
+    }
+    else
+    {
+        std::map<Team, std::map<BattleGroundTypeId, std::list<uint32>>> battleMastersCache = sRandomPlayerbotMgr.getBattleMastersCache();
+        entries.insert(entries.end(), battleMastersCache[TEAM_BOTH_ALLOWED][bgTypeId].begin(), battleMastersCache[TEAM_BOTH_ALLOWED][bgTypeId].end());
+        entries.insert(entries.end(), battleMastersCache[ALLIANCE][bgTypeId].begin(), battleMastersCache[ALLIANCE][bgTypeId].end());
+        entries.insert(entries.end(), battleMastersCache[HORDE][bgTypeId].begin(), battleMastersCache[HORDE][bgTypeId].end());
+    }
 
     std::list<CreatureDataPair const*> bmGuids;
 
@@ -126,6 +138,11 @@ BattleGroundTypeId RpgBgTypeValue::Calculate()
     if (!bot->HasFreeBattleGroundQueueId())
         return BATTLEGROUND_TYPE_NONE;
 
+    // twow-repo#541 (audit A09, AiPlayerbot.Perf.BgMasterCacheRef): reference taken once, no copy per queue type.
+    // nullptr = switch off, old by-value copy below.
+    std::map<Team, std::map<BattleGroundTypeId, std::list<uint32>>> const* battleMastersCacheRef =
+        sPlayerbotAIConfig.perfBgMasterCacheRef ? &sRandomPlayerbotMgr.getBattleMastersCacheRef() : nullptr;
+
     if(guidPosition)
         for (uint32 i = 1; i < MAX_BATTLEGROUND_QUEUE_TYPES; i++)
         {
@@ -143,6 +160,18 @@ BattleGroundTypeId RpgBgTypeValue::Calculate()
             // check if already in queue
             if (bot->InBattleGroundQueueForBattleGroundQueueType(queueTypeId))
                 continue;
+
+            if (battleMastersCacheRef)
+            {
+                // Same order and result as the copy below: neutral masters first, then the bot's team.
+                if (ai::bgmaster::Contains(ai::bgmaster::FindEntries(*battleMastersCacheRef, TEAM_BOTH_ALLOWED, bgTypeId), guidPosition.GetEntry()))
+                    return bgTypeId;
+
+                if (ai::bgmaster::Contains(ai::bgmaster::FindEntries(*battleMastersCacheRef, bot->GetTeam(), bgTypeId), guidPosition.GetEntry()))
+                    return bgTypeId;
+
+                continue;
+            }
 
             std::map<Team, std::map<BattleGroundTypeId, std::list<uint32>>> battleMastersCache = sRandomPlayerbotMgr.getBattleMastersCache();
 

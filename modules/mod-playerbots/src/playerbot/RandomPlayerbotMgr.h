@@ -197,6 +197,9 @@ public:
         virtual void MovePlayerBot(uint32 guid, PlayerbotHolder* newHolder) override;
 
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > getBattleMastersCache() { return BattleMastersCache; }
+        // twow-repo#541 (audit A09, AiPlayerbot.Perf.BgMasterCacheRef): read-only view without the deep copy. Written only by
+        // LoadBattleMastersCache (PlayerbotAIConfig::Initialize); readers use find() (ai::bgmaster), never operator[].
+        const std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > >& getBattleMastersCacheRef() const { return BattleMastersCache; }
 
         float getActivityMod() { return activityMod; }
         float getActivityPercentage() { return activityMod * 100.0f; }
