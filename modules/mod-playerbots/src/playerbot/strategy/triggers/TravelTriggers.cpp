@@ -4,6 +4,7 @@
 
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/TravelRequestPolicy.h"
 #include "playerbot/ServerFacade.h"
 using namespace ai;
 
@@ -46,4 +47,20 @@ bool AtDarkPortalOutlandTrigger::IsActive()
         }
     }
     return false;
+}
+
+bool TravelRequestTrigger::IsActive()
+{
+    // Same name as ValueTrigger: the qualifier is the event source and the stored travel condition.
+    name = getQualifier();
+
+    // twow-repo#541 (audit A18): the request actions are useless while the target is prepared or active
+    // (RequestTravelTargetAction::isUseful), so their condition is not read then.
+    TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
+    bool const prepare = target && target->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE;
+    bool const active = !prepare && AI_VALUE(bool, "travel target active");
+    if (!travel_request::MayCheck(prepare, active))
+        return false;
+
+    return AI_VALUE(bool, getQualifier());
 }
