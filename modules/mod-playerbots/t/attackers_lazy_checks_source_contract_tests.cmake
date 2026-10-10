@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A06, cards 45 and 6): behind AiPlayerbot.Perf.AttackersLazyChecks (default 0)
 # AttackersValue::IsValid does less work for the same result.
 # Level 1: the PvP-prohibited-zone area lookup (global TerrainManager lock + VMAP query) runs only where

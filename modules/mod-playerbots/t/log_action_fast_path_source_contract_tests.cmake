@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A11, cards 33/34/35): Engine::LogAction fast path and last-action trail tail.
 # AiPlayerbot.Perf.LogActionFastPath (default 0): the per-bot action-log lookup (global sFilesMutex) only
 # when a file can be written - for the engine tee and every BotActionLog::Write/LogState caller - and the

@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A03, cards 47 and 16): behind AiPlayerbot.Perf.NearestUnitsAcceptFirst (default 0)
 # NearestUnitsValue::Calculate runs AcceptUnit before the LOS raycast, only with ignoreLos == false and
 # only for subclasses that declare a pure AcceptUnit (AcceptUnitBeforeLos). "nearest friendly players"
