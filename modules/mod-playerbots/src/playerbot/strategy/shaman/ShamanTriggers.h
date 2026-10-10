@@ -1,5 +1,6 @@
 #pragma once
 #include "playerbot/strategy/triggers/GenericTriggers.h"
+#include "playerbot/KnownSpellGatePolicy.h"
 
 namespace ai
 {
@@ -365,6 +366,15 @@ namespace ai
 
         virtual bool IsActive() override
         {
+            if (sPlayerbotAIConfig.perfPartyBuffKnownSpellGate)
+            {
+                // twow-repo#541 (audit A22): own cheap checks first, party scan last. The gate uses the action's real
+                // spell name ("water walking"); this trigger's spell member is the pseudo name "water walking on party".
+                return AI_VALUE2(bool, "swimming", "self target")
+                    && knownspell::MayScanParty(true, {"water walking"},
+                        [this](char const* spellName) -> uint32 { return AI_VALUE2(uint32, "spell id", spellName); })
+                    && BuffOnPartyTrigger::IsActive();
+            }
             return BuffOnPartyTrigger::IsActive() && AI_VALUE2(bool, "swimming", "self target");
         }
     };
@@ -376,6 +386,15 @@ namespace ai
 
         virtual bool IsActive() override
         {
+            if (sPlayerbotAIConfig.perfPartyBuffKnownSpellGate)
+            {
+                // twow-repo#541 (audit A22): own cheap checks first, party scan last. The gate uses the action's real
+                // spell name ("water breathing"); this trigger's spell member is the pseudo name "water breathing on party".
+                return AI_VALUE2(bool, "swimming", "self target")
+                    && knownspell::MayScanParty(true, {"water breathing"},
+                        [this](char const* spellName) -> uint32 { return AI_VALUE2(uint32, "spell id", spellName); })
+                    && BuffOnPartyTrigger::IsActive();
+            }
             return BuffOnPartyTrigger::IsActive() && AI_VALUE2(bool, "swimming", "self target");
         }
     };
