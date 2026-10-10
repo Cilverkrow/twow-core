@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A07, card 28): behind AiPlayerbot.PetDeadNoWorldPetFalse (default 0 = as before) the
 # hunter value "pet dead" is false when the bot has no pet in the world. Revive Pet can only revive a dead pet
 # in the world (core CheckCast SUMMON_DEAD_PET -> SPELL_FAILED_NO_PET), so the synchronous character_pet

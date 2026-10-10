@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A22): behind AiPlayerbot.Perf.PartyBuffKnownSpellGate (default 0 = off) five party
 # buff/cure triggers (priest divine spirit / shadow protection on party, shaman water breathing / water walking
 # on party, paladin cleanse party member cure magic) skip their party scan while the bot knows no rank of the

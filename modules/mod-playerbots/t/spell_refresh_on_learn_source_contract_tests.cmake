@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A27, design A27x + reviews; owner approval 09.10.2026 relayed by OB-00; BEHAVIOUR CHANGE,
 # default 0): CastSpellAction reads its spell id and range once, when the action is first created, and actions live
 # for the whole session, so spells learned while online stayed impossible on other targets until a relog. With
