@@ -58,6 +58,7 @@
 #include "PlayerbotLLMInterface.h"
 
 #include <boost/algorithm/string.hpp>
+#include <optional>
 
 #ifdef MANGOSBOT_TWO
 #include "Entities/Vehicle.h"
@@ -692,7 +693,17 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             sharedValueCount = uint32(counts.second);
             // Hotfix 8.1: the other per-bot stores.
             whisperCount = uint32(whispers.size());
-            chatQueueCount = uint32(chatCommands.size() + chatReplies.size());
+            size_t queuedCommands = 0;
+            size_t queuedReplies = 0;
+            {
+                std::scoped_lock lock(chatCommandsMutex);   // audit A29; one lock at a time, never nested
+                queuedCommands = chatCommands.size();
+            }
+            {
+                std::scoped_lock lock(chatRepliesMutex);
+                queuedReplies = chatReplies.size();
+            }
+            chatQueueCount = uint32(queuedCommands + queuedReplies);
             packetQueueCount = uint32(botOutgoingPacketHandlers.QueueSize() + masterIncomingPacketHandlers.QueueSize() +
                 masterOutgoingPacketHandlers.QueueSize());
             recordedCount = uint32(m_recordedMessages.size());
@@ -1942,14 +1953,24 @@ void PlayerbotAI::HandleCommands()
 {
     ExternalEventHelper helper(aiObjectContext);
     std::list<ChatCommandHolder> delayed;
-    while (!chatCommands.empty())
+    // Audit A29 (twow-repo#563): take one command at a time under the lock and run it outside, so a command
+    // that queues another one (same pass, as before) cannot deadlock and the AsyncPackets thread never waits
+    // for a command to finish.
+    while (true)
     {
-        ChatCommandHolder holder = chatCommands.front();
+        std::optional<ChatCommandHolder> next;
+        {
+            std::scoped_lock lock(chatCommandsMutex);
+            if (chatCommands.empty())
+                break;
+            next.emplace(chatCommands.front());
+            chatCommands.pop();
+        }
+        ChatCommandHolder& holder = *next;
         time_t checkTime = holder.GetTime();
         if (checkTime && time(0) < checkTime)
         {
             delayed.push_back(holder);
-            chatCommands.pop();
             continue;
         }
 
@@ -1961,14 +1982,19 @@ void PlayerbotAI::HandleCommands()
             //TellPlayer(out);
             //helper.ParseChatCommand("help");
         }
-
-        chatCommands.pop();
     }
 
+    std::scoped_lock lock(chatCommandsMutex);
     for (std::list<ChatCommandHolder>::iterator i = delayed.begin(); i != delayed.end(); ++i)
     {
         chatCommands.push(*i);
     }
+}
+
+void PlayerbotAI::QueueChatCommand(ChatCommandHolder const& cmd)
+{
+    std::scoped_lock lock(chatCommandsMutex);
+    chatCommands.push(cmd);
 }
 
 void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
@@ -2304,7 +2330,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     if (type == CHAT_MSG_RAID_WARNING && filtered.find(bot->GetName()) != std::string::npos && filtered.find("award") == std::string::npos)
     {
         ChatCommandHolder cmd("warning", &fromPlayer, type);
-        chatCommands.push(cmd);
+        QueueChatCommand(cmd);
         return;
     }
 
@@ -2340,7 +2366,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
             }
         }
         ChatCommandHolder cmd(remaining, &fromPlayer, type, time(0) + index);
-        chatCommands.push(cmd);
+        QueueChatCommand(cmd);
     }
     else if (filtered == "reset")
     {
@@ -2392,7 +2418,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
                (unsigned)type,
                filtered.c_str());
         ChatCommandHolder cmd(filtered, &fromPlayer, type);
-        chatCommands.push(cmd);
+        QueueChatCommand(cmd);
     }
 }
 

@@ -915,7 +915,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
             Field* fields = results->Fetch();
             uint32 accountId = fields[0].GetUInt32();
 
-            sPlayerbotAIConfig.randomBotAccounts.push_back(accountId);
+            sPlayerbotAIConfig.AddRandomBotAccount(accountId);
         }
 
         return;
@@ -1062,7 +1062,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
         Field* fields = results->Fetch();
         uint32 accountId = fields[0].GetUInt32();
 
-        sPlayerbotAIConfig.randomBotAccounts.push_back(accountId);
+        sPlayerbotAIConfig.AddRandomBotAccount(accountId);
 
         int count = sAccountMgr.GetCharactersCount(accountId);
 #ifdef MANGOSBOT_TWO
@@ -1189,7 +1189,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
 
     if (!botsCreated)
     {
-	    sLog.outString("No new random bots needed. Accounts: %zu, bots: %d.", sPlayerbotAIConfig.randomBotAccounts.size(), totalRandomBotChars);
+	    sLog.outString("No new random bots needed. Accounts: %zu, bots: %d.", sPlayerbotAIConfig.RandomBotAccountCount(), totalRandomBotChars);
 
         return;
     }
@@ -1228,7 +1228,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
         delete player;
         delete session;
     }
-    sLog.outString("%zu random bot accounts with %d characters available", sPlayerbotAIConfig.randomBotAccounts.size(), totalRandomBotChars+botsCreated);
+    sLog.outString("%zu random bot accounts with %d characters available", sPlayerbotAIConfig.RandomBotAccountCount(), totalRandomBotChars+botsCreated);
 }
 
 
@@ -1254,7 +1254,7 @@ void RandomPlayerbotFactory::CreateRandomGuilds()
     if (charAccGuids.empty())
         return;
 
-    for (auto charAcc : sPlayerbotAIConfig.randomBotAccounts)
+    for (auto charAcc : sPlayerbotAIConfig.RandomBotAccountsSnapshot())
     {
         if (!charAccGuids[charAcc].empty())
             for (auto charGuid : charAccGuids[charAcc])
