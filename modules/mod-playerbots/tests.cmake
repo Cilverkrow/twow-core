@@ -2375,3 +2375,9 @@ set_target_properties(park_caps_policy_tests PROPERTIES
 add_test(NAME park_caps_policy
   COMMAND park_caps_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541: microseconds per action and for the trigger phase in the engine trace (BotUpdateTrace).
+add_test(NAME trace_action_us_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
