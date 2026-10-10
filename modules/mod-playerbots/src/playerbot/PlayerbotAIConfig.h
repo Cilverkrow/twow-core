@@ -541,6 +541,7 @@ public:
     bool findCorpseLazySpot = false;  // twow-repo#541 (audit A02): find corpse skips the safe revive spot in the two branches that never use it (0 = off)
     bool nearestUnitsAcceptFirst = false;  // twow-repo#541 (audit A03): nearest npcs / friendly players / stealthed units run their pure filter before the LOS raycast; friendly players visit the world container only (0 = off)
     bool perfGatherLootFastPath = false;  // twow-repo#541 (audit A04+A05): "add gathering loot" skill reject before the LOS raycast, corpse list only with skinning (0 = off)
+    uint32 perfAttackersLazyChecks = 0;  // twow-repo#541 (audit A06): AttackersValue::IsValid level 1 = area lookup only where read (enemy players, pets), 2 = plus the bot's own not-fighting candidates rejected first (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

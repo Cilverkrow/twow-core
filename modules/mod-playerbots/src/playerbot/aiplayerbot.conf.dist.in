@@ -1833,6 +1833,15 @@ AiPlayerbot.Perf.NearestUnitsAcceptFirst = 0
 # corpses added, less work; other readers of the nearest-corpses list may recompute it up to a second
 # earlier. 0 = off (default).
 AiPlayerbot.Perf.GatherLootFastPath = 0
+# twow-repo#541 (audit A06): the "attackers" validation does less work for the same result.
+# 1 = the area lookup for the PvP-prohibited zones (global terrain lock + VMAP query) runs only for enemy
+# players and pets, the only candidates that read it.
+# 2 = level 1, plus: a candidate of the bot's own pass that is not fighting it (no threat on bot/pet, not
+# their victim, not its attack/pull target, not its duel opponent, not its rti target) is dropped before
+# the visibility and free-move checks. Candidates of group members and the master keep the old order.
+# Same targets; the "rti target", "free move center" and "possible targets" values may refresh at other
+# moments. 0 = as before (default).
+AiPlayerbot.Perf.AttackersLazyChecks = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

@@ -2064,3 +2064,9 @@ add_test(NAME gather_loot_fast_path_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/gather_loot_fast_path_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A06): lazy checks in AttackersValue::IsValid (AiPlayerbot.Perf.AttackersLazyChecks, default 0).
+add_test(NAME attackers_lazy_checks_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/attackers_lazy_checks_source_contract_tests.cmake")
