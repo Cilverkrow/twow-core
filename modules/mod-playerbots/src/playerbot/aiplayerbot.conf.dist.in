@@ -47,6 +47,25 @@ AiPlayerbot.RandomBotJoinBG = 1
 # sees only real players and units fighting it (core Player flag, real players see it as always).
 # Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).
 AiPlayerbot.Park.HideFromBots = 0
+# twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
+# place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
+# faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
+# [Park] state=share logs where bots were parked (inn / city / here) once a minute.
+AiPlayerbot.Park.AnyLevelInn = 0
+# twow-repo#541 (grid sleep): 1 = a parked bot (and its pet) does not activate the map cells around it, so
+# the creatures there are not updated unless a real player or an active bot is near. The bot wakes the cells
+# again as soon as it fights, dies, teleports or is unparked. Its grid stays loaded; saving, logout and the
+# roster are unchanged. [ParkSleep] logs sleeping/woken bots and marked cells once a minute (also with
+# AiPlayerbot.BotUpdateTrace = 1 and this switch off, for the A/B). 0 = off (default).
+AiPlayerbot.Park.SleepGrid = 0
+
+# twow-repo#551 (owner 10.10.2026, test profile 20 / 150): MaxPerInn = parked bots per inn (0 = 25 as before);
+# MaxPerCity = parked bots per capital zone, its inns and city spots together (0 = no limit). A full inn sends
+# the bot to the next inn with room (any level with AnyLevelInn=1, else the level band), a full city to the next
+# inn outside it. With a cap on, a bot with no spot left is not parked (state=no_spot) and stays active - it never
+# parks in the open world because of a cap. [Park] state=caps logs inn/city occupancy once a minute.
+AiPlayerbot.Park.MaxPerInn = 0
+AiPlayerbot.Park.MaxPerCity = 0
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
@@ -1800,6 +1819,206 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#541 (audit A01): 1 = the flee point search (find corpse, flee, random bot flee teleport) evaluates
+# each candidate angle once per search and reuses that result when a later distance ring repeats the
+# same angle. Same candidate points, same chosen point, fewer height/water/LOS checks. 0 = off (default).
+AiPlayerbot.Perf.FleeMemo = 0
+# twow-repo#541 (audit A02): 1 = a ghost near its corpse first decides whether it only waits out the teleport
+# delay or is already moving, and in those two cases skips the search for a safe revive spot (FleeManager,
+# random point) that they never use. Same decisions, less work; only the random number stream shifts.
+# 0 = off (default).
+AiPlayerbot.FindCorpseLazySpot = 0
+# twow-repo#541 (audit A03): 1 = "nearest friendly players", "closest friendly players", "nearest npcs" and
+# "nearest stealthed units" run their cheap filter (player? hostile? stealthed?) before the line-of-sight
+# raycast, "nearest npcs" rejects players before the hostility check, and "nearest friendly players"
+# searches only the player container instead of every grid creature. Same lists in the same order, fewer
+# raycasts and VMAP lock acquisitions; only core error-log lines for units with an invalid faction
+# template can differ. 0 = off (default).
+AiPlayerbot.Perf.NearestUnitsAcceptFirst = 0
+# twow-repo#541 (audit A04+A05): 1 = "add gathering loot" (every second per bot out of combat) rejects
+# objects that need no gathering skill before the line-of-sight raycast, and reads the nearest-corpses
+# list only for a bot with skinning (a corpse is a gathering target only for skinning). Same nodes and
+# corpses added, less work; other readers of the nearest-corpses list may recompute it up to a second
+# earlier. 0 = off (default).
+AiPlayerbot.Perf.GatherLootFastPath = 0
+# twow-repo#541 (audit A06): the "attackers" validation does less work for the same result.
+# 1 = the area lookup for the PvP-prohibited zones (global terrain lock + VMAP query) runs only for enemy
+# players and pets, the only candidates that read it.
+# 2 = level 1, plus: a candidate of the bot's own pass that is not fighting it (no threat on bot/pet, not
+# their victim, not its attack/pull target, not its duel opponent, not its rti target) is dropped before
+# the visibility and free-move checks. Candidates of group members and the master keep the old order.
+# Same targets; the "rti target", "free move center" and "possible targets" values may refresh at other
+# moments. 0 = as before (default).
+AiPlayerbot.Perf.AttackersLazyChecks = 0
+# twow-repo#541 (audit A08): 1 = on its own AI tick (triggers, default actions, prerequisites,
+# alternatives, continuers, retries) each bot engine remembers which strategy defines the action node
+# for an action name, or that none does, and then asks only that strategy instead of every strategy on
+# every pushed action. Commands from players ("do ...", .bot) keep asking every strategy. Same
+# decisions, less CPU per AI tick. Emptied at every strategy change. 0 = off (default).
+AiPlayerbot.Perf.ActionNodeOwnerCache = 0
+# twow-repo#541 (audit A09): 1 = the values "rpg bg type" and "bg masters" read the battlemaster cache
+# through a const reference with find() instead of copying the whole nested map (up to five copies per
+# calculation of "rpg bg type"). Same results and decisions, only fewer allocations on the map threads.
+# 0 = old copy (default).
+AiPlayerbot.Perf.BgMasterCacheRef = 0
+# twow-repo#541 (audit A10): 1 = a travel choice builds one travel snapshot of the bot (PlayerTravelInfo)
+# instead of one per checked destination, reuses an "is active" answer it already has and checks the cheap
+# local quest hub conditions first. The destination lookup for exactly one quest or entry (needed quest
+# entries, quest list, quest objective travel) reads that key instead of walking all keys. Same choices,
+# less work on the map threads. 0 = old path (default).
+AiPlayerbot.Perf.TravelInfoReuse = 0
+# twow-repo#541 (audit A11): 1 = the engine log path does less work for the same output. While
+# AiPlayerbot.EnableActionLog is off and no per-bot action-log file is open, the action-log lookup (one
+# global mutex shared by all map threads) is skipped: engine lines of grouped bots and the cast, aura
+# and damage hooks of all bots. PerfMon action and trigger names are built only with
+# AiPlayerbot.PerfMonEnabled = 1. Same decisions, same log lines. 0 = as before (default).
+AiPlayerbot.Perf.LogActionFastPath = 0
+# twow-repo#541 (audit A11): 1 = the engine's last-action trail ([BotUpdateSlow] action=, [BotSlowUpdate]
+# and [Idle] last_action=, fishing break, "action" command) keeps the newest 512 characters, cut at an
+# entry '|'. The old trim kept only what lay beyond character 512 and often emptied the trail. Log and
+# chat text only; the fishing break line (first 160 characters) then shows the oldest part of that
+# window, and one update that logs more than about 512 characters still pushes its own tick marker out.
+# 0 = as before (default).
+AiPlayerbot.BotUpdateTraceTailFix = 0
+# twow-repo#541 (audit A12): 1 = the value "trainable spells" skips a trainer spell whose required skill
+# the bot does not have at the required value (the core's own RED check in GetTrainerSpellState) before
+# the full trainer state walk, and reads the roster flag / profession pair once per calculation, at the
+# first GREEN spell. Same trainable spells, same order, less CPU. 0 = old path (default).
+AiPlayerbot.Perf.TrainableSpellsPrecheck = 0
+# twow-repo#541 (audit A13): 1 = the racials strategy no longer registers "gift of the naaru" (on low
+# health), "mana tap" and "arcane torrent". These spells have no bot action in this (vanilla) build, so
+# the bot could never cast them; their queue entries only ended as "UNKNOWN". Saves three trigger-node
+# checks (mana tap, arcane torrent, racials low health), the dead queue entry and its action lookup.
+# NOT strictly behaviour-neutral: today a lingering racial entry (relevance 71) can make the engine
+# re-push another action without its prerequisites (or end it IMPOSSIBLE and run its alternatives);
+# with 1 that action takes its normal prerequisite path, as it already does against targets without
+# mana. One-tick difference in rare combat ticks, no new actions. Player-visible text also changes: the
+# "action" chat command reply and [BotUpdateSlow] no longer list these three UNKNOWN entries, and with
+# action logging on the public "try: mana tap unknown" say disappears. Enable only after an OB-30
+# measurement and owner go. 0 = all nodes as before (default).
+AiPlayerbot.Perf.RacialsSkipUnbuildable = 0
+# twow-repo#541 (audit A14): 1 = while the bot's hazards list is empty (open world, nearly always), the
+# chase movement (reach melee / reach spell / reach pull / reach party member) skips the hazard checks:
+# two navmesh path searches and one line-of-sight ray whose results could only be logged. Same end
+# position, same MoveChase, same movement decisions. With hazards present the old checks run unchanged.
+# Side effects that go away: the mmap tile loads those path searches triggered (already loaded around
+# the bot in practice, assessed negligible) and, at log level >= 2, the "[BOT CHASE] ... no hazard-
+# avoidance path" / "endPos invalid" lines, replaced by "hazard path checks skipped". 0 = off (default).
+AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards = 0
+# twow-repo#541 (audit A15): 1 = a bot without group skips the healer/tank classification of every nearby
+# player and the list scan when it looks for a group member without conjured water/food or without an
+# item (mage "give water" / "give food", the generic "party member without item" value of the give item
+# action). Only members of the bot's own group can be the answer, and a bot without group has none, so
+# the result is identical; every cached value of the bot (distance, mount speed, last movement, nearest
+# friendly players, rpg target) is still read as before, in the same order.
+# Disclosed side effects that go away (OB-00, 09.10.2026: shipped as neutral with this disclosure): the
+# skipped scan no longer calls GetPet() on nearby foreign players, so it no longer clears another
+# player's stale pet GUID (SetPet(nullptr), a cross-thread write) nor writes the "Unit::GetPet: ... not
+# exist." error log line; and the healer/tank check no longer fills the bot manager's event cache
+# (eventCache map insert, first-miss DB load) for those players. Performance only. 0 = off (default).
+AiPlayerbot.Perf.GiveItemGroupOnlyScan = 0
+# twow-repo#541 (audit A16): 1 = the castability checks (CanCastSpell for unit, game object and position
+# targets, CheckSpellTargetAlignment) take the neutral and out-of-control spell ids from constant arrays
+# instead of building a 20/24-node std::list on every call. Same ids in the same order, same answers, same
+# cast results: no behaviour change, only fewer heap allocations (about 0.5-2 us per call; not expected to
+# move [BotUpdate] or [MapTick] measurably on its own). 0 = the old per-call lists (default).
+AiPlayerbot.Perf.StaticSpellLists = 0
+# twow-repo#541 (audit A07): 1 = a hunter without a pet in the world never counts as having a dead pet: no
+# character_pet SELECT on the map thread (once a minute per such hunter) and no doomed Revive Pet attempt
+# each AI tick (Revive Pet needs the dead pet in the world). Behaviour change: a grouped hunter whose master
+# sits no longer flickers sit/stand every AI tick; the attempt no longer selects the hunter itself or resets
+# its last movement / stay time; a stale revive attempt no longer dismounts it. A dead pet in the world (also
+# one Call Pet brought back dead) is still revived. 0 = as before (default).
+AiPlayerbot.PetDeadNoWorldPetFalse = 0
+# twow-repo#541 (audit A33, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = CanCastSpell
+# for a unit target and a spell from the bot's spellbook also checks the mana/rage/energy/health cost, computed
+# like the real cast (talents, Clearcasting, Inner Focus, PLAYER_CHEAT_NO_POWER included, no mod charge used).
+# An unaffordable spell then counts as impossible (action not executed, trigger not active, no walk into range,
+# no pull with it; also overrides every tolerated pass: facing/standing/moving/try-again and range/LOS/combat/mount)
+# instead of failing inside the cast. Casts with a cast item (also spells on an item target, e.g. weapon enchants and
+# poisons), pet spells and the GameObject/position overloads unchanged. 0 = as before (default).
+AiPlayerbot.CanCastSpell.CheckPower = 0
+# twow-repo#541 (audit A27, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a class spell
+# action re-reads its spell id and range when the bot learned a spell or rank, levelled, or spent or got back a
+# talent point since the action last looked (pet spell actions also: another pet; not while no pet is out). A
+# spell learned while online (trainer, level-up, talent, quest reward) is then used without a relog: spells on
+# other targets (party heals, resurrection, dispels, buffs on members, interrupts, CC, Charge) stop being
+# impossible. No per-cast spell name lookup: a few field reads and one compare per isPossible. Logs
+# [SpellIdRefresh] when the id changed, [SpellRangeRefresh] when only the range changed. 0 = as before (default).
+AiPlayerbot.CastSpell.RefreshOnLearn = 0
+# twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
+# combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
+# pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,
+# auto shot or wand) waits 3x ReactDelay (300 ms) before the next AI pass instead of ReactDelay. Not for bots
+# with a heal strategy or while casting or channeling. The whole internal AI pass waits: every combat trigger
+# (abilities, procs, interrupts, low health, flee/avoid aoe, dispels, buffs, taunts) and the bot's packet and
+# chat handling come up to about 200 ms later. The wait ends at the next update when the victim changes or
+# leaves melee reach or the auto attack stops (not on new attackers or trigger changes). Reactions and the
+# 500 ms facing correction are unchanged. One [CombatIdle] line per minute. 0 = as before (default).
+AiPlayerbot.Perf.CombatIdleYield = 0
+# twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
+# request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
+# their condition while the bot's travel target is being prepared or is active. The request actions are rejected
+# in that state anyway; the saving is the condition work (trainer spell scans, gathering checks, guild orders).
+# Behaviour change: a gathering purpose ([Purpose] state=start) is then declared only at a travel decision point
+# (no prepared or active target), no longer every 2 s in the background while the bot travels to another target;
+# request baskets pushed while a target is active no longer linger up to ExpireActionTime and run later with a
+# stale condition. Read whenever a bot's non-combat strategies are (re)built; toggle it with a restart, not with
+# a reload (a reload switches logged-in bots over one by one). 0 = as before (default).
+AiPlayerbot.Perf.TravelRequestGate = 0
+# twow-repo#541 (audit A22, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = five party
+# buff/cure triggers skip their party scan while the bot knows no rank of the spell their action casts: priest
+# "divine spirit on party" and "shadow protection on party", shaman "water breathing on party" and "water walking
+# on party" (these two check swimming before the scan), paladin "cleanse party member cure magic". Today such a
+# trigger fires anyway and its action ends IMPOSSIBLE. With 1 the action object is first built once the spell is
+# known, so its cached spell id is right: a bot that learns the spell while online (Water Breathing 22, Water
+# Walking 28, Shadow Protection 30, Cleanse 42, the Divine Spirit talent) really casts it on party members instead
+# of walking to them and failing until a relog. This overlaps AiPlayerbot.CastSpell.RefreshOnLearn only for the
+# first rank learned online; unlike it, this switch does not refresh the cached spell id and range on later
+# rank-ups (the first known rank stays until a relog). Custom strategies (cs) that bind these trigger names to
+# other actions are suppressed too while the spell is unknown. 0 = as before (default).
+AiPlayerbot.Perf.PartyBuffKnownSpellGate = 0
+# twow-repo#541 (audit A21, enable only after OB-30 measurement + owner go): 1 = a strategy change (pve/pvp/raid
+# switch every 5 s check of "in pve"/"in pvp"/"in raid fight", BG join, chat command ...) rebuilds the triggers of a
+# combat, non-combat or dead engine that is not running only when that engine is activated (engine change, full
+# reset, or at the start of its next walk after a non-full reset: "S:stale init"). The running engine and the
+# reaction engine still rebuild at once; this saves up to two engine rebuilds per switch. Bot decisions are the same,
+# apart from two residual differences after a non-full reset (chat shortcuts follow/stay/flee/grind..., leave group,
+# LFG): build-time inputs (aoe strategy, IsRanged/IsHeal, EnableGreet, first custom-strategy DB load) are read at
+# activation instead of at the switch, and continuers pushed into the idle engine in between are dropped by the
+# owed rebuild. One [LazyEngineInit] line per minute (deferred, caught, saved). Turning it off by a reload leaves
+# already deferred engines to be rebuilt on activation (safe). 0 = rebuild every engine at once (default).
+AiPlayerbot.Perf.LazyEngineInit = 0
+# twow-repo#541 (audit A23, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = "has attackers"
+# and the one-target variant of "possible attack targets" (enemy player chain) read the full "attackers" list
+# (computed for every bot anyway) instead of a second, separate "attackers::1" pass: about one attackers pass less
+# per bot-second. Same yes/no answer for the same moment, but the list can be up to 1 s older (cache granularity),
+# so every "has attackers" reader (combat start/end, mount/dismount, next target, tank assist, rogue/druid stealth,
+# hunter aspects, wait-for-group-recovery) can react up to 1 s later; a stale empty list can end combat while the
+# bot is being hit, with re-entry up to about 2 s later. When the bot itself starts combat (attack, pull) the full
+# list is reset, so it is rebuilt in combat state at once: dps/tank target, aoe and attacker counts may then see
+# targets that out of combat were ignored (hard hostiles more than 5 levels above a travelling/following bot).
+# Change it by restart, not by reload (a flip to 1 by reload can cost one early combat end per bot). 0 = off (default).
+AiPlayerbot.Perf.AttackersSingleList = 0
+# twow-repo#541 (audit A25, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go): 1 = the
+# party-target values (party member to heal/protect/remove roots/dispel/resurrect, ... without (my) aura, friendly
+# unit without aura, tank without aura/lifebloom, with daybreak, without item/food/water) keep their result inside
+# one AI pass of the bot until its next executed or failed action, instead of repeating the group scan on every read
+# (trigger, isUseful, reach spell, isPossible, Execute). A kept unit is resolved again by guid and must still be in
+# world on the bot's map, else the value recomputes as today. Differences: health/aura/death changes made by other
+# threads inside the pass (sub-ms) and a mount change by isPossible's in-combat Unmount (out-of-group buff allowance)
+# are seen at the next action or pass. "party member to soulstone" (D20 stagger roll) is never kept. Reads outside
+# the pass (chat, packets, reactions) and from other threads recompute as before. A reload flip 1->0->1 inside one
+# pass can give at most one stale read. 0 = off (default).
+AiPlayerbot.Perf.PartyTargetMemo = 0
+# twow-repo#541 (audit A32, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = for a bot without
+# a group, "possible targets", "possible targets no los" and "all targets" re-check the units of the bot's own
+# unfiltered sight-range search (the one the attackers value already runs, at most once per second) instead of
+# searching the grid again. Each unit must pass the search check again now (alive, not friendly, same map instance,
+# within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
+# later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
+AiPlayerbot.PossibleTargetsSharedSearch = 0
+
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
 # and restoration Flametongue, before that Rockbiter. 0 = old per-strategy choice (default).

@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "GenericActions.h"
 #include "UseItemAction.h"
+#include "playerbot/SpellStampPolicy.h"
 
 using namespace ai;
 
@@ -16,6 +17,9 @@ CastSpellAction::CastSpellAction(PlayerbotAI* ai, std::string spell)
     {
         range = spellRange;
     }
+
+    // twow-repo#541 (audit A27): a subclass that replaces the range afterwards (melee, judgement, shouts) no longer matches this.
+    rangeFromSpell = range;
 }
 
 bool CastSpellAction::Execute(Event& event)
@@ -87,6 +91,8 @@ bool CastSpellAction::Execute(Event& event)
 
 bool CastSpellAction::isPossible()
 {
+    RefreshSpellIdOnLearn();
+
     if (spellName == "mount")
     {
         if (!bot->IsMounted() && !bot->IsInCombat())
@@ -204,7 +210,61 @@ void CastSpellAction::SetSpellName(const std::string& name, std::string spellIDC
         if (ai->GetSpellRange(spellName, &spellRange))
         {
             range = spellRange;
+            rangeFromSpell = range;  // twow-repo#541 (audit A27): name switches (blessing, shoot/throw) keep the range spell-owned
         }
+    }
+}
+
+// twow-repo#541 (audit A27, AiPlayerbot.CastSpell.RefreshOnLearn, default 0): the spell id was read when the action
+// was first created and actions live for the whole session, so a spell, rank or pet spell that came later was
+// ignored by isPossible() until the next login. With the switch on, id and range are read again once per change of
+// the bot's known-spell stamp (spell map size, level, free talent points; the pet number only for pet spell
+// actions). Steady state: a few field reads and one compare, no per-cast spell name lookup. Deliberately not
+// SetSpellName(..., true): that would overwrite the ATTACK_DISTANCE/custom range of the melee subclasses.
+void CastSpellAction::RefreshSpellIdOnLearn()
+{
+    if (!sPlayerbotAIConfig.castSpellRefreshOnLearn)
+        return;
+
+    const bool tracksPet = SpellStampTracksPet();
+    // Pet guid entry = pet number, stable across resummons. Deliberately not Unit::GetPet(): it clears a pet guid
+    // it cannot find. Every other spell action leaves the pet out of its stamp.
+    const uint32 petNumber = tracksPet ? bot->GetPetGuid().GetEntry() : 0;
+    if (ai::spellstamp::DeferWithoutPet(tracksPet, petNumber))
+        return;
+
+    const uint64 stamp = ai::spellstamp::Make(bot->GetSpellMap().size(), bot->GetLevel(), bot->GetFreeTalentPoints(), petNumber);
+    if (stamp == knownSpellStamp)
+        return;
+
+    knownSpellStamp = stamp;
+
+    // The 'spell id' value may be up to 5 s old and predate the learn: recalculate it once now (own bot's value).
+    Value<uint32>* idValue = ai->GetAiObjectContext()->GetValue<uint32>("spell id", spellName);
+    if (!idValue)
+        return;
+
+    idValue->Reset();
+    const uint32 oldId = spellId;
+    spellId = idValue->Get();
+
+    const float oldRange = range;
+    float spellRange;
+    if (ai::spellstamp::RangeFollowsSpell(range, rangeFromSpell, ATTACK_DISTANCE) && ai->GetSpellRange(spellName, &spellRange))
+    {
+        range = spellRange;
+        rangeFromSpell = range;
+    }
+
+    if (spellId != oldId)
+    {
+        sLog.outBasic("[SpellIdRefresh] bot=%u level=%u spell=\"%s\" id=%u->%u range=%.1f->%.1f",
+            bot->GetGUIDLow(), bot->GetLevel(), spellName.c_str(), oldId, spellId, oldRange, range);
+    }
+    else if (range != oldRange)
+    {
+        sLog.outBasic("[SpellRangeRefresh] bot=%u level=%u spell=\"%s\" id=%u range=%.1f->%.1f",
+            bot->GetGUIDLow(), bot->GetLevel(), spellName.c_str(), spellId, oldRange, range);
     }
 }
 
@@ -217,6 +277,8 @@ Unit* CastSpellAction::GetTarget()
 
 bool CastPetSpellAction::isPossible()
 {
+    RefreshSpellIdOnLearn();
+
     Unit* spellTarget = GetTarget();
     if (!spellTarget)
         return false;

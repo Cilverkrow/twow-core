@@ -50,6 +50,7 @@
 #include <functional>
 #include <cstddef>
 #include <any>
+#include <atomic>
 #include <deque>
 
 struct Mail;
@@ -2035,6 +2036,8 @@ class Player final: public Unit
         bool m_bCanDelayTeleport;
         bool m_bHasDelayedTeleport;
         bool m_hiddenFromBots = false;  // twow-repo#541/#551
+        std::atomic<bool> m_gridSleep{ false };  // twow-repo#541 (SleepGrid), set in the world thread
+        bool m_gridSleepAsleep = false;          // twow-repo#541, map thread only: asleep in the last cell update
         bool m_bHasBeenAliveAtDelayedTeleport;
         uint32 m_areaCheckTimer; // Trigger call to UpdateTerainEnvironmentFlags/CheckAreaExploreAndOutdoor
 
@@ -2168,6 +2171,17 @@ class Player final: public Unit
         bool IsHiddenFromBots() const { return m_hiddenFromBots; }
         void SetHiddenFromBots(bool hidden);
         bool HasClientSocket() const;
+
+        // twow-repo#541 (park, AiPlayerbot.Park.SleepGrid): a parked bot with this flag does not activate the
+        // cells around it (Map::UpdateCells), so the creatures there are not updated unless someone else is
+        // near. Grid loading and unloading, saving and logout are unchanged. Set and cleared by the bot module.
+        void SetGridSleep(bool sleep) { m_gridSleep.store(sleep, std::memory_order_relaxed); }
+        bool HasGridSleepFlag() const { return m_gridSleep.load(std::memory_order_relaxed); }
+        // The flag counts only for a living bot out of combat, without attackers, not teleporting or flying:
+        // an attack wakes the cells in the next map update.
+        bool IsGridSleeping() const;
+        bool IsGridSleepAsleep() const { return m_gridSleepAsleep; }
+        void SetGridSleepAsleep(bool asleep) { m_gridSleepAsleep = asleep; }
         void SetSemaphoreTeleportNear(bool semphsetting);
         void SetSemaphoreTeleportFar(bool semphsetting);
         void SetPendingFarTeleport(bool pending) { mPendingFarTeleport = pending; }

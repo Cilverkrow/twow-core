@@ -9,6 +9,8 @@
 #include "playerbot/BotState.h"
 
 #include <functional>
+#include <unordered_map>
+#include <atomic>
 
 namespace ai
 {
@@ -52,6 +54,15 @@ namespace ai
 
     // -----------------------------------------------------------------------------------------------------------------------
 
+    // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): engine rebuilds put off because the engine was
+    // not running (deferred) and the ones run later at the start of its DoNextAction (caught). Relaxed counters,
+    // drained once per minute by the world thread ([LazyEngineInit]); deferred - caught = Init() calls saved.
+    namespace lazy_engine_init
+    {
+        inline std::atomic<uint64> deferred{ 0 };
+        inline std::atomic<uint64> caught{ 0 };
+    }
+
     enum ActionResult
     {
         ACTION_RESULT_UNKNOWN,
@@ -77,7 +88,9 @@ namespace ai
         std::string ListStrategies();
         std::list<std::string_view> GetStrategies();
 		bool ContainsStrategy(StrategyType type);
-		void ChangeStrategy(const std::string& names);
+        // twow-repo#541 (audit A21): deferInitWhileInactive = this engine neither runs nor is the reaction engine
+        // (PlayerbotAI decides). A real change then only marks the engine stale; the rebuild comes on activation.
+        void ChangeStrategy(const std::string& names, bool deferInitWhileInactive = false);
 		void PrintStrategies(Player* requester, const std::string& engineType);
         std::string GetLastAction() { return lastAction; }
         const Action* GetLastExecutedAction() const { return lastExecutedAction; }
@@ -101,14 +114,19 @@ namespace ai
 	    virtual ~Engine(void);
 
     protected:
-        bool MultiplyAndPush(NextAction** actions, float forceRelevance, bool skipPrerequisites, const Event& event, const char* pushType);
+        // twow-repo#541 (audit A08): ownerCache = true only on the bot's own AI tick (DoNextAction,
+        // ProcessTriggers, PushDefaultActions). ExecuteAction/CanExecuteAction also run for commands on
+        // foreign threads and keep the plain strategy walk.
+        bool MultiplyAndPush(NextAction** actions, float forceRelevance, bool skipPrerequisites, const Event& event, const char* pushType, bool ownerCache = false);
         // Returns false when the reset was deferred because a DoNextAction
         // walk owns the queue right now; see the comment at Engine::Reset.
         bool Reset();
         void ProcessTriggers(bool minimal);
         void PushDefaultActions();
-        void PushAgain(ActionNode* actionNode, float relevance, const Event& event);
-        ActionNode* CreateActionNode(const std::string& name);
+        void PushAgain(ActionNode* actionNode, float relevance, const Event& event, bool ownerCache = false);
+        ActionNode* CreateActionNode(const std::string& name, bool ownerCache = false);
+        // twow-repo#541 (audit A08): CreateActionNode through the per-engine owner cache.
+        ActionNode* CreateActionNodeCached(const std::string& name);
         virtual Action* InitializeAction(ActionNode* actionNode);
         virtual bool ListenAndExecute(Action* action, Event& event);
 
@@ -135,6 +153,10 @@ namespace ai
         {
             return strategiesHash ^ (static_cast<uint64>(strategies.size()) * 0x9E3779B97F4A7C15ULL);
         }
+        // twow-repo#541 (audit A08): called at every insert/erase/clear of `strategies`, also with the
+        // switch off (then the map is empty and this is one empty() check), so a config reload that
+        // turns the switch on again never finds an entry from an older strategy set.
+        void ClearActionNodeOwners() { if (!actionNodeOwners.empty()) actionNodeOwners.clear(); }
 
     protected:
 	    Queue queue;
@@ -144,6 +166,12 @@ namespace ai
         std::map<std::string, Strategy*> strategies;
         // XOR of StrategyNameHash() over every key in `strategies`.
         uint64 strategiesHash = 0;
+        // twow-repo#541 (audit A08, AiPlayerbot.Perf.ActionNodeOwnerCache): base action name (the part
+        // before the first "::") -> first strategy in `strategies` order whose ActionNode factories
+        // answer it, nullptr = none does. Only owners are kept, never nodes. Filled only by
+        // CreateActionNodeCached on the bot's own AI tick, emptied by ClearActionNodeOwners at every
+        // change of `strategies`. Per engine = per bot, same thread discipline as `strategies`.
+        std::unordered_map<std::string, Strategy*> actionNodeOwners;
         float lastRelevance;
         std::string lastAction;
         ActionExecutionListeners actionExecutionListeners;
@@ -154,6 +182,10 @@ namespace ai
         // DoNextAction re-inits once the walk is over.
         bool inDoNextAction = false;
         bool reinitPending = false;
+        // twow-repo#541 (audit A21): the strategy set changed while this engine was not running and its triggers,
+        // multipliers and queue are not rebuilt yet. Init() clears it; DoNextAction rebuilds first when set.
+        // Protected on purpose: only Engine::ChangeStrategy sets it.
+        bool initStale = false;
 
     public:
 		bool testMode;

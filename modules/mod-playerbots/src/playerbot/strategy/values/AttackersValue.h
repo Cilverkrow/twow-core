@@ -46,6 +46,8 @@ namespace ai
         static float GetRange() { return sPlayerbotAIConfig.sightDistance; }
 
         static bool InCombat(Unit* target, Player* player, bool checkPullTargets = true);
+        // twow-repo#541 (audit A06): the rti exception of IsValid (same test as in both branches), own context only.
+        static bool IsRtiTargetOf(Unit* target, Player* player);
 
         WorldPosition calculatePos;
     };

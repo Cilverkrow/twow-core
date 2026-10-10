@@ -1909,8 +1909,12 @@ void Player::Update(uint32 update_diff, uint32 p_time)
         bool transition = false;
         uint16 newInstanceId = sMapMgr.GetContinentInstanceId(GetMap()->GetId(), GetPositionX(), GetPositionY(), &transition);
         if (newInstanceId != GetInstanceId())
+        {
             if (!transition || !IsInCombat())
                 sMapMgr.ScheduleInstanceSwitch(this, newInstanceId);
+            else
+                sMapMgr.CountRegionSwitchDeferred();  // twow-repo#541 part C: border cell, fight goes on
+        }
     }
 
     SC_PHASE_PLAYER("Player::Update.beforeIsInWorldBlock");
@@ -23577,6 +23581,13 @@ void Player::SetHiddenFromBots(bool hidden)
     m_hiddenFromBots = hidden;
     if (IsInWorld() && !HasUnitState(UNIT_STAT_PENDING_VIS_UPDATE))
         AddUnitState(UNIT_STAT_PENDING_VIS_UPDATE);
+}
+
+// twow-repo#541 (park, AiPlayerbot.Park.SleepGrid): see Player.h.
+bool Player::IsGridSleeping() const
+{
+    return HasGridSleepFlag() && IsAlive() && !IsInCombat() && getAttackers().empty() && !IsBeingTeleported() &&
+        !IsTaxiFlying();
 }
 
 // A real client: bots run free-floating sessions without a socket.

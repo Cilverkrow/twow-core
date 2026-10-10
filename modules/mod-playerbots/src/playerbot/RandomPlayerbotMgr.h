@@ -198,6 +198,9 @@ public:
         virtual void MovePlayerBot(uint32 guid, PlayerbotHolder* newHolder) override;
 
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > getBattleMastersCache() { return BattleMastersCache; }
+        // twow-repo#541 (audit A09, AiPlayerbot.Perf.BgMasterCacheRef): read-only view without the deep copy. Written only by
+        // LoadBattleMastersCache (PlayerbotAIConfig::Initialize); readers use find() (ai::bgmaster), never operator[].
+        const std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > >& getBattleMastersCacheRef() const { return BattleMastersCache; }
 
         float getActivityMod() { return activityMod; }
         float getActivityPercentage() { return activityMod * 100.0f; }
@@ -350,6 +353,7 @@ public:
             bool checkPending = false;
             uint64 spotKey = 0;    // the inn or city spot (capacity count), see ParkSpotKey
             uint32 slot = 0;
+            uint32 cityZone = 0;   // twow-repo#551 (Park.MaxPerCity): capital zone of the spot, 0 = none
         };
         std::map<uint32, ParkEntry> parkedBots;
         std::map<uint64, std::set<uint32>> parkSpotSlots;  // spot key -> taken slots (capacity ai::park::SpotCapacity)
@@ -361,14 +365,32 @@ public:
             WorldLocation loc;
             uint32 minLevel = 0;
             uint32 maxLevel = 0;
+            uint32 cityZone = 0;   // capital zone the inn lies in, 0 = none (Park.MaxPerCity)
+            uint32 area = 0;       // area of the inn, for the [Park] state=caps line
         };
         std::vector<ParkInn> parkInns[2];
         std::vector<WorldLocation> parkCities[2];
+        std::vector<uint32> parkCityZones[2];   // capital zone of parkCities[team][i]
+        ai::park::CityCounts parkCityCounts;    // twow-repo#551 (Park.MaxPerCity): parked bots per capital zone
         bool parkSpotsBuilt = false;
+        // twow-repo#551: where ParkBot put bots since the last [Park] state=share line (world thread only).
+        struct ParkShare
+        {
+            uint32 inn = 0;
+            uint32 city = 0;
+            uint32 here = 0;
+            uint32 overflow = 0;   // twow-repo#551 caps: parked at a spot other than the nearest one, which was full
+            uint32 noSpot = 0;     // caps on and no spot left: not parked
+            uint32 lastLog = 0;
+        };
+        ParkShare parkShare;
         void BuildParkSpots();
         void ProcessParkedBots();
         bool ParkBot(Player* bot, std::string const& teleName, std::string& reason);
         void UnparkBot(Player* bot);
+        // twow-repo#541 (AiPlayerbot.Park.SleepGrid): core switches and the [ParkSleep] minute line.
+        uint32 parkSleepUnparkWakes = 0;  // world thread: unparked bots that carried the sleep flag
+        void ReportParkSleep();
         void OnParkBindChecked(uint32 guid, bool found, ai::park::Point const& stored);
         // twow-repo#541: [WorldBots] per-minute cost of UpdateAIInternal in the world thread.
         ai::world_bots::Window worldBotsWindow;

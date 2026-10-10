@@ -15,6 +15,7 @@
 #include "Spells/SpellMgr.h"
 #include "Log.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdarg>
 #include <cstring>
@@ -34,9 +35,17 @@ std::unordered_map<uint32, std::FILE*> BotActionLog::sFiles;
 
 // sFiles is reachable from any map thread (Spell.cpp / Unit.cpp hooks fire
 // on whatever thread is updating that bot's map). Guard every read/write so
-// the unordered_map doesn't get torn under concurrent insert/erase. Only
-// engaged when AiPlayerbot.EnableActionLog=1; default-off path takes no lock.
+// the unordered_map doesn't get torn under concurrent insert/erase. With
+// AiPlayerbot.Perf.LogActionFastPath=1, GetHandle skips the lock while the log
+// is off and no file is open (MayWrite); otherwise every Write takes it.
 static std::mutex sFilesMutex;
+// twow-repo#541 (audit A11): == sFiles.size(), stored under sFilesMutex after every insert/erase.
+static std::atomic<std::size_t> sOpenFiles{0};
+
+bool BotActionLog::MayWrite()
+{
+    return ai::botdiag::IsActionLogEnabled() || sOpenFiles.load(std::memory_order_acquire) != 0;
+}
 
 static void MakeDirIdempotent(const char* path)
 {
@@ -144,6 +153,7 @@ std::FILE* BotActionLog::Open(PlayerbotAI* ai)
             return race->second;
         }
         sFiles[guid] = f;
+        sOpenFiles.store(sFiles.size(), std::memory_order_release);
     }
     SC_LOG("BotActionLog opened bot=%s path=%s", bot->GetName(), path.c_str());
 
@@ -172,6 +182,9 @@ void BotActionLog::Close(PlayerbotAI* ai)
         if (it == sFiles.end()) return;
         handle = it->second;
         sFiles.erase(it);
+        // twow-repo#541 (audit A11): Close runs at every logout; the count only moves after a
+        // successful erase (the early return above leaves it untouched, as it leaves sFiles).
+        sOpenFiles.store(sFiles.size(), std::memory_order_release);
     }
     if (handle)
     {
@@ -185,6 +198,11 @@ void BotActionLog::Close(PlayerbotAI* ai)
 std::FILE* BotActionLog::GetHandle(PlayerbotAI* ai)
 {
     if (!ai) return nullptr;
+    // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): log off and no file open ->
+    // the lookup below finds nothing and Open() refuses; skip the global mutex. Write() and
+    // LogState() (engine tee, cast/aura/damage hooks of all bots) reach the lock only through here.
+    if (sPlayerbotAIConfig.perfLogActionFastPath && !MayWrite())
+        return nullptr;
     Player* bot = ai->GetBot();
     if (!bot) return nullptr;
     {

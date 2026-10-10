@@ -393,6 +393,8 @@ public:
 private:
     void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
     bool AllowDelayJitter() const override;
+    // twow-repo#541 (audit A17): idle auto-attack combat pass -> longer wait (AiPlayerbot.Perf.CombatIdleYield).
+    void StretchCombatIdle();
 public:    
     static std::string BotStateToString(BotState state);
     std::string GetDefaultMovementStrategy();
@@ -1047,6 +1049,8 @@ protected:
     uint32 jumpTime;
     bool fallAfterJump;
     uint32 faceTargetUpdateDelay;
+    bool combatIdleTick = false;   // twow-repo#541 (audit A17): last DoNextAction ran the combat engine and executed nothing
+    ObjectGuid combatIdleVictim;   // twow-repo#541 (audit A17): victim of a pending stretched wait (empty = none)
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;
