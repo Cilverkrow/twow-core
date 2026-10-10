@@ -938,6 +938,19 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): evacuations of the last minute.
+    if (sPlayerbotAIConfig.deathLoopEscape)
+    {
+        auto takeEscape = [](ai::death_loop::EscapeCount count) { return (unsigned long long)ai::death_loop::EscapeCounter(count).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const detected = takeEscape(ai::death_loop::EscapeDetected);
+        unsigned long long const escaped = takeEscape(ai::death_loop::EscapeEscaped);
+        unsigned long long const rebound = takeEscape(ai::death_loop::EscapeRebound);
+        unsigned long long const repeat = takeEscape(ai::death_loop::EscapeRepeat);
+        unsigned long long const hostileDeaths = takeEscape(ai::death_loop::EscapeHostileDeath);
+        sLog.outBasic("[DeathLoop] state=minute detected=%llu escaped=%llu rebound=%llu repeat_after_escape=%llu hostile_death=%llu",
+            detected, escaped, rebound, repeat, hostileDeaths);
+    }
 }
 
 // twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute

@@ -428,6 +428,7 @@ bool PlayerbotAIConfig::Initialize()
     LoadList<std::vector<uint32> >(config.GetStringDefault("AiPlayerbot.SpecAura.TalentClasses", ""), specAuraTalentClasses);
     deathLoopWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DeathLoop.WindowSeconds", 900));
     deathLoopRadius = std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DeathLoop.Radius", 150.0f));
+    deathLoopEscape = config.GetBoolDefault("AiPlayerbot.DeathLoop.Escape", false);
     zoneEscapeEnabled = config.GetBoolDefault("AiPlayerbot.ZoneEscape.Enabled", false);
     zoneEscapeCooldownSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.ZoneEscape.CooldownSeconds", 600));
     zoneEscapeRetrySeconds = std::max<uint32>(15, config.GetIntDefault("AiPlayerbot.ZoneEscape.RetrySeconds", 60));

@@ -2031,3 +2031,22 @@ set_target_properties(x3_context_lock_tests PROPERTIES
 add_test(NAME x3_context_lock
   COMMAND x3_context_lock_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541 A39: death loop escape (AiPlayerbot.DeathLoop.Escape).
+add_test(NAME deathloop_escape_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/deathloop_escape_source_contract_tests.cmake")
+
+add_executable(deathloop_escape_policy_tests
+  "${PB_MODULE_DIR}/t/deathloop_escape_policy_tests.cpp")
+
+target_include_directories(deathloop_escape_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(deathloop_escape_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME deathloop_escape_policy
+  COMMAND deathloop_escape_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
