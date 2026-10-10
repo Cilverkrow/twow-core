@@ -2387,3 +2387,24 @@ add_test(NAME trace_action_us_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
+
+# twow-repo#541 (owner 11.10.2026): [BotPackets] packet counter (AiPlayerbot.PacketTrace).
+add_test(NAME packet_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/packet_trace_source_contract_tests.cmake")
+
+add_executable(packet_trace_policy_tests
+  "${PB_MODULE_DIR}/t/packet_trace_policy_tests.cpp")
+
+target_include_directories(packet_trace_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(packet_trace_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(packet_trace_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME packet_trace_policy
+  COMMAND packet_trace_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")

@@ -15,6 +15,7 @@
 #include "playerbot/PersistentRosterStarterOutfitPolicy.h"
 #include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
+#include "playerbot/PacketTracePolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -939,6 +940,37 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // twow-repo#541 (AiPlayerbot.PacketTrace): packets of the last minute per map bucket. Per class
+    // "read/ignored/real" counts; kib_* = bytes per receiver. ignored = built for a bot that never reads it.
+    if (sPlayerbotAIConfig.packetTrace)
+    {
+        using namespace ai::packet_trace;
+        Totals& totals = Global();
+        char const* const bucketNames[MapBuckets] = { "eastern", "kalimdor", "other" };
+        char const* const classNames[Classes] = { "move", "update", "spell", "combat", "chat", "other" };
+        for (int bucket = 0; bucket < MapBuckets; ++bucket)
+        {
+            std::ostringstream classes;
+            unsigned long long kib[Receivers] = {};
+            for (int cls = 0; cls < Classes; ++cls)
+            {
+                unsigned long long counts[Receivers];
+                for (int receiver = 0; receiver < Receivers; ++receiver)
+                {
+                    counts[receiver] = totals.count[receiver][bucket][cls].exchange(0, std::memory_order_relaxed);
+                    kib[receiver] += totals.bytes[receiver][bucket][cls].exchange(0, std::memory_order_relaxed);
+                }
+                classes << " " << classNames[cls] << "=" << counts[BotRead] << "/" << counts[BotIgnored] << "/" << counts[Real];
+            }
+            sLog.outBasic("[BotPackets] map=%s kib_bot_read=%llu kib_bot_ignored=%llu kib_real=%llu%s",
+                bucketNames[bucket], kib[BotRead] / 1024, kib[BotIgnored] / 1024, kib[Real] / 1024, classes.str().c_str());
+        }
+        unsigned long long const samples = totals.inboxSamples.exchange(0, std::memory_order_relaxed);
+        unsigned long long const sampledNs = totals.inboxSampledNs.exchange(0, std::memory_order_relaxed);
+        sLog.outBasic("[BotPackets] inbox_copy_samples=%llu inbox_copy_avg_ns=%llu sample_every=%u flush_every=%u",
+            samples, samples ? sampledNs / samples : 0ull, TimeSampleEvery, FlushEvery);
+    }
 }
 
 // twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute
