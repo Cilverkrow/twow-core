@@ -33,6 +33,46 @@
 #include "ahbot/AhBot.h"
 #include "BotDiagnostics.h"
 #include "playerbot/BotSlots.h"
+#include "playerbot/PacketTracePolicy.h"
+#include <array>
+#include <mutex>
+
+namespace
+{
+    // twow-repo#541 (AiPlayerbot.PacketTrace): opcode -> class, decided once from the core's opcode names.
+    ai::packet_trace::Class PacketClassOf(uint16 opcode)
+    {
+        static std::array<uint8, NUM_MSG_TYPES> table{};
+        static std::once_flag once;
+        std::call_once(once, []()
+        {
+            for (uint32 op = 0; op < NUM_MSG_TYPES; ++op)
+                table[op] = uint8(ai::packet_trace::ClassifyName(LookupOpcodeName(uint16(op))));
+        });
+        return opcode < NUM_MSG_TYPES ? ai::packet_trace::Class(table[opcode]) : ai::packet_trace::Other;
+    }
+
+    // twow-repo#541 (AiPlayerbot.PacketTrace, measurement only): counts one packet per receiver, map and class.
+    // Every TimeSampleEvery-th bot packet is queued here with its inbox copy timed - then it returns true and the
+    // caller must not queue it again.
+    bool TracePacket(Player* player, PlayerbotAI* ai, WorldPacket const& packet)
+    {
+        using namespace ai::packet_trace;
+        Local& local = ThreadLocal();
+        uint16 const opcode = packet.GetOpcode();
+        Receiver const receiver = !ai ? Real : (ai->WantsBotOutgoingPacket(opcode) ? BotRead : BotIgnored);
+        local.Add(receiver, BucketOf(player->GetMapId()), PacketClassOf(opcode), packet.size(), Global());
+        if (!ai || !local.SampleThisBotPacket())
+            return false;
+
+        auto const start = std::chrono::steady_clock::now();
+        ai->QueueBotOutgoingPacket(packet);
+        Global().inboxSampledNs.fetch_add(uint64(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start).count()), std::memory_order_relaxed);
+        Global().inboxSamples.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
+}
 
 class PlayerbotWorldScript : public WorldScript
 {
@@ -101,6 +141,11 @@ class PlayerbotServerScript : public ServerScript
                 return true;
 
             PlayerbotAI* ai = GetBotAI(player);
+
+            // twow-repo#541 (AiPlayerbot.PacketTrace): counted; true = the timed sample already queued it.
+            if (sPlayerbotAIConfig.packetTrace && TracePacket(player, ai, packet))
+                return false;
+
             if (!ai)
                 return true;
 

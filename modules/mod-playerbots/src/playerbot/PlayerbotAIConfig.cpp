@@ -411,6 +411,7 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#563 (X3a/X3c): per-context lock on the value maps; cross-bot value writes via the inbox.
     ai::context_lock::Enabled().store(config.GetBoolDefault("AiPlayerbot.X3a.ContextLock", false), std::memory_order_relaxed);
     x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
+    packetTrace = config.GetBoolDefault("AiPlayerbot.PacketTrace", false);
     perfFleeMemo = config.GetBoolDefault("AiPlayerbot.Perf.FleeMemo", false);
     findCorpseLazySpot = config.GetBoolDefault("AiPlayerbot.FindCorpseLazySpot", false);
     nearestUnitsAcceptFirst = config.GetBoolDefault("AiPlayerbot.Perf.NearestUnitsAcceptFirst", false);
