@@ -2354,3 +2354,24 @@ add_test(NAME possible_targets_shared_search_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/possible_targets_shared_search_source_contract_tests.cmake")
+
+# twow-repo#551 (owner 10.10.2026): park caps per inn and per city.
+add_test(NAME park_caps_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_caps_source_contract_tests.cmake")
+
+add_executable(park_caps_policy_tests
+  "${PB_MODULE_DIR}/t/park_caps_policy_tests.cpp")
+
+target_include_directories(park_caps_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(park_caps_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(park_caps_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME park_caps_policy
+  COMMAND park_caps_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
