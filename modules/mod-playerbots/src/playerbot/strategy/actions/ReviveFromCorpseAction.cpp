@@ -76,6 +76,24 @@ bool ReviveFromCorpseAction::Execute(Event& event)
     return true;
 }
 
+// twow-repo#541 (audit A02): the teleport delay of the "no detailed-move activity" branch in
+// FindCorpseAction::Execute, same expression. Only AiPlayerbot.FindCorpseLazySpot uses it.
+static uint32 FindCorpseTeleportDelay(Player* bot, Corpse* corpse)
+{
+    uint32 delay = sServerFacade.GetDistance2d(bot, corpse) / bot->GetSpeed(MOVE_RUN);
+    return std::min(delay, uint32(10 * MINUTE));
+}
+
+// twow-repo#541 (audit A02): the "already moving" test of FindCorpseAction::Execute, same #ifdef.
+static bool FindCorpseBotIsMoving(Player* bot)
+{
+#ifndef MANGOSBOT_ZERO
+    return bot->IsMovingIgnoreFlying();
+#else
+    return bot->IsMoving();
+#endif
+}
+
 bool FindCorpseAction::Execute(Event& event)
 {
     if (bot->InBattleGround())
@@ -180,6 +198,20 @@ bool FindCorpseAction::Execute(Event& event)
         }
     }
 
+    // twow-repo#541 (audit A02): AiPlayerbot.FindCorpseLazySpot evaluates the branch test of the moving
+    // part below before the safe revive spot. The two branches that never read moveToPos (waiting
+    // out the teleport delay, already moving) then skip the FleeManager / random-point search.
+    // Same expression, evaluated once; switch off = old order.
+    bool lazyNonDetailedKnown = false;
+    bool lazyNonDetailed = false;
+    bool skipSafeSpot = false;
+    if (sPlayerbotAIConfig.findCorpseLazySpot && corpseDist < sPlayerbotAIConfig.reactDistance && !moveToMaster)
+    {
+        lazyNonDetailed = !ai->AllowActivity(DETAILED_MOVE_ACTIVITY) && !ai->HasPlayerNearby(moveToPos);
+        lazyNonDetailedKnown = true;
+        skipSafeSpot = lazyNonDetailed ? !(deadTime > FindCorpseTeleportDelay(bot, corpse)) : FindCorpseBotIsMoving(bot);
+    }
+
     //If we are getting close move to a save ressurrection spot instead of just the corpse.
     if (corpseDist < sPlayerbotAIConfig.reactDistance)
     {
@@ -193,7 +225,7 @@ bool FindCorpseAction::Execute(Event& event)
             }
             moveToPos = masterPos;
         }
-        else
+        else if (!skipSafeSpot)
         {
             FleeManager manager(bot, reclaimDist, 0.0, urand(0, 1), moveToPos);
 
@@ -236,7 +268,10 @@ bool FindCorpseAction::Execute(Event& event)
     //Actual mobing part.
     bool moved = false;
 
-    if (!ai->AllowActivity(DETAILED_MOVE_ACTIVITY) && !ai->HasPlayerNearby(moveToPos))
+    bool const nonDetailed = lazyNonDetailedKnown
+        ? lazyNonDetailed
+        : (!ai->AllowActivity(DETAILED_MOVE_ACTIVITY) && !ai->HasPlayerNearby(moveToPos));
+    if (nonDetailed)
     {
         uint32 delay = sServerFacade.GetDistance2d(bot, corpse) / bot->GetSpeed(MOVE_RUN); //Time a bot would take to travel to it's corpse.
         delay = std::min(delay, uint32(10 * MINUTE)); //Cap time to get to corpse at 10 minutes.

@@ -2038,3 +2038,168 @@ set_target_properties(x3_context_lock_tests PROPERTIES
 add_test(NAME x3_context_lock
   COMMAND x3_context_lock_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541 (grid sleep, AiPlayerbot.Park.SleepGrid, default 0): parked bots do not activate cells.
+add_test(NAME park_sleep_grid_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/park_sleep_grid_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A01): FleeManager call-local candidate memo (AiPlayerbot.Perf.FleeMemo, default 0).
+add_test(NAME flee_memo_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/flee_memo_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A02): find corpse skips the unused safe revive spot (AiPlayerbot.FindCorpseLazySpot, default 0).
+add_test(NAME find_corpse_lazy_spot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/find_corpse_lazy_spot_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A03): nearest-units values run the pure filter before the LOS raycast (AiPlayerbot.Perf.NearestUnitsAcceptFirst, default 0).
+add_test(NAME nearest_units_accept_first_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/nearest_units_accept_first_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A04+A05): add gathering loot fast path (AiPlayerbot.Perf.GatherLootFastPath, default 0).
+add_test(NAME gather_loot_fast_path_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/gather_loot_fast_path_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A06): lazy checks in AttackersValue::IsValid (AiPlayerbot.Perf.AttackersLazyChecks, default 0).
+add_test(NAME attackers_lazy_checks_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/attackers_lazy_checks_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A08): action node owner cache on the AI tick (AiPlayerbot.Perf.ActionNodeOwnerCache, default 0).
+add_test(NAME action_node_owner_cache_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/action_node_owner_cache_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A09): battlemaster cache by const reference (AiPlayerbot.Perf.BgMasterCacheRef, default 0).
+add_executable(bg_master_cache_policy_tests
+  "${PB_MODULE_DIR}/t/bg_master_cache_policy_tests.cpp")
+
+target_include_directories(bg_master_cache_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(bg_master_cache_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bg_master_cache_policy
+  COMMAND bg_master_cache_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bg_master_cache_ref_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bg_master_cache_ref_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A10): one PlayerTravelInfo per travel choice and keyed destination lookup (AiPlayerbot.Perf.TravelInfoReuse, default 0).
+add_test(NAME travel_info_reuse_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/travel_info_reuse_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A11): Engine::LogAction fast path and last-action trail (AiPlayerbot.Perf.LogActionFastPath,
+# AiPlayerbot.BotUpdateTraceTailFix; both default 0).
+add_executable(action_trail_tests
+  "${PB_MODULE_DIR}/t/action_trail_tests.cpp")
+
+target_include_directories(action_trail_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(action_trail_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME action_trail
+  COMMAND action_trail_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME log_action_fast_path_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/log_action_fast_path_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A12): exact RED skill pre-check and lazy roster read in "trainable spells"
+# (AiPlayerbot.Perf.TrainableSpellsPrecheck, default 0).
+add_executable(trainable_spells_precheck_policy_tests
+  "${PB_MODULE_DIR}/t/trainable_spells_precheck_policy_tests.cpp")
+
+target_include_directories(trainable_spells_precheck_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(trainable_spells_precheck_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME trainable_spells_precheck_policy
+  COMMAND trainable_spells_precheck_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME trainable_spells_precheck_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/trainable_spells_precheck_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A13): racials skip the three nodes without an action in this build
+# (AiPlayerbot.Perf.RacialsSkipUnbuildable, default 0; not strictly neutral, see conf.dist).
+add_test(NAME racials_skip_unbuildable_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/racials_skip_unbuildable_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A14): ChaseTo skips the hazard path / LOS checks while the hazards list is empty
+# (AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards, default 0).
+add_test(NAME chase_hazard_skip_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/chase_hazard_skip_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A15): give water / food / item value of a bot without group skips the
+# out-of-group scan (AiPlayerbot.Perf.GiveItemGroupOnlyScan, default 0).
+add_executable(party_scan_policy_tests
+  "${PB_MODULE_DIR}/t/party_scan_policy_tests.cpp")
+
+target_include_directories(party_scan_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(party_scan_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME party_scan_policy
+  COMMAND party_scan_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME give_item_group_scan_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/give_item_group_scan_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A16): castability checks take the neutral / out-of-control spell ids from
+# constant arrays instead of a per-call std::list (AiPlayerbot.Perf.StaticSpellLists, default 0).
+add_executable(static_spell_lists_policy_tests
+  "${PB_MODULE_DIR}/t/static_spell_lists_policy_tests.cpp")
+
+target_include_directories(static_spell_lists_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(static_spell_lists_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME static_spell_lists_policy
+  COMMAND static_spell_lists_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME static_spell_lists_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/static_spell_lists_source_contract_tests.cmake")
