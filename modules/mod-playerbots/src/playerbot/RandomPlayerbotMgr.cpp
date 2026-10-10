@@ -932,9 +932,12 @@ void ReportBotInbox()
     unsigned long long const spell = take(ai::InboxDropSpell);
     unsigned long long const knockback = take(ai::InboxDropKnockback);
     unsigned long long const handler = take(ai::InboxDropHandler);
-    sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu",
+    // twow-repo#563 (X3c): value writes for other bots - dropped past the bound, or with no bot AI at the target.
+    unsigned long long const write = take(ai::InboxDropWrite);
+    unsigned long long const writeGone = (unsigned long long)ai::ContextWriteTargetGone().exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
-        chat, spell, knockback, handler);
+        chat, spell, knockback, handler, write, writeGone);
 }
 
 // twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute

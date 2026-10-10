@@ -582,6 +582,31 @@ void PlayerbotAI::HandleQueuedBotPackets()
     botPacketInbox.Drain(packets);
     for (std::unique_ptr<WorldPacket> const& packet : packets)
         HandleBotOutgoingPacket(*packet);
+
+    // twow-repo#563 (X3c): value writes other bots queued for this bot, applied here on its own thread.
+    std::vector<std::function<void(ai::AiObjectContext*)>> writes;
+    contextWriteInbox.Drain(writes);
+    for (std::function<void(ai::AiObjectContext*)> const& write : writes)
+        if (write)
+            write(aiObjectContext);
+}
+
+// twow-repo#563 (X3c): instead of setting a value in another bot's context from this thread, queue it.
+void PlayerbotAI::QueueContextWrite(std::function<void(ai::AiObjectContext*)> write)
+{
+    if (contextWriteInbox.Push(std::move(write)))
+        ai::InboxDroppedByClass(ai::InboxDropWrite).fetch_add(1, std::memory_order_relaxed);
+}
+
+void PlayerbotAI::QueueContextWriteTo(Player* target, std::function<void(ai::AiObjectContext*)> write)
+{
+    PlayerbotAI* targetAi = target ? GetBotAI(target) : nullptr;
+    if (!targetAi)
+    {
+        ai::ContextWriteTargetGone().fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    targetAi->QueueContextWrite(std::move(write));
 }
 
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)

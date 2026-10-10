@@ -25,7 +25,7 @@ inline std::atomic<std::uint64_t>& InboxLargestDrain()
 }
 
 // Drops by kind of packet (counted by the caller, only past the bound).
-enum InboxDropClass : std::uint8_t { InboxDropChat, InboxDropSpell, InboxDropKnockback, InboxDropHandler, InboxDropClasses };
+enum InboxDropClass : std::uint8_t { InboxDropChat, InboxDropSpell, InboxDropKnockback, InboxDropHandler, InboxDropWrite, InboxDropClasses };
 
 inline std::atomic<std::uint64_t>& InboxDroppedByClass(InboxDropClass dropClass)
 {
@@ -97,4 +97,15 @@ private:
 
 // Enough for a busy world channel between two updates of a bot; packets past it are old chat.
 constexpr std::size_t BotPacketInboxCapacity = 256;
+
+// twow-repo#563 (X3c): value writes other bots queue for this bot (talk target, last said, RTSC);
+// few per update, so a small bound.
+constexpr std::size_t ContextWriteInboxCapacity = 64;
+
+// Writes that found no bot AI at the target (logged out, not a bot) - counted, then dropped.
+inline std::atomic<std::uint64_t>& ContextWriteTargetGone()
+{
+    static std::atomic<std::uint64_t> gone{0};
+    return gone;
+}
 }
