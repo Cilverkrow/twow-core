@@ -2,6 +2,7 @@
 #define _RandomPlayerbotMgr_H
 
 #include <mutex>
+#include <shared_mutex>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/WorldBotsTracePolicy.h"
@@ -352,6 +353,7 @@ public:
             bool checkPending = false;
             uint64 spotKey = 0;    // the inn or city spot (capacity count), see ParkSpotKey
             uint32 slot = 0;
+            uint32 cityZone = 0;   // twow-repo#551 (Park.MaxPerCity): capital zone of the spot, 0 = none
         };
         std::map<uint32, ParkEntry> parkedBots;
         std::map<uint64, std::set<uint32>> parkSpotSlots;  // spot key -> taken slots (capacity ai::park::SpotCapacity)
@@ -363,9 +365,13 @@ public:
             WorldLocation loc;
             uint32 minLevel = 0;
             uint32 maxLevel = 0;
+            uint32 cityZone = 0;   // capital zone the inn lies in, 0 = none (Park.MaxPerCity)
+            uint32 area = 0;       // area of the inn, for the [Park] state=caps line
         };
         std::vector<ParkInn> parkInns[2];
         std::vector<WorldLocation> parkCities[2];
+        std::vector<uint32> parkCityZones[2];   // capital zone of parkCities[team][i]
+        ai::park::CityCounts parkCityCounts;    // twow-repo#551 (Park.MaxPerCity): parked bots per capital zone
         bool parkSpotsBuilt = false;
         // twow-repo#551: where ParkBot put bots since the last [Park] state=share line (world thread only).
         struct ParkShare
@@ -373,6 +379,8 @@ public:
             uint32 inn = 0;
             uint32 city = 0;
             uint32 here = 0;
+            uint32 overflow = 0;   // twow-repo#551 caps: parked at a spot other than the nearest one, which was full
+            uint32 noSpot = 0;     // caps on and no spot left: not parked
             uint32 lastLog = 0;
         };
         ParkShare parkShare;
@@ -391,6 +399,11 @@ public:
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;
         std::map<uint32, std::map<std::string, CachedEvent> > eventCache;
+        // Audit A28 (twow-repo#563): GetEventValue/SetEventValue run on region threads and the world thread at
+        // once; operator[] inserted into both map levels. Guarded with AiPlayerbot.X3a.ContextLock; the DB load
+        // runs outside the lock.
+        mutable std::shared_mutex eventCacheMutex;
+        bool HasCachedEvents(uint32 bot) const;
         BarGoLink* loginProgressBar;
         std::list<uint32> currentBots;
         std::unique_ptr<ai::roster::Service> persistentRoster;
