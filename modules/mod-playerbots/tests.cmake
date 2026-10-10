@@ -2031,3 +2031,10 @@ set_target_properties(x3_context_lock_tests PROPERTIES
 add_test(NAME x3_context_lock
   COMMAND x3_context_lock_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541 (grid sleep, AiPlayerbot.Park.SleepGrid, default 0): parked bots do not activate cells.
+add_test(NAME park_sleep_grid_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/park_sleep_grid_source_contract_tests.cmake")
