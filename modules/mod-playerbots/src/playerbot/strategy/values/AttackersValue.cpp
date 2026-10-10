@@ -208,7 +208,33 @@ void AttackersValue::AddTargetsOf(Player* player, std::set<Unit*>& targets, std:
 
         // If the player is a bot
         PlayerbotAI* playerBot = GetBotAI(player);
-        if (playerBot)
+        // twow-repo#563 (X3b variant 2, AiPlayerbot.X3b.PublishedTargets): for another bot (group member,
+        // master bot) this computed "possible targets" - a grid search - on THAT bot's context from our thread,
+        // racing its own update. With the switch, another bot's targets come from its published snapshot, and
+        // every bot publishes its own after reading them here (player == bot). Off: unchanged.
+        bool const otherBot = playerBot && playerBot != ai;
+        if (otherBot && sPlayerbotAIConfig.x3bPublishedTargets)
+        {
+            std::shared_ptr<PlayerbotAI::PublishedTargets const> const snapshot = playerBot->GetPublishedTargets();
+            if (!snapshot)
+                x3b::SnapshotCount(x3b::SnapshotMissing).fetch_add(1, std::memory_order_relaxed);
+            else if (!x3b::Fresh(WorldTimer::getMSTime(), snapshot->publishedMs))
+                x3b::SnapshotCount(x3b::SnapshotStale).fetch_add(1, std::memory_order_relaxed);
+            else
+            {
+                x3b::SnapshotCount(x3b::SnapshotHit).fetch_add(1, std::memory_order_relaxed);
+                for (const ObjectGuid& guid : snapshot->possibleTargets)
+                {
+                    if (Unit* unit = ai->GetUnit(guid))
+                        units.insert(unit);
+                }
+                if (Unit* currentTarget = !snapshot->currentTarget.IsEmpty() ? ai->GetUnit(snapshot->currentTarget) : nullptr)
+                    units.insert(currentTarget);
+                if (Unit* oldTarget = !snapshot->oldTarget.IsEmpty() ? ai->GetUnit(snapshot->oldTarget) : nullptr)
+                    units.insert(oldTarget);
+            }
+        }
+        else if (playerBot)
         {
             // Get all the units around the player
             // NOTE: We don't validate the value here because it will be validated later on
@@ -237,6 +263,23 @@ void AttackersValue::AddTargetsOf(Player* player, std::set<Unit*>& targets, std:
             {
                 units.insert(oldTarget);
             }
+
+            // X3b: our own targets for the other bots (only our own context was read above).
+            if (!otherBot && sPlayerbotAIConfig.x3bPublishedTargets)
+            {
+                auto snapshot = std::make_shared<PlayerbotAI::PublishedTargets>();
+                snapshot->publishedMs = WorldTimer::getMSTime();
+                snapshot->possibleTargets.assign(possibleTargets.begin(), possibleTargets.end());
+                if (currentTarget)
+                    snapshot->currentTarget = currentTarget->GetObjectGuid();
+                if (oldTarget)
+                    snapshot->oldTarget = oldTarget->GetObjectGuid();
+                ai->PublishTargets(std::move(snapshot));
+            }
+        }
+
+        if (playerBot)
+        {
 
             // Add the pull and attack targets (Only consider the owner bot)
             if (bot == player)
