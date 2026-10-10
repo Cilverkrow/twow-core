@@ -118,7 +118,7 @@ void MapManager::GetOrCreateContinentInstances(uint32 mapId, WorldObject* obj, s
     {
         if (mapId == 0)
         {
-            for (uint32 i = MAP0_FIRST; i <= GetContinentLastRegion(0); ++i)  // twow-repo#541 part C: per layout
+            for (uint32 i = GetContinentFirstRegion(0); i <= GetContinentLastRegion(0); ++i)  // twow-repo#541 part C: per layout
             {
                 obj->SetLocationInstanceId(i);
                 instances.insert(CreateMap(0, obj));
@@ -127,7 +127,7 @@ void MapManager::GetOrCreateContinentInstances(uint32 mapId, WorldObject* obj, s
         }
         else if (mapId == 1)
         {
-            for (uint32 i = MAP1_FIRST; i <= GetContinentLastRegion(1); ++i)  // twow-repo#541 part C: per layout
+            for (uint32 i = GetContinentFirstRegion(1); i <= GetContinentLastRegion(1); ++i)  // twow-repo#541 part C: per layout
             {
                 obj->SetLocationInstanceId(i);
                 instances.insert(CreateMap(1, obj));
@@ -763,6 +763,9 @@ struct ActiveContinentLayout
 {
     uint32 layout = 0;
     std::vector<uint8> cells[2];
+    // Layout 0 (legacy polygons): 1..6 and 11..17. A table layout: the ids of its table (per layout, e.g.
+    // 1..12 and 21..32 for layout 20).
+    uint32 first[2] = { MAP0_FIRST, MAP1_FIRST };
     uint32 last[2] = { MAP0_SOUTH, MAP1_SOUTH };
 };
 
@@ -773,8 +776,8 @@ ActiveContinentLayout BuildContinentLayout()
     if (wanted == 0)
         return active;
 
-    uint32 const firstRegion[2] = { MAP0_FIRST, MAP1_FIRST };
-    uint32 const lastAllowed[2] = { MAP0_LAST, MAP1_LAST };
+    // Region ids are map instance ids: below the transition bit and below the generated instance ids.
+    uint32 const maxRegion = std::min<uint32>(continent_regions::kRegionMask, RESERVED_INSTANCES_LAST - 1);
     ActiveContinentLayout built;
     built.layout = wanted;
     for (uint32 mapId = 0; mapId < 2; ++mapId)
@@ -786,16 +789,25 @@ ActiveContinentLayout BuildContinentLayout()
                 wanted, mapId);
             return active;
         }
+        built.first[mapId] = continent_regions::FirstRegion(built.cells[mapId]);
         built.last[mapId] = continent_regions::LastRegion(built.cells[mapId]);
-        if (built.last[mapId] < firstRegion[mapId] || built.last[mapId] > lastAllowed[mapId])
+        if (built.first[mapId] < 1 || built.last[mapId] > maxRegion ||
+            !continent_regions::RegionsContiguous(built.cells[mapId], built.first[mapId], built.last[mapId]))
         {
-            sLog.outError("[ContinentLayout] Continents.Layout = %u: map %u region %u outside %u-%u, using the polygons (0)",
-                wanted, mapId, built.last[mapId], firstRegion[mapId], lastAllowed[mapId]);
+            sLog.outError("[ContinentLayout] Continents.Layout = %u: map %u regions %u-%u not contiguous within 1-%u, using the polygons (0)",
+                wanted, mapId, built.first[mapId], built.last[mapId], maxRegion);
             return active;
         }
     }
-    sLog.outString("[ContinentLayout] layout=%u regions map0=%u map1=%u", wanted, built.last[0] - MAP0_FIRST + 1,
-        built.last[1] - MAP1_FIRST + 1);
+    if (!(built.last[0] < built.first[1] || built.last[1] < built.first[0]))
+    {
+        sLog.outError("[ContinentLayout] Continents.Layout = %u: region ranges %u-%u and %u-%u overlap, using the polygons (0)",
+            wanted, built.first[0], built.last[0], built.first[1], built.last[1]);
+        return active;
+    }
+    sLog.outString("[ContinentLayout] layout=%u regions map0=%u (%u-%u) map1=%u (%u-%u)", wanted,
+        built.last[0] - built.first[0] + 1, built.first[0], built.last[0],
+        built.last[1] - built.first[1] + 1, built.first[1], built.last[1]);
     return built;
 }
 
@@ -813,7 +825,7 @@ uint32 MapManager::GetContinentLayout() const
 
 uint32 MapManager::GetContinentFirstRegion(uint32 mapId) const
 {
-    return mapId == 0 ? MAP0_FIRST : MAP1_FIRST;
+    return GetActiveContinentLayout().first[mapId == 0 ? 0 : 1];
 }
 
 uint32 MapManager::GetContinentLastRegion(uint32 mapId) const

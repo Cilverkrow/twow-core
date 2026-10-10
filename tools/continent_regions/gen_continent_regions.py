@@ -2,11 +2,14 @@
 """Continent region layouts for Continents.Layout (twow-repo#541, part C).
 
 Builds one region number per 66.67-yard cell (8 x 8 per map tile, 512 x 512 per continent) for the layouts
-14, 16 and 18 from the zone of each cell, read from the server map files (area grid, 16 x 16 per tile) and
+14, 16, 18 and 20 from the zone of each cell, read from the server map files (area grid, 16 x 16 per tile) and
 AreaTable.dbc. Zone -> region assignment: OB-50 draft (twow-repo#541 comment 6041262753,
-newregions-proposal-16.json); 14 and 18 are derived from it as described there (section 6).
+newregions-proposal-16.json); 14 and 18 are derived from it as described there (section 6). Layout 20: owner
+decision of 10.10.2026 (proposal twow-repo#541 comment 6096621659): every capital its own region, Ironforge and
+Undercity as cell rectangles, region ids per layout (Eastern Kingdoms 1..12, Kalimdor 21..32).
 
-Cells without a zone (sea, unnamed) take the region of the nearest assigned cell (multi-source BFS).
+Cells without a zone (sea, unnamed) take the region of the nearest assigned cell (multi-source BFS); the
+rectangles of a layout are set after the zone vote and before that fill.
 Output: a C++ source with the run-length encoded tables and a review report.
 
 Usage: gen_continent_regions.py --maps DIR --dbc AreaTable.dbc --out-cpp FILE --out-report FILE
@@ -80,12 +83,62 @@ def layout18():
     return out
 
 
-LAYOUTS = {14: layout14(), 16: {mp: [(n, list(z)) for n, z in r] for mp, r in LAYOUT16.items()}, 18: layout18()}
-FIRST_ID = {0: 1, 1: 11}
+# Owner decision 10.10.2026 (twow-repo#541, proposal comment 6096621659, relayed by OB-00): 12 + 12 regions, every
+# capital its own region. Ironforge and Undercity are no zones of their own in the area grid (report of 09.10.: no
+# unassigned zone on map 0, so both count as Dun Morogh / Tirisfal Glades); they are the cell
+# rectangles in RECTS (the zone lists stay empty), Dun Morogh and Tirisfal keep the rest. Barrens option A: the
+# north/south cut of layout 16 (x median), Crossroads and Ratchet both north.
+LAYOUT20 = {
+    0: [
+        ("E1 Stormwind", ["Stormwind City"]),
+        ("E2 Ironforge", []),
+        ("E3 Undercity", []),
+        ("E4 Alah'Thalas", ["Alah'Thalas", "Thalassian Highlands"]),
+        ("E5 Elwynn", ["Elwynn Forest"]),
+        ("E6 Dun Morogh", ["Dun Morogh"]),
+        ("E7 Tirisfal", ["Tirisfal Glades"]),
+        ("E8 Nord-Ost", ["Quel'Thalas", "Eastern Plaguelands", "Scarlet Enclave"]),
+        ("E9 Sueden", ["Westfall", "Redridge Mountains", "Duskwood", "Deadwind Pass", "Swamp of Sorrows",
+                       "Blasted Lands", "Burning Steppes"]),
+        ("E10 Stranglethorn", ["Stranglethorn Vale", "Gillijim's Isle", "Lapidis Isle"]),
+        ("E11 Zwergen-Mitte", ["Wetlands", "Loch Modan", "Arathi Highlands", "Grim Reaches", "Badlands",
+                               "Searing Gorge", "Northwind", "Balor"]),
+        ("E12 Nord-West", ["Silverpine Forest", "Hillsbrad Foothills", "Alterac Mountains", "Gilneas",
+                           "The Hinterlands", "Western Plaguelands"]),
+    ],
+    1: [
+        ("K1 Orgrimmar", ["Orgrimmar"]),
+        ("K2 Thunder Bluff", ["Thunder Bluff"]),
+        ("K3 Darnassus", ["Darnassus"]),
+        ("K4 Durotar", ["Durotar", "Durotar: Echo Isles"]),
+        ("K5 Tal der Pruefungen", ["Durotar: Valley of Trials"]),
+        ("K6 Mulgore", ["Mulgore"]),
+        ("K7 Teldrassil", ["Teldrassil"]),
+        ("K8 Brachland Nord", ["Barrens Nord"]),
+        ("K9 Brachland Sued", ["Barrens Sued", "Dustwallow Marsh", "Thousand Needles"]),
+        ("K10 Nord", ["Darkshore", "Ashenvale", "Stonetalon Mountains", "Felwood", "Moonglade", "Winterspring",
+                      "Azshara", "Hyjal", "Moonwhisper Coast"]),
+        ("K11 Sued", ["Desolace", "Feralas", "Tanaris", "Un'Goro Crater", "Silithus", "Tel'Abim", "Icepoint Rock"]),
+        ("K12 Blackstone", ["Blackstone Island"]),
+    ],
+}
+
+LAYOUTS = {14: layout14(), 16: {mp: [(n, list(z)) for n, z in r] for mp, r in LAYOUT16.items()}, 18: layout18(),
+           20: {mp: [(n, list(z)) for n, z in r] for mp, r in LAYOUT20.items()}}
+# First region id per layout and continent. 14/16/18 as before (1 / 11); 20 has 12 regions per continent and
+# starts Kalimdor at 21. The server checks that each continent's ids run without a gap from first to last, that
+# the two ranges do not overlap and that they stay below 100 (generated instance ids; 0x80 is the border bit).
+FIRST_ID = {14: {0: 1, 1: 11}, 16: {0: 1, 1: 11}, 18: {0: 1, 1: 11}, 20: {0: 1, 1: 21}}
+MAX_REGION_ID = 99
+# Cell rectangles (region id, x min, x max, y min, y max): a cell whose centre lies inside takes the region,
+# whatever zone the area grid names there. Owner decision 10.10.2026, layout 20 only.
+RECTS = {
+    20: {0: [(2, -5060.0, -4540.0, -1360.0, -840.0, "Ironforge"),
+             (3, 1180.0, 1880.0, -20.0, 520.0, "Undercity + Ruins of Lordaeron")]},
+}
 # Layout 18 (OB-50: "Crossroads-West gegen Ratchet-Ost"): halfway between the Crossroads (y -2650) and Ratchet
 # (y -3754); the median of the northern half put both hubs on the same side.
 BARRENS_NORTH_YCUT = (-2650.0 + -3754.0) / 2
-MAX_PER_CONTINENT = 10
 
 # Known places (x, y) and the zone label expected there: checks the orientation of the map files.
 KNOWN = [
@@ -107,6 +160,33 @@ KNOWN = [
     (1, 9889.0, 977.0, "Teldrassil", "Dolanaar"),
     (1, -7180.0, -3773.0, "Tanaris", "Gadgetzan"),
 ]
+
+# Layout 20: expected region of known places (cell of the place in the generated table). Alah'Thalas: a cell deep
+# inside the Stormwind/Alah'Thalas city region of layout 16 north of Stormwind (cell 181,300), so its zone vote is
+# Alah'Thalas or Thalassian Highlands, both region 4 here. Just outside the Ironforge gate stays Dun Morogh.
+KNOWN20 = [
+    (0, -8913.0, 554.0, 1, "Stormwind"),
+    (0, -4838.0, -1186.0, 2, "Ironforge Great Forge"),
+    (0, 1595.0, 231.0, 3, "Undercity bank"),
+    (0, 4966.0, -2966.0, 4, "Alah'Thalas"),
+    (0, -9464.0, 62.0, 5, "Goldshire"),
+    (0, -5603.0, -482.0, 6, "Kharanos"),
+    (0, -5100.0, -800.0, 6, "outside the Ironforge gate"),
+    (0, 2269.0, 244.0, 7, "Brill"),
+    (0, -14297.0, 530.0, 10, "Booty Bay"),
+    (1, 1629.0, -4373.0, 21, "Orgrimmar"),
+    (1, -1277.0, 124.0, 22, "Thunder Bluff"),
+    (1, 9947.0, 2482.0, 23, "Darnassus"),
+    (1, 311.0, -4724.0, 24, "Razor Hill"),
+    (1, -602.0, -4262.0, 25, "Valley of Trials"),
+    (1, -2345.0, -366.0, 26, "Bloodhoof Village"),
+    (1, 9889.0, 977.0, 27, "Dolanaar"),
+    (1, -452.0, -2650.0, 28, "Crossroads"),
+    (1, -956.0, -3754.0, 28, "Ratchet"),
+    (1, -2380.0, -1880.0, 29, "Camp Taurajo"),
+    (1, -7180.0, -3773.0, 31, "Gadgetzan"),
+]
+KNOWN_REGION = {20: KNOWN20}
 
 
 def read_dbc(path):
@@ -186,15 +266,20 @@ def label_matches(label, zone):
     return label == zone
 
 
-def build(layout, lab):
-    """Region id per 66.67-yard cell, majority of its 2 x 2 area-grid entries, BFS fill for the rest."""
+def cell_centre(c):
+    return (32 - (c + 0.5) / 8) * TILE
+
+
+def build(lid, layout, lab):
+    """Region id per 66.67-yard cell, majority of its 2 x 2 area-grid entries, then the layout's rectangles,
+    BFS fill for the rest."""
     tables = {}
     unassigned_labels = Counter()
     for mp in (0, 1):
         zone_region = {}
         for i, (_, zones) in enumerate(layout[mp]):
             for z in zones:
-                zone_region[z] = FIRST_ID[mp] + i
+                zone_region[z] = FIRST_ID[lid][mp] + i
         def region_of(label):
             for z, rid in zone_region.items():
                 if label_matches(label, z):
@@ -211,6 +296,13 @@ def build(layout, lab):
             tally.setdefault((cx, cy), Counter())[rid] += 1
         for (cx, cy), c in tally.items():
             votes[cx][cy] = c.most_common(1)[0][0]
+        for rid, x0, x1, y0, y1, _ in RECTS.get(lid, {}).get(mp, []):
+            for cx in range(CELLS):
+                if not x0 <= cell_centre(cx) <= x1:
+                    continue
+                for cy in range(CELLS):
+                    if y0 <= cell_centre(cy) <= y1:
+                        votes[cx][cy] = rid
         queue = deque((cx, cy) for cx in range(CELLS) for cy in range(CELLS) if votes[cx][cy] is not None)
         while queue:
             cx, cy = queue.popleft()
@@ -263,35 +355,53 @@ def main():
 
     out = ["// Generated by tools/continent_regions/gen_continent_regions.py - do not edit.",
            "// twow-repo#541 part C: region per 66.67-yard cell (cx along falling x, cy along falling y),",
-           "// run-length encoded over cx * 512 + cy. Zone -> region: OB-50 draft (#541 comment 6041262753).",
+           "// run-length encoded over cx * 512 + cy. Zone -> region: OB-50 draft (#541 comment 6041262753);",
+           "// layout 20: owner decision 10.10.2026 (#541 comment 6096621659), Ironforge/Undercity rectangles.",
            "#include \"ContinentRegionTables.h\"", "", "namespace continent_regions", "{"]
     index = []
     for lid, layout in LAYOUTS.items():
-        tables, unassigned = build(layout, lab)
+        tables, unassigned = build(lid, layout, lab)
         report.append(f"\n=== Continents.Layout = {lid}")
         for (mp, label), n in sorted(unassigned.items()):
             report.append(f"  map {mp}: zone without region (filled from neighbours): {label} ({n} entries)")
+        ranges = {mp: (FIRST_ID[lid][mp], FIRST_ID[lid][mp] + len(layout[mp]) - 1) for mp in (0, 1)}
+        if not (ranges[0][1] < ranges[1][0] or ranges[1][1] < ranges[0][0]):
+            failures.append(f"layout {lid}: region ids {ranges[0]} and {ranges[1]} overlap")
         for mp in (0, 1):
             regions = layout[mp]
-            if len(regions) > MAX_PER_CONTINENT:
-                failures.append(f"layout {lid} map {mp}: {len(regions)} regions > {MAX_PER_CONTINENT}")
+            first, last = ranges[mp]
+            if first < 1 or last > MAX_REGION_ID:
+                failures.append(f"layout {lid} map {mp}: region ids {first}-{last} outside 1-{MAX_REGION_ID}")
             counts = Counter(v for col in tables[mp] for v in col)
             land = Counter()
             for (gx, gy), label in lab[mp].items():
                 land[tables[mp][gx // 2][gy // 2]] += 1
+            rects = {r[0]: r for r in RECTS.get(lid, {}).get(mp, [])}
             for i, (rname, zones) in enumerate(regions):
-                rid = FIRST_ID[mp] + i
-                report.append(f"  id {rid:2d} {rname}: cells {counts[rid]}, land entries {land[rid]}; " + ", ".join(zones))
-                if land[rid] == 0:
+                rid = first + i
+                where = ", ".join(zones)
+                if rid in rects:
+                    _, x0, x1, y0, y1, rlabel = rects[rid]
+                    where = ", ".join(zones + [f"rectangle {rlabel} x {x0:.0f}..{x1:.0f} y {y0:.0f}..{y1:.0f}"])
+                report.append(f"  id {rid:2d} {rname}: cells {counts[rid]}, land entries {land[rid]}; " + where)
+                if counts[rid] == 0 or land[rid] == 0:
                     failures.append(f"layout {lid} region {rid} has no land")
                 for z in zones:
                     if not any(label_matches(l, z) for l in lab[mp].values()):
                         failures.append(f"layout {lid}: zone {z} not found in the map files")
             if any(v is None for col in tables[mp] for v in col):
                 failures.append(f"layout {lid} map {mp}: cell without region")
+            elif any(not first <= v <= last for col in tables[mp] for v in col):
+                failures.append(f"layout {lid} map {mp}: region id outside {first}-{last}")
             for _, x, y, zone, place in [k for k in KNOWN if k[0] == mp]:
                 cx, cy = cell_of(x, y)
                 report.append(f"  {place}: region {tables[mp][cx][cy]}")
+            for _, x, y, want, place in [k for k in KNOWN_REGION.get(lid, []) if k[0] == mp]:
+                cx, cy = cell_of(x, y)
+                got = tables[mp][cx][cy]
+                report.append(f"  known {place}: expected region {want}, got {got} -> {'OK' if got == want else 'FAIL'}")
+                if got != want:
+                    failures.append(f"layout {lid} known place {place}: region {got}, expected {want}")
             runs = rle(tables[mp])
             sym = f"kLayout{lid}Map{mp}"
             out.append(f"// layout {lid}, map {mp}: {len(runs)} runs")
