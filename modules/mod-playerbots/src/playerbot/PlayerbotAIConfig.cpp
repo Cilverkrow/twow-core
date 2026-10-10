@@ -424,6 +424,16 @@ bool PlayerbotAIConfig::Initialize()
     chaseSkipHazardPathWhenNoHazards = config.GetBoolDefault("AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards", false);
     perfGiveItemGroupOnlyScan = config.GetBoolDefault("AiPlayerbot.Perf.GiveItemGroupOnlyScan", false);
     perfStaticSpellLists = config.GetBoolDefault("AiPlayerbot.Perf.StaticSpellLists", false);
+    petDeadNoWorldPetFalse = config.GetBoolDefault("AiPlayerbot.PetDeadNoWorldPetFalse", false);
+    canCastSpellChecksPower = config.GetBoolDefault("AiPlayerbot.CanCastSpell.CheckPower", false);
+    castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
+    perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
+    perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
+    perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
+    perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
+    perfAttackersSingleList = config.GetBoolDefault("AiPlayerbot.Perf.AttackersSingleList", false);
+    perfPartyTargetMemo = config.GetBoolDefault("AiPlayerbot.Perf.PartyTargetMemo", false);
+    possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));
