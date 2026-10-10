@@ -1,8 +1,11 @@
 #pragma once
 
 #include "AmmoStockPolicy.h"
+#include <list>
 #include <memory>
+#include <shared_mutex>
 #include <unordered_set>
+#include <vector>
 #include "Config/Config.h"
 #include "Talentspec.h"
 #include "SharedDefines.h"
@@ -150,8 +153,17 @@ public:
     std::string randomBotMapsAsString;
     std::vector<uint32> randomBotMaps;
     std::list<uint32> randomBotQuestItems;
+    // Audit A31 (twow-repo#563): IsInRandomAccountList runs on every region thread (~7 times per UpdateAI)
+    // and appends on a cache miss, while the world thread iterates the list. Access only through the methods
+    // below: the lock is AiPlayerbot.X3a.ContextLock, the set is a lookup index (the list keeps its order and
+    // contents exactly as before), and the LoginDatabase query runs outside the lock.
     std::list<uint32> randomBotAccounts;
+    std::unordered_set<uint32> randomBotAccountIndex;
     std::unordered_set<uint32> nonRandomBotAccounts;
+    mutable std::shared_mutex randomBotAccountsMutex;
+    void AddRandomBotAccount(uint32 id);
+    std::vector<uint32> RandomBotAccountsSnapshot() const;
+    size_t RandomBotAccountCount() const;
     std::list<uint32> randomBotSpellIds;
     std::list<uint32> randomBotQuestIds;
     std::list<uint32> immuneSpellIds;

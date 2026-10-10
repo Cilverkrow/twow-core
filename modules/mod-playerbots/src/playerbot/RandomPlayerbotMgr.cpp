@@ -1213,7 +1213,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
             if (GetPlayerBot(bot))
                 continue;   
 
-            if (!eventCache[bot].empty() && GetEventValue(bot, "login"))
+            if (HasCachedEvents(bot) && GetEventValue(bot, "login"))
             {
                 onlineBotCount++;
                 continue;
@@ -1686,8 +1686,7 @@ uint32 RandomPlayerbotMgr::AddRandomBots()
             // loop could reach ever got to play. That also starved the LFT queue
             // of low level companions. Shuffling per pass gives every account the
             // same chance of being served first.
-            std::vector<uint32> accountOrder(sPlayerbotAIConfig.randomBotAccounts.begin(),
-                                             sPlayerbotAIConfig.randomBotAccounts.end());
+            std::vector<uint32> accountOrder = sPlayerbotAIConfig.RandomBotAccountsSnapshot();   // audit A31
             std::shuffle(accountOrder.begin(), accountOrder.end(), *GetRandomGenerator());
 
             for (std::vector<uint32>::iterator i = accountOrder.begin(); i != accountOrder.end(); i++)
@@ -4239,11 +4238,21 @@ std::list<uint32> RandomPlayerbotMgr::GetBgBots(uint32 bracket)
     return BgBots;
 }
 
+bool RandomPlayerbotMgr::HasCachedEvents(uint32 bot) const
+{
+    ai::context_lock::Shared const lock(eventCacheMutex, ai::context_lock::On());
+    auto const cached = eventCache.find(bot);
+    return cached != eventCache.end() && !cached->second.empty();
+}
+
 uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string event)
 {
     // load all events at once on first event load
-    if (eventCache[bot].empty())
+    // Audit A28 (twow-repo#563): the query runs outside the lock into a local map; the merge keeps entries
+    // another thread stored meanwhile (emplace never overwrites). Switch off: the same steps as before.
+    if (!HasCachedEvents(bot))
     {
+        std::map<std::string, CachedEvent> loaded;
         auto results = CharacterDatabase.PQuery(PlayerbotDatabaseContract::EventStoreSql(
             "SELECT `event`, `value`, `time`, validIn, `data` FROM ", " WHERE owner = 0 AND bot = '%u'").c_str(), bot);
         if (results)
@@ -4266,11 +4275,38 @@ uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string event)
                 e.lastChangeTime = fields[2].GetUInt32();
                 e.validIn = fields[3].GetUInt32();
                 e.data = dataStr ? std::string(dataStr) : std::string();
-                eventCache[bot][eventName] = e;
+                loaded[eventName] = e;
             } while (results->NextRow());
         }
+
+        ai::context_lock::Unique const lock(eventCacheMutex, ai::context_lock::On());
+        std::map<std::string, CachedEvent>& cached = eventCache[bot];
+        for (auto const& [eventName, loadedEvent] : loaded)
+            cached.emplace(eventName, loadedEvent);
     }
-    CachedEvent e = eventCache[bot][event];
+
+    CachedEvent e;
+    bool found = false;
+    {
+        ai::context_lock::Shared const lock(eventCacheMutex, ai::context_lock::On());
+        auto const cached = eventCache.find(bot);
+        if (cached != eventCache.end())
+        {
+            auto const stored = cached->second.find(event);
+            if (stored != cached->second.end())
+            {
+                e = stored->second;
+                found = true;
+            }
+        }
+    }
+    if (!found)
+    {
+        // As before: an unknown event is remembered as empty, so a bot without any stored event is not
+        // queried again on every call.
+        ai::context_lock::Unique const lock(eventCacheMutex, ai::context_lock::On());
+        e = eventCache[bot][event];
+    }
 
     if ((time(0) - e.lastChangeTime) >= e.validIn && event != "specNo" && event != "specLink" && event != "init" && event != "current_time" && event != "always" && event != "selfbot" && event != ai::profession::kEventName)
         e.value = 0;
@@ -4280,13 +4316,19 @@ uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string event)
 
 int32 RandomPlayerbotMgr::GetValueValidTime(uint32 bot, std::string event)
 {
-    if (eventCache.find(bot) == eventCache.end())
-        return 0;
+    CachedEvent e;
+    {
+        ai::context_lock::Shared const lock(eventCacheMutex, ai::context_lock::On());   // audit A28
+        auto const cached = eventCache.find(bot);
+        if (cached == eventCache.end())
+            return 0;
 
-    if (eventCache[bot].find(event) == eventCache[bot].end())
-        return 0;
+        auto const stored = cached->second.find(event);
+        if (stored == cached->second.end())
+            return 0;
 
-    CachedEvent e = eventCache[bot][event];
+        e = stored->second;
+    }
 
     return e.validIn-(time(0) - e.lastChangeTime);
 }
@@ -4296,8 +4338,15 @@ std::string RandomPlayerbotMgr::GetEventData(uint32 bot, std::string event)
     std::string data = "";
     if (GetEventValue(bot, event))
     {
-        CachedEvent e = eventCache[bot][event];
-        data = e.data;
+        // GetEventValue stored the entry; read it without inserting (audit A28).
+        ai::context_lock::Shared const lock(eventCacheMutex, ai::context_lock::On());
+        auto const cached = eventCache.find(bot);
+        if (cached != eventCache.end())
+        {
+            auto const stored = cached->second.find(event);
+            if (stored != cached->second.end())
+                data = stored->second.data;
+        }
     }
     return data;
 }
@@ -4403,7 +4452,10 @@ uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string event, uint32 v
     // Only reached once the write is on its way, so a rejected write leaves the
     // cache agreeing with the table rather than inventing a value nothing stored.
     CachedEvent e(value, (uint32)time(0), validIn, data);
-    eventCache[bot][event] = e;
+    {
+        ai::context_lock::Unique const lock(eventCacheMutex, ai::context_lock::On());   // audit A28
+        eventCache[bot][event] = e;
+    }
     return value;
 }
 
@@ -5382,7 +5434,10 @@ void RandomPlayerbotMgr::Remove(Player* bot)
     SC_LOG("RandomPlayerbotMgr::Remove guid=%u — deleting random_bots row", owner);
     CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
         "DELETE FROM ", " WHERE owner = 0 AND bot = '%d'").c_str(), owner);
-    eventCache[owner].clear();
+    {
+        ai::context_lock::Unique const lock(eventCacheMutex, ai::context_lock::On());   // audit A28
+        eventCache[owner].clear();
+    }
     SC_LOG("RandomPlayerbotMgr::Remove guid=%u — calling LogoutPlayerBot", owner);
 
     LogoutPlayerBot(owner);
@@ -5810,7 +5865,10 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleReset(std::string param)
     }
     CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
         "delete from ", " where event not in ('temporary')").c_str());
-    sRandomPlayerbotMgr.eventCache.clear();
+    {
+        ai::context_lock::Unique const lock(sRandomPlayerbotMgr.eventCacheMutex, ai::context_lock::On());   // audit A28
+        sRandomPlayerbotMgr.eventCache.clear();
+    }
     std::string msg = "Random bots were reset for all players. Please restart the Server.";
     messages.push_back(msg);
     return messages;
@@ -6008,7 +6066,7 @@ uint32 RandomPlayerbotMgr::GetOrCreateAccount(Player* master, std::string& error
                 uint32 accountId = sAccountMgr.GetId(accountName);
                 if (accountId)
                 {
-                    sPlayerbotAIConfig.randomBotAccounts.push_back(accountId);
+                    sPlayerbotAIConfig.AddRandomBotAccount(accountId);
                     return accountId;
                 }
             }
@@ -6023,7 +6081,7 @@ uint32 RandomPlayerbotMgr::GetOrCreateAccount(Player* master, std::string& error
         {
             if (!sPlayerbotAIConfig.IsInRandomAccountList(accountId))
             {
-                sPlayerbotAIConfig.randomBotAccounts.push_back(accountId);
+                sPlayerbotAIConfig.AddRandomBotAccount(accountId);
             }
             return accountId;
         }

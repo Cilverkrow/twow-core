@@ -387,6 +387,9 @@ public:
     virtual void UpdateAI(uint32 elapsed, bool minimal = false);
 
     void HandleCommands();
+    // Audit A29 (twow-repo#563): chat reaches HandleCommand on the AsyncPackets thread while the bot's
+    // own UpdateAI drains the queue; every access goes through chatCommandsMutex.
+    void QueueChatCommand(ChatCommandHolder const& cmd);
 private:
     void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
     bool AllowDelayJitter() const override;
@@ -1021,6 +1024,7 @@ protected:
     BotState currentState;
     ChatHelper chatHelper;
     std::queue<ChatCommandHolder> chatCommands;
+    std::mutex chatCommandsMutex;   // audit A29: guards chatCommands
     std::queue<ChatQueuedReply> chatReplies;
     std::mutex chatRepliesMutex;
     PacketHandlingHelper botOutgoingPacketHandlers;
