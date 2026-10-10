@@ -401,6 +401,7 @@ bool PlayerbotAIConfig::Initialize()
     asyncBotLogin = config.GetBoolDefault("AiPlayerbot.AsyncBotLogin", false);
     persistentActiveRosterEnabled = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.Enabled", false);
     parkHideFromBots = config.GetBoolDefault("AiPlayerbot.Park.HideFromBots", false);
+    parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);

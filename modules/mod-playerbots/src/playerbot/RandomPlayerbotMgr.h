@@ -365,6 +365,15 @@ public:
         std::vector<ParkInn> parkInns[2];
         std::vector<WorldLocation> parkCities[2];
         bool parkSpotsBuilt = false;
+        // twow-repo#551: where ParkBot put bots since the last [Park] state=share line (world thread only).
+        struct ParkShare
+        {
+            uint32 inn = 0;
+            uint32 city = 0;
+            uint32 here = 0;
+            uint32 lastLog = 0;
+        };
+        ParkShare parkShare;
         void BuildParkSpots();
         void ProcessParkedBots();
         bool ParkBot(Player* bot, std::string const& teleName, std::string& reason);
