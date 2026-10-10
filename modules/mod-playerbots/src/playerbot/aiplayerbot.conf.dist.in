@@ -1909,6 +1909,12 @@ AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards = 0
 # exist." error log line; and the healer/tank check no longer fills the bot manager's event cache
 # (eventCache map insert, first-miss DB load) for those players. Performance only. 0 = off (default).
 AiPlayerbot.Perf.GiveItemGroupOnlyScan = 0
+# twow-repo#541 (audit A16): 1 = the castability checks (CanCastSpell for unit, game object and position
+# targets, CheckSpellTargetAlignment) take the neutral and out-of-control spell ids from constant arrays
+# instead of building a 20/24-node std::list on every call. Same ids in the same order, same answers, same
+# cast results: no behaviour change, only fewer heap allocations (about 0.5-2 us per call; not expected to
+# move [BotUpdate] or [MapTick] measurably on its own). 0 = the old per-call lists (default).
+AiPlayerbot.Perf.StaticSpellLists = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

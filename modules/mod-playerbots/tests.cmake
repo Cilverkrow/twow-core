@@ -2176,3 +2176,23 @@ add_test(NAME give_item_group_scan_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/give_item_group_scan_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A16): castability checks take the neutral / out-of-control spell ids from
+# constant arrays instead of a per-call std::list (AiPlayerbot.Perf.StaticSpellLists, default 0).
+add_executable(static_spell_lists_policy_tests
+  "${PB_MODULE_DIR}/t/static_spell_lists_policy_tests.cpp")
+
+target_include_directories(static_spell_lists_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(static_spell_lists_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME static_spell_lists_policy
+  COMMAND static_spell_lists_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME static_spell_lists_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/static_spell_lists_source_contract_tests.cmake")
