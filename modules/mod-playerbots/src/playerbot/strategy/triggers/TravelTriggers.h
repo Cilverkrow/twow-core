@@ -34,4 +34,16 @@ namespace ai
 
         virtual bool IsActive() override;
     };
+
+    // twow-repo#541 (audit A18): "travel request::<condition>" - a "val::<condition>" trigger for the travel
+    // request actions that does not read <condition> while the travel target is prepared or active
+    // (RequestTravelTargetAction::isUseful rejects every request then). Name and event source are the
+    // qualifier, exactly as ValueTrigger. Only created when AiPlayerbot.Perf.TravelRequestGate = 1.
+    class TravelRequestTrigger : public Trigger, public Qualified
+    {
+    public:
+        TravelRequestTrigger(PlayerbotAI* ai) : Trigger(ai, "travel request", 1), Qualified() {}
+
+        virtual bool IsActive() override;
+    };
 }

@@ -2196,3 +2196,154 @@ add_test(NAME static_spell_lists_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/static_spell_lists_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A07): hunter "no world pet => no dead pet" behind AiPlayerbot.PetDeadNoWorldPetFalse (default 0).
+add_test(NAME pet_dead_no_world_pet_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/pet_dead_no_world_pet_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A33): CanCastSpell power gate behind AiPlayerbot.CanCastSpell.CheckPower (default 0).
+add_executable(spell_power_gate_policy_tests
+  "${PB_MODULE_DIR}/t/spell_power_gate_policy_tests.cpp")
+
+target_include_directories(spell_power_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(spell_power_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spell_power_gate_policy
+  COMMAND spell_power_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cancast_power_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/cancast_power_gate_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A27): spell id/range refresh on learn behind AiPlayerbot.CastSpell.RefreshOnLearn (default 0).
+add_executable(spell_refresh_on_learn_policy_tests
+  "${PB_MODULE_DIR}/t/spell_refresh_on_learn_policy_tests.cpp")
+
+target_include_directories(spell_refresh_on_learn_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(spell_refresh_on_learn_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spell_refresh_on_learn_policy
+  COMMAND spell_refresh_on_learn_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spell_refresh_on_learn_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/spell_refresh_on_learn_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A17): combat-idle yield behind AiPlayerbot.Perf.CombatIdleYield (default 0, behaviour-changing).
+add_executable(combat_idle_policy_tests
+  "${PB_MODULE_DIR}/t/combat_idle_policy_tests.cpp")
+
+target_include_directories(combat_idle_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(combat_idle_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME combat_idle_policy
+  COMMAND combat_idle_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME combat_idle_yield_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/combat_idle_yield_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A18): travel request gate behind AiPlayerbot.Perf.TravelRequestGate (default 0, behaviour-changing).
+add_executable(travel_request_policy_tests
+  "${PB_MODULE_DIR}/t/travel_request_policy_tests.cpp")
+
+target_include_directories(travel_request_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(travel_request_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME travel_request_policy
+  COMMAND travel_request_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME travel_request_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/travel_request_gate_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A22): party buff/cure known-spell gate behind AiPlayerbot.Perf.PartyBuffKnownSpellGate (default 0, behaviour-changing).
+add_executable(known_spell_gate_policy_tests
+  "${PB_MODULE_DIR}/t/known_spell_gate_policy_tests.cpp")
+
+target_include_directories(known_spell_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(known_spell_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME known_spell_gate_policy
+  COMMAND known_spell_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME party_buff_spell_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/party_buff_spell_gate_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A21): lazy rebuild of inactive engines behind AiPlayerbot.Perf.LazyEngineInit (default 0).
+add_test(NAME lazy_engine_init_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/lazy_engine_init_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A23): "has attackers" / "possible attack targets::1" read the full "attackers" list behind AiPlayerbot.Perf.AttackersSingleList (default 0, behaviour-changing within the 1 s cache granularity).
+add_test(NAME attackers_single_list_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/attackers_single_list_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A25): party-target memo window behind AiPlayerbot.Perf.PartyTargetMemo (default 0, behaviour-changing in timing).
+add_executable(value_memo_window_tests
+  "${PB_MODULE_DIR}/t/value_memo_window_tests.cpp")
+
+target_include_directories(value_memo_window_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+find_package(Threads REQUIRED)
+target_link_libraries(value_memo_window_tests PRIVATE Threads::Threads)
+
+set_target_properties(value_memo_window_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME value_memo_window
+  COMMAND value_memo_window_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME party_target_memo_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/party_target_memo_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group re-check its own snapshot behind AiPlayerbot.PossibleTargetsSharedSearch (default 0, behaviour-changing).
+add_test(NAME possible_targets_shared_search_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/possible_targets_shared_search_source_contract_tests.cmake")
