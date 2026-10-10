@@ -197,6 +197,9 @@ public:
         virtual void MovePlayerBot(uint32 guid, PlayerbotHolder* newHolder) override;
 
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > getBattleMastersCache() { return BattleMastersCache; }
+        // twow-repo#541 (audit A09, AiPlayerbot.Perf.BgMasterCacheRef): read-only view without the deep copy. Written only by
+        // LoadBattleMastersCache (PlayerbotAIConfig::Initialize); readers use find() (ai::bgmaster), never operator[].
+        const std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > >& getBattleMastersCacheRef() const { return BattleMastersCache; }
 
         float getActivityMod() { return activityMod; }
         float getActivityPercentage() { return activityMod * 100.0f; }
@@ -384,6 +387,9 @@ public:
         void ProcessParkedBots();
         bool ParkBot(Player* bot, std::string const& teleName, std::string& reason);
         void UnparkBot(Player* bot);
+        // twow-repo#541 (AiPlayerbot.Park.SleepGrid): core switches and the [ParkSleep] minute line.
+        uint32 parkSleepUnparkWakes = 0;  // world thread: unparked bots that carried the sleep flag
+        void ReportParkSleep();
         void OnParkBindChecked(uint32 guid, bool found, ai::park::Point const& stored);
         // twow-repo#541: [WorldBots] per-minute cost of UpdateAIInternal in the world thread.
         ai::world_bots::Window worldBotsWindow;

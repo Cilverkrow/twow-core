@@ -374,6 +374,22 @@ class Map : public GridRefManager<NGridType>
 
         static void DeleteFromWorld(Player* player);        // player object will deleted at call
 
+        // twow-repo#541 (park, AiPlayerbot.Park.SleepGrid): server-wide sums for the [ParkSleep] minute line,
+        // added once per continent cell update and taken by the bot module with exchange(0).
+        struct GridSleepStats
+        {
+            std::atomic<uint64> updates{ 0 };       // continent cell updates
+            std::atomic<uint64> sleeping{ 0 };      // sleeping players skipped, summed over the updates
+            std::atomic<uint64> woken{ 0 };         // players with the flag that activated cells
+            std::atomic<uint64> wakeAttack{ 0 };    // asleep -> awake by combat or attackers
+            std::atomic<uint64> wakeOther{ 0 };     // asleep -> awake by death, teleport or taxi
+            std::atomic<uint64> cellsMarked{ 0 };   // marked cells, summed over the updates
+        };
+        static GridSleepStats& GetGridSleepStats();
+        // Set by the bot module: active = a player may carry the sleep flag (owner lookup for pets),
+        // stats = count for [ParkSleep]. Both off by default, so the cell update stays the legacy one.
+        static void SetGridSleepSwitches(bool active, bool stats);
+
         inline void UpdateCellsAroundObject(uint32 now, uint32 diff, WorldObject const* object);
         inline void UpdateActiveCellsSynch(uint32 now, uint32 diff);
         inline void MarkCellsAroundObject(WorldObject const* object);
