@@ -6229,14 +6229,19 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         uint32 const team = bot->GetTeam() == ALLIANCE ? 0 : 1;
         uint32 const level = bot->GetLevel();
         std::vector<WorldLocation> inns;
+        // Owner 09.10.2026 ("damit die Städte nicht zu voll werden ... alle Gasthäuser mit 25 Bots füllen"):
+        // with AiPlayerbot.Park.AnyLevelInn every inn of the faction counts, whatever level band it serves;
+        // ChooseSpot then takes the nearest one with room, and only when all are full a capital spot.
         for (ParkInn const& inn : parkInns[team])
-            if (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack)
+            if (sPlayerbotAIConfig.parkAnyLevelInn ||
+                (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack))
                 inns.push_back(inn.loc);
         int index = pick(inns);
         if (index >= 0)
         {
             spot = inns[index];
             via = "inn";
+            ++parkShare.inn;
         }
         else
         {
@@ -6245,10 +6250,12 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
             {
                 sLog.outBasic("[Park] state=fallback_here bot=%u level=%u reason=%s", bot->GetGUIDLow(), level,
                     inns.empty() && parkCities[team].empty() ? "no_inn" : "all_full");
+                ++parkShare.here;
                 return ParkBot(bot, "here", reason);
             }
             spot = parkCities[team][index];
             via = "city";
+            ++parkShare.city;
         }
     }
 
@@ -6309,6 +6316,16 @@ void RandomPlayerbotMgr::UnparkBot(Player* bot)
 void RandomPlayerbotMgr::ProcessParkedBots()
 {
     uint32 const now = uint32(time(nullptr));
+
+    // twow-repo#551: once a minute while bots were parked - how many went to an inn, a capital spot or
+    // stayed where they stood, and whether inns of any level were allowed (AiPlayerbot.Park.AnyLevelInn).
+    if (now >= parkShare.lastLog + 60 && (parkShare.inn || parkShare.city || parkShare.here))
+    {
+        sLog.outBasic("[Park] state=share inn=%u city=%u here=%u any_level_inn=%u", parkShare.inn, parkShare.city,
+            parkShare.here, sPlayerbotAIConfig.parkAnyLevelInn ? 1u : 0u);
+        parkShare.inn = parkShare.city = parkShare.here = 0;
+        parkShare.lastLog = now;
+    }
     for (auto it = parkedBots.begin(); it != parkedBots.end();)
     {
         uint32 const guid = it->first;

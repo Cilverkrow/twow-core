@@ -37,6 +37,7 @@
 #include "ChannelBroadcaster.h"
 #include "PerformanceMonitor.h"
 #include "Util.h"
+#include "ContinentRegionTables.h"
 
 typedef MaNGOS::ClassLevelLockable<MapManager, std::recursive_mutex> MapManagerLock;
 INSTANTIATE_SINGLETON_2(MapManager, MapManagerLock);
@@ -117,7 +118,7 @@ void MapManager::GetOrCreateContinentInstances(uint32 mapId, WorldObject* obj, s
     {
         if (mapId == 0)
         {
-            for (uint32 i = MAP0_TOP_NORTH; i <= MAP0_SOUTH; ++i)
+            for (uint32 i = MAP0_FIRST; i <= GetContinentLastRegion(0); ++i)  // twow-repo#541 part C: per layout
             {
                 obj->SetLocationInstanceId(i);
                 instances.insert(CreateMap(0, obj));
@@ -126,7 +127,7 @@ void MapManager::GetOrCreateContinentInstances(uint32 mapId, WorldObject* obj, s
         }
         else if (mapId == 1)
         {
-            for (uint32 i = MAP1_NORTH; i <= MAP1_SOUTH; ++i)
+            for (uint32 i = MAP1_FIRST; i <= GetContinentLastRegion(1); ++i)  // twow-repo#541 part C: per layout
             {
                 obj->SetLocationInstanceId(i);
                 instances.insert(CreateMap(1, obj));
@@ -462,6 +463,8 @@ void MapManager::Update(uint32 diff)
 
     sWorld.GetChannelBroadcaster()->DisableSendingMessages();
     SwitchPlayersInstances();
+    if (sWorld.getConfig(CONFIG_BOOL_CONTINENTS_INSTANCIATE) && (GetContinentLayout() != 0 || worldTickOn))
+        ReportRegionSwitches();  // twow-repo#541 part C: [RegionSwitch] once per minute
     asyncMapUpdating = false;
 
     CreateNewInstancesForPlayersSync();
@@ -752,6 +755,89 @@ BattleGroundMap* MapManager::CreateBattleGroundMap(uint32 id, uint32 InstanceId,
     return map;
 }
 
+// twow-repo#541 part C (Continents.Layout): the active cell tables, decoded once (thread-safe static) at the
+// first use, after the config is loaded. A layout without a valid table falls back to the polygons (0).
+namespace
+{
+struct ActiveContinentLayout
+{
+    uint32 layout = 0;
+    std::vector<uint8> cells[2];
+    uint32 last[2] = { MAP0_SOUTH, MAP1_SOUTH };
+};
+
+ActiveContinentLayout BuildContinentLayout()
+{
+    ActiveContinentLayout active;
+    uint32 const wanted = sWorld.getConfig(CONFIG_UINT32_CONTINENTS_LAYOUT);
+    if (wanted == 0)
+        return active;
+
+    uint32 const firstRegion[2] = { MAP0_FIRST, MAP1_FIRST };
+    uint32 const lastAllowed[2] = { MAP0_LAST, MAP1_LAST };
+    ActiveContinentLayout built;
+    built.layout = wanted;
+    for (uint32 mapId = 0; mapId < 2; ++mapId)
+    {
+        continent_regions::LayoutTable const* table = continent_regions::Find(wanted, mapId);
+        if (!table || !continent_regions::Decode(*table, built.cells[mapId]))
+        {
+            sLog.outError("[ContinentLayout] Continents.Layout = %u has no valid table for map %u, using the polygons (0)",
+                wanted, mapId);
+            return active;
+        }
+        built.last[mapId] = continent_regions::LastRegion(built.cells[mapId]);
+        if (built.last[mapId] < firstRegion[mapId] || built.last[mapId] > lastAllowed[mapId])
+        {
+            sLog.outError("[ContinentLayout] Continents.Layout = %u: map %u region %u outside %u-%u, using the polygons (0)",
+                wanted, mapId, built.last[mapId], firstRegion[mapId], lastAllowed[mapId]);
+            return active;
+        }
+    }
+    sLog.outString("[ContinentLayout] layout=%u regions map0=%u map1=%u", wanted, built.last[0] - MAP0_FIRST + 1,
+        built.last[1] - MAP1_FIRST + 1);
+    return built;
+}
+
+ActiveContinentLayout const& GetActiveContinentLayout()
+{
+    static ActiveContinentLayout const active = BuildContinentLayout();
+    return active;
+}
+}
+
+uint32 MapManager::GetContinentLayout() const
+{
+    return GetActiveContinentLayout().layout;
+}
+
+uint32 MapManager::GetContinentFirstRegion(uint32 mapId) const
+{
+    return mapId == 0 ? MAP0_FIRST : MAP1_FIRST;
+}
+
+uint32 MapManager::GetContinentLastRegion(uint32 mapId) const
+{
+    return GetActiveContinentLayout().last[mapId == 0 ? 0 : 1];
+}
+
+void MapManager::ReportRegionSwitches()
+{
+    uint32 const now = WorldTimer::getMSTime();
+    if (m_regionSwitchReportMs == 0)
+    {
+        m_regionSwitchReportMs = now;
+        return;
+    }
+    if (WorldTimer::getMSTimeDiff(m_regionSwitchReportMs, now) < MINUTE * IN_MILLISECONDS)
+        return;
+    m_regionSwitchReportMs = now;
+    uint64 const deferred = m_regionSwitchDeferred.exchange(0, std::memory_order_relaxed);
+    sLog.out(LOG_PERFORMANCE, "[RegionSwitch] layout=%u switches=%llu deferred_combat_updates=%llu", GetContinentLayout(),
+        (unsigned long long)m_regionSwitches, (unsigned long long)deferred);
+    m_regionSwitches = 0;
+}
+
 bool IsNorthTo(float x, float y, float const* limits, int count /* last case is limits[2*count - 1] */)
 {
     int insideCount = 0;
@@ -851,6 +937,16 @@ uint32 MapManager::GetContinentInstanceId(uint32 mapId, float x, float y, bool* 
 
     if (!sWorld.getConfig(CONFIG_BOOL_CONTINENTS_INSTANCIATE))
         return 0;
+
+    // twow-repo#541 part C: cell table of Continents.Layout 14/16/18; a fight in a border cell keeps the region.
+    ActiveContinentLayout const& active = GetActiveContinentLayout();
+    if (active.layout != 0 && mapId <= 1)
+    {
+        uint8 const cell = active.cells[mapId][continent_regions::CellIndex(x, y)];
+        if (transitionArea)
+            *transitionArea = (cell & continent_regions::kTransitionBit) != 0;
+        return cell & continent_regions::kRegionMask;
+    }
 
     // Y = horizontal axis on wow ...
     switch (mapId)
@@ -1204,8 +1300,8 @@ void MapManager::SwitchPlayersInstances()
         for (it = m_scheduledInstanceSwitches[continent].begin(); it != m_scheduledInstanceSwitches[continent].end(); ++it)
         {
             Player* player = it->first;
-            if (player->IsInWorld() && player->GetMapId() == continent)
-                player->SwitchInstance(it->second);
+            if (player->IsInWorld() && player->GetMapId() == continent && player->SwitchInstance(it->second))
+                ++m_regionSwitches;  // twow-repo#541 part C: [RegionSwitch]
         }
         m_scheduledInstanceSwitches[continent].clear();
     }
