@@ -596,6 +596,10 @@ void PlayerbotAI::HandleQueuedBotPackets()
         {
             return aiObjectContext->GetValue<bool>("and", condition)->Get();
         });
+    // X3b site 3: this bot's follow/wander state for GroupReadyValue of the others (no cross-bot strategy read).
+    if (sPlayerbotAIConfig.x3bPublishedConditions)
+        publishedFollowing.store(HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) ||
+            HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT), std::memory_order_relaxed);
 }
 
 // twow-repo#563 (X3c): instead of setting a value in another bot's context from this thread, queue it.

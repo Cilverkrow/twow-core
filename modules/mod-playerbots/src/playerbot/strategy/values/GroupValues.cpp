@@ -163,9 +163,13 @@ bool GroupReadyValue::Calculate()
         {
             PlayerbotAI* memberAi = GetBotAI(member);
 
+            // twow-repo#563 (X3b site 3, AiPlayerbot.X3b.PublishedConditions): another bot's strategies are read from
+            // its published flag, not from its engine (which that bot may change at the same time). Off: as before.
             bool isFollowing = memberAi
-                ? (memberAi->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) ||
-                    memberAi->HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT))
+                ? ((memberAi != ai && sPlayerbotAIConfig.x3bPublishedConditions)
+                    ? memberAi->PublishedFollowing()
+                    : (memberAi->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) ||
+                        memberAi->HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT)))
                 : true;
 
             if (!member->IsAlive() && isFollowing)
