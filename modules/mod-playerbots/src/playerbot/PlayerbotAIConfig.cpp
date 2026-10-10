@@ -419,6 +419,7 @@ bool PlayerbotAIConfig::Initialize()
     perfTravelInfoReuse = config.GetBoolDefault("AiPlayerbot.Perf.TravelInfoReuse", false);
     perfLogActionFastPath = config.GetBoolDefault("AiPlayerbot.Perf.LogActionFastPath", false);
     botUpdateTraceTailFix = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTailFix", false);
+    perfTrainableSpellsPrecheck = config.GetBoolDefault("AiPlayerbot.Perf.TrainableSpellsPrecheck", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

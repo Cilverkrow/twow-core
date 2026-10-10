@@ -2121,3 +2121,23 @@ add_test(NAME log_action_fast_path_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/log_action_fast_path_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A12): exact RED skill pre-check and lazy roster read in "trainable spells"
+# (AiPlayerbot.Perf.TrainableSpellsPrecheck, default 0).
+add_executable(trainable_spells_precheck_policy_tests
+  "${PB_MODULE_DIR}/t/trainable_spells_precheck_policy_tests.cpp")
+
+target_include_directories(trainable_spells_precheck_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(trainable_spells_precheck_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME trainable_spells_precheck_policy
+  COMMAND trainable_spells_precheck_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME trainable_spells_precheck_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/trainable_spells_precheck_source_contract_tests.cmake")

@@ -1872,6 +1872,11 @@ AiPlayerbot.Perf.LogActionFastPath = 0
 # window, and one update that logs more than about 512 characters still pushes its own tick marker out.
 # 0 = as before (default).
 AiPlayerbot.BotUpdateTraceTailFix = 0
+# twow-repo#541 (audit A12): 1 = the value "trainable spells" skips a trainer spell whose required skill
+# the bot does not have at the required value (the core's own RED check in GetTrainerSpellState) before
+# the full trainer state walk, and reads the roster flag / profession pair once per calculation, at the
+# first GREEN spell. Same trainable spells, same order, less CPU. 0 = old path (default).
+AiPlayerbot.Perf.TrainableSpellsPrecheck = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
