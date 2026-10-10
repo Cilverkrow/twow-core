@@ -52,6 +52,12 @@ AiPlayerbot.Park.HideFromBots = 0
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
 # [Park] state=share logs where bots were parked (inn / city / here) once a minute.
 AiPlayerbot.Park.AnyLevelInn = 0
+# twow-repo#541 (grid sleep): 1 = a parked bot (and its pet) does not activate the map cells around it, so
+# the creatures there are not updated unless a real player or an active bot is near. The bot wakes the cells
+# again as soon as it fights, dies, teleports or is unparked. Its grid stays loaded; saving, logout and the
+# roster are unchanged. [ParkSleep] logs sleeping/woken bots and marked cells once a minute (also with
+# AiPlayerbot.BotUpdateTrace = 1 and this switch off, for the A/B). 0 = off (default).
+AiPlayerbot.Park.SleepGrid = 0
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
@@ -1810,6 +1816,110 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#541 (audit A01): 1 = the flee point search (find corpse, flee, random bot flee teleport) evaluates
+# each candidate angle once per search and reuses that result when a later distance ring repeats the
+# same angle. Same candidate points, same chosen point, fewer height/water/LOS checks. 0 = off (default).
+AiPlayerbot.Perf.FleeMemo = 0
+# twow-repo#541 (audit A02): 1 = a ghost near its corpse first decides whether it only waits out the teleport
+# delay or is already moving, and in those two cases skips the search for a safe revive spot (FleeManager,
+# random point) that they never use. Same decisions, less work; only the random number stream shifts.
+# 0 = off (default).
+AiPlayerbot.FindCorpseLazySpot = 0
+# twow-repo#541 (audit A03): 1 = "nearest friendly players", "closest friendly players", "nearest npcs" and
+# "nearest stealthed units" run their cheap filter (player? hostile? stealthed?) before the line-of-sight
+# raycast, "nearest npcs" rejects players before the hostility check, and "nearest friendly players"
+# searches only the player container instead of every grid creature. Same lists in the same order, fewer
+# raycasts and VMAP lock acquisitions; only core error-log lines for units with an invalid faction
+# template can differ. 0 = off (default).
+AiPlayerbot.Perf.NearestUnitsAcceptFirst = 0
+# twow-repo#541 (audit A04+A05): 1 = "add gathering loot" (every second per bot out of combat) rejects
+# objects that need no gathering skill before the line-of-sight raycast, and reads the nearest-corpses
+# list only for a bot with skinning (a corpse is a gathering target only for skinning). Same nodes and
+# corpses added, less work; other readers of the nearest-corpses list may recompute it up to a second
+# earlier. 0 = off (default).
+AiPlayerbot.Perf.GatherLootFastPath = 0
+# twow-repo#541 (audit A06): the "attackers" validation does less work for the same result.
+# 1 = the area lookup for the PvP-prohibited zones (global terrain lock + VMAP query) runs only for enemy
+# players and pets, the only candidates that read it.
+# 2 = level 1, plus: a candidate of the bot's own pass that is not fighting it (no threat on bot/pet, not
+# their victim, not its attack/pull target, not its duel opponent, not its rti target) is dropped before
+# the visibility and free-move checks. Candidates of group members and the master keep the old order.
+# Same targets; the "rti target", "free move center" and "possible targets" values may refresh at other
+# moments. 0 = as before (default).
+AiPlayerbot.Perf.AttackersLazyChecks = 0
+# twow-repo#541 (audit A08): 1 = on its own AI tick (triggers, default actions, prerequisites,
+# alternatives, continuers, retries) each bot engine remembers which strategy defines the action node
+# for an action name, or that none does, and then asks only that strategy instead of every strategy on
+# every pushed action. Commands from players ("do ...", .bot) keep asking every strategy. Same
+# decisions, less CPU per AI tick. Emptied at every strategy change. 0 = off (default).
+AiPlayerbot.Perf.ActionNodeOwnerCache = 0
+# twow-repo#541 (audit A09): 1 = the values "rpg bg type" and "bg masters" read the battlemaster cache
+# through a const reference with find() instead of copying the whole nested map (up to five copies per
+# calculation of "rpg bg type"). Same results and decisions, only fewer allocations on the map threads.
+# 0 = old copy (default).
+AiPlayerbot.Perf.BgMasterCacheRef = 0
+# twow-repo#541 (audit A10): 1 = a travel choice builds one travel snapshot of the bot (PlayerTravelInfo)
+# instead of one per checked destination, reuses an "is active" answer it already has and checks the cheap
+# local quest hub conditions first. The destination lookup for exactly one quest or entry (needed quest
+# entries, quest list, quest objective travel) reads that key instead of walking all keys. Same choices,
+# less work on the map threads. 0 = old path (default).
+AiPlayerbot.Perf.TravelInfoReuse = 0
+# twow-repo#541 (audit A11): 1 = the engine log path does less work for the same output. While
+# AiPlayerbot.EnableActionLog is off and no per-bot action-log file is open, the action-log lookup (one
+# global mutex shared by all map threads) is skipped: engine lines of grouped bots and the cast, aura
+# and damage hooks of all bots. PerfMon action and trigger names are built only with
+# AiPlayerbot.PerfMonEnabled = 1. Same decisions, same log lines. 0 = as before (default).
+AiPlayerbot.Perf.LogActionFastPath = 0
+# twow-repo#541 (audit A11): 1 = the engine's last-action trail ([BotUpdateSlow] action=, [BotSlowUpdate]
+# and [Idle] last_action=, fishing break, "action" command) keeps the newest 512 characters, cut at an
+# entry '|'. The old trim kept only what lay beyond character 512 and often emptied the trail. Log and
+# chat text only; the fishing break line (first 160 characters) then shows the oldest part of that
+# window, and one update that logs more than about 512 characters still pushes its own tick marker out.
+# 0 = as before (default).
+AiPlayerbot.BotUpdateTraceTailFix = 0
+# twow-repo#541 (audit A12): 1 = the value "trainable spells" skips a trainer spell whose required skill
+# the bot does not have at the required value (the core's own RED check in GetTrainerSpellState) before
+# the full trainer state walk, and reads the roster flag / profession pair once per calculation, at the
+# first GREEN spell. Same trainable spells, same order, less CPU. 0 = old path (default).
+AiPlayerbot.Perf.TrainableSpellsPrecheck = 0
+# twow-repo#541 (audit A13): 1 = the racials strategy no longer registers "gift of the naaru" (on low
+# health), "mana tap" and "arcane torrent". These spells have no bot action in this (vanilla) build, so
+# the bot could never cast them; their queue entries only ended as "UNKNOWN". Saves three trigger-node
+# checks (mana tap, arcane torrent, racials low health), the dead queue entry and its action lookup.
+# NOT strictly behaviour-neutral: today a lingering racial entry (relevance 71) can make the engine
+# re-push another action without its prerequisites (or end it IMPOSSIBLE and run its alternatives);
+# with 1 that action takes its normal prerequisite path, as it already does against targets without
+# mana. One-tick difference in rare combat ticks, no new actions. Player-visible text also changes: the
+# "action" chat command reply and [BotUpdateSlow] no longer list these three UNKNOWN entries, and with
+# action logging on the public "try: mana tap unknown" say disappears. Enable only after an OB-30
+# measurement and owner go. 0 = all nodes as before (default).
+AiPlayerbot.Perf.RacialsSkipUnbuildable = 0
+# twow-repo#541 (audit A14): 1 = while the bot's hazards list is empty (open world, nearly always), the
+# chase movement (reach melee / reach spell / reach pull / reach party member) skips the hazard checks:
+# two navmesh path searches and one line-of-sight ray whose results could only be logged. Same end
+# position, same MoveChase, same movement decisions. With hazards present the old checks run unchanged.
+# Side effects that go away: the mmap tile loads those path searches triggered (already loaded around
+# the bot in practice, assessed negligible) and, at log level >= 2, the "[BOT CHASE] ... no hazard-
+# avoidance path" / "endPos invalid" lines, replaced by "hazard path checks skipped". 0 = off (default).
+AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards = 0
+# twow-repo#541 (audit A15): 1 = a bot without group skips the healer/tank classification of every nearby
+# player and the list scan when it looks for a group member without conjured water/food or without an
+# item (mage "give water" / "give food", the generic "party member without item" value of the give item
+# action). Only members of the bot's own group can be the answer, and a bot without group has none, so
+# the result is identical; every cached value of the bot (distance, mount speed, last movement, nearest
+# friendly players, rpg target) is still read as before, in the same order.
+# Disclosed side effects that go away (OB-00, 09.10.2026: shipped as neutral with this disclosure): the
+# skipped scan no longer calls GetPet() on nearby foreign players, so it no longer clears another
+# player's stale pet GUID (SetPet(nullptr), a cross-thread write) nor writes the "Unit::GetPet: ... not
+# exist." error log line; and the healer/tank check no longer fills the bot manager's event cache
+# (eventCache map insert, first-miss DB load) for those players. Performance only. 0 = off (default).
+AiPlayerbot.Perf.GiveItemGroupOnlyScan = 0
+# twow-repo#541 (audit A16): 1 = the castability checks (CanCastSpell for unit, game object and position
+# targets, CheckSpellTargetAlignment) take the neutral and out-of-control spell ids from constant arrays
+# instead of building a 20/24-node std::list on every call. Same ids in the same order, same answers, same
+# cast results: no behaviour change, only fewer heap allocations (about 0.5-2 us per call; not expected to
+# move [BotUpdate] or [MapTick] measurably on its own). 0 = the old per-call lists (default).
+AiPlayerbot.Perf.StaticSpellLists = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

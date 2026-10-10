@@ -8,6 +8,9 @@ namespace ai
     public:
         virtual ~FindPlayerPredicate() {}
         virtual bool Check(Unit*) = 0;
+        // twow-repo#541 (audit A15): true only if Check() rejects every unit that is not
+        // a Player in the asking bot's own group (Player::IsInGroup). Generic: false.
+        virtual bool OnlyBotGroupMembers() const { return false; }
     };
 
     class SpellEntryPredicate
