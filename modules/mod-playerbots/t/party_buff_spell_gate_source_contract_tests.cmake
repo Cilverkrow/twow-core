@@ -1,0 +1,286 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
+# twow-repo#541 (audit A22): behind AiPlayerbot.Perf.PartyBuffKnownSpellGate (default 0 = off) five party
+# buff/cure triggers (priest divine spirit / shadow protection on party, shaman water breathing / water walking
+# on party, paladin cleanse party member cure magic) skip their party scan while the bot knows no rank of the
+# spell their action casts. CHANGES BEHAVIOUR (the action is first built once the spell is known, so its cached
+# spell id is right; spells learned online are then cast on party members): enable only after the OB-30
+# measurement and the owner's go. The gate uses the action's real spell name and is only correct while these
+# five actions have no ACTION_NODE_A alternative and each trigger maps to that single action; checks 6-8 fail
+# when a later change breaks that. Pure policy: t/known_spell_gate_policy_tests.cpp.
+
+function(read_source path out_var)
+  file(READ "${PB_SOURCE_DIR}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "#541 A22: missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(NOT offset EQUAL -1)
+    message(FATAL_ERROR "#541 A22: forbidden ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(require_order text first second description)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if(a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "#541 A22: order ${description}: '${first}' must come before '${second}'")
+  endif()
+endfunction()
+
+# Exactly <count> occurrences of <needle> in <text>.
+function(require_count text needle count description)
+  set(n 0)
+  set(rest "${text}")
+  string(LENGTH "${needle}" needle_len)
+  while(TRUE)
+    string(FIND "${rest}" "${needle}" at)
+    if(at EQUAL -1)
+      break()
+    endif()
+    math(EXPR n "${n} + 1")
+    math(EXPR at "${at} + ${needle_len}")
+    string(SUBSTRING "${rest}" ${at} -1 rest)
+  endwhile()
+  if(NOT n EQUAL ${count})
+    message(FATAL_ERROR "#541 A22: ${description}: '${needle}' found ${n}x, expected ${count}x")
+  endif()
+endfunction()
+
+# No <needle> in <text> before the first <marker> (nothing may scan the party ahead of the gate).
+function(forbid_before text marker needle description)
+  string(FIND "${text}" "${marker}" at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR "#541 A22: marker not found (${description}): ${marker}")
+  endif()
+  string(SUBSTRING "${text}" 0 ${at} head)
+  forbid_text("${head}" "${needle}" "${description}")
+endfunction()
+
+# Body of "class <name> :" up to the first "\n    };\n" (class end at namespace indentation).
+function(class_body text name out_var)
+  string(FIND "${text}" "class ${name} :" start)
+  if(start EQUAL -1)
+    message(FATAL_ERROR "#541 A22: class not found: ${name}")
+  endif()
+  string(SUBSTRING "${text}" ${start} -1 rest)
+  string(FIND "${rest}" "\n    };\n" end)
+  if(end EQUAL -1)
+    message(FATAL_ERROR "#541 A22: class end not found: ${name}")
+  endif()
+  string(SUBSTRING "${rest}" 0 ${end} body)
+  set(${out_var} "${body}" PARENT_SCOPE)
+endfunction()
+
+read_source("PlayerbotAIConfig.h" config_h)
+read_source("PlayerbotAIConfig.cpp" config_cpp)
+read_source("aiplayerbot.conf.dist.in" conf_dist)
+read_source("KnownSpellGatePolicy.h" policy_h)
+read_source("strategy/priest/PriestTriggers.h" priest_h)
+read_source("strategy/shaman/ShamanTriggers.h" shaman_h)
+read_source("strategy/paladin/PaladinTriggers.h" paladin_h)
+read_source("strategy/priest/PriestActions.h" priest_actions_h)
+read_source("strategy/shaman/ShamanActions.h" shaman_actions_h)
+read_source("strategy/paladin/PaladinActions.h" paladin_actions_h)
+read_source("strategy/triggers/GenericTriggers.h" generic_h)
+read_source("strategy/triggers/GenericTriggers.cpp" generic_cpp)
+read_source("strategy/triggers/CureTriggers.h" cure_h)
+read_source("strategy/triggers/CureTriggers.cpp" cure_cpp)
+read_source("RandomPlayerbotMgr.cpp" rpm_cpp)
+
+set(switch_read "sPlayerbotAIConfig.perfPartyBuffKnownSpellGate")
+set(lookup "[this](char const* spellName) -> uint32 { return AI_VALUE2(uint32, \"spell id\", spellName); }")
+
+# 1. Switch off by default, documented.
+require_text("${config_h}" "bool perfPartyBuffKnownSpellGate = false;" "member default off")
+require_text("${config_cpp}" "perfPartyBuffKnownSpellGate = config.GetBoolDefault(\"AiPlayerbot.Perf.PartyBuffKnownSpellGate\", false);" "config default 0")
+require_text("${conf_dist}" "AiPlayerbot.Perf.PartyBuffKnownSpellGate = 0" "documented key")
+
+# 2. Policy is pure (no state, no game headers); off or empty list never looks anything up.
+require_text("${policy_h}" "inline bool MayScanParty(bool gateEnabled, std::initializer_list<char const*> spells, SpellIdOf&& spellIdOf)" "policy signature")
+require_order("${policy_h}" "if (!gateEnabled || spells.size() == 0)" "spellIdOf(spell)" "off/empty return before any lookup")
+require_text("${policy_h}" "if (spellIdOf(spell) != 0)" "id 0 = unknown")
+forbid_text("${policy_h}" "static " "static state in the policy")
+forbid_text("${policy_h}" "mutex" "lock in the policy")
+forbid_text("${policy_h}" "#include \"playerbot/" "game include in the policy")
+
+# 3. Priest: gate (real spell name) before today's expression; the self variants stay ungated.
+require_text("${priest_h}" "#include \"playerbot/KnownSpellGatePolicy.h\"" "policy include (priest)")
+class_body("${priest_h}" "DivineSpiritOnPartyTrigger" ds)
+require_order("${ds}" "if (!knownspell::MayScanParty(${switch_read}, {\"divine spirit\"}," "return BuffOnPartyTrigger::IsActive() && !ai->HasAura(\"prayer of spirit\", GetTarget());" "divine spirit gate before the scan")
+require_text("${ds}" "${lookup}" "divine spirit own spell id lookup")
+require_order("${ds}" "${lookup}))\n                return false;" "return BuffOnPartyTrigger::IsActive()" "divine spirit early return")
+forbid_before("${ds}" "MayScanParty(" "Trigger::IsActive()" "divine spirit party scan before the gate")
+# Gate polarity: only "if (!...MayScanParty(...)) return false;" keeps the off path (MayScanParty(false) == true) open.
+require_count("${ds}" "MayScanParty(" 1 "divine spirit gate exactly once")
+forbid_text("${ds}" "if (knownspell::MayScanParty(" "divine spirit inverted gate (would block the off path)")
+class_body("${priest_h}" "ShadowProtectionOnPartyTrigger" sp)
+require_order("${sp}" "if (!knownspell::MayScanParty(${switch_read}, {\"shadow protection\"}," "return BuffOnPartyTrigger::IsActive() && !ai->HasAura(\"prayer of shadow protection\", GetTarget());" "shadow protection gate before the scan")
+require_text("${sp}" "${lookup}" "shadow protection own spell id lookup")
+require_order("${sp}" "${lookup}))\n                return false;" "return BuffOnPartyTrigger::IsActive()" "shadow protection early return")
+forbid_before("${sp}" "MayScanParty(" "Trigger::IsActive()" "shadow protection party scan before the gate")
+# Gate polarity: only "if (!...MayScanParty(...)) return false;" keeps the off path (MayScanParty(false) == true) open.
+require_count("${sp}" "MayScanParty(" 1 "shadow protection gate exactly once")
+forbid_text("${sp}" "if (knownspell::MayScanParty(" "shadow protection inverted gate (would block the off path)")
+class_body("${priest_h}" "DivineSpiritTrigger" ds_self)
+forbid_text("${ds_self}" "perfPartyBuffKnownSpellGate" "gate in the self divine spirit trigger")
+class_body("${priest_h}" "ShadowProtectionTrigger" sp_self)
+forbid_text("${sp_self}" "perfPartyBuffKnownSpellGate" "gate in the self shadow protection trigger")
+
+# 4. Shaman: gate only under the switch, swimming first, real spell name, party scan last; off path is today's.
+require_text("${shaman_h}" "#include \"playerbot/KnownSpellGatePolicy.h\"" "policy include (shaman)")
+foreach(water "water breathing" "water walking")
+  if(water STREQUAL "water breathing")
+    set(cls "WaterBreathingOnPartyTrigger")
+  else()
+    set(cls "WaterWalkingOnPartyTrigger")
+  endif()
+  class_body("${shaman_h}" "${cls}" body)
+  require_text("${body}" "BuffOnPartyTrigger(ai, \"${water} on party\"," "${cls} keeps its pseudo spell name")
+  require_text("${body}" "if (${switch_read})" "${cls} switch")
+  require_order("${body}" "if (${switch_read})" "return AI_VALUE2(bool, \"swimming\", \"self target\")" "${cls} on path under the switch")
+  require_order("${body}" "return AI_VALUE2(bool, \"swimming\", \"self target\")" "knownspell::MayScanParty(true, {\"${water}\"}," "${cls} swimming before the gate")
+  require_order("${body}" "knownspell::MayScanParty(true, {\"${water}\"}," "&& BuffOnPartyTrigger::IsActive();" "${cls} gate before the party scan")
+  require_text("${body}" "${lookup}" "${cls} own spell id lookup")
+  forbid_before("${body}" "knownspell::MayScanParty(true," "Trigger::IsActive()" "${cls} party scan before the gate")
+  # Connectors: swimming && gate && scan (an '||' would let the scan run while not swimming / while unknown).
+  require_text("${body}" "\"self target\")\n                    && knownspell::MayScanParty(true, {\"${water}\"}," "${cls} swimming && gate")
+  require_text("${body}" "${lookup})\n                    && BuffOnPartyTrigger::IsActive();" "${cls} gate && party scan")
+  require_count("${body}" "MayScanParty(" 1 "${cls} gate exactly once")
+  forbid_text("${body}" "!knownspell::MayScanParty(" "${cls} inverted gate")
+  require_order("${body}" "&& BuffOnPartyTrigger::IsActive();" "return BuffOnPartyTrigger::IsActive() && AI_VALUE2(bool, \"swimming\", \"self target\");" "${cls} off path after the on path")
+  forbid_text("${body}" "{\"${water} on party\"}" "${cls} gate with the pseudo name (spell id would always be 0)")
+endforeach()
+
+# 5. Paladin: only the party magic cleanse is gated (poison/disease have the purify alternative).
+require_text("${paladin_h}" "#include \"playerbot/KnownSpellGatePolicy.h\"" "policy include (paladin)")
+class_body("${paladin_h}" "CleanseCurePartyMemberMagicTrigger" cm)
+require_order("${cm}" "if (!knownspell::MayScanParty(${switch_read}, {\"cleanse\"}," "return PartyMemberNeedCureTrigger::IsActive();" "cleanse magic gate before the scan")
+require_text("${cm}" "${lookup}" "cleanse magic own spell id lookup")
+require_order("${cm}" "${lookup}))\n                return false;" "return PartyMemberNeedCureTrigger::IsActive();" "cleanse magic early return")
+forbid_before("${cm}" "MayScanParty(" "Trigger::IsActive()" "cleanse magic party scan before the gate")
+# Gate polarity: only "if (!...MayScanParty(...)) return false;" keeps the off path (MayScanParty(false) == true) open.
+require_count("${cm}" "MayScanParty(" 1 "cleanse magic gate exactly once")
+forbid_text("${cm}" "if (knownspell::MayScanParty(" "cleanse magic inverted gate (would block the off path)")
+class_body("${paladin_h}" "CleanseCurePartyMemberPoisonTrigger" cp)
+forbid_text("${cp}" "perfPartyBuffKnownSpellGate" "gate in the party poison cleanse (purify alternative)")
+class_body("${paladin_h}" "CleanseCurePartyMemberDiseaseTrigger" cd)
+forbid_text("${cd}" "perfPartyBuffKnownSpellGate" "gate in the party disease cleanse (purify alternative)")
+class_body("${paladin_h}" "CleanseCureMagicTrigger" cself)
+forbid_text("${cself}" "perfPartyBuffKnownSpellGate" "gate in the self magic cleanse")
+
+# 6. Action spell = gate spell.
+require_text("${priest_actions_h}" "BUFF_PARTY_ACTION(CastDivineSpiritOnPartyAction, \"divine spirit\");" "divine spirit action spell")
+require_text("${priest_actions_h}" "BUFF_PARTY_ACTION(CastShadowProtectionOnPartyAction, \"shadow protection\");" "shadow protection action spell")
+require_text("${shaman_actions_h}" "CastWaterBreathingOnPartyAction(PlayerbotAI* ai) : BuffOnPartyAction(ai, \"water breathing\") {}" "water breathing action spell")
+require_text("${shaman_actions_h}" "CastWaterWalkingOnPartyAction(PlayerbotAI* ai) : BuffOnPartyAction(ai, \"water walking\") {}" "water walking action spell")
+require_text("${paladin_actions_h}" "CastCleanseMagicOnPartyAction(PlayerbotAI* ai) : CurePartyMemberAction(ai, \"cleanse\", DISPEL_MAGIC) {}" "cleanse magic action spell")
+
+# 7./8./10. Across all strategy sources: no alternative/node for the five actions, single-action trigger
+# mappings, and the switch read exactly five times.
+file(GLOB_RECURSE strategy_files "${PB_SOURCE_DIR}/strategy/*.cpp" "${PB_SOURCE_DIR}/strategy/*.h")
+list(LENGTH strategy_files strategy_file_count)
+if(strategy_file_count LESS 50)
+  message(FATAL_ERROR "#541 A22: strategy sources not found under ${PB_SOURCE_DIR}/strategy (${strategy_file_count})")
+endif()
+
+set(gated_actions "divine spirit on party" "shadow protection on party" "water breathing on party" "water walking on party" "cleanse magic on party")
+set(gated_triggers "divine spirit on party" "shadow protection on party" "water breathing on party" "water walking on party" "cleanse party member cure magic")
+set(switch_count 0)
+foreach(trigger IN LISTS gated_triggers)
+  string(MAKE_C_IDENTIFIER "${trigger}" tid)
+  set(mapping_count_${tid} 0)
+endforeach()
+
+foreach(path IN LISTS strategy_files)
+  file(READ "${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+
+  foreach(action IN LISTS gated_actions)
+    if(text MATCHES "creators\\[\"${action}\"\\][ \t]*=[ \t]*&")
+      message(FATAL_ERROR "#541 A22: action node creator for '${action}' in ${path} (an alternative would bypass the gate)")
+    endif()
+    if(text MATCHES "new ActionNode[ \t]*\\([ \t\n]*\"${action}\"")
+      message(FATAL_ERROR "#541 A22: new ActionNode for '${action}' in ${path} (an alternative would bypass the gate)")
+    endif()
+    if(text MATCHES "ACTION_NODE_[A-Z]*[ \t]*\\([ \t]*[A-Za-z0-9_]+[ \t]*,[ \t\n]*\"${action}\"")
+      message(FATAL_ERROR "#541 A22: ACTION_NODE for '${action}' in ${path} (an alternative would bypass the gate)")
+    endif()
+  endforeach()
+
+  # Trigger nodes are built in the .cpp files; the .h files hold the trigger classes (constructor names).
+  set(mapping_triggers "")
+  if(path MATCHES "\\.cpp$")
+    set(mapping_triggers ${gated_triggers})
+  endif()
+  foreach(trigger IN LISTS mapping_triggers)
+    if(trigger STREQUAL "cleanse party member cure magic")
+      set(expected "cleanse magic on party")
+    else()
+      set(expected "${trigger}")
+    endif()
+    string(REGEX MATCHALL "\"${trigger}\"[ \t\n]*," uses "${text}")
+    # Each match runs up to (not including) the ';' that ends the trigger node, so list entries stay intact.
+    string(REGEX MATCHALL "\"${trigger}\"[ \t\n]*,[ \t\n]*NextAction::array[ \t]*\\([ \t]*0[ \t]*,[^;]*" mappings "${text}")
+    # Uses as an action name (NextAction("<n>", ...)) are not trigger uses.
+    string(REGEX MATCHALL "NextAction[ \t]*\\([ \t\n]*\"${trigger}\"[ \t\n]*," as_action "${text}")
+    list(LENGTH uses use_count)
+    list(LENGTH as_action as_action_count)
+    math(EXPR use_count "${use_count} - ${as_action_count}")
+    list(LENGTH mappings mapping_count)
+    if(NOT use_count EQUAL mapping_count)
+      message(FATAL_ERROR "#541 A22: '${trigger}' used ${use_count}x in ${path} but ${mapping_count} plain NextAction::array mappings")
+    endif()
+    foreach(mapping IN LISTS mappings)
+      string(REGEX MATCHALL "new[ \t]+NextAction[ \t]*\\(" next_actions "${mapping}")
+      list(LENGTH next_actions next_count)
+      if(NOT next_count EQUAL 1)
+        message(FATAL_ERROR "#541 A22: trigger '${trigger}' maps to ${next_count} actions in ${path} (the gate assumes exactly one)")
+      endif()
+      string(FIND "${mapping}" "new NextAction(\"${expected}\"," expected_at)
+      if(expected_at EQUAL -1)
+        message(FATAL_ERROR "#541 A22: trigger '${trigger}' in ${path} does not map to '${expected}': ${mapping}")
+      endif()
+    endforeach()
+    string(MAKE_C_IDENTIFIER "${trigger}" tid)
+    math(EXPR mapping_count_${tid} "${mapping_count_${tid}} + ${mapping_count}")
+  endforeach()
+
+  string(REGEX MATCHALL "sPlayerbotAIConfig\\.perfPartyBuffKnownSpellGate" reads "${text}")
+  list(LENGTH reads read_count)
+  math(EXPR switch_count "${switch_count} + ${read_count}")
+endforeach()
+
+foreach(trigger IN LISTS gated_triggers)
+  string(MAKE_C_IDENTIFIER "${trigger}" tid)
+  if(mapping_count_${tid} LESS 1)
+    message(FATAL_ERROR "#541 A22: no strategy mapping found for trigger '${trigger}'")
+  endif()
+endforeach()
+
+if(NOT switch_count EQUAL 5)
+  message(FATAL_ERROR "#541 A22: the switch must be read exactly 5 times in strategy/ (DS, SP, WB, WW, CM), found ${switch_count}")
+endif()
+
+# 9. Base classes untouched (their other users - mage/druid remove curse, paladin purify fallback - keep today's checks).
+foreach(base_text generic_h generic_cpp cure_h cure_cpp)
+  forbid_text("${${base_text}}" "perfPartyBuffKnownSpellGate" "switch in a base trigger class (${base_text})")
+endforeach()
+require_text("${generic_cpp}" "return target && !ai->HasAura(spell, target, false, checkIsOwner) && target->IsAlive();" "BuffTrigger::IsActive unchanged")
+require_text("${cure_cpp}" "return target && ai->HasAuraToDispel(target, dispelType);" "NeedCureTrigger::IsActive unchanged")
+require_text("${generic_h}" "virtual std::string getName() override { return spell + \" on party\"; }" "BuffOnPartyTrigger name unchanged")
+
+# 10. Nothing in the bot manager.
+forbid_text("${rpm_cpp}" "perfPartyBuffKnownSpellGate" "switch in RandomPlayerbotMgr.cpp")
+
+message(STATUS "party_buff_spell_gate source contract passed")
