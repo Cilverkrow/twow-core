@@ -135,6 +135,9 @@ void Engine::Init()
     if (!Reset())
         return;
 
+    // twow-repo#541 (audit A21): a real rebuild settles a change that was put off while the engine was inactive.
+    initStale = false;
+
     for (std::map<std::string, Strategy*>::iterator i = strategies.begin(); i != strategies.end(); i++)
     {
         Strategy* strategy = i->second;
@@ -163,7 +166,24 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
     // the queue while we are walking it; Reset() parks the re-init instead and
     // we run it below, after the walk.
     bool const wasInDoNextAction = inDoNextAction;
+
+    // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): a strategy change made while this engine was not
+    // running only marked it stale. PlayerbotAI::Reset(false) activates the non-combat engine without Init(), so the
+    // owed rebuild runs here, before the first ProcessTriggers. ChangeEngine and Reset(true) already rebuilt it. This
+    // also covers an engine marked stale during its own walk (mid-walk ChangeEngine): it is rebuilt on its next walk.
+    if (initStale && !wasInDoNextAction)
+    {
+        ai::lazy_engine_init::caught.fetch_add(1, std::memory_order_relaxed);
+        LogAction("S:stale init");
+        Init();
+    }
+
     inDoNextAction = true;
+
+    // twow-repo#541 (audit A25, Perf.PartyTargetMemo, default 0): one memo window per pass. A party-target
+    // value computed by a trigger or an isUseful is reused by the following isUseful/isPossible/Execute of
+    // this pass until the next Execute advances the window (ListenAndExecute). Closed when this returns.
+    ValueMemoWindowScope const valueMemoScope(sPlayerbotAIConfig.perfPartyTargetMemo ? &aiObjectContext->GetValueMemoWindow() : nullptr);
 
     time_t currentTime = time(0);
     // twow-repo#541 (AiPlayerbot.BotUpdateTrace, OB-00 go 10.10.2026): with the trace on, the engine trace
@@ -968,6 +988,11 @@ bool Engine::ListenAndExecute(Action* action, Event& event)
 
     actionExecuted = actionExecutionListeners.OverrideResult(action, actionExecuted, event);
     actionExecutionListeners.After(action, actionExecuted, event);
+
+    // twow-repo#541 (audit A25): the action (executed or failed) may have changed auras, health or targets;
+    // every party-target memo of this pass is stale from here on.
+    if (sPlayerbotAIConfig.perfPartyTargetMemo)
+        aiObjectContext->GetValueMemoWindow().Advance();
     return actionExecuted;
 }
 
@@ -1034,7 +1059,7 @@ void Engine::LogAction(const char* format, ...)
     }
 }
 
-void Engine::ChangeStrategy(const std::string& names)
+void Engine::ChangeStrategy(const std::string& names, bool deferInitWhileInactive)
 {
     std::vector<std::string> splitted = split(names, ',');
 
@@ -1086,8 +1111,22 @@ void Engine::ChangeStrategy(const std::string& names)
     // relevance-70 `bg check flag` action and killed the rest of the tick, so
     // `bg move to objective` at relevance 1.0 was queued 23,908 times and
     // popped none.
+    //
+    // twow-repo#541 (audit A21): an engine that is not running gets the new set now (HasStrategy, OnStrategyAdded/
+    // Removed already ran) but rebuilds its triggers only on activation; its triggers and queue are not read until then.
     if (!initMode && StrategySetToken() != tokenBefore)
-        Init();
+    {
+        if (deferInitWhileInactive)
+        {
+            initStale = true;
+            ai::lazy_engine_init::deferred.fetch_add(1, std::memory_order_relaxed);
+            LogAction("S:init deferred");
+        }
+        else
+        {
+            Init();
+        }
+    }
 }
 
 void Engine::PrintStrategies(Player* requester, const std::string& engineType)

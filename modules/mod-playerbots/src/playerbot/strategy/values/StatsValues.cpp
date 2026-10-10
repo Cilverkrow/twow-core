@@ -34,6 +34,12 @@ bool PetIsDeadValue::Calculate()
 #endif
     if (!bot->GetPet())
     {
+        // twow-repo#541 (audit A07): Revive Pet needs a pet in the world (core CheckCast SUMMON_DEAD_PET returns
+        // NO_PET without one), so a hunter without a world pet counts as "no dead pet": no character_pet
+        // SELECT on the map thread and no doomed revive attempt. A dead pet in the world (also one that
+        // Call Pet brought back dead from the pet cache) is handled by the last line and still revived.
+        if (sPlayerbotAIConfig.petDeadNoWorldPetFalse)
+            return false;
         // twow-repo#541 (H4): the stored pet is asked at most every StoredPetCheckSeconds instead of on
         // every recalculation (once a second, synchronously in the map thread, per bot without a pet).
         time_t const now = time(nullptr);
