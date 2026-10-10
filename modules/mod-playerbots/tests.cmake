@@ -2340,3 +2340,10 @@ add_test(NAME party_target_memo_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/party_target_memo_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group re-check its own snapshot behind AiPlayerbot.PossibleTargetsSharedSearch (default 0, behaviour-changing).
+add_test(NAME possible_targets_shared_search_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/possible_targets_shared_search_source_contract_tests.cmake")

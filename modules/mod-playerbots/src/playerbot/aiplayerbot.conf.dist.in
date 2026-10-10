@@ -2003,6 +2003,13 @@ AiPlayerbot.Perf.AttackersSingleList = 0
 # the pass (chat, packets, reactions) and from other threads recompute as before. A reload flip 1->0->1 inside one
 # pass can give at most one stale read. 0 = off (default).
 AiPlayerbot.Perf.PartyTargetMemo = 0
+# twow-repo#541 (audit A32, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = for a bot without
+# a group, "possible targets", "possible targets no los" and "all targets" re-check the units of the bot's own
+# unfiltered sight-range search (the one the attackers value already runs, at most once per second) instead of
+# searching the grid again. Each unit must pass the search check again now (alive, not friendly, same map instance,
+# within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
+# later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
+AiPlayerbot.PossibleTargetsSharedSearch = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
