@@ -54,7 +54,7 @@ require_text("${park_bot}" "return ParkBot(bot, \"here\", reason);" "last resort
 region("${mgr}" "void RandomPlayerbotMgr::BuildParkSpots()" "void RandomPlayerbotMgr::ReleaseParkSpot(" build_spots)
 require_text("${build_spots}" "Player::TeamForRace(uint8(race))" "spots of every race of the faction")
 require_text("${build_spots}" "IsCapitalSpot(loc)" "capital spots for the overflow")
-require_text("${park_bot}" "ai::park::ChooseSpot(ParkPoint(bot), points, occupied)" "nearest spot with room (capacity)")
+require_text("${park_bot}" "ai::park::ChooseSpot(ParkPoint(bot), points, occupied, capacity)" "nearest spot with room (capacity; twow-repo#551 caps pass it explicitly)")
 require_order("${park_bot}" "spot = inns[index];" "spot = parkCities[team][index];" "inns first, capital spots as overflow")
 require_text("${park_bot}" "ai::park::SlotOffset(ParkPoint(spot), slot)" "own place >= 2 yd from the others")
 require_text("${park_bot}" "ai->HasRealPlayerMaster() || bot->GetGroup()" "no bot of a real player and no group member")
