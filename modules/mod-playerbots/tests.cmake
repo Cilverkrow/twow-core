@@ -2101,3 +2101,23 @@ add_test(NAME travel_info_reuse_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/travel_info_reuse_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A11): Engine::LogAction fast path and last-action trail (AiPlayerbot.Perf.LogActionFastPath,
+# AiPlayerbot.BotUpdateTraceTailFix; both default 0).
+add_executable(action_trail_tests
+  "${PB_MODULE_DIR}/t/action_trail_tests.cpp")
+
+target_include_directories(action_trail_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(action_trail_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME action_trail
+  COMMAND action_trail_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME log_action_fast_path_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/log_action_fast_path_source_contract_tests.cmake")

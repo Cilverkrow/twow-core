@@ -1859,6 +1859,19 @@ AiPlayerbot.Perf.BgMasterCacheRef = 0
 # entries, quest list, quest objective travel) reads that key instead of walking all keys. Same choices,
 # less work on the map threads. 0 = old path (default).
 AiPlayerbot.Perf.TravelInfoReuse = 0
+# twow-repo#541 (audit A11): 1 = the engine log path does less work for the same output. While
+# AiPlayerbot.EnableActionLog is off and no per-bot action-log file is open, the action-log lookup (one
+# global mutex shared by all map threads) is skipped: engine lines of grouped bots and the cast, aura
+# and damage hooks of all bots. PerfMon action and trigger names are built only with
+# AiPlayerbot.PerfMonEnabled = 1. Same decisions, same log lines. 0 = as before (default).
+AiPlayerbot.Perf.LogActionFastPath = 0
+# twow-repo#541 (audit A11): 1 = the engine's last-action trail ([BotUpdateSlow] action=, [BotSlowUpdate]
+# and [Idle] last_action=, fishing break, "action" command) keeps the newest 512 characters, cut at an
+# entry '|'. The old trim kept only what lay beyond character 512 and often emptied the trail. Log and
+# chat text only; the fishing break line (first 160 characters) then shows the oldest part of that
+# window, and one update that logs more than about 512 characters still pushes its own tick marker out.
+# 0 = as before (default).
+AiPlayerbot.BotUpdateTraceTailFix = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

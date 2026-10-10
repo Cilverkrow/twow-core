@@ -8,6 +8,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/BotActionLog.h"
+#include "playerbot/ActionTrail.h"
 
 #ifdef BUILD_ELUNA
 #include "LuaEngine/LuaEngine.h"
@@ -210,11 +211,17 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
         {
             Action* action = InitializeAction(actionNode);
 
-            std::string actionName = (action ? action->getName() : "unknown");
-            if (!event.getSource().empty())
-                actionName += " <" + event.getSource() + ">";
-            
-            auto pmo1 = sPerformanceMonitor.start(PERF_MON_ACTION, actionName, ai);
+            // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): the PerfMon key (a heap
+            // string per popped action) only when PerfMon is on; start() returns null otherwise.
+            std::unique_ptr<PerformanceMonitorOperation> pmo1;
+            if (!sPlayerbotAIConfig.perfLogActionFastPath || sPlayerbotAIConfig.perfMonEnabled)
+            {
+                std::string actionName = (action ? action->getName() : "unknown");
+                if (!event.getSource().empty())
+                    actionName += " <" + event.getSource() + ">";
+
+                pmo1 = sPerformanceMonitor.start(PERF_MON_ACTION, actionName, ai);
+            }
 
             if(action)
                 action->setRelevance(relevance);
@@ -766,7 +773,11 @@ void Engine::ProcessTriggers(bool minimal)
         {
             if (minimal && node->getFirstRelevance() < 100)
                 continue;
-            auto pmo = sPerformanceMonitor.start(PERF_MON_TRIGGER, trigger->getName(), ai);
+            // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): the trigger name copy
+            // only when PerfMon is on.
+            std::unique_ptr<PerformanceMonitorOperation> pmo;
+            if (!sPlayerbotAIConfig.perfLogActionFastPath || sPlayerbotAIConfig.perfMonEnabled)
+                pmo = sPerformanceMonitor.start(PERF_MON_TRIGGER, trigger->getName(), ai);
             Event event = trigger->Check();
 
 #ifdef PLAYERBOT_ELUNA
@@ -953,9 +964,18 @@ void Engine::LogAction(const char* format, ...)
     lastAction += buf;
     if (lastAction.size() > 512)
     {
-        lastAction = lastAction.substr(512);
-        size_t pos = lastAction.find("|");
-        lastAction = (pos == std::string::npos ? "" : lastAction.substr(pos));
+        if (!sPlayerbotAIConfig.botUpdateTraceTailFix)
+        {
+            lastAction = lastAction.substr(512);
+            size_t pos = lastAction.find("|");
+            lastAction = (pos == std::string::npos ? "" : lastAction.substr(pos));
+        }
+        else
+        {
+            // twow-repo#541 (audit A11, AiPlayerbot.BotUpdateTraceTailFix): keep the newest 512
+            // characters, starting at an entry, in place. Same "|entry|entry" layout as before.
+            ai::action_trail::KeepNewest(lastAction, 512);
+        }
     }
 
     if (testMode)
@@ -972,6 +992,13 @@ void Engine::LogAction(const char* format, ...)
             return;
 
         sLog.outDetail( "%s %s", bot->GetName(), buf);
+
+        // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): no action-log file can be
+        // written (the log is off and none is open) -> the tee below would only pick a tag and reach
+        // a Write that returns at GetHandle. sLog here is BotLog, which already drops a DETAIL line
+        // nobody keeps (deep dive L1); the call above stays as it is.
+        if (sPlayerbotAIConfig.perfLogActionFastPath && !ai::botdiag::BotActionLog::MayWrite())
+            return;
 
         // BotActionLog tee: every PUSH/A/Tick line also lands in the bot's
         // per-bot file under logs/bots/ when AiPlayerbot.EnableActionLog=1.
