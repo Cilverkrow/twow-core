@@ -3137,6 +3137,12 @@ void PlayerbotAI::ReInitCurrentEngine()
 
 void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)
 {
+    // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): with the switch on, an engine that is neither the
+    // running one nor the reaction engine takes the new strategy set at once but rebuilds its triggers only when it is
+    // activated (ChangeEngine/Reset(true) call Init() anyway; Engine::DoNextAction catches Reset(false)). The reaction
+    // engine runs its triggers next to the current one (ReactionEngine::FindReaction) and the running engine defers to
+    // the end of its walk as before, so both stay eager. !engine->initMode comes first: a half-built AI (constructor
+    // before currentEngine/reactionEngine are set, ResetStrategies) never reads the pointers. Switch off = as before.
     if(type == BotState::BOT_STATE_ALL)
     {
         for (uint8 i = 0; i < (uint8)BotState::BOT_STATE_ALL; i++)
@@ -3144,7 +3150,7 @@ void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)
             Engine* engine = engines[i];
             if (engine)
             {
-                engine->ChangeStrategy(names);
+                engine->ChangeStrategy(names, sPlayerbotAIConfig.perfLazyEngineInit && !engine->initMode && engine != currentEngine && engine != reactionEngine);
             }
         }
     }
@@ -3153,7 +3159,7 @@ void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)
         Engine* engine = engines[(uint8)type];
         if (engine)
         {
-            engine->ChangeStrategy(names);
+            engine->ChangeStrategy(names, sPlayerbotAIConfig.perfLazyEngineInit && !engine->initMode && engine != currentEngine && engine != reactionEngine);
         }
     }
 }

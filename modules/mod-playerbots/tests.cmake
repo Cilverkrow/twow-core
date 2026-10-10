@@ -2303,3 +2303,10 @@ add_test(NAME party_buff_spell_gate_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/party_buff_spell_gate_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A21): lazy rebuild of inactive engines behind AiPlayerbot.Perf.LazyEngineInit (default 0).
+add_test(NAME lazy_engine_init_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/lazy_engine_init_source_contract_tests.cmake")

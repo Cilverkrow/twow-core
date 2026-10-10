@@ -1970,6 +1970,17 @@ AiPlayerbot.Perf.TravelRequestGate = 0
 # rank-ups (the first known rank stays until a relog). Custom strategies (cs) that bind these trigger names to
 # other actions are suppressed too while the spell is unknown. 0 = as before (default).
 AiPlayerbot.Perf.PartyBuffKnownSpellGate = 0
+# twow-repo#541 (audit A21, enable only after OB-30 measurement + owner go): 1 = a strategy change (pve/pvp/raid
+# switch every 5 s check of "in pve"/"in pvp"/"in raid fight", BG join, chat command ...) rebuilds the triggers of a
+# combat, non-combat or dead engine that is not running only when that engine is activated (engine change, full
+# reset, or at the start of its next walk after a non-full reset: "S:stale init"). The running engine and the
+# reaction engine still rebuild at once; this saves up to two engine rebuilds per switch. Bot decisions are the same,
+# apart from two residual differences after a non-full reset (chat shortcuts follow/stay/flee/grind..., leave group,
+# LFG): build-time inputs (aoe strategy, IsRanged/IsHeal, EnableGreet, first custom-strategy DB load) are read at
+# activation instead of at the switch, and continuers pushed into the idle engine in between are dropped by the
+# owed rebuild. One [LazyEngineInit] line per minute (deferred, caught, saved). Turning it off by a reload leaves
+# already deferred engines to be rebuilt on activation (safe). 0 = rebuild every engine at once (default).
+AiPlayerbot.Perf.LazyEngineInit = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

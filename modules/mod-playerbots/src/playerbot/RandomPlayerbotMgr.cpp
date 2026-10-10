@@ -982,6 +982,25 @@ void ReportCombatIdle()
         (unsigned long long)ai::combat_idle::stretched.exchange(0, std::memory_order_relaxed),
         (unsigned long long)ai::combat_idle::woken.exchange(0, std::memory_order_relaxed));
 }
+
+// twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): one [LazyEngineInit] line per minute. deferred = engine
+// rebuilds put off because the engine was not running, caught = rebuilds run later at the start of Engine::DoNextAction
+// (Reset(false) path, mid-walk engine change), saved = deferred - caught (a window can catch rebuilds deferred in an
+// earlier one, so saved is floored at 0). World thread only, same pattern as ReportBotUpdate. Nothing is written when off.
+void ReportLazyEngineInit()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.perfLazyEngineInit || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    uint64 const deferred = ai::lazy_engine_init::deferred.exchange(0, std::memory_order_relaxed);
+    uint64 const caught = ai::lazy_engine_init::caught.exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[LazyEngineInit] deferred=%llu caught=%llu saved=%llu",
+        (unsigned long long)deferred, (unsigned long long)caught,
+        (unsigned long long)(deferred > caught ? deferred - caught : 0));
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -1005,6 +1024,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
+    ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
