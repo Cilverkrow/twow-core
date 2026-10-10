@@ -38,14 +38,28 @@ char* strstri(const char* haystack, const char* needle);
 
 uint32 GuildOrderValue::FindItemByName(const std::string& name)
 {
+    // twow-repo#563 (audit A30, owner OK 09.10.2026): this cache is shared by every bot and reached from the
+    // region threads and the async travel jobs. With AiPlayerbot.X3a.ContextLock it is read under a shared
+    // lock and written under a unique one; the item search itself runs outside the lock (same result for
+    // the same name, so a racing second search only stores the same value again).
     static std::unordered_map<std::string, uint32> s_cache;
+    static std::shared_mutex s_cacheMutex;
 
     std::string lowerName = name;
     std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c) { return std::tolower(c); });
 
-    auto it = s_cache.find(lowerName);
-    if (it != s_cache.end())
-        return it->second;
+    {
+        context_lock::Shared const lock(s_cacheMutex, context_lock::On());
+        auto it = s_cache.find(lowerName);
+        if (it != s_cache.end())
+            return it->second;
+    }
+    auto const remember = [&lowerName](uint32 found)
+    {
+        context_lock::Unique const lock(s_cacheMutex, context_lock::On());
+        s_cache[lowerName] = found;
+        return found;
+    };
 
     uint32 substringMatch = 0;
 
@@ -61,26 +75,28 @@ uint32 GuildOrderValue::FindItemByName(const std::string& name)
             continue;
 
         if (name.size() == proto->Name1.size() && strstri(proto->Name1, name.c_str()))
-        {
-            s_cache[lowerName] = itemId;
-            return itemId;
-        }
+            return remember(itemId);
 
         if (!substringMatch && strstri(proto->Name1, name.c_str()))
             substringMatch = itemId;
     }
 
-    s_cache[lowerName] = substringMatch;
-    return substringMatch;
+    return remember(substringMatch);
 }
 
 std::vector<std::pair<uint32, int8>> ai::FindRepeatableQuestsRewardingItem(uint32 itemId)
 {
+    // twow-repo#563 (audit A30): shared by every bot, see FindItemByName - locked with X3a.ContextLock,
+    // the quest scan outside the lock.
     static std::unordered_map<uint32, std::vector<std::pair<uint32, int8>>> s_cache;
+    static std::shared_mutex s_cacheMutex;
 
-    auto cacheIt = s_cache.find(itemId);
-    if (cacheIt != s_cache.end())
-        return cacheIt->second;
+    {
+        context_lock::Shared const lock(s_cacheMutex, context_lock::On());
+        auto cacheIt = s_cache.find(itemId);
+        if (cacheIt != s_cache.end())
+            return cacheIt->second;
+    }
 
     std::vector<std::pair<uint32, int8>> result;
 
@@ -113,7 +129,10 @@ std::vector<std::pair<uint32, int8>> ai::FindRepeatableQuestsRewardingItem(uint3
         }
     }
 
-    s_cache[itemId] = result;
+    {
+        context_lock::Unique const lock(s_cacheMutex, context_lock::On());
+        s_cache[itemId] = result;
+    }
     return result;
 }
 

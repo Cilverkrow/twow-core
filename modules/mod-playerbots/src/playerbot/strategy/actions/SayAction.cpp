@@ -92,8 +92,20 @@ bool SayAction::Execute(Event& event)
         for (std::vector<Player*>::iterator i = members.begin(); i != members.end(); ++i)
         {
             PlayerbotAI* memberAi = GetBotAI((*i));
-            if (memberAi)
-                memberAi->GetAiObjectContext()->GetValue<time_t>("last said", qualifier)->Set(nextTime + (20 * ++index) + urand(1, 15));
+            if (!memberAi)
+                continue;
+            time_t const until = nextTime + (20 * ++index) + urand(1, 15);
+            // twow-repo#563 (X3c): group members may update on other region threads.
+            if (sPlayerbotAIConfig.x3cInboxWrites)
+            {
+                std::string const lastSaidQualifier = qualifier;
+                memberAi->QueueContextWrite([lastSaidQualifier, until](AiObjectContext* other)
+                {
+                    other->GetValue<time_t>("last said", lastSaidQualifier)->Set(until);
+                });
+            }
+            else
+                memberAi->GetAiObjectContext()->GetValue<time_t>("last said", qualifier)->Set(until);
         }
     }
 

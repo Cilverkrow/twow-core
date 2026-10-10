@@ -1942,6 +1942,12 @@ add_test(NAME park_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/park_source_contract_tests.cmake")
 
+# twow-repo#551: park in any inn of the faction (AiPlayerbot.Park.AnyLevelInn).
+add_test(NAME park_any_level_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_any_level_source_contract_tests.cmake")
+
 # twow-repo#541 (deep dive R1): choose rpg target builds its rpg trigger list once per call.
 add_test(NAME rpg_target_cache_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -2009,3 +2015,25 @@ add_test(NAME ai_jitter_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/ai_jitter_source_contract_tests.cmake")
+
+# twow-repo#563 (X3a + X3c): per-context lock on the value maps, cross-bot value writes via the inbox.
+add_test(NAME x3_context_lock_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/x3_context_lock_source_contract_tests.cmake")
+
+add_executable(x3_context_lock_tests
+  "${PB_MODULE_DIR}/t/x3_context_lock_tests.cpp")
+
+target_include_directories(x3_context_lock_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot"
+  "${PB_MODULE_DIR}/src")
+
+target_link_libraries(x3_context_lock_tests PRIVATE Threads::Threads)
+
+set_target_properties(x3_context_lock_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME x3_context_lock
+  COMMAND x3_context_lock_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
