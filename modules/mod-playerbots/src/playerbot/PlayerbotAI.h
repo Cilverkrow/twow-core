@@ -712,7 +712,9 @@ public:
     // Hotfix 8.9 (twow-repo#474): [ItemUse] counters.
     ai::item_use::Trace& GetItemUseTrace() { return itemUseTrace; }
     bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
-    void ClearDeathLoop() { recentDeaths.clear(); }
+    void ClearDeathLoop() { recentDeaths.clear(); lastDeathHostileArea = false; }
+    // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): when the last evacuation of this bot happened (repeat check).
+    void MarkDeathLoopEscape(uint32 nowSeconds) { lastDeathLoopEscapeAt = nowSeconds; }
     uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
     //Checks if the bot is summoned as alt of a player
     bool IsAlt() { return HasRealPlayerMaster() && !sRandomPlayerbotMgr.IsRandomBot(bot); }
@@ -999,6 +1001,8 @@ public:
 
 protected:
     std::deque<ai::death_loop::Death> recentDeaths;
+    bool lastDeathHostileArea = false;   // A39: the latest death lay in an area of the hostile faction
+    uint32 lastDeathLoopEscapeAt = 0;    // A39: time of the last evacuation (repeat_after_escape)
     // #422: deaths anywhere (cautious mode) and environmental gathering deaths.
     ai::death_series::Series deathSeries;
     ai::death_series::PurposeSuppression gatherDeaths;

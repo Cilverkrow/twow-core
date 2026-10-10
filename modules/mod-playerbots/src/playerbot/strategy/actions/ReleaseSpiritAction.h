@@ -206,7 +206,8 @@ namespace ai
             sLog.outDetail("Repop bot #%d %s:%d <%s>", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
 
             // G4: always visible, the acceptance signal of the death loop guard.
-            if (ai->IsInDeathLoop())
+            bool const deathLoop = ai->IsInDeathLoop();
+            if (deathLoop)
                 sLog.outBasic("[DeathLoop] state=evacuate guid=%u level=%u map=%u zone=%u deaths=%u window_seconds=%u radius=%.0f",
                     bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), ai->GetDeathLoopSize(),
                     sPlayerbotAIConfig.deathLoopWindowSeconds, sPlayerbotAIConfig.deathLoopRadius);
@@ -252,6 +253,45 @@ namespace ai
             // on every death, so route these two races through the homebind branch instead.
             bool useHomebindOverride = bot->getRace() == RACE_GOBLIN || bot->getRace() == RACE_HIGH_ELF;
             PlayerInfo const* defaultPlayerInfo = useHomebindOverride ? nullptr : sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
+
+            // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): the evacuation must not end in a hostile area. A
+            // Goblin / High Elf goes to its homebind below - if that lies in a hostile area (a park run had bound
+            // High Elves to the Razor Hill inn: evacuated 225 times, back in Durotar every time), it is reset to the
+            // race's safe start first. Other races go to their race start; a hostile homebind is reset there too,
+            // so the hearthstone cannot bring them back either.
+            if (sPlayerbotAIConfig.deathLoopEscape && deathLoop)
+            {
+                death_loop::EscapeCounter(death_loop::EscapeDetected).fetch_add(1, std::memory_order_relaxed);
+                WorldPosition const home(WorldLocation(bot->GetHomebindMapId(), bot->GetHomebindX(), bot->GetHomebindY(), bot->GetHomebindZ()));
+                bool const hostileHome = home.isEnemyHomeZoneFor(bot->GetTeam());
+                bool rebound = false;
+                death_loop::StartPoint start;
+                if (hostileHome && useHomebindOverride && death_loop::RaceStartOverride(bot->getRace(), start))
+                {
+                    bot->SetHomebindToLocation(WorldLocation(start.map, start.x, start.y, start.z, 0.0f), start.zone);
+                    rebound = true;
+                }
+                else if (hostileHome && defaultPlayerInfo)
+                {
+                    bot->SetHomebindToLocation(WorldLocation(defaultPlayerInfo->mapId, defaultPlayerInfo->positionX,
+                        defaultPlayerInfo->positionY, defaultPlayerInfo->positionZ, defaultPlayerInfo->orientation), defaultPlayerInfo->areaId);
+                    rebound = true;
+                }
+                if (rebound)
+                    death_loop::EscapeCounter(death_loop::EscapeRebound).fetch_add(1, std::memory_order_relaxed);
+
+                WorldPosition const destination = defaultPlayerInfo
+                    ? WorldPosition(WorldLocation(defaultPlayerInfo->mapId, defaultPlayerInfo->positionX, defaultPlayerInfo->positionY, defaultPlayerInfo->positionZ))
+                    : WorldPosition(WorldLocation(bot->GetHomebindMapId(), bot->GetHomebindX(), bot->GetHomebindY(), bot->GetHomebindZ()));
+                bool const safe = !destination.isEnemyHomeZoneFor(bot->GetTeam());
+                if (safe)
+                    death_loop::EscapeCounter(death_loop::EscapeEscaped).fetch_add(1, std::memory_order_relaxed);
+                ai->MarkDeathLoopEscape(uint32(time(nullptr)));
+                sLog.outBasic("[DeathLoop] state=escape guid=%u race=%u level=%u hostile_home=%u rebound=%u to_map=%u safe=%u",
+                    bot->GetGUIDLow(), uint32(bot->getRace()), bot->GetLevel(), hostileHome ? 1u : 0u, rebound ? 1u : 0u,
+                    destination.getMapId(), safe ? 1u : 0u);
+            }
+
             if (defaultPlayerInfo)
             {
                 sLog.outDetail("Repop: Teleporting bot #%d %s:%d <%s> to spawn", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
