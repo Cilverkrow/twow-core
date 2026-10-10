@@ -3495,6 +3495,17 @@ void PlayerbotAI::RecordDeathForLoop()
     death.x = bot->GetPositionX();
     death.y = bot->GetPositionY();
     death_loop::Record(recentDeaths, death, DeathLoopSettings());
+
+    // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): a death in an area of the hostile faction (guards) is a
+    // loop at once; a death soon after an evacuation means the evacuation did not break the loop.
+    if (sPlayerbotAIConfig.deathLoopEscape)
+    {
+        lastDeathHostileArea = WorldPosition(bot).isEnemyHomeZoneFor(bot->GetTeam());
+        if (lastDeathHostileArea)
+            death_loop::EscapeCounter(death_loop::EscapeHostileDeath).fetch_add(1, std::memory_order_relaxed);
+        if (death_loop::RepeatAfterEscape(death.atSeconds, lastDeathLoopEscapeAt, sPlayerbotAIConfig.deathLoopWindowSeconds))
+            death_loop::EscapeCounter(death_loop::EscapeRepeat).fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 void PlayerbotAI::RecordDeathForSeries()
@@ -3579,6 +3590,9 @@ void PlayerbotAI::UpdateTankPathDiag(uint32 now)
 
 bool PlayerbotAI::IsInDeathLoop() const
 {
+    // twow-repo#541 A39: with DeathLoop.Escape a death among the hostile faction's guards needs no repeat.
+    if (sPlayerbotAIConfig.deathLoopEscape && lastDeathHostileArea)
+        return true;
     return death_loop::IsLoop(recentDeaths, uint32(time(nullptr)), DeathLoopSettings());
 }
 
