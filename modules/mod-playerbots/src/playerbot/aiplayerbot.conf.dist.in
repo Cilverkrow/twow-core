@@ -1981,6 +1981,17 @@ AiPlayerbot.Perf.PartyBuffKnownSpellGate = 0
 # owed rebuild. One [LazyEngineInit] line per minute (deferred, caught, saved). Turning it off by a reload leaves
 # already deferred engines to be rebuilt on activation (safe). 0 = rebuild every engine at once (default).
 AiPlayerbot.Perf.LazyEngineInit = 0
+# twow-repo#541 (audit A23, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = "has attackers"
+# and the one-target variant of "possible attack targets" (enemy player chain) read the full "attackers" list
+# (computed for every bot anyway) instead of a second, separate "attackers::1" pass: about one attackers pass less
+# per bot-second. Same yes/no answer for the same moment, but the list can be up to 1 s older (cache granularity),
+# so every "has attackers" reader (combat start/end, mount/dismount, next target, tank assist, rogue/druid stealth,
+# hunter aspects, wait-for-group-recovery) can react up to 1 s later; a stale empty list can end combat while the
+# bot is being hit, with re-entry up to about 2 s later. When the bot itself starts combat (attack, pull) the full
+# list is reset, so it is rebuilt in combat state at once: dps/tank target, aoe and attacker counts may then see
+# targets that out of combat were ignored (hard hostiles more than 5 levels above a travelling/following bot).
+# Change it by restart, not by reload (a flip to 1 by reload can cost one early combat end per bot). 0 = off (default).
+AiPlayerbot.Perf.AttackersSingleList = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
