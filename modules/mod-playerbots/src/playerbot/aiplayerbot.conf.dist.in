@@ -52,6 +52,13 @@ AiPlayerbot.Park.HideFromBots = 0
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
 # [Park] state=share logs where bots were parked (inn / city / here) once a minute.
 AiPlayerbot.Park.AnyLevelInn = 0
+# twow-repo#551 (owner 10.10.2026, test profile 20 / 150): MaxPerInn = parked bots per inn (0 = 25 as before);
+# MaxPerCity = parked bots per capital zone, its inns and city spots together (0 = no limit). A full inn sends
+# the bot to the next inn with room (any level with AnyLevelInn=1, else the level band), a full city to the next
+# inn outside it. With a cap on, a bot with no spot left is not parked (state=no_spot) and stays active - it never
+# parks in the open world because of a cap. [Park] state=caps logs inn/city occupancy once a minute.
+AiPlayerbot.Park.MaxPerInn = 0
+AiPlayerbot.Park.MaxPerCity = 0
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
