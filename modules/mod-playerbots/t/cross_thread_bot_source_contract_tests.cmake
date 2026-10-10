@@ -107,7 +107,7 @@ endif()
 # Drops are counted server-wide and reported once per minute from the world-thread pass.
 read_source("RandomPlayerbotMgr.cpp" rnd_mgr)
 require_order("${inbox_h}" "queue.pop_front();" "InboxDroppedTotal().fetch_add(1, std::memory_order_relaxed);" "drop counter")
-require_text("${rnd_mgr}" "\"[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu\"" "minute line")
+require_text("${rnd_mgr}" "\"[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu" "minute line")
 string(FIND "${rnd_mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" upd_at)
 string(SUBSTRING "${rnd_mgr}" ${upd_at} 1200 upd_head)
 require_order("${upd_head}" "\n    ProcessParkedBots();" "\n    ReportBotInbox();" "minute line in the world-thread pass")

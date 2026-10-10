@@ -8,9 +8,57 @@
 #include <set>
 #include <list>
 #include <map>
+#include <atomic>
+#include <mutex>
+#include <shared_mutex>
 
 namespace ai
 {
+    // twow-repo#563 (X3a): AiPlayerbot.X3a.ContextLock (default 0), set from PlayerbotAIConfig. The guards
+    // take the lock only when asked to (the switch), so the old path stays lock-free.
+    namespace context_lock
+    {
+        inline std::atomic<bool>& Enabled()
+        {
+            static std::atomic<bool> enabled{ false };
+            return enabled;
+        }
+
+        inline bool On() { return Enabled().load(std::memory_order_relaxed); }
+
+        class Shared
+        {
+        public:
+            explicit Shared(std::shared_mutex& mutex, bool lock = true) : mutex(lock ? &mutex : nullptr)
+            {
+                if (this->mutex)
+                    this->mutex->lock_shared();
+            }
+            ~Shared() { if (mutex) mutex->unlock_shared(); }
+            Shared(Shared const&) = delete;
+            Shared& operator=(Shared const&) = delete;
+
+        private:
+            std::shared_mutex* mutex;
+        };
+
+        class Unique
+        {
+        public:
+            explicit Unique(std::shared_mutex& mutex, bool lock = true) : mutex(lock ? &mutex : nullptr)
+            {
+                if (this->mutex)
+                    this->mutex->lock();
+            }
+            ~Unique() { if (mutex) mutex->unlock(); }
+            Unique(Unique const&) = delete;
+            Unique& operator=(Unique const&) = delete;
+
+        private:
+            std::shared_mutex* mutex;
+        };
+    }
+
     class Qualified
     {
     public:
@@ -201,12 +249,41 @@ namespace ai
         NamedObjectContext(bool shared = false, bool supportsSiblings = false) :
             NamedObjectFactory<T>(), shared(shared), supportsSiblings(supportsSiblings) {}
 
+        // twow-repo#563 (X3a, AiPlayerbot.X3a.ContextLock): other bots read and create values in this map from
+        // their own region threads (group targets, rpg/travel targets, qualified "possible targets", ...) while
+        // the owner inserts and evicts. With the switch, every access to `created` holds createdMutex - shared
+        // to look up, unique to insert or erase - and NOTHING else: factories, Update/Reset, the eviction
+        // predicate and delete run outside it. A thread therefore never holds two context locks at once, so no
+        // lock order between two bots' contexts exists and no deadlock or inversion is possible.
         T* Create(std::string name, PlayerbotAI* ai)
         {
-            if (created.find(name) == created.end())
-                return created[name] = NamedObjectFactory<T>::Create(name, ai);
+            if (!context_lock::On())
+            {
+                if (created.find(name) == created.end())
+                    return created[name] = NamedObjectFactory<T>::Create(name, ai);
 
-            return created[name];
+                return created[name];
+            }
+
+            {
+                context_lock::Shared const lock(createdMutex);
+                typename std::map<std::string, T*>::const_iterator const it = created.find(name);
+                if (it != created.end())
+                    return it->second;
+            }
+
+            T* fresh = NamedObjectFactory<T>::Create(name, ai);   // outside the lock
+            T* result = nullptr;
+            bool inserted = false;
+            {
+                context_lock::Unique const lock(createdMutex);
+                std::pair<typename std::map<std::string, T*>::iterator, bool> const r = created.emplace(name, fresh);
+                result = r.first->second;
+                inserted = r.second;
+            }
+            if (!inserted && fresh)
+                delete fresh;   // another thread created it first; ours was never visible
+            return result;
         }
 
         virtual ~NamedObjectContext()
@@ -216,46 +293,70 @@ namespace ai
 
         void Clear()
         {
-            for (typename std::map<std::string, T*>::iterator i = created.begin(); i != created.end(); i++)
+            std::map<std::string, T*> old;
+            {
+                context_lock::Unique const lock(createdMutex, context_lock::On());
+                old.swap(created);
+            }
+            for (typename std::map<std::string, T*>::iterator i = old.begin(); i != old.end(); i++)
             {
                 if (i->second)
                     delete i->second;
             }
-
-            created.clear();
         }
 
         void Erase(const std::string& name)
         {
-            if (created.find(name) != created.end())
+            T* doomed = nullptr;
             {
-                delete created[name];
-                created.erase(name);
+                context_lock::Unique const lock(createdMutex, context_lock::On());
+                typename std::map<std::string, T*>::iterator const it = created.find(name);
+                if (it == created.end())
+                    return;
+                doomed = it->second;
+                created.erase(it);
             }
+            delete doomed;
         }
 
         void Update()
         {
-            for (typename std::map<std::string, T*>::iterator i = created.begin(); i != created.end(); i++)
+            if (!context_lock::On())
             {
-                if (i->second)
-                    i->second->Update();
+                for (typename std::map<std::string, T*>::iterator i = created.begin(); i != created.end(); i++)
+                {
+                    if (i->second)
+                        i->second->Update();
+                }
+                return;
             }
+            for (T* object : Snapshot())
+                object->Update();
         }
 
         void Reset()
         {
-            for (typename std::map<std::string, T*>::iterator i = created.begin(); i != created.end(); i++)
+            if (!context_lock::On())
             {
-                if (i->second)
-                    i->second->Reset();
+                for (typename std::map<std::string, T*>::iterator i = created.begin(); i != created.end(); i++)
+                {
+                    if (i->second)
+                        i->second->Reset();
+                }
+                return;
             }
+            for (T* object : Snapshot())
+                object->Reset();
         }
 
         bool IsShared() const { return shared; }
         bool IsSupportsSiblings() { return supportsSiblings; }
 
-        bool IsCreated(const std::string& name) { return created.find(name) != created.end(); }
+        bool IsCreated(const std::string& name)
+        {
+            context_lock::Shared const lock(createdMutex, context_lock::On());
+            return created.find(name) != created.end();
+        }
 
         // twow-repo#563 (X4a): an already created object, without creating or inserting anything.
         T* Find(const std::string& name) const
@@ -265,34 +366,73 @@ namespace ai
         }
 
         // #416 (7.3): [MemStores] value-cache size.
-        size_t CreatedCount() const { return created.size(); }
+        size_t CreatedCount() const
+        {
+            context_lock::Shared const lock(createdMutex, context_lock::On());
+            return created.size();
+        }
 
         // #416 (7.5) F2: created names with a prefix, via lower_bound.
         void AppendCreatedWithPrefix(std::string const& prefix, std::vector<std::string>& out) const
         {
+            context_lock::Shared const lock(createdMutex, context_lock::On());
             ai::value_evict::AppendKeysWithPrefix(created, prefix, out);
         }
 
-        // #416 (7.5) F1: delete the created objects the predicate selects.
+        // #416 (7.5) F1: delete the created objects the predicate selects. The predicate (value code) runs
+        // outside the lock: candidates are copied under the shared lock, the selected ones erased under the
+        // unique lock (only if the map still holds that very object), and deleted after it.
         template <class Pred>
         size_t EraseIf(Pred pred)
         {
-            size_t erased = 0;
-            for (auto it = created.begin(); it != created.end();)
+            if (!context_lock::On())
             {
-                if (it->second && pred(it->second))
+                size_t erased = 0;
+                for (auto it = created.begin(); it != created.end();)
                 {
-                    delete it->second;
-                    it = created.erase(it);
-                    ++erased;
+                    if (it->second && pred(it->second))
+                    {
+                        delete it->second;
+                        it = created.erase(it);
+                        ++erased;
+                    }
+                    else
+                        ++it;
                 }
-                else
-                    ++it;
+                return erased;
             }
-            return erased;
+
+            std::vector<std::pair<std::string, T*>> candidates;
+            {
+                context_lock::Shared const lock(createdMutex);
+                for (auto const& entry : created)
+                    if (entry.second)
+                        candidates.push_back(entry);
+            }
+            std::vector<std::pair<std::string, T*>> selected;
+            for (auto const& candidate : candidates)
+                if (pred(candidate.second))
+                    selected.push_back(candidate);
+            std::vector<T*> doomed;
+            {
+                context_lock::Unique const lock(createdMutex);
+                for (auto const& entry : selected)
+                {
+                    typename std::map<std::string, T*>::iterator const it = created.find(entry.first);
+                    if (it != created.end() && it->second == entry.second)
+                    {
+                        doomed.push_back(it->second);
+                        created.erase(it);
+                    }
+                }
+            }
+            for (T* object : doomed)
+                delete object;
+            return doomed.size();
         }
         void AddBaseNameCounts(std::map<std::string, uint32>& counts) const
         {
+            context_lock::Shared const lock(createdMutex, context_lock::On());
             for (auto const& entry : created)
             {
                 std::string::size_type const pos = entry.first.find("::");
@@ -302,6 +442,7 @@ namespace ai
 
         std::set<std::string> GetCreated()
         {
+            context_lock::Shared const lock(createdMutex, context_lock::On());
             std::set<std::string> keys;
             for (typename std::map<std::string, T*>::iterator it = created.begin(); it != created.end(); it++)
                 keys.insert(it->first);
@@ -309,7 +450,20 @@ namespace ai
         }
 
     protected:
+        // The created objects, copied under the shared lock so Update/Reset run without it.
+        std::vector<T*> Snapshot() const
+        {
+            std::vector<T*> objects;
+            context_lock::Shared const lock(createdMutex, context_lock::On());
+            objects.reserve(created.size());
+            for (auto const& entry : created)
+                if (entry.second)
+                    objects.push_back(entry.second);
+            return objects;
+        }
+
         std::map<std::string, T*> created;
+        mutable std::shared_mutex createdMutex;   // twow-repo#563 (X3a): guards `created` only
         bool shared;
         bool supportsSiblings;
     };
