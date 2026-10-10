@@ -44,6 +44,7 @@
 #include "LoginWavePolicy.h"
 #include "playerbot/MemStoresPolicy.h"
 #include "playerbot/BotUpdateTrace.h"
+#include "playerbot/CombatIdlePolicy.h"
 #if defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -966,6 +967,21 @@ void ReportBotUpdate()
     for (ai::bot_update::Slow const& slow : s.slowest)
         sLog.outBasic("[BotUpdateSlow] us=%llu %s", (unsigned long long)slow.us, slow.who.c_str());
 }
+
+// twow-repo#541 (audit A17, AiPlayerbot.Perf.CombatIdleYield): one [CombatIdle] line per minute - stretched combat-idle
+// waits (waits granted, not passes saved) and the ones the wake check ended early because the auto attack changed.
+// Waits ended or overridden by other existing resets are not counted as woken. Nothing is written when off.
+void ReportCombatIdle()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.perfCombatIdleYield || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[CombatIdle] stretched=%llu woken=%llu",
+        (unsigned long long)ai::combat_idle::stretched.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::combat_idle::woken.exchange(0, std::memory_order_relaxed));
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -988,6 +1004,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportBotInbox();     // twow-repo#563: [BotInbox] once per minute
     ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
+    ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
