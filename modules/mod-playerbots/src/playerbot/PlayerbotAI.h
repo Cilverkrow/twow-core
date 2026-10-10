@@ -416,6 +416,9 @@ public:
     // X3b site 2 (AiPlayerbot.X3b.PublishedConditions): conditions other bots ask about this bot, answered by
     // this bot on its own thread (HandleQueuedBotPackets).
     ai::x3b::ConditionBoard& GetConditionBoard() { return conditionBoard; }
+    // X3b site 3 (same switch): "follow" or "wander" in the non-combat engine, published by this bot on its own
+    // thread for GroupReadyValue of the others (true until the first publish: the group waits, as for a follower).
+    bool PublishedFollowing() const { return publishedFollowing.load(std::memory_order_relaxed); }
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
@@ -1039,6 +1042,7 @@ protected:
     mutable std::mutex publishedTargetsMutex;
     std::shared_ptr<PublishedTargets const> publishedTargets;
     ai::x3b::ConditionBoard conditionBoard;
+    std::atomic<bool> publishedFollowing{ true };
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;
     CompositeChatFilter chatFilter;

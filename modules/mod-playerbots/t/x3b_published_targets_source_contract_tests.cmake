@@ -131,6 +131,12 @@ endif()
 require_order("${evaluate_block}" "computed.emplace_back(condition, bool(evaluate(condition)));" "std::scoped_lock lock(mutex);" "lock taken only after the evaluation")
 require_text("${policy}" "else if (requests.size() < MaxConditionRequests)" "bounded registrations")
 
+# Site 3: GroupReadyValue reads another bot's follow/wander from its published flag, not its engine.
+require_text("${ai_h}" "std::atomic<bool> publishedFollowing{ true };" "published follow flag, waits until the first publish")
+require_order("${drain}" "if (sPlayerbotAIConfig.x3bPublishedConditions)\n        publishedFollowing.store(HasStrategy(\"follow\", BotState::BOT_STATE_NON_COMBAT) ||" "HasStrategy(\"wander\", BotState::BOT_STATE_NON_COMBAT), std::memory_order_relaxed);" "owner publishes behind the switch")
+between("${group}" "bool GroupReadyValue::Calculate()" "if (!member->IsAlive() && isFollowing)" group_ready)
+require_order("${group_ready}" "? ((memberAi != ai && sPlayerbotAIConfig.x3bPublishedConditions)\n                    ? memberAi->PublishedFollowing()" ": (memberAi->HasStrategy(\"follow\", BotState::BOT_STATE_NON_COMBAT) ||" "flag for other bots, own engine only for itself or off")
+
 # Minute line, only with a switch.
 require_order("${mgr}" "if (sPlayerbotAIConfig.x3bPublishedTargets || sPlayerbotAIConfig.x3bPublishedConditions)" "[X3bSnapshot] hit=%llu stale=%llu missing=%llu max_age_ms=%u cond_hit=%llu cond_miss=%llu cond_dropped=%llu cond_evaluated=%llu" "minute line behind the switches")
 
