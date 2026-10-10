@@ -853,7 +853,19 @@ bool TalkAction::Execute(Event& event)
     {
         Player* player = dynamic_cast<Player*>(target);
         if (player && GetBotAI(player))
-            GetBotAI(player)->GetAiObjectContext()->GetValue<ObjectGuid>("talk target")->Set(bot->GetObjectGuid());
+        {
+            // twow-repo#563 (X3c): the other bot may update on another region thread - let it set the value itself.
+            if (sPlayerbotAIConfig.x3cInboxWrites)
+            {
+                ObjectGuid const talker = bot->GetObjectGuid();
+                PlayerbotAI::QueueContextWriteTo(player, [talker](AiObjectContext* other)
+                {
+                    other->GetValue<ObjectGuid>("talk target")->Set(talker);
+                });
+            }
+            else
+                GetBotAI(player)->GetAiObjectContext()->GetValue<ObjectGuid>("talk target")->Set(bot->GetObjectGuid());
+        }
 
         context->GetValue<ObjectGuid>("talk target")->Set(target->GetObjectGuid());
         //return Emote(target, GetRandomEmote(target, true), true);
