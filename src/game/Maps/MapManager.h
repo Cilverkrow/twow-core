@@ -90,8 +90,9 @@ class MapManager : public MaNGOS::Singleton<MapManager, MaNGOS::ClassLevelLockab
         void GetOrCreateContinentInstances(uint32 mapId, WorldObject* obj, std::unordered_set<Map*>& instances);
         uint32 GetContinentInstanceId(uint32 mapId, float x, float y, bool* transitionArea = nullptr);
         // twow-repo#541 part C (Continents.Layout, read once at the first use, restart to change): 0 = the legacy
-        // polygons (13 regions), 14/16/18 = cell tables (ContinentRegionTables.h). First and last region id of
-        // a continent in the active layout.
+        // polygons (13 regions), 14/16/18/20 = cell tables (ContinentRegionTables.h). First and last region id of
+        // a continent in the active layout, both inclusive and every id between them in use (layout 0: 1-6 and
+        // 11-17; 14/16/18: from 1 and 11; 20: 1-12 and 21-32).
         uint32 GetContinentLayout() const;
         uint32 GetContinentFirstRegion(uint32 mapId) const;
         uint32 GetContinentLastRegion(uint32 mapId) const;

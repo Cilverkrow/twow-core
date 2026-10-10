@@ -3,8 +3,10 @@
  *
  * One region id per 66.67-yard cell (8 x 8 cells per map tile, 512 x 512 per continent), stored run-length
  * encoded in ContinentRegionTables.cpp, which tools/continent_regions/gen_continent_regions.py generates from
- * the server map files (zone of every cell) and the zone -> region lists of the OB-50 draft. Layout 0 keeps the
- * legacy polygons in MapManager::GetContinentInstanceId and has no table.
+ * the server map files (zone of every cell) and the zone -> region lists of the OB-50 draft (layouts 14/16/18)
+ * and of the owner decision of 10.10.2026 (layout 20). Region ids are per layout: Eastern Kingdoms from 1,
+ * Kalimdor from 11 (14/16/18) or 21 (20); ids stay below kTransitionBit. Layout 0 keeps the legacy polygons in
+ * MapManager::GetContinentInstanceId and has no table.
  *
  * Header only apart from the generated data, so t/continent_layout_541_test.cpp can check the tables without
  * the game library.
@@ -108,6 +110,20 @@ namespace continent_regions
         return true;
     }
 
+    // Lowest region id of a decoded continent (per layout: 14/16/18 start Kalimdor at 11, 20 at 21); 0 if the
+    // continent has no cells.
+    inline std::uint32_t FirstRegion(std::vector<std::uint8_t> const& cells)
+    {
+        std::uint32_t first = 0;
+        for (std::uint8_t const cell : cells)
+        {
+            std::uint32_t const region = cell & kRegionMask;
+            if (region != 0 && (first == 0 || region < first))
+                first = region;
+        }
+        return first;
+    }
+
     // Highest region id of a decoded continent (the regions run from the continent's first id up to it).
     inline std::uint32_t LastRegion(std::vector<std::uint8_t> const& cells)
     {
@@ -116,6 +132,26 @@ namespace continent_regions
             if (std::uint32_t(cell & kRegionMask) > last)
                 last = cell & kRegionMask;
         return last;
+    }
+
+    // True if every cell holds an id of first..last and every id of first..last has at least one cell: one map
+    // instance per id, none without ground, no gap in the range the server loops over.
+    inline bool RegionsContiguous(std::vector<std::uint8_t> const& cells, std::uint32_t first, std::uint32_t last)
+    {
+        if (first == 0 || first > last || last > kRegionMask)
+            return false;
+        bool seen[kRegionMask + 1] = {};
+        for (std::uint8_t const cell : cells)
+        {
+            std::uint32_t const region = cell & kRegionMask;
+            if (region < first || region > last)
+                return false;
+            seen[region] = true;
+        }
+        for (std::uint32_t region = first; region <= last; ++region)
+            if (!seen[region])
+                return false;
+        return true;
     }
 }
 
