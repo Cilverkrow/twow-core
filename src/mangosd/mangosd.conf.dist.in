@@ -282,6 +282,14 @@ CleanCharacterDB = 1
 # Continents & MapUpdate
 
 Continents.Instanciate = 0
+# twow-repo#541 part C. Continents.Layout (only with Continents.Instanciate = 1; read once, restart to change):
+#   0  = legacy region polygons (Eastern Kingdoms 6, Kalimdor 7; default)
+#   14 = cell table, 7 + 7 regions (no city regions)
+#   16 = cell table, 8 + 8 regions (OB-50 draft: start zones apart, Barrens north/south, one city region each)
+#   18 = cell table, 8 + 10 regions (16 plus Barrens north in two halves and the Valley of Trials on its own)
+# A player fighting in a cell at a region border keeps its region until the fight ends. [RegionSwitch] in the
+# performance log once per minute (with a table layout, or with PerformanceLog.WorldTick).
+Continents.Layout = 0
 Continents.InactivePlayers.SkipUpdates = 5
 MapUpdate.ReduceGridActivationDist.Tick = 190
 MapUpdate.IncreaseGridActivationDist.Tick = 130
