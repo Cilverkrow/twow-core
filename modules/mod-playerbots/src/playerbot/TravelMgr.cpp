@@ -3148,11 +3148,51 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
     WorldPosition center = info.GetPosition();
     DestinationList retDests;
 
+    // twow-repo#541 (audit A10, AiPlayerbot.Perf.TravelInfoReuse): the inner map is keyed by quest id (or entry).
+    // Exactly one asked entry is looked up instead of walking every key, and DistanceTo is computed once per
+    // destination. Same list in the same order; several entries keep the key walk (map order).
+    bool const travelInfoReuse = sPlayerbotAIConfig.perfTravelInfoReuse;
+    auto const appendDestinations = [&](DestinationList const& dests)
+    {
+        for (TravelDestination* dest : dests)
+        {
+            if (onlyPossible && !dest->IsPossible(info))
+                continue;
+
+            float const distance = dest->DistanceTo(center);
+
+            if (maxDistance > 0 && distance > maxDistance)
+                continue;
+
+            if (distance == FLT_MAX) //Do not return destinations on maps you can't path to.
+                continue;
+
+            retDests.push_back(dest);
+        }
+    };
+
     for (auto& [purpose, entryDests] : destinationMap)
     {
 
         if (purposeFlag != (uint32)TravelDestinationPurpose::None && !((uint32)purpose & (uint32)purposeFlag))
             continue;
+
+        if (travelInfoReuse)
+        {
+            if (entries.size() == 1)
+            {
+                auto const found = entryDests.find(entries.front());
+                if (found != entryDests.end())
+                    appendDestinations(found->second);
+            }
+            else
+            {
+                for (auto const& [destEntry, dests] : entryDests)
+                    if (entries.empty() || std::find(entries.begin(), entries.end(), destEntry) != entries.end())
+                        appendDestinations(dests);
+            }
+            continue;
+        }
 
         for (auto& [destEntry, dests] : entryDests)
         {
