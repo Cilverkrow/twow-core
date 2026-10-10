@@ -1936,6 +1936,12 @@ add_test(NAME park_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/park_source_contract_tests.cmake")
 
+# twow-repo#551: park in any inn of the faction (AiPlayerbot.Park.AnyLevelInn).
+add_test(NAME park_any_level_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_any_level_source_contract_tests.cmake")
+
 # twow-repo#541 (deep dive R1): choose rpg target builds its rpg trigger list once per call.
 add_test(NAME rpg_target_cache_source_contract
   COMMAND "${CMAKE_COMMAND}"
