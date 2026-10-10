@@ -19,6 +19,7 @@
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
+#include <functional>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/StuckCombatPolicy.h"
@@ -401,6 +402,11 @@ public:
     void QueueBotOutgoingPacket(const WorldPacket& packet);
     bool WantsBotOutgoingPacket(uint16 opcode) const;
     void HandleQueuedBotPackets();
+    // twow-repo#563 (X3c, AiPlayerbot.X3c.InboxWrites): a value write another bot wants on this bot's context;
+    // applied by this bot in its own UpdateAI (same drain as the packets).
+    void QueueContextWrite(std::function<void(ai::AiObjectContext*)> write);
+    // For the callers: queues on the target's AI, or counts the write as dropped when the target has none.
+    static void QueueContextWriteTo(Player* target, std::function<void(ai::AiObjectContext*)> write);
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
@@ -1018,6 +1024,8 @@ protected:
     PacketHandlingHelper botOutgoingPacketHandlers;
     // twow-repo#563 (X1): packets for this bot from any thread, handled in UpdateAI.
     ai::BoundedInbox<std::unique_ptr<WorldPacket>> botPacketInbox{ ai::BotPacketInboxCapacity };
+    // twow-repo#563 (X3c): value writes from other bots, applied in UpdateAI.
+    ai::BoundedInbox<std::function<void(ai::AiObjectContext*)>> contextWriteInbox{ ai::ContextWriteInboxCapacity };
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;
     CompositeChatFilter chatFilter;
