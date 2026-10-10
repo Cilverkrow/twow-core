@@ -626,6 +626,17 @@ void PlayerbotAI::HandleQueuedBotPackets()
     for (std::function<void(ai::AiObjectContext*)> const& write : writes)
         if (write)
             write(aiObjectContext);
+
+    // twow-repo#563 (X3b site 2): answer the conditions other bots asked about, on this bot's own context.
+    if (sPlayerbotAIConfig.x3bPublishedConditions && conditionBoard.HasRequests())
+        conditionBoard.Refresh(WorldTimer::getMSTime(), [this](std::string const& condition)
+        {
+            return aiObjectContext->GetValue<bool>("and", condition)->Get();
+        });
+    // X3b site 3: this bot's follow/wander state for GroupReadyValue of the others (no cross-bot strategy read).
+    if (sPlayerbotAIConfig.x3bPublishedConditions)
+        publishedFollowing.store(HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) ||
+            HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT), std::memory_order_relaxed);
 }
 
 // twow-repo#563 (X3c): instead of setting a value in another bot's context from this thread, queue it.
@@ -644,6 +655,23 @@ void PlayerbotAI::QueueContextWriteTo(Player* target, std::function<void(ai::AiO
         return;
     }
     targetAi->QueueContextWrite(std::move(write));
+}
+
+void PlayerbotAI::PublishTargets(std::shared_ptr<PublishedTargets const> snapshot)
+{
+    std::shared_ptr<PublishedTargets const> previous;
+    {
+        std::scoped_lock lock(publishedTargetsMutex);
+        previous.swap(publishedTargets);
+        publishedTargets = std::move(snapshot);
+    }
+    // previous is released here, outside the lock (a reader may still hold its own copy).
+}
+
+std::shared_ptr<PlayerbotAI::PublishedTargets const> PlayerbotAI::GetPublishedTargets() const
+{
+    std::scoped_lock lock(publishedTargetsMutex);
+    return publishedTargets;
 }
 
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
