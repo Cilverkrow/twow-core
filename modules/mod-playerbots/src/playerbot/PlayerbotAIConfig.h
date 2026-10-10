@@ -554,6 +554,16 @@ public:
     bool chaseSkipHazardPathWhenNoHazards = false;  // twow-repo#541 (audit A14): ChaseTo skips the hazard path / LOS checks while the bot's hazards list is empty; same chase decisions, only the detail log line differs (0 = off)
     bool perfGiveItemGroupOnlyScan = false;  // twow-repo#541 (audit A15): give water / food / item value of a bot without group skips the out-of-group classification and list scan; same result, disclosed: no GetPet()/eventCache side effects on foreign players (0 = off)
     bool perfStaticSpellLists = false;  // twow-repo#541 (audit A16): CanCastSpell / CheckSpellTargetAlignment take the neutral and out-of-control spell ids from constant arrays instead of a per-call std::list; same ids, same answers (0 = off)
+    bool petDeadNoWorldPetFalse = false;  // twow-repo#541 (audit A07): hunter without a world pet never counts as having a dead pet (no character_pet SELECT, no doomed Revive Pet)
+    bool canCastSpellChecksPower = false;  // twow-repo#541 (audit A33): CanCastSpell (unit target, spellbook) also checks the mana/rage/energy/health cost (0 = off)
+    bool castSpellRefreshOnLearn = false;  // twow-repo#541 (audit A27): spell actions re-read spell id/range when the bot learned spells, levelled, spent talent points or (pet spell actions) got another pet (0 = off)
+    bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
+    bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
+    bool perfPartyBuffKnownSpellGate = false;  // twow-repo#541 (audit A22): five party buff/cure triggers skip their party scan while the bot knows no rank of the action's spell (0 = off)
+    bool perfLazyEngineInit = false;  // twow-repo#541 (audit A21): a strategy change rebuilds an engine that is not running (idle combat/non-combat, dead) only when it is activated (0 = off)
+    bool perfAttackersSingleList = false;  // twow-repo#541 (audit A23): "has attackers" and "possible attack targets::1" use the full "attackers" list, no second attackers::1 pass (0 = off)
+    bool perfPartyTargetMemo = false;  // twow-repo#541 (audit A25): party-target values reuse their result inside one DoNextAction pass until the next Execute (0 = off)
+    bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

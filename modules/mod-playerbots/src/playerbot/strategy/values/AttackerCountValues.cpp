@@ -70,6 +70,13 @@ uint8 PossibleAttackTargetsCountValue::Calculate()
 
 bool HasAttackersValue::Calculate()
 {
+    // twow-repo#541 (audit A23): only emptiness is read. "attackers::1" is a second AttackersValue object
+    // whose pass visits exactly the same units as the full list whenever it comes back empty (the
+    // normal case out of combat), and the full "attackers" is computed for every bot anyway. With the
+    // switch the full list answers the yes/no question. Switch AiPlayerbot.Perf.AttackersSingleList.
+    if (sPlayerbotAIConfig.perfAttackersSingleList)
+        return !context->GetValue<std::list<ObjectGuid>>("attackers")->Get().empty();
+
     return !context->GetValue<std::list<ObjectGuid>>("attackers", 1)->Get().empty();
 }
 
