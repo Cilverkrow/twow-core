@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <map>
+#include <mutex>
 #include <vector>
 
 namespace ai::park
@@ -137,6 +139,74 @@ inline Point SlotOffset(Point const& spot, std::uint32_t slot)
     float const angle = float(slot % 8) * step + ((ring % 2) ? step / 2.0f : 0.0f);
     return Point{ spot.map, spot.x + radius * std::cos(angle), spot.y + radius * std::sin(angle), spot.z };
 }
+
+// Owner 10.10.2026 (OB-00 relay): "20 bots pro gasthaus ... 150 pro stadt" - AiPlayerbot.Park.MaxPerInn and
+// AiPlayerbot.Park.MaxPerCity, both 0 = off (SpotCapacity per spot, no city limit, as before). A city is a
+// capital zone with all its inns and city spots. Capacity of one spot:
+inline std::uint32_t SpotCapacityFor(bool inn, std::uint32_t maxPerInn)
+{
+    return inn && maxPerInn ? maxPerInn : SpotCapacity;
+}
+
+// Occupancy as ChooseSpot sees it: a spot in a capital zone that has reached MaxPerCity counts as full,
+// so the bot goes to the next spot with room - for an inn that is the next inn outside the city.
+inline std::uint32_t EffectiveOccupied(std::uint32_t occupied, std::uint32_t capacity, std::uint32_t cityZone,
+    std::uint32_t cityCount, std::uint32_t maxPerCity)
+{
+    if (cityZone && maxPerCity && cityCount >= maxPerCity)
+        return capacity;
+    return occupied;
+}
+
+// With a cap on, a bot with no spot left is not parked at all (owner: never park in the open world
+// because of a cap; the bot stays active). Caps off: the old fallback, park where it stands.
+inline bool FallbackHere(std::uint32_t maxPerInn, std::uint32_t maxPerCity)
+{
+    return !maxPerInn && !maxPerCity;
+}
+
+// Parked bots per capital zone. Today every park decision runs on the world thread (console command,
+// ProcessParkedBots); the mutex keeps the count right if that ever changes (owner order: thread-safe).
+class CityCounts
+{
+public:
+    void Add(std::uint32_t zone)
+    {
+        if (!zone)
+            return;
+        std::scoped_lock lock(mutex);
+        ++counts[zone];
+    }
+
+    void Remove(std::uint32_t zone)
+    {
+        if (!zone)
+            return;
+        std::scoped_lock lock(mutex);
+        auto const it = counts.find(zone);
+        if (it == counts.end())
+            return;
+        if (--it->second == 0)
+            counts.erase(it);
+    }
+
+    std::uint32_t Get(std::uint32_t zone) const
+    {
+        std::scoped_lock lock(mutex);
+        auto const it = counts.find(zone);
+        return it == counts.end() ? 0 : it->second;
+    }
+
+    std::map<std::uint32_t, std::uint32_t> Snapshot() const
+    {
+        std::scoped_lock lock(mutex);
+        return counts;
+    }
+
+private:
+    mutable std::mutex mutex;
+    std::map<std::uint32_t, std::uint32_t> counts;
+};
 
 // Reduced AI tick: update when in combat, or when AiIntervalMs passed since the last update.
 inline bool AiUpdateDue(bool inCombat, std::uint32_t nowMs, std::uint32_t lastMs)

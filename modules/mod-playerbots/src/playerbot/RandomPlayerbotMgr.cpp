@@ -1226,7 +1226,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
             if (GetPlayerBot(bot))
                 continue;   
 
-            if (!eventCache[bot].empty() && GetEventValue(bot, "login"))
+            if (HasCachedEvents(bot) && GetEventValue(bot, "login"))
             {
                 onlineBotCount++;
                 continue;
@@ -1699,8 +1699,7 @@ uint32 RandomPlayerbotMgr::AddRandomBots()
             // loop could reach ever got to play. That also starved the LFT queue
             // of low level companions. Shuffling per pass gives every account the
             // same chance of being served first.
-            std::vector<uint32> accountOrder(sPlayerbotAIConfig.randomBotAccounts.begin(),
-                                             sPlayerbotAIConfig.randomBotAccounts.end());
+            std::vector<uint32> accountOrder = sPlayerbotAIConfig.RandomBotAccountsSnapshot();   // audit A31
             std::shuffle(accountOrder.begin(), accountOrder.end(), *GetRandomGenerator());
 
             for (std::vector<uint32>::iterator i = accountOrder.begin(); i != accountOrder.end(); i++)
@@ -4252,11 +4251,21 @@ std::list<uint32> RandomPlayerbotMgr::GetBgBots(uint32 bracket)
     return BgBots;
 }
 
+bool RandomPlayerbotMgr::HasCachedEvents(uint32 bot) const
+{
+    ai::context_lock::Shared const lock(eventCacheMutex, ai::context_lock::On());
+    auto const cached = eventCache.find(bot);
+    return cached != eventCache.end() && !cached->second.empty();
+}
+
 uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string event)
 {
     // load all events at once on first event load
-    if (eventCache[bot].empty())
+    // Audit A28 (twow-repo#563): the query runs outside the lock into a local map; the merge keeps entries
+    // another thread stored meanwhile (emplace never overwrites). Switch off: the same steps as before.
+    if (!HasCachedEvents(bot))
     {
+        std::map<std::string, CachedEvent> loaded;
         auto results = CharacterDatabase.PQuery(PlayerbotDatabaseContract::EventStoreSql(
             "SELECT `event`, `value`, `time`, validIn, `data` FROM ", " WHERE owner = 0 AND bot = '%u'").c_str(), bot);
         if (results)
@@ -4279,11 +4288,38 @@ uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string event)
                 e.lastChangeTime = fields[2].GetUInt32();
                 e.validIn = fields[3].GetUInt32();
                 e.data = dataStr ? std::string(dataStr) : std::string();
-                eventCache[bot][eventName] = e;
+                loaded[eventName] = e;
             } while (results->NextRow());
         }
+
+        ai::context_lock::Unique const lock(eventCacheMutex, ai::context_lock::On());
+        std::map<std::string, CachedEvent>& cached = eventCache[bot];
+        for (auto const& [eventName, loadedEvent] : loaded)
+            cached.emplace(eventName, loadedEvent);
     }
-    CachedEvent e = eventCache[bot][event];
+
+    CachedEvent e;
+    bool found = false;
+    {
+        ai::context_lock::Shared const lock(eventCacheMutex, ai::context_lock::On());
+        auto const cached = eventCache.find(bot);
+        if (cached != eventCache.end())
+        {
+            auto const stored = cached->second.find(event);
+            if (stored != cached->second.end())
+            {
+                e = stored->second;
+                found = true;
+            }
+        }
+    }
+    if (!found)
+    {
+        // As before: an unknown event is remembered as empty, so a bot without any stored event is not
+        // queried again on every call.
+        ai::context_lock::Unique const lock(eventCacheMutex, ai::context_lock::On());
+        e = eventCache[bot][event];
+    }
 
     if ((time(0) - e.lastChangeTime) >= e.validIn && event != "specNo" && event != "specLink" && event != "init" && event != "current_time" && event != "always" && event != "selfbot" && event != ai::profession::kEventName)
         e.value = 0;
@@ -4293,13 +4329,19 @@ uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string event)
 
 int32 RandomPlayerbotMgr::GetValueValidTime(uint32 bot, std::string event)
 {
-    if (eventCache.find(bot) == eventCache.end())
-        return 0;
+    CachedEvent e;
+    {
+        ai::context_lock::Shared const lock(eventCacheMutex, ai::context_lock::On());   // audit A28
+        auto const cached = eventCache.find(bot);
+        if (cached == eventCache.end())
+            return 0;
 
-    if (eventCache[bot].find(event) == eventCache[bot].end())
-        return 0;
+        auto const stored = cached->second.find(event);
+        if (stored == cached->second.end())
+            return 0;
 
-    CachedEvent e = eventCache[bot][event];
+        e = stored->second;
+    }
 
     return e.validIn-(time(0) - e.lastChangeTime);
 }
@@ -4309,8 +4351,15 @@ std::string RandomPlayerbotMgr::GetEventData(uint32 bot, std::string event)
     std::string data = "";
     if (GetEventValue(bot, event))
     {
-        CachedEvent e = eventCache[bot][event];
-        data = e.data;
+        // GetEventValue stored the entry; read it without inserting (audit A28).
+        ai::context_lock::Shared const lock(eventCacheMutex, ai::context_lock::On());
+        auto const cached = eventCache.find(bot);
+        if (cached != eventCache.end())
+        {
+            auto const stored = cached->second.find(event);
+            if (stored != cached->second.end())
+                data = stored->second.data;
+        }
     }
     return data;
 }
@@ -4416,7 +4465,10 @@ uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string event, uint32 v
     // Only reached once the write is on its way, so a rejected write leaves the
     // cache agreeing with the table rather than inventing a value nothing stored.
     CachedEvent e(value, (uint32)time(0), validIn, data);
-    eventCache[bot][event] = e;
+    {
+        ai::context_lock::Unique const lock(eventCacheMutex, ai::context_lock::On());   // audit A28
+        eventCache[bot][event] = e;
+    }
     return value;
 }
 
@@ -5395,7 +5447,10 @@ void RandomPlayerbotMgr::Remove(Player* bot)
     SC_LOG("RandomPlayerbotMgr::Remove guid=%u — deleting random_bots row", owner);
     CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
         "DELETE FROM ", " WHERE owner = 0 AND bot = '%d'").c_str(), owner);
-    eventCache[owner].clear();
+    {
+        ai::context_lock::Unique const lock(eventCacheMutex, ai::context_lock::On());   // audit A28
+        eventCache[owner].clear();
+    }
     SC_LOG("RandomPlayerbotMgr::Remove guid=%u — calling LogoutPlayerBot", owner);
 
     LogoutPlayerBot(owner);
@@ -5823,7 +5878,10 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleReset(std::string param)
     }
     CharacterDatabase.PExecute(PlayerbotDatabaseContract::EventStoreSql(
         "delete from ", " where event not in ('temporary')").c_str());
-    sRandomPlayerbotMgr.eventCache.clear();
+    {
+        ai::context_lock::Unique const lock(sRandomPlayerbotMgr.eventCacheMutex, ai::context_lock::On());   // audit A28
+        sRandomPlayerbotMgr.eventCache.clear();
+    }
     std::string msg = "Random bots were reset for all players. Please restart the Server.";
     messages.push_back(msg);
     return messages;
@@ -6021,7 +6079,7 @@ uint32 RandomPlayerbotMgr::GetOrCreateAccount(Player* master, std::string& error
                 uint32 accountId = sAccountMgr.GetId(accountName);
                 if (accountId)
                 {
-                    sPlayerbotAIConfig.randomBotAccounts.push_back(accountId);
+                    sPlayerbotAIConfig.AddRandomBotAccount(accountId);
                     return accountId;
                 }
             }
@@ -6036,7 +6094,7 @@ uint32 RandomPlayerbotMgr::GetOrCreateAccount(Player* master, std::string& error
         {
             if (!sPlayerbotAIConfig.IsInRandomAccountList(accountId))
             {
-                sPlayerbotAIConfig.randomBotAccounts.push_back(accountId);
+                sPlayerbotAIConfig.AddRandomBotAccount(accountId);
             }
             return accountId;
         }
@@ -6108,12 +6166,18 @@ namespace
         return (uint64(loc.mapid) << 48) ^ (uint64(uint32(int32(loc.coord_x)) & 0xFFFFFF) << 24) ^ uint64(uint32(int32(loc.coord_y)) & 0xFFFFFF);
     }
 
-    bool IsCapitalSpot(WorldLocation const& loc)
+    // twow-repo#551 (Park.MaxPerCity): the capital zone a spot lies in, 0 when it is not in a capital.
+    uint32 CapitalZone(WorldLocation const& loc)
     {
         AreaTableEntry const* area = WorldPosition(loc).GetArea();
         if (area && area->zone)
             area = GetAreaEntryByAreaID(area->zone);
-        return area && (area->flags & AREA_FLAG_CAPITAL);
+        return area && (area->flags & AREA_FLAG_CAPITAL) ? area->ID : 0;
+    }
+
+    bool IsCapitalSpot(WorldLocation const& loc)
+    {
+        return CapitalZone(loc) != 0;
     }
 }
 
@@ -6128,20 +6192,34 @@ void RandomPlayerbotMgr::BuildParkSpots()
 
     // Inns: every innkeeper of the cache once per faction, with the level range it serves.
     std::map<uint64, size_t> innIndex[2];
+    std::set<uint64> hostileSkipped[2];
     for (auto const& [race, byLevel] : innCacheLevel)
     {
         if (!race)
             continue;
         uint32 const team = Player::TeamForRace(uint8(race)) == ALLIANCE ? 0 : 1;
+        // twow-repo#551 (owner 10.10.2026: "geparkte bots nur gasthäuser ihrer fraktion"): the inn cache assigns
+        // innkeepers to races by the races of the area around them (race 0 = every race), never by the innkeeper's
+        // own faction - in mixed zones a Horde bot could get an Alliance inn. An innkeeper hostile to the race is
+        // left out; neutral ones (goblin towns) stay for both factions.
+        FactionTemplateEntry const* raceFaction = sFactionTemplateStore.LookupEntry(Player::GetFactionForRace(uint8(race)));
         for (auto const& [level, inns] : byLevel)
             for (auto const& [innGuid, loc] : inns)
             {
+                CreatureInfo const* innkeeper = sObjectMgr.GetCreatureTemplate(innGuid.GetEntry());
+                FactionTemplateEntry const* innFaction = innkeeper ? sFactionTemplateStore.LookupEntry(innkeeper->Faction) : nullptr;
+                if (raceFaction && innFaction && innFaction->IsHostileTo(*raceFaction))
+                {
+                    hostileSkipped[team].insert(ParkSpotKey(loc));
+                    continue;
+                }
                 uint64 const key = ParkSpotKey(loc);
                 auto const it = innIndex[team].find(key);
                 if (it == innIndex[team].end())
                 {
                     innIndex[team][key] = parkInns[team].size();
-                    parkInns[team].push_back(ParkInn{ loc, level, level });
+                    AreaTableEntry const* innArea = WorldPosition(loc).GetArea();
+                    parkInns[team].push_back(ParkInn{ loc, level, level, CapitalZone(loc), innArea ? innArea->ID : 0u });
                 }
                 else
                 {
@@ -6162,15 +6240,34 @@ void RandomPlayerbotMgr::BuildParkSpots()
         for (auto const& [level, locs] : byLevel)
             for (WorldLocation const& loc : locs)
                 if (citySeen[team].insert(ParkSpotKey(loc)).second && IsCapitalSpot(loc))
+                {
                     parkCities[team].push_back(loc);
+                    parkCityZones[team].push_back(CapitalZone(loc));   // twow-repo#551 (Park.MaxPerCity)
+                }
     }
 
-    sLog.outBasic("[Park] state=spots alliance_inns=%u horde_inns=%u alliance_city=%u horde_city=%u",
-        uint32(parkInns[0].size()), uint32(parkInns[1].size()), uint32(parkCities[0].size()), uint32(parkCities[1].size()));
+    sLog.outBasic("[Park] state=spots alliance_inns=%u horde_inns=%u alliance_city=%u horde_city=%u alliance_hostile_inns_skipped=%u horde_hostile_inns_skipped=%u",
+        uint32(parkInns[0].size()), uint32(parkInns[1].size()), uint32(parkCities[0].size()), uint32(parkCities[1].size()),
+        uint32(hostileSkipped[0].size()), uint32(hostileSkipped[1].size()));
+
+    // twow-repo#551 (owner 10.10.): per capital zone and faction, the inns inside it and its city spots, once.
+    for (uint32 team = 0; team < 2; ++team)
+    {
+        std::map<uint32, std::pair<uint32, uint32>> perCity;   // zone -> (inns, city spots)
+        for (ParkInn const& inn : parkInns[team])
+            if (inn.cityZone)
+                ++perCity[inn.cityZone].first;
+        for (uint32 const zone : parkCityZones[team])
+            ++perCity[zone].second;
+        for (auto const& [zone, counts] : perCity)
+            sLog.outBasic("[Park] state=spots_city team=%s zone=%u inns=%u city_spots=%u",
+                team == 0 ? "alliance" : "horde", zone, counts.first, counts.second);
+    }
 }
 
 void RandomPlayerbotMgr::ReleaseParkSpot(ParkEntry const& entry)
 {
+    parkCityCounts.Remove(entry.cityZone);   // twow-repo#551 (Park.MaxPerCity); 0 = no city, no-op
     auto const it = parkSpotSlots.find(entry.spotKey);
     if (it == parkSpotSlots.end())
         return;
@@ -6205,17 +6302,30 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     // at most ai::park::SpotCapacity parked bots (owner: "ab 25 ist ein gasthaus voll").
     WorldLocation spot;
     std::string via;
-    auto const pick = [&](std::vector<WorldLocation> const& candidates) -> int
+    uint32 cityZone = 0;   // twow-repo#551 (Park.MaxPerCity): capital zone of the chosen spot
+    // twow-repo#551 (owner 10.10., Park.MaxPerInn / Park.MaxPerCity, both 0 = as before): inns hold MaxPerInn,
+    // city spots SpotCapacity; every spot of a capital zone at MaxPerCity counts as full. overflowed = the
+    // nearest spot (ignoring room) was full, so the bot went to another one.
+    bool overflowed = false;
+    auto const pick = [&](std::vector<WorldLocation> const& candidates, std::vector<uint32> const& zones, bool inns) -> int
     {
+        uint32 const capacity = ai::park::SpotCapacityFor(inns, sPlayerbotAIConfig.parkMaxPerInn);
         std::vector<ai::park::Point> points;
         std::vector<uint32> occupied;
-        for (WorldLocation const& loc : candidates)
+        for (size_t i = 0; i < candidates.size(); ++i)
         {
+            WorldLocation const& loc = candidates[i];
             points.push_back(ParkPoint(loc));
             auto const it = parkSpotSlots.find(ParkSpotKey(loc));
-            occupied.push_back(it == parkSpotSlots.end() ? 0 : uint32(it->second.size()));
+            uint32 const taken = it == parkSpotSlots.end() ? 0 : uint32(it->second.size());
+            uint32 const zone = i < zones.size() ? zones[i] : 0;
+            occupied.push_back(ai::park::EffectiveOccupied(taken, capacity, zone, parkCityCounts.Get(zone),
+                sPlayerbotAIConfig.parkMaxPerCity));
         }
-        return ai::park::ChooseSpot(ParkPoint(bot), points, occupied);
+        int const chosen = ai::park::ChooseSpot(ParkPoint(bot), points, occupied, capacity);
+        if (chosen >= 0)
+            overflowed = chosen != ai::park::ChooseSpot(ParkPoint(bot), points, {}, capacity);
+        return chosen;
     };
 
     // "here" (OB-00 test variant): park where the bot stands - no travel, no bind, no capacity.
@@ -6247,7 +6357,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
             return false;
         }
         spot = WorldLocation(tele->mapId, tele->x, tele->y, tele->z, tele->o);
-        if (pick({ spot }) < 0)
+        if (pick({ spot }, {}, false) < 0)
         {
             reason = "spot_full";
             return false;
@@ -6264,34 +6374,53 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         uint32 const team = bot->GetTeam() == ALLIANCE ? 0 : 1;
         uint32 const level = bot->GetLevel();
         std::vector<WorldLocation> inns;
+        std::vector<uint32> innZones;
         // Owner 09.10.2026 ("damit die Städte nicht zu voll werden ... alle Gasthäuser mit 25 Bots füllen"):
         // with AiPlayerbot.Park.AnyLevelInn every inn of the faction counts, whatever level band it serves;
         // ChooseSpot then takes the nearest one with room, and only when all are full a capital spot.
         for (ParkInn const& inn : parkInns[team])
             if (sPlayerbotAIConfig.parkAnyLevelInn ||
                 (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack))
+            {
                 inns.push_back(inn.loc);
-        int index = pick(inns);
+                innZones.push_back(inn.cityZone);
+            }
+        int index = pick(inns, innZones, true);
         if (index >= 0)
         {
             spot = inns[index];
+            cityZone = innZones[index];
             via = "inn";
             ++parkShare.inn;
         }
         else
         {
-            index = pick(parkCities[team]);
+            index = pick(parkCities[team], parkCityZones[team], false);
             if (index < 0)
             {
+                // twow-repo#551 (owner 10.10.): with a cap on the bot is not parked - never in the open world
+                // because of a cap; it stays active and the next park command can try again.
+                if (!ai::park::FallbackHere(sPlayerbotAIConfig.parkMaxPerInn, sPlayerbotAIConfig.parkMaxPerCity))
+                {
+                    sLog.outBasic("[Park] state=no_spot bot=%u level=%u inns=%u cities=%u", bot->GetGUIDLow(), level,
+                        uint32(inns.size()), uint32(parkCities[team].size()));
+                    ++parkShare.noSpot;
+                    reason = "no_spot";
+                    return false;
+                }
                 sLog.outBasic("[Park] state=fallback_here bot=%u level=%u reason=%s", bot->GetGUIDLow(), level,
                     inns.empty() && parkCities[team].empty() ? "no_inn" : "all_full");
                 ++parkShare.here;
                 return ParkBot(bot, "here", reason);
             }
             spot = parkCities[team][index];
+            cityZone = parkCityZones[team][index];
             via = "city";
             ++parkShare.city;
+            overflowed = overflowed || !inns.empty();   // every inn of the bot was full
         }
+        if (overflowed)
+            ++parkShare.overflow;
     }
 
     // The bot's own place at the spot: rings around it, >= 2 yd from the others (owner).
@@ -6312,7 +6441,9 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     entry.since = uint32(time(nullptr));
     entry.spotKey = spotKey;
     entry.slot = slot;
+    entry.cityZone = cityZone;
     parkedBots[bot->GetGUIDLow()] = entry;
+    parkCityCounts.Add(cityZone);   // twow-repo#551 (Park.MaxPerCity); released in ReleaseParkSpot
 
     ai->SetParked(true);
     bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
@@ -6403,11 +6534,42 @@ void RandomPlayerbotMgr::ProcessParkedBots()
 
     // twow-repo#551: once a minute while bots were parked - how many went to an inn, a capital spot or
     // stayed where they stood, and whether inns of any level were allowed (AiPlayerbot.Park.AnyLevelInn).
-    if (now >= parkShare.lastLog + 60 && (parkShare.inn || parkShare.city || parkShare.here))
+    bool const capsOn = sPlayerbotAIConfig.parkMaxPerInn || sPlayerbotAIConfig.parkMaxPerCity;
+    if (now >= parkShare.lastLog + 60 &&
+        (parkShare.inn || parkShare.city || parkShare.here || parkShare.noSpot || (capsOn && !parkedBots.empty())))
     {
         sLog.outBasic("[Park] state=share inn=%u city=%u here=%u any_level_inn=%u", parkShare.inn, parkShare.city,
             parkShare.here, sPlayerbotAIConfig.parkAnyLevelInn ? 1u : 0u);
+        // twow-repo#551 (owner 10.10., Park.MaxPerInn / Park.MaxPerCity): occupancy with the caps - inns in use and
+        // full, the fullest inn, bots per capital zone, how many overflowed to another spot and how many found none.
+        if (capsOn)
+        {
+            uint32 const innCapacity = ai::park::SpotCapacityFor(true, sPlayerbotAIConfig.parkMaxPerInn);
+            uint32 innsUsed = 0, innsFull = 0, innMax = 0, innBots = 0;
+            std::ostringstream innList;
+            for (uint32 team = 0; team < 2; ++team)
+                for (ParkInn const& inn : parkInns[team])
+                {
+                    auto const slots = parkSpotSlots.find(ParkSpotKey(inn.loc));
+                    uint32 const taken = slots == parkSpotSlots.end() ? 0 : uint32(slots->second.size());
+                    if (!taken)
+                        continue;
+                    ++innsUsed;
+                    innBots += taken;
+                    innMax = std::max(innMax, taken);
+                    if (taken >= innCapacity)
+                        ++innsFull;
+                    innList << (innsUsed > 1 ? "," : "") << inn.area << ":" << taken;
+                }
+            std::ostringstream cityList;
+            for (auto const& [zone, count] : parkCityCounts.Snapshot())
+                cityList << (cityList.tellp() > 0 ? "," : "") << zone << ":" << count;
+            sLog.outBasic("[Park] state=caps max_inn=%u max_city=%u inns_used=%u inns_full=%u inn_max=%u inn_bots=%u overflow=%u no_spot=%u cities=%s inns=%s",
+                sPlayerbotAIConfig.parkMaxPerInn, sPlayerbotAIConfig.parkMaxPerCity, innsUsed, innsFull, innMax, innBots,
+                parkShare.overflow, parkShare.noSpot, cityList.str().c_str(), innList.str().c_str());
+        }
         parkShare.inn = parkShare.city = parkShare.here = 0;
+        parkShare.overflow = parkShare.noSpot = 0;
         parkShare.lastLog = now;
     }
     for (auto it = parkedBots.begin(); it != parkedBots.end();)

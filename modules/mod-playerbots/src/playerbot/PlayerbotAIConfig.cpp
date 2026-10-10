@@ -403,6 +403,8 @@ bool PlayerbotAIConfig::Initialize()
     parkHideFromBots = config.GetBoolDefault("AiPlayerbot.Park.HideFromBots", false);
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
+    parkMaxPerInn = config.GetIntDefault("AiPlayerbot.Park.MaxPerInn", 0);
+    parkMaxPerCity = config.GetIntDefault("AiPlayerbot.Park.MaxPerCity", 0);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
@@ -1198,19 +1200,25 @@ bool PlayerbotAIConfig::Initialize()
 
 bool PlayerbotAIConfig::IsInRandomAccountList(uint32 id)
 {
-    // Fast path: already confirmed bot account.
-    if (find(randomBotAccounts.begin(), randomBotAccounts.end(), id) != randomBotAccounts.end())
-        return true;
-    // Fast path: already confirmed non-bot account — skip the DB query.
-    if (nonRandomBotAccounts.count(id))
-        return false;
+    {
+        ai::context_lock::Shared const lock(randomBotAccountsMutex, ai::context_lock::On());   // audit A31
+        // Fast path: already confirmed bot account (index instead of the list scan, same answer).
+        if (randomBotAccountIndex.count(id))
+            return true;
+        // Fast path: already confirmed non-bot account — skip the DB query.
+        if (nonRandomBotAccounts.count(id))
+            return false;
+    }
 
     // Slow path: look up username and check RNDBOT prefix. Cache result either way.
+    // The query runs outside the lock; a second thread with the same miss stores nothing twice.
     auto qr = LoginDatabase.PQuery("SELECT username FROM account WHERE id = %u", id);
     if (!qr)
     {
-        nonRandomBotAccounts.insert(id);
-        return false;
+        ai::context_lock::Unique const lock(randomBotAccountsMutex, ai::context_lock::On());
+        if (!randomBotAccountIndex.count(id))
+            nonRandomBotAccounts.insert(id);
+        return randomBotAccountIndex.count(id) != 0;
     }
     Field* fields = qr->Fetch();
     std::string username = fields[0].GetCppString();
@@ -1219,11 +1227,36 @@ bool PlayerbotAIConfig::IsInRandomAccountList(uint32 id)
     for (size_t i = 0; isBot && i < prefix.size(); ++i)
         isBot = std::tolower((unsigned char)username[i]) == std::tolower((unsigned char)prefix[i]);
 
+    ai::context_lock::Unique const lock(randomBotAccountsMutex, ai::context_lock::On());
     if (isBot)
-        randomBotAccounts.push_back(id);
-    else
+    {
+        if (randomBotAccountIndex.insert(id).second)
+            randomBotAccounts.push_back(id);
+    }
+    else if (!randomBotAccountIndex.count(id))
         nonRandomBotAccounts.insert(id);
-    return isBot;
+    return isBot || randomBotAccountIndex.count(id) != 0;
+}
+
+void PlayerbotAIConfig::AddRandomBotAccount(uint32 id)
+{
+    // Audit A31: appends exactly like the old push_back (duplicates included, so the order and the
+    // contents of the list stay as before) and keeps the lookup index in step.
+    ai::context_lock::Unique const lock(randomBotAccountsMutex, ai::context_lock::On());
+    randomBotAccounts.push_back(id);
+    randomBotAccountIndex.insert(id);
+}
+
+std::vector<uint32> PlayerbotAIConfig::RandomBotAccountsSnapshot() const
+{
+    ai::context_lock::Shared const lock(randomBotAccountsMutex, ai::context_lock::On());
+    return std::vector<uint32>(randomBotAccounts.begin(), randomBotAccounts.end());
+}
+
+size_t PlayerbotAIConfig::RandomBotAccountCount() const
+{
+    ai::context_lock::Shared const lock(randomBotAccountsMutex, ai::context_lock::On());
+    return randomBotAccounts.size();
 }
 
 bool PlayerbotAIConfig::IsFreeAltBot(uint32 guid)
