@@ -2141,3 +2141,10 @@ add_test(NAME trainable_spells_precheck_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trainable_spells_precheck_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A13): racials skip the three nodes without an action in this build
+# (AiPlayerbot.Perf.RacialsSkipUnbuildable, default 0; not strictly neutral, see conf.dist).
+add_test(NAME racials_skip_unbuildable_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/racials_skip_unbuildable_source_contract_tests.cmake")
