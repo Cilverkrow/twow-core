@@ -1923,6 +1923,101 @@ AiPlayerbot.Perf.GiveItemGroupOnlyScan = 0
 # cast results: no behaviour change, only fewer heap allocations (about 0.5-2 us per call; not expected to
 # move [BotUpdate] or [MapTick] measurably on its own). 0 = the old per-call lists (default).
 AiPlayerbot.Perf.StaticSpellLists = 0
+# twow-repo#541 (audit A07): 1 = a hunter without a pet in the world never counts as having a dead pet: no
+# character_pet SELECT on the map thread (once a minute per such hunter) and no doomed Revive Pet attempt
+# each AI tick (Revive Pet needs the dead pet in the world). Behaviour change: a grouped hunter whose master
+# sits no longer flickers sit/stand every AI tick; the attempt no longer selects the hunter itself or resets
+# its last movement / stay time; a stale revive attempt no longer dismounts it. A dead pet in the world (also
+# one Call Pet brought back dead) is still revived. 0 = as before (default).
+AiPlayerbot.PetDeadNoWorldPetFalse = 0
+# twow-repo#541 (audit A33, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = CanCastSpell
+# for a unit target and a spell from the bot's spellbook also checks the mana/rage/energy/health cost, computed
+# like the real cast (talents, Clearcasting, Inner Focus, PLAYER_CHEAT_NO_POWER included, no mod charge used).
+# An unaffordable spell then counts as impossible (action not executed, trigger not active, no walk into range,
+# no pull with it; also overrides every tolerated pass: facing/standing/moving/try-again and range/LOS/combat/mount)
+# instead of failing inside the cast. Casts with a cast item (also spells on an item target, e.g. weapon enchants and
+# poisons), pet spells and the GameObject/position overloads unchanged. 0 = as before (default).
+AiPlayerbot.CanCastSpell.CheckPower = 0
+# twow-repo#541 (audit A27, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a class spell
+# action re-reads its spell id and range when the bot learned a spell or rank, levelled, or spent or got back a
+# talent point since the action last looked (pet spell actions also: another pet; not while no pet is out). A
+# spell learned while online (trainer, level-up, talent, quest reward) is then used without a relog: spells on
+# other targets (party heals, resurrection, dispels, buffs on members, interrupts, CC, Charge) stop being
+# impossible. No per-cast spell name lookup: a few field reads and one compare per isPossible. Logs
+# [SpellIdRefresh] when the id changed, [SpellRangeRefresh] when only the range changed. 0 = as before (default).
+AiPlayerbot.CastSpell.RefreshOnLearn = 0
+# twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
+# combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
+# pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,
+# auto shot or wand) waits 3x ReactDelay (300 ms) before the next AI pass instead of ReactDelay. Not for bots
+# with a heal strategy or while casting or channeling. The whole internal AI pass waits: every combat trigger
+# (abilities, procs, interrupts, low health, flee/avoid aoe, dispels, buffs, taunts) and the bot's packet and
+# chat handling come up to about 200 ms later. The wait ends at the next update when the victim changes or
+# leaves melee reach or the auto attack stops (not on new attackers or trigger changes). Reactions and the
+# 500 ms facing correction are unchanged. One [CombatIdle] line per minute. 0 = as before (default).
+AiPlayerbot.Perf.CombatIdleYield = 0
+# twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
+# request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
+# their condition while the bot's travel target is being prepared or is active. The request actions are rejected
+# in that state anyway; the saving is the condition work (trainer spell scans, gathering checks, guild orders).
+# Behaviour change: a gathering purpose ([Purpose] state=start) is then declared only at a travel decision point
+# (no prepared or active target), no longer every 2 s in the background while the bot travels to another target;
+# request baskets pushed while a target is active no longer linger up to ExpireActionTime and run later with a
+# stale condition. Read whenever a bot's non-combat strategies are (re)built; toggle it with a restart, not with
+# a reload (a reload switches logged-in bots over one by one). 0 = as before (default).
+AiPlayerbot.Perf.TravelRequestGate = 0
+# twow-repo#541 (audit A22, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = five party
+# buff/cure triggers skip their party scan while the bot knows no rank of the spell their action casts: priest
+# "divine spirit on party" and "shadow protection on party", shaman "water breathing on party" and "water walking
+# on party" (these two check swimming before the scan), paladin "cleanse party member cure magic". Today such a
+# trigger fires anyway and its action ends IMPOSSIBLE. With 1 the action object is first built once the spell is
+# known, so its cached spell id is right: a bot that learns the spell while online (Water Breathing 22, Water
+# Walking 28, Shadow Protection 30, Cleanse 42, the Divine Spirit talent) really casts it on party members instead
+# of walking to them and failing until a relog. This overlaps AiPlayerbot.CastSpell.RefreshOnLearn only for the
+# first rank learned online; unlike it, this switch does not refresh the cached spell id and range on later
+# rank-ups (the first known rank stays until a relog). Custom strategies (cs) that bind these trigger names to
+# other actions are suppressed too while the spell is unknown. 0 = as before (default).
+AiPlayerbot.Perf.PartyBuffKnownSpellGate = 0
+# twow-repo#541 (audit A21, enable only after OB-30 measurement + owner go): 1 = a strategy change (pve/pvp/raid
+# switch every 5 s check of "in pve"/"in pvp"/"in raid fight", BG join, chat command ...) rebuilds the triggers of a
+# combat, non-combat or dead engine that is not running only when that engine is activated (engine change, full
+# reset, or at the start of its next walk after a non-full reset: "S:stale init"). The running engine and the
+# reaction engine still rebuild at once; this saves up to two engine rebuilds per switch. Bot decisions are the same,
+# apart from two residual differences after a non-full reset (chat shortcuts follow/stay/flee/grind..., leave group,
+# LFG): build-time inputs (aoe strategy, IsRanged/IsHeal, EnableGreet, first custom-strategy DB load) are read at
+# activation instead of at the switch, and continuers pushed into the idle engine in between are dropped by the
+# owed rebuild. One [LazyEngineInit] line per minute (deferred, caught, saved). Turning it off by a reload leaves
+# already deferred engines to be rebuilt on activation (safe). 0 = rebuild every engine at once (default).
+AiPlayerbot.Perf.LazyEngineInit = 0
+# twow-repo#541 (audit A23, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = "has attackers"
+# and the one-target variant of "possible attack targets" (enemy player chain) read the full "attackers" list
+# (computed for every bot anyway) instead of a second, separate "attackers::1" pass: about one attackers pass less
+# per bot-second. Same yes/no answer for the same moment, but the list can be up to 1 s older (cache granularity),
+# so every "has attackers" reader (combat start/end, mount/dismount, next target, tank assist, rogue/druid stealth,
+# hunter aspects, wait-for-group-recovery) can react up to 1 s later; a stale empty list can end combat while the
+# bot is being hit, with re-entry up to about 2 s later. When the bot itself starts combat (attack, pull) the full
+# list is reset, so it is rebuilt in combat state at once: dps/tank target, aoe and attacker counts may then see
+# targets that out of combat were ignored (hard hostiles more than 5 levels above a travelling/following bot).
+# Change it by restart, not by reload (a flip to 1 by reload can cost one early combat end per bot). 0 = off (default).
+AiPlayerbot.Perf.AttackersSingleList = 0
+# twow-repo#541 (audit A25, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go): 1 = the
+# party-target values (party member to heal/protect/remove roots/dispel/resurrect, ... without (my) aura, friendly
+# unit without aura, tank without aura/lifebloom, with daybreak, without item/food/water) keep their result inside
+# one AI pass of the bot until its next executed or failed action, instead of repeating the group scan on every read
+# (trigger, isUseful, reach spell, isPossible, Execute). A kept unit is resolved again by guid and must still be in
+# world on the bot's map, else the value recomputes as today. Differences: health/aura/death changes made by other
+# threads inside the pass (sub-ms) and a mount change by isPossible's in-combat Unmount (out-of-group buff allowance)
+# are seen at the next action or pass. "party member to soulstone" (D20 stagger roll) is never kept. Reads outside
+# the pass (chat, packets, reactions) and from other threads recompute as before. A reload flip 1->0->1 inside one
+# pass can give at most one stale read. 0 = off (default).
+AiPlayerbot.Perf.PartyTargetMemo = 0
+# twow-repo#541 (audit A32, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = for a bot without
+# a group, "possible targets", "possible targets no los" and "all targets" re-check the units of the bot's own
+# unfiltered sight-range search (the one the attackers value already runs, at most once per second) instead of
+# searching the grid again. Each unit must pass the search check again now (alive, not friendly, same map instance,
+# within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
+# later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
+AiPlayerbot.PossibleTargetsSharedSearch = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
