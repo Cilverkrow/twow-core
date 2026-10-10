@@ -260,6 +260,8 @@ ai::Action* ReactionEngine::InitializeAction(ActionNode* actionNode)
     {
         action = aiObjectContext->GetAction(actionNode->getName());
         actionNode->setAction(action);
+        if (!action && sPlayerbotAIConfig.warnUnknownNames)
+            WarnUnknownName(UnknownNameKind::Action, actionNode->getName());  // twow-repo#568 (c), warning only
     }
 
     if (action)
