@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A33, card 3, BEHAVIOUR CHANGE, default 0): PlayerbotAI::CanCastSpell (unit
 # target) runs Spell::CheckCast(true) on a Spell that never went through Spell::prepare, so
 # m_powerCost is 0 and CheckPower passes every cost. Unaffordable spells passed isPossible and the

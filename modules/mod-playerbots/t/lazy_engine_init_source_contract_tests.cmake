@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A21): behind AiPlayerbot.Perf.LazyEngineInit (default 0 = off) PlayerbotAI::ChangeStrategy lets
 # an engine that is neither running nor the reaction engine take the new strategy set without rebuilding its triggers;
 # the rebuild comes on activation (ChangeEngine/Reset(true) call Init() anyway, Engine::DoNextAction catches
