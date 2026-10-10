@@ -1897,6 +1897,18 @@ AiPlayerbot.Perf.RacialsSkipUnbuildable = 0
 # the bot in practice, assessed negligible) and, at log level >= 2, the "[BOT CHASE] ... no hazard-
 # avoidance path" / "endPos invalid" lines, replaced by "hazard path checks skipped". 0 = off (default).
 AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards = 0
+# twow-repo#541 (audit A15): 1 = a bot without group skips the healer/tank classification of every nearby
+# player and the list scan when it looks for a group member without conjured water/food or without an
+# item (mage "give water" / "give food", the generic "party member without item" value of the give item
+# action). Only members of the bot's own group can be the answer, and a bot without group has none, so
+# the result is identical; every cached value of the bot (distance, mount speed, last movement, nearest
+# friendly players, rpg target) is still read as before, in the same order.
+# Disclosed side effects that go away (OB-00, 09.10.2026: shipped as neutral with this disclosure): the
+# skipped scan no longer calls GetPet() on nearby foreign players, so it no longer clears another
+# player's stale pet GUID (SetPet(nullptr), a cross-thread write) nor writes the "Unit::GetPet: ... not
+# exist." error log line; and the healer/tank check no longer fills the bot manager's event cache
+# (eventCache map insert, first-miss DB load) for those players. Performance only. 0 = off (default).
+AiPlayerbot.Perf.GiveItemGroupOnlyScan = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

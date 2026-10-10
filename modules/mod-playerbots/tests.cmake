@@ -2155,3 +2155,24 @@ add_test(NAME chase_hazard_skip_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/chase_hazard_skip_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A15): give water / food / item value of a bot without group skips the
+# out-of-group scan (AiPlayerbot.Perf.GiveItemGroupOnlyScan, default 0).
+add_executable(party_scan_policy_tests
+  "${PB_MODULE_DIR}/t/party_scan_policy_tests.cpp")
+
+target_include_directories(party_scan_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(party_scan_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME party_scan_policy
+  COMMAND party_scan_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME give_item_group_scan_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/give_item_group_scan_source_contract_tests.cmake")
