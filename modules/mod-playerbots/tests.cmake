@@ -2031,3 +2031,8 @@ set_target_properties(x3_context_lock_tests PROPERTIES
 add_test(NAME x3_context_lock
   COMMAND x3_context_lock_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME unknown_name_warning_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/unknown_name_warning_source_contract_tests.cmake")

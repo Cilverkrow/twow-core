@@ -9,6 +9,7 @@
 #include "playerbot/BotState.h"
 
 #include <functional>
+#include <unordered_set>
 
 namespace ai
 {
@@ -112,7 +113,17 @@ namespace ai
         virtual Action* InitializeAction(ActionNode* actionNode);
         virtual bool ListenAndExecute(Action* action, Event& event);
 
+        // twow-repo#568 (c), AiPlayerbot.WarnUnknownNames: a trigger, action or strategy name without a
+        // creator is logged once per process ("[UnknownName] ..."). Called only from the null branches
+        // of the lookups and only when the switch is on; it never changes what the lookup did.
+        enum class UnknownNameKind : uint8 { Trigger = 0, Action = 1, Strategy = 2 };
+        void WarnUnknownName(UnknownNameKind kind, const std::string& name);
+
     private:
+        // Names this engine already reported (or handed to the process registry), per kind. Touched only
+        // from this engine's own thread; bounded by UnknownNamesPerEngineCap in Engine.cpp.
+        std::unordered_set<std::string> unknownNamesSeen[3];
+
         void LogAction(const char* format, ...);
         void LogValues();
         // Cheap change-detector for the attached strategy set. A strategy
