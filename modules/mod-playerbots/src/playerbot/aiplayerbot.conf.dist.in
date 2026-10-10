@@ -1842,6 +1842,12 @@ AiPlayerbot.Perf.GatherLootFastPath = 0
 # Same targets; the "rti target", "free move center" and "possible targets" values may refresh at other
 # moments. 0 = as before (default).
 AiPlayerbot.Perf.AttackersLazyChecks = 0
+# twow-repo#541 (audit A08): 1 = on its own AI tick (triggers, default actions, prerequisites,
+# alternatives, continuers, retries) each bot engine remembers which strategy defines the action node
+# for an action name, or that none does, and then asks only that strategy instead of every strategy on
+# every pushed action. Commands from players ("do ...", .bot) keep asking every strategy. Same
+# decisions, less CPU per AI tick. Emptied at every strategy change. 0 = off (default).
+AiPlayerbot.Perf.ActionNodeOwnerCache = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
