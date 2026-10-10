@@ -1848,6 +1848,11 @@ AiPlayerbot.Perf.AttackersLazyChecks = 0
 # every pushed action. Commands from players ("do ...", .bot) keep asking every strategy. Same
 # decisions, less CPU per AI tick. Emptied at every strategy change. 0 = off (default).
 AiPlayerbot.Perf.ActionNodeOwnerCache = 0
+# twow-repo#541 (audit A09): 1 = the values "rpg bg type" and "bg masters" read the battlemaster cache
+# through a const reference with find() instead of copying the whole nested map (up to five copies per
+# calculation of "rpg bg type"). Same results and decisions, only fewer allocations on the map threads.
+# 0 = old copy (default).
+AiPlayerbot.Perf.BgMasterCacheRef = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

@@ -2076,3 +2076,22 @@ add_test(NAME action_node_owner_cache_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/action_node_owner_cache_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A09): battlemaster cache by const reference (AiPlayerbot.Perf.BgMasterCacheRef, default 0).
+add_executable(bg_master_cache_policy_tests
+  "${PB_MODULE_DIR}/t/bg_master_cache_policy_tests.cpp")
+
+target_include_directories(bg_master_cache_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(bg_master_cache_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bg_master_cache_policy
+  COMMAND bg_master_cache_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bg_master_cache_ref_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bg_master_cache_ref_source_contract_tests.cmake")
