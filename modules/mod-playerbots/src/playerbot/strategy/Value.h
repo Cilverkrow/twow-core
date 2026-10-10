@@ -7,6 +7,8 @@
 #include "AiObject.h"
 #include "playerbot/GuidPosition.h"
 #include "NamedObjectContext.h"
+#include <atomic>
+#include <mutex>
 
 namespace ai
 {
@@ -93,18 +95,38 @@ namespace ai
     public:
         SingleCalculatedValue(PlayerbotAI* ai, std::string name = "value") : CalculatedValue<T>(ai, name) { this->Reset(); }
 
+        // twow-repo#563 (X4a): the shared values (sSharedObjectContext, GAI_VALUE) are one object for
+        // all region threads. The old Get() set lastCheckTime before Calculate(), so a second thread saw
+        // "computed" and copied the value while the first was still writing it. Now the first caller
+        // computes under calcMutex (double-checked); the value is never written again until Reset(),
+        // so every later Get() reads it without a lock.
         virtual T Get() override
         {
-            time_t now = time(0);
-            if (!this->lastCheckTime)
+            if (!ready.load(std::memory_order_acquire))
             {
-                this->lastCheckTime = now;
+                std::lock_guard<std::mutex> lock(calcMutex);
+                if (!ready.load(std::memory_order_relaxed))
+                {
+                    this->lastCheckTime = time(0);
 
-                auto pmo = sPerformanceMonitor.start(PERF_MON_VALUE, AiNamedObject::getName(), this->ai);
-                this->value = this->Calculate();
+                    auto pmo = sPerformanceMonitor.start(PERF_MON_VALUE, AiNamedObject::getName(), this->ai);
+                    this->value = this->Calculate();
+                    ready.store(true, std::memory_order_release);
+                }
             }
             return this->value;
         }
+
+        // Only on the owner's thread (per-bot contexts); the shared context never resets.
+        virtual void Reset() override
+        {
+            CalculatedValue<T>::Reset();
+            ready.store(false, std::memory_order_release);
+        }
+
+    private:
+        std::mutex calcMutex;
+        std::atomic<bool> ready{ false };
     };
 
     template<class T> class MemoryCalculatedValue : public CalculatedValue<T>

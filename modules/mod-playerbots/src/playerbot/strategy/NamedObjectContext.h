@@ -358,6 +358,13 @@ namespace ai
             return created.find(name) != created.end();
         }
 
+        // twow-repo#563 (X4a): an already created object, without creating or inserting anything.
+        T* Find(const std::string& name) const
+        {
+            typename std::map<std::string, T*>::const_iterator const it = created.find(name);
+            return it == created.end() ? nullptr : it->second;
+        }
+
         // #416 (7.3): [MemStores] value-cache size.
         size_t CreatedCount() const
         {
@@ -497,6 +504,17 @@ namespace ai
                 if (object) return object;
             }
             return NULL;
+        }
+
+        // twow-repo#563 (X4a): the object GetObject would return, if it already exists; never creates.
+        T* Find(const std::string& name) const
+        {
+            for (typename std::list<NamedObjectContext<T>*>::const_iterator i = contexts.begin(); i != contexts.end(); i++)
+            {
+                if (T* object = (*i)->Find(name))
+                    return object;
+            }
+            return nullptr;
         }
 
         void Update()
