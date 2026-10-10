@@ -421,6 +421,7 @@ bool PlayerbotAIConfig::Initialize()
     botUpdateTraceTailFix = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTailFix", false);
     perfTrainableSpellsPrecheck = config.GetBoolDefault("AiPlayerbot.Perf.TrainableSpellsPrecheck", false);
     perfRacialsSkipUnbuildable = config.GetBoolDefault("AiPlayerbot.Perf.RacialsSkipUnbuildable", false);
+    chaseSkipHazardPathWhenNoHazards = config.GetBoolDefault("AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

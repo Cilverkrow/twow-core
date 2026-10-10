@@ -2148,3 +2148,10 @@ add_test(NAME racials_skip_unbuildable_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/racials_skip_unbuildable_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A14): ChaseTo skips the hazard path / LOS checks while the hazards list is empty
+# (AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards, default 0).
+add_test(NAME chase_hazard_skip_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/chase_hazard_skip_source_contract_tests.cmake")
