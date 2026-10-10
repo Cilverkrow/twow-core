@@ -3,6 +3,7 @@
 #include "PartyMemberValue.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/PartyScanPolicy.h"
 #include "FreeMoveValues.h"
 #include "LastMovementValue.h"
 
@@ -100,9 +101,24 @@ Unit* PartyMemberValue::FindPartyMember(FindPlayerPredicate &predicate, bool ign
             nearestPlayers.insert(nearestPlayers.end(), nearestOutOfGroupPlayers.begin(), nearestOutOfGroupPlayers.end());
     }
 
+    // twow-repo#541 (audit A15, AiPlayerbot.Perf.GiveItemGroupOnlyScan, default 0):
+    // a predicate that accepts only members of the bot's own group accepts nobody
+    // while the bot has no group (Player::IsInGroup needs one shared non-null group).
+    // The classification below (IsHeal/IsTank of every nearby player) and the list
+    // scan then cannot yield anyone, and without a group the scan reads no value of
+    // this bot (CanFreeMoveTo needs bot->GetGroup()). Every value Get above and the
+    // rpg-target block below stay. Disclosed side effects that go away with 1: the
+    // scan no longer calls Unit::GetPet() on nearby foreign players, so it no longer
+    // clears another player's stale pet GUID (SetPet(nullptr), a cross-thread write)
+    // nor logs "Unit::GetPet: ... not exist."; and IsHeal/IsTank no longer fill
+    // RandomPlayerbotMgr::eventCache (map insert, first-miss DB load) for them.
+    // Off: identical to the code before.
+    bool const skipGroupScan = ai::party_scan::SkipUngroupedScan(
+        sPlayerbotAIConfig.perfGiveItemGroupOnlyScan, predicate.OnlyBotGroupMembers(), group != nullptr);
+
     std::list<Player*> healers, tanks, others, masters;
-    if (master) masters.push_back(master);
-    for (std::list<ObjectGuid>::iterator i = nearestPlayers.begin(); i != nearestPlayers.end(); ++i)
+    if (master && !skipGroupScan) masters.push_back(master);
+    for (std::list<ObjectGuid>::iterator i = nearestPlayers.begin(); !skipGroupScan && i != nearestPlayers.end(); ++i)
     {
         Player* player = dynamic_cast<Player*>(ai->GetUnit(*i));
         if (!player || player == bot) 

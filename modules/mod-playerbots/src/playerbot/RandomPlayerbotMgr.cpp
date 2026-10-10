@@ -987,6 +987,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ProcessParkedBots();  // twow-repo#541/#551 (rndbot park), no-op without parked bots
     ReportBotInbox();     // twow-repo#563: [BotInbox] once per minute
     ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)
+    ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
@@ -6366,8 +6367,57 @@ void RandomPlayerbotMgr::UnparkBot(Player* bot)
         ai->ResetStrategies();
     }
     bot->SetHiddenFromBots(false);  // twow-repo#541/#551: visible again to every bot
+    if (bot->HasGridSleepFlag())    // twow-repo#541: its cells wake in the next map update
+    {
+        ++parkSleepUnparkWakes;
+        bot->SetGridSleep(false);
+    }
     bot->SetStandState(UNIT_STAND_STATE_STAND);
     sLog.outBasic("[Park] state=unparked bot=%u level=%u", bot->GetGUIDLow(), bot->GetLevel());
+}
+
+// twow-repo#541 (grid sleep): hands the switches to the core every pass (cheap, follows a config reload)
+// and writes one [ParkSleep] line per minute. Per-update values are averages over continent cell updates
+// (one region update = one sample): sleeping/woken bots per region update and marked cells per region update.
+// wake_attack / wake_other count the transitions asleep -> awake in the map threads, wake_unpark the
+// unparked bots that carried the flag.
+void RandomPlayerbotMgr::ReportParkSleep()
+{
+    bool const stats = sPlayerbotAIConfig.parkSleepGrid || sPlayerbotAIConfig.botUpdateTrace;
+    Map::SetGridSleepSwitches(sPlayerbotAIConfig.parkSleepGrid, stats);
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!stats || now < lastReport + 60)
+        return;
+    bool const first = lastReport == 0;
+    lastReport = now;
+
+    Map::GridSleepStats& s = Map::GetGridSleepStats();
+    uint64 const updates = s.updates.exchange(0, std::memory_order_relaxed);
+    uint64 const sleeping = s.sleeping.exchange(0, std::memory_order_relaxed);
+    uint64 const woken = s.woken.exchange(0, std::memory_order_relaxed);
+    uint64 const wakeAttack = s.wakeAttack.exchange(0, std::memory_order_relaxed);
+    uint64 const wakeOther = s.wakeOther.exchange(0, std::memory_order_relaxed);
+    uint64 const cells = s.cellsMarked.exchange(0, std::memory_order_relaxed);
+    uint32 const wakeUnpark = parkSleepUnparkWakes;
+    parkSleepUnparkWakes = 0;
+    // The first window starts whenever the switch was read; it is reset, not reported.
+    if (first)
+        return;
+
+    uint32 flagged = 0;
+    for (auto const& [guid, entry] : parkedBots)
+        if (Player* bot = GetPlayerBot(guid))
+            if (bot->HasGridSleepFlag())
+                ++flagged;
+
+    auto const perUpdate = [updates](uint64 sum) { return updates ? double(sum) / double(updates) : 0.0; };
+    sLog.outBasic("[ParkSleep] enabled=%u parked=%u flagged=%u region_updates=%llu sleeping_per_update=%.1f "
+        "woken_per_update=%.1f cells_marked_per_update=%.0f wake_attack=%llu wake_other=%llu wake_unpark=%u",
+        sPlayerbotAIConfig.parkSleepGrid ? 1u : 0u, uint32(parkedBots.size()), flagged, (unsigned long long)updates,
+        perUpdate(sleeping), perUpdate(woken), perUpdate(cells), (unsigned long long)wakeAttack,
+        (unsigned long long)wakeOther, wakeUnpark);
 }
 
 void RandomPlayerbotMgr::ProcessParkedBots()
@@ -6464,6 +6514,10 @@ void RandomPlayerbotMgr::ProcessParkedBots()
             case ai::park::Stage::BindFailed:
                 if (bot->getStandState() != UNIT_STAND_STATE_SIT && !bot->IsInCombat() && !bot->IsMoving())
                     bot->SetStandState(UNIT_STAND_STATE_SIT);
+                // twow-repo#541 (AiPlayerbot.Park.SleepGrid): only once it has arrived; the core keeps the
+                // cells awake while the bot fights, is dead, teleports or flies.
+                if (bot->HasGridSleepFlag() != sPlayerbotAIConfig.parkSleepGrid)
+                    bot->SetGridSleep(sPlayerbotAIConfig.parkSleepGrid);
                 break;
         }
     }

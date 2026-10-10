@@ -6,6 +6,7 @@
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/MemStoresPolicy.h"
+#include "playerbot/SpellListPolicy.h"
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <atomic>
@@ -5003,8 +5004,14 @@ bool PlayerbotAI::HasSpell(uint32 spellid) const
 SpellCastResult PlayerbotAI::CheckSpellTargetAlignment(SpellEntry const* spellInfo, Unit* target)
 {
     // Consider neutral spells (spells that are neither positive or negative (e.g. feign death, hunter traps, ...)
-    const std::list<uint32> neutralSpells = { 1499, 5384, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-    const bool neutralSpell = std::find(neutralSpells.begin(), neutralSpells.end(), spellInfo->Id) != neutralSpells.end();
+    bool neutralSpell;
+    if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+        neutralSpell = ai::spelllists::IsNeutralSpell(spellInfo->Id);
+    else
+    {
+        const std::list<uint32> neutralSpells = { 1499, 5384, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+        neutralSpell = std::find(neutralSpells.begin(), neutralSpells.end(), spellInfo->Id) != neutralSpells.end();
+    }
     if (neutralSpell)
         return SPELL_CAST_OK;
 
@@ -5049,8 +5056,15 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
     if (bot->hasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL))
     {
         // Spells that can be casted while out of control
-        const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-        if (std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) == ignoreOutOfControllSpells.end())
+        bool castableOutOfControl;
+        if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+            castableOutOfControl = ai::spelllists::IsCastableOutOfControl(spellid);
+        else
+        {
+            const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+            castableOutOfControl = std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) != ignoreOutOfControllSpells.end();
+        }
+        if (!castableOutOfControl)
         {
             if (checkResult)
             {
@@ -5116,8 +5130,14 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
 	if (!itemTarget)
 	{
         // Consider neutral spells (spells that are neither positive or negative (e.g. feign death, hunter traps, ...)
-        const std::list<uint32> neutralSpells = { 1499, 5384, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-        const bool neutralSpell = std::find(neutralSpells.begin(), neutralSpells.end(), spellid) != neutralSpells.end();
+        bool neutralSpell;
+        if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+            neutralSpell = ai::spelllists::IsNeutralSpell(spellid);
+        else
+        {
+            const std::list<uint32> neutralSpells = { 1499, 5384, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+            neutralSpell = std::find(neutralSpells.begin(), neutralSpells.end(), spellid) != neutralSpells.end();
+        }
         if(!neutralSpell)
         {
             const bool positiveSpell = IsPositiveSpell(spellInfo);
@@ -5255,8 +5275,15 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, GameObject* goTarget, uint8 effec
     if (bot->hasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL))
     {
         // Spells that can be casted while out of control
-        const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-        if (std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) == ignoreOutOfControllSpells.end())
+        bool castableOutOfControl;
+        if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+            castableOutOfControl = ai::spelllists::IsCastableOutOfControl(spellid);
+        else
+        {
+            const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+            castableOutOfControl = std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) != ignoreOutOfControllSpells.end();
+        }
+        if (!castableOutOfControl)
         {
             if (checkResult)
             {
@@ -5382,8 +5409,15 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, float x, float y, float z, uint8 
     if (bot->hasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL))
     {
         // Spells that can be casted while out of control
-        const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-        if (std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) == ignoreOutOfControllSpells.end())
+        bool castableOutOfControl;
+        if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+            castableOutOfControl = ai::spelllists::IsCastableOutOfControl(spellid);
+        else
+        {
+            const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+            castableOutOfControl = std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) != ignoreOutOfControllSpells.end();
+        }
+        if (!castableOutOfControl)
         {
             if (checkResult)
             {
