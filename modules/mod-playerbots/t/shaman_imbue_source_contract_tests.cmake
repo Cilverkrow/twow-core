@@ -3,6 +3,10 @@
 # the per-spec action; off, each strategy keeps its old imbue. The trigger loop checks each learned imbue.
 # Earthliving Weapon (not on Turtle) is gone.
 
+# cmake 3.x script mode (Debian trixie builder / CI): without a policy version, TRUE in while()/if() (CMP0012)
+# and empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
+
 function(read_source path out_var)
   file(READ "${PB_SOURCE_DIR}/${path}" text)
   string(REPLACE "\r" "" text "${text}")
