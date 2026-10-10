@@ -179,6 +179,11 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
     inDoNextAction = true;
 
+    // twow-repo#541 (audit A25, Perf.PartyTargetMemo, default 0): one memo window per pass. A party-target
+    // value computed by a trigger or an isUseful is reused by the following isUseful/isPossible/Execute of
+    // this pass until the next Execute advances the window (ListenAndExecute). Closed when this returns.
+    ValueMemoWindowScope const valueMemoScope(sPlayerbotAIConfig.perfPartyTargetMemo ? &aiObjectContext->GetValueMemoWindow() : nullptr);
+
     time_t currentTime = time(0);
     aiObjectContext->Update();
     // twow-repo#541 (audit A08): this walk, ProcessTriggers and PushDefaultActions run on the bot's
@@ -964,6 +969,11 @@ bool Engine::ListenAndExecute(Action* action, Event& event)
 
     actionExecuted = actionExecutionListeners.OverrideResult(action, actionExecuted, event);
     actionExecutionListeners.After(action, actionExecuted, event);
+
+    // twow-repo#541 (audit A25): the action (executed or failed) may have changed auras, health or targets;
+    // every party-target memo of this pass is stale from here on.
+    if (sPlayerbotAIConfig.perfPartyTargetMemo)
+        aiObjectContext->GetValueMemoWindow().Advance();
     return actionExecuted;
 }
 
