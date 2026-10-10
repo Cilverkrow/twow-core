@@ -2203,3 +2203,23 @@ add_test(NAME pet_dead_no_world_pet_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/pet_dead_no_world_pet_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A33): CanCastSpell power gate behind AiPlayerbot.CanCastSpell.CheckPower (default 0).
+add_executable(spell_power_gate_policy_tests
+  "${PB_MODULE_DIR}/t/spell_power_gate_policy_tests.cpp")
+
+target_include_directories(spell_power_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(spell_power_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spell_power_gate_policy
+  COMMAND spell_power_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cancast_power_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/cancast_power_gate_source_contract_tests.cmake")

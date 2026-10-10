@@ -1922,6 +1922,14 @@ AiPlayerbot.Perf.StaticSpellLists = 0
 # its last movement / stay time; a stale revive attempt no longer dismounts it. A dead pet in the world (also
 # one Call Pet brought back dead) is still revived. 0 = as before (default).
 AiPlayerbot.PetDeadNoWorldPetFalse = 0
+# twow-repo#541 (audit A33, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = CanCastSpell
+# for a unit target and a spell from the bot's spellbook also checks the mana/rage/energy/health cost, computed
+# like the real cast (talents, Clearcasting, Inner Focus, PLAYER_CHEAT_NO_POWER included, no mod charge used).
+# An unaffordable spell then counts as impossible (action not executed, trigger not active, no walk into range,
+# no pull with it; also overrides every tolerated pass: facing/standing/moving/try-again and range/LOS/combat/mount)
+# instead of failing inside the cast. Casts with a cast item (also spells on an item target, e.g. weapon enchants and
+# poisons), pet spells and the GameObject/position overloads unchanged. 0 = as before (default).
+AiPlayerbot.CanCastSpell.CheckPower = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
