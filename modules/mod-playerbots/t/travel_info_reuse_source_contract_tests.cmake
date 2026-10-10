@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A10, cards 9/10): behind AiPlayerbot.Perf.TravelInfoReuse (default 0) SetBestTarget
 # builds one PlayerTravelInfo per choice (on first use), reuses a known IsActive answer of the same choice and
 # checks the cheap local-hub conditions before IsActive; TravelMgr::GetDestinations looks exactly one asked

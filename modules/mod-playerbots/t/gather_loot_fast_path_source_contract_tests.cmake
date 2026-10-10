@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A04+A05, cards 22 and 21): behind AiPlayerbot.Perf.GatherLootFastPath (default 0)
 # "add gathering loot" rejects SKILL_NONE objects before the LOS raycast (A04) and reads the
 # "nearest corpses" list only for a bot with skinning (A05). Same nodes and corpses added, less work.

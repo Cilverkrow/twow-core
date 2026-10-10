@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A01, card 51): FleeManager::calculatePossibleDestinations evaluates the same
 # candidate angle once per distance ring (x/y use maxAllowedDistance, not dist): in the corpse case
 # ~550 evaluations over ~99-117 distinct angle bit patterns (about 80% repeats). With

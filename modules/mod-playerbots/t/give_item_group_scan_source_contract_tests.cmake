@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#541 (audit A15): PartyMemberValue::FindPartyMember classified every nearby player
 # (IsHeal/IsTank) and scanned four lists for the "party member without water|food|item" values
 # although their predicate (PlayerWithoutItemPredicate) rejects every unit that is not a Player in
