@@ -619,6 +619,7 @@ public:
     std::vector<uint32> specAuraTalentClasses;
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
+    bool deathLoopEscape = false;   // twow-repo#541 A39 (owner 10.10.): hostile-area death = loop; never evacuate to a hostile homebind
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;

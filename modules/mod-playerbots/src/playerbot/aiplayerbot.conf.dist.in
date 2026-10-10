@@ -738,6 +738,11 @@ AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers = 0
 AiPlayerbot.DeathLoop.MaxDeaths = 0
 AiPlayerbot.DeathLoop.WindowSeconds = 900
 AiPlayerbot.DeathLoop.Radius = 150
+# twow-repo#541 A39 (owner 10.10.2026): 1 = a death in an area of the hostile faction counts as a death loop at
+# once, and the evacuation (repop) never sends the bot to a homebind in a hostile area: Goblins / High Elves go to
+# their safe start (Durotar / Elwynn), the other races to their race start, and the homebind is reset there.
+# [DeathLoop] state=minute counts detected / escaped / rebound / repeat_after_escape / hostile_death. 0 = off.
+AiPlayerbot.DeathLoop.Escape = 0
 
 # #357 O-12 (owner 2026-09-27, variant A): roster shamans on premade path 7.1
 # "enhancement" or 7.3 "shaman tank" get the reworked Enhancement talents as
