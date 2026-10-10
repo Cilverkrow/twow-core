@@ -149,6 +149,7 @@ set (game_SRCS
     Maps/GridStates.cpp
     Maps/InstanceData.cpp
     Maps/Map.cpp
+    Maps/ContinentRegionTables.cpp
     Maps/MapManager.cpp
     Maps/MapPersistentStateMgr.cpp
     Maps/MapReference.cpp
@@ -334,6 +335,7 @@ set (game_SRCS
     Maps/GridSearchers.h
     Maps/GridStates.h
     Maps/InstanceData.h
+    Maps/ContinentRegionTables.h
     Maps/Map.h
     Maps/MapManager.h
     Maps/MapPersistentStateMgr.h
