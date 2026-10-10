@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/ShamanImbuePolicy.h"
 #include "ShamanMultipliers.h"
 #include "ElementalShamanStrategy.h"
 
@@ -386,7 +387,7 @@ void ElementalShamanBuffPveStrategy::InitCombatTriggers(std::list<TriggerNode*>&
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -396,7 +397,7 @@ void ElementalShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void ElementalShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -406,7 +407,7 @@ void ElementalShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>&
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -416,7 +417,7 @@ void ElementalShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void ElementalShamanBuffRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -834,7 +835,7 @@ void ElementalShamanBuffPveStrategy::InitCombatTriggers(std::list<TriggerNode*>&
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -844,7 +845,7 @@ void ElementalShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void ElementalShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -854,7 +855,7 @@ void ElementalShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>&
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -864,7 +865,7 @@ void ElementalShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void ElementalShamanBuffRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1282,7 +1283,7 @@ void ElementalShamanBuffPveStrategy::InitCombatTriggers(std::list<TriggerNode*>&
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1292,7 +1293,7 @@ void ElementalShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void ElementalShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1302,7 +1303,7 @@ void ElementalShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>&
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1312,7 +1313,7 @@ void ElementalShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void ElementalShamanBuffRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1322,7 +1323,7 @@ void ElementalShamanBuffRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanBuffRaidStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1332,7 +1333,7 @@ void ElementalShamanBuffRaidStrategy::InitNonCombatTriggers(std::list<TriggerNod
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("flametongue weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void ElementalShamanBoostStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)

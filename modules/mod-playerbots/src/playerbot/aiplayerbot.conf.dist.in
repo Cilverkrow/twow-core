@@ -2018,6 +2018,11 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
+
+# twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
+# enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
+# and restoration Flametongue, before that Rockbiter. 0 = old per-strategy choice (default).
+AiPlayerbot.Shaman.ImbueBySpec = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
