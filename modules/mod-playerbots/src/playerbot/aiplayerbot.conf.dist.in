@@ -1811,6 +1811,10 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#541 (audit A01): 1 = the flee point search (find corpse, flee, random bot flee teleport) evaluates
+# each candidate angle once per search and reuses that result when a later distance ring repeats the
+# same angle. Same candidate points, same chosen point, fewer height/water/LOS checks. 0 = off (default).
+AiPlayerbot.Perf.FleeMemo = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

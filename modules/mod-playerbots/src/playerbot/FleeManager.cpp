@@ -6,7 +6,32 @@
 #include "strategy/values/MoveStyleValue.h"
 #include "playerbot/ServerFacade.h"
 
+#include <cstdint>
+#include <cstring>
+#include <ctime>
+#include <unordered_map>
+
 using namespace ai;
+
+namespace
+{
+    // twow-repo#541 (audit A01, AiPlayerbot.Perf.FleeMemo): outcome of one flee candidate inside ONE
+    // calculatePossibleDestinations call. x/y use maxAllowedDistance (not dist), so a candidate
+    // depends only on its angle; the dist rings repeat the same float angles bit for bit.
+    // stampSecond = time(0) read BEFORE the evaluation: "possible targets no los" (a
+    // CalculatedValue, checkInterval 2) can only recompute when time(0) moves to a new second,
+    // so an entry is reused only within the same second it was computed in.
+    struct FleeMemoEntry
+    {
+        time_t stampSecond = 0;
+        bool accepted = false;   // false = rejected (edge, forceMaxDistance, water, target LOS, minDistance)
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        float minDistance = 0.0f;
+        float sumDistance = 0.0f;
+    };
+}
 
 void FleeManager::calculateDistanceToCreatures(FleePoint *point)
 {
@@ -63,6 +88,12 @@ void FleeManager::calculatePossibleDestinations(std::list<FleePoint*> &points)
         enemyOri.push_back(ori);
     }
 
+    // twow-repo#541 (audit A01): call-local memo, never shared, never static (see FleeMemoEntry).
+    const bool fleeMemo = sPlayerbotAIConfig.perfFleeMemo;
+    std::unordered_map<std::uint32_t, FleeMemoEntry> memo;
+    if (fleeMemo)
+        memo.reserve(128);
+
     float distIncrement = std::max(sPlayerbotAIConfig.followDistance, (maxAllowedDistance - sPlayerbotAIConfig.tooCloseDistance) / 10.0f);
     for (float dist = maxAllowedDistance; dist >= sPlayerbotAIConfig.tooCloseDistance; dist -= distIncrement)
     {
@@ -72,6 +103,33 @@ void FleeManager::calculatePossibleDestinations(std::list<FleePoint*> &points)
             for (float angle = add; angle < add + 2 * M_PI_F + angleIncrement; angle += M_PI_F / 4)
             {
                 if (intersectsOri(angle, enemyOri, angleIncrement)) continue;
+
+                // twow-repo#541 (audit A01): intersectsOri above stays per iteration (it depends on this
+                // ring's angleIncrement); everything below depends only on the angle bits.
+                FleeMemoEntry* memoSlot = nullptr;
+                if (fleeMemo)
+                {
+                    const time_t memoNow = time(0);
+                    std::uint32_t memoKey;
+                    static_assert(sizeof(memoKey) == sizeof(angle), "flee memo key must hold the exact float bits");
+                    std::memcpy(&memoKey, &angle, sizeof(memoKey));
+                    auto memoIt = memo.find(memoKey);
+                    if (memoIt != memo.end() && memoIt->second.stampSecond == memoNow)
+                    {
+                        const FleeMemoEntry& memoHit = memoIt->second;
+                        if (memoHit.accepted)
+                        {
+                            FleePoint *point = new FleePoint(GetBotAI(bot), memoHit.x, memoHit.y, memoHit.z);
+                            point->minDistance = memoHit.minDistance;
+                            point->sumDistance = memoHit.sumDistance;
+                            points.push_back(point);
+                        }
+                        continue;
+                    }
+                    memoSlot = &memo[memoKey];
+                    *memoSlot = FleeMemoEntry();
+                    memoSlot->stampSecond = memoNow;
+                }
 
                 float x = botPosX + cos(angle) * maxAllowedDistance, y = botPosY + sin(angle) * maxAllowedDistance, z = botPosZ + CONTACT_DISTANCE;
                 if (MoveStyleValue::CheckForEdges(GetBotAI(bot)) && isTooCloseToEdge(x, y, z, angle)) continue;
@@ -92,7 +150,18 @@ void FleeManager::calculatePossibleDestinations(std::list<FleePoint*> &points)
                 calculateDistanceToCreatures(point);
 
                 if (sServerFacade.IsDistanceGreaterOrEqualThan(point->minDistance - start.minDistance, sPlayerbotAIConfig.followDistance))
+                {
+                    if (memoSlot)
+                    {
+                        memoSlot->accepted = true;
+                        memoSlot->x = point->x;
+                        memoSlot->y = point->y;
+                        memoSlot->z = point->z;
+                        memoSlot->minDistance = point->minDistance;
+                        memoSlot->sumDistance = point->sumDistance;
+                    }
                     points.push_back(point);
+                }
                 else
                     delete point;
             }
