@@ -2044,3 +2044,9 @@ add_test(NAME flee_memo_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/flee_memo_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A02): find corpse skips the unused safe revive spot (AiPlayerbot.FindCorpseLazySpot, default 0).
+add_test(NAME find_corpse_lazy_spot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/find_corpse_lazy_spot_source_contract_tests.cmake")
