@@ -3,6 +3,10 @@
 # "current/old target" on another bot's context: it reads that bot's published snapshot. Each bot publishes
 # its own targets right after reading them on its own context. Off: the old code path, unchanged.
 
+# cmake 3.x script mode (Debian trixie builder / CI): without a policy version, TRUE in while()/if() (CMP0012)
+# and empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
+
 function(read_source path out_var)
   file(READ "${PB_SOURCE_DIR}/${path}" text)
   string(REPLACE "\r" "" text "${text}")
