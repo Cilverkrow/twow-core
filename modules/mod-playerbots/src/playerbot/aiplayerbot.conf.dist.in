@@ -47,6 +47,11 @@ AiPlayerbot.RandomBotJoinBG = 1
 # sees only real players and units fighting it (core Player flag, real players see it as always).
 # Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).
 AiPlayerbot.Park.HideFromBots = 0
+# twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
+# place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
+# faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
+# [Park] state=share logs where bots were parked (inn / city / here) once a minute.
+AiPlayerbot.Park.AnyLevelInn = 0
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
