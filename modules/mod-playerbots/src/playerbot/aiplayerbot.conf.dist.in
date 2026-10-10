@@ -1805,6 +1805,11 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#568 (c): 1 = one [UnknownName] line per trigger, action or strategy name that has no
+# creator (bot, class, engine, strategies of the first sighting), once per name and process. Such names
+# are silently skipped today. Log only, behaviour unchanged. At most 128 names per engine and kind and
+# 1024 per process are tracked; past that cap no further lines appear. 0 = off (default).
+AiPlayerbot.WarnUnknownNames = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
