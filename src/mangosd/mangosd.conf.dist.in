@@ -287,6 +287,14 @@ Continents.Instanciate = 0
 #   14 = cell table, 7 + 7 regions (no city regions)
 #   16 = cell table, 8 + 8 regions (OB-50 draft: start zones apart, Barrens north/south, one city region each)
 #   18 = cell table, 8 + 10 regions (16 plus Barrens north in two halves and the Valley of Trials on its own)
+#   20 = cell table, 12 + 12 regions (owner decision 10.10.2026): every capital its own region - Stormwind,
+#        Ironforge, Undercity (with the Ruins of Lordaeron), Alah'Thalas (with the Thalassian Highlands),
+#        Orgrimmar, Thunder Bluff, Darnassus; Ironforge and Undercity are fixed cell rectangles
+#        (x -5060..-4540 / y -1360..-840 and x 1180..1880 / y -20..520), Dun Morogh and Tirisfal keep the rest.
+#        Start zones apart (Elwynn, Dun Morogh, Tirisfal, Durotar, Valley of Trials, Mulgore, Teldrassil);
+#        Barrens north/south as in 16, Crossroads and Ratchet north. Region ids 1-12 and 21-32.
+# Region (map instance) ids are per layout: 0 uses 1-6 and 11-17, 14/16/18 start at 1 and 11, 20 uses
+# ids 1-12 and 21-32.
 # A player fighting in a cell at a region border keeps its region until the fight ends. [RegionSwitch] in the
 # performance log once per minute (with a table layout, or with PerformanceLog.WorldTick).
 Continents.Layout = 0

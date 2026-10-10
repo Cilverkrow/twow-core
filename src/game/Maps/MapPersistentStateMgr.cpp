@@ -1062,13 +1062,13 @@ void MapPersistentStateManager::LoadCreatureRespawnTimes()
         {
             if (mapEntry->id == 0)
             {
-                beginInstance = MAP0_FIRST;
-                endInstance = MAP0_LAST;
+                beginInstance = int(sMapMgr.GetContinentFirstRegion(0));
+                endInstance = int(sMapMgr.GetContinentLastRegion(0)) + 1;  // twow-repo#541: last id included
             }
             if (mapEntry->id == 1)
             {
-                beginInstance = MAP1_FIRST;
-                endInstance = MAP1_LAST;
+                beginInstance = int(sMapMgr.GetContinentFirstRegion(1));
+                endInstance = int(sMapMgr.GetContinentLastRegion(1)) + 1;  // twow-repo#541: last id included
             }
         }
 
@@ -1124,14 +1124,14 @@ void MapPersistentStateManager::LoadGameobjectRespawnTimes()
 
         if (mapEntry->id == 0)
         {
-            beginInstance = MAP0_FIRST;
-            endInstance = MAP0_LAST;
+            beginInstance = int(sMapMgr.GetContinentFirstRegion(0));
+            endInstance = int(sMapMgr.GetContinentLastRegion(0)) + 1;  // twow-repo#541: last id included
         }
 
         if (mapEntry->id == 1)
         {
-            beginInstance = MAP1_FIRST;
-            endInstance = MAP1_LAST;
+            beginInstance = int(sMapMgr.GetContinentFirstRegion(1));
+            endInstance = int(sMapMgr.GetContinentLastRegion(1)) + 1;  // twow-repo#541: last id included
         }
 
         for (int instance = beginInstance; instance < endInstance; ++instance)
