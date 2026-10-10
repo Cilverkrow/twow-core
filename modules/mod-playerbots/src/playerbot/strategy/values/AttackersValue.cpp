@@ -383,9 +383,40 @@ bool AttackersValue::InCombat(Unit* target, Player* player, bool checkPullTarget
     return inCombat;
 }
 
+bool AttackersValue::IsRtiTargetOf(Unit* target, Player* player)
+{
+    // twow-repo#541 (audit A06): same test as the rti exception in both branches of IsValid.
+    if (GetBotAI(player) && !GetBotAI(player)->HasActivePlayerMaster())
+    {
+        Unit* rtiTarget = PAI_VALUE(Unit*, "rti target");
+        return target == rtiTarget;
+    }
+
+    return false;
+}
+
 bool AttackersValue::IsValid(Unit* target, Player* player, Player* owner, bool checkInCombat, bool validatePossibleTarget)
 {
     Player* playerToCheckAgainst = owner != nullptr ? owner : player;
+
+    // twow-repo#541 (audit A06, cards 45/6), AiPlayerbot.Perf.AttackersLazyChecks (default 0).
+    // Level 2: the bot's own candidates (owner == player: AddTargetsOf(bot) and the shared-targets copy)
+    // that are not fighting it return false before the possible-target, faction and zone checks. Both
+    // branches below end in exactly this 'return false' (player branch: not duel opponent, not in combat,
+    // not rti; NPC branch: not in combat, not rti), and every check skipped here can only return false
+    // too, so the result is unchanged. Group members and the master (owner != player) keep today's order,
+    // because their rti read would be a cross-bot value read (X3).
+    const uint32 lazyLevel = sPlayerbotAIConfig.perfAttackersLazyChecks;
+    const bool lazyChecks = lazyLevel >= 1;
+    if (lazyLevel >= 2 && checkInCombat && owner != nullptr && player == owner &&
+        target && target->IsInWorld() && target->GetMapId() == player->GetMapId() &&
+        !sServerFacade.UnitIsDead(target))
+    {
+        const bool isDuelOpponent = dynamic_cast<Player*>(target) &&
+            player->m_duel && player->m_duel->opponent == target->GetObjectGuid();
+        if (!isDuelOpponent && !InCombat(target, player, (player == owner)) && !IsRtiTargetOf(target, player))
+            return false;
+    }
 
     // Validate possible target
     if (validatePossibleTarget && !PossibleTargetsValue::IsValid(target, playerToCheckAgainst))
@@ -394,7 +425,8 @@ bool AttackersValue::IsValid(Unit* target, Player* player, Player* owner, bool c
     }
 
     // This will be used on both enemy player and npc checks
-    const bool inPvPProhibitedZone = sPlayerbotAIConfig.IsInPvpProhibitedZone(sServerFacade.GetAreaId(target));
+    // Level 1 (switch >= 1): looked up only where it is read (enemy players, pets), see both uses below.
+    const bool inPvPProhibitedZone = !lazyChecks && sPlayerbotAIConfig.IsInPvpProhibitedZone(sServerFacade.GetAreaId(target));
 
     // If the target is a player
     Player* enemyPlayer = dynamic_cast<Player*>(target);
@@ -407,7 +439,7 @@ bool AttackersValue::IsValid(Unit* target, Player* player, Player* owner, bool c
         }
 
         // If the enemy player is in a PVP Prohibited zone
-        if (inPvPProhibitedZone)
+        if (lazyChecks ? sPlayerbotAIConfig.IsInPvpProhibitedZone(sServerFacade.GetAreaId(target)) : inPvPProhibitedZone)
         {
             return false;
         }
@@ -473,7 +505,7 @@ bool AttackersValue::IsValid(Unit* target, Player* player, Player* owner, bool c
         }
 
         // If the target is a player's pet and in a PvP prohibited zone
-        if (target->GetObjectGuid().IsPet() && inPvPProhibitedZone)
+        if (target->GetObjectGuid().IsPet() && (lazyChecks ? sPlayerbotAIConfig.IsInPvpProhibitedZone(sServerFacade.GetAreaId(target)) : inPvPProhibitedZone))
         {
             return false;
         }
