@@ -6080,14 +6080,27 @@ void RandomPlayerbotMgr::BuildParkSpots()
 
     // Inns: every innkeeper of the cache once per faction, with the level range it serves.
     std::map<uint64, size_t> innIndex[2];
+    std::set<uint64> hostileSkipped[2];
     for (auto const& [race, byLevel] : innCacheLevel)
     {
         if (!race)
             continue;
         uint32 const team = Player::TeamForRace(uint8(race)) == ALLIANCE ? 0 : 1;
+        // twow-repo#551 (owner 10.10.2026: "geparkte bots nur gasthäuser ihrer fraktion"): the inn cache assigns
+        // innkeepers to races by the races of the area around them (race 0 = every race), never by the innkeeper's
+        // own faction - in mixed zones a Horde bot could get an Alliance inn. An innkeeper hostile to the race is
+        // left out; neutral ones (goblin towns) stay for both factions.
+        FactionTemplateEntry const* raceFaction = sFactionTemplateStore.LookupEntry(Player::GetFactionForRace(uint8(race)));
         for (auto const& [level, inns] : byLevel)
             for (auto const& [innGuid, loc] : inns)
             {
+                CreatureInfo const* innkeeper = sObjectMgr.GetCreatureTemplate(innGuid.GetEntry());
+                FactionTemplateEntry const* innFaction = innkeeper ? sFactionTemplateStore.LookupEntry(innkeeper->Faction) : nullptr;
+                if (raceFaction && innFaction && innFaction->IsHostileTo(*raceFaction))
+                {
+                    hostileSkipped[team].insert(ParkSpotKey(loc));
+                    continue;
+                }
                 uint64 const key = ParkSpotKey(loc);
                 auto const it = innIndex[team].find(key);
                 if (it == innIndex[team].end())
@@ -6121,8 +6134,23 @@ void RandomPlayerbotMgr::BuildParkSpots()
                 }
     }
 
-    sLog.outBasic("[Park] state=spots alliance_inns=%u horde_inns=%u alliance_city=%u horde_city=%u",
-        uint32(parkInns[0].size()), uint32(parkInns[1].size()), uint32(parkCities[0].size()), uint32(parkCities[1].size()));
+    sLog.outBasic("[Park] state=spots alliance_inns=%u horde_inns=%u alliance_city=%u horde_city=%u alliance_hostile_inns_skipped=%u horde_hostile_inns_skipped=%u",
+        uint32(parkInns[0].size()), uint32(parkInns[1].size()), uint32(parkCities[0].size()), uint32(parkCities[1].size()),
+        uint32(hostileSkipped[0].size()), uint32(hostileSkipped[1].size()));
+
+    // twow-repo#551 (owner 10.10.): per capital zone and faction, the inns inside it and its city spots, once.
+    for (uint32 team = 0; team < 2; ++team)
+    {
+        std::map<uint32, std::pair<uint32, uint32>> perCity;   // zone -> (inns, city spots)
+        for (ParkInn const& inn : parkInns[team])
+            if (inn.cityZone)
+                ++perCity[inn.cityZone].first;
+        for (uint32 const zone : parkCityZones[team])
+            ++perCity[zone].second;
+        for (auto const& [zone, counts] : perCity)
+            sLog.outBasic("[Park] state=spots_city team=%s zone=%u inns=%u city_spots=%u",
+                team == 0 ? "alliance" : "horde", zone, counts.first, counts.second);
+    }
 }
 
 void RandomPlayerbotMgr::ReleaseParkSpot(ParkEntry const& entry)

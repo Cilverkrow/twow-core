@@ -84,6 +84,14 @@ between("${mgr}" "void RandomPlayerbotMgr::ReleaseParkSpot(ParkEntry const& entr
 require_text("${release}" "parkCityCounts.Remove(entry.cityZone);" "count released with the spot")
 require_text("${mgr_h}" "ai::park::CityCounts parkCityCounts;" "one central counter")
 
+# Own faction only (owner 10.10.): an innkeeper hostile to the race is never a park inn; neutral ones stay.
+between("${mgr}" "void RandomPlayerbotMgr::BuildParkSpots()" "void RandomPlayerbotMgr::ReleaseParkSpot(" build_spots)
+require_text("${build_spots}" "FactionTemplateEntry const* raceFaction = sFactionTemplateStore.LookupEntry(Player::GetFactionForRace(uint8(race)));" "faction of the race")
+require_text("${build_spots}" "FactionTemplateEntry const* innFaction = innkeeper ? sFactionTemplateStore.LookupEntry(innkeeper->Faction) : nullptr;" "faction of the innkeeper")
+require_order("${build_spots}" "if (raceFaction && innFaction && innFaction->IsHostileTo(*raceFaction))" "innIndex[team][key] = parkInns[team].size();" "hostile inns skipped before they are listed")
+require_order("${build_spots}" "hostileSkipped[team].insert(ParkSpotKey(loc));\n                    continue;" "uint64 const key = ParkSpotKey(loc);" "skip, not list")
+require_text("${build_spots}" "[Park] state=spots_city team=%s zone=%u inns=%u city_spots=%u" "inns and spots per capital")
+
 # Minute line only with a cap on.
 require_order("${mgr}" "if (capsOn)" "[Park] state=caps max_inn=%u max_city=%u inns_used=%u inns_full=%u inn_max=%u inn_bots=%u overflow=%u no_spot=%u cities=%s inns=%s" "caps line behind the switches")
 
