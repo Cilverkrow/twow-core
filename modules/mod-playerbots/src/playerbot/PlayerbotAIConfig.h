@@ -554,6 +554,7 @@ public:
     bool perfStaticSpellLists = false;  // twow-repo#541 (audit A16): CanCastSpell / CheckSpellTargetAlignment take the neutral and out-of-control spell ids from constant arrays instead of a per-call std::list; same ids, same answers (0 = off)
     bool petDeadNoWorldPetFalse = false;  // twow-repo#541 (audit A07): hunter without a world pet never counts as having a dead pet (no character_pet SELECT, no doomed Revive Pet)
     bool canCastSpellChecksPower = false;  // twow-repo#541 (audit A33): CanCastSpell (unit target, spellbook) also checks the mana/rage/energy/health cost (0 = off)
+    bool castSpellRefreshOnLearn = false;  // twow-repo#541 (audit A27): spell actions re-read spell id/range when the bot learned spells, levelled, spent talent points or (pet spell actions) got another pet (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
