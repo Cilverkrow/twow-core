@@ -412,6 +412,7 @@ bool PlayerbotAIConfig::Initialize()
     perfFleeMemo = config.GetBoolDefault("AiPlayerbot.Perf.FleeMemo", false);
     findCorpseLazySpot = config.GetBoolDefault("AiPlayerbot.FindCorpseLazySpot", false);
     nearestUnitsAcceptFirst = config.GetBoolDefault("AiPlayerbot.Perf.NearestUnitsAcceptFirst", false);
+    perfGatherLootFastPath = config.GetBoolDefault("AiPlayerbot.Perf.GatherLootFastPath", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

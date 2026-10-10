@@ -1827,6 +1827,12 @@ AiPlayerbot.FindCorpseLazySpot = 0
 # raycasts and VMAP lock acquisitions; only core error-log lines for units with an invalid faction
 # template can differ. 0 = off (default).
 AiPlayerbot.Perf.NearestUnitsAcceptFirst = 0
+# twow-repo#541 (audit A04+A05): 1 = "add gathering loot" (every second per bot out of combat) rejects
+# objects that need no gathering skill before the line-of-sight raycast, and reads the nearest-corpses
+# list only for a bot with skinning (a corpse is a gathering target only for skinning). Same nodes and
+# corpses added, less work; other readers of the nearest-corpses list may recompute it up to a second
+# earlier. 0 = off (default).
+AiPlayerbot.Perf.GatherLootFastPath = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

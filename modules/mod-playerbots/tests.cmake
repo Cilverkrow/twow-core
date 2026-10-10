@@ -2057,3 +2057,10 @@ add_test(NAME nearest_units_accept_first_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/nearest_units_accept_first_source_contract_tests.cmake")
+
+# twow-repo#541 (audit A04+A05): add gathering loot fast path (AiPlayerbot.Perf.GatherLootFastPath, default 0).
+add_test(NAME gather_loot_fast_path_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/gather_loot_fast_path_source_contract_tests.cmake")
