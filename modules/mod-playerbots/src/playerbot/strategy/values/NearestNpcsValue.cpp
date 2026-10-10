@@ -20,8 +20,14 @@ void NearestNpcsValue::FindUnits(std::list<Unit*> &targets)
     Cell::VisitAllObjects(bot, searcher, range);
 }
 
+// twow-repo#541 (audit A03, AiPlayerbot.Perf.NearestUnitsAcceptFirst): with the switch on, players are
+// rejected before the hostility check. Same result (both terms are pure), but the player-vs-player
+// reaction (other player's duel, group, reputation) is no longer computed just to be discarded.
 bool NearestNpcsValue::AcceptUnit(Unit* unit)
 {
+    if (sPlayerbotAIConfig.nearestUnitsAcceptFirst && dynamic_cast<Player*>(unit))
+        return false;
+
     return !sServerFacade.IsHostileTo(unit, bot) && !dynamic_cast<Player*>(unit);
 }
 

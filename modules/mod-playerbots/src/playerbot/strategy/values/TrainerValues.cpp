@@ -6,6 +6,7 @@
 #include "playerbot/PersistentRosterProfessionTrainingPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RidingStagesBotPolicy.h"
+#include "playerbot/TrainableSpellsPrecheckPolicy.h"
 
 using namespace ai;
 
@@ -149,6 +150,14 @@ std::vector<TrainerSpell const*> TrainableSpellsValue::Calculate()
 
     int8 qualifierType = getQualifier().empty() ? -1 : stoi(getQualifier());
 
+    // twow-repo#541 (audit A12, AiPlayerbot.Perf.TrainableSpellsPrecheck, default 0): read once per call.
+    bool const trainablePrecheck = sPlayerbotAIConfig.perfTrainableSpellsPrecheck;
+    // Roster state of this bot for the GREEN spells. It does not depend on the spell. With the switch
+    // on it is read at the first GREEN spell (where it is first read today) and then reused.
+    bool rosterStateRead = false;
+    bool persistentRosterBot = false;
+    uint32 pair = 0;
+
     trainableSpellMap* spellMap = GAI_VALUE(trainableSpellMap*, "trainable spell map");
 
     for (auto& [trainerType, spellReqList] : *spellMap)
@@ -165,6 +174,12 @@ std::vector<TrainerSpell const*> TrainableSpellsValue::Calculate()
 
             for (auto& [trainerSpell, trainers] : trainerSpellList)
             {
+                // twow-repo#541 (audit A12): the core's own RED condition (Player::GetTrainerSpellState, "check
+                // skill requirement") with the same accessor and fields. Every earlier exit there is RED or GRAY,
+                // so this spell can never come back GREEN, and the full state walk is skipped.
+                if (trainablePrecheck && ai::trainable_spells::SkillRequirementRed(trainerSpell->reqSkill, trainerSpell->reqSkillValue, [this](uint32 skill) { return bot->GetSkillValueBase(skill); }))
+                    continue;
+
                 uint32 reqLevel = 0;
 
                 reqLevel = trainerSpell->isProvidedReqLevel ? trainerSpell->reqLevel : std::max(reqLevel, trainerSpell->reqLevel);
@@ -172,11 +187,13 @@ std::vector<TrainerSpell const*> TrainableSpellsValue::Calculate()
                 if (state != TRAINER_SPELL_GREEN)
                     continue;
 
-                bool const persistentRosterBot =
-                    sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
-                uint32 const pair = persistentRosterBot
-                    ? sRandomPlayerbotMgr.GetProfessionPair(bot->GetGUIDLow())
-                    : 0;
+                // twow-repo#541 (audit A12): off = read at every GREEN spell as before; on = first GREEN spell only.
+                if (ai::trainable_spells::ShouldReadRosterState(trainablePrecheck, rosterStateRead))
+                {
+                    persistentRosterBot = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+                    pair = persistentRosterBot ? sRandomPlayerbotMgr.GetProfessionPair(bot->GetGUIDLow()) : 0;
+                    rosterStateRead = true;
+                }
                 bool const allowedRosterProfession = trainerType == TRAINER_TYPE_TRADESKILLS &&
                     profession_training::IsEligibleProfessionTraining(
                         persistentRosterBot, bot->GetLevel(),

@@ -2821,9 +2821,16 @@ bool MovementAction::ChaseTo(WorldObject* obj, float distance, float angle)
     WorldPosition endPosition(obj->GetMapId(), endPoint.x, endPoint.y, endPoint.z);
     endPosition.setZ(endPosition.getHeight());
 
+    // twow-repo#541 (audit A14): with an empty hazards list every hazard check below can only log
+    // (IsHazardNearPosition -> false, GeneratePathAvoidingHazards -> false), so skip the two path
+    // searches and the LOS ray. Same end position, same MoveChase; only the detail log line differs.
+    // Switch 0 = old path verbatim, the hazards value is not read here.
+    const bool chaseHazardChecks = !sPlayerbotAIConfig.chaseSkipHazardPathWhenNoHazards ||
+        !AI_VALUE(std::list<HazardPosition>, "hazards").empty();
+
     // Check if the end position is inside a hazard
     HazardPosition hazardPosition;
-    if (IsHazardNearPosition(endPosition, &hazardPosition))
+    if (chaseHazardChecks && IsHazardNearPosition(endPosition, &hazardPosition))
     {
         // Try to generate a nearby position outside the hazard
         const Vector3 hazardPoint = hazardPosition.first.getVector3();
@@ -2854,7 +2861,11 @@ bool MovementAction::ChaseTo(WorldObject* obj, float distance, float angle)
     MotionMaster& mm = *bot->GetMotionMaster();
 
     // Prevent moving if requested to move into a hazard
-    if (IsValidPosition(endPosition, botPosition))
+    if (!chaseHazardChecks)
+    {
+        sLog.outDetail("[BOT CHASE] %s -> %s: dist=%.1f no hazards, hazard path checks skipped, using MoveChase", bot->GetName(), obj->GetName(), distanceToTarget);
+    }
+    else if (IsValidPosition(endPosition, botPosition))
     {
         std::vector<WorldPosition> path = botPosition.getPathTo(endPosition,bot);
         if (GeneratePathAvoidingHazards(path))

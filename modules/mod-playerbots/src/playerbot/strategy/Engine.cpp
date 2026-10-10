@@ -8,6 +8,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/BotActionLog.h"
+#include "playerbot/ActionTrail.h"
 
 #ifdef BUILD_ELUNA
 #include "LuaEngine/LuaEngine.h"
@@ -75,6 +76,7 @@ Engine::~Engine(void)
     Reset();
 
     strategies.clear();
+    ClearActionNodeOwners();
 }
 
 bool Engine::Reset()
@@ -164,6 +166,8 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
     time_t currentTime = time(0);
     aiObjectContext->Update();
+    // twow-repo#541 (audit A08): this walk, ProcessTriggers and PushDefaultActions run on the bot's
+    // own AI tick, so their pushes pass ownerCache = true.
     ProcessTriggers(minimal);
     PushDefaultActions();
 
@@ -207,11 +211,17 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
         {
             Action* action = InitializeAction(actionNode);
 
-            std::string actionName = (action ? action->getName() : "unknown");
-            if (!event.getSource().empty())
-                actionName += " <" + event.getSource() + ">";
-            
-            auto pmo1 = sPerformanceMonitor.start(PERF_MON_ACTION, actionName, ai);
+            // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): the PerfMon key (a heap
+            // string per popped action) only when PerfMon is on; start() returns null otherwise.
+            std::unique_ptr<PerformanceMonitorOperation> pmo1;
+            if (!sPlayerbotAIConfig.perfLogActionFastPath || sPlayerbotAIConfig.perfMonEnabled)
+            {
+                std::string actionName = (action ? action->getName() : "unknown");
+                if (!event.getSource().empty())
+                    actionName += " <" + event.getSource() + ">";
+
+                pmo1 = sPerformanceMonitor.start(PERF_MON_ACTION, actionName, ai);
+            }
 
             if(action)
                 action->setRelevance(relevance);
@@ -274,16 +284,16 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                     if (relevance < oldRelevance && peekAction && peekAction->getRelevance() > relevance) //Relevance changed. Try again.
                     {
                         modifiedActions.push_back(action);
-                        PushAgain(actionNode, relevance, event);
+                        PushAgain(actionNode, relevance, event, true);
                         continue;
                     }
 
                     if (!skipPrerequisites)
                     {
                         LogAction("A:%s - PREREQ", action->getName().c_str());
-                        if (MultiplyAndPush(actionNode->getPrerequisites(), relevance + 0.02, false, event, "prereq"))
+                        if (MultiplyAndPush(actionNode->getPrerequisites(), relevance + 0.02, false, event, "prereq", true))
                         {
-                            PushAgain(actionNode, relevance + 0.01, event);
+                            PushAgain(actionNode, relevance + 0.01, event, true);
                             continue;
                         }
                     }
@@ -307,7 +317,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         if (actionExecuted)
                         {
                             LogAction("A:%s - OK", action->getName().c_str());
-                            MultiplyAndPush(actionNode->getContinuers(), 0, false, event, "cont");
+                            MultiplyAndPush(actionNode->getContinuers(), 0, false, event, "cont", true);
                             lastRelevance = relevance;
                             delete actionNode;
                             break;
@@ -315,7 +325,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         else
                         {
                             LogAction("A:%s - FAILED", action->getName().c_str());
-                            MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt");
+                            MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt", true);
                         }
                     }
                     else
@@ -343,7 +353,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                             }
                         }
                         LogAction("A:%s - IMPOSSIBLE", action->getName().c_str());
-                        MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt");
+                        MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt", true);
                     }
                 }
                 else
@@ -417,8 +427,13 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
     return actionExecuted;
 }
 
-ActionNode* Engine::CreateActionNode(const std::string& name)
+ActionNode* Engine::CreateActionNode(const std::string& name, bool ownerCache)
 {
+    // twow-repo#541 (audit A08): same first-match answer from the per-engine owner cache, only on
+    // the bot's own AI tick (ownerCache), never for ExecuteAction/CanExecuteAction.
+    if (ownerCache && sPlayerbotAIConfig.perfActionNodeOwnerCache)
+        return CreateActionNodeCached(name);
+
     ActionNode* actionNode = nullptr;
     for (std::map<std::string, Strategy*>::iterator i = strategies.begin(); i != strategies.end(); i++)
     {
@@ -438,7 +453,54 @@ ActionNode* Engine::CreateActionNode(const std::string& name)
     return actionNode;
 }
 
-bool Engine::MultiplyAndPush(NextAction** actions, float forceRelevance, bool skipPrerequisites, const Event& event, const char* pushType)
+// twow-repo#541 (audit A08, AiPlayerbot.Perf.ActionNodeOwnerCache). Gives the same answer as the walk
+// in CreateActionNode with less work. Which strategy answers a name depends only on the part before
+// the first "::": NamedObjectFactory::Create looks up exactly that, and every ActionNode creator
+// returns a new node unconditionally. So the first answering strategy in `strategies` order, or
+// "none", is remembered per base name. actionNodeOwners is emptied at every change of `strategies`,
+// so an entry always describes the current set, also while Init() is deferred (reinitPending) or
+// skipped (initMode). The owner still builds the node from the full name, fresh on every call,
+// because the caller deletes it.
+ActionNode* Engine::CreateActionNodeCached(const std::string& name)
+{
+    std::string baseName(name, 0, name.find("::"));
+
+    auto const cached = actionNodeOwners.find(baseName);
+    if (cached != actionNodeOwners.end())
+    {
+        Strategy* const owner = cached->second;
+        if (!owner)
+            return new ActionNode(name);
+
+        if (ActionNode* actionNode = owner->GetAction(name))
+            return actionNode;
+        // Not reachable while creators are unconditional. Walk again exactly as before.
+    }
+
+    ActionNode* actionNode = nullptr;
+    Strategy* owner = nullptr;
+    for (std::map<std::string, Strategy*>::iterator i = strategies.begin(); i != strategies.end(); i++)
+    {
+        Strategy* strategy = i->second;
+        actionNode = strategy->GetAction(name);
+        if (actionNode)
+        {
+            owner = strategy;
+            break;
+        }
+    }
+
+    actionNodeOwners[baseName] = owner;
+
+    if (!actionNode)
+    {
+        actionNode = new ActionNode(name);
+    }
+
+    return actionNode;
+}
+
+bool Engine::MultiplyAndPush(NextAction** actions, float forceRelevance, bool skipPrerequisites, const Event& event, const char* pushType, bool ownerCache)
 {
     bool pushed = false;
     if (actions)
@@ -448,7 +510,7 @@ bool Engine::MultiplyAndPush(NextAction** actions, float forceRelevance, bool sk
             NextAction* nextAction = actions[j];
             if (nextAction)
             {
-                ActionNode* actionNode = CreateActionNode(nextAction->getName());
+                ActionNode* actionNode = CreateActionNode(nextAction->getName(), ownerCache);
                 InitializeAction(actionNode);
 
                 bool shouldPush = false;
@@ -587,7 +649,11 @@ void Engine::addStrategy(const std::string& name)
 
         LogAction("S:+%s", strategy->getName().c_str());
         if (strategies.insert(std::make_pair(strategy->getName(), strategy)).second)
+        {
             strategiesHash ^= StrategyNameHash(strategy->getName());
+            // twow-repo#541 (audit A08): the new strategy can be the first to answer a name.
+            ClearActionNodeOwners();
+        }
         strategy->OnStrategyAdded(state);
     }
 
@@ -640,7 +706,10 @@ bool Engine::removeStrategy(const std::string& name, bool init)
     // the pointer stays good across the erase.
     Strategy* const removed = i->second;
     strategiesHash ^= StrategyNameHash(i->first);
+    // twow-repo#541 (audit A08): the removed strategy may have been the cached owner. Empty the owner
+    // cache right after the erase, before OnStrategyRemoved, which may itself change the set or push.
     strategies.erase(i);
+    ClearActionNodeOwners();
 
     if (removed)
         removed->OnStrategyRemoved(state);
@@ -657,6 +726,7 @@ void Engine::removeAllStrategies()
 {
     strategies.clear();
     strategiesHash = 0;
+    ClearActionNodeOwners();
     Init();
 }
 
@@ -703,7 +773,11 @@ void Engine::ProcessTriggers(bool minimal)
         {
             if (minimal && node->getFirstRelevance() < 100)
                 continue;
-            auto pmo = sPerformanceMonitor.start(PERF_MON_TRIGGER, trigger->getName(), ai);
+            // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): the trigger name copy
+            // only when PerfMon is on.
+            std::unique_ptr<PerformanceMonitorOperation> pmo;
+            if (!sPlayerbotAIConfig.perfLogActionFastPath || sPlayerbotAIConfig.perfMonEnabled)
+                pmo = sPerformanceMonitor.start(PERF_MON_TRIGGER, trigger->getName(), ai);
             Event event = trigger->Check();
 
 #ifdef PLAYERBOT_ELUNA
@@ -715,7 +789,9 @@ void Engine::ProcessTriggers(bool minimal)
             if (!event)
                 continue;
 
-            MultiplyAndPush(node->getHandlers(), 0.0f, false, event, "trigger");
+            // twow-repo#541 (audit A08): only DoNextAction and ReactionEngine::FindReaction call this,
+            // both on the bot's own AI tick (PlayerbotAI::UpdateAI).
+            MultiplyAndPush(node->getHandlers(), 0.0f, false, event, "trigger", true);
             LogAction("T:%s", trigger->getName().c_str());
         }
     }
@@ -732,7 +808,8 @@ void Engine::PushDefaultActions()
     for (std::map<std::string, Strategy*>::iterator i = strategies.begin(); i != strategies.end(); i++)
     {
         Strategy* strategy = i->second;
-        MultiplyAndPush(strategy->getDefaultActions(state), 0.0f, false, Event(), "default");
+        // twow-repo#541 (audit A08): only DoNextAction calls this, on the bot's own AI tick.
+        MultiplyAndPush(strategy->getDefaultActions(state), 0.0f, false, Event(), "default", true);
     }
 }
 
@@ -760,12 +837,12 @@ std::list<std::string_view> Engine::GetStrategies()
     return result;
 }
 
-void Engine::PushAgain(ActionNode* actionNode, float relevance, const Event& event)
+void Engine::PushAgain(ActionNode* actionNode, float relevance, const Event& event, bool ownerCache)
 {
     NextAction** nextAction = new NextAction*[2];
     nextAction[0] = new NextAction(actionNode->getName(), relevance);
     nextAction[1] = NULL;
-    MultiplyAndPush(nextAction, relevance, true, event, "again");
+    MultiplyAndPush(nextAction, relevance, true, event, "again", ownerCache);
     delete actionNode;
 }
 
@@ -887,9 +964,18 @@ void Engine::LogAction(const char* format, ...)
     lastAction += buf;
     if (lastAction.size() > 512)
     {
-        lastAction = lastAction.substr(512);
-        size_t pos = lastAction.find("|");
-        lastAction = (pos == std::string::npos ? "" : lastAction.substr(pos));
+        if (!sPlayerbotAIConfig.botUpdateTraceTailFix)
+        {
+            lastAction = lastAction.substr(512);
+            size_t pos = lastAction.find("|");
+            lastAction = (pos == std::string::npos ? "" : lastAction.substr(pos));
+        }
+        else
+        {
+            // twow-repo#541 (audit A11, AiPlayerbot.BotUpdateTraceTailFix): keep the newest 512
+            // characters, starting at an entry, in place. Same "|entry|entry" layout as before.
+            ai::action_trail::KeepNewest(lastAction, 512);
+        }
     }
 
     if (testMode)
@@ -906,6 +992,13 @@ void Engine::LogAction(const char* format, ...)
             return;
 
         sLog.outDetail( "%s %s", bot->GetName(), buf);
+
+        // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): no action-log file can be
+        // written (the log is off and none is open) -> the tee below would only pick a tag and reach
+        // a Write that returns at GetHandle. sLog here is BotLog, which already drops a DETAIL line
+        // nobody keeps (deep dive L1); the call above stays as it is.
+        if (sPlayerbotAIConfig.perfLogActionFastPath && !ai::botdiag::BotActionLog::MayWrite())
+            return;
 
         // BotActionLog tee: every PUSH/A/Tick line also lands in the bot's
         // per-bot file under logs/bots/ when AiPlayerbot.EnableActionLog=1.
