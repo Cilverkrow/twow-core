@@ -10,6 +10,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <atomic>
 
 namespace ai
 {
@@ -53,6 +54,15 @@ namespace ai
 
     // -----------------------------------------------------------------------------------------------------------------------
 
+    // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): engine rebuilds put off because the engine was
+    // not running (deferred) and the ones run later at the start of its DoNextAction (caught). Relaxed counters,
+    // drained once per minute by the world thread ([LazyEngineInit]); deferred - caught = Init() calls saved.
+    namespace lazy_engine_init
+    {
+        inline std::atomic<uint64> deferred{ 0 };
+        inline std::atomic<uint64> caught{ 0 };
+    }
+
     enum ActionResult
     {
         ACTION_RESULT_UNKNOWN,
@@ -78,7 +88,9 @@ namespace ai
         std::string ListStrategies();
         std::list<std::string_view> GetStrategies();
 		bool ContainsStrategy(StrategyType type);
-		void ChangeStrategy(const std::string& names);
+        // twow-repo#541 (audit A21): deferInitWhileInactive = this engine neither runs nor is the reaction engine
+        // (PlayerbotAI decides). A real change then only marks the engine stale; the rebuild comes on activation.
+        void ChangeStrategy(const std::string& names, bool deferInitWhileInactive = false);
 		void PrintStrategies(Player* requester, const std::string& engineType);
         std::string GetLastAction() { return lastAction; }
         const Action* GetLastExecutedAction() const { return lastExecutedAction; }
@@ -170,6 +182,10 @@ namespace ai
         // DoNextAction re-inits once the walk is over.
         bool inDoNextAction = false;
         bool reinitPending = false;
+        // twow-repo#541 (audit A21): the strategy set changed while this engine was not running and its triggers,
+        // multipliers and queue are not rebuilt yet. Init() clears it; DoNextAction rebuilds first when set.
+        // Protected on purpose: only Engine::ChangeStrategy sets it.
+        bool initStale = false;
 
     public:
 		bool testMode;
