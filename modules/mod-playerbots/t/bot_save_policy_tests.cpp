@@ -47,6 +47,20 @@ int main()
     Require(TryTake(2000, 2, budget) && TryTake(2000, 2, budget) && !TryTake(2000, 2, budget), "two per tick");
     Require(TryTake(3000, 0, budget) && TryTake(3000, 0, budget) && TryTake(3000, 0, budget), "0 = no limit");
 
+    // Live v46.1: the window must move with the clock. A frozen key (tickTime() == 0 in this core) allows one save ever.
+    Require(BudgetWindow(0) == BudgetWindow(BudgetWindowMs - 1) && BudgetWindow(BudgetWindowMs) == BudgetWindow(0) + 1,
+        "100 ms windows");
+    budget = ThreadBudget{};
+    int saved = 0;
+    for (std::uint32_t nowMs = 0; nowMs < 1000; nowMs += 10)
+        saved += TryTake(BudgetWindow(nowMs), 1, budget) ? 1 : 0;
+    Require(saved == 1000 / BudgetWindowMs, "one save per window, every window");
+    budget = ThreadBudget{};
+    saved = 0;
+    for (int i = 0; i < 100; ++i)
+        saved += TryTake(0, 1, budget) ? 1 : 0;
+    Require(saved == 1, "negative: a frozen key never resets");
+
     std::cout << "bot_save_policy_tests passed\n";
     return 0;
 }
