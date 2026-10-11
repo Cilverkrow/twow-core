@@ -19,6 +19,7 @@
 #include "playerbot/strategy/generic/CombatStrategy.h"
 #include "playerbot/FarFollowPolicy.h"
 #include "playerbot/FarMovePolicy.h"
+#include "playerbot/PathFailPolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 
@@ -66,6 +67,28 @@ bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition c
 
     out = point;
     return true;
+}
+
+// twow-repo#575 (PATH-01 #1, AiPlayerbot.Path.RouteFailDetail): one line per failed node route search within the minute's
+// budget, plus a summary of the previous minute (all failures, logged lines, PATH-01 #3 honest fails).
+void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& from, WorldPosition const& to,
+    path_fail::RouteFailDetail const& d)
+{
+    path_fail::Counters& counters = path_fail::SharedCounters();
+    uint32 failed = 0, logged = 0, honest = 0;
+    if (counters.Roll(uint64(time(nullptr)), failed, logged, honest))
+        sLog.outBasic("[RouteFailDetail] summary failed=%u logged=%u honest=%u", failed, logged, honest);
+    if (!counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute))
+        return;
+
+    float const dist = from.getMapId() == to.getMapId() ? from.distance(to) : -1.0f;
+    sLog.outBasic("[RouteFailDetail] bot=%u level=%u alive=%u action=%s map=%u x=%.1f y=%.1f z=%.1f to_map=%u to_x=%.1f to_y=%.1f to_z=%.1f "
+        "dist=%.0f pairs=%u bad_start=%u bad_end=%u start_nodes=%u end_nodes=%u start_node=\"%s\" start_dist=%.0f end_node=\"%s\" "
+        "end_dist=%.0f direct_gap=%.1f no_nodes=%u cooldown=%u budget=%u transport=%u",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->IsAlive() ? 1u : 0u, action.c_str(), from.getMapId(), from.getX(), from.getY(),
+        from.getZ(), to.getMapId(), to.getX(), to.getY(), to.getZ(), dist, d.pairs, d.badStart, d.badEnd, d.startNodes, d.endNodes,
+        d.startNode.c_str(), d.startNodeDist, d.endNode.c_str(), d.endNodeDist, d.directGap, d.noNodes ? 1u : 0u,
+        d.cooldownSkip ? 1u : 0u, d.budgetStop ? 1u : 0u, d.transportRoute ? 1u : 0u);
 }
 }
 
@@ -738,7 +761,7 @@ bool MovementAction::WaitForTransport()
     return false;
 }
 
-TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, const WorldPosition& endPosition, Unit* mover, LastMovement& lastMove)    
+TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, const WorldPosition& endPosition, Unit* mover, LastMovement& lastMove, bool* outNoRoute)
 {
     float totalDistance = startPosition.distance(endPosition);
     float maxDistChange = totalDistance * 0.1f;
@@ -761,10 +784,20 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
 #endif
 
     TravelPath outMovePath;
+    bool noRoute = false;
 
     if (needsLongPath && !sTravelNodeMap.getNodes().empty() && !bot->InBattleGround())
     {
-        outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot); //Pathfind using nodes.
+        // twow-repo#575 (PATH-01 #1): with the trace on, the search reports what it saw; a failure is logged below.
+        path_fail::RouteFailDetail detail;
+        bool const traceFail = sPlayerbotAIConfig.pathRouteFailDetail;
+        outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, traceFail ? &detail : nullptr); //Pathfind using nodes.
+        if (outMovePath.empty())
+        {
+            noRoute = true;
+            if (traceFail)
+                LogRouteFail(bot, getName(), startPosition, endPosition, detail);
+        }
     }
     else
     {
@@ -778,6 +811,9 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
 
     if (outMovePath.empty())
         outMovePath.addPoint(endPosition);
+
+    if (outNoRoute)
+        *outNoRoute = noRoute;
 
     return outMovePath;
 }
@@ -1283,7 +1319,8 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     
     bool isWalking = false;
 
-    TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove);
+    bool noRoute = false;
+    TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove, &noRoute);
 
     lastMove.setPath(movePath);
 
@@ -1297,6 +1334,15 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     if (movePath.empty())
     {
         lastMove.setPath(movePath);
+        // twow-repo#575 (PATH-01 #3, AiPlayerbot.Path.HonestRouteFail): only the target point was left because no node
+        // route was found, and it lies beyond react distance. Reporting success made the bot search again on the next
+        // tick for minutes; on, the move fails, so travel targets count the retry and rpg targets are dropped. A route
+        // that collapses keeps the old answer.
+        if (noRoute && sPlayerbotAIConfig.pathHonestRouteFail)
+        {
+            path_fail::SharedCounters().honest.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        }
         return true; // Path collapsed — will rebuild next tick.
     }
 

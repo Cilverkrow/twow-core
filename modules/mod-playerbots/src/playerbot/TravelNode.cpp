@@ -1722,7 +1722,7 @@ TravelNodeRoute TravelNodeMap::getRoute(TravelNode* start, TravelNode* goal, Uni
     return TravelNodeRoute();
 }
 
-TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit)
+TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit, ai::path_fail::RouteFailDetail* outDetail)
 {
     if (m_nodes.empty())
         return TravelNodeRoute();
@@ -1736,7 +1736,11 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     std::vector<TravelNode*> startNodes = getNodes(startPos, -1, transportEntry), endNodes = getNodes(endPos);
 
     if (startNodes.empty() || endNodes.empty())
-        return TravelNodeRoute();    
+    {
+        if (outDetail)   // twow-repo#575 (PATH-01 #1)
+            outDetail->noNodes = true;
+        return TravelNodeRoute();
+    }
 
     // #416: time budget for this search (up to 5 x 5 node pairs, each an A* plus
     // mmap path searches). A bot whose search for a target cell ran over budget
@@ -1745,7 +1749,11 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     uint32 const routeNow = uint32(time(nullptr));
     uint64 const routeKey = routeBot ? ai::stall_guard::RouteCooldownStore::Key(routeBot->GetGUIDLow(), endPos.getMapId(), endPos.getX(), endPos.getY()) : 0;
     if (routeBot && ai::stall_guard::RouteCooldowns().IsBlocked(routeKey, routeNow))
+    {
+        if (outDetail)   // twow-repo#575 (PATH-01 #1)
+            outDetail->cooldownSkip = true;
         return TravelNodeRoute();
+    }
     uint32 const routeStart = WorldTimer::getMSTime();
     uint32 routePairs = 0;
 
@@ -1757,6 +1765,17 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     startNodes.resize(startNr);
     std::partial_sort(endNodes.begin(), endNodes.begin() + endNr, endNodes.end(), [endPos](TravelNode* i, TravelNode* j) {return i->getPosition()->sqDistance(endPos) < j->getPosition()->sqDistance(endPos); });
     endNodes.resize(endNr);
+
+    // twow-repo#575 (PATH-01 #1): the candidates this search works with, for [RouteFailDetail].
+    if (outDetail)
+    {
+        outDetail->startNodes = startNr;
+        outDetail->endNodes = endNr;
+        outDetail->startNode = startNodes.front()->getName();
+        outDetail->endNode = endNodes.front()->getName();
+        outDetail->startNodeDist = startNodes.front()->getPosition()->distance(startPos);
+        outDetail->endNodeDist = endNodes.front()->getPosition()->distance(endPos);
+    }
 
     uint64 uid = urand(0, UINT32_MAX) * urand(0, UINT32_MAX);
 
@@ -1784,6 +1803,11 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
                 sLog.outBasic("[TravelRoute] state=budget_exceeded bot=%u ms=%u pairs=%u map=%u x=%.0f y=%.0f cooldown_seconds=%u",
                     routeBot ? routeBot->GetGUIDLow() : 0u, routeElapsed, routePairs, endPos.getMapId(), endPos.getX(), endPos.getY(),
                     routeBot ? ai::stall_guard::RouteCooldownSeconds : 0u);
+                if (outDetail)   // twow-repo#575 (PATH-01 #1)
+                {
+                    outDetail->budgetStop = true;
+                    outDetail->pairs = routePairs;
+                }
                 return TravelNodeRoute();
             }
             ++routePairs;
@@ -1791,7 +1815,14 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
             TravelNodeRoute route = getRoute(startNode, endNode, unit);
 
             if (transportEntry)
+            {
+                if (outDetail && route.isEmpty())   // twow-repo#575 (PATH-01 #1)
+                {
+                    outDetail->transportRoute = true;
+                    outDetail->pairs = routePairs;
+                }
                 return route;
+            }
 
             if (route.isEmpty())
                 continue;
@@ -1875,6 +1906,14 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
         }
     }
 
+    // twow-repo#575 (PATH-01 #1): what the pair loop saw; the hearthstone try below does not change it.
+    if (outDetail)
+    {
+        outDetail->pairs = routePairs;
+        outDetail->badStart = uint32(badStartNodes.size());
+        outDetail->badEnd = uint32(badEndNodes.size());
+    }
+
     
     if (sPlayerbotAIConfig.hasLog("deadzone.csv"))
     {
@@ -1924,7 +1963,7 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     return TravelNodeRoute();
 }
 
-TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit)
+TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit, ai::path_fail::RouteFailDetail* outDetail)
 {
     TravelPath movePath;
     std::vector<WorldPosition> beginPath, endPath;
@@ -1933,6 +1972,10 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
 
     if (endPos.isPathTo(beginPath,sPlayerbotAIConfig.spellDistance)) //If we can get within spell distance a longer route won't help.
         return TravelPath(beginPath);
+
+    // twow-repo#575 (PATH-01 #1): how far the direct navmesh attempt got (-1 = no path at all).
+    if (outDetail)
+        outDetail->directGap = beginPath.empty() ? -1.0f : beginPath.back().distance(endPos);
 
     //[[Node pathfinding system]]
                 //We try to find nodes near the bot and near the end position that have a route between them.
@@ -1945,7 +1988,7 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
 
     //Find the route of nodes starting at a node closest to the start position and ending at a node closest to the endposition.
     //Also returns longPath: The path from the start position to the first node in the route.
-    TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit);
+    TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit, outDetail);
 
     if (route.isEmpty())
     {
