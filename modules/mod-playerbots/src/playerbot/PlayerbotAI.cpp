@@ -338,6 +338,9 @@ void PlayerbotAI::SetParked(bool value)
     // every ai::park::AiIntervalMs.
     if (value && sPlayerbotAIConfig.aiDelayJitterPct)
         lastParkedUpdateMs = ai::jitter::SpreadLastUpdate(WorldTimer::getMSTime(), ai::park::AiIntervalMs, urand(0, ai::jitter::RollRange));
+    // twow-repo#551 (AiPlayerbot.Park.Quiet): a quiet parked bot emotes rarely, spread by guid.
+    nextParkIdleEmote = value && sPlayerbotAIConfig.parkQuiet
+        ? ai::park::FirstIdleEmote(bot->GetGUIDLow(), uint32(time(nullptr)), sPlayerbotAIConfig.parkQuietIdleEmoteSeconds) : 0;
 }
 
 bool PlayerbotAI::AllowDelayJitter() const
@@ -695,6 +698,17 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         if (!ai::park::AiUpdateDue(bot->IsInCombat(), nowMs, lastParkedUpdateMs))
             return;
         lastParkedUpdateMs = nowMs;
+        // twow-repo#551 (AiPlayerbot.Park.Quiet): the only social sign of a quiet parked bot - one idle emote per interval.
+        if (sPlayerbotAIConfig.parkQuiet && !bot->IsInCombat())
+        {
+            uint32 const now = uint32(time(nullptr));
+            if (ai::park::IdleEmoteDue(now, nextParkIdleEmote, sPlayerbotAIConfig.parkQuietIdleEmoteSeconds))
+            {
+                static uint32 const idleEmotes[] = { EMOTE_ONESHOT_TALK, EMOTE_ONESHOT_LAUGH, EMOTE_ONESHOT_EAT, EMOTE_ONESHOT_CHEER };
+                bot->HandleEmoteCommand(idleEmotes[urand(0, 3)]);
+                nextParkIdleEmote = now + sPlayerbotAIConfig.parkQuietIdleEmoteSeconds;
+            }
+        }
     }
 
     SlowUpdateProbe const slowUpdateProbe{ this, WorldTimer::getMSTime() };
@@ -9918,6 +9932,10 @@ bool PlayerbotAI::HasPlayerRelation()
 
 void PlayerbotAI::QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid guid2, std::string message, std::string chanName, std::string name, bool noDelay)
 {
+    // twow-repo#551 (AiPlayerbot.Park.Quiet): a quiet parked bot answers whispers only - no replies to chat around it.
+    if (ai::park::QuietDropsChatReply(sPlayerbotAIConfig.parkQuiet, parked, msgType == CHAT_MSG_WHISPER))
+        return;
+
     std::scoped_lock lock(chatRepliesMutex);
     chatReplies.push(ChatQueuedReply(msgType, guid1.GetCounter(), guid2.GetCounter(), message, chanName, name, time(0) + (noDelay ? 0 : urand(inCombat ? 15 : 10, inCombat ? 30 : 20))));
 }
