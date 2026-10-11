@@ -1035,6 +1035,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_riding_migrations_295_contract.cmake")
+  # twow-repo#575: bot flight link TaxiPath ids (M1) + stale ship 176310 (M2), migrations = module base dump.
+  add_test(NAME flight_ids_575_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_flight_ids_575_contract.cmake")
   # twow-repo#323: fixed loot unit rules (weights, diminishing, BoE shortfall, level window).
   add_executable(loot_units_policy_test
     "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")
