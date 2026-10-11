@@ -2058,6 +2058,15 @@ AiPlayerbot.Diet.WanderSoloGuard = 0
 # choose-rpg-target candidate loop calls directly. Same results: each short cut is the first false of IsActive, the
 # skipped values have no side effects, and a set event flag still runs the old Check. 0 = old order (default).
 AiPlayerbot.Diet.RpgDeadTriggers = 0
+# twow-repo#568 (diet D69, neutral, "nach Abnahme an"): 1 = the "duel" strategy (combat and non-combat) pushes
+# "attack duel opponent" (70) from the new trigger "duel no attackers" instead of "no attackers": it runs the same
+# check (no current target, my attacker count > 0) only while the bot has a duel (Player::m_duel). Same attacks: the
+# action's isUseful is the "duel target" value, which is null without m_duel. Only difference: up to ~1 s after a duel
+# ends the cached "duel target" can still name the ex-opponent; today the node could then try an attack that
+# IsTargetValid refuses (friendly), with 1 it is not pushed. "duel requested" and the trigger "no attackers" itself
+# (custom strategies) are unchanged. Read at engine (re)build: switch with a restart or relog.
+# 0 = "no attackers" for every bot (default).
+AiPlayerbot.Diet.DuelTriggerGate = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

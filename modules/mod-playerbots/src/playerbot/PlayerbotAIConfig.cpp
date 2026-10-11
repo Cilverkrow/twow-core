@@ -441,6 +441,7 @@ bool PlayerbotAIConfig::Initialize()
     dietHunterRapidFireGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterRapidFireGate", false);
     dietWanderSoloGuard = config.GetBoolDefault("AiPlayerbot.Diet.WanderSoloGuard", false);
     dietRpgDeadTriggers = config.GetBoolDefault("AiPlayerbot.Diet.RpgDeadTriggers", false);
+    dietDuelTriggerGate = config.GetBoolDefault("AiPlayerbot.Diet.DuelTriggerGate", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

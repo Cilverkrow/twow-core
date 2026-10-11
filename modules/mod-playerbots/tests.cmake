@@ -2417,3 +2417,9 @@ add_test(NAME diet_d68_rpg_dead_triggers_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/diet_d68_rpg_dead_triggers_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D69: duel strategy on "duel no attackers" (only with a duel) behind AiPlayerbot.Diet.DuelTriggerGate (default 0).
+add_test(NAME diet_d69_duel_trigger_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d69_duel_trigger_gate_source_contract_tests.cmake")
