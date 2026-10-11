@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "AssassinationRogueStrategy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 
 using namespace ai;
 
@@ -48,13 +49,28 @@ void AssassinationRogueStrategy::InitCombatTriggers(std::list<TriggerNode*>& tri
         "3 combo",
         NextAction::array(0, new NextAction("rupture", ACTION_HIGH), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "behind target",
-        NextAction::array(0, new NextAction("mutilate back", ACTION_NORMAL + 1), NULL)));
+    // twow-repo#568 D15: Turtle 1.18 has no Mutilate (0 spell_template rows). On: the builders map
+    // straight to backstab (alternative sinister strike) behind the target and sinister strike in front.
+    if (sPlayerbotAIConfig.dietRogueNoMutilate)
+    {
+        triggers.push_back(new TriggerNode(
+            "behind target",
+            NextAction::array(0, new NextAction("backstab", ACTION_NORMAL + 1), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "not behind target",
-        NextAction::array(0, new NextAction("mutilate front", ACTION_NORMAL), NULL)));
+        triggers.push_back(new TriggerNode(
+            "not behind target",
+            NextAction::array(0, new NextAction("sinister strike", ACTION_NORMAL), NULL)));
+    }
+    else
+    {
+        triggers.push_back(new TriggerNode(
+            "behind target",
+            NextAction::array(0, new NextAction("mutilate back", ACTION_NORMAL + 1), NULL)));
+
+        triggers.push_back(new TriggerNode(
+            "not behind target",
+            NextAction::array(0, new NextAction("mutilate front", ACTION_NORMAL), NULL)));
+    }
 }
 
 void AssassinationRogueStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)

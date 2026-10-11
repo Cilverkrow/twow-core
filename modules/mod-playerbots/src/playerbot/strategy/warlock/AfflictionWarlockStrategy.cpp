@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "WarlockTriggers.h"
 #include "WarlockMultipliers.h"
 #include "AfflictionWarlockStrategy.h"
@@ -18,7 +19,7 @@ void AfflictionWarlockStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
     WarlockStrategy::InitCombatTriggers(triggers);
 
     triggers.push_back(new TriggerNode(
-        "low mana",
+        sPlayerbotAIConfig.dietWarlockTalentKnown ? "dark pact" : "low mana",  // twow-repo#568 (D24)
         NextAction::array(0, new NextAction("dark pact", ACTION_HIGH + 2), NULL)));
 
     triggers.push_back(new TriggerNode(

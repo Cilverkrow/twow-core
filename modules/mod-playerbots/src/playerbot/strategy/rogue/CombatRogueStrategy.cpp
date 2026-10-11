@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "CombatRogueStrategy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 
 using namespace ai;
 
@@ -221,19 +222,35 @@ void CombatRogueBuffRaidStrategy::InitNonCombatTriggers(std::list<TriggerNode*>&
 void CombatRogueBoostStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     RogueBoostStrategy::InitCombatTriggers(triggers);
+
+    // twow-repo#568 D03: BoostTrigger is only active while the combat engine runs, so the two
+    // cooldowns belong here. Off: they stay in InitNonCombatTriggers (never cast from there).
+    if (sPlayerbotAIConfig.dietRogueCombatBoostInCombat)
+    {
+        triggers.push_back(new TriggerNode(
+            "adrenaline rush",
+            NextAction::array(0, new NextAction("adrenaline rush", ACTION_HIGH + 5), NULL)));
+
+        triggers.push_back(new TriggerNode(
+            "blade flurry",
+            NextAction::array(0, new NextAction("blade flurry", ACTION_HIGH + 4), NULL)));
+    }
 }
 
 void CombatRogueBoostStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     RogueBoostStrategy::InitNonCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "adrenaline rush",
-        NextAction::array(0, new NextAction("adrenaline rush", ACTION_HIGH + 5), NULL)));
+    if (!sPlayerbotAIConfig.dietRogueCombatBoostInCombat)
+    {
+        triggers.push_back(new TriggerNode(
+            "adrenaline rush",
+            NextAction::array(0, new NextAction("adrenaline rush", ACTION_HIGH + 5), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "blade flurry",
-        NextAction::array(0, new NextAction("blade flurry", ACTION_HIGH + 4), NULL)));
+        triggers.push_back(new TriggerNode(
+            "blade flurry",
+            NextAction::array(0, new NextAction("blade flurry", ACTION_HIGH + 4), NULL)));
+    }
 }
 
 void CombatRogueBoostPveStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)

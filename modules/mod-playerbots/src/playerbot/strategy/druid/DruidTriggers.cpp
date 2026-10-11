@@ -1,9 +1,23 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/ServerFacade.h"
 #include "DruidTriggers.h"
 #include "DruidActions.h"
 
 using namespace ai;
+
+bool NaturesGraspReadyTrigger::IsActive()
+{
+    uint32 const graspId = AI_VALUE2(uint32, "spell id", "nature's grasp");
+    if (!graspId)
+        return false;
+
+    SpellEntry const* const graspInfo = sServerFacade.LookupSpellInfo(graspId);
+    if (bot->HasSpellCooldown(graspId) || (graspInfo && bot->HasSpellCategoryCooldown(graspInfo->Category)))
+        return false;
+
+    return EnemyInRangeTrigger::IsActive();
+}
 
 bool EntanglingRootsKiteTrigger::IsActive() 
 { 

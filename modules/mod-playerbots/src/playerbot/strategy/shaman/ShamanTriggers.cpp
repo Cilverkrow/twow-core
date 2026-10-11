@@ -1,5 +1,7 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/ServerFacade.h"
 #include "ShamanTriggers.h"
 #include "ShamanActions.h"
 
@@ -19,5 +21,19 @@ bool ShamanWeaponTrigger::IsActive()
 
 bool ShockTrigger::IsActive()
 {
+    // twow-repo#568 D26 (AiPlayerbot.Diet.ShockCooldownGate): Earth, Flame and Frost Shock share one spell category
+    // (6 s). While it runs the pushed Earth Shock and its Flame Shock alternative can only end IMPOSSIBLE, so the
+    // trigger stays quiet. Without a known Earth Shock (id 0) the old check runs unchanged.
+    if (sPlayerbotAIConfig.dietShockCooldownGate)
+    {
+        uint32 const shockId = AI_VALUE2(uint32, "spell id", "earth shock");
+        if (shockId)
+        {
+            SpellEntry const* shockInfo = sServerFacade.LookupSpellInfo(shockId);
+            if (shockInfo && (bot->HasSpellCooldown(shockId) || bot->HasSpellCategoryCooldown(shockInfo->Category)))
+                return false;
+        }
+    }
+
     return SpellTrigger::IsActive() && !ai->HasAnyAuraOf(GetTarget(), "frost shock", "earth shock", "flame shock", NULL) && !HasMaxDebuffs();
 }

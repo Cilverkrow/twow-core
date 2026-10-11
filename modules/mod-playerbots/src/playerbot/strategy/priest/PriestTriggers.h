@@ -17,16 +17,64 @@ namespace ai
     CURE_PARTY_TRIGGER(PartyMemberCureDiseaseTrigger, "cure disease", DISPEL_DISEASE);
     BUFF_TRIGGER_A(InnerFireTrigger, "inner fire");
     BUFF_TRIGGER_A(ShadowformTrigger, "shadowform");
-    BUFF_TRIGGER(InnerFocusTrigger, "inner focus");
+    BUFF_TRIGGER_A(InnerFocusTrigger, "inner focus");  // twow-repo#568 (D22): IsActive in PriestTriggers.cpp
     CC_TRIGGER(ShackleUndeadTrigger, "shackle undead");
     INTERRUPT_TRIGGER(SilenceTrigger, "silence");
     INTERRUPT_HEALER_TRIGGER(SilenceEnemyHealerTrigger, "silence");
 
     // racials
-    DEBUFF_TRIGGER(DevouringPlagueTrigger, "devouring plague");
-    BUFF_TRIGGER(TouchOfWeaknessTrigger, "touch of weakness");
-    DEBUFF_TRIGGER(HexOfWeaknessTrigger, "hex of weakness");
-    BUFF_TRIGGER(ShadowguardTrigger, "shadowguard");
+    // twow-repo#568 (D20, AiPlayerbot.Diet.PriestRacials): with the switch the four race triggers stay quiet
+    // while the bot knows no rank of the spell (right race below the learn level, or a node registered by a
+    // custom strategy). The pushed action would end IMPOSSIBLE (spell id 0) and has no alternative.
+    // Switch off: exactly the old Buff/DebuffTrigger::IsActive.
+    class DevouringPlagueTrigger : public DebuffTrigger
+    {
+    public:
+        DevouringPlagueTrigger(PlayerbotAI* ai) : DebuffTrigger(ai, "devouring plague") {}
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietPriestRacials && !AI_VALUE2(uint32, "spell id", spell))
+                return false;
+            return DebuffTrigger::IsActive();
+        }
+    };
+
+    class TouchOfWeaknessTrigger : public BuffTrigger
+    {
+    public:
+        TouchOfWeaknessTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "touch of weakness") {}
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietPriestRacials && !AI_VALUE2(uint32, "spell id", spell))
+                return false;
+            return BuffTrigger::IsActive();
+        }
+    };
+
+    class HexOfWeaknessTrigger : public DebuffTrigger
+    {
+    public:
+        HexOfWeaknessTrigger(PlayerbotAI* ai) : DebuffTrigger(ai, "hex of weakness") {}
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietPriestRacials && !AI_VALUE2(uint32, "spell id", spell))
+                return false;
+            return DebuffTrigger::IsActive();
+        }
+    };
+
+    class ShadowguardTrigger : public BuffTrigger
+    {
+    public:
+        ShadowguardTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "shadowguard") {}
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietPriestRacials && !AI_VALUE2(uint32, "spell id", spell))
+                return false;
+            return BuffTrigger::IsActive();
+        }
+    };
+
     DEFLECT_TRIGGER(FeedbackTrigger, "feedback");
     SNARE_TRIGGER(ChastiseTrigger, "chastise");
     DEBUFF_TRIGGER(StarshardsTrigger, "starshards");

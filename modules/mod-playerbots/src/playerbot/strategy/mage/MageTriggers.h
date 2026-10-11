@@ -100,6 +100,18 @@ namespace ai
     {
     public:
         CombustionTrigger(PlayerbotAI* ai) : BoostTrigger(ai, "combustion") {}
+        // twow-repo#568 (D34, AiPlayerbot.Diet.MageTalentBoostKnown): talent with a cooldown; CanCastSpell fails
+        // while it is unknown or not ready and the node has no alternative. Switch off: the old check only.
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietMageTalentBoostKnown)
+            {
+                const uint32 spellId = AI_VALUE2(uint32, "spell id", spell);
+                if (!spellId || !bot->IsSpellReady(spellId))
+                    return false;
+            }
+            return BoostTrigger::IsActive();
+        }
     };
 
     class IcyVeinsTrigger : public BoostTrigger
@@ -144,12 +156,36 @@ namespace ai
     {
     public:
         ArcanePowerTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "arcane power") {}
+        // twow-repo#568 (D34, AiPlayerbot.Diet.MageTalentBoostKnown): talent with a cooldown; CanCastSpell fails
+        // while it is unknown or not ready and the node has no alternative. Switch off: the old check only.
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietMageTalentBoostKnown)
+            {
+                const uint32 spellId = AI_VALUE2(uint32, "spell id", spell);
+                if (!spellId || !bot->IsSpellReady(spellId))
+                    return false;
+            }
+            return BuffTrigger::IsActive();
+        }
     };
 
     class PresenceOfMindTrigger : public BuffTrigger
     {
     public:
         PresenceOfMindTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "presence of mind") {}
+        // twow-repo#568 (D34, AiPlayerbot.Diet.MageTalentBoostKnown): talent with a cooldown; CanCastSpell fails
+        // while it is unknown or not ready and the node has no alternative. Switch off: the old check only.
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietMageTalentBoostKnown)
+            {
+                const uint32 spellId = AI_VALUE2(uint32, "spell id", spell);
+                if (!spellId || !bot->IsSpellReady(spellId))
+                    return false;
+            }
+            return BuffTrigger::IsActive();
+        }
     };
 
     HAS_AURA_TRIGGER(PresenceOfMindAuraTrigger, "presence of mind");
@@ -165,6 +201,30 @@ namespace ai
     {
     public:
         IceBarrierTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "ice barrier", 5) {}
+        // twow-repo#568 (D34, AiPlayerbot.Diet.MageTalentBoostKnown): talent with a cooldown; CanCastSpell fails
+        // while it is unknown or not ready and the node has no alternative. Switch off: the old check only.
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietMageTalentBoostKnown)
+            {
+                const uint32 spellId = AI_VALUE2(uint32, "spell id", spell);
+                if (!spellId || !bot->IsSpellReady(spellId))
+                    return false;
+            }
+            return BuffTrigger::IsActive();
+        }
+    };
+
+    // twow-repo#568 (D35, AiPlayerbot.Diet.MageBlastWave): "enemy ten yards" for blast wave (fire talent),
+    // registered as "blast wave" and used by the fire mage cc strategy only with the switch.
+    class BlastWaveTrigger : public EnemyInRangeTrigger
+    {
+    public:
+        BlastWaveTrigger(PlayerbotAI* ai) : EnemyInRangeTrigger(ai, "blast wave", 10.0f) {}
+        virtual bool IsActive() override
+        {
+            return AI_VALUE2(uint32, "spell id", "blast wave") && EnemyInRangeTrigger::IsActive();
+        }
     };
 
     class FireSpellsLocked : public Trigger

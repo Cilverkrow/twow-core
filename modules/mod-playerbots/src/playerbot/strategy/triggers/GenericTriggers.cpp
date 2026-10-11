@@ -230,6 +230,12 @@ bool NoAttackersTrigger::IsActive()
     return !AI_VALUE(Unit*, "current target") && AI_VALUE(uint8, "my attacker count") > 0;
 }
 
+// twow-repo#568 (D69): "duel target" (the only thing "attack duel opponent" isUseful asks) is null without m_duel.
+bool DuelNoAttackersTrigger::IsActive()
+{
+    return bot->m_duel && NoAttackersTrigger::IsActive();
+}
+
 bool InvalidTargetTrigger::IsActive()
 {
     return AI_VALUE2(bool, "invalid target", "current target");

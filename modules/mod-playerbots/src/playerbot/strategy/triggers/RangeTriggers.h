@@ -426,6 +426,12 @@ namespace ai
 
         bool IsActive() override
         {
+            // twow-repo#568 (D67, AiPlayerbot.Diet.WanderSoloGuard): without a follow target StopFollowTrigger is
+            // always true, and the node's only action "stop follow" is useful only on a FOLLOW motion (first check
+            // of StopFollowAction::isUseful), so the trigger fires only then. With a follow target: as before.
+            if (sPlayerbotAIConfig.dietWanderSoloGuard && !AI_VALUE(Unit*, "follow target"))
+                return bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;
+
             if (StopFollowTrigger::IsActive())
                 return true;
 
