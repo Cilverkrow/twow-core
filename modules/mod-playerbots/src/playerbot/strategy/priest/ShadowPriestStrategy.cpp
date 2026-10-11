@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "PriestMultipliers.h"
 #include "ShadowPriestStrategy.h"
 
@@ -69,9 +70,17 @@ void ShadowPriestStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     // healing and adds party mana feedback (% of Shadow damage as mana).
     // The "mana battery" half of the Shadow Priest's role — without this,
     // VE alone heals but doesn't restore mana.
-    triggers.push_back(new TriggerNode(
-        "vampiric touch",
-        NextAction::array(0, new NextAction("vampiric touch", ACTION_NORMAL + 3), NULL)));
+    // twow-repo#568 (D32, AiPlayerbot.Diet.ShadowPriestDeadNodes): in the Turtle 1.18 data every "Vampiric
+    // Touch" row (45557/45558 talent ranks, 45966 proc) is passive (attributes 0x40); it works through
+    // Vampiric Embrace. "spell id" skips passives and no target ever carries a "vampiric touch" aura, so the
+    // node fired on every combat tick and could never cast. With the switch it is not registered.
+    const bool dropDeadNodes = sPlayerbotAIConfig.dietShadowPriestDeadNodes;
+    if (!dropDeadNodes)
+    {
+        triggers.push_back(new TriggerNode(
+            "vampiric touch",
+            NextAction::array(0, new NextAction("vampiric touch", ACTION_NORMAL + 3), NULL)));
+    }
 
     // Silence (Shadow 5/1, 1/1): caster-mob interrupt. 5-sec silence,
     // 45-sec CD. Pairs with priority-target tracking so we silence
@@ -83,9 +92,14 @@ void ShadowPriestStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     // Shadowfiend mana refill on long fights. Baseline class ability in
     // Turtle 1.18 (verify in-game). 5-min CD; pet attacks target and
     // returns mana to caster on each hit. ~50% of mana pool refill.
-    triggers.push_back(new TriggerNode(
-        "shadowfiend",
-        NextAction::array(0, new NextAction("shadowfiend", ACTION_HIGH + 5), NULL)));
+    // twow-repo#568 (D32): Turtle 1.18 has no "Shadowfiend" spell (no spell_template row, no 34433), so the
+    // node at ACTION_HIGH + 5 could only end IMPOSSIBLE. With the switch it is not registered.
+    if (!dropDeadNodes)
+    {
+        triggers.push_back(new TriggerNode(
+            "shadowfiend",
+            NextAction::array(0, new NextAction("shadowfiend", ACTION_HIGH + 5), NULL)));
+    }
 
     // Inner Focus → Mind Blast: pre-buff for guaranteed Mind Blast crit
     // when mana is low. The crit triggers Spirit Tap (+100% Spirit + 50%

@@ -67,7 +67,8 @@ file(READ "${CORE_SOURCE_DIR}/src/game/SharedDefines.h" shared_defines)
 # Every switch defaults to 0.
 foreach(pair
     "dietPriestRacials|PriestRacials"
-    "dietPriestSelfBuffKnown|PriestSelfBuffKnown")
+    "dietPriestSelfBuffKnown|PriestSelfBuffKnown"
+    "dietShadowPriestDeadNodes|ShadowPriestDeadNodes")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -139,5 +140,17 @@ forbid_text("${priest_triggers_h}" "BUFF_TRIGGER(InnerFocusTrigger" "D22 old inn
 require_text("${priest_zero}" "\"inner fire\",\n        NextAction::array(0, new NextAction(\"inner fire\", ACTION_NORMAL + 1), NULL)));" "D22 inner fire node kept")
 require_text("${priest_zero}" "\"inner focus\",\n        NextAction::array(0, new NextAction(\"inner focus\", ACTION_HIGH), NULL)));" "D22 boost inner focus node kept")
 require_text("${shadow_zero}" "\"shadowform\",\n        NextAction::array(0, new NextAction(\"shadowform\", ACTION_MOVE), NULL)));" "D22 shadowform node kept")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D32 (AiPlayerbot.Diet.ShadowPriestDeadNodes): passive vampiric touch and the missing shadowfiend are not registered.
+region("${shadow_strategy}" "void ShadowPriestStrategy::InitCombatTriggers(" "\n}\n" shadow_combat)
+require_text("${shadow_combat}" "const bool dropDeadNodes = sPlayerbotAIConfig.dietShadowPriestDeadNodes;" "D32 switch read once")
+require_text("${shadow_combat}" "    if (!dropDeadNodes)\n    {\n        triggers.push_back(new TriggerNode(\n            \"vampiric touch\",\n            NextAction::array(0, new NextAction(\"vampiric touch\", ACTION_NORMAL + 3), NULL)));\n    }" "D32 vampiric touch kept with the switch off")
+require_text("${shadow_combat}" "    if (!dropDeadNodes)\n    {\n        triggers.push_back(new TriggerNode(\n            \"shadowfiend\",\n            NextAction::array(0, new NextAction(\"shadowfiend\", ACTION_HIGH + 5), NULL)));\n    }" "D32 shadowfiend kept with the switch off")
+forbid_text("${shadow_combat}" "\n    triggers.push_back(new TriggerNode(\n        \"vampiric touch\"," "D32 ungated vampiric touch")
+forbid_text("${shadow_combat}" "\n    triggers.push_back(new TriggerNode(\n        \"shadowfiend\"," "D32 ungated shadowfiend")
+# Vampiric embrace (the castable half) stays ungated.
+require_text("${shadow_combat}" "\n    triggers.push_back(new TriggerNode(\n        \"vampiric embrace\"," "D32 vampiric embrace stays")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")

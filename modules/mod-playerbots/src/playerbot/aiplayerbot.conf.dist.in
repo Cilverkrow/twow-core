@@ -2027,6 +2027,10 @@ AiPlayerbot.Diet.PriestRacials = 0
 # (talents) stay quiet while the bot knows no rank of the spell, "inner focus" also while it is on cooldown. Same casts:
 # these actions ended IMPOSSIBLE in exactly those states (no alternatives). 0 = old triggers (default).
 AiPlayerbot.Diet.PriestSelfBuffKnown = 0
+# twow-repo#568 (D32, strategy diet): 1 = the shadow priest strategy no longer registers "vampiric touch" (all Turtle
+# 1.18 Vampiric Touch rows are passive, the talent works through Vampiric Embrace) and "shadowfiend" (no such spell in
+# Turtle 1.18). Both nodes could never cast. Read at engine (re)build. 0 = both nodes as before (default).
+AiPlayerbot.Diet.ShadowPriestDeadNodes = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
