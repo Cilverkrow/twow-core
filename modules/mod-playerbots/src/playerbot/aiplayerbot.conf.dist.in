@@ -2041,6 +2041,10 @@ AiPlayerbot.Diet.WarlockCcKnown = 0
 # pvp "very often") and dark pact ("low mana") move to own triggers with the same condition plus the known spell.
 # Same casts: without the talent these nodes ended IMPOSSIBLE. Trigger choice read at engine (re)build. 0 = as before.
 AiPlayerbot.Diet.WarlockTalentKnown = 0
+# twow-repo#568 (D25, strategy diet): 1 = the warlock boost strategy no longer registers "amplify curse": Turtle 1.18 only
+# has "[Deprecated] Amplify Curse", so the node ended IMPOSSIBLE on every combat tick. Same casts. Read at engine
+# (re)build. 0 = node as before (default).
+AiPlayerbot.Diet.WarlockAmplifyCurse = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

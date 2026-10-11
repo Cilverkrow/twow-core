@@ -285,9 +285,15 @@ void WarlockBoostStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     BoostStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "amplify curse",
-        NextAction::array(0, new NextAction("amplify curse", ACTION_HIGH), NULL)));
+    // twow-repo#568 (D25, AiPlayerbot.Diet.WarlockAmplifyCurse): Turtle 1.18 only has "[Deprecated] Amplify
+    // Curse" (18288), so "spell id" of "amplify curse" is always 0 and the node at ACTION_HIGH ended IMPOSSIBLE on
+    // every combat tick. With the switch it is not registered.
+    if (!sPlayerbotAIConfig.dietWarlockAmplifyCurse)
+    {
+        triggers.push_back(new TriggerNode(
+            "amplify curse",
+            NextAction::array(0, new NextAction("amplify curse", ACTION_HIGH), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "inferno",

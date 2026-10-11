@@ -71,7 +71,8 @@ foreach(pair
     "dietPriestSelfBuffKnown|PriestSelfBuffKnown"
     "dietShadowPriestDeadNodes|ShadowPriestDeadNodes"
     "dietWarlockCcKnown|WarlockCcKnown"
-    "dietWarlockTalentKnown|WarlockTalentKnown")
+    "dietWarlockTalentKnown|WarlockTalentKnown"
+    "dietWarlockAmplifyCurse|WarlockAmplifyCurse")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -205,5 +206,12 @@ require_text("${warlock_zero}" "        sPlayerbotAIConfig.dietWarlockTalentKnow
 require_text("${affliction_zero}" "        sPlayerbotAIConfig.dietWarlockTalentKnown ? \"dark pact\" : \"low mana\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"dark pact\", ACTION_HIGH + 2), NULL)));" "D24 dark pact node: old trigger with the switch off")
 forbid_text("${warlock_zero}" "\"target critical health\",\n        NextAction::array(0, new NextAction(\"shadowburn\"" "D24 ungated shadowburn")
 forbid_text("${affliction_zero}" "\"low mana\",\n        NextAction::array(0, new NextAction(\"dark pact\"" "D24 ungated dark pact")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D25 (AiPlayerbot.Diet.WarlockAmplifyCurse): the deprecated amplify curse node is not registered.
+region("${warlock_zero}" "void WarlockBoostStrategy::InitCombatTriggers(" "\n}\n" warlock_boost)
+require_gated_node("${warlock_boost}" "!sPlayerbotAIConfig.dietWarlockAmplifyCurse" "amplify curse" "amplify curse" "ACTION_HIGH" "D25 amplify curse")
+require_text("${warlock_boost}" "\n    triggers.push_back(new TriggerNode(\n        \"inferno\"," "D25 inferno stays")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")

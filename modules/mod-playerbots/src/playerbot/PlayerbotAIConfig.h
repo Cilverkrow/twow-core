@@ -581,6 +581,7 @@ public:
     bool dietShadowPriestDeadNodes = false;  // twow-repo#568 (D32): shadow priest strategy does not register "vampiric touch" (passive talent in Turtle) and "shadowfiend" (no such spell in Turtle 1.18) (0 = off)
     bool dietWarlockCcKnown = false;  // twow-repo#568 (D23): warlock cc pushes death coil (snare) and howl of terror only while the spell is known (0 = off)
     bool dietWarlockTalentKnown = false;  // twow-repo#568 (D24): warlock talent spells siphon life (also on attacker), conflagrate, shadowburn (pve + pvp) and dark pact fire only while the spell is known (0 = off)
+    bool dietWarlockAmplifyCurse = false;  // twow-repo#568 (D25): warlock boost does not register "amplify curse" (only "[Deprecated] Amplify Curse" exists in Turtle 1.18) (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
