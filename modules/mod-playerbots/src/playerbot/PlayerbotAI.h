@@ -18,6 +18,7 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
+#include "playerbot/BotSavePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
 #include <functional>
@@ -408,6 +409,8 @@ public:
     void QueueBotOutgoingPacket(const WorldPacket& packet);
     bool WantsBotOutgoingPacket(uint16 opcode) const;
     void HandleQueuedBotPackets();
+    // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): own save schedule on the bot's map thread.
+    void UpdateBotSave();
     // twow-repo#563 (X3c, AiPlayerbot.X3c.InboxWrites): a value write another bot wants on this bot's context;
     // applied by this bot in its own UpdateAI (same drain as the packets).
     void QueueContextWrite(std::function<void(ai::AiObjectContext*)> write);
@@ -970,6 +973,8 @@ protected:
     // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
     std::atomic<bool> parked{ false };
     uint32 lastParkedUpdateMs = 0;
+    uint32 lastBotSave = 0;          // twow-repo#541 A47: time of this bot's last own save (seconds)
+    bool botSaveScheduled = false;   // A47: first save offset applied
     ai::stall_guard::TopActions updateActions;
     uint32 firstUpdateTime = 0;
     uint32 lastReviveTime = 0;
