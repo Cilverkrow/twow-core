@@ -939,6 +939,18 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): own bot saves of the last minute and their cost.
+    if (sPlayerbotAIConfig.botSaveIntervalSeconds)
+    {
+        auto take = [](ai::bot_save::Count count) { return (unsigned long long)ai::bot_save::Counter(count).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const saves = take(ai::bot_save::Saves);
+        unsigned long long const deferred = take(ai::bot_save::Deferred);
+        unsigned long long const micros = take(ai::bot_save::SaveMicros);
+        sLog.outBasic("[BotSave] interval_s=%u max_per_tick=%u saves=%llu deferred=%llu avg_us=%llu total_ms=%llu",
+            sPlayerbotAIConfig.botSaveIntervalSeconds, sPlayerbotAIConfig.botSaveMaxPerTick, saves, deferred,
+            saves ? micros / saves : 0ull, micros / 1000);
+    }
 }
 
 // twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute
