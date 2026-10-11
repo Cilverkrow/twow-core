@@ -2022,6 +2022,9 @@ AiPlayerbot.PossibleTargetsSharedSearch = 0
 # the target is outside melee range (node uses the registered trigger "enemy out of melee"). 0 = the node keeps the
 # unregistered name "enemy out of melee range" and never fires; these druids only melee until Moonfire (default).
 AiPlayerbot.Diet.LevelingDruidWrath = 0
+# twow-repo#568 D26 (strategy diet, same actions): 1 = the shaman "shock" trigger stays quiet while the shared shock
+# cooldown (spell category of Earth Shock, 6 s) runs; Earth/Flame Shock could only end IMPOSSIBLE then. 0 = old trigger.
+AiPlayerbot.Diet.ShockCooldownGate = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

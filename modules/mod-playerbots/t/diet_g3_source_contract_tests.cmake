@@ -70,4 +70,17 @@ region("${leveling_druid}" "void LevelingDruidStrategy::InitCombatTriggers(" "\n
 require_text("${leveling_combat}" "sPlayerbotAIConfig.dietLevelingDruidWrath ? \"enemy out of melee\" : \"enemy out of melee range\"," "D04 gate with the old name as OFF path")
 require_order("${leveling_combat}" "sPlayerbotAIConfig.dietLevelingDruidWrath" "new NextAction(\"wrath\", ACTION_NORMAL)" "D04 gate on the Wrath node")
 
+# ---------------------------------------------------------------------------------------------------------
+# D26 (AiPlayerbot.Diet.ShockCooldownGate): shaman "shock" trigger quiet during the shared shock category cooldown.
+require_diet_switch(dietShockCooldownGate ShockCooldownGate)
+read_source("strategy/shaman/ShamanTriggers.cpp" shaman_triggers_cpp)
+region("${shaman_triggers_cpp}" "bool ShockTrigger::IsActive()" "\n}" shock_trigger)
+require_order("${shock_trigger}" "if (sPlayerbotAIConfig.dietShockCooldownGate)" "return SpellTrigger::IsActive() && !ai->HasAnyAuraOf(GetTarget(), \"frost shock\", \"earth shock\", \"flame shock\", NULL) && !HasMaxDebuffs();" "D26 gate before the unchanged old check")
+require_text("${shock_trigger}" "if (shockId)" "D26: unknown Earth Shock keeps the old path")
+require_text("${shock_trigger}" "bot->HasSpellCooldown(shockId) || bot->HasSpellCategoryCooldown(shockInfo->Category)" "D26: own and category cooldown")
+region("${shock_trigger}" "if (sPlayerbotAIConfig.dietShockCooldownGate)" "return SpellTrigger::IsActive()" shock_gate)
+forbid_text("${shock_gate}" "return true" "D26: the gate may only suppress, never force the trigger")
+region("${shock_gate}" "if (sPlayerbotAIConfig.dietShockCooldownGate)" "if (shockId)" shock_gate_head)
+forbid_text("${shock_gate_head}" "return" "D26: a return before the known-spell check (id 0 must keep the old path)")
+
 message(STATUS "DIET_G3_SOURCE_CONTRACT=PASS")
