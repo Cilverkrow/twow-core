@@ -445,6 +445,7 @@ bool PlayerbotAIConfig::Initialize()
     dietMageArmorKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageArmorKnown", false);
     dietMageTalentBoostKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageTalentBoostKnown", false);
     dietMageBlastWave = config.GetBoolDefault("AiPlayerbot.Diet.MageBlastWave", false);
+    dietMageInvisibility = config.GetBoolDefault("AiPlayerbot.Diet.MageInvisibility", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

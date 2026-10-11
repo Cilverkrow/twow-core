@@ -75,7 +75,8 @@ foreach(pair
     "dietWarlockAmplifyCurse|WarlockAmplifyCurse"
     "dietMageArmorKnown|MageArmorKnown"
     "dietMageTalentBoostKnown|MageTalentBoostKnown"
-    "dietMageBlastWave|MageBlastWave")
+    "dietMageBlastWave|MageBlastWave"
+    "dietMageInvisibility|MageInvisibility")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -271,5 +272,14 @@ require_text("${blast_wave_node}" "/*C*/ NextAction::array(0, new NextAction(\"f
 region("${mage_strategy}" "void MageCcStrategy::InitCombatTriggers(" "\n}\n" mage_cc)
 require_text("${mage_cc}" "\"enemy ten yards\",\n        NextAction::array(0, new NextAction(\"frost nova\", ACTION_EMERGENCY), NULL)));" "D35 cc frost nova at ACTION_EMERGENCY")
 require_text("${mage_strategy}" "ACTION_NODE_A(frost_nova, \"frost nova\", \"cone of cold\");" "D35 frost nova -> cone of cold kept")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D53 (AiPlayerbot.Diet.MageInvisibility): the unlearnable raid invisibility nodes are not registered.
+region("${mage_strategy}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" mage_zero)
+region("${mage_zero}" "void MageRaidStrategy::InitCombatTriggers(" "\n}\n" mage_raid)
+require_text("${mage_raid}" "    if (!sPlayerbotAIConfig.dietMageInvisibility)\n    {\n        triggers.push_back(new TriggerNode(\n            \"high threat\",\n            NextAction::array(0, new NextAction(\"invisibility\", ACTION_INTERRUPT), NULL)));\n\n        triggers.push_back(new TriggerNode(\n            \"multiple attackers\",\n            NextAction::array(0, new NextAction(\"invisibility\", ACTION_INTERRUPT), NULL)));\n    }" "D53 both invisibility nodes kept with the switch off")
+forbid_text("${mage_raid}" "\n    triggers.push_back(new TriggerNode(\n        \"high threat\"," "D53 ungated invisibility")
+require_text("${mage_raid}" "\n    triggers.push_back(new TriggerNode(\n        \"has aggro\",\n        NextAction::array(0, new NextAction(\"shoot\", ACTION_HIGH + 9), NULL)));" "D53 has aggro -> shoot stays")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")

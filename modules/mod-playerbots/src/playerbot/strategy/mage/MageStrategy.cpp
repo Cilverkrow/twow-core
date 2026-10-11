@@ -200,13 +200,19 @@ void MageRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     ClassRaidStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "high threat",
-        NextAction::array(0, new NextAction("invisibility", ACTION_INTERRUPT), NULL)));
+    // twow-repo#568 (D53, AiPlayerbot.Diet.MageInvisibility): Turtle 1.18 mages cannot learn Invisibility or Lesser
+    // Invisibility (885/66 have placeholder level 99; their teach spells 886/515 are in no trainer table), so both
+    // nodes at ACTION_INTERRUPT could only end IMPOSSIBLE. With the switch they are not registered.
+    if (!sPlayerbotAIConfig.dietMageInvisibility)
+    {
+        triggers.push_back(new TriggerNode(
+            "high threat",
+            NextAction::array(0, new NextAction("invisibility", ACTION_INTERRUPT), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "multiple attackers",
-        NextAction::array(0, new NextAction("invisibility", ACTION_INTERRUPT), NULL)));
+        triggers.push_back(new TriggerNode(
+            "multiple attackers",
+            NextAction::array(0, new NextAction("invisibility", ACTION_INTERRUPT), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "has aggro",

@@ -2060,6 +2060,10 @@ AiPlayerbot.Diet.MageTalentBoostKnown = 0
 # Difference: a frost nova that a multiplier held back at 90 (waiting for attack, threat) is no longer cast via the
 # blast wave alternative at 40. 0 = as before (default).
 AiPlayerbot.Diet.MageBlastWave = 0
+# twow-repo#568 (D53, strategy diet): 1 = the mage raid strategy no longer registers "invisibility" (alternative "lesser
+# invisibility") on "high threat" and "multiple attackers": Turtle 1.18 mages cannot learn either spell, so both nodes
+# ended IMPOSSIBLE. Same casts. Read at engine (re)build. 0 = nodes as before (default).
+AiPlayerbot.Diet.MageInvisibility = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
