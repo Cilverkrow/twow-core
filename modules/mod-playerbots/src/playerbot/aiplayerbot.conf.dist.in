@@ -2018,6 +2018,10 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
+# twow-repo#568 D04 (BEHAVIOUR CHANGE, strategy diet): 1 = druids below level 10 ("leveling" kit) cast Wrath while
+# the target is outside melee range (node uses the registered trigger "enemy out of melee"). 0 = the node keeps the
+# unregistered name "enemy out of melee range" and never fires; these druids only melee until Moonfire (default).
+AiPlayerbot.Diet.LevelingDruidWrath = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
