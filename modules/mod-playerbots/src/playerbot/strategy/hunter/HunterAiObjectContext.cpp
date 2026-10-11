@@ -193,6 +193,7 @@ namespace ai
                 creators["black arrow"] = [](PlayerbotAI* ai) { return new BlackArrowTrigger(ai); };
                 creators["black arrow on snare target"] = [](PlayerbotAI* ai) { return new BlackArrowSnareTrigger(ai); };
                 creators["no stings"] = [](PlayerbotAI* ai) { return new HunterNoStingsActiveTrigger(ai); };
+                creators["no stings usable"] = [](PlayerbotAI* ai) { return new HunterNoStingsUsableTrigger(ai); };
                 creators["hunters pet dead"] = [](PlayerbotAI* ai) { return new HuntersPetDeadTrigger(ai); };
                 creators["hunters pet low health"] = [](PlayerbotAI* ai) { return new HuntersPetLowHealthTrigger(ai); };
                 creators["hunter's mark"] = [](PlayerbotAI* ai) { return new HuntersMarkTrigger(ai); };
@@ -237,6 +238,11 @@ namespace ai
                 creators["silencing shot on enemy healer"] = [](PlayerbotAI* ai) { return new SilencingShotInterruptHealerTrigger(ai); };
                 creators["no pet"] = [](PlayerbotAI* ai) { return new HunterNoPet(ai); };
                 creators["stealthed nearby"] = [](PlayerbotAI* ai) { return new StealthedNearbyTrigger(ai); };
+                // twow-repo#568 (D19, AiPlayerbot.Diet.HunterTalentShotsKnown): used by the strategies only with the switch on.
+                creators["deterrence"] = [](PlayerbotAI* ai) { return new TalentSpellTargetOfAttackerCloseTrigger(ai, "deterrence", "deterrence"); };
+                creators["scatter shot on closest attacker"] = [](PlayerbotAI* ai) { return new TalentSpellTargetOfAttackerCloseTrigger(ai, "scatter shot on closest attacker", "scatter shot"); };
+                // twow-repo#568 (D47, AiPlayerbot.Diet.HunterTranqKnown): used by the reaction strategy only with the switch on.
+                creators["tranquilizing shot"] = [](PlayerbotAI* ai) { return new TranquilizingShotTrigger(ai); };
             }
         };
 
@@ -290,7 +296,14 @@ namespace ai
                 creators["scare beast on cc"] = [](PlayerbotAI* ai) { return new CastScareBeastCcAction(ai); };
                 creators["remove feign death"] = [](PlayerbotAI* ai) { return new RemoveFeignDeathAction(ai); };
                 creators["scatter shot"] = [](PlayerbotAI* ai) { return new CastScatterShotAction(ai); };
-                creators["scatter shot on closest attacker targeting me"] = [](PlayerbotAI* ai) { return new CastScatterShotAction(ai); };
+                // twow-repo#568 (D19, AiPlayerbot.Diet.HunterTalentShotsKnown): on, the scatter shot goes to the closest
+                // attacker targeting the bot (the unit the trigger saw), not to the current target. Off: as before.
+                creators["scatter shot on closest attacker targeting me"] = [](PlayerbotAI* ai) -> Action*
+                {
+                    if (sPlayerbotAIConfig.dietHunterTalentShotsKnown)
+                        return new CastScatterShotOnClosestAttackerTargetingMeAction(ai);
+                    return new CastScatterShotAction(ai);
+                };
                 creators["intimidation"] = [](PlayerbotAI* ai) { return new IntimidationAction(ai); };
                 creators["deterrence"] = [](PlayerbotAI* ai) { return new DeterrenceAction(ai); };
                 creators["counterattack"] = [](PlayerbotAI* ai) { return new CastCounterattackAction(ai); };

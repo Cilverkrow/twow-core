@@ -3,6 +3,7 @@
 #include "LootTriggers.h"
 #include "playerbot/LootObjectStack.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/strategy/values/LootValues.h"
 
 #include "playerbot/ServerFacade.h"
 using namespace ai;
@@ -60,4 +61,10 @@ bool FarFromCurrentLootTrigger::IsActive()
 bool CanLootTrigger::IsActive()
 {
     return AI_VALUE(bool, "can loot");
+}
+
+bool LootRollPendingTrigger::IsActive()
+{
+    // twow-repo#568 (D48): the same short-circuit order as AutoLootRollAction::isPossible; bag space stays there.
+    return bot->GetGroup() && !AI_VALUE(LootRollMap, "active rolls").empty();
 }

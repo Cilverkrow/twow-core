@@ -9,6 +9,17 @@ namespace ai
     BEGIN_TRIGGER(HunterNoStingsActiveTrigger, Trigger)
     END_TRIGGER()
 
+    // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): 'no stings' for the one viper/serpent spec node, active
+    // only when one of those stings can be used. Registered as "no stings usable"; the manual 'sting <x>' strategies
+    // keep 'no stings' and its old result.
+    class HunterNoStingsUsableTrigger : public HunterNoStingsActiveTrigger
+    {
+    public:
+        HunterNoStingsUsableTrigger(PlayerbotAI* ai) : HunterNoStingsActiveTrigger(ai) {}
+        virtual std::string getName() override { return "no stings usable"; }
+        virtual bool IsActive() override;
+    };
+
     class AspectOfTheHawkTrigger : public BuffTrigger
     {
     public:
@@ -175,6 +186,47 @@ namespace ai
     public:
         ViperStingOnAttackerTrigger(PlayerbotAI* ai) : DebuffOnAttackerTrigger(ai, "viper sting") {}
         virtual bool IsActive() override;
+    };
+
+    // twow-repo#568 (D19, AiPlayerbot.Diet.HunterTalentShotsKnown): "target of attacker close" for one talent spell
+    // (Deterrence 19263 Survival, Scatter Shot 19503 Marksmanship; no trainer rows). Registered as "deterrence" and
+    // "scatter shot on closest attacker" and used by the vanilla buff/cc strategies only with the switch on. It asks
+    // for the known and ready spell before the closest-attacker lookup; without it the node ended IMPOSSIBLE.
+    class TalentSpellTargetOfAttackerCloseTrigger : public TargetOfAttackerInRange
+    {
+    public:
+        TalentSpellTargetOfAttackerCloseTrigger(PlayerbotAI* ai, std::string name, std::string spellName)
+            : TargetOfAttackerInRange(ai, name, sPlayerbotAIConfig.tooCloseDistance), spellName(spellName) {}
+
+        virtual bool IsActive() override
+        {
+            const uint32 spellId = AI_VALUE2(uint32, "spell id", spellName);
+            if (!spellId || !bot->IsSpellReady(spellId))
+                return false;
+
+            return TargetOfAttackerInRange::IsActive();
+        }
+
+    private:
+        std::string spellName;
+    };
+
+    // twow-repo#568 (D47, AiPlayerbot.Diet.HunterTranqKnown): "dispel enrage" for the hunter reaction node, registered
+    // as "tranquilizing shot". Tranquilizing Shot 19801 (level 60, 20 s cooldown) comes only from a raid tome or
+    // AutoLearnDroppedSpells, so the trigger asks for the known, ready spell before it copies the target's auras.
+    class TranquilizingShotTrigger : public DispelEnrageOnTargetTrigger
+    {
+    public:
+        TranquilizingShotTrigger(PlayerbotAI* ai) : DispelEnrageOnTargetTrigger(ai, "tranquilizing shot") {}
+
+        virtual bool IsActive() override
+        {
+            const uint32 spellId = AI_VALUE2(uint32, "spell id", "tranquilizing shot");
+            if (!spellId || !bot->IsSpellReady(spellId))
+                return false;
+
+            return DispelEnrageOnTargetTrigger::IsActive();
+        }
     };
 
     BEGIN_TRIGGER(HunterPetNotHappy, Trigger)
