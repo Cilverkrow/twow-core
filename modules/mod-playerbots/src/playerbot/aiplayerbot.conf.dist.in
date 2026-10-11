@@ -2050,6 +2050,14 @@ AiPlayerbot.Diet.HunterRapidFireGate = 0
 # "wander far" / "wander medium" are unchanged: their free-move center is a position snapshot cached for up to 5 s,
 # so they can fire today for a moving solo bot. Read on every check. 0 = old check (default).
 AiPlayerbot.Diet.WanderSoloGuard = 0
+# twow-repo#568 (diet D68, neutral, "nach Abnahme an"): 1 = three rpg sub-action triggers answer from the first
+# condition of their own IsActive before the shared rpg pre-check (rpg target, distance, next rpg action):
+# "rpg ai chat" returns no event while AiPlayerbot.LLMEnabled = 0 (read on every check, a reload that enables LLM
+# acts at once), "rpg wander" while the bot has no real player master, and "rpg quest use" while the rpg target's
+# entry is not 190767 (its only true case); "rpg quest use" also tests that entry first in IsActive, which the
+# choose-rpg-target candidate loop calls directly. Same results: each short cut is the first false of IsActive, the
+# skipped values have no side effects, and a set event flag still runs the old Check. 0 = old order (default).
+AiPlayerbot.Diet.RpgDeadTriggers = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

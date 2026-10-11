@@ -63,6 +63,7 @@ namespace ai
     public:
         RpgWanderTrigger(PlayerbotAI* ai, std::string name = "rpg wander") : RpgTrigger(ai, name) {}
         virtual bool IsActive() override { return ai->HasRealPlayerMaster() && (!bot->GetGroup() || !getGuidP().GetPlayer() || !bot->GetGroup()->IsMember(getGuidP())); };
+        virtual Event Check() override;  // twow-repo#568 (D68, AiPlayerbot.Diet.RpgDeadTriggers)
     };
 
     class RpgTaxiTrigger : public RpgTrigger
@@ -195,6 +196,7 @@ namespace ai
     public:
         RpgQuestUseTrigger(PlayerbotAI* ai, std::string name = "rpg quest use") : RpgUseTrigger(ai, name) {}
         virtual bool IsActive() override;
+        virtual Event Check() override;  // twow-repo#568 (D68, AiPlayerbot.Diet.RpgDeadTriggers)
     };
 
     class RpgAIChatTrigger : public RpgTrigger
@@ -202,6 +204,7 @@ namespace ai
     public:
         RpgAIChatTrigger(PlayerbotAI* ai, std::string name = "rpg ai chat") : RpgTrigger(ai, name, checkInterval = 1) {}
         virtual bool IsActive() override;
+        virtual Event Check() override;  // twow-repo#568 (D68, AiPlayerbot.Diet.RpgDeadTriggers)
     };
 
     class RpgSpellTrigger : public RpgTrigger

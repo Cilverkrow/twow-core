@@ -2411,3 +2411,9 @@ add_test(NAME diet_d67_wander_solo_guard_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/diet_d67_wander_solo_guard_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D68: rpg ai chat / rpg wander / rpg quest use answer from their first condition behind AiPlayerbot.Diet.RpgDeadTriggers (default 0).
+add_test(NAME diet_d68_rpg_dead_triggers_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d68_rpg_dead_triggers_source_contract_tests.cmake")
