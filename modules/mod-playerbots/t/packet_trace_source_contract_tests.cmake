@@ -56,7 +56,7 @@ between("${scripts}" "bool CanPacketSend(WorldSession* session, WorldPacket cons
 require_order("${hook}" "if (sPlayerbotAIConfig.packetTrace && TracePacket(player, ai, packet))\n                return false;" "if (!ai)\n                return true;" "counting behind the switch, before the old path")
 require_order("${hook}" "if (!ai)\n                return true;" "ai->QueueBotOutgoingPacket(packet);\n            return false;" "old bot path at the end")
 between("${scripts}" "bool TracePacket(Player* player, PlayerbotAI* ai, WorldPacket const& packet)" "class PlayerbotWorldScript" trace)
-require_text("${trace}" "Receiver const receiver = !ai ? Real : (ai->WantsBotOutgoingPacket(opcode) ? BotRead : BotIgnored);" "read vs ignored by the inbox filter")
+require_text("${trace}" "pt::Receiver const receiver = !ai ? pt::Real : (ai->WantsBotOutgoingPacket(opcode) ? pt::BotRead : pt::BotIgnored);" "read vs ignored by the inbox filter")
 require_order("${trace}" "if (!ai || !local.SampleThisBotPacket())\n            return false;" "ai->QueueBotOutgoingPacket(packet);" "only the timed sample queues here")
 require_order("${trace}" "ai->QueueBotOutgoingPacket(packet);" "return true;" "sampled packet reported as queued")
 string(REGEX MATCHALL "ai->QueueBotOutgoingPacket\\(packet\\)" queues "${trace}")

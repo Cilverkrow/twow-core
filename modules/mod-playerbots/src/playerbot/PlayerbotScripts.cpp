@@ -57,19 +57,19 @@ namespace
     // caller must not queue it again.
     bool TracePacket(Player* player, PlayerbotAI* ai, WorldPacket const& packet)
     {
-        using namespace ai::packet_trace;
-        Local& local = ThreadLocal();
+        namespace pt = ai::packet_trace;
+        pt::Local& local = pt::ThreadLocal();
         uint16 const opcode = packet.GetOpcode();
-        Receiver const receiver = !ai ? Real : (ai->WantsBotOutgoingPacket(opcode) ? BotRead : BotIgnored);
-        local.Add(receiver, BucketOf(player->GetMapId()), PacketClassOf(opcode), packet.size(), Global());
+        pt::Receiver const receiver = !ai ? pt::Real : (ai->WantsBotOutgoingPacket(opcode) ? pt::BotRead : pt::BotIgnored);
+        local.Add(receiver, pt::BucketOf(player->GetMapId()), PacketClassOf(opcode), packet.size(), pt::Global());
         if (!ai || !local.SampleThisBotPacket())
             return false;
 
         auto const start = std::chrono::steady_clock::now();
         ai->QueueBotOutgoingPacket(packet);
-        Global().inboxSampledNs.fetch_add(uint64(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        pt::Global().inboxSampledNs.fetch_add(uint64(std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - start).count()), std::memory_order_relaxed);
-        Global().inboxSamples.fetch_add(1, std::memory_order_relaxed);
+        pt::Global().inboxSamples.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
 }
