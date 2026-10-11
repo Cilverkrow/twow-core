@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "DruidMultipliers.h"
 #include "DpsFeralDruidStrategy.h"
 
@@ -25,7 +26,23 @@ private:
 
     ACTION_NODE_A(feral_charge_cat, "feral charge - cat", "reach melee");
 
-    ACTION_NODE_A(shred, "shred", "mangle (cat)");
+    // twow-repo#568 D43 (AiPlayerbot.Diet.FeralNoMangle): vanilla has no Mangle (Cat); its own alternative is claw.
+    static bool DietNoMangle()
+    {
+#ifdef MANGOSBOT_ZERO
+        return sPlayerbotAIConfig.dietFeralNoMangle;
+#else
+        return false;
+#endif
+    }
+
+    static ActionNode* shred(PlayerbotAI* ai)
+    {
+        return new ActionNode("shred",
+            /*P*/ NULL,
+            /*A*/ NextAction::array(0, new NextAction(DietNoMangle() ? "claw" : "mangle (cat)"), NULL),
+            /*C*/ NULL);
+    }
 
     ACTION_NODE_A(mangle_cat, "mangle (cat)", "claw");
 
@@ -56,7 +73,23 @@ public:
 private:
     ACTION_NODE_A(feral_charge_cat, "feral charge - cat", "reach melee");
 
-    ACTION_NODE_A(shred, "shred", "mangle (cat)");
+    // twow-repo#568 D43 (AiPlayerbot.Diet.FeralNoMangle): vanilla has no Mangle (Cat); its own alternative is claw.
+    static bool DietNoMangle()
+    {
+#ifdef MANGOSBOT_ZERO
+        return sPlayerbotAIConfig.dietFeralNoMangle;
+#else
+        return false;
+#endif
+    }
+
+    static ActionNode* shred(PlayerbotAI* ai)
+    {
+        return new ActionNode("shred",
+            /*P*/ NULL,
+            /*A*/ NextAction::array(0, new NextAction(DietNoMangle() ? "claw" : "mangle (cat)"), NULL),
+            /*C*/ NULL);
+    }
 
     ACTION_NODE_A(mangle_cat, "mangle (cat)", "claw");
 
@@ -106,9 +139,10 @@ void DpsFeralDruidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers
         "behind target",
         NextAction::array(0, new NextAction("shred", ACTION_NORMAL + 1), NULL)));
 
+    // twow-repo#568 D43 (AiPlayerbot.Diet.FeralNoMangle): no Mangle (Cat) in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "not behind target",
-        NextAction::array(0, new NextAction("mangle (cat)", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietFeralNoMangle ? "claw" : "mangle (cat)", ACTION_NORMAL), NULL)));
 }
 
 void DpsFeralDruidStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)

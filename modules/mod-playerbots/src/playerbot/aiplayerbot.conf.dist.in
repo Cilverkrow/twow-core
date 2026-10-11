@@ -2046,6 +2046,9 @@ AiPlayerbot.Diet.ExorcismCreatureType = 0
 # twow-repo#568 D42 (strategy diet, same actions): 1 = a Prot paladin without seal pushes Seal of Righteousness directly
 # (no Seal of Vengeance in 1.18: it only ended IMPOSSIBLE first); the seal trigger skips that dead aura name.
 AiPlayerbot.Diet.ProtSealDirect = 0
+# twow-repo#568 D43 (strategy diet, same actions): 1 = vanilla feral druids push Claw / Maul directly where the kit named
+# Mangle (Cat)/(Bear) (no such spells in 1.18: they only ended IMPOSSIBLE before the same Claw/Maul).
+AiPlayerbot.Diet.FeralNoMangle = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

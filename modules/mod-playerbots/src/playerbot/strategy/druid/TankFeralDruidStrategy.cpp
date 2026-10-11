@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "DruidMultipliers.h"
 #include "TankFeralDruidStrategy.h"
 
@@ -66,9 +67,10 @@ void TankFeralDruidStrategy::InitCombatTriggers(std::list<TriggerNode*>& trigger
         "faerie fire (feral)",
         NextAction::array(0, new NextAction("faerie fire (feral)", ACTION_HIGH), NULL)));
 
+    // twow-repo#568 D43 (AiPlayerbot.Diet.FeralNoMangle): no Mangle (Bear) in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "medium rage available",
-        NextAction::array(0, new NextAction("mangle (bear)", ACTION_NORMAL + 1), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietFeralNoMangle ? "maul" : "mangle (bear)", ACTION_NORMAL + 1), NULL)));
 
     triggers.push_back(new TriggerNode(
         "enemy too close for melee",
