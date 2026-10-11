@@ -2387,3 +2387,9 @@ add_test(NAME trace_action_us_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet g4 (hunter + generic): dead hunter/generic nodes behind AiPlayerbot.Diet.* switches (default 0).
+add_test(NAME diet_g4_hunter_generic_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_g4_hunter_generic_source_contract_tests.cmake")

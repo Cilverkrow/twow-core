@@ -2018,6 +2018,14 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
+# twow-repo#568 (D10, strategy diet, BEHAVIOUR CHANGE): 1 = every hunter sting strategy registers one "no stings" node
+# (pve/pvp: viper sting ACTION_NORMAL+5 and serpent sting +4, raid: viper sting only) instead of two, and the trigger
+# fires only when one of them can be used: viper sting known and target mana >= 10 %, or serpent sting known, target
+# health > 50 % and (target mana < 10 % or viper sting unknown). Serpent sting is no longer refused on a mana target
+# while the bot does not know viper sting (learned at 36), and viper sting is USELESS instead of IMPOSSIBLE while
+# unknown. Change: hunters below 36 put serpent sting on casters and healers (also as a serpent sting pull); all other
+# casts as before. Node layout read at engine (re)build. 0 = two nodes and the old checks (default).
+AiPlayerbot.Diet.HunterBestSting = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

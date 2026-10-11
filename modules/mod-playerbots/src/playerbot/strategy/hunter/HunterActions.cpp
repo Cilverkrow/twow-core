@@ -7,11 +7,23 @@ using namespace ai;
 
 bool CastSerpentStingAction::isUseful()
 {
+    // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): a mana target is left to viper sting only while the bot
+    // knows viper sting (learned at 36); before that serpent sting is the hunter's only sting for it. Off: as before.
+    if (sPlayerbotAIConfig.dietHunterBestSting)
+    {
+        return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, "health", GetTargetName()) > 50 &&
+            (!(AI_VALUE2(uint8, "mana", GetTargetName()) >= 10) || !AI_VALUE2(uint32, "spell id", "viper sting"));
+    }
+
     return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, "health", GetTargetName()) > 50 && !(AI_VALUE2(uint8, "mana", GetTargetName()) >= 10);
 }
 
 bool CastViperStingAction::isUseful()
 {
+    // twow-repo#568 (D10): an unknown viper sting is USELESS (no reach-spell prerequisite, no IMPOSSIBLE pop).
+    if (sPlayerbotAIConfig.dietHunterBestSting && !AI_VALUE2(uint32, "spell id", "viper sting"))
+        return false;
+
     return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, "mana", GetTargetName()) >= 10;
 }
 
