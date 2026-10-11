@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "ShamanMultipliers.h"
 #include "ElementalShamanStrategy.h"
 
@@ -102,9 +103,10 @@ void ElementalShamanPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& tri
         "chain lightning",
         NextAction::array(0, new NextAction("chain lightning", ACTION_HIGH + 1), NULL)));
 
+    // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): "fire nova" has no castable spell in vanilla.
     triggers.push_back(new TriggerNode(
         "target of attacker close",
-        NextAction::array(0, new NextAction("fire nova", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietFireNovaTotem ? "fire nova totem" : "fire nova", ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)

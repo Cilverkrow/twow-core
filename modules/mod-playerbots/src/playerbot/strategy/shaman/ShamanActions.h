@@ -326,6 +326,22 @@ namespace ai
         CastFireNovaAction(PlayerbotAI* ai) : CastSpellAction(ai, "fire nova") {}
     };
 
+    // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): in vanilla the learnable spell is "Fire Nova Totem"
+    // (1535, 8498, 8499, 11314, 11315); the "Fire Nova" rows are the totem's own effect, so "fire nova" never
+    // resolves. Placed at the bot like Magma Totem, and never over an active Magma Totem (same fire slot).
+    class CastFireNovaTotemAction : public CastMeleeSpellAction
+    {
+    public:
+        CastFireNovaTotemAction(PlayerbotAI* ai) : CastMeleeSpellAction(ai, "fire nova totem") {}
+        virtual std::string GetTargetName() override { return "self target"; }
+        virtual bool isUseful() override
+        {
+            return CastMeleeSpellAction::isUseful() &&
+                !AI_VALUE2(bool, "has totem", "fire nova totem") &&
+                !AI_VALUE2(bool, "has totem", "magma totem");
+        }
+    };
+
     class CastWindShearAction : public CastSpellAction 
     {
     public:

@@ -578,6 +578,7 @@ public:
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
     bool dietLevelingDruidWrath = false;  // twow-repo#568 D04: leveling druid Wrath node uses the registered trigger "enemy out of melee" (0 = off, node stays dead)
     bool dietShockCooldownGate = false;  // twow-repo#568 D26: shaman "shock" trigger off while the shared shock category cooldown runs (0 = off)
+    bool dietFireNovaTotem = false;  // twow-repo#568 D27: shamans cast "fire nova totem" where vanilla pushed the uncastable "fire nova" (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
