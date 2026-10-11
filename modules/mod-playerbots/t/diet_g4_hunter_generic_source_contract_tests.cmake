@@ -58,7 +58,8 @@ require_text("${hunter_strategy}" "#include \"playerbot/PlayerbotAIConfig.h\"" "
 # Every switch defaults to 0.
 foreach(pair
     "dietHunterBestSting|HunterBestSting"
-    "dietHunterTalentShotsKnown|HunterTalentShotsKnown")
+    "dietHunterTalentShotsKnown|HunterTalentShotsKnown"
+    "dietHunterTranqKnown|HunterTranqKnown")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -122,5 +123,18 @@ region("${hunter_actions_h}" "class CastScatterShotOnClosestAttackerTargetingMeA
 require_text("${scatter_action}" "std::string GetTargetName() override { return \"closest attacker targeting me\"; }" "D19 scatter action target value name")
 file(READ "${PB_SOURCE_DIR}/strategy/values/ValueContext.h" value_context)
 require_text("${value_context}" "creators[\"closest attacker targeting me\"] =" "D19 target value registered")
+
+# ---------------------------------------------------------------------------------------------------------
+# D47 (AiPlayerbot.Diet.HunterTranqKnown): the hunter reaction node waits for a known, ready Tranquilizing Shot.
+region("${hunter_zero}" "void HunterStrategy::InitReactionTriggers" "\n}\n" hunter_reaction)
+require_text("${hunter_reaction}" "        sPlayerbotAIConfig.dietHunterTranqKnown ? \"tranquilizing shot\" : \"dispel enrage\",  // twow-repo#568 (D47)\n        NextAction::array(0, new NextAction(\"tranquilizing shot\", ACTION_INTERRUPT), NULL)));" "D47 reaction node on the switched trigger, same action and relevance")
+region("${hunter_triggers_h}" "class TranquilizingShotTrigger : public DispelEnrageOnTargetTrigger" "};" tranq_trigger)
+require_text("${tranq_trigger}" "TranquilizingShotTrigger(PlayerbotAI* ai) : DispelEnrageOnTargetTrigger(ai, \"tranquilizing shot\") {}" "D47 trigger name and enrage dispel type")
+require_order("${tranq_trigger}" "if (!spellId || !bot->IsSpellReady(spellId))\n                return false;" "return DispelEnrageOnTargetTrigger::IsActive();" "D47 known+ready gate before the aura scan")
+require_text("${tranq_trigger}" "const uint32 spellId = AI_VALUE2(uint32, \"spell id\", \"tranquilizing shot\");" "D47 spell id lookup")
+require_text("${hunter_context}" "creators[\"tranquilizing shot\"] = [](PlayerbotAI* ai) { return new TranquilizingShotTrigger(ai); };" "D47 trigger creator")
+# The generic trigger stays as it is for the switch-off path.
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/TriggerContext.h" trigger_context)
+require_text("${trigger_context}" "creators[\"dispel enrage\"] = [](PlayerbotAI* ai) { return new DispelEnrageOnTargetTrigger(ai); };" "D47 generic dispel enrage trigger kept")
 
 message(STATUS "DIET_G4_HUNTER_GENERIC_SOURCE_CONTRACT=PASS")

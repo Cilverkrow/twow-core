@@ -200,6 +200,24 @@ namespace ai
         std::string spellName;
     };
 
+    // twow-repo#568 (D47, AiPlayerbot.Diet.HunterTranqKnown): "dispel enrage" for the hunter reaction node, registered
+    // as "tranquilizing shot". Tranquilizing Shot 19801 (level 60, 20 s cooldown) comes only from a raid tome or
+    // AutoLearnDroppedSpells, so the trigger asks for the known, ready spell before it copies the target's auras.
+    class TranquilizingShotTrigger : public DispelEnrageOnTargetTrigger
+    {
+    public:
+        TranquilizingShotTrigger(PlayerbotAI* ai) : DispelEnrageOnTargetTrigger(ai, "tranquilizing shot") {}
+
+        virtual bool IsActive() override
+        {
+            const uint32 spellId = AI_VALUE2(uint32, "spell id", "tranquilizing shot");
+            if (!spellId || !bot->IsSpellReady(spellId))
+                return false;
+
+            return DispelEnrageOnTargetTrigger::IsActive();
+        }
+    };
+
     BEGIN_TRIGGER(HunterPetNotHappy, Trigger)
     END_TRIGGER()
 

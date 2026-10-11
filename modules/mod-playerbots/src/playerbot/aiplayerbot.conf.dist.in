@@ -2035,6 +2035,13 @@ AiPlayerbot.Diet.HunterBestSting = 0
 # the IMPOSSIBLE nodes. Pvp freezing trap keeps "target of attacker close". Read at engine (re)build and bot login.
 # 0 = shared trigger, scatter shot on the current target (default).
 AiPlayerbot.Diet.HunterTalentShotsKnown = 0
+# twow-repo#568 (D47, strategy diet): 1 = the vanilla hunter reaction node "tranquilizing shot" (ACTION_INTERRUPT) uses
+# the trigger "tranquilizing shot" instead of "dispel enrage": it fires only while the bot knows Tranquilizing Shot
+# (19801, level 60, raid tome or AutoLearnDroppedSpells) and the spell is off cooldown, then scans the current target's
+# auras for an enrage effect as before. Same casts: the action was IMPOSSIBLE in exactly those states; hunters without
+# the spell stop copying the target's aura list on every reaction pass. Read at engine (re)build.
+# 0 = "dispel enrage" for every hunter (default).
+AiPlayerbot.Diet.HunterTranqKnown = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

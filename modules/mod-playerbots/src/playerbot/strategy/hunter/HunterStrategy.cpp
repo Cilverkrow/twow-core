@@ -116,7 +116,7 @@ void HunterStrategy::InitReactionTriggers(std::list<TriggerNode*>& triggers)
     ClassStrategy::InitReactionTriggers(triggers);
 
     triggers.push_back(new TriggerNode(
-        "dispel enrage",
+        sPlayerbotAIConfig.dietHunterTranqKnown ? "tranquilizing shot" : "dispel enrage",  // twow-repo#568 (D47)
         NextAction::array(0, new NextAction("tranquilizing shot", ACTION_INTERRUPT), NULL)));
 }
 

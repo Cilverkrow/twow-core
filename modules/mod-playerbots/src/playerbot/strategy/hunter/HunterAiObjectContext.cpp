@@ -240,6 +240,8 @@ namespace ai
                 // twow-repo#568 (D19, AiPlayerbot.Diet.HunterTalentShotsKnown): used by the strategies only with the switch on.
                 creators["deterrence"] = [](PlayerbotAI* ai) { return new TalentSpellTargetOfAttackerCloseTrigger(ai, "deterrence", "deterrence"); };
                 creators["scatter shot on closest attacker"] = [](PlayerbotAI* ai) { return new TalentSpellTargetOfAttackerCloseTrigger(ai, "scatter shot on closest attacker", "scatter shot"); };
+                // twow-repo#568 (D47, AiPlayerbot.Diet.HunterTranqKnown): used by the reaction strategy only with the switch on.
+                creators["tranquilizing shot"] = [](PlayerbotAI* ai) { return new TranquilizingShotTrigger(ai); };
             }
         };
 
