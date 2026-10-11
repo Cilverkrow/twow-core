@@ -276,4 +276,12 @@ if(NOT no_mangle_gate_count EQUAL 2 OR NOT shred_node_count EQUAL 2)
   message(FATAL_ERROR "D43: expected the vanilla-only gate and the gated shred node in both cat factories (gates=${no_mangle_gate_count}, shred=${shred_node_count})")
 endif()
 
+# ---------------------------------------------------------------------------------------------------------
+# D44 (AiPlayerbot.Diet.FeralNoCatSwipe): no "swipe (cat)" node in the vanilla DPS-feral AoE strategy.
+require_diet_switch(dietFeralNoCatSwipe FeralNoCatSwipe)
+region("${dps_feral_zero}" "void DpsFeralDruidAoeStrategy::InitCombatTriggers(" "\n}" dps_feral_zero_aoe)
+require_order("${dps_feral_zero_aoe}" "DruidAoeStrategy::InitCombatTriggers(triggers);" "if (!sPlayerbotAIConfig.dietFeralNoCatSwipe)\n    {\n        triggers.push_back(new TriggerNode(\n            \"melee medium aoe\",\n            NextAction::array(0, new NextAction(\"swipe (cat)\", ACTION_HIGH), NULL)));\n    }" "D44 base AoE kept, gated swipe node with the OFF path inside")
+require_text("${dps_feral_one}" "new NextAction(\"swipe (cat)\", ACTION_HIGH)" "TBC cat swipe unchanged")
+forbid_text("${dps_feral_one}" "dietFeralNoCatSwipe" "D44 switch outside the vanilla block")
+
 message(STATUS "DIET_G3_SOURCE_CONTRACT=PASS")

@@ -280,9 +280,14 @@ void DpsFeralDruidAoeStrategy::InitCombatTriggers(std::list<TriggerNode*>& trigg
 {
     DruidAoeStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "melee medium aoe",
-        NextAction::array(0, new NextAction("swipe (cat)", ACTION_HIGH), NULL)));
+    // twow-repo#568 D44 (AiPlayerbot.Diet.FeralNoCatSwipe): Swipe (Cat) does not exist in vanilla and has no
+    // alternative; the node could only end IMPOSSIBLE (after a useless "reach melee"). Read at engine init.
+    if (!sPlayerbotAIConfig.dietFeralNoCatSwipe)
+    {
+        triggers.push_back(new TriggerNode(
+            "melee medium aoe",
+            NextAction::array(0, new NextAction("swipe (cat)", ACTION_HIGH), NULL)));
+    }
 }
 
 void DpsFeralDruidAoeStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)

@@ -446,6 +446,7 @@ bool PlayerbotAIConfig::Initialize()
     dietExorcismCreatureType = config.GetBoolDefault("AiPlayerbot.Diet.ExorcismCreatureType", false);
     dietProtSealDirect = config.GetBoolDefault("AiPlayerbot.Diet.ProtSealDirect", false);
     dietFeralNoMangle = config.GetBoolDefault("AiPlayerbot.Diet.FeralNoMangle", false);
+    dietFeralNoCatSwipe = config.GetBoolDefault("AiPlayerbot.Diet.FeralNoCatSwipe", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

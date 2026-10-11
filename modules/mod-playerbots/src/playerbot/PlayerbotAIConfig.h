@@ -586,6 +586,7 @@ public:
     bool dietExorcismCreatureType = false;  // twow-repo#568 D41: paladin "exorcism" trigger only for targets of Exorcism's creature types (undead/demon) (0 = off)
     bool dietProtSealDirect = false;  // twow-repo#568 D42: vanilla Prot "seal" pushes seal of righteousness directly, seal trigger skips the dead vengeance name (0 = off)
     bool dietFeralNoMangle = false;  // twow-repo#568 D43: vanilla feral nodes push claw / maul instead of the nonexistent mangle (cat)/(bear) (0 = off)
+    bool dietFeralNoCatSwipe = false;  // twow-repo#568 D44: vanilla DPS-feral AoE strategy skips the nonexistent "swipe (cat)" node (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

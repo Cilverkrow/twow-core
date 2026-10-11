@@ -2049,6 +2049,9 @@ AiPlayerbot.Diet.ProtSealDirect = 0
 # twow-repo#568 D43 (strategy diet, same actions): 1 = vanilla feral druids push Claw / Maul directly where the kit named
 # Mangle (Cat)/(Bear) (no such spells in 1.18: they only ended IMPOSSIBLE before the same Claw/Maul).
 AiPlayerbot.Diet.FeralNoMangle = 0
+# twow-repo#568 D44 (strategy diet, same actions): 1 = the vanilla DPS-feral AoE strategy no longer registers
+# "swipe (cat)" (no such spell in 1.18, no alternative; it only ended IMPOSSIBLE). 0 = old node (default).
+AiPlayerbot.Diet.FeralNoCatSwipe = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
