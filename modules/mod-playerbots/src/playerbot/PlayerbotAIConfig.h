@@ -582,6 +582,7 @@ public:
     bool dietWarlockCcKnown = false;  // twow-repo#568 (D23): warlock cc pushes death coil (snare) and howl of terror only while the spell is known (0 = off)
     bool dietWarlockTalentKnown = false;  // twow-repo#568 (D24): warlock talent spells siphon life (also on attacker), conflagrate, shadowburn (pve + pvp) and dark pact fire only while the spell is known (0 = off)
     bool dietWarlockAmplifyCurse = false;  // twow-repo#568 (D25): warlock boost does not register "amplify curse" (only "[Deprecated] Amplify Curse" exists in Turtle 1.18) (0 = off)
+    bool dietMageArmorKnown = false;  // twow-repo#568 (D33): "mage armor" trigger of a mage without mage armor asks for the best known armor (ice armor, else frost armor) (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

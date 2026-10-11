@@ -72,7 +72,8 @@ foreach(pair
     "dietShadowPriestDeadNodes|ShadowPriestDeadNodes"
     "dietWarlockCcKnown|WarlockCcKnown"
     "dietWarlockTalentKnown|WarlockTalentKnown"
-    "dietWarlockAmplifyCurse|WarlockAmplifyCurse")
+    "dietWarlockAmplifyCurse|WarlockAmplifyCurse"
+    "dietMageArmorKnown|MageArmorKnown")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -213,5 +214,16 @@ forbid_text("${affliction_zero}" "\"low mana\",\n        NextAction::array(0, ne
 region("${warlock_zero}" "void WarlockBoostStrategy::InitCombatTriggers(" "\n}\n" warlock_boost)
 require_gated_node("${warlock_boost}" "!sPlayerbotAIConfig.dietWarlockAmplifyCurse" "amplify curse" "amplify curse" "ACTION_HIGH" "D25 amplify curse")
 require_text("${warlock_boost}" "\n    triggers.push_back(new TriggerNode(\n        \"inferno\"," "D25 inferno stays")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D33 (AiPlayerbot.Diet.MageArmorKnown): a mage without mage armor asks for the best armor it knows.
+file(READ "${PB_SOURCE_DIR}/strategy/mage/MageTriggers.cpp" mage_triggers_cpp)
+file(READ "${PB_SOURCE_DIR}/strategy/mage/MageStrategy.cpp" mage_strategy)
+region("${mage_triggers_cpp}" "bool MageArmorTrigger::IsActive()" "\n}" mage_armor)
+require_text("${mage_armor}" "    if (sPlayerbotAIConfig.dietMageArmorKnown && !AI_VALUE2(uint32, \"spell id\", \"mage armor\"))\n    {\n        if (AI_VALUE2(uint32, \"spell id\", \"ice armor\"))\n            return !ai->HasAura(\"ice armor\", target);\n\n        return !ai->HasAura(\"frost armor\", target);\n    }\n\n    return !ai->HasAura(\"mage armor\", target);" "D33 best-known armor check; switch off = old mage armor check")
+# The alternative chain that casts the armor stays untouched.
+require_text("${mage_strategy}" "ACTION_NODE_A(mage_armor, \"mage armor\", \"ice armor\");" "D33 mage armor -> ice armor chain kept")
+require_text("${mage_strategy}" "ACTION_NODE_A(ice_armor, \"ice armor\", \"frost armor\");" "D33 ice armor -> frost armor chain kept")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")

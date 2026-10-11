@@ -2045,6 +2045,11 @@ AiPlayerbot.Diet.WarlockTalentKnown = 0
 # has "[Deprecated] Amplify Curse", so the node ended IMPOSSIBLE on every combat tick. Same casts. Read at engine
 # (re)build. 0 = node as before (default).
 AiPlayerbot.Diet.WarlockAmplifyCurse = 0
+# twow-repo#568 (D33, strategy diet): 1 = for a mage who does not know Mage Armor (below 34) the pve "mage armor" trigger
+# fires only while the best armor the mage can cast is missing (Ice Armor if known, else Frost Armor), instead of every
+# 5 s with ice/frost armor already up. The mage armor -> ice armor -> frost armor chain stays, same armor is cast.
+# 0 = old trigger (default).
+AiPlayerbot.Diet.MageArmorKnown = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
