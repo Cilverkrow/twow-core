@@ -27,5 +27,8 @@ namespace ai
         {
             triggered = false;
         }
+
+        // twow-repo#568 (D63): Check() is Event() while the base flag is unset (ExternalEvent/ExternalEventForce set it).
+        virtual bool IsEventOnly() override { return true; }
     };
 }
