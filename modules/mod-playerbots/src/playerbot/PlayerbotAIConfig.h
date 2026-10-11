@@ -552,6 +552,7 @@ public:
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool x3cInboxWrites = false;  // twow-repo#563 (X3c): value writes into other bots go through their inbox
     bool packetTrace = false;  // twow-repo#541 (owner 11.10.): [BotPackets] packets per receiver / map / class, measurement only
+    bool nearestSkipHiddenBots = false;  // twow-repo#541 (owner 11.10. "1b"): nearest*/possible-targets values skip parked bots hidden from bots
     bool perfFleeMemo = false;  // twow-repo#541 (audit A01): FleeManager reuses a candidate angle's result within one search (0 = off)
     bool findCorpseLazySpot = false;  // twow-repo#541 (audit A02): find corpse skips the safe revive spot in the two branches that never use it (0 = off)
     bool nearestUnitsAcceptFirst = false;  // twow-repo#541 (audit A03): nearest npcs / friendly players / stealthed units run their pure filter before the LOS raycast; friendly players visit the world container only (0 = off)
