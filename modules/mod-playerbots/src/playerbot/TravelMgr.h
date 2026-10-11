@@ -4,6 +4,7 @@
 #include "QuestTurnInParkPolicy.h"
 #include "TransportStallPolicy.h"
 #include "DestinationDeathPolicy.h"
+#include "QuestLoopPolicy.h"
 #include "AreaLevelPolicy.h"
 #include <mutex>
 
@@ -426,6 +427,8 @@ namespace ai
         // #307: only a target the bot is still travelling to or working at.
         bool IsActiveForDeathAttribution() const;
         bool IsDestinationDeathSuppressed(TravelDestination const* destination) const;
+        // twow-repo#581 (QL-1): a quest objective whose quest this bot failed at too often lately.
+        bool IsQuestLoopSuppressed(TravelDestination const* destination) const;
         // #307 zone escape: the destination that led into a zone clearly above
         // the bot's level is skipped like a death-suppressed one.
         void SuppressCurrentDestination(uint32 durationMs);
@@ -461,6 +464,9 @@ namespace ai
         // #405: quest objectives whose work phase ran out without progress
         // (same counting rule as the destination deaths, own map).
         std::map<TravelDestination const*, destination_death::Record> workTimeouts;
+        // twow-repo#581 (QL-1): objective failures (inactive / work timeout) per quest of this bot, bounded.
+        std::map<uint32, quest_loop::Record> questLoops;
+        void NoteQuestObjectiveFailure();
         // twow-repo#485: parked turn-ins of this bot (at most 16 quests, in memory only).
         turnin_park::Book turnInParks;
         void OnWorkTimeout();

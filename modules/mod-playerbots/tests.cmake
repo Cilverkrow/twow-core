@@ -2412,3 +2412,22 @@ set_target_properties(bot_save_policy_tests PROPERTIES
 add_test(NAME bot_save_policy
   COMMAND bot_save_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#581 (owner 11.10.2026): quest loops on emptied camps (AiPlayerbot.QuestLoop.*).
+add_test(NAME quest_loop_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_loop_source_contract_tests.cmake")
+
+add_executable(quest_loop_policy_tests
+  "${PB_MODULE_DIR}/t/quest_loop_policy_tests.cpp")
+
+target_include_directories(quest_loop_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_loop_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_loop_policy
+  COMMAND quest_loop_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
