@@ -32,7 +32,8 @@ struct Place
 };
 
 // Region ids per layout: 14/16/18 Eastern Kingdoms from 1, Kalimdor from 11, in the order of the OB-50 draft;
-// 20 Eastern Kingdoms 1..12, Kalimdor 21..32 (owner decision 10.10.2026).
+// 20 Eastern Kingdoms 1..13, Kalimdor 21..32 (owner decision 10.10.2026); 21 Eastern Kingdoms 1..10, Kalimdor
+// 21..28 (owner decision 11.10.2026).
 Place const kPlaces[] = {
     { 16, 0, -9464.0f, 62.0f, 5, "Goldshire (E5 Elwynn)" },
     { 16, 0, -8913.0f, 554.0f, 8, "Stormwind (E8 cities)" },
@@ -58,7 +59,7 @@ Place const kPlaces[] = {
     { 18, 1, -956.0f, -3754.0f, 19, "Ratchet (18: Barrens north-east)" },
     { 18, 1, -602.0f, -4262.0f, 20, "Valley of Trials on its own (18)" },
     { 18, 1, 311.0f, -4724.0f, 13, "Razor Hill stays in Durotar (18)" },
-    // Layout 20 (owner 10.10.2026): every capital its own region, ids 1..12 and 21..32. Ironforge and Undercity
+    // Layout 20 (owner 10.10.2026): every capital its own region, ids 1..13 and 21..32. Ironforge and Undercity
     // are cell rectangles; just outside the Ironforge gate is Dun Morogh. Alah'Thalas: a cell inside the
     // Stormwind/Alah'Thalas city region of layout 16 (see the generator, KNOWN20).
     { 20, 0, -8913.0f, 554.0f, 1, "Stormwind (20)" },
@@ -73,7 +74,9 @@ Place const kPlaces[] = {
     { 20, 0, -5603.0f, -482.0f, 6, "Kharanos (20: Dun Morogh)" },
     { 20, 0, -5100.0f, -800.0f, 6, "outside the Ironforge gate (20: Dun Morogh)" },
     { 20, 0, 2269.0f, 244.0f, 7, "Brill (20: Tirisfal)" },
-    { 20, 0, -14297.0f, 530.0f, 10, "Booty Bay (20: Stranglethorn)" },
+    { 20, 0, -10646.0f, 1053.0f, 9, "Sentinel Hill (20: south)" },
+    { 20, 0, -12350.0f, 180.0f, 10, "Grom'gol (20: Stranglethorn north)" },
+    { 20, 0, -14297.0f, 530.0f, 11, "Booty Bay (20: Stranglethorn south)" },
     { 20, 1, 1629.0f, -4373.0f, 21, "Orgrimmar (20)" },
     { 20, 1, -1277.0f, 124.0f, 22, "Thunder Bluff (20)" },
     { 20, 1, 9947.0f, 2482.0f, 23, "Darnassus (20)" },
@@ -85,6 +88,30 @@ Place const kPlaces[] = {
     { 20, 1, -956.0f, -3754.0f, 28, "Ratchet (20: Barrens north)" },
     { 20, 1, -2380.0f, -1880.0f, 29, "Camp Taurajo (20: Barrens south)" },
     { 20, 1, -7180.0f, -3773.0f, 31, "Gadgetzan (20)" },
+    // Layout 21 (owner 11.10.2026): capital and start zone together, ids 1..10 and 21..28. The Ironforge and
+    // Undercity rectangles carry the Dun Morogh / Tirisfal id.
+    { 21, 0, -8913.0f, 554.0f, 1, "Stormwind (21: with Elwynn)" },
+    { 21, 0, -9464.0f, 62.0f, 1, "Goldshire (21: with Stormwind)" },
+    { 21, 0, -4838.0f, -1186.0f, 2, "Ironforge Great Forge (21: with Dun Morogh)" },
+    { 21, 0, -5100.0f, -800.0f, 2, "outside the Ironforge gate (21: same region)" },
+    { 21, 0, -5603.0f, -482.0f, 2, "Kharanos (21: with Ironforge)" },
+    { 21, 0, 1595.0f, 231.0f, 3, "Undercity bank (21: with Tirisfal)" },
+    { 21, 0, 2269.0f, 244.0f, 3, "Brill (21: with Undercity)" },
+    { 21, 0, 4966.0f, -2966.0f, 4, "Alah'Thalas (21)" },
+    { 21, 0, -10646.0f, 1053.0f, 5, "Sentinel Hill (21: south)" },
+    { 21, 0, -12350.0f, 180.0f, 6, "Grom'gol (21: Stranglethorn north)" },
+    { 21, 0, -14297.0f, 530.0f, 7, "Booty Bay (21: Stranglethorn south)" },
+    { 21, 1, 1629.0f, -4373.0f, 21, "Orgrimmar (21: with Durotar)" },
+    { 21, 1, 311.0f, -4724.0f, 21, "Razor Hill (21: with Orgrimmar)" },
+    { 21, 1, -602.0f, -4262.0f, 21, "Valley of Trials (21: with Orgrimmar)" },
+    { 21, 1, -1277.0f, 124.0f, 22, "Thunder Bluff (21: with Mulgore)" },
+    { 21, 1, -2345.0f, -366.0f, 22, "Bloodhoof Village (21: with Thunder Bluff)" },
+    { 21, 1, 9947.0f, 2482.0f, 23, "Darnassus (21: with Teldrassil)" },
+    { 21, 1, 9889.0f, 977.0f, 23, "Dolanaar (21: with Darnassus)" },
+    { 21, 1, -452.0f, -2650.0f, 24, "Crossroads (21: Barrens north)" },
+    { 21, 1, -956.0f, -3754.0f, 24, "Ratchet (21: Barrens north)" },
+    { 21, 1, -2380.0f, -1880.0f, 25, "Camp Taurajo (21: Barrens south)" },
+    { 21, 1, -7180.0f, -3773.0f, 27, "Gadgetzan (21)" },
 };
 }
 
@@ -96,7 +123,8 @@ int main()
         { 14, { 1, 11 }, { 7, 17 } },
         { 16, { 1, 11 }, { 8, 18 } },
         { 18, { 1, 11 }, { 8, 20 } },
-        { 20, { 1, 21 }, { 12, 32 } },
+        { 20, { 1, 21 }, { 13, 32 } },
+        { 21, { 1, 21 }, { 10, 28 } },
     };
 
     Require(Find(0, 0) == nullptr && Find(0, 1) == nullptr, "layout 0 has no table (legacy polygons)");

@@ -764,7 +764,7 @@ struct ActiveContinentLayout
     uint32 layout = 0;
     std::vector<uint8> cells[2];
     // Layout 0 (legacy polygons): 1..6 and 11..17. A table layout: the ids of its table (per layout, e.g.
-    // 1..12 and 21..32 for layout 20).
+    // 1..13 and 21..32 for layout 20, 1..10 and 21..28 for layout 21).
     uint32 first[2] = { MAP0_FIRST, MAP1_FIRST };
     uint32 last[2] = { MAP0_SOUTH, MAP1_SOUTH };
 };

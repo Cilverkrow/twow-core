@@ -4,8 +4,8 @@
  * One region id per 66.67-yard cell (8 x 8 cells per map tile, 512 x 512 per continent), stored run-length
  * encoded in ContinentRegionTables.cpp, which tools/continent_regions/gen_continent_regions.py generates from
  * the server map files (zone of every cell) and the zone -> region lists of the OB-50 draft (layouts 14/16/18)
- * and of the owner decision of 10.10.2026 (layout 20). Region ids are per layout: Eastern Kingdoms from 1,
- * Kalimdor from 11 (14/16/18) or 21 (20); ids stay below kTransitionBit. Layout 0 keeps the legacy polygons in
+ * and of the owner decisions of 10./11.10.2026 (layouts 20 and 21). Region ids are per layout: Eastern Kingdoms from 1,
+ * Kalimdor from 11 (14/16/18) or 21 (20/21); ids stay below kTransitionBit. Layout 0 keeps the legacy polygons in
  * MapManager::GetContinentInstanceId and has no table.
  *
  * Header only apart from the generated data, so t/continent_layout_541_test.cpp can check the tables without
@@ -110,7 +110,7 @@ namespace continent_regions
         return true;
     }
 
-    // Lowest region id of a decoded continent (per layout: 14/16/18 start Kalimdor at 11, 20 at 21); 0 if the
+    // Lowest region id of a decoded continent (per layout: 14/16/18 start Kalimdor at 11, 20/21 at 21); 0 if the
     // continent has no cells.
     inline std::uint32_t FirstRegion(std::vector<std::uint8_t> const& cells)
     {

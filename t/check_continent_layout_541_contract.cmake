@@ -5,9 +5,10 @@ if (NOT DEFINED TW_CORE_ROOT)
 endif()
 
 # twow-repo#541 part C (owner 09.10.2026: "würde das mit rein nehmen"): Continents.Layout 0 keeps the legacy
-# region polygons; 14/16/18/20 take the region from generated cell tables (20: owner decision 10.10.2026, every
-# capital its own region, ids 1-12 and 21-32). A fight in a border cell keeps the
-# region; [RegionSwitch] counts switches. Dynamic split/merge at runtime is out of scope (owner 09.10.).
+# region polygons; 14/16/18/20/21 take the region from generated cell tables (owner decisions 10./11.10.2026:
+# 20 = every capital its own region, ids 1-13 and 21-32; 21 = capital and start zone together, ids 1-10 and
+# 21-28; both with Ironforge/Undercity rectangles and Stranglethorn north/south). A fight in a border cell keeps
+# the region; [RegionSwitch] counts switches. Dynamic split/merge at runtime is out of scope (owner 09.10.).
 
 function(read_source path out_var)
   file(READ "${TW_CORE_ROOT}/${path}" text)
@@ -55,23 +56,45 @@ read_source("tools/continent_regions/gen_continent_regions.py" generator)
 read_source("t/continent_layout_541_test.cpp" table_test)
 read_source("src/game/CMakeLists.txt" game_cmake)
 
-# Switch, default 0 (legacy polygons), documented (layout 20 included).
+# Switch, default 0 (legacy polygons), documented (layouts 20 and 21 included).
 require_text("${world}" "setConfig(CONFIG_UINT32_CONTINENTS_LAYOUT, \"Continents.Layout\", 0);" "Continents.Layout default 0")
 require_text("${conf}" "\nContinents.Layout = 0\n" "Continents.Layout = 0 in the dist config")
-require_text("${conf}" "#   20 = cell table, 12 + 12 regions" "Continents.Layout 20 documented")
-require_text("${conf}" "ids 1-12 and 21-32" "layout 20 region ids documented")
+require_text("${conf}" "#   20 = cell table, 13 + 12 regions" "Continents.Layout 20 documented")
+require_text("${conf}" "Region ids 1-13 and 21-32." "layout 20 region ids documented")
+require_text("${conf}" "#   21 = cell table, 10 + 8 regions" "Continents.Layout 21 documented")
+require_text("${conf}" "Region ids 1-10 and 21-28." "layout 21 region ids documented")
 require_text("${game_cmake}" "Maps/ContinentRegionTables.cpp" "generated tables in the game library")
 
-# Generator: layout 20 of the owner decision (10.10.2026), per-layout first ids, rectangles before the BFS fill.
+# Generator: layouts 20 and 21 of the owner decisions (10./11.10.2026), per-layout first ids (14/16/18 unchanged),
+# Ironforge/Undercity rectangles in both, rectangles before the BFS fill, Stranglethorn cut by the world x of the
+# area-grid entry (14/16/18 keep the whole zone), known places per layout.
 require_text("${generator}" "LAYOUT20 = {" "layout 20 zone lists")
+require_text("${generator}" "LAYOUT21 = {" "layout 21 zone lists")
 require_text("${generator}" "20: {mp: [(n, list(z)) for n, z in r] for mp, r in LAYOUT20.items()}" "layout 20 generated")
-require_text("${generator}" "FIRST_ID = {14: {0: 1, 1: 11}, 16: {0: 1, 1: 11}, 18: {0: 1, 1: 11}, 20: {0: 1, 1: 21}}" "first region id per layout")
-require_text("${generator}" "(2, -5060.0, -4540.0, -1360.0, -840.0, \"Ironforge\")" "Ironforge rectangle")
-require_text("${generator}" "(3, 1180.0, 1880.0, -20.0, 520.0, \"Undercity + Ruins of Lordaeron\")" "Undercity rectangle")
+require_text("${generator}" "21: {mp: [(n, list(z)) for n, z in r] for mp, r in LAYOUT21.items()}" "layout 21 generated")
+require_text("${generator}" "FIRST_ID = {14: {0: 1, 1: 11}, 16: {0: 1, 1: 11}, 18: {0: 1, 1: 11}, 20: {0: 1, 1: 21}, 21: {0: 1, 1: 21}}" "first region id per layout")
+require_text("${generator}" "IRONFORGE_RECT = (2, -5060.0, -4540.0, -1360.0, -840.0, \"Ironforge\")" "Ironforge rectangle")
+require_text("${generator}" "UNDERCITY_RECT = (3, 1180.0, 1880.0, -20.0, 520.0, \"Undercity + Ruins of Lordaeron\")" "Undercity rectangle")
+require_text("${generator}" "    20: {0: [IRONFORGE_RECT, UNDERCITY_RECT]},\n    21: {0: [IRONFORGE_RECT, UNDERCITY_RECT]},\n" "rectangles for layouts 20 and 21")
 region("${generator}" "def build(lid, layout, lab):" "def cell_of(" build)
 require_order("${build}" "votes[cx][cy] = c.most_common(1)[0][0]" "for rid, x0, x1, y0, y1, _ in RECTS.get(lid, {}).get(mp, []):" "rectangles after the zone vote")
 require_order("${build}" "for rid, x0, x1, y0, y1, _ in RECTS.get(lid, {}).get(mp, []):" "queue = deque(" "rectangles before the BFS fill")
-require_text("${generator}" "KNOWN_REGION = {20: KNOWN20}" "known places of layout 20")
+require_text("${generator}" "STV_XCUT = -12800.0" "Stranglethorn cut between Grom'gol and the Gurubashi Arena")
+region("${generator}" "def labels(grid, name, parent):" "def label_matches(" labels_fn)
+require_text("${labels_fn}" "zn = \"Stranglethorn Vale|N\" if world_of_sub(gx) >= STV_XCUT else \"Stranglethorn Vale|S\"" "Stranglethorn split by world x")
+region("${generator}" "def label_matches(label, zone):" "def cell_centre(" matches_fn)
+require_text("${matches_fn}" "return zone == \"Stranglethorn Vale\" or zone == (" "14/16/18 keep the whole Stranglethorn zone")
+require_text("${matches_fn}" "\"Stranglethorn Vale Nord\" if label.endswith(\"N\") else \"Stranglethorn Vale Sued\")" "Stranglethorn halves for 20/21")
+require_text("${generator}" "(\"E10 Stranglethorn Nord\", [\"Stranglethorn Vale Nord\"])," "layout 20 Stranglethorn north")
+require_text("${generator}" "(\"E11 Stranglethorn Sued\", [\"Stranglethorn Vale Sued\", \"Gillijim's Isle\", \"Lapidis Isle\"])," "layout 20 Stranglethorn south")
+require_text("${generator}" "(\"E6 Stranglethorn Nord\", [\"Stranglethorn Vale Nord\"])," "layout 21 Stranglethorn north")
+require_text("${generator}" "(\"E7 Stranglethorn Sued\", [\"Stranglethorn Vale Sued\", \"Gillijim's Isle\", \"Lapidis Isle\"])," "layout 21 Stranglethorn south")
+require_text("${generator}" "(\"K1 Orgrimmar + Durotar\", [\"Orgrimmar\", \"Durotar\", \"Durotar: Echo Isles\", \"Durotar: Valley of Trials\"])," "layout 21 Orgrimmar with its start zones")
+require_text("${generator}" "(\"K3 Darnassus + Teldrassil\", [\"Darnassus\", \"Teldrassil\"])," "layout 21 Darnassus with Teldrassil")
+require_text("${generator}" "(0, -14297.0, 530.0, \"Stranglethorn Vale Sued\", \"Booty Bay\")," "Booty Bay south of the cut (zone check)")
+require_text("${generator}" "(0, -12350.0, 180.0, \"Stranglethorn Vale Nord\", \"Grom'gol\")," "Grom'gol north of the cut (zone check)")
+require_text("${generator}" "KNOWN_REGION = {20: KNOWN20, 21: KNOWN21}" "known places of layouts 20 and 21")
+require_text("${generator}" "\"// layouts: \" + \" \".join(str(lid) for lid in LAYOUTS)" "generated tables name their layouts")
 
 # Lookup: the table only with a layout, before the legacy polygons; transition from the table.
 region("${mapmgr}" "uint32 MapManager::GetContinentInstanceId(" "void MapManager::ScheduleFarTeleport(" lookup)
@@ -96,7 +119,7 @@ require_text("${build_layout}" "!continent_regions::RegionsContiguous(built.cell
 require_text("${build_layout}" "if (!(built.last[0] < built.first[1] || built.last[1] < built.first[0]))" "ranges must not overlap")
 require_order("${build_layout}" "!continent_regions::RegionsContiguous(" "return built;" "validation before use")
 if (build_layout MATCHES "lastAllowed|MAP0_LAST|MAP1_LAST")
-  message(FATAL_ERROR "Fixed MAP0_LAST/MAP1_LAST bounds in the layout validation (layout 20 uses ids 21-32)")
+  message(FATAL_ERROR "Fixed MAP0_LAST/MAP1_LAST bounds in the layout validation (layouts 20/21 use ids from 21)")
 endif()
 region("${mapmgr}" "uint32 MapManager::GetContinentFirstRegion(" "void MapManager::ReportRegionSwitches()" bounds)
 require_text("${bounds}" "return GetActiveContinentLayout().first[mapId == 0 ? 0 : 1];" "first region of the active layout")
@@ -143,18 +166,40 @@ require_text("${mapmgr}" "player->SwitchInstance(it->second))
                 ++m_regionSwitches;" "switches counted")
 require_text("${mapmgr}" "[RegionSwitch] layout=%u switches=%llu deferred_combat_updates=%llu" "[RegionSwitch] line")
 
-# Table test: layout 20 ranges and places (rectangles, outside the Ironforge gate, Brill).
-require_text("${table_test}" "{ 20, { 1, 21 }, { 12, 32 } }," "layout 20 first/last ids in the table test")
+# Table test: layout 20/21 ranges and places (rectangles, outside the Ironforge gate, Brill, Stranglethorn
+# halves, capitals with their start zones in 21).
+require_text("${table_test}" "{ 20, { 1, 21 }, { 13, 32 } }," "layout 20 first/last ids in the table test")
+require_text("${table_test}" "{ 21, { 1, 21 }, { 10, 28 } }," "layout 21 first/last ids in the table test")
 require_text("${table_test}" "RegionsContiguous(cells, e.first[mapId], e.last[mapId])" "contiguity in the table test")
-require_text("${table_test}" "{ 20, 0, -4838.0f, -1186.0f, 2," "Ironforge in the table test")
-require_text("${table_test}" "{ 20, 0, 1595.0f, 231.0f, 3," "Undercity in the table test")
-require_text("${table_test}" "{ 20, 0, -5100.0f, -800.0f, 6," "outside the Ironforge gate in the table test")
-require_text("${table_test}" "{ 20, 0, 2269.0f, 244.0f, 7," "Brill in the table test")
+require_text("${table_test}" "{ 20, 0, -4838.0f, -1186.0f, 2," "Ironforge in the table test (20)")
+require_text("${table_test}" "{ 20, 0, 1595.0f, 231.0f, 3," "Undercity in the table test (20)")
+require_text("${table_test}" "{ 20, 0, -5100.0f, -800.0f, 6," "outside the Ironforge gate in the table test (20)")
+require_text("${table_test}" "{ 20, 0, 2269.0f, 244.0f, 7," "Brill in the table test (20)")
+require_text("${table_test}" "{ 20, 0, -12350.0f, 180.0f, 10," "Grom'gol north in the table test (20)")
+require_text("${table_test}" "{ 20, 0, -14297.0f, 530.0f, 11," "Booty Bay south in the table test (20)")
+require_text("${table_test}" "{ 21, 0, -4838.0f, -1186.0f, 2," "Ironforge in the table test (21)")
+require_text("${table_test}" "{ 21, 0, -5100.0f, -800.0f, 2," "outside the Ironforge gate in the table test (21)")
+require_text("${table_test}" "{ 21, 0, 1595.0f, 231.0f, 3," "Undercity in the table test (21)")
+require_text("${table_test}" "{ 21, 0, 2269.0f, 244.0f, 3," "Brill in the table test (21)")
+require_text("${table_test}" "{ 21, 0, -12350.0f, 180.0f, 6," "Grom'gol north in the table test (21)")
+require_text("${table_test}" "{ 21, 0, -14297.0f, 530.0f, 7," "Booty Bay south in the table test (21)")
+require_text("${table_test}" "{ 21, 1, -602.0f, -4262.0f, 21," "Valley of Trials with Orgrimmar in the table test (21)")
+require_text("${table_test}" "{ 21, 1, 9889.0f, 977.0f, 23," "Dolanaar with Darnassus in the table test (21)")
 
-# Generated by the checked-in tool for all four layouts on both continents. Kept last: the layout 20 tables
-# appear only after the generator has run (build slot); every check above is independent of the regeneration.
+# Generated by the checked-in tool on both continents. Kept last. Layouts 14/16/18 are always required. The
+# layout 20/21 rows appear only after the generator has run (build slot: map files + Python): a regenerated
+# file names its layouts ("// layouts: ..."), and then every row is required; a file from before that
+# regeneration only gets a warning here - continent_layout_541_test (CI) fails until the file is regenerated.
 require_text("${tables}" "// Generated by tools/continent_regions/gen_continent_regions.py - do not edit." "generator header")
-foreach(layout 14 16 18 20)
+set(table_layouts 14 16 18)
+string(FIND "${tables}" "\n// layouts: " layouts_marker)
+if (layouts_marker EQUAL -1)
+  message(WARNING "CONTINENT_LAYOUT_541_TABLES=REGENERATION_PENDING: ContinentRegionTables.cpp predates layouts 20/21 (run tools/continent_regions/gen_continent_regions.py)")
+else()
+  require_text("${tables}" "\n// layouts: 14 16 18 20 21\n" "generated tables for layouts 14 16 18 20 21")
+  list(APPEND table_layouts 20 21)
+endif()
+foreach(layout IN LISTS table_layouts)
   foreach(map 0 1)
     require_text("${tables}" "{ ${layout}, ${map}, kLayout${layout}Map${map}," "table for layout ${layout} map ${map} (regenerate with tools/continent_regions/gen_continent_regions.py)")
   endforeach()
