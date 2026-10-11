@@ -29,6 +29,15 @@ namespace ai::bot_save
         return (intervalSeconds + 60) * 1000;
     }
 
+    // The budget window. Not WorldTimer::tickTime(): this core never calls WorldTimer::tick(), so tickTime() stays 0 and a
+    // budget keyed on it never resets - each map thread saved MaxPerTick bots in its whole lifetime (live v46.1, 11.10.).
+    constexpr std::uint32_t BudgetWindowMs = 100;
+
+    inline std::uint32_t BudgetWindow(std::uint32_t nowMs)
+    {
+        return nowMs / BudgetWindowMs;
+    }
+
     struct ThreadBudget
     {
         std::uint32_t tick = 0;
