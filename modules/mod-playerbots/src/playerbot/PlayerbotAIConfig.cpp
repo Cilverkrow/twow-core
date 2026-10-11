@@ -15,6 +15,7 @@
 
 #include "playerbot/TravelMgr.h"
 #include "playerbot/BotGroupPolicy.h"
+#include "playerbot/PathReusePolicy.h"
 
 #include <iostream>
 #include <numeric>
@@ -478,6 +479,8 @@ bool PlayerbotAIConfig::Initialize()
     dietWanderSoloGuard = config.GetBoolDefault("AiPlayerbot.Diet.WanderSoloGuard", false);
     dietRpgDeadTriggers = config.GetBoolDefault("AiPlayerbot.Diet.RpgDeadTriggers", false);
     dietDuelTriggerGate = config.GetBoolDefault("AiPlayerbot.Diet.DuelTriggerGate", false);
+    perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
+    perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

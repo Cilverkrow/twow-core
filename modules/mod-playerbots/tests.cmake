@@ -2455,3 +2455,28 @@ add_test(NAME diet_d69_duel_trigger_gate_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/diet_d69_duel_trigger_gate_source_contract_tests.cmake")
+
+# twow-repo#541 (L0): path sub-phases (M:cache/M:route/M:mmap/M:keep last) and S:engine init in the engine trace (BotUpdateTrace).
+add_test(NAME path_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/path_trace_source_contract_tests.cmake")
+
+# twow-repo#541 (L1): MoveTo reuses the path last built for an unchanged destination behind AiPlayerbot.Perf.PartialPathReuse (default 0, timing change).
+add_executable(path_reuse_policy_tests
+  "${PB_MODULE_DIR}/t/path_reuse_policy_tests.cpp")
+
+target_include_directories(path_reuse_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(path_reuse_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME path_reuse_policy
+  COMMAND path_reuse_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME partial_path_reuse_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/partial_path_reuse_source_contract_tests.cmake")

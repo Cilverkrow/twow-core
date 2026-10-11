@@ -2223,6 +2223,21 @@ AiPlayerbot.Diet.RpgDeadTriggers = 0
 # (custom strategies) are unchanged. Read at engine (re)build: switch with a restart or relog.
 # 0 = "no attackers" for every bot (default).
 AiPlayerbot.Diet.DuelTriggerGate = 0
+# twow-repo#541 (L1, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go - nach Abnahme an): 1 = a
+# bot's MoveTo uses the path it last built for the same destination again instead of rebuilding it (node route over up
+# to 5 x 5 node pairs + navmesh), as long as that path is younger than PartialPathReuseMs, the destination moved less
+# than 10 % of the remaining distance, the stored path still ends at the same point, the bot is on the map where the
+# path was built, not on a transport, and not yet within TargetPosRecalcDistance of the path's end. Today such a
+# rebuild runs on every MoveTo of a bot whose path ends short of the destination, and a rebuilt path that does not end
+# closer to the destination is thrown away for the old one (MovementAction::ResolveMovePath, keep-old rule). With 1
+# a truly better path is found at most PartialPathReuseMs later, and a rebuild that would have found no route at all
+# no longer replaces the old path by a straight line to the destination until the next rebuild. Any reset of the
+# movement or of the path, a destination change or reaching the end rebuild at once as before. [PathReuse] logs
+# hits (rebuilds skipped) and misses (rebuilds run) once a minute. 0 = rebuild as before (default).
+AiPlayerbot.Perf.PartialPathReuse = 0
+# twow-repo#541 (L1): age limit of a reused path in milliseconds (1000..60000, default 10000). Only read with
+# AiPlayerbot.Perf.PartialPathReuse = 1.
+AiPlayerbot.Perf.PartialPathReuseMs = 10000
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
