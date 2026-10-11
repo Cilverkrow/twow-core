@@ -13,6 +13,17 @@ namespace ai
     {
     public:
         AspectOfTheHawkTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "aspect of the hawk") {}
+#ifdef MANGOSBOT_ZERO
+        // twow-repo#568 (D65, AiPlayerbot.Diet.HunterAspectGate): the "aspect of the hawk" node has no alternative and
+        // its cast asks CanCastSpell for the same "spell id" value, so without a known Hawk it always ended IMPOSSIBLE.
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietHunterAspectGate && !AI_VALUE2(uint32, "spell id", spell))
+                return false;
+
+            return BuffTrigger::IsActive();
+        }
+#endif
     };
 
     class AspectOfTheWildTrigger : public BuffTrigger
