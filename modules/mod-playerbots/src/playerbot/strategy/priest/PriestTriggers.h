@@ -17,7 +17,7 @@ namespace ai
     CURE_PARTY_TRIGGER(PartyMemberCureDiseaseTrigger, "cure disease", DISPEL_DISEASE);
     BUFF_TRIGGER_A(InnerFireTrigger, "inner fire");
     BUFF_TRIGGER_A(ShadowformTrigger, "shadowform");
-    BUFF_TRIGGER(InnerFocusTrigger, "inner focus");
+    BUFF_TRIGGER_A(InnerFocusTrigger, "inner focus");  // twow-repo#568 (D22): IsActive in PriestTriggers.cpp
     CC_TRIGGER(ShackleUndeadTrigger, "shackle undead");
     INTERRUPT_TRIGGER(SilenceTrigger, "silence");
     INTERRUPT_HEALER_TRIGGER(SilenceEnemyHealerTrigger, "silence");

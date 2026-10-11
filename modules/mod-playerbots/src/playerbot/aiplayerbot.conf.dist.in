@@ -2023,6 +2023,10 @@ AiPlayerbot.PossibleTargetsSharedSearch = 0
 # Human+Dwarf), and those four race triggers stay quiet until the spell is known (right race below the learn level).
 # Same casts: these nodes always ended IMPOSSIBLE. Read at engine (re)build. 0 = all nodes for every priest (default).
 AiPlayerbot.Diet.PriestRacials = 0
+# twow-repo#568 (D22, strategy diet): 1 = the priest triggers "inner fire" (learned at 12), "shadowform" and "inner focus"
+# (talents) stay quiet while the bot knows no rank of the spell, "inner focus" also while it is on cooldown. Same casts:
+# these actions ended IMPOSSIBLE in exactly those states (no alternatives). 0 = old triggers (default).
+AiPlayerbot.Diet.PriestSelfBuffKnown = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

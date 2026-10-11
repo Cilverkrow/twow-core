@@ -66,7 +66,8 @@ file(READ "${CORE_SOURCE_DIR}/src/game/SharedDefines.h" shared_defines)
 
 # Every switch defaults to 0.
 foreach(pair
-    "dietPriestRacials|PriestRacials")
+    "dietPriestRacials|PriestRacials"
+    "dietPriestSelfBuffKnown|PriestSelfBuffKnown")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -121,5 +122,22 @@ require_switch_first_trigger("${priest_triggers_h}" "HexOfWeaknessTrigger" "Debu
 require_switch_first_trigger("${priest_triggers_h}" "ShadowguardTrigger" "BuffTrigger" "shadowguard" "dietPriestRacials" "D20 shadowguard trigger")
 forbid_text("${priest_triggers_h}" "BUFF_TRIGGER(TouchOfWeaknessTrigger" "D20 old macro trigger")
 forbid_text("${priest_triggers_h}" "DEBUFF_TRIGGER(DevouringPlagueTrigger" "D20 old macro trigger")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D22 (AiPlayerbot.Diet.PriestSelfBuffKnown): inner fire / shadowform / inner focus wait for a known spell.
+file(READ "${PB_SOURCE_DIR}/strategy/priest/PriestTriggers.cpp" priest_triggers_cpp)
+region("${priest_triggers_cpp}" "bool InnerFireTrigger::IsActive()" "\n}" inner_fire)
+require_order("${inner_fire}" "if (sPlayerbotAIConfig.dietPriestSelfBuffKnown && !AI_VALUE2(uint32, \"spell id\", spell))\n        return false;" "return SpellTrigger::IsActive() && !ai->HasAura(spell, target);" "D22 inner fire gate before the old check")
+region("${priest_triggers_cpp}" "bool ShadowformTrigger::IsActive()" "\n}" shadowform)
+require_order("${shadowform}" "if (sPlayerbotAIConfig.dietPriestSelfBuffKnown && !AI_VALUE2(uint32, \"spell id\", \"shadowform\"))\n        return false;" "return !ai->HasAura(\"shadowform\", bot);" "D22 shadowform gate before the old check")
+region("${priest_triggers_cpp}" "bool InnerFocusTrigger::IsActive()" "\n}\n" inner_focus)
+require_text("${inner_focus}" "if (sPlayerbotAIConfig.dietPriestSelfBuffKnown)\n    {\n        const uint32 spellId = AI_VALUE2(uint32, \"spell id\", spell);\n        if (!spellId || !bot->IsSpellReady(spellId))\n            return false;\n    }\n\n    return BuffTrigger::IsActive();" "D22 inner focus known+ready gate, then the old BuffTrigger check")
+require_text("${priest_triggers_h}" "BUFF_TRIGGER_A(InnerFocusTrigger, \"inner focus\");" "D22 inner focus trigger declares IsActive")
+forbid_text("${priest_triggers_h}" "BUFF_TRIGGER(InnerFocusTrigger" "D22 old inner focus macro")
+# The nodes themselves stay as they were.
+require_text("${priest_zero}" "\"inner fire\",\n        NextAction::array(0, new NextAction(\"inner fire\", ACTION_NORMAL + 1), NULL)));" "D22 inner fire node kept")
+require_text("${priest_zero}" "\"inner focus\",\n        NextAction::array(0, new NextAction(\"inner focus\", ACTION_HIGH), NULL)));" "D22 boost inner focus node kept")
+require_text("${shadow_zero}" "\"shadowform\",\n        NextAction::array(0, new NextAction(\"shadowform\", ACTION_MOVE), NULL)));" "D22 shadowform node kept")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")
