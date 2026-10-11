@@ -180,4 +180,21 @@ region("${resto_cpp}" "RestorationShamanStrategyActionNodeFactory()" "\n    }" r
 require_text("${resto_factory}" "if (!sPlayerbotAIConfig.dietShamanVanillaNames)\n        {\n            creators[\"windfury\"] = &windfury_totem;\n            creators[\"chain heal on party\"] = &chain_heal_on_party;\n        }" "D29 dead factory keys only registered while off")
 require_text("${resto_factory}" "creators[\"chain heal\"] = &chain_heal;" "D29 live chain heal key unconditional")
 
+# ---------------------------------------------------------------------------------------------------------
+# D30 (AiPlayerbot.Diet.InnervateFix): real mana percent, solo druid may innervate itself.
+require_diet_switch(dietInnervateFix InnervateFix)
+read_source("strategy/druid/DruidTriggers.h" druid_triggers_h)
+read_source("strategy/druid/DruidActions.h" druid_actions_h)
+region("${druid_triggers_h}" "class InnervateTrigger : public SpellTargetTrigger" "    };" innervate_trigger)
+region("${druid_actions_h}" "class CastInnervateAction : public CastSpellTargetAction" "    };" innervate_action)
+foreach(pair "innervate_trigger;SpellTargetTrigger" "innervate_action;CastSpellTargetAction")
+  list(GET pair 0 body_var)
+  list(GET pair 1 base)
+  set(body "${${body_var}}")
+  require_order("${body}" "if (sPlayerbotAIConfig.dietInnervateFix)" "if (${base}::IsTargetValid(target))" "D30 gate before the old path (${body_var})")
+  require_text("${body}" "${base}::IsTargetValid(target) ||\n                    (target == bot && ai->IsSafe(bot) && !bot->IsDead() && !ai->HasAura(\"innervate\", bot));" "D30 solo self target (${body_var})")
+  require_text("${body}" "currentMana * 100 / maxMana < sPlayerbotAIConfig.lowMana" "D30 real mana percent (${body_var})")
+  require_text("${body}" "const uint32 currentManaPct = (uint32)(currentMana / maxMana) * 100;" "D30 OFF path kept (${body_var})")
+endforeach()
+
 message(STATUS "DIET_G3_SOURCE_CONTRACT=PASS")

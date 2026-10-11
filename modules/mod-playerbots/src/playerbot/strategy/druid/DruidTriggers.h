@@ -399,6 +399,20 @@ namespace ai
 
         bool IsTargetValid(Unit* target) override
         {
+            // twow-repo#568 D30 (AiPlayerbot.Diet.InnervateFix): the base check asks bot->IsInGroup(target), which is
+            // false for the bot itself without a group, and (currentMana / maxMana) * 100 is 0 below full mana.
+            if (sPlayerbotAIConfig.dietInnervateFix)
+            {
+                const bool validTarget = SpellTargetTrigger::IsTargetValid(target) ||
+                    (target == bot && ai->IsSafe(bot) && !bot->IsDead() && !ai->HasAura("innervate", bot));
+                if (!validTarget)
+                    return false;
+
+                const uint32 currentMana = target->GetPower(POWER_MANA);
+                const uint32 maxMana = target->GetMaxPower(POWER_MANA);
+                return currentMana > 0 && maxMana > 0 && currentMana * 100 / maxMana < sPlayerbotAIConfig.lowMana;
+            }
+
             if (SpellTargetTrigger::IsTargetValid(target))
             {
                 const uint32 currentMana = target->GetPower(POWER_MANA);

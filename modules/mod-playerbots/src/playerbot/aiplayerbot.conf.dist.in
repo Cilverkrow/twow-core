@@ -2034,6 +2034,9 @@ AiPlayerbot.Diet.NoWrathOfAirTotem = 0
 # twow-repo#568 D29 (strategy diet, same actions): 1 = vanilla shamans push the real alternative directly instead of
 # TBC/WotLK spells (riptide -> healing wave, totem of wrath -> searing totem, earthliving -> flametongue weapon).
 AiPlayerbot.Diet.ShamanVanillaNames = 0
+# twow-repo#568 D30 (BEHAVIOUR CHANGE, strategy diet): 1 = Innervate (druid L40+) uses the real mana percent (< LowMana)
+# and may target the solo druid itself. 0 = old check: never solo, in a group at the first missing mana point (default).
+AiPlayerbot.Diet.InnervateFix = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
