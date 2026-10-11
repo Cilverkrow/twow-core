@@ -61,7 +61,7 @@ namespace
         pt::Local& local = pt::ThreadLocal();
         uint16 const opcode = packet.GetOpcode();
         pt::Receiver const receiver = !ai ? pt::Real : (ai->WantsBotOutgoingPacket(opcode) ? pt::BotRead : pt::BotIgnored);
-        local.Add(receiver, pt::BucketOf(player->GetMapId()), PacketClassOf(opcode), packet.size(), pt::Global());
+        local.Add(receiver, pt::BucketOf(player->GetMapId()), PacketClassOf(opcode), packet.size(), pt::Global(), opcode);
         if (!ai || !local.SampleThisBotPacket())
             return false;
 

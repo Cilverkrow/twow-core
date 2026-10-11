@@ -81,5 +81,8 @@ require_order("${nearest}" "static_cast<Player*>(unit)->IsHiddenFromBots())\n   
 # Minute line only with the switch.
 require_order("${mgr}" "if (sPlayerbotAIConfig.packetTrace)" "[BotPackets] map=%s kib_bot_read=%llu kib_bot_ignored=%llu kib_real=%llu%s" "minute line behind the switch")
 require_text("${mgr}" "[BotPackets] inbox_copy_samples=%llu inbox_copy_avg_ns=%llu sample_every=%u flush_every=%u" "inbox copy cost line")
+require_order("${mgr}" "if (sPlayerbotAIConfig.packetTrace)" "[BotPackets] other_ignored_top5%s" "top opcodes behind the switch")
+require_text("${mgr}" "classes << \" kib_ignored_by_class=\";" "bytes per class")
+require_text("${scripts}" "packet.size(), pt::Global(), opcode);" "opcode passed for the per-opcode count")
 
 message(STATUS "packet_trace source contract passed")
