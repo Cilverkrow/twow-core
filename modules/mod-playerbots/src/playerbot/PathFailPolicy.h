@@ -75,9 +75,63 @@ struct Counters
 
 inline Counters& SharedCounters() { static Counters counters; return counters; }
 
+// twow-repo#575 (PATH-01 b, AiPlayerbot.Path.TaxiTrace): what bot flights and ship boardings do at runtime. The bot
+// travel graph stores TaxiPath ids from another numbering (0 of 270 flight links carry the right id), and 6 Turtle
+// ships have no link; this counts flight attempts by result and transport waits, with a line budget per minute.
+enum class TaxiResult : std::uint8_t { Ok, NoPath, NoNpc, TooFar, Failed };
+
+inline char const* TaxiResultName(TaxiResult result)
+{
+    switch (result)
+    {
+        case TaxiResult::Ok: return "ok";
+        case TaxiResult::NoPath: return "noPath";
+        case TaxiResult::NoNpc: return "noNpc";
+        case TaxiResult::TooFar: return "tooFar";
+        default: return "failed";
+    }
+}
+
+// The core refuses a flight farther than this from the start node (Player::ActivateTaxiPathTo, ERR_TAXITOOFARAWAY).
+constexpr float TaxiStartReach = 31.6f;
+
+struct TaxiCounters
+{
+    std::atomic<std::uint32_t> results[5] = {};
+    std::atomic<std::uint32_t> transportWaits{0};
+    std::atomic<std::uint32_t> logged{0};
+    std::atomic<std::uint64_t> minute{0};
+
+    void Count(TaxiResult result) { results[std::size_t(result)].fetch_add(1, std::memory_order_relaxed); }
+
+    // Same rules as Counters::Roll: one caller per new minute gets the previous minute (none for the very first).
+    bool Roll(std::uint64_t nowSeconds, std::uint32_t (&outResults)[5], std::uint32_t& outWaits, std::uint32_t& outLogged)
+    {
+        std::uint64_t const now = nowSeconds / 60;
+        std::uint64_t seen = minute.load(std::memory_order_relaxed);
+        if (seen == now || !minute.compare_exchange_strong(seen, now, std::memory_order_relaxed))
+            return false;
+        for (std::size_t i = 0; i < 5; ++i)
+            outResults[i] = results[i].exchange(0, std::memory_order_relaxed);
+        outWaits = transportWaits.exchange(0, std::memory_order_relaxed);
+        outLogged = logged.exchange(0, std::memory_order_relaxed);
+        return seen != 0;
+    }
+
+    bool Take(std::uint32_t linesPerMinute)
+    {
+        if (logged.fetch_add(1, std::memory_order_relaxed) < linesPerMinute)
+            return true;
+        logged.fetch_sub(1, std::memory_order_relaxed);
+        return false;
+    }
+};
+
+inline TaxiCounters& SharedTaxiCounters() { static TaxiCounters counters; return counters; }
+
 // twow-repo#575 (PATH-01 #4, AiPlayerbot.Path.StartZoneExactBounds): Blackstone Island (5536, map 1) and Thalassian
 // Highlands + Alah'Thalas (5225 / 2040, map 0) as rectangles taken from the zone cells of the map files. Validated
-// against tw_world_t9 spawns: map 1 box = all 1305 spawns of 5536; map 0 boxes = 2341 of 2345 spawns of 5225/2040,
+// against tw_world_t9 spawns: map 1 box = all 1305 spawns of 5536; map 0 boxes = 2342 of 2346 spawns of 5225/2040,
 // none of the 261 Eastern / 181 Western Plaguelands spawns. The old boxes left 8 + 10 quest givers outside.
 struct Box
 {

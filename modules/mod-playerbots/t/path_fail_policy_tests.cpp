@@ -1,6 +1,7 @@
 #include "PathFailPolicy.h"
 
 #include <cstdlib>
+#include <string>
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -58,6 +59,25 @@ int main()
             thread.join();
         Require(taken.load() == 30, "exactly the budget is logged under concurrency");
         Require(counters.Roll(120, f, l, h) && f == 4000 && l == 30, "all 4000 failures counted, 30 logged");
+    }
+
+    // twow-repo#575 (PATH-01 b): flight results and dock waits per minute.
+    {
+        TaxiCounters taxi;
+        std::uint32_t results[5] = {};
+        std::uint32_t waits = 0, logged = 0;
+        Require(!taxi.Roll(600, results, waits, logged), "taxi: no summary for the very first minute");
+        taxi.Count(TaxiResult::Ok);
+        taxi.Count(TaxiResult::NoPath);
+        taxi.Count(TaxiResult::NoPath);
+        taxi.Count(TaxiResult::TooFar);
+        taxi.transportWaits.fetch_add(3);
+        Require(taxi.Take(1) && !taxi.Take(1), "taxi: line budget");
+        Require(taxi.Roll(660, results, waits, logged), "taxi: summary in the next minute");
+        Require(results[0] == 1 && results[1] == 2 && results[2] == 0 && results[3] == 1 && results[4] == 0 && waits == 3 && logged == 1,
+            "taxi: summary counts per result, waits, logged lines");
+        Require(std::string(TaxiResultName(TaxiResult::TooFar)) == "tooFar" && std::string(TaxiResultName(TaxiResult::NoPath)) == "noPath",
+            "taxi: result names");
     }
 
     // twow-repo#575 (PATH-01 #4): start-zone exclusion, old boxes vs zone boxes.
