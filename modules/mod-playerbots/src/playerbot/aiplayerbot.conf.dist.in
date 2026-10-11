@@ -2050,6 +2050,10 @@ AiPlayerbot.Diet.WarlockAmplifyCurse = 0
 # 5 s with ice/frost armor already up. The mage armor -> ice armor -> frost armor chain stays, same armor is cast.
 # 0 = old trigger (default).
 AiPlayerbot.Diet.MageArmorKnown = 0
+# twow-repo#568 (D34, strategy diet): 1 = the mage talent triggers "arcane power", "presence of mind", "combustion" and
+# "ice barrier" stay quiet while the mage does not know the spell or it is on cooldown. Same casts: in exactly those
+# states the action ended IMPOSSIBLE (CanCastSpell checks spell id and IsSpellReady; no alternatives). 0 = as before.
+AiPlayerbot.Diet.MageTalentBoostKnown = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

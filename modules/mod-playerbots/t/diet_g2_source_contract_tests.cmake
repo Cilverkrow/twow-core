@@ -73,7 +73,8 @@ foreach(pair
     "dietWarlockCcKnown|WarlockCcKnown"
     "dietWarlockTalentKnown|WarlockTalentKnown"
     "dietWarlockAmplifyCurse|WarlockAmplifyCurse"
-    "dietMageArmorKnown|MageArmorKnown")
+    "dietMageArmorKnown|MageArmorKnown"
+    "dietMageTalentBoostKnown|MageTalentBoostKnown")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -225,5 +226,27 @@ require_text("${mage_armor}" "    if (sPlayerbotAIConfig.dietMageArmorKnown && !
 # The alternative chain that casts the armor stays untouched.
 require_text("${mage_strategy}" "ACTION_NODE_A(mage_armor, \"mage armor\", \"ice armor\");" "D33 mage armor -> ice armor chain kept")
 require_text("${mage_strategy}" "ACTION_NODE_A(ice_armor, \"ice armor\", \"frost armor\");" "D33 ice armor -> frost armor chain kept")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D34 (AiPlayerbot.Diet.MageTalentBoostKnown): mage talent boosts wait for the known and ready spell.
+file(READ "${PB_SOURCE_DIR}/strategy/mage/MageTriggers.h" mage_triggers_h)
+foreach(boost "CombustionTrigger|BoostTrigger|combustion" "ArcanePowerTrigger|BuffTrigger|arcane power" "PresenceOfMindTrigger|BuffTrigger|presence of mind" "IceBarrierTrigger|BuffTrigger|ice barrier")
+  string(REPLACE "|" ";" parts "${boost}")
+  list(GET parts 0 boost_class)
+  list(GET parts 1 boost_base)
+  list(GET parts 2 boost_spell)
+  region("${mage_triggers_h}" "class ${boost_class} : public ${boost_base}" "};" boost_body)
+  require_text("${boost_body}" "${boost_class}(PlayerbotAI* ai) : ${boost_base}(ai, \"${boost_spell}\"" "D34 ${boost_class} same spell")
+  require_text("${boost_body}" "            if (sPlayerbotAIConfig.dietMageTalentBoostKnown)\n            {\n                const uint32 spellId = AI_VALUE2(uint32, \"spell id\", spell);\n                if (!spellId || !bot->IsSpellReady(spellId))\n                    return false;\n            }\n            return ${boost_base}::IsActive();" "D34 ${boost_class} known+ready gate, then the old check")
+endforeach()
+# The boost nodes stay registered as before.
+file(READ "${PB_SOURCE_DIR}/strategy/mage/ArcaneMageStrategy.cpp" arcane_strategy)
+file(READ "${PB_SOURCE_DIR}/strategy/mage/FireMageStrategy.cpp" fire_strategy)
+file(READ "${PB_SOURCE_DIR}/strategy/mage/FrostMageStrategy.cpp" frost_strategy)
+require_text("${arcane_strategy}" "\"arcane power\",\n        NextAction::array(0, new NextAction(\"arcane power\", ACTION_HIGH + 2), NULL)));" "D34 arcane power node kept")
+require_text("${arcane_strategy}" "\"presence of mind\",\n        NextAction::array(0, new NextAction(\"presence of mind\", ACTION_HIGH + 1), NULL)));" "D34 presence of mind node kept")
+require_text("${fire_strategy}" "\"combustion\",\n        NextAction::array(0, new NextAction(\"combustion\", ACTION_HIGH + 1), NULL)));" "D34 combustion node kept")
+require_text("${frost_strategy}" "\"ice barrier\",\n        NextAction::array(0, new NextAction(\"ice barrier\", ACTION_HIGH), NULL)));" "D34 ice barrier node kept")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")
