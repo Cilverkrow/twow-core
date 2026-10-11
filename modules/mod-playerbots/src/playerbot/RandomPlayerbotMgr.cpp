@@ -15,6 +15,7 @@
 #include "playerbot/PersistentRosterStarterOutfitPolicy.h"
 #include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
+#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -939,6 +940,17 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // twow-repo#541 (AiPlayerbot.Perf.ActionBudget): expensive actions of the last minute.
+    if (sPlayerbotAIConfig.perfActionBudget)
+    {
+        auto take = [](ai::action_budget::Count count) { return (unsigned long long)ai::action_budget::Counter(count).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const executed = take(ai::action_budget::Executed);
+        unsigned long long const deferred = take(ai::action_budget::Deferred);
+        unsigned long long const forced = take(ai::action_budget::Forced);
+        sLog.outBasic("[ActionBudget] mode=%u executed=%llu deferred=%llu forced=%llu max_deferrals=%u",
+            sPlayerbotAIConfig.perfActionBudget, executed, deferred, forced, ai::action_budget::MaxDeferrals);
+    }
 }
 
 // twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute
