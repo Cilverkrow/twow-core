@@ -16,6 +16,7 @@
 #include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/PacketTracePolicy.h"
+#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -970,6 +971,17 @@ void ReportBotInbox()
         unsigned long long const sampledNs = totals.inboxSampledNs.exchange(0, std::memory_order_relaxed);
         sLog.outBasic("[BotPackets] inbox_copy_samples=%llu inbox_copy_avg_ns=%llu sample_every=%u flush_every=%u",
             samples, samples ? sampledNs / samples : 0ull, TimeSampleEvery, FlushEvery);
+    }
+
+    // twow-repo#541 (AiPlayerbot.Perf.ActionBudget): expensive actions of the last minute.
+    if (sPlayerbotAIConfig.perfActionBudget)
+    {
+        auto take = [](ai::action_budget::Count count) { return (unsigned long long)ai::action_budget::Counter(count).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const executed = take(ai::action_budget::Executed);
+        unsigned long long const deferred = take(ai::action_budget::Deferred);
+        unsigned long long const forced = take(ai::action_budget::Forced);
+        sLog.outBasic("[ActionBudget] mode=%u executed=%llu deferred=%llu forced=%llu max_deferrals=%u",
+            sPlayerbotAIConfig.perfActionBudget, executed, deferred, forced, ai::action_budget::MaxDeferrals);
     }
 }
 

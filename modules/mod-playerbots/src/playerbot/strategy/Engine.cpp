@@ -8,6 +8,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/BotActionLog.h"
+#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/ActionTrail.h"
 #include "playerbot/BotUpdateTrace.h"
 
@@ -264,6 +265,27 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
             if(action)
                 action->setRelevance(relevance);
+
+            // twow-repo#541 (owner 11.10.2026, AiPlayerbot.Perf.ActionBudget): an expensive action needs budget of
+            // this map thread and world tick (ActionBudgetPolicy.h). Without it the action goes back into the queue
+            // unchanged and this bot's tick ends; after MaxDeferrals deferrals in a row it runs regardless.
+            if (action && sPlayerbotAIConfig.perfActionBudget &&
+                ai::action_budget::IsExpensive(action->getName(), sPlayerbotAIConfig.perfActionBudgetActions))
+            {
+                uint32 const tickMs = WorldTimer::tickTime();
+                if (!ai::action_budget::TryTake(sPlayerbotAIConfig.perfActionBudget, ai->GetBot()->GetGUIDLow(), tickMs,
+                    tickMs / 50, actionBudgetDeferrals, ai::action_budget::ThreadLocal()))
+                {
+                    ++actionBudgetDeferrals;
+                    ai::action_budget::Counter(ai::action_budget::Deferred).fetch_add(1, std::memory_order_relaxed);
+                    LogAction("A:%s - DEFERRED", action->getName().c_str());
+                    PushAgain(actionNode, relevance, event, true);
+                    break;
+                }
+                ai::action_budget::Counter(actionBudgetDeferrals >= ai::action_budget::MaxDeferrals
+                    ? ai::action_budget::Forced : ai::action_budget::Executed).fetch_add(1, std::memory_order_relaxed);
+                actionBudgetDeferrals = 0;
+            }
 
             if (!action)
             {
