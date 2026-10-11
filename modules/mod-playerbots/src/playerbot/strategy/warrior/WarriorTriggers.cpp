@@ -8,6 +8,15 @@ using namespace ai;
 
 bool BloodrageBuffTrigger::IsActive()
 {
+    // twow-repo#568 D40: Bloodrage (2687) has a 60 s cooldown the trigger never checked. On: only a
+    // known, ready Bloodrage fires. Off: the health / rage check as before.
+    if (sPlayerbotAIConfig.dietWarriorDedupBloodrage)
+    {
+        const uint32 spellId = AI_VALUE2(uint32, "spell id", "bloodrage");
+        if (!spellId || !bot->IsSpellReady(spellId))
+            return false;
+    }
+
     return AI_VALUE2(uint8, "health", "self target") >= sPlayerbotAIConfig.mediumHealth &&
         AI_VALUE2(uint8, "rage", "self target") < 20;
 }

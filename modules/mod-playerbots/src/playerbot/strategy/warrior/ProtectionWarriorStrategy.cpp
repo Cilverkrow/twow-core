@@ -177,9 +177,14 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
     // Concussion Blow capstone (Prot 6/1, TalentID 92): 5-sec stun + 100%
     // armor pen + rage gen on cast. Defining caster-interrupt + threat
     // ability. Same priority tier as Shield Slam (HIGH+4).
-    triggers.push_back(new TriggerNode(
-        "concussion blow",
-        NextAction::array(0, new NextAction("concussion blow", ACTION_HIGH + 4), NULL)));
+    // twow-repo#568 D40: the protection cc strategy registers the same trigger at ACTION_INTERRUPT and
+    // Queue::Push keeps the higher relevance, so this HIGH+4 node never decides. On: not registered.
+    if (!sPlayerbotAIConfig.dietWarriorDedupBloodrage)
+    {
+        triggers.push_back(new TriggerNode(
+            "concussion blow",
+            NextAction::array(0, new NextAction("concussion blow", ACTION_HIGH + 4), NULL)));
+    }
 
     // Improved Overpower stance-dance (Arms 2/1, 2/2): when an enemy dodges
     // our swing, swap to Battle Stance briefly, fire Overpower (near-100%
@@ -197,9 +202,14 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
     // Bloodrage opener: Improved Bloodrage 2/2 gives +50% rage generation.
     // Cast on engage to jump-start the rotation (Shield Slam needs ~15 rage
     // to fire, Bloodrage gives 30+).
-    triggers.push_back(new TriggerNode(
-        "bloodrage",
-        NextAction::array(0, new NextAction("bloodrage", ACTION_NORMAL + 5), NULL)));
+    // twow-repo#568 D40: the warrior buff strategy registers 'bloodrage' at ACTION_HIGH; this NORMAL+5
+    // duplicate never decides. On: not registered.
+    if (!sPlayerbotAIConfig.dietWarriorDedupBloodrage)
+    {
+        triggers.push_back(new TriggerNode(
+            "bloodrage",
+            NextAction::array(0, new NextAction("bloodrage", ACTION_NORMAL + 5), NULL)));
+    }
 
     // Defensive Tactics 3/3 auto-Berserker swap (Prot 5/2, TalentID 91):
     // At max rank, DT keeps 180% of Defiance's +30% threat boost when in

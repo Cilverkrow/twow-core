@@ -187,4 +187,34 @@ if(NOT d39_count EQUAL 2)
   message(FATAL_ERROR "D39: 'intercept and rage' must appear only inside the off-path block (found ${d39_count})")
 endif()
 
+# D40: bloodrage trigger needs a known, ready Bloodrage; protection duplicates (bloodrage NORMAL+5, concussion blow
+# HIGH+4) only on the off path, while the buff (HIGH) and cc (INTERRUPT) registrations stay unconditional.
+require_switch(dietWarriorDedupBloodrage Diet.WarriorDedupBloodrage)
+region("${warrior_triggers_cpp}" "bool BloodrageBuffTrigger::IsActive()" "\n}\n" d40_trigger)
+require_order("${d40_trigger}" "if (sPlayerbotAIConfig.dietWarriorDedupBloodrage)" "return AI_VALUE2(uint8, \"health\", \"self target\") >= sPlayerbotAIConfig.mediumHealth &&
+        AI_VALUE2(uint8, \"rage\", \"self target\") < 20;" "D40 gate before the old health / rage check")
+require_text("${d40_trigger}" "const uint32 spellId = AI_VALUE2(uint32, \"spell id\", \"bloodrage\");
+        if (!spellId || !bot->IsSpellReady(spellId))
+            return false;" "D40 known / ready gate")
+region("${prot_combat}" "if (!sPlayerbotAIConfig.dietWarriorDedupBloodrage)" "\n    }\n" d40_cb)
+require_text("${d40_cb}" "NextAction(\"concussion blow\", ACTION_HIGH + 4)" "D40 off path keeps the combat concussion blow node")
+region("${prot_combat}" "NextAction(\"overpower\", ACTION_HIGH + 4)" "\"defensive tactics berserker stance\"" d40_after_cb)
+region("${d40_after_cb}" "if (!sPlayerbotAIConfig.dietWarriorDedupBloodrage)" "\n    }\n" d40_br)
+require_text("${d40_br}" "NextAction(\"bloodrage\", ACTION_NORMAL + 5)" "D40 off path keeps the protection bloodrage node")
+string(REGEX MATCHALL "NextAction[(]\"concussion blow\"" d40_cb_all "${prot_combat}")
+list(LENGTH d40_cb_all d40_cb_count)
+string(REGEX MATCHALL "NextAction[(]\"bloodrage\"" d40_br_all "${prot_combat}")
+list(LENGTH d40_br_all d40_br_count)
+if(NOT d40_cb_count EQUAL 1 OR NOT d40_br_count EQUAL 1)
+  message(FATAL_ERROR "D40: protection combat must hold exactly one gated concussion blow and one gated bloodrage node")
+endif()
+# The kept registrations: cc concussion blow at INTERRUPT and buff bloodrage at HIGH, both unconditional.
+region("${prot}" "void ProtectionWarriorCcStrategy::InitCombatTriggers(" "void ProtectionWarriorCcStrategy::InitNonCombatTriggers(" d40_cc)
+require_text("${d40_cc}" "NextAction(\"concussion blow\", ACTION_INTERRUPT)" "D40 cc concussion blow kept")
+forbid_text("${d40_cc}" "dietWarriorDedupBloodrage" "D40 gate in the cc strategy")
+read_vanilla(strategy/warrior/WarriorStrategy.cpp warrior_base)
+region("${warrior_base}" "void WarriorBuffStrategy::InitCombatTriggers(" "void WarriorBuffStrategy::InitNonCombatTriggers(" d40_buff)
+require_text("${d40_buff}" "NextAction(\"bloodrage\", ACTION_HIGH)" "D40 buff bloodrage kept")
+forbid_text("${d40_buff}" "dietWarriorDedupBloodrage" "D40 gate in the buff strategy")
+
 message(STATUS "DIET_G1_WARRIOR_ROGUE_SOURCE_CONTRACT=PASS")

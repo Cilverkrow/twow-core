@@ -2045,6 +2045,10 @@ AiPlayerbot.Diet.WarriorBerserkerStanceGate = 0
 # twow-repo#568 (diet D39, no visible behaviour change): 1 = protection warriors do not register the two 'intercept and
 # rage' nodes, whose sub-trigger "enemy is out of melee" does not exist and never fires. 0 = registered as today (default).
 AiPlayerbot.Diet.WarriorNoInterceptAndRage = 0
+# twow-repo#568 (diet D40, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the 'bloodrage' trigger needs a known, ready Bloodrage,
+# and protection drops its duplicate bloodrage (NORMAL+5) and concussion blow (HIGH+4) nodes; the buff strategy (HIGH) and
+# the cc strategy (INTERRUPT) keep theirs. 0 = no cooldown check, duplicates registered as today (default).
+AiPlayerbot.Diet.WarriorDedupBloodrage = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
