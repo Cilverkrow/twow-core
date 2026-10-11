@@ -343,9 +343,10 @@ void ElementalShamanTotemsStrategy::InitCombatTriggers(std::list<TriggerNode*>& 
         "fire totem aoe",
         NextAction::array(0, new NextAction("magma totem", ACTION_HIGH), NULL)));
 
+    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Totem of Wrath in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "fire totem",
-        NextAction::array(0, new NextAction("totem of wrath", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "searing totem" : "totem of wrath", ACTION_HIGH), NULL)));
 }
 
 void ElementalShamanTotemsStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)

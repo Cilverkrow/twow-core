@@ -16,12 +16,17 @@ public:
         creators["searing totem"] = &searing_totem;
         creators["magma totem"] = &magma_totem;
         creators["strength of earth totem"] = &strength_of_earth_totem;
-        creators["windfury"] = &windfury_totem;
         creators["healing stream totem"] = &healing_stream_totem;
         creators["riptide"] = &riptide;
         creators["riptide on party"] = &riptide_on_party;
         creators["chain heal"] = &chain_heal;
-        creators["chain heal on party"] = &chain_heal_on_party;
+        // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): two dead keys. No action is ever pushed as
+        // "windfury" (the pushed name is "windfury totem") or "chain heal on party" (no action creator exists).
+        if (!sPlayerbotAIConfig.dietShamanVanillaNames)
+        {
+            creators["windfury"] = &windfury_totem;
+            creators["chain heal on party"] = &chain_heal_on_party;
+        }
     }
 
 private:
@@ -88,13 +93,14 @@ void RestorationShamanStrategy::InitCombatTriggers(std::list<TriggerNode*> &trig
         "party member critical health",
         NextAction::array(0, new NextAction("healing wave on party", ACTION_CRITICAL_HEAL + 1), NULL)));
 
+    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no player Riptide in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "low health",
-        NextAction::array(0, new NextAction("riptide", ACTION_CRITICAL_HEAL), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "healing wave" : "riptide", ACTION_CRITICAL_HEAL), NULL)));
 
     triggers.push_back(new TriggerNode(
         "party member low health",
-        NextAction::array(0, new NextAction("riptide on party", ACTION_CRITICAL_HEAL), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "healing wave on party" : "riptide on party", ACTION_CRITICAL_HEAL), NULL)));
 
     triggers.push_back(new TriggerNode(
         "medium aoe heal",
@@ -452,9 +458,10 @@ void RestorationShamanBuffPveStrategy::InitCombatTriggers(std::list<TriggerNode*
     RestorationShamanBuffStrategy::InitCombatTriggers(triggers);
     ShamanBuffPveStrategy::InitCombatTriggers(triggers);
 
+    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Earthliving Weapon in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "flametongue weapon" : "earthliving weapon", ACTION_HIGH), NULL)));
 }
 
 void RestorationShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -462,9 +469,10 @@ void RestorationShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNo
     RestorationShamanBuffStrategy::InitNonCombatTriggers(triggers);
     ShamanBuffPveStrategy::InitNonCombatTriggers(triggers);
 
+    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Earthliving Weapon in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "flametongue weapon" : "earthliving weapon", ACTION_NORMAL), NULL)));
 }
 
 void RestorationShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -472,9 +480,10 @@ void RestorationShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*
     RestorationShamanBuffStrategy::InitCombatTriggers(triggers);
     ShamanBuffPvpStrategy::InitCombatTriggers(triggers);
 
+    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Earthliving Weapon in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "flametongue weapon" : "earthliving weapon", ACTION_HIGH), NULL)));
 }
 
 void RestorationShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -482,9 +491,10 @@ void RestorationShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNo
     RestorationShamanBuffStrategy::InitNonCombatTriggers(triggers);
     ShamanBuffPvpStrategy::InitNonCombatTriggers(triggers);
 
+    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Earthliving Weapon in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "flametongue weapon" : "earthliving weapon", ACTION_NORMAL), NULL)));
 }
 
 void RestorationShamanBuffRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)

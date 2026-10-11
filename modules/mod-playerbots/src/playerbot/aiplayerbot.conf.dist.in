@@ -2031,6 +2031,9 @@ AiPlayerbot.Diet.FireNovaTotem = 0
 # twow-repo#568 D28 (strategy diet, same actions): 1 = elemental/restoration shamans no longer push the TBC "wrath of
 # air totem" (no such spell in 1.18; IMPOSSIBLE/USELESS only), neither as air-totem node nor as Windfury alternative.
 AiPlayerbot.Diet.NoWrathOfAirTotem = 0
+# twow-repo#568 D29 (strategy diet, same actions): 1 = vanilla shamans push the real alternative directly instead of
+# TBC/WotLK spells (riptide -> healing wave, totem of wrath -> searing totem, earthliving -> flametongue weapon).
+AiPlayerbot.Diet.ShamanVanillaNames = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
