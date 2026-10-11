@@ -81,17 +81,12 @@ bool DefensiveTacticsBerserkerStanceTrigger::IsActive()
     if (!sServerFacade.IsInCombat(bot))
         return false;
 
-    // twow-repo#568 D38: the Defensive Tactics swap only keeps threat with the talent (51606-51608,
-    // "while wearing a shield"). On: no swap without a rank of the talent or without a shield.
+    // twow-repo#568 D38 (owner rule 11.10.2026: tanks fight in Defensive Stance from level 10): the swap
+    // to Berserker at HP > 70 (NORMAL+1) and the protection 'defensive stance' buff trigger (MOVE) undo each
+    // other every stance cooldown, and each change drops the rage above the Tactical Mastery retention.
+    // On: no Defensive Tactics swap, the tank stays in Defensive Stance. Off: the swap as before.
     if (sPlayerbotAIConfig.dietWarriorBerserkerStanceGate)
-    {
-        if (!bot->HasSpell(51606) && !bot->HasSpell(51607) && !bot->HasSpell(51608))
-            return false;
-
-        Item* offhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
-        if (!offhand || offhand->GetProto()->Class != ITEM_CLASS_ARMOR || offhand->GetProto()->SubClass != ITEM_SUBCLASS_ARMOR_SHIELD)
-            return false;
-    }
+        return false;
 
     return AI_VALUE2(uint8, "health", "self target") > 70;
 }
