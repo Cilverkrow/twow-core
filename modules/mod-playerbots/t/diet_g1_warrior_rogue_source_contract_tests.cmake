@@ -119,4 +119,14 @@ require_text("${d17_off}" "NextAction(\"piercing howl\", ACTION_HIGH)" "D17 off 
 file(READ "${PB_SOURCE_DIR}/strategy/warrior/ArmsWarriorStrategy.cpp" arms_full)
 require_text("${arms_full}" "ACTION_NODE_A(piercing_howl, \"piercing howl\", \"mocking blow\");" "D17 off path keeps the arms piercing howl node")
 
+# D36: protection sunder armor without the unlearnable Devastate (on); devastate stays on the off path.
+require_switch(dietWarriorNoDevastate Diet.WarriorNoDevastate)
+region("${prot_combat}" "if (sPlayerbotAIConfig.dietWarriorNoDevastate)" "else" d36_on)
+require_text("${d36_on}" "\"sunder armor\",
+            NextAction::array(0, new NextAction(\"sunder armor\", ACTION_HIGH + 2), NULL)" "D36 on: sunder armor directly")
+forbid_text("${d36_on}" "devastate" "D36 on: no devastate")
+region("${prot_combat}" "if (sPlayerbotAIConfig.dietWarriorNoDevastate)" "\"revenge\"" d36_all)
+region("${d36_all}" "    else\n" "\n    }\n" d36_off)
+require_text("${d36_off}" "NextAction(\"devastate\", ACTION_HIGH + 2)" "D36 off path keeps devastate")
+
 message(STATUS "DIET_G1_WARRIOR_ROGUE_SOURCE_CONTRACT=PASS")

@@ -127,9 +127,20 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
         "shield block",
         NextAction::array(0, new NextAction("shield block", ACTION_HIGH + 5), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "sunder armor",
-        NextAction::array(0, new NextAction("devastate", ACTION_HIGH + 2), NULL)));
+    // twow-repo#568 D36: Devastate is not learnable in Turtle 1.18 (no Talent.dbc / trainer / skill line
+    // entry), so the devastate node always went IMPOSSIBLE -> sunder armor. On: sunder armor directly.
+    if (sPlayerbotAIConfig.dietWarriorNoDevastate)
+    {
+        triggers.push_back(new TriggerNode(
+            "sunder armor",
+            NextAction::array(0, new NextAction("sunder armor", ACTION_HIGH + 2), NULL)));
+    }
+    else
+    {
+        triggers.push_back(new TriggerNode(
+            "sunder armor",
+            NextAction::array(0, new NextAction("devastate", ACTION_HIGH + 2), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "revenge",
