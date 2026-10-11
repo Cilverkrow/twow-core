@@ -1,9 +1,26 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "MageMultipliers.h"
 #include "MageStrategy.h"
 
 using namespace ai;
+
+namespace
+{
+    // twow-repo#568 (D35, AiPlayerbot.Diet.MageBlastWave): in the vanilla build "blast wave" is only pushed by the
+    // fire cc strategy on "enemy ten yards", after the cc strategy already tried frost nova (-> cone of cold) at
+    // ACTION_EMERGENCY in the same pass; the blast wave node's frost nova alternative only repeated that chain.
+    // TBC/WotLK (dragon's breath -> blast wave) keep it.
+    bool DietBlastWaveDropsFrostNova()
+    {
+#ifdef MANGOSBOT_ZERO
+        return sPlayerbotAIConfig.dietMageBlastWave;
+#else
+        return false;
+#endif
+    }
+}
 
 class MageStrategyActionNodeFactory : public NamedObjectFactory<ActionNode>
 {
@@ -45,11 +62,13 @@ private:
             /*C*/ NextAction::array(0, new NextAction("flamestrike", 71.0f), NULL));
     }
 
+    // twow-repo#568 (D35): the frost nova alternative is dropped with AiPlayerbot.Diet.MageBlastWave (vanilla build
+    // only), see DietBlastWaveDropsFrostNova. The creator still always returns a new node (A08 invariant).
     static ActionNode* blast_wave(PlayerbotAI* ai)
     {
         return new ActionNode("blast wave",
             /*P*/ NULL,
-            /*A*/ NextAction::array(0, new NextAction("frost nova"), NULL),
+            /*A*/ DietBlastWaveDropsFrostNova() ? nullptr : NextAction::array(0, new NextAction("frost nova"), NULL),
             /*C*/ NextAction::array(0, new NextAction("flamestrike", 71.0f), NULL));
     }
 

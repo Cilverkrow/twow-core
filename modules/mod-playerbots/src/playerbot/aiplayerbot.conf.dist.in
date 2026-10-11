@@ -2054,6 +2054,12 @@ AiPlayerbot.Diet.MageArmorKnown = 0
 # "ice barrier" stay quiet while the mage does not know the spell or it is on cooldown. Same casts: in exactly those
 # states the action ended IMPOSSIBLE (CanCastSpell checks spell id and IsSpellReady; no alternatives). 0 = as before.
 AiPlayerbot.Diet.MageTalentBoostKnown = 0
+# twow-repo#568 (D35, strategy diet; NOT strictly neutral): 1 = the fire mage cc strategy pushes "blast wave" on its own
+# "blast wave" trigger (enemy within 10 yd and the talent known) instead of "enemy ten yards", and the blast wave node
+# loses its frost nova alternative: the cc strategy already tried frost nova -> cone of cold at 90 in the same pass.
+# Difference: a frost nova that a multiplier held back at 90 (waiting for attack, threat) is no longer cast via the
+# blast wave alternative at 40. 0 = as before (default).
+AiPlayerbot.Diet.MageBlastWave = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

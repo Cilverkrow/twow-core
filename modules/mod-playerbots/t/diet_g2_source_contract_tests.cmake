@@ -74,7 +74,8 @@ foreach(pair
     "dietWarlockTalentKnown|WarlockTalentKnown"
     "dietWarlockAmplifyCurse|WarlockAmplifyCurse"
     "dietMageArmorKnown|MageArmorKnown"
-    "dietMageTalentBoostKnown|MageTalentBoostKnown")
+    "dietMageTalentBoostKnown|MageTalentBoostKnown"
+    "dietMageBlastWave|MageBlastWave")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -248,5 +249,27 @@ require_text("${arcane_strategy}" "\"arcane power\",\n        NextAction::array(
 require_text("${arcane_strategy}" "\"presence of mind\",\n        NextAction::array(0, new NextAction(\"presence of mind\", ACTION_HIGH + 1), NULL)));" "D34 presence of mind node kept")
 require_text("${fire_strategy}" "\"combustion\",\n        NextAction::array(0, new NextAction(\"combustion\", ACTION_HIGH + 1), NULL)));" "D34 combustion node kept")
 require_text("${frost_strategy}" "\"ice barrier\",\n        NextAction::array(0, new NextAction(\"ice barrier\", ACTION_HIGH), NULL)));" "D34 ice barrier node kept")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D35 (AiPlayerbot.Diet.MageBlastWave): blast wave only when known; no repeated frost nova alternative (vanilla).
+file(READ "${PB_SOURCE_DIR}/strategy/mage/MageAiObjectContext.cpp" mage_context)
+region("${mage_triggers_h}" "class BlastWaveTrigger : public EnemyInRangeTrigger" "};" blast_wave_trigger)
+require_text("${blast_wave_trigger}" "BlastWaveTrigger(PlayerbotAI* ai) : EnemyInRangeTrigger(ai, \"blast wave\", 10.0f) {}" "D35 blast wave trigger = 10 yd check of enemy ten yards")
+require_text("${blast_wave_trigger}" "return AI_VALUE2(uint32, \"spell id\", \"blast wave\") && EnemyInRangeTrigger::IsActive();" "D35 blast wave trigger known gate")
+require_text("${mage_context}" "creators[\"blast wave\"] = [](PlayerbotAI* ai) { return new BlastWaveTrigger(ai); };" "D35 blast wave trigger registered")
+region("${fire_strategy}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" fire_zero)
+region("${fire_zero}" "void FireMageCcStrategy::InitCombatTriggers(" "\n}\n" fire_cc)
+require_order("${fire_cc}" "MageCcStrategy::InitCombatTriggers(triggers);" "sPlayerbotAIConfig.dietMageBlastWave ? \"blast wave\" : \"enemy ten yards\",\n        NextAction::array(0, new NextAction(\"blast wave\", ACTION_INTERRUPT), NULL)));" "D35 fire cc: frost nova pass first, blast wave on the old trigger with the switch off")
+region("${mage_strategy}" "bool DietBlastWaveDropsFrostNova()" "\n    }\n" blast_wave_gate)
+require_text("${blast_wave_gate}" "#ifdef MANGOSBOT_ZERO\n        return sPlayerbotAIConfig.dietMageBlastWave;\n#else\n        return false;\n#endif" "D35 alternative drop only in the vanilla build")
+region("${mage_strategy}" "static ActionNode* blast_wave(PlayerbotAI* ai)" "\n    }\n" blast_wave_node)
+require_text("${blast_wave_node}" "static ActionNode* blast_wave(PlayerbotAI* ai)\n    {\n        return new ActionNode(\"blast wave\"," "D35 creator still starts with return new ActionNode (A08)")
+require_text("${blast_wave_node}" "/*A*/ DietBlastWaveDropsFrostNova() ? nullptr : NextAction::array(0, new NextAction(\"frost nova\"), NULL)," "D35 frost nova alternative kept with the switch off")
+require_text("${blast_wave_node}" "/*C*/ NextAction::array(0, new NextAction(\"flamestrike\", 71.0f), NULL));" "D35 flamestrike continuer kept")
+# The frost nova pass at ACTION_EMERGENCY that makes the alternative redundant.
+region("${mage_strategy}" "void MageCcStrategy::InitCombatTriggers(" "\n}\n" mage_cc)
+require_text("${mage_cc}" "\"enemy ten yards\",\n        NextAction::array(0, new NextAction(\"frost nova\", ACTION_EMERGENCY), NULL)));" "D35 cc frost nova at ACTION_EMERGENCY")
+require_text("${mage_strategy}" "ACTION_NODE_A(frost_nova, \"frost nova\", \"cone of cold\");" "D35 frost nova -> cone of cold kept")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")

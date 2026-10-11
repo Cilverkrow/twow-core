@@ -215,6 +215,18 @@ namespace ai
         }
     };
 
+    // twow-repo#568 (D35, AiPlayerbot.Diet.MageBlastWave): "enemy ten yards" for blast wave (fire talent),
+    // registered as "blast wave" and used by the fire mage cc strategy only with the switch.
+    class BlastWaveTrigger : public EnemyInRangeTrigger
+    {
+    public:
+        BlastWaveTrigger(PlayerbotAI* ai) : EnemyInRangeTrigger(ai, "blast wave", 10.0f) {}
+        virtual bool IsActive() override
+        {
+            return AI_VALUE2(uint32, "spell id", "blast wave") && EnemyInRangeTrigger::IsActive();
+        }
+    };
+
     class FireSpellsLocked : public Trigger
     {
     public:
