@@ -210,4 +210,16 @@ require_text("${ret_zero}" "new NextAction(\"repentance or shield\", ACTION_EMER
 require_text("${paladin_ctx}" "creators[\"repentance\"] =" "D31 repentance action creator")
 require_text("${paladin_ctx}" "creators[\"divine shield\"] =" "D31 divine shield action creator")
 
+# ---------------------------------------------------------------------------------------------------------
+# D41 (AiPlayerbot.Diet.ExorcismCreatureType): exorcism trigger only for undead/demon targets.
+require_diet_switch(dietExorcismCreatureType ExorcismCreatureType)
+read_source("strategy/paladin/PaladinTriggers.cpp" paladin_triggers_cpp)
+region("${paladin_triggers_cpp}" "bool ExorcismTrigger::IsActive()" "\n}" exorcism_trigger)
+region("${exorcism_trigger}" "#else" "#endif" exorcism_vanilla)
+require_order("${exorcism_vanilla}" "if (sPlayerbotAIConfig.dietExorcismCreatureType)" "return AI_VALUE2(uint8, \"mana\", \"self target\") > sPlayerbotAIConfig.mediumMana;" "D41 gate before the unchanged old check")
+require_text("${exorcism_vanilla}" "if (exorcismTarget && exorcismInfo && exorcismInfo->TargetCreatureType)" "D41: no target / no type mask keeps the old path")
+require_text("${exorcism_vanilla}" "if (targetTypeMask && !(exorcismInfo->TargetCreatureType & targetTypeMask) && !exorcismTarget->HasAura(8179))\n                    return false;" "D41: same test as Spell::CheckTargetCreatureType")
+region("${exorcism_vanilla}" "if (sPlayerbotAIConfig.dietExorcismCreatureType)" "return AI_VALUE2(uint8, \"mana\"" exorcism_gate)
+forbid_text("${exorcism_gate}" "return true" "D41: the gate may only suppress, never force the trigger")
+
 message(STATUS "DIET_G3_SOURCE_CONTRACT=PASS")

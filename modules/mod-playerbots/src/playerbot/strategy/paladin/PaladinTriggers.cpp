@@ -332,6 +332,21 @@ bool ExorcismTrigger::IsActive()
 #ifdef MANGOSBOT_TWO
         return ai->HasAura("the art of war", bot);
 #else
+        // twow-repo#568 D41 (AiPlayerbot.Diet.ExorcismCreatureType): Exorcism only hits the creature types of its spell
+        // entry (undead and demon, TargetCreatureType 36). Same test as Spell::CheckTargetCreatureType; against any
+        // other type the cast can only end IMPOSSIBLE, so the trigger stays quiet. No target keeps the old path.
+        if (sPlayerbotAIConfig.dietExorcismCreatureType)
+        {
+            Unit* const exorcismTarget = GetTarget();
+            SpellEntry const* const exorcismInfo = sServerFacade.LookupSpellInfo(AI_VALUE2(uint32, "spell id", "exorcism"));
+            if (exorcismTarget && exorcismInfo && exorcismInfo->TargetCreatureType)
+            {
+                uint32 const targetTypeMask = exorcismTarget->GetCreatureTypeMask();
+                if (targetTypeMask && !(exorcismInfo->TargetCreatureType & targetTypeMask) && !exorcismTarget->HasAura(8179))
+                    return false;
+            }
+        }
+
         return AI_VALUE2(uint8, "mana", "self target") > sPlayerbotAIConfig.mediumMana;
 #endif
     }

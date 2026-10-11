@@ -2040,6 +2040,9 @@ AiPlayerbot.Diet.InnervateFix = 0
 # twow-repo#568 D31 (BEHAVIOUR CHANGE, strategy diet): 1 = at critical health a Ret paladin tries Repentance on its target
 # (talent, L40+), Divine Shield as alternative, at relevance 91. 0 = factory key typo, node ends UNKNOWN (default).
 AiPlayerbot.Diet.RetRepentanceKey = 0
+# twow-repo#568 D41 (strategy diet, same actions): 1 = the paladin "exorcism" trigger stays quiet when the current target
+# is not undead/demon (Exorcism's TargetCreatureType, same test as the core); the cast could only end IMPOSSIBLE.
+AiPlayerbot.Diet.ExorcismCreatureType = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
