@@ -411,6 +411,7 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#563 (X3a/X3c): per-context lock on the value maps; cross-bot value writes via the inbox.
     ai::context_lock::Enabled().store(config.GetBoolDefault("AiPlayerbot.X3a.ContextLock", false), std::memory_order_relaxed);
     x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
+    perfSkipBotUpdatePackets = config.GetBoolDefault("AiPlayerbot.Perf.SkipBotUpdatePackets", false);
     botSaveIntervalSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.IntervalSeconds", 0)));
     botSaveMaxPerTick = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.MaxPerTick", 1)));
     perfFleeMemo = config.GetBoolDefault("AiPlayerbot.Perf.FleeMemo", false);
