@@ -1154,6 +1154,12 @@ add_test(NAME solo_attackers_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/solo_attackers_source_contract_tests.cmake")
 
+# twow-repo#563 (X4a): shared value context locked, SingleCalculatedValue computed once.
+add_test(NAME shared_context_lock_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/shared_context_lock_source_contract_tests.cmake")
+
 # #416 (7.3): hourly [MemStores] diagnostic.
 add_executable(mem_stores_policy_tests
   "${PB_MODULE_DIR}/t/mem_stores_policy_tests.cpp")
@@ -2393,4 +2399,35 @@ set_target_properties(shaman_imbue_policy_tests PROPERTIES
 
 add_test(NAME shaman_imbue_policy
   COMMAND shaman_imbue_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541: microseconds per action and for the trigger phase in the engine trace (BotUpdateTrace).
+add_test(NAME trace_action_us_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
+
+# twow-repo#541 (CLI-541 tail analysis): getFullPath holds the node map lock with RAII (empty-route leak fixed).
+add_test(NAME travel_node_lock_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/travel_node_lock_source_contract_tests.cmake")
+
+# twow-repo#541 A47: bots save themselves on their own schedule (AiPlayerbot.BotSave.IntervalSeconds).
+add_test(NAME bot_save_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bot_save_source_contract_tests.cmake")
+
+add_executable(bot_save_policy_tests
+  "${PB_MODULE_DIR}/t/bot_save_policy_tests.cpp")
+
+target_include_directories(bot_save_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(bot_save_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_save_policy
+  COMMAND bot_save_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
