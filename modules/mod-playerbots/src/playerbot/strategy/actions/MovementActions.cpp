@@ -90,6 +90,53 @@ void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& f
         d.startNode.c_str(), d.startNodeDist, d.endNode.c_str(), d.endNodeDist, d.directGap, d.noNodes ? 1u : 0u,
         d.cooldownSkip ? 1u : 0u, d.budgetStop ? 1u : 0u, d.transportRoute ? 1u : 0u);
 }
+
+// twow-repo#575 (PATH-01 b, AiPlayerbot.Path.TaxiTrace): summary of the previous minute, once.
+void LogTaxiSummary(path_fail::TaxiCounters& counters)
+{
+    uint32 results[5] = {};
+    uint32 waits = 0, logged = 0;
+    if (counters.Roll(uint64(time(nullptr)), results, waits, logged))
+        sLog.outBasic("[TaxiUse] summary ok=%u no_path=%u no_npc=%u too_far=%u failed=%u transport_waits=%u logged=%u",
+            results[0], results[1], results[2], results[3], results[4], waits, logged);
+}
+
+// Distance from the bot to the start node of the stored TaxiPath (-1 = other map / unknown node).
+float TaxiStartDistance(Player* bot, TaxiPathEntry const* tEntry)
+{
+    TaxiNodesEntry const* node = tEntry ? sTaxiNodesStore.LookupEntry(tEntry->from) : nullptr;
+    if (!node || node->map_id != bot->GetMapId())
+        return -1.0f;
+    float const dx = node->x - bot->GetPositionX(), dy = node->y - bot->GetPositionY(), dz = node->z - bot->GetPositionZ();
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+void LogTaxiUse(Player* bot, uint32 entry, TaxiPathEntry const* tEntry, bool needNpc, bool npcFound, path_fail::TaxiResult result,
+    float startDist)
+{
+    path_fail::TaxiCounters& counters = path_fail::SharedTaxiCounters();
+    LogTaxiSummary(counters);
+    counters.Count(result);
+    if (!counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute))
+        return;
+    sLog.outBasic("[TaxiUse] bot=%u level=%u team=%s obj=%u from=%u to=%u need_npc=%u npc=%u res=%s map=%u x=%.1f y=%.1f start_dist=%.1f",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->GetTeam() == ALLIANCE ? "A" : "H", entry, tEntry ? tEntry->from : 0u,
+        tEntry ? tEntry->to : 0u, needNpc ? 1u : 0u, npcFound ? 1u : 0u, path_fail::TaxiResultName(result), bot->GetMapId(),
+        bot->GetPositionX(), bot->GetPositionY(), startDist);
+}
+
+// A dock wait: the path wants a ship / zeppelin of this entry here and it is not boardable now.
+void LogTransportWait(Player* bot, uint32 entry, WorldPosition const& dock)
+{
+    path_fail::TaxiCounters& counters = path_fail::SharedTaxiCounters();
+    LogTaxiSummary(counters);
+    counters.transportWaits.fetch_add(1, std::memory_order_relaxed);
+    if (!counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute))
+        return;
+    sLog.outBasic("[TransportWait] bot=%u level=%u team=%s entry=%u map=%u dock_x=%.1f dock_y=%.1f dist=%.1f",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->GetTeam() == ALLIANCE ? "A" : "H", entry, dock.getMapId(), dock.getX(),
+        dock.getY(), dock.getMapId() == bot->GetMapId() ? WorldPosition(bot).distance(dock) : -1.0f);
+}
 }
 
 // #303: [FollowDiag] snapshot, defined next to FollowOnTransport.
@@ -340,6 +387,8 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
         ai->Unmount();
 #endif
         bool goClick = ai->HandleSpellClick(entry); //Source gryphon of ebonhold.
+        if (sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b): stored id unknown to TaxiPath.dbc
+            LogTaxiUse(bot, entry, nullptr, needNpc, false, path_fail::TaxiResult::NoPath, -1.0f);
         return goClick;
     }
 
@@ -357,6 +406,8 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
 
         if (!unit)
         {
+            if (sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
+                LogTaxiUse(bot, entry, tEntry, needNpc, false, path_fail::TaxiResult::NoNpc, TaxiStartDistance(bot, tEntry));
             return false;
         }
 
@@ -379,6 +430,15 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
     ai->Unmount();
 
     bool goTaxi = bot->ActivateTaxiPathTo({tEntry->from, tEntry->to}, unit, 1);
+
+    // twow-repo#575 (PATH-01 b): a refused flight farther than the core's reach from the stored start node is "tooFar".
+    if (sPlayerbotAIConfig.pathTaxiTrace)
+    {
+        float const startDist = TaxiStartDistance(bot, tEntry);
+        path_fail::TaxiResult const result = goTaxi ? path_fail::TaxiResult::Ok :
+            ((startDist < 0.0f || startDist > path_fail::TaxiStartReach) ? path_fail::TaxiResult::TooFar : path_fail::TaxiResult::Failed);
+        LogTaxiUse(bot, entry, tEntry, needNpc, unit != nullptr, result, startDist);
+    }
 
     if (!goTaxi)
         bot->SetMoney(botMoney);
@@ -878,6 +938,8 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
     if (nextPoint.type == PathNodeType::NODE_TRANSPORT)
     {
         bool usedTransport = UseTransport(ai, nextPoint.entry, nextPoint.point, WorldPosition(), sPlayerbotAIConfig.transportTeleportType > 0);
+        if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
+            LogTransportWait(bot, nextPoint.entry, nextPoint.point);
 
         uint32 lastTransportEntry = 0;
 
@@ -891,6 +953,8 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
     if (currentPoint.type == PathNodeType::NODE_TRANSPORT)
     {
         bool usedTransport = UseTransport(ai, currentPoint.entry, currentPoint.point, nextPoint.point, sPlayerbotAIConfig.transportTeleportType > 0);
+        if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
+            LogTransportWait(bot, currentPoint.entry, currentPoint.point);
 
         uint32 lastTransportEntry = 0;
 

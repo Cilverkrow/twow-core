@@ -158,4 +158,26 @@ require_text("${rpg_cpp}" "    else if (sPlayerbotAIConfig.pathRpgTargetSnap)\n 
 require_text("${rpg_cpp}" "        WorldPosition farPos = movePos;\n        if (farPos.ClosestCorrectPoint(5.0f, 5.0f, bot->GetInstanceId()) && abs(farPos.getZ() - z) <= 10.0f)" "far snap on a copy")
 require_text("${rpg_cpp}" "    if (sPlayerbotAIConfig.pathRpgTargetSnap && snapped)\n        couldMove = MoveTo(mapId, movePos.getX(), movePos.getY(), movePos.getZ(), false, false);\n    else\n        couldMove = MoveTo(mapId, x, y, z, false, false);" "snapped point only with the switch, raw point otherwise")
 
+# 5. PATH-01 b: taxi / transport trace, only with AiPlayerbot.Path.TaxiTrace (default 0), no behaviour change.
+require_text("${config_h}" "    bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b)" "TaxiTrace default off")
+require_text("${config_cpp}" "pathTaxiTrace = config.GetBoolDefault(\"AiPlayerbot.Path.TaxiTrace\", false);" "TaxiTrace read off")
+require_text("${conf_dist}" "
+AiPlayerbot.Path.TaxiTrace = 0
+" "TaxiTrace documented off")
+count_text("${move_cpp}" "sPlayerbotAIConfig.pathTaxiTrace" 5 "TaxiTrace gates (3 flight results, 2 dock waits)")
+count_text("${move_cpp}" "LogTaxiUse(bot, entry, " 3 "flight result logs")
+count_text("${move_cpp}" "LogTransportWait(bot, " 2 "dock wait logs")
+region("${move_cpp}" "bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)" "
+}
+" use_taxi)
+require_order("${use_taxi}" "bool goTaxi = bot->ActivateTaxiPathTo({tEntry->from, tEntry->to}, unit, 1);" "if (sPlayerbotAIConfig.pathTaxiTrace)
+    {" "flight result logged after the attempt")
+require_order("${use_taxi}" "if (sPlayerbotAIConfig.pathTaxiTrace)
+    {" "return goTaxi;" "result logged before the return")
+require_text("${use_taxi}" "    if (!goTaxi)
+        bot->SetMoney(botMoney);
+
+    return goTaxi;" "flight behaviour unchanged")
+require_text("${policy}" "constexpr float TaxiStartReach = 31.6f;" "core start reach")
+
 message(STATUS "path_fail source contract passed")

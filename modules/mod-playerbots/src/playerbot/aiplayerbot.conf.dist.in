@@ -899,6 +899,12 @@ AiPlayerbot.Path.StartZoneExactBounds = 0
 # target snapped onto the navmesh (5 yd), at any distance; a far target whose point cannot be snapped keeps the
 # raw point. 0 = the raw point (snapped only as a check below sight distance), default.
 AiPlayerbot.Path.RpgTargetSnap = 0
+# twow-repo#575 (PATH-01 b, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach Abnahme
+# an): 1 = every bot flight attempt (UseTaxi) is counted by result - ok, noPath (stored TaxiPath id unknown), noNpc (no
+# flight master in reach), tooFar (more than 31.6 yd from the start node of the stored path), failed - and every wait at a
+# dock for a ship / zeppelin that is not there; the first RouteFailDetail.LinesPerMinute of them a minute are logged as
+# [TaxiUse] / [TransportWait], plus [TaxiUse] summary once a minute. 0 = off (default).
+AiPlayerbot.Path.TaxiTrace = 0
 # Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
 # its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost
 # starts there) or enemies stand near the corpse - those two shortcuts apply only from the second
