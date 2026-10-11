@@ -2028,6 +2028,9 @@ AiPlayerbot.Diet.ShockCooldownGate = 0
 # twow-repo#568 D27 (BEHAVIOUR CHANGE, strategy diet): 1 = enh AoE, ele PvP and "totem fire nova" cast Fire Nova Totem
 # (L12+, never over Magma; Searing/Magma wait until it went off; no Magma->nova chain). 0 = dead "fire nova" (default).
 AiPlayerbot.Diet.FireNovaTotem = 0
+# twow-repo#568 D28 (strategy diet, same actions): 1 = elemental/restoration shamans no longer push the TBC "wrath of
+# air totem" (no such spell in 1.18; IMPOSSIBLE/USELESS only), neither as air-totem node nor as Windfury alternative.
+AiPlayerbot.Diet.NoWrathOfAirTotem = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

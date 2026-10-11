@@ -28,8 +28,25 @@ private:
 
     ACTION_NODE_A(strength_of_earth_totem, "strength of earth totem", "stoneskin totem");
 
-    ACTION_NODE_A(windfury_totem, "windfury totem", "wrath of air totem");
-   
+    // twow-repo#568 D28 (AiPlayerbot.Diet.NoWrathOfAirTotem): vanilla has no Wrath of Air Totem, so the
+    // alternative of an impossible Windfury Totem (below L32) can only end USELESS/IMPOSSIBLE as well.
+    static bool DietNoWrathOfAirTotem()
+    {
+#ifdef MANGOSBOT_ZERO
+        return sPlayerbotAIConfig.dietNoWrathOfAirTotem;
+#else
+        return false;
+#endif
+    }
+
+    static ActionNode* windfury_totem(PlayerbotAI* ai)
+    {
+        return new ActionNode("windfury totem",
+            /*P*/ NULL,
+            /*A*/ DietNoWrathOfAirTotem() ? nullptr : NextAction::array(0, new NextAction("wrath of air totem"), NULL),
+            /*C*/ NULL);
+    }
+
     ACTION_NODE_A(mana_spring_totem, "mana spring totem", "healing stream totem");
 };
 
@@ -305,9 +322,14 @@ void ElementalShamanTotemsStrategy::InitCombatTriggers(std::list<TriggerNode*>& 
         "air totem",
         NextAction::array(0, new NextAction("windfury totem", ACTION_HIGH + 1), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "air totem",
-        NextAction::array(0, new NextAction("wrath of air totem", ACTION_HIGH), NULL)));
+    // twow-repo#568 D28 (AiPlayerbot.Diet.NoWrathOfAirTotem): Wrath of Air Totem (TBC) does not exist in vanilla;
+    // this node could only end IMPOSSIBLE (solo) or USELESS (grouped). Read at engine init.
+    if (!sPlayerbotAIConfig.dietNoWrathOfAirTotem)
+    {
+        triggers.push_back(new TriggerNode(
+            "air totem",
+            NextAction::array(0, new NextAction("wrath of air totem", ACTION_HIGH), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "water totem",

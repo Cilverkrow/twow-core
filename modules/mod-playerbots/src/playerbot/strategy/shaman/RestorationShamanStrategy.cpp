@@ -374,9 +374,14 @@ void RestorationShamanTotemsStrategy::InitCombatTriggers(std::list<TriggerNode*>
         "air totem",
         NextAction::array(0, new NextAction("windfury totem", ACTION_HIGH + 1), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "air totem",
-        NextAction::array(0, new NextAction("wrath of air totem", ACTION_HIGH), NULL)));
+    // twow-repo#568 D28 (AiPlayerbot.Diet.NoWrathOfAirTotem): Wrath of Air Totem (TBC) does not exist in vanilla;
+    // this node could only end IMPOSSIBLE (solo) or USELESS (grouped). Read at engine init.
+    if (!sPlayerbotAIConfig.dietNoWrathOfAirTotem)
+    {
+        triggers.push_back(new TriggerNode(
+            "air totem",
+            NextAction::array(0, new NextAction("wrath of air totem", ACTION_HIGH), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "water totem",
