@@ -2031,6 +2031,11 @@ AiPlayerbot.Diet.PriestSelfBuffKnown = 0
 # 1.18 Vampiric Touch rows are passive, the talent works through Vampiric Embrace) and "shadowfiend" (no such spell in
 # Turtle 1.18). Both nodes could never cast. Read at engine (re)build. 0 = both nodes as before (default).
 AiPlayerbot.Diet.ShadowPriestDeadNodes = 0
+# twow-repo#568 (D23, strategy diet): 1 = the warlock cc nodes "death coil on snare target" (death coil, level 42) and
+# "howl of terror" (level 40, now on its own "howl of terror" trigger: enemy within 10 yd and the spell known) fire only
+# while the spell is known. Same casts: below the learn level they ended IMPOSSIBLE. Trigger choice read at engine
+# (re)build. 0 = old triggers (default).
+AiPlayerbot.Diet.WarlockCcKnown = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

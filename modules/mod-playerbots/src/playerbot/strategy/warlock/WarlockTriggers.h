@@ -42,7 +42,33 @@ namespace ai
 
     INTERRUPT_TRIGGER(DeathCoilInterruptTrigger, "death coil");
     INTERRUPT_HEALER_TRIGGER(DeathCoilInterruptTHealerTrigger, "death coil");
-    SNARE_TRIGGER(DeathCoilSnareTrigger, "death coil");
+
+    // twow-repo#568 (D23, AiPlayerbot.Diet.WarlockCcKnown): death coil is learned at 42; before that the snare
+    // node (ACTION_INTERRUPT + 3) ended IMPOSSIBLE (spell id 0, no alternative). Switch off: the old check only.
+    class DeathCoilSnareTrigger : public SnareTargetTrigger
+    {
+    public:
+        DeathCoilSnareTrigger(PlayerbotAI* ai) : SnareTargetTrigger(ai, "death coil") {}
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietWarlockCcKnown && !AI_VALUE2(uint32, "spell id", spell))
+                return false;
+            return SnareTargetTrigger::IsActive();
+        }
+    };
+
+    // twow-repo#568 (D23): "enemy ten yards" for howl of terror (learned at 40), registered as "howl of terror"
+    // and used by the warlock cc strategy only with AiPlayerbot.Diet.WarlockCcKnown = 1.
+    class HowlOfTerrorTrigger : public EnemyInRangeTrigger
+    {
+    public:
+        HowlOfTerrorTrigger(PlayerbotAI* ai) : EnemyInRangeTrigger(ai, "howl of terror", 10.0f) {}
+        virtual bool IsActive() override
+        {
+            return AI_VALUE2(uint32, "spell id", "howl of terror") && EnemyInRangeTrigger::IsActive();
+        }
+    };
+
     SNARE_TRIGGER(ShadowfurySnareTrigger, "shadowfury");
     INTERRUPT_TRIGGER(ShadowfuryInterruptTrigger, "shadowfury");
 

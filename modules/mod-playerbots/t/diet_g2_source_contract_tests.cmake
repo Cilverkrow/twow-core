@@ -63,12 +63,14 @@ file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.h" config_h)
 file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
 file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_dist)
 file(READ "${CORE_SOURCE_DIR}/src/game/SharedDefines.h" shared_defines)
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/TriggerContext.h" trigger_context)
 
 # Every switch defaults to 0.
 foreach(pair
     "dietPriestRacials|PriestRacials"
     "dietPriestSelfBuffKnown|PriestSelfBuffKnown"
-    "dietShadowPriestDeadNodes|ShadowPriestDeadNodes")
+    "dietShadowPriestDeadNodes|ShadowPriestDeadNodes"
+    "dietWarlockCcKnown|WarlockCcKnown")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -152,5 +154,23 @@ forbid_text("${shadow_combat}" "\n    triggers.push_back(new TriggerNode(\n     
 forbid_text("${shadow_combat}" "\n    triggers.push_back(new TriggerNode(\n        \"shadowfiend\"," "D32 ungated shadowfiend")
 # Vampiric embrace (the castable half) stays ungated.
 require_text("${shadow_combat}" "\n    triggers.push_back(new TriggerNode(\n        \"vampiric embrace\"," "D32 vampiric embrace stays")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D23 (AiPlayerbot.Diet.WarlockCcKnown): death coil snare and howl of terror only while the spell is known.
+file(READ "${PB_SOURCE_DIR}/strategy/warlock/WarlockTriggers.h" warlock_triggers_h)
+file(READ "${PB_SOURCE_DIR}/strategy/warlock/WarlockTriggers.cpp" warlock_triggers_cpp)
+file(READ "${PB_SOURCE_DIR}/strategy/warlock/WarlockStrategy.cpp" warlock_strategy)
+file(READ "${PB_SOURCE_DIR}/strategy/warlock/WarlockAiObjectContext.cpp" warlock_context)
+region("${warlock_strategy}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" warlock_zero)
+require_switch_first_trigger("${warlock_triggers_h}" "DeathCoilSnareTrigger" "SnareTargetTrigger" "death coil" "dietWarlockCcKnown" "D23 death coil snare trigger")
+forbid_text("${warlock_triggers_h}" "SNARE_TRIGGER(DeathCoilSnareTrigger" "D23 old death coil snare macro")
+region("${warlock_triggers_h}" "class HowlOfTerrorTrigger : public EnemyInRangeTrigger" "};" howl_trigger)
+require_text("${howl_trigger}" "HowlOfTerrorTrigger(PlayerbotAI* ai) : EnemyInRangeTrigger(ai, \"howl of terror\", 10.0f) {}" "D23 howl trigger = the 10 yd check of enemy ten yards")
+require_text("${howl_trigger}" "return AI_VALUE2(uint32, \"spell id\", \"howl of terror\") && EnemyInRangeTrigger::IsActive();" "D23 howl trigger known gate")
+require_text("${warlock_context}" "creators[\"howl of terror\"] = [](PlayerbotAI* ai) { return new HowlOfTerrorTrigger(ai); };" "D23 howl trigger registered")
+require_text("${warlock_zero}" "    triggers.push_back(new TriggerNode(\n        sPlayerbotAIConfig.dietWarlockCcKnown ? \"howl of terror\" : \"enemy ten yards\",\n        NextAction::array(0, new NextAction(\"howl of terror\", ACTION_INTERRUPT), NULL)));" "D23 howl node: old trigger with the switch off")
+require_text("${warlock_zero}" "\"death coil on snare target\",\n        NextAction::array(0, new NextAction(\"death coil on snare target\", ACTION_INTERRUPT + 3), NULL)));" "D23 death coil snare node kept")
+require_text("${trigger_context}" "creators[\"enemy ten yards\"] = [](PlayerbotAI* ai) { return new EnemyInRangeTrigger(ai, \"enemy ten yards\", 10.0f); };" "D23 generic enemy ten yards = EnemyInRangeTrigger 10 yd (HowlOfTerrorTrigger mirrors it)")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")

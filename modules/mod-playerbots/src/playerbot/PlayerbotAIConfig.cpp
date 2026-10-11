@@ -439,6 +439,7 @@ bool PlayerbotAIConfig::Initialize()
     dietPriestRacials = config.GetBoolDefault("AiPlayerbot.Diet.PriestRacials", false);
     dietPriestSelfBuffKnown = config.GetBoolDefault("AiPlayerbot.Diet.PriestSelfBuffKnown", false);
     dietShadowPriestDeadNodes = config.GetBoolDefault("AiPlayerbot.Diet.ShadowPriestDeadNodes", false);
+    dietWarlockCcKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockCcKnown", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

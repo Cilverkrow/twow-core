@@ -226,6 +226,7 @@ namespace ai
                 creators["death coil interrupt"] = [](PlayerbotAI* ai) { return new DeathCoilInterruptTrigger(ai); };
                 creators["death coil on enemy healer"] = [](PlayerbotAI* ai) { return new DeathCoilInterruptTHealerTrigger(ai); };
                 creators["death coil on snare target"] = [](PlayerbotAI* ai) { return new DeathCoilSnareTrigger(ai); };
+                creators["howl of terror"] = [](PlayerbotAI* ai) { return new HowlOfTerrorTrigger(ai); };  // twow-repo#568 (D23)
                 creators["inferno"] = [](PlayerbotAI* ai) { return new InfernoTrigger(ai); };
                 creators["shadowfury interrupt"] = [](PlayerbotAI* ai) { return new ShadowfuryInterruptTrigger(ai); };
                 creators["shadowfury on snare target"] = [](PlayerbotAI* ai) { return new ShadowfurySnareTrigger(ai); };

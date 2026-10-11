@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "WarlockMultipliers.h"
 #include "WarlockStrategy.h"
 
@@ -360,8 +361,10 @@ void WarlockCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         "fear",
         NextAction::array(0, new NextAction("fear on cc", ACTION_INTERRUPT + 1), NULL)));
 
+    // twow-repo#568 (D23, AiPlayerbot.Diet.WarlockCcKnown): with the switch the node uses the "howl of terror"
+    // trigger (same 10 yd check, only while howl of terror is known; learned at 40). Switch off: "enemy ten yards".
     triggers.push_back(new TriggerNode(
-        "enemy ten yards",
+        sPlayerbotAIConfig.dietWarlockCcKnown ? "howl of terror" : "enemy ten yards",
         NextAction::array(0, new NextAction("howl of terror", ACTION_INTERRUPT), NULL)));
 }
 
