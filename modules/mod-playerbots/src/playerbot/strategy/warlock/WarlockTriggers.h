@@ -37,7 +37,22 @@ namespace ai
     };
 
     DEBUFF_TRIGGER_A(CorruptionTrigger, "corruption");
-    DEBUFF_TRIGGER(SiphonLifeTrigger, "siphon life");
+    // twow-repo#568 (D24, AiPlayerbot.Diet.WarlockTalentKnown): siphon life, dark pact, shadowburn and
+    // conflagrate are talents (no trainer row for rank 1). Without the talent their nodes ran PREREQ, a reach
+    // spell push and IMPOSSIBLE (spell id 0, no alternative). With the switch these triggers wait for a known
+    // spell; switch off: the old checks / the old generic trigger names in the strategies.
+    class SiphonLifeTrigger : public DebuffTrigger
+    {
+    public:
+        SiphonLifeTrigger(PlayerbotAI* ai) : DebuffTrigger(ai, "siphon life") {}
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietWarlockTalentKnown && !AI_VALUE2(uint32, "spell id", spell))
+                return false;
+            return DebuffTrigger::IsActive();
+        }
+    };
+
     DEBUFF_TRIGGER(UnstableAfflictionTrigger, "unstable affliction");
 
     INTERRUPT_TRIGGER(DeathCoilInterruptTrigger, "death coil");
@@ -146,6 +161,47 @@ namespace ai
     {
     public:
         SiphonLifeOnAttackerTrigger(PlayerbotAI* ai) : DebuffOnAttackerTrigger(ai, "siphon life") {}
+        // twow-repo#568 (D24): no attacker scan while siphon life is unknown (switch on).
+        virtual bool IsActive() override
+        {
+            if (sPlayerbotAIConfig.dietWarlockTalentKnown && !AI_VALUE2(uint32, "spell id", spell))
+                return false;
+            return DebuffOnAttackerTrigger::IsActive();
+        }
+    };
+
+    // twow-repo#568 (D24): "target critical health" for shadowburn, registered as "shadowburn" and used by the
+    // warlock strategy only with AiPlayerbot.Diet.WarlockTalentKnown = 1.
+    class ShadowburnTrigger : public TargetCriticalHealthTrigger
+    {
+    public:
+        ShadowburnTrigger(PlayerbotAI* ai) : TargetCriticalHealthTrigger(ai) {}
+        virtual bool IsActive() override
+        {
+            return AI_VALUE2(uint32, "spell id", "shadowburn") && TargetCriticalHealthTrigger::IsActive();
+        }
+    };
+
+    // twow-repo#568 (D24): "very often" (every 5 s) for the pvp shadowburn, registered as "shadowburn pvp".
+    class ShadowburnPvpTrigger : public TimeTrigger
+    {
+    public:
+        ShadowburnPvpTrigger(PlayerbotAI* ai) : TimeTrigger(ai, "shadowburn pvp", 5) {}
+        virtual bool IsActive() override
+        {
+            return AI_VALUE2(uint32, "spell id", "shadowburn") != 0;
+        }
+    };
+
+    // twow-repo#568 (D24): "low mana" for dark pact, registered as "dark pact".
+    class DarkPactTrigger : public LowManaTrigger
+    {
+    public:
+        DarkPactTrigger(PlayerbotAI* ai) : LowManaTrigger(ai) {}
+        virtual bool IsActive() override
+        {
+            return AI_VALUE2(uint32, "spell id", "dark pact") && LowManaTrigger::IsActive();
+        }
     };
 
     class UnstableAfflictionOnAttackerTrigger : public DebuffOnAttackerTrigger

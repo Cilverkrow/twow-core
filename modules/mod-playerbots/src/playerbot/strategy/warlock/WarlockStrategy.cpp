@@ -52,7 +52,7 @@ void WarlockStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         NextAction::array(0, new NextAction("drain soul", ACTION_HIGH + 1), NULL)));
 
     triggers.push_back(new TriggerNode(
-        "target critical health",
+        sPlayerbotAIConfig.dietWarlockTalentKnown ? "shadowburn" : "target critical health",  // twow-repo#568 (D24)
         NextAction::array(0, new NextAction("shadowburn", ACTION_HIGH), NULL)));
 
     triggers.push_back(new TriggerNode(
@@ -110,7 +110,7 @@ void WarlockPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         NextAction::array(0, new NextAction("drain life", ACTION_LIGHT_HEAL), NULL)));
 
     triggers.push_back(new TriggerNode(
-        "very often",
+        sPlayerbotAIConfig.dietWarlockTalentKnown ? "shadowburn pvp" : "very often",  // twow-repo#568 (D24)
         NextAction::array(0, new NextAction("shadowburn", ACTION_HIGH), NULL)));
 }
 

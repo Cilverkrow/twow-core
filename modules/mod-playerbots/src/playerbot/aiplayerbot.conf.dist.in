@@ -2036,6 +2036,11 @@ AiPlayerbot.Diet.ShadowPriestDeadNodes = 0
 # while the spell is known. Same casts: below the learn level they ended IMPOSSIBLE. Trigger choice read at engine
 # (re)build. 0 = old triggers (default).
 AiPlayerbot.Diet.WarlockCcKnown = 0
+# twow-repo#568 (D24, strategy diet): 1 = the warlock talent spells fire only while the bot knows them: "siphon life",
+# "siphon life on attacker" and "conflagrate" triggers check the spell first; shadowburn ("target critical health",
+# pvp "very often") and dark pact ("low mana") move to own triggers with the same condition plus the known spell.
+# Same casts: without the talent these nodes ended IMPOSSIBLE. Trigger choice read at engine (re)build. 0 = as before.
+AiPlayerbot.Diet.WarlockTalentKnown = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

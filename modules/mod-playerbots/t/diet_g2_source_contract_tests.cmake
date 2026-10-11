@@ -70,7 +70,8 @@ foreach(pair
     "dietPriestRacials|PriestRacials"
     "dietPriestSelfBuffKnown|PriestSelfBuffKnown"
     "dietShadowPriestDeadNodes|ShadowPriestDeadNodes"
-    "dietWarlockCcKnown|WarlockCcKnown")
+    "dietWarlockCcKnown|WarlockCcKnown"
+    "dietWarlockTalentKnown|WarlockTalentKnown")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -172,5 +173,37 @@ require_text("${warlock_context}" "creators[\"howl of terror\"] = [](PlayerbotAI
 require_text("${warlock_zero}" "    triggers.push_back(new TriggerNode(\n        sPlayerbotAIConfig.dietWarlockCcKnown ? \"howl of terror\" : \"enemy ten yards\",\n        NextAction::array(0, new NextAction(\"howl of terror\", ACTION_INTERRUPT), NULL)));" "D23 howl node: old trigger with the switch off")
 require_text("${warlock_zero}" "\"death coil on snare target\",\n        NextAction::array(0, new NextAction(\"death coil on snare target\", ACTION_INTERRUPT + 3), NULL)));" "D23 death coil snare node kept")
 require_text("${trigger_context}" "creators[\"enemy ten yards\"] = [](PlayerbotAI* ai) { return new EnemyInRangeTrigger(ai, \"enemy ten yards\", 10.0f); };" "D23 generic enemy ten yards = EnemyInRangeTrigger 10 yd (HowlOfTerrorTrigger mirrors it)")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# D24 (AiPlayerbot.Diet.WarlockTalentKnown): siphon life, conflagrate, shadowburn, dark pact only when known.
+file(READ "${PB_SOURCE_DIR}/strategy/warlock/AfflictionWarlockStrategy.cpp" affliction_strategy)
+region("${affliction_strategy}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" affliction_zero)
+require_switch_first_trigger("${warlock_triggers_h}" "SiphonLifeTrigger" "DebuffTrigger" "siphon life" "dietWarlockTalentKnown" "D24 siphon life trigger")
+forbid_text("${warlock_triggers_h}" "DEBUFF_TRIGGER(SiphonLifeTrigger" "D24 old siphon life macro")
+require_switch_first_trigger("${warlock_triggers_h}" "SiphonLifeOnAttackerTrigger" "DebuffOnAttackerTrigger" "siphon life" "dietWarlockTalentKnown" "D24 siphon life on attacker trigger")
+region("${warlock_triggers_cpp}" "bool ConflagrateTrigger::IsActive()" "\n}" conflagrate)
+require_order("${conflagrate}" "if (sPlayerbotAIConfig.dietWarlockTalentKnown && !AI_VALUE2(uint32, \"spell id\", \"conflagrate\"))\n        return false;" "Aura* aura = ai->GetAura(\"immolate\", target, true);" "D24 conflagrate gate before the old immolate check")
+region("${warlock_triggers_h}" "class ShadowburnTrigger : public TargetCriticalHealthTrigger" "};" shadowburn_trigger)
+require_text("${shadowburn_trigger}" "return AI_VALUE2(uint32, \"spell id\", \"shadowburn\") && TargetCriticalHealthTrigger::IsActive();" "D24 shadowburn = target critical health + known")
+region("${warlock_triggers_h}" "class ShadowburnPvpTrigger : public TimeTrigger" "};" shadowburn_pvp_trigger)
+require_text("${shadowburn_pvp_trigger}" "ShadowburnPvpTrigger(PlayerbotAI* ai) : TimeTrigger(ai, \"shadowburn pvp\", 5) {}" "D24 pvp shadowburn keeps the 5 s very often interval")
+require_text("${shadowburn_pvp_trigger}" "return AI_VALUE2(uint32, \"spell id\", \"shadowburn\") != 0;" "D24 pvp shadowburn known")
+require_text("${trigger_context}" "creators[\"very often\"] = [](PlayerbotAI* ai) { return new TimeTrigger(ai, \"very often\", 5); };" "D24 generic very often = TimeTrigger 5 s (ShadowburnPvpTrigger mirrors it)")
+require_text("${trigger_context}" "creators[\"target critical health\"] = [](PlayerbotAI* ai) { return new TargetCriticalHealthTrigger(ai); };" "D24 generic target critical health")
+require_text("${trigger_context}" "creators[\"low mana\"] = [](PlayerbotAI* ai) { return new LowManaTrigger(ai); };" "D24 generic low mana")
+region("${warlock_triggers_h}" "class DarkPactTrigger : public LowManaTrigger" "};" dark_pact_trigger)
+require_text("${dark_pact_trigger}" "return AI_VALUE2(uint32, \"spell id\", \"dark pact\") && LowManaTrigger::IsActive();" "D24 dark pact = low mana + known")
+foreach(reg "shadowburn|ShadowburnTrigger" "shadowburn pvp|ShadowburnPvpTrigger" "dark pact|DarkPactTrigger")
+  string(REPLACE "|" ";" parts "${reg}")
+  list(GET parts 0 reg_name)
+  list(GET parts 1 reg_class)
+  require_text("${warlock_context}" "creators[\"${reg_name}\"] = [](PlayerbotAI* ai) { return new ${reg_class}(ai); };" "D24 ${reg_name} trigger registered")
+endforeach()
+require_text("${warlock_zero}" "        sPlayerbotAIConfig.dietWarlockTalentKnown ? \"shadowburn\" : \"target critical health\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"shadowburn\", ACTION_HIGH), NULL)));" "D24 shadowburn node: old trigger with the switch off")
+require_text("${warlock_zero}" "        sPlayerbotAIConfig.dietWarlockTalentKnown ? \"shadowburn pvp\" : \"very often\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"shadowburn\", ACTION_HIGH), NULL)));" "D24 pvp shadowburn node: old trigger with the switch off")
+require_text("${affliction_zero}" "        sPlayerbotAIConfig.dietWarlockTalentKnown ? \"dark pact\" : \"low mana\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"dark pact\", ACTION_HIGH + 2), NULL)));" "D24 dark pact node: old trigger with the switch off")
+forbid_text("${warlock_zero}" "\"target critical health\",\n        NextAction::array(0, new NextAction(\"shadowburn\"" "D24 ungated shadowburn")
+forbid_text("${affliction_zero}" "\"low mana\",\n        NextAction::array(0, new NextAction(\"dark pact\"" "D24 ungated dark pact")
 
 message(STATUS "DIET_G2_SOURCE_CONTRACT=PASS")

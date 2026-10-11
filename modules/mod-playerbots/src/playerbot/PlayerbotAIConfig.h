@@ -580,6 +580,7 @@ public:
     bool dietPriestSelfBuffKnown = false;  // twow-repo#568 (D22): inner fire / shadowform / inner focus triggers wait for a known spell id, inner focus also for its cooldown (0 = off)
     bool dietShadowPriestDeadNodes = false;  // twow-repo#568 (D32): shadow priest strategy does not register "vampiric touch" (passive talent in Turtle) and "shadowfiend" (no such spell in Turtle 1.18) (0 = off)
     bool dietWarlockCcKnown = false;  // twow-repo#568 (D23): warlock cc pushes death coil (snare) and howl of terror only while the spell is known (0 = off)
+    bool dietWarlockTalentKnown = false;  // twow-repo#568 (D24): warlock talent spells siphon life (also on attacker), conflagrate, shadowburn (pve + pvp) and dark pact fire only while the spell is known (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

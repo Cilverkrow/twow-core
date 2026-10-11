@@ -237,6 +237,9 @@ namespace ai
                 creators["no curse"] = [](PlayerbotAI* ai) { return new NoCurseTrigger(ai); };
                 creators["no curse on attacker"] = [](PlayerbotAI* ai) { return new NoCurseOnAttackerTrigger(ai); };
                 creators["conflagrate"] = [](PlayerbotAI* ai) { return new ConflagrateTrigger(ai); };
+                creators["shadowburn"] = [](PlayerbotAI* ai) { return new ShadowburnTrigger(ai); };  // twow-repo#568 (D24)
+                creators["shadowburn pvp"] = [](PlayerbotAI* ai) { return new ShadowburnPvpTrigger(ai); };  // twow-repo#568 (D24)
+                creators["dark pact"] = [](PlayerbotAI* ai) { return new DarkPactTrigger(ai); };  // twow-repo#568 (D24)
                 creators["demonic sacrifice"] = [](PlayerbotAI* ai) { return new DemonicSacrificeTrigger(ai); };
                 creators["no imp"] = [](PlayerbotAI* ai) { return new NoImpTrigger(ai); };
                 creators["no voidwalker"] = [](PlayerbotAI* ai) { return new NoVoidwalkerTrigger(ai); };
