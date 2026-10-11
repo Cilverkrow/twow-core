@@ -2238,6 +2238,14 @@ AiPlayerbot.Perf.PartialPathReuse = 0
 # twow-repo#541 (L1): age limit of a reused path in milliseconds (1000..60000, default 10000). Only read with
 # AiPlayerbot.Perf.PartialPathReuse = 1.
 AiPlayerbot.Perf.PartialPathReuseMs = 10000
+# twow-repo#541 (L1b, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go - nach Abnahme an):
+# seconds (0..300, default 0 = off). A node route search (TravelNodeMap::getRoute from a position: MoveTo, go, fishing)
+# that tried every start/end node pair and found no route blocks the same bot and target cell (100 yd) for that many
+# seconds, the same cooldown that an exceeded search budget (#416) already sets. Until then the search returns the
+# same empty route at once, so MoveTo keeps its straight-line fallback without the 60-150 ms search
+# (chain42: 67 % of the slow route builds). A route that the bot could reach from a new position, or that a node
+# change creates, is found at most that many seconds later. [RouteFail] logs blocks and skips once a minute.
+AiPlayerbot.Perf.RouteFailCooldownSeconds = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
