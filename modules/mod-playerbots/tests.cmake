@@ -2387,3 +2387,9 @@ add_test(NAME trace_action_us_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
+
+# twow-repo#541 (CLI-541 tail analysis): getFullPath holds the node map lock with RAII (empty-route leak fixed).
+add_test(NAME travel_node_lock_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/travel_node_lock_source_contract_tests.cmake")
