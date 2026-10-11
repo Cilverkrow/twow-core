@@ -2418,3 +2418,8 @@ add_test(NAME partial_path_reuse_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/partial_path_reuse_source_contract_tests.cmake")
+
+add_test(NAME route_fail_cooldown_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/route_fail_cooldown_source_contract_tests.cmake")
