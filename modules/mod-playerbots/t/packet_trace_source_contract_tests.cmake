@@ -69,6 +69,15 @@ endif()
 require_text("${policy}" "thread_local Local local;" "thread-local counters")
 require_text("${policy}" "if (++pending >= FlushEvery)\n                Flush(totals);" "batched flush")
 
+# "1b" (owner 11.10.2026, AiPlayerbot.Perf.NearestSkipHiddenBots, default 0): nearest-units values skip parked bots
+# hidden from bots, before the LOS raycast.
+read_source("strategy/values/NearestUnitsValue.h" nearest)
+require_text("${config_h}" "bool nearestSkipHiddenBots = false;" "skip switch default off")
+require_text("${config_cpp}" "nearestSkipHiddenBots = config.GetBoolDefault(\"AiPlayerbot.Perf.NearestSkipHiddenBots\", false);" "skip config default 0")
+require_text("${conf_dist}" "AiPlayerbot.Perf.NearestSkipHiddenBots = 0" "skip documented")
+require_order("${nearest}" "bool const skipHidden = sPlayerbotAIConfig.nearestSkipHiddenBots;" "if (skipHidden && unit->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(unit)->IsHiddenFromBots())\n                    continue;" "skip behind the switch")
+require_order("${nearest}" "static_cast<Player*>(unit)->IsHiddenFromBots())\n                    continue;" "sServerFacade.IsWithinLOSInMap(bot, unit)" "skip before the LOS raycast")
+
 # Minute line only with the switch.
 require_order("${mgr}" "if (sPlayerbotAIConfig.packetTrace)" "[BotPackets] map=%s kib_bot_read=%llu kib_bot_ignored=%llu kib_real=%llu%s" "minute line behind the switch")
 require_text("${mgr}" "[BotPackets] inbox_copy_samples=%llu inbox_copy_avg_ns=%llu sample_every=%u flush_every=%u" "inbox copy cost line")

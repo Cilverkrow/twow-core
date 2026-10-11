@@ -1824,6 +1824,10 @@ AiPlayerbot.X3c.InboxWrites = 0
 # other) and class (movement, update, spell, combat, chat, other), as count and bytes; one [BotPackets] line per
 # map bucket and minute, plus the sampled cost of the bot inbox copy. 0 = no counting (default).
 AiPlayerbot.PacketTrace = 0
+# twow-repo#541 (owner 11.10.2026): 1 = the nearest-units values (nearest friendly players, possible targets, …) skip
+# a parked bot that is hidden from bots (Park.HideFromBots) before the line-of-sight check - the core already hides it
+# from other bots, only these grid searches still found it. 0 = off (default).
+AiPlayerbot.Perf.NearestSkipHiddenBots = 0
 # twow-repo#541 (audit A01): 1 = the flee point search (find corpse, flee, random bot flee teleport) evaluates
 # each candidate angle once per search and reuses that result when a later distance ring repeats the
 # same angle. Same candidate points, same chosen point, fewer height/water/LOS checks. 0 = off (default).
