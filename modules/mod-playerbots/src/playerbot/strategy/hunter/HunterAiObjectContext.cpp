@@ -193,6 +193,7 @@ namespace ai
                 creators["black arrow"] = [](PlayerbotAI* ai) { return new BlackArrowTrigger(ai); };
                 creators["black arrow on snare target"] = [](PlayerbotAI* ai) { return new BlackArrowSnareTrigger(ai); };
                 creators["no stings"] = [](PlayerbotAI* ai) { return new HunterNoStingsActiveTrigger(ai); };
+                creators["no stings usable"] = [](PlayerbotAI* ai) { return new HunterNoStingsUsableTrigger(ai); };
                 creators["hunters pet dead"] = [](PlayerbotAI* ai) { return new HuntersPetDeadTrigger(ai); };
                 creators["hunters pet low health"] = [](PlayerbotAI* ai) { return new HuntersPetLowHealthTrigger(ai); };
                 creators["hunter's mark"] = [](PlayerbotAI* ai) { return new HuntersMarkTrigger(ai); };

@@ -436,7 +436,7 @@ void HunterStingStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     }
 
     // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): on, the pve/pvp/raid part registers the one
-    // 'no stings' node (every spec sting strategy calls this base and exactly one of them). Off: as before.
+    // 'no stings usable' node (every spec sting strategy calls this base and exactly one of them). Off: as before.
     if (!sPlayerbotAIConfig.dietHunterBestSting)
     {
         triggers.push_back(new TriggerNode(
@@ -447,11 +447,11 @@ void HunterStingStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 
 void HunterStingPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
-    // twow-repo#568 (D10): one node with both stings instead of a second 'no stings' node (same relevances).
+    // twow-repo#568 (D10): one 'no stings usable' node with both stings instead of two 'no stings' nodes (same relevances).
     if (sPlayerbotAIConfig.dietHunterBestSting)
     {
         triggers.push_back(new TriggerNode(
-            "no stings",
+            "no stings usable",
             NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), new NextAction("serpent sting", ACTION_NORMAL + 4), NULL)));
         return;
     }
@@ -463,11 +463,11 @@ void HunterStingPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& trigger
 
 void HunterStingPveStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
-    // twow-repo#568 (D10): one node with both stings instead of a second 'no stings' node (same relevances).
+    // twow-repo#568 (D10): one 'no stings usable' node with both stings instead of two 'no stings' nodes (same relevances).
     if (sPlayerbotAIConfig.dietHunterBestSting)
     {
         triggers.push_back(new TriggerNode(
-            "no stings",
+            "no stings usable",
             NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), new NextAction("serpent sting", ACTION_NORMAL + 4), NULL)));
         return;
     }
@@ -479,11 +479,11 @@ void HunterStingPveStrategy::InitCombatTriggers(std::list<TriggerNode*>& trigger
 
 void HunterStingRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
-    // twow-repo#568 (D10): raid keeps viper sting only; the node moved here from the base strategy.
+    // twow-repo#568 (D10): raid keeps viper sting only; the node moved here from the base strategy, on 'no stings usable'.
     if (sPlayerbotAIConfig.dietHunterBestSting)
     {
         triggers.push_back(new TriggerNode(
-            "no stings",
+            "no stings usable",
             NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), NULL)));
     }
 }

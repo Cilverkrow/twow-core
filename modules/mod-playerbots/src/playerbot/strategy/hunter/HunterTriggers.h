@@ -9,6 +9,17 @@ namespace ai
     BEGIN_TRIGGER(HunterNoStingsActiveTrigger, Trigger)
     END_TRIGGER()
 
+    // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): 'no stings' for the one viper/serpent spec node, active
+    // only when one of those stings can be used. Registered as "no stings usable"; the manual 'sting <x>' strategies
+    // keep 'no stings' and its old result.
+    class HunterNoStingsUsableTrigger : public HunterNoStingsActiveTrigger
+    {
+    public:
+        HunterNoStingsUsableTrigger(PlayerbotAI* ai) : HunterNoStingsActiveTrigger(ai) {}
+        virtual std::string getName() override { return "no stings usable"; }
+        virtual bool IsActive() override;
+    };
+
     class AspectOfTheHawkTrigger : public BuffTrigger
     {
     public:

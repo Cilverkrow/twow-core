@@ -70,35 +70,48 @@ foreach(pair
 endforeach()
 
 # ---------------------------------------------------------------------------------------------------------
-# D10 (AiPlayerbot.Diet.HunterBestSting): one 'no stings' node, trigger only when a sting can be used,
-# serpent sting on mana targets while viper sting is unknown.
+# D10 (AiPlayerbot.Diet.HunterBestSting): one 'no stings usable' node per vanilla spec sting strategy, the trigger
+# fires only when a sting of the node can be used, serpent sting on mana targets while viper sting is unknown.
+# The manual 'sting serpent/scorpid/viper' strategies keep 'no stings' with its old result.
 region("${hunter_zero}" "void HunterStingStrategy::InitCombatTriggers" "\n}\n" sting_base)
 require_text("${sting_base}" "    if (!sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        triggers.push_back(new TriggerNode(\n            \"no stings\",\n            NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), NULL)));\n    }" "D10 base viper node only with the switch off")
 forbid_text("${sting_base}" "\n    triggers.push_back(new TriggerNode(\n        \"no stings\"" "D10 ungated base 'no stings' node")
+forbid_text("${sting_base}" "no stings usable\"," "D10 base strategy registers no 'no stings usable' node")
 require_text("${sting_base}" "\"serpent sting on attacker\", ACTION_HIGH + 2" "D10 on-attacker serpent node kept")
 require_text("${sting_base}" "\"viper sting on attacker\", ACTION_HIGH + 1" "D10 on-attacker viper node kept")
 
-set(both_stings "    if (sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        triggers.push_back(new TriggerNode(\n            \"no stings\",\n            NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), new NextAction(\"serpent sting\", ACTION_NORMAL + 4), NULL)));\n        return;\n    }\n\n    triggers.push_back(new TriggerNode(\n        \"no stings\",\n        NextAction::array(0, new NextAction(\"serpent sting\", ACTION_NORMAL + 4), NULL)));")
+set(both_stings "    if (sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        triggers.push_back(new TriggerNode(\n            \"no stings usable\",\n            NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), new NextAction(\"serpent sting\", ACTION_NORMAL + 4), NULL)));\n        return;\n    }\n\n    triggers.push_back(new TriggerNode(\n        \"no stings\",\n        NextAction::array(0, new NextAction(\"serpent sting\", ACTION_NORMAL + 4), NULL)));")
 foreach(part "Pvp" "Pve")
   region("${hunter_zero}" "void HunterSting${part}Strategy::InitCombatTriggers" "\n}\n" sting_part)
-  require_text("${sting_part}" "${both_stings}" "D10 ${part}: one node with both stings (switch on), the old serpent node (switch off)")
+  require_text("${sting_part}" "${both_stings}" "D10 ${part}: one 'no stings usable' node with both stings (switch on), the old serpent 'no stings' node (switch off)")
 endforeach()
 region("${hunter_zero}" "void HunterStingRaidStrategy::InitCombatTriggers" "\n}\n" sting_raid)
-require_text("${sting_raid}" "    if (sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        triggers.push_back(new TriggerNode(\n            \"no stings\",\n            NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), NULL)));\n    }" "D10 raid: viper node only with the switch on")
+require_text("${sting_raid}" "    if (sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        triggers.push_back(new TriggerNode(\n            \"no stings usable\",\n            NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), NULL)));\n    }" "D10 raid: viper 'no stings usable' node only with the switch on")
 forbid_text("${sting_raid}" "serpent sting" "D10 raid gets no serpent sting")
 
-region("${hunter_triggers_cpp}" "bool HunterNoStingsActiveTrigger::IsActive()" "\n}\n" no_stings)
-require_order("${no_stings}" "!ai->HasAura(\"viper sting\", target);" "if (!noStings || !sPlayerbotAIConfig.dietHunterBestSting)\n        return noStings;" "D10 old check first, then the switch")
-require_order("${no_stings}" "if (!noStings || !sPlayerbotAIConfig.dietHunterBestSting)\n        return noStings;" "AI_VALUE2(uint32, \"spell id\", \"viper sting\")" "D10 spell lookups only with the switch on")
-require_text("${no_stings}" "AI_VALUE2(uint8, \"health\", \"current target\") > 40" "D10 old 40 % health check kept")
-require_text("${no_stings}" "if (viperKnown && targetHasMana)\n        return true;" "D10 viper case")
-require_text("${no_stings}" "return AI_VALUE2(uint8, \"health\", \"current target\") > 50 && (!targetHasMana || !viperKnown) &&\n        AI_VALUE2(uint32, \"spell id\", \"serpent sting\") != 0;" "D10 serpent case mirrors serpent isUseful")
+# Manual 'sting <x>' strategies (also 'sting scorpid', whose action has no health/mana rule) keep 'no stings'.
+region("${hunter_strategy}" "void HunterManualStingStrategy::InitCombatTriggers" "\n}\n" sting_manual)
+require_text("${sting_manual}" "    triggers.push_back(new TriggerNode(\n        \"no stings\",\n        NextAction::array(0, new NextAction(actionName, ACTION_HIGH), NULL)));" "D10 manual sting node on the unchanged 'no stings'")
+forbid_text("${sting_manual}" "no stings usable" "D10 manual sting strategies do not use the gated trigger")
+forbid_text("${sting_manual}" "dietHunterBestSting" "D10 manual sting strategies have no switch")
 
+# 'no stings' keeps the old body byte for byte; the gate lives only in 'no stings usable'.
+require_text("${hunter_triggers_cpp}" "bool HunterNoStingsActiveTrigger::IsActive()\n{\n\tUnit* target = AI_VALUE(Unit*, \"current target\");\n    return target && AI_VALUE2(uint8, \"health\", \"current target\") > 40 &&\n        !ai->HasAura(\"serpent sting\", target) &&\n        !ai->HasAura(\"scorpid sting\", target) &&\n        !ai->HasAura(\"viper sting\", target);\n}\n" "D10 'no stings' body unchanged")
+region("${hunter_triggers_cpp}" "bool HunterNoStingsActiveTrigger::IsActive()" "\n}\n" no_stings)
+forbid_text("${no_stings}" "spell id" "D10 no spell lookups in 'no stings'")
+forbid_text("${no_stings}" "dietHunterBestSting" "D10 no switch in 'no stings'")
+require_text("${hunter_triggers_h}" "    class HunterNoStingsUsableTrigger : public HunterNoStingsActiveTrigger\n    {\n    public:\n        HunterNoStingsUsableTrigger(PlayerbotAI* ai) : HunterNoStingsActiveTrigger(ai) {}\n        virtual std::string getName() override { return \"no stings usable\"; }\n        virtual bool IsActive() override;\n    };" "D10 'no stings usable' trigger class")
+require_text("${hunter_context}" "creators[\"no stings\"] = [](PlayerbotAI* ai) { return new HunterNoStingsActiveTrigger(ai); };" "D10 'no stings' registration unchanged")
+require_text("${hunter_context}" "creators[\"no stings usable\"] = [](PlayerbotAI* ai) { return new HunterNoStingsUsableTrigger(ai); };" "D10 'no stings usable' registered")
+region("${hunter_triggers_cpp}" "bool HunterNoStingsUsableTrigger::IsActive()" "\n}\n" no_stings_usable)
+require_order("${no_stings_usable}" "    if (!HunterNoStingsActiveTrigger::IsActive())\n        return false;\n" "AI_VALUE2(uint32, \"spell id\", \"viper sting\")" "D10 old check first, then the spell lookups")
+require_text("${no_stings_usable}" "    const bool viperKnown = AI_VALUE2(uint32, \"spell id\", \"viper sting\") != 0;\n    const bool targetHasMana = AI_VALUE2(uint8, \"mana\", \"current target\") >= 10;\n    if (viperKnown && targetHasMana)\n        return true;\n\n    return AI_VALUE2(uint8, \"health\", \"current target\") > 50 && (!targetHasMana || !viperKnown) &&\n        AI_VALUE2(uint32, \"spell id\", \"serpent sting\") != 0;" "D10 viper case, then the serpent case mirroring serpent isUseful")
+
+# Full switch-on return statements, followed by the unchanged old line.
 region("${hunter_actions_cpp}" "bool CastSerpentStingAction::isUseful()" "\n}\n" serpent_useful)
-require_order("${serpent_useful}" "(!(AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10) || !AI_VALUE2(uint32, \"spell id\", \"viper sting\"))" "return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"health\", GetTargetName()) > 50 && !(AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10);" "D10 serpent: switch branch, then the old line")
-require_text("${serpent_useful}" "if (sPlayerbotAIConfig.dietHunterBestSting)" "D10 serpent switch")
+require_text("${serpent_useful}" "    if (sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"health\", GetTargetName()) > 50 &&\n            (!(AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10) || !AI_VALUE2(uint32, \"spell id\", \"viper sting\"));\n    }\n\n    return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"health\", GetTargetName()) > 50 && !(AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10);" "D10 serpent: full switch-on return, then the old line")
 region("${hunter_actions_cpp}" "bool CastViperStingAction::isUseful()" "\n}\n" viper_useful)
-require_order("${viper_useful}" "if (sPlayerbotAIConfig.dietHunterBestSting && !AI_VALUE2(uint32, \"spell id\", \"viper sting\"))\n        return false;" "return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10;" "D10 viper: known gate, then the old line")
+require_text("${viper_useful}" "    if (sPlayerbotAIConfig.dietHunterBestSting && !AI_VALUE2(uint32, \"spell id\", \"viper sting\"))\n        return false;\n\n    return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10;" "D10 viper: known gate, then the old line")
 
 # ---------------------------------------------------------------------------------------------------------
 # D19 (AiPlayerbot.Diet.HunterTalentShotsKnown): deterrence / scatter shot on own known+ready triggers,

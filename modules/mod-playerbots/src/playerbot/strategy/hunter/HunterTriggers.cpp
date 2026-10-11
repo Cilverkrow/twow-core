@@ -8,16 +8,21 @@ using namespace ai;
 bool HunterNoStingsActiveTrigger::IsActive()
 {
 	Unit* target = AI_VALUE(Unit*, "current target");
-    const bool noStings = target && AI_VALUE2(uint8, "health", "current target") > 40 &&
+    return target && AI_VALUE2(uint8, "health", "current target") > 40 &&
         !ai->HasAura("serpent sting", target) &&
         !ai->HasAura("scorpid sting", target) &&
         !ai->HasAura("viper sting", target);
+}
 
-    // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): fire only when one sting of the node can be used, with
-    // the same rules as CastViperStingAction / CastSerpentStingAction::isUseful under the switch. Viper sting is
-    // learned at 36 and serpent sting at 4 (spell_template 3034 / 1978). Off: the old check only.
-    if (!noStings || !sPlayerbotAIConfig.dietHunterBestSting)
-        return noStings;
+bool HunterNoStingsUsableTrigger::IsActive()
+{
+    // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): the old 'no stings' check, then fire only when one sting
+    // of the viper/serpent spec node can be used, with the same rules as CastViperStingAction /
+    // CastSerpentStingAction::isUseful under the switch. Viper sting is learned at 36 and serpent sting at 4
+    // (spell_template 3034 / 1978). Only the switch-on spec nodes use this trigger; 'no stings' (manual
+    // 'sting serpent/scorpid/viper') is unchanged.
+    if (!HunterNoStingsActiveTrigger::IsActive())
+        return false;
 
     const bool viperKnown = AI_VALUE2(uint32, "spell id", "viper sting") != 0;
     const bool targetHasMana = AI_VALUE2(uint8, "mana", "current target") >= 10;

@@ -2018,13 +2018,16 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
-# twow-repo#568 (D10, strategy diet, BEHAVIOUR CHANGE): 1 = every hunter sting strategy registers one "no stings" node
-# (pve/pvp: viper sting ACTION_NORMAL+5 and serpent sting +4, raid: viper sting only) instead of two, and the trigger
-# fires only when one of them can be used: viper sting known and target mana >= 10 %, or serpent sting known, target
-# health > 50 % and (target mana < 10 % or viper sting unknown). Serpent sting is no longer refused on a mana target
-# while the bot does not know viper sting (learned at 36), and viper sting is USELESS instead of IMPOSSIBLE while
-# unknown. Change: hunters below 36 put serpent sting on casters and healers (also as a serpent sting pull); all other
-# casts as before. Node layout read at engine (re)build. 0 = two nodes and the old checks (default).
+# twow-repo#568 (D10, strategy diet, BEHAVIOUR CHANGE): 1 = the vanilla hunter sting pve/pvp/raid strategies register
+# one node on the new trigger "no stings usable" (pve/pvp: viper sting ACTION_NORMAL+5 and serpent sting +4, raid:
+# viper sting only) instead of two "no stings" nodes. "no stings usable" runs the old "no stings" check (target health
+# > 40 %, no serpent/scorpid/viper sting aura) and then fires only when viper sting is known and target mana >= 10 %,
+# or serpent sting is known, target health > 50 % and (target mana < 10 % or viper sting unknown). Serpent sting is
+# no longer refused on a mana target while the bot does not know viper sting (learned at 36), and viper sting is
+# USELESS instead of IMPOSSIBLE while unknown. Changes: hunters below 36 put serpent sting on casters and healers (also
+# as a serpent sting pull and with the manual "sting serpent" strategy). The manual "sting serpent/scorpid/viper"
+# strategies keep the unchanged "no stings" trigger, so "sting scorpid" casts exactly as before. All other casts as
+# before. Node layout read at engine (re)build. 0 = two "no stings" nodes and the old checks (default).
 AiPlayerbot.Diet.HunterBestSting = 0
 # twow-repo#568 (D19, strategy diet, BEHAVIOUR CHANGE): 1 = the vanilla hunter buff strategy pushes "deterrence" from
 # the trigger "deterrence" and the cc pve/pvp strategies push "scatter shot on closest attacker targeting me" from the
