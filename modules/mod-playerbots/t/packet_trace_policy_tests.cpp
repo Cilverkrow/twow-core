@@ -75,6 +75,24 @@ int main()
         sampled += local.SampleThisBotPacket() ? 1 : 0;
     Require(sampled == 10, "one timed inbox copy per TimeSampleEvery bot packets");
 
+    // "other" opcodes built for bots and never read: counted per opcode, top n by count.
+    Totals opcodes;
+    Local opLocal;
+    for (int i = 0; i < 30; ++i)
+        opLocal.Add(BotIgnored, EasternKingdoms, Other, 1, opcodes, 0x150);
+    for (int i = 0; i < 20; ++i)
+        opLocal.Add(BotIgnored, Kalimdor, Other, 1, opcodes, 0x0FD);
+    for (int i = 0; i < 10; ++i)
+        opLocal.Add(BotIgnored, Kalimdor, Other, 1, opcodes, 0x2A0);
+    opLocal.Add(BotRead, Kalimdor, Other, 1, opcodes, 0x0AA);      // read: not in the ignored top
+    opLocal.Add(BotIgnored, Kalimdor, Update, 1, opcodes, 0x0A9);  // other class: not counted per opcode
+    opLocal.Add(BotIgnored, Kalimdor, Other, 1, opcodes);          // no opcode given: not counted per opcode
+    opLocal.Flush(opcodes);
+    auto const top = TakeTopOtherIgnored(opcodes, 2);
+    Require(top.size() == 2 && top[0].first == 0x150 && top[0].second == 30 && top[1].first == 0x0FD && top[1].second == 20,
+        "top two ignored other opcodes by count");
+    Require(TakeTopOtherIgnored(opcodes, 5).empty(), "taking resets the per-opcode counts");
+
     std::cout << "packet_trace_policy_tests passed\n";
     return 0;
 }
