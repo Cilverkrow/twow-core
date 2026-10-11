@@ -2022,6 +2022,10 @@ AiPlayerbot.PossibleTargetsSharedSearch = 0
 # Blade Flurry in combat (boost strategy, combat engine) and cast them; 0 = both stay in the non-combat engine, where
 # the boost trigger is never active, so Adrenaline Rush is never cast (today's behaviour, default).
 AiPlayerbot.Diet.RogueCombatBoostInCombat = 0
+# twow-repo#568 (diet D15, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = assassination rogues (and every rogue below L10)
+# use backstab behind the target (falls back to sinister strike) and sinister strike in front; Mutilate does not exist
+# in Turtle 1.18. 0 = the dead 'mutilate back' / 'mutilate front' nodes as today (default).
+AiPlayerbot.Diet.RogueNoMutilate = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

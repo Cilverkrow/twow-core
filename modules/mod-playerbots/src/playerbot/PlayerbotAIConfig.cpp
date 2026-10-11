@@ -437,6 +437,7 @@ bool PlayerbotAIConfig::Initialize()
     perfPartyTargetMemo = config.GetBoolDefault("AiPlayerbot.Perf.PartyTargetMemo", false);
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
     dietRogueCombatBoostInCombat = config.GetBoolDefault("AiPlayerbot.Diet.RogueCombatBoostInCombat", false);
+    dietRogueNoMutilate = config.GetBoolDefault("AiPlayerbot.Diet.RogueNoMutilate", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

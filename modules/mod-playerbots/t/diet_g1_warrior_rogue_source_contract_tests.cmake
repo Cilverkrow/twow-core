@@ -71,4 +71,18 @@ region("${combat_rogue}" "void CombatRogueBoostStrategy::InitNonCombatTriggers("
 require_order("${d03_nc}" "if (!sPlayerbotAIConfig.dietRogueCombatBoostInCombat)" "NextAction(\"adrenaline rush\", ACTION_HIGH + 5)" "D03 off path keeps adrenaline rush in the non-combat list")
 require_order("${d03_nc}" "if (!sPlayerbotAIConfig.dietRogueCombatBoostInCombat)" "NextAction(\"blade flurry\", ACTION_HIGH + 4)" "D03 off path keeps blade flurry in the non-combat list")
 
+# D15: assassination builders without the non-existent Mutilate (on); the mutilate nodes stay on the off path.
+require_switch(dietRogueNoMutilate Diet.RogueNoMutilate)
+read_vanilla(strategy/rogue/AssassinationRogueStrategy.cpp assassination)
+region("${assassination}" "void AssassinationRogueStrategy::InitCombatTriggers(" "void AssassinationRogueStrategy::InitNonCombatTriggers(" d15)
+region("${d15}" "if (sPlayerbotAIConfig.dietRogueNoMutilate)" "else" d15_on)
+require_text("${d15_on}" "\"behind target\",
+            NextAction::array(0, new NextAction(\"backstab\", ACTION_NORMAL + 1), NULL)" "D15 on: backstab behind the target")
+require_text("${d15_on}" "\"not behind target\",
+            NextAction::array(0, new NextAction(\"sinister strike\", ACTION_NORMAL), NULL)" "D15 on: sinister strike in front")
+forbid_text("${d15_on}" "mutilate" "D15 on: no mutilate node")
+region("${d15}" "    else\n" "\n    }\n" d15_off)
+require_text("${d15_off}" "NextAction(\"mutilate back\", ACTION_NORMAL + 1)" "D15 off path keeps mutilate back")
+require_text("${d15_off}" "NextAction(\"mutilate front\", ACTION_NORMAL)" "D15 off path keeps mutilate front")
+
 message(STATUS "DIET_G1_WARRIOR_ROGUE_SOURCE_CONTRACT=PASS")
