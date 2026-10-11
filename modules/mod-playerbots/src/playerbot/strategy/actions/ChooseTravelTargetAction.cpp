@@ -802,6 +802,14 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 continue;
             }
 
+            // twow-repo#581 (QL-1): objectives of a quest this bot kept failing at (emptied camps) are skipped for a while.
+            if (persistentTarget && persistentTarget->IsQuestLoopSuppressed(destination))
+            {
+                ai->TellDebug(requester, "Skipping quest objective after repeated failures.", "debug travel");
+                ++lastRejects.questLoopSuppressed;
+                continue;
+            }
+
             // #414: no gathering trips to another continent.
             uint32 const gatherPurposes = uint32(TravelDestinationPurpose::GatherSkinning) | uint32(TravelDestinationPurpose::GatherMining) |
                 uint32(TravelDestinationPurpose::GatherHerbalism) | uint32(TravelDestinationPurpose::GatherFishing);
@@ -1224,7 +1232,8 @@ bool RefreshTravelTargetAction::Execute(Event& event)
     // cooldown (#138, #307) or skipped by the zone escape must not come back
     // through the refresh. Isolanna died 16x on one turn-in route in an hour:
     // every death_suppressed was undone a minute later by this action.
-    if (target->IsTurnInRouteSuppressed(oldDestination, target->GetPosition()) || target->IsDestinationDeathSuppressed(oldDestination))
+    if (target->IsTurnInRouteSuppressed(oldDestination, target->GetPosition()) || target->IsDestinationDeathSuppressed(oldDestination) ||
+        target->IsQuestLoopSuppressed(oldDestination))   // twow-repo#581 (QL-1)
     {
         ai->TellDebug(requester, "Old destination is on the death cooldown.", "debug travel");
         return false;

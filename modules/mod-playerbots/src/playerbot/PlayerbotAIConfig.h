@@ -607,6 +607,10 @@ public:
     // #405: quest objectives whose work phase ran out Max times are skipped.
     uint32 questWorkTimeoutsMax = 0;
     uint32 questWorkTimeoutsCooldownSeconds = 3600;
+    uint32 questLoopMaxFailures = 0;             // twow-repo#581 QL-1: failures per bot x quest that skip its objectives (0 = off)
+    uint32 questLoopWindowSeconds = 1800;
+    uint32 questLoopCooldownSeconds = 1800;
+    uint32 questLoopInactiveCooldownSeconds = 0; // twow-repo#581 QL-2: minimum cooldown after an inactive objective (0 = off)
     // twow-repo#485: game-object quest givers and takers spawned only by a script
     // (gameobject.spawntimesecsmin < 0, e.g. GO 270 of quest 310) are no travel targets.
     // false = old behaviour.
