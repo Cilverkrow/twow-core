@@ -2168,6 +2168,61 @@ AiPlayerbot.Diet.HunterTranqKnown = 0
 # "active rolls" list is not empty; bag space is still checked by the action. Same rolls: without a group or an open
 # roll the action always ended IMPOSSIBLE. Read at engine (re)build. 0 = "very often" (default).
 AiPlayerbot.Diet.LootRollPending = 0
+# twow-repo#568 (diet D63, neutral, "nach Abnahme an"): 1 = Engine::ProcessTriggers skips the Check() call of the
+# event-only triggers (every chat-command trigger, e.g. "stats", "items", "wander", and every world-packet trigger,
+# e.g. "duel requested", "loot roll") while their event flag is unset. Their Check() returns no event in that state,
+# so no node fires that fires today. An arrived event (chat command, forced command link, world packet) sets the flag
+# and is checked and handled on the same pass as before; the per-pass Reset of all triggers is unchanged. Only
+# visible differences: skipped polls create no PerfMon trigger entries ("T : <command>") and no Eluna OnTriggerCheck
+# call (PLAYERBOT_ELUNA is not defined in this build). Measure: PerfMon T TOTAL count and UpdateAIReaction time
+# A/B. 0 = every trigger polled on every pass (default).
+AiPlayerbot.Perf.EventTriggerSkip = 0
+# twow-repo#568 (diet D65, neutral, "nach Abnahme an"): 1 = the vanilla trigger "aspect of the hawk" (hunter "aspect"
+# strategy: combat ACTION_HIGH+5, non-combat ACTION_NORMAL; manual "aspect hawk" strategy) is active only while the
+# bot knows Aspect of the Hawk ("spell id" > 0), then checks the missing self aura as before. Same casts: the node has
+# no alternative and its cast asks CanCastSpell for the same "spell id" value, so without the spell it always ended
+# IMPOSSIBLE; hunters below level 10 or without the trained spell just stop pushing it. No monkey fallback (that is a
+# separate OB-10 decision). Side effects without play change: the action queue is shorter by these pushes (a little
+# less iterationsPerTick), the debug tell "try: aspect of the hawk ... impossible" is gone, and the refresh time of the
+# cached "spell cast useful" value shifts slightly. Read on every check. 0 = trigger without the spell check (default).
+AiPlayerbot.Diet.HunterAspectGate = 0
+# twow-repo#568 (diet D66, neutral, "nach Abnahme an"): 1 = the vanilla trigger "rapid fire" (hunter "boost" strategy,
+# ACTION_HIGH+5) is active only while the bot knows Rapid Fire and the spell is off cooldown, then checks the missing
+# self aura as before; the "rapid fire" node is built without its "readiness" alternative. Both only while the bot
+# does not know Readiness (a TBC talent); a bot that knows it keeps the old trigger and node. Same casts: the cast
+# asks CanCastSpell for the same "spell id" value and the same IsSpellReady, so in the gated states it always ended
+# IMPOSSIBLE and the unknown Readiness was IMPOSSIBLE too. Side effects without play change: the action queue is
+# shorter by these pushes (a little less iterationsPerTick), the debug tells "try: rapid fire / readiness ...
+# impossible" are gone, and the refresh time of the cached "spell cast useful" value shifts slightly. Read on every
+# check / node build. 0 = trigger without the spell checks, node with the "readiness" alternative (default).
+AiPlayerbot.Diet.HunterRapidFireGate = 0
+# twow-repo#568 (diet D67, neutral, "nach Abnahme an"): 1 = the trigger "wander near" ("wander" strategy, action
+# "stop follow" ACTION_IDLE) of a bot without a follow target is active only while the bot's current movement
+# generator is FOLLOW_MOTION_TYPE. Without a follow target the old check was always true and "stop follow" was
+# USELESS unless the bot is on a FOLLOW motion (first check of its isUseful), so the stale-follow cleanup after a
+# group leave stays and nothing else fires. With a follow target (also a leader following itself) as before.
+# "wander far" / "wander medium" are unchanged: their free-move center is a position snapshot cached for up to 5 s,
+# so they can fire today for a moving solo bot. Side effects without play change: the action queue is shorter by these
+# pushes (a little less iterationsPerTick) and the debug tell "try: stop follow ... useless" is gone. Read on every
+# check. 0 = old check (default).
+AiPlayerbot.Diet.WanderSoloGuard = 0
+# twow-repo#568 (diet D68, neutral, "nach Abnahme an"): 1 = three rpg sub-action triggers answer from the first
+# condition of their own IsActive before the shared rpg pre-check (rpg target, distance, next rpg action):
+# "rpg ai chat" returns no event while AiPlayerbot.LLMEnabled = 0 (read on every check, a reload that enables LLM
+# acts at once), "rpg wander" while the bot has no real player master, and "rpg quest use" while the rpg target's
+# entry is not 190767 (its only true case); "rpg quest use" also tests that entry first in IsActive, which the
+# choose-rpg-target candidate loop calls directly. Same results: each short cut is the first false of IsActive, the
+# skipped values have no side effects, and a set event flag still runs the old Check. 0 = old order (default).
+AiPlayerbot.Diet.RpgDeadTriggers = 0
+# twow-repo#568 (diet D69, neutral, "nach Abnahme an"): 1 = the "duel" strategy (combat and non-combat) pushes
+# "attack duel opponent" (70) from the new trigger "duel no attackers" instead of "no attackers": it runs the same
+# check (no current target, my attacker count > 0) only while the bot has a duel (Player::m_duel). Same attacks: the
+# action's isUseful is the "duel target" value, which is null without m_duel. Only difference: up to ~1 s after a duel
+# ends the cached "duel target" can still name the ex-opponent; today the node could then try an attack that
+# IsTargetValid refuses (friendly), with 1 it is not pushed. "duel requested" and the trigger "no attackers" itself
+# (custom strategies) are unchanged. Read at engine (re)build: switch with a restart or relog.
+# 0 = "no attackers" for every bot (default).
+AiPlayerbot.Diet.DuelTriggerGate = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

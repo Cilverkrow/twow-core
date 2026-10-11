@@ -612,6 +612,12 @@ public:
     bool dietHunterTalentShotsKnown = false;  // twow-repo#568 (D19): deterrence / scatter shot nodes on own triggers that wait for the known, ready talent spell; scatter shot aims at the closest attacker targeting the bot (0 = off)
     bool dietHunterTranqKnown = false;  // twow-repo#568 (D47): the hunter reaction "dispel enrage" -> tranquilizing shot node uses a trigger that waits for the known, ready spell before the aura scan (0 = off)
     bool dietLootRollPending = false;  // twow-repo#568 (D48): the roll strategy pushes "auto loot roll" from "loot roll pending" (every 5 s, only with a group and an open roll) instead of "very often" (0 = off)
+    bool perfEventTriggerSkip = false;  // twow-repo#568 (D63): ProcessTriggers skips the Check() of chat-command / world-packet triggers whose event flag is unset; a set flag is handled on the same pass as before (0 = off)
+    bool dietHunterAspectGate = false;  // twow-repo#568 (D65): vanilla "aspect of the hawk" trigger fires only while the bot knows Aspect of the Hawk (same "spell id" value its cast checks) (0 = off)
+    bool dietHunterRapidFireGate = false;  // twow-repo#568 (D66): vanilla "rapid fire" trigger fires only while Rapid Fire is known and off cooldown, the node drops the "readiness" alternative; both unless the bot knows Readiness (0 = off)
+    bool dietWanderSoloGuard = false;  // twow-repo#568 (D67): "wander near" without a follow target fires only on a FOLLOW motion, the only state in which its "stop follow" is useful (0 = off)
+    bool dietRpgDeadTriggers = false;  // twow-repo#568 (D68): "rpg ai chat" (LLMEnabled 0), "rpg wander" (no real master) and "rpg quest use" (entry not 190767) answer from their first IsActive condition before the rpg pre-check values (0 = off)
+    bool dietDuelTriggerGate = false;  // twow-repo#568 (D69): the duel strategy pushes "attack duel opponent" from "duel no attackers" (only with a duel) instead of "no attackers"; read at engine build (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

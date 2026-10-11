@@ -2419,3 +2419,39 @@ add_test(NAME diet_g4_hunter_generic_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/diet_g4_hunter_generic_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D63: event-only trigger poll skip behind AiPlayerbot.Perf.EventTriggerSkip (default 0).
+add_test(NAME diet_d63_event_trigger_skip_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d63_event_trigger_skip_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D65: vanilla Aspect of the Hawk trigger waits for the known spell behind AiPlayerbot.Diet.HunterAspectGate (default 0).
+add_test(NAME diet_d65_hunter_aspect_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d65_hunter_aspect_gate_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D66: vanilla Rapid Fire trigger waits for the known, ready spell, node without Readiness behind AiPlayerbot.Diet.HunterRapidFireGate (default 0).
+add_test(NAME diet_d66_hunter_rapid_fire_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d66_hunter_rapid_fire_gate_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D67: "wander near" without a follow target only on a FOLLOW motion behind AiPlayerbot.Diet.WanderSoloGuard (default 0).
+add_test(NAME diet_d67_wander_solo_guard_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d67_wander_solo_guard_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D68: rpg ai chat / rpg wander / rpg quest use answer from their first condition behind AiPlayerbot.Diet.RpgDeadTriggers (default 0).
+add_test(NAME diet_d68_rpg_dead_triggers_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d68_rpg_dead_triggers_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D69: duel strategy on "duel no attackers" (only with a duel) behind AiPlayerbot.Diet.DuelTriggerGate (default 0).
+add_test(NAME diet_d69_duel_trigger_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d69_duel_trigger_gate_source_contract_tests.cmake")
