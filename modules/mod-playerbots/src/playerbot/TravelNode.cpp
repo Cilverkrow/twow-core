@@ -1811,6 +1811,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
                 return TravelNodeRoute();
             }
             ++routePairs;
+            if (outDetail)   // twow-repo#575 (PATH-01 #1): pairs on every path (also successes, for the #430 L0 trace)
+                outDetail->pairs = routePairs;
 
             TravelNodeRoute route = getRoute(startNode, endNode, unit);
 
