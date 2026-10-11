@@ -2030,6 +2030,9 @@ AiPlayerbot.Diet.RogueNoMutilate = 0
 # Throw: 'enemy out of melee' pushes charge only, 'lose aggro' taunt, 'taunt on snare target' taunt on snare target.
 # 0 = heroic throw first, then the alternative, as today (default).
 AiPlayerbot.Diet.WarriorNoHeroicThrow = 0
+# twow-repo#568 (diet D17, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = arms warriors answer a fleeing snare target with
+# Hamstring directly. 0 = Piercing Howl (Fury talent) -> Mocking Blow (a taunt) -> Hamstring chain as today (default).
+AiPlayerbot.Diet.ArmsSnareHamstring = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

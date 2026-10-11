@@ -106,4 +106,17 @@ require_text("${d16_off_taunt}" "NextAction(\"heroic throw taunt\", ACTION_MOVE 
 require_text("${d16_off_taunt}" "NextAction(\"heroic throw on snare target\", ACTION_MOVE)" "D16 off path keeps heroic throw on snare target")
 require_text("${prot_combat}" "NextAction(\"heroic throw\", ACTION_MOVE + 8), new NextAction(\"charge\", ACTION_MOVE + 7)" "D16 off path keeps heroic throw before charge")
 
+# D17: arms snare answered by hamstring directly (on); the piercing howl -> mocking blow chain stays on the off path.
+require_switch(dietArmsSnareHamstring Diet.ArmsSnareHamstring)
+read_vanilla(strategy/warrior/ArmsWarriorStrategy.cpp arms)
+region("${arms}" "void ArmsWarriorCcStrategy::InitCombatTriggers(" "void ArmsWarriorCcStrategy::InitNonCombatTriggers(" d17)
+region("${d17}" "if (sPlayerbotAIConfig.dietArmsSnareHamstring)" "else" d17_on)
+require_text("${d17_on}" "\"hamstring\",
+            NextAction::array(0, new NextAction(\"hamstring\", ACTION_HIGH), NULL)" "D17 on: hamstring directly")
+forbid_text("${d17_on}" "piercing howl" "D17 on: no piercing howl")
+region("${d17}" "    else\n" "\n    }\n" d17_off)
+require_text("${d17_off}" "NextAction(\"piercing howl\", ACTION_HIGH)" "D17 off path keeps piercing howl")
+file(READ "${PB_SOURCE_DIR}/strategy/warrior/ArmsWarriorStrategy.cpp" arms_full)
+require_text("${arms_full}" "ACTION_NODE_A(piercing_howl, \"piercing howl\", \"mocking blow\");" "D17 off path keeps the arms piercing howl node")
+
 message(STATUS "DIET_G1_WARRIOR_ROGUE_SOURCE_CONTRACT=PASS")

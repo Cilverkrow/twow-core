@@ -579,6 +579,7 @@ public:
     bool dietRogueCombatBoostInCombat = false;  // twow-repo#568 (diet D03): combat rogue boost registers adrenaline rush / blade flurry in the combat engine, not the non-combat engine where BoostTrigger is never active (0 = off)
     bool dietRogueNoMutilate = false;  // twow-repo#568 (diet D15): assassination builders map to backstab (behind) / sinister strike (front) instead of the non-existent Mutilate (0 = off)
     bool dietWarriorNoHeroicThrow = false;  // twow-repo#568 (diet D16): protection warriors push charge / taunt / taunt on snare target without the non-existent Heroic Throw step (0 = off)
+    bool dietArmsSnareHamstring = false;  // twow-repo#568 (diet D17): arms cc 'hamstring' trigger pushes hamstring instead of piercing howl -> mocking blow (taunt) -> hamstring (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

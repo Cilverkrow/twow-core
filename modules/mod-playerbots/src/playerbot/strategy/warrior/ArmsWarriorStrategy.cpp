@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "ArmsWarriorStrategy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 
 using namespace ai;
 
@@ -340,9 +341,20 @@ void ArmsWarriorCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers
 {
     WarriorCcStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "hamstring",
-        NextAction::array(0, new NextAction("piercing howl", ACTION_HIGH), NULL)));
+    // twow-repo#568 D17: Piercing Howl is a Fury talent (Talent.dbc tab 164) and the arms node falls back
+    // to Mocking Blow, a 6 s taunt, before Hamstring. On: the snare trigger pushes hamstring directly.
+    if (sPlayerbotAIConfig.dietArmsSnareHamstring)
+    {
+        triggers.push_back(new TriggerNode(
+            "hamstring",
+            NextAction::array(0, new NextAction("hamstring", ACTION_HIGH), NULL)));
+    }
+    else
+    {
+        triggers.push_back(new TriggerNode(
+            "hamstring",
+            NextAction::array(0, new NextAction("piercing howl", ACTION_HIGH), NULL)));
+    }
 }
 
 void ArmsWarriorCcStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
