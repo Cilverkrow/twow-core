@@ -955,6 +955,18 @@ void ReportBotInbox()
         sLog.outBasic("[X3bSnapshot] hit=%llu stale=%llu missing=%llu max_age_ms=%u cond_hit=%llu cond_miss=%llu cond_dropped=%llu cond_evaluated=%llu",
             hit, stale, missing, uint32(ai::x3b::MaxAgeMs), condHit, condMiss, condDropped, condEvaluated);
     }
+
+    // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): own bot saves of the last minute and their cost.
+    if (sPlayerbotAIConfig.botSaveIntervalSeconds)
+    {
+        auto take = [](ai::bot_save::Count count) { return (unsigned long long)ai::bot_save::Counter(count).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const saves = take(ai::bot_save::Saves);
+        unsigned long long const deferred = take(ai::bot_save::Deferred);
+        unsigned long long const micros = take(ai::bot_save::SaveMicros);
+        sLog.outBasic("[BotSave] interval_s=%u max_per_tick=%u saves=%llu deferred=%llu avg_us=%llu total_ms=%llu",
+            sPlayerbotAIConfig.botSaveIntervalSeconds, sPlayerbotAIConfig.botSaveMaxPerTick, saves, deferred,
+            saves ? micros / saves : 0ull, micros / 1000);
+    }
 }
 
 // twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute

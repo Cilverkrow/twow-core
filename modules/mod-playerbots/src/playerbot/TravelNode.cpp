@@ -1937,7 +1937,11 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     //[[Node pathfinding system]]
                 //We try to find nodes near the bot and near the end position that have a route between them.
                 //Then bot has to move towards/along the route.
-    sTravelNodeMap.m_nMapMtx.lock_shared();
+    // twow-repo#541 (CLI-541 tail analysis, 11.10.2026): the empty-route return below left this shared lock held -
+    // one leaked reader per bot without a route, and from the first one on every writer (removeNodes, manageNodes)
+    // waited in vain. Upstream code, in our tree since the module import. RAII releases it on every return path; the
+    // scope (getRoute .. cleanTempNodes) is the same as before.
+    std::shared_lock<std::shared_timed_mutex> nodeMapLock(sTravelNodeMap.m_nMapMtx);
 
     //Find the route of nodes starting at a node closest to the start position and ending at a node closest to the endposition.
     //Also returns longPath: The path from the start position to the first node in the route.
@@ -1952,8 +1956,6 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     movePath = route.buildPath(beginPath, endPath);
 
     route.cleanTempNodes();
-
-    sTravelNodeMap.m_nMapMtx.unlock_shared();
 
     return movePath;
 }
