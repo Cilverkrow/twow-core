@@ -413,6 +413,8 @@ bool PlayerbotAIConfig::Initialize()
     x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
     packetTrace = config.GetBoolDefault("AiPlayerbot.PacketTrace", false);
     nearestSkipHiddenBots = config.GetBoolDefault("AiPlayerbot.Perf.NearestSkipHiddenBots", false);
+    botSaveIntervalSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.IntervalSeconds", 0)));
+    botSaveMaxPerTick = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.MaxPerTick", 1)));
     perfFleeMemo = config.GetBoolDefault("AiPlayerbot.Perf.FleeMemo", false);
     findCorpseLazySpot = config.GetBoolDefault("AiPlayerbot.FindCorpseLazySpot", false);
     nearestUnitsAcceptFirst = config.GetBoolDefault("AiPlayerbot.Perf.NearestUnitsAcceptFirst", false);
