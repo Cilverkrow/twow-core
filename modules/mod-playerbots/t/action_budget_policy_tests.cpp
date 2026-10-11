@@ -53,6 +53,19 @@ int main()
     Require(TryTake(2, 2, 3000, 60, MaxDeferrals, budget), "forced at MaxDeferrals");
     Require(TryTake(3, 1, 0, 1, MaxDeferrals, budget), "mode 3 forced at MaxDeferrals too");
 
+    // Live v46.1 (BotSave): the window must move with the clock; a frozen key (tickTime() == 0 in this core) never refills.
+    Require(Window(0) == Window(WindowMs - 1) && Window(WindowMs) == Window(0) + 1, "50 ms windows");
+    budget = ThreadBudget{};
+    int taken = 0;
+    for (std::uint32_t nowMs = 0; nowMs < 1000; nowMs += 10)
+        taken += TryTake(2, 1, Window(nowMs), Window(nowMs), 0, budget) ? 1 : 0;
+    Require(taken == int(1000 / WindowMs), "mode 2: one per window, every window");
+    budget = ThreadBudget{};
+    taken = 0;
+    for (int i = 0; i < 100; ++i)
+        taken += TryTake(2, 1, 0, 0, 0, budget) ? 1 : 0;
+    Require(taken == 1, "negative: a frozen key never refills");
+
     std::vector<std::string> const expensive = DefaultExpensiveActions();
     Require(IsExpensive("choose travel target", expensive) && IsExpensive("find corpse", expensive) &&
         IsExpensive("add gathering loot", expensive), "owner's list");
