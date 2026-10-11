@@ -2042,6 +2042,14 @@ AiPlayerbot.Diet.HunterAspectGate = 0
 # IMPOSSIBLE and the unknown Readiness was IMPOSSIBLE too. Read on every check / node build. 0 = trigger without the
 # spell checks, node with the "readiness" alternative (default).
 AiPlayerbot.Diet.HunterRapidFireGate = 0
+# twow-repo#568 (diet D67, neutral, "nach Abnahme an"): 1 = the trigger "wander near" ("wander" strategy, action
+# "stop follow" ACTION_IDLE) of a bot without a follow target is active only while the bot's current movement
+# generator is FOLLOW_MOTION_TYPE. Without a follow target the old check was always true and "stop follow" was
+# USELESS unless the bot is on a FOLLOW motion (first check of its isUseful), so the stale-follow cleanup after a
+# group leave stays and nothing else fires. With a follow target (also a leader following itself) as before.
+# "wander far" / "wander medium" are unchanged: their free-move center is a position snapshot cached for up to 5 s,
+# so they can fire today for a moving solo bot. Read on every check. 0 = old check (default).
+AiPlayerbot.Diet.WanderSoloGuard = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
