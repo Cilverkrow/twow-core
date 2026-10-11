@@ -6341,6 +6341,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         entry.stage = ai::park::Stage::Parked;
         entry.since = uint32(time(nullptr));
         parkedBots[bot->GetGUIDLow()] = entry;
+        PersistPark(bot->GetGUIDLow(), "here");   // twow-repo#551 (AiPlayerbot.Park.Persist)
         ai->SetParked(true);
         bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
         ai->ChangeStrategy(ParkStrategyChange(), BotState::BOT_STATE_NON_COMBAT);
@@ -6449,6 +6450,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     entry.cityZone = cityZone;
     parkedBots[bot->GetGUIDLow()] = entry;
     parkCityCounts.Add(cityZone);   // twow-repo#551 (Park.MaxPerCity); released in ReleaseParkSpot
+    PersistPark(bot->GetGUIDLow(), teleName);   // twow-repo#551 (AiPlayerbot.Park.Persist)
 
     ai->SetParked(true);
     bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
@@ -6466,6 +6468,49 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     return true;
 }
 
+// twow-repo#551 (AiPlayerbot.Park.Persist): the park state in the bot event store (existing table, ParkPolicy.h).
+void RandomPlayerbotMgr::PersistPark(uint32 guid, std::string const& teleName)
+{
+    if (sPlayerbotAIConfig.parkPersist)
+        SetEventValue(guid, ai::park::PersistEvent, 1, ai::park::PersistValidSeconds, ai::park::PersistData(teleName.c_str()));
+}
+
+void RandomPlayerbotMgr::ClearPersistedPark(uint32 guid)
+{
+    // Also with the switch off, so a row left by an earlier run never parks a bot the operator unparked.
+    if (GetEventValue(guid, ai::park::PersistEvent))
+        SetEventValue(guid, ai::park::PersistEvent, 0, 0);
+}
+
+void RandomPlayerbotMgr::RestoreParkedBots()
+{
+    for (auto const& [guid, bot] : GetAllBots())
+    {
+        PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        if (!ai || ai->parkRestoreChecked || IsParkedBot(guid))
+            continue;
+        if (!GetEventValue(guid, ai::park::PersistEvent))
+        {
+            ai->parkRestoreChecked = true;
+            continue;
+        }
+        std::string const data = GetEventData(guid, ai::park::PersistEvent);
+        std::string reason;
+        ++ai->parkRestoreAttempts;
+        if (ParkBot(bot, ai::park::RestoreTarget(data.c_str()), reason))
+        {
+            ai->parkRestoreChecked = true;
+            sLog.outBasic("[Park] state=restored bot=%u via=%s attempts=%u", guid, data.c_str(), ai->parkRestoreAttempts);
+        }
+        else if (!ai::park::RestoreRetries(reason.c_str(), ai->parkRestoreAttempts))
+        {
+            ai->parkRestoreChecked = true;
+            sLog.outBasic("[Park] state=restore_failed bot=%u via=%s reason=%s attempts=%u", guid, data.c_str(), reason.c_str(),
+                ai->parkRestoreAttempts);
+        }
+    }
+}
+
 void RandomPlayerbotMgr::UnparkBot(Player* bot)
 {
     auto const it = parkedBots.find(bot->GetGUIDLow());
@@ -6473,6 +6518,7 @@ void RandomPlayerbotMgr::UnparkBot(Player* bot)
         return;
     ReleaseParkSpot(it->second);
     parkedBots.erase(it);
+    ClearPersistedPark(bot->GetGUIDLow());   // twow-repo#551 (AiPlayerbot.Park.Persist)
 
     if (PlayerbotAI* ai = GetBotAI(bot))
     {
@@ -6577,6 +6623,14 @@ void RandomPlayerbotMgr::ProcessParkedBots()
         parkShare.overflow = parkShare.noSpot = 0;
         parkShare.lastLog = now;
     }
+
+    // twow-repo#551 (AiPlayerbot.Park.Persist): bots that were parked before a restart or logout are parked again.
+    if (sPlayerbotAIConfig.parkPersist && now >= lastParkRestore + ai::park::RestoreIntervalSeconds)
+    {
+        lastParkRestore = now;
+        RestoreParkedBots();
+    }
+
     for (auto it = parkedBots.begin(); it != parkedBots.end();)
     {
         uint32 const guid = it->first;
@@ -6783,6 +6837,7 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleUnpark(std::string param
             {
                 ReleaseParkSpot(lost->second);
                 parkedBots.erase(lost);
+                ClearPersistedPark(guid);   // twow-repo#551 (AiPlayerbot.Park.Persist)
             }
         }
     }

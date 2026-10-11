@@ -74,6 +74,12 @@ AiPlayerbot.Park.MaxPerCity = 0
 AiPlayerbot.Park.Quiet = 0
 AiPlayerbot.Park.QuietIdleEmoteSeconds = 600
 
+# twow-repo#551 (owner 11.10.2026): Persist = 1: a parked bot keeps a "park" row in the bot event store (existing
+# table, no schema change; data = inn, here or the game_tele name) and is parked again after a restart, deploy or
+# its next login - caps and faction checks run again, a bot with no spot left stays active. Unpark deletes the row.
+# [Park] state=restored / restore_failed per bot.
+AiPlayerbot.Park.Persist = 0
+
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
 
