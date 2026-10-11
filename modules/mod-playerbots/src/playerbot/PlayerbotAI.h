@@ -961,6 +961,8 @@ protected:
     // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
     std::atomic<bool> parked{ false };
     uint32 lastParkedUpdateMs = 0;
+    // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
+    std::atomic<uint32> nextParkIdleEmote{ 0 };
     uint32 lastBotSave = 0;          // twow-repo#541 A47: time of this bot's last own save (seconds)
     bool botSaveScheduled = false;   // A47: first save offset applied
     ai::stall_guard::TopActions updateActions;

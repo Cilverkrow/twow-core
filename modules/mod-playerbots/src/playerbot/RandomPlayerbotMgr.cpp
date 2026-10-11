@@ -6159,6 +6159,12 @@ namespace
     char const* const ParkDroppedStrategies =
         "-travel,-rpg,-grind,-quest,-wander,-tfish,-rpg craft,-bot brain,-maintenance,-group,-guild,-bg,-lfg,-explore";
 
+    // twow-repo#551 (AiPlayerbot.Park.Quiet): a quiet parked bot also drops its social strategies.
+    std::string ParkStrategyChange()
+    {
+        return std::string(ParkDroppedStrategies) + (sPlayerbotAIConfig.parkQuiet ? ai::park::QuietDroppedStrategies() : "");
+    }
+
     // Capacity key of a spot: map and position rounded to whole yards.
     uint64 ParkSpotKey(WorldLocation const& loc)
     {
@@ -6337,7 +6343,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         parkedBots[bot->GetGUIDLow()] = entry;
         ai->SetParked(true);
         bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
-        ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
+        ai->ChangeStrategy(ParkStrategyChange(), BotState::BOT_STATE_NON_COMBAT);
         AiObjectContext* context = ai->GetAiObjectContext();
         sTravelMgr.SetNullTravelTarget(AI_VALUE(TravelTarget*, "travel target"));
         ai->StopMoving();
@@ -6446,7 +6452,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
 
     ai->SetParked(true);
     bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
-    ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
+    ai->ChangeStrategy(ParkStrategyChange(), BotState::BOT_STATE_NON_COMBAT);
     AiObjectContext* context = ai->GetAiObjectContext();
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
     sTravelMgr.SetNullTravelTarget(travelTarget);
