@@ -148,7 +148,8 @@ if(NOT d37_return_count EQUAL 2)
   message(FATAL_ERROR "D37: expected exactly the gate return and the old debuff return, got ${d37_return_count}")
 endif()
 
-# D38: berserker stance trigger needs the spell; the Defensive Tactics swap also the talent and a shield (on).
+# D38 (on): the owner's warrior stance rules (11.10.2026) - the berserker stance trigger needs the spell, arms stays in
+# Battle Stance, tanks in Defensive Stance (no Defensive Tactics swap), Berserker Rage pulls no bot into Berserker Stance.
 require_switch(dietWarriorBerserkerStanceGate Diet.WarriorBerserkerStanceGate)
 file(READ "${PB_SOURCE_DIR}/strategy/warrior/WarriorTriggers.h" warrior_triggers_h)
 file(READ "${PB_SOURCE_DIR}/strategy/warrior/WarriorTriggers.cpp" warrior_triggers_cpp)
@@ -167,12 +168,44 @@ require_order("${d38_dt}" "if (!BerserkerStanceTrigger::IsActive())
         return false;" "if (!sServerFacade.IsInCombat(bot))
         return false;" "D38 DT off path order 1")
 require_order("${d38_dt}" "if (!sServerFacade.IsInCombat(bot))" "return AI_VALUE2(uint8, \"health\", \"self target\") > 70;" "D38 DT off path order 2")
-region("${d38_dt}" "if (sPlayerbotAIConfig.dietWarriorBerserkerStanceGate)" "\n    }\n" d38_dt_on)
-require_text("${d38_dt_on}" "if (!bot->HasSpell(51606) && !bot->HasSpell(51607) && !bot->HasSpell(51608))
-            return false;" "D38 DT talent gate")
-require_text("${d38_dt_on}" "Item* offhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);" "D38 offhand read")
-require_text("${d38_dt_on}" "offhand->GetProto()->SubClass != ITEM_SUBCLASS_ARMOR_SHIELD)
-            return false;" "D38 shield gate")
+# Owner stance rules (11.10.2026): tanks stay in Defensive Stance - on: no Defensive Tactics swap at all.
+require_text("${d38_dt}" "    if (sPlayerbotAIConfig.dietWarriorBerserkerStanceGate)
+        return false;
+
+    return AI_VALUE2(uint8, \"health\", \"self target\") > 70;" "D38 DT swap off when on, HP check kept for off")
+forbid_text("${d38_dt}" "51606" "D38 talent gate (the swap is gone when on)")
+# Arms stays in Battle Stance - on: the arms buff strategy does not register the berserker stance node.
+region("${arms}" "void ArmsWarriorBuffStrategy::InitCombatTriggers(" "void ArmsWarriorBuffStrategy::InitNonCombatTriggers(" d38_arms)
+require_text("${d38_arms}" "    if (!sPlayerbotAIConfig.dietWarriorBerserkerStanceGate)
+    {
+        triggers.push_back(new TriggerNode(
+            \"berserker stance\",
+            NextAction::array(0, new NextAction(\"berserker stance\", ACTION_NORMAL), NULL)));
+    }" "D38 arms berserker stance node only on the off path")
+string(REGEX MATCHALL "NextAction[(]\"berserker stance\"" d38_arms_all "${d38_arms}")
+list(LENGTH d38_arms_all d38_arms_count)
+if(NOT d38_arms_count EQUAL 1)
+  message(FATAL_ERROR "D38: the arms buff strategy must hold exactly one gated berserker stance node (found ${d38_arms_count})")
+endif()
+# Fury keeps its berserker stance node (from 30, gated on the known spell by the trigger).
+read_vanilla(strategy/warrior/FuryWarriorStrategy.cpp fury)
+region("${fury}" "void FuryWarriorBuffStrategy::InitCombatTriggers(" "void FuryWarriorBuffStrategy::InitNonCombatTriggers(" d38_fury)
+require_text("${d38_fury}" "    triggers.push_back(new TriggerNode(
+        \"berserker stance\",
+        NextAction::array(0, new NextAction(\"berserker stance\", ACTION_MOVE), NULL)));" "D38 fury berserker stance node unconditional")
+forbid_text("${d38_fury}" "dietWarriorBerserkerStanceGate" "D38 gate in the fury buff strategy")
+# Berserker Rage: the berserker stance prerequisite only on the off path.
+file(READ "${PB_SOURCE_DIR}/strategy/warrior/WarriorStrategy.cpp" warrior_strategy_full)
+require_text("${warrior_strategy_full}" "#include \"playerbot/PlayerbotAIConfig.h\"" "D38 config include in the warrior strategy")
+region("${warrior_strategy_full}" "static ActionNode* berserker_rage(PlayerbotAI* ai)" "\n    }\n" d38_br)
+require_text("${d38_br}" "return new ActionNode(\"berserker rage\",
+            /*P*/ sPlayerbotAIConfig.dietWarriorBerserkerStanceGate ? NULL : NextAction::array(0, new NextAction(\"berserker stance\"), NULL)," "D38 berserker rage prerequisite only when off")
+# Only the commented-out stance list may still name the old macro node.
+string(REGEX MATCHALL "ACTION_NODE_P[(]berserker_rage" d38_br_macros "${warrior_strategy_full}")
+list(LENGTH d38_br_macros d38_br_macro_count)
+if(NOT d38_br_macro_count EQUAL 1)
+  message(FATAL_ERROR "D38: a second, ungated berserker rage node (ACTION_NODE_P found ${d38_br_macro_count}x, only the comment may hold it)")
+endif()
 
 # D39: the never-firing 'intercept and rage' nodes only on the off path.
 require_switch(dietWarriorNoInterceptAndRage Diet.WarriorNoInterceptAndRage)

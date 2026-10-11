@@ -2039,8 +2039,11 @@ AiPlayerbot.Diet.WarriorNoDevastate = 0
 # twow-repo#568 (diet D37, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the warrior 'disarm' trigger fires only when the bot
 # knows Disarm, it is off cooldown and the bot is in Defensive Stance. 0 = target-has-no-Disarm-aura check only (default).
 AiPlayerbot.Diet.WarriorDisarmGate = 0
-# twow-repo#568 (diet D38, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the 'berserker stance' trigger needs the spell to be
-# known, and the protection Defensive Tactics swap also needs a rank of the talent and a shield. 0 = no checks (default).
+# twow-repo#568 (diet D38, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the warrior stance rules of the owner (11.10.2026):
+# levels 1-9 Battle Stance, tanks Defensive Stance from 10, fury Berserker Stance from 30 (quest), arms stays in Battle
+# Stance. The 'berserker stance' trigger needs the spell to be known, arms does not register it, protection has no
+# Defensive Tactics swap to Berserker (it ping-ponged with the 'defensive stance' trigger and lost rage on every change),
+# and Berserker Rage no longer pulls a bot into Berserker Stance. 0 = no checks, the old stance nodes (default).
 AiPlayerbot.Diet.WarriorBerserkerStanceGate = 0
 # twow-repo#568 (diet D39, no visible behaviour change): 1 = protection warriors do not register the two 'intercept and
 # rage' nodes, whose sub-trigger "enemy is out of melee" does not exist and never fires. 0 = registered as today (default).
