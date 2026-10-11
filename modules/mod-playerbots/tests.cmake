@@ -2433,3 +2433,10 @@ set_target_properties(packet_trace_policy_tests PROPERTIES
 add_test(NAME packet_trace_policy
   COMMAND packet_trace_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541 (owner 11.10.2026): no object update packets for bot sessions (AiPlayerbot.Perf.SkipBotUpdatePackets).
+add_test(NAME skip_bot_updates_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/skip_bot_updates_source_contract_tests.cmake")
