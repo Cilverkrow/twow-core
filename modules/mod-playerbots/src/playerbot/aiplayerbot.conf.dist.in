@@ -2042,6 +2042,12 @@ AiPlayerbot.Diet.HunterTalentShotsKnown = 0
 # the spell stop copying the target's aura list on every reaction pass. Read at engine (re)build.
 # 0 = "dispel enrage" for every hunter (default).
 AiPlayerbot.Diet.HunterTranqKnown = 0
+# twow-repo#568 (D48, strategy diet): 1 = the "roll" strategy (combat and non-combat) pushes "auto loot roll" (100) from
+# the trigger "loot roll pending" instead of "very often". It is checked on the same 5 s cadence (own timer, so the
+# phase can differ by up to 5 s from the shared "very often") and fires only while the bot is in a group and its
+# "active rolls" list is not empty; bag space is still checked by the action. Same rolls: without a group or an open
+# roll the action always ended IMPOSSIBLE. Read at engine (re)build. 0 = "very often" (default).
+AiPlayerbot.Diet.LootRollPending = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

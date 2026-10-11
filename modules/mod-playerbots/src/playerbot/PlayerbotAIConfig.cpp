@@ -439,6 +439,7 @@ bool PlayerbotAIConfig::Initialize()
     dietHunterBestSting = config.GetBoolDefault("AiPlayerbot.Diet.HunterBestSting", false);
     dietHunterTalentShotsKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTalentShotsKnown", false);
     dietHunterTranqKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTranqKnown", false);
+    dietLootRollPending = config.GetBoolDefault("AiPlayerbot.Diet.LootRollPending", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

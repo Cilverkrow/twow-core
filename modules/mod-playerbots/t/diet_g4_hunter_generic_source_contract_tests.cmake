@@ -59,7 +59,8 @@ require_text("${hunter_strategy}" "#include \"playerbot/PlayerbotAIConfig.h\"" "
 foreach(pair
     "dietHunterBestSting|HunterBestSting"
     "dietHunterTalentShotsKnown|HunterTalentShotsKnown"
-    "dietHunterTranqKnown|HunterTranqKnown")
+    "dietHunterTranqKnown|HunterTranqKnown"
+    "dietLootRollPending|LootRollPending")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -136,5 +137,26 @@ require_text("${hunter_context}" "creators[\"tranquilizing shot\"] = [](Playerbo
 # The generic trigger stays as it is for the switch-off path.
 file(READ "${PB_SOURCE_DIR}/strategy/triggers/TriggerContext.h" trigger_context)
 require_text("${trigger_context}" "creators[\"dispel enrage\"] = [](PlayerbotAI* ai) { return new DispelEnrageOnTargetTrigger(ai); };" "D47 generic dispel enrage trigger kept")
+
+# ---------------------------------------------------------------------------------------------------------
+# D48 (AiPlayerbot.Diet.LootRollPending): 'auto loot roll' only while a group and an open roll exist, 5 s cadence.
+file(READ "${PB_SOURCE_DIR}/strategy/generic/LootNonCombatStrategy.cpp" loot_strategy)
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/LootTriggers.h" loot_triggers_h)
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/LootTriggers.cpp" loot_triggers_cpp)
+file(READ "${PB_SOURCE_DIR}/strategy/actions/LootRollAction.cpp" loot_roll_action)
+region("${loot_strategy}" "void RollStrategy::InitNonCombatTriggers" "\n}\n" roll_nc)
+require_text("${roll_nc}" "    triggers.push_back(new TriggerNode(\n        sPlayerbotAIConfig.dietLootRollPending ? \"loot roll pending\" : \"very often\",\n        NextAction::array(0, new NextAction(\"auto loot roll\", 100.0f), NULL)));" "D48 roll node on the switched trigger, same action and relevance")
+region("${loot_strategy}" "void RollStrategy::InitCombatTriggers" "\n}\n" roll_c)
+require_text("${roll_c}" "RollStrategy::InitNonCombatTriggers(triggers);" "D48 combat engine reuses the non-combat node")
+require_text("${loot_strategy}" "#include \"playerbot/PlayerbotAIConfig.h\"" "D48 strategy includes the config")
+region("${loot_triggers_h}" "class LootRollPendingTrigger : public Trigger" "};" pending_h)
+require_text("${pending_h}" "LootRollPendingTrigger(PlayerbotAI* ai) : Trigger(ai, \"loot roll pending\", 5) {}" "D48 same 5 s interval as very often")
+region("${loot_triggers_cpp}" "bool LootRollPendingTrigger::IsActive()" "\n}" pending_cpp)
+require_text("${pending_cpp}" "return bot->GetGroup() && !AI_VALUE(LootRollMap, \"active rolls\").empty();" "D48 group and open roll, like isPossible")
+require_text("${loot_triggers_cpp}" "#include \"playerbot/strategy/values/LootValues.h\"" "D48 LootRollMap visible")
+require_text("${trigger_context}" "creators[\"loot roll pending\"] = [](PlayerbotAI* ai) { return new LootRollPendingTrigger(ai); };" "D48 trigger creator")
+require_text("${trigger_context}" "creators[\"very often\"] = [](PlayerbotAI* ai) { return new TimeTrigger(ai, \"very often\", 5); };" "D48 very often unchanged (5 s)")
+# The action keeps its full guard (group, open roll, bag space).
+require_text("${loot_roll_action}" "return bot->GetGroup() && !AI_VALUE(LootRollMap, \"active rolls\").empty() && AI_VALUE(uint8, \"bag space\") < 100;" "D48 isPossible unchanged")
 
 message(STATUS "DIET_G4_HUNTER_GENERIC_SOURCE_CONTRACT=PASS")

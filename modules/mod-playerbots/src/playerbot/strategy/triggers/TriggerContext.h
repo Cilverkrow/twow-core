@@ -80,6 +80,7 @@ namespace ai
             creators["high energy available"] = [](PlayerbotAI* ai) { return new HighEnergyAvailableTrigger(ai); };
 
             creators["loot available"] = [](PlayerbotAI* ai) { return new LootAvailableTrigger(ai); };
+            creators["loot roll pending"] = [](PlayerbotAI* ai) { return new LootRollPendingTrigger(ai); };  // twow-repo#568 (D48)
             creators["no attackers"] = [](PlayerbotAI* ai) { return new NoAttackersTrigger(ai); };
             creators["no target"] = [](PlayerbotAI* ai) { return new NoTargetTrigger(ai); };
             creators["target in sight"] = [](PlayerbotAI* ai) { return new TargetInSightTrigger(ai); };

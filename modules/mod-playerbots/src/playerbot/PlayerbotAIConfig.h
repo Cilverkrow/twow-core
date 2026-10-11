@@ -579,6 +579,7 @@ public:
     bool dietHunterBestSting = false;  // twow-repo#568 (D10): one 'no stings' node per sting strategy; the trigger fires only when viper or serpent sting can be used, serpent sting also on mana targets while viper sting is unknown (0 = off)
     bool dietHunterTalentShotsKnown = false;  // twow-repo#568 (D19): deterrence / scatter shot nodes on own triggers that wait for the known, ready talent spell; scatter shot aims at the closest attacker targeting the bot (0 = off)
     bool dietHunterTranqKnown = false;  // twow-repo#568 (D47): the hunter reaction "dispel enrage" -> tranquilizing shot node uses a trigger that waits for the known, ready spell before the aura scan (0 = off)
+    bool dietLootRollPending = false;  // twow-repo#568 (D48): the roll strategy pushes "auto loot roll" from "loot roll pending" (every 5 s, only with a group and an open roll) instead of "very often" (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
