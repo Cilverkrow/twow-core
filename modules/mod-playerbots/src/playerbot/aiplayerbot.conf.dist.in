@@ -2043,6 +2043,9 @@ AiPlayerbot.Diet.RetRepentanceKey = 0
 # twow-repo#568 D41 (strategy diet, same actions): 1 = the paladin "exorcism" trigger stays quiet when the current target
 # is not undead/demon (Exorcism's TargetCreatureType, same test as the core); the cast could only end IMPOSSIBLE.
 AiPlayerbot.Diet.ExorcismCreatureType = 0
+# twow-repo#568 D42 (strategy diet, same actions): 1 = a Prot paladin without seal pushes Seal of Righteousness directly
+# (no Seal of Vengeance in 1.18: it only ended IMPOSSIBLE first); the seal trigger skips that dead aura name.
+AiPlayerbot.Diet.ProtSealDirect = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

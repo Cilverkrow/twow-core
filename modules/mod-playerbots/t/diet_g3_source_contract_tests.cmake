@@ -222,4 +222,19 @@ require_text("${exorcism_vanilla}" "if (targetTypeMask && !(exorcismInfo->Target
 region("${exorcism_vanilla}" "if (sPlayerbotAIConfig.dietExorcismCreatureType)" "return AI_VALUE2(uint8, \"mana\"" exorcism_gate)
 forbid_text("${exorcism_gate}" "return true" "D41: the gate may only suppress, never force the trigger")
 
+# ---------------------------------------------------------------------------------------------------------
+# D42 (AiPlayerbot.Diet.ProtSealDirect): vanilla Prot "seal" pushes Seal of Righteousness directly.
+require_diet_switch(dietProtSealDirect ProtSealDirect)
+read_source("strategy/paladin/ProtectionPaladinStrategy.cpp" prot_cpp)
+region("${prot_cpp}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" prot_zero)
+region("${prot_cpp}" "#ifdef MANGOSBOT_ONE" "#ifdef MANGOSBOT_TWO" prot_one)
+require_text("${prot_zero}" "\"seal\",\n        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietProtSealDirect ? \"seal of righteousness\" : \"seal of vengeance\", ACTION_NORMAL + 2), NULL)));" "D42 seal gate with the old node as OFF path")
+require_text("${prot_cpp}" "ACTION_NODE_A(seal_of_vengeance, \"seal of vengeance\", \"seal of righteousness\");" "D42 OFF path alternative kept")
+require_text("${prot_one}" "new NextAction(\"seal of vengeance\", ACTION_NORMAL + 2)" "TBC Prot seal unchanged")
+forbid_text("${prot_one}" "dietProtSealDirect" "D42 switch outside the vanilla block")
+region("${paladin_triggers_cpp}" "bool SealTrigger::IsActive()" "\n}" seal_trigger)
+require_text("${seal_trigger}" "#ifdef MANGOSBOT_ZERO\n    const bool skipVengeanceCheck = sPlayerbotAIConfig.dietProtSealDirect;\n#else\n    const bool skipVengeanceCheck = false;\n#endif" "D42 vanilla-only skip")
+require_text("${seal_trigger}" "(skipVengeanceCheck || !ai->HasAura(\"seal of vengeance\", target)) &&" "D42 OFF path still checks the vengeance name")
+require_text("${seal_trigger}" "!ai->HasAura(\"seal of righteousness\", target) &&" "D42 real seals still checked")
+
 message(STATUS "DIET_G3_SOURCE_CONTRACT=PASS")

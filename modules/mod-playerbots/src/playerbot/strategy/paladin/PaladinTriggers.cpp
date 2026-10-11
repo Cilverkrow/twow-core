@@ -44,9 +44,16 @@ Unit* PartyMemberWithDaybreakValue::Calculate()
 bool SealTrigger::IsActive()
 {
 	Unit* target = GetTarget();
+    // twow-repo#568 D42 (AiPlayerbot.Diet.ProtSealDirect): no aura is named Seal of Vengeance in vanilla, so that
+    // name-compare HasAura is always false; the switch skips it (vanilla build only).
+#ifdef MANGOSBOT_ZERO
+    const bool skipVengeanceCheck = sPlayerbotAIConfig.dietProtSealDirect;
+#else
+    const bool skipVengeanceCheck = false;
+#endif
 	return !ai->HasAura("seal of justice", target) &&
         !ai->HasAura("seal of command", target) &&
-        !ai->HasAura("seal of vengeance", target) &&
+        (skipVengeanceCheck || !ai->HasAura("seal of vengeance", target)) &&
 		!ai->HasAura("seal of righteousness", target) &&
 		!ai->HasAura("seal of light", target) &&
         !ai->HasAura("seal of wisdom", target) &&

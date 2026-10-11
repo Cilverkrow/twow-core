@@ -584,6 +584,7 @@ public:
     bool dietInnervateFix = false;  // twow-repo#568 D30: Innervate trigger/action use the real mana percent and accept the solo druid itself (0 = off)
     bool dietRetRepentanceKey = false;  // twow-repo#568 D31: Ret "repentance or shield" node registered under its pushed name (0 = off, factory key typo)
     bool dietExorcismCreatureType = false;  // twow-repo#568 D41: paladin "exorcism" trigger only for targets of Exorcism's creature types (undead/demon) (0 = off)
+    bool dietProtSealDirect = false;  // twow-repo#568 D42: vanilla Prot "seal" pushes seal of righteousness directly, seal trigger skips the dead vengeance name (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
