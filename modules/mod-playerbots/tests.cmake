@@ -2406,3 +2406,28 @@ set_target_properties(action_budget_policy_tests PROPERTIES
 add_test(NAME action_budget_policy
   COMMAND action_budget_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541 (CLI-541 tail analysis): getFullPath holds the node map lock with RAII (empty-route leak fixed).
+add_test(NAME travel_node_lock_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/travel_node_lock_source_contract_tests.cmake")
+
+# twow-repo#541 A47: bots save themselves on their own schedule (AiPlayerbot.BotSave.IntervalSeconds).
+add_test(NAME bot_save_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bot_save_source_contract_tests.cmake")
+
+add_executable(bot_save_policy_tests
+  "${PB_MODULE_DIR}/t/bot_save_policy_tests.cpp")
+
+target_include_directories(bot_save_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(bot_save_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_save_policy
+  COMMAND bot_save_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
