@@ -47,6 +47,9 @@ file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_dist)
 file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterStrategy.cpp" hunter_strategy)
 file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterTriggers.cpp" hunter_triggers_cpp)
 file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterActions.cpp" hunter_actions_cpp)
+file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterActions.h" hunter_actions_h)
+file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterTriggers.h" hunter_triggers_h)
+file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterAiObjectContext.cpp" hunter_context)
 
 # Only the vanilla block of HunterStrategy.cpp is compiled in this build.
 region("${hunter_strategy}" "#ifdef MANGOSBOT_ZERO" "#endif" hunter_zero)
@@ -54,7 +57,8 @@ require_text("${hunter_strategy}" "#include \"playerbot/PlayerbotAIConfig.h\"" "
 
 # Every switch defaults to 0.
 foreach(pair
-    "dietHunterBestSting|HunterBestSting")
+    "dietHunterBestSting|HunterBestSting"
+    "dietHunterTalentShotsKnown|HunterTalentShotsKnown")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
@@ -93,5 +97,30 @@ require_order("${serpent_useful}" "(!(AI_VALUE2(uint8, \"mana\", GetTargetName()
 require_text("${serpent_useful}" "if (sPlayerbotAIConfig.dietHunterBestSting)" "D10 serpent switch")
 region("${hunter_actions_cpp}" "bool CastViperStingAction::isUseful()" "\n}\n" viper_useful)
 require_order("${viper_useful}" "if (sPlayerbotAIConfig.dietHunterBestSting && !AI_VALUE2(uint32, \"spell id\", \"viper sting\"))\n        return false;" "return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10;" "D10 viper: known gate, then the old line")
+
+# ---------------------------------------------------------------------------------------------------------
+# D19 (AiPlayerbot.Diet.HunterTalentShotsKnown): deterrence / scatter shot on own known+ready triggers,
+# scatter shot on the closest attacker targeting the bot.
+region("${hunter_zero}" "void HunterBuffStrategy::InitCombatTriggers" "\n}\n" buff_combat)
+require_text("${buff_combat}" "        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? \"deterrence\" : \"target of attacker close\",  // twow-repo#568 (D19)\n        NextAction::array(0, new NextAction(\"deterrence\", ACTION_EMERGENCY + 1), NULL)));" "D19 deterrence node on the switched trigger, same action and relevance")
+foreach(part "Pvp" "Pve")
+  region("${hunter_zero}" "void HunterCc${part}Strategy::InitCombatTriggers" "\n}\n" cc_part)
+  require_text("${cc_part}" "        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? \"scatter shot on closest attacker\" : \"target of attacker close\",  // twow-repo#568 (D19)\n        NextAction::array(0, new NextAction(\"scatter shot on closest attacker targeting me\", ACTION_INTERRUPT + 2), NULL)));" "D19 ${part} scatter node on the switched trigger")
+endforeach()
+region("${hunter_zero}" "void HunterCcPvpStrategy::InitCombatTriggers" "\n}\n" cc_pvp)
+require_text("${cc_pvp}" "        \"target of attacker close\",\n        NextAction::array(0, new NextAction(\"freezing trap in place\", ACTION_INTERRUPT + 3), NULL)));" "D19 pvp freezing trap keeps the shared trigger")
+
+region("${hunter_triggers_h}" "class TalentSpellTargetOfAttackerCloseTrigger : public TargetOfAttackerInRange" "};" talent_trigger)
+require_text("${talent_trigger}" ": TargetOfAttackerInRange(ai, name, sPlayerbotAIConfig.tooCloseDistance)" "D19 same distance as TargetOfAttackerClose")
+require_order("${talent_trigger}" "if (!spellId || !bot->IsSpellReady(spellId))\n                return false;" "return TargetOfAttackerInRange::IsActive();" "D19 known+ready gate before the attacker lookup")
+require_text("${talent_trigger}" "const uint32 spellId = AI_VALUE2(uint32, \"spell id\", spellName);" "D19 spell id lookup")
+require_text("${hunter_context}" "creators[\"deterrence\"] = [](PlayerbotAI* ai) { return new TalentSpellTargetOfAttackerCloseTrigger(ai, \"deterrence\", \"deterrence\"); };" "D19 deterrence trigger creator")
+require_text("${hunter_context}" "creators[\"scatter shot on closest attacker\"] = [](PlayerbotAI* ai) { return new TalentSpellTargetOfAttackerCloseTrigger(ai, \"scatter shot on closest attacker\", \"scatter shot\"); };" "D19 scatter trigger creator")
+require_text("${hunter_context}" "creators[\"scatter shot on closest attacker targeting me\"] = [](PlayerbotAI* ai) -> Action*\n                {\n                    if (sPlayerbotAIConfig.dietHunterTalentShotsKnown)\n                        return new CastScatterShotOnClosestAttackerTargetingMeAction(ai);\n                    return new CastScatterShotAction(ai);\n                };" "D19 scatter action creator: closest attacker with the switch, current target without")
+# The target name must be a registered Unit* value (ValueContext.h), else GetTarget reads a null value.
+region("${hunter_actions_h}" "class CastScatterShotOnClosestAttackerTargetingMeAction" "};" scatter_action)
+require_text("${scatter_action}" "std::string GetTargetName() override { return \"closest attacker targeting me\"; }" "D19 scatter action target value name")
+file(READ "${PB_SOURCE_DIR}/strategy/values/ValueContext.h" value_context)
+require_text("${value_context}" "creators[\"closest attacker targeting me\"] =" "D19 target value registered")
 
 message(STATUS "DIET_G4_HUNTER_GENERIC_SOURCE_CONTRACT=PASS")

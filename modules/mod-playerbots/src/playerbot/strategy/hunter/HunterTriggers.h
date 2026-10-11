@@ -177,6 +177,29 @@ namespace ai
         virtual bool IsActive() override;
     };
 
+    // twow-repo#568 (D19, AiPlayerbot.Diet.HunterTalentShotsKnown): "target of attacker close" for one talent spell
+    // (Deterrence 19263 Survival, Scatter Shot 19503 Marksmanship; no trainer rows). Registered as "deterrence" and
+    // "scatter shot on closest attacker" and used by the vanilla buff/cc strategies only with the switch on. It asks
+    // for the known and ready spell before the closest-attacker lookup; without it the node ended IMPOSSIBLE.
+    class TalentSpellTargetOfAttackerCloseTrigger : public TargetOfAttackerInRange
+    {
+    public:
+        TalentSpellTargetOfAttackerCloseTrigger(PlayerbotAI* ai, std::string name, std::string spellName)
+            : TargetOfAttackerInRange(ai, name, sPlayerbotAIConfig.tooCloseDistance), spellName(spellName) {}
+
+        virtual bool IsActive() override
+        {
+            const uint32 spellId = AI_VALUE2(uint32, "spell id", spellName);
+            if (!spellId || !bot->IsSpellReady(spellId))
+                return false;
+
+            return TargetOfAttackerInRange::IsActive();
+        }
+
+    private:
+        std::string spellName;
+    };
+
     BEGIN_TRIGGER(HunterPetNotHappy, Trigger)
     END_TRIGGER()
 

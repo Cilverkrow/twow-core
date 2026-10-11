@@ -252,7 +252,7 @@ void HunterBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     BuffStrategy::InitCombatTriggers(triggers);
 
     triggers.push_back(new TriggerNode(
-        "target of attacker close",
+        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? "deterrence" : "target of attacker close",  // twow-repo#568 (D19)
         NextAction::array(0, new NextAction("deterrence", ACTION_EMERGENCY + 1), NULL)));
 
     triggers.push_back(new TriggerNode(
@@ -381,7 +381,7 @@ void HunterCcPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         NextAction::array(0, new NextAction("freezing trap in place", ACTION_INTERRUPT + 3), NULL)));
 
     triggers.push_back(new TriggerNode(
-        "target of attacker close",
+        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? "scatter shot on closest attacker" : "target of attacker close",  // twow-repo#568 (D19)
         NextAction::array(0, new NextAction("scatter shot on closest attacker targeting me", ACTION_INTERRUPT + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
@@ -399,7 +399,7 @@ void HunterCcPveStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     CcPveStrategy::InitCombatTriggers(triggers);
 
     triggers.push_back(new TriggerNode(
-        "target of attacker close",
+        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? "scatter shot on closest attacker" : "target of attacker close",  // twow-repo#568 (D19)
         NextAction::array(0, new NextAction("scatter shot on closest attacker targeting me", ACTION_INTERRUPT + 2), NULL)));
 
     triggers.push_back(new TriggerNode(

@@ -2026,6 +2026,15 @@ AiPlayerbot.PossibleTargetsSharedSearch = 0
 # unknown. Change: hunters below 36 put serpent sting on casters and healers (also as a serpent sting pull); all other
 # casts as before. Node layout read at engine (re)build. 0 = two nodes and the old checks (default).
 AiPlayerbot.Diet.HunterBestSting = 0
+# twow-repo#568 (D19, strategy diet, BEHAVIOUR CHANGE): 1 = the vanilla hunter buff strategy pushes "deterrence" from
+# the trigger "deterrence" and the cc pve/pvp strategies push "scatter shot on closest attacker targeting me" from the
+# trigger "scatter shot on closest attacker" instead of the shared "target of attacker close". Both triggers fire only
+# while the talent spell (Deterrence 19263, Scatter Shot 19503, no trainer rows) is known and off cooldown, then check
+# the closest attacker within AiPlayerbot.TooCloseDistance as before. Scatter Shot now hits that closest attacker
+# targeting the bot instead of the current target. Same Deterrence casts; hunters without the talents stop pushing
+# the IMPOSSIBLE nodes. Pvp freezing trap keeps "target of attacker close". Read at engine (re)build and bot login.
+# 0 = shared trigger, scatter shot on the current target (default).
+AiPlayerbot.Diet.HunterTalentShotsKnown = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
