@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "HunterStrategy.h"
 #include "HunterAiObjectContext.h"
 
@@ -24,7 +25,19 @@ public:
 private:
     ACTION_NODE_A(aimed_shot, "aimed shot", "arcane shot");
 
-    ACTION_NODE_A(rapid_fire, "rapid fire", "readiness");
+    // twow-repo#568 (D66, AiPlayerbot.Diet.HunterRapidFireGate): with the switch on the node keeps its "readiness"
+    // alternative only for a bot that knows Readiness (a TBC talent; same "spell id" value its cast checks), read at
+    // every node build, so a reload acts at once. Switch off: the same node the former A-macro built ("rapid fire",
+    // alternative "readiness"). Still one unconditional new ActionNode (#541 A08 owner cache).
+    static ActionNode* rapid_fire(PlayerbotAI* ai)
+    {
+        return new ActionNode("rapid fire",
+            /*P*/ NULL,
+            /*A*/ (!sPlayerbotAIConfig.dietHunterRapidFireGate || !ai ||
+                   ai->GetAiObjectContext()->GetValue<uint32>("spell id", "readiness")->Get())
+                ? NextAction::array(0, new NextAction("readiness"), NULL) : NULL,
+            /*C*/ NULL);
+    }
 
     ACTION_NODE_A(aspect_of_the_pack, "aspect of the pack", "aspect of the cheetah");
 

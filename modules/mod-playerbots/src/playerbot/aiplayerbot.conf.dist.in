@@ -2034,6 +2034,14 @@ AiPlayerbot.Perf.EventTriggerSkip = 0
 # IMPOSSIBLE; hunters below level 10 or without the trained spell just stop pushing it. No monkey fallback (that is a
 # separate OB-10 decision). Read on every check. 0 = trigger without the spell check (default).
 AiPlayerbot.Diet.HunterAspectGate = 0
+# twow-repo#568 (diet D66, neutral, "nach Abnahme an"): 1 = the vanilla trigger "rapid fire" (hunter "boost" strategy,
+# ACTION_HIGH+5) is active only while the bot knows Rapid Fire and the spell is off cooldown, then checks the missing
+# self aura as before; the "rapid fire" node is built without its "readiness" alternative. Both only while the bot
+# does not know Readiness (a TBC talent); a bot that knows it keeps the old trigger and node. Same casts: the cast
+# asks CanCastSpell for the same "spell id" value and the same IsSpellReady, so in the gated states it always ended
+# IMPOSSIBLE and the unknown Readiness was IMPOSSIBLE too. Read on every check / node build. 0 = trigger without the
+# spell checks, node with the "readiness" alternative (default).
+AiPlayerbot.Diet.HunterRapidFireGate = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

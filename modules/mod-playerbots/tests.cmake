@@ -2399,3 +2399,9 @@ add_test(NAME diet_d65_hunter_aspect_gate_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/diet_d65_hunter_aspect_gate_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D66: vanilla Rapid Fire trigger waits for the known, ready spell, node without Readiness behind AiPlayerbot.Diet.HunterRapidFireGate (default 0).
+add_test(NAME diet_d66_hunter_rapid_fire_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d66_hunter_rapid_fire_gate_source_contract_tests.cmake")
