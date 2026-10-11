@@ -236,9 +236,15 @@ void ArmsWarriorBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& trigge
 {
     WarriorBuffStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "berserker stance",
-        NextAction::array(0, new NextAction("berserker stance", ACTION_NORMAL), NULL)));
+    // twow-repo#568 D38 (owner rule 11.10.2026: arms stays in Battle Stance): once Berserker Stance is known
+    // (quest at 30) this node moved arms into Berserker Stance in every fight, losing Overpower and the rage
+    // above the Tactical Mastery retention. On: not registered. Off: as before.
+    if (!sPlayerbotAIConfig.dietWarriorBerserkerStanceGate)
+    {
+        triggers.push_back(new TriggerNode(
+            "berserker stance",
+            NextAction::array(0, new NextAction("berserker stance", ACTION_NORMAL), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "feared",

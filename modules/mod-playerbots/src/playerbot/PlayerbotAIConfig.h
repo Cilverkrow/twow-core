@@ -582,7 +582,7 @@ public:
     bool dietArmsSnareHamstring = false;  // twow-repo#568 (diet D17): arms cc 'hamstring' trigger pushes hamstring instead of piercing howl -> mocking blow (taunt) -> hamstring (0 = off)
     bool dietWarriorNoDevastate = false;  // twow-repo#568 (diet D36): protection 'sunder armor' trigger pushes sunder armor instead of the unlearnable devastate (0 = off)
     bool dietWarriorDisarmGate = false;  // twow-repo#568 (diet D37): 'disarm' trigger also requires a known, ready Disarm and Defensive Stance (0 = off)
-    bool dietWarriorBerserkerStanceGate = false;  // twow-repo#568 (diet D38): 'berserker stance' trigger requires the spell; the Defensive Tactics swap also requires the talent and a shield (0 = off)
+    bool dietWarriorBerserkerStanceGate = false;  // twow-repo#568 (diet D38): stance rules (owner 11.10.2026): the 'berserker stance' trigger requires the spell, arms does not register it, protection has no Defensive Tactics swap, Berserker Rage has no stance prerequisite (0 = off)
     bool dietWarriorNoInterceptAndRage = false;  // twow-repo#568 (diet D39): protection does not register the never-firing 'intercept and rage' nodes (sub-trigger "enemy is out of melee" has no creator) (0 = off)
     bool dietWarriorDedupBloodrage = false;  // twow-repo#568 (diet D40): 'bloodrage' trigger requires a known, ready Bloodrage; protection drops its duplicate bloodrage / concussion blow nodes (0 = off)
     bool dietPriestRacials = false;  // twow-repo#568 (D20): priest race spells (touch of weakness, shadowguard, hex of weakness, devouring plague, elune's grace, desperate prayer, starshards) only for races that can learn them; the four race triggers wait for a known spell id (0 = off)
