@@ -174,4 +174,17 @@ require_text("${d38_dt_on}" "Item* offhand = bot->GetItemByPos(INVENTORY_SLOT_BA
 require_text("${d38_dt_on}" "offhand->GetProto()->SubClass != ITEM_SUBCLASS_ARMOR_SHIELD)
             return false;" "D38 shield gate")
 
+# D39: the never-firing 'intercept and rage' nodes only on the off path.
+require_switch(dietWarriorNoInterceptAndRage Diet.WarriorNoInterceptAndRage)
+region("${prot_combat}" "if (!sPlayerbotAIConfig.dietWarriorNoInterceptAndRage)" "\n    }\n" d39_off)
+require_text("${d39_off}" "\"intercept and rage\",
+            NextAction::array(0, new NextAction(\"berserker stance\", ACTION_MOVE + 6), NULL)" "D39 off path keeps berserker stance on intercept and rage")
+require_text("${d39_off}" "\"intercept and rage\",
+            NextAction::array(0, new NextAction(\"intercept\", ACTION_MOVE + 5), NULL)" "D39 off path keeps intercept on intercept and rage")
+string(REGEX MATCHALL "\"intercept and rage\"" d39_all "${prot_combat}")
+list(LENGTH d39_all d39_count)
+if(NOT d39_count EQUAL 2)
+  message(FATAL_ERROR "D39: 'intercept and rage' must appear only inside the off-path block (found ${d39_count})")
+endif()
+
 message(STATUS "DIET_G1_WARRIOR_ROGUE_SOURCE_CONTRACT=PASS")

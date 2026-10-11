@@ -583,6 +583,7 @@ public:
     bool dietWarriorNoDevastate = false;  // twow-repo#568 (diet D36): protection 'sunder armor' trigger pushes sunder armor instead of the unlearnable devastate (0 = off)
     bool dietWarriorDisarmGate = false;  // twow-repo#568 (diet D37): 'disarm' trigger also requires a known, ready Disarm and Defensive Stance (0 = off)
     bool dietWarriorBerserkerStanceGate = false;  // twow-repo#568 (diet D38): 'berserker stance' trigger requires the spell; the Defensive Tactics swap also requires the talent and a shield (0 = off)
+    bool dietWarriorNoInterceptAndRage = false;  // twow-repo#568 (diet D39): protection does not register the never-firing 'intercept and rage' nodes (sub-trigger "enemy is out of melee" has no creator) (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

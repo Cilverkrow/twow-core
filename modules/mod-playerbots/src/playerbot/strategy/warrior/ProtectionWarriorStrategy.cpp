@@ -90,13 +90,19 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
             NextAction::array(0, new NextAction("heroic throw", ACTION_MOVE + 8), new NextAction("charge", ACTION_MOVE + 7), NULL)));
     }
 
-    triggers.push_back(new TriggerNode(
-        "intercept and rage",
-        NextAction::array(0, new NextAction("berserker stance", ACTION_MOVE + 6), NULL)));
+    // twow-repo#568 D39: 'intercept and rage' -> 'intercept and far enemy' asks for the trigger
+    // "enemy is out of melee", which has no creator, so TwoTriggers never fires. On: the two dead
+    // nodes are not registered (restoring the gap-closer is a separate owner decision).
+    if (!sPlayerbotAIConfig.dietWarriorNoInterceptAndRage)
+    {
+        triggers.push_back(new TriggerNode(
+            "intercept and rage",
+            NextAction::array(0, new NextAction("berserker stance", ACTION_MOVE + 6), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "intercept and rage",
-        NextAction::array(0, new NextAction("intercept", ACTION_MOVE + 5), NULL)));
+        triggers.push_back(new TriggerNode(
+            "intercept and rage",
+            NextAction::array(0, new NextAction("intercept", ACTION_MOVE + 5), NULL)));
+    }
 
     if (noHeroicThrow)
     {
