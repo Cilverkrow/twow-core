@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <mutex>
+#include <string_view>
 #include <vector>
 
 namespace ai::park
@@ -212,5 +213,30 @@ private:
 inline bool AiUpdateDue(bool inCombat, std::uint32_t nowMs, std::uint32_t lastMs)
 {
     return inCombat || lastMs == 0 || std::uint32_t(nowMs - lastMs) >= AiIntervalMs;
+}
+
+// twow-repo#551 (owner 11.10.2026, AiPlayerbot.Park.Persist, default 0): the park state survives restarts. A parked bot
+// keeps a "park" row in the existing bot event store (no schema change) with the park target as data ("inn" = the
+// normal inn choice, "here", or a game_tele name); unpark deletes it. After a login the world thread parks the bot
+// again through ParkBot - caps and faction checks run again. A bot that is busy right after login (not in world yet,
+// teleporting, in a group) is retried, at most RestoreAttempts times.
+constexpr char const* PersistEvent = "park";
+constexpr std::uint32_t PersistValidSeconds = 30 * 24 * 3600;
+constexpr std::uint32_t RestoreIntervalSeconds = 10;
+constexpr std::uint32_t RestoreAttempts = 30;
+
+inline char const* PersistData(char const* teleName)
+{
+    return teleName && *teleName ? teleName : "inn";
+}
+
+inline char const* RestoreTarget(char const* data)
+{
+    return data && std::string_view(data) != "inn" ? data : "";
+}
+
+inline bool RestoreRetries(char const* reason, std::uint32_t attempts)
+{
+    return attempts < RestoreAttempts && reason && (std::string_view(reason) == "busy" || std::string_view(reason) == "no_ai");
 }
 }
