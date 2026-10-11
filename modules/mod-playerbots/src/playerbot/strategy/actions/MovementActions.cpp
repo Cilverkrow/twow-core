@@ -21,6 +21,7 @@
 #include "playerbot/FarMovePolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
 
 using namespace ai;
 
@@ -743,10 +744,29 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
     float totalDistance = startPosition.distance(endPosition);
     float maxDistChange = totalDistance * 0.1f;
 
+    // twow-repo#541 (L0, AiPlayerbot.BotUpdateTrace): path sub-phases in the engine trace - the reuse decision
+    // ("M:cache hit|miss <reason> backDist=<yd>"), the node route ("M:route <us> pairs=<n>"), the navmesh path
+    // ("M:mmap <us> pts=<n>") and a rebuilt path thrown away for the old one ("M:keep last"). This is the live
+    // route of every MoveTo (MoveTo returns MoveTo2 at once; its older body below that return is unreachable).
+    // Off: traceEngine stays null - no clock read, no distance, no entry, the same path as before.
+    ai::Engine* const traceEngine = sPlayerbotAIConfig.botUpdateTrace ? ai->GetCurrentEngine() : nullptr;
+
     // Last long path still leads to roughly the same destination.
     if (!lastMove.lastPath.empty() && lastMove.lastPath.getBack().distance(endPosition) < maxDistChange)
     {
+        if (traceEngine)
+            traceEngine->TraceNote("M:cache hit near backDist=%.0f", lastMove.lastPath.getBack().distance(endPosition));
         return lastMove.lastPath;
+    }
+
+    if (traceEngine)
+    {
+        if (lastMove.lastPath.empty())
+            traceEngine->TraceNote("M:cache miss empty backDist=-1 max=%.0f", maxDistChange);
+        else
+            traceEngine->TraceNote("M:cache miss %s backDist=%.0f max=%.0f",
+                lastMove.lastPath.getBack().getMapId() != endPosition.getMapId() ? "map" : "far",
+                lastMove.lastPath.getBack().distance(endPosition), maxDistChange);
     }
 
     bool needsLongPath = false;
@@ -764,17 +784,29 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
 
     if (needsLongPath && !sTravelNodeMap.getNodes().empty() && !bot->InBattleGround())
     {
-        outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot); //Pathfind using nodes.
+        std::uint64_t const routeStartUs = traceEngine ? ai::bot_update::NowUs() : 0;
+        uint32 routePairs = 0;
+        outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, traceEngine ? &routePairs : nullptr); //Pathfind using nodes.
+        if (traceEngine)
+            traceEngine->TraceNote("M:route %lluus pairs=%u pts=%u", (unsigned long long)ai::bot_update::SinceUs(routeStartUs),
+                routePairs, uint32(outMovePath.getPath().size()));
     }
     else
     {
+        std::uint64_t const mmapStartUs = traceEngine ? ai::bot_update::NowUs() : 0;
         std::vector<WorldPosition> path = startPosition.getPathTo(endPosition, bot); //Navemesh pathfinding only.
+        if (traceEngine)
+            traceEngine->TraceNote("M:mmap %lluus pts=%u", (unsigned long long)ai::bot_update::SinceUs(mmapStartUs), uint32(path.size()));
 
         outMovePath.addPath(path);
     }
 
     if (!lastMove.lastPath.empty() && !outMovePath.empty() && lastMove.lastPath.getBack().distance(endPosition) <= outMovePath.getBack().distance(endPosition))
+    {
         outMovePath = lastMove.lastPath;
+        if (traceEngine)
+            traceEngine->TraceNote("M:keep last");
+    }
 
     if (outMovePath.empty())
         outMovePath.addPoint(endPosition);

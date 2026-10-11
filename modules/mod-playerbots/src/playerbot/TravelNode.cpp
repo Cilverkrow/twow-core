@@ -1722,7 +1722,7 @@ TravelNodeRoute TravelNodeMap::getRoute(TravelNode* start, TravelNode* goal, Uni
     return TravelNodeRoute();
 }
 
-TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit)
+TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit, uint32* outPairs)
 {
     if (m_nodes.empty())
         return TravelNodeRoute();
@@ -1787,6 +1787,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
                 return TravelNodeRoute();
             }
             ++routePairs;
+            if (outPairs)   // twow-repo#541 (L0): trace only, the caller's local
+                *outPairs = routePairs;
 
             TravelNodeRoute route = getRoute(startNode, endNode, unit);
 
@@ -1924,7 +1926,7 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     return TravelNodeRoute();
 }
 
-TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit)
+TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit, uint32* outPairs)
 {
     TravelPath movePath;
     std::vector<WorldPosition> beginPath, endPath;
@@ -1941,7 +1943,7 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
 
     //Find the route of nodes starting at a node closest to the start position and ending at a node closest to the endposition.
     //Also returns longPath: The path from the start position to the first node in the route.
-    TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit);
+    TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit, outPairs);
 
     if (route.isEmpty())
     {
