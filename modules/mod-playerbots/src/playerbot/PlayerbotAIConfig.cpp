@@ -441,6 +441,7 @@ bool PlayerbotAIConfig::Initialize()
     dietWarriorNoHeroicThrow = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoHeroicThrow", false);
     dietArmsSnareHamstring = config.GetBoolDefault("AiPlayerbot.Diet.ArmsSnareHamstring", false);
     dietWarriorNoDevastate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoDevastate", false);
+    dietWarriorDisarmGate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorDisarmGate", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

@@ -129,4 +129,23 @@ region("${prot_combat}" "if (sPlayerbotAIConfig.dietWarriorNoDevastate)" "\"reve
 region("${d36_all}" "    else\n" "\n    }\n" d36_off)
 require_text("${d36_off}" "NextAction(\"devastate\", ACTION_HIGH + 2)" "D36 off path keeps devastate")
 
+# D37: disarm trigger gated on a known, ready Disarm and Defensive Stance (on); the debuff check stays the off path.
+require_switch(dietWarriorDisarmGate Diet.WarriorDisarmGate)
+file(READ "${PB_SOURCE_DIR}/strategy/warrior/WarriorTriggers.h" warrior_triggers_h)
+file(READ "${PB_SOURCE_DIR}/strategy/warrior/WarriorTriggers.cpp" warrior_triggers_cpp)
+require_text("${warrior_triggers_h}" "DEBUFF_TRIGGER_A(DisarmDebuffTrigger, \"disarm\");" "D37 disarm trigger with its own IsActive")
+forbid_text("${warrior_triggers_h}" "DEBUFF_TRIGGER(DisarmDebuffTrigger" "D37 second disarm trigger definition")
+require_text("${warrior_triggers_cpp}" "#include \"playerbot/PlayerbotAIConfig.h\"" "D37 config include")
+region("${warrior_triggers_cpp}" "bool DisarmDebuffTrigger::IsActive()" "\n}\n" d37)
+region("${d37}" "if (sPlayerbotAIConfig.dietWarriorDisarmGate)" "\n    }\n" d37_on)
+require_text("${d37_on}" "const uint32 spellId = AI_VALUE2(uint32, \"spell id\", \"disarm\");" "D37 known check")
+require_text("${d37_on}" "if (!spellId || !bot->IsSpellReady(spellId) || !ai->HasAura(\"defensive stance\", bot))
+            return false;" "D37 known / ready / stance gate")
+require_order("${d37}" "if (sPlayerbotAIConfig.dietWarriorDisarmGate)" "return DebuffTrigger::IsActive();" "D37 gate before the old debuff check")
+string(REGEX MATCHALL "return " d37_returns "${d37}")
+list(LENGTH d37_returns d37_return_count)
+if(NOT d37_return_count EQUAL 2)
+  message(FATAL_ERROR "D37: expected exactly the gate return and the old debuff return, got ${d37_return_count}")
+endif()
+
 message(STATUS "DIET_G1_WARRIOR_ROGUE_SOURCE_CONTRACT=PASS")

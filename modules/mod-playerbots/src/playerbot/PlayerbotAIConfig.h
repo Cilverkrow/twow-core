@@ -581,6 +581,7 @@ public:
     bool dietWarriorNoHeroicThrow = false;  // twow-repo#568 (diet D16): protection warriors push charge / taunt / taunt on snare target without the non-existent Heroic Throw step (0 = off)
     bool dietArmsSnareHamstring = false;  // twow-repo#568 (diet D17): arms cc 'hamstring' trigger pushes hamstring instead of piercing howl -> mocking blow (taunt) -> hamstring (0 = off)
     bool dietWarriorNoDevastate = false;  // twow-repo#568 (diet D36): protection 'sunder armor' trigger pushes sunder armor instead of the unlearnable devastate (0 = off)
+    bool dietWarriorDisarmGate = false;  // twow-repo#568 (diet D37): 'disarm' trigger also requires a known, ready Disarm and Defensive Stance (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

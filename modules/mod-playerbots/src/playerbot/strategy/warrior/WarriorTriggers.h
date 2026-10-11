@@ -9,7 +9,7 @@ namespace ai
     BUFF_TRIGGER(ShieldBlockTrigger, "shield block");
     BUFF_TRIGGER_A(CommandingShoutTrigger, "commanding shout");
     DEBUFF_TRIGGER(RendDebuffTrigger, "rend");
-    DEBUFF_TRIGGER(DisarmDebuffTrigger, "disarm");
+    DEBUFF_TRIGGER_A(DisarmDebuffTrigger, "disarm");
     DEBUFF_TRIGGER_A(SunderArmorDebuffTrigger, "sunder armor");
     DEBUFF_TRIGGER(DemoralizingShoutDebuffTrigger, "demoralizing shout");
     DEBUFF_TRIGGER(MortalStrikeDebuffTrigger, "mortal strike");
