@@ -442,6 +442,7 @@ bool PlayerbotAIConfig::Initialize()
     dietNoWrathOfAirTotem = config.GetBoolDefault("AiPlayerbot.Diet.NoWrathOfAirTotem", false);
     dietShamanVanillaNames = config.GetBoolDefault("AiPlayerbot.Diet.ShamanVanillaNames", false);
     dietInnervateFix = config.GetBoolDefault("AiPlayerbot.Diet.InnervateFix", false);
+    dietRetRepentanceKey = config.GetBoolDefault("AiPlayerbot.Diet.RetRepentanceKey", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

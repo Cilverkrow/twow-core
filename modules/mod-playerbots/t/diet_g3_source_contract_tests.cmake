@@ -197,4 +197,17 @@ foreach(pair "innervate_trigger;SpellTargetTrigger" "innervate_action;CastSpellT
   require_text("${body}" "const uint32 currentManaPct = (uint32)(currentMana / maxMana) * 100;" "D30 OFF path kept (${body_var})")
 endforeach()
 
+# ---------------------------------------------------------------------------------------------------------
+# D31 (AiPlayerbot.Diet.RetRepentanceKey): Ret critical-health node registered under its pushed name.
+require_diet_switch(dietRetRepentanceKey RetRepentanceKey)
+read_source("strategy/paladin/RetributionPaladinStrategy.cpp" ret_cpp)
+read_source("strategy/paladin/PaladinAiObjectContext.cpp" paladin_ctx)
+region("${ret_cpp}" "RetributionPaladinStrategyActionNodeFactory()" "\n    }" ret_factory)
+require_text("${ret_factory}" "creators[sPlayerbotAIConfig.dietRetRepentanceKey ? \"repentance or shield\" : \"repentance of shield\"] = &repentance_or_shield;" "D31 key gate with the old key as OFF path")
+require_text("${ret_cpp}" "ACTION_NODE_A(repentance_or_shield, \"repentance\", \"divine shield\");" "D31 node: repentance, alternative divine shield")
+region("${ret_cpp}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" ret_zero)
+require_text("${ret_zero}" "new NextAction(\"repentance or shield\", ACTION_EMERGENCY + 1)" "D31 pushed name in the vanilla block")
+require_text("${paladin_ctx}" "creators[\"repentance\"] =" "D31 repentance action creator")
+require_text("${paladin_ctx}" "creators[\"divine shield\"] =" "D31 divine shield action creator")
+
 message(STATUS "DIET_G3_SOURCE_CONTRACT=PASS")

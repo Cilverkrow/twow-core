@@ -582,6 +582,7 @@ public:
     bool dietNoWrathOfAirTotem = false;  // twow-repo#568 D28: vanilla ele/resto shamans skip the nonexistent "wrath of air totem" node and alternative (0 = off)
     bool dietShamanVanillaNames = false;  // twow-repo#568 D29: vanilla shamans push healing wave / searing totem / flametongue weapon instead of riptide / totem of wrath / earthliving; dead resto factory keys dropped (0 = off)
     bool dietInnervateFix = false;  // twow-repo#568 D30: Innervate trigger/action use the real mana percent and accept the solo druid itself (0 = off)
+    bool dietRetRepentanceKey = false;  // twow-repo#568 D31: Ret "repentance or shield" node registered under its pushed name (0 = off, factory key typo)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
