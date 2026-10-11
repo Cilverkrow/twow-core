@@ -2049,6 +2049,52 @@ AiPlayerbot.Diet.WarriorNoInterceptAndRage = 0
 # and protection drops its duplicate bloodrage (NORMAL+5) and concussion blow (HIGH+4) nodes; the buff strategy (HIGH) and
 # the cc strategy (INTERRUPT) keep theirs. 0 = no cooldown check, duplicates registered as today (default).
 AiPlayerbot.Diet.WarriorDedupBloodrage = 0
+# twow-repo#568 (D20, strategy diet): 1 = priests only register the race spells their race can learn (touch of weakness /
+# devouring plague Undead, shadowguard / hex of weakness Troll, elune's grace / starshards Night Elf, desperate prayer
+# Human+Dwarf), and those four race triggers stay quiet until the spell is known (right race below the learn level).
+# Same casts: these nodes always ended IMPOSSIBLE. Read at engine (re)build. 0 = all nodes for every priest (default).
+AiPlayerbot.Diet.PriestRacials = 0
+# twow-repo#568 (D22, strategy diet): 1 = the priest triggers "inner fire" (learned at 12), "shadowform" and "inner focus"
+# (talents) stay quiet while the bot knows no rank of the spell, "inner focus" also while it is on cooldown. Same casts:
+# these actions ended IMPOSSIBLE in exactly those states (no alternatives). 0 = old triggers (default).
+AiPlayerbot.Diet.PriestSelfBuffKnown = 0
+# twow-repo#568 (D32, strategy diet): 1 = the shadow priest strategy no longer registers "vampiric touch" (all Turtle
+# 1.18 Vampiric Touch rows are passive, the talent works through Vampiric Embrace) and "shadowfiend" (no such spell in
+# Turtle 1.18). Both nodes could never cast. Read at engine (re)build. 0 = both nodes as before (default).
+AiPlayerbot.Diet.ShadowPriestDeadNodes = 0
+# twow-repo#568 (D23, strategy diet): 1 = the warlock cc nodes "death coil on snare target" (death coil, level 42) and
+# "howl of terror" (level 40, now on its own "howl of terror" trigger: enemy within 10 yd and the spell known) fire only
+# while the spell is known. Same casts: below the learn level they ended IMPOSSIBLE. Trigger choice read at engine
+# (re)build. 0 = old triggers (default).
+AiPlayerbot.Diet.WarlockCcKnown = 0
+# twow-repo#568 (D24, strategy diet): 1 = the warlock talent spells fire only while the bot knows them: "siphon life",
+# "siphon life on attacker" and "conflagrate" triggers check the spell first; shadowburn ("target critical health",
+# pvp "very often") and dark pact ("low mana") move to own triggers with the same condition plus the known spell.
+# Same casts: without the talent these nodes ended IMPOSSIBLE. Trigger choice read at engine (re)build. 0 = as before.
+AiPlayerbot.Diet.WarlockTalentKnown = 0
+# twow-repo#568 (D25, strategy diet): 1 = the warlock boost strategy no longer registers "amplify curse": Turtle 1.18 only
+# has "[Deprecated] Amplify Curse", so the node ended IMPOSSIBLE on every combat tick. Same casts. Read at engine
+# (re)build. 0 = node as before (default).
+AiPlayerbot.Diet.WarlockAmplifyCurse = 0
+# twow-repo#568 (D33, strategy diet): 1 = for a mage who does not know Mage Armor (below 34) the pve "mage armor" trigger
+# fires only while the best armor the mage can cast is missing (Ice Armor if known, else Frost Armor), instead of every
+# 5 s with ice/frost armor already up. The mage armor -> ice armor -> frost armor chain stays, same armor is cast.
+# 0 = old trigger (default).
+AiPlayerbot.Diet.MageArmorKnown = 0
+# twow-repo#568 (D34, strategy diet): 1 = the mage talent triggers "arcane power", "presence of mind", "combustion" and
+# "ice barrier" stay quiet while the mage does not know the spell or it is on cooldown. Same casts: in exactly those
+# states the action ended IMPOSSIBLE (CanCastSpell checks spell id and IsSpellReady; no alternatives). 0 = as before.
+AiPlayerbot.Diet.MageTalentBoostKnown = 0
+# twow-repo#568 (D35, strategy diet; NOT strictly neutral): 1 = the fire mage cc strategy pushes "blast wave" on its own
+# "blast wave" trigger (enemy within 10 yd and the talent known) instead of "enemy ten yards", and the blast wave node
+# loses its frost nova alternative: the cc strategy already tried frost nova -> cone of cold at 90 in the same pass.
+# Difference: a frost nova that a multiplier held back at 90 (waiting for attack, threat) is no longer cast via the
+# blast wave alternative at 40. 0 = as before (default).
+AiPlayerbot.Diet.MageBlastWave = 0
+# twow-repo#568 (D53, strategy diet): 1 = the mage raid strategy no longer registers "invisibility" (alternative "lesser
+# invisibility") on "high threat" and "multiple attackers": Turtle 1.18 mages cannot learn either spell, so both nodes
+# ended IMPOSSIBLE. Same casts. Read at engine (re)build. 0 = nodes as before (default).
+AiPlayerbot.Diet.MageInvisibility = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

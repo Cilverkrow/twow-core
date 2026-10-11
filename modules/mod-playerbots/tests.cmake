@@ -2399,3 +2399,10 @@ add_test(NAME diet_g1_warrior_rogue_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/diet_g1_warrior_rogue_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet g2 (priest, mage, warlock): dead class nodes behind AiPlayerbot.Diet.* switches (default 0).
+add_test(NAME diet_g2_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/diet_g2_source_contract_tests.cmake")
