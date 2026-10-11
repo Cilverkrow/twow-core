@@ -44,13 +44,20 @@ void ShadowPriestStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         "shadow word: pain",
         NextAction::array(0, new NextAction("shadow word: pain", ACTION_NORMAL + 2), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "devouring plague",
-        NextAction::array(0, new NextAction("devouring plague", ACTION_NORMAL + 2), NULL)));
+    // twow-repo#568 (D20): devouring plague is Undead only (race_mask 16), hex of weakness Troll only (128).
+    if (dietpriest::RaceMayLearn(ai, dietpriest::RaceMaskUndead))
+    {
+        triggers.push_back(new TriggerNode(
+            "devouring plague",
+            NextAction::array(0, new NextAction("devouring plague", ACTION_NORMAL + 2), NULL)));
+    }
 
-    triggers.push_back(new TriggerNode(
-        "hex of weakness",
-        NextAction::array(0, new NextAction("hex of weakness", ACTION_NORMAL + 2), NULL)));
+    if (dietpriest::RaceMayLearn(ai, dietpriest::RaceMaskTroll))
+    {
+        triggers.push_back(new TriggerNode(
+            "hex of weakness",
+            NextAction::array(0, new NextAction("hex of weakness", ACTION_NORMAL + 2), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "no mana",

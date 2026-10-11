@@ -2018,6 +2018,11 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
+# twow-repo#568 (D20, strategy diet): 1 = priests only register the race spells their race can learn (touch of weakness /
+# devouring plague Undead, shadowguard / hex of weakness Troll, elune's grace / starshards Night Elf, desperate prayer
+# Human+Dwarf), and those four race triggers stay quiet until the spell is known (right race below the learn level).
+# Same casts: these nodes always ended IMPOSSIBLE. Read at engine (re)build. 0 = all nodes for every priest (default).
+AiPlayerbot.Diet.PriestRacials = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
