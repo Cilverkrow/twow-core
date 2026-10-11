@@ -119,6 +119,15 @@ namespace ai
         NaturesGraspTrigger(PlayerbotAI* ai) : BoostTrigger(ai, "nature's grasp") {}
     };
 
+    // twow-repo#568 D45 (AiPlayerbot.Diet.DruidCooldownGates): "enemy five yards" for the Nature's Grasp node, but only
+    // while the spell is known and off its own and category cooldown (60 s); otherwise the push could only end IMPOSSIBLE.
+    class NaturesGraspReadyTrigger : public EnemyInRangeTrigger
+    {
+    public:
+        NaturesGraspReadyTrigger(PlayerbotAI* ai) : EnemyInRangeTrigger(ai, "nature's grasp ready", 5.0f) {}
+        bool IsActive() override;
+    };
+
     class EntanglingRootsTrigger : public HasCcTargetTrigger
     {
     public:
@@ -240,6 +249,15 @@ namespace ai
     private:
         bool IsActive() override
         {
+            // twow-repo#568 D45 (AiPlayerbot.Diet.DruidCooldownGates): Enrage (60 s cooldown, learned at 12) could only
+            // end IMPOSSIBLE while unknown or cooling down, so the trigger stays quiet then.
+            if (sPlayerbotAIConfig.dietDruidCooldownGates)
+            {
+                uint32 const enrageId = AI_VALUE2(uint32, "spell id", "enrage");
+                if (!enrageId || !bot->IsSpellReady(enrageId))
+                    return false;
+            }
+
             return AI_VALUE2(uint8, "health", "self target") >= sPlayerbotAIConfig.mediumHealth &&
                    AI_VALUE2(uint8, "rage", "self target") < 20;
         }
