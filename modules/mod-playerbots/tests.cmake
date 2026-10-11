@@ -2393,3 +2393,9 @@ add_test(NAME travel_node_lock_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/travel_node_lock_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet g1 (warrior + rogue): each fix behind its own AiPlayerbot.Diet.* switch, default off.
+add_test(NAME diet_g1_warrior_rogue_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_g1_warrior_rogue_source_contract_tests.cmake")

@@ -5,11 +5,11 @@ namespace ai
 {
     BUFF_TRIGGER(BattleStanceTrigger, "battle stance");
     BUFF_TRIGGER(DefensiveStanceTrigger, "defensive stance");
-    BUFF_TRIGGER(BerserkerStanceTrigger, "berserker stance");
+    BUFF_TRIGGER_A(BerserkerStanceTrigger, "berserker stance");
     BUFF_TRIGGER(ShieldBlockTrigger, "shield block");
     BUFF_TRIGGER_A(CommandingShoutTrigger, "commanding shout");
     DEBUFF_TRIGGER(RendDebuffTrigger, "rend");
-    DEBUFF_TRIGGER(DisarmDebuffTrigger, "disarm");
+    DEBUFF_TRIGGER_A(DisarmDebuffTrigger, "disarm");
     DEBUFF_TRIGGER_A(SunderArmorDebuffTrigger, "sunder armor");
     DEBUFF_TRIGGER(DemoralizingShoutDebuffTrigger, "demoralizing shout");
     DEBUFF_TRIGGER(MortalStrikeDebuffTrigger, "mortal strike");
@@ -168,13 +168,6 @@ namespace ai
     public:
         DefensiveTacticsBerserkerStanceTrigger(PlayerbotAI* ai) : BerserkerStanceTrigger(ai) {}
 
-        virtual bool IsActive() override
-        {
-            if (!BerserkerStanceTrigger::IsActive())
-                return false;
-            if (!sServerFacade.IsInCombat(bot))
-                return false;
-            return AI_VALUE2(uint8, "health", "self target") > 70;
-        }
+        virtual bool IsActive() override;
     };
 }

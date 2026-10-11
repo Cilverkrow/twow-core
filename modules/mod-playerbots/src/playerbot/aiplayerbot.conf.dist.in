@@ -2018,6 +2018,37 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
+# twow-repo#568 (diet D03, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = combat-spec rogues check Adrenaline Rush and
+# Blade Flurry in combat (boost strategy, combat engine) and cast them; 0 = both stay in the non-combat engine, where
+# the boost trigger is never active, so Adrenaline Rush is never cast (today's behaviour, default).
+AiPlayerbot.Diet.RogueCombatBoostInCombat = 0
+# twow-repo#568 (diet D15, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = assassination rogues (and every rogue below L10)
+# use backstab behind the target (falls back to sinister strike) and sinister strike in front; Mutilate does not exist
+# in Turtle 1.18. 0 = the dead 'mutilate back' / 'mutilate front' nodes as today (default).
+AiPlayerbot.Diet.RogueNoMutilate = 0
+# twow-repo#568 (diet D16, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = protection warriors skip the non-existent Heroic
+# Throw: 'enemy out of melee' pushes charge only, 'lose aggro' taunt, 'taunt on snare target' taunt on snare target.
+# 0 = heroic throw first, then the alternative, as today (default).
+AiPlayerbot.Diet.WarriorNoHeroicThrow = 0
+# twow-repo#568 (diet D17, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = arms warriors answer a fleeing snare target with
+# Hamstring directly. 0 = Piercing Howl (Fury talent) -> Mocking Blow (a taunt) -> Hamstring chain as today (default).
+AiPlayerbot.Diet.ArmsSnareHamstring = 0
+# twow-repo#568 (diet D36, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = protection warriors push Sunder Armor directly on
+# the 'sunder armor' trigger. 0 = Devastate first (unlearnable in Turtle 1.18, always IMPOSSIBLE) as today (default).
+AiPlayerbot.Diet.WarriorNoDevastate = 0
+# twow-repo#568 (diet D37, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the warrior 'disarm' trigger fires only when the bot
+# knows Disarm, it is off cooldown and the bot is in Defensive Stance. 0 = target-has-no-Disarm-aura check only (default).
+AiPlayerbot.Diet.WarriorDisarmGate = 0
+# twow-repo#568 (diet D38, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the 'berserker stance' trigger needs the spell to be
+# known, and the protection Defensive Tactics swap also needs a rank of the talent and a shield. 0 = no checks (default).
+AiPlayerbot.Diet.WarriorBerserkerStanceGate = 0
+# twow-repo#568 (diet D39, no visible behaviour change): 1 = protection warriors do not register the two 'intercept and
+# rage' nodes, whose sub-trigger "enemy is out of melee" does not exist and never fires. 0 = registered as today (default).
+AiPlayerbot.Diet.WarriorNoInterceptAndRage = 0
+# twow-repo#568 (diet D40, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the 'bloodrage' trigger needs a known, ready Bloodrage,
+# and protection drops its duplicate bloodrage (NORMAL+5) and concussion blow (HIGH+4) nodes; the buff strategy (HIGH) and
+# the cc strategy (INTERRUPT) keep theirs. 0 = no cooldown check, duplicates registered as today (default).
+AiPlayerbot.Diet.WarriorDedupBloodrage = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200

@@ -576,6 +576,15 @@ public:
     bool perfAttackersSingleList = false;  // twow-repo#541 (audit A23): "has attackers" and "possible attack targets::1" use the full "attackers" list, no second attackers::1 pass (0 = off)
     bool perfPartyTargetMemo = false;  // twow-repo#541 (audit A25): party-target values reuse their result inside one DoNextAction pass until the next Execute (0 = off)
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
+    bool dietRogueCombatBoostInCombat = false;  // twow-repo#568 (diet D03): combat rogue boost registers adrenaline rush / blade flurry in the combat engine, not the non-combat engine where BoostTrigger is never active (0 = off)
+    bool dietRogueNoMutilate = false;  // twow-repo#568 (diet D15): assassination builders map to backstab (behind) / sinister strike (front) instead of the non-existent Mutilate (0 = off)
+    bool dietWarriorNoHeroicThrow = false;  // twow-repo#568 (diet D16): protection warriors push charge / taunt / taunt on snare target without the non-existent Heroic Throw step (0 = off)
+    bool dietArmsSnareHamstring = false;  // twow-repo#568 (diet D17): arms cc 'hamstring' trigger pushes hamstring instead of piercing howl -> mocking blow (taunt) -> hamstring (0 = off)
+    bool dietWarriorNoDevastate = false;  // twow-repo#568 (diet D36): protection 'sunder armor' trigger pushes sunder armor instead of the unlearnable devastate (0 = off)
+    bool dietWarriorDisarmGate = false;  // twow-repo#568 (diet D37): 'disarm' trigger also requires a known, ready Disarm and Defensive Stance (0 = off)
+    bool dietWarriorBerserkerStanceGate = false;  // twow-repo#568 (diet D38): 'berserker stance' trigger requires the spell; the Defensive Tactics swap also requires the talent and a shield (0 = off)
+    bool dietWarriorNoInterceptAndRage = false;  // twow-repo#568 (diet D39): protection does not register the never-firing 'intercept and rage' nodes (sub-trigger "enemy is out of melee" has no creator) (0 = off)
+    bool dietWarriorDedupBloodrage = false;  // twow-repo#568 (diet D40): 'bloodrage' trigger requires a known, ready Bloodrage; protection drops its duplicate bloodrage / concussion blow nodes (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
