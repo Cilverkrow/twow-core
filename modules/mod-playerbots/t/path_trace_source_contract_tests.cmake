@@ -105,11 +105,14 @@ require_text("${resolve_body}" "std::uint64_t const mmapStartUs = traceEngine ? 
 require_order("${resolve_body}" "std::uint64_t const mmapStartUs" "std::vector<WorldPosition> path = startPosition.getPathTo(endPosition, bot); //Navemesh pathfinding only." "navmesh clock before the path")
 require_order("${resolve_body}" "startPosition.getPathTo(endPosition, bot); //Navemesh pathfinding only." "        if (traceEngine)\n            traceEngine->TraceNote(\"M:mmap %lluus pts=%u\"" "navmesh token after the path, behind the switch")
 require_text("${resolve_body}" "if (!lastMove.lastPath.empty() && !outMovePath.empty() && lastMove.lastPath.getBack().distance(endPosition) <= outMovePath.getBack().distance(endPosition))\n    {\n        outMovePath = lastMove.lastPath;\n        if (traceEngine)\n            traceEngine->TraceNote(\"M:keep last\");" "keep-old rule unchanged, token behind the switch")
-# Every TraceNote call in ResolveMovePath directly behind `if (traceEngine)` (the two miss lines inside one block).
+# Every TraceNote call in ResolveMovePath directly behind `if (traceEngine)` (the two miss lines inside one block;
+# L1 adds "M:reuse hit" one block deeper, inside its own switch).
 count_text("${resolve_body}" "TraceNote(" notes)
 count_text("${resolve_body}" "if (traceEngine)\n            traceEngine->TraceNote(" gated)
-if(NOT notes EQUAL 6 OR NOT gated EQUAL 4)
-  message(FATAL_ERROR "#541 L0: ResolveMovePath trace entries: expected 6 (4 directly gated + 2 in the gated miss block), found ${notes}/${gated}")
+count_text("${resolve_body}" "if (traceEngine)\n                traceEngine->TraceNote(" gated_deep)
+math(EXPR accounted "${gated} + ${gated_deep} + 2")
+if(NOT gated EQUAL 4 OR NOT notes EQUAL accounted)
+  message(FATAL_ERROR "#541 L0: ResolveMovePath trace entries: ${notes} found, ${gated}+${gated_deep} directly gated + 2 in the gated miss block expected (4 at the L0 sites)")
 endif()
 
 # 4. Pair count: optional out parameter, default null, written only when given.

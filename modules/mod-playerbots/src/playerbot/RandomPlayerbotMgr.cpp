@@ -45,6 +45,7 @@
 #include "playerbot/MemStoresPolicy.h"
 #include "playerbot/BotUpdateTrace.h"
 #include "playerbot/CombatIdlePolicy.h"
+#include "playerbot/PathReusePolicy.h"
 #if defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -1001,6 +1002,24 @@ void ReportLazyEngineInit()
         (unsigned long long)deferred, (unsigned long long)caught,
         (unsigned long long)(deferred > caught ? deferred - caught : 0));
 }
+
+// twow-repo#541 (L1, AiPlayerbot.Perf.PartialPathReuse): one [PathReuse] line per minute. hits = path rebuilds skipped
+// because the path last built for the same destination was used again, misses = rebuilds that ran with the switch on
+// (both only counted after the existing end-near-destination reuse had missed). World thread only, same pattern as
+// ReportBotUpdate. Nothing is counted or written when off.
+void ReportPathReuse()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.perfPartialPathReuse || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    uint64 const hits = ai::path_reuse::hits.exchange(0, std::memory_order_relaxed);
+    uint64 const misses = ai::path_reuse::misses.exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[PathReuse] hits=%llu misses=%llu max_age_ms=%u",
+        (unsigned long long)hits, (unsigned long long)misses, sPlayerbotAIConfig.perfPartialPathReuseMs);
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -1025,6 +1044,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
+    ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
