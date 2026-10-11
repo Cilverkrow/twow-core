@@ -62,6 +62,13 @@ if(NOT deletes EQUAL -1)
   message(FATAL_ERROR "#541 action budget: a deferred node is re-queued, never deleted")
 endif()
 require_text("${budget_block}" "actionBudgetDeferrals = 0;" "deferral streak reset when the action runs")
+# Live v46.1 (11.10., BotSave): WorldTimer::tick() is never called in this core, tickTime() stays 0 - a budget keyed on
+# it never refills. The window comes from the real clock.
+require_text("${budget_block}" "uint32 const window = ai::action_budget::Window(WorldTimer::getMSTime());" "budget window from the clock")
+string(FIND "${budget_block}" "tickTime()" frozen_tick)
+if(NOT frozen_tick EQUAL -1)
+  message(FATAL_ERROR "#541 action budget: must not be keyed on WorldTimer::tickTime() (never advanced)")
+endif()
 
 # Policy: no starvation; limits as documented.
 require_text("${policy}" "if (!mode || deferralsInARow >= MaxDeferrals)\n            return true;" "forced after MaxDeferrals")

@@ -21,6 +21,16 @@ namespace ai::action_budget
     constexpr std::uint32_t SpreadSlots = 4;
     constexpr std::uint32_t MaxDeferrals = 4;
 
+    // The "world tick" of this budget: a 50 ms clock window (the world tick target). Not WorldTimer::tickTime() - this
+    // core never calls WorldTimer::tick(), tickTime() stays 0, and a budget keyed on it never refills (BotSave on live
+    // v46.1, 11.10.).
+    constexpr std::uint32_t WindowMs = 50;
+
+    inline std::uint32_t Window(std::uint32_t nowMs)
+    {
+        return nowMs / WindowMs;
+    }
+
     inline std::uint32_t LimitFor(std::uint32_t mode)
     {
         return mode == 1 ? 3u : mode == 2 ? 1u : 0u;

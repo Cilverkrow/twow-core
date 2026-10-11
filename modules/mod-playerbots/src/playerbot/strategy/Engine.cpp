@@ -272,9 +272,9 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
             if (action && sPlayerbotAIConfig.perfActionBudget &&
                 ai::action_budget::IsExpensive(action->getName(), sPlayerbotAIConfig.perfActionBudgetActions))
             {
-                uint32 const tickMs = WorldTimer::tickTime();
-                if (!ai::action_budget::TryTake(sPlayerbotAIConfig.perfActionBudget, ai->GetBot()->GetGUIDLow(), tickMs,
-                    tickMs / 50, actionBudgetDeferrals, ai::action_budget::ThreadLocal()))
+                uint32 const window = ai::action_budget::Window(WorldTimer::getMSTime());
+                if (!ai::action_budget::TryTake(sPlayerbotAIConfig.perfActionBudget, ai->GetBot()->GetGUIDLow(), window,
+                    window, actionBudgetDeferrals, ai::action_budget::ThreadLocal()))
                 {
                     ++actionBudgetDeferrals;
                     ai::action_budget::Counter(ai::action_budget::Deferred).fetch_add(1, std::memory_order_relaxed);
