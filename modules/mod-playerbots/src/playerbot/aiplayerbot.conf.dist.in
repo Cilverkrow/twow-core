@@ -1873,6 +1873,15 @@ AiPlayerbot.Perf.TravelInfoReuse = 0
 # and damage hooks of all bots. PerfMon action and trigger names are built only with
 # AiPlayerbot.PerfMonEnabled = 1. Same decisions, same log lines. 0 = as before (default).
 AiPlayerbot.Perf.LogActionFastPath = 0
+# twow-repo#541 (owner 11.10.2026): budget for expensive bot actions per map thread and world tick, one switch with
+# variants: 0 = off (default), 1 = at most 3 per thread and tick, 2 = at most 1, 3 = spread (a bot starts one only
+# in its own slot of 4 world ticks). A deferred action stays queued and is tried on the bot's next update; after
+# 4 deferrals in a row it runs regardless (no starvation). [ActionBudget] counts executed / deferred / forced.
+AiPlayerbot.Perf.ActionBudget = 0
+# The expensive actions (comma list); empty = choose travel target, choose group travel target, request travel
+# target, request quest travel target, choose rpg target, move to travel target, find corpse, add gathering loot,
+# attack anything.
+AiPlayerbot.Perf.ActionBudgetActions =
 # twow-repo#541 (audit A11): 1 = the engine's last-action trail ([BotUpdateSlow] action=, [BotSlowUpdate]
 # and [Idle] last_action=, fishing break, "action" command) keeps the newest 512 characters, cut at an
 # entry '|'. The old trim kept only what lay beyond character 512 and often emptied the trail. Log and

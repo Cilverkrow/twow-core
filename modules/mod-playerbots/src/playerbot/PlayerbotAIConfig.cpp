@@ -11,6 +11,7 @@
 #include "RandomItemMgr.h"
 #include "World/WorldState.h"
 #include "playerbot/PlayerbotHelpMgr.h"
+#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/strategy/actions/CheatAction.h"
 
 #include "playerbot/TravelMgr.h"
@@ -420,6 +421,10 @@ bool PlayerbotAIConfig::Initialize()
     perfBgMasterCacheRef = config.GetBoolDefault("AiPlayerbot.Perf.BgMasterCacheRef", false);
     perfTravelInfoReuse = config.GetBoolDefault("AiPlayerbot.Perf.TravelInfoReuse", false);
     perfLogActionFastPath = config.GetBoolDefault("AiPlayerbot.Perf.LogActionFastPath", false);
+    perfActionBudget = std::min<uint32>(3, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Perf.ActionBudget", 0))));
+    LoadListString<std::vector<std::string> >(config.GetStringDefault("AiPlayerbot.Perf.ActionBudgetActions", ""), perfActionBudgetActions);
+    if (perfActionBudgetActions.empty())
+        perfActionBudgetActions = ai::action_budget::DefaultExpensiveActions();
     botUpdateTraceTailFix = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTailFix", false);
     perfTrainableSpellsPrecheck = config.GetBoolDefault("AiPlayerbot.Perf.TrainableSpellsPrecheck", false);
     perfRacialsSkipUnbuildable = config.GetBoolDefault("AiPlayerbot.Perf.RacialsSkipUnbuildable", false);
