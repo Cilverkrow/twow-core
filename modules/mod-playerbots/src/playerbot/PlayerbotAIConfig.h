@@ -551,6 +551,7 @@ public:
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool x3cInboxWrites = false;  // twow-repo#563 (X3c): value writes into other bots go through their inbox
+    bool perfSkipBotUpdatePackets = false;  // twow-repo#541 (owner 11.10.): core builds no SMSG_UPDATE_OBJECT/DESTROY for bot sessions
     uint32 botSaveIntervalSeconds = 0;  // twow-repo#541 A47: bots save themselves every N s (0 = core autosave as before)
     uint32 botSaveMaxPerTick = 1;       // A47: own bot saves per map thread and world tick (0 = no limit)
     bool perfFleeMemo = false;  // twow-repo#541 (audit A01): FleeManager reuses a candidate angle's result within one search (0 = off)
