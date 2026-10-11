@@ -2393,3 +2393,9 @@ add_test(NAME travel_node_lock_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/travel_node_lock_source_contract_tests.cmake")
+
+# twow-repo#541 (L0): path sub-phases (M:cache/M:route/M:mmap/M:keep last) and S:engine init in the engine trace (BotUpdateTrace).
+add_test(NAME path_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/path_trace_source_contract_tests.cmake")

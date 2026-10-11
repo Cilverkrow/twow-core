@@ -94,6 +94,10 @@ namespace ai
 		void PrintStrategies(Player* requester, const std::string& engineType);
         std::string GetLastAction() { return lastAction; }
         const Action* GetLastExecutedAction() const { return lastExecutedAction; }
+        // twow-repo#541 (L0, AiPlayerbot.BotUpdateTrace): one entry in this engine's trace trail (the action= part of a
+        // [BotUpdateSlow] line), added like the engine's own entries. Does nothing with the switch off; callers check
+        // the switch first so that they do not read a clock or format anything either.
+        void TraceNote(const char* format, ...);
 
     public:
 	    virtual bool DoNextAction(Unit*, int depth, bool minimal, bool isStunned);
