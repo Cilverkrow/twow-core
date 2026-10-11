@@ -66,6 +66,21 @@ int main()
         thread.join();
     Require(shared.Size() <= RouteCooldownStore::MaxEntries, "cooldown store stays bounded");
 
+    // twow-repo#541 (L1b): cooldown after a search without a route, 0 = off, clamped to 0..300.
+    Require(ClampRouteFailCooldownSeconds(0) == 0, "0 = off");
+    Require(ClampRouteFailCooldownSeconds(-5) == 0, "negative = off");
+    Require(ClampRouteFailCooldownSeconds(60) == 60, "60 s kept");
+    Require(ClampRouteFailCooldownSeconds(300) == RouteFailCooldownMaxSeconds, "upper limit kept");
+    Require(ClampRouteFailCooldownSeconds(100000) == RouteFailCooldownMaxSeconds, "clamped to 300");
+    {
+        RouteCooldownStore failures;
+        std::uint64_t const failKey = RouteCooldownStore::Key(4485, 1, 2070.0f, -4400.0f);
+        failures.Block(failKey, 500 + ClampRouteFailCooldownSeconds(60), 500);
+        Require(failures.IsBlocked(failKey, 559), "same bot and cell blocked during the failure cooldown");
+        Require(!failures.IsBlocked(failKey, 560), "searched again after the failure cooldown");
+        Require(!failures.IsBlocked(RouteCooldownStore::Key(4485, 1, 2270.0f, -4400.0f), 501), "another target cell is searched");
+    }
+
     // #416 (7.2): the three slowest actions of an update.
     {
         ai::stall_guard::TopActions actions;
