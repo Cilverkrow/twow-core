@@ -310,4 +310,13 @@ foreach(file balance_cpp resto_druid_cpp)
   forbid_text("${druid_one}" "dietDruidCooldownGates" "D45 switch outside the vanilla block (${file})")
 endforeach()
 
+# ---------------------------------------------------------------------------------------------------------
+# D46 (AiPlayerbot.Diet.LevelingDruidKnownSpells): leveling Rejuvenation/Moonfire triggers only for known spells.
+require_diet_switch(dietLevelingDruidKnownSpells LevelingDruidKnownSpells)
+read_source("strategy/druid/LevelingDruidStrategy.h" leveling_druid_h)
+region("${leveling_druid_h}" "class LevelingRejuvenationTrigger : public BuffTrigger" "    };" leveling_rejuv)
+region("${leveling_druid_h}" "class LevelingMoonfireTrigger : public MoonfireTrigger" "    };" leveling_moonfire)
+require_order("${leveling_rejuv}" "if (sPlayerbotAIConfig.dietLevelingDruidKnownSpells && !AI_VALUE2(uint32, \"spell id\", \"rejuvenation\"))\n                return false;" "return BuffTrigger::IsActive() && AI_VALUE2(uint8, \"health\", \"self target\") < 100;" "D46 Rejuvenation gate before the unchanged old check")
+require_order("${leveling_moonfire}" "if (sPlayerbotAIConfig.dietLevelingDruidKnownSpells && !AI_VALUE2(uint32, \"spell id\", \"moonfire\"))\n                return false;" "return MoonfireTrigger::IsActive() && AI_VALUE2(uint8, \"mana\", \"self target\") >= 50;" "D46 Moonfire gate before the unchanged old check")
+
 message(STATUS "DIET_G3_SOURCE_CONTRACT=PASS")
