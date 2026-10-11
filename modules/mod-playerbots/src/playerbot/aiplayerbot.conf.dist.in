@@ -1855,8 +1855,8 @@ AiPlayerbot.X3a.ContextLock = 0
 AiPlayerbot.X3c.InboxWrites = 0
 # twow-repo#541 A47 (owner 11.10.2026): bot saves. IntervalSeconds = N > 0: a bot holds back the core autosave
 # (PlayerSave.Interval, 60 s in our configs) and saves itself every N seconds in its own update on its map thread, its
-# first save offset by its guid; MaxPerTick = own saves per map thread and world tick (0 = no limit), the rest wait
-# for the next tick. Logout still saves; a crash loses at most N seconds of a bot. [BotSave] once a minute: saves,
+# first save offset by its guid; MaxPerTick = own saves per map thread and 100 ms window (0 = no limit), the rest wait
+# for the next window. Logout still saves; a crash loses at most N seconds of a bot. [BotSave] once a minute: saves,
 # deferred, avg_us (cost of one save - also the A47 probe with N = 60). 0 = core autosave (default).
 AiPlayerbot.BotSave.IntervalSeconds = 0
 AiPlayerbot.BotSave.MaxPerTick = 1
