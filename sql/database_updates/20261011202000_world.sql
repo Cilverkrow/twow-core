@@ -2,8 +2,8 @@
 -- Owner 2026-10-11 ("Feiertags-NPCs und Welt-Deko erstmal aus dem Spiel nehmen"; list approved in the OB-40 chat:
 -- "okay 4 disable event fairy moon stays" - Darkmoon Faire stays). Live was switched the same evening with the
 -- console command `event disable <id>` (writes game_event.disabled = 1); this file brings every other DB (fresh
--- bootstrap, test realm) to the same state and makes the LITA capital decoration 110-115 explicit (the core
--- already keeps those off in memory, their DB flag was still 0).
+-- bootstrap, test realm) to the same state. The LITA capital decoration 110-115 is already disabled = 1 in the
+-- base data; it is listed so the end-state CHECK guards it (no-op where already disabled).
 --   1 Midsummer Fire Festival, 2 Feast of Winter Veil, 6 Fireworks, 9 / 28 Noblegarden, 10 Children's Week,
 --   11 Harvest Festival, 12 Hallow's End, 21 Winter Veil: Gifts, 34 New Year's Eve, 38 Chinese New Year,
 --   39 Post Firework Toasting Goblets, 41 July 4th Fireworks, 42 Peon Day,
