@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "ProtectionWarriorStrategy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 
 using namespace ai;
 
@@ -72,9 +73,22 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
         "has greater blessing of salvation",
         NextAction::array(0, new NextAction("remove greater blessing of salvation", ACTION_EMERGENCY), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "enemy out of melee",
-        NextAction::array(0, new NextAction("heroic throw", ACTION_MOVE + 8), new NextAction("charge", ACTION_MOVE + 7), NULL)));
+    // twow-repo#568 D16: Heroic Throw does not exist in Turtle 1.18 (0 spell_template rows). On: no heroic
+    // throw step in front of charge / taunt / taunt on snare target; off: today's nodes.
+    const bool noHeroicThrow = sPlayerbotAIConfig.dietWarriorNoHeroicThrow;
+
+    if (noHeroicThrow)
+    {
+        triggers.push_back(new TriggerNode(
+            "enemy out of melee",
+            NextAction::array(0, new NextAction("charge", ACTION_MOVE + 7), NULL)));
+    }
+    else
+    {
+        triggers.push_back(new TriggerNode(
+            "enemy out of melee",
+            NextAction::array(0, new NextAction("heroic throw", ACTION_MOVE + 8), new NextAction("charge", ACTION_MOVE + 7), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "intercept and rage",
@@ -84,13 +98,26 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
         "intercept and rage",
         NextAction::array(0, new NextAction("intercept", ACTION_MOVE + 5), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "lose aggro",
-        NextAction::array(0, new NextAction("heroic throw taunt", ACTION_MOVE + 4), NULL)));
+    if (noHeroicThrow)
+    {
+        triggers.push_back(new TriggerNode(
+            "lose aggro",
+            NextAction::array(0, new NextAction("taunt", ACTION_MOVE + 4), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "taunt on snare target",
-        NextAction::array(0, new NextAction("heroic throw on snare target", ACTION_MOVE), NULL)));
+        triggers.push_back(new TriggerNode(
+            "taunt on snare target",
+            NextAction::array(0, new NextAction("taunt on snare target", ACTION_MOVE), NULL)));
+    }
+    else
+    {
+        triggers.push_back(new TriggerNode(
+            "lose aggro",
+            NextAction::array(0, new NextAction("heroic throw taunt", ACTION_MOVE + 4), NULL)));
+
+        triggers.push_back(new TriggerNode(
+            "taunt on snare target",
+            NextAction::array(0, new NextAction("heroic throw on snare target", ACTION_MOVE), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "demoralizing shout",

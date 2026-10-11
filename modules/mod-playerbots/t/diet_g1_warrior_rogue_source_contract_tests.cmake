@@ -85,4 +85,25 @@ region("${d15}" "    else\n" "\n    }\n" d15_off)
 require_text("${d15_off}" "NextAction(\"mutilate back\", ACTION_NORMAL + 1)" "D15 off path keeps mutilate back")
 require_text("${d15_off}" "NextAction(\"mutilate front\", ACTION_NORMAL)" "D15 off path keeps mutilate front")
 
+# D16: protection without the non-existent Heroic Throw (on); the heroic throw nodes stay on the off path.
+require_switch(dietWarriorNoHeroicThrow Diet.WarriorNoHeroicThrow)
+read_vanilla(strategy/warrior/ProtectionWarriorStrategy.cpp prot)
+region("${prot}" "void ProtectionWarriorStrategy::InitCombatTriggers(" "void ProtectionWarriorStrategy::InitNonCombatTriggers(" prot_combat)
+require_text("${prot_combat}" "const bool noHeroicThrow = sPlayerbotAIConfig.dietWarriorNoHeroicThrow;" "D16 switch read")
+region("${prot_combat}" "    if (noHeroicThrow)\n" "    else\n" d16_on_move)
+require_text("${d16_on_move}" "\"enemy out of melee\",
+            NextAction::array(0, new NextAction(\"charge\", ACTION_MOVE + 7), NULL)" "D16 on: charge only when out of melee")
+forbid_text("${d16_on_move}" "heroic throw" "D16 on: no heroic throw before charge")
+region("${prot_combat}" "\"intercept and rage\"" "\"demoralizing shout\"" d16_taunts)
+region("${d16_taunts}" "    if (noHeroicThrow)\n" "    else\n" d16_on_taunt)
+require_text("${d16_on_taunt}" "\"lose aggro\",
+            NextAction::array(0, new NextAction(\"taunt\", ACTION_MOVE + 4), NULL)" "D16 on: taunt on lose aggro")
+require_text("${d16_on_taunt}" "\"taunt on snare target\",
+            NextAction::array(0, new NextAction(\"taunt on snare target\", ACTION_MOVE), NULL)" "D16 on: taunt on snare target")
+forbid_text("${d16_on_taunt}" "heroic throw" "D16 on: no heroic throw taunt")
+region("${d16_taunts}" "    else\n" "\n    }\n" d16_off_taunt)
+require_text("${d16_off_taunt}" "NextAction(\"heroic throw taunt\", ACTION_MOVE + 4)" "D16 off path keeps heroic throw taunt")
+require_text("${d16_off_taunt}" "NextAction(\"heroic throw on snare target\", ACTION_MOVE)" "D16 off path keeps heroic throw on snare target")
+require_text("${prot_combat}" "NextAction(\"heroic throw\", ACTION_MOVE + 8), new NextAction(\"charge\", ACTION_MOVE + 7)" "D16 off path keeps heroic throw before charge")
+
 message(STATUS "DIET_G1_WARRIOR_ROGUE_SOURCE_CONTRACT=PASS")

@@ -2026,6 +2026,10 @@ AiPlayerbot.Diet.RogueCombatBoostInCombat = 0
 # use backstab behind the target (falls back to sinister strike) and sinister strike in front; Mutilate does not exist
 # in Turtle 1.18. 0 = the dead 'mutilate back' / 'mutilate front' nodes as today (default).
 AiPlayerbot.Diet.RogueNoMutilate = 0
+# twow-repo#568 (diet D16, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = protection warriors skip the non-existent Heroic
+# Throw: 'enemy out of melee' pushes charge only, 'lose aggro' taunt, 'taunt on snare target' taunt on snare target.
+# 0 = heroic throw first, then the alternative, as today (default).
+AiPlayerbot.Diet.WarriorNoHeroicThrow = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
