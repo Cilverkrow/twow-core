@@ -576,6 +576,8 @@ public:
     bool perfAttackersSingleList = false;  // twow-repo#541 (audit A23): "has attackers" and "possible attack targets::1" use the full "attackers" list, no second attackers::1 pass (0 = off)
     bool perfPartyTargetMemo = false;  // twow-repo#541 (audit A25): party-target values reuse their result inside one DoNextAction pass until the next Execute (0 = off)
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
+    bool perfPartialPathReuse = false;  // twow-repo#541 (L1): MoveTo uses the path last built for an unchanged destination again, without a rebuild, for up to perfPartialPathReuseMs while its end is not reached (0 = off)
+    uint32 perfPartialPathReuseMs = 10000;  // twow-repo#541 (L1): age limit of such a path in ms, clamped to 1000..60000
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

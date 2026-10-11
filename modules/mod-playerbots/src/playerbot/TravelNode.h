@@ -378,10 +378,11 @@ namespace ai
         TravelNodeRoute getRoute(TravelNode* start, TravelNode* goal, Unit* unit = nullptr);
 
         //Find the best node between two positions
-        TravelNodeRoute getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit = nullptr);
+        // twow-repo#541 (L0): outPairs (optional, trace only) receives the number of start/end node pairs searched.
+        TravelNodeRoute getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit = nullptr, uint32* outPairs = nullptr);
 
         //Find the full path between those locations
-        static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit = nullptr);
+        static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit = nullptr, uint32* outPairs = nullptr);
 
         //Manage/update nodes
         void manageNodes(Unit* bot, bool mapFull = false);

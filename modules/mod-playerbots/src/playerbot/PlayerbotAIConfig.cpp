@@ -15,6 +15,7 @@
 
 #include "playerbot/TravelMgr.h"
 #include "playerbot/BotGroupPolicy.h"
+#include "playerbot/PathReusePolicy.h"
 
 #include <iostream>
 #include <numeric>
@@ -436,6 +437,8 @@ bool PlayerbotAIConfig::Initialize()
     perfAttackersSingleList = config.GetBoolDefault("AiPlayerbot.Perf.AttackersSingleList", false);
     perfPartyTargetMemo = config.GetBoolDefault("AiPlayerbot.Perf.PartyTargetMemo", false);
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
+    perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
+    perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));

@@ -996,6 +996,19 @@ bool Engine::ListenAndExecute(Action* action, Event& event)
     return actionExecuted;
 }
 
+void Engine::TraceNote(const char* format, ...)
+{
+    if (!sPlayerbotAIConfig.botUpdateTrace)
+        return;
+
+    char buf[256];
+    va_list ap;
+    va_start(ap, format);
+    vsnprintf(buf, sizeof(buf), format, ap);
+    va_end(ap);
+    LogAction("%s", buf);
+}
+
 void Engine::LogAction(const char* format, ...)
 {
     char buf[1024];
