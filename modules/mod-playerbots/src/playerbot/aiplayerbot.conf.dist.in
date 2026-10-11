@@ -2032,15 +2032,19 @@ AiPlayerbot.Perf.EventTriggerSkip = 0
 # bot knows Aspect of the Hawk ("spell id" > 0), then checks the missing self aura as before. Same casts: the node has
 # no alternative and its cast asks CanCastSpell for the same "spell id" value, so without the spell it always ended
 # IMPOSSIBLE; hunters below level 10 or without the trained spell just stop pushing it. No monkey fallback (that is a
-# separate OB-10 decision). Read on every check. 0 = trigger without the spell check (default).
+# separate OB-10 decision). Side effects without play change: the action queue is shorter by these pushes (a little
+# less iterationsPerTick), the debug tell "try: aspect of the hawk ... impossible" is gone, and the refresh time of the
+# cached "spell cast useful" value shifts slightly. Read on every check. 0 = trigger without the spell check (default).
 AiPlayerbot.Diet.HunterAspectGate = 0
 # twow-repo#568 (diet D66, neutral, "nach Abnahme an"): 1 = the vanilla trigger "rapid fire" (hunter "boost" strategy,
 # ACTION_HIGH+5) is active only while the bot knows Rapid Fire and the spell is off cooldown, then checks the missing
 # self aura as before; the "rapid fire" node is built without its "readiness" alternative. Both only while the bot
 # does not know Readiness (a TBC talent); a bot that knows it keeps the old trigger and node. Same casts: the cast
 # asks CanCastSpell for the same "spell id" value and the same IsSpellReady, so in the gated states it always ended
-# IMPOSSIBLE and the unknown Readiness was IMPOSSIBLE too. Read on every check / node build. 0 = trigger without the
-# spell checks, node with the "readiness" alternative (default).
+# IMPOSSIBLE and the unknown Readiness was IMPOSSIBLE too. Side effects without play change: the action queue is
+# shorter by these pushes (a little less iterationsPerTick), the debug tells "try: rapid fire / readiness ...
+# impossible" are gone, and the refresh time of the cached "spell cast useful" value shifts slightly. Read on every
+# check / node build. 0 = trigger without the spell checks, node with the "readiness" alternative (default).
 AiPlayerbot.Diet.HunterRapidFireGate = 0
 # twow-repo#568 (diet D67, neutral, "nach Abnahme an"): 1 = the trigger "wander near" ("wander" strategy, action
 # "stop follow" ACTION_IDLE) of a bot without a follow target is active only while the bot's current movement
@@ -2048,7 +2052,9 @@ AiPlayerbot.Diet.HunterRapidFireGate = 0
 # USELESS unless the bot is on a FOLLOW motion (first check of its isUseful), so the stale-follow cleanup after a
 # group leave stays and nothing else fires. With a follow target (also a leader following itself) as before.
 # "wander far" / "wander medium" are unchanged: their free-move center is a position snapshot cached for up to 5 s,
-# so they can fire today for a moving solo bot. Read on every check. 0 = old check (default).
+# so they can fire today for a moving solo bot. Side effects without play change: the action queue is shorter by these
+# pushes (a little less iterationsPerTick) and the debug tell "try: stop follow ... useless" is gone. Read on every
+# check. 0 = old check (default).
 AiPlayerbot.Diet.WanderSoloGuard = 0
 # twow-repo#568 (diet D68, neutral, "nach Abnahme an"): 1 = three rpg sub-action triggers answer from the first
 # condition of their own IsActive before the shared rpg pre-check (rpg target, distance, next rpg action):
