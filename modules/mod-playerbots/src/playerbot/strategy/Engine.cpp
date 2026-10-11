@@ -9,6 +9,7 @@
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/BotActionLog.h"
 #include "playerbot/ActionTrail.h"
+#include "playerbot/BotUpdateTrace.h"
 
 #ifdef BUILD_ELUNA
 #include "LuaEngine/LuaEngine.h"
@@ -185,11 +186,28 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
     ValueMemoWindowScope const valueMemoScope(sPlayerbotAIConfig.perfPartyTargetMemo ? &aiObjectContext->GetValueMemoWindow() : nullptr);
 
     time_t currentTime = time(0);
+    // twow-repo#541 (AiPlayerbot.BotUpdateTrace, OB-00 go 10.10.2026): with the trace on, the engine trace
+    // carries the microseconds of the value update + trigger phase and of each evaluated action, so a
+    // [BotUpdateSlow] line says where the time went. Off: no clock read, the same trace text as before.
+    bool const traceUs = sPlayerbotAIConfig.botUpdateTrace;
+    std::uint64_t const phaseStartUs = traceUs ? ai::bot_update::NowUs() : 0;
     aiObjectContext->Update();
+    std::uint64_t const valuesUs = traceUs ? ai::bot_update::SinceUs(phaseStartUs) : 0;
     // twow-repo#541 (audit A08): this walk, ProcessTriggers and PushDefaultActions run on the bot's
     // own AI tick, so their pushes pass ownerCache = true.
     ProcessTriggers(minimal);
+    if (traceUs)
+        LogAction("TIME:values %lluus triggers %lluus", (unsigned long long)valuesUs,
+            (unsigned long long)(ai::bot_update::SinceUs(phaseStartUs) - valuesUs));
     PushDefaultActions();
+
+    auto logOutcome = [this, traceUs](Action* action, char const* outcome, std::uint64_t startUs)
+    {
+        if (traceUs)
+            LogAction("A:%s - %s %lluus", action->getName().c_str(), outcome, (unsigned long long)ai::bot_update::SinceUs(startUs));
+        else
+            LogAction("A:%s - %s", action->getName().c_str(), outcome);
+    };
 
     std::vector<Action*> modifiedActions;
 
@@ -229,6 +247,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
         if (popped)
         {
+            std::uint64_t const actionStartUs = traceUs ? ai::bot_update::NowUs() : 0;
             Action* action = InitializeAction(actionNode);
 
             // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): the PerfMon key (a heap
@@ -310,7 +329,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
                     if (!skipPrerequisites)
                     {
-                        LogAction("A:%s - PREREQ", action->getName().c_str());
+                        logOutcome(action, "PREREQ", actionStartUs);
                         if (MultiplyAndPush(actionNode->getPrerequisites(), relevance + 0.02, false, event, "prereq", true))
                         {
                             PushAgain(actionNode, relevance + 0.01, event, true);
@@ -336,7 +355,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
                         if (actionExecuted)
                         {
-                            LogAction("A:%s - OK", action->getName().c_str());
+                            logOutcome(action, "OK", actionStartUs);
                             MultiplyAndPush(actionNode->getContinuers(), 0, false, event, "cont", true);
                             lastRelevance = relevance;
                             delete actionNode;
@@ -344,7 +363,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         }
                         else
                         {
-                            LogAction("A:%s - FAILED", action->getName().c_str());
+                            logOutcome(action, "FAILED", actionStartUs);
                             MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt", true);
                         }
                     }
@@ -372,7 +391,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                                 ai->GetBot()->Say(out.str(), (ai->GetBot()->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH));
                             }
                         }
-                        LogAction("A:%s - IMPOSSIBLE", action->getName().c_str());
+                        logOutcome(action, "IMPOSSIBLE", actionStartUs);
                         MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt", true);
                     }
                 }
@@ -401,7 +420,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         }
                     }
                     lastRelevance = relevance;
-                    LogAction("A:%s - USELESS", action->getName().c_str());
+                    logOutcome(action, "USELESS", actionStartUs);
                 }
             }
             delete actionNode;
