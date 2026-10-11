@@ -595,6 +595,19 @@ public:
     bool dietMageTalentBoostKnown = false;  // twow-repo#568 (D34): arcane power / presence of mind / combustion / ice barrier triggers wait for the known and ready spell (0 = off)
     bool dietMageBlastWave = false;  // twow-repo#568 (D35): fire cc pushes blast wave only while it is known ("blast wave" trigger), and the blast wave node drops its frost nova alternative (vanilla build) (0 = off)
     bool dietMageInvisibility = false;  // twow-repo#568 (D53): mage raid strategy does not register "invisibility" on high threat / multiple attackers (not learnable in Turtle 1.18) (0 = off)
+    bool dietLevelingDruidWrath = false;  // twow-repo#568 D04: leveling druid Wrath node uses the registered trigger "enemy out of melee" (0 = off, node stays dead)
+    bool dietShockCooldownGate = false;  // twow-repo#568 D26: shaman "shock" trigger off while the shared shock category cooldown runs (0 = off)
+    bool dietFireNovaTotem = false;  // twow-repo#568 D27: shamans cast "fire nova totem" where vanilla pushed the uncastable "fire nova" (0 = off)
+    bool dietNoWrathOfAirTotem = false;  // twow-repo#568 D28: vanilla ele/resto shamans skip the nonexistent "wrath of air totem" node and alternative (0 = off)
+    bool dietShamanVanillaNames = false;  // twow-repo#568 D29: vanilla shamans push healing wave / searing totem / flametongue weapon instead of riptide / totem of wrath / earthliving; dead resto factory keys dropped (0 = off)
+    bool dietInnervateFix = false;  // twow-repo#568 D30: Innervate trigger/action use the real mana percent and accept the solo druid itself (0 = off)
+    bool dietRetRepentanceKey = false;  // twow-repo#568 D31: Ret "repentance or shield" node registered under its pushed name (0 = off, factory key typo)
+    bool dietExorcismCreatureType = false;  // twow-repo#568 D41: paladin "exorcism" trigger only for targets of Exorcism's creature types (undead/demon) (0 = off)
+    bool dietProtSealDirect = false;  // twow-repo#568 D42: vanilla Prot "seal" pushes seal of righteousness directly, seal trigger skips the dead vengeance name (0 = off)
+    bool dietFeralNoMangle = false;  // twow-repo#568 D43: vanilla feral nodes push claw / maul instead of the nonexistent mangle (cat)/(bear) (0 = off)
+    bool dietFeralNoCatSwipe = false;  // twow-repo#568 D44: vanilla DPS-feral AoE strategy skips the nonexistent "swipe (cat)" node (0 = off)
+    bool dietDruidCooldownGates = false;  // twow-repo#568 D45: druid Enrage / Nature's Grasp triggers quiet while the spell is unknown or cooling down (0 = off)
+    bool dietLevelingDruidKnownSpells = false;  // twow-repo#568 D46: leveling druid Rejuvenation/Moonfire triggers only once the spell is known (0 = off)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;

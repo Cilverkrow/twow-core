@@ -2406,3 +2406,10 @@ add_test(NAME diet_g2_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/diet_g2_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet g3 (shaman, paladin, druid): every fix behind its own AiPlayerbot.Diet.<Key>, default 0.
+add_test(NAME diet_g3_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/diet_g3_source_contract_tests.cmake")

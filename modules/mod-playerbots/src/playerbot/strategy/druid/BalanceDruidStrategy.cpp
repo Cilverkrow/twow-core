@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "DruidMultipliers.h"
 #include "BalanceDruidStrategy.h"
 
@@ -367,8 +368,9 @@ void BalanceDruidCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& trigger
         "entangling roots kite",
         NextAction::array(0, new NextAction("entangling roots", ACTION_INTERRUPT), NULL)));
 
+    // twow-repo#568 D45 (AiPlayerbot.Diet.DruidCooldownGates): Nature's Grasp only while known and off cooldown.
     triggers.push_back(new TriggerNode(
-        "enemy five yards",
+        sPlayerbotAIConfig.dietDruidCooldownGates ? "nature's grasp ready" : "enemy five yards",
         NextAction::array(0, new NextAction("nature's grasp", ACTION_HIGH), NULL)));
 }
 
