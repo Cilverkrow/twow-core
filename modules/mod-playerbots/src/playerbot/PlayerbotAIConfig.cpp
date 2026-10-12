@@ -413,6 +413,7 @@ bool PlayerbotAIConfig::Initialize()
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
+    checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
     // twow-repo#563 (X3a/X3c): per-context lock on the value maps; cross-bot value writes via the inbox.
     ai::context_lock::Enabled().store(config.GetBoolDefault("AiPlayerbot.X3a.ContextLock", false), std::memory_order_relaxed);
     x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
