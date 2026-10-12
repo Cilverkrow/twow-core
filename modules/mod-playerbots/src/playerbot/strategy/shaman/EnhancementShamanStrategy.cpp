@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/ShamanImbuePolicy.h"
 #include "ShamanMultipliers.h"
 #include "EnhancementShamanStrategy.h"
 
@@ -380,7 +381,7 @@ void EnhancementShamanBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& 
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("windfury weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "windfury weapon"), ACTION_HIGH), NULL)));
 }
 
 void EnhancementShamanBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -389,7 +390,7 @@ void EnhancementShamanBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("windfury weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "windfury weapon"), ACTION_NORMAL), NULL)));
 
     triggers.push_back(new TriggerNode(
         "lightning shield",
@@ -816,7 +817,7 @@ void EnhancementShamanBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& 
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("windfury weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "windfury weapon"), ACTION_HIGH), NULL)));
 }
 
 void EnhancementShamanBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -825,7 +826,7 @@ void EnhancementShamanBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("windfury weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "windfury weapon"), ACTION_NORMAL), NULL)));
 
     triggers.push_back(new TriggerNode(
         "lightning shield",
@@ -1252,7 +1253,7 @@ void EnhancementShamanBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& 
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("windfury weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "windfury weapon"), ACTION_HIGH), NULL)));
 }
 
 void EnhancementShamanBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1261,7 +1262,7 @@ void EnhancementShamanBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("windfury weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "windfury weapon"), ACTION_NORMAL), NULL)));
 
     triggers.push_back(new TriggerNode(
         "lightning shield",

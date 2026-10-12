@@ -524,6 +524,7 @@ public:
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;
+    bool autoLearnQuestTeachEffects = false;  // twow-repo#578 (b): a teaching RewSpell teaches its LEARN_SPELL targets
     bool autoLearnDroppedSpells;
     bool autoLearnTimingTrace = false;   // #351: [AutoLearn] timing per level-up/login
     // #356: roster bots get class quest tools the quest path misses + [ClassGrant] log.
@@ -580,6 +581,7 @@ public:
     bool perfAttackersSingleList = false;  // twow-repo#541 (audit A23): "has attackers" and "possible attack targets::1" use the full "attackers" list, no second attackers::1 pass (0 = off)
     bool perfPartyTargetMemo = false;  // twow-repo#541 (audit A25): party-target values reuse their result inside one DoNextAction pass until the next Execute (0 = off)
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
+    bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
@@ -693,6 +695,7 @@ public:
     bool pathStartZoneExactBounds = false;  // twow-repo#575 (PATH-01 #4): Blackstone / Thalassian exclusion uses the zone boxes, 0 = old boxes
     bool pathRpgTargetSnap = false;  // twow-repo#575 (PATH-01 #5): rpg moves go to the navmesh-snapped point around the target, 0 = off
     bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b): [TaxiUse] / [TransportWait] lines and a minute summary of bot flights and ship waits, 0 = off
+    bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off
     bool revivePreferCorpseRun = false;  // hotfix 8.34 (#544): corpse run before the spirit-healer shortcuts
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
