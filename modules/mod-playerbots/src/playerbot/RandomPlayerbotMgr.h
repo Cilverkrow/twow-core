@@ -388,6 +388,11 @@ public:
         void ProcessParkedBots();
         bool ParkBot(Player* bot, std::string const& teleName, std::string& reason);
         void UnparkBot(Player* bot);
+        // twow-repo#551 (AiPlayerbot.Park.Persist): park state in the bot event store, restored after a login.
+        void PersistPark(uint32 guid, std::string const& teleName);
+        void ClearPersistedPark(uint32 guid);
+        void RestoreParkedBots();
+        uint32 lastParkRestore = 0;
         // twow-repo#541 (AiPlayerbot.Park.SleepGrid): core switches and the [ParkSleep] minute line.
         uint32 parkSleepUnparkWakes = 0;  // world thread: unparked bots that carried the sleep flag
         void ReportParkSleep();

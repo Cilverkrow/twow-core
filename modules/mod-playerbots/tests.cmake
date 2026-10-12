@@ -2510,6 +2510,25 @@ add_test(NAME park_quiet_policy
   COMMAND park_quiet_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#551 (owner 11.10.2026): park state survives restarts (AiPlayerbot.Park.Persist).
+add_test(NAME park_persist_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_persist_source_contract_tests.cmake")
+
+add_executable(park_persist_policy_tests
+  "${PB_MODULE_DIR}/t/park_persist_policy_tests.cpp")
+
+target_include_directories(park_persist_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(park_persist_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME park_persist_policy
+  COMMAND park_persist_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#575 (PATH-01 phase 2): route-fail detail trace, honest route fail, start-zone boxes, rpg target snap.
 add_executable(path_fail_policy_tests
   "${PB_MODULE_DIR}/t/path_fail_policy_tests.cpp")
