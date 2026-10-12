@@ -419,6 +419,7 @@ bool PlayerbotAIConfig::Initialize()
     ai::context_lock::Enabled().store(config.GetBoolDefault("AiPlayerbot.X3a.ContextLock", false), std::memory_order_relaxed);
     x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
     perfSkipBotUpdatePackets = config.GetBoolDefault("AiPlayerbot.Perf.SkipBotUpdatePackets", false);
+    warnUnknownNames = config.GetBoolDefault("AiPlayerbot.WarnUnknownNames", false);
     packetTrace = config.GetBoolDefault("AiPlayerbot.PacketTrace", false);
     nearestSkipHiddenBots = config.GetBoolDefault("AiPlayerbot.Perf.NearestSkipHiddenBots", false);
     botSaveIntervalSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.IntervalSeconds", 0)));

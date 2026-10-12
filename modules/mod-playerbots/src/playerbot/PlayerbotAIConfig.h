@@ -558,6 +558,7 @@ public:
     bool initPetCache = false;  // twow-repo#541: "initialize pet" with a static tameable list, cached pet DB answer, cooldown
     bool x3cInboxWrites = false;  // twow-repo#563 (X3c): value writes into other bots go through their inbox
     bool perfSkipBotUpdatePackets = false;  // twow-repo#541 (owner 11.10.): core builds no SMSG_UPDATE_OBJECT/DESTROY for bot sessions
+    bool warnUnknownNames = false;  // twow-repo#568 (c): once-per-name [UnknownName] line for trigger/action/strategy names without a creator
     bool packetTrace = false;  // twow-repo#541 (owner 11.10.): [BotPackets] packets per receiver / map / class, measurement only
     bool nearestSkipHiddenBots = false;  // twow-repo#541 (owner 11.10. "1b"): nearest*/possible-targets values skip parked bots hidden from bots
     uint32 botSaveIntervalSeconds = 0;  // twow-repo#541 A47: bots save themselves every N s (0 = core autosave as before)

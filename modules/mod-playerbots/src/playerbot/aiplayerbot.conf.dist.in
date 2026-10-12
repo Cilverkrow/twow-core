@@ -1905,6 +1905,12 @@ AiPlayerbot.X3c.InboxWrites = 0
 # 0 = off (default).
 AiPlayerbot.Perf.SkipBotUpdatePackets = 0
 
+# twow-repo#568 (c): 1 = one [UnknownName] line per trigger, action or strategy name that has no
+# creator (bot, class, engine, strategies of the first sighting), once per name and process. Such names
+# are silently skipped today. Log only, behaviour unchanged. At most 128 names per engine and kind and
+# 1024 per process are tracked; past that cap no further lines appear. 0 = off (default).
+AiPlayerbot.WarnUnknownNames = 0
+
 # twow-repo#541 (owner 11.10.2026, measurement only): 1 = count every packet the server hands to a session, per
 # receiver (bot packet the AI reads / bot packet built for nobody / real player), map (Eastern Kingdoms, Kalimdor,
 # other) and class (movement, update, spell, combat, chat, other), as count and bytes; one [BotPackets] line per

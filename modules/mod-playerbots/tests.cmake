@@ -2070,6 +2070,11 @@ add_test(NAME x3_context_lock
   COMMAND x3_context_lock_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+add_test(NAME unknown_name_warning_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/unknown_name_warning_source_contract_tests.cmake")
+
 # twow-repo#541 (grid sleep, AiPlayerbot.Park.SleepGrid, default 0): parked bots do not activate cells.
 add_test(NAME park_sleep_grid_source_contract
   COMMAND "${CMAKE_COMMAND}"
