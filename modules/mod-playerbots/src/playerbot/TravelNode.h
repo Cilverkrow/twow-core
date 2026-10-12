@@ -4,6 +4,7 @@
 #include "WorldPosition.h"
 #include "Maps/PathFinder.h"
 #include "Objects/TrackedCount.h"
+#include "playerbot/PathFailPolicy.h"
 
 //THEORY
 // 
@@ -378,10 +379,10 @@ namespace ai
         TravelNodeRoute getRoute(TravelNode* start, TravelNode* goal, Unit* unit = nullptr);
 
         //Find the best node between two positions
-        TravelNodeRoute getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit = nullptr);
+        TravelNodeRoute getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit = nullptr, ai::path_fail::RouteFailDetail* outDetail = nullptr);
 
         //Find the full path between those locations
-        static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit = nullptr);
+        static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit = nullptr, ai::path_fail::RouteFailDetail* outDetail = nullptr);
 
         //Manage/update nodes
         void manageNodes(Unit* bot, bool mapFull = false);
