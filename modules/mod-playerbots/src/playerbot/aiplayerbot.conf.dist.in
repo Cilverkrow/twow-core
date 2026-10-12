@@ -1851,6 +1851,12 @@ AiPlayerbot.BotUpdateTrace = 0
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
 AiPlayerbot.AiDelayJitterPct = 0
+# twow-repo#541: the idle action "check values" forces six values in one update (possible targets, all
+# targets, nearest npcs, nearest corpses, nearest game objects no los, nearest friendly players) and
+# throws the results away; the actions compute them on demand anyway. 1 = skip those searches (only the
+# debug move / map parts stay). 0 = as before (default).
+AiPlayerbot.CheckValues.SkipSearches = 0
+
 # twow-repo#563 (X3a): 1 = every bot's value map is guarded by its own lock (shared to look up, unique to
 # insert or erase), because other bots read and create values in it from their region threads. The lock
 # is held only for the map access, never while a value is computed. 0 = no lock (default).
