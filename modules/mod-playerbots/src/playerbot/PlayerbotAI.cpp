@@ -8,6 +8,7 @@
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/MemStoresPolicy.h"
 #include "playerbot/SpellListPolicy.h"
+#include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for "S:engine init"
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <atomic>
@@ -3242,7 +3243,13 @@ void PlayerbotAI::DoNextAction(bool min)
 void PlayerbotAI::ReInitCurrentEngine()
 {
     InterruptSpell();
+    // twow-repo#541 (L0, AiPlayerbot.BotUpdateTrace): the cost of this rebuild as "S:engine init <us>" in the engine
+    // trace, so a combat-entry Init shows up in [BotUpdateSlow]. Off: no clock read, no entry.
+    bool const traceInit = sPlayerbotAIConfig.botUpdateTrace;
+    std::uint64_t const initStartUs = traceInit ? ai::bot_update::NowUs() : 0;
     currentEngine->Init();
+    if (traceInit)
+        currentEngine->TraceNote("S:engine init %lluus", (unsigned long long)ai::bot_update::SinceUs(initStartUs));
 }
 
 void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)

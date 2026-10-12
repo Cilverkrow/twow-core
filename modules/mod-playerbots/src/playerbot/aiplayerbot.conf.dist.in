@@ -2356,6 +2356,32 @@ AiPlayerbot.X3b.PublishedTargets = 0
 # 3 s old; a member without an answer yet is skipped, like a member without bot AI). 0 = old (default).
 AiPlayerbot.X3b.PublishedConditions = 0
 
+# twow-repo#541 (L1, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go - nach Abnahme an): 1 = a
+# bot's MoveTo uses the path it last built for the same destination again instead of rebuilding it (node route over up
+# to 5 x 5 node pairs + navmesh), as long as that path is younger than PartialPathReuseMs, the destination moved less
+# than 10 % of the remaining distance, the stored path still ends at the same point, the bot is on the map where the
+# path was built, not on a transport, and not yet within TargetPosRecalcDistance of the path's end. Today such a
+# rebuild runs on every MoveTo of a bot whose path ends short of the destination, and a rebuilt path that does not end
+# closer to the destination is thrown away for the old one (MovementAction::ResolveMovePath, keep-old rule). With 1
+# a truly better path is found at most PartialPathReuseMs later, and a rebuild that would have found no route at all
+# no longer replaces the old path by a straight line to the destination until the next rebuild. Any reset of the
+# movement or of the path, a destination change or reaching the end rebuild at once as before. [PathReuse] logs
+# hits (rebuilds skipped) and misses (rebuilds run) once a minute. 0 = rebuild as before (default).
+AiPlayerbot.Perf.PartialPathReuse = 0
+# twow-repo#541 (L1): age limit of a reused path in milliseconds (1000..60000, default 10000). Only read with
+# AiPlayerbot.Perf.PartialPathReuse = 1.
+AiPlayerbot.Perf.PartialPathReuseMs = 10000
+# twow-repo#541 (L1b, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go - nach Abnahme an):
+# seconds (0..300, default 0 = off). A node route search (TravelNodeMap::getRoute from a position: MoveTo, go, fishing)
+# that tried every start/end node pair and found no route blocks the same bot and target cell (100 yd) for that many
+# seconds, the same cooldown that an exceeded search budget (#416) already sets. Until then the search returns the
+# same empty route at once, so MoveTo keeps its straight-line fallback without the 60-150 ms search
+# (chain42: 67 % of the slow route builds). A route that the bot could reach from a new position, or that a node
+# change creates, is found at most that many seconds later. [RouteFail] logs blocks and skips once a minute.
+# With AiPlayerbot.Path.HonestRouteFail = 1 (twow-repo#575) such a MoveTo fails instead of the straight-line fallback,
+# and during the cooldown that answer costs no search; PartialPathReuse never stamps such a no-route result.
+AiPlayerbot.Perf.RouteFailCooldownSeconds = 0
+
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
 # and restoration Flametongue, before that Rockbiter. 0 = old per-strategy choice (default).

@@ -1750,6 +1750,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     uint64 const routeKey = routeBot ? ai::stall_guard::RouteCooldownStore::Key(routeBot->GetGUIDLow(), endPos.getMapId(), endPos.getX(), endPos.getY()) : 0;
     if (routeBot && ai::stall_guard::RouteCooldowns().IsBlocked(routeKey, routeNow))
     {
+        if (sPlayerbotAIConfig.perfRouteFailCooldownSeconds)   // twow-repo#541 (L1b): [RouteFail] skips
+            ai::stall_guard::routeCooldownSkips.fetch_add(1, std::memory_order_relaxed);
         if (outDetail)   // twow-repo#575 (PATH-01 #1)
             outDetail->cooldownSkip = true;
         return TravelNodeRoute();
@@ -1960,6 +1962,16 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
             // #452: the bot node belongs to no route.
             delete botNode;
         }
+    }
+
+    // twow-repo#541 (L1b, AiPlayerbot.Perf.RouteFailCooldownSeconds, default 0): every node pair (and the hearthstone
+    // route) was tried without a route. With the switch the same bot and target cell get no new search for that many
+    // seconds, like after an exceeded budget above; until then the caller gets this same empty route at once.
+    // Off: no cooldown, no counter - the next MoveTo searches again as before.
+    if (routeBot && sPlayerbotAIConfig.perfRouteFailCooldownSeconds)
+    {
+        ai::stall_guard::RouteCooldowns().Block(routeKey, routeNow + sPlayerbotAIConfig.perfRouteFailCooldownSeconds, routeNow);
+        ai::stall_guard::routeFailBlocks.fetch_add(1, std::memory_order_relaxed);
     }
 
     return TravelNodeRoute();

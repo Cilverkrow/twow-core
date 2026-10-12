@@ -22,6 +22,8 @@
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
+#include "playerbot/PathReusePolicy.h"   // twow-repo#541 (L1): Perf.PartialPathReuse
 
 using namespace ai;
 
@@ -826,10 +828,65 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
     float totalDistance = startPosition.distance(endPosition);
     float maxDistChange = totalDistance * 0.1f;
 
+    // twow-repo#541 (L0, AiPlayerbot.BotUpdateTrace): path sub-phases in the engine trace - the reuse decision
+    // ("M:cache hit|miss <reason> backDist=<yd>"), the node route ("M:route <us> pairs=<n>"), the navmesh path
+    // ("M:mmap <us> pts=<n>") and a rebuilt path thrown away for the old one ("M:keep last"). This is the live
+    // route of every MoveTo (MoveTo returns MoveTo2 at once; its older body below that return is unreachable).
+    // Off: traceEngine stays null - no clock read, no distance, no entry, the same path as before.
+    ai::Engine* const traceEngine = sPlayerbotAIConfig.botUpdateTrace ? ai->GetCurrentEngine() : nullptr;
+
     // Last long path still leads to roughly the same destination.
     if (!lastMove.lastPath.empty() && lastMove.lastPath.getBack().distance(endPosition) < maxDistChange)
     {
+        if (traceEngine)
+            traceEngine->TraceNote("M:cache hit near backDist=%.0f", lastMove.lastPath.getBack().distance(endPosition));
         return lastMove.lastPath;
+    }
+
+    if (traceEngine)
+    {
+        if (lastMove.lastPath.empty())
+            traceEngine->TraceNote("M:cache miss empty backDist=-1 max=%.0f", maxDistChange);
+        else
+            traceEngine->TraceNote("M:cache miss %s backDist=%.0f max=%.0f",
+                lastMove.lastPath.getBack().getMapId() != endPosition.getMapId() ? "map" : "far",
+                lastMove.lastPath.getBack().distance(endPosition), maxDistChange);
+    }
+
+    // twow-repo#541 (L1, AiPlayerbot.Perf.PartialPathReuse, default 0): the path last built here for the same
+    // destination is used again, without a rebuild, while it is younger than PartialPathReuseMs, still the stored
+    // path (same end point), the bot is on the map of the build, not on a transport and not yet at the path's end.
+    // A rebuild that ends no closer to the destination is thrown away below anyway (keep-old rule), so the skipped
+    // rebuild only delays a truly better path by at most PartialPathReuseMs. Every reset of lastPath or the
+    // movement (clear(), setPath) and a destination change of more than maxDistChange still force a rebuild.
+    // Off: no clock read, no stamp, the same rebuild as before.
+    bool const pathReuse = sPlayerbotAIConfig.perfPartialPathReuse;
+    if (pathReuse)
+    {
+        bool reuse = false;
+        uint32 ageMs = 0;
+        if (lastMove.pathReuseStamped && !lastMove.lastPath.empty())
+        {
+            WorldPosition const pathEnd = lastMove.lastPath.getBack();
+            ageMs = WorldTimer::getMSTimeDiff(lastMove.pathReuseBuiltMs, WorldTimer::getMSTime());
+            reuse = path_reuse::MayReuse(true,
+                pathEnd.getMapId() == lastMove.pathReuseBack.getMapId() && pathEnd.distance(lastMove.pathReuseBack) < path_reuse::SameEndYards,
+                lastMove.pathReuseDest.getMapId() == endPosition.getMapId() && lastMove.pathReuseDest.distance(endPosition) < maxDistChange,
+                lastMove.pathReuseStartMap == startPosition.getMapId(),
+                pathEnd.getMapId() == startPosition.getMapId() && startPosition.distance(pathEnd) < sPlayerbotAIConfig.targetPosRecalcDistance,
+                bot->GetTransport() != nullptr,
+                ageMs, sPlayerbotAIConfig.perfPartialPathReuseMs);
+        }
+
+        if (reuse)
+        {
+            path_reuse::hits.fetch_add(1, std::memory_order_relaxed);
+            if (traceEngine)
+                traceEngine->TraceNote("M:reuse hit age=%ums", ageMs);
+            return lastMove.lastPath;
+        }
+
+        path_reuse::misses.fetch_add(1, std::memory_order_relaxed);
     }
 
     bool needsLongPath = false;
@@ -849,9 +906,14 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
     if (needsLongPath && !sTravelNodeMap.getNodes().empty() && !bot->InBattleGround())
     {
         // twow-repo#575 (PATH-01 #1): with the trace on, the search reports what it saw; a failure is logged below.
+        // twow-repo#541 (L0): the engine trace reads the searched node pairs from the same detail (detail.pairs).
         path_fail::RouteFailDetail detail;
         bool const traceFail = sPlayerbotAIConfig.pathRouteFailDetail;
-        outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, traceFail ? &detail : nullptr); //Pathfind using nodes.
+        std::uint64_t const routeStartUs = traceEngine ? ai::bot_update::NowUs() : 0;
+        outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, (traceFail || traceEngine) ? &detail : nullptr); //Pathfind using nodes.
+        if (traceEngine)
+            traceEngine->TraceNote("M:route %lluus pairs=%u pts=%u", (unsigned long long)ai::bot_update::SinceUs(routeStartUs),
+                detail.pairs, uint32(outMovePath.getPath().size()));
         if (outMovePath.empty())
         {
             noRoute = true;
@@ -861,16 +923,36 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
     }
     else
     {
+        std::uint64_t const mmapStartUs = traceEngine ? ai::bot_update::NowUs() : 0;
         std::vector<WorldPosition> path = startPosition.getPathTo(endPosition, bot); //Navemesh pathfinding only.
+        if (traceEngine)
+            traceEngine->TraceNote("M:mmap %lluus pts=%u", (unsigned long long)ai::bot_update::SinceUs(mmapStartUs), uint32(path.size()));
 
         outMovePath.addPath(path);
     }
 
     if (!lastMove.lastPath.empty() && !outMovePath.empty() && lastMove.lastPath.getBack().distance(endPosition) <= outMovePath.getBack().distance(endPosition))
+    {
         outMovePath = lastMove.lastPath;
+        if (traceEngine)
+            traceEngine->TraceNote("M:keep last");
+    }
 
     if (outMovePath.empty())
         outMovePath.addPoint(endPosition);
+
+    // twow-repo#541 (L1): stamp the path that MoveTo2 stores as lastPath next (also a kept old path: the rebuild just
+    // ran and was not better, so the next one is due PartialPathReuseMs from now). twow-repo#575 (PATH-01 #3): not
+    // when no node route was found - the result is only the target point, and reusing it would skip the
+    // HonestRouteFail answer and the L1b route-fail cooldown, which already make the next try cheap.
+    if (pathReuse && !noRoute)
+    {
+        lastMove.pathReuseStamped = true;
+        lastMove.pathReuseDest = endPosition;
+        lastMove.pathReuseBack = outMovePath.getBack();
+        lastMove.pathReuseStartMap = startPosition.getMapId();
+        lastMove.pathReuseBuiltMs = WorldTimer::getMSTime();
+    }
 
     if (outNoRoute)
         *outNoRoute = noRoute;

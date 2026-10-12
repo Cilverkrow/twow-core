@@ -36,6 +36,11 @@ namespace ai
             farMoveArrivedAt = other.farMoveArrivedAt;
             fleeCount = other.fleeCount;
             lastFleeAttempt = other.lastFleeAttempt;
+            pathReuseStamped = other.pathReuseStamped;
+            pathReuseDest = other.pathReuseDest;
+            pathReuseBack = other.pathReuseBack;
+            pathReuseStartMap = other.pathReuseStartMap;
+            pathReuseBuiltMs = other.pathReuseBuiltMs;
             moveEvent = Event();
         }
 
@@ -50,6 +55,7 @@ namespace ai
             lastFleeAttempt = 0;
             lastMoveShort = WorldPosition();
             nextTeleport = 0;
+            pathReuseStamped = false;  // twow-repo#541 (L1): every reset of the movement drops the reuse stamp
             moveEvent = Event();
         }
 
@@ -99,6 +105,15 @@ namespace ai
         bool farMoveArriveSet = false;
         bool farMoveDeclinedSet = false;
         time_t farMoveArrivedAt = 0;  // hotfix 8.36: last far-move arrival (arrive_deaths)
+        // twow-repo#541 (L1, AiPlayerbot.Perf.PartialPathReuse): stamp of the path MovementAction::ResolveMovePath
+        // last built - the requested destination, the end point of that path, the bot's map and the build time
+        // (WorldTimer ms). Written and read only with the switch on, only by the bot's own movement (own value,
+        // own thread); clear() drops it, and a lastPath that no longer ends at pathReuseBack is not reused.
+        bool pathReuseStamped = false;
+        WorldPosition pathReuseDest;
+        WorldPosition pathReuseBack;
+        uint32 pathReuseStartMap = 0;
+        uint32 pathReuseBuiltMs = 0;
         Event moveEvent;
     };
 
