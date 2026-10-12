@@ -1188,6 +1188,10 @@ void TravelTarget::OnWorkTimeout()
         return;
     }
 
+    // twow-repo#581 (QL-1): a work timeout of an objective also counts against its quest.
+    if (dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
+        NoteQuestObjectiveFailure();
+
     // #405 (live 2026-09-27): 93 % of the quest-objective work phases at world
     // objects (lock 43 chests: Cactus Apple, Tirisfal Pumpkin, Water Pitcher...)
     // ran out without a loot, and the bot picked the same objective again: Juzika
@@ -1225,6 +1229,37 @@ void TravelTarget::SuppressCurrentDestination(uint32 durationMs)
     destination_death::Record& record = destinationDeaths[tDestination];
     record.deaths = 0;
     record.suppressUntil = WorldTimer::getMSTime() + durationMs;
+}
+
+void TravelTarget::NoteQuestObjectiveFailure()
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    if (!sPlayerbotAIConfig.questLoopMaxFailures || !objective || !bot || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return;
+
+    uint32 const questId = objective->GetQuestId();
+    // Bounded like the destination maps: a bot fails at only a few quests per window.
+    if (questLoops.size() > 32 && questLoops.find(questId) == questLoops.end())
+        questLoops.clear();
+
+    uint32 const cooldownMs = sPlayerbotAIConfig.questLoopCooldownSeconds * IN_MILLISECONDS;
+    if (!quest_loop::RecordFailure(questLoops[questId], WorldTimer::getMSTime(), sPlayerbotAIConfig.questLoopMaxFailures,
+            sPlayerbotAIConfig.questLoopWindowSeconds * IN_MILLISECONDS, cooldownMs))
+        return;
+
+    sLog.outBasic("[QuestLoop] state=suppressed bot=%u level=%u quest=%u target_entry=%d failures=%u cooldown_seconds=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), questId, objective->GetEntry(), sPlayerbotAIConfig.questLoopMaxFailures,
+        sPlayerbotAIConfig.questLoopCooldownSeconds);
+    TraceQuestCommit(tDestination, "abandon", "quest_loop_suppressed");
+}
+
+bool TravelTarget::IsQuestLoopSuppressed(TravelDestination const* destination) const
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination);
+    if (!objective || questLoops.empty())
+        return false;
+    auto const it = questLoops.find(objective->GetQuestId());
+    return it != questLoops.end() && quest_loop::IsSuppressed(it->second, WorldTimer::getMSTime());
 }
 
 bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destination) const
@@ -1496,6 +1531,13 @@ void TravelTarget::CheckStatus()
             TraceQuestCommit(tDestination, "drop", destinationInactive ? "destination_inactive" : "conditions_inactive");
             forced = false;
             SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+            // twow-repo#581: an emptied quest camp - QL-2 longer cooldown, QL-1 counted against the quest.
+            if (destinationInactive && dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
+            {
+                if (sPlayerbotAIConfig.questLoopInactiveCooldownSeconds)
+                    SetExpireIn(quest_loop::InactiveCooldownMs(tDestination->GetCooldownDelay(), sPlayerbotAIConfig.questLoopInactiveCooldownSeconds));
+                NoteQuestObjectiveFailure();
+            }
             return;
         }
     }

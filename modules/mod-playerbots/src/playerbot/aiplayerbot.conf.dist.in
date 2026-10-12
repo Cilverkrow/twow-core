@@ -721,6 +721,16 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 AiPlayerbot.QuestWorkTimeouts.Max = 0
 AiPlayerbot.QuestWorkTimeouts.CooldownSeconds = 3600
 
+# twow-repo#581 (QUEST-LOOP-01, owner 11.10.2026): bots looped on emptied quest camps (no living target in sight ->
+# 60 s cooldown -> same camp). QL-1: MaxFailures = N > 0: inactive drops and work timeouts of a quest's objectives
+# count per bot and quest; N of them within WindowSeconds skip all objectives of that quest for CooldownSeconds
+# (turn-ins and givers unaffected; [QuestCommit] event=abandon reason=quest_loop_suppressed). QL-2:
+# InactiveCooldownSeconds = S > 0: the cooldown after an inactive objective lasts at least S seconds. 0 = as before.
+AiPlayerbot.QuestLoop.MaxFailures = 0
+AiPlayerbot.QuestLoop.WindowSeconds = 1800
+AiPlayerbot.QuestLoop.CooldownSeconds = 1800
+AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
+
 # twow-repo#485: with 1, quest givers and takers that are game objects spawned
 # only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
 # quest 310 "Bitter Rivals", shown for 60 s by a quest end script) are no travel
