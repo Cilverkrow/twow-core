@@ -1003,6 +1003,10 @@ public:
     void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
     // twow-repo#541/#551 (rndbot park): a parked bot updates its AI every ai::park::AiIntervalMs only.
     bool IsParked() const { return parked; }
+    // twow-repo#551 (AiPlayerbot.Park.Persist), world thread only: the stored park state was handled after this login
+    // (a new login is a new PlayerbotAI); attempts counts restore tries of a bot that was busy.
+    bool parkRestoreChecked = false;
+    uint32 parkRestoreAttempts = 0;
     // twow-repo#541 (jitter): with AiPlayerbot.AiDelayJitterPct the first parked update is spread over an interval.
     void SetParked(bool value);
     uint32 GetQuestIdleSeconds(uint32 now) const { return questProgress.IdleSeconds(now); }
