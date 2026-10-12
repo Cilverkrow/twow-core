@@ -30,11 +30,18 @@ namespace ai
             // before the VMAP + dynamic-tree raycast. Both are free of AI-visible side effects, so the list
             // and its order are the same; only units the filter rejects skip the raycast.
             bool const acceptFirst = sPlayerbotAIConfig.nearestUnitsAcceptFirst && !ignoreLos && AcceptUnitBeforeLos();
+            // twow-repo#541 (owner 11.10.2026 "1b", AiPlayerbot.Perf.NearestSkipHiddenBots, default 0): a parked bot
+            // with Park.HideFromBots is already invisible to other bots in the core; these grid searches do not go
+            // through visibility and still found it. With the switch it is skipped before the LOS raycast. Parked bots
+            // are never in a group and real players are never hidden, so only parked bots drop out.
+            bool const skipHidden = sPlayerbotAIConfig.nearestSkipHiddenBots;
 
             std::list<ObjectGuid> results;
             for(std::list<Unit *>::iterator i = targets.begin(); i!= targets.end(); ++i)
             {
                 Unit* unit = *i;
+                if (skipHidden && unit->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(unit)->IsHiddenFromBots())
+                    continue;
                 if(ai->IsSafe(unit))
                 {
                     if (acceptFirst)

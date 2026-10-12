@@ -59,6 +59,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <optional>
+#include <chrono>
 
 #ifdef MANGOSBOT_TWO
 #include "Entities/Vehicle.h"
@@ -646,10 +647,46 @@ void PlayerbotAI::QueueContextWriteTo(Player* target, std::function<void(ai::AiO
     targetAi->QueueContextWrite(std::move(write));
 }
 
+// twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): called from UpdateAI, i.e. on this bot's map thread - the
+// same thread the core's autosave runs on in Player::Update, so SaveToDB sees the same state it always did.
+void PlayerbotAI::UpdateBotSave()
+{
+    uint32 const interval = sPlayerbotAIConfig.botSaveIntervalSeconds;
+    bot->SetSaveTimer(ai::bot_save::HoldCoreTimerMs(interval));   // the core's autosave never comes first
+
+    uint32 const now = uint32(time(nullptr));
+    if (!botSaveScheduled)
+    {
+        // First own save at a guid-dependent second of the interval, so bots logged in together do not save together.
+        lastBotSave = now - interval + ai::bot_save::FirstSaveOffset(bot->GetGUIDLow(), interval);
+        botSaveScheduled = true;
+    }
+    if (!ai::bot_save::Due(now, lastBotSave, interval))
+        return;
+    if (!bot->IsInWorld() || bot->IsBeingTeleported() ||
+        !ai::bot_save::TryTake(ai::bot_save::BudgetWindow(WorldTimer::getMSTime()), sPlayerbotAIConfig.botSaveMaxPerTick, ai::bot_save::ThreadLocal()))
+    {
+        ai::bot_save::Counter(ai::bot_save::Deferred).fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
+    auto const start = std::chrono::steady_clock::now();
+    bot->SaveToDB();
+    ai::bot_save::Counter(ai::bot_save::SaveMicros).fetch_add(uint64(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count()), std::memory_order_relaxed);
+    ai::bot_save::Counter(ai::bot_save::Saves).fetch_add(1, std::memory_order_relaxed);
+    lastBotSave = now;
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
     HandleQueuedBotPackets();
+
+    // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): the bot saves itself on its own schedule (BotSavePolicy.h),
+    // also while parked; the core autosave timer is held back meanwhile. Off: the core saves as before.
+    if (sPlayerbotAIConfig.botSaveIntervalSeconds)
+        UpdateBotSave();
 
     // twow-repo#541/#551 (rndbot park): a parked bot out of combat thinks every ai::park::AiIntervalMs.
     if (parked)

@@ -158,7 +158,8 @@ bool MoveToRpgTargetAction::Execute(Event& event)
     y += sin(angle) * INTERACTION_DISTANCE * distance;
 
     WorldPosition movePos(mapId, x, y, z);
-    
+    bool snapped = false;
+
     if (movePos.distance(bot) < sPlayerbotAIConfig.sightDistance)
     {
         if (!movePos.ClosestCorrectPoint(5.0f, 5.0f, bot->GetInstanceId()) || abs(movePos.getZ()- z) > 10.0f)
@@ -166,6 +167,19 @@ bool MoveToRpgTargetAction::Execute(Event& event)
             ai->TellDebug(GetMaster(), "Can not path to desired location around " + chat->formatWorldobject(guidP.GetWorldObject(bot->GetInstanceId())) + " trying again later.", "debug move");
 
             return false;
+        }
+        snapped = true;
+    }
+    else if (sPlayerbotAIConfig.pathRpgTargetSnap)
+    {
+        // twow-repo#575 (PATH-01 #5): beyond sight distance the raw point (target height, 0-5 yd beside it) went to
+        // the node router, whose last leg must end within 1 yd - 224 of 230 routed rpg moves failed. On: the point
+        // is snapped like a near one; a point that cannot be snapped keeps the raw point (old behaviour).
+        WorldPosition farPos = movePos;
+        if (farPos.ClosestCorrectPoint(5.0f, 5.0f, bot->GetInstanceId()) && abs(farPos.getZ() - z) <= 10.0f)
+        {
+            movePos = farPos;
+            snapped = true;
         }
     }
 
@@ -181,6 +195,10 @@ bool MoveToRpgTargetAction::Execute(Event& event)
             if (uint32 pauseTimer = creature->GetInteractionPauseTimer())
                 creature->GetMotionMaster()->PauseWaypoints(pauseTimer);
     }
+    // twow-repo#575 (PATH-01 #5): on, the move goes to the snapped point (near ones were snapped only as a check).
+    if (sPlayerbotAIConfig.pathRpgTargetSnap && snapped)
+        couldMove = MoveTo(mapId, movePos.getX(), movePos.getY(), movePos.getZ(), false, false);
+    else
         couldMove = MoveTo(mapId, x, y, z, false, false);
 
     if (!couldMove && movePos.distance(bot) > INTERACTION_DISTANCE)
