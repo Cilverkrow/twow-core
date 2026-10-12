@@ -211,6 +211,7 @@ namespace ai
                 creators["leveling moonfire"] = [](PlayerbotAI* ai) { return new LevelingMoonfireTrigger(ai); };
                 creators["leveling rejuvenation"] = [](PlayerbotAI* ai) { return new LevelingRejuvenationTrigger(ai); };
                 creators["nature's grasp"] = [](PlayerbotAI* ai) { return new NaturesGraspTrigger(ai); };
+                creators["nature's grasp ready"] = [](PlayerbotAI* ai) { return new NaturesGraspReadyTrigger(ai); };
                 creators["tiger's fury"] = [](PlayerbotAI* ai) { return new TigersFuryTrigger(ai); };
                 creators["rake"] = [](PlayerbotAI* ai) { return new RakeTrigger(ai); };
                 creators["mark of the wild"] = [](PlayerbotAI* ai) { return new MarkOfTheWildTrigger(ai); };

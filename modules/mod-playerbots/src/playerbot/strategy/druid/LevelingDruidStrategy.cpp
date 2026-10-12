@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "LevelingDruidStrategy.h"
 
 using namespace ai;
@@ -27,9 +28,11 @@ void LevelingDruidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers
         "leveling rejuvenation",
         NextAction::array(0, new NextAction("rejuvenation", ACTION_MEDIUM_HEAL), NULL)));
 
-    // Cast Wrath if initiating combat or the enemy is still at range
+    // Cast Wrath if initiating combat or the enemy is still at range.
+    // twow-repo#568 D04 (AiPlayerbot.Diet.LevelingDruidWrath): only "enemy out of melee" has a trigger creator
+    // (TriggerContext); with the old name the node got no trigger and Wrath was never pushed. Read at engine init.
     triggers.push_back(new TriggerNode(
-        "enemy out of melee range",
+        sPlayerbotAIConfig.dietLevelingDruidWrath ? "enemy out of melee" : "enemy out of melee range",
         NextAction::array(0, new NextAction("wrath", ACTION_NORMAL), NULL)));
 
     // Cast Moonfire if not applied and mana is over 50%

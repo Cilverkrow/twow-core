@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ShamanImbuePolicy.h"
 #include "ShamanMultipliers.h"
 #include "EnhancementShamanStrategy.h"
@@ -30,7 +31,24 @@ private:
 
     ACTION_NODE_A(mana_spring_totem, "mana spring totem", "healing stream totem");
 
-    ACTION_NODE_C(magma_totem, "magma totem", "fire nova");
+    // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): in vanilla the continuer would be Fire Nova Totem, which
+    // replaces the Magma Totem just placed (same fire slot), so the switch drops the continuer instead.
+    static bool DietDropMagmaContinuer()
+    {
+#ifdef MANGOSBOT_ZERO
+        return sPlayerbotAIConfig.dietFireNovaTotem;
+#else
+        return false;
+#endif
+    }
+
+    static ActionNode* magma_totem(PlayerbotAI* ai)
+    {
+        return new ActionNode("magma totem",
+            /*P*/ NULL,
+            /*A*/ NULL,
+            /*C*/ DietDropMagmaContinuer() ? nullptr : NextAction::array(0, new NextAction("fire nova"), NULL));
+    }
 
     ACTION_NODE_A(strength_of_earth_totem, "strength of earth totem", "stoneskin totem");
 
@@ -155,9 +173,10 @@ void EnhancementShamanAoeStrategy::InitCombatTriggers(std::list<TriggerNode*>& t
 {
     ShamanAoeStrategy::InitCombatTriggers(triggers);
 
+    // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): "fire nova" has no castable spell in vanilla.
     triggers.push_back(new TriggerNode(
         "melee medium aoe",
-        NextAction::array(0, new NextAction("fire nova", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietFireNovaTotem ? "fire nova totem" : "fire nova", ACTION_HIGH), NULL)));
 
     triggers.push_back(new TriggerNode(
         "melee light aoe",

@@ -44,9 +44,16 @@ Unit* PartyMemberWithDaybreakValue::Calculate()
 bool SealTrigger::IsActive()
 {
 	Unit* target = GetTarget();
+    // twow-repo#568 D42 (AiPlayerbot.Diet.ProtSealDirect): no aura is named Seal of Vengeance in vanilla, so that
+    // name-compare HasAura is always false; the switch skips it (vanilla build only).
+#ifdef MANGOSBOT_ZERO
+    const bool skipVengeanceCheck = sPlayerbotAIConfig.dietProtSealDirect;
+#else
+    const bool skipVengeanceCheck = false;
+#endif
 	return !ai->HasAura("seal of justice", target) &&
         !ai->HasAura("seal of command", target) &&
-        !ai->HasAura("seal of vengeance", target) &&
+        (skipVengeanceCheck || !ai->HasAura("seal of vengeance", target)) &&
 		!ai->HasAura("seal of righteousness", target) &&
 		!ai->HasAura("seal of light", target) &&
         !ai->HasAura("seal of wisdom", target) &&
@@ -332,6 +339,21 @@ bool ExorcismTrigger::IsActive()
 #ifdef MANGOSBOT_TWO
         return ai->HasAura("the art of war", bot);
 #else
+        // twow-repo#568 D41 (AiPlayerbot.Diet.ExorcismCreatureType): Exorcism only hits the creature types of its spell
+        // entry (undead and demon, TargetCreatureType 36). Same test as Spell::CheckTargetCreatureType; against any
+        // other type the cast can only end IMPOSSIBLE, so the trigger stays quiet. No target keeps the old path.
+        if (sPlayerbotAIConfig.dietExorcismCreatureType)
+        {
+            Unit* const exorcismTarget = GetTarget();
+            SpellEntry const* const exorcismInfo = sServerFacade.LookupSpellInfo(AI_VALUE2(uint32, "spell id", "exorcism"));
+            if (exorcismTarget && exorcismInfo && exorcismInfo->TargetCreatureType)
+            {
+                uint32 const targetTypeMask = exorcismTarget->GetCreatureTypeMask();
+                if (targetTypeMask && !(exorcismInfo->TargetCreatureType & targetTypeMask) && !exorcismTarget->HasAura(8179))
+                    return false;
+            }
+        }
+
         return AI_VALUE2(uint8, "mana", "self target") > sPlayerbotAIConfig.mediumMana;
 #endif
     }

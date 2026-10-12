@@ -909,6 +909,12 @@ void Engine::ProcessTriggers(bool minimal)
         if (!trigger)
             continue;
 
+        // twow-repo#568 (D63, AiPlayerbot.Perf.EventTriggerSkip): an event-only trigger (chat command, world packet)
+        // returns Event() from Check() while its event flag is unset, so that poll is skipped. A set flag is checked
+        // and handled on this pass as before; the Reset loop below still covers every trigger.
+        if (sPlayerbotAIConfig.perfEventTriggerSkip && !testMode && trigger->IsEventOnly() && !trigger->IsAlreadyTriggered())
+            continue;
+
         if (testMode || trigger->IsAlreadyTriggered() || trigger->needCheck())
         {
             if (minimal && node->getFirstRelevance() < 100)

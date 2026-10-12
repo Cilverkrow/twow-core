@@ -27,4 +27,15 @@ namespace ai
 
         virtual bool IsActive() override;
     };
+
+    // twow-repo#568 (D48, AiPlayerbot.Diet.LootRollPending): the "very often" cadence (checked every 5 s) for the
+    // roll strategy, but only active while the bot is in a group and has an open roll, the first two conditions
+    // of AutoLootRollAction::isPossible. Used by RollStrategy only with the switch on.
+    class LootRollPendingTrigger : public Trigger
+    {
+    public:
+        LootRollPendingTrigger(PlayerbotAI* ai) : Trigger(ai, "loot roll pending", 5) {}
+
+        virtual bool IsActive() override;
+    };
 }
