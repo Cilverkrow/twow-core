@@ -109,10 +109,14 @@ require_order("${reuse_block}" "path_reuse::hits.fetch_add" "            return 
 require_text("${reuse_block}" "            if (traceEngine)\n                traceEngine->TraceNote(\"M:reuse hit age=%ums\", ageMs);" "reuse token only with the trace")
 forbid_text("${reuse_block}" "GetBotAI(" "other bots' values")
 forbid_text("${reuse_block}" "static " "static cache")
-# Stamp: last step before the return, only with the switch, after the keep-old rule and the fallback point.
-require_order("${resolve_body}" "outMovePath = lastMove.lastPath;\n        if (traceEngine)" "    if (pathReuse)\n    {\n        lastMove.pathReuseStamped = true;" "stamp after the keep-old rule")
-require_order("${resolve_body}" "        outMovePath.addPoint(endPosition);" "    if (pathReuse)\n    {\n        lastMove.pathReuseStamped = true;" "stamp after the fallback point")
-require_text("${resolve_body}" "        lastMove.pathReuseDest = endPosition;\n        lastMove.pathReuseBack = outMovePath.getBack();\n        lastMove.pathReuseStartMap = startPosition.getMapId();\n        lastMove.pathReuseBuiltMs = WorldTimer::getMSTime();\n    }\n\n    return outMovePath;" "complete stamp right before the return")
+# Stamp: last step before the return (only the twow-repo#575 no-route flag follows), only with the switch, after the
+# keep-old rule and the fallback point, and never for a no-route result (only the target point; HonestRouteFail and
+# the L1b cooldown answer the next try).
+require_order("${resolve_body}" "outMovePath = lastMove.lastPath;\n        if (traceEngine)" "    if (pathReuse && !noRoute)\n    {\n        lastMove.pathReuseStamped = true;" "stamp after the keep-old rule")
+require_order("${resolve_body}" "        outMovePath.addPoint(endPosition);" "    if (pathReuse && !noRoute)\n    {\n        lastMove.pathReuseStamped = true;" "stamp after the fallback point")
+require_order("${resolve_body}" "            noRoute = true;" "    if (pathReuse && !noRoute)" "no-route flag set before the stamp")
+require_text("${resolve_body}" "        lastMove.pathReuseDest = endPosition;\n        lastMove.pathReuseBack = outMovePath.getBack();\n        lastMove.pathReuseStartMap = startPosition.getMapId();\n        lastMove.pathReuseBuiltMs = WorldTimer::getMSTime();\n    }\n\n    if (outNoRoute)\n        *outNoRoute = noRoute;\n\n    return outMovePath;" "complete stamp right before the return")
+forbid_text("${resolve_body}" "    if (pathReuse)\n    {\n        lastMove.pathReuseStamped = true;" "stamp of a no-route result")
 # The existing rules stay as they are.
 require_text("${resolve_body}" "if (!lastMove.lastPath.empty() && !outMovePath.empty() && lastMove.lastPath.getBack().distance(endPosition) <= outMovePath.getBack().distance(endPosition))\n    {\n        outMovePath = lastMove.lastPath;" "keep-old rule unchanged")
 require_text("${resolve_body}" "    if (outMovePath.empty())\n        outMovePath.addPoint(endPosition);" "fallback point unchanged")

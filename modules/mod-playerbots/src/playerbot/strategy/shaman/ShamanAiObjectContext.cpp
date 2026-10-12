@@ -331,7 +331,7 @@ namespace ai
                 creators["flametongue weapon"] = [](PlayerbotAI* ai) { return new CastFlametongueWeaponAction(ai); };
                 creators["frostbrand weapon"] = [](PlayerbotAI* ai) { return new CastFrostbrandWeaponAction(ai); };
                 creators["windfury weapon"] = [](PlayerbotAI* ai) { return new CastWindfuryWeaponAction(ai); };
-                creators["earthliving weapon"] = [](PlayerbotAI* ai) { return new CastEarthlivingWeaponAction(ai); };
+                creators["shaman weapon imbue"] = [](PlayerbotAI* ai) { return new CastShamanWeaponImbueAction(ai); };   // twow-repo#541
                 creators["purge"] = [](PlayerbotAI* ai) { return new CastPurgeAction(ai); };
                 creators["healing wave"] = [](PlayerbotAI* ai) { return new CastHealingWaveAction(ai); };
                 creators["lesser healing wave"] = [](PlayerbotAI* ai) { return new CastLesserHealingWaveAction(ai); };
