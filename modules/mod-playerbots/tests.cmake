@@ -2407,6 +2407,25 @@ add_test(NAME trace_action_us_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
 
+# twow-repo#541 (owner 11.10.2026): budget for expensive bot actions (AiPlayerbot.Perf.ActionBudget).
+add_test(NAME action_budget_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/action_budget_source_contract_tests.cmake")
+
+add_executable(action_budget_policy_tests
+  "${PB_MODULE_DIR}/t/action_budget_policy_tests.cpp")
+
+target_include_directories(action_budget_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(action_budget_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME action_budget_policy
+  COMMAND action_budget_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#541 (owner 11.10.2026): [BotPackets] packet counter (AiPlayerbot.PacketTrace).
 add_test(NAME packet_trace_source_contract
   COMMAND "${CMAKE_COMMAND}"
