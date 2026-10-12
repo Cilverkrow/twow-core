@@ -15,6 +15,7 @@
 #include "playerbot/PersistentRosterStarterOutfitPolicy.h"
 #include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
+#include "playerbot/PacketTracePolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -951,6 +952,50 @@ void ReportBotInbox()
         unsigned long long const hostileDeaths = takeEscape(ai::death_loop::EscapeHostileDeath);
         sLog.outBasic("[DeathLoop] state=minute detected=%llu escaped=%llu rebound=%llu repeat_after_escape=%llu hostile_death=%llu",
             detected, escaped, rebound, repeat, hostileDeaths);
+    }
+
+    // twow-repo#541 (AiPlayerbot.PacketTrace): packets of the last minute per map bucket. Per class
+    // "read/ignored/real" counts; kib_* = bytes per receiver. ignored = built for a bot that never reads it.
+    if (sPlayerbotAIConfig.packetTrace)
+    {
+        namespace pt = ai::packet_trace;
+        pt::Totals& totals = pt::Global();
+        char const* const bucketNames[pt::MapBuckets] = { "eastern", "kalimdor", "other" };
+        char const* const classNames[pt::Classes] = { "move", "update", "spell", "combat", "chat", "other" };
+        for (int bucket = 0; bucket < pt::MapBuckets; ++bucket)
+        {
+            std::ostringstream classes;
+            unsigned long long kib[pt::Receivers] = {};
+            unsigned long long ignoredBytes[pt::Classes] = {};
+            for (int cls = 0; cls < pt::Classes; ++cls)
+            {
+                unsigned long long counts[pt::Receivers];
+                for (int receiver = 0; receiver < pt::Receivers; ++receiver)
+                {
+                    counts[receiver] = totals.count[receiver][bucket][cls].exchange(0, std::memory_order_relaxed);
+                    unsigned long long const bytes = totals.bytes[receiver][bucket][cls].exchange(0, std::memory_order_relaxed);
+                    kib[receiver] += bytes;
+                    if (receiver == pt::BotIgnored)
+                        ignoredBytes[cls] = bytes;
+                }
+                classes << " " << classNames[cls] << "=" << counts[pt::BotRead] << "/" << counts[pt::BotIgnored] << "/" << counts[pt::Real];
+            }
+            // OB-00 11.10.2026: bytes per class of the packets built for bots and never read (KiB).
+            classes << " kib_ignored_by_class=";
+            for (int cls = 0; cls < pt::Classes; ++cls)
+                classes << (cls ? "," : "") << classNames[cls] << ":" << ignoredBytes[cls] / 1024;
+            sLog.outBasic("[BotPackets] map=%s kib_bot_read=%llu kib_bot_ignored=%llu kib_real=%llu%s",
+                bucketNames[bucket], kib[pt::BotRead] / 1024, kib[pt::BotIgnored] / 1024, kib[pt::Real] / 1024, classes.str().c_str());
+        }
+        // OB-00 11.10.2026: the five opcodes behind most of the "other" packets built for bots and never read.
+        std::ostringstream top;
+        for (auto const& [opcode, count] : pt::TakeTopOtherIgnored(totals, 5))
+            top << " " << LookupOpcodeName(uint16(opcode)) << "=" << count;
+        sLog.outBasic("[BotPackets] other_ignored_top5%s", top.str().c_str());
+        unsigned long long const samples = totals.inboxSamples.exchange(0, std::memory_order_relaxed);
+        unsigned long long const sampledNs = totals.inboxSampledNs.exchange(0, std::memory_order_relaxed);
+        sLog.outBasic("[BotPackets] inbox_copy_samples=%llu inbox_copy_avg_ns=%llu sample_every=%u flush_every=%u",
+            samples, samples ? sampledNs / samples : 0ull, pt::TimeSampleEvery, pt::FlushEvery);
     }
 
     // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): own bot saves of the last minute and their cost.

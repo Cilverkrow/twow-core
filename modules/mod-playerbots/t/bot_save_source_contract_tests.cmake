@@ -58,7 +58,14 @@ require_order("${update_ai}" "UpdateBotSave();" "if (parked)" "before the park e
 
 between("${ai_cpp}" "void PlayerbotAI::UpdateBotSave()" "void PlayerbotAI::UpdateAI(" save_fn)
 require_order("${save_fn}" "bot->SetSaveTimer(ai::bot_save::HoldCoreTimerMs(interval));" "if (!ai::bot_save::Due(now, lastBotSave, interval))" "core timer held on every call")
-require_order("${save_fn}" "ai::bot_save::TryTake(WorldTimer::tickTime(), sPlayerbotAIConfig.botSaveMaxPerTick, ai::bot_save::ThreadLocal())" "bot->SaveToDB();" "budget before the save")
+require_order("${save_fn}" "ai::bot_save::TryTake(ai::bot_save::BudgetWindow(WorldTimer::getMSTime()), sPlayerbotAIConfig.botSaveMaxPerTick, ai::bot_save::ThreadLocal())" "bot->SaveToDB();" "budget before the save")
+# Live v46.1 (11.10.): WorldTimer::tick() is never called in this core, tickTime() stays 0 - a budget keyed on it never
+# resets. The window comes from the real clock.
+string(FIND "${save_fn}" "tickTime()" frozen_tick)
+if(NOT frozen_tick EQUAL -1)
+  message(FATAL_ERROR "#541 A47: the save budget must not be keyed on WorldTimer::tickTime() (never advanced)")
+endif()
+require_text("${policy}" "return nowMs / BudgetWindowMs;" "budget window from the clock")
 require_order("${save_fn}" "bot->SaveToDB();" "lastBotSave = now;" "schedule moves on only after a save")
 require_text("${save_fn}" "!bot->IsInWorld() || bot->IsBeingTeleported()" "no save while out of world / teleporting")
 require_text("${policy}" "return (intervalSeconds + 60) * 1000;" "core timer held beyond the own interval")
