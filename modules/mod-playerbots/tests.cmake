@@ -2548,6 +2548,13 @@ add_test(NAME park_persist_policy
   COMMAND park_persist_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#541 (owner 11.10.2026): no object update packets for bot sessions (AiPlayerbot.Perf.SkipBotUpdatePackets).
+add_test(NAME skip_bot_updates_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/skip_bot_updates_source_contract_tests.cmake")
+
 # twow-repo#575 (PATH-01 phase 2): route-fail detail trace, honest route fail, start-zone boxes, rpg target snap.
 add_executable(path_fail_policy_tests
   "${PB_MODULE_DIR}/t/path_fail_policy_tests.cpp")

@@ -1882,6 +1882,13 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#541 (owner 11.10.2026): 1 = the core builds and sends no object update packets (SMSG_UPDATE_OBJECT,
+# SMSG_COMPRESSED_UPDATE_OBJECT, SMSG_DESTROY_OBJECT) to bot sessions - a bot has no client and its AI reads object
+# state from the objects (PacketTrace: 0 update packets read). Visible sets, broadcast listeners and update masks
+# stay exactly as before; chat, spell and movement packets are untouched. Applies to bots logging in after the change.
+# 0 = off (default).
+AiPlayerbot.Perf.SkipBotUpdatePackets = 0
+
 # twow-repo#541 (owner 11.10.2026, measurement only): 1 = count every packet the server hands to a session, per
 # receiver (bot packet the AI reads / bot packet built for nobody / real player), map (Eastern Kingdoms, Kalimdor,
 # other) and class (movement, update, spell, combat, chat, other), as count and bytes; one [BotPackets] line per
