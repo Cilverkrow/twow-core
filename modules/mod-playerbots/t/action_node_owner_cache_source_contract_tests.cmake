@@ -194,7 +194,8 @@ function(check_engine out cpp h)
 
   count_regex("${cpp}" "strategies\\.(insert|erase|clear|emplace|emplace_hint|swap|merge|extract)\\(" m1)
   count_regex("${cpp}" "strategies\\[" m2)
-  count_regex("${cpp}" "[^A-Za-z_]strategies[ \t]*=[^=]" m3)
+  # A format string such as "strategies=%s" (twow-repo#541 unknown-name warning) is no assignment.
+  count_regex("${cpp}" "[^A-Za-z_]strategies[ \t]*=[^=%]" m3)
   math(EXPR mutations "${m1} + ${m2} + ${m3}")
   count_regex("${cpp}" "ClearActionNodeOwners\\(\\)" clears)
   if(NOT mutations EQUAL clears)
