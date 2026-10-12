@@ -1,5 +1,6 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
+#include "playerbot/PathFailPolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include <iomanip>
@@ -1870,13 +1871,12 @@ void TravelMgr::SetMobAvoidAreaMap(uint32 mapId)
 // (bounds taken from the zones' own NPC spawns) rather than a zone-ID lookup because this
 // function runs once at startup over every quest-relevant spawn in the game, and
 // GetZoneAndAreaId can force-load grid data per call - doing that here deadlocked the server.
+// twow-repo#575 (PATH-01 #4, AiPlayerbot.Path.StartZoneExactBounds): the boxes above left 8 Blackstone and 10
+// Thalassian quest givers outside, so Horde bots in Durotar chose island targets without a route. 1 = the zone
+// boxes in PathFailPolicy.h (from the zone cells of the map files, no Plaguelands spawn inside); 0 = the old boxes.
 static bool IsInBlackstoneOrThalassian(uint32 mapId, float x, float y)
 {
-    if (mapId == 1 && x > -500.0f && x < 350.0f && y > -7850.0f && y < -7100.0f)
-        return true;
-    if (mapId == 0 && x > 3000.0f && x < 3800.0f && y > -2800.0f && y < -2250.0f)
-        return true;
-    return false;
+    return ai::path_fail::InCustomStartZone(mapId, x, y, sPlayerbotAIConfig.pathStartZoneExactBounds);
 }
 
 void TravelMgr::LoadQuestTravelTable()
