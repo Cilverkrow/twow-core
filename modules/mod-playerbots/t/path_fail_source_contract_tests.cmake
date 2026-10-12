@@ -180,4 +180,21 @@ require_text("${use_taxi}" "    if (!goTaxi)
     return goTaxi;" "flight behaviour unchanged")
 require_text("${policy}" "constexpr float TaxiStartReach = 31.6f;" "core start reach")
 
+# 6. PATH-01 E6: quest rescue skips the goblin / high-elf starts for other races, only with the switch (default 0).
+read_source("RandomPlayerbotMgr.cpp" rnd_mgr)
+require_text("${config_h}" "    bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6)" "E6 default off")
+require_text("${config_cpp}" "pathRescueSkipCustomStarts = config.GetBoolDefault(\"AiPlayerbot.Path.RescueSkipCustomStarts\", false);" "E6 read off")
+require_text("${conf_dist}" "
+AiPlayerbot.Path.RescueSkipCustomStarts = 0
+" "E6 documented off")
+require_text("${policy}" "    return on && targetRace != botRace && IsCustomStartRace(targetRace);" "E6 rule")
+require_text("${policy}" "    return race == 9 || race == 10;" "E6 races")
+region("${rnd_mgr}" "        if (level <= ai::quest_search::StartAreaMaxLevel)
+        {" "
+        }
+" e6_block)
+require_order("${e6_block}" "if (ai::path_fail::RescueSkipsStartOf(race, bot->getRace(), sPlayerbotAIConfig.pathRescueSkipCustomStarts))
+                continue;" "targets.push_back(WorldLocation(info->mapId, info->positionX, info->positionY, info->positionZ, info->orientation));" "E6 gate before the start target")
+count_text("${rnd_mgr}" "pathRescueSkipCustomStarts" 1 "E6 switch uses")
+
 message(STATUS "path_fail source contract passed")

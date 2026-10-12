@@ -177,4 +177,18 @@ inline bool InCustomStartZone(std::uint32_t mapId, float x, float y, bool exact)
         return InAny(ThalassianBoxes, x, y);
     return false;
 }
+
+// twow-repo#575 (PATH-01 E6, AiPlayerbot.Path.RescueSkipCustomStarts): the quest rescue of a level 1-10 bot picked any
+// start position of its faction, so an orc could land on Blackstone Island (goblin start, no route out for other races)
+// or a human in the Thalassian Highlands, and the rescue rebinds the hearthstone there. On: the goblin (9) and high-elf
+// (10) starts are rescue targets only for bots of that race.
+inline bool IsCustomStartRace(std::uint32_t race)
+{
+    return race == 9 || race == 10;
+}
+
+inline bool RescueSkipsStartOf(std::uint32_t targetRace, std::uint32_t botRace, bool on)
+{
+    return on && targetRace != botRace && IsCustomStartRace(targetRace);
+}
 }
