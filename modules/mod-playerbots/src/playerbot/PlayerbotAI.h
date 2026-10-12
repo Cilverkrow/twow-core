@@ -17,8 +17,10 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
+#include "playerbot/BotSavePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
+#include <functional>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/StuckCombatPolicy.h"
@@ -386,9 +388,14 @@ public:
     virtual void UpdateAI(uint32 elapsed, bool minimal = false);
 
     void HandleCommands();
+    // Audit A29 (twow-repo#563): chat reaches HandleCommand on the AsyncPackets thread while the bot's
+    // own UpdateAI drains the queue; every access goes through chatCommandsMutex.
+    void QueueChatCommand(ChatCommandHolder const& cmd);
 private:
     void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
     bool AllowDelayJitter() const override;
+    // twow-repo#541 (audit A17): idle auto-attack combat pass -> longer wait (AiPlayerbot.Perf.CombatIdleYield).
+    void StretchCombatIdle();
 public:    
     static std::string BotStateToString(BotState state);
     std::string GetDefaultMovementStrategy();
@@ -401,6 +408,13 @@ public:
     void QueueBotOutgoingPacket(const WorldPacket& packet);
     bool WantsBotOutgoingPacket(uint16 opcode) const;
     void HandleQueuedBotPackets();
+    // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): own save schedule on the bot's map thread.
+    void UpdateBotSave();
+    // twow-repo#563 (X3c, AiPlayerbot.X3c.InboxWrites): a value write another bot wants on this bot's context;
+    // applied by this bot in its own UpdateAI (same drain as the packets).
+    void QueueContextWrite(std::function<void(ai::AiObjectContext*)> write);
+    // For the callers: queues on the target's AI, or counts the write as dropped when the target has none.
+    static void QueueContextWriteTo(Player* target, std::function<void(ai::AiObjectContext*)> write);
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
@@ -947,6 +961,8 @@ protected:
     // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
     std::atomic<bool> parked{ false };
     uint32 lastParkedUpdateMs = 0;
+    uint32 lastBotSave = 0;          // twow-repo#541 A47: time of this bot's last own save (seconds)
+    bool botSaveScheduled = false;   // A47: first save offset applied
     ai::stall_guard::TopActions updateActions;
     uint32 firstUpdateTime = 0;
     uint32 lastReviveTime = 0;
@@ -1013,11 +1029,14 @@ protected:
     BotState currentState;
     ChatHelper chatHelper;
     std::queue<ChatCommandHolder> chatCommands;
+    std::mutex chatCommandsMutex;   // audit A29: guards chatCommands
     std::queue<ChatQueuedReply> chatReplies;
     std::mutex chatRepliesMutex;
     PacketHandlingHelper botOutgoingPacketHandlers;
     // twow-repo#563 (X1): packets for this bot from any thread, handled in UpdateAI.
     ai::BoundedInbox<std::unique_ptr<WorldPacket>> botPacketInbox{ ai::BotPacketInboxCapacity };
+    // twow-repo#563 (X3c): value writes from other bots, applied in UpdateAI.
+    ai::BoundedInbox<std::function<void(ai::AiObjectContext*)>> contextWriteInbox{ ai::ContextWriteInboxCapacity };
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;
     CompositeChatFilter chatFilter;
@@ -1035,6 +1054,8 @@ protected:
     uint32 jumpTime;
     bool fallAfterJump;
     uint32 faceTargetUpdateDelay;
+    bool combatIdleTick = false;   // twow-repo#541 (audit A17): last DoNextAction ran the combat engine and executed nothing
+    ObjectGuid combatIdleVictim;   // twow-repo#541 (audit A17): victim of a pending stretched wait (empty = none)
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;

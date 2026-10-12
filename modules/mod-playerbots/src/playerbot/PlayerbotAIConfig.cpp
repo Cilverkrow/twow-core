@@ -1,6 +1,7 @@
 
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
+#include "playerbot/PathFailPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -401,10 +402,47 @@ bool PlayerbotAIConfig::Initialize()
     asyncBotLogin = config.GetBoolDefault("AiPlayerbot.AsyncBotLogin", false);
     persistentActiveRosterEnabled = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.Enabled", false);
     parkHideFromBots = config.GetBoolDefault("AiPlayerbot.Park.HideFromBots", false);
+    parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
+    parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
+    parkMaxPerInn = config.GetIntDefault("AiPlayerbot.Park.MaxPerInn", 0);
+    parkMaxPerCity = config.GetIntDefault("AiPlayerbot.Park.MaxPerCity", 0);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
     initPetCache = config.GetBoolDefault("AiPlayerbot.InitPet.Cache", false);
+    // twow-repo#563 (X3a/X3c): per-context lock on the value maps; cross-bot value writes via the inbox.
+    ai::context_lock::Enabled().store(config.GetBoolDefault("AiPlayerbot.X3a.ContextLock", false), std::memory_order_relaxed);
+    x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
+    packetTrace = config.GetBoolDefault("AiPlayerbot.PacketTrace", false);
+    nearestSkipHiddenBots = config.GetBoolDefault("AiPlayerbot.Perf.NearestSkipHiddenBots", false);
+    botSaveIntervalSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.IntervalSeconds", 0)));
+    botSaveMaxPerTick = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.MaxPerTick", 1)));
+    perfFleeMemo = config.GetBoolDefault("AiPlayerbot.Perf.FleeMemo", false);
+    findCorpseLazySpot = config.GetBoolDefault("AiPlayerbot.FindCorpseLazySpot", false);
+    nearestUnitsAcceptFirst = config.GetBoolDefault("AiPlayerbot.Perf.NearestUnitsAcceptFirst", false);
+    perfGatherLootFastPath = config.GetBoolDefault("AiPlayerbot.Perf.GatherLootFastPath", false);
+    perfAttackersLazyChecks = uint32(std::min<int32>(2, std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Perf.AttackersLazyChecks", 0))));
+    perfActionNodeOwnerCache = config.GetBoolDefault("AiPlayerbot.Perf.ActionNodeOwnerCache", false);
+    perfBgMasterCacheRef = config.GetBoolDefault("AiPlayerbot.Perf.BgMasterCacheRef", false);
+    perfTravelInfoReuse = config.GetBoolDefault("AiPlayerbot.Perf.TravelInfoReuse", false);
+    perfLogActionFastPath = config.GetBoolDefault("AiPlayerbot.Perf.LogActionFastPath", false);
+    botUpdateTraceTailFix = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTailFix", false);
+    perfTrainableSpellsPrecheck = config.GetBoolDefault("AiPlayerbot.Perf.TrainableSpellsPrecheck", false);
+    perfRacialsSkipUnbuildable = config.GetBoolDefault("AiPlayerbot.Perf.RacialsSkipUnbuildable", false);
+    chaseSkipHazardPathWhenNoHazards = config.GetBoolDefault("AiPlayerbot.Movement.ChaseSkipHazardPathWhenNoHazards", false);
+    perfGiveItemGroupOnlyScan = config.GetBoolDefault("AiPlayerbot.Perf.GiveItemGroupOnlyScan", false);
+    perfStaticSpellLists = config.GetBoolDefault("AiPlayerbot.Perf.StaticSpellLists", false);
+    petDeadNoWorldPetFalse = config.GetBoolDefault("AiPlayerbot.PetDeadNoWorldPetFalse", false);
+    canCastSpellChecksPower = config.GetBoolDefault("AiPlayerbot.CanCastSpell.CheckPower", false);
+    castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
+    perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
+    perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
+    perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
+    perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
+    perfAttackersSingleList = config.GetBoolDefault("AiPlayerbot.Perf.AttackersSingleList", false);
+    perfPartyTargetMemo = config.GetBoolDefault("AiPlayerbot.Perf.PartyTargetMemo", false);
+    possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
+    shamanImbueBySpec = config.GetBoolDefault("AiPlayerbot.Shaman.ImbueBySpec", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));
@@ -473,6 +511,12 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
+    pathRouteFailDetail = config.GetBoolDefault("AiPlayerbot.Path.RouteFailDetail", false);
+    pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault("AiPlayerbot.Path.RouteFailDetail.LinesPerMinute", 30));
+    pathHonestRouteFail = config.GetBoolDefault("AiPlayerbot.Path.HonestRouteFail", false);
+    pathStartZoneExactBounds = config.GetBoolDefault("AiPlayerbot.Path.StartZoneExactBounds", false);
+    pathRpgTargetSnap = config.GetBoolDefault("AiPlayerbot.Path.RpgTargetSnap", false);
+    pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
     revivePreferCorpseRun = config.GetBoolDefault("AiPlayerbot.Revive.PreferCorpseRun", false);
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
@@ -1168,19 +1212,25 @@ bool PlayerbotAIConfig::Initialize()
 
 bool PlayerbotAIConfig::IsInRandomAccountList(uint32 id)
 {
-    // Fast path: already confirmed bot account.
-    if (find(randomBotAccounts.begin(), randomBotAccounts.end(), id) != randomBotAccounts.end())
-        return true;
-    // Fast path: already confirmed non-bot account — skip the DB query.
-    if (nonRandomBotAccounts.count(id))
-        return false;
+    {
+        ai::context_lock::Shared const lock(randomBotAccountsMutex, ai::context_lock::On());   // audit A31
+        // Fast path: already confirmed bot account (index instead of the list scan, same answer).
+        if (randomBotAccountIndex.count(id))
+            return true;
+        // Fast path: already confirmed non-bot account — skip the DB query.
+        if (nonRandomBotAccounts.count(id))
+            return false;
+    }
 
     // Slow path: look up username and check RNDBOT prefix. Cache result either way.
+    // The query runs outside the lock; a second thread with the same miss stores nothing twice.
     auto qr = LoginDatabase.PQuery("SELECT username FROM account WHERE id = %u", id);
     if (!qr)
     {
-        nonRandomBotAccounts.insert(id);
-        return false;
+        ai::context_lock::Unique const lock(randomBotAccountsMutex, ai::context_lock::On());
+        if (!randomBotAccountIndex.count(id))
+            nonRandomBotAccounts.insert(id);
+        return randomBotAccountIndex.count(id) != 0;
     }
     Field* fields = qr->Fetch();
     std::string username = fields[0].GetCppString();
@@ -1189,11 +1239,36 @@ bool PlayerbotAIConfig::IsInRandomAccountList(uint32 id)
     for (size_t i = 0; isBot && i < prefix.size(); ++i)
         isBot = std::tolower((unsigned char)username[i]) == std::tolower((unsigned char)prefix[i]);
 
+    ai::context_lock::Unique const lock(randomBotAccountsMutex, ai::context_lock::On());
     if (isBot)
-        randomBotAccounts.push_back(id);
-    else
+    {
+        if (randomBotAccountIndex.insert(id).second)
+            randomBotAccounts.push_back(id);
+    }
+    else if (!randomBotAccountIndex.count(id))
         nonRandomBotAccounts.insert(id);
-    return isBot;
+    return isBot || randomBotAccountIndex.count(id) != 0;
+}
+
+void PlayerbotAIConfig::AddRandomBotAccount(uint32 id)
+{
+    // Audit A31: appends exactly like the old push_back (duplicates included, so the order and the
+    // contents of the list stay as before) and keeps the lookup index in step.
+    ai::context_lock::Unique const lock(randomBotAccountsMutex, ai::context_lock::On());
+    randomBotAccounts.push_back(id);
+    randomBotAccountIndex.insert(id);
+}
+
+std::vector<uint32> PlayerbotAIConfig::RandomBotAccountsSnapshot() const
+{
+    ai::context_lock::Shared const lock(randomBotAccountsMutex, ai::context_lock::On());
+    return std::vector<uint32>(randomBotAccounts.begin(), randomBotAccounts.end());
+}
+
+size_t PlayerbotAIConfig::RandomBotAccountCount() const
+{
+    ai::context_lock::Shared const lock(randomBotAccountsMutex, ai::context_lock::On());
+    return randomBotAccounts.size();
 }
 
 bool PlayerbotAIConfig::IsFreeAltBot(uint32 guid)

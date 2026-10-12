@@ -764,16 +764,113 @@ inline void Map::UpdateActiveCellsCallback(uint32 diff, uint32 now, uint32 threa
     }
 }
 
+// twow-repo#541 (park, AiPlayerbot.Park.SleepGrid): a parked bot with the sleep flag does not activate the
+// cells around it, nor does its pet. Only the cell update is skipped: grid loading and unloading
+// (ActiveObjectsNearGrid, Grid::ActiveObjectsInGrid) still count the bot, so its grid stays loaded.
+namespace
+{
+std::atomic<bool> s_gridSleepActive{ false };
+std::atomic<bool> s_gridSleepStats{ false };
+
+struct GridSleepTally
+{
+    uint32 sleeping = 0;
+    uint32 woken = 0;
+    uint32 wakeAttack = 0;
+    uint32 wakeOther = 0;
+};
+
+// Map thread of the player's map only. Counts the transition asleep -> awake by its cause; an unpark
+// clears the flag and is counted by the bot module.
+bool SkipSleepingPlayer(Player* player, GridSleepTally& tally)
+{
+    if (!player)
+        return false;
+    if (!player->HasGridSleepFlag())
+    {
+        player->SetGridSleepAsleep(false);
+        return false;
+    }
+    if (player->IsGridSleeping())
+    {
+        player->SetGridSleepAsleep(true);
+        ++tally.sleeping;
+        return true;
+    }
+    ++tally.woken;
+    if (player->IsGridSleepAsleep())
+    {
+        player->SetGridSleepAsleep(false);
+        if (player->IsInCombat() || !player->getAttackers().empty())
+            ++tally.wakeAttack;
+        else
+            ++tally.wakeOther;
+    }
+    return false;
+}
+
+// An active non-player (a pet) whose owner sleeps sleeps with it, unless it fights.
+bool SkipSleepingOwnerObject(Map& map, WorldObject const* object)
+{
+    Unit const* unit = object ? object->ToUnit() : nullptr;
+    if (!unit || unit->IsInCombat())
+        return false;
+    ObjectGuid const& ownerGuid = unit->GetCharmerOrOwnerGuid();
+    if (!ownerGuid.IsPlayer())
+        return false;
+    Player const* owner = map.GetPlayer(ownerGuid);
+    return owner && owner->IsGridSleeping();
+}
+
+void AddGridSleepTally(GridSleepTally const& tally, uint64 cellsMarked)
+{
+    Map::GridSleepStats& stats = Map::GetGridSleepStats();
+    stats.updates.fetch_add(1, std::memory_order_relaxed);
+    stats.sleeping.fetch_add(tally.sleeping, std::memory_order_relaxed);
+    stats.woken.fetch_add(tally.woken, std::memory_order_relaxed);
+    stats.wakeAttack.fetch_add(tally.wakeAttack, std::memory_order_relaxed);
+    stats.wakeOther.fetch_add(tally.wakeOther, std::memory_order_relaxed);
+    stats.cellsMarked.fetch_add(cellsMarked, std::memory_order_relaxed);
+}
+}
+
+Map::GridSleepStats& Map::GetGridSleepStats()
+{
+    static GridSleepStats stats;
+    return stats;
+}
+
+void Map::SetGridSleepSwitches(bool active, bool stats)
+{
+    s_gridSleepActive.store(active, std::memory_order_relaxed);
+    s_gridSleepStats.store(stats, std::memory_order_relaxed);
+}
+
 inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)
 {
     resetMarkedCells();
 
+    bool const gridSleep = s_gridSleepActive.load(std::memory_order_relaxed);
+    GridSleepTally tally;
+
     // Mark all cells that need update
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
-        MarkCellsAroundObject(m_mapRefIter->getSource());
+    {
+        Player* plr = m_mapRefIter->getSource();
+        if (gridSleep && SkipSleepingPlayer(plr, tally))
+            continue;
+        MarkCellsAroundObject(plr);
+    }
 
     for (m_activeNonPlayersIter = m_activeNonPlayers.begin(); m_activeNonPlayersIter != m_activeNonPlayers.end(); ++m_activeNonPlayersIter)
+    {
+        if (gridSleep && SkipSleepingOwnerObject(*this, *m_activeNonPlayersIter))
+            continue;
         MarkCellsAroundObject(*m_activeNonPlayersIter);
+    }
+
+    if (s_gridSleepStats.load(std::memory_order_relaxed) && IsContinent())
+        AddGridSleepTally(tally, marked_cells.count());
 
     const int nthreads = m_cellThreads->size();
     for (int step = 0; step < 2; step++)
@@ -792,11 +889,17 @@ inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)
 inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
 {
     resetMarkedCells();
+
+    bool const gridSleep = s_gridSleepActive.load(std::memory_order_relaxed);  // twow-repo#541
+    GridSleepTally tally;
+
     // the player iterator is stored in the map object
     // to make sure calls to Map::Remove don't invalidate it
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
     {
         Player* plr = m_mapRefIter->getSource();
+        if (gridSleep && SkipSleepingPlayer(plr, tally))
+            continue;
         UpdateCellsAroundObject(now, diff, plr);
     }
 
@@ -809,8 +912,13 @@ inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
         // step before processing, in this case if Map::Remove remove next object we correctly
         // step to next-next, and if we step to end() then newly added objects can wait next update.
         ++m_activeNonPlayersIter;
+        if (gridSleep && SkipSleepingOwnerObject(*this, obj))
+            continue;
         UpdateCellsAroundObject(now, diff, obj);
     }
+
+    if (s_gridSleepStats.load(std::memory_order_relaxed) && IsContinent())
+        AddGridSleepTally(tally, marked_cells.count());
 }
 
 inline void Map::UpdateCells(uint32 map_diff)

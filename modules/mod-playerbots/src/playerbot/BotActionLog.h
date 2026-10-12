@@ -32,6 +32,11 @@ public:
     // Get the open handle for this bot, or null if not open. Cheap.
     static std::FILE* GetHandle(PlayerbotAI* ai);
 
+    // twow-repo#541 (audit A11): true when a Write could reach a file: the action log is on, or a
+    // handle opened while it was on is still registered (a config reload turned it off). Lock-free;
+    // read before sFilesMutex by GetHandle and Engine::LogAction under AiPlayerbot.Perf.LogActionFastPath.
+    static bool MayWrite();
+
     // Lower-level write: timestamped, tag-prefixed, fflush'd. Format
     // follows printf semantics. Safe to call when log isn't open
     // (no-op).

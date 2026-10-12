@@ -46,7 +46,7 @@ endif()
 file(READ "${PB_SOURCE_DIR}/strategy/actions/MovementActions.cpp" move)
 string(FIND "${move}" "if (!detailedMove && sPlayerbotAIConfig.rosterFarMove && endPos.getMapId() == bot->GetMapId() && !bot->GetTransport())" far)
 string(FIND "${move}" "[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u" farlog)
-string(FIND "${move}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove);" resolve)
+string(FIND "${move}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove" resolve)  # twow-repo#575: + optional no-route flag
 if (far EQUAL -1 OR farlog EQUAL -1 OR resolve EQUAL -1 OR far GREATER resolve)
   message(FATAL_ERROR "hotfix 8.33a: far move must be decided before the route is resolved")
 endif()
