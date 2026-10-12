@@ -876,6 +876,35 @@ AiPlayerbot.RosterFarMove = 0
 # [FarMove] ... watched arrive_alt arrive_walk. ArriveBackYards 0 = arrive at the target (8.33 behaviour).
 AiPlayerbot.RosterFarMove.ArriveBackYards = 60
 AiPlayerbot.RosterFarMove.WatchRoute = 1
+# twow-repo#575 (PATH-01 #1, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach
+# Abnahme an): 1 = every node route search that ends without a route is counted and the first LinesPerMinute of
+# them a minute are logged as [RouteFailDetail]: bot, level, alive, action, start and target (map x y z), distance,
+# pairs, bad start / end nodes, nearest start / end node with distance, how far the direct navmesh attempt got,
+# cooldown / budget / no-node / transport cases. [RouteFailDetail] summary failed= logged= honest= once a minute.
+# LinesPerMinute 0..600 (0 = summary only). 0 = off (default).
+AiPlayerbot.Path.RouteFailDetail = 0
+AiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 30
+# twow-repo#575 (PATH-01 #3, BEHAVIOUR CHANGE, "nach Abnahme an"): a node route search without a route used to
+# end as the target point alone; farther than react distance that point was cut off and MoveTo reported success
+# with an empty path, so the bot searched again on the next tick (minutes of retries, travel retry counter
+# counting down). 1 = an empty route makes the move fail: travel targets count the retry and cool down, rpg
+# targets are dropped. A path that collapses with a route keeps the old answer. 0 = old behaviour (default).
+AiPlayerbot.Path.HonestRouteFail = 0
+# twow-repo#575 (PATH-01 #4, BEHAVIOUR CHANGE, "nach Abnahme an"): Blackstone Island (5536) and Thalassian
+# Highlands / Alah'Thalas (5225 / 2040) are no quest / grind / rpg travel targets. 1 = zone boxes from the map
+# files (all island spawns, no Plaguelands spawn); 0 = the old smaller boxes, which leave 8 + 10 quest givers as
+# targets without a route (default). Read at startup.
+AiPlayerbot.Path.StartZoneExactBounds = 0
+# twow-repo#575 (PATH-01 #5, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = an rpg move goes to the point around the
+# target snapped onto the navmesh (5 yd), at any distance; a far target whose point cannot be snapped keeps the
+# raw point. 0 = the raw point (snapped only as a check below sight distance), default.
+AiPlayerbot.Path.RpgTargetSnap = 0
+# twow-repo#575 (PATH-01 b, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach Abnahme
+# an): 1 = every bot flight attempt (UseTaxi) is counted by result - ok, noPath (stored TaxiPath id unknown), noNpc (no
+# flight master in reach), tooFar (more than 31.6 yd from the start node of the stored path), failed - and every wait at a
+# dock for a ship / zeppelin that is not there; the first RouteFailDetail.LinesPerMinute of them a minute are logged as
+# [TaxiUse] / [TransportWait], plus [TaxiUse] summary once a minute. 0 = off (default).
+AiPlayerbot.Path.TaxiTrace = 0
 # Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
 # its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost
 # starts there) or enemies stand near the corpse - those two shortcuts apply only from the second
@@ -1819,10 +1848,20 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#541 (owner 11.10.2026, measurement only): 1 = count every packet the server hands to a session, per
+# receiver (bot packet the AI reads / bot packet built for nobody / real player), map (Eastern Kingdoms, Kalimdor,
+# other) and class (movement, update, spell, combat, chat, other), as count and bytes; one [BotPackets] line per
+# map bucket and minute, plus the sampled cost of the bot inbox copy. 0 = no counting (default).
+AiPlayerbot.PacketTrace = 0
+# twow-repo#541 (owner 11.10.2026): 1 = the nearest-units values (nearest friendly players, possible targets, …) skip
+# a parked bot that is hidden from bots (Park.HideFromBots) before the line-of-sight check - the core already hides it
+# from other bots, only these grid searches still found it. 0 = off (default).
+AiPlayerbot.Perf.NearestSkipHiddenBots = 0
+
 # twow-repo#541 A47 (owner 11.10.2026): bot saves. IntervalSeconds = N > 0: a bot holds back the core autosave
 # (PlayerSave.Interval, 60 s in our configs) and saves itself every N seconds in its own update on its map thread, its
-# first save offset by its guid; MaxPerTick = own saves per map thread and world tick (0 = no limit), the rest wait
-# for the next tick. Logout still saves; a crash loses at most N seconds of a bot. [BotSave] once a minute: saves,
+# first save offset by its guid; MaxPerTick = own saves per map thread and 100 ms window (0 = no limit), the rest wait
+# for the next window. Logout still saves; a crash loses at most N seconds of a bot. [BotSave] once a minute: saves,
 # deferred, avg_us (cost of one save - also the A47 probe with N = 60). 0 = core autosave (default).
 AiPlayerbot.BotSave.IntervalSeconds = 0
 AiPlayerbot.BotSave.MaxPerTick = 1
@@ -2034,6 +2073,11 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
+
+# twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
+# enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
+# and restoration Flametongue, before that Rockbiter. 0 = old per-strategy choice (default).
+AiPlayerbot.Shaman.ImbueBySpec = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
