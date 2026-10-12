@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "LootNonCombatStrategy.h"
 
 using namespace ai;
@@ -44,8 +45,10 @@ void RevealStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
 
 void RollStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
 {
+    // twow-repo#568 (D48, AiPlayerbot.Diet.LootRollPending): on, the node waits for a group and an open roll (same
+    // 5 s cadence); without them 'auto loot roll' was pushed at 100 and ended IMPOSSIBLE. Off: "very often".
     triggers.push_back(new TriggerNode(
-        "very often",
+        sPlayerbotAIConfig.dietLootRollPending ? "loot roll pending" : "very often",
         NextAction::array(0, new NextAction("auto loot roll", 100.0f), NULL)));
 }
 

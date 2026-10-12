@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "ShamanActions.h"
 #include "ShamanAiObjectContext.h"
 #include "ShamanTriggers.h"
@@ -151,7 +152,8 @@ namespace ai
                 creators["totembar elements"] = [](PlayerbotAI* ai) { return new ShamanTotemBarElementsStrategy(ai); };
                 creators["totembar ancestors"] = [](PlayerbotAI* ai) { return new ShamanTotemBarAncestorsStrategy(ai); };
                 creators["totembar spirits"] = [](PlayerbotAI* ai) { return new ShamanTotemBarSpiritsStrategy(ai); };
-                creators["totem fire nova"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire nova", "fire totem", "fire nova"); };
+                // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): the castable spell is "fire nova totem".
+                creators["totem fire nova"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire nova", "fire totem", sPlayerbotAIConfig.dietFireNovaTotem ? "fire nova totem" : "fire nova"); };
                 creators["totem fire flametongue"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire flametongue", "fire totem", "flametongue totem"); };
                 creators["totem fire resistance"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire resistance", "fire totem", "fire resistance totem"); };
                 creators["totem fire magma"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire magma", "fire totem", "magma totem"); };
@@ -345,6 +347,7 @@ namespace ai
                 creators["stormstrike"] = [](PlayerbotAI* ai) { return new CastStormstrikeAction(ai); };
                 creators["lava lash"] = [](PlayerbotAI* ai) { return new CastLavaLashAction(ai); };
                 creators["fire nova"] = [](PlayerbotAI* ai) { return new CastFireNovaAction(ai); };
+                creators["fire nova totem"] = [](PlayerbotAI* ai) { return new CastFireNovaTotemAction(ai); };
                 creators["ancestral spirit"] = [](PlayerbotAI* ai) { return new CastAncestralSpiritAction(ai); };
                 creators["water walking"] = [](PlayerbotAI* ai) { return new CastWaterWalkingAction(ai); };
                 creators["water breathing"] = [](PlayerbotAI* ai) { return new CastWaterBreathingAction(ai); };

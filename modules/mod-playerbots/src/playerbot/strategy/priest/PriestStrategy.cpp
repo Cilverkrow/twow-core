@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "PriestStrategy.h"
 
 using namespace ai;
@@ -86,15 +87,32 @@ PriestStrategy::PriestStrategy(PlayerbotAI* ai) : ClassStrategy(ai)
     actionNodeFactories.Add(std::make_unique<PriestStrategyActionNodeFactory>());
 }
 
+// twow-repo#568 (D20): the race is fixed, so the answer holds for the engine's lifetime (read at engine init).
+bool ai::dietpriest::RaceMayLearn(PlayerbotAI* ai, uint32 raceMask)
+{
+    if (!sPlayerbotAIConfig.dietPriestRacials)
+        return true;
+
+    Player* bot = ai ? ai->GetBot() : nullptr;
+    if (!bot)
+        return true;
+
+    return (bot->getRaceMask() & raceMask) != 0;
+}
+
 #ifdef MANGOSBOT_ZERO // Vanilla
 
 void PriestStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     ClassStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "critical health",
-        NextAction::array(0, new NextAction("desperate prayer", ACTION_EMERGENCY), NULL)));
+    // twow-repo#568 (D20): desperate prayer is Human/Dwarf only (race_mask 5).
+    if (dietpriest::RaceMayLearn(ai, dietpriest::RaceMaskHumanDwarf))
+    {
+        triggers.push_back(new TriggerNode(
+            "critical health",
+            NextAction::array(0, new NextAction("desperate prayer", ACTION_EMERGENCY), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "critical health",
@@ -368,9 +386,13 @@ void PriestBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         "fear ward",
         NextAction::array(0, new NextAction("fear ward", ACTION_EMERGENCY), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "target of attacker",
-        NextAction::array(0, new NextAction("elune's grace", ACTION_HIGH + 3), NULL)));
+    // twow-repo#568 (D20): elune's grace is Night Elf only (race_mask 8).
+    if (dietpriest::RaceMayLearn(ai, dietpriest::RaceMaskNightElf))
+    {
+        triggers.push_back(new TriggerNode(
+            "target of attacker",
+            NextAction::array(0, new NextAction("elune's grace", ACTION_HIGH + 3), NULL)));
+    }
 }
 
 void PriestBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -421,13 +443,20 @@ void PriestBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers
         "fear ward",
         NextAction::array(0, new NextAction("fear ward", ACTION_NORMAL + 1), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "touch of weakness",
-        NextAction::array(0, new NextAction("touch of weakness", ACTION_NORMAL + 1), NULL)));
+    // twow-repo#568 (D20): touch of weakness is Undead only (race_mask 16), shadowguard Troll only (128).
+    if (dietpriest::RaceMayLearn(ai, dietpriest::RaceMaskUndead))
+    {
+        triggers.push_back(new TriggerNode(
+            "touch of weakness",
+            NextAction::array(0, new NextAction("touch of weakness", ACTION_NORMAL + 1), NULL)));
+    }
 
-    triggers.push_back(new TriggerNode(
-        "shadowguard",
-        NextAction::array(0, new NextAction("shadowguard", ACTION_NORMAL + 1), NULL)));
+    if (dietpriest::RaceMayLearn(ai, dietpriest::RaceMaskTroll))
+    {
+        triggers.push_back(new TriggerNode(
+            "shadowguard",
+            NextAction::array(0, new NextAction("shadowguard", ACTION_NORMAL + 1), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "often",
@@ -604,9 +633,13 @@ void PriestOffdpsStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         "holy fire",
         NextAction::array(0, new NextAction("holy fire", ACTION_NORMAL + 2), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "very often",
-        NextAction::array(0, new NextAction("starshards", ACTION_NORMAL + 1), NULL)));
+    // twow-repo#568 (D20): starshards is Night Elf only (race_mask 8).
+    if (dietpriest::RaceMayLearn(ai, dietpriest::RaceMaskNightElf))
+    {
+        triggers.push_back(new TriggerNode(
+            "very often",
+            NextAction::array(0, new NextAction("starshards", ACTION_NORMAL + 1), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "smite",

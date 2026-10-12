@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "MageMultipliers.h"
 #include "FireMageStrategy.h"
 
@@ -286,8 +287,10 @@ void FireMageCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     MageCcStrategy::InitCombatTriggers(triggers);
 
+    // twow-repo#568 (D35, AiPlayerbot.Diet.MageBlastWave): with the switch the node uses the "blast wave" trigger
+    // (same 10 yd check, only while the blast wave talent is known). Switch off: "enemy ten yards".
     triggers.push_back(new TriggerNode(
-        "enemy ten yards",
+        sPlayerbotAIConfig.dietMageBlastWave ? "blast wave" : "enemy ten yards",
         NextAction::array(0, new NextAction("blast wave", ACTION_INTERRUPT), NULL)));
 }
 

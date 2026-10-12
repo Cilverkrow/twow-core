@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "PaladinMultipliers.h"
 #include "RetributionPaladinStrategy.h"
 
@@ -17,7 +18,9 @@ public:
         creators["repentance"] = &repentance;
         creators["repentance on enemy healer"] = &repentance_on_enemy_healer;
         creators["repentance on snare target"] = &repentance_on_snare_target;
-        creators["repentance of shield"] = &repentance_or_shield;
+        // twow-repo#568 D31 (AiPlayerbot.Diet.RetRepentanceKey): the critical-health node is pushed as
+        // "repentance or shield"; the old key never matched, so that basket ended UNKNOWN without alternatives.
+        creators[sPlayerbotAIConfig.dietRetRepentanceKey ? "repentance or shield" : "repentance of shield"] = &repentance_or_shield;
         creators["judgement"] = &judgement;
     }
 
