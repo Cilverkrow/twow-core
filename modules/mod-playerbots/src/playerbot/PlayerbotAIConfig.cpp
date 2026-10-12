@@ -450,6 +450,8 @@ bool PlayerbotAIConfig::Initialize()
     perfAttackersSingleList = config.GetBoolDefault("AiPlayerbot.Perf.AttackersSingleList", false);
     perfPartyTargetMemo = config.GetBoolDefault("AiPlayerbot.Perf.PartyTargetMemo", false);
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
+    x3bPublishedTargets = config.GetBoolDefault("AiPlayerbot.X3b.PublishedTargets", false);
+    x3bPublishedConditions = config.GetBoolDefault("AiPlayerbot.X3b.PublishedConditions", false);
     shamanImbueBySpec = config.GetBoolDefault("AiPlayerbot.Shaman.ImbueBySpec", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
