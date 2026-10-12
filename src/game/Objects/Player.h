@@ -2036,6 +2036,7 @@ class Player final: public Unit
         bool m_bCanDelayTeleport;
         bool m_bHasDelayedTeleport;
         bool m_hiddenFromBots = false;  // twow-repo#541/#551
+        std::atomic<bool> m_skipClientUpdates{ false };  // twow-repo#541 (SkipBotUpdatePackets), set by the bot module
         std::atomic<bool> m_gridSleep{ false };  // twow-repo#541 (SleepGrid), set in the world thread
         bool m_gridSleepAsleep = false;          // twow-repo#541, map thread only: asleep in the last cell update
         bool m_bHasBeenAliveAtDelayedTeleport;
@@ -2171,6 +2172,14 @@ class Player final: public Unit
         bool IsHiddenFromBots() const { return m_hiddenFromBots; }
         void SetHiddenFromBots(bool hidden);
         bool HasClientSocket() const;
+
+        // twow-repo#541 (owner 11.10.2026, AiPlayerbot.Perf.SkipBotUpdatePackets): a bot session has no client, and
+        // the bot AI reads object state directly from the objects, never from update packets (PacketTrace: 0 of
+        // ~140k update packets per minute were read). With the flag the core does not build or send
+        // SMSG_UPDATE_OBJECT / COMPRESSED / DESTROY for this player; every bookkeeping step (visible set, broadcast
+        // listeners, update masks) stays as it is. Set and cleared by the bot module; never true with a client socket.
+        void SetSkipClientUpdates(bool skip) { m_skipClientUpdates.store(skip, std::memory_order_relaxed); }
+        bool SkipsClientUpdates() const { return m_skipClientUpdates.load(std::memory_order_relaxed) && !HasClientSocket(); }
 
         // twow-repo#541 (park, AiPlayerbot.Park.SleepGrid): a parked bot with this flag does not activate the
         // cells around it (Map::UpdateCells), so the creatures there are not updated unless someone else is

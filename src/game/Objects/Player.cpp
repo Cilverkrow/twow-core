@@ -21286,7 +21286,8 @@ void Player::UpdateVisibilityOf(WorldObject const* viewPoint, T* target, UpdateD
                 if (((Creature*)target)->IsInCombat())
                     ((Creature*)target)->GetThreatManager().modifyThreatPercent(this, -101);
 
-            target->BuildOutOfRangeUpdateBlock(&data);
+            if (!SkipsClientUpdates())   // twow-repo#541 (SkipBotUpdatePackets): the visible set below stays
+                target->BuildOutOfRangeUpdateBlock(&data);
             std::unique_lock<std::shared_mutex> lock(m_visibleGUIDs_lock);
             m_visibleGUIDs.erase(t_guid);
             lock.unlock();
@@ -21300,7 +21301,8 @@ void Player::UpdateVisibilityOf(WorldObject const* viewPoint, T* target, UpdateD
         if (target->IsInMap(this) && target->isWithinVisibilityDistanceOf(this, viewPoint, inVisibleList) && target->IsVisibleForInState(this, viewPoint, false))
         {
             visibleNow.insert(target);
-            target->BuildCreateUpdateBlockForPlayer(&data, this);
+            if (!SkipsClientUpdates())   // twow-repo#541 (SkipBotUpdatePackets): the visible set below stays
+                target->BuildCreateUpdateBlockForPlayer(&data, this);
             std::unique_lock<std::shared_mutex> lock(m_visibleGUIDs_lock);
             UpdateVisibilityOf_helper(m_visibleGUIDs, target);
             lock.unlock();
