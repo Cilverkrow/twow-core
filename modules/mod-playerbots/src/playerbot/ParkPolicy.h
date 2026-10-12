@@ -213,4 +213,29 @@ inline bool AiUpdateDue(bool inCombat, std::uint32_t nowMs, std::uint32_t lastMs
 {
     return inCombat || lastMs == 0 || std::uint32_t(nowMs - lastMs) >= AiIntervalMs;
 }
+
+// twow-repo#551 (owner 11.10.2026, "Schleifen-Fluten", AiPlayerbot.Park.Quiet, default 0): a quiet parked bot drops
+// its social strategies (emote: greet on "new player nearby", talk, suggest trade, emote reactions; custom::say;
+// ai chat) and answers only whispers - say, yell, party, guild and channel chat around it get no reply.
+inline char const* QuietDroppedStrategies()
+{
+    return ",-emote,-custom::say,-ai chat";
+}
+
+inline bool QuietDropsChatReply(bool quiet, bool parked, bool whisper)
+{
+    return quiet && parked && !whisper;
+}
+
+// At most one idle emote per intervalSeconds (0 = none). The first one falls at a guid-dependent second of the interval
+// after parking, so a full inn does not emote together; after each one the next is a full interval away.
+inline std::uint32_t FirstIdleEmote(std::uint32_t guid, std::uint32_t nowSeconds, std::uint32_t intervalSeconds)
+{
+    return nowSeconds + (intervalSeconds ? 1 + guid % intervalSeconds : 0);
+}
+
+inline bool IdleEmoteDue(std::uint32_t nowSeconds, std::uint32_t nextSeconds, std::uint32_t intervalSeconds)
+{
+    return intervalSeconds && nextSeconds && nowSeconds >= nextSeconds;
+}
 }
