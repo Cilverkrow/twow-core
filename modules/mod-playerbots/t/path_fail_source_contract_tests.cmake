@@ -1,0 +1,183 @@
+cmake_policy(VERSION 3.16)
+# twow-repo#575 (PATH-01 phase 2, owner go 11.10.2026 via OB-00): four switches, each default 0 = old behaviour.
+#  #1 AiPlayerbot.Path.RouteFailDetail      - [RouteFailDetail] per failed node route search (trace only)
+#  #3 AiPlayerbot.Path.HonestRouteFail      - an empty node route makes MoveTo2 fail instead of a false success
+#  #4 AiPlayerbot.Path.StartZoneExactBounds - Blackstone / Thalassian exclusion with the zone boxes
+#  #5 AiPlayerbot.Path.RpgTargetSnap        - rpg moves go to the navmesh-snapped point at any distance
+if(NOT DEFINED PB_SOURCE_DIR)
+  message(FATAL_ERROR "PB_SOURCE_DIR is required")
+endif()
+
+function(read_source path out_var)
+  file(READ "${PB_SOURCE_DIR}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "#575: missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(NOT offset EQUAL -1)
+    message(FATAL_ERROR "#575: forbidden ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(require_order text first second description)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if(a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "#575: order ${description}: '${first}' must come before '${second}'")
+  endif()
+endfunction()
+
+function(count_text text needle expected description)
+  set(n 0)
+  set(rest "${text}")
+  string(LENGTH "${needle}" nlen)
+  while(TRUE)
+    string(FIND "${rest}" "${needle}" at)
+    if(at EQUAL -1)
+      break()
+    endif()
+    math(EXPR n "${n} + 1")
+    math(EXPR from "${at} + ${nlen}")
+    string(SUBSTRING "${rest}" ${from} -1 rest)
+  endwhile()
+  if(NOT n EQUAL ${expected})
+    message(FATAL_ERROR "#575: expected ${expected}x ${description}, found ${n}")
+  endif()
+endfunction()
+
+function(region text start_marker end_marker out_var)
+  string(FIND "${text}" "${start_marker}" start)
+  if(start EQUAL -1)
+    message(FATAL_ERROR "#575: region start not found: ${start_marker}")
+  endif()
+  string(SUBSTRING "${text}" ${start} -1 rest)
+  string(FIND "${rest}" "${end_marker}" len)
+  if(len EQUAL -1)
+    message(FATAL_ERROR "#575: region end not found: ${end_marker}")
+  endif()
+  string(SUBSTRING "${rest}" 0 ${len} body)
+  set(${out_var} "${body}" PARENT_SCOPE)
+endfunction()
+
+read_source("PlayerbotAIConfig.h" config_h)
+read_source("PlayerbotAIConfig.cpp" config_cpp)
+read_source("aiplayerbot.conf.dist.in" conf_dist)
+read_source("PathFailPolicy.h" policy)
+read_source("TravelMgr.cpp" travel_mgr)
+read_source("TravelNode.h" node_h)
+read_source("TravelNode.cpp" node_cpp)
+read_source("strategy/actions/MovementActions.h" move_h)
+read_source("strategy/actions/MovementActions.cpp" move_cpp)
+read_source("strategy/actions/MoveToRpgTargetAction.cpp" rpg_cpp)
+
+# 0. Switches: default off in code and conf, documented with the acceptance note (trace: no behaviour change).
+foreach(member pathRouteFailDetail pathHonestRouteFail pathStartZoneExactBounds pathRpgTargetSnap)
+  require_text("${config_h}" "    bool ${member} = false;  // twow-repo#575 (PATH-01 #" "${member} default off")
+endforeach()
+require_text("${config_h}" "    uint32 pathRouteFailDetailLinesPerMinute = 30;" "lines per minute default")
+require_text("${config_cpp}" "pathRouteFailDetail = config.GetBoolDefault(\"AiPlayerbot.Path.RouteFailDetail\", false);" "RouteFailDetail read off")
+require_text("${config_cpp}" "pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault(\"AiPlayerbot.Path.RouteFailDetail.LinesPerMinute\", 30));" "lines per minute clamped")
+require_text("${config_cpp}" "pathHonestRouteFail = config.GetBoolDefault(\"AiPlayerbot.Path.HonestRouteFail\", false);" "HonestRouteFail read off")
+require_text("${config_cpp}" "pathStartZoneExactBounds = config.GetBoolDefault(\"AiPlayerbot.Path.StartZoneExactBounds\", false);" "StartZoneExactBounds read off")
+require_text("${config_cpp}" "pathRpgTargetSnap = config.GetBoolDefault(\"AiPlayerbot.Path.RpgTargetSnap\", false);" "RpgTargetSnap read off")
+# The start-zone switch is read before the quest travel table is built (inside Initialize).
+require_order("${config_cpp}" "pathStartZoneExactBounds = config.GetBoolDefault(" "sTravelMgr.LoadQuestTravelTable();" "switch read before the travel table")
+foreach(key RouteFailDetail HonestRouteFail StartZoneExactBounds RpgTargetSnap)
+  require_text("${conf_dist}" "\nAiPlayerbot.Path.${key} = 0\n" "${key} documented off")
+endforeach()
+require_text("${conf_dist}" "\nAiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 30\n" "lines per minute documented")
+count_text("${conf_dist}" "(PATH-01 #" 4 "PATH-01 conf blocks")
+
+# 1. #4 start-zone boxes: the old boxes stay the off path, the zone boxes are the on path.
+require_text("${policy}" "        if (mapId == 1 && x > -500.0f && x < 350.0f && y > -7850.0f && y < -7100.0f)\n            return true;\n        if (mapId == 0 && x > 3000.0f && x < 3800.0f && y > -2800.0f && y < -2250.0f)\n            return true;" "old boxes kept for the off path")
+require_text("${policy}" "    { -1066.7f, 1066.7f, -8533.3f, -6400.0f }," "Blackstone zone box")
+region("${policy}" "constexpr Box ThalassianBoxes[] = {" "};" thal)
+count_text("${thal}" "    { " 5 "Thalassian zone boxes")
+region("${travel_mgr}" "static bool IsInBlackstoneOrThalassian(uint32 mapId, float x, float y)" "\n}\n" excl)
+require_text("${excl}" "return ai::path_fail::InCustomStartZone(mapId, x, y, sPlayerbotAIConfig.pathStartZoneExactBounds);" "exclusion through the switch")
+forbid_text("${excl}" "GetZoneAndAreaId" "zone lookup at boot (deadlock, see the comment)")
+count_text("${travel_mgr}" "IsInBlackstoneOrThalassian(guidP.getMapId(), guidP.getX(), guidP.getY())" 2 "exclusion call sites (quest + grind/rpg)")
+
+# 2. #1 detail: optional out-param, filled only when passed, passed only with the trace on.
+require_text("${node_h}" "Unit* unit = nullptr, ai::path_fail::RouteFailDetail* outDetail = nullptr);" "getRoute out-param")
+require_text("${node_h}" "static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit = nullptr, ai::path_fail::RouteFailDetail* outDetail = nullptr);" "getFullPath out-param")
+region("${node_cpp}" "TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath, std::vector<WorldPosition>& endPath, Unit* unit, ai::path_fail::RouteFailDetail* outDetail)" "\nTravelPath TravelNodeMap::getFullPath(" route)
+string(REGEX MATCHALL "outDetail->" writes "${route}")
+string(REGEX MATCHALL "if \\(outDetail" guards "${route}")
+list(LENGTH writes n_writes)
+list(LENGTH guards n_guards)
+if(NOT n_guards EQUAL 7 OR NOT n_writes EQUAL 16)
+  message(FATAL_ERROR "#575: getRoute must fill the detail only inside its 7 'if (outDetail' blocks (guards ${n_guards}, writes ${n_writes})")
+endif()
+# pairs on every path (successes too; the #430 L0 trace reads it from the detail).
+require_text("${route}" "            ++routePairs;\n            if (outDetail)   // twow-repo#575 (PATH-01 #1): pairs on every path (also successes, for the #430 L0 trace)\n                outDetail->pairs = routePairs;" "pairs after every pair")
+require_text("${route}" "    if (startNodes.empty() || endNodes.empty())\n    {\n        if (outDetail)   // twow-repo#575 (PATH-01 #1)\n            outDetail->noNodes = true;\n        return TravelNodeRoute();\n    }" "no-node case")
+# Cooldown case: anchored loosely so the #430 L1b skip counter can sit in the same block.
+region("${route}" "    if (routeBot && ai::stall_guard::RouteCooldowns().IsBlocked(routeKey, routeNow))\n    {" "\n    }\n" cooldown_block)
+require_text("${cooldown_block}" "        if (outDetail)   // twow-repo#575 (PATH-01 #1)\n            outDetail->cooldownSkip = true;" "cooldown case")
+require_order("${cooldown_block}" "outDetail->cooldownSkip = true;" "return TravelNodeRoute();" "cooldown flag before the skip return")
+require_order("${route}" "outDetail->budgetStop = true;" "                return TravelNodeRoute();" "budget case before its return")
+require_order("${route}" "outDetail->badEnd = uint32(badEndNodes.size());" "AI_VALUE2(bool, \"action useful\", \"hearthstone\")" "loop result before the hearthstone try")
+region("${node_cpp}" "TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit, ai::path_fail::RouteFailDetail* outDetail)" "\n}\n" full)
+require_text("${full}" "TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit, outDetail);" "detail passed to getRoute")
+require_order("${full}" "return TravelPath(beginPath);" "outDetail->directGap =" "direct gap only after a failed direct attempt")
+require_order("${full}" "outDetail->directGap =" "std::shared_lock<std::shared_timed_mutex> nodeMapLock(sTravelNodeMap.m_nMapMtx);" "direct gap before the node lock")
+
+region("${move_cpp}" "TravelPath MovementAction::ResolveMovePath(" "\nbool MovementAction::HandleSpecialMovement(" resolve)
+require_text("${resolve}" "bool const traceFail = sPlayerbotAIConfig.pathRouteFailDetail;" "trace switch")
+# Detail passed only behind a flag (the #430 L0 trace may add its own flag to the condition after a rebase).
+require_text("${resolve}" "outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, " "getFullPath call with the detail")
+require_text("${resolve}" "? &detail : nullptr);" "detail only behind a flag")
+forbid_text("${resolve}" ", bot, &detail);" "detail passed unconditionally")
+require_text("${resolve}" "            if (traceFail)\n                LogRouteFail(bot, getName(), startPosition, endPosition, detail);" "log only with the trace on")
+require_text("${resolve}" "    if (outNoRoute)\n        *outNoRoute = noRoute;" "no-route flag reported")
+require_text("${move_h}" "            LastMovement& lastMove,\n            bool* outNoRoute = nullptr);" "ResolveMovePath out-flag")
+region("${move_cpp}" "void LogRouteFail(Player* bot" "\n}\n" log)
+require_order("${log}" "counters.Roll(" "counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute)" "summary before the budget")
+require_text("${log}" "[RouteFailDetail] summary failed=%u logged=%u honest=%u" "summary line")
+require_text("${log}" "[RouteFailDetail] bot=%u level=%u alive=%u action=%s map=%u" "detail line")
+
+# 3. #3 honest fail: only for an empty node route, only with the switch, inside the collapsed-path branch.
+region("${move_cpp}" "bool MovementAction::MoveTo2(" "\nbool MovementAction::" moveto2)
+require_text("${moveto2}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove, &noRoute);" "MoveTo2 asks for the flag")
+require_text("${moveto2}" "        if (noRoute && sPlayerbotAIConfig.pathHonestRouteFail)\n        {\n            path_fail::SharedCounters().honest.fetch_add(1, std::memory_order_relaxed);\n            return false;\n        }\n        return true; // Path collapsed" "honest fail gated, old answer kept")
+require_order("${moveto2}" "movePath.makeShortCut(startPos, sPlayerbotAIConfig.reactDistance, bot);" "if (noRoute && sPlayerbotAIConfig.pathHonestRouteFail)" "honest fail after the shortcut collapse")
+count_text("${move_cpp}" "pathHonestRouteFail" 1 "honest-fail switch uses")
+
+# 4. #5 rpg snap: far points snapped into a copy, the snapped point used only with the switch.
+require_text("${rpg_cpp}" "    else if (sPlayerbotAIConfig.pathRpgTargetSnap)\n    {" "far snap gated")
+require_text("${rpg_cpp}" "        WorldPosition farPos = movePos;\n        if (farPos.ClosestCorrectPoint(5.0f, 5.0f, bot->GetInstanceId()) && abs(farPos.getZ() - z) <= 10.0f)" "far snap on a copy")
+require_text("${rpg_cpp}" "    if (sPlayerbotAIConfig.pathRpgTargetSnap && snapped)\n        couldMove = MoveTo(mapId, movePos.getX(), movePos.getY(), movePos.getZ(), false, false);\n    else\n        couldMove = MoveTo(mapId, x, y, z, false, false);" "snapped point only with the switch, raw point otherwise")
+
+# 5. PATH-01 b: taxi / transport trace, only with AiPlayerbot.Path.TaxiTrace (default 0), no behaviour change.
+require_text("${config_h}" "    bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b)" "TaxiTrace default off")
+require_text("${config_cpp}" "pathTaxiTrace = config.GetBoolDefault(\"AiPlayerbot.Path.TaxiTrace\", false);" "TaxiTrace read off")
+require_text("${conf_dist}" "
+AiPlayerbot.Path.TaxiTrace = 0
+" "TaxiTrace documented off")
+count_text("${move_cpp}" "sPlayerbotAIConfig.pathTaxiTrace" 5 "TaxiTrace gates (3 flight results, 2 dock waits)")
+count_text("${move_cpp}" "LogTaxiUse(bot, entry, " 3 "flight result logs")
+count_text("${move_cpp}" "LogTransportWait(bot, " 2 "dock wait logs")
+region("${move_cpp}" "bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)" "
+}
+" use_taxi)
+require_order("${use_taxi}" "bool goTaxi = bot->ActivateTaxiPathTo({tEntry->from, tEntry->to}, unit, 1);" "if (sPlayerbotAIConfig.pathTaxiTrace)
+    {" "flight result logged after the attempt")
+require_order("${use_taxi}" "if (sPlayerbotAIConfig.pathTaxiTrace)
+    {" "return goTaxi;" "result logged before the return")
+require_text("${use_taxi}" "    if (!goTaxi)
+        bot->SetMoney(botMoney);
+
+    return goTaxi;" "flight behaviour unchanged")
+require_text("${policy}" "constexpr float TaxiStartReach = 31.6f;" "core start reach")
+
+message(STATUS "path_fail source contract passed")
