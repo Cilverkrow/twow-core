@@ -85,7 +85,7 @@ require_text("${note_body}" "LogAction(\"%s\", buf);" "same trail as the engine 
 function_body("${move_cpp}" "bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, bool react, bool noPath, bool ignoreEnemyTargets)" moveto_body)
 require_text("${moveto_body}" "{\n    return MoveTo2(WorldPosition(mapId, x, y, z), idle, react, noPath, ignoreEnemyTargets);" "MoveTo hands over to MoveTo2 first")
 function_body("${move_cpp}" "bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react, bool noPath, bool ignoreEnemyTargets)" moveto2_body)
-require_text("${moveto2_body}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove);" "MoveTo2 resolves its path in ResolveMovePath")
+require_text("${moveto2_body}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove" "MoveTo2 resolves its path in ResolveMovePath")
 
 # 3. ResolveMovePath: every token and clock behind the switch.
 function_body("${move_cpp}" "TravelPath MovementAction::ResolveMovePath(" resolve_body)
@@ -98,7 +98,10 @@ require_text("${resolve_body}" "    if (traceEngine)\n    {\n        if (lastMov
 require_text("${resolve_body}" "traceEngine->TraceNote(\"M:cache miss %s backDist=%.0f max=%.0f\"," "miss token (map/far)")
 require_text("${resolve_body}" "lastMove.lastPath.getBack().getMapId() != endPosition.getMapId() ? \"map\" : \"far\"" "miss reason")
 require_text("${resolve_body}" "std::uint64_t const routeStartUs = traceEngine ? ai::bot_update::NowUs() : 0;" "route clock only with the switch")
-require_text("${resolve_body}" "outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, traceEngine ? &routePairs : nullptr); //Pathfind using nodes." "pair count only with the switch")
+# Since twow-repo#575 (PATH-01 #1) the pair count comes from the route-fail detail, asked for with either trace switch.
+require_text("${resolve_body}" "outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, (traceFail || traceEngine) ? &detail : nullptr); //Pathfind using nodes." "pair count only with a trace switch")
+require_text("${resolve_body}" "traceEngine->TraceNote(\"M:route %lluus pairs=%u pts=%u\", (unsigned long long)ai::bot_update::SinceUs(routeStartUs),\n                detail.pairs, uint32(outMovePath.getPath().size()));" "pairs from the detail")
+forbid_text("${resolve_body}" "routePairs" "a second pair counter beside the detail")
 require_order("${resolve_body}" "std::uint64_t const routeStartUs" "sTravelNodeMap.getFullPath(" "route clock before the route")
 require_order("${resolve_body}" "sTravelNodeMap.getFullPath(" "        if (traceEngine)\n            traceEngine->TraceNote(\"M:route %lluus pairs=%u pts=%u\"" "route token after the route, behind the switch")
 require_text("${resolve_body}" "std::uint64_t const mmapStartUs = traceEngine ? ai::bot_update::NowUs() : 0;" "navmesh clock only with the switch")
@@ -115,11 +118,14 @@ if(NOT gated EQUAL 4 OR NOT notes EQUAL accounted)
   message(FATAL_ERROR "#541 L0: ResolveMovePath trace entries: ${notes} found, ${gated}+${gated_deep} directly gated + 2 in the gated miss block expected (4 at the L0 sites)")
 endif()
 
-# 4. Pair count: optional out parameter, default null, written only when given.
-require_text("${node_h}" "std::vector<WorldPosition>& endPath, Unit* unit = nullptr, uint32* outPairs = nullptr);" "getRoute pair out parameter defaults to null")
-require_text("${node_h}" "static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit = nullptr, uint32* outPairs = nullptr);" "getFullPath pair out parameter defaults to null")
-require_text("${node_cpp}" "            ++routePairs;\n            if (outPairs)   // twow-repo#541 (L0): trace only, the caller's local\n                *outPairs = routePairs;" "pair count written only when asked")
-require_text("${node_cpp}" "TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit, outPairs);" "getFullPath passes the pair pointer")
+# 4. Pair count: the optional route-fail detail of twow-repo#575 (default null, written only when given; its own
+#    contract path_fail_source_contract pins every write). No separate pair pointer.
+require_text("${node_h}" "std::vector<WorldPosition>& endPath, Unit* unit = nullptr, ai::path_fail::RouteFailDetail* outDetail = nullptr);" "getRoute detail defaults to null")
+require_text("${node_h}" "static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit = nullptr, ai::path_fail::RouteFailDetail* outDetail = nullptr);" "getFullPath detail defaults to null")
+require_text("${node_cpp}" "            ++routePairs;\n            if (outDetail)   // twow-repo#575 (PATH-01 #1): pairs on every path (also successes, for the #430 L0 trace)\n                outDetail->pairs = routePairs;" "pair count written only when asked, on every path")
+require_text("${node_cpp}" "TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit, outDetail);" "getFullPath passes the detail")
+forbid_text("${node_h}" "outPairs" "second pair pointer")
+forbid_text("${node_cpp}" "outPairs" "second pair pointer")
 
 # 5. Engine init cost.
 function_body("${ai_cpp}" "void PlayerbotAI::ReInitCurrentEngine()" reinit_body)

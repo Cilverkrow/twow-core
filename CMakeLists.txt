@@ -1005,7 +1005,7 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_mmap_race_560_contract.cmake")
-  # twow-repo#541 part C: Continents.Layout cell tables (14/16/18 regions) and their wiring.
+  # twow-repo#541 part C: Continents.Layout cell tables (14/16/18/20/21 regions) and their wiring.
   add_executable(continent_layout_541_test
     "${TW_CORE_ROOT}/t/continent_layout_541_test.cpp"
     "${TW_CORE_ROOT}/src/game/Maps/ContinentRegionTables.cpp")

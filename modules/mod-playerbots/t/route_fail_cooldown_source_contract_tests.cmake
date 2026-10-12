@@ -75,8 +75,10 @@ endif()
 require_order("${route_body}" "testPathToLoop(startPos, endPos, unit, uid, routePoints, \"route\");\n                    return route;" "routeNow + sPlayerbotAIConfig.perfRouteFailCooldownSeconds" "hearthstone route returns before the cooldown")
 # The #416 budget stop keeps its own fixed cooldown.
 require_text("${route_body}" "ai::stall_guard::RouteCooldowns().Block(routeKey, routeNow + ai::stall_guard::RouteCooldownSeconds, routeNow);" "budget cooldown unchanged")
-# The skip path: the same empty route, the counter only with the switch.
-require_text("${route_body}" "    if (routeBot && ai::stall_guard::RouteCooldowns().IsBlocked(routeKey, routeNow))\n    {\n        if (sPlayerbotAIConfig.perfRouteFailCooldownSeconds)   // twow-repo#541 (L1b): [RouteFail] skips\n            ai::stall_guard::routeCooldownSkips.fetch_add(1, std::memory_order_relaxed);\n        return TravelNodeRoute();\n    }" "cooldown skip unchanged apart from the gated counter")
+# The skip path: the same empty route, the counter only with the switch (and the twow-repo#575 detail flag, only
+# when a detail was asked for). With AiPlayerbot.Path.HonestRouteFail the caller turns this empty route into a failed
+# MoveTo, so during the cooldown the honest answer costs no search.
+require_text("${route_body}" "    if (routeBot && ai::stall_guard::RouteCooldowns().IsBlocked(routeKey, routeNow))\n    {\n        if (sPlayerbotAIConfig.perfRouteFailCooldownSeconds)   // twow-repo#541 (L1b): [RouteFail] skips\n            ai::stall_guard::routeCooldownSkips.fetch_add(1, std::memory_order_relaxed);\n        if (outDetail)   // twow-repo#575 (PATH-01 #1)\n            outDetail->cooldownSkip = true;\n        return TravelNodeRoute();\n    }" "cooldown skip unchanged apart from the gated counter and the detail flag")
 require_order("${route_body}" "RouteCooldowns().IsBlocked(routeKey, routeNow)" "uint32 const routeStart = WorldTimer::getMSTime();" "skip before any search work")
 
 # 3. [RouteFail]: gated minute line, world thread, plain call before the PerfMon Init.
