@@ -692,7 +692,7 @@ void PlayerbotAI::UpdateBotSave()
     if (!ai::bot_save::Due(now, lastBotSave, interval))
         return;
     if (!bot->IsInWorld() || bot->IsBeingTeleported() ||
-        !ai::bot_save::TryTake(WorldTimer::tickTime(), sPlayerbotAIConfig.botSaveMaxPerTick, ai::bot_save::ThreadLocal()))
+        !ai::bot_save::TryTake(ai::bot_save::BudgetWindow(WorldTimer::getMSTime()), sPlayerbotAIConfig.botSaveMaxPerTick, ai::bot_save::ThreadLocal()))
     {
         ai::bot_save::Counter(ai::bot_save::Deferred).fetch_add(1, std::memory_order_relaxed);
         return;
