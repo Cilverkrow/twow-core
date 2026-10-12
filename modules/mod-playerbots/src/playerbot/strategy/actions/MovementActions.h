@@ -48,10 +48,13 @@ namespace ai
         bool WaitForTransport();
 
 
+        // twow-repo#575 (PATH-01 #3): outNoRoute = a node route was needed and none was found (the result is the
+        // target point alone).
         TravelPath ResolveMovePath(const WorldPosition& startPosition,
             const WorldPosition& endPosition,
             Unit* mover,
-            LastMovement& lastMove);
+            LastMovement& lastMove,
+            bool* outNoRoute = nullptr);
 
         bool HandleSpecialMovement(TravelPath& path);
 
