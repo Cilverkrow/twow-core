@@ -182,6 +182,7 @@ namespace ai
         // DoNextAction re-inits once the walk is over.
         bool inDoNextAction = false;
         bool reinitPending = false;
+        uint32 actionBudgetDeferrals = 0;   // twow-repo#541 (Perf.ActionBudget): expensive actions deferred in a row
         // twow-repo#541 (audit A21): the strategy set changed while this engine was not running and its triggers,
         // multipliers and queue are not rebuilt yet. Init() clears it; DoNextAction rebuilds first when set.
         // Protected on purpose: only Engine::ChangeStrategy sets it.
