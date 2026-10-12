@@ -1,6 +1,7 @@
 
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
+#include "playerbot/PathFailPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -411,6 +412,8 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#563 (X3a/X3c): per-context lock on the value maps; cross-bot value writes via the inbox.
     ai::context_lock::Enabled().store(config.GetBoolDefault("AiPlayerbot.X3a.ContextLock", false), std::memory_order_relaxed);
     x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
+    packetTrace = config.GetBoolDefault("AiPlayerbot.PacketTrace", false);
+    nearestSkipHiddenBots = config.GetBoolDefault("AiPlayerbot.Perf.NearestSkipHiddenBots", false);
     botSaveIntervalSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.IntervalSeconds", 0)));
     botSaveMaxPerTick = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.MaxPerTick", 1)));
     perfFleeMemo = config.GetBoolDefault("AiPlayerbot.Perf.FleeMemo", false);
@@ -506,6 +509,12 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
+    pathRouteFailDetail = config.GetBoolDefault("AiPlayerbot.Path.RouteFailDetail", false);
+    pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault("AiPlayerbot.Path.RouteFailDetail.LinesPerMinute", 30));
+    pathHonestRouteFail = config.GetBoolDefault("AiPlayerbot.Path.HonestRouteFail", false);
+    pathStartZoneExactBounds = config.GetBoolDefault("AiPlayerbot.Path.StartZoneExactBounds", false);
+    pathRpgTargetSnap = config.GetBoolDefault("AiPlayerbot.Path.RpgTargetSnap", false);
+    pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
     revivePreferCorpseRun = config.GetBoolDefault("AiPlayerbot.Revive.PreferCorpseRun", false);
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
