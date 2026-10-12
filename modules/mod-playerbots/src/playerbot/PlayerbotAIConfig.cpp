@@ -456,6 +456,10 @@ bool PlayerbotAIConfig::Initialize()
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
     questWorkTimeoutsMax = (uint32)config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.Max", 0);
     questWorkTimeoutsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.CooldownSeconds", 3600));
+    questLoopMaxFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.MaxFailures", 0)));
+    questLoopWindowSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.WindowSeconds", 1800));
+    questLoopCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.CooldownSeconds", 1800));
+    questLoopInactiveCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveCooldownSeconds", 0)));
     questFirstProgressionSkipScriptOnlyQuestTakers = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers", false);
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
     specAuraEnabled = config.GetBoolDefault("AiPlayerbot.SpecAura.Enabled", false);
