@@ -1,8 +1,11 @@
 #pragma once
 
 #include "AmmoStockPolicy.h"
+#include <list>
 #include <memory>
+#include <shared_mutex>
 #include <unordered_set>
+#include <vector>
 #include "Config/Config.h"
 #include "Talentspec.h"
 #include "SharedDefines.h"
@@ -150,8 +153,17 @@ public:
     std::string randomBotMapsAsString;
     std::vector<uint32> randomBotMaps;
     std::list<uint32> randomBotQuestItems;
+    // Audit A31 (twow-repo#563): IsInRandomAccountList runs on every region thread (~7 times per UpdateAI)
+    // and appends on a cache miss, while the world thread iterates the list. Access only through the methods
+    // below: the lock is AiPlayerbot.X3a.ContextLock, the set is a lookup index (the list keeps its order and
+    // contents exactly as before), and the LoginDatabase query runs outside the lock.
     std::list<uint32> randomBotAccounts;
+    std::unordered_set<uint32> randomBotAccountIndex;
     std::unordered_set<uint32> nonRandomBotAccounts;
+    mutable std::shared_mutex randomBotAccountsMutex;
+    void AddRandomBotAccount(uint32 id);
+    std::vector<uint32> RandomBotAccountsSnapshot() const;
+    size_t RandomBotAccountCount() const;
     std::list<uint32> randomBotSpellIds;
     std::list<uint32> randomBotQuestIds;
     std::list<uint32> immuneSpellIds;
@@ -532,11 +544,44 @@ public:
     bool persistentActiveRosterEnabled = false;
     bool parkHideFromBots = false;  // twow-repo#541/#551: parked bots invisible to other bots (core Player flag)
     bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
+    bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
+    uint32 parkMaxPerInn = 0;   // twow-repo#551 (owner 10.10): parked bots per inn, 0 = ai::park::SpotCapacity (25) as before
+    uint32 parkMaxPerCity = 0;  // twow-repo#551 (owner 10.10): parked bots per capital zone (inns + city spots), 0 = no limit
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool x3cInboxWrites = false;  // twow-repo#563 (X3c): value writes into other bots go through their inbox
     bool warnUnknownNames = false;  // twow-repo#568 (c): once-per-name [UnknownName] line for trigger/action/strategy names without a creator
+    bool packetTrace = false;  // twow-repo#541 (owner 11.10.): [BotPackets] packets per receiver / map / class, measurement only
+    bool nearestSkipHiddenBots = false;  // twow-repo#541 (owner 11.10. "1b"): nearest*/possible-targets values skip parked bots hidden from bots
+    uint32 botSaveIntervalSeconds = 0;  // twow-repo#541 A47: bots save themselves every N s (0 = core autosave as before)
+    uint32 botSaveMaxPerTick = 1;       // A47: own bot saves per map thread and world tick (0 = no limit)
+    bool perfFleeMemo = false;  // twow-repo#541 (audit A01): FleeManager reuses a candidate angle's result within one search (0 = off)
+    bool findCorpseLazySpot = false;  // twow-repo#541 (audit A02): find corpse skips the safe revive spot in the two branches that never use it (0 = off)
+    bool nearestUnitsAcceptFirst = false;  // twow-repo#541 (audit A03): nearest npcs / friendly players / stealthed units run their pure filter before the LOS raycast; friendly players visit the world container only (0 = off)
+    bool perfGatherLootFastPath = false;  // twow-repo#541 (audit A04+A05): "add gathering loot" skill reject before the LOS raycast, corpse list only with skinning (0 = off)
+    uint32 perfAttackersLazyChecks = 0;  // twow-repo#541 (audit A06): AttackersValue::IsValid level 1 = area lookup only where read (enemy players, pets), 2 = plus the bot's own not-fighting candidates rejected first (0 = off)
+    bool perfActionNodeOwnerCache = false;  // twow-repo#541 (audit A08): Engine::CreateActionNode on the bot's own AI tick asks only the strategy that answered a base action name first (0 = off)
+    bool perfBgMasterCacheRef = false;  // twow-repo#541 (audit A09): "rpg bg type" / "bg masters" read the battlemaster cache by const reference with find(), no deep copy (0 = off)
+    bool perfTravelInfoReuse = false;  // twow-repo#541 (audit A10): a travel choice builds one PlayerTravelInfo, reuses a known IsActive answer and checks the cheap hub conditions first; GetDestinations looks one asked entry up by key (0 = off)
+    bool perfLogActionFastPath = false;  // twow-repo#541 (audit A11): no action-log lookup while no file can be written, PerfMon action/trigger keys only with PerfMon on (0 = off)
+    bool botUpdateTraceTailFix = false;  // twow-repo#541 (audit A11): engine last-action trail keeps the newest 512 characters, cut at an entry (0 = off)
+    bool perfTrainableSpellsPrecheck = false;  // twow-repo#541 (audit A12): "trainable spells" skips a spell that fails the core's own skill RED check before the trainer state walk, roster state read once per call (0 = off)
+    bool perfRacialsSkipUnbuildable = false;  // twow-repo#541 (audit A13): racials strategy does not register gift of the naaru / mana tap / arcane torrent (no action in this vanilla build); NOT strictly neutral, engine queue path in rare ticks (0 = off)
+    bool chaseSkipHazardPathWhenNoHazards = false;  // twow-repo#541 (audit A14): ChaseTo skips the hazard path / LOS checks while the bot's hazards list is empty; same chase decisions, only the detail log line differs (0 = off)
+    bool perfGiveItemGroupOnlyScan = false;  // twow-repo#541 (audit A15): give water / food / item value of a bot without group skips the out-of-group classification and list scan; same result, disclosed: no GetPet()/eventCache side effects on foreign players (0 = off)
+    bool perfStaticSpellLists = false;  // twow-repo#541 (audit A16): CanCastSpell / CheckSpellTargetAlignment take the neutral and out-of-control spell ids from constant arrays instead of a per-call std::list; same ids, same answers (0 = off)
+    bool petDeadNoWorldPetFalse = false;  // twow-repo#541 (audit A07): hunter without a world pet never counts as having a dead pet (no character_pet SELECT, no doomed Revive Pet)
+    bool canCastSpellChecksPower = false;  // twow-repo#541 (audit A33): CanCastSpell (unit target, spellbook) also checks the mana/rage/energy/health cost (0 = off)
+    bool castSpellRefreshOnLearn = false;  // twow-repo#541 (audit A27): spell actions re-read spell id/range when the bot learned spells, levelled, spent talent points or (pet spell actions) got another pet (0 = off)
+    bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
+    bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
+    bool perfPartyBuffKnownSpellGate = false;  // twow-repo#541 (audit A22): five party buff/cure triggers skip their party scan while the bot knows no rank of the action's spell (0 = off)
+    bool perfLazyEngineInit = false;  // twow-repo#541 (audit A21): a strategy change rebuilds an engine that is not running (idle combat/non-combat, dead) only when it is activated (0 = off)
+    bool perfAttackersSingleList = false;  // twow-repo#541 (audit A23): "has attackers" and "possible attack targets::1" use the full "attackers" list, no second attackers::1 pass (0 = off)
+    bool perfPartyTargetMemo = false;  // twow-repo#541 (audit A25): party-target values reuse their result inside one DoNextAction pass until the next Execute (0 = off)
+    bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
+    bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
@@ -643,6 +688,12 @@ public:
     bool rosterFarMove = false;  // hotfix 8.33 (#544): cheap movement without a player nearby, 0 = off
     float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route
+    bool pathRouteFailDetail = false;  // twow-repo#575 (PATH-01 #1): [RouteFailDetail] line per failed node route (rate-limited), 0 = off
+    uint32 pathRouteFailDetailLinesPerMinute = 30;  // PATH-01 #1: detail lines per minute (all failures are counted), clamped 0..600
+    bool pathHonestRouteFail = false;  // twow-repo#575 (PATH-01 #3): an empty node route makes MoveTo2 fail instead of reporting a collapsed path, 0 = off
+    bool pathStartZoneExactBounds = false;  // twow-repo#575 (PATH-01 #4): Blackstone / Thalassian exclusion uses the zone boxes, 0 = old boxes
+    bool pathRpgTargetSnap = false;  // twow-repo#575 (PATH-01 #5): rpg moves go to the navmesh-snapped point around the target, 0 = off
+    bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b): [TaxiUse] / [TransportWait] lines and a minute summary of bot flights and ship waits, 0 = off
     bool revivePreferCorpseRun = false;  // hotfix 8.34 (#544): corpse run before the spirit-healer shortcuts
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times

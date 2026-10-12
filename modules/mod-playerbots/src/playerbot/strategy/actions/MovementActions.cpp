@@ -19,6 +19,7 @@
 #include "playerbot/strategy/generic/CombatStrategy.h"
 #include "playerbot/FarFollowPolicy.h"
 #include "playerbot/FarMovePolicy.h"
+#include "playerbot/PathFailPolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 
@@ -66,6 +67,75 @@ bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition c
 
     out = point;
     return true;
+}
+
+// twow-repo#575 (PATH-01 #1, AiPlayerbot.Path.RouteFailDetail): one line per failed node route search within the minute's
+// budget, plus a summary of the previous minute (all failures, logged lines, PATH-01 #3 honest fails).
+void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& from, WorldPosition const& to,
+    path_fail::RouteFailDetail const& d)
+{
+    path_fail::Counters& counters = path_fail::SharedCounters();
+    uint32 failed = 0, logged = 0, honest = 0;
+    if (counters.Roll(uint64(time(nullptr)), failed, logged, honest))
+        sLog.outBasic("[RouteFailDetail] summary failed=%u logged=%u honest=%u", failed, logged, honest);
+    if (!counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute))
+        return;
+
+    float const dist = from.getMapId() == to.getMapId() ? from.distance(to) : -1.0f;
+    sLog.outBasic("[RouteFailDetail] bot=%u level=%u alive=%u action=%s map=%u x=%.1f y=%.1f z=%.1f to_map=%u to_x=%.1f to_y=%.1f to_z=%.1f "
+        "dist=%.0f pairs=%u bad_start=%u bad_end=%u start_nodes=%u end_nodes=%u start_node=\"%s\" start_dist=%.0f end_node=\"%s\" "
+        "end_dist=%.0f direct_gap=%.1f no_nodes=%u cooldown=%u budget=%u transport=%u",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->IsAlive() ? 1u : 0u, action.c_str(), from.getMapId(), from.getX(), from.getY(),
+        from.getZ(), to.getMapId(), to.getX(), to.getY(), to.getZ(), dist, d.pairs, d.badStart, d.badEnd, d.startNodes, d.endNodes,
+        d.startNode.c_str(), d.startNodeDist, d.endNode.c_str(), d.endNodeDist, d.directGap, d.noNodes ? 1u : 0u,
+        d.cooldownSkip ? 1u : 0u, d.budgetStop ? 1u : 0u, d.transportRoute ? 1u : 0u);
+}
+
+// twow-repo#575 (PATH-01 b, AiPlayerbot.Path.TaxiTrace): summary of the previous minute, once.
+void LogTaxiSummary(path_fail::TaxiCounters& counters)
+{
+    uint32 results[5] = {};
+    uint32 waits = 0, logged = 0;
+    if (counters.Roll(uint64(time(nullptr)), results, waits, logged))
+        sLog.outBasic("[TaxiUse] summary ok=%u no_path=%u no_npc=%u too_far=%u failed=%u transport_waits=%u logged=%u",
+            results[0], results[1], results[2], results[3], results[4], waits, logged);
+}
+
+// Distance from the bot to the start node of the stored TaxiPath (-1 = other map / unknown node).
+float TaxiStartDistance(Player* bot, TaxiPathEntry const* tEntry)
+{
+    TaxiNodesEntry const* node = tEntry ? sTaxiNodesStore.LookupEntry(tEntry->from) : nullptr;
+    if (!node || node->map_id != bot->GetMapId())
+        return -1.0f;
+    float const dx = node->x - bot->GetPositionX(), dy = node->y - bot->GetPositionY(), dz = node->z - bot->GetPositionZ();
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+void LogTaxiUse(Player* bot, uint32 entry, TaxiPathEntry const* tEntry, bool needNpc, bool npcFound, path_fail::TaxiResult result,
+    float startDist)
+{
+    path_fail::TaxiCounters& counters = path_fail::SharedTaxiCounters();
+    LogTaxiSummary(counters);
+    counters.Count(result);
+    if (!counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute))
+        return;
+    sLog.outBasic("[TaxiUse] bot=%u level=%u team=%s obj=%u from=%u to=%u need_npc=%u npc=%u res=%s map=%u x=%.1f y=%.1f start_dist=%.1f",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->GetTeam() == ALLIANCE ? "A" : "H", entry, tEntry ? tEntry->from : 0u,
+        tEntry ? tEntry->to : 0u, needNpc ? 1u : 0u, npcFound ? 1u : 0u, path_fail::TaxiResultName(result), bot->GetMapId(),
+        bot->GetPositionX(), bot->GetPositionY(), startDist);
+}
+
+// A dock wait: the path wants a ship / zeppelin of this entry here and it is not boardable now.
+void LogTransportWait(Player* bot, uint32 entry, WorldPosition const& dock)
+{
+    path_fail::TaxiCounters& counters = path_fail::SharedTaxiCounters();
+    LogTaxiSummary(counters);
+    counters.transportWaits.fetch_add(1, std::memory_order_relaxed);
+    if (!counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute))
+        return;
+    sLog.outBasic("[TransportWait] bot=%u level=%u team=%s entry=%u map=%u dock_x=%.1f dock_y=%.1f dist=%.1f",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->GetTeam() == ALLIANCE ? "A" : "H", entry, dock.getMapId(), dock.getX(),
+        dock.getY(), dock.getMapId() == bot->GetMapId() ? WorldPosition(bot).distance(dock) : -1.0f);
 }
 }
 
@@ -317,6 +387,8 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
         ai->Unmount();
 #endif
         bool goClick = ai->HandleSpellClick(entry); //Source gryphon of ebonhold.
+        if (sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b): stored id unknown to TaxiPath.dbc
+            LogTaxiUse(bot, entry, nullptr, needNpc, false, path_fail::TaxiResult::NoPath, -1.0f);
         return goClick;
     }
 
@@ -334,6 +406,8 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
 
         if (!unit)
         {
+            if (sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
+                LogTaxiUse(bot, entry, tEntry, needNpc, false, path_fail::TaxiResult::NoNpc, TaxiStartDistance(bot, tEntry));
             return false;
         }
 
@@ -356,6 +430,15 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
     ai->Unmount();
 
     bool goTaxi = bot->ActivateTaxiPathTo({tEntry->from, tEntry->to}, unit, 1);
+
+    // twow-repo#575 (PATH-01 b): a refused flight farther than the core's reach from the stored start node is "tooFar".
+    if (sPlayerbotAIConfig.pathTaxiTrace)
+    {
+        float const startDist = TaxiStartDistance(bot, tEntry);
+        path_fail::TaxiResult const result = goTaxi ? path_fail::TaxiResult::Ok :
+            ((startDist < 0.0f || startDist > path_fail::TaxiStartReach) ? path_fail::TaxiResult::TooFar : path_fail::TaxiResult::Failed);
+        LogTaxiUse(bot, entry, tEntry, needNpc, unit != nullptr, result, startDist);
+    }
 
     if (!goTaxi)
         bot->SetMoney(botMoney);
@@ -738,7 +821,7 @@ bool MovementAction::WaitForTransport()
     return false;
 }
 
-TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, const WorldPosition& endPosition, Unit* mover, LastMovement& lastMove)    
+TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, const WorldPosition& endPosition, Unit* mover, LastMovement& lastMove, bool* outNoRoute)
 {
     float totalDistance = startPosition.distance(endPosition);
     float maxDistChange = totalDistance * 0.1f;
@@ -761,10 +844,20 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
 #endif
 
     TravelPath outMovePath;
+    bool noRoute = false;
 
     if (needsLongPath && !sTravelNodeMap.getNodes().empty() && !bot->InBattleGround())
     {
-        outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot); //Pathfind using nodes.
+        // twow-repo#575 (PATH-01 #1): with the trace on, the search reports what it saw; a failure is logged below.
+        path_fail::RouteFailDetail detail;
+        bool const traceFail = sPlayerbotAIConfig.pathRouteFailDetail;
+        outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, traceFail ? &detail : nullptr); //Pathfind using nodes.
+        if (outMovePath.empty())
+        {
+            noRoute = true;
+            if (traceFail)
+                LogRouteFail(bot, getName(), startPosition, endPosition, detail);
+        }
     }
     else
     {
@@ -778,6 +871,9 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
 
     if (outMovePath.empty())
         outMovePath.addPoint(endPosition);
+
+    if (outNoRoute)
+        *outNoRoute = noRoute;
 
     return outMovePath;
 }
@@ -842,6 +938,8 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
     if (nextPoint.type == PathNodeType::NODE_TRANSPORT)
     {
         bool usedTransport = UseTransport(ai, nextPoint.entry, nextPoint.point, WorldPosition(), sPlayerbotAIConfig.transportTeleportType > 0);
+        if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
+            LogTransportWait(bot, nextPoint.entry, nextPoint.point);
 
         uint32 lastTransportEntry = 0;
 
@@ -855,6 +953,8 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
     if (currentPoint.type == PathNodeType::NODE_TRANSPORT)
     {
         bool usedTransport = UseTransport(ai, currentPoint.entry, currentPoint.point, nextPoint.point, sPlayerbotAIConfig.transportTeleportType > 0);
+        if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
+            LogTransportWait(bot, currentPoint.entry, currentPoint.point);
 
         uint32 lastTransportEntry = 0;
 
@@ -1283,7 +1383,8 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     
     bool isWalking = false;
 
-    TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove);
+    bool noRoute = false;
+    TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove, &noRoute);
 
     lastMove.setPath(movePath);
 
@@ -1297,6 +1398,15 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     if (movePath.empty())
     {
         lastMove.setPath(movePath);
+        // twow-repo#575 (PATH-01 #3, AiPlayerbot.Path.HonestRouteFail): only the target point was left because no node
+        // route was found, and it lies beyond react distance. Reporting success made the bot search again on the next
+        // tick for minutes; on, the move fails, so travel targets count the retry and rpg targets are dropped. A route
+        // that collapses keeps the old answer.
+        if (noRoute && sPlayerbotAIConfig.pathHonestRouteFail)
+        {
+            path_fail::SharedCounters().honest.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        }
         return true; // Path collapsed — will rebuild next tick.
     }
 
@@ -2821,9 +2931,16 @@ bool MovementAction::ChaseTo(WorldObject* obj, float distance, float angle)
     WorldPosition endPosition(obj->GetMapId(), endPoint.x, endPoint.y, endPoint.z);
     endPosition.setZ(endPosition.getHeight());
 
+    // twow-repo#541 (audit A14): with an empty hazards list every hazard check below can only log
+    // (IsHazardNearPosition -> false, GeneratePathAvoidingHazards -> false), so skip the two path
+    // searches and the LOS ray. Same end position, same MoveChase; only the detail log line differs.
+    // Switch 0 = old path verbatim, the hazards value is not read here.
+    const bool chaseHazardChecks = !sPlayerbotAIConfig.chaseSkipHazardPathWhenNoHazards ||
+        !AI_VALUE(std::list<HazardPosition>, "hazards").empty();
+
     // Check if the end position is inside a hazard
     HazardPosition hazardPosition;
-    if (IsHazardNearPosition(endPosition, &hazardPosition))
+    if (chaseHazardChecks && IsHazardNearPosition(endPosition, &hazardPosition))
     {
         // Try to generate a nearby position outside the hazard
         const Vector3 hazardPoint = hazardPosition.first.getVector3();
@@ -2854,7 +2971,11 @@ bool MovementAction::ChaseTo(WorldObject* obj, float distance, float angle)
     MotionMaster& mm = *bot->GetMotionMaster();
 
     // Prevent moving if requested to move into a hazard
-    if (IsValidPosition(endPosition, botPosition))
+    if (!chaseHazardChecks)
+    {
+        sLog.outDetail("[BOT CHASE] %s -> %s: dist=%.1f no hazards, hazard path checks skipped, using MoveChase", bot->GetName(), obj->GetName(), distanceToTarget);
+    }
+    else if (IsValidPosition(endPosition, botPosition))
     {
         std::vector<WorldPosition> path = botPosition.getPathTo(endPosition,bot);
         if (GeneratePathAvoidingHazards(path))

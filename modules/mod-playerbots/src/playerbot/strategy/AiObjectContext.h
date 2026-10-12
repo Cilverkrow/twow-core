@@ -5,6 +5,7 @@
 #include "Value.h"
 #include "NamedObjectContext.h"
 #include "Strategy.h"
+#include "ValueMemoWindow.h"
 #include <set>
 
 #include "playerbot/BotSlots.h"
@@ -124,11 +125,16 @@ namespace ai
         void Load(std::list<std::string> data);
 
         std::vector<std::string> performanceStack;
+
+        // twow-repo#541 (audit A25): this bot's DoNextAction window for the party-target values
+        // (ValueMemoWindow.h). Opened only by Engine::DoNextAction while Perf.PartyTargetMemo = 1.
+        ValueMemoWindow& GetValueMemoWindow() { return valueMemoWindow; }
     protected:
         NamedObjectContextList<Strategy> strategyContexts;
         NamedObjectContextList<Action> actionContexts;
         NamedObjectContextList<Trigger> triggerContexts;
         NamedObjectContextList<UntypedValue> valueContexts;
+        ValueMemoWindow valueMemoWindow;
     };
 }
 

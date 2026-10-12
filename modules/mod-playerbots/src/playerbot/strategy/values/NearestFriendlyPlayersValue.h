@@ -14,5 +14,7 @@ namespace ai
     protected:
         void FindUnits(std::list<Unit*> &targets) override;
         virtual bool AcceptUnit(Unit* unit) override;
+        // twow-repo#541 (audit A03): AcceptUnit is a GUID compare (pure).
+        bool AcceptUnitBeforeLos() const override { return true; }
 	};
 }

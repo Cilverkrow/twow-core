@@ -23,6 +23,11 @@ namespace ai
         const uint32& GetSpellID() const { return spellId; }
         const std::string& GetSpellName() const { return spellName; }
         void SetSpellName(const std::string& name, std::string spellIDContextName = "spell id", bool force = false);
+        // twow-repo#541 (audit A27, AiPlayerbot.CastSpell.RefreshOnLearn): re-reads spell id and range when the bot's
+        // known-spell stamp changed since the last read. Not called by the 'vehicle spell id' actions.
+        void RefreshSpellIdOnLearn();
+        // twow-repo#541 (audit A27): true only for pet spell actions, whose id comes from the pet's spells.
+        virtual bool SpellStampTracksPet() const { return false; }
 
         Unit* GetTarget() override;
         virtual std::string GetTargetName() override { return "current target"; }
@@ -37,6 +42,8 @@ namespace ai
     private:
         std::string spellName;
         uint32 spellId;
+        float rangeFromSpell = 0.0f;  // twow-repo#541 (audit A27): last range taken from the spell (ctor, SetSpellName, refresh)
+        uint64 knownSpellStamp = 0;   // twow-repo#541 (audit A27): stamp the spell id was read against (0 = not stamped)
     };
 
     class CastPetSpellAction : public CastSpellAction
@@ -49,6 +56,7 @@ namespace ai
     protected:
         virtual std::string GetTargetName() override { return "current target"; }
         std::string GetReachActionName() override { return ""; }
+        bool SpellStampTracksPet() const override { return true; }  // twow-repo#541 (audit A27)
     };
 
 	//---------------------------------------------------------------------------------------------------------------------

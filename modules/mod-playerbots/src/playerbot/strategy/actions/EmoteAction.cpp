@@ -5,6 +5,7 @@
 
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include <mutex>
 using namespace ai;
 
 std::map<std::string, uint32> EmoteActionBase::emotes;
@@ -13,7 +14,10 @@ char *strstri(const char *haystack, const char *needle);
 
 EmoteActionBase::EmoteActionBase(PlayerbotAI* ai, std::string name) : Action(ai, name)
 {
-    if (emotes.empty()) InitEmotes();
+    // Audit A51 (twow-repo#563): bots build their actions on their own region threads; the static emote
+    // tables were filled by whichever came first while others already read them. Filled exactly once now.
+    static std::once_flag emotesOnce;
+    std::call_once(emotesOnce, [this]() { InitEmotes(); });
 }
 
 EmoteAction::EmoteAction(PlayerbotAI* ai) : EmoteActionBase(ai, "emote"), Qualified()

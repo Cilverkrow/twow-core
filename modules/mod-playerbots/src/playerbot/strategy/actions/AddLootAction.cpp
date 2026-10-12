@@ -227,12 +227,47 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
     return added;
 }
 
+bool AddGatheringLootAction::Execute(Event& event)
+{
+    // twow-repo#541 (audit A05, AiPlayerbot.Perf.GatherLootFastPath): switch off, or a chat command with
+    // object links, runs the inherited loop unchanged.
+    if (!sPlayerbotAIConfig.perfGatherLootFastPath || !event.getParam().empty())
+        return AddAllLootAction::Execute(event);
+
+    Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
+    bool added = false;
+
+    std::list<ObjectGuid> gos = context->GetValue<std::list<ObjectGuid>>("nearest game objects no los")->Get();
+    for (std::list<ObjectGuid>::iterator i = gos.begin(); i != gos.end(); i++)
+        added |= AddLoot(requester, *i);
+
+    // A corpse passes AddLoot only as a skinning target. LootObject::Refresh gives a lootable tapped
+    // corpse SKILL_NONE (rejected in AddLoot). A skinnable one gets GetRequiredLootSkill()
+    // (SKILL_SKINNING or 0) and a guid only if ai->HasSkill(that skill). Without skinning no corpse
+    // can be added, so the 75-yard corpse search and the loop are skipped. Every other reader of
+    // "nearest corpses" uses Get(), so it recomputes on its own schedule and never sees an older list.
+    if (ai->HasSkill(SKILL_SKINNING))
+    {
+        std::list<ObjectGuid> corpses = context->GetValue<std::list<ObjectGuid>>("nearest corpses")->Get();
+        for (std::list<ObjectGuid>::iterator i = corpses.begin(); i != corpses.end(); i++)
+            added |= AddLoot(requester, *i);
+    }
+
+    return added;
+}
+
 bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
 {
     LootObject loot(bot, guid);
 
     WorldObject *wo = loot.GetWorldObject(bot);
     if (loot.IsEmpty() || !wo)
+        return false;
+
+    // twow-repo#541 (audit A04, AiPlayerbot.Perf.GatherLootFastPath): the free skill reject before the LOS
+    // raycast, on the same LootObject and WorldObject (no extra Refresh). Both are side-effect-free
+    // rejects, so the result is the same.
+    if (sPlayerbotAIConfig.perfGatherLootFastPath && loot.skillId == SKILL_NONE)
         return false;
 
     if (!sServerFacade.IsWithinLOSInMap(bot, wo))

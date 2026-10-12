@@ -53,6 +53,9 @@ namespace ai
 
     private:
         bool AddLoot(Player* requester, ObjectGuid guid) override;
+        // twow-repo#541 (audit A05): with AiPlayerbot.Perf.GatherLootFastPath the corpse list is read only
+        // for a bot with skinning. Switch off = the inherited AddAllLootAction::Execute.
+        bool Execute(Event& event) override;
 
 #ifdef GenerateBotHelp
         virtual std::string GetHelpName() { return "add gathering loot"; }
