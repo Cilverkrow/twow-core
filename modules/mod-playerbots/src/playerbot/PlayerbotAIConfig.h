@@ -634,6 +634,9 @@ public:
     bool dietWanderSoloGuard = false;  // twow-repo#568 (D67): "wander near" without a follow target fires only on a FOLLOW motion, the only state in which its "stop follow" is useful (0 = off)
     bool dietRpgDeadTriggers = false;  // twow-repo#568 (D68): "rpg ai chat" (LLMEnabled 0), "rpg wander" (no real master) and "rpg quest use" (entry not 190767) answer from their first IsActive condition before the rpg pre-check values (0 = off)
     bool dietDuelTriggerGate = false;  // twow-repo#568 (D69): the duel strategy pushes "attack duel opponent" from "duel no attackers" (only with a duel) instead of "no attackers"; read at engine build (0 = off)
+    bool perfPartialPathReuse = false;  // twow-repo#541 (L1): MoveTo uses the path last built for an unchanged destination again, without a rebuild, for up to perfPartialPathReuseMs while its end is not reached (0 = off)
+    uint32 perfPartialPathReuseMs = 10000;  // twow-repo#541 (L1): age limit of such a path in ms, clamped to 1000..60000
+    uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b): a node route search without a route blocks the same bot and target cell for that many seconds, clamped to 0..300 (0 = off)
     bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
