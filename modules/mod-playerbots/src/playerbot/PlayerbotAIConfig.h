@@ -524,6 +524,7 @@ public:
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;
+    bool autoLearnQuestTeachEffects = false;  // twow-repo#578 (b): a teaching RewSpell teaches its LEARN_SPELL targets
     bool autoLearnDroppedSpells;
     bool autoLearnTimingTrace = false;   // #351: [AutoLearn] timing per level-up/login
     // #356: roster bots get class quest tools the quest path misses + [ClassGrant] log.
@@ -622,6 +623,7 @@ public:
     bool dietWanderSoloGuard = false;  // twow-repo#568 (D67): "wander near" without a follow target fires only on a FOLLOW motion, the only state in which its "stop follow" is useful (0 = off)
     bool dietRpgDeadTriggers = false;  // twow-repo#568 (D68): "rpg ai chat" (LLMEnabled 0), "rpg wander" (no real master) and "rpg quest use" (entry not 190767) answer from their first IsActive condition before the rpg pre-check values (0 = off)
     bool dietDuelTriggerGate = false;  // twow-repo#568 (D69): the duel strategy pushes "attack duel opponent" from "duel no attackers" (only with a duel) instead of "no attackers"; read at engine build (0 = off)
+    bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
@@ -734,6 +736,7 @@ public:
     bool pathStartZoneExactBounds = false;  // twow-repo#575 (PATH-01 #4): Blackstone / Thalassian exclusion uses the zone boxes, 0 = old boxes
     bool pathRpgTargetSnap = false;  // twow-repo#575 (PATH-01 #5): rpg moves go to the navmesh-snapped point around the target, 0 = off
     bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b): [TaxiUse] / [TransportWait] lines and a minute summary of bot flights and ship waits, 0 = off
+    bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off
     bool revivePreferCorpseRun = false;  // hotfix 8.34 (#544): corpse run before the spirit-healer shortcuts
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times

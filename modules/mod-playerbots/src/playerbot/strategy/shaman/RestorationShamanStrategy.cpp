@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/ShamanImbuePolicy.h"
 #include "ShamanMultipliers.h"
 #include "RestorationShamanStrategy.h"
 
@@ -11,7 +12,8 @@ class RestorationShamanStrategyActionNodeFactory : public NamedObjectFactory<Act
 public:
     RestorationShamanStrategyActionNodeFactory()
     {
-        creators["earthliving weapon"] = &earthliving_weapon;
+        // twow-repo#541: no Earthliving Weapon on Turtle; the "shaman weapon" trigger casts Flametongue directly
+        // (what the Earthliving node always fell back to).
         creators["mana tide totem"] = &mana_tide_totem;
         creators["searing totem"] = &searing_totem;
         creators["magma totem"] = &magma_totem;
@@ -30,8 +32,6 @@ public:
     }
 
 private:
-    ACTION_NODE_A(earthliving_weapon, "earthliving weapon", "flametongue weapon");
-
     ACTION_NODE_A(mana_tide_totem, "mana tide totem", "mana potion");
 
     ACTION_NODE_A(searing_totem, "searing totem", "flametongue totem");
@@ -458,10 +458,9 @@ void RestorationShamanBuffPveStrategy::InitCombatTriggers(std::list<TriggerNode*
     RestorationShamanBuffStrategy::InitCombatTriggers(triggers);
     ShamanBuffPveStrategy::InitCombatTriggers(triggers);
 
-    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Earthliving Weapon in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "flametongue weapon" : "earthliving weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void RestorationShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -469,10 +468,9 @@ void RestorationShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNo
     RestorationShamanBuffStrategy::InitNonCombatTriggers(triggers);
     ShamanBuffPveStrategy::InitNonCombatTriggers(triggers);
 
-    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Earthliving Weapon in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "flametongue weapon" : "earthliving weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void RestorationShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -480,10 +478,9 @@ void RestorationShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*
     RestorationShamanBuffStrategy::InitCombatTriggers(triggers);
     ShamanBuffPvpStrategy::InitCombatTriggers(triggers);
 
-    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Earthliving Weapon in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "flametongue weapon" : "earthliving weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void RestorationShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -491,10 +488,9 @@ void RestorationShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNo
     RestorationShamanBuffStrategy::InitNonCombatTriggers(triggers);
     ShamanBuffPvpStrategy::InitNonCombatTriggers(triggers);
 
-    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no Earthliving Weapon in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "flametongue weapon" : "earthliving weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void RestorationShamanBuffRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -947,7 +943,7 @@ void RestorationShamanBuffPveStrategy::InitCombatTriggers(std::list<TriggerNode*
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void RestorationShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -957,7 +953,7 @@ void RestorationShamanBuffPveStrategy::InitNonCombatTriggers(std::list<TriggerNo
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void RestorationShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -967,7 +963,7 @@ void RestorationShamanBuffPvpStrategy::InitCombatTriggers(std::list<TriggerNode*
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 }
 
 void RestorationShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -977,7 +973,7 @@ void RestorationShamanBuffPvpStrategy::InitNonCombatTriggers(std::list<TriggerNo
 
         triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 }
 
 void RestorationShamanBuffRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1419,7 +1415,7 @@ void RestorationShamanBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& 
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_HIGH), NULL)));
 
     triggers.push_back(new TriggerNode(
         "water shield",
@@ -1432,7 +1428,7 @@ void RestorationShamanBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*
 
     triggers.push_back(new TriggerNode(
         "shaman weapon",
-        NextAction::array(0, new NextAction("earthliving weapon", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction(shaman_imbue::TriggerAction(sPlayerbotAIConfig.shamanImbueBySpec, "flametongue weapon"), ACTION_NORMAL), NULL)));
 
     triggers.push_back(new TriggerNode(
         "water shield",

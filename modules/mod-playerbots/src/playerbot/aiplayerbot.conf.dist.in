@@ -905,6 +905,11 @@ AiPlayerbot.Path.RpgTargetSnap = 0
 # dock for a ship / zeppelin that is not there; the first RouteFailDetail.LinesPerMinute of them a minute are logged as
 # [TaxiUse] / [TransportWait], plus [TaxiUse] summary once a minute. 0 = off (default).
 AiPlayerbot.Path.TaxiTrace = 0
+# twow-repo#575 (PATH-01 E6, BEHAVIOUR CHANGE, "nach Abnahme an"): the quest rescue of a stuck bot up to level 10 picks a
+# start position of its faction; it could pick the goblin start (Blackstone Island, no route out for other races) or the
+# high-elf start (Thalassian Highlands) and rebinds the hearthstone at the target. 1 = those two starts are rescue
+# targets only for goblins / high elves. 0 = any start of the faction (default).
+AiPlayerbot.Path.RescueSkipCustomStarts = 0
 # Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
 # its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost
 # starts there) or enemies stand near the corpse - those two shortcuts apply only from the second
@@ -1056,6 +1061,12 @@ AiPlayerbot.AutoLearnTrainerSpells = 0
 # Bots automatically learn classquest reward spells on levelup
 # Default: 0 (disabled)
 AiPlayerbot.AutoLearnQuestSpells = 0
+
+# twow-repo#578 (b) (owner 11.10.2026): with AutoLearnQuestSpells, a quest whose RewSpell is a teaching spell (LEARN_SPELL
+# effect) and RewSpellCast = 0 teaches its learned spells, as the turn-in cast would (50002/50004 Disguise, 60060/60061
+# planter), instead of storing the teaching spell itself (5670/5671/46063). Retired quests ([CANCELLED] / [DEPRECATED],
+# 60011/60012 Piercing Light, 80388 Hardcore) teach nothing. The listed priest teaching spells work either way. 0 = as before.
+AiPlayerbot.AutoLearnQuestTeachEffects = 0
 # Log the duration of every automatic spell learning pass (level-up, login)
 # as [AutoLearn] timing, and once per class the cost of a full creature scan
 # the trainer cache replaced (#351).
@@ -2272,6 +2283,12 @@ AiPlayerbot.Diet.RpgDeadTriggers = 0
 # (custom strategies) are unchanged. Read at engine (re)build: switch with a restart or relog.
 # 0 = "no attackers" for every bot (default).
 AiPlayerbot.Diet.DuelTriggerGate = 0
+
+
+# twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
+# enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
+# and restoration Flametongue, before that Rockbiter. 0 = old per-strategy choice (default).
+AiPlayerbot.Shaman.ImbueBySpec = 0
 AiPlayerbot.RandomBotsMaxLoginsPerInterval = 30
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
