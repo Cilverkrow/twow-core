@@ -142,11 +142,10 @@ namespace ai
         void WarnUnknownName(UnknownNameKind kind, const std::string& name);
 
     private:
+        void LogAction(const char* format, ...);
         // Names this engine already reported (or handed to the process registry), per kind. Touched only
         // from this engine's own thread; bounded by UnknownNamesPerEngineCap in Engine.cpp.
         std::unordered_set<std::string> unknownNamesSeen[3];
-
-        void LogAction(const char* format, ...);
         void LogValues();
         // Cheap change-detector for the attached strategy set. A strategy
         // change that leaves the token unchanged is a no-op and must not call
