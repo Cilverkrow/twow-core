@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "PassiveMultiplier.h"
+#include <mutex>
 
 using namespace ai;
 
@@ -9,7 +10,10 @@ std::list<std::string> PassiveMultiplier::allowedParts;
 
 PassiveMultiplier::PassiveMultiplier(PlayerbotAI* ai) : Multiplier(ai, "passive")
 {
-    if (allowedActions.empty())
+    // Audit A29 (twow-repo#563): strategies are built on the bots' region threads; the static lists were
+    // filled by whichever came first while others already iterated them. Filled exactly once now.
+    static std::once_flag listsOnce;
+    std::call_once(listsOnce, []()
     {
         allowedActions.push_back("co");
         allowedActions.push_back("nc");
@@ -23,14 +27,11 @@ PassiveMultiplier::PassiveMultiplier(PlayerbotAI* ai) : Multiplier(ai, "passive"
         allowedActions.push_back("accept invitation");
         allowedActions.push_back("join");
         allowedActions.push_back("lfg");
-    }
 
-    if (allowedParts.empty())
-    {
         allowedParts.push_back("follow");
         allowedParts.push_back("stay");
         allowedParts.push_back("chat shortcut");
-    }
+    });
 }
 
 float PassiveMultiplier::GetValue(Action* action) 

@@ -13,7 +13,14 @@ void NearestFriendlyPlayersValue::FindUnits(std::list<Unit*> &targets)
 {
     AnyFriendlyUnitInObjectRangeCheck u_check(bot, range);
     UnitListSearcher<AnyFriendlyUnitInObjectRangeCheck> searcher(targets, u_check);
-    Cell::VisitAllObjects(bot, searcher, range);
+    // twow-repo#541 (audit A03, AiPlayerbot.Perf.NearestUnitsAcceptFirst): players live only in the world
+    // container (GridDefines.h AllWorldObjectTypes). VisitAllObjects walks the grid container first and
+    // the world container second, and AcceptUnit keeps only players, so visiting the world container
+    // alone yields the same players in the same order without checking every grid creature.
+    if (sPlayerbotAIConfig.nearestUnitsAcceptFirst)
+        Cell::VisitWorldObjects(bot, searcher, range);
+    else
+        Cell::VisitAllObjects(bot, searcher, range);
 }
 
 bool NearestFriendlyPlayersValue::AcceptUnit(Unit* unit)

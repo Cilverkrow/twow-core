@@ -1,5 +1,6 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
+#include "playerbot/PathFailPolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include <iomanip>
@@ -1828,13 +1829,12 @@ void TravelMgr::SetMobAvoidAreaMap(uint32 mapId)
 // (bounds taken from the zones' own NPC spawns) rather than a zone-ID lookup because this
 // function runs once at startup over every quest-relevant spawn in the game, and
 // GetZoneAndAreaId can force-load grid data per call - doing that here deadlocked the server.
+// twow-repo#575 (PATH-01 #4, AiPlayerbot.Path.StartZoneExactBounds): the boxes above left 8 Blackstone and 10
+// Thalassian quest givers outside, so Horde bots in Durotar chose island targets without a route. 1 = the zone
+// boxes in PathFailPolicy.h (from the zone cells of the map files, no Plaguelands spawn inside); 0 = the old boxes.
 static bool IsInBlackstoneOrThalassian(uint32 mapId, float x, float y)
 {
-    if (mapId == 1 && x > -500.0f && x < 350.0f && y > -7850.0f && y < -7100.0f)
-        return true;
-    if (mapId == 0 && x > 3000.0f && x < 3800.0f && y > -2800.0f && y < -2250.0f)
-        return true;
-    return false;
+    return ai::path_fail::InCustomStartZone(mapId, x, y, sPlayerbotAIConfig.pathStartZoneExactBounds);
 }
 
 void TravelMgr::LoadQuestTravelTable()
@@ -3148,11 +3148,51 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
     WorldPosition center = info.GetPosition();
     DestinationList retDests;
 
+    // twow-repo#541 (audit A10, AiPlayerbot.Perf.TravelInfoReuse): the inner map is keyed by quest id (or entry).
+    // Exactly one asked entry is looked up instead of walking every key, and DistanceTo is computed once per
+    // destination. Same list in the same order; several entries keep the key walk (map order).
+    bool const travelInfoReuse = sPlayerbotAIConfig.perfTravelInfoReuse;
+    auto const appendDestinations = [&](DestinationList const& dests)
+    {
+        for (TravelDestination* dest : dests)
+        {
+            if (onlyPossible && !dest->IsPossible(info))
+                continue;
+
+            float const distance = dest->DistanceTo(center);
+
+            if (maxDistance > 0 && distance > maxDistance)
+                continue;
+
+            if (distance == FLT_MAX) //Do not return destinations on maps you can't path to.
+                continue;
+
+            retDests.push_back(dest);
+        }
+    };
+
     for (auto& [purpose, entryDests] : destinationMap)
     {
 
         if (purposeFlag != (uint32)TravelDestinationPurpose::None && !((uint32)purpose & (uint32)purposeFlag))
             continue;
+
+        if (travelInfoReuse)
+        {
+            if (entries.size() == 1)
+            {
+                auto const found = entryDests.find(entries.front());
+                if (found != entryDests.end())
+                    appendDestinations(found->second);
+            }
+            else
+            {
+                for (auto const& [destEntry, dests] : entryDests)
+                    if (entries.empty() || std::find(entries.begin(), entries.end(), destEntry) != entries.end())
+                        appendDestinations(dests);
+            }
+            continue;
+        }
 
         for (auto& [destEntry, dests] : entryDests)
         {
