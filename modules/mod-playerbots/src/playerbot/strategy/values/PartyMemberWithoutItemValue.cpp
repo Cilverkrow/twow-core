@@ -40,6 +40,12 @@ public:
         return !botAi->GetAiObjectContext()->GetValue<uint32>("item count", item)->Get();
     }
 
+#ifdef CMANGOS
+    // twow-repo#541 (audit A15): Check() above rejects every unit that is not a Player
+    // with member->IsInGroup(bot); the food and water predicates call it first.
+    virtual bool OnlyBotGroupMembers() const override { return true; }
+#endif
+
 private:
     std::string item;
 };

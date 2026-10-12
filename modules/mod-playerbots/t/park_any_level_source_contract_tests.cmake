@@ -36,8 +36,9 @@ require_text("${config_cpp}" "parkAnyLevelInn = config.GetBoolDefault(\"AiPlayer
 require_text("${conf_dist}" "AiPlayerbot.Park.AnyLevelInn = 0" "documented key")
 
 # The switch only widens the inn list; the level band stays the default; inns before cities.
-require_text("${mgr}" "if (sPlayerbotAIConfig.parkAnyLevelInn ||\n                (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack))\n                inns.push_back(inn.loc);" "switch widens the inn list")
-require_order("${mgr}" "int index = pick(inns);" "index = pick(parkCities[team]);" "inns before capital spots")
+# twow-repo#551 park caps (10.10.2026): the loop also records each inn's capital zone; the picks carry the zones.
+require_text("${mgr}" "if (sPlayerbotAIConfig.parkAnyLevelInn ||\n                (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack))\n            {\n                inns.push_back(inn.loc);" "switch widens the inn list")
+require_order("${mgr}" "int index = pick(inns, innZones, true);" "index = pick(parkCities[team], parkCityZones[team], false);" "inns before capital spots")
 require_order("${mgr}" "via = \"inn\";\n            ++parkShare.inn;" "via = \"city\";\n            ++parkShare.city;" "share counted")
 require_text("${mgr}" "++parkShare.here;\n                return ParkBot(bot, \"here\", reason);" "fallback counted")
 

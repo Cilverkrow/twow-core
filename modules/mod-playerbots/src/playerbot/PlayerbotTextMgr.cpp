@@ -90,13 +90,16 @@ std::string PlayerbotTextMgr::GetBotText(std::string name)
         sLog.outError("Can't get bot text %s! No bots texts loaded!", name.c_str());
         return "";
     }
-    if (botTexts[name].empty())
+    // Audit A51 (twow-repo#563): operator[] inserted an empty entry for every unknown name - a std::map write
+    // from all region threads at once. find() reads only; an unknown name gives the same "" as before.
+    auto const texts = botTexts.find(name);
+    if (texts == botTexts.end() || texts->second.empty())
     {
         sLog.outDetail("Can't get bot text %s! No bots texts for this name!", name.c_str());
         return "";
     }
 
-    std::vector<BotTextEntry>& list = botTexts[name];
+    std::vector<BotTextEntry> const& list = texts->second;
     BotTextEntry textEntry = list[urand(0, list.size() - 1)];
     int32 localePrio = GetLocalePriority();
     if (localePrio == -1)
@@ -130,13 +133,14 @@ std::string PlayerbotTextMgr::GetBotText(ChatReplyType replyType, std::map<std::
         sLog.outError("Can't get bot text reply %u! No bots texts loaded!", replyType);
         return "";
     }
-    if (botTexts["reply"].empty())
+    auto const replies = botTexts.find("reply");   // audit A51, read only as above
+    if (replies == botTexts.end() || replies->second.empty())
     {
         sLog.outDetail("Can't get bot text reply %u! No bots texts replies!", replyType);
         return "";
     }
 
-    std::vector<BotTextEntry>& list = botTexts["reply"];
+    std::vector<BotTextEntry> const& list = replies->second;
     std::vector<BotTextEntry> proper_list;
     for (auto text : list)
     {

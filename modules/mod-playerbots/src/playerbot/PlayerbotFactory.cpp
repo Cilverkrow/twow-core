@@ -4348,7 +4348,8 @@ void PlayerbotFactory::InitSpecialSpells()
 ObjectGuid PlayerbotFactory::GetRandomBot()
 {
     std::vector<ObjectGuid> guids;
-    for (std::list<uint32>::iterator i = sPlayerbotAIConfig.randomBotAccounts.begin(); i != sPlayerbotAIConfig.randomBotAccounts.end(); i++)
+    std::vector<uint32> const accounts = sPlayerbotAIConfig.RandomBotAccountsSnapshot();   // audit A31
+    for (std::vector<uint32>::const_iterator i = accounts.begin(); i != accounts.end(); i++)
     {
         uint32 accountId = *i;
         if (!sAccountMgr.GetCharactersCount(accountId))

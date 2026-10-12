@@ -3,6 +3,7 @@
 #include "PartyMemberValue.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/PartyScanPolicy.h"
 #include "FreeMoveValues.h"
 #include "LastMovementValue.h"
 
@@ -100,9 +101,24 @@ Unit* PartyMemberValue::FindPartyMember(FindPlayerPredicate &predicate, bool ign
             nearestPlayers.insert(nearestPlayers.end(), nearestOutOfGroupPlayers.begin(), nearestOutOfGroupPlayers.end());
     }
 
+    // twow-repo#541 (audit A15, AiPlayerbot.Perf.GiveItemGroupOnlyScan, default 0):
+    // a predicate that accepts only members of the bot's own group accepts nobody
+    // while the bot has no group (Player::IsInGroup needs one shared non-null group).
+    // The classification below (IsHeal/IsTank of every nearby player) and the list
+    // scan then cannot yield anyone, and without a group the scan reads no value of
+    // this bot (CanFreeMoveTo needs bot->GetGroup()). Every value Get above and the
+    // rpg-target block below stay. Disclosed side effects that go away with 1: the
+    // scan no longer calls Unit::GetPet() on nearby foreign players, so it no longer
+    // clears another player's stale pet GUID (SetPet(nullptr), a cross-thread write)
+    // nor logs "Unit::GetPet: ... not exist."; and IsHeal/IsTank no longer fill
+    // RandomPlayerbotMgr::eventCache (map insert, first-miss DB load) for them.
+    // Off: identical to the code before.
+    bool const skipGroupScan = ai::party_scan::SkipUngroupedScan(
+        sPlayerbotAIConfig.perfGiveItemGroupOnlyScan, predicate.OnlyBotGroupMembers(), group != nullptr);
+
     std::list<Player*> healers, tanks, others, masters;
-    if (master) masters.push_back(master);
-    for (std::list<ObjectGuid>::iterator i = nearestPlayers.begin(); i != nearestPlayers.end(); ++i)
+    if (master && !skipGroupScan) masters.push_back(master);
+    for (std::list<ObjectGuid>::iterator i = nearestPlayers.begin(); !skipGroupScan && i != nearestPlayers.end(); ++i)
     {
         Player* player = dynamic_cast<Player*>(ai->GetUnit(*i));
         if (!player || player == bot) 
@@ -193,4 +209,55 @@ bool PartyMemberValue::IsTargetOfSpellCast(Player* target, SpellEntryPredicate &
     }
 
     return false;
+}
+
+// twow-repo#541 (audit A25, AiPlayerbot.Perf.PartyTargetMemo, default 0). The whole family runs with
+// check interval 1, which in UnitCalculatedValue::Get means "recompute on every Get" (1/2 == 0).
+// One heal/buff/dispel decision reads the same instance several times in one pass (trigger, cast
+// isUseful, reach isUseful/isPossible/Execute, cast isPossible/Execute), each a full group scan.
+// With the switch on, a Get inside the bot's own DoNextAction window returns the unit of the
+// computation made earlier in that window, resolved again through ai->GetUnit like every cached
+// UnitCalculatedValue read. The window advances after every action Execute
+// (Engine::ListenAndExecute); outside DoNextAction and on any other thread Epoch() is 0, so those
+// reads recompute as before. Set/Reset drop the memo.
+Unit* PartyMemberValue::Get()
+{
+    if (!sPlayerbotAIConfig.perfPartyTargetMemo)
+        return UnitCalculatedValue::Get();
+
+    // Randomised calculations (soulstone stagger) roll on every read, exactly as before.
+    if (!MemoAllowed())
+        return UnitCalculatedValue::Get();
+
+    uint32 const epoch = context->GetValueMemoWindow().Epoch();
+    if (epoch && epoch == memoEpoch)
+    {
+        Unit* const unit = m_guid.IsEmpty() ? nullptr : ai->GetUnit(m_guid);
+
+        // ObjectAccessor finds a player on ANY map. Re-apply FindPartyMember's same-map guard: callers
+        // read the member's AI (IsTank/IsHeal -> ContainsStrategy), which is only safe while it is
+        // updated on our map thread. A member that left the map or the world since the computation
+        // falls through to a fresh computation - exactly today's read.
+        if (m_guid.IsEmpty() || (unit && unit->IsInWorld() && unit->FindMap() && unit->FindMap() == bot->FindMap()))
+        {
+            value = unit;
+            return value;
+        }
+    }
+
+    Unit* const result = UnitCalculatedValue::Get();
+    memoEpoch = epoch;
+    return result;
+}
+
+void PartyMemberValue::Set(Unit* unit)
+{
+    memoEpoch = 0;
+    UnitCalculatedValue::Set(unit);
+}
+
+void PartyMemberValue::Reset()
+{
+    memoEpoch = 0;
+    UnitCalculatedValue::Reset();
 }

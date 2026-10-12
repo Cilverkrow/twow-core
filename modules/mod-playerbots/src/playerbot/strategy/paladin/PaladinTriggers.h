@@ -1,6 +1,7 @@
 #pragma once
 #include "playerbot/strategy/triggers/GenericTriggers.h"
 #include "playerbot/strategy/values/PartyMemberValue.h"
+#include "playerbot/KnownSpellGatePolicy.h"
 
 namespace ai
 {
@@ -485,6 +486,14 @@ namespace ai
     {
     public:
         CleanseCurePartyMemberMagicTrigger(PlayerbotAI* ai) : PartyMemberNeedCureTrigger(ai, "cleanse", DISPEL_MAGIC) {}
+        // twow-repo#541 (audit A22): "cleanse magic on party" has no ACTION_NODE_A alternative (Purify removes no magic).
+        virtual bool IsActive() override
+        {
+            if (!knownspell::MayScanParty(sPlayerbotAIConfig.perfPartyBuffKnownSpellGate, {"cleanse"},
+                    [this](char const* spellName) -> uint32 { return AI_VALUE2(uint32, "spell id", spellName); }))
+                return false;
+            return PartyMemberNeedCureTrigger::IsActive();
+        }
     };
 
     class HammerOfJusticeEnemyHealerTrigger : public InterruptEnemyHealerTrigger

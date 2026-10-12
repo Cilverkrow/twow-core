@@ -1,6 +1,7 @@
 #pragma once
 
 #include "playerbot/strategy/triggers/GenericTriggers.h"
+#include "playerbot/KnownSpellGatePolicy.h"
 
 namespace ai
 {
@@ -52,7 +53,15 @@ namespace ai
     {
     public:
         DivineSpiritOnPartyTrigger(PlayerbotAI* ai) : BuffOnPartyTrigger(ai, "divine spirit", 4) {}
-        virtual bool IsActive() override { return BuffOnPartyTrigger::IsActive() && !ai->HasAura("prayer of spirit", GetTarget()); }
+        virtual bool IsActive() override
+        {
+            // twow-repo#541 (audit A22): no party scan while no rank of the action's spell is known
+            // ("divine spirit on party" has no ACTION_NODE_A alternative).
+            if (!knownspell::MayScanParty(sPlayerbotAIConfig.perfPartyBuffKnownSpellGate, {"divine spirit"},
+                    [this](char const* spellName) -> uint32 { return AI_VALUE2(uint32, "spell id", spellName); }))
+                return false;
+            return BuffOnPartyTrigger::IsActive() && !ai->HasAura("prayer of spirit", GetTarget());
+        }
     };
 
     class DivineSpiritTrigger : public BuffTrigger 
@@ -66,7 +75,15 @@ namespace ai
     {
     public:
         ShadowProtectionOnPartyTrigger(PlayerbotAI* ai) : BuffOnPartyTrigger(ai, "shadow protection", 4) {}
-        virtual bool IsActive() override { return BuffOnPartyTrigger::IsActive() && !ai->HasAura("prayer of shadow protection", GetTarget()); }
+        virtual bool IsActive() override
+        {
+            // twow-repo#541 (audit A22): no party scan while no rank of the action's spell is known
+            // ("shadow protection on party" has no ACTION_NODE_A alternative).
+            if (!knownspell::MayScanParty(sPlayerbotAIConfig.perfPartyBuffKnownSpellGate, {"shadow protection"},
+                    [this](char const* spellName) -> uint32 { return AI_VALUE2(uint32, "spell id", spellName); }))
+                return false;
+            return BuffOnPartyTrigger::IsActive() && !ai->HasAura("prayer of shadow protection", GetTarget());
+        }
     };
 
     class ShadowProtectionTrigger : public BuffTrigger 

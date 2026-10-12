@@ -3,9 +3,11 @@
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/AiJitterPolicy.h"
+#include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/MemStoresPolicy.h"
+#include "playerbot/SpellListPolicy.h"
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <atomic>
@@ -39,6 +41,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/GrindCapPolicy.h"
+#include "playerbot/SpellPowerGatePolicy.h"
 #include "Movement/spline/MoveSplineInitArgs.h"
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
@@ -55,6 +58,8 @@
 #include "PlayerbotLLMInterface.h"
 
 #include <boost/algorithm/string.hpp>
+#include <optional>
+#include <chrono>
 
 #ifdef MANGOSBOT_TWO
 #include "Entities/Vehicle.h"
@@ -341,6 +346,39 @@ bool PlayerbotAI::AllowDelayJitter() const
     return bot && !bot->IsInCombat();
 }
 
+// twow-repo#541 (audit A17, AiPlayerbot.Perf.CombatIdleYield, default 0, behaviour-changing): the combat pass just
+// executed no action. While the bot auto-attacks its current target (melee swing with the victim in melee reach,
+// auto shot or wand) and is not casting, the next pass waits ai::combat_idle::StretchedDelay instead of ReactDelay.
+// Bots with a heal strategy keep ReactDelay. Own bot and own context only. UpdateAI ends the wait early when the
+// auto attack changes.
+void PlayerbotAI::StretchCombatIdle()
+{
+    // The DoNextAction tail can switch engines (ResetStrategies) after the engine call: no stretch then.
+    if (currentEngine != engines[(uint8)BotState::BOT_STATE_COMBAT])
+        return;
+
+    Unit* const victim = bot->GetVictim();
+    if (!victim || bot->IsNonMeleeSpellCasted(true, false, true))
+        return;
+
+    // A melee state kept from an earlier approach (casters, hunter dead zone) only counts while the victim is in reach.
+    bool const meleeSwing = bot->hasUnitState(UNIT_STAT_MELEE_ATTACKING) && bot->CanReachWithMeleeAutoAttack(victim);
+    bool const autoRepeat = bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL) != nullptr;
+    if (!meleeSwing && !autoRepeat)
+        return;
+
+    if (ContainsStrategy(STRATEGY_TYPE_HEAL))
+        return;
+
+    bool const victimIsTarget = victim == aiObjectContext->GetValue<Unit*>("current target")->Get();
+    if (!ai::combat_idle::IsAutoAttacking(victimIsTarget, meleeSwing, autoRepeat))
+        return;
+
+    aiInternalUpdateDelay = ai::combat_idle::StretchedDelay(sPlayerbotAIConfig.reactDelay);
+    combatIdleVictim = victim->GetObjectGuid();
+    ai::combat_idle::stretched.fetch_add(1, std::memory_order_relaxed);
+}
+
 PlayerbotAI::~PlayerbotAI()
 {
     for (uint8 i = 0 ; i < (uint8)BotState::BOT_STATE_ALL; i++)
@@ -609,10 +647,46 @@ void PlayerbotAI::QueueContextWriteTo(Player* target, std::function<void(ai::AiO
     targetAi->QueueContextWrite(std::move(write));
 }
 
+// twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): called from UpdateAI, i.e. on this bot's map thread - the
+// same thread the core's autosave runs on in Player::Update, so SaveToDB sees the same state it always did.
+void PlayerbotAI::UpdateBotSave()
+{
+    uint32 const interval = sPlayerbotAIConfig.botSaveIntervalSeconds;
+    bot->SetSaveTimer(ai::bot_save::HoldCoreTimerMs(interval));   // the core's autosave never comes first
+
+    uint32 const now = uint32(time(nullptr));
+    if (!botSaveScheduled)
+    {
+        // First own save at a guid-dependent second of the interval, so bots logged in together do not save together.
+        lastBotSave = now - interval + ai::bot_save::FirstSaveOffset(bot->GetGUIDLow(), interval);
+        botSaveScheduled = true;
+    }
+    if (!ai::bot_save::Due(now, lastBotSave, interval))
+        return;
+    if (!bot->IsInWorld() || bot->IsBeingTeleported() ||
+        !ai::bot_save::TryTake(ai::bot_save::BudgetWindow(WorldTimer::getMSTime()), sPlayerbotAIConfig.botSaveMaxPerTick, ai::bot_save::ThreadLocal()))
+    {
+        ai::bot_save::Counter(ai::bot_save::Deferred).fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
+    auto const start = std::chrono::steady_clock::now();
+    bot->SaveToDB();
+    ai::bot_save::Counter(ai::bot_save::SaveMicros).fetch_add(uint64(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count()), std::memory_order_relaxed);
+    ai::bot_save::Counter(ai::bot_save::Saves).fetch_add(1, std::memory_order_relaxed);
+    lastBotSave = now;
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
     HandleQueuedBotPackets();
+
+    // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): the bot saves itself on its own schedule (BotSavePolicy.h),
+    // also while parked; the core autosave timer is held back meanwhile. Off: the core saves as before.
+    if (sPlayerbotAIConfig.botSaveIntervalSeconds)
+        UpdateBotSave();
 
     // twow-repo#541/#551 (rndbot park): a parked bot out of combat thinks every ai::park::AiIntervalMs.
     if (parked)
@@ -656,7 +730,17 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             sharedValueCount = uint32(counts.second);
             // Hotfix 8.1: the other per-bot stores.
             whisperCount = uint32(whispers.size());
-            chatQueueCount = uint32(chatCommands.size() + chatReplies.size());
+            size_t queuedCommands = 0;
+            size_t queuedReplies = 0;
+            {
+                std::scoped_lock lock(chatCommandsMutex);   // audit A29; one lock at a time, never nested
+                queuedCommands = chatCommands.size();
+            }
+            {
+                std::scoped_lock lock(chatRepliesMutex);
+                queuedReplies = chatReplies.size();
+            }
+            chatQueueCount = uint32(queuedCommands + queuedReplies);
             packetQueueCount = uint32(botOutgoingPacketHandlers.QueueSize() + masterIncomingPacketHandlers.QueueSize() +
                 masterOutgoingPacketHandlers.QueueSize());
             recordedCount = uint32(m_recordedMessages.size());
@@ -935,6 +1019,24 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     {
         aiInternalUpdateDelay = 0;
         isWaiting = false;
+    }
+
+    // twow-repo#541 (audit A17): a stretched combat-idle wait ends as soon as the auto attack it waited on changed
+    // (victim changed or gone, victim out of melee reach, swing and autorepeat stopped).
+    if (!combatIdleVictim.IsEmpty())
+    {
+        Unit* const victim = bot->GetVictim();
+        bool const meleeSwing = victim && bot->hasUnitState(UNIT_STAT_MELEE_ATTACKING) && bot->CanReachWithMeleeAutoAttack(victim);
+        if (ai::combat_idle::ShouldWake(combatIdleVictim.GetRawValue(), victim ? victim->GetObjectGuid().GetRawValue() : 0,
+            meleeSwing, bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL) != nullptr))
+        {
+            combatIdleVictim.Clear();
+            if (ai::combat_idle::WakeResets(aiInternalUpdateDelay, ai::combat_idle::StretchedDelay(sPlayerbotAIConfig.reactDelay)))
+            {
+                ResetAIInternalUpdateDelay();
+                ai::combat_idle::woken.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
     }
 
     // cancel logout in combat
@@ -1302,6 +1404,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     SC_PHASE("UpdateAI.UpdateAIReaction", bot ? bot->GetName() : "(null)");
     if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())
     {
+        // twow-repo#541 (audit A17): this pass ends any stretched combat-idle wait.
+        combatIdleVictim.Clear();
+
         // Update the delay with the spell cast time
         Spell* currentSpell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
         if (currentSpell && (currentSpell->getState() == SPELL_STATE_CASTING) && (currentSpell->GetCastedTime() > 0U))
@@ -1316,6 +1421,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         }
 
         SC_PHASE("UpdateAI.UpdateAIInternal", bot ? bot->GetName() : "(null)");
+        // twow-repo#541 (audit A17): set by DoNextAction when the combat engine executed nothing.
+        combatIdleTick = false;
         UpdateAIInternal(elapsed, minimal);
 
         bool min = minimal;
@@ -1327,7 +1434,13 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             min = false;
 
         SC_PHASE("UpdateAI.YieldAIInternalThread", bot ? bot->GetName() : "(null)");
+        bool const yieldSetDelay = aiInternalUpdateDelay < sPlayerbotAIConfig.reactDelay;
         YieldAIInternalThread(min);
+
+        // twow-repo#541 (audit A17, AiPlayerbot.Perf.CombatIdleYield, default 0, behaviour-changing): a combat pass
+        // without an action while the bot auto-attacks waits 3x ReactDelay instead of ReactDelay.
+        if (ai::combat_idle::MayStretch(sPlayerbotAIConfig.perfCombatIdleYield, combatIdleTick, yieldSetDelay, min) && !HasRealPlayerMaster())
+            StretchCombatIdle();
     }
     SC_PHASE("UpdateAI.exit", bot ? bot->GetName() : "(null)");
 }
@@ -1681,7 +1794,12 @@ void PlayerbotAI::OnCombatStarted()
             StopMoving();
         }
 
-        aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers", 1)->Reset();
+        // twow-repo#541 (audit A23): with the single list "has attackers" reads the full "attackers"; reset that
+        // one, so the first check after the bot's own attack/pull sees the new target.
+        if (sPlayerbotAIConfig.perfAttackersSingleList)
+            aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers")->Reset();
+        else
+            aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers", 1)->Reset();
         aiObjectContext->GetValue<bool>("has attackers")->Reset();
 
         ChangeEngine(BotState::BOT_STATE_COMBAT);
@@ -1872,14 +1990,24 @@ void PlayerbotAI::HandleCommands()
 {
     ExternalEventHelper helper(aiObjectContext);
     std::list<ChatCommandHolder> delayed;
-    while (!chatCommands.empty())
+    // Audit A29 (twow-repo#563): take one command at a time under the lock and run it outside, so a command
+    // that queues another one (same pass, as before) cannot deadlock and the AsyncPackets thread never waits
+    // for a command to finish.
+    while (true)
     {
-        ChatCommandHolder holder = chatCommands.front();
+        std::optional<ChatCommandHolder> next;
+        {
+            std::scoped_lock lock(chatCommandsMutex);
+            if (chatCommands.empty())
+                break;
+            next.emplace(chatCommands.front());
+            chatCommands.pop();
+        }
+        ChatCommandHolder& holder = *next;
         time_t checkTime = holder.GetTime();
         if (checkTime && time(0) < checkTime)
         {
             delayed.push_back(holder);
-            chatCommands.pop();
             continue;
         }
 
@@ -1891,14 +2019,19 @@ void PlayerbotAI::HandleCommands()
             //TellPlayer(out);
             //helper.ParseChatCommand("help");
         }
-
-        chatCommands.pop();
     }
 
+    std::scoped_lock lock(chatCommandsMutex);
     for (std::list<ChatCommandHolder>::iterator i = delayed.begin(); i != delayed.end(); ++i)
     {
         chatCommands.push(*i);
     }
+}
+
+void PlayerbotAI::QueueChatCommand(ChatCommandHolder const& cmd)
+{
+    std::scoped_lock lock(chatCommandsMutex);
+    chatCommands.push(cmd);
 }
 
 void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
@@ -2234,7 +2367,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     if (type == CHAT_MSG_RAID_WARNING && filtered.find(bot->GetName()) != std::string::npos && filtered.find("award") == std::string::npos)
     {
         ChatCommandHolder cmd("warning", &fromPlayer, type);
-        chatCommands.push(cmd);
+        QueueChatCommand(cmd);
         return;
     }
 
@@ -2270,7 +2403,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
             }
         }
         ChatCommandHolder cmd(remaining, &fromPlayer, type, time(0) + index);
-        chatCommands.push(cmd);
+        QueueChatCommand(cmd);
     }
     else if (filtered == "reset")
     {
@@ -2322,7 +2455,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
                (unsigned)type,
                filtered.c_str());
         ChatCommandHolder cmd(filtered, &fromPlayer, type);
-        chatCommands.push(cmd);
+        QueueChatCommand(cmd);
     }
 }
 
@@ -2860,7 +2993,10 @@ void PlayerbotAI::DoNextAction(bool min)
     bool minimal = !AllowActivity();
 
     SC_PHASE("DoNextAction.engineDoNextAction", bot ? bot->GetName() : "(null)");
-    currentEngine->DoNextAction(NULL, 0, (minimal || min), bot->IsTaxiFlying());
+    Engine* const engine = currentEngine;
+    bool const executed = engine->DoNextAction(NULL, 0, (minimal || min), bot->IsTaxiFlying());
+    // twow-repo#541 (audit A17): read by UpdateAI only when AiPlayerbot.Perf.CombatIdleYield is on.
+    combatIdleTick = !executed && engine == engines[(uint8)BotState::BOT_STATE_COMBAT] && currentEngine == engine;
     SC_PHASE("DoNextAction.afterEngine", bot ? bot->GetName() : "(null)");
 
     if (!bot->IsInWorld()) //Teleport out of bg
@@ -3069,6 +3205,12 @@ void PlayerbotAI::ReInitCurrentEngine()
 
 void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)
 {
+    // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): with the switch on, an engine that is neither the
+    // running one nor the reaction engine takes the new strategy set at once but rebuilds its triggers only when it is
+    // activated (ChangeEngine/Reset(true) call Init() anyway; Engine::DoNextAction catches Reset(false)). The reaction
+    // engine runs its triggers next to the current one (ReactionEngine::FindReaction) and the running engine defers to
+    // the end of its walk as before, so both stay eager. !engine->initMode comes first: a half-built AI (constructor
+    // before currentEngine/reactionEngine are set, ResetStrategies) never reads the pointers. Switch off = as before.
     if(type == BotState::BOT_STATE_ALL)
     {
         for (uint8 i = 0; i < (uint8)BotState::BOT_STATE_ALL; i++)
@@ -3076,7 +3218,7 @@ void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)
             Engine* engine = engines[i];
             if (engine)
             {
-                engine->ChangeStrategy(names);
+                engine->ChangeStrategy(names, sPlayerbotAIConfig.perfLazyEngineInit && !engine->initMode && engine != currentEngine && engine != reactionEngine);
             }
         }
     }
@@ -3085,7 +3227,7 @@ void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)
         Engine* engine = engines[(uint8)type];
         if (engine)
         {
-            engine->ChangeStrategy(names);
+            engine->ChangeStrategy(names, sPlayerbotAIConfig.perfLazyEngineInit && !engine->initMode && engine != currentEngine && engine != reactionEngine);
         }
     }
 }
@@ -5003,8 +5145,14 @@ bool PlayerbotAI::HasSpell(uint32 spellid) const
 SpellCastResult PlayerbotAI::CheckSpellTargetAlignment(SpellEntry const* spellInfo, Unit* target)
 {
     // Consider neutral spells (spells that are neither positive or negative (e.g. feign death, hunter traps, ...)
-    const std::list<uint32> neutralSpells = { 1499, 5384, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-    const bool neutralSpell = std::find(neutralSpells.begin(), neutralSpells.end(), spellInfo->Id) != neutralSpells.end();
+    bool neutralSpell;
+    if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+        neutralSpell = ai::spelllists::IsNeutralSpell(spellInfo->Id);
+    else
+    {
+        const std::list<uint32> neutralSpells = { 1499, 5384, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+        neutralSpell = std::find(neutralSpells.begin(), neutralSpells.end(), spellInfo->Id) != neutralSpells.end();
+    }
     if (neutralSpell)
         return SPELL_CAST_OK;
 
@@ -5049,8 +5197,15 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
     if (bot->hasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL))
     {
         // Spells that can be casted while out of control
-        const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-        if (std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) == ignoreOutOfControllSpells.end())
+        bool castableOutOfControl;
+        if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+            castableOutOfControl = ai::spelllists::IsCastableOutOfControl(spellid);
+        else
+        {
+            const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+            castableOutOfControl = std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) != ignoreOutOfControllSpells.end();
+        }
+        if (!castableOutOfControl)
         {
             if (checkResult)
             {
@@ -5116,8 +5271,14 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
 	if (!itemTarget)
 	{
         // Consider neutral spells (spells that are neither positive or negative (e.g. feign death, hunter traps, ...)
-        const std::list<uint32> neutralSpells = { 1499, 5384, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-        const bool neutralSpell = std::find(neutralSpells.begin(), neutralSpells.end(), spellid) != neutralSpells.end();
+        bool neutralSpell;
+        if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+            neutralSpell = ai::spelllists::IsNeutralSpell(spellid);
+        else
+        {
+            const std::list<uint32> neutralSpells = { 1499, 5384, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+            neutralSpell = std::find(neutralSpells.begin(), neutralSpells.end(), spellid) != neutralSpells.end();
+        }
         if(!neutralSpell)
         {
             const bool positiveSpell = IsPositiveSpell(spellInfo);
@@ -5198,6 +5359,25 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
     spell->SetCastItem(itemTarget ? itemTarget : aiObjectContext->GetValue<Item*>("item for spell", spellid)->Get());
     spell->m_targets.setItemTarget(spell->GetCastItem());
 
+    // twow-repo#541 (audit A33, AiPlayerbot.CanCastSpell.CheckPower): CheckCast below compares the power
+    // against m_powerCost, which only Spell::prepare fills, so here it is 0 and every cost passes.
+    // Cost exactly as prepare computes it: the same Spell (SPELLMOD_COST incl. Clearcasting and
+    // Inner Focus), then every mod charge that computation dropped is handed back. Done BEFORE
+    // CheckCast so only cost mods are restored and CheckCast sees the state it sees today.
+    ai::spellpower::PowerVerdict powerVerdict = ai::spellpower::PowerVerdict::Unchecked;
+    if (checkHasSpell && sPlayerbotAIConfig.canCastSpellChecksPower)
+    {
+        uint32 powerCost = Spell::CalculatePowerCost(spellInfo, bot, spell, spell->GetCastItem());
+        bot->RestoreSpellMods(spell);
+        if (bot->HasOption(PLAYER_CHEAT_NO_POWER))
+            powerCost = 0;
+
+        bool const healthCost = spellInfo->powerType == POWER_HEALTH;
+        bool const knownPowerType = spellInfo->powerType < MAX_POWERS;
+        powerVerdict = ai::spellpower::Evaluate(spell->GetCastItem() != nullptr, healthCost, knownPowerType, powerCost,
+            bot->GetHealth(), knownPowerType ? bot->GetPower(Powers(spellInfo->powerType)) : 0);
+    }
+
     SpellCastResult result = spell->CheckCast(true);
     delete spell;
 	//if (oldSel)
@@ -5208,6 +5388,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
         *checkResult = result;
     }
 
+    bool canCast = false;
     switch (result)
     {
         case SPELL_FAILED_NOT_INFRONT:
@@ -5216,17 +5397,35 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
         case SPELL_FAILED_MOVING:
         case SPELL_FAILED_TRY_AGAIN:
         case SPELL_CAST_OK:
-            return true;
+            canCast = true;
+            break;
         case SPELL_FAILED_OUT_OF_RANGE:
         case SPELL_FAILED_LINE_OF_SIGHT:
-            return ignoreRange;
+            canCast = ignoreRange;
+            break;
         case SPELL_FAILED_AFFECTING_COMBAT:
-            return ignoreInCombat;
+            canCast = ignoreInCombat;
+            break;
         case SPELL_FAILED_NOT_MOUNTED:
-            return ignoreMount;
+            canCast = ignoreMount;
+            break;
         default:
-            return false;
+            break;
     }
+
+    // twow-repo#541 (audit A33): only a pass can turn into a fail (Unchecked = switch off, cast item, unknown
+    // power type keeps the old answer); checkResult changes only in that case.
+    if (canCast && ai::spellpower::Blocks(powerVerdict))
+    {
+        if (checkResult)
+        {
+            *checkResult = powerVerdict == ai::spellpower::PowerVerdict::NoHealth ? SPELL_FAILED_CASTER_AURASTATE : SPELL_FAILED_NO_POWER;
+        }
+
+        return false;
+    }
+
+    return canCast;
 }
 
 bool PlayerbotAI::CanCastSpell(uint32 spellid, GameObject* goTarget, uint8 effectMask, bool checkHasSpell, bool ignoreRange, bool ignoreInCombat, bool ignoreMount, SpellCastResult* checkResult)
@@ -5255,8 +5454,15 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, GameObject* goTarget, uint8 effec
     if (bot->hasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL))
     {
         // Spells that can be casted while out of control
-        const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-        if (std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) == ignoreOutOfControllSpells.end())
+        bool castableOutOfControl;
+        if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+            castableOutOfControl = ai::spelllists::IsCastableOutOfControl(spellid);
+        else
+        {
+            const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+            castableOutOfControl = std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) != ignoreOutOfControllSpells.end();
+        }
+        if (!castableOutOfControl)
         {
             if (checkResult)
             {
@@ -5382,8 +5588,15 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, float x, float y, float z, uint8 
     if (bot->hasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL))
     {
         // Spells that can be casted while out of control
-        const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
-        if (std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) == ignoreOutOfControllSpells.end())
+        bool castableOutOfControl;
+        if (sPlayerbotAIConfig.perfStaticSpellLists)  // twow-repo#541 (audit A16): constant array, no per-call std::list
+            castableOutOfControl = ai::spelllists::IsCastableOutOfControl(spellid);
+        else
+        {
+            const std::list<uint32> ignoreOutOfControllSpells = { 642, 1020, 1499, 1953, 7744, 11958, 13795, 13809, 13813, 14302, 14303, 14304, 14305, 14310, 14311, 14316, 14317, 27023, 27025, 34600, 49055, 49056, 49066, 49067 };
+            castableOutOfControl = std::find(ignoreOutOfControllSpells.begin(), ignoreOutOfControllSpells.end(), spellid) != ignoreOutOfControllSpells.end();
+        }
+        if (!castableOutOfControl)
         {
             if (checkResult)
             {
