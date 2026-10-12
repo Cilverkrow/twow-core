@@ -443,6 +443,7 @@ bool PlayerbotAIConfig::Initialize()
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
     x3bPublishedTargets = config.GetBoolDefault("AiPlayerbot.X3b.PublishedTargets", false);
     x3bPublishedConditions = config.GetBoolDefault("AiPlayerbot.X3b.PublishedConditions", false);
+    shamanImbueBySpec = config.GetBoolDefault("AiPlayerbot.Shaman.ImbueBySpec", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
     persistentActiveRosterLoginWaveIntervalSeconds = std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveIntervalSeconds", 300));
@@ -517,6 +518,7 @@ bool PlayerbotAIConfig::Initialize()
     pathStartZoneExactBounds = config.GetBoolDefault("AiPlayerbot.Path.StartZoneExactBounds", false);
     pathRpgTargetSnap = config.GetBoolDefault("AiPlayerbot.Path.RpgTargetSnap", false);
     pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
+    pathRescueSkipCustomStarts = config.GetBoolDefault("AiPlayerbot.Path.RescueSkipCustomStarts", false);
     revivePreferCorpseRun = config.GetBoolDefault("AiPlayerbot.Revive.PreferCorpseRun", false);
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
