@@ -1,14 +1,29 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "RacialsStrategy.h"
 
 using namespace ai;
 
 void RacialsStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
 {
-	triggers.push_back(new TriggerNode(
-		"low health", 
-		NextAction::array(0, new NextAction("gift of the naaru", 71.0f), NULL)));
+    // twow-repo#541 (audit A13): gift of the naaru, mana tap and arcane torrent have no action creator in
+    // this build (ActionContext.h, #ifndef MANGOSBOT_ZERO), so their queue entries can only end UNKNOWN.
+    // AiPlayerbot.Perf.RacialsSkipUnbuildable = 1 does not register these three nodes (0 = all twelve
+    // nodes as before). NOT strictly behaviour-neutral: today a lingering 71 entry can make the engine
+    // re-push another action without prerequisites; with 1 that action takes its normal prerequisite path.
+#ifdef MANGOSBOT_ZERO
+    const bool skipUnbuildable = sPlayerbotAIConfig.perfRacialsSkipUnbuildable;
+#else
+    const bool skipUnbuildable = false;
+#endif
+
+    if (!skipUnbuildable)
+    {
+        triggers.push_back(new TriggerNode(
+            "low health",
+            NextAction::array(0, new NextAction("gift of the naaru", 71.0f), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "melee medium aoe",
@@ -50,13 +65,16 @@ void RacialsStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
         "stoneform",
         NextAction::array(0, new NextAction("stoneform", 71.0f), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "mana tap",
-        NextAction::array(0, new NextAction("mana tap", 71.0f), NULL)));
+    if (!skipUnbuildable)
+    {
+        triggers.push_back(new TriggerNode(
+            "mana tap",
+            NextAction::array(0, new NextAction("mana tap", 71.0f), NULL)));
 
-    triggers.push_back(new TriggerNode(
-        "arcane torrent",
-        NextAction::array(0, new NextAction("arcane torrent", 71.0f), NULL)));
+        triggers.push_back(new TriggerNode(
+            "arcane torrent",
+            NextAction::array(0, new NextAction("arcane torrent", 71.0f), NULL)));
+    }
 }
 
 void RacialsStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)

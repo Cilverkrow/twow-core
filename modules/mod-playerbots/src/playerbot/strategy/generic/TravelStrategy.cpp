@@ -2,6 +2,8 @@
 #include "playerbot/playerbot.h"
 #include "TravelStrategy.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/TravelRequestPolicy.h"
 
 using namespace ai;
 
@@ -71,11 +73,16 @@ void TravelStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
         {"",TravelDestinationPurpose::GenericRpg, 6.28f},                                                      // 50%
     };
 
+    // twow-repo#541 (audit A18): with AiPlayerbot.Perf.TravelRequestGate the request triggers become
+    // travel request::<condition> triggers - same condition, same event source - and do not read the
+    // condition while the travel target is prepared or active (the request actions are useless then).
+    bool const gateRequests = sPlayerbotAIConfig.perfTravelRequestGate;
+
     for (auto& [condition, purpose, relevance] : PurposeActions)
     {
         std::string trigger = condition.empty() ? "val::need travel purpose::" + std::to_string((uint32)purpose) : condition;
         triggers.push_back(new TriggerNode(
-            trigger,
+            travel_request::TriggerName(trigger, gateRequests),
             NextAction::array(0, new NextAction("request travel target::" + std::to_string((uint32)purpose), relevance), NULL)));
     }
 
@@ -102,7 +109,7 @@ void TravelStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
     for (auto& [trigger, action, relevance] : StringActions)
     {
         triggers.push_back(new TriggerNode(
-            trigger,
+            travel_request::TriggerName(trigger, gateRequests && travel_request::IsRequestAction(action)),
             NextAction::array(0, new NextAction(action, relevance), NULL)));
     }
 
