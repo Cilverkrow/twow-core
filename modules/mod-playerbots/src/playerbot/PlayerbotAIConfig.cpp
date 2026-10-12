@@ -1,6 +1,7 @@
 
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
+#include "playerbot/PathFailPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -508,6 +509,12 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
+    pathRouteFailDetail = config.GetBoolDefault("AiPlayerbot.Path.RouteFailDetail", false);
+    pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault("AiPlayerbot.Path.RouteFailDetail.LinesPerMinute", 30));
+    pathHonestRouteFail = config.GetBoolDefault("AiPlayerbot.Path.HonestRouteFail", false);
+    pathStartZoneExactBounds = config.GetBoolDefault("AiPlayerbot.Path.StartZoneExactBounds", false);
+    pathRpgTargetSnap = config.GetBoolDefault("AiPlayerbot.Path.RpgTargetSnap", false);
+    pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
     revivePreferCorpseRun = config.GetBoolDefault("AiPlayerbot.Revive.PreferCorpseRun", false);
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
