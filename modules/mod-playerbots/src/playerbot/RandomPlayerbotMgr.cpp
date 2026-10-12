@@ -51,6 +51,7 @@
 #endif
 #include <cstdio>
 #include "playerbot/StallGuardPolicy.h"
+#include "playerbot/PathFailPolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "Maps/MapManager.h"
 #include <fstream>
@@ -3857,6 +3858,9 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
         if (level <= ai::quest_search::StartAreaMaxLevel)
         {
             if (own && info->areaId == own->areaId)
+                continue;
+            // twow-repo#575 (PATH-01 E6): no rescue of another race into the goblin / high-elf start zones.
+            if (ai::path_fail::RescueSkipsStartOf(race, bot->getRace(), sPlayerbotAIConfig.pathRescueSkipCustomStarts))
                 continue;
             targets.push_back(WorldLocation(info->mapId, info->positionX, info->positionY, info->positionZ, info->orientation));
             continue;
