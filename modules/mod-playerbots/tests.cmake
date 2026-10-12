@@ -2388,6 +2388,27 @@ add_test(NAME trace_action_us_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
 
+# twow-repo#541 (owner 11.10.2026): [BotPackets] packet counter (AiPlayerbot.PacketTrace).
+add_test(NAME packet_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/packet_trace_source_contract_tests.cmake")
+
+add_executable(packet_trace_policy_tests
+  "${PB_MODULE_DIR}/t/packet_trace_policy_tests.cpp")
+
+target_include_directories(packet_trace_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(packet_trace_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(packet_trace_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME packet_trace_policy
+  COMMAND packet_trace_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#541 (CLI-541 tail analysis): getFullPath holds the node map lock with RAII (empty-route leak fixed).
 add_test(NAME travel_node_lock_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -2419,3 +2440,24 @@ add_test(NAME skip_bot_updates_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/skip_bot_updates_source_contract_tests.cmake")
+
+# twow-repo#575 (PATH-01 phase 2): route-fail detail trace, honest route fail, start-zone boxes, rpg target snap.
+add_executable(path_fail_policy_tests
+  "${PB_MODULE_DIR}/t/path_fail_policy_tests.cpp")
+
+target_include_directories(path_fail_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(path_fail_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(path_fail_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME path_fail_policy
+  COMMAND path_fail_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME path_fail_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/path_fail_source_contract_tests.cmake")
