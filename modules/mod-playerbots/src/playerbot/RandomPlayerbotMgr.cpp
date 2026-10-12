@@ -954,6 +954,19 @@ void ReportBotInbox()
             sPlayerbotAIConfig.perfActionBudget, executed, deferred, forced, ai::action_budget::MaxDeferrals);
     }
 
+    // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): evacuations of the last minute.
+    if (sPlayerbotAIConfig.deathLoopEscape)
+    {
+        auto takeEscape = [](ai::death_loop::EscapeCount count) { return (unsigned long long)ai::death_loop::EscapeCounter(count).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const detected = takeEscape(ai::death_loop::EscapeDetected);
+        unsigned long long const escaped = takeEscape(ai::death_loop::EscapeEscaped);
+        unsigned long long const rebound = takeEscape(ai::death_loop::EscapeRebound);
+        unsigned long long const repeat = takeEscape(ai::death_loop::EscapeRepeat);
+        unsigned long long const hostileDeaths = takeEscape(ai::death_loop::EscapeHostileDeath);
+        sLog.outBasic("[DeathLoop] state=minute detected=%llu escaped=%llu rebound=%llu repeat_after_escape=%llu hostile_death=%llu",
+            detected, escaped, rebound, repeat, hostileDeaths);
+    }
+
     // twow-repo#541 (AiPlayerbot.PacketTrace): packets of the last minute per map bucket. Per class
     // "read/ignored/real" counts; kib_* = bytes per receiver. ignored = built for a bot that never reads it.
     if (sPlayerbotAIConfig.packetTrace)
