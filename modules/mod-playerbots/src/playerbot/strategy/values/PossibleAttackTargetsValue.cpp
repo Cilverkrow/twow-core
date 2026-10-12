@@ -27,7 +27,10 @@ std::list<ObjectGuid> PossibleAttackTargetsValue::Calculate()
                 getOne = stoi(qualifier);
             }
 
-            if (getOne)
+            // twow-repo#541 (audit A23): with AiPlayerbot.Perf.AttackersSingleList the one-target variant skips
+            // the separate "attackers::1" pass and goes straight to the full "attackers" below (still with
+            // getOne, so RemoveNonThreating stops at the first valid target).
+            if (getOne && !sPlayerbotAIConfig.perfAttackersSingleList)
             {
                 // Try to get one possible attack target
                 result = AI_VALUE2(std::list<ObjectGuid>, "attackers", 1);

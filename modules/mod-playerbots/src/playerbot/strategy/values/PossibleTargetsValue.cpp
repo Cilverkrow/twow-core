@@ -22,6 +22,39 @@ std::list<ObjectGuid> PossibleTargetsValue::Calculate()
         shouldIgnoreValidate = Qualified::getMultiQualifierInt(qualifier, 1, ":");
     }
 
+    // twow-repo#541 (audit A32): for a bot without a group, the unqualified variants ("possible targets",
+    // "possible targets no los", "all targets"; "nearest adds" only if its range equals the sight distance)
+    // filter this bot's OWN unfiltered snapshot "possible targets::{<sight>:1}" - the value
+    // AttackersValue::AddTargetsOf reads - instead of running the same grid search again. Every snapshot
+    // unit must pass the grid search's own check again now (alive, not friendly, CanSeeInWorld, same map
+    // instance and within range) and AcceptUnit, so the result is a subset of what the search would return
+    // now: only a unit that entered the ring after the snapshot was taken (< 1 s, interval 2) is missing.
+    // Grouped bots keep the search below: group members read the snapshot from their own threads
+    // (AttackersValue::AddTargetsOf, group travel IsActive on a member's context). The snapshot itself
+    // (qualifier set) never enters this block.
+    if (sPlayerbotAIConfig.possibleTargetsSharedSearch && qualifier.empty() && !bot->GetGroup())
+    {
+        int32 const sharedRange = (int32)sPlayerbotAIConfig.sightDistance;
+        if (sharedRange > 0 && range == (float)sharedRange)
+        {
+            const std::vector<std::string> sharedQualifiers = { std::to_string(sharedRange), std::to_string(true) };
+            Value<std::list<ObjectGuid>>* shared = context->GetValue<std::list<ObjectGuid>>("possible targets", Qualified::MultiQualify(sharedQualifiers, ":"));
+            if (shared)
+            {
+                const std::list<ObjectGuid> sharedGuids = shared->Get();
+                MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck inRange(bot, range);
+                std::list<ObjectGuid> results;
+                for (const ObjectGuid& guid : sharedGuids)
+                {
+                    Unit* unit = ai->GetUnit(guid);
+                    if (unit && inRange(unit) && AcceptUnit(unit))
+                        results.push_back(guid);
+                }
+                return results;
+            }
+        }
+    }
+
     std::list<Unit*> targets;
     FindPossibleTargets(bot, targets, rangeCheck);
 

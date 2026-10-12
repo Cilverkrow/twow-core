@@ -252,6 +252,7 @@ namespace ai
             creators["in raid fight"] = [](PlayerbotAI* ai) { return new InRaidFightTrigger(ai); };
 
             creators["val"] = [](PlayerbotAI* ai) { return new ValueTrigger(ai); };
+            creators["travel request"] = [](PlayerbotAI* ai) { return new TravelRequestTrigger(ai); };  // twow-repo#541 (audit A18)
 
             creators["rpg"] = [](PlayerbotAI* ai) { return new RpgTrigger(ai); };
             creators["rpg wander"] = [](PlayerbotAI* ai) { return new RpgWanderTrigger(ai); };

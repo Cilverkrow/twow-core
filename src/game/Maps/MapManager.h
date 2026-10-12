@@ -89,6 +89,16 @@ class MapManager : public MaNGOS::Singleton<MapManager, MaNGOS::ClassLevelLockab
 
         void GetOrCreateContinentInstances(uint32 mapId, WorldObject* obj, std::unordered_set<Map*>& instances);
         uint32 GetContinentInstanceId(uint32 mapId, float x, float y, bool* transitionArea = nullptr);
+        // twow-repo#541 part C (Continents.Layout, read once at the first use, restart to change): 0 = the legacy
+        // polygons (13 regions), 14/16/18/20/21 = cell tables (ContinentRegionTables.h). First and last region id of
+        // a continent in the active layout, both inclusive and every id between them in use (layout 0: 1-6 and
+        // 11-17; 14/16/18: from 1 and 11; 20: 1-13 and 21-32; 21: 1-10 and 21-28).
+        uint32 GetContinentLayout() const;
+        uint32 GetContinentFirstRegion(uint32 mapId) const;
+        uint32 GetContinentLastRegion(uint32 mapId) const;
+        // [RegionSwitch] once per minute: region switches done, and player updates whose switch waited because
+        // the player fights in a border cell (map threads).
+        void CountRegionSwitchDeferred() { m_regionSwitchDeferred.fetch_add(1, std::memory_order_relaxed); }
         Map* CreateMap(uint32 mapId, const WorldObject* obj);
         Map* CreateBgMap(uint32 mapId, BattleGround* bg);
         Map* CreateTestMap(uint32 mapId, bool instanced, float posX, float posY);
@@ -237,6 +247,11 @@ class MapManager : public MaNGOS::Singleton<MapManager, MaNGOS::ClassLevelLockab
         const static int LAST_CONTINENT_ID = 2;
         std::mutex m_scheduledInstanceSwitches_lock[LAST_CONTINENT_ID];
         std::map<Player*, uint16 /* new instance */> m_scheduledInstanceSwitches[LAST_CONTINENT_ID]; // 2 continents
+        // twow-repo#541 part C: [RegionSwitch] counters (switches: world thread only).
+        uint64 m_regionSwitches = 0;
+        std::atomic<uint64> m_regionSwitchDeferred{ 0 };
+        uint32 m_regionSwitchReportMs = 0;
+        void ReportRegionSwitches();
 
         // Handle creation of new maps for teleport while continents are being updated.
         void CreateNewInstancesForPlayers();

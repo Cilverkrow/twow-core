@@ -6,6 +6,7 @@
 #include "playerbot/PlayerbotTextMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/ItemVisitors.h"
+#include <mutex>
 
 using namespace ai;
 
@@ -54,7 +55,10 @@ bool SuggestWhatToDoAction::Execute(Event& event)
 
 void SuggestWhatToDoAction::instance()
 {
-    if (instances.empty())
+    // Audit A51 (twow-repo#563): the static table was filled lazily by whichever region thread came first,
+    // while others already iterated it. Filled exactly once now.
+    static std::once_flag instancesOnce;
+    std::call_once(instancesOnce, []()
     {
         instances["Ragefire Chasm"] = 15;
         instances["Deadmines"] = 18;
@@ -98,7 +102,7 @@ void SuggestWhatToDoAction::instance()
         instances["Forge of Souls"] = 80;
         instances["Pit of Saron"] = 80;
         instances["Halls of Reflection"] = 80;
-    }
+    });
 
     std::vector<std::string> allowedInstances;
     for (std::map<std::string, int>::iterator i = instances.begin(); i != instances.end(); ++i)
@@ -161,7 +165,8 @@ void SuggestWhatToDoAction::grindMaterials()
 
 void SuggestWhatToDoAction::grindReputation()
 {
-    if (factions.empty())
+    static std::once_flag factionsOnce;   // audit A51, as in instance()
+    std::call_once(factionsOnce, []()
     {
         factions["Argent Dawn"] = 60;
         factions["Bloodsail Buccaneers"] = 40;
@@ -201,7 +206,7 @@ void SuggestWhatToDoAction::grindReputation()
         factions["The Sons of Hodir"] = 78;
         factions["The Wyrmrest Accord"] = 77;
 #endif
-    }
+    });
 
     std::vector<std::string> levels;
     levels.push_back("honored");

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -17,6 +18,20 @@ namespace ai::bot_update
 // sources show up by name. With the switch off nothing is timed.
 constexpr std::size_t Buckets = 24;         // bucket b holds [2^b, 2^(b+1)) us; bucket 0 also 0 us
 constexpr std::size_t SlowestKept = 5;
+
+// Cost attribution inside one update (OB-00 go 10.10.2026, same switch): the engine trace gets the
+// microseconds of each evaluated action and of the value-update + trigger phase.
+inline std::uint64_t NowUs()
+{
+    return std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+inline std::uint64_t SinceUs(std::uint64_t startUs)
+{
+    std::uint64_t const now = NowUs();
+    return now > startUs ? now - startUs : 0;
+}
 
 inline std::size_t BucketOf(std::uint64_t us)
 {

@@ -16,6 +16,7 @@
 #include "playerbot/StartupTravelPolicy.h"
 #include "Guild/GuildMgr.h"
 #include <iomanip>
+#include <optional>
 
 using namespace ai;
 
@@ -168,6 +169,15 @@ bool IsLocalActiveQuestHubDestination(Player* bot, TravelDestination* destinatio
         position->getMapId() == bot->GetMapId() &&
         position->distance(WorldPosition(bot)) <= sPlayerbotAIConfig.questFirstProgressionLocalHubRadius &&
         destination->IsActive(bot, travelInfo);
+}
+
+// twow-repo#541 (audit A10): the cheap part of IsLocalActiveQuestHubDestination, without IsActive.
+bool IsLocalQuestHubCandidate(Player* bot, TravelDestination* destination, WorldPosition const* position)
+{
+    QuestTravelDestination const* questDestination = dynamic_cast<QuestTravelDestination const*>(destination);
+    return questDestination && questDestination->GetQuestId() && position &&
+        position->getMapId() == bot->GetMapId() &&
+        position->distance(WorldPosition(bot)) <= sPlayerbotAIConfig.questFirstProgressionLocalHubRadius;
 }
 
 uint32 GetZoneId(WorldPosition const& position)
@@ -698,6 +708,24 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     bool distanceCheck = true;
     std::unordered_map<TravelDestination*, bool> isActive;
 
+    // twow-repo#541 (audit A10, AiPlayerbot.Perf.TravelInfoReuse): one PlayerTravelInfo per choice, built on
+    // first use, and an IsActive answer this choice already has is reused. Off: a new info per check.
+    bool const travelInfoReuse = sPlayerbotAIConfig.perfTravelInfoReuse;
+    std::optional<PlayerTravelInfo> choiceTravelInfo;
+    auto const choiceInfo = [this, &choiceTravelInfo]() -> PlayerTravelInfo const&
+    {
+        if (!choiceTravelInfo)
+            choiceTravelInfo.emplace(bot);
+        return *choiceTravelInfo;
+    };
+    auto const reuseActive = [this, &isActive, &choiceInfo](TravelDestination* dest) -> bool
+    {
+        auto const known = isActive.find(dest);
+        if (known != isActive.end())
+            return known->second;
+        return isActive[dest] = dest->IsActive(bot, choiceInfo());
+    };
+
     bool hasTarget = false;
     TravelTarget const* persistentTarget = AI_VALUE(TravelTarget*, "travel target");
 
@@ -720,8 +748,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     // map, so an inactive local point cannot hide a valid follow-up elsewhere.
     if (preferLocalQuest && !target->IsForced() && !resumeSkip)
     {
-        PlayerTravelInfo travelInfo(bot);
+        std::optional<PlayerTravelInfo> preLoopTravelInfo;
+        PlayerTravelInfo const& travelInfo = travelInfoReuse ? choiceInfo() : preLoopTravelInfo.emplace(bot);
         for (auto const& [partition, travelPointList] : partitionedList)
+        {
             for (auto const& [destination, position, distance] : travelPointList)
                 if (ai::travel_choose::OverBudget(WorldTimer::getMSTimeDiffToNow(chooseStart)))
                     break;
@@ -731,6 +761,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     hasActiveLocalQuestHub = true;
                     break;
                 }
+            // A10: one active local hub is enough; the old path walks the remaining partitions.
+            if (travelInfoReuse && hasActiveLocalQuestHub)
+                break;
+        }
     }
 
     for (auto& [partition, travelPointList] : partitionedList)
@@ -794,11 +828,31 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
             if (!target->IsForced() && hasActiveLocalQuestHub)
             {
-                PlayerTravelInfo travelInfo(bot);
-                if (!IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo))
+                if (travelInfoReuse)
                 {
-                    ++lastRejects.hubFilter;
-                    continue;
+                    // A10: cheap checks first, then a known answer of this choice, IsActive only on a miss.
+                    bool hubActive = IsLocalQuestHubCandidate(bot, destination, position);
+                    if (hubActive)
+                    {
+                        auto const known = isActive.find(destination);
+                        hubActive = known != isActive.end() ? known->second : destination->IsActive(bot, choiceInfo());
+                        if (hubActive) // only a true answer is kept; a false one stays a hub rejection as before
+                            isActive[destination] = true;
+                    }
+                    if (!hubActive)
+                    {
+                        ++lastRejects.hubFilter;
+                        continue;
+                    }
+                }
+                else
+                {
+                    PlayerTravelInfo travelInfo(bot);
+                    if (!IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo))
+                    {
+                        ++lastRejects.hubFilter;
+                        continue;
+                    }
                 }
             }
 
@@ -815,7 +869,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 distanceCheck = false;
             }
 
-            if (target->IsForced() || (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot))))
+            if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot)))))
             {
                 // Checked after IsActive so the area lookup only happens for
                 // the point that was actually selected.
