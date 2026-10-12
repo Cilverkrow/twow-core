@@ -524,6 +524,7 @@ public:
     std::string autoPickTalents;
     bool autoLearnTrainerSpells;
     bool autoLearnQuestSpells;
+    bool autoLearnQuestTeachEffects = false;  // twow-repo#578 (b): a teaching RewSpell teaches its LEARN_SPELL targets
     bool autoLearnDroppedSpells;
     bool autoLearnTimingTrace = false;   // #351: [AutoLearn] timing per level-up/login
     // #356: roster bots get class quest tools the quest path misses + [ClassGrant] log.

@@ -10,6 +10,7 @@
 #include <vector>
 #include "playerbot/ClassGrantPolicy.h"
 #include "playerbot/SpecAuraPolicy.h"
+#include "playerbot/QuestTeachPolicy.h"
 #include "playerbot/AiFactory.h"
 #include <algorithm>
 #include "playerbot/RandomPlayerbotMgr.h"
@@ -284,7 +285,15 @@ void AutoLearnSpellAction::LearnQuestSpells(std::ostringstream* out)
         }
         else if (quest->GetRewSpell() > 0)
         {
-            if (IsTeachingSpellListedAsSpell(quest->GetRewSpell()))
+            // twow-repo#578 (b) (AiPlayerbot.AutoLearnQuestTeachEffects, default 0): a teaching RewSpell is applied like the
+            // turn-in cast (its LEARN_SPELL targets), retired quests teach nothing. Off: as before.
+            SpellEntry const* rewSpell = sServerFacade.LookupSpellInfo(quest->GetRewSpell());
+            ai::quest_teach::RewSpellMode const mode = ai::quest_teach::ForRewSpell(sPlayerbotAIConfig.autoLearnQuestTeachEffects,
+                ai::quest_teach::IsRetiredQuest(questId, quest->GetTitle()), IsTeachingSpellListedAsSpell(quest->GetRewSpell()),
+                rewSpell && ai::quest_teach::HasLearnEffect(rewSpell->Effect[0], rewSpell->Effect[1], rewSpell->Effect[2]));
+            if (mode == ai::quest_teach::RewSpellMode::Skip)
+                continue;
+            if (mode == ai::quest_teach::RewSpellMode::TeachEffects)
             {
                 if (LearnSpellFromSpell(quest->GetRewSpell(), out))
                 {

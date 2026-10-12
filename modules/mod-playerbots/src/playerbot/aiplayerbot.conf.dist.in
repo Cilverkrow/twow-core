@@ -1061,6 +1061,12 @@ AiPlayerbot.AutoLearnTrainerSpells = 0
 # Bots automatically learn classquest reward spells on levelup
 # Default: 0 (disabled)
 AiPlayerbot.AutoLearnQuestSpells = 0
+
+# twow-repo#578 (b) (owner 11.10.2026): with AutoLearnQuestSpells, a quest whose RewSpell is a teaching spell (LEARN_SPELL
+# effect) and RewSpellCast = 0 teaches its learned spells, as the turn-in cast would (50002/50004 Disguise, 60060/60061
+# planter), instead of storing the teaching spell itself (5670/5671/46063). Retired quests ([CANCELLED] / [DEPRECATED],
+# 60011/60012 Piercing Light, 80388 Hardcore) teach nothing. The listed priest teaching spells work either way. 0 = as before.
+AiPlayerbot.AutoLearnQuestTeachEffects = 0
 # Log the duration of every automatic spell learning pass (level-up, login)
 # as [AutoLearn] timing, and once per class the cost of a full creature scan
 # the trainer cache replaced (#351).
