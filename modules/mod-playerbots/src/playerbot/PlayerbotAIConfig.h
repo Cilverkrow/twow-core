@@ -551,6 +551,8 @@ public:
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool x3cInboxWrites = false;  // twow-repo#563 (X3c): value writes into other bots go through their inbox
+    bool packetTrace = false;  // twow-repo#541 (owner 11.10.): [BotPackets] packets per receiver / map / class, measurement only
+    bool nearestSkipHiddenBots = false;  // twow-repo#541 (owner 11.10. "1b"): nearest*/possible-targets values skip parked bots hidden from bots
     uint32 botSaveIntervalSeconds = 0;  // twow-repo#541 A47: bots save themselves every N s (0 = core autosave as before)
     uint32 botSaveMaxPerTick = 1;       // A47: own bot saves per map thread and world tick (0 = no limit)
     bool perfFleeMemo = false;  // twow-repo#541 (audit A01): FleeManager reuses a candidate angle's result within one search (0 = off)
@@ -578,6 +580,7 @@ public:
     bool perfAttackersSingleList = false;  // twow-repo#541 (audit A23): "has attackers" and "possible attack targets::1" use the full "attackers" list, no second attackers::1 pass (0 = off)
     bool perfPartyTargetMemo = false;  // twow-repo#541 (audit A25): party-target values reuse their result inside one DoNextAction pass until the next Execute (0 = off)
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
+    bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
     bool persistentActiveRosterMaintenanceMode = false;
