@@ -1890,6 +1890,7 @@ AiPlayerbot.CheckValues.SkipSearches = 0
 # and waits 60 s after a try that left the hunter without a pet. Same pets. 0 = as before (default).
 AiPlayerbot.InitPet.Cache = 0
 
+
 # twow-repo#563 (X3a): 1 = every bot's value map is guarded by its own lock (shared to look up, unique to
 # insert or erase), because other bots read and create values in it from their region threads. The lock
 # is held only for the map access, never while a value is computed. 0 = no lock (default).

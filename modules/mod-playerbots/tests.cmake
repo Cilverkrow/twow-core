@@ -2041,6 +2041,7 @@ add_test(NAME init_pet_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/init_pet_source_contract_tests.cmake")
 
+
 # twow-repo#563 (X3a + X3c): per-context lock on the value maps, cross-bot value writes via the inbox.
 add_test(NAME x3_context_lock_source_contract
   COMMAND "${CMAKE_COMMAND}"
