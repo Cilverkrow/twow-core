@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "QuestTurnInParkPolicy.h"
+#include "UnreachableTargetPolicy.h"
 
 namespace
 {
@@ -40,6 +41,21 @@ int main()
     for (std::uint32_t i = 0; i < 6; ++i)
         parked = RecordFailure(slow, 1097, t + i * 70 * minute, 3, window, park) || parked;
     Require(!parked, "one recovery every 70 minutes: never parked");
+
+    // [UnreachableTop]: targets by recoveries, the top n, the book empty afterwards; one taker = one key.
+    namespace ut = ai::unreachable_target;
+    ut::Book top;
+    ut::Key const elmore = ut::KeyOf(1416, 0, -8387.1f, 685.2f);   // Grimand Elmore, the taker of 1097
+    for (std::uint32_t i = 0; i < 8; ++i)
+        top.Add(ut::KeyOf(1416, 0, -8387.1f, 685.2f), 1097, 130 + (i % 3));   // the same taker, 3 bots
+    top.Add(ut::KeyOf(240, 0, -9465.0f, 73.0f), 40, 7);
+    std::uint32_t total = 0;
+    auto const best = top.TakeTop(1, total);
+    Require(total == 9 && best.size() == 1 && !(best[0].first < elmore) && !(elmore < best[0].first), "the Stormwind taker on top");
+    Require(best[0].second.count == 8 && best[0].second.bots.size() == 3 && best[0].second.quest == 1097, "count, bots, quest");
+    Require(ut::Format(best) == "1416:0:-8390:690:1097:8:3", "line format entry:map:x:y:quest:count:bots");
+    std::uint32_t again = 0;
+    Require(top.TakeTop(5, again).empty() && again == 0, "the window starts empty again");
 
     std::cout << "turnin_stall_policy_tests passed\n";
     return 0;

@@ -1,6 +1,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/UnreachableTargetPolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include <iomanip>
@@ -1495,8 +1496,20 @@ void TravelTarget::CheckStatus()
                 // twow-repo#587 (Z4, AiPlayerbot.ZoneExit.TurnInStallCounts): a stage-1 recovery of a finished quest's turn-in is a
                 // failed turn-in too - live, Aurelith cycled commit -> move_retry_cooldown -> drop -> recompute for an
                 // unreachable Stormwind taker and never reached stage 2. TurnInParkFailures of them park the turn-in (#485).
-                if (sPlayerbotAIConfig.zoneExitTurnInStallCounts && IsProgressAwareTurnIn())
-                    NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "stall_recompute");
+                // Always visible, switch or not: every unreachable turn-in target is logged and counted ([UnreachableTop]).
+                if (IsProgressAwareTurnIn())
+                {
+                    uint32 const questId = static_cast<QuestTravelDestination*>(tDestination)->GetQuestId();
+                    bool const parked = sPlayerbotAIConfig.zoneExitTurnInStallCounts && NoteTurnInFailure(questId, "stall_recompute");
+                    float const dx = wPosition ? wPosition->getX() : 0.0f, dy = wPosition ? wPosition->getY() : 0.0f, dz = wPosition ? wPosition->getZ() : 0.0f;
+                    uint32 const dmap = wPosition ? wPosition->getMapId() : bot->GetMapId();
+                    sLog.outBasic("[UnreachableTarget] bot=%u level=%u quest=%u entry=%d kind=turn_in map=%u zone=%u dest_map=%u dest_x=%.1f dest_y=%.1f dest_z=%.1f reason=stage1_recompute parked=%u switch=%u",
+                        bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), bot->GetMapId(), bot->GetZoneId(), dmap, dx, dy, dz,
+                        parked ? 1u : 0u, sPlayerbotAIConfig.zoneExitTurnInStallCounts ? 1u : 0u);
+                    unreachable_target::Key const key = unreachable_target::KeyOf(tDestination->GetEntry(), dmap, dx, dy);
+                    unreachable_target::ShortWindow().Add(key, questId, bot->GetGUIDLow());
+                    unreachable_target::LongWindow().Add(key, questId, bot->GetGUIDLow());
+                }
                 SetStatus(TravelStatus::TRAVEL_STATUS_READY);
                 return;
             case turnin_recovery::RecoveryAction::SuppressRouteAndCooldown:
