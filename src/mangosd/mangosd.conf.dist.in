@@ -2534,6 +2534,18 @@ DynamicRespawn.AffectLevelBelow = 60
 DynamicRespawn.PlayersThreshold = 4
 DynamicRespawn.PlayersMaxLevelDiff = 5
 
+# DynamicRespawn.QuestTarget.* (twow-repo#581 QL-3, owner 14.10.2026)
+#   Quest targets with only a few spawns (kill objective or quest drop, at most MaxSpawns spawns of the entry,
+#   continents only, not rare or boss) respawn faster the more players (bots count) within Range yards still need
+#   them for an incomplete quest: delay / (1 + PerPlayer * interested), never below MinSeconds and never longer
+#   than the delay without it. Nobody interested = unchanged. Applied after DynamicRespawn.*.
+#   Enable: 0 = off (default), 1 = on.
+DynamicRespawn.QuestTarget.Enable = 0
+DynamicRespawn.QuestTarget.MaxSpawns = 3
+DynamicRespawn.QuestTarget.Range = 150
+DynamicRespawn.QuestTarget.PerPlayer = 1.0
+DynamicRespawn.QuestTarget.MinSeconds = 30
+
 Spells.CCDelay = 200
 
 Hardcore.Disable.Duel = 0

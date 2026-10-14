@@ -991,6 +991,17 @@ AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute = 10
 # still is. 0 = every other map counts (old behaviour).
 AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 
+# twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
+# RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
+#   continent (its race's start) is rescued back to it - a teleport, the cross-continent route rule stays as it is.
+# StrandedRescueAfter = N > 0: after N empty quest searches in a row that only other-continent candidates emptied, the
+#   bot asks for that rescue itself instead of grinding until the idle limit (the rescue limiter still applies).
+# SkipBattlegroundQuests = 1: quests sorted under Warsong Gulch, Arathi Basin or Alterac Valley are no quest-first
+#   targets (a bot cannot finish them in the open world). All 0 = as before.
+AiPlayerbot.ZoneExit.RescueHomeContinent = 0
+AiPlayerbot.ZoneExit.StrandedRescueAfter = 0
+AiPlayerbot.ZoneExit.SkipBattlegroundQuests = 0
+
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes
 

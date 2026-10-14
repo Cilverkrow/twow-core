@@ -2757,3 +2757,22 @@ set_target_properties(park_seats_policy_tests PROPERTIES
 add_test(NAME park_seats_policy
   COMMAND park_seats_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#587 (owner 14.10.2026): bots leave start zones / the wrong continent (AiPlayerbot.ZoneExit.*).
+add_test(NAME zone_exit_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/zone_exit_source_contract_tests.cmake")
+
+add_executable(zone_exit_policy_tests
+  "${PB_MODULE_DIR}/t/zone_exit_policy_tests.cpp")
+
+target_include_directories(zone_exit_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(zone_exit_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME zone_exit_policy
+  COMMAND zone_exit_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
