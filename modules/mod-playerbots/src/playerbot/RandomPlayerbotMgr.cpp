@@ -6921,11 +6921,28 @@ void RandomPlayerbotMgr::ProcessParkedBots()
                         {
                             bot->SetFacingTo(entry.inn.orientation);
                             bot->SetStandState(chairState);
+                            // Once per park: the acceptance signal (seat, place, stand state) - the distance to the innkeeper
+                            // follows from the coordinates.
+                            if (!entry.seatedLogged)
+                            {
+                                entry.seatedLogged = true;
+                                sLog.outBasic("[Park] state=seated bot=%u slot=%u seat=1 stand=%u map=%u x=%.1f y=%.1f z=%.1f seconds=%u", guid, entry.slot,
+                                    uint32(bot->getStandState()), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                                    now - entry.since);
+                            }
                         }
                     }
                 }
                 else if (bot->getStandState() != UNIT_STAND_STATE_SIT && !bot->IsInCombat() && !bot->IsMoving())
                     bot->SetStandState(UNIT_STAND_STATE_SIT);
+                // twow-repo#551 (Park.Seats): a bot without a free seat stands on the outer rings - logged once as seat=0.
+                if (sPlayerbotAIConfig.parkSeats && entry.seatHeight < 0 && !entry.seatedLogged && !bot->IsMoving())
+                {
+                    entry.seatedLogged = true;
+                    sLog.outBasic("[Park] state=seated bot=%u slot=%u seat=0 stand=%u map=%u x=%.1f y=%.1f z=%.1f seconds=%u", guid, entry.slot,
+                        uint32(bot->getStandState()), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                        now - entry.since);
+                }
                 // twow-repo#541 (AiPlayerbot.Park.SleepGrid): only once it has arrived; the core keeps the
                 // cells awake while the bot fights, is dead, teleports or flies.
                 if (bot->HasGridSleepFlag() != sPlayerbotAIConfig.parkSleepGrid)
