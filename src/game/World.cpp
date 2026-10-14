@@ -1532,6 +1532,12 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_UINT32_DYN_RESPAWN_AFFECT_LEVEL_BELOW, "DynamicRespawn.AffectLevelBelow", 0);
     setConfig(CONFIG_UINT32_DYN_RESPAWN_PLAYERS_THRESHOLD, "DynamicRespawn.PlayersThreshold", 0);
     setConfig(CONFIG_UINT32_DYN_RESPAWN_PLAYERS_LEVELDIFF, "DynamicRespawn.PlayersMaxLevelDiff", 0);
+    // twow-repo#581 QL-3: single-spawn quest targets respawn faster the more nearby players need them.
+    setConfig(CONFIG_BOOL_DYN_RESPAWN_QUEST_TARGET, "DynamicRespawn.QuestTarget.Enable", false);
+    setConfig(CONFIG_UINT32_DYN_RESPAWN_QUEST_MAX_SPAWNS, "DynamicRespawn.QuestTarget.MaxSpawns", 3);
+    setConfig(CONFIG_FLOAT_DYN_RESPAWN_QUEST_RANGE, "DynamicRespawn.QuestTarget.Range", 150.0f);
+    setConfig(CONFIG_FLOAT_DYN_RESPAWN_QUEST_PER_PLAYER, "DynamicRespawn.QuestTarget.PerPlayer", 1.0f);
+    setConfig(CONFIG_UINT32_DYN_RESPAWN_QUEST_MIN_TIME, "DynamicRespawn.QuestTarget.MinSeconds", 30);
 
     setConfig(CONFIG_UINT32_CHANNEL_INVITE_MIN_LEVEL, "ChannelInvite.MinLevel", 10);
     setConfig(CONFIG_BOOL_WHISPER_RESTRICTION, "WhisperRestriction", false);
