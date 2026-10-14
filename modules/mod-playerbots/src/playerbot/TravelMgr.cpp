@@ -1,6 +1,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/StartZonePolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include <iomanip>
@@ -1879,6 +1880,34 @@ static bool IsInBlackstoneOrThalassian(uint32 mapId, float x, float y)
     return ai::path_fail::InCustomStartZone(mapId, x, y, sPlayerbotAIConfig.pathStartZoneExactBounds);
 }
 
+// twow-repo#575 (PATH-01 E4, AiPlayerbot.CustomRaceStartZones): on, an entry whose spawns all lie in one start zone
+// keeps them, and its destinations are tagged with that zone's faction (E5 in GetDestinations); an entry with spawns
+// inside and outside keeps only the outside ones. Off: None, and the old exclusion above applies.
+template <class Points, class Dests>
+static ai::start_zone::StartTeam StartZoneTeamOf(Points const& points, Dests const& dests)
+{
+    if (!sPlayerbotAIConfig.customRaceStartZones)
+        return ai::start_zone::StartTeam::None;
+
+    ai::start_zone::TeamFold fold;
+    for (auto const& guidP : points)
+        fold.Add(ai::start_zone::TeamOfPoint(guidP.getMapId(), guidP.getX(), guidP.getY()));
+
+    ai::start_zone::StartTeam const team = fold.Uniform();
+    if (team != ai::start_zone::StartTeam::None)
+        for (auto dest : dests)
+            dest->SetStartZoneTeam(uint8(team));
+    return team;
+}
+
+template <class Point>
+static bool SkipStartZonePoint(Point const& guidP, ai::start_zone::StartTeam uniform)
+{
+    if (!sPlayerbotAIConfig.customRaceStartZones)
+        return IsInBlackstoneOrThalassian(guidP.getMapId(), guidP.getX(), guidP.getY());
+    return !ai::start_zone::KeepStartZonePoint(true, ai::start_zone::TeamOfPoint(guidP.getMapId(), guidP.getX(), guidP.getY()), uniform);
+}
+
 void TravelMgr::LoadQuestTravelTable()
 {
     if (!sTravelMgr.destinationMap.empty())
@@ -1943,6 +1972,7 @@ void TravelMgr::LoadQuestTravelTable()
                 // empty spot until the work phase ran out. Objectives keep every point.
                 bool const skipScriptOnly = sPlayerbotAIConfig.questFirstProgressionSkipScriptOnlyQuestTakers && entry < 0;
                 uint32 scriptOnlyPoints = 0;
+                ai::start_zone::StartTeam const startTeam = StartZoneTeamOf(guidpMap.at(entry), locs);
 
                 for (auto& guidP : guidpMap.at(entry))
                 {
@@ -1951,7 +1981,7 @@ void TravelMgr::LoadQuestTravelTable()
                     // coordinate check here: this loop runs over every quest-relevant spawn in
                     // the game, and GetZoneAndAreaId can force-load grid data per call, which
                     // deadlocked the server when tried at this stage of the boot sequence.
-                    if (IsInBlackstoneOrThalassian(guidP.getMapId(), guidP.getX(), guidP.getY()))
+                    if (SkipStartZonePoint(guidP, startTeam))
                         continue;
 
                     pointsMap.insert(std::make_pair(guidP.GetRawValue(), guidP));
@@ -2026,10 +2056,12 @@ void TravelMgr::LoadQuestTravelTable()
         if (dests.empty())
             continue;
 
+        ai::start_zone::StartTeam const startTeam = StartZoneTeamOf(guidpMap.at(entry), dests);
+
         for (auto& guidP : guidpMap.at(entry))
         {
             // Never send bots to custom player-only starting zones (no MMAP support).
-            if (IsInBlackstoneOrThalassian(guidP.getMapId(), guidP.getX(), guidP.getY()))
+            if (SkipStartZonePoint(guidP, startTeam))
                 continue;
 
             pointsMap.insert(std::make_pair(guidP.GetRawValue(), guidP));
@@ -3198,6 +3230,10 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
     {
         for (TravelDestination* dest : dests)
         {
+            // twow-repo#575 (PATH-01 E5): a start-zone destination only for its own faction (tagged at boot when on).
+            if (!ai::start_zone::DestinationAllows(ai::start_zone::StartTeam(dest->GetStartZoneTeam()), info.GetTeam() == ALLIANCE))
+                continue;
+
             if (onlyPossible && !dest->IsPossible(info))
                 continue;
 
@@ -3243,6 +3279,9 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
 
             for (auto& dest : dests)
             {
+                if (!ai::start_zone::DestinationAllows(ai::start_zone::StartTeam(dest->GetStartZoneTeam()), info.GetTeam() == ALLIANCE))
+                    continue;
+
                 if (onlyPossible && !dest->IsPossible(info))
                     continue;
 
