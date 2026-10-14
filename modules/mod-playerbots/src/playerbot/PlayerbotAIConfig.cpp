@@ -591,6 +591,7 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTurnInParkCountsRouteDanger = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger", false);
     questFirstProgressionMinLevelForCrossMapQuestRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute", 10);
     questFirstProgressionCrossMapContinentsOnly = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly", false);
+    zoneExitTurnInStallCounts = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInStallCounts", false);
 
     // Never let configuration turn the autonomous reservation into a changed
     // core quest-log limit. The Player limit remains MAX_QUEST_LOG_SIZE (20).
