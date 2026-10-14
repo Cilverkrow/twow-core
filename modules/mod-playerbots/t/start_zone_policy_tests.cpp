@@ -1,4 +1,5 @@
 #include "StartZonePolicy.h"
+#include "AreaTeamPolicy.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -114,6 +115,19 @@ int main()
     Require(ShouldTakeShip(12, 0, false), "level 12");
     Require(!ShouldTakeShip(11, 0, false), "level 11, busy: stay");
     Require(ShouldTakeShip(10, ShipIdleSeconds, false) && !ShouldTakeShip(9, ShipIdleSeconds, false), "idle from level 10");
+
+    // Wave 2: area team overrides (owner 14.10.: Stormbreaker Point 5576 is a Horde camp).
+    {
+        using namespace ai::area_team;
+        Require(ParseTeam("horde") == int(Horde) && ParseTeam("Horde") == int(Horde) && ParseTeam("4") == int(Horde), "horde");
+        Require(ParseTeam("alliance") == int(Alliance) && ParseTeam("2") == int(Alliance), "alliance");
+        Require(ParseTeam("none") == int(None) && ParseTeam("x") == -1 && ParseTeam("") == -1, "none / invalid");
+        std::map<std::uint32_t, std::uint32_t> overrides;
+        Require(TeamOf(overrides, 5576, 0) == 0, "empty list: AreaTable team");
+        overrides[5576] = Horde;
+        Require(TeamOf(overrides, 5576, 0) == Horde, "Stormbreaker Point is Horde");
+        Require(TeamOf(overrides, 5561, 0) == 0 && TeamOf(overrides, 1519, Alliance) == Alliance, "other areas unchanged");
+    }
 
     std::cout << "start_zone_policy_tests passed\n";
     return 0;

@@ -692,6 +692,7 @@ public:
     uint32 zoneEscapeRetrySeconds = 60;
     // #307: area id -> level for areas missing in ai_playerbot_zone_level.
     std::map<uint32, int32> areaLevelOverrides;
+    std::map<uint32, uint32> areaTeamOverrides;  // twow-repo#575 (PATH-01 wave 2): area id -> AreaTable team (2 alliance, 4 horde), empty = off
     // #307: shared danger map. Deaths of all bots (never real players) pooled
     // per cell; roster bots skip destinations and routes through cells where
     // several bots died to mobs clearly above their own level.

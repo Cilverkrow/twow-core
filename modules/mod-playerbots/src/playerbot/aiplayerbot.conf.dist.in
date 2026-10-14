@@ -796,6 +796,12 @@ AiPlayerbot.ZoneEscape.RetrySeconds = 60
 # Area levels for areas the generated ai_playerbot_zone_level table misses or
 # gets wrong, as a comma list of <area id>:<level> (e.g. Turtle zones).
 AiPlayerbot.AreaLevelOverrides =
+# twow-repo#575 (PATH-01 wave 2, BEHAVIOUR CHANGE, "nach Abnahme an"): areas whose AreaTable team is wrong for this
+# realm, as a comma list of <area id>:<horde|alliance|none> (or 4 / 2 / 0). Such an area counts as an enemy home
+# zone for the other faction (travel targets, random teleports, quest rescue, repop / hearthstone checks).
+# Owner 14.10.2026: Stormbreaker Point (5576, Balor) is a Horde camp - 5576:horde keeps Alliance bots out of
+# the #501 trap (five L55 guards). Empty = the AreaTable teams (default).
+AiPlayerbot.AreaTeamOverrides =
 # Shared danger map (#307). Deaths of all bots (not real players, not in
 # instances or battlegrounds) are pooled per CellSize x CellSize yard cell for
 # WindowSeconds. A roster bot skips a travel destination when the destination
