@@ -80,6 +80,12 @@ AiPlayerbot.Park.QuietIdleEmoteSeconds = 600
 # [Park] state=restored / restore_failed per bot.
 AiPlayerbot.Park.Persist = 0
 
+# twow-repo#551 (owner 11.10.2026): Seats = 1: a parked bot takes a free chair or bench seat of its inn (CHAIR objects
+# within 15 yd of the innkeeper, upper floor included) and sits on it like a player (chair height and facing); a bot
+# without a free seat stands on the rings from 5.5 yd on, so the innkeeper stays reachable. A game_tele target within
+# 60 yd of an inn of the faction parks in that inn. Parked bots dismount and drop the mount strategy. 0 = as before.
+AiPlayerbot.Park.Seats = 0
+
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
 
