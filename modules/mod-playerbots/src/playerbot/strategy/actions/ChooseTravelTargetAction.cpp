@@ -14,6 +14,7 @@
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/StartupTravelPolicy.h"
+#include "playerbot/ZoneExitPolicy.h"
 #include "Guild/GuildMgr.h"
 #include <iomanip>
 #include <optional>
@@ -355,6 +356,25 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
                 uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format());
             WidenQuestSearch(uint32(destinationList.size()));
+
+            // twow-repo#587 (Z1b, AiPlayerbot.ZoneExit.StrandedRescueAfter): only other-continent candidates, search after
+            // search - the bot asks for the (continent-correct) quest rescue instead of grinding until the idle limit.
+            if (sPlayerbotAIConfig.zoneExitStrandedRescueAfter && UsesQuestFirstProgression(bot))
+            {
+                uint32 const otherRejects = lastRejects.hubFilter + lastRejects.zoneLevel + lastRejects.dangerMap + lastRejects.notActive +
+                    lastRejects.enemyZone + lastRejects.knownInactive + lastRejects.deathSuppressed + lastRejects.turnInSuppressed;
+                uint32 const stranded = ai::zone_exit::NextStrandedCount(
+                    uint32(std::max(0, AI_VALUE2(int, "manual int", "zone exit stranded"))), ai::zone_exit::OnlyOtherContinent(lastRejects.crossMap, otherRejects));
+                if (ai::zone_exit::StrandedRescueDue(stranded, sPlayerbotAIConfig.zoneExitStrandedRescueAfter))
+                {
+                    sLog.outBasic("[ZoneExit] state=stranded bot=%u level=%u map=%u zone=%u searches=%u cross_map=%u", bot->GetGUIDLow(),
+                        bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), stranded, lastRejects.crossMap);
+                    ai->RequestQuestRescue(uint32(time(nullptr)));
+                    SET_AI_VALUE2(int, "manual int", "zone exit stranded", 0);
+                }
+                else
+                    SET_AI_VALUE2(int, "manual int", "zone exit stranded", int(stranded));
+            }
 
             // Hotfix 8.1: wait before the next quest route request (2, 4, 8, then 10 min).
             if (UsesQuestFirstProgression(bot))
@@ -879,6 +899,16 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
             if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot)))))
             {
+                // twow-repo#587 (Z3, AiPlayerbot.ZoneExit.SkipBattlegroundQuests): no battleground quest as a quest-first target.
+                if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())
+                    if (QuestTravelDestination const* bgQuest = dynamic_cast<QuestTravelDestination const*>(destination))
+                        if (Quest const* bgQuestTemplate = sObjectMgr.GetQuestTemplate(bgQuest->GetQuestId()))
+                            if (ai::zone_exit::IsBattlegroundQuestSort(bgQuestTemplate->GetZoneOrSort()))
+                            {
+                                ++lastRejects.battlegroundQuest;
+                                continue;
+                            }
+
                 // Checked after IsActive so the area lookup only happens for
                 // the point that was actually selected.
                 if (!target->IsForced() && position && position->isEnemyHomeZoneFor(bot->GetTeam()))
