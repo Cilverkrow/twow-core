@@ -17,6 +17,7 @@
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PacketTracePolicy.h"
+#include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
