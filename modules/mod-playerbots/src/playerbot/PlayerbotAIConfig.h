@@ -574,6 +574,8 @@ public:
     bool perfLogActionFastPath = false;  // twow-repo#541 (audit A11): no action-log lookup while no file can be written, PerfMon action/trigger keys only with PerfMon on (0 = off)
     uint32 perfActionBudget = 0;  // twow-repo#541 (owner 11.10.): expensive actions per map thread and tick, 0 off / 1 max 3 / 2 max 1 / 3 spread (ActionBudgetPolicy.h)
     std::vector<std::string> perfActionBudgetActions;  // the expensive actions (empty config = ai::action_budget::DefaultExpensiveActions)
+    bool perfActionBudgetStartExempt = false;  // twow-repo#591: bots without a travel target choose one without budget
+    uint32 perfActionBudgetLimit = 0;          // twow-repo#591: per-window limit, 0 = the mode's (3 / 1)
     bool botUpdateTraceTailFix = false;  // twow-repo#541 (audit A11): engine last-action trail keeps the newest 512 characters, cut at an entry (0 = off)
     bool perfTrainableSpellsPrecheck = false;  // twow-repo#541 (audit A12): "trainable spells" skips a spell that fails the core's own skill RED check before the trainer state walk, roster state read once per call (0 = off)
     bool perfRacialsSkipUnbuildable = false;  // twow-repo#541 (audit A13): racials strategy does not register gift of the naaru / mana tap / arcane torrent (no action in this vanilla build); NOT strictly neutral, engine queue path in rare ticks (0 = off)
