@@ -953,6 +953,11 @@ void ReportBotInbox()
         unsigned long long const forced = take(ai::action_budget::Forced);
         sLog.outBasic("[ActionBudget] mode=%u executed=%llu deferred=%llu forced=%llu max_deferrals=%u",
             sPlayerbotAIConfig.perfActionBudget, executed, deferred, forced, ai::action_budget::MaxDeferrals);
+        // twow-repo#591: travel target choices of bots without a target that skipped the budget, and the limit in use.
+        unsigned long long const startExempted = take(ai::action_budget::StartExempted);
+        if (sPlayerbotAIConfig.perfActionBudgetStartExempt || sPlayerbotAIConfig.perfActionBudgetLimit)
+            sLog.outBasic("[ActionBudget] start_exempt=%llu limit=%u", startExempted,
+                ai::action_budget::LimitFor(sPlayerbotAIConfig.perfActionBudget, sPlayerbotAIConfig.perfActionBudgetLimit));
     }
 
     // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): evacuations of the last minute.

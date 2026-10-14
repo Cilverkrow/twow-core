@@ -1991,6 +1991,13 @@ AiPlayerbot.Perf.ActionBudget = 0
 # target, request quest travel target, choose rpg target, move to travel target, find corpse, add gathering loot,
 # attack anything.
 AiPlayerbot.Perf.ActionBudgetActions =
+
+# twow-repo#591 (PERF-AB-01, live 14.10.: under 540 bots mode 1 deferred 63 % of the expensive actions and new bots stood
+# for 10 min without a travel target): StartExempt = 1: a bot without an active travel target chooses one (choose / group /
+# request / request quest travel target) without budget. Limit = N > 0: N expensive actions per map thread and 50 ms window
+# instead of the mode's 3 (mode 1) / 1 (mode 2). Both 0 = as before.
+AiPlayerbot.Perf.ActionBudgetStartExempt = 0
+AiPlayerbot.Perf.ActionBudgetLimit = 0
 # twow-repo#541 (audit A11): 1 = the engine's last-action trail ([BotUpdateSlow] action=, [BotSlowUpdate]
 # and [Idle] last_action=, fishing break, "action" command) keeps the newest 512 characters, cut at an
 # entry '|'. The old trim kept only what lay beyond character 512 and often emptied the trail. Log and

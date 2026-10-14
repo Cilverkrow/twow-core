@@ -36,6 +36,26 @@ namespace ai::action_budget
         return mode == 1 ? 3u : mode == 2 ? 1u : 0u;
     }
 
+    // twow-repo#591 (AiPlayerbot.Perf.ActionBudgetLimit): a configured per-window limit replaces the mode's (0 = the mode's).
+    inline std::uint32_t LimitFor(std::uint32_t mode, std::uint32_t limitOverride)
+    {
+        return limitOverride ? limitOverride : LimitFor(mode);
+    }
+
+    // twow-repo#591 (AiPlayerbot.Perf.ActionBudgetStartExempt): live 14.10. under 540 bots the budget deferred 63 % of the
+    // expensive actions, and new bots stood for 10 min with "choose travel target - DEFERRED", no destination and no quest.
+    // A bot without an active travel target may always choose one.
+    inline bool IsTravelTargetChoice(std::string const& action)
+    {
+        return action == "choose travel target" || action == "choose group travel target" || action == "request travel target" ||
+            action == "request quest travel target";
+    }
+
+    inline bool StartExempt(bool switchOn, std::string const& action, bool hasActiveTravelTarget)
+    {
+        return switchOn && !hasActiveTravelTarget && IsTravelTargetChoice(action);
+    }
+
     // Per map thread: expensive actions started in the current world tick.
     struct ThreadBudget
     {
@@ -53,7 +73,7 @@ namespace ai::action_budget
     // May this bot start an expensive action now? deferralsInARow is the bot's own count of deferred expensive
     // actions since its last one ran; the caller resets it when this returns true.
     inline bool TryTake(std::uint32_t mode, std::uint32_t botGuid, std::uint32_t tickMs, std::uint32_t tickIndex,
-        std::uint32_t deferralsInARow, ThreadBudget& budget)
+        std::uint32_t deferralsInARow, ThreadBudget& budget, std::uint32_t limitOverride = 0)
     {
         if (!mode || deferralsInARow >= MaxDeferrals)
             return true;
@@ -66,7 +86,7 @@ namespace ai::action_budget
             budget.tick = tickMs;
             budget.used = 0;
         }
-        if (budget.used >= LimitFor(mode))
+        if (budget.used >= LimitFor(mode, limitOverride))
             return false;
         ++budget.used;
         return true;
@@ -86,7 +106,7 @@ namespace ai::action_budget
         return std::find(expensive.begin(), expensive.end(), action) != expensive.end();
     }
 
-    enum Count { Executed, Deferred, Forced, Counts };
+    enum Count { Executed, Deferred, Forced, StartExempted, Counts };
 
     inline std::atomic<std::uint64_t>& Counter(Count count)
     {
