@@ -73,6 +73,6 @@ require_text("${ai_h}" "if (!lastQuestRescue.load() || now - lastQuestRescue.loa
 
 # Z3: battleground quests skipped as targets, counted.
 require_order("${choose}" "if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())" "++lastRejects.battlegroundQuest;" "BG skip behind the switch")
-require_text("${choose}" "ai::zone_exit::IsBattlegroundQuestSort(bgQuest->GetQuestTemplate()->GetZoneOrSort())" "by quest sort")
+require_text("${choose}" "ai::zone_exit::IsBattlegroundQuestSort(bgQuestTemplate->GetZoneOrSort())" "by quest sort")
 
 message(STATUS "zone_exit source contract passed")

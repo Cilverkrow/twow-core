@@ -902,11 +902,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 // twow-repo#587 (Z3, AiPlayerbot.ZoneExit.SkipBattlegroundQuests): no battleground quest as a quest-first target.
                 if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())
                     if (QuestTravelDestination const* bgQuest = dynamic_cast<QuestTravelDestination const*>(destination))
-                        if (bgQuest->GetQuestTemplate() && ai::zone_exit::IsBattlegroundQuestSort(bgQuest->GetQuestTemplate()->GetZoneOrSort()))
-                        {
-                            ++lastRejects.battlegroundQuest;
-                            continue;
-                        }
+                        if (Quest const* bgQuestTemplate = sObjectMgr.GetQuestTemplate(bgQuest->GetQuestId()))
+                            if (ai::zone_exit::IsBattlegroundQuestSort(bgQuestTemplate->GetZoneOrSort()))
+                            {
+                                ++lastRejects.battlegroundQuest;
+                                continue;
+                            }
 
                 // Checked after IsActive so the area lookup only happens for
                 // the point that was actually selected.
