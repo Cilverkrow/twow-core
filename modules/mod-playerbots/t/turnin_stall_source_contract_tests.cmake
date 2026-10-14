@@ -49,11 +49,22 @@ require_text("${config_cpp}" "zoneExitTurnInStallCounts = config.GetBoolDefault(
 require_text("${conf_dist}" "AiPlayerbot.ZoneExit.TurnInStallCounts = 0" "documented")
 
 between("${travel}" "case turnin_recovery::RecoveryAction::RecomputeRoute:" "case turnin_recovery::RecoveryAction::SuppressRouteAndCooldown:" stage1)
-require_order("${stage1}" "TraceQuestCommit(tDestination, \"blocked\", \"stall_recompute_route\");" "if (sPlayerbotAIConfig.zoneExitTurnInStallCounts && IsProgressAwareTurnIn())" "counted after the trace")
-require_order("${stage1}" "if (sPlayerbotAIConfig.zoneExitTurnInStallCounts && IsProgressAwareTurnIn())" "NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), \"stall_recompute\");" "turn-ins only, behind the switch")
-require_order("${stage1}" "NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), \"stall_recompute\");" "SetStatus(TravelStatus::TRAVEL_STATUS_READY);" "the recovery itself unchanged")
+require_order("${stage1}" "TraceQuestCommit(tDestination, \"blocked\", \"stall_recompute_route\");" "if (IsProgressAwareTurnIn())" "counted after the trace")
+require_text("${stage1}" "bool const parked = sPlayerbotAIConfig.zoneExitTurnInStallCounts && NoteTurnInFailure(questId, \"stall_recompute\");" "turn-ins only, the park behind the switch")
+require_order("${stage1}" "unreachable_target::LongWindow().Add(key, questId, bot->GetGUIDLow());" "SetStatus(TravelStatus::TRAVEL_STATUS_READY);" "the recovery itself unchanged")
 # The park machinery itself (threshold, window, finished-quest check) stays the #485 one.
 between("${travel}" "bool TravelTarget::NoteTurnInFailure(uint32 questId, char const* reason)" "\n}\n" note)
 require_text("${note}" "if (bot->GetQuestStatus(questId) != QUEST_STATUS_COMPLETE || bot->GetQuestRewardStatus(questId))" "finished, not handed in")
+
+# Owner 14.10.: nothing hidden - the [UnreachableTarget] line and the count run whatever the switch says.
+require_order("${stage1}" "if (IsProgressAwareTurnIn())" "bool const parked = sPlayerbotAIConfig.zoneExitTurnInStallCounts && NoteTurnInFailure(questId, \"stall_recompute\");" "logging outside the switch")
+require_order("${stage1}" "bool const parked = sPlayerbotAIConfig.zoneExitTurnInStallCounts" "[UnreachableTarget] bot=%u level=%u quest=%u entry=%d kind=turn_in" "line after the decision")
+require_text("${stage1}" "unreachable_target::LongWindow().Add(key, questId, bot->GetGUIDLow());" "counted for the hourly top")
+read_source("RandomPlayerbotMgr.cpp" mgr)
+require_text("${mgr}" "[UnreachableTop] window_min=60 total=%u targets=%u top=%s" "hourly top line")
+string(FIND "${mgr}" "if (sPlayerbotAIConfig.zoneExitTurnInStallCounts)" top_gated)
+if(NOT top_gated EQUAL -1)
+  message(FATAL_ERROR "#587 Z4: the unreachable top must not depend on the switch")
+endif()
 
 message(STATUS "turnin_stall source contract passed")

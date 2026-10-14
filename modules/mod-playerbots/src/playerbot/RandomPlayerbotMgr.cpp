@@ -17,6 +17,7 @@
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PacketTracePolicy.h"
+#include "playerbot/UnreachableTargetPolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -943,6 +944,28 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // twow-repo#587 Z4 (always on): the most often unreachable turn-in targets, top 5 per 5 minutes and top 10 per hour -
+    // "entry:map:x:y:quest:count:bots". OB-30's live monitor takes the hourly line into the #541 summary.
+    {
+        static uint32 unreachableMinutes = 0;
+        ++unreachableMinutes;
+        if (unreachableMinutes % 5 == 0)
+        {
+            uint32 total = 0;
+            auto const top = ai::unreachable_target::ShortWindow().TakeTop(5, total);
+            if (total)
+                sLog.outBasic("[UnreachableTop] window_min=5 total=%u targets=%u top=%s", total, uint32(top.size()),
+                    ai::unreachable_target::Format(top).c_str());
+        }
+        if (unreachableMinutes % 60 == 0)
+        {
+            uint32 total = 0;
+            auto const top = ai::unreachable_target::LongWindow().TakeTop(10, total);
+            sLog.outBasic("[UnreachableTop] window_min=60 total=%u targets=%u top=%s", total, uint32(top.size()),
+                top.empty() ? "-" : ai::unreachable_target::Format(top).c_str());
+        }
+    }
 
     // twow-repo#541 (AiPlayerbot.Perf.ActionBudget): expensive actions of the last minute.
     if (sPlayerbotAIConfig.perfActionBudget)
