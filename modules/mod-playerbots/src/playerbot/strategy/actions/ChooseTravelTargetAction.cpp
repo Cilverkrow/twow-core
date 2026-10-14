@@ -361,7 +361,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // search - the bot asks for the (continent-correct) quest rescue instead of grinding until the idle limit.
             if (sPlayerbotAIConfig.zoneExitStrandedRescueAfter && UsesQuestFirstProgression(bot))
             {
-                uint32 const otherRejects = lastRejects.zoneLevel + lastRejects.dangerMap + lastRejects.hubFilter + lastRejects.notActive +
+                uint32 const otherRejects = lastRejects.hubFilter + lastRejects.zoneLevel + lastRejects.dangerMap + lastRejects.notActive +
                     lastRejects.enemyZone + lastRejects.knownInactive + lastRejects.deathSuppressed + lastRejects.turnInSuppressed;
                 uint32 const stranded = ai::zone_exit::NextStrandedCount(
                     uint32(std::max(0, AI_VALUE2(int, "manual int", "zone exit stranded"))), ai::zone_exit::OnlyOtherContinent(lastRejects.crossMap, otherRejects));
