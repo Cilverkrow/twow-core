@@ -27,6 +27,7 @@
 #include "BotDiagnostics.h"  // for SC_LOG
 #include "Objects/Player.h"
 #include "playerbot/AiFactory.h"
+#include "playerbot/StartZonePolicy.h"
 #include "PlayerbotCommandServer.h"
 #include "MemoryMonitor.h"
 
@@ -3470,8 +3471,10 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation> 
             }
         }
 
-        // Never send bots to custom player-only starting zones (no MMAP support)
-        if (zoneId == 5536 || zoneId == 5225)
+        // Never send bots to custom player-only starting zones (no MMAP support).
+        // twow-repo#575 (PATH-01 E3): Alah'Thalas 2040 is a zone of its own and is filtered too; with
+        // AiPlayerbot.CustomRaceStartZones the zones are teleport targets for their own race only.
+        if (ai::start_zone::TeleportSkipsZone(zoneId, bot->getRace(), sPlayerbotAIConfig.customRaceStartZones))
             return true;
 
         if (!area)

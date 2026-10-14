@@ -20,6 +20,7 @@
 #include "playerbot/FarFollowPolicy.h"
 #include "playerbot/FarMovePolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
@@ -392,6 +393,28 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
         if (sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b): stored id unknown to TaxiPath.dbc
             LogTaxiUse(bot, entry, nullptr, needNpc, false, path_fail::TaxiResult::NoPath, -1.0f);
         return goClick;
+    }
+
+    // twow-repo#575 (PATH-01 E7, AiPlayerbot.CustomRaceStartZones): the goblin flying machines 50597 / 50598 are no
+    // flight masters (gossip script npc_flying_machine). At the start node the bot takes the path as the script does.
+    if (sPlayerbotAIConfig.customRaceStartZones && ai::start_zone::IsScriptedTaxi(entry))
+    {
+        float const startDist = TaxiStartDistance(bot, tEntry);
+        bool const inReach = startDist >= 0.0f && startDist <= path_fail::TaxiStartReach;
+        bool flew = false;
+        if (inReach)
+        {
+            bot->OnTaxiFlightEject(true);
+            ai->Unmount();
+            bot->GetMotionMaster()->Clear();
+            flew = bot->ActivateTaxiPathTo(entry, 0, true);
+            sLog.outBasic("[Travel] state=scripted_taxi bot=%u level=%u path=%u ok=%u", bot->GetGUIDLow(), bot->GetLevel(),
+                entry, flew ? 1u : 0u);
+        }
+        if (sPlayerbotAIConfig.pathTaxiTrace)
+            LogTaxiUse(bot, entry, tEntry, needNpc, false, flew ? path_fail::TaxiResult::Ok :
+                (inReach ? path_fail::TaxiResult::Failed : path_fail::TaxiResult::TooFar), startDist);
+        return flew;
     }
 
     Creature* unit = nullptr;

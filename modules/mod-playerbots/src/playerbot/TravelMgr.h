@@ -134,6 +134,11 @@ namespace ai
 		virtual TravelDestinationPurpose GetPurpose() const { return TravelDestinationPurpose::None; }
 
 		virtual std::string GetShortName() const { return ""; };
+
+		// twow-repo#575 (PATH-01 E4/E5, AiPlayerbot.CustomRaceStartZones): a destination whose points all lie in the goblin
+		// or high-elf start zone is a target for that faction only (TravelMgr::GetDestinations). 0 = any faction.
+		void SetStartZoneTeam(uint8 team) { startZoneTeam = team; }
+		uint8 GetStartZoneTeam() const { return startZoneTeam; }
 	protected:
 		void SetExpireFast() { expireDelay = 60000; } //1 minute
 		void SetCooldownShort() { cooldownDelay = 1000; } //1 second
@@ -150,6 +155,7 @@ namespace ai
 
 		uint32 expireDelay = 300000; //5 minutes
 		uint32 cooldownDelay = 60000; //1 minute
+		uint8 startZoneTeam = 0;  // ai::start_zone::StartTeam
 	};
 
 	//A travel target that is always inactive and jumps to cooldown.
