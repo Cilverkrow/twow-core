@@ -57,6 +57,8 @@
 
 #include <limits>
 #include "FunserverRareRespawn.h"
+#include "LootMgr.h"
+#include "QuestTargetRespawnPolicy.h"
 
 ObjectMgr sObjectMgr;
 
@@ -513,6 +515,44 @@ void ObjectMgr::LoadRareRespawnRegistry()
     while (result->NextRow());
 
     // LoadCreatures() re-checks every guid against its spawn row and drops mismatches.
+}
+
+ObjectMgr::QuestRespawnTarget const* ObjectMgr::GetQuestRespawnTarget(uint32 entry) const
+{
+    // twow-repo#581 QL-3: entries that are a quest target (kill objective or quest drop) with at most MaxSpawns spawns.
+    std::call_once(m_questRespawnTargetsOnce, [this]()
+    {
+        std::unordered_map<uint32, uint32> spawns;
+        for (auto const& data : m_CreatureDataMap)
+            for (uint32 id : data.second.creature_id)
+                if (id)
+                    ++spawns[id];
+
+        uint32 const maxSpawns = sWorld.getConfig(CONFIG_UINT32_DYN_RESPAWN_QUEST_MAX_SPAWNS);
+        std::unordered_map<uint32, std::vector<uint32>> killQuests;
+        for (auto const& quest : m_QuestTemplatesMap)
+            for (int32 target : quest.second->ReqCreatureOrGOId)
+                if (target > 0)
+                    killQuests[uint32(target)].push_back(quest.first);
+
+        for (auto const& [id, count] : spawns)
+        {
+            CreatureInfo const* info = GetCreatureTemplate(id);
+            if (!info)
+                continue;
+            auto const kills = killQuests.find(id);
+            bool const questLoot = info->loot_id && LootTemplates_Creature.HaveQuestLootFor(info->loot_id);
+            if (!quest_target_respawn::IsCandidate(count, maxSpawns, kills != killQuests.end() || questLoot))
+                continue;
+            QuestRespawnTarget& target = m_questRespawnTargets[id];
+            target.questLoot = questLoot;
+            if (kills != killQuests.end())
+                target.killQuests = kills->second;
+        }
+        sLog.outBasic("[QuestRespawn] candidates=%u max_spawns=%u", uint32(m_questRespawnTargets.size()), maxSpawns);
+    });
+    auto const itr = m_questRespawnTargets.find(entry);
+    return itr == m_questRespawnTargets.end() ? nullptr : &itr->second;
 }
 
 bool ObjectMgr::HasAcceleratedRareRespawn(uint32 guid) const
