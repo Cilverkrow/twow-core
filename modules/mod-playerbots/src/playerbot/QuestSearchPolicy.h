@@ -44,6 +44,8 @@ struct RejectCounts
     uint32_t resumeSkipped = 0;
     // twow-repo#581 (QL-1): objectives of a quest this bot kept failing at.
     uint32_t questLoopSuppressed = 0;
+    // twow-repo#587 (Z3): battleground quests skipped as quest-first targets.
+    uint32_t battlegroundQuest = 0;
 
     std::string Format() const
     {
@@ -60,7 +62,8 @@ struct RejectCounts
             " range_skip=" + std::to_string(rangeSkip) +
             " moved_away=" + std::to_string(movedAway) +
             " resume_skipped=" + std::to_string(resumeSkipped) +
-            " quest_loop_suppressed=" + std::to_string(questLoopSuppressed);
+            " quest_loop_suppressed=" + std::to_string(questLoopSuppressed) +
+            " battleground_quest=" + std::to_string(battlegroundQuest);
     }
 };
 
