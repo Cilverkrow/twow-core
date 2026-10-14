@@ -8,6 +8,7 @@
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/MemStoresPolicy.h"
 #include "playerbot/SpellListPolicy.h"
+#include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for "S:engine init"
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <atomic>
@@ -338,6 +339,9 @@ void PlayerbotAI::SetParked(bool value)
     // every ai::park::AiIntervalMs.
     if (value && sPlayerbotAIConfig.aiDelayJitterPct)
         lastParkedUpdateMs = ai::jitter::SpreadLastUpdate(WorldTimer::getMSTime(), ai::park::AiIntervalMs, urand(0, ai::jitter::RollRange));
+    // twow-repo#551 (AiPlayerbot.Park.Quiet): a quiet parked bot emotes rarely, spread by guid.
+    nextParkIdleEmote = value && sPlayerbotAIConfig.parkQuiet
+        ? ai::park::FirstIdleEmote(bot->GetGUIDLow(), uint32(time(nullptr)), sPlayerbotAIConfig.parkQuietIdleEmoteSeconds) : 0;
 }
 
 bool PlayerbotAI::AllowDelayJitter() const
@@ -627,6 +631,17 @@ void PlayerbotAI::HandleQueuedBotPackets()
     for (std::function<void(ai::AiObjectContext*)> const& write : writes)
         if (write)
             write(aiObjectContext);
+
+    // twow-repo#563 (X3b site 2): answer the conditions other bots asked about, on this bot's own context.
+    if (sPlayerbotAIConfig.x3bPublishedConditions && conditionBoard.HasRequests())
+        conditionBoard.Refresh(WorldTimer::getMSTime(), [this](std::string const& condition)
+        {
+            return aiObjectContext->GetValue<bool>("and", condition)->Get();
+        });
+    // X3b site 3: this bot's follow/wander state for GroupReadyValue of the others (no cross-bot strategy read).
+    if (sPlayerbotAIConfig.x3bPublishedConditions)
+        publishedFollowing.store(HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) ||
+            HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT), std::memory_order_relaxed);
 }
 
 // twow-repo#563 (X3c): instead of setting a value in another bot's context from this thread, queue it.
@@ -645,6 +660,23 @@ void PlayerbotAI::QueueContextWriteTo(Player* target, std::function<void(ai::AiO
         return;
     }
     targetAi->QueueContextWrite(std::move(write));
+}
+
+void PlayerbotAI::PublishTargets(std::shared_ptr<PublishedTargets const> snapshot)
+{
+    std::shared_ptr<PublishedTargets const> previous;
+    {
+        std::scoped_lock lock(publishedTargetsMutex);
+        previous.swap(publishedTargets);
+        publishedTargets = std::move(snapshot);
+    }
+    // previous is released here, outside the lock (a reader may still hold its own copy).
+}
+
+std::shared_ptr<PlayerbotAI::PublishedTargets const> PlayerbotAI::GetPublishedTargets() const
+{
+    std::scoped_lock lock(publishedTargetsMutex);
+    return publishedTargets;
 }
 
 // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): called from UpdateAI, i.e. on this bot's map thread - the
@@ -695,6 +727,17 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         if (!ai::park::AiUpdateDue(bot->IsInCombat(), nowMs, lastParkedUpdateMs))
             return;
         lastParkedUpdateMs = nowMs;
+        // twow-repo#551 (AiPlayerbot.Park.Quiet): the only social sign of a quiet parked bot - one idle emote per interval.
+        if (sPlayerbotAIConfig.parkQuiet && !bot->IsInCombat())
+        {
+            uint32 const now = uint32(time(nullptr));
+            if (ai::park::IdleEmoteDue(now, nextParkIdleEmote, sPlayerbotAIConfig.parkQuietIdleEmoteSeconds))
+            {
+                static uint32 const idleEmotes[] = { EMOTE_ONESHOT_TALK, EMOTE_ONESHOT_LAUGH, EMOTE_ONESHOT_EAT, EMOTE_ONESHOT_CHEER };
+                bot->HandleEmoteCommand(idleEmotes[urand(0, 3)]);
+                nextParkIdleEmote = now + sPlayerbotAIConfig.parkQuietIdleEmoteSeconds;
+            }
+        }
     }
 
     SlowUpdateProbe const slowUpdateProbe{ this, WorldTimer::getMSTime() };
@@ -3200,7 +3243,13 @@ void PlayerbotAI::DoNextAction(bool min)
 void PlayerbotAI::ReInitCurrentEngine()
 {
     InterruptSpell();
+    // twow-repo#541 (L0, AiPlayerbot.BotUpdateTrace): the cost of this rebuild as "S:engine init <us>" in the engine
+    // trace, so a combat-entry Init shows up in [BotUpdateSlow]. Off: no clock read, no entry.
+    bool const traceInit = sPlayerbotAIConfig.botUpdateTrace;
+    std::uint64_t const initStartUs = traceInit ? ai::bot_update::NowUs() : 0;
     currentEngine->Init();
+    if (traceInit)
+        currentEngine->TraceNote("S:engine init %lluus", (unsigned long long)ai::bot_update::SinceUs(initStartUs));
 }
 
 void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)
@@ -3532,6 +3581,17 @@ void PlayerbotAI::RecordDeathForLoop()
     death.x = bot->GetPositionX();
     death.y = bot->GetPositionY();
     death_loop::Record(recentDeaths, death, DeathLoopSettings());
+
+    // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): a death in an area of the hostile faction (guards) is a
+    // loop at once; a death soon after an evacuation means the evacuation did not break the loop.
+    if (sPlayerbotAIConfig.deathLoopEscape)
+    {
+        lastDeathHostileArea = WorldPosition(bot).isEnemyHomeZoneFor(bot->GetTeam());
+        if (lastDeathHostileArea)
+            death_loop::EscapeCounter(death_loop::EscapeHostileDeath).fetch_add(1, std::memory_order_relaxed);
+        if (death_loop::RepeatAfterEscape(death.atSeconds, lastDeathLoopEscapeAt, sPlayerbotAIConfig.deathLoopWindowSeconds))
+            death_loop::EscapeCounter(death_loop::EscapeRepeat).fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 void PlayerbotAI::RecordDeathForSeries()
@@ -3616,6 +3676,9 @@ void PlayerbotAI::UpdateTankPathDiag(uint32 now)
 
 bool PlayerbotAI::IsInDeathLoop() const
 {
+    // twow-repo#541 A39: with DeathLoop.Escape a death among the hostile faction's guards needs no repeat.
+    if (sPlayerbotAIConfig.deathLoopEscape && lastDeathHostileArea)
+        return true;
     return death_loop::IsLoop(recentDeaths, uint32(time(nullptr)), DeathLoopSettings());
 }
 
@@ -9918,6 +9981,10 @@ bool PlayerbotAI::HasPlayerRelation()
 
 void PlayerbotAI::QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid guid2, std::string message, std::string chanName, std::string name, bool noDelay)
 {
+    // twow-repo#551 (AiPlayerbot.Park.Quiet): a quiet parked bot answers whispers only - no replies to chat around it.
+    if (ai::park::QuietDropsChatReply(sPlayerbotAIConfig.parkQuiet, parked, msgType == CHAT_MSG_WHISPER))
+        return;
+
     std::scoped_lock lock(chatRepliesMutex);
     chatReplies.push(ChatQueuedReply(msgType, guid1.GetCounter(), guid2.GetCounter(), message, chanName, name, time(0) + (noDelay ? 0 : urand(inCombat ? 15 : 10, inCombat ? 30 : 20))));
 }

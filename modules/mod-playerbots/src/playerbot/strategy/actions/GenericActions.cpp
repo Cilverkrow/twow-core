@@ -3,6 +3,7 @@
 #include "GenericActions.h"
 #include <map>
 #include "playerbot/PlayerbotFactory.h"
+#include "playerbot/InitPetPolicy.h"
 
 using namespace ai;
 
@@ -121,6 +122,13 @@ bool InitializePetAction::Execute(Event& event)
     PlayerbotFactory factory(bot, bot->GetLevel(), ITEM_QUALITY_LEGENDARY);
     factory.InitPet();
     factory.InitPetSpells();
+
+    // twow-repo#541 (AiPlayerbot.InitPet.Cache): no pet came of it - the "often" trigger would start the
+    // whole search again in a few seconds; wait a minute instead.
+    if (sPlayerbotAIConfig.initPetCache && bot->getClass() == CLASS_HUNTER && !bot->GetPet())
+        noPetUntil = uint32(time(nullptr)) + ai::init_pet::NoPetCooldownSeconds;
+    // The stored pets may have changed; the next check asks the database again.
+    storedPetCheckedAt = 0;
     return true;
 }
 
@@ -134,17 +142,33 @@ bool InitializePetAction::isUseful()
         if (bot->getClass() == CLASS_HUNTER)
         {
             bool hasTamedPet = bot->GetPet();
+            uint32 const now = uint32(time(nullptr));
+            // twow-repo#541 (AiPlayerbot.InitPet.Cache): no new try right after one that gave no pet, and the
+            // stored-pet answer for a minute instead of a character_pet query on every check.
+            if (!hasTamedPet && sPlayerbotAIConfig.initPetCache)
+            {
+                if (ai::init_pet::InCooldown(noPetUntil, now))
+                    return false;
+                if (ai::init_pet::CacheValid(storedPetCheckedAt, now, ai::init_pet::StoredPetCacheSeconds))
+                    return !storedPet;
+            }
             if (!hasTamedPet)
             {
                 std::unique_ptr<QueryResult> queryResult(CharacterDatabase.PQuery("SELECT id, entry, owner "
                                                                                     "FROM character_pet WHERE owner = '%u' AND (slot = '%u' OR slot > '%u') ",
                                                                                     bot->GetGUIDLow(), PET_SAVE_AS_CURRENT, PET_SAVE_LAST_STABLE_SLOT));
-            
+
                 if (queryResult)
                 {
                     Field* fields = queryResult->Fetch();
                     const uint32 entry = fields[1].GetUInt32();
                     hasTamedPet = sObjectMgr.GetCreatureTemplate(entry);
+                }
+
+                if (sPlayerbotAIConfig.initPetCache)
+                {
+                    storedPet = hasTamedPet;
+                    storedPetCheckedAt = now;
                 }
             }
 

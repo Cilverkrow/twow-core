@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <iterator>
 #include <mutex>
@@ -86,6 +87,27 @@ inline RouteCooldownStore& RouteCooldowns()
     static RouteCooldownStore store;
     return store;
 }
+
+// twow-repo#541 (L1b, AiPlayerbot.Perf.RouteFailCooldownSeconds, default 0): chain42 (11.10.2026) L0 trace - 67 % of
+// the slow route builds at 1600 bots were getRoute(position) searches that tried every node pair (60-150 ms) and found
+// no route, and the same bot repeated the same search, because the cooldown above only follows an exceeded budget
+// (budget_exceeded=0 in all arms). With the switch a search without a route blocks the same bot and target cell for
+// that many seconds; the caller gets the same empty route as from the search (MoveTo: the same straight-line fallback).
+constexpr std::uint32_t RouteFailCooldownMaxSeconds = 300;
+
+inline std::uint32_t ClampRouteFailCooldownSeconds(std::int32_t seconds)
+{
+    if (seconds <= 0)
+        return 0;
+    if (seconds > std::int32_t(RouteFailCooldownMaxSeconds))
+        return RouteFailCooldownMaxSeconds;
+    return std::uint32_t(seconds);
+}
+
+// [RouteFail] counters (only counted with the switch on). Map threads add, the world thread takes them once per
+// minute. blocks = searches without a route that set a cooldown, skips = searches skipped by any route cooldown.
+inline std::atomic<std::uint64_t> routeFailBlocks{ 0 };
+inline std::atomic<std::uint64_t> routeCooldownSkips{ 0 };
 }
 
 #include <array>

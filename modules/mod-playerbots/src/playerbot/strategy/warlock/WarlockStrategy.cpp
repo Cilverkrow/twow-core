@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "WarlockMultipliers.h"
 #include "WarlockStrategy.h"
 
@@ -51,7 +52,7 @@ void WarlockStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         NextAction::array(0, new NextAction("drain soul", ACTION_HIGH + 1), NULL)));
 
     triggers.push_back(new TriggerNode(
-        "target critical health",
+        sPlayerbotAIConfig.dietWarlockTalentKnown ? "shadowburn" : "target critical health",  // twow-repo#568 (D24)
         NextAction::array(0, new NextAction("shadowburn", ACTION_HIGH), NULL)));
 
     triggers.push_back(new TriggerNode(
@@ -109,7 +110,7 @@ void WarlockPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         NextAction::array(0, new NextAction("drain life", ACTION_LIGHT_HEAL), NULL)));
 
     triggers.push_back(new TriggerNode(
-        "very often",
+        sPlayerbotAIConfig.dietWarlockTalentKnown ? "shadowburn pvp" : "very often",  // twow-repo#568 (D24)
         NextAction::array(0, new NextAction("shadowburn", ACTION_HIGH), NULL)));
 }
 
@@ -284,9 +285,15 @@ void WarlockBoostStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     BoostStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "amplify curse",
-        NextAction::array(0, new NextAction("amplify curse", ACTION_HIGH), NULL)));
+    // twow-repo#568 (D25, AiPlayerbot.Diet.WarlockAmplifyCurse): Turtle 1.18 only has "[Deprecated] Amplify
+    // Curse" (18288), so "spell id" of "amplify curse" is always 0 and the node at ACTION_HIGH ended IMPOSSIBLE on
+    // every combat tick. With the switch it is not registered.
+    if (!sPlayerbotAIConfig.dietWarlockAmplifyCurse)
+    {
+        triggers.push_back(new TriggerNode(
+            "amplify curse",
+            NextAction::array(0, new NextAction("amplify curse", ACTION_HIGH), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "inferno",
@@ -360,8 +367,10 @@ void WarlockCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         "fear",
         NextAction::array(0, new NextAction("fear on cc", ACTION_INTERRUPT + 1), NULL)));
 
+    // twow-repo#568 (D23, AiPlayerbot.Diet.WarlockCcKnown): with the switch the node uses the "howl of terror"
+    // trigger (same 10 yd check, only while howl of terror is known; learned at 40). Switch off: "enemy ten yards".
     triggers.push_back(new TriggerNode(
-        "enemy ten yards",
+        sPlayerbotAIConfig.dietWarlockCcKnown ? "howl of terror" : "enemy ten yards",
         NextAction::array(0, new NextAction("howl of terror", ACTION_INTERRUPT), NULL)));
 }
 

@@ -42,6 +42,8 @@ struct RejectCounts
     // twow-repo#485: candidates a choice that ran out of time (#416) had checked
     // and this one skipped - not judged by this choice.
     uint32_t resumeSkipped = 0;
+    // twow-repo#581 (QL-1): objectives of a quest this bot kept failing at.
+    uint32_t questLoopSuppressed = 0;
 
     std::string Format() const
     {
@@ -57,7 +59,8 @@ struct RejectCounts
             " danger_map=" + std::to_string(dangerMap) +
             " range_skip=" + std::to_string(rangeSkip) +
             " moved_away=" + std::to_string(movedAway) +
-            " resume_skipped=" + std::to_string(resumeSkipped);
+            " resume_skipped=" + std::to_string(resumeSkipped) +
+            " quest_loop_suppressed=" + std::to_string(questLoopSuppressed);
     }
 };
 

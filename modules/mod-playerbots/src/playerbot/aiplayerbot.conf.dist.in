@@ -67,6 +67,19 @@ AiPlayerbot.Park.SleepGrid = 0
 AiPlayerbot.Park.MaxPerInn = 0
 AiPlayerbot.Park.MaxPerCity = 0
 
+# twow-repo#551 (owner 11.10.2026, "Schleifen-Fluten"): Quiet = 1: a parked bot drops its social strategies (emote:
+# greet on "new player nearby", talk, suggest trade, emote reactions; custom::say; ai chat) and answers whispers
+# only, no say/yell/party/guild/channel replies. QuietIdleEmoteSeconds: at most one idle emote (talk/laugh/eat/
+# cheer) per this many seconds, the first spread by guid (0 = none). Unpark restores the strategies.
+AiPlayerbot.Park.Quiet = 0
+AiPlayerbot.Park.QuietIdleEmoteSeconds = 600
+
+# twow-repo#551 (owner 11.10.2026): Persist = 1: a parked bot keeps a "park" row in the bot event store (existing
+# table, no schema change; data = inn, here or the game_tele name) and is parked again after a restart, deploy or
+# its next login - caps and faction checks run again, a bot with no spot left stays active. Unpark deletes the row.
+# [Park] state=restored / restore_failed per bot.
+AiPlayerbot.Park.Persist = 0
+
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
 
@@ -721,6 +734,16 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 AiPlayerbot.QuestWorkTimeouts.Max = 0
 AiPlayerbot.QuestWorkTimeouts.CooldownSeconds = 3600
 
+# twow-repo#581 (QUEST-LOOP-01, owner 11.10.2026): bots looped on emptied quest camps (no living target in sight ->
+# 60 s cooldown -> same camp). QL-1: MaxFailures = N > 0: inactive drops and work timeouts of a quest's objectives
+# count per bot and quest; N of them within WindowSeconds skip all objectives of that quest for CooldownSeconds
+# (turn-ins and givers unaffected; [QuestCommit] event=abandon reason=quest_loop_suppressed). QL-2:
+# InactiveCooldownSeconds = S > 0: the cooldown after an inactive objective lasts at least S seconds. 0 = as before.
+AiPlayerbot.QuestLoop.MaxFailures = 0
+AiPlayerbot.QuestLoop.WindowSeconds = 1800
+AiPlayerbot.QuestLoop.CooldownSeconds = 1800
+AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
+
 # twow-repo#485: with 1, quest givers and takers that are game objects spawned
 # only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
 # quest 310 "Bitter Rivals", shown for 60 s by a quest end script) are no travel
@@ -738,6 +761,11 @@ AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers = 0
 AiPlayerbot.DeathLoop.MaxDeaths = 0
 AiPlayerbot.DeathLoop.WindowSeconds = 900
 AiPlayerbot.DeathLoop.Radius = 150
+# twow-repo#541 A39 (owner 10.10.2026): 1 = a death in an area of the hostile faction counts as a death loop at
+# once, and the evacuation (repop) never sends the bot to a homebind in a hostile area: Goblins / High Elves go to
+# their safe start (Durotar / Elwynn), the other races to their race start, and the homebind is reset there.
+# [DeathLoop] state=minute counts detected / escaped / rebound / repeat_after_escape / hostile_death. 0 = off.
+AiPlayerbot.DeathLoop.Escape = 0
 
 # #357 O-12 (owner 2026-09-27, variant A): roster shamans on premade path 7.1
 # "enhancement" or 7.3 "shaman tank" get the reworked Enhancement talents as
@@ -1851,6 +1879,17 @@ AiPlayerbot.BotUpdateTrace = 0
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
 AiPlayerbot.AiDelayJitterPct = 0
+# twow-repo#541: the idle action "check values" forces six values in one update (possible targets, all
+# targets, nearest npcs, nearest corpses, nearest game objects no los, nearest friendly players) and
+# throws the results away; the actions compute them on demand anyway. 1 = skip those searches (only the
+# debug move / map parts stay). 0 = as before (default).
+AiPlayerbot.CheckValues.SkipSearches = 0
+
+# twow-repo#541: 1 = "initialize pet" picks the hunter pet from a tameable list built once (instead of
+# scanning every creature template per call), keeps the character_pet answer of its check for 60 s,
+# and waits 60 s after a try that left the hunter without a pet. Same pets. 0 = as before (default).
+AiPlayerbot.InitPet.Cache = 0
+
 # twow-repo#563 (X3a): 1 = every bot's value map is guarded by its own lock (shared to look up, unique to
 # insert or erase), because other bots read and create values in it from their region threads. The lock
 # is held only for the map access, never while a value is computed. 0 = no lock (default).
@@ -1859,6 +1898,19 @@ AiPlayerbot.X3a.ContextLock = 0
 # (talk target, last said, RTSC saved locations); it queues the write and the other bot applies it in
 # its own update. 0 = direct write as before (default).
 AiPlayerbot.X3c.InboxWrites = 0
+# twow-repo#541 (owner 11.10.2026): 1 = the core builds and sends no object update packets (SMSG_UPDATE_OBJECT,
+# SMSG_COMPRESSED_UPDATE_OBJECT, SMSG_DESTROY_OBJECT) to bot sessions - a bot has no client and its AI reads object
+# state from the objects (PacketTrace: 0 update packets read). Visible sets, broadcast listeners and update masks
+# stay exactly as before; chat, spell and movement packets are untouched. Applies to bots logging in after the change.
+# 0 = off (default).
+AiPlayerbot.Perf.SkipBotUpdatePackets = 0
+
+# twow-repo#568 (c): 1 = one [UnknownName] line per trigger, action or strategy name that has no
+# creator (bot, class, engine, strategies of the first sighting), once per name and process. Such names
+# are silently skipped today. Log only, behaviour unchanged. At most 128 names per engine and kind and
+# 1024 per process are tracked; past that cap no further lines appear. 0 = off (default).
+AiPlayerbot.WarnUnknownNames = 0
+
 # twow-repo#541 (owner 11.10.2026, measurement only): 1 = count every packet the server hands to a session, per
 # receiver (bot packet the AI reads / bot packet built for nobody / real player), map (Eastern Kingdoms, Kalimdor,
 # other) and class (movement, update, spell, combat, chat, other), as count and bytes; one [BotPackets] line per
@@ -1930,6 +1982,15 @@ AiPlayerbot.Perf.TravelInfoReuse = 0
 # and damage hooks of all bots. PerfMon action and trigger names are built only with
 # AiPlayerbot.PerfMonEnabled = 1. Same decisions, same log lines. 0 = as before (default).
 AiPlayerbot.Perf.LogActionFastPath = 0
+# twow-repo#541 (owner 11.10.2026): budget for expensive bot actions per map thread and world tick, one switch with
+# variants: 0 = off (default), 1 = at most 3 per thread and tick, 2 = at most 1, 3 = spread (a bot starts one only
+# in its own slot of 4 world ticks). A deferred action stays queued and is tried on the bot's next update; after
+# 4 deferrals in a row it runs regardless (no starvation). [ActionBudget] counts executed / deferred / forced.
+AiPlayerbot.Perf.ActionBudget = 0
+# The expensive actions (comma list); empty = choose travel target, choose group travel target, request travel
+# target, request quest travel target, choose rpg target, move to travel target, find corpse, add gathering loot,
+# attack anything.
+AiPlayerbot.Perf.ActionBudgetActions =
 # twow-repo#541 (audit A11): 1 = the engine's last-action trail ([BotUpdateSlow] action=, [BotSlowUpdate]
 # and [Idle] last_action=, fishing break, "action" command) keeps the newest 512 characters, cut at an
 # entry '|'. The old trim kept only what lay beyond character 512 and often emptied the trail. Log and
@@ -2075,6 +2136,251 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
+# twow-repo#568 (diet D03, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = combat-spec rogues check Adrenaline Rush and
+# Blade Flurry in combat (boost strategy, combat engine) and cast them; 0 = both stay in the non-combat engine, where
+# the boost trigger is never active, so Adrenaline Rush is never cast (today's behaviour, default).
+AiPlayerbot.Diet.RogueCombatBoostInCombat = 0
+# twow-repo#568 (diet D15, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = assassination rogues (and every rogue below L10)
+# use backstab behind the target (falls back to sinister strike) and sinister strike in front; Mutilate does not exist
+# in Turtle 1.18. 0 = the dead 'mutilate back' / 'mutilate front' nodes as today (default).
+AiPlayerbot.Diet.RogueNoMutilate = 0
+# twow-repo#568 (diet D16, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = protection warriors skip the non-existent Heroic
+# Throw: 'enemy out of melee' pushes charge only, 'lose aggro' taunt, 'taunt on snare target' taunt on snare target.
+# 0 = heroic throw first, then the alternative, as today (default).
+AiPlayerbot.Diet.WarriorNoHeroicThrow = 0
+# twow-repo#568 (diet D17, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = arms warriors answer a fleeing snare target with
+# Hamstring directly. 0 = Piercing Howl (Fury talent) -> Mocking Blow (a taunt) -> Hamstring chain as today (default).
+AiPlayerbot.Diet.ArmsSnareHamstring = 0
+# twow-repo#568 (diet D36, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = protection warriors push Sunder Armor directly on
+# the 'sunder armor' trigger. 0 = Devastate first (unlearnable in Turtle 1.18, always IMPOSSIBLE) as today (default).
+AiPlayerbot.Diet.WarriorNoDevastate = 0
+# twow-repo#568 (diet D37, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the warrior 'disarm' trigger fires only when the bot
+# knows Disarm, it is off cooldown and the bot is in Defensive Stance. 0 = target-has-no-Disarm-aura check only (default).
+AiPlayerbot.Diet.WarriorDisarmGate = 0
+# twow-repo#568 (diet D38, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the warrior stance rules of the owner (11.10.2026):
+# levels 1-9 Battle Stance, tanks Defensive Stance from 10, fury Berserker Stance from 30 (quest), arms stays in Battle
+# Stance. The 'berserker stance' trigger needs the spell to be known, arms does not register it, protection has no
+# Defensive Tactics swap to Berserker (it ping-ponged with the 'defensive stance' trigger and lost rage on every change),
+# and Berserker Rage no longer pulls a bot into Berserker Stance. 0 = no checks, the old stance nodes (default).
+AiPlayerbot.Diet.WarriorBerserkerStanceGate = 0
+# twow-repo#568 (diet D39, no visible behaviour change): 1 = protection warriors do not register the two 'intercept and
+# rage' nodes, whose sub-trigger "enemy is out of melee" does not exist and never fires. 0 = registered as today (default).
+AiPlayerbot.Diet.WarriorNoInterceptAndRage = 0
+# twow-repo#568 (diet D40, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the 'bloodrage' trigger needs a known, ready Bloodrage,
+# and protection drops its duplicate bloodrage (NORMAL+5) and concussion blow (HIGH+4) nodes; the buff strategy (HIGH) and
+# the cc strategy (INTERRUPT) keep theirs. 0 = no cooldown check, duplicates registered as today (default).
+AiPlayerbot.Diet.WarriorDedupBloodrage = 0
+# twow-repo#568 (D20, strategy diet): 1 = priests only register the race spells their race can learn (touch of weakness /
+# devouring plague Undead, shadowguard / hex of weakness Troll, elune's grace / starshards Night Elf, desperate prayer
+# Human+Dwarf), and those four race triggers stay quiet until the spell is known (right race below the learn level).
+# Same casts: these nodes always ended IMPOSSIBLE. Read at engine (re)build. 0 = all nodes for every priest (default).
+AiPlayerbot.Diet.PriestRacials = 0
+# twow-repo#568 (D22, strategy diet): 1 = the priest triggers "inner fire" (learned at 12), "shadowform" and "inner focus"
+# (talents) stay quiet while the bot knows no rank of the spell, "inner focus" also while it is on cooldown. Same casts:
+# these actions ended IMPOSSIBLE in exactly those states (no alternatives). 0 = old triggers (default).
+AiPlayerbot.Diet.PriestSelfBuffKnown = 0
+# twow-repo#568 (D32, strategy diet): 1 = the shadow priest strategy no longer registers "vampiric touch" (all Turtle
+# 1.18 Vampiric Touch rows are passive, the talent works through Vampiric Embrace) and "shadowfiend" (no such spell in
+# Turtle 1.18). Both nodes could never cast. Read at engine (re)build. 0 = both nodes as before (default).
+AiPlayerbot.Diet.ShadowPriestDeadNodes = 0
+# twow-repo#568 (D23, strategy diet): 1 = the warlock cc nodes "death coil on snare target" (death coil, level 42) and
+# "howl of terror" (level 40, now on its own "howl of terror" trigger: enemy within 10 yd and the spell known) fire only
+# while the spell is known. Same casts: below the learn level they ended IMPOSSIBLE. Trigger choice read at engine
+# (re)build. 0 = old triggers (default).
+AiPlayerbot.Diet.WarlockCcKnown = 0
+# twow-repo#568 (D24, strategy diet): 1 = the warlock talent spells fire only while the bot knows them: "siphon life",
+# "siphon life on attacker" and "conflagrate" triggers check the spell first; shadowburn ("target critical health",
+# pvp "very often") and dark pact ("low mana") move to own triggers with the same condition plus the known spell.
+# Same casts: without the talent these nodes ended IMPOSSIBLE. Trigger choice read at engine (re)build. 0 = as before.
+AiPlayerbot.Diet.WarlockTalentKnown = 0
+# twow-repo#568 (D25, strategy diet): 1 = the warlock boost strategy no longer registers "amplify curse": Turtle 1.18 only
+# has "[Deprecated] Amplify Curse", so the node ended IMPOSSIBLE on every combat tick. Same casts. Read at engine
+# (re)build. 0 = node as before (default).
+AiPlayerbot.Diet.WarlockAmplifyCurse = 0
+# twow-repo#568 (D33, strategy diet): 1 = for a mage who does not know Mage Armor (below 34) the pve "mage armor" trigger
+# fires only while the best armor the mage can cast is missing (Ice Armor if known, else Frost Armor), instead of every
+# 5 s with ice/frost armor already up. The mage armor -> ice armor -> frost armor chain stays, same armor is cast.
+# 0 = old trigger (default).
+AiPlayerbot.Diet.MageArmorKnown = 0
+# twow-repo#568 (D34, strategy diet): 1 = the mage talent triggers "arcane power", "presence of mind", "combustion" and
+# "ice barrier" stay quiet while the mage does not know the spell or it is on cooldown. Same casts: in exactly those
+# states the action ended IMPOSSIBLE (CanCastSpell checks spell id and IsSpellReady; no alternatives). 0 = as before.
+AiPlayerbot.Diet.MageTalentBoostKnown = 0
+# twow-repo#568 (D35, strategy diet; NOT strictly neutral): 1 = the fire mage cc strategy pushes "blast wave" on its own
+# "blast wave" trigger (enemy within 10 yd and the talent known) instead of "enemy ten yards", and the blast wave node
+# loses its frost nova alternative: the cc strategy already tried frost nova -> cone of cold at 90 in the same pass.
+# Difference: a frost nova that a multiplier held back at 90 (waiting for attack, threat) is no longer cast via the
+# blast wave alternative at 40. 0 = as before (default).
+AiPlayerbot.Diet.MageBlastWave = 0
+# twow-repo#568 (D53, strategy diet): 1 = the mage raid strategy no longer registers "invisibility" (alternative "lesser
+# invisibility") on "high threat" and "multiple attackers": Turtle 1.18 mages cannot learn either spell, so both nodes
+# ended IMPOSSIBLE. Same casts. Read at engine (re)build. 0 = nodes as before (default).
+AiPlayerbot.Diet.MageInvisibility = 0
+# twow-repo#568 D04 (BEHAVIOUR CHANGE, strategy diet): 1 = druids below level 10 ("leveling" kit) cast Wrath while
+# the target is outside melee range (node uses the registered trigger "enemy out of melee"). 0 = the node keeps the
+# unregistered name "enemy out of melee range" and never fires; these druids only melee until Moonfire (default).
+AiPlayerbot.Diet.LevelingDruidWrath = 0
+# twow-repo#568 D26 (strategy diet, same actions): 1 = the shaman "shock" trigger stays quiet while the shared shock
+# cooldown (spell category of Earth Shock, 6 s) runs; Earth/Flame Shock could only end IMPOSSIBLE then. 0 = old trigger.
+AiPlayerbot.Diet.ShockCooldownGate = 0
+# twow-repo#568 D27 (BEHAVIOUR CHANGE, strategy diet): 1 = enh AoE, ele PvP and "totem fire nova" cast Fire Nova Totem
+# (L12+, never over Magma; Searing/Magma wait until it went off; no Magma->nova chain). 0 = dead "fire nova" (default).
+AiPlayerbot.Diet.FireNovaTotem = 0
+# twow-repo#568 D28 (strategy diet, same actions): 1 = elemental/restoration shamans no longer push the TBC "wrath of
+# air totem" (no such spell in 1.18; IMPOSSIBLE/USELESS only), neither as air-totem node nor as Windfury alternative.
+AiPlayerbot.Diet.NoWrathOfAirTotem = 0
+# twow-repo#568 D29 (strategy diet, same actions): 1 = vanilla shamans push the real alternative directly instead of
+# TBC/WotLK spells (riptide -> healing wave, totem of wrath -> searing totem, earthliving -> flametongue weapon).
+AiPlayerbot.Diet.ShamanVanillaNames = 0
+# twow-repo#568 D30 (BEHAVIOUR CHANGE, strategy diet): 1 = Innervate (druid L40+) uses the real mana percent (< LowMana)
+# and may target the solo druid itself. 0 = old check: never solo, in a group at the first missing mana point (default).
+AiPlayerbot.Diet.InnervateFix = 0
+# twow-repo#568 D31 (BEHAVIOUR CHANGE, strategy diet): 1 = at critical health a Ret paladin tries Repentance on its target
+# (talent, L40+), Divine Shield as alternative, at relevance 91. 0 = factory key typo, node ends UNKNOWN (default).
+AiPlayerbot.Diet.RetRepentanceKey = 0
+# twow-repo#568 D41 (strategy diet, same actions): 1 = the paladin "exorcism" trigger stays quiet when the current target
+# is not undead/demon (Exorcism's TargetCreatureType, same test as the core); the cast could only end IMPOSSIBLE.
+AiPlayerbot.Diet.ExorcismCreatureType = 0
+# twow-repo#568 D42 (strategy diet, same actions): 1 = a Prot paladin without seal pushes Seal of Righteousness directly
+# (no Seal of Vengeance in 1.18: it only ended IMPOSSIBLE first); the seal trigger skips that dead aura name.
+AiPlayerbot.Diet.ProtSealDirect = 0
+# twow-repo#568 D43 (strategy diet, same actions): 1 = vanilla feral druids push Claw / Maul directly where the kit named
+# Mangle (Cat)/(Bear) (no such spells in 1.18: they only ended IMPOSSIBLE before the same Claw/Maul).
+AiPlayerbot.Diet.FeralNoMangle = 0
+# twow-repo#568 D44 (strategy diet, same actions): 1 = the vanilla DPS-feral AoE strategy no longer registers
+# "swipe (cat)" (no such spell in 1.18, no alternative; it only ended IMPOSSIBLE). 0 = old node (default).
+AiPlayerbot.Diet.FeralNoCatSwipe = 0
+# twow-repo#568 D45 (strategy diet, same actions): 1 = druid Enrage (tank) and Nature's Grasp (balance/resto cc) triggers
+# stay quiet while the spell is unknown or on cooldown (60 s); the push could only end IMPOSSIBLE then. 0 = old triggers.
+AiPlayerbot.Diet.DruidCooldownGates = 0
+# twow-repo#568 D46 (strategy diet, same actions): 1 = the leveling-druid Rejuvenation/Moonfire triggers stay quiet while
+# the druid does not know the spell (levels 1-3); the push could only end IMPOSSIBLE. 0 = old triggers (default).
+AiPlayerbot.Diet.LevelingDruidKnownSpells = 0
+# twow-repo#568 (D10, strategy diet, BEHAVIOUR CHANGE): 1 = the vanilla hunter sting pve/pvp/raid strategies register
+# one node on the new trigger "no stings usable" (pve/pvp: viper sting ACTION_NORMAL+5 and serpent sting +4, raid:
+# viper sting only) instead of two "no stings" nodes. "no stings usable" runs the old "no stings" check (target health
+# > 40 %, no serpent/scorpid/viper sting aura) and then fires only when viper sting is known and target mana >= 10 %,
+# or serpent sting is known, target health > 50 % and (target mana < 10 % or viper sting unknown). Serpent sting is
+# no longer refused on a mana target while the bot does not know viper sting (learned at 36), and viper sting is
+# USELESS instead of IMPOSSIBLE while unknown. Changes: hunters below 36 put serpent sting on casters and healers (also
+# as a serpent sting pull and with the manual "sting serpent" strategy). The manual "sting serpent/scorpid/viper"
+# strategies keep the unchanged "no stings" trigger, so "sting scorpid" casts exactly as before. All other casts as
+# before. Node layout read at engine (re)build. 0 = two "no stings" nodes and the old checks (default).
+AiPlayerbot.Diet.HunterBestSting = 0
+# twow-repo#568 (D19, strategy diet, BEHAVIOUR CHANGE): 1 = the vanilla hunter buff strategy pushes "deterrence" from
+# the trigger "deterrence" and the cc pve/pvp strategies push "scatter shot on closest attacker targeting me" from the
+# trigger "scatter shot on closest attacker" instead of the shared "target of attacker close". Both triggers fire only
+# while the talent spell (Deterrence 19263, Scatter Shot 19503, no trainer rows) is known and off cooldown, then check
+# the closest attacker within AiPlayerbot.TooCloseDistance as before. Scatter Shot now hits that closest attacker
+# targeting the bot instead of the current target. Same Deterrence casts; hunters without the talents stop pushing
+# the IMPOSSIBLE nodes. Pvp freezing trap keeps "target of attacker close". Read at engine (re)build and bot login.
+# 0 = shared trigger, scatter shot on the current target (default).
+AiPlayerbot.Diet.HunterTalentShotsKnown = 0
+# twow-repo#568 (D47, strategy diet): 1 = the vanilla hunter reaction node "tranquilizing shot" (ACTION_INTERRUPT) uses
+# the trigger "tranquilizing shot" instead of "dispel enrage": it fires only while the bot knows Tranquilizing Shot
+# (19801, level 60, raid tome or AutoLearnDroppedSpells) and the spell is off cooldown, then scans the current target's
+# auras for an enrage effect as before. Same casts: the action was IMPOSSIBLE in exactly those states; hunters without
+# the spell stop copying the target's aura list on every reaction pass. Read at engine (re)build.
+# 0 = "dispel enrage" for every hunter (default).
+AiPlayerbot.Diet.HunterTranqKnown = 0
+# twow-repo#568 (D48, strategy diet): 1 = the "roll" strategy (combat and non-combat) pushes "auto loot roll" (100) from
+# the trigger "loot roll pending" instead of "very often". It is checked on the same 5 s cadence (own timer, so the
+# phase can differ by up to 5 s from the shared "very often") and fires only while the bot is in a group and its
+# "active rolls" list is not empty; bag space is still checked by the action. Same rolls: without a group or an open
+# roll the action always ended IMPOSSIBLE. Read at engine (re)build. 0 = "very often" (default).
+AiPlayerbot.Diet.LootRollPending = 0
+# twow-repo#568 (diet D63, neutral, "nach Abnahme an"): 1 = Engine::ProcessTriggers skips the Check() call of the
+# event-only triggers (every chat-command trigger, e.g. "stats", "items", "wander", and every world-packet trigger,
+# e.g. "duel requested", "loot roll") while their event flag is unset. Their Check() returns no event in that state,
+# so no node fires that fires today. An arrived event (chat command, forced command link, world packet) sets the flag
+# and is checked and handled on the same pass as before; the per-pass Reset of all triggers is unchanged. Only
+# visible differences: skipped polls create no PerfMon trigger entries ("T : <command>") and no Eluna OnTriggerCheck
+# call (PLAYERBOT_ELUNA is not defined in this build). Measure: PerfMon T TOTAL count and UpdateAIReaction time
+# A/B. 0 = every trigger polled on every pass (default).
+AiPlayerbot.Perf.EventTriggerSkip = 0
+# twow-repo#568 (diet D65, neutral, "nach Abnahme an"): 1 = the vanilla trigger "aspect of the hawk" (hunter "aspect"
+# strategy: combat ACTION_HIGH+5, non-combat ACTION_NORMAL; manual "aspect hawk" strategy) is active only while the
+# bot knows Aspect of the Hawk ("spell id" > 0), then checks the missing self aura as before. Same casts: the node has
+# no alternative and its cast asks CanCastSpell for the same "spell id" value, so without the spell it always ended
+# IMPOSSIBLE; hunters below level 10 or without the trained spell just stop pushing it. No monkey fallback (that is a
+# separate OB-10 decision). Side effects without play change: the action queue is shorter by these pushes (a little
+# less iterationsPerTick), the debug tell "try: aspect of the hawk ... impossible" is gone, and the refresh time of the
+# cached "spell cast useful" value shifts slightly. Read on every check. 0 = trigger without the spell check (default).
+AiPlayerbot.Diet.HunterAspectGate = 0
+# twow-repo#568 (diet D66, neutral, "nach Abnahme an"): 1 = the vanilla trigger "rapid fire" (hunter "boost" strategy,
+# ACTION_HIGH+5) is active only while the bot knows Rapid Fire and the spell is off cooldown, then checks the missing
+# self aura as before; the "rapid fire" node is built without its "readiness" alternative. Both only while the bot
+# does not know Readiness (a TBC talent); a bot that knows it keeps the old trigger and node. Same casts: the cast
+# asks CanCastSpell for the same "spell id" value and the same IsSpellReady, so in the gated states it always ended
+# IMPOSSIBLE and the unknown Readiness was IMPOSSIBLE too. Side effects without play change: the action queue is
+# shorter by these pushes (a little less iterationsPerTick), the debug tells "try: rapid fire / readiness ...
+# impossible" are gone, and the refresh time of the cached "spell cast useful" value shifts slightly. Read on every
+# check / node build. 0 = trigger without the spell checks, node with the "readiness" alternative (default).
+AiPlayerbot.Diet.HunterRapidFireGate = 0
+# twow-repo#568 (diet D67, neutral, "nach Abnahme an"): 1 = the trigger "wander near" ("wander" strategy, action
+# "stop follow" ACTION_IDLE) of a bot without a follow target is active only while the bot's current movement
+# generator is FOLLOW_MOTION_TYPE. Without a follow target the old check was always true and "stop follow" was
+# USELESS unless the bot is on a FOLLOW motion (first check of its isUseful), so the stale-follow cleanup after a
+# group leave stays and nothing else fires. With a follow target (also a leader following itself) as before.
+# "wander far" / "wander medium" are unchanged: their free-move center is a position snapshot cached for up to 5 s,
+# so they can fire today for a moving solo bot. Side effects without play change: the action queue is shorter by these
+# pushes (a little less iterationsPerTick) and the debug tell "try: stop follow ... useless" is gone. Read on every
+# check. 0 = old check (default).
+AiPlayerbot.Diet.WanderSoloGuard = 0
+# twow-repo#568 (diet D68, neutral, "nach Abnahme an"): 1 = three rpg sub-action triggers answer from the first
+# condition of their own IsActive before the shared rpg pre-check (rpg target, distance, next rpg action):
+# "rpg ai chat" returns no event while AiPlayerbot.LLMEnabled = 0 (read on every check, a reload that enables LLM
+# acts at once), "rpg wander" while the bot has no real player master, and "rpg quest use" while the rpg target's
+# entry is not 190767 (its only true case); "rpg quest use" also tests that entry first in IsActive, which the
+# choose-rpg-target candidate loop calls directly. Same results: each short cut is the first false of IsActive, the
+# skipped values have no side effects, and a set event flag still runs the old Check. 0 = old order (default).
+AiPlayerbot.Diet.RpgDeadTriggers = 0
+# twow-repo#568 (diet D69, neutral, "nach Abnahme an"): 1 = the "duel" strategy (combat and non-combat) pushes
+# "attack duel opponent" (70) from the new trigger "duel no attackers" instead of "no attackers": it runs the same
+# check (no current target, my attacker count > 0) only while the bot has a duel (Player::m_duel). Same attacks: the
+# action's isUseful is the "duel target" value, which is null without m_duel. Only difference: up to ~1 s after a duel
+# ends the cached "duel target" can still name the ex-opponent; today the node could then try an attack that
+# IsTargetValid refuses (friendly), with 1 it is not pushed. "duel requested" and the trigger "no attackers" itself
+# (custom strategies) are unchanged. Read at engine (re)build: switch with a restart or relog.
+# 0 = "no attackers" for every bot (default).
+AiPlayerbot.Diet.DuelTriggerGate = 0
+
+
+
+# twow-repo#563 (X3b): 1 = a bot no longer computes "possible targets" or reads "current/old target" on a
+# group member's or master bot's context; every bot publishes its own targets after computing its
+# attackers and the others read that snapshot (ignored when older than 3 s). 0 = old cross-bot read (default).
+AiPlayerbot.X3b.PublishedTargets = 0
+# twow-repo#563 (X3b site 2): 1 = "group and/or/count" no longer evaluate a condition on another bot's
+# context; they ask the member, the member answers on its own thread and the answer is read (at most
+# 3 s old; a member without an answer yet is skipped, like a member without bot AI). 0 = old (default).
+AiPlayerbot.X3b.PublishedConditions = 0
+
+# twow-repo#541 (L1, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go - nach Abnahme an): 1 = a
+# bot's MoveTo uses the path it last built for the same destination again instead of rebuilding it (node route over up
+# to 5 x 5 node pairs + navmesh), as long as that path is younger than PartialPathReuseMs, the destination moved less
+# than 10 % of the remaining distance, the stored path still ends at the same point, the bot is on the map where the
+# path was built, not on a transport, and not yet within TargetPosRecalcDistance of the path's end. Today such a
+# rebuild runs on every MoveTo of a bot whose path ends short of the destination, and a rebuilt path that does not end
+# closer to the destination is thrown away for the old one (MovementAction::ResolveMovePath, keep-old rule). With 1
+# a truly better path is found at most PartialPathReuseMs later, and a rebuild that would have found no route at all
+# no longer replaces the old path by a straight line to the destination until the next rebuild. Any reset of the
+# movement or of the path, a destination change or reaching the end rebuild at once as before. [PathReuse] logs
+# hits (rebuilds skipped) and misses (rebuilds run) once a minute. 0 = rebuild as before (default).
+AiPlayerbot.Perf.PartialPathReuse = 0
+# twow-repo#541 (L1): age limit of a reused path in milliseconds (1000..60000, default 10000). Only read with
+# AiPlayerbot.Perf.PartialPathReuse = 1.
+AiPlayerbot.Perf.PartialPathReuseMs = 10000
+# twow-repo#541 (L1b, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go - nach Abnahme an):
+# seconds (0..300, default 0 = off). A node route search (TravelNodeMap::getRoute from a position: MoveTo, go, fishing)
+# that tried every start/end node pair and found no route blocks the same bot and target cell (100 yd) for that many
+# seconds, the same cooldown that an exceeded search budget (#416) already sets. Until then the search returns the
+# same empty route at once, so MoveTo keeps its straight-line fallback without the 60-150 ms search
+# (chain42: 67 % of the slow route builds). A route that the bot could reach from a new position, or that a node
+# change creates, is found at most that many seconds later. [RouteFail] logs blocks and skips once a minute.
+# With AiPlayerbot.Path.HonestRouteFail = 1 (twow-repo#575) such a MoveTo fails instead of the straight-line fallback,
+# and during the cooldown that answer costs no search; PartialPathReuse never stamps such a no-route result.
+AiPlayerbot.Perf.RouteFailCooldownSeconds = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
