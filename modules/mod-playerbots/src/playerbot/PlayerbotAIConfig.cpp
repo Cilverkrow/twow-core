@@ -412,6 +412,7 @@ bool PlayerbotAIConfig::Initialize()
     parkQuiet = config.GetBoolDefault("AiPlayerbot.Park.Quiet", false);
     parkQuietIdleEmoteSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Park.QuietIdleEmoteSeconds", 600)));
     parkPersist = config.GetBoolDefault("AiPlayerbot.Park.Persist", false);
+    parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", false);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
