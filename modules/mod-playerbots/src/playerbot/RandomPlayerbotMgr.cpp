@@ -3915,15 +3915,22 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
         return targets;
     }
 
+    // twow-repo#587 (Z1a, AiPlayerbot.ZoneExit.RescueHomeContinent): only targets on one continent - the bot's own, or its home
+    // continent when it is off it (then its own race counts too: the way home). The cross-continent quest route rule
+    // (#544) is untouched: the rescue is a teleport.
+    bool const homeContinent = sPlayerbotAIConfig.zoneExitRescueHomeContinent && own && bot->GetMap() && bot->GetMap()->IsContinent();
+    uint32 const rescueMap = homeContinent ? ai::zone_exit::RescueContinent(bot->GetMapId(), own->mapId) : bot->GetMapId();
+    bool const offHome = homeContinent && rescueMap != bot->GetMapId();
+
     for (uint32 race = 1; race < MAX_RACES; ++race)
     {
         PlayerInfo const* info = firstInfo(race);
-        if (!info || race == bot->getRace() || Player::TeamForRace(race) != bot->GetTeam())
+        if (!info || (race == bot->getRace() && !offHome) || Player::TeamForRace(race) != bot->GetTeam())
             continue;
 
         if (level <= ai::quest_search::StartAreaMaxLevel)
         {
-            if (own && info->areaId == own->areaId)
+            if (own && info->areaId == own->areaId && !offHome)
                 continue;
             // twow-repo#575 (PATH-01 E6): no rescue of another race into the goblin / high-elf start zones.
             if (ai::path_fail::RescueSkipsStartOf(race, bot->getRace(), sPlayerbotAIConfig.pathRescueSkipCustomStarts))
@@ -3957,6 +3964,14 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
                 targets.push_back(innLocation);
     }
 
+    if (homeContinent)
+    {
+        size_t const before = targets.size();
+        targets.erase(std::remove_if(targets.begin(), targets.end(),
+            [rescueMap](WorldLocation const& t) { return t.mapid != rescueMap; }), targets.end());
+        sLog.outBasic("[ZoneExit] state=rescue_targets bot=%u level=%u map=%u home_map=%u off_home=%u targets=%u of %u",
+            bot->GetGUIDLow(), level, bot->GetMapId(), own->mapId, offHome ? 1u : 0u, uint32(targets.size()), uint32(before));
+    }
     return targets;
 }
 
