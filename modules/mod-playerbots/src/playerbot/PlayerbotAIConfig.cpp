@@ -12,10 +12,13 @@
 #include "RandomItemMgr.h"
 #include "World/WorldState.h"
 #include "playerbot/PlayerbotHelpMgr.h"
+#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/strategy/actions/CheatAction.h"
 
 #include "playerbot/TravelMgr.h"
 #include "playerbot/BotGroupPolicy.h"
+#include "playerbot/PathReusePolicy.h"
+#include "playerbot/StallGuardPolicy.h"
 
 #include <iostream>
 #include <numeric>
@@ -406,13 +409,19 @@ bool PlayerbotAIConfig::Initialize()
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
     parkMaxPerInn = config.GetIntDefault("AiPlayerbot.Park.MaxPerInn", 0);
     parkMaxPerCity = config.GetIntDefault("AiPlayerbot.Park.MaxPerCity", 0);
+    parkQuiet = config.GetBoolDefault("AiPlayerbot.Park.Quiet", false);
+    parkQuietIdleEmoteSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Park.QuietIdleEmoteSeconds", 600)));
+    parkPersist = config.GetBoolDefault("AiPlayerbot.Park.Persist", false);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
     checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
+    initPetCache = config.GetBoolDefault("AiPlayerbot.InitPet.Cache", false);
     // twow-repo#563 (X3a/X3c): per-context lock on the value maps; cross-bot value writes via the inbox.
     ai::context_lock::Enabled().store(config.GetBoolDefault("AiPlayerbot.X3a.ContextLock", false), std::memory_order_relaxed);
     x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
+    perfSkipBotUpdatePackets = config.GetBoolDefault("AiPlayerbot.Perf.SkipBotUpdatePackets", false);
+    warnUnknownNames = config.GetBoolDefault("AiPlayerbot.WarnUnknownNames", false);
     packetTrace = config.GetBoolDefault("AiPlayerbot.PacketTrace", false);
     nearestSkipHiddenBots = config.GetBoolDefault("AiPlayerbot.Perf.NearestSkipHiddenBots", false);
     botSaveIntervalSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BotSave.IntervalSeconds", 0)));
@@ -426,6 +435,10 @@ bool PlayerbotAIConfig::Initialize()
     perfBgMasterCacheRef = config.GetBoolDefault("AiPlayerbot.Perf.BgMasterCacheRef", false);
     perfTravelInfoReuse = config.GetBoolDefault("AiPlayerbot.Perf.TravelInfoReuse", false);
     perfLogActionFastPath = config.GetBoolDefault("AiPlayerbot.Perf.LogActionFastPath", false);
+    perfActionBudget = std::min<uint32>(3, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Perf.ActionBudget", 0))));
+    LoadListString<std::vector<std::string> >(config.GetStringDefault("AiPlayerbot.Perf.ActionBudgetActions", ""), perfActionBudgetActions);
+    if (perfActionBudgetActions.empty())
+        perfActionBudgetActions = ai::action_budget::DefaultExpensiveActions();
     botUpdateTraceTailFix = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTailFix", false);
     perfTrainableSpellsPrecheck = config.GetBoolDefault("AiPlayerbot.Perf.TrainableSpellsPrecheck", false);
     perfRacialsSkipUnbuildable = config.GetBoolDefault("AiPlayerbot.Perf.RacialsSkipUnbuildable", false);
@@ -442,6 +455,53 @@ bool PlayerbotAIConfig::Initialize()
     perfAttackersSingleList = config.GetBoolDefault("AiPlayerbot.Perf.AttackersSingleList", false);
     perfPartyTargetMemo = config.GetBoolDefault("AiPlayerbot.Perf.PartyTargetMemo", false);
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
+    x3bPublishedTargets = config.GetBoolDefault("AiPlayerbot.X3b.PublishedTargets", false);
+    x3bPublishedConditions = config.GetBoolDefault("AiPlayerbot.X3b.PublishedConditions", false);
+    dietRogueCombatBoostInCombat = config.GetBoolDefault("AiPlayerbot.Diet.RogueCombatBoostInCombat", false);
+    dietRogueNoMutilate = config.GetBoolDefault("AiPlayerbot.Diet.RogueNoMutilate", false);
+    dietWarriorNoHeroicThrow = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoHeroicThrow", false);
+    dietArmsSnareHamstring = config.GetBoolDefault("AiPlayerbot.Diet.ArmsSnareHamstring", false);
+    dietWarriorNoDevastate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoDevastate", false);
+    dietWarriorDisarmGate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorDisarmGate", false);
+    dietWarriorBerserkerStanceGate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorBerserkerStanceGate", false);
+    dietWarriorNoInterceptAndRage = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoInterceptAndRage", false);
+    dietWarriorDedupBloodrage = config.GetBoolDefault("AiPlayerbot.Diet.WarriorDedupBloodrage", false);
+    dietPriestRacials = config.GetBoolDefault("AiPlayerbot.Diet.PriestRacials", false);
+    dietPriestSelfBuffKnown = config.GetBoolDefault("AiPlayerbot.Diet.PriestSelfBuffKnown", false);
+    dietShadowPriestDeadNodes = config.GetBoolDefault("AiPlayerbot.Diet.ShadowPriestDeadNodes", false);
+    dietWarlockCcKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockCcKnown", false);
+    dietWarlockTalentKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockTalentKnown", false);
+    dietWarlockAmplifyCurse = config.GetBoolDefault("AiPlayerbot.Diet.WarlockAmplifyCurse", false);
+    dietMageArmorKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageArmorKnown", false);
+    dietMageTalentBoostKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageTalentBoostKnown", false);
+    dietMageBlastWave = config.GetBoolDefault("AiPlayerbot.Diet.MageBlastWave", false);
+    dietMageInvisibility = config.GetBoolDefault("AiPlayerbot.Diet.MageInvisibility", false);
+    dietLevelingDruidWrath = config.GetBoolDefault("AiPlayerbot.Diet.LevelingDruidWrath", false);
+    dietShockCooldownGate = config.GetBoolDefault("AiPlayerbot.Diet.ShockCooldownGate", false);
+    dietFireNovaTotem = config.GetBoolDefault("AiPlayerbot.Diet.FireNovaTotem", false);
+    dietNoWrathOfAirTotem = config.GetBoolDefault("AiPlayerbot.Diet.NoWrathOfAirTotem", false);
+    dietShamanVanillaNames = config.GetBoolDefault("AiPlayerbot.Diet.ShamanVanillaNames", false);
+    dietInnervateFix = config.GetBoolDefault("AiPlayerbot.Diet.InnervateFix", false);
+    dietRetRepentanceKey = config.GetBoolDefault("AiPlayerbot.Diet.RetRepentanceKey", false);
+    dietExorcismCreatureType = config.GetBoolDefault("AiPlayerbot.Diet.ExorcismCreatureType", false);
+    dietProtSealDirect = config.GetBoolDefault("AiPlayerbot.Diet.ProtSealDirect", false);
+    dietFeralNoMangle = config.GetBoolDefault("AiPlayerbot.Diet.FeralNoMangle", false);
+    dietFeralNoCatSwipe = config.GetBoolDefault("AiPlayerbot.Diet.FeralNoCatSwipe", false);
+    dietDruidCooldownGates = config.GetBoolDefault("AiPlayerbot.Diet.DruidCooldownGates", false);
+    dietLevelingDruidKnownSpells = config.GetBoolDefault("AiPlayerbot.Diet.LevelingDruidKnownSpells", false);
+    dietHunterBestSting = config.GetBoolDefault("AiPlayerbot.Diet.HunterBestSting", false);
+    dietHunterTalentShotsKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTalentShotsKnown", false);
+    dietHunterTranqKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTranqKnown", false);
+    dietLootRollPending = config.GetBoolDefault("AiPlayerbot.Diet.LootRollPending", false);
+    perfEventTriggerSkip = config.GetBoolDefault("AiPlayerbot.Perf.EventTriggerSkip", false);
+    dietHunterAspectGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterAspectGate", false);
+    dietHunterRapidFireGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterRapidFireGate", false);
+    dietWanderSoloGuard = config.GetBoolDefault("AiPlayerbot.Diet.WanderSoloGuard", false);
+    dietRpgDeadTriggers = config.GetBoolDefault("AiPlayerbot.Diet.RpgDeadTriggers", false);
+    dietDuelTriggerGate = config.GetBoolDefault("AiPlayerbot.Diet.DuelTriggerGate", false);
+    perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
+    perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
+    perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault("AiPlayerbot.Perf.RouteFailCooldownSeconds", 0));
     shamanImbueBySpec = config.GetBoolDefault("AiPlayerbot.Shaman.ImbueBySpec", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
@@ -457,12 +517,17 @@ bool PlayerbotAIConfig::Initialize()
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
     questWorkTimeoutsMax = (uint32)config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.Max", 0);
     questWorkTimeoutsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.CooldownSeconds", 3600));
+    questLoopMaxFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.MaxFailures", 0)));
+    questLoopWindowSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.WindowSeconds", 1800));
+    questLoopCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.CooldownSeconds", 1800));
+    questLoopInactiveCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveCooldownSeconds", 0)));
     questFirstProgressionSkipScriptOnlyQuestTakers = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers", false);
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
     specAuraEnabled = config.GetBoolDefault("AiPlayerbot.SpecAura.Enabled", false);
     LoadList<std::vector<uint32> >(config.GetStringDefault("AiPlayerbot.SpecAura.TalentClasses", ""), specAuraTalentClasses);
     deathLoopWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DeathLoop.WindowSeconds", 900));
     deathLoopRadius = std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DeathLoop.Radius", 150.0f));
+    deathLoopEscape = config.GetBoolDefault("AiPlayerbot.DeathLoop.Escape", false);
     zoneEscapeEnabled = config.GetBoolDefault("AiPlayerbot.ZoneEscape.Enabled", false);
     zoneEscapeCooldownSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.ZoneEscape.CooldownSeconds", 600));
     zoneEscapeRetrySeconds = std::max<uint32>(15, config.GetIntDefault("AiPlayerbot.ZoneEscape.RetrySeconds", 60));

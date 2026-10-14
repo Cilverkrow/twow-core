@@ -2022,6 +2022,26 @@ add_test(NAME check_values_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/check_values_source_contract_tests.cmake")
 
+# twow-repo#541: "initialize pet" with a static tameable list, cache and cooldown (AiPlayerbot.InitPet.Cache).
+add_executable(init_pet_policy_tests
+  "${PB_MODULE_DIR}/t/init_pet_policy_tests.cpp")
+
+target_include_directories(init_pet_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(init_pet_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME init_pet_policy
+  COMMAND init_pet_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME init_pet_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/init_pet_source_contract_tests.cmake")
+
+
 # twow-repo#563 (X3a + X3c): per-context lock on the value maps, cross-bot value writes via the inbox.
 add_test(NAME x3_context_lock_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -2050,6 +2070,11 @@ set_target_properties(x3_context_lock_tests PROPERTIES
 add_test(NAME x3_context_lock
   COMMAND x3_context_lock_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME unknown_name_warning_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/unknown_name_warning_source_contract_tests.cmake")
 
 # twow-repo#541 (grid sleep, AiPlayerbot.Park.SleepGrid, default 0): parked bots do not activate cells.
 add_test(NAME park_sleep_grid_source_contract
@@ -2388,6 +2413,46 @@ add_test(NAME park_caps_policy
   COMMAND park_caps_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#541 A39: death loop escape (AiPlayerbot.DeathLoop.Escape).
+add_test(NAME deathloop_escape_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/deathloop_escape_source_contract_tests.cmake")
+
+add_executable(deathloop_escape_policy_tests
+  "${PB_MODULE_DIR}/t/deathloop_escape_policy_tests.cpp")
+
+target_include_directories(deathloop_escape_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(deathloop_escape_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME deathloop_escape_policy
+  COMMAND deathloop_escape_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#563 (X3b variant 2): published target snapshots instead of cross-bot value reads.
+add_test(NAME x3b_published_targets_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/x3b_published_targets_source_contract_tests.cmake")
+
+add_executable(x3b_snapshot_policy_tests
+  "${PB_MODULE_DIR}/t/x3b_snapshot_policy_tests.cpp")
+
+target_include_directories(x3b_snapshot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(x3b_snapshot_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(x3b_snapshot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME x3b_snapshot_policy
+  COMMAND x3b_snapshot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#541: shaman weapon imbue per spec (AiPlayerbot.Shaman.ImbueBySpec).
 add_test(NAME shaman_imbue_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -2412,6 +2477,25 @@ add_test(NAME trace_action_us_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
+
+# twow-repo#541 (owner 11.10.2026): budget for expensive bot actions (AiPlayerbot.Perf.ActionBudget).
+add_test(NAME action_budget_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/action_budget_source_contract_tests.cmake")
+
+add_executable(action_budget_policy_tests
+  "${PB_MODULE_DIR}/t/action_budget_policy_tests.cpp")
+
+target_include_directories(action_budget_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(action_budget_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME action_budget_policy
+  COMMAND action_budget_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#541 (owner 11.10.2026): [BotPackets] packet counter (AiPlayerbot.PacketTrace).
 add_test(NAME packet_trace_source_contract
@@ -2440,6 +2524,98 @@ add_test(NAME travel_node_lock_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/travel_node_lock_source_contract_tests.cmake")
 
+# twow-repo#568 strategy diet g1 (warrior + rogue): each fix behind its own AiPlayerbot.Diet.* switch, default off.
+add_test(NAME diet_g1_warrior_rogue_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_g1_warrior_rogue_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet g2 (priest, mage, warlock): dead class nodes behind AiPlayerbot.Diet.* switches (default 0).
+add_test(NAME diet_g2_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/diet_g2_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet g3 (shaman, paladin, druid): every fix behind its own AiPlayerbot.Diet.<Key>, default 0.
+add_test(NAME diet_g3_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/diet_g3_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet g4 (hunter + generic): dead hunter/generic nodes behind AiPlayerbot.Diet.* switches (default 0).
+add_test(NAME diet_g4_hunter_generic_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_g4_hunter_generic_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D63: event-only trigger poll skip behind AiPlayerbot.Perf.EventTriggerSkip (default 0).
+add_test(NAME diet_d63_event_trigger_skip_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d63_event_trigger_skip_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D65: vanilla Aspect of the Hawk trigger waits for the known spell behind AiPlayerbot.Diet.HunterAspectGate (default 0).
+add_test(NAME diet_d65_hunter_aspect_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d65_hunter_aspect_gate_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D66: vanilla Rapid Fire trigger waits for the known, ready spell, node without Readiness behind AiPlayerbot.Diet.HunterRapidFireGate (default 0).
+add_test(NAME diet_d66_hunter_rapid_fire_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d66_hunter_rapid_fire_gate_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D67: "wander near" without a follow target only on a FOLLOW motion behind AiPlayerbot.Diet.WanderSoloGuard (default 0).
+add_test(NAME diet_d67_wander_solo_guard_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d67_wander_solo_guard_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D68: rpg ai chat / rpg wander / rpg quest use answer from their first condition behind AiPlayerbot.Diet.RpgDeadTriggers (default 0).
+add_test(NAME diet_d68_rpg_dead_triggers_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d68_rpg_dead_triggers_source_contract_tests.cmake")
+
+# twow-repo#568 strategy diet D69: duel strategy on "duel no attackers" (only with a duel) behind AiPlayerbot.Diet.DuelTriggerGate (default 0).
+add_test(NAME diet_d69_duel_trigger_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/diet_d69_duel_trigger_gate_source_contract_tests.cmake")
+
+
+# twow-repo#541 (L0): path sub-phases (M:cache/M:route/M:mmap/M:keep last) and S:engine init in the engine trace (BotUpdateTrace).
+add_test(NAME path_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/path_trace_source_contract_tests.cmake")
+
+# twow-repo#541 (L1): MoveTo reuses the path last built for an unchanged destination behind AiPlayerbot.Perf.PartialPathReuse (default 0, timing change).
+add_executable(path_reuse_policy_tests
+  "${PB_MODULE_DIR}/t/path_reuse_policy_tests.cpp")
+
+target_include_directories(path_reuse_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(path_reuse_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME path_reuse_policy
+  COMMAND path_reuse_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME partial_path_reuse_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/partial_path_reuse_source_contract_tests.cmake")
+
+add_test(NAME route_fail_cooldown_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/route_fail_cooldown_source_contract_tests.cmake")
 # twow-repo#541 A47: bots save themselves on their own schedule (AiPlayerbot.BotSave.IntervalSeconds).
 add_test(NAME bot_save_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -2477,6 +2653,70 @@ set_target_properties(quest_teach_policy_tests PROPERTIES
 add_test(NAME quest_teach_policy
   COMMAND quest_teach_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#581 (owner 11.10.2026): quest loops on emptied camps (AiPlayerbot.QuestLoop.*).
+add_test(NAME quest_loop_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_loop_source_contract_tests.cmake")
+
+add_executable(quest_loop_policy_tests
+  "${PB_MODULE_DIR}/t/quest_loop_policy_tests.cpp")
+
+target_include_directories(quest_loop_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_loop_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_loop_policy
+  COMMAND quest_loop_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#551 (owner 11.10.2026): quiet parked bots (AiPlayerbot.Park.Quiet).
+add_test(NAME park_quiet_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_quiet_source_contract_tests.cmake")
+
+add_executable(park_quiet_policy_tests
+  "${PB_MODULE_DIR}/t/park_quiet_policy_tests.cpp")
+
+target_include_directories(park_quiet_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(park_quiet_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME park_quiet_policy
+  COMMAND park_quiet_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#551 (owner 11.10.2026): park state survives restarts (AiPlayerbot.Park.Persist).
+add_test(NAME park_persist_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_persist_source_contract_tests.cmake")
+
+add_executable(park_persist_policy_tests
+  "${PB_MODULE_DIR}/t/park_persist_policy_tests.cpp")
+
+target_include_directories(park_persist_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(park_persist_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME park_persist_policy
+  COMMAND park_persist_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#541 (owner 11.10.2026): no object update packets for bot sessions (AiPlayerbot.Perf.SkipBotUpdatePackets).
+add_test(NAME skip_bot_updates_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/skip_bot_updates_source_contract_tests.cmake")
 
 # twow-repo#575 (PATH-01 phase 2): route-fail detail trace, honest route fail, start-zone boxes, rpg target snap.
 add_executable(path_fail_policy_tests

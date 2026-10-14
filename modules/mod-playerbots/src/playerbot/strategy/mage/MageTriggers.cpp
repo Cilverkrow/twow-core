@@ -17,6 +17,19 @@ bool AnyMageArmorTrigger::IsActive()
 bool MageArmorTrigger::IsActive()
 {
     Unit* target = GetTarget();
+
+    // twow-repo#568 (D33, AiPlayerbot.Diet.MageArmorKnown): below 34 "mage armor" is unknown, so the node always
+    // ran mage armor IMPOSSIBLE -> ice armor -> frost armor, every 5 s even with ice/frost armor up. With the
+    // switch and mage armor unknown the trigger asks for the best armor the bot can cast instead (ice armor if
+    // known, else frost armor); the node and its alternative chain stay, so the same armor is cast as before.
+    if (sPlayerbotAIConfig.dietMageArmorKnown && !AI_VALUE2(uint32, "spell id", "mage armor"))
+    {
+        if (AI_VALUE2(uint32, "spell id", "ice armor"))
+            return !ai->HasAura("ice armor", target);
+
+        return !ai->HasAura("frost armor", target);
+    }
+
     return !ai->HasAura("mage armor", target);
 }
 

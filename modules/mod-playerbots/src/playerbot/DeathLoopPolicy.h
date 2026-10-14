@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <deque>
 
@@ -64,5 +65,51 @@ inline bool IsLoop(std::deque<Death> const& deaths, std::uint32_t nowSeconds, Se
             ++close;
     }
     return close >= settings.maxDeaths;
+}
+
+// twow-repo#541 audit A39 (owner go 10.10.2026, switch AiPlayerbot.DeathLoop.Escape, default 0). OB-30 #405 arm:
+// 811 revives in Durotar in 30 min, ~130 of 181 Alliance (High Elf) bots killed by Horde guards; "evacuate" fired
+// 225 times and each time the bot came back. Cause: RepopAction sends Goblins and High Elves to their homebind,
+// and a park run without the faction check (c696b451) had bound them to the Razor Hill inn. With the switch:
+// a death in an area of the hostile faction counts as a loop at once, and the evacuation never uses a homebind
+// in a hostile area - it goes to the race's safe start and binds there.
+// A death within windowSeconds after an escape: the escape did not break the loop.
+inline bool RepeatAfterEscape(std::uint32_t nowSeconds, std::uint32_t lastEscapeSeconds, std::uint32_t windowSeconds)
+{
+    return lastEscapeSeconds && nowSeconds >= lastEscapeSeconds && nowSeconds - lastEscapeSeconds <= windowSeconds;
+}
+
+// Safe start of the two races RandomPlayerbotFactory rebinds (their real start zones are player-only on Turtle);
+// the same coordinates as RandomPlayerbotFactory::CreateRandomBot (contract-checked).
+struct StartPoint
+{
+    std::uint32_t map = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    std::uint32_t zone = 0;
+};
+
+inline bool RaceStartOverride(std::uint32_t race, StartPoint& out)
+{
+    if (race == 9)    // RACE_GOBLIN: Durotar
+    {
+        out = StartPoint{ 1, -618.518f, -4251.67f, 38.718f, 14 };
+        return true;
+    }
+    if (race == 10)   // RACE_HIGH_ELF: Elwynn Forest
+    {
+        out = StartPoint{ 0, -8949.95f, -132.493f, 83.5312f, 12 };
+        return true;
+    }
+    return false;
+}
+
+enum EscapeCount { EscapeDetected, EscapeEscaped, EscapeRebound, EscapeRepeat, EscapeHostileDeath, EscapeCounts };
+
+inline std::atomic<std::uint64_t>& EscapeCounter(EscapeCount count)
+{
+    static std::atomic<std::uint64_t> counters[EscapeCounts] = {};
+    return counters[count];
 }
 }

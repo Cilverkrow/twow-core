@@ -322,6 +322,9 @@ void Object::BuildCreateUpdateBlockForPlayer(UpdateData *data, Player *target) c
 
 void Object::SendCreateUpdateToPlayer(Player* player)
 {
+    if (player->SkipsClientUpdates())   // twow-repo#541 (SkipBotUpdatePackets), the caller keeps its visible set
+        return;
+
     // send create update to player
     UpdateData upd;
 
@@ -423,6 +426,8 @@ void Object::SendOutOfRangeUpdateToPlayer(Player* player)
 void Object::DestroyForPlayer(Player *target) const
 {
     MANGOS_ASSERT(target);
+    if (target->SkipsClientUpdates())   // twow-repo#541 (SkipBotUpdatePackets), the caller keeps its visible set
+        return;
 
     WorldPacket data(SMSG_DESTROY_OBJECT, 8);
     data << GetObjectGuid();
@@ -1194,6 +1199,10 @@ bool Object::PrintIndexError(uint32 index, bool set) const
 
 void Object::BuildUpdateDataForPlayer(Player* pl, UpdateDataMapType& update_players)
 {
+    // twow-repo#541 (SkipBotUpdatePackets): no update block for a bot session - nobody reads it (Player.h).
+    if (pl->SkipsClientUpdates())
+        return;
+
     UpdateDataMapType::iterator iter = update_players.find(pl);
 
     if (iter == update_players.end())

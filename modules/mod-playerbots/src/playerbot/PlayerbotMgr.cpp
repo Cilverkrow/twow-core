@@ -862,6 +862,12 @@ void PlayerbotHolder::OnBotLogin(Player * const bot)
         ai = GetBotAI(bot);
     }
 
+    // twow-repo#541 (owner 11.10.2026, AiPlayerbot.Perf.SkipBotUpdatePackets): the core builds no update packets
+    // for a bot without a client. The AI reads object state from the objects (GetHealth, GetPower, GetUInt32Value,
+    // aura holders, item slots ...), never from SMSG_UPDATE_OBJECT - PacketTrace counted 0 read update packets. The
+    // core checks the client socket too, so a player with a client (self-bot) is never affected.
+    bot->SetSkipClientUpdates(sPlayerbotAIConfig.perfSkipBotUpdatePackets);
+
     // Clear intro cinematic state — bots never watch it but HandlePlayerLogin sets
     // watching_cinematic_entry for characters that haven't logged in via a real client,
     // which makes IsTargetable() return false and breaks combat entirely.

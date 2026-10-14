@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "ArmsWarriorStrategy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 
 using namespace ai;
 
@@ -235,9 +236,15 @@ void ArmsWarriorBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& trigge
 {
     WarriorBuffStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "berserker stance",
-        NextAction::array(0, new NextAction("berserker stance", ACTION_NORMAL), NULL)));
+    // twow-repo#568 D38 (owner rule 11.10.2026: arms stays in Battle Stance): once Berserker Stance is known
+    // (quest at 30) this node moved arms into Berserker Stance in every fight, losing Overpower and the rage
+    // above the Tactical Mastery retention. On: not registered. Off: as before.
+    if (!sPlayerbotAIConfig.dietWarriorBerserkerStanceGate)
+    {
+        triggers.push_back(new TriggerNode(
+            "berserker stance",
+            NextAction::array(0, new NextAction("berserker stance", ACTION_NORMAL), NULL)));
+    }
 
     triggers.push_back(new TriggerNode(
         "feared",
@@ -340,9 +347,20 @@ void ArmsWarriorCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers
 {
     WarriorCcStrategy::InitCombatTriggers(triggers);
 
-    triggers.push_back(new TriggerNode(
-        "hamstring",
-        NextAction::array(0, new NextAction("piercing howl", ACTION_HIGH), NULL)));
+    // twow-repo#568 D17: Piercing Howl is a Fury talent (Talent.dbc tab 164) and the arms node falls back
+    // to Mocking Blow, a 6 s taunt, before Hamstring. On: the snare trigger pushes hamstring directly.
+    if (sPlayerbotAIConfig.dietArmsSnareHamstring)
+    {
+        triggers.push_back(new TriggerNode(
+            "hamstring",
+            NextAction::array(0, new NextAction("hamstring", ACTION_HIGH), NULL)));
+    }
+    else
+    {
+        triggers.push_back(new TriggerNode(
+            "hamstring",
+            NextAction::array(0, new NextAction("piercing howl", ACTION_HIGH), NULL)));
+    }
 }
 
 void ArmsWarriorCcStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)

@@ -226,6 +226,7 @@ namespace ai
                 creators["death coil interrupt"] = [](PlayerbotAI* ai) { return new DeathCoilInterruptTrigger(ai); };
                 creators["death coil on enemy healer"] = [](PlayerbotAI* ai) { return new DeathCoilInterruptTHealerTrigger(ai); };
                 creators["death coil on snare target"] = [](PlayerbotAI* ai) { return new DeathCoilSnareTrigger(ai); };
+                creators["howl of terror"] = [](PlayerbotAI* ai) { return new HowlOfTerrorTrigger(ai); };  // twow-repo#568 (D23)
                 creators["inferno"] = [](PlayerbotAI* ai) { return new InfernoTrigger(ai); };
                 creators["shadowfury interrupt"] = [](PlayerbotAI* ai) { return new ShadowfuryInterruptTrigger(ai); };
                 creators["shadowfury on snare target"] = [](PlayerbotAI* ai) { return new ShadowfurySnareTrigger(ai); };
@@ -236,6 +237,9 @@ namespace ai
                 creators["no curse"] = [](PlayerbotAI* ai) { return new NoCurseTrigger(ai); };
                 creators["no curse on attacker"] = [](PlayerbotAI* ai) { return new NoCurseOnAttackerTrigger(ai); };
                 creators["conflagrate"] = [](PlayerbotAI* ai) { return new ConflagrateTrigger(ai); };
+                creators["shadowburn"] = [](PlayerbotAI* ai) { return new ShadowburnTrigger(ai); };  // twow-repo#568 (D24)
+                creators["shadowburn pvp"] = [](PlayerbotAI* ai) { return new ShadowburnPvpTrigger(ai); };  // twow-repo#568 (D24)
+                creators["dark pact"] = [](PlayerbotAI* ai) { return new DarkPactTrigger(ai); };  // twow-repo#568 (D24)
                 creators["demonic sacrifice"] = [](PlayerbotAI* ai) { return new DemonicSacrificeTrigger(ai); };
                 creators["no imp"] = [](PlayerbotAI* ai) { return new NoImpTrigger(ai); };
                 creators["no voidwalker"] = [](PlayerbotAI* ai) { return new NoVoidwalkerTrigger(ai); };

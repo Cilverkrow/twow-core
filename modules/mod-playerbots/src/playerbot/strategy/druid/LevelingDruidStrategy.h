@@ -21,6 +21,11 @@ namespace ai
         LevelingRejuvenationTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "rejuvenation") {}
         bool IsActive() override
         {
+            // twow-repo#568 D46 (AiPlayerbot.Diet.LevelingDruidKnownSpells): Rejuvenation is learned at level 4;
+            // before that the pushed node could only end IMPOSSIBLE.
+            if (sPlayerbotAIConfig.dietLevelingDruidKnownSpells && !AI_VALUE2(uint32, "spell id", "rejuvenation"))
+                return false;
+
             return BuffTrigger::IsActive() && AI_VALUE2(uint8, "health", "self target") < 100;
         }
     };
@@ -34,6 +39,11 @@ namespace ai
         LevelingMoonfireTrigger(PlayerbotAI* ai) : MoonfireTrigger(ai) {}
         bool IsActive() override
         {
+            // twow-repo#568 D46 (AiPlayerbot.Diet.LevelingDruidKnownSpells): Moonfire is learned at level 4; before
+            // that the pushed node could only end IMPOSSIBLE (its "reach spell" prerequisite is USELESS then too).
+            if (sPlayerbotAIConfig.dietLevelingDruidKnownSpells && !AI_VALUE2(uint32, "spell id", "moonfire"))
+                return false;
+
             return MoonfireTrigger::IsActive() && AI_VALUE2(uint8, "mana", "self target") >= 50;
         }
     };

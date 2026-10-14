@@ -147,6 +147,13 @@ namespace ai
         InitializePetAction(PlayerbotAI* ai) : Action(ai, "initialize pet") {}
         bool Execute(Event& event) override;
         bool isUseful() override;
+
+    private:
+        // twow-repo#541 (AiPlayerbot.InitPet.Cache): the character_pet answer of isUseful, and the
+        // cooldown after a try that left the hunter without a pet (this bot's own action object).
+        uint32 storedPetCheckedAt = 0;
+        bool storedPet = false;
+        uint32 noPetUntil = 0;
     };
 
     class SetPetAction : public Action

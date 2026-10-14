@@ -15,6 +15,7 @@
 #include "playerbot/PersistentRosterStarterOutfitPolicy.h"
 #include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
+#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PacketTracePolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
@@ -46,6 +47,7 @@
 #include "playerbot/MemStoresPolicy.h"
 #include "playerbot/BotUpdateTrace.h"
 #include "playerbot/CombatIdlePolicy.h"
+#include "playerbot/PathReusePolicy.h"
 #if defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -942,6 +944,46 @@ void ReportBotInbox()
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
 
+    // twow-repo#541 (AiPlayerbot.Perf.ActionBudget): expensive actions of the last minute.
+    if (sPlayerbotAIConfig.perfActionBudget)
+    {
+        auto take = [](ai::action_budget::Count count) { return (unsigned long long)ai::action_budget::Counter(count).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const executed = take(ai::action_budget::Executed);
+        unsigned long long const deferred = take(ai::action_budget::Deferred);
+        unsigned long long const forced = take(ai::action_budget::Forced);
+        sLog.outBasic("[ActionBudget] mode=%u executed=%llu deferred=%llu forced=%llu max_deferrals=%u",
+            sPlayerbotAIConfig.perfActionBudget, executed, deferred, forced, ai::action_budget::MaxDeferrals);
+    }
+
+    // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): evacuations of the last minute.
+    if (sPlayerbotAIConfig.deathLoopEscape)
+    {
+        auto takeEscape = [](ai::death_loop::EscapeCount count) { return (unsigned long long)ai::death_loop::EscapeCounter(count).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const detected = takeEscape(ai::death_loop::EscapeDetected);
+        unsigned long long const escaped = takeEscape(ai::death_loop::EscapeEscaped);
+        unsigned long long const rebound = takeEscape(ai::death_loop::EscapeRebound);
+        unsigned long long const repeat = takeEscape(ai::death_loop::EscapeRepeat);
+        unsigned long long const hostileDeaths = takeEscape(ai::death_loop::EscapeHostileDeath);
+        sLog.outBasic("[DeathLoop] state=minute detected=%llu escaped=%llu rebound=%llu repeat_after_escape=%llu hostile_death=%llu",
+            detected, escaped, rebound, repeat, hostileDeaths);
+    }
+
+    // twow-repo#563 (X3b): reads of other bots' published targets and group conditions in the last minute.
+    if (sPlayerbotAIConfig.x3bPublishedTargets || sPlayerbotAIConfig.x3bPublishedConditions)
+    {
+        auto takeRead = [](ai::x3b::SnapshotRead read) { return (unsigned long long)ai::x3b::SnapshotCount(read).exchange(0, std::memory_order_relaxed); };
+        auto takeCondition = [](ai::x3b::ConditionRead read) { return (unsigned long long)ai::x3b::ConditionCount(read).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const hit = takeRead(ai::x3b::SnapshotHit);
+        unsigned long long const stale = takeRead(ai::x3b::SnapshotStale);
+        unsigned long long const missing = takeRead(ai::x3b::SnapshotMissing);
+        unsigned long long const condHit = takeCondition(ai::x3b::ConditionHit);
+        unsigned long long const condMiss = takeCondition(ai::x3b::ConditionMiss);
+        unsigned long long const condDropped = takeCondition(ai::x3b::ConditionDropped);
+        unsigned long long const condEvaluated = takeCondition(ai::x3b::ConditionEvaluated);
+        sLog.outBasic("[X3bSnapshot] hit=%llu stale=%llu missing=%llu max_age_ms=%u cond_hit=%llu cond_miss=%llu cond_dropped=%llu cond_evaluated=%llu",
+            hit, stale, missing, uint32(ai::x3b::MaxAgeMs), condHit, condMiss, condDropped, condEvaluated);
+    }
+
     // twow-repo#541 (AiPlayerbot.PacketTrace): packets of the last minute per map bucket. Per class
     // "read/ignored/real" counts; kib_* = bytes per receiver. ignored = built for a bot that never reads it.
     if (sPlayerbotAIConfig.packetTrace)
@@ -1059,6 +1101,41 @@ void ReportLazyEngineInit()
         (unsigned long long)deferred, (unsigned long long)caught,
         (unsigned long long)(deferred > caught ? deferred - caught : 0));
 }
+
+// twow-repo#541 (L1, AiPlayerbot.Perf.PartialPathReuse): one [PathReuse] line per minute. hits = path rebuilds skipped
+// because the path last built for the same destination was used again, misses = rebuilds that ran with the switch on
+// (both only counted after the existing end-near-destination reuse had missed). World thread only, same pattern as
+// ReportBotUpdate. Nothing is counted or written when off.
+void ReportPathReuse()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.perfPartialPathReuse || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    uint64 const hits = ai::path_reuse::hits.exchange(0, std::memory_order_relaxed);
+    uint64 const misses = ai::path_reuse::misses.exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[PathReuse] hits=%llu misses=%llu max_age_ms=%u",
+        (unsigned long long)hits, (unsigned long long)misses, sPlayerbotAIConfig.perfPartialPathReuseMs);
+}
+
+// twow-repo#541 (L1b, AiPlayerbot.Perf.RouteFailCooldownSeconds): one [RouteFail] line per minute. blocks = node route
+// searches without a route that set a cooldown, skips = searches skipped by a route cooldown (failure or budget).
+// World thread only, same pattern as ReportPathReuse. Nothing is counted or written when off.
+void ReportRouteFail()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.perfRouteFailCooldownSeconds || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    uint64 const blocks = ai::stall_guard::routeFailBlocks.exchange(0, std::memory_order_relaxed);
+    uint64 const skips = ai::stall_guard::routeCooldownSkips.exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[RouteFail] blocks=%llu skips=%llu cooldown_seconds=%u",
+        (unsigned long long)blocks, (unsigned long long)skips, sPlayerbotAIConfig.perfRouteFailCooldownSeconds);
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -1083,6 +1160,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
+    ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
+    ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
@@ -6208,6 +6287,12 @@ namespace
     char const* const ParkDroppedStrategies =
         "-travel,-rpg,-grind,-quest,-wander,-tfish,-rpg craft,-bot brain,-maintenance,-group,-guild,-bg,-lfg,-explore";
 
+    // twow-repo#551 (AiPlayerbot.Park.Quiet): a quiet parked bot also drops its social strategies.
+    std::string ParkStrategyChange()
+    {
+        return std::string(ParkDroppedStrategies) + (sPlayerbotAIConfig.parkQuiet ? ai::park::QuietDroppedStrategies() : "");
+    }
+
     // Capacity key of a spot: map and position rounded to whole yards.
     uint64 ParkSpotKey(WorldLocation const& loc)
     {
@@ -6384,9 +6469,10 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         entry.stage = ai::park::Stage::Parked;
         entry.since = uint32(time(nullptr));
         parkedBots[bot->GetGUIDLow()] = entry;
+        PersistPark(bot->GetGUIDLow(), "here");   // twow-repo#551 (AiPlayerbot.Park.Persist)
         ai->SetParked(true);
         bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
-        ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
+        ai->ChangeStrategy(ParkStrategyChange(), BotState::BOT_STATE_NON_COMBAT);
         AiObjectContext* context = ai->GetAiObjectContext();
         sTravelMgr.SetNullTravelTarget(AI_VALUE(TravelTarget*, "travel target"));
         ai->StopMoving();
@@ -6492,10 +6578,11 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     entry.cityZone = cityZone;
     parkedBots[bot->GetGUIDLow()] = entry;
     parkCityCounts.Add(cityZone);   // twow-repo#551 (Park.MaxPerCity); released in ReleaseParkSpot
+    PersistPark(bot->GetGUIDLow(), teleName);   // twow-repo#551 (AiPlayerbot.Park.Persist)
 
     ai->SetParked(true);
     bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
-    ai->ChangeStrategy(ParkDroppedStrategies, BotState::BOT_STATE_NON_COMBAT);
+    ai->ChangeStrategy(ParkStrategyChange(), BotState::BOT_STATE_NON_COMBAT);
     AiObjectContext* context = ai->GetAiObjectContext();
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
     sTravelMgr.SetNullTravelTarget(travelTarget);
@@ -6509,6 +6596,49 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     return true;
 }
 
+// twow-repo#551 (AiPlayerbot.Park.Persist): the park state in the bot event store (existing table, ParkPolicy.h).
+void RandomPlayerbotMgr::PersistPark(uint32 guid, std::string const& teleName)
+{
+    if (sPlayerbotAIConfig.parkPersist)
+        SetEventValue(guid, ai::park::PersistEvent, 1, ai::park::PersistValidSeconds, ai::park::PersistData(teleName.c_str()));
+}
+
+void RandomPlayerbotMgr::ClearPersistedPark(uint32 guid)
+{
+    // Also with the switch off, so a row left by an earlier run never parks a bot the operator unparked.
+    if (GetEventValue(guid, ai::park::PersistEvent))
+        SetEventValue(guid, ai::park::PersistEvent, 0, 0);
+}
+
+void RandomPlayerbotMgr::RestoreParkedBots()
+{
+    for (auto const& [guid, bot] : GetAllBots())
+    {
+        PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        if (!ai || ai->parkRestoreChecked || IsParkedBot(guid))
+            continue;
+        if (!GetEventValue(guid, ai::park::PersistEvent))
+        {
+            ai->parkRestoreChecked = true;
+            continue;
+        }
+        std::string const data = GetEventData(guid, ai::park::PersistEvent);
+        std::string reason;
+        ++ai->parkRestoreAttempts;
+        if (ParkBot(bot, ai::park::RestoreTarget(data.c_str()), reason))
+        {
+            ai->parkRestoreChecked = true;
+            sLog.outBasic("[Park] state=restored bot=%u via=%s attempts=%u", guid, data.c_str(), ai->parkRestoreAttempts);
+        }
+        else if (!ai::park::RestoreRetries(reason.c_str(), ai->parkRestoreAttempts))
+        {
+            ai->parkRestoreChecked = true;
+            sLog.outBasic("[Park] state=restore_failed bot=%u via=%s reason=%s attempts=%u", guid, data.c_str(), reason.c_str(),
+                ai->parkRestoreAttempts);
+        }
+    }
+}
+
 void RandomPlayerbotMgr::UnparkBot(Player* bot)
 {
     auto const it = parkedBots.find(bot->GetGUIDLow());
@@ -6516,6 +6646,7 @@ void RandomPlayerbotMgr::UnparkBot(Player* bot)
         return;
     ReleaseParkSpot(it->second);
     parkedBots.erase(it);
+    ClearPersistedPark(bot->GetGUIDLow());   // twow-repo#551 (AiPlayerbot.Park.Persist)
 
     if (PlayerbotAI* ai = GetBotAI(bot))
     {
@@ -6620,6 +6751,14 @@ void RandomPlayerbotMgr::ProcessParkedBots()
         parkShare.overflow = parkShare.noSpot = 0;
         parkShare.lastLog = now;
     }
+
+    // twow-repo#551 (AiPlayerbot.Park.Persist): bots that were parked before a restart or logout are parked again.
+    if (sPlayerbotAIConfig.parkPersist && now >= lastParkRestore + ai::park::RestoreIntervalSeconds)
+    {
+        lastParkRestore = now;
+        RestoreParkedBots();
+    }
+
     for (auto it = parkedBots.begin(); it != parkedBots.end();)
     {
         uint32 const guid = it->first;
@@ -6826,6 +6965,7 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleUnpark(std::string param
             {
                 ReleaseParkSpot(lost->second);
                 parkedBots.erase(lost);
+                ClearPersistedPark(guid);   // twow-repo#551 (AiPlayerbot.Park.Persist)
             }
         }
     }

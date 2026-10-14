@@ -2,6 +2,7 @@
 #include "PlayerbotMgr.h"
 #include "playerbot/ValueEvictPolicy.h"
 #include "playerbot/BotPacketInbox.h"
+#include "playerbot/X3bSnapshotPolicy.h"
 #include "PlayerbotAIBase.h"
 #include "strategy/AiObjectContext.h"
 #include "strategy/ReactionEngine.h"
@@ -415,6 +416,17 @@ public:
     void QueueContextWrite(std::function<void(ai::AiObjectContext*)> write);
     // For the callers: queues on the target's AI, or counts the write as dropped when the target has none.
     static void QueueContextWriteTo(Player* target, std::function<void(ai::AiObjectContext*)> write);
+    // twow-repo#563 (X3b variant 2, AiPlayerbot.X3b.PublishedTargets): the owner publishes, other bots read a
+    // copy of the pointer - never this bot's Value objects. The mutex only guards the pointer swap.
+    typedef ai::x3b::PublishedTargets<ObjectGuid> PublishedTargets;
+    void PublishTargets(std::shared_ptr<PublishedTargets const> snapshot);
+    std::shared_ptr<PublishedTargets const> GetPublishedTargets() const;
+    // X3b site 2 (AiPlayerbot.X3b.PublishedConditions): conditions other bots ask about this bot, answered by
+    // this bot on its own thread (HandleQueuedBotPackets).
+    ai::x3b::ConditionBoard& GetConditionBoard() { return conditionBoard; }
+    // X3b site 3 (same switch): "follow" or "wander" in the non-combat engine, published by this bot on its own
+    // thread for GroupReadyValue of the others (true until the first publish: the group waits, as for a follower).
+    bool PublishedFollowing() const { return publishedFollowing.load(std::memory_order_relaxed); }
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
@@ -720,7 +732,9 @@ public:
     // Hotfix 8.9 (twow-repo#474): [ItemUse] counters.
     ai::item_use::Trace& GetItemUseTrace() { return itemUseTrace; }
     bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
-    void ClearDeathLoop() { recentDeaths.clear(); }
+    void ClearDeathLoop() { recentDeaths.clear(); lastDeathHostileArea = false; }
+    // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): when the last evacuation of this bot happened (repeat check).
+    void MarkDeathLoopEscape(uint32 nowSeconds) { lastDeathLoopEscapeAt = nowSeconds; }
     uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
     //Checks if the bot is summoned as alt of a player
     bool IsAlt() { return HasRealPlayerMaster() && !sRandomPlayerbotMgr.IsRandomBot(bot); }
@@ -961,6 +975,8 @@ protected:
     // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
     std::atomic<bool> parked{ false };
     uint32 lastParkedUpdateMs = 0;
+    // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
+    std::atomic<uint32> nextParkIdleEmote{ 0 };
     uint32 lastBotSave = 0;          // twow-repo#541 A47: time of this bot's last own save (seconds)
     bool botSaveScheduled = false;   // A47: first save offset applied
     ai::stall_guard::TopActions updateActions;
@@ -1001,6 +1017,10 @@ public:
     void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
     // twow-repo#541/#551 (rndbot park): a parked bot updates its AI every ai::park::AiIntervalMs only.
     bool IsParked() const { return parked; }
+    // twow-repo#551 (AiPlayerbot.Park.Persist), world thread only: the stored park state was handled after this login
+    // (a new login is a new PlayerbotAI); attempts counts restore tries of a bot that was busy.
+    bool parkRestoreChecked = false;
+    uint32 parkRestoreAttempts = 0;
     // twow-repo#541 (jitter): with AiPlayerbot.AiDelayJitterPct the first parked update is spread over an interval.
     void SetParked(bool value);
     uint32 GetQuestIdleSeconds(uint32 now) const { return questProgress.IdleSeconds(now); }
@@ -1009,6 +1029,8 @@ public:
 
 protected:
     std::deque<ai::death_loop::Death> recentDeaths;
+    bool lastDeathHostileArea = false;   // A39: the latest death lay in an area of the hostile faction
+    uint32 lastDeathLoopEscapeAt = 0;    // A39: time of the last evacuation (repeat_after_escape)
     // #422: deaths anywhere (cautious mode) and environmental gathering deaths.
     ai::death_series::Series deathSeries;
     ai::death_series::PurposeSuppression gatherDeaths;
@@ -1037,6 +1059,11 @@ protected:
     ai::BoundedInbox<std::unique_ptr<WorldPacket>> botPacketInbox{ ai::BotPacketInboxCapacity };
     // twow-repo#563 (X3c): value writes from other bots, applied in UpdateAI.
     ai::BoundedInbox<std::function<void(ai::AiObjectContext*)>> contextWriteInbox{ ai::ContextWriteInboxCapacity };
+    // twow-repo#563 (X3b): this bot's last published targets, read by other bots.
+    mutable std::mutex publishedTargetsMutex;
+    std::shared_ptr<PublishedTargets const> publishedTargets;
+    ai::x3b::ConditionBoard conditionBoard;
+    std::atomic<bool> publishedFollowing{ true };
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;
     CompositeChatFilter chatFilter;

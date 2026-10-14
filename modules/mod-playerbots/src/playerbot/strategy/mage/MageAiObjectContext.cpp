@@ -185,6 +185,7 @@ namespace ai
                 creators["fire spells locked"] = [](PlayerbotAI* ai) { return new FireSpellsLocked(ai); };
                 creators["cold snap"] = [](PlayerbotAI* ai) { return new ColdSnapTrigger(ai); };
                 creators["ice barrier"] = [](PlayerbotAI* ai) { return new IceBarrierTrigger(ai); };
+                creators["blast wave"] = [](PlayerbotAI* ai) { return new BlastWaveTrigger(ai); };  // twow-repo#568 (D35)
                 creators["hot streak"] = [](PlayerbotAI* ai) { return new HotStreakTrigger(ai); };
                 creators["free fireball"] = [](PlayerbotAI* ai) { return new FireballOrFrostfireBoltFreeTrigger(ai); };
                 creators["fingers of frost"] = [](PlayerbotAI* ai) { return new FingersOfFrostTrigger(ai); };

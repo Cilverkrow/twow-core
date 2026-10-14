@@ -548,11 +548,17 @@ public:
     bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
     uint32 parkMaxPerInn = 0;   // twow-repo#551 (owner 10.10): parked bots per inn, 0 = ai::park::SpotCapacity (25) as before
     uint32 parkMaxPerCity = 0;  // twow-repo#551 (owner 10.10): parked bots per capital zone (inns + city spots), 0 = no limit
+    bool parkQuiet = false;  // twow-repo#551 (owner 11.10): parked bots drop greet/emote/say/ai chat, answer whispers only
+    uint32 parkQuietIdleEmoteSeconds = 600;  // twow-repo#551: one idle emote per this many seconds while quiet (0 = none)
+    bool parkPersist = false;  // twow-repo#551 (owner 11.10): park state in the bot event store, restored after a restart
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool checkValuesSkipSearches = false;  // twow-repo#541: "check values" without its six forced value searches
+    bool initPetCache = false;  // twow-repo#541: "initialize pet" with a static tameable list, cached pet DB answer, cooldown
     bool x3cInboxWrites = false;  // twow-repo#563 (X3c): value writes into other bots go through their inbox
+    bool perfSkipBotUpdatePackets = false;  // twow-repo#541 (owner 11.10.): core builds no SMSG_UPDATE_OBJECT/DESTROY for bot sessions
+    bool warnUnknownNames = false;  // twow-repo#568 (c): once-per-name [UnknownName] line for trigger/action/strategy names without a creator
     bool packetTrace = false;  // twow-repo#541 (owner 11.10.): [BotPackets] packets per receiver / map / class, measurement only
     bool nearestSkipHiddenBots = false;  // twow-repo#541 (owner 11.10. "1b"): nearest*/possible-targets values skip parked bots hidden from bots
     uint32 botSaveIntervalSeconds = 0;  // twow-repo#541 A47: bots save themselves every N s (0 = core autosave as before)
@@ -566,6 +572,8 @@ public:
     bool perfBgMasterCacheRef = false;  // twow-repo#541 (audit A09): "rpg bg type" / "bg masters" read the battlemaster cache by const reference with find(), no deep copy (0 = off)
     bool perfTravelInfoReuse = false;  // twow-repo#541 (audit A10): a travel choice builds one PlayerTravelInfo, reuses a known IsActive answer and checks the cheap hub conditions first; GetDestinations looks one asked entry up by key (0 = off)
     bool perfLogActionFastPath = false;  // twow-repo#541 (audit A11): no action-log lookup while no file can be written, PerfMon action/trigger keys only with PerfMon on (0 = off)
+    uint32 perfActionBudget = 0;  // twow-repo#541 (owner 11.10.): expensive actions per map thread and tick, 0 off / 1 max 3 / 2 max 1 / 3 spread (ActionBudgetPolicy.h)
+    std::vector<std::string> perfActionBudgetActions;  // the expensive actions (empty config = ai::action_budget::DefaultExpensiveActions)
     bool botUpdateTraceTailFix = false;  // twow-repo#541 (audit A11): engine last-action trail keeps the newest 512 characters, cut at an entry (0 = off)
     bool perfTrainableSpellsPrecheck = false;  // twow-repo#541 (audit A12): "trainable spells" skips a spell that fails the core's own skill RED check before the trainer state walk, roster state read once per call (0 = off)
     bool perfRacialsSkipUnbuildable = false;  // twow-repo#541 (audit A13): racials strategy does not register gift of the naaru / mana tap / arcane torrent (no action in this vanilla build); NOT strictly neutral, engine queue path in rare ticks (0 = off)
@@ -582,6 +590,53 @@ public:
     bool perfAttackersSingleList = false;  // twow-repo#541 (audit A23): "has attackers" and "possible attack targets::1" use the full "attackers" list, no second attackers::1 pass (0 = off)
     bool perfPartyTargetMemo = false;  // twow-repo#541 (audit A25): party-target values reuse their result inside one DoNextAction pass until the next Execute (0 = off)
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
+    bool x3bPublishedTargets = false;  // twow-repo#563 (X3b): other bots read published targets, not our values
+    bool x3bPublishedConditions = false;  // twow-repo#563 (X3b site 2): group conditions answered by each member itself
+    bool dietRogueCombatBoostInCombat = false;  // twow-repo#568 (diet D03): combat rogue boost registers adrenaline rush / blade flurry in the combat engine, not the non-combat engine where BoostTrigger is never active (0 = off)
+    bool dietRogueNoMutilate = false;  // twow-repo#568 (diet D15): assassination builders map to backstab (behind) / sinister strike (front) instead of the non-existent Mutilate (0 = off)
+    bool dietWarriorNoHeroicThrow = false;  // twow-repo#568 (diet D16): protection warriors push charge / taunt / taunt on snare target without the non-existent Heroic Throw step (0 = off)
+    bool dietArmsSnareHamstring = false;  // twow-repo#568 (diet D17): arms cc 'hamstring' trigger pushes hamstring instead of piercing howl -> mocking blow (taunt) -> hamstring (0 = off)
+    bool dietWarriorNoDevastate = false;  // twow-repo#568 (diet D36): protection 'sunder armor' trigger pushes sunder armor instead of the unlearnable devastate (0 = off)
+    bool dietWarriorDisarmGate = false;  // twow-repo#568 (diet D37): 'disarm' trigger also requires a known, ready Disarm and Defensive Stance (0 = off)
+    bool dietWarriorBerserkerStanceGate = false;  // twow-repo#568 (diet D38): stance rules (owner 11.10.2026): the 'berserker stance' trigger requires the spell, arms does not register it, protection has no Defensive Tactics swap, Berserker Rage has no stance prerequisite (0 = off)
+    bool dietWarriorNoInterceptAndRage = false;  // twow-repo#568 (diet D39): protection does not register the never-firing 'intercept and rage' nodes (sub-trigger "enemy is out of melee" has no creator) (0 = off)
+    bool dietWarriorDedupBloodrage = false;  // twow-repo#568 (diet D40): 'bloodrage' trigger requires a known, ready Bloodrage; protection drops its duplicate bloodrage / concussion blow nodes (0 = off)
+    bool dietPriestRacials = false;  // twow-repo#568 (D20): priest race spells (touch of weakness, shadowguard, hex of weakness, devouring plague, elune's grace, desperate prayer, starshards) only for races that can learn them; the four race triggers wait for a known spell id (0 = off)
+    bool dietPriestSelfBuffKnown = false;  // twow-repo#568 (D22): inner fire / shadowform / inner focus triggers wait for a known spell id, inner focus also for its cooldown (0 = off)
+    bool dietShadowPriestDeadNodes = false;  // twow-repo#568 (D32): shadow priest strategy does not register "vampiric touch" (passive talent in Turtle) and "shadowfiend" (no such spell in Turtle 1.18) (0 = off)
+    bool dietWarlockCcKnown = false;  // twow-repo#568 (D23): warlock cc pushes death coil (snare) and howl of terror only while the spell is known (0 = off)
+    bool dietWarlockTalentKnown = false;  // twow-repo#568 (D24): warlock talent spells siphon life (also on attacker), conflagrate, shadowburn (pve + pvp) and dark pact fire only while the spell is known (0 = off)
+    bool dietWarlockAmplifyCurse = false;  // twow-repo#568 (D25): warlock boost does not register "amplify curse" (only "[Deprecated] Amplify Curse" exists in Turtle 1.18) (0 = off)
+    bool dietMageArmorKnown = false;  // twow-repo#568 (D33): "mage armor" trigger of a mage without mage armor asks for the best known armor (ice armor, else frost armor) (0 = off)
+    bool dietMageTalentBoostKnown = false;  // twow-repo#568 (D34): arcane power / presence of mind / combustion / ice barrier triggers wait for the known and ready spell (0 = off)
+    bool dietMageBlastWave = false;  // twow-repo#568 (D35): fire cc pushes blast wave only while it is known ("blast wave" trigger), and the blast wave node drops its frost nova alternative (vanilla build) (0 = off)
+    bool dietMageInvisibility = false;  // twow-repo#568 (D53): mage raid strategy does not register "invisibility" on high threat / multiple attackers (not learnable in Turtle 1.18) (0 = off)
+    bool dietLevelingDruidWrath = false;  // twow-repo#568 D04: leveling druid Wrath node uses the registered trigger "enemy out of melee" (0 = off, node stays dead)
+    bool dietShockCooldownGate = false;  // twow-repo#568 D26: shaman "shock" trigger off while the shared shock category cooldown runs (0 = off)
+    bool dietFireNovaTotem = false;  // twow-repo#568 D27: shamans cast "fire nova totem" where vanilla pushed the uncastable "fire nova" (0 = off)
+    bool dietNoWrathOfAirTotem = false;  // twow-repo#568 D28: vanilla ele/resto shamans skip the nonexistent "wrath of air totem" node and alternative (0 = off)
+    bool dietShamanVanillaNames = false;  // twow-repo#568 D29: vanilla shamans push healing wave / searing totem / flametongue weapon instead of riptide / totem of wrath / earthliving; dead resto factory keys dropped (0 = off)
+    bool dietInnervateFix = false;  // twow-repo#568 D30: Innervate trigger/action use the real mana percent and accept the solo druid itself (0 = off)
+    bool dietRetRepentanceKey = false;  // twow-repo#568 D31: Ret "repentance or shield" node registered under its pushed name (0 = off, factory key typo)
+    bool dietExorcismCreatureType = false;  // twow-repo#568 D41: paladin "exorcism" trigger only for targets of Exorcism's creature types (undead/demon) (0 = off)
+    bool dietProtSealDirect = false;  // twow-repo#568 D42: vanilla Prot "seal" pushes seal of righteousness directly, seal trigger skips the dead vengeance name (0 = off)
+    bool dietFeralNoMangle = false;  // twow-repo#568 D43: vanilla feral nodes push claw / maul instead of the nonexistent mangle (cat)/(bear) (0 = off)
+    bool dietFeralNoCatSwipe = false;  // twow-repo#568 D44: vanilla DPS-feral AoE strategy skips the nonexistent "swipe (cat)" node (0 = off)
+    bool dietDruidCooldownGates = false;  // twow-repo#568 D45: druid Enrage / Nature's Grasp triggers quiet while the spell is unknown or cooling down (0 = off)
+    bool dietLevelingDruidKnownSpells = false;  // twow-repo#568 D46: leveling druid Rejuvenation/Moonfire triggers only once the spell is known (0 = off)
+    bool dietHunterBestSting = false;  // twow-repo#568 (D10): one 'no stings usable' node per vanilla spec sting strategy (manual stings keep 'no stings'), it fires only when viper or serpent sting can be used, serpent sting also on mana targets while viper sting is unknown (0 = off)
+    bool dietHunterTalentShotsKnown = false;  // twow-repo#568 (D19): deterrence / scatter shot nodes on own triggers that wait for the known, ready talent spell; scatter shot aims at the closest attacker targeting the bot (0 = off)
+    bool dietHunterTranqKnown = false;  // twow-repo#568 (D47): the hunter reaction "dispel enrage" -> tranquilizing shot node uses a trigger that waits for the known, ready spell before the aura scan (0 = off)
+    bool dietLootRollPending = false;  // twow-repo#568 (D48): the roll strategy pushes "auto loot roll" from "loot roll pending" (every 5 s, only with a group and an open roll) instead of "very often" (0 = off)
+    bool perfEventTriggerSkip = false;  // twow-repo#568 (D63): ProcessTriggers skips the Check() of chat-command / world-packet triggers whose event flag is unset; a set flag is handled on the same pass as before (0 = off)
+    bool dietHunterAspectGate = false;  // twow-repo#568 (D65): vanilla "aspect of the hawk" trigger fires only while the bot knows Aspect of the Hawk (same "spell id" value its cast checks) (0 = off)
+    bool dietHunterRapidFireGate = false;  // twow-repo#568 (D66): vanilla "rapid fire" trigger fires only while Rapid Fire is known and off cooldown, the node drops the "readiness" alternative; both unless the bot knows Readiness (0 = off)
+    bool dietWanderSoloGuard = false;  // twow-repo#568 (D67): "wander near" without a follow target fires only on a FOLLOW motion, the only state in which its "stop follow" is useful (0 = off)
+    bool dietRpgDeadTriggers = false;  // twow-repo#568 (D68): "rpg ai chat" (LLMEnabled 0), "rpg wander" (no real master) and "rpg quest use" (entry not 190767) answer from their first IsActive condition before the rpg pre-check values (0 = off)
+    bool dietDuelTriggerGate = false;  // twow-repo#568 (D69): the duel strategy pushes "attack duel opponent" from "duel no attackers" (only with a duel) instead of "no attackers"; read at engine build (0 = off)
+    bool perfPartialPathReuse = false;  // twow-repo#541 (L1): MoveTo uses the path last built for an unchanged destination again, without a rebuild, for up to perfPartialPathReuseMs while its end is not reached (0 = off)
+    uint32 perfPartialPathReuseMs = 10000;  // twow-repo#541 (L1): age limit of such a path in ms, clamped to 1000..60000
+    uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b): a node route search without a route blocks the same bot and target cell for that many seconds, clamped to 0..300 (0 = off)
     bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
@@ -612,6 +667,10 @@ public:
     // #405: quest objectives whose work phase ran out Max times are skipped.
     uint32 questWorkTimeoutsMax = 0;
     uint32 questWorkTimeoutsCooldownSeconds = 3600;
+    uint32 questLoopMaxFailures = 0;             // twow-repo#581 QL-1: failures per bot x quest that skip its objectives (0 = off)
+    uint32 questLoopWindowSeconds = 1800;
+    uint32 questLoopCooldownSeconds = 1800;
+    uint32 questLoopInactiveCooldownSeconds = 0; // twow-repo#581 QL-2: minimum cooldown after an inactive objective (0 = off)
     // twow-repo#485: game-object quest givers and takers spawned only by a script
     // (gameobject.spawntimesecsmin < 0, e.g. GO 270 of quest 310) are no travel targets.
     // false = old behaviour.
@@ -626,6 +685,7 @@ public:
     std::vector<uint32> specAuraTalentClasses;
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
+    bool deathLoopEscape = false;   // twow-repo#541 A39 (owner 10.10.): hostile-area death = loop; never evacuate to a hostile homebind
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;

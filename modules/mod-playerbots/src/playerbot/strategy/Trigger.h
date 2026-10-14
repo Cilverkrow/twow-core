@@ -37,6 +37,9 @@ namespace ai
         }
         virtual bool IsActive() { return false; }
         virtual bool IsAlreadyTriggered() { return triggered; }
+        // twow-repo#568 (D63, AiPlayerbot.Perf.EventTriggerSkip): true for triggers whose Check() only reports an
+        // external event (chat command, world packet) and never evaluates IsActive().
+        virtual bool IsEventOnly() { return false; }
         virtual NextAction** getHandlers() { return NULL; }
         void Update() {}  //Nonfunctional see AiObjectContext::Update() to enable.
         virtual void Reset() { triggered = false; }

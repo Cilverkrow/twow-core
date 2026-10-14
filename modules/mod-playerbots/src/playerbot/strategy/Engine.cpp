@@ -3,11 +3,13 @@
 #include <chrono>
 #include <stdarg.h>
 #include <iomanip>
+#include <mutex>
 
 #include "Engine.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/BotActionLog.h"
+#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/ActionTrail.h"
 #include "playerbot/BotUpdateTrace.h"
 
@@ -16,6 +18,78 @@
 #endif
 
 using namespace ai;
+
+// twow-repo#568 (c), AiPlayerbot.WarnUnknownNames (default 0): one "[UnknownName]" line per trigger,
+// action or strategy name that has no creator, e.g. 'enemy out of melee range', 'react', 'inferno'.
+// Today such names die silently (strategy ignored, trigger skipped, action "UNKNOWN"). Warning only:
+// the lookups and their null paths are unchanged. Cost when on: a hash lookup in the engine's own set
+// per null result; the process mutex is taken once per name and engine at most.
+namespace
+{
+    // Bounds against names typed by players (co +typo, do <typo>); a full set just stops reporting.
+    constexpr size_t UnknownNamesPerEngineCap = 128;
+    constexpr size_t UnknownNamesProcessCap = 1024;
+
+    // Region threads run engines in parallel: the process-wide registry only under its mutex.
+    bool FirstUnknownNameInProcess(const std::string& key)
+    {
+        static std::mutex unknownNamesLock;
+        static std::set<std::string> unknownNames;
+        std::lock_guard<std::mutex> guard(unknownNamesLock);
+        if (unknownNames.size() >= UnknownNamesProcessCap)
+            return false;
+        return unknownNames.insert(key).second;
+    }
+
+    const char* UnknownNameKindName(uint8 kind)
+    {
+        switch (kind)
+        {
+            case 0: return "trigger";
+            case 1: return "action";
+            default: return "strategy";
+        }
+    }
+
+    const char* EngineStateName(BotState state)
+    {
+        switch (state)
+        {
+            case BotState::BOT_STATE_COMBAT: return "combat";
+            case BotState::BOT_STATE_NON_COMBAT: return "noncombat";
+            case BotState::BOT_STATE_DEAD: return "dead";
+            case BotState::BOT_STATE_REACTION: return "reaction";
+            default: return "other";
+        }
+    }
+}
+
+void Engine::WarnUnknownName(UnknownNameKind kind, const std::string& name)
+{
+    uint8 const k = uint8(kind);
+    std::unordered_set<std::string>& seen = unknownNamesSeen[k];
+    if (seen.find(name) != seen.end() || seen.size() >= UnknownNamesPerEngineCap)
+        return;
+    seen.insert(name);
+
+    // Process key without the "::qualifier", so "x::1" and "x::2" are one dead name.
+    std::string key(UnknownNameKindName(k));
+    key += ':';
+    key.append(name, 0, name.find("::"));
+    if (!FirstUnknownNameInProcess(key))
+        return;
+
+    Player* bot = ai ? ai->GetBot() : nullptr;
+    std::string list = ListStrategies();
+    if (list.size() > 300)
+    {
+        list.resize(297);
+        list += "...";
+    }
+    sLog.outError("[UnknownName] kind=%s name='%s' bot=%s class=%u engine=%s strategies=%s",
+        UnknownNameKindName(k), name.c_str(), bot ? bot->GetName() : "?", bot ? uint32(bot->getClass()) : 0u,
+        EngineStateName(state), list.c_str());
+}
 
 Engine::Engine(PlayerbotAI* ai, AiObjectContext *factory, BotState state) : PlayerbotAIAware(ai), aiObjectContext(factory), state(state)
 {
@@ -264,6 +338,27 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
             if(action)
                 action->setRelevance(relevance);
+
+            // twow-repo#541 (owner 11.10.2026, AiPlayerbot.Perf.ActionBudget): an expensive action needs budget of
+            // this map thread and world tick (ActionBudgetPolicy.h). Without it the action goes back into the queue
+            // unchanged and this bot's tick ends; after MaxDeferrals deferrals in a row it runs regardless.
+            if (action && sPlayerbotAIConfig.perfActionBudget &&
+                ai::action_budget::IsExpensive(action->getName(), sPlayerbotAIConfig.perfActionBudgetActions))
+            {
+                uint32 const window = ai::action_budget::Window(WorldTimer::getMSTime());
+                if (!ai::action_budget::TryTake(sPlayerbotAIConfig.perfActionBudget, ai->GetBot()->GetGUIDLow(), window,
+                    window, actionBudgetDeferrals, ai::action_budget::ThreadLocal()))
+                {
+                    ++actionBudgetDeferrals;
+                    ai::action_budget::Counter(ai::action_budget::Deferred).fetch_add(1, std::memory_order_relaxed);
+                    LogAction("A:%s - DEFERRED", action->getName().c_str());
+                    PushAgain(actionNode, relevance, event, true);
+                    break;
+                }
+                ai::action_budget::Counter(actionBudgetDeferrals >= ai::action_budget::MaxDeferrals
+                    ? ai::action_budget::Forced : ai::action_budget::Executed).fetch_add(1, std::memory_order_relaxed);
+                actionBudgetDeferrals = 0;
+            }
 
             if (!action)
             {
@@ -695,6 +790,10 @@ void Engine::addStrategy(const std::string& name)
         }
         strategy->OnStrategyAdded(state);
     }
+    else if (sPlayerbotAIConfig.warnUnknownNames)
+    {
+        WarnUnknownName(UnknownNameKind::Strategy, name);  // twow-repo#568 (c), warning only
+    }
 
     // Init() empties the action queue, so only pay it when the strategy set
     // actually moved. Re-adding a strategy the engine already carries used to
@@ -804,8 +903,16 @@ void Engine::ProcessTriggers(bool minimal)
         {
             trigger = aiObjectContext->GetTrigger(node->getName());
             node->setTrigger(trigger);
+            if (!trigger && sPlayerbotAIConfig.warnUnknownNames)
+                WarnUnknownName(UnknownNameKind::Trigger, node->getName());  // twow-repo#568 (c), warning only
         }
         if (!trigger)
+            continue;
+
+        // twow-repo#568 (D63, AiPlayerbot.Perf.EventTriggerSkip): an event-only trigger (chat command, world packet)
+        // returns Event() from Check() while its event flag is unset, so that poll is skipped. A set flag is checked
+        // and handled on this pass as before; the Reset loop below still covers every trigger.
+        if (sPlayerbotAIConfig.perfEventTriggerSkip && !testMode && trigger->IsEventOnly() && !trigger->IsAlreadyTriggered())
             continue;
 
         if (testMode || trigger->IsAlreadyTriggered() || trigger->needCheck())
@@ -903,6 +1010,8 @@ Action* Engine::InitializeAction(ActionNode* actionNode)
     {
         action = aiObjectContext->GetAction(actionNode->getName());
         actionNode->setAction(action);
+        if (!action && sPlayerbotAIConfig.warnUnknownNames)
+            WarnUnknownName(UnknownNameKind::Action, actionNode->getName());  // twow-repo#568 (c), warning only
     }
 
     if (action)
@@ -994,6 +1103,19 @@ bool Engine::ListenAndExecute(Action* action, Event& event)
     if (sPlayerbotAIConfig.perfPartyTargetMemo)
         aiObjectContext->GetValueMemoWindow().Advance();
     return actionExecuted;
+}
+
+void Engine::TraceNote(const char* format, ...)
+{
+    if (!sPlayerbotAIConfig.botUpdateTrace)
+        return;
+
+    char buf[256];
+    va_list ap;
+    va_start(ap, format);
+    vsnprintf(buf, sizeof(buf), format, ap);
+    va_end(ap);
+    LogAction("%s", buf);
 }
 
 void Engine::LogAction(const char* format, ...)

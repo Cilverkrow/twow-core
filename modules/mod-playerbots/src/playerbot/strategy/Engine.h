@@ -9,6 +9,7 @@
 #include "playerbot/BotState.h"
 
 #include <functional>
+#include <unordered_set>
 #include <unordered_map>
 #include <atomic>
 
@@ -94,6 +95,10 @@ namespace ai
 		void PrintStrategies(Player* requester, const std::string& engineType);
         std::string GetLastAction() { return lastAction; }
         const Action* GetLastExecutedAction() const { return lastExecutedAction; }
+        // twow-repo#541 (L0, AiPlayerbot.BotUpdateTrace): one entry in this engine's trace trail (the action= part of a
+        // [BotUpdateSlow] line), added like the engine's own entries. Does nothing with the switch off; callers check
+        // the switch first so that they do not read a clock or format anything either.
+        void TraceNote(const char* format, ...);
 
     public:
 	    virtual bool DoNextAction(Unit*, int depth, bool minimal, bool isStunned);
@@ -130,8 +135,17 @@ namespace ai
         virtual Action* InitializeAction(ActionNode* actionNode);
         virtual bool ListenAndExecute(Action* action, Event& event);
 
+        // twow-repo#568 (c), AiPlayerbot.WarnUnknownNames: a trigger, action or strategy name without a
+        // creator is logged once per process ("[UnknownName] ..."). Called only from the null branches
+        // of the lookups and only when the switch is on; it never changes what the lookup did.
+        enum class UnknownNameKind : uint8 { Trigger = 0, Action = 1, Strategy = 2 };
+        void WarnUnknownName(UnknownNameKind kind, const std::string& name);
+
     private:
         void LogAction(const char* format, ...);
+        // Names this engine already reported (or handed to the process registry), per kind. Touched only
+        // from this engine's own thread; bounded by UnknownNamesPerEngineCap in Engine.cpp.
+        std::unordered_set<std::string> unknownNamesSeen[3];
         void LogValues();
         // Cheap change-detector for the attached strategy set. A strategy
         // change that leaves the token unchanged is a no-op and must not call
@@ -182,6 +196,7 @@ namespace ai
         // DoNextAction re-inits once the walk is over.
         bool inDoNextAction = false;
         bool reinitPending = false;
+        uint32 actionBudgetDeferrals = 0;   // twow-repo#541 (Perf.ActionBudget): expensive actions deferred in a row
         // twow-repo#541 (audit A21): the strategy set changed while this engine was not running and its triggers,
         // multipliers and queue are not rebuilt yet. Init() clears it; DoNextAction rebuilds first when set.
         // Protected on purpose: only Engine::ChangeStrategy sets it.

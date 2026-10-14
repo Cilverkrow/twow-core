@@ -27,6 +27,8 @@
 #include "Opcodes.h"
 #include "World.h"
 #include "ObjectGuid.h"
+#include "Player.h"
+#include "WorldSession.h"
 
 #include "libdeflate.h"
 
@@ -145,6 +147,15 @@ bool UpdateData::BuildPacket(WorldPacket *packet, UpdatePacket const* updPacket,
 
 void UpdateData::Send(WorldSession* session, bool hasTransport)
 {
+    // twow-repo#541 (SkipBotUpdatePackets): a bot session reads no update packet - neither built (compression
+    // included) nor sent. The blocks' bookkeeping happened at the callers and stays.
+    if (Player* player = session ? session->GetPlayer() : nullptr)
+        if (player->SkipsClientUpdates())
+        {
+            m_outOfRangeGUIDs.clear();
+            return;
+        }
+
     WorldPacket data;
     if (m_datas.empty() && !m_outOfRangeGUIDs.empty())
     {

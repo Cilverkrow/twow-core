@@ -155,10 +155,12 @@ function(check_engine out cpp h)
   if(NOT alt_pushes EQUAL 2)
     set(errs "${errs}both alternative pushes of DoNextAction use the cache (found ${alt_pushes})\n")
   endif()
-  # Every ownerCache = true call in Engine.cpp sits in the AI-tick functions above (6 + 1 + 1).
+  # Every ownerCache = true call in Engine.cpp sits in the AI-tick functions above (7 + 1 + 1). The 7th in
+  # DoNextAction is the Perf.ActionBudget re-queue of a deferred action (twow-repo#541, 11.10.2026), also on the
+  # bot's own tick.
   count_regex("${cpp}" "(MultiplyAndPush|PushAgain|CreateActionNode)\\([^;{]*, true\\)" cache_calls)
-  if(NOT cache_calls EQUAL 8)
-    set(errs "${errs}ownerCache = true only in DoNextAction (6), ProcessTriggers and PushDefaultActions (found ${cache_calls})\n")
+  if(NOT cache_calls EQUAL 9)
+    set(errs "${errs}ownerCache = true only in DoNextAction (7), ProcessTriggers and PushDefaultActions (found ${cache_calls})\n")
   endif()
 
   # --- Header: defaults off, owner map, clear helper, no node cache.
@@ -192,7 +194,8 @@ function(check_engine out cpp h)
 
   count_regex("${cpp}" "strategies\\.(insert|erase|clear|emplace|emplace_hint|swap|merge|extract)\\(" m1)
   count_regex("${cpp}" "strategies\\[" m2)
-  count_regex("${cpp}" "[^A-Za-z_]strategies[ \t]*=[^=]" m3)
+  # A format string such as "strategies=%s" (twow-repo#541 unknown-name warning) is no assignment.
+  count_regex("${cpp}" "[^A-Za-z_]strategies[ \t]*=[^=%]" m3)
   math(EXPR mutations "${m1} + ${m2} + ${m3}")
   count_regex("${cpp}" "ClearActionNodeOwners\\(\\)" clears)
   if(NOT mutations EQUAL clears)
