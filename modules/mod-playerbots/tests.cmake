@@ -2776,3 +2776,24 @@ set_target_properties(zone_exit_policy_tests PROPERTIES
 add_test(NAME zone_exit_policy
   COMMAND zone_exit_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#575 (PATH-01 wave 0): goblin / high-elf real start zones behind AiPlayerbot.CustomRaceStartZones.
+add_executable(start_zone_policy_tests
+  "${PB_MODULE_DIR}/t/start_zone_policy_tests.cpp")
+
+target_include_directories(start_zone_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(start_zone_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(start_zone_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME start_zone_policy
+  COMMAND start_zone_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME start_zone_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/start_zone_source_contract_tests.cmake")
