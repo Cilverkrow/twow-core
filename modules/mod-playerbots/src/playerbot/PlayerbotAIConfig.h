@@ -771,6 +771,7 @@ public:
     bool questFirstProgressionTurnInParkCountsRouteDanger = false;
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
+    bool zoneExitTurnInStallCounts = false;  // twow-repo#587 Z4: stage-1 turn-in recoveries count as turn-in failures
     // twow-repo#485: true = only a route to the other continent counts for the
     // rule above; the Deeprun Tram counts as the Eastern Kingdoms and an instance
     // as the continent of its entrance. false = any other map counts (old behaviour).

@@ -1492,6 +1492,11 @@ void TravelTarget::CheckStatus()
                     sLog.outBasic("[QuestFirstRoute] state=recovery_stage1 bot=%u quest=%u target_entry=%d action=recompute_route",
                         bot->GetGUIDLow(), static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry());
                 TraceQuestCommit(tDestination, "blocked", "stall_recompute_route");
+                // twow-repo#587 (Z4, AiPlayerbot.ZoneExit.TurnInStallCounts): a stage-1 recovery of a finished quest's turn-in is a
+                // failed turn-in too - live, Aurelith cycled commit -> move_retry_cooldown -> drop -> recompute for an
+                // unreachable Stormwind taker and never reached stage 2. TurnInParkFailures of them park the turn-in (#485).
+                if (sPlayerbotAIConfig.zoneExitTurnInStallCounts && IsProgressAwareTurnIn())
+                    NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "stall_recompute");
                 SetStatus(TravelStatus::TRAVEL_STATUS_READY);
                 return;
             case turnin_recovery::RecoveryAction::SuppressRouteAndCooldown:
