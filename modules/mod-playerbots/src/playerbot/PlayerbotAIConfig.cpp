@@ -2,6 +2,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/AreaTeamPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -539,6 +540,18 @@ bool PlayerbotAIConfig::Initialize()
             std::vector<std::string> parts = split(pair, ':');
             if (parts.size() == 2 && !parts[0].empty() && !parts[1].empty())
                 areaLevelOverrides[uint32(std::strtoul(parts[0].c_str(), nullptr, 10))] = int32(std::strtol(parts[1].c_str(), nullptr, 10));
+        }
+    }
+    // twow-repo#575 (PATH-01 wave 2): areas whose AreaTable team is wrong here, e.g. 5576:horde (Stormbreaker Point).
+    areaTeamOverrides.clear();
+    {
+        std::vector<std::string> pairs = split(config.GetStringDefault("AiPlayerbot.AreaTeamOverrides", ""), ',');
+        for (std::string const& pair : pairs)
+        {
+            std::vector<std::string> parts = split(pair, ':');
+            int const team = parts.size() == 2 && !parts[0].empty() ? ai::area_team::ParseTeam(parts[1]) : -1;
+            if (team >= 0)
+                areaTeamOverrides[uint32(std::strtoul(parts[0].c_str(), nullptr, 10))] = uint32(team);
         }
     }
     dangerMapEnabled = config.GetBoolDefault("AiPlayerbot.DangerMap.Enabled", false);

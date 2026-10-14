@@ -100,4 +100,12 @@ require_order("${botai}" "uint32 questFlight = 0;" "else if ((islandCandidate ||
 require_text("${botai}" "sz::ShipCandidate(startZones, bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY())" "S1 gated")
 require_text("${botai}" "bot->TeleportTo(sz::AuberdineMap, sz::AuberdineDockX, sz::AuberdineDockY, sz::AuberdineDockZ, bot->GetOrientation());" "S1 move")
 
+# 7. Wave 2: area team overrides (owner 14.10.: Stormbreaker Point is a Horde camp), empty = AreaTable only.
+read_source("WorldPosition.cpp" world_pos)
+require_text("${config_h}" "    std::map<uint32, uint32> areaTeamOverrides;  // twow-repo#575 (PATH-01 wave 2)" "override member")
+require_text("${config_cpp}" "split(config.GetStringDefault(\"AiPlayerbot.AreaTeamOverrides\", \"\"), ',')" "override list, default empty")
+require_text("${conf_dist}" "\nAiPlayerbot.AreaTeamOverrides =\n" "documented empty")
+require_text("${world_pos}" "uint32 areaTeam = ai::area_team::TeamOf(teamOverrides, area->Id, area->Team);" "area override in isEnemyHomeZoneFor")
+require_text("${world_pos}" "areaTeam = ai::area_team::TeamOf(teamOverrides, zone->Id, zone->Team);" "zone override in isEnemyHomeZoneFor")
+
 message(STATUS "start_zone source contract passed")
