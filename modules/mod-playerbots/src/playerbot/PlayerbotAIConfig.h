@@ -551,6 +551,7 @@ public:
     bool parkQuiet = false;  // twow-repo#551 (owner 11.10): parked bots drop greet/emote/say/ai chat, answer whispers only
     uint32 parkQuietIdleEmoteSeconds = 600;  // twow-repo#551: one idle emote per this many seconds while quiet (0 = none)
     bool parkPersist = false;  // twow-repo#551 (owner 11.10): park state in the bot event store, restored after a restart
+    bool parkSeats = false;  // twow-repo#551 (owner 11.10): parked bots sit on inn chairs, dismount, keep 3 yd around the innkeeper
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
