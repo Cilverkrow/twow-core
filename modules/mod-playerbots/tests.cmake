@@ -2738,3 +2738,22 @@ add_test(NAME path_fail_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/path_fail_source_contract_tests.cmake")
+
+# twow-repo#551 (owner 11.10.2026): parked bots on inn chairs (AiPlayerbot.Park.Seats).
+add_test(NAME park_seats_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_seats_source_contract_tests.cmake")
+
+add_executable(park_seats_policy_tests
+  "${PB_MODULE_DIR}/t/park_seats_policy_tests.cpp")
+
+target_include_directories(park_seats_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(park_seats_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME park_seats_policy
+  COMMAND park_seats_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
