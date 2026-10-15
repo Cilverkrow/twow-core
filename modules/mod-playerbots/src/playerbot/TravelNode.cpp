@@ -1255,12 +1255,14 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
 
     Unit* botForPath = bot;
 
-    // twow-repo#592 (PATH-02): an incomplete step is only rebuilt while the generator runs (hasToGen). At runtime this
-    // route comes from getFullPath, without a bot, under the shared m_nMapMtx: rebuilding would write the node graph
-    // (TravelNode::buildPath) from a map thread through a unitless PathInfo - before #592 that crashed. The step takes
-    // the existing "move to the node" branch below instead, counted as route_incomplete ([PathUnitlessBot]). With
-    // today's data every walk link is complete, so the branch rests.
-    bool const mayBuild = sTravelNodeMap.gethasToGen();
+    // twow-repo#592 (PATH-02): an incomplete step is only rebuilt while the startup generator or fish search runs
+    // (isGeneratorRunning, not hasToGen: the GM debug node commands set that at runtime). At runtime this route comes
+    // from getFullPath, without a bot, under the shared m_nMapMtx: rebuilding would write the node graph
+    // (TravelNode::buildPath) from a map thread through a unitless PathInfo. An existing complete reverse path is used
+    // read only instead (what the reverse build gave for it before: TravelNode::buildPath returns a complete path at
+    // once); without one the step takes the existing "move to the node" branch, counted as route_incomplete
+    // ([PathUnitlessBot]). With today's data every walk link is complete, so both rest.
+    bool const mayBuild = sTravelNodeMap.isGeneratorRunning();
 
     if (!pathToStart.empty()) //From start position to start of path.
     {
@@ -1294,6 +1296,14 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
                 returnNodePath = *node->buildPath(prevNode, botForPath); //Build reverse path and save it to a temporary variable.
                 std::vector<WorldPosition> path = returnNodePath.getPath();
                 reverse(path.begin(), path.end()); //Reverse the path 
+                returnNodePath.setPath(path);
+                nodePath = &returnNodePath;
+            }
+            else if ((!nodePath || !nodePath->getComplete()) && !mayBuild && node->hasCompletePathTo(prevNode)) // twow-repo#592: read only
+            {
+                returnNodePath = *node->getPathTo(prevNode); //Copy of the complete reverse path, no build, no graph write.
+                std::vector<WorldPosition> path = returnNodePath.getPath();
+                reverse(path.begin(), path.end()); //Reverse the path
                 returnNodePath.setPath(path);
                 nodePath = &returnNodePath;
             }
@@ -3417,7 +3427,9 @@ void TravelNodeMap::generateAll()
 
     if (hasToGen || hasToFullGen)
     {
+        setGeneratorRunning(true);   // twow-repo#592: see isGeneratorRunning()
         generatePaths(false);
+        setGeneratorRunning(false);
         hasToGen = false;
         hasToFullGen = false;
         hasToSave = true;

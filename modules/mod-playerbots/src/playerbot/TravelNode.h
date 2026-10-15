@@ -390,6 +390,13 @@ namespace ai
         void setHasToGen(bool enable = true) { hasToGen = enable; }
         bool gethasToGen() { return hasToGen || hasToFullGen; }
 
+        // twow-repo#592 (PATH-02): true only while the startup generator (generateAll) or the startup fish search
+        // (LoadFishLocations) runs; set and cleared around them by the thread that runs them (a plain flag like hasToGen).
+        // TravelNodeRoute::buildPath rebuilds an incomplete step only then. Unlike hasToGen, the GM debug node commands
+        // (addnode/remnode) never set it.
+        void setGeneratorRunning(bool running) { generatorRunning = running; }
+        bool isGeneratorRunning() const { return generatorRunning; }
+
         // twow-repo#592 (PATH-02): nullptr = unitless generation may run (AiPlayerbot.Perf.PathGenUnitless, PathFinder.Unitless,
         // Terrain.Preload.Continents, all tiles of maps 0/1 in the navmesh), else the cause for "[PathGen] skipped".
         char const* unitlessGenSkipCause();
@@ -462,6 +469,7 @@ namespace ai
         bool hasToGen = false;
         bool hasToFullGen = false;
         uint32 genRequests = 0;   // twow-repo#592: unlinked nodes + uncalculated links that set hasToGen at load ([PathGen] n=)
+        bool generatorRunning = false;  // twow-repo#592: see isGeneratorRunning()
     };
 }
 

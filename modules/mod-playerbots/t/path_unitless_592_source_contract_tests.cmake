@@ -1,8 +1,9 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#592 (PATH-02, PR pair 2, bot side): the core's PathInfo computes without a Unit only in map mode
 # (PathFinder.Unitless = 1) and fails closed otherwise. The bots must not turn that into new runtime behaviour:
-# - TravelNodeRoute::buildPath rebuilds an incomplete step only while the generator runs (mayBuild = gethasToGen()),
-#   at runtime the step moves to the node (counted route_incomplete) instead of writing the node graph;
+# - TravelNodeRoute::buildPath rebuilds an incomplete step only while the generator runs (mayBuild =
+#   isGeneratorRunning()); at runtime it uses a complete reverse path read only, else the step moves to the node
+#   (counted route_incomplete), instead of writing the node graph;
 # - getPathStepFrom: a map-mode PathFinder with a bot on a transport returns no path without calculate (T2);
 # - AiPlayerbot.Perf.PathGenUnitless (default 0) gates a generateAll that builds node paths (as a whole; one without
 #   runs as before) and the node route part of GetFishLocations (serial when on); the route part is unreachable today
@@ -130,9 +131,24 @@ require_text("${travel_node_h}" "        bool generationNeedsUnitlessPaths();" "
 require_text("${gen}" "    sLog.outString(\"-Calculating mapoffset\");\n    calcMapOffset();" "map offsets still computed")
 require_text("${travel_node_h}" "        char const* unitlessGenSkipCause();" "gate declared")
 
-# 4. Runtime route guard: no rebuild of an incomplete step outside the generator.
+# 4. Runtime route guard: no rebuild of an incomplete step outside the startup generator / fish search. The flag is
+#    set only there (not by the GM debug node commands, which set hasToGen at runtime). At runtime a complete reverse
+#    path is used read only (copy, reversed), else the step moves to the node.
 function_body("${travel_node}" "TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, std::vector<WorldPosition> pathToEnd, Unit* bot)" route)
-require_order("${route}" "    bool const mayBuild = sTravelNodeMap.gethasToGen();" "for (auto& node : nodes)" "mayBuild before the steps")
+require_order("${route}" "    bool const mayBuild = sTravelNodeMap.isGeneratorRunning();" "for (auto& node : nodes)" "mayBuild before the steps")
+forbid_text("${route}" "gethasToGen()" "mayBuild from hasToGen (set at runtime by the debug node commands)")
+require_text("${travel_node_h}" "        bool isGeneratorRunning() const { return generatorRunning; }" "generator flag getter")
+require_text("${travel_node_h}" "        bool generatorRunning = false;" "generator flag off by default")
+require_count("${travel_node}" "setGeneratorRunning(true);" 1 "generateAll sets the generator flag once")
+require_text("${gen}" "        setGeneratorRunning(true);   // twow-repo#592: see isGeneratorRunning()\n        generatePaths(false);\n        setGeneratorRunning(false);" "generator flag around generatePaths")
+require_count("${travel_mgr}" "setGeneratorRunning(true);" 1 "LoadFishLocations sets the generator flag once")
+function_body("${travel_mgr}" "void TravelMgr::LoadFishLocations()" fish_load)
+require_text("${fish_load}" "        sTravelNodeMap.setGeneratorRunning(true);   // twow-repo#592: route steps may be rebuilt (TravelNodeRoute::buildPath)\n        GetFishLocations();\n        sTravelNodeMap.setGeneratorRunning(false);" "generator flag around the fish search")
+read_source("strategy/actions/DebugAction.cpp" debug_action)
+forbid_text("${debug_action}" "setGeneratorRunning(" "generator flag set by a GM debug command")
+require_text("${route}" "            else if ((!nodePath || !nodePath->getComplete()) && !mayBuild && node->hasCompletePathTo(prevNode)) // twow-repo#592: read only\n            {\n                returnNodePath = *node->getPathTo(prevNode); //Copy of the complete reverse path, no build, no graph write.\n                std::vector<WorldPosition> path = returnNodePath.getPath();\n                reverse(path.begin(), path.end()); //Reverse the path\n                returnNodePath.setPath(path);\n                nodePath = &returnNodePath;\n            }" "read-only reverse path at runtime")
+require_order("${route}" "//It looks like we can't properly path to our node." "// twow-repo#592: read only" "read-only reverse path after the gated reverse build")
+require_order("${route}" "// twow-repo#592: read only" "//If we can not build a path just try to move to the node." "read-only reverse path before the move-to-node fallback")
 require_text("${route}" "            if ((!nodePath || !nodePath->getComplete()) && mayBuild) //Build the path to the next node if it doesn't exist." "forward build only with mayBuild")
 require_text("${route}" "            if ((!nodePath || !nodePath->getComplete()) && mayBuild) //It looks like we can't properly path to our node." "reverse build only with mayBuild")
 require_count("${route}" "->buildPath(" 3 "the three node path builds, all behind mayBuild")
