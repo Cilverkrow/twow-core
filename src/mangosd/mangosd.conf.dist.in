@@ -695,6 +695,71 @@ PerformanceLog.TickStatsExtended = 0
 #   Default: 0 (off)
 PerformanceLog.WorldTick = 0
 
+# Tick diagnostics (twow-repo#597 TICK-01). Measurement only: every switch is off by default, and
+# with all of them at 0 the server behaves and logs exactly as before. All lines go to the
+# performance log, except [StallWatch] (own file). Greppable by their [Prefix].
+#
+# PerformanceLog.WorldTickSlowMs
+#   0 = off; N = one line per world tick whose work time (World::Update, without the sleep) is
+#   at least N ms, with the phases of THAT tick in ms:
+#   "[WorldTickSlow] tick=<world loop counter> ms=<work> sessions= teleports= maps_pre= instances=
+#   wait_continents= switch_instances= maps_post= managers= mgr_transport= mgr_bg= mgr_lfg= mgr_lft=
+#   mgr_guard= mgr_zone= mgr_dynvis= mgr_eluna= mgr_offline= async_tasks= results= rest= r_pre= r_ah=
+#   r_dispatch= r_savevars= r_corpses= r_events= r_remove= r_mps= r_account= r_cli= r_terrain= r_guild=
+#   r_hook= r_other= dropped=<n>". The phases are those of [WorldTick]; mgr_* split "managers",
+#   r_* split "rest" by the jobs of World::Update (r_other = the remainder). The phase clocks of
+#   PerformanceLog.WorldTick run while this is on, even with PerformanceLog.WorldTick = 0 (the
+#   [WorldTick]/[MapTick] minute blocks still need PerformanceLog.WorldTick = 1). At most 60 lines
+#   a minute; the ones held back are counted in dropped= of the next line. Live suggestion: 50.
+#   Default: 0 (off)
+PerformanceLog.WorldTickSlowMs = 0
+
+# PerformanceLog.TerrainTrace
+#   1 = "[TerrainCleanup] map=<id> freed_grids=<n> ms=<x.x>" once per TerrainInfo::CleanUpGrids pass
+#   that frees at least one grid (CleanupTerrain), and once a minute per terrain with loads
+#   "[TerrainReload] map=<id> loads=<n> lazy=<n> ms_sum=<x> max_ms=<x> world_thread=<n>
+#   other_thread=<n>" (GridMap loads incl. vmap tile and navmesh; lazy = loaded through GetGrid
+#   without a grid reference, i.e. what the next cleanup frees again).
+#   Default: 0 (off)
+PerformanceLog.TerrainTrace = 0
+
+# PerformanceLog.StallWatchMs
+#   0 = off; N = a watchdog thread (started at server start, next to MaxCoreStuckTime) sleeps 10 ms
+#   in a loop and writes "[StallWatch] start=<epoch ms> oversleep_ms=<x> world_tick_age_ms=<y>
+#   phase=<part> dropped=<n>" when the oversleep of its sleep (process or host freeze) or the age of
+#   the running world tick (lock or long phase) reaches N ms: when the stall opens, at most once a
+#   second while it grows, and once with its peak when it ends; at most 120 lines a minute. phase =
+#   the part of World::Update the world thread was in (the [WorldTickSlow] names, plus idle, maps,
+#   maps_wait). Written with plain file I/O into "<LogsDir>stallwatch.log", not through the server
+#   log (which may be what blocks). Changing it needs a restart to start the thread; a reload to 0
+#   silences it.
+#   Default: 0 (off)
+PerformanceLog.StallWatchMs = 0
+
+# PerformanceLog.LogWriteTrace
+#   1 = every server log line is timed: console (stdout/stderr) write and file write separately;
+#   once a minute "[LogWait] lines=<n> stdout_max_us=<x> file_max_us=<x> over10ms=<n> over100ms=<n>"
+#   (overNNms = lines whose console + file write took at least NN ms).
+#   Default: 0 (off)
+PerformanceLog.LogWriteTrace = 0
+
+# PerformanceLog.SlowResultCallbackMs
+#   0 = off; N = one "[ResultsSlow] ms=<x> unsafe=<0|1> cb=<callback type> pending=<n> dropped=<n>"
+#   line per async database callback that took at least N ms (unsafe = 1: run on the world thread,
+#   e.g. player and bot logins; pending = unsafe callbacks still queued, for thread-safe ones the
+#   position in this pass). At most 20 lines a minute.
+#   Default: 0 (off)
+PerformanceLog.SlowResultCallbackMs = 0
+
+# PerformanceLog.MapTickRegion
+#   1 = once a minute per continent region "[MapTickRegion] region=<map>.<inst> pre=avg/p95/max
+#   post=avg/p95/max extra_loops=<n> extra_overrun_max=<x> held_barrier=<n>" in ms: pre = the
+#   region's own work before it reaches the barrier, post = its wait at the barrier (incl. the extra
+#   player updates), extra_loops = those extra updates, extra_overrun_max = how long it stayed after
+#   the last region arrived, held_barrier = ticks in which it arrived last (it held the others).
+#   Default: 0 (off)
+PerformanceLog.MapTickRegion = 0
+
 # RaLogFile. Log file of RA commands.
 
 RaLogFile = ""

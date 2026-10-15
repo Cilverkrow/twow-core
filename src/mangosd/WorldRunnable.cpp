@@ -48,6 +48,7 @@
 void WorldRunnable::operator()()
 {
     thread_name("World");
+    World::MarkWorldThread();  // twow-repo#597 (TICK-01): [TerrainReload] world_thread=
     // Init new SQL thread for the world database
     WorldDatabase.ThreadStart();                                // let thread do safe mySQL requests (one connection call enough)
     sWorld.InitResultQueue();
@@ -97,7 +98,9 @@ void WorldRunnable::operator()()
         }
 
         uint64 const updateStartUs = World::WorldTickNowUs();  // twow-repo#541 ([WorldTick])
+        World::StallWatchTickBegin(updateStartUs);  // twow-repo#597 ([StallWatch]): no-op unless StallWatchMs
         sWorld.Update(diff);
+        World::StallWatchTickEnd();
         uint64 const updateEndUs = World::WorldTickNowUs();
 		sPerfMonitor.Tick.End();
 

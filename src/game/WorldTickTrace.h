@@ -81,15 +81,29 @@ struct PhaseWindow
     // Rest = the work time of World::Update minus the phases measured inside it (never negative).
     void EndTick(uint64_t updateUs, uint64_t sleepUs)
     {
+        CloseTick(updateUs, sleepUs);
+        PushTick();
+    }
+
+    // twow-repo#597 (TICK-01): EndTick in two steps, so [WorldTickSlow] can read the closed tick
+    // before it goes into the minute window (PushTick) or is dropped without one (DropTick).
+    void CloseTick(uint64_t updateUs, uint64_t sleepUs)
+    {
         uint64_t measured = 0;
         for (int p = 0; p < Rest; ++p)
             measured += tick[p];
         tick[Rest] = updateUs > measured ? updateUs - measured : 0;
         tick[Sleep] = sleepUs;
+    }
+
+    void PushTick()
+    {
         for (int p = 0; p < PhaseCount; ++p)
             samples[p].push_back(uint32_t(tick[p] > UINT32_MAX ? UINT32_MAX : tick[p]));
         tick.fill(0);
     }
+
+    void DropTick() { tick.fill(0); }
 
     uint32_t Ticks() const { return uint32_t(samples[0].size()); }
 
