@@ -1,5 +1,8 @@
 #pragma once
 
+#include "RoutePrecheckPolicy.h"
+#include "RouteTimePolicy.h"
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +28,9 @@ struct RouteFailDetail
     bool cooldownSkip = false;        // #416 route cooldown hit, no search ran
     bool budgetStop = false;          // #416 1000 ms budget stopped the search
     bool transportRoute = false;      // bot on a transport: the first pair decides
+    bool earlySkip = false;           // twow-repo#592: left out before the direct attempt (AiPlayerbot.Perf.RouteFailEarlySkip 2)
+    ai::route_time::RouteTimes times; // twow-repo#592 (PATH-02): phase times of the build (AiPlayerbot.Perf.RouteTimeTrace)
+    ai::route_precheck::BuildContext precheck; // twow-repo#592 (PATH-02): what the pre-check saw (AiPlayerbot.Perf.RoutePrecheck)
 };
 
 // Lines per minute for [RouteFailDetail]; every failure is counted, only the first N a minute are logged.

@@ -644,6 +644,9 @@ public:
     bool perfPartialPathReuse = false;  // twow-repo#541 (L1): MoveTo uses the path last built for an unchanged destination again, without a rebuild, for up to perfPartialPathReuseMs while its end is not reached (0 = off)
     uint32 perfPartialPathReuseMs = 10000;  // twow-repo#541 (L1): age limit of such a path in ms, clamped to 1000..60000
     uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b): a node route search without a route blocks the same bot and target cell for that many seconds, clamped to 0..300 (0 = off)
+    bool perfRouteTimeTrace = false;  // twow-repo#592 (PATH-02): phase times of every node route build, [RouteTime] once a minute, appended to M:route / [RouteFailDetail]; dispatch_* times the MovePoint path search in DispatchMovement (0 = off, no clock read)
+    uint32 perfRoutePrecheck = 0;  // twow-repo#592 (PATH-02): end point pre-check of node route searches, 0 off, 1 shadow (count only), 2 skip the pair loop when no polygon lies within reach of the target, 3 + start check, 4 + direct attempt; clamped 0..4
+    uint32 perfRouteFailEarlySkip = 0;  // twow-repo#592 (PATH-02): with perfRouteFailCooldownSeconds, a search that repeats a stored route failure (start and exact target within 1 yd, direct attempt far from its goal) is left out before the direct attempt; 0 off, 1 shadow (count, early_wrong), 2 active; clamped 0..2
     bool perfPathGenUnitless = false;  // twow-repo#592 (PATH-02): in-server node generator and the GetFishLocations route part with unitless pathfinding, only with PathFinder.Unitless = 1, Terrain.Preload.Continents = 1 and complete tiles (0 = a generation that builds node paths is skipped, [PathGen] skipped; one without runs as before)
     bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit

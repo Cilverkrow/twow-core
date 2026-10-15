@@ -2,6 +2,7 @@
 #include "GuidPosition.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/AreaTeamPolicy.h"
+#include "playerbot/RouteTimePolicy.h"
 #include "playerbot/PathUnitlessBotPolicy.h"
 #include "TravelNode.h"
 
@@ -1164,11 +1165,18 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(const std::vector<Worl
     pathfinder->setAreaCost(12, 5.0f);
     pathfinder->setAreaCost(13, 20.0f);
 
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): steps and the longest step of a timed node route build;
+    // null outside one (no clock).
+    ai::route_time::RouteTimes* const routeTimes = ai::route_time::Active();
+
     //Limit the pathfinding attempts
     for (uint32 i = 0; i < maxAttempt; i++)
     {
         //Try to pathfind to this position.
+        std::uint64_t const stepStartUs = routeTimes ? ai::bot_update::NowUs() : 0;
         subPath = getPathStepFrom(currentPos, pathfinder, bot);
+        if (routeTimes)
+            routeTimes->AddStep(ai::bot_update::SinceUs(stepStartUs));
 
         //If we could not find a path return what we have now.
         if (subPath.empty() || currentPos.distance(subPath.back()) < sPlayerbotAIConfig.targetPosRecalcDistance)

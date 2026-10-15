@@ -784,6 +784,7 @@ enum eConfigBoolValues
     CONFIG_BOOL_PERFORMANCE_ENABLE,
     CONFIG_BOOL_PERFLOG_TICK_STATS,
     CONFIG_BOOL_PERFLOG_WORLD_TICK,  // twow-repo#541: [WorldTick]/[MapTick] phase and region timing
+    CONFIG_BOOL_PERFLOG_TICK_STATS_EXTENDED,  // twow-repo#592 (PATH-02): over20/over50 on the "Tick stats" line
     // Solo dungeon resurrection, see Player::RepopAtGraveyard
     CONFIG_BOOL_SOLO_DUNGEON_REPOP_ALIVE,
     // Dungeon finder: fill a waiting player's group with random bots.
