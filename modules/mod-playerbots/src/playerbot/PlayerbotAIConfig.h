@@ -544,6 +544,8 @@ public:
     // random-bot behavior remains the complete disabled-feature path.
     bool persistentActiveRosterEnabled = false;
     bool parkHideFromBots = false;  // twow-repo#541/#551: parked bots invisible to other bots (core Player flag)
+    bool buffRealPlayerStyle = false;  // twow-repo#588 (owner 14.10): buff group, then guild, strangers only once per cooldown
+    uint32 buffStrangerCooldownSeconds = 900;
     bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
     bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
     uint32 parkMaxPerInn = 0;   // twow-repo#551 (owner 10.10): parked bots per inn, 0 = ai::park::SpotCapacity (25) as before
