@@ -410,6 +410,7 @@ bool PlayerbotAIConfig::Initialize()
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
+    parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
     parkMaxPerInn = config.GetIntDefault("AiPlayerbot.Park.MaxPerInn", 0);
     parkMaxPerCity = config.GetIntDefault("AiPlayerbot.Park.MaxPerCity", 0);
     parkQuiet = config.GetBoolDefault("AiPlayerbot.Park.Quiet", false);
