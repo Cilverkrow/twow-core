@@ -422,6 +422,9 @@ bool PlayerbotAIConfig::Initialize()
     parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", false);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
+    // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
+    botUpdateTraceTick = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTick", false);
+    worldBotsHookTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsHookTrace", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
     checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
     initPetCache = config.GetBoolDefault("AiPlayerbot.InitPet.Cache", false);
