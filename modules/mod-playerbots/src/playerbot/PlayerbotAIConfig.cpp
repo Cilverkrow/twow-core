@@ -408,6 +408,8 @@ bool PlayerbotAIConfig::Initialize()
     parkHideFromBots = config.GetBoolDefault("AiPlayerbot.Park.HideFromBots", false);
     buffRealPlayerStyle = config.GetBoolDefault("AiPlayerbot.Buff.RealPlayerStyle", false);
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
+    lootRoleWeights = config.GetBoolDefault("AiPlayerbot.Loot.RoleWeights", false);
+    lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
     parkMaxPerInn = config.GetIntDefault("AiPlayerbot.Park.MaxPerInn", 0);

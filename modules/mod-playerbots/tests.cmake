@@ -2835,3 +2835,22 @@ add_test(NAME start_zone_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/start_zone_source_contract_tests.cmake")
+
+# twow-repo#308 LOOT-ROLE-01 (owner 15.10.2026): quest reward and weight scale by the roster role.
+add_test(NAME loot_role_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/loot_role_source_contract_tests.cmake")
+
+add_executable(loot_role_policy_tests
+  "${PB_MODULE_DIR}/t/loot_role_policy_tests.cpp")
+
+target_include_directories(loot_role_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(loot_role_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_role_policy
+  COMMAND loot_role_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
