@@ -255,6 +255,7 @@ class ChatHandler
         //Mmaps
         bool HandleMmapsPathCommand(char* args);
         bool HandleMmapsNearCommand(char* args);
+        bool HandleMmapsReplayCommand(char* args);
 
         //Faction
         bool HandleFactionAtWarCommand(char* args);
