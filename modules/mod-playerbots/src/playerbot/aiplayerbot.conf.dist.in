@@ -2441,6 +2441,16 @@ AiPlayerbot.Perf.PartialPathReuseMs = 10000
 # With AiPlayerbot.Path.HonestRouteFail = 1 (twow-repo#575) such a MoveTo fails instead of the straight-line fallback,
 # and during the cooldown that answer costs no search; PartialPathReuse never stamps such a no-route result.
 AiPlayerbot.Perf.RouteFailCooldownSeconds = 0
+# twow-repo#592 (PATH-02, generator containers only - never on a live realm): 1 = when the travel node tables need
+# generation at startup (an unlinked node, an uncalculated link or no nodes at all), run the in-server generator with
+# unitless pathfinding (load maps, generate nodes and paths, save), and let GetFishLocations (startup without
+# FISH_LOCATION rows) run its node route part, serially instead of one std::async job per map. Needs
+# PathFinder.Unitless = 1 and Terrain.Preload.Continents = 1 in mangosd.conf and every .mmtile of maps 0/1 in the
+# navmesh ([PathGen] tiles); otherwise skipped like 0. 0 (default) = never generate: the graph is used as loaded,
+# nothing is written back, one "[PathGen] skipped reason=generator" line (before #592 such a start crashed in the
+# unitless pathfinder); fish candidates that would need a route are dropped ("[PathGen] skipped reason=fish", only
+# when there were any - the route part is unreachable today, PathInfo::getArea is a stub).
+AiPlayerbot.Perf.PathGenUnitless = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental

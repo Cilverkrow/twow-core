@@ -510,6 +510,7 @@ bool PlayerbotAIConfig::Initialize()
     perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
     perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
     perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault("AiPlayerbot.Perf.RouteFailCooldownSeconds", 0));
+    perfPathGenUnitless = config.GetBoolDefault("AiPlayerbot.Perf.PathGenUnitless", false);
     shamanImbueBySpec = config.GetBoolDefault("AiPlayerbot.Shaman.ImbueBySpec", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);

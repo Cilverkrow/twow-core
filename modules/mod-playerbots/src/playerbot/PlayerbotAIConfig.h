@@ -644,6 +644,7 @@ public:
     bool perfPartialPathReuse = false;  // twow-repo#541 (L1): MoveTo uses the path last built for an unchanged destination again, without a rebuild, for up to perfPartialPathReuseMs while its end is not reached (0 = off)
     uint32 perfPartialPathReuseMs = 10000;  // twow-repo#541 (L1): age limit of such a path in ms, clamped to 1000..60000
     uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b): a node route search without a route blocks the same bot and target cell for that many seconds, clamped to 0..300 (0 = off)
+    bool perfPathGenUnitless = false;  // twow-repo#592 (PATH-02): in-server node generator and the GetFishLocations route part with unitless pathfinding, only with PathFinder.Unitless = 1, Terrain.Preload.Continents = 1 and complete tiles (0 = never, [PathGen] skipped)
     bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.

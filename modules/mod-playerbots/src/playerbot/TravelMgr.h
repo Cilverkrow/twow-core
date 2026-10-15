@@ -493,7 +493,7 @@ namespace ai
 
 		void LoadFishLocations();
 		void GetFishLocations();
-		void GetFishLocations(uint32 mapId);
+		void GetFishLocations(uint32 mapId, bool routeAllowed);  // twow-repo#592: routeAllowed = unitless generation gate open
 		void SaveFishLocations();
 
 		WorldPosition* GetFishSpot(WorldPosition start, bool onlyNearestGrid = false);
