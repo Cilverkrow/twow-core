@@ -413,6 +413,7 @@ bool PlayerbotAIConfig::Initialize()
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
+    parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
     parkMaxPerInn = config.GetIntDefault("AiPlayerbot.Park.MaxPerInn", 0);
     parkMaxPerCity = config.GetIntDefault("AiPlayerbot.Park.MaxPerCity", 0);
     parkQuiet = config.GetBoolDefault("AiPlayerbot.Park.Quiet", false);

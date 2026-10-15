@@ -832,6 +832,48 @@ void AddGridSleepTally(GridSleepTally const& tally, uint64 cellsMarked)
     stats.wakeOther.fetch_add(tally.wakeOther, std::memory_order_relaxed);
     stats.cellsMarked.fetch_add(cellsMarked, std::memory_order_relaxed);
 }
+
+// twow-repo#541 P2 D0 (AiPlayerbot.Park.CellSourceStats): see Map.h.
+std::atomic<bool> s_cellSourceStats{ false };
+
+// Player passes of the cell marking: with the switch, real clients (0) and bots (1) one after the other, so the cells
+// can be counted between them; without it one pass over all players (2), as before.
+bool InCellPass(Player const* player, int pass)
+{
+    return pass == 2 || !player || player->HasClientSocket() == (pass == 0);
+}
+
+struct CellSourceCount
+{
+    uint64 real = 0;        // marked cells after the real clients
+    uint64 withBots = 0;    // marked cells after all players
+    uint32 realPlayers = 0;
+    uint32 bots = 0;
+};
+
+void AddCellSourceTally(CellSourceCount const& count, uint64 cellsTotal, uint64 activeNpcs, float activationYards)
+{
+    Map::CellSourceStats& stats = Map::GetCellSourceStats();
+    stats.updates.fetch_add(1, std::memory_order_relaxed);
+    stats.cellsReal.fetch_add(count.real, std::memory_order_relaxed);
+    stats.cellsBotOnly.fetch_add(count.withBots - count.real, std::memory_order_relaxed);
+    stats.cellsNpcOnly.fetch_add(cellsTotal - count.withBots, std::memory_order_relaxed);
+    stats.realPlayers.fetch_add(count.realPlayers, std::memory_order_relaxed);
+    stats.bots.fetch_add(count.bots, std::memory_order_relaxed);
+    stats.activeNpcs.fetch_add(activeNpcs, std::memory_order_relaxed);
+    stats.activationYards.fetch_add(uint64(activationYards), std::memory_order_relaxed);
+}
+}
+
+Map::CellSourceStats& Map::GetCellSourceStats()
+{
+    static CellSourceStats stats;
+    return stats;
+}
+
+void Map::SetCellSourceStats(bool on)
+{
+    s_cellSourceStats.store(on, std::memory_order_relaxed);
 }
 
 Map::GridSleepStats& Map::GetGridSleepStats()
@@ -852,14 +894,26 @@ inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)
 
     bool const gridSleep = s_gridSleepActive.load(std::memory_order_relaxed);
     GridSleepTally tally;
+    // twow-repo#541 P2 D0: two player passes (real clients, bots) only with the switch, else the single pass.
+    bool const sourceStats = s_cellSourceStats.load(std::memory_order_relaxed) && IsContinent();
+    CellSourceCount sourceCount;
 
     // Mark all cells that need update
-    for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
+    for (int pass = sourceStats ? 0 : 2, lastPass = sourceStats ? 1 : 2; pass <= lastPass; ++pass)
     {
-        Player* plr = m_mapRefIter->getSource();
-        if (gridSleep && SkipSleepingPlayer(plr, tally))
-            continue;
-        MarkCellsAroundObject(plr);
+        for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
+        {
+            Player* plr = m_mapRefIter->getSource();
+            if (!InCellPass(plr, pass))
+                continue;
+            if (sourceStats && plr)
+                ++(pass == 0 ? sourceCount.realPlayers : sourceCount.bots);
+            if (gridSleep && SkipSleepingPlayer(plr, tally))
+                continue;
+            MarkCellsAroundObject(plr);
+        }
+        if (sourceStats)
+            (pass == 0 ? sourceCount.real : sourceCount.withBots) = marked_cells.count();
     }
 
     for (m_activeNonPlayersIter = m_activeNonPlayers.begin(); m_activeNonPlayersIter != m_activeNonPlayers.end(); ++m_activeNonPlayersIter)
@@ -871,6 +925,8 @@ inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)
 
     if (s_gridSleepStats.load(std::memory_order_relaxed) && IsContinent())
         AddGridSleepTally(tally, marked_cells.count());
+    if (sourceStats)
+        AddCellSourceTally(sourceCount, marked_cells.count(), m_activeNonPlayers.size(), GetGridActivationDistance());
 
     const int nthreads = m_cellThreads->size();
     for (int step = 0; step < 2; step++)
@@ -892,15 +948,27 @@ inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
 
     bool const gridSleep = s_gridSleepActive.load(std::memory_order_relaxed);  // twow-repo#541
     GridSleepTally tally;
+    // twow-repo#541 P2 D0: two player passes (real clients, bots) only with the switch, else the single pass.
+    bool const sourceStats = s_cellSourceStats.load(std::memory_order_relaxed) && IsContinent();
+    CellSourceCount sourceCount;
 
     // the player iterator is stored in the map object
     // to make sure calls to Map::Remove don't invalidate it
-    for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
+    for (int pass = sourceStats ? 0 : 2, lastPass = sourceStats ? 1 : 2; pass <= lastPass; ++pass)
     {
-        Player* plr = m_mapRefIter->getSource();
-        if (gridSleep && SkipSleepingPlayer(plr, tally))
-            continue;
-        UpdateCellsAroundObject(now, diff, plr);
+        for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
+        {
+            Player* plr = m_mapRefIter->getSource();
+            if (!InCellPass(plr, pass))
+                continue;
+            if (sourceStats && plr)
+                ++(pass == 0 ? sourceCount.realPlayers : sourceCount.bots);
+            if (gridSleep && SkipSleepingPlayer(plr, tally))
+                continue;
+            UpdateCellsAroundObject(now, diff, plr);
+        }
+        if (sourceStats)
+            (pass == 0 ? sourceCount.real : sourceCount.withBots) = marked_cells.count();
     }
 
     // non-player active objects
@@ -919,6 +987,8 @@ inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
 
     if (s_gridSleepStats.load(std::memory_order_relaxed) && IsContinent())
         AddGridSleepTally(tally, marked_cells.count());
+    if (sourceStats)
+        AddCellSourceTally(sourceCount, marked_cells.count(), m_activeNonPlayers.size(), GetGridActivationDistance());
 }
 
 inline void Map::UpdateCells(uint32 map_diff)
