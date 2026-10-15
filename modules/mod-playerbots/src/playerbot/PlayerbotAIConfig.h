@@ -757,6 +757,12 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionGrindFallbackFailures = 0;  // hotfix 8.32 (#544), 0 = off
+    // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
+    bool directTargetsEnabled = false;
+    bool directTargetsTraceInactive = false;
+    uint32 directTargetsFreshMaxLevel = 5;
+    uint32 directTargetsFreshBackoffSeconds = 0;  // 0 = the 8.1 backoff
+    uint32 directTargetsFreshGrindFailures = 0;   // 0 = QuestFirstProgression.GrindFallbackFailures
     bool rosterFarMove = false;  // hotfix 8.33 (#544): cheap movement without a player nearby, 0 = off
     float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route

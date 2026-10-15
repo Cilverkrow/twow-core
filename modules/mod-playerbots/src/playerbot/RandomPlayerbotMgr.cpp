@@ -1218,6 +1218,30 @@ void ReportRoutePrecheck()
 
     sLog.outBasic("%s", ai::route_precheck::FormatLine(sPlayerbotAIConfig.perfRoutePrecheck, ai::route_precheck::Global().Take()).c_str());
 }
+
+// twow-repo#594 / P3 (AiPlayerbot.DirectTargets.Enable / TraceInactive): one [DirectTarget] state=summary line per minute.
+// fresh_rejections = rejected quest routes of fresh bots, fresh_backoffs = of them with the short backoff, rescue_skips =
+// of them that a Z1b rescue took, fresh_grind = grind targets fresh bots chose; inactive = the IsActive reasons (P3-0).
+// World thread only, same pattern as ReportRouteFail. Nothing is written with both switches off.
+void ReportDirectTargets()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if ((!sPlayerbotAIConfig.directTargetsEnabled && !sPlayerbotAIConfig.directTargetsTraceInactive) || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    ai::quest_search::DirectTargetCounters& c = ai::quest_search::DirectTargetStats();
+    ai::quest_search::RejectCounts reasons;
+    for (uint32 reason = 0; reason < ai::quest_search::RejectCounts::InactiveReasons; ++reason)
+        reasons.notActiveReason[reason] = c.inactive[reason].exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[DirectTarget] state=summary enabled=%u fresh_rejections=%u fresh_backoffs=%u rescue_skips=%u fresh_grind=%u "
+        "fresh_max_level=%u backoff_seconds=%u grind_failures=%u%s", sPlayerbotAIConfig.directTargetsEnabled ? 1u : 0u,
+        c.freshRejections.exchange(0, std::memory_order_relaxed), c.freshBackoffs.exchange(0, std::memory_order_relaxed),
+        c.rescueSkips.exchange(0, std::memory_order_relaxed), c.freshGrind.exchange(0, std::memory_order_relaxed),
+        sPlayerbotAIConfig.directTargetsFreshMaxLevel, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds,
+        sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str());
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -1246,6 +1270,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)
     ReportRouteTime();    // twow-repo#592 (PATH-02): [RouteTime] once per minute (AiPlayerbot.Perf.RouteTimeTrace)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
+    ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();
