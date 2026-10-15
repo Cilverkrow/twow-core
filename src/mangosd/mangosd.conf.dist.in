@@ -189,11 +189,14 @@ CleanupTerrain = 1
 #        Live runs CleanupTerrain = 0 as the immediate measure (OB-00, 16.10.2026): nothing is freed then and
 #        both keys below have no effect. They matter only with CleanupTerrain = 1 (with GridUnload = 0 or 1).
 #        IdleMinutes:     a grid without a reference is freed only after it was unused for at least this many
-#                         minutes (last use = any height/LOS query on it; 1..1440). 0 = free at every pass
-#                         (today's behaviour). Costs one relaxed atomic read per terrain query, and with a value
-#                         > 0 at most one store per grid and second.
-#        MaxGridsPerTick: at most this many grids freed per world tick; the rest of the pass continues on the
-#                         next ticks, the 60 s timer restarts when the pass is through. 0 = unlimited (today).
+#                         minutes (1..1440). Last use = a terrain query through TerrainInfo::GetGrid (height,
+#                         water, area, ...); LOS-only vmap use (Map::isInLineOfSight) does not count. 0 = free
+#                         at every pass (today's behaviour). Costs one relaxed atomic read per terrain query,
+#                         and with a value > 0 at most one store per grid and second.
+#        MaxGridsPerTick: at most this many grids freed per terrain (map) and world tick; each map terrain has
+#                         its own budget, so one world tick can free up to this value times the number of
+#                         terrains with an open pass. The rest of a pass continues on the next ticks, the 60 s
+#                         timer restarts when the pass is through. 0 = unlimited (today).
 #        Known and unchanged: the free takes no lock against terrain queries from threads outside the map
 #        update (std::async travel jobs); IdleMinutes only frees later, CleanupTerrain = 0 frees never.
 #        Default: 0, 0 (today's behaviour)

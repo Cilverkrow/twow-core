@@ -205,7 +205,8 @@ class TerrainInfo : public Referencable<AtomicLong>
         ShortIntervalTimer i_timer;
 
         // twow-repo#597 (TICK-01, TerrainCleanup.IdleMinutes): last use of each grid in terrain seconds,
-        // written by GetGrid (any thread, relaxed) only with the switch on. The terrain clock is advanced
+        // written by GetGrid (any thread, relaxed) only with the switch on; LOS-only vmap queries
+        // (Map::isInLineOfSight) bypass GetGrid and do not count as a use. The terrain clock is advanced
         // by CleanUpGrids from the world tick diff (no clock read) and published in m_useClockSec.
         void StampGridUse(const uint32 x, const uint32 y);
         std::atomic<uint32> m_GridLastUse[MAX_NUMBER_OF_GRIDS][MAX_NUMBER_OF_GRIDS];
