@@ -1,4 +1,4 @@
-// botpch.h supplied the boost headers; the module build has no precompiled
+        ai::route_time::Global().AddBuild(times);// botpch.h supplied the boost headers; the module build has no precompiled
 // header, so the one use here names its own.
 #include <boost/filesystem.hpp>
 
@@ -6,6 +6,8 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/StartZonePolicy.h"
+#include "playerbot/RouteTimePolicy.h"
+#include "playerbot/BotUpdateTrace.h"
 
 #include <iomanip>
 #include <regex>
@@ -26,6 +28,53 @@ using namespace MaNGOS;
 
 // Penqle's Singleton<> requires an explicit instantiation in a .cpp file.
 INSTANTIATE_SINGLETON_1(ai::TravelNodeMap);
+
+namespace
+{
+// twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): times one getFullPath build. With the switch the build's
+// times become the thread's active ones (getRoute and WorldPosition::getPathFromPath add their phases); on every
+// return the build goes into the [RouteTime] counters and, when the caller asked for a detail, into detail->times.
+// Off: no clock read, no thread_local write, the detail stays untouched.
+class RouteTimeScope
+{
+public:
+    RouteTimeScope(bool on, ai::path_fail::RouteFailDetail* outDetail) : detail(outDetail)
+    {
+        if (!on)
+            return;
+        times.on = true;
+        previous = ai::route_time::Active();
+        ai::route_time::Active() = &times;
+        pfStart = PathFinderStats::builds;
+        startUs = ai::bot_update::NowUs();
+    }
+
+    ~RouteTimeScope()
+    {
+        if (!times.on)
+            return;
+        times.totalUs = ai::bot_update::SinceUs(startUs);
+        times.pf = PathFinderStats::builds - pfStart;
+        ai::route_time::Active() = previous;
+        ai::route_time::Global().AddBuild(times);
+        if (detail)
+            detail->times = times;
+    }
+
+    RouteTimeScope(RouteTimeScope const&) = delete;
+    RouteTimeScope& operator=(RouteTimeScope const&) = delete;
+
+    // The build's times while the switch is on, null otherwise.
+    ai::route_time::RouteTimes* Times() { return times.on ? &times : nullptr; }
+
+private:
+    ai::route_time::RouteTimes times;
+    ai::route_time::RouteTimes* previous = nullptr;
+    ai::path_fail::RouteFailDetail* const detail;
+    uint32 pfStart = 0;
+    uint64 startUs = 0;
+};
+}
 
 //TravelNodePath(float distance = 0.1f, float extraCost = 0, TravelNodePathType pathType = TravelNodePathType::walk, uint64 pathObject = 0, bool calculated = false, std::vector<uint8> maxLevelCreature = { 0,0,0 }, float swimDistance = 0)
 std::string TravelNodePath::print()
@@ -1747,7 +1796,12 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
         transportEntry = unit->GetTransport()->GetEntry();
 
     std::vector<WorldPosition> newStartPath;
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): the phases of a getFullPath build; null otherwise (no clock).
+    ai::route_time::RouteTimes* const routeTimes = ai::route_time::Active();
+    std::uint64_t const nodesStartUs = routeTimes ? ai::bot_update::NowUs() : 0;
     std::vector<TravelNode*> startNodes = getNodes(startPos, -1, transportEntry), endNodes = getNodes(endPos);
+    if (routeTimes)
+        routeTimes->Add(ai::route_time::Phase::Nodes, ai::bot_update::SinceUs(nodesStartUs));
 
     if (startNodes.empty() || endNodes.empty())
     {
@@ -1830,7 +1884,10 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
             if (outDetail)   // twow-repo#575 (PATH-01 #1): pairs on every path (also successes, for the #430 L0 trace)
                 outDetail->pairs = routePairs;
 
+            std::uint64_t const astarStartUs = routeTimes ? ai::bot_update::NowUs() : 0;
             TravelNodeRoute route = getRoute(startNode, endNode, unit);
+            if (routeTimes)
+                routeTimes->Add(ai::route_time::Phase::AStar, ai::bot_update::SinceUs(astarStartUs));
 
             if (transportEntry)
             {
@@ -1847,6 +1904,7 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
 
             if (endPath.empty())
             {
+                ai::route_time::PhaseTimer const endLegTimer(routeTimes, ai::route_time::Phase::EndLeg);   // twow-repo#592
                 if (endPos.mapid == startPos.mapid)
                 {
                     endPath = endNodePosition.getPathTo(endPos, unit);
@@ -1878,6 +1936,7 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
             }
 
             //Check if the bot can actually walk to this start position.
+            std::uint64_t const startLegStartUs = routeTimes ? ai::bot_update::NowUs() : 0;   // twow-repo#592
             newStartPath = startPath;
 
             bool hasPath = (startNodePosition.cropPathTo(newStartPath, maxStartDistance));
@@ -1898,6 +1957,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
                     hasPath = surfaceNode.isPathTo(newStartPath, maxStartDistance);
                 }
             }
+            if (routeTimes)
+                routeTimes->Add(ai::route_time::Phase::StartLeg, ai::bot_update::SinceUs(startLegStartUs));
 
             if (hasPath)
             {
@@ -1948,6 +2009,7 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     Player* bot = dynamic_cast<Player*>(unit);
     if (bot)
     {
+        ai::route_time::PhaseTimer const hearthTimer(routeTimes, ai::route_time::Phase::Hearth);   // twow-repo#592
         PlayerbotAI* ai = GetBotAI(bot);
         AiObjectContext* context = ai->GetAiObjectContext();
         if (AI_VALUE2(bool, "action useful", "hearthstone"))
@@ -1996,10 +2058,25 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     TravelPath movePath;
     std::vector<WorldPosition> beginPath, endPath;
 
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): phase times of this build; on every return they go into
+    // the [RouteTime] counters and the caller's detail. Off: routeTimes stays null, nothing is timed.
+    RouteTimeScope routeTimeScope(sPlayerbotAIConfig.perfRouteTimeTrace, outDetail);
+    ai::route_time::RouteTimes* const routeTimes = routeTimeScope.Times();
+
+    std::uint64_t const directStartUs = routeTimes ? ai::bot_update::NowUs() : 0;
     beginPath = endPos.getPathFromPath({ startPos }, unit, 40);
+    if (routeTimes)
+    {
+        routeTimes->Add(ai::route_time::Phase::Direct, ai::bot_update::SinceUs(directStartUs));
+        routeTimes->directSteps = routeTimes->steps;
+    }
 
     if (endPos.isPathTo(beginPath,sPlayerbotAIConfig.spellDistance)) //If we can get within spell distance a longer route won't help.
+    {
+        if (routeTimes)
+            routeTimes->directOk = routeTimes->found = true;
         return TravelPath(beginPath);
+    }
 
     // twow-repo#575 (PATH-01 #1): how far the direct navmesh attempt got (-1 = no path at all).
     if (outDetail)
@@ -2012,7 +2089,10 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     // one leaked reader per bot without a route, and from the first one on every writer (removeNodes, manageNodes)
     // waited in vain. Upstream code, in our tree since the module import. RAII releases it on every return path; the
     // scope (getRoute .. cleanTempNodes) is the same as before.
+    std::uint64_t const lockStartUs = routeTimes ? ai::bot_update::NowUs() : 0;   // twow-repo#592
     std::shared_lock<std::shared_timed_mutex> nodeMapLock(sTravelNodeMap.m_nMapMtx);
+    if (routeTimes)
+        routeTimes->Add(ai::route_time::Phase::Lock, ai::bot_update::SinceUs(lockStartUs));
 
     //Find the route of nodes starting at a node closest to the start position and ending at a node closest to the endposition.
     //Also returns longPath: The path from the start position to the first node in the route.
@@ -2024,10 +2104,15 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
         return movePath;
     }
 
+    std::uint64_t const buildStartUs = routeTimes ? ai::bot_update::NowUs() : 0;   // twow-repo#592
     movePath = route.buildPath(beginPath, endPath);
+    if (routeTimes)
+        routeTimes->Add(ai::route_time::Phase::Build, ai::bot_update::SinceUs(buildStartUs));
 
     route.cleanTempNodes();
 
+    if (routeTimes)
+        routeTimes->found = !movePath.empty();
     return movePath;
 }
 

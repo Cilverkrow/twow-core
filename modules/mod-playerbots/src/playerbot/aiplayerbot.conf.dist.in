@@ -2441,6 +2441,17 @@ AiPlayerbot.Perf.PartialPathReuseMs = 10000
 # With AiPlayerbot.Path.HonestRouteFail = 1 (twow-repo#575) such a MoveTo fails instead of the straight-line fallback,
 # and during the cooldown that answer costs no search; PartialPathReuse never stamps such a no-route result.
 AiPlayerbot.Perf.RouteFailCooldownSeconds = 0
+# twow-repo#592 (PATH-02 phase 2, measurement only, no behaviour change): 1 = every node route build
+# (TravelNodeMap::getFullPath) is timed by phase: direct navmesh attempt (with its step count), node map lock,
+# getNodes, A* runs, end legs, start legs, hearthstone fallback, buildPath, longest navmesh step, PathInfo builds.
+# One [RouteTime] line a minute: builds= ms= ge16= ge33= ge50= ge100= (builds at or above 16.4 / 32.8 / 50 / 100 ms)
+# max_ms= direct_ms= astar_ms= endleg_ms= startleg_ms= step_max_us= dsteps_ok= dsteps_fail= (steps of the direct
+# attempt in classes 0,1,2,4,8,16,40, split by its success) dispatch_n= dispatch_ms= dispatch_max_us= (the
+# MovePoint path search in DispatchMovement that MovePath replaces, CLI audit A20) and ok= fail= nodes_ms= hearth_ms=
+# build_ms= lock_ms= step_max_ge12= astar_max_ge12= pf=. With AiPlayerbot.BotUpdateTrace = 1 the M:route token gets
+# " d= n= a= e= s= h= b= l= x= pf=" after pts=; with AiPlayerbot.Path.RouteFailDetail = 1 the detail line gets the
+# phase times. Cost: a few clock reads per build. 0 = off, no clock read (default).
+AiPlayerbot.Perf.RouteTimeTrace = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental

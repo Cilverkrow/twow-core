@@ -25,6 +25,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
 #include "playerbot/PathReusePolicy.h"   // twow-repo#541 (L1): Perf.PartialPathReuse
+#include "playerbot/RouteTimePolicy.h"   // twow-repo#592 (PATH-02): Perf.RouteTimeTrace
 
 using namespace ai;
 
@@ -85,13 +86,15 @@ void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& f
         return;
 
     float const dist = from.getMapId() == to.getMapId() ? from.distance(to) : -1.0f;
+    // twow-repo#592 (PATH-02): switch-gated fields at the end of the line; all switches off = empty, the same line as before.
+    std::string const suffix = route_time::FormatDetail(d.times);
     sLog.outBasic("[RouteFailDetail] bot=%u level=%u alive=%u action=%s map=%u x=%.1f y=%.1f z=%.1f to_map=%u to_x=%.1f to_y=%.1f to_z=%.1f "
         "dist=%.0f pairs=%u bad_start=%u bad_end=%u start_nodes=%u end_nodes=%u start_node=\"%s\" start_dist=%.0f end_node=\"%s\" "
-        "end_dist=%.0f direct_gap=%.1f no_nodes=%u cooldown=%u budget=%u transport=%u",
+        "end_dist=%.0f direct_gap=%.1f no_nodes=%u cooldown=%u budget=%u transport=%u%s",
         bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->IsAlive() ? 1u : 0u, action.c_str(), from.getMapId(), from.getX(), from.getY(),
         from.getZ(), to.getMapId(), to.getX(), to.getY(), to.getZ(), dist, d.pairs, d.badStart, d.badEnd, d.startNodes, d.endNodes,
         d.startNode.c_str(), d.startNodeDist, d.endNode.c_str(), d.endNodeDist, d.directGap, d.noNodes ? 1u : 0u,
-        d.cooldownSkip ? 1u : 0u, d.budgetStop ? 1u : 0u, d.transportRoute ? 1u : 0u);
+        d.cooldownSkip ? 1u : 0u, d.budgetStop ? 1u : 0u, d.transportRoute ? 1u : 0u, suffix.c_str());
 }
 
 // twow-repo#575 (PATH-01 b, AiPlayerbot.Path.TaxiTrace): summary of the previous minute, once.
@@ -856,6 +859,8 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
     // ("M:mmap <us> pts=<n>") and a rebuilt path thrown away for the old one ("M:keep last"). This is the live
     // route of every MoveTo (MoveTo returns MoveTo2 at once; its older body below that return is unreachable).
     // Off: traceEngine stays null - no clock read, no distance, no entry, the same path as before.
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): the route token gets the build's phase times after pts=
+    // (" d= n= a= e= s= h= b= l= x= pf="); without that switch the appended text is empty.
     ai::Engine* const traceEngine = sPlayerbotAIConfig.botUpdateTrace ? ai->GetCurrentEngine() : nullptr;
 
     // Last long path still leads to roughly the same destination.
@@ -935,8 +940,8 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
         std::uint64_t const routeStartUs = traceEngine ? ai::bot_update::NowUs() : 0;
         outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, (traceFail || traceEngine) ? &detail : nullptr); //Pathfind using nodes.
         if (traceEngine)
-            traceEngine->TraceNote("M:route %lluus pairs=%u pts=%u", (unsigned long long)ai::bot_update::SinceUs(routeStartUs),
-                detail.pairs, uint32(outMovePath.getPath().size()));
+            traceEngine->TraceNote("M:route %lluus pairs=%u pts=%u%s", (unsigned long long)ai::bot_update::SinceUs(routeStartUs),
+                detail.pairs, uint32(outMovePath.getPath().size()), route_time::FormatToken(detail.times).c_str());
         if (outMovePath.empty())
         {
             noRoute = true;
@@ -1235,6 +1240,11 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
     {
         WorldPosition movePosition = path.back();
 
+        // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): with generatePath this MovePoint runs a core path search
+        // (MOVE_PATHFINDING) that MovePath below replaces right away (CLI audit A20); dispatch_* in [RouteTime].
+        bool const timeDispatch = generatePath && sPlayerbotAIConfig.perfRouteTimeTrace;
+        std::uint64_t const dispatchStartUs = timeDispatch ? ai::bot_update::NowUs() : 0;
+
 #ifdef MANGOSBOT_ZERO
         // Tortoise's MovePoint signature is (id, x, y, z, options, speed, orientation),
         // NOT cmangos's (id, x, y, z, ForcedMovement, bool generatePath). The ported call
@@ -1257,6 +1267,8 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
             bot->IsFlying() ? bot->GetSpeed(MOVE_FLIGHT) : 0.f,
             bot->IsFlying());
 #endif
+        if (timeDispatch)
+            route_time::Global().AddDispatch(ai::bot_update::SinceUs(dispatchStartUs));
     }
 
     GeneratePathAvoidingHazards(path);
