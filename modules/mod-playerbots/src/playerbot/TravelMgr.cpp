@@ -2979,7 +2979,9 @@ void TravelMgr::LoadFishLocations()
     if (!result)
     {
         sTravelNodeMap.setHasToGen();
+        sTravelNodeMap.setGeneratorRunning(true);   // twow-repo#592: route steps may be rebuilt (TravelNodeRoute::buildPath)
         GetFishLocations();
+        sTravelNodeMap.setGeneratorRunning(false);
         sTravelNodeMap.setHasToGen(false);
         SaveFishLocations();
         return;
