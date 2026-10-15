@@ -100,10 +100,11 @@ require_text("${resolve_body}" "lastMove.lastPath.getBack().getMapId() != endPos
 require_text("${resolve_body}" "std::uint64_t const routeStartUs = traceEngine ? ai::bot_update::NowUs() : 0;" "route clock only with the switch")
 # Since twow-repo#575 (PATH-01 #1) the pair count comes from the route-fail detail, asked for with either trace switch.
 require_text("${resolve_body}" "outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot, (traceFail || traceEngine) ? &detail : nullptr); //Pathfind using nodes." "pair count only with a trace switch")
-require_text("${resolve_body}" "traceEngine->TraceNote(\"M:route %lluus pairs=%u pts=%u\", (unsigned long long)ai::bot_update::SinceUs(routeStartUs),\n                detail.pairs, uint32(outMovePath.getPath().size()));" "pairs from the detail")
+# twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): the build's phase times follow pts= (empty with that switch off).
+require_text("${resolve_body}" "traceEngine->TraceNote(\"M:route %lluus pairs=%u pts=%u%s\", (unsigned long long)ai::bot_update::SinceUs(routeStartUs),\n                detail.pairs, uint32(outMovePath.getPath().size()), route_time::FormatToken(detail.times).c_str());" "pairs from the detail")
 forbid_text("${resolve_body}" "routePairs" "a second pair counter beside the detail")
 require_order("${resolve_body}" "std::uint64_t const routeStartUs" "sTravelNodeMap.getFullPath(" "route clock before the route")
-require_order("${resolve_body}" "sTravelNodeMap.getFullPath(" "        if (traceEngine)\n            traceEngine->TraceNote(\"M:route %lluus pairs=%u pts=%u\"" "route token after the route, behind the switch")
+require_order("${resolve_body}" "sTravelNodeMap.getFullPath(" "        if (traceEngine)\n            traceEngine->TraceNote(\"M:route %lluus pairs=%u pts=%u%s\"" "route token after the route, behind the switch")
 require_text("${resolve_body}" "std::uint64_t const mmapStartUs = traceEngine ? ai::bot_update::NowUs() : 0;" "navmesh clock only with the switch")
 require_order("${resolve_body}" "std::uint64_t const mmapStartUs" "std::vector<WorldPosition> path = startPosition.getPathTo(endPosition, bot); //Navemesh pathfinding only." "navmesh clock before the path")
 require_order("${resolve_body}" "startPosition.getPathTo(endPosition, bot); //Navemesh pathfinding only." "        if (traceEngine)\n            traceEngine->TraceNote(\"M:mmap %lluus pts=%u\"" "navmesh token after the path, behind the switch")

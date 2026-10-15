@@ -58,6 +58,7 @@
 #include <cstdio>
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/RouteTimePolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "Maps/MapManager.h"
 #include <fstream>
@@ -1180,6 +1181,20 @@ void ReportRouteFail()
     sLog.outBasic("[RouteFail] blocks=%llu skips=%llu cooldown_seconds=%u",
         (unsigned long long)blocks, (unsigned long long)skips, sPlayerbotAIConfig.perfRouteFailCooldownSeconds);
 }
+
+// twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): one [RouteTime] line per minute - every node route build
+// (TravelNodeMap::getFullPath) by phase, the build-time counters and the DispatchMovement path search (dispatch_*).
+// World thread only, same pattern as ReportRouteFail. Nothing is timed, counted or written when off.
+void ReportRouteTime()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.perfRouteTimeTrace || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    sLog.outBasic("%s", ai::route_time::FormatLine(ai::route_time::Global().Take()).c_str());
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -1206,6 +1221,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
     ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)
+    ReportRouteTime();    // twow-repo#592 (PATH-02): [RouteTime] once per minute (AiPlayerbot.Perf.RouteTimeTrace)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();

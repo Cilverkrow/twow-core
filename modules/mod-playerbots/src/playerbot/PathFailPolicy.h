@@ -1,5 +1,7 @@
 #pragma once
 
+#include "RouteTimePolicy.h"
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +27,7 @@ struct RouteFailDetail
     bool cooldownSkip = false;        // #416 route cooldown hit, no search ran
     bool budgetStop = false;          // #416 1000 ms budget stopped the search
     bool transportRoute = false;      // bot on a transport: the first pair decides
+    ai::route_time::RouteTimes times; // twow-repo#592 (PATH-02): phase times of the build (AiPlayerbot.Perf.RouteTimeTrace)
 };
 
 // Lines per minute for [RouteFailDetail]; every failure is counted, only the first N a minute are logged.
