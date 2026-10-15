@@ -66,14 +66,21 @@ require_text("${window_h}" "\" hook_ms=%u remote_ms=%u ahbot_ms=%u dungeonclear_
 require_text("${mgr_h}" "void AddWorldBotsDungeonClearUs(uint64 us) { worldBotsWindow.AddDungeonClear(us); }" "dungeon-clear hook entry")
 
 # The dungeon-clear reaper hook (own WorldScript in mod-dungeon-clear) times itself only with both switches.
-set(dc_path "${PB_SOURCE_DIR}/../../../mod-dungeon-clear/src/DungeonClearModule.cpp")
-if(EXISTS "${dc_path}")
-  file(READ "${dc_path}" dc)
-  string(REPLACE "\r" "" dc "${dc}")
-  require_text("${dc}" "bool const hookTrace = sPlayerbotAIConfig.worldBotsHookTrace && sPlayerbotAIConfig.worldBotsTrace;" "dungeon-clear hook switch")
-  require_text("${dc}" "uint64 const hookStartUs = hookTrace ? ai::bot_update::NowUs() : 0;" "no clock read when off")
-  require_order("${dc}" "uint64 const hookStartUs = hookTrace ? ai::bot_update::NowUs() : 0;" "DcFollowerLifecycle::ReapOrphanedFollows();\n        // Authoritative" "timed from the start of the hook")
-  require_text("${dc}" "if (hookTrace)\n            sRandomPlayerbotMgr.AddWorldBotsDungeonClearUs(ai::bot_update::NowUs() - hookStartUs);" "recorded at the end of the hook")
+# Fails closed (review follow-up): tests.cmake passes DC_SOURCE_FILE; a missing file fails the contract instead
+# of skipping these checks. Without DC_SOURCE_FILE (manual run) the in-tree path next to this module is used.
+if(DEFINED DC_SOURCE_FILE)
+  set(dc_path "${DC_SOURCE_FILE}")
+else()
+  set(dc_path "${PB_SOURCE_DIR}/../../../mod-dungeon-clear/src/DungeonClearModule.cpp")
 endif()
+if(NOT EXISTS "${dc_path}")
+  message(FATAL_ERROR "#597: dungeon-clear hook source not found: ${dc_path}")
+endif()
+file(READ "${dc_path}" dc)
+string(REPLACE "\r" "" dc "${dc}")
+require_text("${dc}" "bool const hookTrace = sPlayerbotAIConfig.worldBotsHookTrace && sPlayerbotAIConfig.worldBotsTrace;" "dungeon-clear hook switch")
+require_text("${dc}" "uint64 const hookStartUs = hookTrace ? ai::bot_update::NowUs() : 0;" "no clock read when off")
+require_order("${dc}" "uint64 const hookStartUs = hookTrace ? ai::bot_update::NowUs() : 0;" "DcFollowerLifecycle::ReapOrphanedFollows();\n        // Authoritative" "timed from the start of the hook")
+require_text("${dc}" "if (hookTrace)\n            sRandomPlayerbotMgr.AddWorldBotsDungeonClearUs(ai::bot_update::NowUs() - hookStartUs);" "recorded at the end of the hook")
 
 message(STATUS "TICK_DIAG_597_SOURCE_CONTRACT=PASS")
