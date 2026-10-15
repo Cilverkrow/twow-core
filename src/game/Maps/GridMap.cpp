@@ -1260,6 +1260,22 @@ TerrainInfo* TerrainManager::LoadTerrain(const uint32 mapId)
     return ptr;
 }
 
+// twow-repo#592 (PATH-02): the terrain of an already loaded map with one reference taken under the
+// guard; the caller releases it (PathTerrainRef). Never inserts: Update() iterates i_TerrainMap without
+// the guard, so an insert from another thread (bot generator, std::async jobs) would race it.
+// nullptr = the map's terrain is not loaded.
+TerrainInfo* TerrainManager::FindTerrainRef(const uint32 mapId)
+{
+    Guard _guard(*this);
+
+    TerrainDataMap::const_iterator iter = i_TerrainMap.find(mapId);
+    if (iter == i_TerrainMap.end())
+        return nullptr;
+
+    iter->second->AddRef();
+    return iter->second;
+}
+
 void TerrainManager::UnloadTerrain(const uint32 mapId)
 {
     if (sWorld.getConfig(CONFIG_BOOL_GRID_UNLOAD) == 0)
