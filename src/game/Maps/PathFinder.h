@@ -201,17 +201,19 @@ class PathInfo
 
         // twow-repo#592: every read of the owner on the calculate() path goes through these (defined in
         // PathFinder.cpp). With a Unit: the expression used before, evaluated at the same place, in the
-        // same order (B1-B3 of the PR checklist). Without one: the map-mode values above.
-        uint32 srcMapId() const;
-        bool srcIgnorePathfinding() const;
-        float srcBoundingRadius() const;
-        bool srcCanSwim() const;
-        bool srcCanFly() const;
-        bool srcCanWalk() const;
-        bool srcCreatureCanFly() const;
-        TerrainInfo const* srcTerrain() const;
-        uint32 srcLogGuid() const;
-        char const* srcLogName() const;
+        // same order (B1-B3 of the PR checklist). Without one: the map-mode values above. The inline ones
+        // are declared inline here too ([dcl.inline]: inline in every TU that declares them); only
+        // PathFinder.cpp uses them, and it holds their definitions.
+        inline uint32 srcMapId() const;
+        inline bool srcIgnorePathfinding() const;
+        inline float srcBoundingRadius() const;
+        inline bool srcCanSwim() const;
+        inline bool srcCanFly() const;
+        inline bool srcCanWalk() const;
+        inline bool srcCreatureCanFly() const;
+        inline TerrainInfo const* srcTerrain() const;
+        inline uint32 srcLogGuid() const;
+        inline char const* srcLogName() const;
         bool srcFindCollision(Vector3 const& start, Vector3 const& end) const;
         void srcUpdateGroundZ(float x, float y, float& z) const;
         bool MapModeInNoMovementArea(Vector3 const& start) const;

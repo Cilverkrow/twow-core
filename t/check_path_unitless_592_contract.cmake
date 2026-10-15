@@ -99,6 +99,15 @@ require_text("${pf_cpp}" "inline bool PathInfo::srcCreatureCanFly() const { retu
 require_text("${pf_cpp}" "inline TerrainInfo const* PathInfo::srcTerrain() const { return m_sourceUnit ? m_sourceUnit->GetTerrain() : m_terrain.get(); }" "accessor terrain (GetTerrain on every read, with its assert)")
 require_text("${pf_cpp}" "inline uint32 PathInfo::srcLogGuid() const { return m_sourceUnit ? m_sourceUnit->GetGUIDLow() : m_params.logGuidLow; }" "accessor log guid")
 require_text("${pf_cpp}" "inline char const* PathInfo::srcLogName() const { return m_sourceUnit ? m_sourceUnit->GetName() : \"<no unit>\"; }" "accessor log name (DEBUG_LOG)")
+# The inline accessors are declared inline in the class too ([dcl.inline]: inline in every TU that declares them).
+foreach(decl
+    "uint32 srcMapId() const;" "bool srcIgnorePathfinding() const;" "float srcBoundingRadius() const;"
+    "bool srcCanSwim() const;" "bool srcCanFly() const;" "bool srcCanWalk() const;" "bool srcCreatureCanFly() const;"
+    "TerrainInfo const* srcTerrain() const;" "uint32 srcLogGuid() const;" "char const* srcLogName() const;")
+  require_text("${pf_h}" "        inline ${decl}" "accessor declared inline")
+endforeach()
+read_source("src/game/CMakeLists.txt" game_cmake)
+require_text("${game_cmake}" "    Maps/PathFinder.h\n    Maps/PathUnitless.h\n" "PathUnitless.h in the game header list")
 
 # B2: collision and ground height stay on the Unit's map.
 function_body("${pf_cpp}" "bool PathInfo::srcFindCollision(Vector3 const& start, Vector3 const& end) const" body)
