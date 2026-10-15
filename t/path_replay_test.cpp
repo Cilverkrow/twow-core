@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -63,6 +64,52 @@ int main()
     Require(!PathReplayNameAllowed("C:fixture.tsv"), "drive letter");
     Require(!PathReplayNameAllowed("a b"), "blank");
     Require(!PathReplayNameAllowed("fix\xc3\xa4.tsv"), "non-ASCII");
+
+    // Reserved Windows device names, any case, with or without extension (CON would block on input).
+    Require(!PathReplayNameAllowed("CON"), "CON");
+    Require(!PathReplayNameAllowed("nul.tsv"), "NUL with extension, lower case");
+    Require(!PathReplayNameAllowed("Aux.a.b"), "AUX with two extensions");
+    Require(!PathReplayNameAllowed("prn"), "PRN");
+    Require(!PathReplayNameAllowed("COM1"), "COM1");
+    Require(!PathReplayNameAllowed("lpt9.txt"), "LPT9 with extension");
+    Require(!PathReplayNameAllowed("com0"), "COM0");
+    Require(PathReplayNameAllowed("console.tsv"), "longer stem than CON allowed");
+    Require(PathReplayNameAllowed("com10"), "COM with two digits allowed");
+    Require(PathReplayNameAllowed("lpt.tsv"), "LPT without digit allowed");
+    Require(PathReplayNameAllowed("m2.con"), "device name as extension allowed");
+
+    // File size cap; -1 (tellg on a pipe or device) is refused.
+    Require(PathReplayFileSizeAllowed(0), "empty file");
+    Require(PathReplayFileSizeAllowed(int64_t(PATH_REPLAY_MAX_FILE_BYTES)), "file at the size cap");
+    Require(!PathReplayFileSizeAllowed(int64_t(PATH_REPLAY_MAX_FILE_BYTES) + 1), "file over the size cap");
+    Require(!PathReplayFileSizeAllowed(-1), "no size");
+
+    // Bounded line reader: keeps at most MAX_LINE_LEN + 1 characters, skips the rest of a longer line.
+    {
+        std::string const fits(PATH_REPLAY_MAX_LINE_LEN + 1, 'a');
+        std::string const huge(PATH_REPLAY_MAX_LINE_LEN * 8, 'b');
+        std::istringstream in("1 0 1 2 3 4 5 6 unit 0\r\n\n" + fits + "\n" + huge + "\nnext\nlast");
+        std::string line;
+        Require(ReadPathReplayLine(in, line) == PathReplayRead::Line && line == "1 0 1 2 3 4 5 6 unit 0\r", "first line, '\\r' kept");
+        Require(ReadPathReplayLine(in, line) == PathReplayRead::Line && line.empty(), "empty line");
+        Require(ReadPathReplayLine(in, line) == PathReplayRead::Line && line == fits, "line of MAX_LINE_LEN + 1 kept whole");
+        PathReplayRow r;
+        Require(ParsePathReplayLine(line, r) == PathReplayParse::Bad, "and rejected by the parser");
+        Require(ReadPathReplayLine(in, line) == PathReplayRead::TooLong && line.empty(), "longer line skipped, nothing kept");
+        Require(ReadPathReplayLine(in, line) == PathReplayRead::Line && line == "next", "reading goes on after the long line");
+        Require(ReadPathReplayLine(in, line) == PathReplayRead::Line && line == "last", "last line without '\\n'");
+        Require(ReadPathReplayLine(in, line) == PathReplayRead::End, "end of file");
+        Require(ReadPathReplayLine(in, line) == PathReplayRead::End, "end of file stays");
+
+        std::istringstream tail("x\n" + huge);
+        Require(ReadPathReplayLine(tail, line) == PathReplayRead::Line && line == "x", "line before a long last line");
+        Require(ReadPathReplayLine(tail, line) == PathReplayRead::TooLong, "long last line without '\\n'");
+        Require(ReadPathReplayLine(tail, line) == PathReplayRead::End, "end after the long last line");
+
+        std::istringstream nul(std::string("1 0 1 2 3 4 5 6 unit 0\0 junk\n", 29));
+        Require(ReadPathReplayLine(nul, line) == PathReplayRead::Line && line.size() == 28, "embedded NUL kept in the line");
+        Require(ParsePathReplayLine(line, r) == PathReplayParse::Bad, "embedded NUL is a parse error");
+    }
 
     // Limits: checked after a row, lines first.
     Require(PathReplayShouldStop(0, 0) == PathReplayStop::None, "fresh call runs");
