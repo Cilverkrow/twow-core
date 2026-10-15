@@ -166,12 +166,23 @@ require_text("${grid_h}" "tick_diag::TerrainLoadCounters m_loadTrace;" "relaxed 
 # ---- [LogWait]: every writing out* path timed, one relaxed load when off, the minute line without recursion.
 require_text("${log_h}" "uint64 LogWaitStart() const { return m_logWriteTrace.load(std::memory_order_relaxed) ? tick_diag::NowUs() : 0; }" "no clock read when off")
 require_text("${log_h}" "if (!startUs)\n                return;" "nothing recorded when off")
-count_text("${log_cpp}" "uint64 const lwStartUs = LogWaitStart();" log_starts)
+count_text("${log_cpp}" "uint64 const lwStartUs = LogWaitStart" log_starts)
 count_text("${log_cpp}" "LogWaitDone(lwStartUs," log_dones)
 if (log_starts LESS 19 OR NOT log_starts EQUAL log_dones)
   message(FATAL_ERROR "#597: every writing Log::out* path must be timed (starts ${log_starts}, dones ${log_dones}, need 19)")
 endif()
-require_text("${log_h}" "uint64 const lwStartUs = LogWaitStart();" "the template out() timed")
+require_text("${log_h}" "uint64 const lwStartUs = LogWaitStartIf(logFiles[type] != nullptr);" "the template out() timed, only when it has a file")
+# lines= counts written lines only: the paths that can write nothing start no clock and record nothing.
+require_text("${log_h}" "uint64 LogWaitStartIf(bool writes) const { return writes ? LogWaitStart() : 0; }" "nothing written, nothing counted")
+foreach (lvl BASIC DETAIL DEBUG)
+  require_text("${log_cpp}" "uint64 const lwStartUs = LogWaitStartIf(m_logLevel >= LOG_LVL_${lvl} || (logfile && m_logFileLevel >= LOG_LVL_${lvl})" "level-filtered path ${lvl} counted only when written")
+endforeach()
+require_text("${log_cpp}" "LogWaitStartIf(!HasLogFilter(LOG_FILTER_HONOR) || honorLogfile);" "outHonor counted only when written")
+require_text("${log_cpp}" "m_gmlog_per_account || gmLogfile);" "outCommand counted only when written")
+count_text("${log_cpp}" "LogWaitStartIf(" log_start_ifs)
+if (NOT log_start_ifs EQUAL 5)
+  message(FATAL_ERROR "#597: outHonor, outBasic, outDetail, outDebug and outCommand start with LogWaitStartIf (found ${log_start_ifs})")
+endif()
 require_order("${log_cpp}" "tick_diag::LogWaitSnapshot const s = m_logWait.Take();" "out(LOG_PERFORMANCE, \"[LogWait] lines=%llu stdout_max_us=%llu file_max_us=%llu over10ms=%llu over100ms=%llu\"" "counters taken before the line is written")
 
 # ---- [ResultsSlow]: per callback, latched threshold, at most 20 a minute.
