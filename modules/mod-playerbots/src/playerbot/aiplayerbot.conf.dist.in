@@ -53,6 +53,14 @@ AiPlayerbot.Park.HideFromBots = 0
 # StrangerCooldownSeconds. [BuffTargets] once a minute: chosen targets per category. 0 = every friendly player in sight.
 AiPlayerbot.Buff.RealPlayerStyle = 0
 AiPlayerbot.Buff.StrangerCooldownSeconds = 900
+# twow-repo#308 LOOT-ROLE-01 (owner 15.10.2026, approved by OB-00): RoleWeights = 1: the item weight scale comes from the
+# roster's premade talent path from level 1 (below level 10 the talent tree gave a class default), and of several usable
+# quest rewards the one with the largest gain over the equipped item wins instead of the first in the list. 0 = as before.
+# [QuestReward] (always on): first, best and picked reward per turn-in, wrong=1 when the first is not the best for the role.
+# FeralFixedSpec = 1 (owner 26.09.: bear and cat are fixed paths): a feral druid uses the bear or the cat scale of its
+# premade path; 0 = a coin on every check (old).
+AiPlayerbot.Loot.RoleWeights = 0
+AiPlayerbot.Loot.FeralFixedSpec = 1
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).

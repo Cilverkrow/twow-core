@@ -14,6 +14,7 @@
 #include "ItemEnchantmentMgr.h"
 
 #include "strategy/values/SharedValueContext.h"
+#include "playerbot/LootRolePolicy.h"
 
 char * strstri (const char* str1, const char* str2);
 
@@ -2594,8 +2595,43 @@ std::vector<uint32> RandomItemMgr::GetQuestIdsForItem(uint32 itemId)
     return questIds;
 }
 
+// twow-repo#308 LOOT-ROLE-01: the weight scale of the roster's premade path, "" = no or unknown path.
+std::string RandomItemMgr::GetRoleSpecName(Player* player)
+{
+    return ai::loot_role::ScaleForPath(player->getClass(), AiFactory::GetPremadePathName(player), player->GetLevel());
+}
+
+// The scale the role asks for: the premade path's, else the talent tree's. With RoleWeights off the
+// bot still equips by GetPlayerSpecId; this one only feeds the [QuestReward] comparison.
+uint32 RandomItemMgr::GetRoleSpecId(Player* player)
+{
+    std::string const scale = GetRoleSpecName(player);
+    return scale.empty() ? GetPlayerSpecId(player) : SpecIdByName(player->getClass(), scale);
+}
+
+uint32 RandomItemMgr::SpecIdByName(uint8 cls, std::string const& specName)
+{
+    if (specName.empty())
+        return 0;
+
+    for (auto const& itr : m_weightScales)
+    {
+        if (itr.second.info.name == specName && itr.second.info.classId == cls)
+            return itr.second.info.id;
+    }
+    return 0;
+}
+
 std::string RandomItemMgr::GetPlayerSpecName(Player* player)
 {
+    // twow-repo#308 LOOT-ROLE-01: the roster's premade path decides, from level 1.
+    if (sPlayerbotAIConfig.lootRoleWeights)
+    {
+        std::string const scale = GetRoleSpecName(player);
+        if (!scale.empty())
+            return scale;
+    }
+
     std::string specName;
     int tab = AiFactory::GetPlayerSpecTab(player);
     switch (player->getClass())
@@ -2637,8 +2673,10 @@ std::string RandomItemMgr::GetPlayerSpecName(Player* player)
             specName = "balance";
         else if (tab == 1)
         {
+            // twow-repo#308: bear or cat by the premade path (owner 26.09.), not a coin on every check.
             specName = "feraltank";
-            if (player->GetLevel() > 19 && urand(0, 100) > 50)
+            if (ai::loot_role::FeralDps(sPlayerbotAIConfig.lootFeralFixedSpec, AiFactory::GetPremadePathName(player),
+                    player->GetLevel(), player->GetGUIDLow(), urand(0, 100) > 50))
                 specName = "feraldps";
         }
         else if (tab == 2)
@@ -2698,16 +2736,7 @@ std::string RandomItemMgr::GetPlayerSpecName(Player* player)
 
 uint32 RandomItemMgr::GetPlayerSpecId(Player* player)
 {
-    std::string specName = GetPlayerSpecName(player);
-    if (specName.empty())
-        return 0;
-
-    for (auto itr : m_weightScales)
-    {
-        if (itr.second.info.name == specName && itr.second.info.classId == player->getClass())
-            return itr.second.info.id;
-    }
-    return 0;
+    return SpecIdByName(player->getClass(), GetPlayerSpecName(player));
 }
 
 uint32 RandomItemMgr::GetUpgrade(Player* player, std::string spec, uint8 slot, uint32 quality, uint32 itemId)

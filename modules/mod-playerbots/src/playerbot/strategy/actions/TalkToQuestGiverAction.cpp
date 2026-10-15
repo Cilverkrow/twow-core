@@ -5,6 +5,9 @@
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/strategy/values/QuestValues.h"
 #include "playerbot/strategy/values/GuildValues.h"
+#include "playerbot/RandomItemMgr.h"
+#include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/LootRolePolicy.h"
 
 using namespace ai;
 
@@ -199,6 +202,50 @@ ItemIds TalkToQuestGiverAction::BestRewards(Quest const* quest)
     }
 }
 
+// twow-repo#308 LOOT-ROLE-01: every reward the bot can equip is scored with the weight scale its role asks for (the
+// premade path's): its weight minus the weight of what it would replace. RoleWeights on takes the best, off the first
+// as before. [QuestReward] is always on, so picked != best counts today's wrong choices before the switch goes on.
+uint32 TalkToQuestGiverAction::PickReward(Quest const* quest, ItemIds const& bestIds)
+{
+    uint8 const first = uint8(*bestIds.begin());
+    uint32 const roleSpec = sRandomItemMgr.GetRoleSpecId(bot);
+    std::vector<ai::loot_role::Choice> choices;
+    uint32 equip = 0;
+    for (uint8 i = 0; i < quest->GetRewChoiceItemsCount(); ++i)
+    {
+        ai::loot_role::Choice choice;
+        choice.index = i;
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(quest->RewChoiceItemId[i]);
+        if (proto && roleSpec && AI_VALUE2(ItemUsage, "item usage", quest->RewChoiceItemId[i]) == ItemUsage::ITEM_USAGE_EQUIP)
+        {
+            choice.equip = true;
+            ++equip;
+            choice.quality = proto->Quality;
+            choice.itemLevel = proto->ItemLevel;
+            ItemSpecType spec = ITEM_SPEC_NONE;
+            choice.gain = int64(sRandomItemMgr.CalculateStatWeight(bot->getClass(), roleSpec, proto, spec));
+            uint16 dest = 0;
+            if (RandomPlayerbotMgr::CanEquipUnseenItem(bot, NULL_SLOT, dest, proto->ItemId) == EQUIP_ERR_OK)
+            {
+                if (Item* old = bot->GetItemByPos(dest))
+                {
+                    ItemSpecType oldSpec = ITEM_SPEC_NONE;
+                    choice.gain -= int64(sRandomItemMgr.CalculateStatWeight(bot->getClass(), roleSpec, old->GetProto(), oldSpec));
+                }
+            }
+        }
+        choices.push_back(choice);
+    }
+
+    int const best = ai::loot_role::BestByGain(choices);
+    uint8 const picked = ai::loot_role::Pick(sPlayerbotAIConfig.lootRoleWeights, first, best);
+    sLog.outBasic("[QuestReward] bot=%u class=%u level=%u spec=%u role_spec=%u quest=%u choices=%u equip=%u first=%u best=%d picked=%u wrong=%u reason=%s",
+        bot->GetGUIDLow(), uint32(bot->getClass()), bot->GetLevel(), sRandomItemMgr.GetPlayerSpecId(bot), roleSpec,
+        quest->GetQuestId(), uint32(choices.size()), equip, uint32(first), best, uint32(picked), uint32(best >= 0 && best != int(first)),
+        picked == first ? "first" : "weight");
+    return picked;
+}
+
 void TalkToQuestGiverAction::RewardMultipleItem(Player* requester, Quest const* quest, WorldObject* questGiver, std::string& out)
 {
     std::map<std::string, std::string> args;
@@ -211,9 +258,10 @@ void TalkToQuestGiverAction::RewardMultipleItem(Player* requester, Quest const* 
         (questRewardOption == QuestRewardOptionType::QUEST_REWARD_CONFIG_DRIVEN && sPlayerbotAIConfig.autoPickReward == "yes") ||
         questRewardOption == QuestRewardOptionType::QUEST_REWARD_OPTION_AUTO
     ) {
-        //Pick the first item of the best rewards.
+        //Pick the first item of the best rewards (#308 RoleWeights: the one with the largest gain).
         bestIds = BestRewards(quest);
-        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(quest->RewChoiceItemId[*bestIds.begin()]);
+        uint32 const rewardIndex = PickReward(quest, bestIds);
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(quest->RewChoiceItemId[rewardIndex]);
         if(proto)
         {
             args["%item"] = chat->formatItem(proto);
@@ -222,7 +270,7 @@ void TalkToQuestGiverAction::RewardMultipleItem(Player* requester, Quest const* 
             BroadcastHelper::BroadcastQuestTurnedIn(ai, bot, quest);
         }
 
-        bot->RewardQuest(quest, *bestIds.begin(), questGiver, true);
+        bot->RewardQuest(quest, rewardIndex, questGiver, true);
     }
     else if ((questRewardOption == QuestRewardOptionType::QUEST_REWARD_CONFIG_DRIVEN && sPlayerbotAIConfig.autoPickReward == "no") ||
              questRewardOption == QuestRewardOptionType::QUEST_REWARD_OPTION_LIST
