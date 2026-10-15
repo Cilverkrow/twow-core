@@ -8,8 +8,25 @@
 // build (A/A, precondition) and old against new (proof that PathInfo variant A leaves unit paths byte
 // identical). It changes no behaviour and runs only when called, so it has no switch. Never in
 // measurement arms: the command runs on the world thread (a GM's chat packet is always processed in
-// World::UpdateSessions, whatever the chat type, see WorldSession::QueuePacket), while no map updates,
-// so a call stalls the whole world tick for up to the time budget plus one row.
+// World::UpdateSessions, whatever the chat type, see WorldSession::QueuePacket; a console line runs in
+// World::ProcessCliCommands, called from World::Update after sMapMgr.Update returned), while no map
+// updates, so a call stalls the whole world tick for up to the time budget plus one row.
+//
+// Syntax: .mmaps replay <name> [offset [probe]]
+//
+// The probe is the unit whose PathInfo computes the unit rows. In game without a probe argument it is the
+// selected unit, without a selection the caller, and it must stand on the caller's map. From the server
+// console (M2 scripts write `mmaps replay <name> <offset> <probe>` into mangosd.in) there is no session and
+// no selection, so the probe argument is required there; without it the call ends with an error line
+// before the fixture is opened. Probe spec (ParsePathReplayProbe, fails closed on anything else):
+//
+//   <player>          an online player (bots are players), 1..PATH_REPLAY_MAX_PROBE_NAME_LEN ASCII
+//                     letters, the case is normalized as for any character name
+//   <player>:<entry>  the nearest live creature with that entry (1..9 digits, > 0) within
+//                     PATH_REPLAY_PROBE_RANGE yd of that player
+//
+// An explicit probe has no caller map check (the console has no map); unit rows still run only on the
+// probe's map. Any probe must be in the world and not on a transport.
 //
 // Fixture: <DataDir>/pathreplay/<name>, plain text, one row per line, fields separated by blanks or tabs:
 //
@@ -18,8 +35,8 @@
 //   id       row id (uint32), printed in every result line; the diff key
 //   mapId    map of start and dest; a unit row runs only when the probe unit stands on this map
 //   s*/d*    start and destination, decimal or C99 hexfloat (as printed by %a), finite
-//   profile  unit: PathInfo(probe), the probe is the selected unit, without a selection the caller
-//            map:  PathInfo(mapId, instanceId) without a unit. Today that constructor drops the map id
+//   profile  unit: PathInfo(probe), the probe as described above
+//            map: PathInfo(mapId, instanceId) without a unit. Today that constructor drops the map id
 //                  and calculate() dereferences the null unit (crash), so map rows are only reported
 //                  as skipped=map_mode. They run once PR pair 2 (PathFinder.Unitless) is merged.
 //   chain    0: one calculate (getPathTo / getPathStepFrom); 1..40: the same PathInfo is reused for up to
@@ -29,16 +46,17 @@
 // Lines starting with '#' and blank lines are comments. A line that does not parse is reported as
 // "[PathReplay] bad line=<n>" and skipped; the run goes on.
 //
-// Output (server log; the caller's chat gets the done/partial line and errors):
-//   [PathReplay] begin file=<name> offset=<n> probe=<player|creature> entry=<n> map=<n>
+// Output (server log; the caller's chat or console gets the done/partial line and errors):
+//   [PathReplay] begin file=<name> offset=<n> probe=<player|creature> entry=<n> map=<n> probe_name=<player> probe_guid=<n>
 //   [PathReplay] id=<id> mode=unit type=0x<PathType> n=<points> end=<x>,<y>,<z> pts=<x>,<y>,<z>;...
 //   [PathReplay] id=<id> step=<k> mode=unit type=... n=... end=... pts=...      (one per chain step)
 //   [PathReplay] id=<id> chain steps=<k> n=<points of the joined path> stop=<nopath|stall|arrived|max>
 //   [PathReplay] id=<id> skipped=<map_mode|other_map>
 //   [PathReplay] done lines=<n> rows=<n> skipped=<n> bad=<n> ms=<n>
 //   [PathReplay] partial next=<offset> reason=<lines|time> lines=<n> rows=<n> skipped=<n> bad=<n> ms=<n>
-// end= is PathInfo::getActualEndPosition. The diff compares the lines with id= only (begin/done carry
-// the probe and the wall time).
+// end= is PathInfo::getActualEndPosition. probe_guid= is the low guid of the probe unit, probe_name= the
+// player it was found from (the named player of the probe argument, in game without it the caller). The
+// diff compares the lines with id= only (begin/done carry the probe and the wall time).
 //
 // Limits per call: at most PATH_REPLAY_MAX_LINES lines read (comments included) and a wall-clock budget
 // of PATH_REPLAY_BUDGET_MS, checked after every row. When either is reached the call ends after the
@@ -47,8 +65,8 @@
 // most PATH_REPLAY_MAX_LINE_LEN + 1 characters (the rest of a longer line is skipped, the line is bad)
 // and a file larger than PATH_REPLAY_MAX_FILE_BYTES, or one without a size (pipe, device), is refused.
 //
-// Header-only and free of server types so t/path_replay_test.cpp checks the name guard, the row parser,
-// the hexfloat format, the limits and the chain rule without a world.
+// Header-only and free of server types so t/path_replay_test.cpp checks the name guard, the probe spec,
+// the row parser, the hexfloat format, the limits and the chain rule without a world.
 
 #include <cmath>
 #include <cstdint>
@@ -67,6 +85,9 @@ constexpr uint32_t PATH_REPLAY_MAX_OFFSET = 100000;         // fixtures have ~54
 constexpr size_t PATH_REPLAY_MAX_NAME_LEN = 64;
 constexpr size_t PATH_REPLAY_MAX_LINE_LEN = 512;
 constexpr uint64_t PATH_REPLAY_MAX_FILE_BYTES = 64ull * 1024 * 1024;   // fixtures stay below 1 MB
+constexpr size_t PATH_REPLAY_MAX_PROBE_NAME_LEN = 12;       // MAX_PLAYER_NAME
+constexpr size_t PATH_REPLAY_MAX_PROBE_ENTRY_DIGITS = 9;    // entry below 10^9, fits uint32
+constexpr float PATH_REPLAY_PROBE_RANGE = 150.0f;           // <player>:<entry>: creature search radius, yd
 
 // Chain rule of WorldPosition::getPathFromPath / isPathTo with the bot defaults:
 // AiPlayerbot.TargetPosRecalcDistance 0.1 (not set in the live config) and maxZDistance 2.
@@ -142,6 +163,37 @@ inline bool PathReplayNameAllowed(std::string const& name)
     }
     if (path_replay_detail::IsReservedDeviceStem(name))
         return false;
+    return true;
+}
+
+// Probe spec "<player>" or "<player>:<entry>" (twow-repo#592 PATH-02, console form): the name is 1..12
+// ASCII letters, the entry 1..9 digits and > 0, nothing else (no blank, no sign, no second ':'). entry is
+// 0 for a player probe. On false name and entry are left untouched and nothing may be looked up.
+inline bool ParsePathReplayProbe(std::string const& spec, std::string& name, uint32_t& entry)
+{
+    size_t const colon = spec.find(':');
+    std::string const namePart = spec.substr(0, colon);
+    if (namePart.empty() || namePart.size() > PATH_REPLAY_MAX_PROBE_NAME_LEN)
+        return false;
+    for (char c : namePart)
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')))
+            return false;
+
+    uint32_t value = 0;
+    if (colon != std::string::npos)
+    {
+        std::string const entryPart = spec.substr(colon + 1);
+        if (entryPart.empty() || entryPart.size() > PATH_REPLAY_MAX_PROBE_ENTRY_DIGITS)
+            return false;
+        for (char c : entryPart)
+            if (c < '0' || c > '9')
+                return false;   // a second ':' ends here as well
+        value = uint32_t(std::strtoul(entryPart.c_str(), nullptr, 10));
+        if (value == 0)
+            return false;
+    }
+    name = namePart;
+    entry = value;
     return true;
 }
 

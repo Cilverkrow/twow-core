@@ -13834,15 +13834,16 @@ static void LogPathReplayResult(uint32 id, int32 step, PathInfo const& path)
 
 bool ChatHandler::HandleMmapsReplayCommand(char* args)
 {
+    // twow-repo#592 PATH-02: also allowed from the server console (M2 runs the replay scripted through
+    // mangosd.in). There is no session and no player then; the probe argument names the probe.
     Player* player = m_session ? m_session->GetPlayer() : nullptr;
-    if (!player)
-        return false;
 
     char* nameArg = ExtractLiteralArg(&args);
     uint32 offset = 0;
-    if (!nameArg || (*args && !ExtractUInt32(&args, offset)))
+    char* probeArg = nullptr;
+    if (!nameArg || (*args && !ExtractUInt32(&args, offset)) || (*args && !(probeArg = ExtractLiteralArg(&args))) || *args)
     {
-        PSendSysMessage("Syntax: .mmaps replay <file in DataDir/%s> [offset]", PATH_REPLAY_DIR);
+        PSendSysMessage("Syntax: .mmaps replay <file in DataDir/%s> [offset [<player>|<player>:<entry>]]", PATH_REPLAY_DIR);
         SetSentErrorMessage(true);
         return false;
     }
@@ -13856,16 +13857,64 @@ bool ChatHandler::HandleMmapsReplayCommand(char* args)
         return false;
     }
 
-    // Probe: the selected unit, without a selection the caller. A GM's chat command runs on the world
-    // thread in World::UpdateSessions, whatever the chat type (WorldSession::QueuePacket routes only
-    // SEC_PLAYER chat to the map or async threads), so no map updates while the rows read the probe's map
-    // and terrain, and every row stalls the whole world tick. The probe must be on the caller's map
-    // (fails closed on a stale selection) and not on a transport: getPathStepFrom converts to passenger
-    // coordinates there, which the replay does not model.
-    Unit* probe = GetSelectedUnit();
-    if (!probe || !probe->IsInWorld() || probe->GetMap() != player->GetMap() || probe->GetTransport())
+    // Probe argument ("<player>" or "<player>:<entry>", PathReplay.h): parsed before anything is looked up
+    // or opened, any other text fails closed.
+    std::string probeName;
+    uint32_t probeEntry = 0;
+    if (probeArg && !ParsePathReplayProbe(probeArg, probeName, probeEntry))
     {
-        SendSysMessage("[PathReplay] error=probe (select a unit on your map and not on a transport, or nothing for yourself)");
+        PSendSysMessage("[PathReplay] error=probe (<player> or <player>:<entry>, name 1..%u letters, entry 1..9 digits)", uint32(PATH_REPLAY_MAX_PROBE_NAME_LEN));
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    // Probe: the named player or the nearest live creature of that entry near him, in game without a
+    // probe argument the selected unit, without a selection the caller. A GM's chat command runs on the
+    // world thread in World::UpdateSessions, whatever the chat type (WorldSession::QueuePacket routes only
+    // SEC_PLAYER chat to the map or async threads), a console line in World::ProcessCliCommands after
+    // sMapMgr.Update returned, so no map updates while the rows read the probe's map and terrain, and
+    // every row stalls the whole world tick. A selected probe must be on the caller's map (fails closed on
+    // a stale selection); a named probe has no caller map check (the console has no map), unit rows run
+    // only on its map anyway. No probe on a transport: getPathStepFrom converts to passenger coordinates
+    // there, which the replay does not model.
+    Unit* probe = nullptr;
+    Player* probeFrom = nullptr;    // the player the probe was found from (begin line)
+    if (probeArg)
+    {
+        probeFrom = ObjectMgr::GetPlayer(probeName.c_str());   // normalizes the name, in world only
+        if (!probeFrom)
+        {
+            PSendSysMessage("[PathReplay] error=probe (player %s is not online)", probeName.c_str());
+            SetSentErrorMessage(true);
+            return false;
+        }
+        if (probeEntry)
+            probe = probeFrom->FindNearestCreature(probeEntry, PATH_REPLAY_PROBE_RANGE, true);
+        else
+            probe = probeFrom;
+        if (!probe || !probe->IsInWorld() || probe->GetTransport())
+        {
+            PSendSysMessage("[PathReplay] error=probe (no live creature %u within %u yd of %s, or the probe is on a transport)",
+                probeEntry, uint32(PATH_REPLAY_PROBE_RANGE), probeFrom->GetName());
+            SetSentErrorMessage(true);
+            return false;
+        }
+    }
+    else if (player)
+    {
+        probeFrom = player;
+        probe = GetSelectedUnit();
+        if (!probe || !probe->IsInWorld() || probe->GetMap() != player->GetMap() || probe->GetTransport())
+        {
+            SendSysMessage("[PathReplay] error=probe (select a unit on your map and not on a transport, or nothing for yourself)");
+            SetSentErrorMessage(true);
+            return false;
+        }
+    }
+    else
+    {
+        // Console (or a session without a player): no selection, so no default probe.
+        SendSysMessage("[PathReplay] error=probe (the console needs a probe: <player> or <player>:<entry> after the offset)");
         SetSentErrorMessage(true);
         return false;
     }
@@ -13897,8 +13946,9 @@ bool ChatHandler::HandleMmapsReplayCommand(char* args)
         ++lineNo;
 
     bool const isPlayer = probe->GetTypeId() == TYPEID_PLAYER;
-    sLog.outString("[PathReplay] begin file=%s offset=%u probe=%s entry=%u map=%u", name.c_str(), offset,
-        isPlayer ? "player" : "creature", isPlayer ? 0u : probe->GetEntry(), probe->GetMapId());
+    sLog.outString("[PathReplay] begin file=%s offset=%u probe=%s entry=%u map=%u probe_name=%s probe_guid=%u", name.c_str(), offset,
+        isPlayer ? "player" : "creature", isPlayer ? 0u : probe->GetEntry(), probe->GetMapId(), probeFrom->GetName(),
+        probe->GetGUIDLow());
 
     auto const started = std::chrono::steady_clock::now();
     uint32 linesRead = 0, rows = 0, skipped = 0, bad = 0;

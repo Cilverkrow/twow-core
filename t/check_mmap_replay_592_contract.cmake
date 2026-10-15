@@ -4,10 +4,13 @@ endif()
 
 # twow-repo#592 PATH-02, PR pair 0: `.mmaps replay <name> [offset]` replays fixture rows on fresh PathInfo
 # objects and writes [PathReplay] lines with hexfloat points, the proof base for PathInfo variant A
-# (old = new, bit exact). Diagnostic only, no switch: SEC_DEVELOPER, no console, reads only
+# (old = new, bit exact). Diagnostic only, no switch: SEC_DEVELOPER, reads only
 # DataDir/pathreplay/<plain name>, at most 500 lines and 200 ms wall clock per call, then
 # "[PathReplay] partial next=<offset>". Map-mode rows are skipped while PathInfo(mapId, instanceId)
 # still drops the map id (crash in calculate()); PR pair 2 changes both together.
+# Console form (M2 runs scripted through mangosd.in): `.mmaps replay <name> <offset> <probe>`, probe
+# "<player>" or "<player>:<entry>" (ParsePathReplayProbe, before the file is opened); without a session
+# there is no selection, so GetSelectedUnit() is only reached with a player.
 
 function(read_source path out_var)
   file(READ "${TW_CORE_ROOT}/${path}" text)
@@ -58,7 +61,8 @@ read_source("src/game/Commands/Commands.cpp" commands)
 read_source("src/game/Maps/PathReplay.h" replay_h)
 read_source("src/game/Maps/PathFinder.h" finder_h)
 
-# 1. Registered under .mmaps (".mmap replay" abbreviates it), SEC_DEVELOPER, not from the console.
+# 1. Registered under .mmaps (".mmap replay" abbreviates it), SEC_DEVELOPER, also from the console (only
+#    the leaf: FindCommand does not check the parent's flag, CliHandler::isAvailable checks the leaf).
 string(FIND "${chat_cpp}" "static ChatCommand mmapsCommandTable[] =" table_at)
 if (table_at EQUAL -1)
   message(FATAL_ERROR "#592 replay: mmapsCommandTable not found")
@@ -67,8 +71,12 @@ string(SUBSTRING "${chat_cpp}" ${table_at} -1 table)
 string(FIND "${table}" "};" table_end)
 string(SUBSTRING "${table}" 0 ${table_end} table)
 require_text("${table}"
-  "{ \"replay\",          SEC_DEVELOPER,     false, &ChatHandler::HandleMmapsReplayCommand,"
-  "replay entry (SEC_DEVELOPER, console false) in mmapsCommandTable")
+  "{ \"replay\",          SEC_DEVELOPER,     true,  &ChatHandler::HandleMmapsReplayCommand,"
+  "replay entry (SEC_DEVELOPER, console true) in mmapsCommandTable")
+# The other mmaps commands and the parent stay in game only.
+require_text("${table}" "{ \"path\",            SEC_DEVELOPER,     false, &ChatHandler::HandleMmapsPathCommand," "mmaps path stays console false")
+require_text("${table}" "{ \"near\",            SEC_DEVELOPER,     false, &ChatHandler::HandleMmapsNearCommand," "mmaps near stays console false")
+require_text("${chat_cpp}" "{ \"mmaps\",          SEC_DEVELOPER,       false, nullptr," "mmaps parent unchanged")
 require_text("${chat_h}" "bool HandleMmapsReplayCommand(char* args);" "handler declaration")
 
 # 2. Limits and the fixed directory are constants of the policy header (t/path_replay_test.cpp runs them).
@@ -104,12 +112,55 @@ forbid_text("${body}" "std::getline" "unbounded line read")
 function_body("${replay_h}" "inline void AppendPathReplayHex(std::string& out, float v)" body)
 require_text("${body}" "\"%a\", double(v)" "hexfloat points")
 
+# Probe spec of the console form: name 1..12 ASCII letters, optional ':' + 1..9 digits > 0, nothing else.
+require_text("${replay_h}" "constexpr size_t PATH_REPLAY_MAX_PROBE_NAME_LEN = 12;" "probe name at most 12 letters")
+require_text("${replay_h}" "constexpr size_t PATH_REPLAY_MAX_PROBE_ENTRY_DIGITS = 9;" "probe entry at most 9 digits")
+require_text("${replay_h}" "constexpr float PATH_REPLAY_PROBE_RANGE = 150.0f;" "creature probe radius 150 yd")
+function_body("${replay_h}" "inline bool ParsePathReplayProbe(std::string const& spec, std::string& name, uint32_t& entry)" body)
+require_text("${body}" "namePart.empty() || namePart.size() > PATH_REPLAY_MAX_PROBE_NAME_LEN" "probe name length")
+require_text("${body}" "if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')))" "probe name letters only")
+require_text("${body}" "entryPart.empty() || entryPart.size() > PATH_REPLAY_MAX_PROBE_ENTRY_DIGITS" "probe entry length")
+require_text("${body}" "if (c < '0' || c > '9')" "probe entry digits only")
+require_text("${body}" "if (value == 0)" "probe entry above 0")
+
 # 3. The handler: guard before the file is opened, only DataDir/pathreplay/, both limits, unit rows only.
 function_body("${commands}" "bool ChatHandler::HandleMmapsReplayCommand(char* args)" body)
 require_order("${body}" "if (!PathReplayNameAllowed(name) || offset > PATH_REPLAY_MAX_OFFSET)" "std::ifstream in(fileName);"
   "name guard before the file is opened")
 require_text("${body}" "std::string const fileName = sWorld.GetDataPath() + PATH_REPLAY_DIR + name;" "fixed directory path")
 require_text("${body}" "probe->GetMap() != player->GetMap() || probe->GetTransport()" "probe on the caller's map, not on a transport")
+
+# Console form: no session, no player. The handler must not give up without a player, the probe argument
+# is parsed before the file is opened, the selection is only read with a player, and the console without
+# a probe argument ends with an error before the file is opened.
+require_text("${body}" "Player* player = m_session ? m_session->GetPlayer() : nullptr;" "player only with a session")
+forbid_text("${body}" "if (!player)" "the handler gives up without a player (console)")
+require_order("${body}" "if (probeArg && !ParsePathReplayProbe(probeArg, probeName, probeEntry))" "std::ifstream in(fileName);"
+  "probe argument parsed before the file is opened")
+require_order("${body}" "if (!PathReplayNameAllowed(name) || offset > PATH_REPLAY_MAX_OFFSET)" "ObjectMgr::GetPlayer(probeName.c_str())"
+  "name guard before any probe lookup")
+require_order("${body}" "if (probeArg && !ParsePathReplayProbe(probeArg, probeName, probeEntry))" "ObjectMgr::GetPlayer(probeName.c_str())"
+  "probe argument parsed before the player lookup")
+# GetSelectedUnit() exactly once, inside the `else if (player)` block (no closing brace in between).
+string(REGEX MATCHALL "GetSelectedUnit\\(\\)" selected_calls "${body}")
+list(LENGTH selected_calls selected_count)
+if (NOT selected_count EQUAL 1)
+  message(FATAL_ERROR "#592 replay: GetSelectedUnit() must appear exactly once in the handler (found ${selected_count})")
+endif()
+string(FIND "${body}" "else if (player)" guard_at)
+string(FIND "${body}" "GetSelectedUnit()" selected_at)
+if (guard_at EQUAL -1 OR NOT guard_at LESS selected_at)
+  message(FATAL_ERROR "#592 replay: GetSelectedUnit() must be inside the 'else if (player)' block")
+endif()
+math(EXPR guard_len "${selected_at} - ${guard_at}")
+string(SUBSTRING "${body}" ${guard_at} ${guard_len} guarded)
+forbid_text("${guarded}" "}" "GetSelectedUnit() outside the 'else if (player)' block")
+require_text("${body}" "probe = probeFrom->FindNearestCreature(probeEntry, PATH_REPLAY_PROBE_RANGE, true);"
+  "creature probe: nearest live creature of the entry within PATH_REPLAY_PROBE_RANGE of the player")
+require_text("${body}" "if (!probe || !probe->IsInWorld() || probe->GetTransport())" "named probe in the world, not on a transport")
+require_order("${body}" "[PathReplay] error=probe (the console needs a probe" "std::ifstream in(fileName);"
+  "console without probe fails before the file is opened")
+require_text("${body}" "map=%u probe_name=%s probe_guid=%u\"" "probe identity at the end of the begin line")
 require_text("${body}" "PathFinder pathFinder(probe);" "fresh unit-mode PathInfo per row")
 require_order("${body}" "while ((lineRead = ReadPathReplayLine(in, line)) != PathReplayRead::End)" "PathFinder pathFinder(probe);"
   "PathInfo inside the row loop")
