@@ -393,6 +393,9 @@ namespace ai
         // twow-repo#592 (PATH-02): nullptr = unitless generation may run (AiPlayerbot.Perf.PathGenUnitless, PathFinder.Unitless,
         // Terrain.Preload.Continents, all tiles of maps 0/1 in the navmesh), else the cause for "[PathGen] skipped".
         char const* unitlessGenSkipCause();
+        // twow-repo#592: does the startup generation build node paths, i.e. need unitless pathfinding? A full generation, or
+        // an unlinked node that generateWalkPathMap would build a path from. Uncalculated links alone do not.
+        bool generationNeedsUnitlessPaths();
 
         void LoadMaps();
 
