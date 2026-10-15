@@ -73,6 +73,12 @@ AiPlayerbot.Park.AnyLevelInn = 0
 # AiPlayerbot.BotUpdateTrace = 1 and this switch off, for the A/B). 0 = off (default).
 AiPlayerbot.Park.SleepGrid = 0
 
+# twow-repo#541 P2 D0 (diagnostics, no gameplay change): 1 = count which source keeps the continent cells awake and log
+# [CellSource] once a minute: per continent cell update the cells of real players, the cells only bots add, the cells
+# only active non-players (active creatures, pets, transports) add, the number of each and the grid activation
+# distance. With the switch the players are marked in two passes (real clients first); 0 = off (default).
+AiPlayerbot.Park.CellSourceStats = 0
+
 # twow-repo#551 (owner 10.10.2026, test profile 20 / 150): MaxPerInn = parked bots per inn (0 = 25 as before);
 # MaxPerCity = parked bots per capital zone, its inns and city spots together (0 = no limit). A full inn sends
 # the bot to the next inn with room (any level with AnyLevelInn=1, else the level band), a full city to the next
@@ -915,6 +921,19 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+
+# twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
+# rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
+# stood a median 10 min after a rejected first quest route). FreshBackoffSeconds = N > 0: such a bot asks for a quest
+# route again after N s instead of the 8.1 backoff (2, 4, 8, 10 min); the failure count still grows. FreshGrindFailures
+# = N > 0: such a bot may choose a grind spot after N empty searches instead of GrindFallbackFailures. TraceInactive = 1
+# (works without Enable): the [QuestFirstRoute] rejected line splits not_active by reason (not_active_reasons=impossible,
+# map, no_mark, low_level_no_reward, no_turnin, hostile, other). [DirectTarget] state=summary once a minute.
+AiPlayerbot.DirectTargets.Enable = 0
+AiPlayerbot.DirectTargets.TraceInactive = 0
+AiPlayerbot.DirectTargets.FreshMaxLevel = 5
+AiPlayerbot.DirectTargets.FreshBackoffSeconds = 0
+AiPlayerbot.DirectTargets.FreshGrindFailures = 0
 # Hotfix 8.33 (twow-repo#544): with 1 a persistent roster bot on its own, out of combat on a
 # continent and with no player within visibility + react distance, moves without detailed path
 # finding: for a target on its map farther than react distance with no player at either end it
