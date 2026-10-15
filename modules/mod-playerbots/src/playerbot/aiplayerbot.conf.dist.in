@@ -73,6 +73,12 @@ AiPlayerbot.Park.AnyLevelInn = 0
 # AiPlayerbot.BotUpdateTrace = 1 and this switch off, for the A/B). 0 = off (default).
 AiPlayerbot.Park.SleepGrid = 0
 
+# twow-repo#541 P2 D0 (diagnostics, no gameplay change): 1 = count which source keeps the continent cells awake and log
+# [CellSource] once a minute: per continent cell update the cells of real players, the cells only bots add, the cells
+# only active non-players (active creatures, pets, transports) add, the number of each and the grid activation
+# distance. With the switch the players are marked in two passes (real clients first); 0 = off (default).
+AiPlayerbot.Park.CellSourceStats = 0
+
 # twow-repo#551 (owner 10.10.2026, test profile 20 / 150): MaxPerInn = parked bots per inn (0 = 25 as before);
 # MaxPerCity = parked bots per capital zone, its inns and city spots together (0 = no limit). A full inn sends
 # the bot to the next inn with room (any level with AnyLevelInn=1, else the level band), a full city to the next
