@@ -1,5 +1,5 @@
-// twow-repo#592 PATH-02 PR pair 0: `.mmaps replay` name guard, fixture rows, hexfloat format, limits and
-// the getPathFromPath chain rule (src/game/Maps/PathReplay.h), no server needed.
+// twow-repo#592 PATH-02 PR pair 0: `.mmaps replay` name guard, probe spec (console form), fixture rows,
+// hexfloat format, limits and the getPathFromPath chain rule (src/game/Maps/PathReplay.h), no server needed.
 #include "../src/game/Maps/PathReplay.h"
 
 #include <cmath>
@@ -77,6 +77,40 @@ int main()
     Require(PathReplayNameAllowed("com10"), "COM with two digits allowed");
     Require(PathReplayNameAllowed("lpt.tsv"), "LPT without digit allowed");
     Require(PathReplayNameAllowed("m2.con"), "device name as extension allowed");
+
+    // Probe spec of the console form: "<player>" or "<player>:<entry>", nothing else.
+    {
+        std::string name;
+        uint32_t entry = 77;
+        Require(ParsePathReplayProbe("Abc", name, entry) && name == "Abc" && entry == 0, "player probe");
+        Require(ParsePathReplayProbe("Abcdefghijkl", name, entry) && name == "Abcdefghijkl" && entry == 0, "name of 12 letters");
+        Require(ParsePathReplayProbe("Abc:68", name, entry) && name == "Abc" && entry == 68, "creature probe");
+        Require(ParsePathReplayProbe("Abc:123456789", name, entry) && name == "Abc" && entry == 123456789, "entry of 9 digits");
+        Require(ParsePathReplayProbe("probebot", name, entry) && name == "probebot", "lower case name kept, the core normalizes it");
+
+        name = "kept";
+        entry = 5;
+        Require(!ParsePathReplayProbe("", name, entry), "empty probe");
+        Require(!ParsePathReplayProbe("Abcdefghijklm", name, entry), "name of 13 letters");
+        Require(!ParsePathReplayProbe("Abc1", name, entry), "digit in the name");
+        Require(!ParsePathReplayProbe("Abc:", name, entry), "colon without entry");
+        Require(!ParsePathReplayProbe("Abc:0", name, entry), "entry 0");
+        Require(!ParsePathReplayProbe("Abc:000", name, entry), "entry 0 with leading zeros");
+        Require(!ParsePathReplayProbe("Abc:1234567890", name, entry), "entry of 10 digits");
+        Require(!ParsePathReplayProbe("Abc:12x", name, entry), "garbage after the entry");
+        Require(!ParsePathReplayProbe("Abc:+12", name, entry), "signed entry");
+        Require(!ParsePathReplayProbe("Abc:1:2", name, entry), "second colon");
+        Require(!ParsePathReplayProbe(":68", name, entry), "entry without name");
+        Require(!ParsePathReplayProbe("Abc Def", name, entry), "blank in the probe");
+        Require(!ParsePathReplayProbe("Abc ", name, entry), "trailing blank");
+        Require(!ParsePathReplayProbe("Abc: 68", name, entry), "blank before the entry");
+        Require(!ParsePathReplayProbe("Ab\xc3\xa4", name, entry), "non-ASCII name");
+        Require(!ParsePathReplayProbe(std::string("Abc\0", 4), name, entry), "embedded NUL");
+        Require(name == "kept" && entry == 5, "rejected probe leaves name and entry untouched");
+
+        Require(PATH_REPLAY_PROBE_RANGE == 150.0f, "creature probe search radius 150 yd");
+        Require(PATH_REPLAY_MAX_PROBE_NAME_LEN == 12, "probe name at most 12 letters (MAX_PLAYER_NAME)");
+    }
 
     // File size cap; -1 (tellg on a pipe or device) is refused.
     Require(PathReplayFileSizeAllowed(0), "empty file");

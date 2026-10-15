@@ -404,7 +404,8 @@ ChatCommand * ChatHandler::getCommandTable()
         { "path",            SEC_DEVELOPER,     false, &ChatHandler::HandleMmapsPathCommand,         "", nullptr },//HandleMmapsNearCommand
         { "near",            SEC_DEVELOPER,     false, &ChatHandler::HandleMmapsNearCommand,         "", nullptr },
         // twow-repo#592 PATH-02: deterministic PathInfo replay from <DataDir>/pathreplay/, test realms only.
-        { "replay",          SEC_DEVELOPER,     false, &ChatHandler::HandleMmapsReplayCommand,       "", nullptr },
+        // Console allowed (M2 runs it scripted through mangosd.in; the probe is then named in the arguments).
+        { "replay",          SEC_DEVELOPER,     true,  &ChatHandler::HandleMmapsReplayCommand,       "", nullptr },
         { nullptr,          0,                  false, nullptr,                                        "", nullptr }
     };
 
