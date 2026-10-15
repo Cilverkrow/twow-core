@@ -92,4 +92,9 @@ require_text("${policy}" "constexpr std::uint32_t FallbackRingSkip = 8;" "first 
 require_text("${policy}" "constexpr float TeleSnapYards = 60.0f;" "snap distance")
 require_text("${policy}" "constexpr float SeatRadiusYards = 15.0f;" "chair radius")
 
+# Acceptance signal (OB-30, 14.10.): one [Park] state=seated line per park, seat or fallback, with place and stand state.
+require_order("${mgr}" "bot->SetStandState(chairState);" "[Park] state=seated bot=%u slot=%u seat=1 stand=%u" "seated line after sitting down")
+require_text("${mgr}" "[Park] state=seated bot=%u slot=%u seat=0 stand=%u" "fallback place logged too")
+require_text("${mgr}" "if (!entry.seatedLogged)" "once per park")
+
 message(STATUS "park_seats source contract passed")

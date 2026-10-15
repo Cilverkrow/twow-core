@@ -17,6 +17,7 @@
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PacketTracePolicy.h"
+#include "playerbot/UnreachableTargetPolicy.h"
 #include "playerbot/BuffTargetPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/PerformanceMonitor.h"
@@ -946,6 +947,28 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // twow-repo#587 Z4 (always on): the most often unreachable turn-in targets, top 5 per 5 minutes and top 10 per hour -
+    // "entry:map:x:y:quest:count:bots". OB-30's live monitor takes the hourly line into the #541 summary.
+    {
+        static uint32 unreachableMinutes = 0;
+        ++unreachableMinutes;
+        if (unreachableMinutes % 5 == 0)
+        {
+            uint32 total = 0;
+            auto const top = ai::unreachable_target::ShortWindow().TakeTop(5, total);
+            if (total)
+                sLog.outBasic("[UnreachableTop] window_min=5 total=%u targets=%u top=%s", total, uint32(top.size()),
+                    ai::unreachable_target::Format(top).c_str());
+        }
+        if (unreachableMinutes % 60 == 0)
+        {
+            uint32 total = 0;
+            auto const top = ai::unreachable_target::LongWindow().TakeTop(10, total);
+            sLog.outBasic("[UnreachableTop] window_min=60 total=%u targets=%u top=%s", total, uint32(top.size()),
+                top.empty() ? "-" : ai::unreachable_target::Format(top).c_str());
+        }
+    }
 
     // twow-repo#588 (AiPlayerbot.Buff.RealPlayerStyle): buff targets chosen in the last minute, per category.
     if (sPlayerbotAIConfig.buffRealPlayerStyle)
@@ -6940,11 +6963,28 @@ void RandomPlayerbotMgr::ProcessParkedBots()
                         {
                             bot->SetFacingTo(entry.inn.orientation);
                             bot->SetStandState(chairState);
+                            // Once per park: the acceptance signal (seat, place, stand state) - the distance to the innkeeper
+                            // follows from the coordinates.
+                            if (!entry.seatedLogged)
+                            {
+                                entry.seatedLogged = true;
+                                sLog.outBasic("[Park] state=seated bot=%u slot=%u seat=1 stand=%u map=%u x=%.1f y=%.1f z=%.1f seconds=%u", guid, entry.slot,
+                                    uint32(bot->getStandState()), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                                    now - entry.since);
+                            }
                         }
                     }
                 }
                 else if (bot->getStandState() != UNIT_STAND_STATE_SIT && !bot->IsInCombat() && !bot->IsMoving())
                     bot->SetStandState(UNIT_STAND_STATE_SIT);
+                // twow-repo#551 (Park.Seats): a bot without a free seat stands on the outer rings - logged once as seat=0.
+                if (sPlayerbotAIConfig.parkSeats && entry.seatHeight < 0 && !entry.seatedLogged && !bot->IsMoving())
+                {
+                    entry.seatedLogged = true;
+                    sLog.outBasic("[Park] state=seated bot=%u slot=%u seat=0 stand=%u map=%u x=%.1f y=%.1f z=%.1f seconds=%u", guid, entry.slot,
+                        uint32(bot->getStandState()), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                        now - entry.since);
+                }
                 // twow-repo#541 (AiPlayerbot.Park.SleepGrid): only once it has arrived; the core keeps the
                 // cells awake while the bot fights, is dead, teleports or flies.
                 if (bot->HasGridSleepFlag() != sPlayerbotAIConfig.parkSleepGrid)
