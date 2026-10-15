@@ -608,6 +608,7 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTurnInParkCountsRouteDanger = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TurnInParkCountsRouteDanger", false);
     questFirstProgressionMinLevelForCrossMapQuestRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute", 10);
     questFirstProgressionCrossMapContinentsOnly = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly", false);
+    zoneExitTurnInStallCounts = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInStallCounts", false);
     zoneExitRescueHomeContinent = config.GetBoolDefault("AiPlayerbot.ZoneExit.RescueHomeContinent", false);
     zoneExitStrandedRescueAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ZoneExit.StrandedRescueAfter", 0)));
     zoneExitSkipBattlegroundQuests = config.GetBoolDefault("AiPlayerbot.ZoneExit.SkipBattlegroundQuests", false);
