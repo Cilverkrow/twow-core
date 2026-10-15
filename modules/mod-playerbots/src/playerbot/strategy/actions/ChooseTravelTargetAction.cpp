@@ -1076,8 +1076,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 ai->TellDebug(requester, "Not active: " + destination->GetTitle() + " " + std::to_string((uint32)round(destination->DistanceTo(bot))) + "y", "debug travel");
                 ++lastRejects.notActive;
                 // twow-repo#594 / P3-0: the reason, as a split of notActive (counted above as before).
+                // Judged with the PlayerTravelInfo of this choice (A10 reuse or the pre-loop one), not a new one (OB-10 review).
                 if (sPlayerbotAIConfig.directTargetsTraceInactive)
-                    ++lastRejects.notActiveReason[InactiveReasonOf(ai, destination, PlayerTravelInfo(bot))];
+                    ++lastRejects.notActiveReason[InactiveReasonOf(ai, destination, travelInfo)];
             }
 
         }
