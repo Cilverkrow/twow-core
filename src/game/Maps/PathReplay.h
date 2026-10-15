@@ -7,7 +7,9 @@
 // as hexfloats (%a, bit exact). Two runs on the same mmaps diff line by line: old build against old
 // build (A/A, precondition) and old against new (proof that PathInfo variant A leaves unit paths byte
 // identical). It changes no behaviour and runs only when called, so it has no switch. Never in
-// measurement arms: a call blocks the caller's thread for up to the time budget plus one row.
+// measurement arms: the command runs on the world thread (a GM's chat packet is always processed in
+// World::UpdateSessions, whatever the chat type, see WorldSession::QueuePacket), while no map updates,
+// so a call stalls the whole world tick for up to the time budget plus one row.
 //
 // Fixture: <DataDir>/pathreplay/<name>, plain text, one row per line, fields separated by blanks or tabs:
 //
@@ -41,7 +43,9 @@
 // Limits per call: at most PATH_REPLAY_MAX_LINES lines read (comments included) and a wall-clock budget
 // of PATH_REPLAY_BUDGET_MS, checked after every row. When either is reached the call ends after the
 // running row with "partial next=<offset>"; `.mmaps replay <name> <offset>` continues there. The offset
-// counts physical lines from the start of the file.
+// counts physical lines from the start of the file. Memory and I/O stay bounded as well: a line keeps at
+// most PATH_REPLAY_MAX_LINE_LEN + 1 characters (the rest of a longer line is skipped, the line is bad)
+// and a file larger than PATH_REPLAY_MAX_FILE_BYTES, or one without a size (pipe, device), is refused.
 //
 // Header-only and free of server types so t/path_replay_test.cpp checks the name guard, the row parser,
 // the hexfloat format, the limits and the chain rule without a world.
@@ -50,6 +54,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <istream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -57,9 +63,10 @@ constexpr char const* PATH_REPLAY_DIR = "pathreplay/";      // below DataDir, fi
 constexpr uint32_t PATH_REPLAY_MAX_LINES = 500;             // lines read per call
 constexpr uint32_t PATH_REPLAY_BUDGET_MS = 200;             // wall clock per call
 constexpr uint32_t PATH_REPLAY_MAX_CHAIN = 40;              // getPathFromPath default maxAttempt
-constexpr uint32_t PATH_REPLAY_MAX_OFFSET = 100000;         // fixtures have ~5200 rows
+constexpr uint32_t PATH_REPLAY_MAX_OFFSET = 100000;         // fixtures have ~5400 rows
 constexpr size_t PATH_REPLAY_MAX_NAME_LEN = 64;
 constexpr size_t PATH_REPLAY_MAX_LINE_LEN = 512;
+constexpr uint64_t PATH_REPLAY_MAX_FILE_BYTES = 64ull * 1024 * 1024;   // fixtures stay below 1 MB
 
 // Chain rule of WorldPosition::getPathFromPath / isPathTo with the bot defaults:
 // AiPlayerbot.TargetPosRecalcDistance 0.1 (not set in the live config) and maxZDistance 2.
@@ -100,9 +107,26 @@ enum class PathReplayStop
     Time,
 };
 
-// Fixture names: letters, digits, '_', '-', '.', no leading '.', no "..", no separators, no drive.
-// The file is always opened as DataDir + PATH_REPLAY_DIR + name, so an accepted name cannot leave
-// that directory.
+namespace path_replay_detail
+{
+// Windows opens a device instead of a file for these basenames in any directory and with any extension
+// (CON blocks on console input), so "CON", "nul.tsv" or "com1.x" are no fixture names on any platform.
+inline bool IsReservedDeviceStem(std::string const& name)
+{
+    std::string stem = name.substr(0, name.find('.'));
+    for (char& c : stem)
+        if (c >= 'a' && c <= 'z')
+            c = char(c - 'a' + 'A');
+    if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL")
+        return true;
+    return stem.size() == 4 && (stem.compare(0, 3, "COM") == 0 || stem.compare(0, 3, "LPT") == 0) &&
+        stem[3] >= '0' && stem[3] <= '9';
+}
+}
+
+// Fixture names: letters, digits, '_', '-', '.', no leading '.', no "..", no separators, no drive, no
+// reserved device name. The file is always opened as DataDir + PATH_REPLAY_DIR + name, so an accepted
+// name cannot leave that directory.
 inline bool PathReplayNameAllowed(std::string const& name)
 {
     if (name.empty() || name.size() > PATH_REPLAY_MAX_NAME_LEN)
@@ -116,7 +140,49 @@ inline bool PathReplayNameAllowed(std::string const& name)
         if (!ok)
             return false;
     }
+    if (path_replay_detail::IsReservedDeviceStem(name))
+        return false;
     return true;
+}
+
+// Size of the opened fixture (istream tellg at the end); -1 means it has none (pipe, device): refused.
+inline bool PathReplayFileSizeAllowed(int64_t size)
+{
+    return size >= 0 && uint64_t(size) <= PATH_REPLAY_MAX_FILE_BYTES;
+}
+
+enum class PathReplayRead
+{
+    Line,
+    TooLong,    // longer than PATH_REPLAY_MAX_LINE_LEN + 1, the rest of it was skipped: one bad line
+    End,
+};
+
+// One physical line with a fixed memory bound (std::getline would first read a line of any length into
+// memory). At most PATH_REPLAY_MAX_LINE_LEN + 1 characters are kept, so ParsePathReplayLine still sees a
+// line that is one character too long and rejects it. The '\n' is dropped, a '\r' stays (blank to the
+// parser), an embedded NUL stays in the line (a parse error, not a shorter line).
+inline PathReplayRead ReadPathReplayLine(std::istream& in, std::string& line)
+{
+    line.clear();
+    char buf[PATH_REPLAY_MAX_LINE_LEN + 2];
+    in.getline(buf, sizeof(buf));
+    std::streamsize const got = in.gcount();
+    if (in.bad())
+        return PathReplayRead::End;
+    if (in.fail())
+    {
+        // Nothing extracted: end of the file. Otherwise the buffer is full before the '\n'.
+        if (got == 0)
+            return PathReplayRead::End;
+        in.clear();
+        in.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        return PathReplayRead::TooLong;
+    }
+    // gcount counts the extracted '\n' too, unless the last line of the file has none.
+    size_t const len = size_t(got) - (in.eof() ? 0 : 1);
+    line.assign(buf, len);
+    return PathReplayRead::Line;
 }
 
 // Limits are checked after a row: the row that crosses the budget still completes.

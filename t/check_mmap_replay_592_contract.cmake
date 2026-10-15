@@ -88,6 +88,18 @@ require_text("${body}" "if (name[0] == '.' || name.find(\"..\") != std::string::
 forbid_text("${body}" "c == '/'" "slash allowed in the name")
 forbid_text("${body}" "c == '\\\\'" "backslash allowed in the name")
 forbid_text("${body}" "c == ':'" "drive separator allowed in the name")
+require_text("${body}" "if (path_replay_detail::IsReservedDeviceStem(name))" "reserved device names refused")
+function_body("${replay_h}" "inline bool IsReservedDeviceStem(std::string const& name)" body)
+require_text("${body}" "stem == \"CON\" || stem == \"PRN\" || stem == \"AUX\" || stem == \"NUL\"" "CON PRN AUX NUL")
+require_text("${body}" "stem.compare(0, 3, \"COM\") == 0 || stem.compare(0, 3, \"LPT\") == 0" "COMn LPTn")
+
+# Memory and I/O bounds: a line keeps at most MAX_LINE_LEN + 1 characters, the file has a size cap.
+require_text("${replay_h}" "constexpr uint64_t PATH_REPLAY_MAX_FILE_BYTES = 64ull * 1024 * 1024;" "file size cap 64 MB")
+function_body("${replay_h}" "inline PathReplayRead ReadPathReplayLine(std::istream& in, std::string& line)" body)
+require_text("${body}" "char buf[PATH_REPLAY_MAX_LINE_LEN + 2];" "fixed line buffer")
+require_text("${body}" "in.getline(buf, sizeof(buf));" "bounded read")
+require_text("${body}" "in.ignore(std::numeric_limits<std::streamsize>::max(), '\\n');" "rest of a long line skipped")
+forbid_text("${body}" "std::getline" "unbounded line read")
 
 function_body("${replay_h}" "inline void AppendPathReplayHex(std::string& out, float v)" body)
 require_text("${body}" "\"%a\", double(v)" "hexfloat points")
@@ -99,7 +111,13 @@ require_order("${body}" "if (!PathReplayNameAllowed(name) || offset > PATH_REPLA
 require_text("${body}" "std::string const fileName = sWorld.GetDataPath() + PATH_REPLAY_DIR + name;" "fixed directory path")
 require_text("${body}" "probe->GetMap() != player->GetMap() || probe->GetTransport()" "probe on the caller's map, not on a transport")
 require_text("${body}" "PathFinder pathFinder(probe);" "fresh unit-mode PathInfo per row")
-require_order("${body}" "while (std::getline(in, line))" "PathFinder pathFinder(probe);" "PathInfo inside the row loop")
+require_order("${body}" "while ((lineRead = ReadPathReplayLine(in, line)) != PathReplayRead::End)" "PathFinder pathFinder(probe);"
+  "PathInfo inside the row loop")
+require_text("${body}" "while (lineNo < offset && ReadPathReplayLine(in, line) != PathReplayRead::End)" "bounded offset skip")
+forbid_text("${body}" "std::getline" "unbounded line read in the handler")
+require_order("${body}" "if (!in || !PathReplayFileSizeAllowed(fileSize))" "while (lineNo < offset"
+  "file size cap before the first read")
+require_text("${body}" "PathReplayRead::TooLong ? PathReplayParse::Bad" "skipped long line counts as bad")
 require_text("${body}" "skipped=map_mode" "map rows reported as skipped")
 forbid_text("${body}" "PathFinder pathFinder(row." "map-mode PathInfo before PR pair 2")
 forbid_text("${body}" "std::make_unique<PathFinder>" "map-mode PathInfo before PR pair 2")

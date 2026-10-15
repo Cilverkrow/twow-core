@@ -13856,8 +13856,11 @@ bool ChatHandler::HandleMmapsReplayCommand(char* args)
         return false;
     }
 
-    // Probe: the selected unit, without a selection the caller. It must be on the caller's map (the
-    // command runs on the caller's thread) and not on a transport: getPathStepFrom converts to passenger
+    // Probe: the selected unit, without a selection the caller. A GM's chat command runs on the world
+    // thread in World::UpdateSessions, whatever the chat type (WorldSession::QueuePacket routes only
+    // SEC_PLAYER chat to the map or async threads), so no map updates while the rows read the probe's map
+    // and terrain, and every row stalls the whole world tick. The probe must be on the caller's map
+    // (fails closed on a stale selection) and not on a transport: getPathStepFrom converts to passenger
     // coordinates there, which the replay does not model.
     Unit* probe = GetSelectedUnit();
     if (!probe || !probe->IsInWorld() || probe->GetMap() != player->GetMap() || probe->GetTransport())
@@ -13876,9 +13879,21 @@ bool ChatHandler::HandleMmapsReplayCommand(char* args)
         return false;
     }
 
+    // Size cap before anything is read: bounds the offset skip and the line skips below; a stream without
+    // a size (pipe, device) is refused as well.
+    in.seekg(0, std::ios::end);
+    int64 const fileSize = int64(std::streamoff(in.tellg()));
+    in.seekg(0, std::ios::beg);
+    if (!in || !PathReplayFileSizeAllowed(fileSize))
+    {
+        PSendSysMessage("[PathReplay] error=size file=%s (at most %u MB)", name.c_str(), uint32(PATH_REPLAY_MAX_FILE_BYTES >> 20));
+        SetSentErrorMessage(true);
+        return false;
+    }
+
     std::string line;
     uint32 lineNo = 0;
-    while (lineNo < offset && std::getline(in, line))
+    while (lineNo < offset && ReadPathReplayLine(in, line) != PathReplayRead::End)
         ++lineNo;
 
     bool const isPlayer = probe->GetTypeId() == TYPEID_PLAYER;
@@ -13888,13 +13903,14 @@ bool ChatHandler::HandleMmapsReplayCommand(char* args)
     auto const started = std::chrono::steady_clock::now();
     uint32 linesRead = 0, rows = 0, skipped = 0, bad = 0;
     PathReplayStop stop = PathReplayStop::None;
-    while (std::getline(in, line))
+    PathReplayRead lineRead;
+    while ((lineRead = ReadPathReplayLine(in, line)) != PathReplayRead::End)
     {
         ++lineNo;
         ++linesRead;
 
         PathReplayRow row;
-        PathReplayParse const parsed = ParsePathReplayLine(line, row);
+        PathReplayParse const parsed = lineRead == PathReplayRead::TooLong ? PathReplayParse::Bad : ParsePathReplayLine(line, row);
         if (parsed == PathReplayParse::Bad)
         {
             ++bad;
