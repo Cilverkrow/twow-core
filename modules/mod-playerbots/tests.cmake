@@ -2739,6 +2739,25 @@ add_test(NAME path_fail_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/path_fail_source_contract_tests.cmake")
 
+# twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
+add_test(NAME budget_start_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/budget_start_source_contract_tests.cmake")
+
+add_executable(budget_start_policy_tests
+  "${PB_MODULE_DIR}/t/budget_start_policy_tests.cpp")
+
+target_include_directories(budget_start_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(budget_start_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME budget_start_policy
+  COMMAND budget_start_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#587 Z4 (owner 14.10.2026): stuck turn-ins drop out of the recovery loop (AiPlayerbot.ZoneExit.TurnInStallCounts).
 add_test(NAME turnin_stall_source_contract
   COMMAND "${CMAKE_COMMAND}"
