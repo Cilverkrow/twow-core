@@ -18,6 +18,7 @@ namespace ai
         void RewardNoItem(Quest const* quest, WorldObject* questGiver, std::string& out);
         void RewardSingleItem(Quest const* quest, WorldObject* questGiver, std::string& out);
         std::set<uint32> BestRewards(Quest const* quest);
+        uint32 PickReward(Quest const* quest, std::set<uint32> const& bestIds);   // twow-repo#308 LOOT-ROLE-01
         void RewardMultipleItem(Player* requester, Quest const* quest, WorldObject* questGiver, std::string& out);
         void AskToSelectReward(Player* requester, Quest const* quest, std::string& out, bool forEquip);
     };
