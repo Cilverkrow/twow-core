@@ -390,6 +390,10 @@ namespace ai
         void setHasToGen(bool enable = true) { hasToGen = enable; }
         bool gethasToGen() { return hasToGen || hasToFullGen; }
 
+        // twow-repo#592 (PATH-02): nullptr = unitless generation may run (AiPlayerbot.Perf.PathGenUnitless, PathFinder.Unitless,
+        // Terrain.Preload.Continents, all tiles of maps 0/1 in the navmesh), else the cause for "[PathGen] skipped".
+        char const* unitlessGenSkipCause();
+
         void LoadMaps();
 
         struct PathFindResult {
@@ -454,6 +458,7 @@ namespace ai
         bool hasToSave = false;
         bool hasToGen = false;
         bool hasToFullGen = false;
+        uint32 genRequests = 0;   // twow-repo#592: unlinked nodes + uncalculated links that set hasToGen at load ([PathGen] n=)
     };
 }
 

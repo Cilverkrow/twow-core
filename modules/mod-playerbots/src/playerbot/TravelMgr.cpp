@@ -1,6 +1,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/PathUnitlessBotPolicy.h"
 #include "playerbot/UnreachableTargetPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include <numeric>
@@ -3023,6 +3024,14 @@ void TravelMgr::GetFishLocations()
 {
     sLog.outString("Generating Fish locations.");
 
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.PathGenUnitless): the node route part of the jobs (getRoute, getNodes,
+    // getFullPath - unitless pathfinding, node graph writes, no m_nMapMtx) only runs with the unitless generation gate
+    // open, and then serially; with the switch on there is one job per map in this thread instead of one std::async per
+    // map. Gate closed: candidates that would need a route are dropped and counted ([PathGen] skipped reason=fish).
+    char const* const routeSkipCause = sTravelNodeMap.unitlessGenSkipCause();
+    bool const routeAllowed = !routeSkipCause;
+    bool const serial = sPlayerbotAIConfig.perfPathGenUnitless;
+
     BarGoLink bar(1000);
 
     std::vector<std::future<void>> calculations;
@@ -3050,7 +3059,10 @@ void TravelMgr::GetFishLocations()
         if (!hashFishing)
             continue;
 
-        calculations.push_back(std::async([this, mapId] { GetFishLocations(mapId); }));
+        if (serial)
+            GetFishLocations(mapId, routeAllowed);
+        else
+            calculations.push_back(std::async([this, mapId, routeAllowed] { GetFishLocations(mapId, routeAllowed); }));
 
         bar.step();
     }
@@ -3062,9 +3074,12 @@ void TravelMgr::GetFishLocations()
         calculations[i].wait();
         bar1.step();
     }
+
+    if (uint64 const skipped = ai::path_unitless_bot::fishSkipped.exchange(0, std::memory_order_relaxed))
+        sLog.outString("[PathGen] skipped reason=fish n=%llu cause=%s", (unsigned long long)skipped, routeSkipCause ? routeSkipCause : "none");
 }
 
-void TravelMgr::GetFishLocations(uint32 mapId)
+void TravelMgr::GetFishLocations(uint32 mapId, bool routeAllowed)
 {
     WorldPosition ironForge(0, -4832.27, -1069.64, 502.268);
     TravelNode* ironForgeNode = sTravelNodeMap.getNode(ironForge);
@@ -3141,6 +3156,15 @@ void TravelMgr::GetFishLocations(uint32 mapId)
 
                     if (!zone)
                         continue;
+
+                    // twow-repo#592 (PATH-02): the route part below runs only with the unitless generation gate open
+                    // (see GetFishLocations()); else the candidate is dropped and counted. Unreachable today:
+                    // PathInfo::getArea is a stub returning 0, so every candidate already left at "if (!area ...)".
+                    if (!routeAllowed)
+                    {
+                        ai::path_unitless_bot::fishSkipped.fetch_add(1, std::memory_order_relaxed);
+                        continue;
+                    }
 
                     std::vector<WorldPosition> startPath;
                     std::vector<WorldPosition> endPath;
