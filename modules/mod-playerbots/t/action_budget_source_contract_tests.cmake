@@ -52,10 +52,12 @@ require_text("${config_cpp}" "perfActionBudget = std::min<uint32>(3, uint32(std:
 require_text("${conf_dist}" "AiPlayerbot.Perf.ActionBudget = 0" "documented")
 require_text("${conf_dist}" "AiPlayerbot.Perf.ActionBudgetActions =" "action list documented")
 
-# Engine: checked before the action is evaluated; deferral = push back + end of this bot's tick.
+# Engine: deferral = push back + end of this bot's tick. twow-repo#591 (CLI-PATH, 15.10.2026): checked only after
+# isUseful and isPossible, right before the execution - a useless action never uses a slot.
 between("${engine}" "bool Engine::DoNextAction(" "\nvoid Engine::" walk)
-require_order("${walk}" "if (action && sPlayerbotAIConfig.perfActionBudget &&" "bool isUseful = false;" "budget before isUseful")
-between("${walk}" "if (action && sPlayerbotAIConfig.perfActionBudget &&" "bool isUseful = false;" budget_block)
+require_order("${walk}" "bool isPossible = action->isPossible();" "if (action && sPlayerbotAIConfig.perfActionBudget &&" "budget after isPossible")
+require_order("${walk}" "if (action && sPlayerbotAIConfig.perfActionBudget &&" "actionExecuted = ListenAndExecute(action, event);" "budget before the execution")
+between("${walk}" "if (action && sPlayerbotAIConfig.perfActionBudget &&" "actionExecuted = ListenAndExecute(action, event);" budget_block)
 require_order("${budget_block}" "PushAgain(actionNode, relevance, event, true);" "break;" "deferred action re-queued, tick ends")
 string(FIND "${budget_block}" "delete actionNode" deletes)
 if(NOT deletes EQUAL -1)
