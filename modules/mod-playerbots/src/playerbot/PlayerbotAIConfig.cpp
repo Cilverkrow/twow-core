@@ -422,6 +422,7 @@ bool PlayerbotAIConfig::Initialize()
     parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", false);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
+    botUpdateTraceTriggers = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTriggers", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
     checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
     initPetCache = config.GetBoolDefault("AiPlayerbot.InitPet.Cache", false);
