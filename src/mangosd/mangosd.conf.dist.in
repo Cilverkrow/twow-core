@@ -654,9 +654,18 @@ PerformanceLog.SlowPacketBroadcast = 0
 # PerformanceLog.TickStatsInterval
 #   Seconds per aggregated line, at least 10.
 #   Default: 60
+#
+# PerformanceLog.TickStatsExtended
+#   twow-repo#592 (PATH-02, measurement only): 1 = the "Tick stats" line gets
+#   " over20=N over50=N" appended behind over200 (ticks strictly above 20 and
+#   50 ms). The live-near loads sit between 20 and 100 ms, where over100 does not
+#   move. Not the same edges as [BotUpdate] over10ms/over20ms (log2 buckets from
+#   16.4 / 32.8 ms). Only read with PerformanceLog.TickStats = 1.
+#   Default: 0 (off, the line stays byte-identical)
 
 PerformanceLog.TickStats = 0
 PerformanceLog.TickStatsInterval = 60
+PerformanceLog.TickStatsExtended = 0
 
 # PerformanceLog.WorldTick
 #   Wait analysis (twow-repo#541). One block per minute in the performance log:

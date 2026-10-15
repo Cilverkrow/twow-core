@@ -2,6 +2,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
 #include <cerrno>
 #include <cstdlib>
@@ -510,6 +511,9 @@ bool PlayerbotAIConfig::Initialize()
     perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
     perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
     perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault("AiPlayerbot.Perf.RouteFailCooldownSeconds", 0));
+    perfRouteTimeTrace = config.GetBoolDefault("AiPlayerbot.Perf.RouteTimeTrace", false);
+    perfRoutePrecheck = ai::route_precheck::ClampLevel(config.GetIntDefault("AiPlayerbot.Perf.RoutePrecheck", 0));
+    perfRouteFailEarlySkip = ai::stall_guard::ClampRouteFailEarlySkip(config.GetIntDefault("AiPlayerbot.Perf.RouteFailEarlySkip", 0));
     shamanImbueBySpec = config.GetBoolDefault("AiPlayerbot.Shaman.ImbueBySpec", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);
