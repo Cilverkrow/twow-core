@@ -340,38 +340,6 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
             if(action)
                 action->setRelevance(relevance);
 
-            // twow-repo#591 (AiPlayerbot.Perf.ActionBudgetStartExempt): a bot without an active travel target chooses one without budget.
-            bool budgetStartExempt = false;
-            if (action && sPlayerbotAIConfig.perfActionBudget && sPlayerbotAIConfig.perfActionBudgetStartExempt &&
-                ai::action_budget::IsTravelTargetChoice(action->getName()))
-            {
-                TravelTarget* travelTarget = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
-                budgetStartExempt = ai::action_budget::StartExempt(true, action->getName(), travelTarget && travelTarget->IsActive());
-                if (budgetStartExempt)
-                    ai::action_budget::Counter(ai::action_budget::StartExempted).fetch_add(1, std::memory_order_relaxed);
-            }
-
-            // twow-repo#541 (owner 11.10.2026, AiPlayerbot.Perf.ActionBudget): an expensive action needs budget of
-            // this map thread and world tick (ActionBudgetPolicy.h). Without it the action goes back into the queue
-            // unchanged and this bot's tick ends; after MaxDeferrals deferrals in a row it runs regardless.
-            if (action && sPlayerbotAIConfig.perfActionBudget && !budgetStartExempt &&
-                ai::action_budget::IsExpensive(action->getName(), sPlayerbotAIConfig.perfActionBudgetActions))
-            {
-                uint32 const window = ai::action_budget::Window(WorldTimer::getMSTime());
-                if (!ai::action_budget::TryTake(sPlayerbotAIConfig.perfActionBudget, ai->GetBot()->GetGUIDLow(), window,
-                    window, actionBudgetDeferrals, ai::action_budget::ThreadLocal(), sPlayerbotAIConfig.perfActionBudgetLimit))
-                {
-                    ++actionBudgetDeferrals;
-                    ai::action_budget::Counter(ai::action_budget::Deferred).fetch_add(1, std::memory_order_relaxed);
-                    LogAction("A:%s - DEFERRED", action->getName().c_str());
-                    PushAgain(actionNode, relevance, event, true);
-                    break;
-                }
-                ai::action_budget::Counter(actionBudgetDeferrals >= ai::action_budget::MaxDeferrals
-                    ? ai::action_budget::Forced : ai::action_budget::Executed).fetch_add(1, std::memory_order_relaxed);
-                actionBudgetDeferrals = 0;
-            }
-
             if (!action)
             {
                 if (sPlayerbotAIConfig.CanLogAction(ai, actionNode->getName(), false, ""))
@@ -450,6 +418,40 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 
                     if (isPossible && relevance)
                     {
+                        // twow-repo#591 (AiPlayerbot.Perf.ActionBudgetStartExempt): a bot without an active travel target chooses one without budget.
+                        bool budgetStartExempt = false;
+                        if (action && sPlayerbotAIConfig.perfActionBudget && sPlayerbotAIConfig.perfActionBudgetStartExempt &&
+                            ai::action_budget::IsTravelTargetChoice(action->getName()))
+                        {
+                            TravelTarget* travelTarget = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
+                            budgetStartExempt = ai::action_budget::StartExempt(true, action->getName(), travelTarget && travelTarget->IsActive());
+                            if (budgetStartExempt)
+                                ai::action_budget::Counter(ai::action_budget::StartExempted).fetch_add(1, std::memory_order_relaxed);
+                        }
+
+                        // twow-repo#541 (owner 11.10.2026, AiPlayerbot.Perf.ActionBudget): an expensive action needs budget of
+                        // this map thread and world tick (ActionBudgetPolicy.h). Without it the action goes back into the queue
+                        // unchanged and this bot's tick ends; after MaxDeferrals deferrals in a row it runs regardless.
+                        // twow-repo#591 (CLI-PATH, 15.10.2026): taken only here, once isUseful and isPossible passed - an
+                        // action that would be dropped as useless no longer uses a slot, and "executed" counts executions.
+                        if (action && sPlayerbotAIConfig.perfActionBudget && !budgetStartExempt &&
+                            ai::action_budget::IsExpensive(action->getName(), sPlayerbotAIConfig.perfActionBudgetActions))
+                        {
+                            uint32 const window = ai::action_budget::Window(WorldTimer::getMSTime());
+                            if (!ai::action_budget::TryTake(sPlayerbotAIConfig.perfActionBudget, ai->GetBot()->GetGUIDLow(), window,
+                                window, actionBudgetDeferrals, ai::action_budget::ThreadLocal(), sPlayerbotAIConfig.perfActionBudgetLimit))
+                            {
+                                ++actionBudgetDeferrals;
+                                ai::action_budget::Counter(ai::action_budget::Deferred).fetch_add(1, std::memory_order_relaxed);
+                                LogAction("A:%s - DEFERRED", action->getName().c_str());
+                                PushAgain(actionNode, relevance, event, true);
+                                break;
+                            }
+                            ai::action_budget::Counter(actionBudgetDeferrals >= ai::action_budget::MaxDeferrals
+                                ? ai::action_budget::Forced : ai::action_budget::Executed).fetch_add(1, std::memory_order_relaxed);
+                            actionBudgetDeferrals = 0;
+                        }
+
                         auto pmo4 = sPerformanceMonitor.start(PERF_MON_ACTION, "Execute", ai);
                         actionExecuted = ListenAndExecute(action, event);
                         pmo4.reset();
