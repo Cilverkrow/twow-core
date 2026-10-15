@@ -108,6 +108,9 @@ void WorldTickSlowLineTest()
     Require(names.size() == PartCount, "part names unique");
     Require(std::string(PartName(PartCount)) == "?", "unknown part");
     Require(std::string(PartName(RTerrain)) == "r_terrain" && std::string(PartName(Idle)) == "idle", "part names");
+    // twow-repo#597 review: WorldTickEnd after the sleep has its own [StallWatch] phase; never on the slow line
+    // (the exact line above has no tick_end).
+    Require(std::string(PartName(TickEnd)) == "tick_end" && TickEnd + 1 == PartCount, "tick_end part");
 }
 
 void LogWaitTest()

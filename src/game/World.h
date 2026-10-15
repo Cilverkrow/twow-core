@@ -1103,12 +1103,20 @@ class World
         // reads. Relaxed atomics, written by the world thread only while the switch is on.
         static void SetStallWatch(bool on);
         static bool StallWatchOn() { return s_stallWatchOn.load(std::memory_order_relaxed); }
-        static void StallWatchTickBegin(uint64 startUs)
+        // part = RPre for World::Update, TickEnd for WorldTickEnd after the sleep (its own age window).
+        static void StallWatchTickBegin(uint64 startUs, world_tick_slow::Part part = world_tick_slow::RPre)
         {
             if (!s_stallWatchOn.load(std::memory_order_relaxed))
                 return;
             s_stallTickStartUs.store(startUs, std::memory_order_relaxed);
-            s_stallPart.store(uint32(world_tick_slow::RPre), std::memory_order_relaxed);
+            s_stallPart.store(uint32(part), std::memory_order_relaxed);
+        }
+        // The running tick goes on in another part (TickEnd: RecordTick after World::Update).
+        static void StallWatchPart(world_tick_slow::Part part)
+        {
+            if (!s_stallWatchOn.load(std::memory_order_relaxed))
+                return;
+            s_stallPart.store(uint32(part), std::memory_order_relaxed);
         }
         static void StallWatchTickEnd()
         {

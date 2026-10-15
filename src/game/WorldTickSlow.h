@@ -20,7 +20,8 @@ namespace world_tick_slow
 {
 // The parts of one world tick in execution order. Parts that are a [WorldTick] phase (Sessions,
 // Map*, AsyncTasks, Results) are timed by the #541 clocks; the mgr_* and r_* parts are the split of
-// "managers" and "rest". Idle = outside World::Update (sleep).
+// "managers" and "rest". Idle = outside World::Update (sleep). TickEnd (twow-repo#597 review) is never
+// timed and not on the [WorldTickSlow] line; only [StallWatch] reports it.
 enum Part : uint8_t
 {
     Idle,
@@ -56,6 +57,7 @@ enum Part : uint8_t
     RGuild,         // sGuildMgr.Update
     RHook,          // WorldScript OnUpdate hooks (bots, AhBot, remote commands, dungeon clear)
     ROther,         // census, shellcoin, maintenance, broadcasts, world buffs, daily quests, restart check
+    TickEnd,        // [StallWatch] only: after World::Update (RecordTick, WorldTickEnd and its log lines)
     PartCount
 };
 
@@ -64,7 +66,8 @@ inline char const* PartName(uint32_t part)
     static char const* const names[PartCount] = { "idle", "r_pre", "r_ah", "sessions", "r_dispatch", "mgr_transport",
         "maps", "teleports", "maps_pre", "maps_wait", "switch_instances", "maps_post", "mgr_bg", "mgr_lfg", "mgr_lft",
         "mgr_guard", "mgr_zone", "mgr_dynvis", "mgr_eluna", "mgr_offline", "async_tasks", "r_savevars", "results",
-        "r_corpses", "r_events", "r_remove", "r_mps", "r_account", "r_cli", "r_terrain", "r_guild", "r_hook", "r_other" };
+        "r_corpses", "r_events", "r_remove", "r_mps", "r_account", "r_cli", "r_terrain", "r_guild", "r_hook", "r_other",
+        "tick_end" };
     return part < PartCount ? names[part] : "?";
 }
 
