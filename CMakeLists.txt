@@ -987,6 +987,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(tick_stats_test
     "${TW_CORE_ROOT}/t/tick_stats_test.cpp")
   add_test(NAME tick_stats_test COMMAND tick_stats_test)
+  # twow-repo#592 (PATH-02): PerformanceLog.TickStatsExtended (over20/over50), the line byte-identical when off.
+  add_test(NAME tick_stats_592_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_tick_stats_592_contract.cmake")
   # twow-repo#541: [WorldTick] phases and [MapTick] region barrier aggregation (PerformanceLog.WorldTick).
   add_executable(world_tick_trace_test
     "${TW_CORE_ROOT}/t/world_tick_trace_test.cpp")
@@ -1005,6 +1010,14 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_mmap_race_560_contract.cmake")
+  # twow-repo#592 PATH-02 PR pair 0: `.mmaps replay` (name guard, fixture rows, hexfloats, 500 lines / 200 ms, chain rule).
+  add_executable(path_replay_test
+    "${TW_CORE_ROOT}/t/path_replay_test.cpp")
+  add_test(NAME path_replay_test COMMAND path_replay_test)
+  add_test(NAME mmap_replay_592_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_mmap_replay_592_contract.cmake")
   # twow-repo#592 (PATH-02): PathInfo without a Unit - map mode behind PathFinder.Unitless, fail closed,
   # Unit paths unchanged (accessor texts, short circuits, owner-read count, getArea stub).
   add_executable(path_unitless_592_test

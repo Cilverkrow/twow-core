@@ -1,8 +1,10 @@
 // twow-repo#351: nearest-rank percentiles and slow counters of the aggregated
-// tick statistics.
+// tick statistics. twow-repo#592 (PATH-02): over20/over50 and the line format
+// with PerformanceLog.TickStatsExtended off (byte-identical) and on.
 #include "../src/game/TickStats.h"
 
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -15,6 +17,15 @@ namespace
         if (actual != expected)
         {
             std::cerr << label << ": got " << actual << ", expected " << expected << "\n";
+            ++failures;
+        }
+    }
+
+    void ExpectText(char const* actual, char const* expected, char const* label)
+    {
+        if (std::strcmp(actual, expected) != 0)
+        {
+            std::cerr << label << ": got \"" << actual << "\", expected \"" << expected << "\"\n";
             ++failures;
         }
     }
@@ -81,6 +92,39 @@ int main()
         TickStatsSummary s = SummarizeTickStats(v);
         Expect(s.over100, 1, "boundary: 100 is not over 100");
         Expect(s.over200, 0, "boundary: 200 is not over 200");
+    }
+
+    {
+        // twow-repo#592: over20/over50 count strictly above the edge, like over100.
+        std::vector<uint32_t> v{ 20, 21, 50, 51 };
+        TickStatsSummary s = SummarizeTickStats(v);
+        Expect(s.over20, 3, "boundary: 20 is not over 20, 21/50/51 are");
+        Expect(s.over50, 1, "boundary: 50 is not over 50, 51 is");
+        Expect(s.over100, 0, "boundary: none over 100");
+    }
+    {
+        std::vector<uint32_t> none;
+        TickStatsSummary s = SummarizeTickStats(none);
+        Expect(s.over20, 0, "empty: over20");
+        Expect(s.over50, 0, "empty: over50");
+    }
+    {
+        // Switch off: exactly the #351 line, byte for byte. Switch on: the same
+        // line with " over20=N over50=N" behind over200.
+        std::vector<uint32_t> v{ 10, 30, 60, 150, 250 };
+        TickStatsSummary s = SummarizeTickStats(v);
+        char line[256];
+        FormatTickStatsLine(line, sizeof(line), 60, s, false);
+        ExpectText(line, "Tick stats: interval=60s ticks=5 p50=60ms p95=250ms p99=250ms max=250ms over100=2 over200=1",
+            "line format with the switch off");
+        FormatTickStatsLine(line, sizeof(line), 60, s, true);
+        ExpectText(line, "Tick stats: interval=60s ticks=5 p50=60ms p95=250ms p99=250ms max=250ms over100=2 over200=1 over20=4 over50=3",
+            "line format with the switch on");
+        std::vector<uint32_t> none;
+        TickStatsSummary e = SummarizeTickStats(none);
+        FormatTickStatsLine(line, sizeof(line), 10, e, false);
+        ExpectText(line, "Tick stats: interval=10s ticks=0 p50=0ms p95=0ms p99=0ms max=0ms over100=0 over200=0",
+            "empty interval, switch off");
     }
 
     if (failures)

@@ -2893,3 +2893,74 @@ set_target_properties(loot_role_policy_tests PROPERTIES
 add_test(NAME loot_role_policy
   COMMAND loot_role_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#592 (PATH-02 phase 2): phase times of every node route build, [RouteTime] once a minute (AiPlayerbot.Perf.RouteTimeTrace).
+add_test(NAME route_time_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/route_time_source_contract_tests.cmake")
+
+add_executable(route_time_policy_tests
+  "${PB_MODULE_DIR}/t/route_time_policy_tests.cpp")
+
+target_include_directories(route_time_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(route_time_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(route_time_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME route_time_policy
+  COMMAND route_time_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#592 (PATH-02 phase 2): the travel node graph read path under the shared node map lock (getNodes with find()),
+# [TravelNodes] walk_links_without_points= at load.
+add_test(NAME travel_node_graph_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/travel_node_graph_source_contract_tests.cmake")
+
+# twow-repo#592 (PATH-02 phase 2): end point pre-check of node route searches (AiPlayerbot.Perf.RoutePrecheck, 0 off, 1 shadow).
+add_test(NAME route_precheck_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/route_precheck_source_contract_tests.cmake")
+
+add_executable(route_precheck_policy_tests
+  "${PB_MODULE_DIR}/t/route_precheck_policy_tests.cpp")
+
+target_include_directories(route_precheck_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(route_precheck_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(route_precheck_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME route_precheck_policy
+  COMMAND route_precheck_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#592 (PATH-02 phase 2): a repeated route failure is left out before its direct attempt (AiPlayerbot.Perf.RouteFailEarlySkip, 0 off, 1 shadow).
+add_test(NAME route_fail_early_skip_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/route_fail_early_skip_source_contract_tests.cmake")
+
+add_executable(route_fail_early_skip_policy_tests
+  "${PB_MODULE_DIR}/t/route_fail_early_skip_policy_tests.cpp")
+
+target_include_directories(route_fail_early_skip_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(route_fail_early_skip_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(route_fail_early_skip_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME route_fail_early_skip_policy
+  COMMAND route_fail_early_skip_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
