@@ -441,6 +441,8 @@ bool PlayerbotAIConfig::Initialize()
     perfLogActionFastPath = config.GetBoolDefault("AiPlayerbot.Perf.LogActionFastPath", false);
     perfActionBudget = std::min<uint32>(3, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Perf.ActionBudget", 0))));
     LoadListString<std::vector<std::string> >(config.GetStringDefault("AiPlayerbot.Perf.ActionBudgetActions", ""), perfActionBudgetActions);
+    perfActionBudgetStartExempt = config.GetBoolDefault("AiPlayerbot.Perf.ActionBudgetStartExempt", false);
+    perfActionBudgetLimit = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Perf.ActionBudgetLimit", 0)));
     if (perfActionBudgetActions.empty())
         perfActionBudgetActions = ai::action_budget::DefaultExpensiveActions();
     botUpdateTraceTailFix = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTailFix", false);
