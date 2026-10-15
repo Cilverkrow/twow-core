@@ -2516,6 +2516,19 @@ AiPlayerbot.Perf.RouteFailEarlySkip = 0
 # value. Fish candidates that would need a route are dropped ("[PathGen] skipped reason=fish", only when there were
 # any - the route part is unreachable today, PathInfo::getArea is a stub).
 AiPlayerbot.Perf.PathGenUnitless = 0
+# twow-repo#597 (TICK-01, AhBot guard): AhBot runs only with an ahbot.conf (next to mangosd.conf or in the compiled-in
+# config dir) that leaves AhBot.Enabled on. Without one ("AhBot is Disabled. No configuration file at ...") AhBot still
+# schedules an auction check on every world tick: one detached thread start, one synchronous
+# "select ... from mail where subject like 'AH Proposition%'" query and its log lines per tick, because updateInterval
+# is never read and stays 0 (live 14.10.2026: ~20 thread starts a second, 53 % of all log lines, one such start right
+# before every stall of 2 s or more).
+#   1 = AhBot::Update returns at once (no thread, no query, no log line) while the AhBot config is not loaded or
+#       AhBot.Enabled = 0; one "[AhBotGuard] require_config=1 config_loaded=<0|1> enabled=<0|1> update=<idle|scheduled>"
+#       line at startup. A realm with a loaded and enabled ahbot.conf runs exactly as with 0; .ahbot is unchanged.
+#   0 = as before, no extra line (default).
+# Read from this file, not ahbot.conf, because it has to work exactly when ahbot.conf is missing.
+# Live should run 1 after the A/B M-H1 (roster 540 without ahbot.conf, image without / with this guard).
+AiPlayerbot.AhBot.RequireConfig = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
