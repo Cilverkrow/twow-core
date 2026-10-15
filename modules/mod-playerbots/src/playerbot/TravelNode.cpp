@@ -1,4 +1,4 @@
-        ai::route_time::Global().AddBuild(times);// botpch.h supplied the boost headers; the module build has no precompiled
+// botpch.h supplied the boost headers; the module build has no precompiled
 // header, so the one use here names its own.
 #include <boost/filesystem.hpp>
 

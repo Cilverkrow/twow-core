@@ -104,6 +104,16 @@ function_body("${node_cpp}" "    RouteTimeScope(bool on, ai::path_fail::RouteFai
 require_order("${scope_ctor}" "        if (!on)\n            return;" "ai::route_time::Active() = &times;" "nothing set when off")
 require_text("${node_cpp}" "        if (!times.on)\n            return;\n        times.totalUs = ai::bot_update::SinceUs(startUs);" "nothing counted when off")
 require_text("${node_cpp}" "        ai::route_time::Active() = previous;\n        ai::route_time::Global().AddBuild(times);" "active build restored, one count per build")
+# The scope's AddBuild is the only one, and TravelNode.cpp still starts with its header comment (a stray copy of the
+# AddBuild line once landed at file scope in line 1: no contract saw it, only the compiler).
+count_text("${node_cpp}" "AddBuild(" node_add_builds)
+if(NOT node_add_builds EQUAL 1)
+  message(FATAL_ERROR "#592 RouteTime: expected exactly one AddBuild in TravelNode.cpp (RouteTimeScope), found ${node_add_builds}")
+endif()
+string(FIND "${node_cpp}" "// botpch.h supplied the boost headers; the module build has no precompiled\n" node_header_at)
+if(NOT node_header_at EQUAL 0)
+  message(FATAL_ERROR "#592 RouteTime: TravelNode.cpp must start with its header comment '// botpch.h supplied ...'")
+endif()
 
 # 4. getRoute(position): the phases read the active build; every clock read behind it.
 function_body("${node_cpp}" "TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition endPos," route)
