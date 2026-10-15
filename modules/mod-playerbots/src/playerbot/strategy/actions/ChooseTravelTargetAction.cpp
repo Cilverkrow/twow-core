@@ -11,6 +11,7 @@
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RouteDangerPolicy.h"
+#include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/StartupTravelPolicy.h"
@@ -946,7 +947,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                         ++lastRejects.crossMap;
                         continue;
                     }
-                    if (danger == route_danger::Reason::TargetZoneLevel)
+                    // twow-repo#575 (PATH-01 E5, AiPlayerbot.CustomRaceStartZones): up to level 12 a goblin / high elf
+                    // is never deferred by an area level inside its own start zone (sub-areas there are DBC level 5-10)
+                    // or, for the goblin, in Sparkwater Port (4021 = 36), where 41169 / 41170 change hands.
+                    if (danger == route_danger::Reason::TargetZoneLevel &&
+                        !ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), bot->GetLevel(),
+                            position->getMapId(), position->getX(), position->getY()))
                     {
                         ++deferredZoneLevel;
                         ++lastRejects.zoneLevel;
@@ -2097,7 +2103,10 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     if (UsesQuestFirstProgression(bot))
     {
         searchStage = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage")));
-        if (!searchStage && ai::quest_search::ZoneBelowBot(WorldPosition(bot).getAreaLevelOrParent(), bot->GetLevel()))
+        // twow-repo#575 (PATH-01 E5): not in the own start zone up to level 12 (the high-elf spine runs to L11).
+        if (!searchStage && ai::quest_search::ZoneBelowBot(WorldPosition(bot).getAreaLevelOrParent(), bot->GetLevel()) &&
+            !ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), bot->GetLevel(),
+                bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()))
             searchStage = 1;
     }
     std::vector<std::tuple<uint32, int32, float>> destinationFetches = { {(uint32)TravelDestinationPurpose::QuestGiver, 0,

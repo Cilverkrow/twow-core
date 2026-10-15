@@ -10,6 +10,7 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/CorpseRunPolicy.h"
+#include "playerbot/StartZonePolicy.h"
 // The base class. Came in through botpch.h inside the bot library; a module
 // including this header from outside has no botpch.
 #include "GenericActions.h"
@@ -251,7 +252,9 @@ namespace ai
             // overrides their homebind to reflect this. GetPlayerInfo() below would return the
             // real racial spawn point instead, sending the bot right back to the excluded zone
             // on every death, so route these two races through the homebind branch instead.
-            bool useHomebindOverride = bot->getRace() == RACE_GOBLIN || bot->getRace() == RACE_HIGH_ELF;
+            // twow-repo#575 (PATH-01 E2, AiPlayerbot.CustomRaceStartZones): on, the real start zone is their spawn up to
+            // level 10, the homebind above, so a level 25 goblin is not sent back to the island.
+            bool useHomebindOverride = ai::start_zone::RepopUsesHomebind(bot->getRace(), bot->GetLevel(), sPlayerbotAIConfig.customRaceStartZones);
             PlayerInfo const* defaultPlayerInfo = useHomebindOverride ? nullptr : sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
 
             // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): the evacuation must not end in a hostile area. A

@@ -1,6 +1,7 @@
 #include "WorldPosition.h"
 #include "GuidPosition.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/AreaTeamPolicy.h"
 #include "TravelNode.h"
 
 #include "Maps/Map.h"
@@ -470,10 +471,13 @@ bool WorldPosition::isEnemyHomeZoneFor(Team team) const
     if (!area)
         return false;
 
-    uint32 areaTeam = area->Team;
+    // twow-repo#575 (PATH-01 wave 2, AiPlayerbot.AreaTeamOverrides): a configured team wins over the AreaTable one
+    // (Stormbreaker Point 5576 is a Horde camp; empty list = AreaTable only).
+    std::map<uint32, uint32> const& teamOverrides = sPlayerbotAIConfig.areaTeamOverrides;
+    uint32 areaTeam = ai::area_team::TeamOf(teamOverrides, area->Id, area->Team);
     if (areaTeam == AREATEAM_NONE && area->ZoneId)
         if (AreaEntry const* zone = AreaEntry::GetById(area->ZoneId))
-            areaTeam = zone->Team;
+            areaTeam = ai::area_team::TeamOf(teamOverrides, zone->Id, zone->Team);
 
     return (areaTeam == AREATEAM_ALLY  && team == HORDE)
         || (areaTeam == AREATEAM_HORDE && team == ALLIANCE);
