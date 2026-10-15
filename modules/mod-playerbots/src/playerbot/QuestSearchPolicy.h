@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -46,6 +47,26 @@ struct RejectCounts
     uint32_t questLoopSuppressed = 0;
     // twow-repo#587 (Z3): battleground quests skipped as quest-first targets.
     uint32_t battlegroundQuest = 0;
+    // twow-repo#594 / P3-0 (AiPlayerbot.DirectTargets.TraceInactive): why IsActive turned a candidate down. A split of
+    // notActive only - notActive itself is counted as before (Z1b and the #485 park sum it). All 0 without the switch.
+    enum InactiveReason { InactiveImpossible, InactiveMap, InactiveNoMark, InactiveLowLevelNoReward, InactiveNoTurnIn,
+        InactiveHostile, InactiveOther, InactiveReasons };
+    uint32_t notActiveReason[InactiveReasons] = {};
+
+    std::string FormatInactiveReasons() const
+    {
+        static char const* const names[InactiveReasons] = { "impossible", "map", "no_mark", "low_level_no_reward", "no_turnin",
+            "hostile", "other" };
+        uint32_t sum = 0;
+        for (uint32_t count : notActiveReason)
+            sum += count;
+        if (!sum)
+            return std::string();
+        std::string out = " not_active_reasons=";
+        for (uint32_t i = 0; i < InactiveReasons; ++i)
+            out += std::string(i ? "," : "") + names[i] + ":" + std::to_string(notActiveReason[i]);
+        return out;
+    }
 
     std::string Format() const
     {
@@ -63,7 +84,7 @@ struct RejectCounts
             " moved_away=" + std::to_string(movedAway) +
             " resume_skipped=" + std::to_string(resumeSkipped) +
             " quest_loop_suppressed=" + std::to_string(questLoopSuppressed) +
-            " battleground_quest=" + std::to_string(battlegroundQuest);
+            " battleground_quest=" + std::to_string(battlegroundQuest) + FormatInactiveReasons();
     }
 };
 
@@ -200,8 +221,13 @@ inline bool IdleLogDue(uint32_t idleSeconds, uint32_t lastLog, uint32_t now)
 // once - two stuck bots sent 237 of 370 such requests in 50 minutes. 2, 4, 8, then 10 min.
 constexpr uint32_t RouteBackoffBaseSeconds = 120;
 constexpr uint32_t RouteBackoffMaxSeconds = 600;
-inline uint32_t RouteBackoffSeconds(uint32_t failures)
+// twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.FreshBackoffSeconds): a fresh bot (FreshBot below) waits freshSeconds
+// instead - live 14.10. L1-3 bots stood a median 10.3 min between a rejected quest route and the next request. The
+// failure count still grows (Z1b, the grind fallback and the logs read it); freshSeconds 0 = the 8.1 rule for everyone.
+inline uint32_t RouteBackoffSeconds(uint32_t failures, bool fresh = false, uint32_t freshSeconds = 0)
 {
+    if (fresh && freshSeconds)
+        return freshSeconds;
     uint32_t seconds = RouteBackoffBaseSeconds;
     for (uint32_t i = 1; i < failures && seconds < RouteBackoffMaxSeconds; ++i)
         seconds *= 2;
@@ -214,6 +240,31 @@ inline uint32_t RouteBackoffSeconds(uint32_t failures)
 inline bool GrindFallback(bool questFirst, uint32_t routeFailures, uint32_t minFailures)
 {
     return questFirst && minFailures && routeFailures >= minFailures;
+}
+
+// twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.Enable): a "fresh" bot is a quest-first roster bot at or below
+// FreshMaxLevel - the new L1-3 bots that stood after a rejected first quest route. maxLevel 0 = nobody.
+inline bool FreshBot(bool directTargets, uint32_t level, uint32_t maxLevel)
+{
+    return directTargets && maxLevel && level <= maxLevel;
+}
+
+// [DirectTarget] state=summary once a minute: rejected quest routes of fresh bots, how many got the short backoff, how
+// many layers stood back for a Z1b rescue, grind fallbacks a fresh bot got through its own threshold, and the IsActive
+// reasons of P3-0 summed over all rejections.
+struct DirectTargetCounters
+{
+    std::atomic<uint32_t> freshRejections{ 0 };
+    std::atomic<uint32_t> freshBackoffs{ 0 };
+    std::atomic<uint32_t> rescueSkips{ 0 };
+    std::atomic<uint32_t> freshGrind{ 0 };
+    std::atomic<uint32_t> inactive[RejectCounts::InactiveReasons] = {};
+};
+
+inline DirectTargetCounters& DirectTargetStats()
+{
+    static DirectTargetCounters counters;
+    return counters;
 }
 
 // Hotfix 8.1 [MemStores]: a bot whose UpdateAI did not run for this long counts as stale.

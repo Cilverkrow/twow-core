@@ -240,6 +240,48 @@ void TraceQuestRouteRejection(Player* bot, std::string const& strategy, uint32 r
         GetZoneId(source), rangeCount, reason, detail.empty() ? "" : " ", detail.c_str());
 }
 
+// twow-repo#594 / P3-0 (AiPlayerbot.DirectTargets.TraceInactive): why IsActive turned this candidate down. Walks the
+// checks of QuestRelationTravelDestination::IsActive in its order; any other destination type is "other". Only called
+// for a candidate already turned down, only with the switch.
+ai::quest_search::RejectCounts::InactiveReason InactiveReasonOf(PlayerbotAI* ai, TravelDestination* destination,
+    PlayerTravelInfo const& info)
+{
+    using Counts = ai::quest_search::RejectCounts;
+    QuestRelationTravelDestination* relation = dynamic_cast<QuestRelationTravelDestination*>(destination);
+    if (!relation)
+        return Counts::InactiveOther;
+    if (!relation->IsPossible(info))
+        return Counts::InactiveImpossible;
+
+    Player* bot = ai->GetBot();
+    AiObjectContext* context = ai->GetAiObjectContext();
+    std::string const entry = std::to_string(relation->GetEntry());
+    if (relation->GetRelation() == 0)
+    {
+        if (!bot->GetMap()->IsContinent())
+        {
+            WorldPosition const* closestPoint = relation->GetClosestPoint(bot);
+            if (!closestPoint || closestPoint->getMapId() != bot->GetMapId())
+                return Counts::InactiveMap;
+        }
+        if (!AI_VALUE2(bool, "group or", "following party,can accept quest npc::" + entry))
+        {
+            if (!AI_VALUE2(bool, "group or", "following party,can accept quest low level npc::" + entry))
+                return Counts::InactiveNoMark;
+            if (!info.HasFocusQuest() && info.GetBoolValue("can fight equal") &&
+                !AI_VALUE2(bool, "group or", "following party,can accept quest low level npc::" + entry + ",need quest reward::" +
+                    std::to_string(relation->GetQuestId())))
+                return Counts::InactiveLowLevelNoReward;
+        }
+    }
+    else if (!AI_VALUE2(bool, "group or", "following party,can turn in quest npc::" + entry))
+        return Counts::InactiveNoTurnIn;
+
+    if (relation->GetEntry() > 0 && GuidPosition(HIGHGUID_UNIT, relation->GetEntry()).IsHostileTo(bot))
+        return Counts::InactiveHostile;
+    return Counts::InactiveOther;
+}
+
 // twow-repo#485: the finished quests of this bot a turn-in-only quest route request offered
 // takers for (comma separated, written by RequestQuestTravelTargetAction::Execute).
 char const* const HandInQuestsValue = "future travel handin quests";
@@ -358,6 +400,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format());
             WidenQuestSearch(uint32(destinationList.size()));
 
+            // twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.Enable): a fresh bot (level <= FreshMaxLevel) gets the short
+            // backoff below; a Z1b rescue requested in this pass wins over it.
+            bool const freshBot = UsesQuestFirstProgression(bot) &&
+                ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel);
+            bool rescueRequested = false;
+
             // twow-repo#587 (Z1b, AiPlayerbot.ZoneExit.StrandedRescueAfter): only other-continent candidates, search after
             // search - the bot asks for the (continent-correct) quest rescue instead of grinding until the idle limit.
             if (sPlayerbotAIConfig.zoneExitStrandedRescueAfter && UsesQuestFirstProgression(bot))
@@ -371,6 +419,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                     sLog.outBasic("[ZoneExit] state=stranded bot=%u level=%u map=%u zone=%u searches=%u cross_map=%u", bot->GetGUIDLow(),
                         bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), stranded, lastRejects.crossMap);
                     ai->RequestQuestRescue(uint32(time(nullptr)));
+                    rescueRequested = true;
                     SET_AI_VALUE2(int, "manual int", "zone exit stranded", 0);
                 }
                 else
@@ -382,8 +431,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             {
                 uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures"))) + 1;
                 SET_AI_VALUE2(int, "manual int", "quest route failures", int(failures));
-                SET_AI_VALUE2(int, "manual int", "quest route backoff until",
-                    int(uint32(time(nullptr)) + ai::quest_search::RouteBackoffSeconds(failures)));
+                // twow-repo#594 / P3-a: one formula - a fresh bot without a rescue in this pass waits FreshBackoffSeconds.
+                bool const shortBackoff = freshBot && !rescueRequested && sPlayerbotAIConfig.directTargetsFreshBackoffSeconds;
+                uint32 const backoff = shortBackoff ?
+                    ai::quest_search::RouteBackoffSeconds(failures, true, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds) :
+                    ai::quest_search::RouteBackoffSeconds(failures);
+                SET_AI_VALUE2(int, "manual int", "quest route backoff until", int(uint32(time(nullptr)) + backoff));
             }
 
             // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
@@ -402,6 +455,21 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
                 SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
             }
+
+            // twow-repo#594 / P3: once at the end of the branch, after Z1b, the backoff and the #485 park have seen the
+            // rejection - the counts for [DirectTarget] state=summary.
+            ai::quest_search::DirectTargetCounters& directTargets = ai::quest_search::DirectTargetStats();
+            if (freshBot)
+            {
+                directTargets.freshRejections.fetch_add(1, std::memory_order_relaxed);
+                if (rescueRequested)
+                    directTargets.rescueSkips.fetch_add(1, std::memory_order_relaxed);
+                else if (sPlayerbotAIConfig.directTargetsFreshBackoffSeconds)
+                    directTargets.freshBackoffs.fetch_add(1, std::memory_order_relaxed);
+            }
+            if (sPlayerbotAIConfig.directTargetsTraceInactive)
+                for (uint32 reason = 0; reason < ai::quest_search::RejectCounts::InactiveReasons; ++reason)
+                    directTargets.inactive[reason].fetch_add(lastRejects.notActiveReason[reason], std::memory_order_relaxed);
         }
 
         return false;
@@ -436,6 +504,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // Hotfix 8.32 (twow-repo#544): a quest-first bot grinds after empty quest route searches.
         sLog.outBasic("[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d distance=%.0f",
             bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"), newTarget.Distance(bot));
+        // twow-repo#594 / P3-a: grind targets of fresh bots for [DirectTarget] state=summary.
+        if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel))
+            ai::quest_search::DirectTargetStats().freshGrind.fetch_add(1, std::memory_order_relaxed);
     }
 
     setNewTarget(requester, &newTarget, travelTarget);
@@ -1004,6 +1075,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             {
                 ai->TellDebug(requester, "Not active: " + destination->GetTitle() + " " + std::to_string((uint32)round(destination->DistanceTo(bot))) + "y", "debug travel");
                 ++lastRejects.notActive;
+                // twow-repo#594 / P3-0: the reason, as a split of notActive (counted above as before).
+                if (sPlayerbotAIConfig.directTargetsTraceInactive)
+                    ++lastRejects.notActiveReason[InactiveReasonOf(ai, destination, PlayerTravelInfo(bot))];
             }
 
         }
