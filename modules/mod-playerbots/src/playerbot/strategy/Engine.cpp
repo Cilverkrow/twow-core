@@ -271,9 +271,14 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
     // twow-repo#541 (audit A08): this walk, ProcessTriggers and PushDefaultActions run on the bot's
     // own AI tick, so their pushes pass ownerCache = true.
     ProcessTriggers(minimal);
-    if (traceUs)
+    std::uint64_t const triggersUs = traceUs ? ai::bot_update::SinceUs(phaseStartUs) - valuesUs : 0;
+    // twow-repo#596 D (AiPlayerbot.BotUpdateTraceTriggers): a slow trigger pass names its three slowest checks.
+    if (traceUs && sPlayerbotAIConfig.botUpdateTraceTriggers && triggersUs >= ai::trigger_time::SlowPhaseUs)
+        LogAction("TIME:values %lluus triggers %lluus slow=%s", (unsigned long long)valuesUs,
+            (unsigned long long)triggersUs, slowTriggers.Format().c_str());
+    else if (traceUs)
         LogAction("TIME:values %lluus triggers %lluus", (unsigned long long)valuesUs,
-            (unsigned long long)(ai::bot_update::SinceUs(phaseStartUs) - valuesUs));
+            (unsigned long long)triggersUs);
     PushDefaultActions();
 
     auto logOutcome = [this, traceUs](Action* action, char const* outcome, std::uint64_t startUs)
@@ -906,6 +911,12 @@ Strategy* Engine::GetStrategy(const std::string& name) const
 
 void Engine::ProcessTriggers(bool minimal)
 {
+    // twow-repo#596 D (AiPlayerbot.BotUpdateTraceTriggers): each trigger check timed, the three slowest kept for the
+    // TIME entry of DoNextAction. Off: no clock read.
+    bool const timeTriggers = sPlayerbotAIConfig.botUpdateTrace && sPlayerbotAIConfig.botUpdateTraceTriggers;
+    if (timeTriggers)
+        slowTriggers.Clear();
+
     for (std::list<TriggerNode*>::iterator i = triggers.begin(); i != triggers.end(); i++)
     {
         TriggerNode* node = *i;
@@ -935,10 +946,13 @@ void Engine::ProcessTriggers(bool minimal)
                 continue;
             // twow-repo#541 (audit A11, AiPlayerbot.Perf.LogActionFastPath): the trigger name copy
             // only when PerfMon is on.
+            std::uint64_t const checkStartUs = timeTriggers ? ai::bot_update::NowUs() : 0;   // twow-repo#596 D
             std::unique_ptr<PerformanceMonitorOperation> pmo;
             if (!sPlayerbotAIConfig.perfLogActionFastPath || sPlayerbotAIConfig.perfMonEnabled)
                 pmo = sPerformanceMonitor.start(PERF_MON_TRIGGER, trigger->getName(), ai);
             Event event = trigger->Check();
+            if (timeTriggers)
+                slowTriggers.Add(trigger->getName(), ai::bot_update::SinceUs(checkStartUs));
 
 #ifdef PLAYERBOT_ELUNA
             // used by eluna    
