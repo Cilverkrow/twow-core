@@ -639,7 +639,8 @@ void Log::outHonor(const char *str, ...)
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
-    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
+    // twow-repo#597 ([LogWait]), 0 = off or nothing written
+    uint64 const lwStartUs = LogWaitStartIf(!HasLogFilter(LOG_FILTER_HONOR) || honorLogfile);
     if (!HasLogFilter(LOG_FILTER_HONOR))
     {
         if (m_colored)
@@ -842,7 +843,8 @@ void Log::outBasic( const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
-    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
+    // twow-repo#597 ([LogWait]), 0 = off or both levels filter the line out (nothing written)
+    uint64 const lwStartUs = LogWaitStartIf(m_logLevel >= LOG_LVL_BASIC || (logfile && m_logFileLevel >= LOG_LVL_BASIC));
     if (m_logLevel >= LOG_LVL_BASIC)
     {
         if (m_colored)
@@ -886,7 +888,8 @@ void Log::outDetail( const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
-    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
+    // twow-repo#597 ([LogWait]), 0 = off or both levels filter the line out (nothing written)
+    uint64 const lwStartUs = LogWaitStartIf(m_logLevel >= LOG_LVL_DETAIL || (logfile && m_logFileLevel >= LOG_LVL_DETAIL));
     if (m_logLevel >= LOG_LVL_DETAIL)
     {
 
@@ -933,7 +936,8 @@ void Log::outDebug( const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
-    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
+    // twow-repo#597 ([LogWait]), 0 = off or both levels filter the line out (nothing written)
+    uint64 const lwStartUs = LogWaitStartIf(m_logLevel >= LOG_LVL_DEBUG || (logfile && m_logFileLevel >= LOG_LVL_DEBUG));
     if (m_logLevel >= LOG_LVL_DEBUG)
     {
         if (m_colored)
@@ -1187,7 +1191,9 @@ void Log::outCommand( uint32 account, const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
-    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
+    // twow-repo#597 ([LogWait]), 0 = off or nothing written (levels filter it out, no GM log)
+    uint64 const lwStartUs = LogWaitStartIf(m_logLevel >= LOG_LVL_DETAIL || (logfile && m_logFileLevel >= LOG_LVL_DETAIL) ||
+        m_gmlog_per_account || gmLogfile);
     if (m_logLevel >= LOG_LVL_DETAIL)
     {
         if (m_colored)

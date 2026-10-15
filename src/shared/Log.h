@@ -220,7 +220,8 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
             LogDiscord(type, log);
 #endif
 
-            uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
+            // twow-repo#597 ([LogWait]), 0 = off or no log file of this type (no line written, not counted)
+            uint64 const lwStartUs = LogWaitStartIf(logFiles[type] != nullptr);
             if (logFiles[type])
             {
                 if (timestampPrefix[type])
@@ -303,6 +304,9 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
     private:
         // twow-repo#597 ([LogWait]): 0 = off (one relaxed load, no clock read).
         uint64 LogWaitStart() const { return m_logWriteTrace.load(std::memory_order_relaxed) ? tick_diag::NowUs() : 0; }
+        // For the paths that can write nothing (level filters, no file): writes = false -> 0, the call is
+        // neither timed nor counted in lines=.
+        uint64 LogWaitStartIf(bool writes) const { return writes ? LogWaitStart() : 0; }
         static uint64 LogWaitMark(uint64 startUs) { return startUs ? tick_diag::NowUs() : 0; }
         // console = [start, fileStart) + [fileEnd, now), file = [fileStart, fileEnd).
         void LogWaitDone(uint64 startUs, uint64 fileStartUs, uint64 fileEndUs)
