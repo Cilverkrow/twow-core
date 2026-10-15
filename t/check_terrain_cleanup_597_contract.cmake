@@ -85,6 +85,10 @@ require_text("${dist}" "#        Default: 0, 0 (today's behaviour)\n" "documente
 require_text("${dist}" "Live runs CleanupTerrain = 0 as the immediate measure (OB-00" "live measure documented")
 require_text("${dist}" "They matter only with CleanupTerrain = 1 (with GridUnload = 0 or 1)." "when the switches matter")
 require_text("${dist}" "Known and unchanged: the free takes no lock" "unlocked free documented")
+require_text("${dist}" "Last use = a terrain query through TerrainInfo::GetGrid (height,\n#                         water, area, ...); LOS-only vmap use (Map::isInLineOfSight) does not count." "what counts as a use (only GetGrid stamps)")
+require_text("${dist}" "at most this many grids freed per terrain (map) and world tick; each map terrain has\n#                         its own budget" "MaxGridsPerTick budget is per terrain")
+forbid_text("${dist}" "height/LOS query on it" "LOS documented as a use (LOS does not call GetGrid)")
+forbid_text("${dist}" "grids freed per world tick" "MaxGridsPerTick documented as a global per-tick bound")
 require_text("${dist}" "\nCleanupTerrain = 1\n" "CleanupTerrain dist default unchanged")
 
 # 2. Policy off path: today's rule (loaded, ref 0) with IdleMinutes 0, no budget with MaxGridsPerTick 0, today's order.
