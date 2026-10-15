@@ -390,6 +390,24 @@ class Map : public GridRefManager<NGridType>
         // stats = count for [ParkSleep]. Both off by default, so the cell update stays the legacy one.
         static void SetGridSleepSwitches(bool active, bool stats);
 
+        // twow-repo#541 P2 D0 (AiPlayerbot.Park.CellSourceStats, default off): which source keeps the continent cells
+        // awake. With the switch the players are marked in two passes (real clients, then bots) and the marked cells
+        // are counted after each source: cells of real players, cells only bots add, cells only active non-players add.
+        // Sums over the continent cell updates, taken by the bot module with exchange(0) for the [CellSource] minute line.
+        struct CellSourceStats
+        {
+            std::atomic<uint64> updates{ 0 };         // continent cell updates counted
+            std::atomic<uint64> cellsReal{ 0 };       // cells around players with a client socket
+            std::atomic<uint64> cellsBotOnly{ 0 };    // cells added by bots (no client socket)
+            std::atomic<uint64> cellsNpcOnly{ 0 };    // cells added by active non-players (active creatures, pets, transports)
+            std::atomic<uint64> realPlayers{ 0 };     // players with a client socket on the map
+            std::atomic<uint64> bots{ 0 };            // players without a client socket on the map
+            std::atomic<uint64> activeNpcs{ 0 };      // active non-players on the map
+            std::atomic<uint64> activationYards{ 0 }; // the map's grid activation distance in yards
+        };
+        static CellSourceStats& GetCellSourceStats();
+        static void SetCellSourceStats(bool on);
+
         inline void UpdateCellsAroundObject(uint32 now, uint32 diff, WorldObject const* object);
         inline void UpdateActiveCellsSynch(uint32 now, uint32 diff);
         inline void MarkCellsAroundObject(WorldObject const* object);

@@ -6812,8 +6812,37 @@ void RandomPlayerbotMgr::ReportParkSleep()
     bool const stats = sPlayerbotAIConfig.parkSleepGrid || sPlayerbotAIConfig.botUpdateTrace;
     Map::SetGridSleepSwitches(sPlayerbotAIConfig.parkSleepGrid, stats);
 
-    static uint32 lastReport = 0;
     uint32 const now = uint32(time(nullptr));
+
+    // twow-repo#541 P2 D0 (AiPlayerbot.Park.CellSourceStats): the continent cells by source, per continent cell update.
+    // cells_total = real + bot_only + npc_only; activation = the grid activation distance (yards, it shrinks under load).
+    Map::SetCellSourceStats(sPlayerbotAIConfig.parkCellSourceStats);
+    static uint32 lastSourceReport = 0;
+    if (sPlayerbotAIConfig.parkCellSourceStats && now >= lastSourceReport + 60)
+    {
+        bool const firstSource = lastSourceReport == 0;
+        lastSourceReport = now;
+        Map::CellSourceStats& c = Map::GetCellSourceStats();
+        uint64 const updates = c.updates.exchange(0, std::memory_order_relaxed);
+        uint64 const real = c.cellsReal.exchange(0, std::memory_order_relaxed);
+        uint64 const botOnly = c.cellsBotOnly.exchange(0, std::memory_order_relaxed);
+        uint64 const npcOnly = c.cellsNpcOnly.exchange(0, std::memory_order_relaxed);
+        uint64 const realPlayers = c.realPlayers.exchange(0, std::memory_order_relaxed);
+        uint64 const bots = c.bots.exchange(0, std::memory_order_relaxed);
+        uint64 const activeNpcs = c.activeNpcs.exchange(0, std::memory_order_relaxed);
+        uint64 const yards = c.activationYards.exchange(0, std::memory_order_relaxed);
+        // The first window starts whenever the switch was read; it is reset, not reported.
+        if (!firstSource)
+        {
+            auto const perUpdate = [updates](uint64 sum) { return updates ? double(sum) / double(updates) : 0.0; };
+            sLog.outBasic("[CellSource] region_updates=%llu cells_total=%.0f cells_real=%.0f cells_bot_only=%.0f cells_npc_only=%.0f "
+                "real_players=%.1f bots=%.1f active_npcs=%.1f activation=%.0f", (unsigned long long)updates,
+                perUpdate(real + botOnly + npcOnly), perUpdate(real), perUpdate(botOnly), perUpdate(npcOnly), perUpdate(realPlayers),
+                perUpdate(bots), perUpdate(activeNpcs), perUpdate(yards));
+        }
+    }
+
+    static uint32 lastReport = 0;
     if (!stats || now < lastReport + 60)
         return;
     bool const first = lastReport == 0;

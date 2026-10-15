@@ -2082,6 +2082,13 @@ add_test(NAME park_sleep_grid_source_contract
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/park_sleep_grid_source_contract_tests.cmake")
 
+# twow-repo#541 P2 D0 (AiPlayerbot.Park.CellSourceStats, default 0): continent cells by source, diagnostics only.
+add_test(NAME park_cell_source_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/park_cell_source_source_contract_tests.cmake")
+
 # twow-repo#541 (audit A01): FleeManager call-local candidate memo (AiPlayerbot.Perf.FleeMemo, default 0).
 add_test(NAME flee_memo_source_contract
   COMMAND "${CMAKE_COMMAND}"
