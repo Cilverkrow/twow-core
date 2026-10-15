@@ -550,6 +550,7 @@ public:
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
     bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
     bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
+    bool parkCellSourceStats = false;  // twow-repo#541 P2 D0: [CellSource] minute line - continent cells by source (real players / bots / active non-players)
     uint32 parkMaxPerInn = 0;   // twow-repo#551 (owner 10.10): parked bots per inn, 0 = ai::park::SpotCapacity (25) as before
     uint32 parkMaxPerCity = 0;  // twow-repo#551 (owner 10.10): parked bots per capital zone (inns + city spots), 0 = no limit
     bool parkQuiet = false;  // twow-repo#551 (owner 11.10): parked bots drop greet/emote/say/ai chat, answer whispers only
@@ -758,6 +759,12 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionGrindFallbackFailures = 0;  // hotfix 8.32 (#544), 0 = off
+    // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
+    bool directTargetsEnabled = false;
+    bool directTargetsTraceInactive = false;
+    uint32 directTargetsFreshMaxLevel = 5;
+    uint32 directTargetsFreshBackoffSeconds = 0;  // 0 = the 8.1 backoff
+    uint32 directTargetsFreshGrindFailures = 0;   // 0 = QuestFirstProgression.GrindFallbackFailures
     bool rosterFarMove = false;  // hotfix 8.33 (#544): cheap movement without a player nearby, 0 = off
     float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route

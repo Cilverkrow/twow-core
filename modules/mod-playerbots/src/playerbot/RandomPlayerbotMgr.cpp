@@ -1220,6 +1220,30 @@ void ReportRoutePrecheck()
     sLog.outBasic("%s", ai::route_precheck::FormatLine(sPlayerbotAIConfig.perfRoutePrecheck, ai::route_precheck::Global().Take()).c_str());
 }
 
+// twow-repo#594 / P3 (AiPlayerbot.DirectTargets.Enable / TraceInactive): one [DirectTarget] state=summary line per minute.
+// fresh_rejections = rejected quest routes of fresh bots, fresh_backoffs = of them with the short backoff, rescue_skips =
+// of them that a Z1b rescue took, fresh_grind = grind targets fresh bots chose; inactive = the IsActive reasons (P3-0).
+// World thread only, same pattern as ReportRouteFail. Nothing is written with both switches off.
+void ReportDirectTargets()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if ((!sPlayerbotAIConfig.directTargetsEnabled && !sPlayerbotAIConfig.directTargetsTraceInactive) || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    ai::quest_search::DirectTargetCounters& c = ai::quest_search::DirectTargetStats();
+    ai::quest_search::RejectCounts reasons;
+    for (uint32 reason = 0; reason < ai::quest_search::RejectCounts::InactiveReasons; ++reason)
+        reasons.notActiveReason[reason] = c.inactive[reason].exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[DirectTarget] state=summary enabled=%u fresh_rejections=%u fresh_backoffs=%u rescue_skips=%u fresh_grind=%u "
+        "fresh_max_level=%u backoff_seconds=%u grind_failures=%u%s", sPlayerbotAIConfig.directTargetsEnabled ? 1u : 0u,
+        c.freshRejections.exchange(0, std::memory_order_relaxed), c.freshBackoffs.exchange(0, std::memory_order_relaxed),
+        c.rescueSkips.exchange(0, std::memory_order_relaxed), c.freshGrind.exchange(0, std::memory_order_relaxed),
+        sPlayerbotAIConfig.directTargetsFreshMaxLevel, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds,
+        sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str());
+}
+
 // twow-repo#592 (PATH-02): the bot side of pathfinding without a Unit, no switch - every counted case crashed before
 // #592 or does not happen with today's data. At most once a minute, and only while one of the rare counters is above 0
 // (until then no clock read): "[PathUnitlessBot] reject=bot_transport n=" (a map-mode PathFinder met a bot on a
@@ -1276,6 +1300,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)
     ReportRouteTime();    // twow-repo#592 (PATH-02): [RouteTime] once per minute (AiPlayerbot.Perf.RouteTimeTrace)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
+    ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
     ReportPathUnitlessBot(); // twow-repo#592 (PATH-02): [PathUnitlessBot] at most once per minute, only with rare counts
 
 #ifdef MEMORY_MONITOR
@@ -6888,8 +6913,37 @@ void RandomPlayerbotMgr::ReportParkSleep()
     bool const stats = sPlayerbotAIConfig.parkSleepGrid || sPlayerbotAIConfig.botUpdateTrace;
     Map::SetGridSleepSwitches(sPlayerbotAIConfig.parkSleepGrid, stats);
 
-    static uint32 lastReport = 0;
     uint32 const now = uint32(time(nullptr));
+
+    // twow-repo#541 P2 D0 (AiPlayerbot.Park.CellSourceStats): the continent cells by source, per continent cell update.
+    // cells_total = real + bot_only + npc_only; activation = the grid activation distance (yards, it shrinks under load).
+    Map::SetCellSourceStats(sPlayerbotAIConfig.parkCellSourceStats);
+    static uint32 lastSourceReport = 0;
+    if (sPlayerbotAIConfig.parkCellSourceStats && now >= lastSourceReport + 60)
+    {
+        bool const firstSource = lastSourceReport == 0;
+        lastSourceReport = now;
+        Map::CellSourceStats& c = Map::GetCellSourceStats();
+        uint64 const updates = c.updates.exchange(0, std::memory_order_relaxed);
+        uint64 const real = c.cellsReal.exchange(0, std::memory_order_relaxed);
+        uint64 const botOnly = c.cellsBotOnly.exchange(0, std::memory_order_relaxed);
+        uint64 const npcOnly = c.cellsNpcOnly.exchange(0, std::memory_order_relaxed);
+        uint64 const realPlayers = c.realPlayers.exchange(0, std::memory_order_relaxed);
+        uint64 const bots = c.bots.exchange(0, std::memory_order_relaxed);
+        uint64 const activeNpcs = c.activeNpcs.exchange(0, std::memory_order_relaxed);
+        uint64 const yards = c.activationYards.exchange(0, std::memory_order_relaxed);
+        // The first window starts whenever the switch was read; it is reset, not reported.
+        if (!firstSource)
+        {
+            auto const perUpdate = [updates](uint64 sum) { return updates ? double(sum) / double(updates) : 0.0; };
+            sLog.outBasic("[CellSource] region_updates=%llu cells_total=%.0f cells_real=%.0f cells_bot_only=%.0f cells_npc_only=%.0f "
+                "real_players=%.1f bots=%.1f active_npcs=%.1f activation=%.0f", (unsigned long long)updates,
+                perUpdate(real + botOnly + npcOnly), perUpdate(real), perUpdate(botOnly), perUpdate(npcOnly), perUpdate(realPlayers),
+                perUpdate(bots), perUpdate(activeNpcs), perUpdate(yards));
+        }
+    }
+
+    static uint32 lastReport = 0;
     if (!stats || now < lastReport + 60)
         return;
     bool const first = lastReport == 0;

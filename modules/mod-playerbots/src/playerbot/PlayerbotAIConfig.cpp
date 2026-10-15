@@ -413,6 +413,7 @@ bool PlayerbotAIConfig::Initialize()
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
+    parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
     parkMaxPerInn = config.GetIntDefault("AiPlayerbot.Park.MaxPerInn", 0);
     parkMaxPerCity = config.GetIntDefault("AiPlayerbot.Park.MaxPerCity", 0);
     parkQuiet = config.GetBoolDefault("AiPlayerbot.Park.Quiet", false);
@@ -598,6 +599,11 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
+    directTargetsEnabled = config.GetBoolDefault("AiPlayerbot.DirectTargets.Enable", false);
+    directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
+    directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));
+    directTargetsFreshBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshBackoffSeconds", 0)));
+    directTargetsFreshGrindFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshGrindFailures", 0)));
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);

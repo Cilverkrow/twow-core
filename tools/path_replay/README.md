@@ -1,9 +1,10 @@
 # `.mmaps replay` fixtures (twow-repo#592 PATH-02)
 
-`.mmaps replay <name> [offset]` (GM, SEC_DEVELOPER; `.mmap replay` works as abbreviation) computes the
-rows of `<DataDir>/pathreplay/<name>` on fresh `PathInfo` objects and writes one `[PathReplay]` line per
-result into the server log, points as hexfloats. Two runs diff bit exact. It is the proof base for PathInfo
-variant A (PR pair 2): old build against old build (A/A, precondition), then old against new.
+`.mmaps replay <name> [offset [probe]]` (GM or server console, SEC_DEVELOPER; `.mmap replay` works as
+abbreviation) computes the rows of `<DataDir>/pathreplay/<name>` on fresh `PathInfo` objects and writes one
+`[PathReplay]` line per result into the server log, points as hexfloats. Two runs diff bit exact. It is the
+proof base for PathInfo variant A (PR pair 2): old build against old build (A/A, precondition), then old
+against new.
 
 Row format, output lines and limits: `src/game/Maps/PathReplay.h`.
 
@@ -47,6 +48,34 @@ whole world tick, all maps, for up to 200 ms plus one row (a chain row can take 
    clock with `[PathReplay] partial next=<offset>`; continue with `.mmap replay m2.tsv <offset>` until
    `[PathReplay] done`.
 5. Compare: `grep -o '\[PathReplay\] id=.*' a.log > a.txt` (same for b), `diff a.txt b.txt` must be empty.
+
+## Scripted run from the console (M2)
+
+The command is allowed from the server console as well (same SEC_DEVELOPER level), so an M2 script can run
+it unattended through `mangosd.in`. A console line runs on the world thread too (`World::ProcessCliCommands`
+in `World::Update`, after the maps updated), with the same tick stall as above. The console has no
+selection, so the probe is named after the offset; without it the call ends with
+`[PathReplay] error=probe` before the fixture is opened:
+
+```
+echo 'mmaps replay m2.tsv 0 Probebot' > /opt/turtle/run/mangosd.in        # the player Probebot
+echo 'mmaps replay m2.tsv 500 Probebot' > /opt/turtle/run/mangosd.in      # next= offset of the partial line
+echo 'mmaps replay m2.tsv 0 Probebot:68' > /opt/turtle/run/mangosd.in     # nearest live creature 68 near him
+```
+
+- Probe spec: `<player>` (1..12 letters, the case does not matter) or `<player>:<entry>` (the nearest live
+  creature with that entry within 150 yd of that player). Anything else is `[PathReplay] error=probe`.
+- The probe player must be online and in the world (not in a loading screen). A random bot works; park it
+  so it does not move during the run: `rndbot park <n> here`, or move it first with `tele name <char> <tele>`.
+  Both runs of a diff need the same probe setup (same bot config, same place).
+- There is no caller map check for a named probe; rows of other maps report `skipped=other_map` as usual.
+  The probe must not stand on a transport.
+- Read the offset to continue with from the `partial next=<offset>` line in the server log (the console
+  output carries it too) until `[PathReplay] done`.
+- The begin line ends with `probe_name=<player> probe_guid=<low guid>` (for a creature probe the creature's
+  guid and the player it was searched from); it is metadata, the diff still uses the `id=` lines only.
+- The GM-fly profile (yourself with `.gm fly`) still needs a GM in game: a named player probe uses that
+  player as it is.
 
 Map-mode rows (`profile map`) run `PathInfo(mapId, instanceId)` without a unit (PR pair 2) on any map,
 independent of the probe, and print `mode=map`: with `PathFinder.Unitless = 0` every row fails closed
