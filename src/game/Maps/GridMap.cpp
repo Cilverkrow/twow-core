@@ -1365,9 +1365,12 @@ void TerrainManager::UnloadTerrain(const uint32 mapId)
 void TerrainManager::Update(const uint32 diff)
 {
     // twow-repo#597 (TICK-01): latch TerrainCleanup.* once per tick on the world thread for CleanUpGrids
-    // and GetGrid. Only called with CleanupTerrain = 1; with CleanupTerrain = 0 both stay 0 (no stamps).
-    TerrainInfo::SetCleanupSwitches(sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_IDLE_MINUTES),
-        sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_MAX_GRIDS_PER_TICK));
+    // and GetGrid. World::Update calls this only with CleanupTerrain = 1, but the startup purge after the bot
+    // travel tables (TravelMgr::LoadQuestTravelTable) calls it regardless; with CleanupTerrain = 0 both stay
+    // 0 there too, so that purge frees as today and GetGrid never stamps (fail closed).
+    bool const cleanupTerrain = sWorld.getConfig(CONFIG_BOOL_CLEANUP_TERRAIN);
+    TerrainInfo::SetCleanupSwitches(cleanupTerrain ? sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_IDLE_MINUTES) : 0,
+        cleanupTerrain ? sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_MAX_GRIDS_PER_TICK) : 0);
 
     // global garbage collection for GridMap objects and VMaps
     for (auto& iter : i_TerrainMap)

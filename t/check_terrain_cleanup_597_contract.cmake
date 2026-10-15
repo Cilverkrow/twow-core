@@ -85,6 +85,7 @@ require_text("${dist}" "#        Default: 0, 0 (today's behaviour)\n" "documente
 require_text("${dist}" "Live runs CleanupTerrain = 0 as the immediate measure (OB-00" "live measure documented")
 require_text("${dist}" "They matter only with CleanupTerrain = 1 (with GridUnload = 0 or 1)." "when the switches matter")
 require_text("${dist}" "Known and unchanged: the free takes no lock" "unlocked free documented")
+require_text("${dist}" "The one-off purge after the bot travel tables at startup follows the same rule (CleanupTerrain = 0:" "startup purge documented")
 require_text("${dist}" "Last use = a terrain query through TerrainInfo::GetGrid (height,\n#                         water, area, ...); LOS-only vmap use (Map::isInLineOfSight) does not count." "what counts as a use (only GetGrid stamps)")
 require_text("${dist}" "at most this many grids freed per terrain (map) and world tick; each map terrain has\n#                         its own budget" "MaxGridsPerTick budget is per terrain")
 forbid_text("${dist}" "height/LOS query on it" "LOS documented as a use (LOS does not call GetGrid)")
@@ -161,7 +162,13 @@ forbid_text("${cleanup}" "sLog" "log line in CleanUpGrids (this pair adds none)"
 require_text("${grid_cpp}" "// Known and unchanged: the delete below takes no lock against GetGrid readers on other threads." "unlocked delete documented")
 
 # 5. Switch latch: world thread, once per tick, only on a change; never sWorld.getConfig on the query path.
-require_text("${grid_cpp}" "    TerrainInfo::SetCleanupSwitches(sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_IDLE_MINUTES),\n        sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_MAX_GRIDS_PER_TICK));\n" "latch in TerrainManager::Update")
+# The bot module also calls sTerrainMgr.Update once at startup (TravelMgr::LoadQuestTravelTable), outside the
+# CleanupTerrain gate in World::Update, so the latch itself checks CleanupTerrain: 0 latches 0, 0.
+require_text("${grid_cpp}" "    bool const cleanupTerrain = sWorld.getConfig(CONFIG_BOOL_CLEANUP_TERRAIN);\n    TerrainInfo::SetCleanupSwitches(cleanupTerrain ? sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_IDLE_MINUTES) : 0,\n        cleanupTerrain ? sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_MAX_GRIDS_PER_TICK) : 0);\n" "latch in TerrainManager::Update, gated by CleanupTerrain")
+count_text("${grid_cpp}" "SetCleanupSwitches(" latch_calls)
+if (NOT latch_calls EQUAL 2)
+  message(FATAL_ERROR "#597: SetCleanupSwitches definition + the one gated call in TerrainManager::Update (found ${latch_calls})")
+endif()
 count_text("${grid_cpp}" "CONFIG_UINT32_TERRAIN_CLEANUP_" config_reads)
 if (NOT config_reads EQUAL 2)
   message(FATAL_ERROR "#597: the TerrainCleanup.* config is read only in TerrainManager::Update (found ${config_reads})")
@@ -170,6 +177,28 @@ require_text("${grid_cpp}" "std::atomic<uint32> TerrainInfo::s_cleanupIdleMinute
 require_text("${grid_cpp}" "std::atomic<uint32> TerrainInfo::s_cleanupMaxGridsPerTick(0);" "MaxGridsPerTick cache starts at 0")
 require_text("${grid_cpp}" "m_GridLastUse[i][k].store(0, std::memory_order_relaxed);" "stamps start at 0")
 require_text("${grid_h}" "static std::atomic<uint32> s_cleanupIdleMinutes;" "cached switch declared")
+# The latch stores exactly the (clamped) config values and nothing else: a latch that stored a literal would make
+# GetGrid stamp with TerrainCleanup.IdleMinutes = 0. The clamp keeps 0 at 0.
+extract_body("${grid_cpp}" "void TerrainInfo::SetCleanupSwitches(uint32 idleMinutes, uint32 maxGridsPerTick)\n{" "\n}\n" latch)
+require_text("${latch}" "{\n    // stored only on a change: GetGrid reads s_cleanupIdleMinutes on every map thread\n    idleMinutes = terrain_cleanup::ClampIdleMinutes(idleMinutes);\n    if (s_cleanupIdleMinutes.load(std::memory_order_relaxed) != idleMinutes)\n        s_cleanupIdleMinutes.store(idleMinutes, std::memory_order_relaxed);\n    if (s_cleanupMaxGridsPerTick.load(std::memory_order_relaxed) != maxGridsPerTick)\n        s_cleanupMaxGridsPerTick.store(maxGridsPerTick, std::memory_order_relaxed);\n}\n" "latch stores only the clamped config values")
+count_text("${latch}" ".store(" latch_stores)
+if (NOT latch_stores EQUAL 2)
+  message(FATAL_ERROR "#597: SetCleanupSwitches has exactly 2 stores (found ${latch_stores})")
+endif()
+foreach (cache "s_cleanupIdleMinutes" "s_cleanupMaxGridsPerTick")
+  count_text("${grid_cpp}" "${cache}.store(" cache_stores)
+  if (NOT cache_stores EQUAL 1)
+    message(FATAL_ERROR "#597: ${cache} is written only by SetCleanupSwitches (found ${cache_stores} stores)")
+  endif()
+  forbid_text("${grid_h}" "${cache}.store(" "cache store in GridMap.h")
+endforeach()
+require_text("${policy}" "        return idleMinutes > MAX_IDLE_MINUTES ? MAX_IDLE_MINUTES : idleMinutes;" "clamp keeps 0 at 0")
+# The latch runs only with CleanupTerrain = 1, so with CleanupTerrain = 0 the caches stay 0 (no stamps).
+require_text("${world_cpp}" "    if (getConfig(CONFIG_BOOL_CLEANUP_TERRAIN))\n        sTerrainMgr.Update(diff);\n" "TerrainManager::Update gated by CleanupTerrain")
+count_text("${world_cpp}" "sTerrainMgr.Update(" terrain_updates)
+if (NOT terrain_updates EQUAL 1)
+  message(FATAL_ERROR "#597: sTerrainMgr.Update is called once, behind CleanupTerrain (found ${terrain_updates})")
+endif()
 
 # 6. No clock read, no shared_mutex.
 foreach (clock "steady_clock" "system_clock" "getMSTime" "WorldTimer::" "NowUs" "time(nullptr)" "time(NULL)")
