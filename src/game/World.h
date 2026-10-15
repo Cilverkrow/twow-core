@@ -217,6 +217,7 @@ enum eConfigUInt32Values
     CONFIG_UINT32_PERFLOG_STALL_WATCH_MS,            // twow-repo#597 (TICK-01): [StallWatch] threshold, 0 = off
     CONFIG_UINT32_PERFLOG_SLOW_RESULT_CALLBACK_MS,   // twow-repo#597 (TICK-01): [ResultsSlow] threshold, 0 = off
     CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT,
+    CONFIG_UINT32_ASYNC_QUERIES_UNSAFE_BUDGET_MS,    // twow-repo#597 (TICK-01): unsafe callback budget per pass, 0 = none
     CONFIG_UINT32_LOGIN_PER_TICK,
     CONFIG_UINT32_ANTICRASH_REARM_TIMER,
     CONFIG_UINT32_ANTICRASH_OPTIONS,
@@ -1560,6 +1561,10 @@ class World
         std::chrono::steady_clock::time_point m_tickDiagMinuteStart{};
         bool m_terrainTraceWasOn = false;  // TerrainTrace switch-on resets the terrain counters
         void TickDiagMinute();
+        // twow-repo#597 (TICK-01, AsyncQueries.UnsafeBudgetMs): window of the [UnsafeBudget] minute line,
+        // written by UpdateResultQueue (world thread).
+        std::chrono::steady_clock::time_point m_unsafeBudgetMinuteStart{};
+        void UnsafeBudgetMinute();
         void LogMapTickRegion();
         static inline std::atomic<bool> s_stallWatchOn{false};
         static inline std::atomic<uint64> s_stallTickStartUs{0};
