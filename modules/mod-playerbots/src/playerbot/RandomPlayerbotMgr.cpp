@@ -1185,9 +1185,9 @@ void ReportRouteFail()
 // twow-repo#592 (PATH-02): the bot side of pathfinding without a Unit, no switch - every counted case crashed before
 // #592 or does not happen with today's data. At most once a minute, and only while one of the rare counters is above 0
 // (until then no clock read): "[PathUnitlessBot] reject=bot_transport n=" (a map-mode PathFinder met a bot on a
-// transport, getPathStepFrom returned no path without calculate) and "[PathUnitlessBot] route_incomplete= mode_unit=
-// mode_map=" (route steps moved to the node instead of a rebuild at runtime; PathFinder kinds getPathFromPath built
-// since the last line). World thread only, same pattern as ReportRouteFail.
+// transport, getPathStepFrom returned no path without calculate) and "[PathUnitlessBot] route_incomplete= mode_map="
+// (route steps moved to the node instead of a rebuild at runtime; map-mode PathFinders getPathFromPath built since the
+// last line - Unit mode is not counted, it is the hot path). World thread only, same pattern as ReportRouteFail.
 void ReportPathUnitlessBot()
 {
     using namespace ai::path_unitless_bot;
@@ -1203,13 +1203,12 @@ void ReportPathUnitlessBot()
 
     uint64 const rejects = transportRejects.exchange(0, std::memory_order_relaxed);
     uint64 const incomplete = routeIncomplete.exchange(0, std::memory_order_relaxed);
-    uint64 const unitMode = modeUnit.exchange(0, std::memory_order_relaxed);
     uint64 const mapMode = modeMap.exchange(0, std::memory_order_relaxed);
     if (rejects)
         sLog.outBasic("[PathUnitlessBot] reject=bot_transport n=%llu", (unsigned long long)rejects);
     if (incomplete || mapMode)
-        sLog.outBasic("[PathUnitlessBot] route_incomplete=%llu mode_unit=%llu mode_map=%llu",
-            (unsigned long long)incomplete, (unsigned long long)unitMode, (unsigned long long)mapMode);
+        sLog.outBasic("[PathUnitlessBot] route_incomplete=%llu mode_map=%llu",
+            (unsigned long long)incomplete, (unsigned long long)mapMode);
 }
 }
 

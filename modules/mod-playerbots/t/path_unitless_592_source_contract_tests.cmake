@@ -164,8 +164,10 @@ require_text("${step}" "    if (bot && bot->GetTransport())\n    {\n        star
 require_count("${step}" "CalculatePassengerOffset(" 2 "passenger offsets only in the existing block")
 function_body("${world_pos}" "std::vector<WorldPosition> WorldPosition::getPathFromPath(const std::vector<WorldPosition>& startPath, const Unit* bot, uint8 maxAttempt) const" from)
 require_text("${from}" "    if (getMapId() != currentPos.getMapId())\n        return { };" "map check unchanged")
-require_text("${from}" "    if (bot && instanceId == bot->GetInstanceId())\n    {\n        pathfinder = std::make_unique<PathFinder>(bot);\n        ai::path_unitless_bot::modeUnit.fetch_add(1, std::memory_order_relaxed);" "Unit-mode choice unchanged, counted")
-require_text("${from}" "        pathfinder = std::make_unique<PathFinder>(getMapId(), instanceId);\n        ai::path_unitless_bot::modeMap.fetch_add(1, std::memory_order_relaxed);" "map-mode choice counted")
+require_text("${from}" "    if (bot && instanceId == bot->GetInstanceId())\n        pathfinder = std::make_unique<PathFinder>(bot);\n    else\n    {\n        pathfinder = std::make_unique<PathFinder>(getMapId(), instanceId);" "Unit-mode choice unchanged (text as before, no counter in the hot path)")
+require_text("${from}" "        ai::path_unitless_bot::modeMap.fetch_add(1, std::memory_order_relaxed);\n    }" "map-mode choice counted")
+require_count("${from}" "fetch_add(" 1 "only the map-mode counter in getPathFromPath")
+forbid_text("${policy}" "modeUnit" "a Unit-mode counter (hot path)")
 
 # 6. GetFishLocations: no node route call in the per-map jobs without the gate; serial with the switch on.
 function_body("${travel_mgr}" "void TravelMgr::GetFishLocations()" fish_all)
@@ -194,7 +196,7 @@ require_order("${report}" "!modeMap.load(std::memory_order_relaxed))\n        re
 require_text("${report}" "if (now < lastReport + 60)\n        return;" "once a minute")
 require_text("${report}" "sLog.outBasic(\"[PathUnitlessBot] reject=bot_transport n=%llu\", (unsigned long long)rejects);" "T2 line")
 require_order("${report}" "    if (rejects)\n" "[PathUnitlessBot] reject=bot_transport" "T2 line only with rejects")
-require_text("${report}" "sLog.outBasic(\"[PathUnitlessBot] route_incomplete=%llu mode_unit=%llu mode_map=%llu\"" "route / mode line")
+require_text("${report}" "sLog.outBasic(\"[PathUnitlessBot] route_incomplete=%llu mode_map=%llu\"" "route / mode line")
 require_order("${report}" "    if (incomplete || mapMode)\n" "[PathUnitlessBot] route_incomplete=" "route / mode line only with rare counts")
 function_body("${rnd_mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" upd_body)
 require_order("${upd_body}" "\n    ReportRouteFail();" "\n    ReportPathUnitlessBot();" "after [RouteFail]")

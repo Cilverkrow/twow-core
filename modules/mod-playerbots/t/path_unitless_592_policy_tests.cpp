@@ -30,7 +30,7 @@ int main()
 
     // Counters start at zero (nothing is reported until a rare case happens).
     Require(transportRejects.load() == 0 && routeIncomplete.load() == 0, "rare counters start at zero");
-    Require(modeUnit.load() == 0 && modeMap.load() == 0 && fishSkipped.load() == 0, "mode and fish counters start at zero");
+    Require(modeMap.load() == 0 && fishSkipped.load() == 0, "map-mode and fish counters start at zero");
 
     // Gate: everything on -> may run.
     Require(GenerateSkipCause(true, true, true) == nullptr, "switch, core map mode and preload -> generator may run");
