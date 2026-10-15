@@ -2895,7 +2895,8 @@ add_test(NAME route_time_policy
   COMMAND route_time_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# twow-repo#592 (PATH-02 phase 2): the travel node graph read path under the shared node map lock (getNodes with find()).
+# twow-repo#592 (PATH-02 phase 2): the travel node graph read path under the shared node map lock (getNodes with find()),
+# [TravelNodes] walk_links_without_points= at load.
 add_test(NAME travel_node_graph_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"

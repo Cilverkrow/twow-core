@@ -3,6 +3,9 @@ cmake_policy(VERSION 3.16)
 #  no. 3: TravelNodeMap::getNodes reads m_map_nodes with find(). operator[] inserted an empty vector for a map without
 #         nodes (OB-30: map 451) - a write into the hash table under the shared lock while other map threads read it.
 #         Same answer (no nodes), no switch.
+#  no. 4: one load line "[TravelNodes] walk_links_without_points=N" - walk links without path points are the ones
+#         TravelNodeRoute::buildPath would recalculate under the shared lock; the invariant "every walk link has its
+#         points" becomes visible (expected 0). Log only, no switch.
 
 function(read_source path out_var)
   file(READ "${PB_SOURCE_DIR}/${path}" text)
@@ -62,5 +65,16 @@ forbid_text("${route}" "m_map_nodes" "direct table access in getRoute")
 # The table stays a plain unordered_map; writers (addNode/removeNode) are unchanged.
 require_text("${node_h}" "std::unordered_map<uint32, std::vector<TravelNode*>> m_map_nodes;" "node table type")
 require_text("${node_cpp}" "    m_map_nodes[pos.getMapId()].push_back(newNode);" "addNode writer unchanged")
+
+# no. 4: the walk-link count at load, once, after the path points are read.
+function_body("${node_cpp}" "void TravelNodeMap::loadNodeStore()" load)
+require_text("${load}" "sLog.outString(\"[TravelNodes] walk_links_without_points=%u walk_links=%u\", walkLinksWithoutPoints, walkLinks);" "load line")
+require_order("${load}" "FROM ai_playerbot_travelnode_path order by node_id, to_node_id, nr" "[TravelNodes] walk_links_without_points=" "counted after the path points are loaded")
+require_text("${load}" "            if (link.second->getPathType() != TravelNodePathType::walk)\n                continue;\n            ++walkLinks;\n            if (link.second->getPath().empty())\n                ++walkLinksWithoutPoints;" "walk links without points counted")
+string(FIND "${node_cpp}" "walk_links_without_points=" first_line)
+string(FIND "${node_cpp}" "walk_links_without_points=" last_line REVERSE)
+if(NOT first_line EQUAL last_line)
+  message(FATAL_ERROR "#592 graph: the walk-link line must exist exactly once")
+endif()
 
 message(STATUS "travel_node_graph source contract passed")
