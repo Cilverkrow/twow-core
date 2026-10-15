@@ -5551,6 +5551,11 @@ void World::TickDiagMinute()
     bool const region = getConfig(CONFIG_BOOL_PERFLOG_MAP_TICK_REGION);
     if (!region && !m_regionTrace.Empty())
         m_regionTrace.Clear();
+    // A TerrainTrace switch-on starts with fresh counters, also while LogWriteTrace or MapTickRegion keeps
+    // the minute window open (loads counted before the last switch-off are not reported as this minute's).
+    if (terrain && !m_terrainTraceWasOn)
+        sTerrainMgr.ReportTerrainReloads(false);
+    m_terrainTraceWasOn = terrain;
     if (!terrain && !logWait && !region)
     {
         m_tickDiagMinuteStart = std::chrono::steady_clock::time_point{};
@@ -5560,10 +5565,9 @@ void World::TickDiagMinute()
     auto const now = std::chrono::steady_clock::now();
     if (m_tickDiagMinuteStart == std::chrono::steady_clock::time_point{})
     {
-        // The first window starts now; counters gathered before are reset, not reported.
+        // The first window starts now; counters gathered before are reset, not reported (terrain:
+        // above, on its switch-on).
         m_tickDiagMinuteStart = now;
-        if (terrain)
-            sTerrainMgr.ReportTerrainReloads(false);
         if (logWait)
             sLog.ReportLogWait(false);
         m_regionTrace.Clear();
