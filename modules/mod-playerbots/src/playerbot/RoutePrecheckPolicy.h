@@ -279,7 +279,8 @@ inline Counters& Global()
 
 // The [RoutePrecheck] minute line. checks / hits = target checks and those that found no polygon, end_nopoly = the
 // same per direct-attempt class as hits/checks, wrong = all three kinds (wrong_end / wrong_start / wrong_direct),
-// unknown_tile / exempt_water / exempt_other over all checks, skips_* = work actually left out (0 in shadow).
+// unknown_tile / exempt_water / exempt_other over all checks, skips_* = work actually left out (0 in shadow). The head
+// is the spec's "[RoutePrecheck] checks= hits= wrong= end_nopoly="; level= comes last.
 inline std::string FormatLine(std::uint32_t level, Snapshot const& s)
 {
     static char const* const names[GapClasses] = { "eq", "lt5", "lt25", "ge25", "na" };
@@ -294,17 +295,17 @@ inline std::string FormatLine(std::uint32_t level, Snapshot const& s)
         classes += std::string(names[c]) + ':' + std::to_string(s.endHits[c]) + '/' + std::to_string(s.endChecks[c]);
     }
     char head[128];
-    std::snprintf(head, sizeof(head), "[RoutePrecheck] level=%u checks=%llu hits=%llu wrong=%llu end_nopoly=", level,
+    std::snprintf(head, sizeof(head), "[RoutePrecheck] checks=%llu hits=%llu wrong=%llu end_nopoly=",
         (unsigned long long)checks, (unsigned long long)hits, (unsigned long long)(s.wrongEnd + s.wrongStart + s.wrongDirect));
     char tail[512];
     std::snprintf(tail, sizeof(tail), " start_checks=%llu start_nopoly=%llu direct_checks=%llu direct_nopoly=%llu unknown_tile=%llu"
         " exempt_water=%llu exempt_other=%llu wrong_end=%llu wrong_start=%llu wrong_direct=%llu skips_end=%llu skips_start=%llu"
-        " skips_direct=%llu",
+        " skips_direct=%llu level=%u",
         (unsigned long long)s.startChecks, (unsigned long long)s.startHits, (unsigned long long)s.directChecks,
         (unsigned long long)s.directHits, (unsigned long long)s.exemptTile, (unsigned long long)s.exemptWater,
         (unsigned long long)s.exemptOther, (unsigned long long)s.wrongEnd, (unsigned long long)s.wrongStart,
         (unsigned long long)s.wrongDirect, (unsigned long long)s.skipsEnd, (unsigned long long)s.skipsStart,
-        (unsigned long long)s.skipsDirect);
+        (unsigned long long)s.skipsDirect, level);
     return std::string(head) + classes + tail;
 }
 

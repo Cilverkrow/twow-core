@@ -188,7 +188,8 @@ require_text("${node_cpp}" "            startPath = endPos.getPathFromPath({ sta
 # 7. Lines: [RoutePrecheck] once a minute when on; [RouteFailDetail] gets the checks only with the switch.
 function_body("${rnd_mgr}" "void ReportRoutePrecheck()" report)
 require_text("${report}" "if (!sPlayerbotAIConfig.perfRoutePrecheck || now < lastReport + 60)\n        return;" "nothing when off, once a minute")
-require_text("${policy}" "\"[RoutePrecheck] level=%u checks=%llu hits=%llu wrong=%llu end_nopoly=\"" "minute line")
+require_text("${policy}" "\"[RoutePrecheck] checks=%llu hits=%llu wrong=%llu end_nopoly=\"" "minute line with the spec head")
+require_text("${policy}" "\" skips_direct=%llu level=%u\"" "level last")
 require_text("${move_cpp}" "std::string const suffix = route_time::FormatDetail(d.times) + route_precheck::FormatDetail(d.precheck)" "detail appendix")
 require_text("${policy}" "    if (!b.level)\n        return std::string();" "no detail text when off")
 function_body("${rnd_mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" upd)

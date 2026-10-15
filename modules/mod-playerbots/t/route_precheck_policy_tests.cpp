@@ -114,14 +114,14 @@ int main()
         c.Skipped(Kind::End);
         c.Skipped(Kind::Direct);
         RequireText(FormatLine(2, c.Take()),
-            "[RoutePrecheck] level=2 checks=5 hits=2 wrong=1 end_nopoly=eq:1/2,lt5:0/0,lt25:1/1,ge25:0/1,na:0/1 start_checks=2"
+            "[RoutePrecheck] checks=5 hits=2 wrong=1 end_nopoly=eq:1/2,lt5:0/0,lt25:1/1,ge25:0/1,na:0/1 start_checks=2"
             " start_nopoly=1 direct_checks=2 direct_nopoly=1 unknown_tile=1 exempt_water=1 exempt_other=1 wrong_end=0"
-            " wrong_start=1 wrong_direct=0 skips_end=2 skips_start=0 skips_direct=1",
-            "[RoutePrecheck] line");
+            " wrong_start=1 wrong_direct=0 skips_end=2 skips_start=0 skips_direct=1 level=2",
+            "[RoutePrecheck] line (spec head, level last)");
         RequireText(FormatLine(1, c.Take()),
-            "[RoutePrecheck] level=1 checks=0 hits=0 wrong=0 end_nopoly=eq:0/0,lt5:0/0,lt25:0/0,ge25:0/0,na:0/0 start_checks=0"
+            "[RoutePrecheck] checks=0 hits=0 wrong=0 end_nopoly=eq:0/0,lt5:0/0,lt25:0/0,ge25:0/0,na:0/0 start_checks=0"
             " start_nopoly=0 direct_checks=0 direct_nopoly=0 unknown_tile=0 exempt_water=0 exempt_other=0 wrong_end=0"
-            " wrong_start=0 wrong_direct=0 skips_end=0 skips_start=0 skips_direct=0",
+            " wrong_start=0 wrong_direct=0 skips_end=0 skips_start=0 skips_direct=0 level=1",
             "taken once: the next minute starts at zero");
     }
 
