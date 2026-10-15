@@ -87,7 +87,7 @@ forbid_text("${z1b_to_park}" "notActiveReason[" "reason split inside the Z1b / b
 require_text("${choose}" "std::to_string((uint32)round(destination->DistanceTo(bot))) + \"y\", \"debug travel\");
                 ++lastRejects.notActive;
 " "notActive counted unconditionally, right after the debug line")
-require_order("${choose}" "++lastRejects.notActive;" "if (sPlayerbotAIConfig.directTargetsTraceInactive)\n                    ++lastRejects.notActiveReason[InactiveReasonOf(ai, destination, PlayerTravelInfo(bot))];" "total first, split only with the switch")
+require_order("${choose}" "++lastRejects.notActive;" "if (sPlayerbotAIConfig.directTargetsTraceInactive)\n                    ++lastRejects.notActiveReason[InactiveReasonOf(ai, destination, travelInfo)];" "total first, split only with the switch")
 region("${choose}" "ai::quest_search::RejectCounts::InactiveReason InactiveReasonOf(" "\n}\n" reason_fn)
 require_order("${reason_fn}" "relation->IsPossible(info)" "can accept quest npc::" "IsActive order: possible before the mark")
 require_order("${reason_fn}" "can accept quest npc::" "IsHostileTo(bot)" "IsActive order: mark before hostile")
