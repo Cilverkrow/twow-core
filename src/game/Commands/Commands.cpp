@@ -13824,7 +13824,8 @@ static void LogPathReplayResult(uint32 id, int32 step, PathInfo const& path)
     if (step >= 0)
         line += " step=" + std::to_string(step);
     char head[64];
-    snprintf(head, sizeof(head), " mode=unit type=0x%x n=%u end=", uint32(path.getPathType()), uint32(points.size()));
+    snprintf(head, sizeof(head), " mode=%s type=0x%x n=%u end=", path.IsUnitless() ? "map" : "unit", uint32(path.getPathType()),
+        uint32(points.size()));
     line += head;
     AppendPathReplayPoint(line, end.x, end.y, end.z);
     line += " pts=";
@@ -13916,14 +13917,7 @@ bool ChatHandler::HandleMmapsReplayCommand(char* args)
             ++bad;
             sLog.outString("[PathReplay] bad line=%u", lineNo);
         }
-        else if (parsed == PathReplayParse::Row && row.profile == PathReplayProfile::Map)
-        {
-            // PathInfo(mapId, instanceId) has no unit: it drops the map id and calculate() dereferences
-            // the null unit today. Map rows run once PR pair 2 (PathFinder.Unitless) is in the image.
-            ++skipped;
-            sLog.outString("[PathReplay] id=%u skipped=map_mode", row.id);
-        }
-        else if (parsed == PathReplayParse::Row && row.mapId != probe->GetMapId())
+        else if (parsed == PathReplayParse::Row && row.profile != PathReplayProfile::Map && row.mapId != probe->GetMapId())
         {
             ++skipped;
             sLog.outString("[PathReplay] id=%u skipped=other_map", row.id);
@@ -13933,8 +13927,11 @@ bool ChatHandler::HandleMmapsReplayCommand(char* args)
             ++rows;
             G3D::Vector3 const start(row.sx, row.sy, row.sz);
             G3D::Vector3 const dest(row.dx, row.dy, row.dz);
-            // A fresh PathInfo per row: calculate() reuses the previous path of the same object.
-            PathFinder pathFinder(probe);
+            // A fresh PathInfo per row: calculate() reuses the previous path of the same object. Map rows
+            // (twow-repo#592 PR pair 2): PathInfo(mapId, instanceId) without a unit, as the bot module
+            // builds it; with PathFinder.Unitless = 0 every calculate fails closed (NOPATH, [PathUnitless]
+            // reject=disabled), with 1 it runs in map mode on the map's loaded terrain (none: no_terrain).
+            PathFinder pathFinder = row.profile == PathReplayProfile::Map ? PathFinder(row.mapId, 0) : PathFinder(probe);
             if (row.chain == 0)
             {
                 pathFinder.calculate(start, dest, false);

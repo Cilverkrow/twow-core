@@ -107,7 +107,7 @@ foreach(decl
   require_text("${pf_h}" "        inline ${decl}" "accessor declared inline")
 endforeach()
 read_source("src/game/CMakeLists.txt" game_cmake)
-require_text("${game_cmake}" "    Maps/PathFinder.h\n    Maps/PathUnitless.h\n" "PathUnitless.h in the game header list")
+require_text("${game_cmake}" "    Maps/PathUnitless.h\n" "PathUnitless.h in the game header list")
 
 # B2: collision and ground height stay on the Unit's map.
 function_body("${pf_cpp}" "bool PathInfo::srcFindCollision(Vector3 const& start, Vector3 const& end) const" body)

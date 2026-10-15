@@ -100,11 +100,16 @@ if(NOT straight_use EQUAL -1)
   message(FATAL_ERROR "#592 RoutePrecheck: a bot path uses findStraightPath now - check the end point proof")
 endif()
 # The shortcut cases: no navmesh / tile, ignore pathfinding (the pre-check checks the same tiles, layer 0).
-require_text("${pf_cpp}" "    if (!m_navMesh || !m_navMeshQuery || m_sourceUnit->HasUnitState(UNIT_STAT_IGNORE_PATHFINDING) ||\n            !HaveTiles(start) || !HaveTiles(dest))" "shortcut without tiles")
+# twow-repo#592 PR pair 2 (PathInfo variant A): the owner reads go through the src*() accessors, which keep the
+# Unit expression verbatim (check_path_unitless_592_contract.cmake pins them).
+require_text("${pf_cpp}" "    if (!m_navMesh || !m_navMeshQuery || srcIgnorePathfinding() ||\n            !HaveTiles(start) || !HaveTiles(dest))" "shortcut without tiles")
+require_text("${pf_cpp}" "inline bool PathInfo::srcIgnorePathfinding() const { return m_sourceUnit ? m_sourceUnit->HasUnitState(UNIT_STAT_IGNORE_PATHFINDING)" "ignore-pathfinding accessor reads the Unit")
 require_text("${pf_cpp}" "    m_navMesh->calcTileLoc(point, &tx, &ty);\n    return (m_navMesh->getTileAt(tx, ty, 0) != nullptr);" "tile test")
 # Swimming / flying first, the hole shortcut only when a swimmable start or end has no polygon.
-require_text("${pf_cpp}" "    bool const canSwimToDestination = m_sourceUnit->CanSwim() &&\n        m_sourceUnit->GetTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z) &&\n        m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z);" "swim path needs both ends swimmable")
-require_text("${pf_cpp}" "        if ((startPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z)) ||\n            (endPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z)))" "hole shortcut only at swimmable ends")
+require_text("${pf_cpp}" "    bool const canSwimToDestination = srcCanSwim() &&\n        srcTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z) &&\n        srcTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z);" "swim path needs both ends swimmable")
+require_text("${pf_cpp}" "inline bool PathInfo::srcCanSwim() const { return m_sourceUnit ? m_sourceUnit->CanSwim()" "swim accessor reads the Unit")
+require_text("${pf_cpp}" "inline TerrainInfo const* PathInfo::srcTerrain() const { return m_sourceUnit ? m_sourceUnit->GetTerrain()" "terrain accessor reads the Unit")
+require_text("${pf_cpp}" "        if ((startPoly == INVALID_POLYREF && srcTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z)) ||\n            (endPoly == INVALID_POLYREF && srcTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z)))" "hole shortcut only at swimmable ends")
 require_text("${pf_cpp}" "    float extents[3] = {5.0f, zSearchDist, 5.0f};" "FindWalkPoly box")
 require_text("${pf_h}" "float* closestPointYZX, float zSearchDist = 10.0f);" "FindWalkPoly default height")
 # Tel'Abim: NOPATH there becomes a shortcut; the pre-check exempts the whole zone.
@@ -113,7 +118,8 @@ require_text("${pf_cpp}" "std::make_tuple(1u, 5128u, 5121u), // Jagged Isles, Te
 require_text("${pf_cpp}" "std::make_tuple(1u, 5129u, 5121u) // The Washing Shore, Tel'Abim" "Tel'Abim area 5129")
 require_text("${policy}" "constexpr std::uint32_t TelAbimMapId = 1;\nconstexpr std::uint32_t TelAbimZoneId = 5121;" "Tel'Abim exempt in the policy")
 # The map query the bot paths use is the thread's own for the map (instance ignored).
-require_text("${pf_cpp}" "m_navMeshQuery = mmap->GetNavMeshQuery(m_sourceUnit->GetMapId());" "PathInfo queries the map's mesh")
+require_text("${pf_cpp}" "m_navMeshQuery = mmap->GetNavMeshQuery(srcMapId());" "PathInfo queries the map's mesh")
+require_text("${pf_cpp}" "inline uint32 PathInfo::srcMapId() const { return m_sourceUnit ? m_sourceUnit->GetMapId()" "map id accessor reads the Unit")
 
 # 3. Proof basis in the module: success criteria, the underwater append, the water retries.
 require_text("${pos_cpp}" "return !path.empty() && path.back().getMapId() == getMapId() && sqDistance2d(path.back()) < realMaxDistance * realMaxDistance && abs(path.back().getZ() - getZ()) < maxZDistance;" "isPathTo: 2D and Z tolerance")

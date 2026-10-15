@@ -104,23 +104,23 @@ forbid_text("${body}" "std::getline" "unbounded line read")
 function_body("${replay_h}" "inline void AppendPathReplayHex(std::string& out, float v)" body)
 require_text("${body}" "\"%a\", double(v)" "hexfloat points")
 
-# 3. The handler: guard before the file is opened, only DataDir/pathreplay/, both limits, unit rows only.
+# 3. The handler: guard before the file is opened, only DataDir/pathreplay/, both limits, map rows unitless (PR pair 2), unit rows on the probe map.
 function_body("${commands}" "bool ChatHandler::HandleMmapsReplayCommand(char* args)" body)
 require_order("${body}" "if (!PathReplayNameAllowed(name) || offset > PATH_REPLAY_MAX_OFFSET)" "std::ifstream in(fileName);"
   "name guard before the file is opened")
 require_text("${body}" "std::string const fileName = sWorld.GetDataPath() + PATH_REPLAY_DIR + name;" "fixed directory path")
 require_text("${body}" "probe->GetMap() != player->GetMap() || probe->GetTransport()" "probe on the caller's map, not on a transport")
-require_text("${body}" "PathFinder pathFinder(probe);" "fresh unit-mode PathInfo per row")
-require_order("${body}" "while ((lineRead = ReadPathReplayLine(in, line)) != PathReplayRead::End)" "PathFinder pathFinder(probe);"
+require_text("${body}" "PathFinder pathFinder = row.profile == PathReplayProfile::Map ? PathFinder(row.mapId, 0) : PathFinder(probe);" "fresh PathInfo per row: map rows unitless, unit rows on the probe")
+require_order("${body}" "while ((lineRead = ReadPathReplayLine(in, line)) != PathReplayRead::End)" "PathFinder pathFinder = row.profile"
   "PathInfo inside the row loop")
 require_text("${body}" "while (lineNo < offset && ReadPathReplayLine(in, line) != PathReplayRead::End)" "bounded offset skip")
 forbid_text("${body}" "std::getline" "unbounded line read in the handler")
 require_order("${body}" "if (!in || !PathReplayFileSizeAllowed(fileSize))" "while (lineNo < offset"
   "file size cap before the first read")
 require_text("${body}" "PathReplayRead::TooLong ? PathReplayParse::Bad" "skipped long line counts as bad")
-require_text("${body}" "skipped=map_mode" "map rows reported as skipped")
-forbid_text("${body}" "PathFinder pathFinder(row." "map-mode PathInfo before PR pair 2")
-forbid_text("${body}" "std::make_unique<PathFinder>" "map-mode PathInfo before PR pair 2")
+forbid_text("${body}" "skipped=map_mode" "map rows run since PR pair 2 (PathFinder.Unitless)")
+require_text("${body}" "row.profile != PathReplayProfile::Map && row.mapId != probe->GetMapId()" "only unit rows are bound to the probe map")
+forbid_text("${body}" "std::make_unique<PathFinder>" "one PathInfo object per row on the stack")
 require_text("${body}" "stop = PathReplayShouldStop(linesRead, elapsedMs);" "limits checked in the row loop")
 require_order("${body}" "LogPathReplayResult(row.id, -1, pathFinder);" "stop = PathReplayShouldStop(linesRead, elapsedMs);"
   "limits checked after the running row")
@@ -131,9 +131,11 @@ forbid_text("${body}" "getConfig(" "no switch: the command reads no configuratio
 forbid_text("${body}" "sConfig" "no switch: the command reads no configuration")
 forbid_text("${body}" "ofstream" "the command writes no file")
 
-# 4. Map rows stay skipped exactly as long as the map-mode constructor drops the map id. PathInfo variant A
-#    (PR pair 2) changes this line and must enable the map rows of the replay in the same change.
-require_text("${finder_h}" "PathInfo(uint32 /*mapId*/, uint32 /*instanceId*/) : PathInfo((Unit const*)nullptr) {}"
-  "map-mode constructor unchanged (update the replay map rows together with PathInfo variant A)")
+# 4. Map rows (twow-repo#592 PR pair 2): PathInfo(mapId, instanceId) keeps the map id (map mode with
+#    PathFinder.Unitless = 1, else fail closed), and the result line names the mode.
+require_text("${finder_h}" "PathInfo(uint32 mapId, uint32 instanceId);" "map-mode constructor of PathInfo variant A")
+forbid_text("${finder_h}" "PathInfo(uint32 /*mapId*/, uint32 /*instanceId*/) : PathInfo((Unit const*)nullptr) {}" "old map-mode constructor that dropped the map id")
+function_body("${commands}" "static void LogPathReplayResult(uint32 id, int32 step, PathInfo const& path)" body)
+require_text("${body}" "path.IsUnitless() ? \"map\" : \"unit\"" "mode=map / mode=unit in the result line")
 
 message(STATUS "MMAP_REPLAY_592_CONTRACT=PASS")
