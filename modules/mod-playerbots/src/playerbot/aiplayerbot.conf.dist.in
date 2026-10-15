@@ -2458,7 +2458,10 @@ AiPlayerbot.Perf.RouteTimeTrace = 0
 # (0.5 above it). One findNearestPoly in a box of 1.25 / 2.75 / 1.25 yd around the target (any polygon flag) tells
 # when no target leg can succeed; tile not loaded, water, transport, flying, dead, ignore-pathfinding, Tel'Abim,
 # other map, generator and a node within reach are exempt and search as before.
-#   1 = shadow: check and count only; wrong= counts routes found although a check called them impossible.
+#   1 = shadow: check and count only; wrong= counts routes found although a check called them impossible. Routes
+#       stay the same; side effect: when a check finds no polygon, its water exemption reads the terrain (GridMap) at
+#       the target / start and at up to 5 nodes, which may load those terrain grids on the map thread earlier than
+#       the search would (start and target are read by the direct attempt of the same build anyway).
 #   2 = the pair loop (A* + target / start legs) is skipped when the target check finds no polygon: the same empty
 #       route, earlier (hearthstone fallback, route-fail cooldown and HonestRouteFail unchanged).
 #   3 = also when the start check finds no polygon around the start (5.25 / 10.25 yd box) for any start leg (not
