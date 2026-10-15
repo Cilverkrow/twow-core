@@ -1527,7 +1527,14 @@ void TravelNodeMap::fullLinkNode(TravelNode* startNode, Unit* bot)
 std::vector<TravelNode*> TravelNodeMap::getNodes(WorldPosition pos, float range, uint32 transportEntry)
 {
     std::vector<TravelNode*> retVec;
-    for (auto& node : m_map_nodes[pos.getMapId()])
+    // twow-repo#592 (PATH-02): find() instead of operator[]. getRoute(position) calls this under the shared m_nMapMtx,
+    // and operator[] inserted an empty vector for a map without nodes (OB-30: map 451) - a write into the hash table
+    // while other map threads read it. Same answer as before: no nodes for such a map.
+    auto const mapNodes = m_map_nodes.find(pos.getMapId());
+    if (mapNodes == m_map_nodes.end())
+        return retVec;
+
+    for (auto& node : mapNodes->second)
     {
         if (range >= 0 && node->getDistance(pos) > range)
             continue;

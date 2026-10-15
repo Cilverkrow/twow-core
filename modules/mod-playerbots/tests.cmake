@@ -2893,3 +2893,9 @@ set_target_properties(route_time_policy_tests PROPERTIES
 add_test(NAME route_time_policy
   COMMAND route_time_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#592 (PATH-02 phase 2): the travel node graph read path under the shared node map lock (getNodes with find()).
+add_test(NAME travel_node_graph_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/travel_node_graph_source_contract_tests.cmake")
