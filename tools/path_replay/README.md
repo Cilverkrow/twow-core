@@ -77,5 +77,9 @@ echo 'mmaps replay m2.tsv 0 Probebot:68' > /opt/turtle/run/mangosd.in     # near
 - The GM-fly profile (yourself with `.gm fly`) still needs a GM in game: a named player probe uses that
   player as it is.
 
-Map-mode rows (`profile map`) report `skipped=map_mode` until PathInfo has a map mode (PR pair 2,
-`PathFinder.Unitless`); today `PathInfo(mapId, instanceId)` has no unit and crashes in `calculate()`.
+Map-mode rows (`profile map`) run `PathInfo(mapId, instanceId)` without a unit (PR pair 2) on any map,
+independent of the probe, and print `mode=map`: with `PathFinder.Unitless = 0` every row fails closed
+(`type=0x8` NOPATH, one `[PathUnitless] reject=disabled`), with `1` it computes in map mode. Builds before PR pair 2 report
+these rows as `skipped=map_mode`. The old-against-new diff (Unit-mode byte equality) therefore compares unit
+rows only, `grep -o '\[PathReplay\] id=.*' a.log | grep -v -e 'skipped=map_mode' -e ' mode=map ' > a.txt`
+(same for b). Map rows are compared new against new (A/A), with `PathFinder.Unitless = 1`.

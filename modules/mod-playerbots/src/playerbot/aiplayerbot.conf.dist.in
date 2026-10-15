@@ -2506,6 +2506,17 @@ AiPlayerbot.Perf.RoutePrecheck = 0
 # [RouteFail] gets " early_skips= early_wrong=" (skips= keeps counting every cooldown skip); with
 # AiPlayerbot.Path.RouteFailDetail = 1 an early skip shows " cooldown=1 ... early_skip=1" with the stored direct_gap.
 AiPlayerbot.Perf.RouteFailEarlySkip = 0
+# twow-repo#592 (PATH-02, generator containers only - never on a live realm): 1 = when the startup generation has to
+# build node paths (no nodes at all, or an unlinked node with a neighbour without a complete path), run the in-server
+# generator with unitless pathfinding (load maps, generate nodes and paths, save), and let GetFishLocations (startup
+# without FISH_LOCATION rows) run its node route part, serially instead of one std::async job per map. Needs
+# PathFinder.Unitless = 1 and Terrain.Preload.Continents = 1 in mangosd.conf and every .mmtile of maps 0/1 in the
+# navmesh ([PathGen] tiles); otherwise skipped like 0. 0 (default) = such a generation is skipped: the graph is used as
+# loaded, nothing is written back, one "[PathGen] skipped reason=generator" line (before #592 such a start crashed in
+# the unitless pathfinder). A start that builds no node path (e.g. only uncalculated links) runs as before with either
+# value. Fish candidates that would need a route are dropped ("[PathGen] skipped reason=fish", only when there were
+# any - the route part is unreachable today, PathInfo::getArea is a stub).
+AiPlayerbot.Perf.PathGenUnitless = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental

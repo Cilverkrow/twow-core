@@ -23,6 +23,9 @@
 #include "Log.h"
 #include "Map.h"
 #include "Transport.h"
+#include "World.h"
+#include "VMapFactory.h"
+#include "PathUnitless.h"
 
 #include <array>
 #include <chrono>
@@ -47,6 +50,136 @@ auto NoMovementAreas = make_array<restricted_movement_t>(
     std::make_tuple(1u, 5129u, 5121u) // The Washing Shore, Tel'Abim
 );
 
+////////////////// twow-repo#592 (PATH-02 variant A) //////////////////
+
+// Calls that failed closed without a Unit, by reason. Static storage, so zero before the first PathInfo.
+static path_unitless::Counters s_unitlessRejects;
+
+PathTerrainRef::PathTerrainRef(PathTerrainRef const& other) : m_terrain(other.m_terrain)
+{
+    if (m_terrain)
+        m_terrain->AddRef();
+}
+
+PathTerrainRef& PathTerrainRef::operator=(PathTerrainRef const& other)
+{
+    if (this != &other)
+    {
+        if (other.m_terrain)
+            other.m_terrain->AddRef();
+        if (m_terrain)
+            m_terrain->Release();
+        m_terrain = other.m_terrain;
+    }
+    return *this;
+}
+
+PathTerrainRef::~PathTerrainRef()
+{
+    if (m_terrain)
+        m_terrain->Release();
+}
+
+void PathTerrainRef::Adopt(TerrainInfo* referenced)
+{
+    if (m_terrain)
+        m_terrain->Release();
+    m_terrain = referenced;
+}
+
+// The owner accessors. Left of ':' stands the expression this file used before #592, unchanged; the
+// right side is only reached without a Unit, i.e. in map mode (the fail-closed modes return earlier).
+inline uint32 PathInfo::srcMapId() const { return m_sourceUnit ? m_sourceUnit->GetMapId() : m_params.mapId; }
+inline bool PathInfo::srcIgnorePathfinding() const { return m_sourceUnit ? m_sourceUnit->HasUnitState(UNIT_STAT_IGNORE_PATHFINDING) : m_params.ignorePathfinding; }
+inline float PathInfo::srcBoundingRadius() const { return m_sourceUnit ? m_sourceUnit->GetObjectBoundingRadius() : m_params.boundingRadius; }
+inline bool PathInfo::srcCanSwim() const { return m_sourceUnit ? m_sourceUnit->CanSwim() : m_params.canSwim; }
+inline bool PathInfo::srcCanFly() const { return m_sourceUnit ? m_sourceUnit->CanFly() : m_params.canFly; }
+inline bool PathInfo::srcCanWalk() const { return m_sourceUnit ? m_sourceUnit->CanWalk() : m_params.canWalk; }
+inline bool PathInfo::srcCreatureCanFly() const { return m_sourceUnit ? (m_sourceUnit->GetTypeId() == TYPEID_UNIT && ((Creature*)m_sourceUnit)->CanFly()) : m_params.creatureCanFly; }
+inline TerrainInfo const* PathInfo::srcTerrain() const { return m_sourceUnit ? m_sourceUnit->GetTerrain() : m_terrain.get(); }
+inline uint32 PathInfo::srcLogGuid() const { return m_sourceUnit ? m_sourceUnit->GetGUIDLow() : m_params.logGuidLow; }
+inline char const* PathInfo::srcLogName() const { return m_sourceUnit ? m_sourceUnit->GetName() : "<no unit>"; }
+
+// Collision test of the first case in BuildPolyPath. The Unit keeps Map::FindCollisionModel (its two
+// coordinate asserts and Map::GetId). Map mode asks the VMapManager with mapId, the same call that
+// Map::FindCollisionModel makes; invalid coordinates count as a collision, so the navmesh decides.
+bool PathInfo::srcFindCollision(Vector3 const& start, Vector3 const& end) const
+{
+    if (m_sourceUnit)
+        return m_sourceUnit->GetMap()->FindCollisionModel(start.x, start.y, start.z, end.x, end.y, end.z) != nullptr;
+
+    if (!MaNGOS::IsValidMapCoord(start.x, start.y, start.z) || !MaNGOS::IsValidMapCoord(end.x, end.y, end.z))
+        return true;
+    return VMAP::VMapFactory::createOrGetVMapManager()->FindCollisionModel(m_params.mapId, start.x, start.y, start.z, end.x, end.y, end.z) != nullptr;
+}
+
+// Ground height of BuildUnderwaterPath. The Unit keeps UpdateGroundPositionZ (Map::GetHeight: static
+// height and the instance's dynamic object tree, + 0.05). Map mode has no instance: the static height
+// of the terrain with the same + 0.05; invalid coordinates or no height leave z as it is.
+void PathInfo::srcUpdateGroundZ(float x, float y, float& z) const
+{
+    if (m_sourceUnit)
+    {
+        m_sourceUnit->UpdateGroundPositionZ(x, y, z);
+        return;
+    }
+
+    if (!MaNGOS::IsValidMapCoord(x, y, z))
+        return;
+    float const height = m_terrain.get()->GetHeightStatic(x, y, z, true);
+    if (height > INVALID_HEIGHT)
+        z = height + 0.05f;
+}
+
+// Tel'Abim rule in map mode: "a player standing at start". The terrain is only asked on a map that has
+// an entry (map 1), once. For the bots' callers this is result-neutral: the shortcut and NOPATH both
+// come back as no path from getPathStepFrom.
+bool PathInfo::MapModeInNoMovementArea(Vector3 const& start) const
+{
+    bool zoneRead = false;
+    uint32 zoneId = 0, areaId = 0;
+    for (restricted_movement_t const& t : NoMovementAreas)
+    {
+        if (std::get<0>(t) != m_params.mapId)
+            continue;
+        if (!zoneRead)
+        {
+            m_terrain.get()->GetZoneAndAreaId(zoneId, areaId, start.x, start.y, start.z);
+            zoneRead = true;
+        }
+        if (std::get<1>(t) == areaId && std::get<2>(t) == zoneId)
+            return true;
+    }
+    return false;
+}
+
+// One count per call that failed closed; the first one of each reason since the start also writes a line.
+void PathInfo::CountUnitlessReject(path_unitless::Reason reason) const
+{
+    if (s_unitlessRejects.Add(reason))
+        sLog.outError("[PathUnitless] reject=%s map=%u instance=%u (first of this reason; counts in the minute line)",
+            path_unitless::ReasonName(reason), m_params.mapId, m_params.instanceId);
+}
+
+// Fail closed in calculate(Vector3...): the hole-in-the-mesh result (two-point shortcut marked NOPATH)
+// that every caller already handles, instead of the null dereference before #592.
+bool PathInfo::RejectUnitless(path_unitless::Reason reason, Vector3 const& start, Vector3 const& dest)
+{
+    CountUnitlessReject(reason);
+    setEndPosition(dest);
+    setStartPosition(start);
+    BuildShortcut();
+    m_type = PATHFIND_NOPATH;
+    return true;
+}
+
+void PathInfo::ReportUnitlessRejects()
+{
+    std::string const line = path_unitless::FormatMinuteLine(s_unitlessRejects.Take());
+    if (!line.empty())
+        sLog.outString("%s", line.c_str());
+}
+
 ////////////////// PathInfo //////////////////
 PathInfo::PathInfo(const Unit* owner) :
     m_polyLength(0), m_type(PATHFIND_BLANK), m_useStraightPath(false), m_forceDestination(false),
@@ -55,6 +188,17 @@ PathInfo::PathInfo(const Unit* owner) :
 {
     //DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ PathFinder::PathInfo for %u \n", m_sourceUnit->GetGUIDLow());
     createFilter();
+}
+
+// twow-repo#592 (PATH-02): map mode for the bots' map-wide paths (generator, routes without a bot on
+// the start map). Before #592 this constructor dropped mapId and instanceId and the first calculate()
+// dereferenced the missing Unit. With PathFinder.Unitless = 1 it computes with the player defaults of
+// PathParams on mapId; with 0 (default) every calculate() fails closed with NOPATH.
+PathInfo::PathInfo(uint32 mapId, uint32 instanceId) : PathInfo((Unit const*)nullptr)
+{
+    m_params.mapId = mapId;
+    m_params.instanceId = instanceId;
+    m_mapMode = sWorld.getConfig(CONFIG_BOOL_PATHFINDER_UNITLESS);
 }
 
 
@@ -70,6 +214,15 @@ void PathInfo::setPathLengthLimit(float dist)
 
 bool PathInfo::calculate(float destX, float destY, float destZ, bool forceDest, bool offsets)
 {
+    // twow-repo#592: starts at the owner's position, which does not exist without a Unit (fail closed).
+    if (!m_sourceUnit)
+    {
+        CountUnitlessReject(path_unitless::REJECT_CALC3);
+        clear();
+        m_type = PATHFIND_NOPATH;
+        return false;
+    }
+
     float x, y, z;
     m_sourceUnit->GetSafePosition(x, y, z, m_transport);
 
@@ -78,6 +231,13 @@ bool PathInfo::calculate(float destX, float destY, float destZ, bool forceDest, 
 
 bool PathInfo::calculate(Vector3 const& start, Vector3 dest, bool forceDest, bool offsets)
 {
+    // twow-repo#592: without a Unit only map mode computes, and not on a transport (passenger
+    // coordinates belong to a Unit). Everything else fails closed before the first owner read.
+    if (!m_sourceUnit && !m_mapMode)
+        return RejectUnitless(path_unitless::REJECT_DISABLED, start, dest);
+    if (!m_sourceUnit && m_transport)
+        return RejectUnitless(path_unitless::REJECT_TRANSPORT, start, dest);
+
     // A m_navMeshQuery object is not thread safe, but a same PathInfo can be shared between threads.
     // So need to get a new one.
     MMAP::MMapManager* mmap = MMAP::MMapFactory::createOrGetMMapManager();
@@ -89,7 +249,7 @@ bool PathInfo::calculate(Vector3 const& start, Vector3 dest, bool forceDest, boo
         m_navMeshQuery = mmap->GetModelNavMeshQuery(m_transport->GetDisplayId());
     }
     else
-        m_navMeshQuery = mmap->GetNavMeshQuery(m_sourceUnit->GetMapId());
+        m_navMeshQuery = mmap->GetNavMeshQuery(srcMapId());
 
     if (m_navMeshQuery)
         m_navMesh = m_navMeshQuery->getAttachedNavMesh();
@@ -107,7 +267,7 @@ bool PathInfo::calculate(Vector3 const& start, Vector3 dest, bool forceDest, boo
 
     // make sure navMesh works - we can run on map w/o mmap
     // check if the start and end point have a .mmtile loaded (can we pass via not loaded tile on the way?)
-    if (!m_navMesh || !m_navMeshQuery || m_sourceUnit->HasUnitState(UNIT_STAT_IGNORE_PATHFINDING) ||
+    if (!m_navMesh || !m_navMeshQuery || srcIgnorePathfinding() ||
             !HaveTiles(start) || !HaveTiles(dest))
     {
         BuildShortcut();
@@ -115,11 +275,21 @@ bool PathInfo::calculate(Vector3 const& start, Vector3 dest, bool forceDest, boo
         return true;
     }
 
+    // twow-repo#592: map mode reads the terrain from here on (IsSwimmable, getLiquidStatus, heights,
+    // Tel'Abim). Looked up once, after the early exit above, so a map without navmesh tiles never asks;
+    // never inserted (FindTerrainRef). A Unit never enters this block.
+    if (!m_sourceUnit && !m_terrain.get())
+    {
+        m_terrain.Adopt(sTerrainMgr.FindTerrainRef(m_params.mapId));
+        if (!m_terrain.get())
+            return RejectUnitless(path_unitless::REJECT_NO_TERRAIN, start, dest);
+    }
+
     updateFilter();
 
     // check if destination moved - if not we can optimize something here
     // we are following old, precalculated path?
-    float dist = m_sourceUnit->GetObjectBoundingRadius();
+    float dist = srcBoundingRadius();
     if (inRange(oldDest, dest, dist, dist) && m_pathPoints.size() > 2)
     {
         // our target is not moving - we just coming closer
@@ -141,7 +311,9 @@ bool PathInfo::calculate(Vector3 const& start, Vector3 dest, bool forceDest, boo
         {
             const Unit* owner = m_sourceUnit; // to pull into lambda without pulling in the full member.
 
-            bool ignoreMmaps = std::find_if(std::begin(NoMovementAreas), std::end(NoMovementAreas), [owner](const restricted_movement_t& t)
+            // twow-repo#592: without a Unit (map mode) the rule is read at the start point; the Unit keeps the lambda.
+            bool ignoreMmaps = !owner ? MapModeInNoMovementArea(start) :
+                std::find_if(std::begin(NoMovementAreas), std::end(NoMovementAreas), [owner](const restricted_movement_t& t)
                 {
                     const auto& [mapId, areaId, zoneId] = t;
 
@@ -204,14 +376,14 @@ void PathInfo::BuildPolyPath(const Vector3 &startPos, const Vector3 &endPos)
     float startPoint[VERTEX_SIZE] = {startPos.y, startPos.z, startPos.x};
     float endPoint[VERTEX_SIZE] = {endPos.y, endPos.z, endPos.x};
 
-    bool const canSwimToDestination = m_sourceUnit->CanSwim() &&
-        m_sourceUnit->GetTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z) &&
-        m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z);
+    bool const canSwimToDestination = srcCanSwim() &&
+        srcTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z) &&
+        srcTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z);
 
     // First case : easy flying / swimming
-    if (canSwimToDestination || m_sourceUnit->CanFly())
+    if (canSwimToDestination || srcCanFly())
     {
-        if (!m_sourceUnit->GetMap()->FindCollisionModel(startPos.x, startPos.y, startPos.z, endPos.x, endPos.y, endPos.z))
+        if (!srcFindCollision(startPos, endPos))
         {
             if (canSwimToDestination)
                 BuildUnderwaterPath();
@@ -222,7 +394,7 @@ void PathInfo::BuildPolyPath(const Vector3 &startPos, const Vector3 &endPos)
             }
             return;
         }
-        else if (m_sourceUnit->CanFly())
+        else if (srcCanFly())
             m_forceDestination = true;
     }
     dtPolyRef startPoly = getPolyByLocation(startPoint, &distToStartPoly);
@@ -236,11 +408,11 @@ void PathInfo::BuildPolyPath(const Vector3 &startPos, const Vector3 &endPos)
         //DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ BuildPolyPath :: (startPoly == 0 || endPoly == 0)\n");
         BuildShortcut();
         // Check for swimming or flying shortcut
-        if ((startPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z)) ||
-            (endPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z)))
-            m_type = m_sourceUnit->CanSwim() ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH) : PATHFIND_NOPATH;
+        if ((startPoly == INVALID_POLYREF && srcTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z)) ||
+            (endPoly == INVALID_POLYREF && srcTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z)))
+            m_type = srcCanSwim() ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH) : PATHFIND_NOPATH;
         else
-            m_type = (m_sourceUnit->GetTypeId() == TYPEID_UNIT && ((Creature*)m_sourceUnit)->CanFly()) ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH | PATHFIND_FLYPATH) : PATHFIND_NOPATH;
+            m_type = srcCreatureCanFly() ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH | PATHFIND_FLYPATH) : PATHFIND_NOPATH;
         return;
     }
 
@@ -254,7 +426,7 @@ void PathInfo::BuildPolyPath(const Vector3 &startPos, const Vector3 &endPos)
             return;
         }
 
-        if (m_sourceUnit->CanFly())
+        if (srcCanFly())
         {
             BuildShortcut();
             m_type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
@@ -268,7 +440,7 @@ void PathInfo::BuildPolyPath(const Vector3 &startPos, const Vector3 &endPos)
             setActualEndPosition(Vector3(endPoint[2], endPoint[0], endPoint[1]));
         }
 
-        if (!(m_sourceUnit->CanSwim() && m_sourceUnit->GetTerrain()->IsSwimmable(m_actualEndPosition.x, m_actualEndPosition.y, m_actualEndPosition.z)))
+        if (!(srcCanSwim() && srcTerrain()->IsSwimmable(m_actualEndPosition.x, m_actualEndPosition.y, m_actualEndPosition.z)))
             m_type = PATHFIND_INCOMPLETE;
     }
 
@@ -370,7 +542,7 @@ void PathInfo::BuildPolyPath(const Vector3 &startPos, const Vector3 &endPos)
             // this is probably an error state, but we'll leave it
             // and hopefully recover on the next Update
             // we still need to copy our preffix
-            sLog.outError("%u's Path Build failed: 0 length path r=0x%x", m_sourceUnit->GetGUIDLow(), dtResult);
+            sLog.outError("%u's Path Build failed: 0 length path r=0x%x", srcLogGuid(), dtResult);
         }
 
         //DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++  m_polyLength=%u prefixPolyLength=%u suffixPolyLength=%u \n",m_polyLength, prefixPolyLength, suffixPolyLength);
@@ -402,7 +574,7 @@ void PathInfo::BuildPolyPath(const Vector3 &startPos, const Vector3 &endPos)
         if (!m_polyLength || dtStatusFailed(dtResult))
         {
             // only happens if we passed bad data to findPath(), or navmesh is messed up
-            sLog.outError("%u's Path Build failed: 0 length path. Result=0x%x", m_sourceUnit->GetGUIDLow(), dtResult);
+            sLog.outError("%u's Path Build failed: 0 length path. Result=0x%x", srcLogGuid(), dtResult);
             BuildShortcut();
             m_type = PATHFIND_NOPATH;
             return;
@@ -485,7 +657,7 @@ void PathInfo::BuildPointPath(const float *startPoint, const float *endPoint, fl
         }
 
         m_type |= PATHFIND_DEST_FORCED;
-        if (m_sourceUnit->CanFly())
+        if (srcCanFly())
             m_type |= PATHFIND_FLYPATH;
     }
 
@@ -504,7 +676,7 @@ void PathInfo::BuildShortcut()
     m_pathPoints[1] = getActualEndPosition();
 
     m_type = PATHFIND_SHORTCUT;
-    if (m_sourceUnit->CanFly())
+    if (srcCanFly())
         m_type |= PATHFIND_FLYPATH | PATHFIND_NORMAL;
 }
 
@@ -519,16 +691,16 @@ void PathInfo::BuildUnderwaterPath()
     m_pathPoints[0] = getStartPosition();
     m_pathPoints[1] = getActualEndPosition();
     GridMapLiquidData liquidData;
-    uint32 liquidStatus = m_sourceUnit->GetTerrain()->getLiquidStatus(getActualEndPosition().x, getActualEndPosition().y, getActualEndPosition().z, MAP_ALL_LIQUIDS, &liquidData);
+    uint32 liquidStatus = srcTerrain()->getLiquidStatus(getActualEndPosition().x, getActualEndPosition().y, getActualEndPosition().z, MAP_ALL_LIQUIDS, &liquidData);
     // No water here ...
     if (liquidStatus == LIQUID_MAP_NO_WATER)
     {
         m_type = PATHFIND_SHORTCUT;
-        if (m_sourceUnit->CanWalk())
+        if (srcCanWalk())
         {
             // Find real height
             m_type |= PATHFIND_NORMAL;
-            m_sourceUnit->UpdateGroundPositionZ(m_pathPoints[1].x, m_pathPoints[1].y, m_pathPoints[1].z);
+            srcUpdateGroundZ(m_pathPoints[1].x, m_pathPoints[1].y, m_pathPoints[1].z);
         }
         else
         {
@@ -540,7 +712,7 @@ void PathInfo::BuildUnderwaterPath()
     m_type = PATHFIND_BLANK;
     if (m_pathPoints[1].z > liquidData.level)
     {
-        if (!m_sourceUnit->CanFly())
+        if (!srcCanFly())
         {
             m_pathPoints[1].z = liquidData.level;
             if (m_pathPoints[1].z > (liquidData.level + 2))
@@ -836,7 +1008,7 @@ dtStatus PathInfo::findSmoothPath(const float* startPos, const float* endPos,
         npolys = fixupShortcuts(polys, npolys, m_navMeshQuery);
 
         if (dtStatusFailed(m_navMeshQuery->getPolyHeight(polys[0], result, &result[1])))
-            DEBUG_LOG("Cannot find height at position X: %f Y: %f Z: %f for %s", result[2], result[0], result[1], m_sourceUnit->GetName());
+            DEBUG_LOG("Cannot find height at position X: %f Y: %f Z: %f for %s", result[2], result[0], result[1], srcLogName());
 
         result[1] += 0.5f;
         dtVcopy(iterPos, result);
@@ -933,6 +1105,13 @@ dtStatus PathInfo::findSmoothPath(const float* startPos, const float* endPos,
 // Nostalrius
 bool PathInfo::UpdateForCaster(Unit* pTarget, float castRange)
 {
+    // twow-repo#592: core callers only, always with a Unit; without one fail closed, path unchanged.
+    if (!m_sourceUnit)
+    {
+        CountUnitlessReject(path_unitless::REJECT_CORE_ONLY);
+        return false;
+    }
+
     // If already in range and LOS
     if (pTarget->IsWithinDist3d(m_sourceUnit->GetPositionX(), m_sourceUnit->GetPositionY(), m_sourceUnit->GetPositionZ(), castRange) &&
             pTarget->IsWithinLOS(m_sourceUnit->GetPositionX(), m_sourceUnit->GetPositionY(), m_sourceUnit->GetPositionZ()))
@@ -978,6 +1157,13 @@ bool PathInfo::UpdateForCaster(Unit* pTarget, float castRange)
 
 bool PathInfo::UpdateForMelee(Unit* pTarget, float meleeReach)
 {
+    // twow-repo#592: core callers only, always with a Unit; without one fail closed, path unchanged.
+    if (!m_sourceUnit)
+    {
+        CountUnitlessReject(path_unitless::REJECT_CORE_ONLY);
+        return false;
+    }
+
     // Si deja en ligne de vision, et a distance, c'est bon.
     if (pTarget->IsWithinDist3d(m_sourceUnit->GetPositionX(), m_sourceUnit->GetPositionY(), m_sourceUnit->GetPositionZ(), meleeReach))
     {
@@ -1011,6 +1197,13 @@ bool PathInfo::UpdateForMelee(Unit* pTarget, float meleeReach)
 
 void PathInfo::CutPathWithDynamicLoS()
 {
+    // twow-repo#592: core callers only, always with a Unit; without one fail closed, path unchanged.
+    if (!m_sourceUnit)
+    {
+        CountUnitlessReject(path_unitless::REJECT_CORE_ONLY);
+        return;
+    }
+
     uint32 maxIndex = m_pathPoints.size() - 1;
     Vector3 out;
     // We have always keep at least 2 points (else, there is no mvt !)

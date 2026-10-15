@@ -3,6 +3,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/RouteTimePolicy.h"
+#include "playerbot/PathUnitlessBotPolicy.h"
 #include "TravelNode.h"
 
 #include "Maps/Map.h"
@@ -1025,6 +1026,15 @@ std::vector<WorldPosition> WorldPosition::getPathStepFrom(const WorldPosition& s
 
     WorldPosition start = startPos, end = *this;
 
+    // twow-repo#592 (PATH-02, T2): a map-mode PathFinder computes on the world navmesh, so the passenger offsets
+    // below would mix transport and world coordinates (before #592 this crashed in the unitless calculate()).
+    // Fail closed without calculate(); a Unit-mode PathFinder (the bot itself) converts as before.
+    if (pathfinder->IsUnitless() && bot && bot->GetTransport())
+    {
+        ai::path_unitless_bot::transportRejects.fetch_add(1, std::memory_order_relaxed);
+        return {};
+    }
+
     if (bot && bot->GetTransport())
     {
         start.CalculatePassengerOffset(bot->GetTransport());
@@ -1144,7 +1154,12 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(const std::vector<Worl
     if (bot && instanceId == bot->GetInstanceId())
         pathfinder = std::make_unique<PathFinder>(bot);
     else
+    {
         pathfinder = std::make_unique<PathFinder>(getMapId(), instanceId);
+        // twow-repo#592: [PathUnitlessBot] mode_map=. Only map mode is counted - it crashed before #592, so it is rare;
+        // the Unit-mode branch above is the hot path of every bot path and stays without a shared counter.
+        ai::path_unitless_bot::modeMap.fetch_add(1, std::memory_order_relaxed);
+    }
 
     pathfinder->setAreaCost(NAV_AREA_WATER, 10.0f);
     pathfinder->setAreaCost(12, 5.0f);

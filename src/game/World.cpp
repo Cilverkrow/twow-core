@@ -73,6 +73,7 @@
 #include "CharacterDatabaseCache.h"
 #include "CreatureGroups.h"
 #include "MoveMap.h"
+#include "PathFinder.h"
 #include "SpellModMgr.h"
 #include "MovementBroadcaster.h"
 #include "HonorMgr.h"
@@ -1470,6 +1471,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_VMAP_INDOOR_CHECK, "vmap.enableIndoorCheck", true);
     setConfig(CONFIG_BOOL_PET_LOS, "vmap.petLoS", true);
     setConfig(CONFIG_BOOL_MMAP_ENABLED, "mmap.enabled", true);
+    // twow-repo#592 (PATH-02): map-mode PathInfo (bots' map-wide paths). 0 = NOPATH instead of the old crash.
+    setConfig(CONFIG_BOOL_PATHFINDER_UNITLESS, "PathFinder.Unitless", false);
 
     setConfig(CONFIG_UINT32_EMPTY_MAPS_UPDATE_TIME, "MapUpdate.Empty.UpdateTime", 0);
     setConfigMinMax(CONFIG_UINT32_MAP_OBJECTSUPDATE_THREADS, "MapUpdate.ObjectsUpdate.MaxThreads", 4, 1, 20);
@@ -3024,6 +3027,8 @@ void World::Update(uint32 diff)
     {
         m_timers[WUPDATE_SAVE_VAR].Reset();
         sObjectMgr.SaveVariables();
+        // twow-repo#592 (PATH-02): the once-a-minute [PathUnitless] line, written only when a call failed closed.
+        PathInfo::ReportUnitlessRejects();
     }
 
     // execute callbacks from sql queries that were queued recently
