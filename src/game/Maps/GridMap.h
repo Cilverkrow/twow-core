@@ -213,6 +213,8 @@ class TerrainManager : public MaNGOS::Singleton<TerrainManager, MaNGOS::ClassLev
 
     public:
         TerrainInfo* LoadTerrain(const uint32 mapId);
+        // twow-repo#592: loaded terrain only, with one reference (released by the caller), never inserts.
+        TerrainInfo* FindTerrainRef(const uint32 mapId);
         void UnloadTerrain(const uint32 mapId);
 
         void Update(const uint32 diff);

@@ -60,6 +60,7 @@
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/RouteTimePolicy.h"
+#include "playerbot/PathUnitlessBotPolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "Maps/MapManager.h"
 #include <fstream>
@@ -1242,6 +1243,35 @@ void ReportDirectTargets()
         sPlayerbotAIConfig.directTargetsFreshMaxLevel, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds,
         sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str());
 }
+
+// twow-repo#592 (PATH-02): the bot side of pathfinding without a Unit, no switch - every counted case crashed before
+// #592 or does not happen with today's data. At most once a minute, and only while one of the rare counters is above 0
+// (until then no clock read): "[PathUnitlessBot] reject=bot_transport n=" (a map-mode PathFinder met a bot on a
+// transport, getPathStepFrom returned no path without calculate) and "[PathUnitlessBot] route_incomplete= mode_map="
+// (route steps moved to the node instead of a rebuild at runtime; map-mode PathFinders getPathFromPath built since the
+// last line - Unit mode is not counted, it is the hot path). World thread only, same pattern as ReportRouteFail.
+void ReportPathUnitlessBot()
+{
+    using namespace ai::path_unitless_bot;
+    if (!transportRejects.load(std::memory_order_relaxed) && !routeIncomplete.load(std::memory_order_relaxed) &&
+        !modeMap.load(std::memory_order_relaxed))
+        return;
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    uint64 const rejects = transportRejects.exchange(0, std::memory_order_relaxed);
+    uint64 const incomplete = routeIncomplete.exchange(0, std::memory_order_relaxed);
+    uint64 const mapMode = modeMap.exchange(0, std::memory_order_relaxed);
+    if (rejects)
+        sLog.outBasic("[PathUnitlessBot] reject=bot_transport n=%llu", (unsigned long long)rejects);
+    if (incomplete || mapMode)
+        sLog.outBasic("[PathUnitlessBot] route_incomplete=%llu mode_map=%llu",
+            (unsigned long long)incomplete, (unsigned long long)mapMode);
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -1271,6 +1301,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportRouteTime();    // twow-repo#592 (PATH-02): [RouteTime] once per minute (AiPlayerbot.Perf.RouteTimeTrace)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
+    ReportPathUnitlessBot(); // twow-repo#592 (PATH-02): [PathUnitlessBot] at most once per minute, only with rare counts
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();

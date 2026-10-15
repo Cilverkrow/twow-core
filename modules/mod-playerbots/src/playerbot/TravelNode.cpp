@@ -9,6 +9,7 @@
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/RouteTimePolicy.h"
 #include "playerbot/BotUpdateTrace.h"
+#include "playerbot/PathUnitlessBotPolicy.h"
 
 #include <iomanip>
 #include <regex>
@@ -1582,6 +1583,15 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
 
     Unit* botForPath = bot;
 
+    // twow-repo#592 (PATH-02): an incomplete step is only rebuilt while the startup generator or fish search runs
+    // (isGeneratorRunning, not hasToGen: the GM debug node commands set that at runtime). At runtime this route comes
+    // from getFullPath, without a bot, under the shared m_nMapMtx: rebuilding would write the node graph
+    // (TravelNode::buildPath) from a map thread through a unitless PathInfo. An existing complete reverse path is used
+    // read only instead (what the reverse build gave for it before: TravelNode::buildPath returns a complete path at
+    // once); without one the step takes the existing "move to the node" branch, counted as route_incomplete
+    // ([PathUnitlessBot]). With today's data every walk link is complete, so both rest.
+    bool const mayBuild = sTravelNodeMap.isGeneratorRunning();
+
     if (!pathToStart.empty()) //From start position to start of path.
     {
         travelPath.addPath(pathToStart, PathNodeType::NODE_PREPATH);
@@ -1596,7 +1606,7 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
             if (prevNode->hasPathTo(node))  //Get the path to the next node if it exists.
                 nodePath = prevNode->getPathTo(node);
 
-            if (!nodePath || !nodePath->getComplete()) //Build the path to the next node if it doesn't exist.
+            if ((!nodePath || !nodePath->getComplete()) && mayBuild) //Build the path to the next node if it doesn't exist.
             {
                 if (!prevNode->isTransport())
                     nodePath = prevNode->buildPath(node, botForPath);
@@ -1609,7 +1619,7 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
 
             TravelNodePath returnNodePath;
 
-            if (!nodePath || !nodePath->getComplete()) //It looks like we can't properly path to our node. Make a temporary reverse path and see if that works instead.
+            if ((!nodePath || !nodePath->getComplete()) && mayBuild) //It looks like we can't properly path to our node. Make a temporary reverse path and see if that works instead.
             {
                 returnNodePath = *node->buildPath(prevNode, botForPath); //Build reverse path and save it to a temporary variable.
                 std::vector<WorldPosition> path = returnNodePath.getPath();
@@ -1617,9 +1627,19 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
                 returnNodePath.setPath(path);
                 nodePath = &returnNodePath;
             }
+            else if ((!nodePath || !nodePath->getComplete()) && !mayBuild && node->hasCompletePathTo(prevNode)) // twow-repo#592: read only
+            {
+                returnNodePath = *node->getPathTo(prevNode); //Copy of the complete reverse path, no build, no graph write.
+                std::vector<WorldPosition> path = returnNodePath.getPath();
+                reverse(path.begin(), path.end()); //Reverse the path
+                returnNodePath.setPath(path);
+                nodePath = &returnNodePath;
+            }
 
             if (!nodePath || !nodePath->getComplete()) //If we can not build a path just try to move to the node.
             {
+                if (!mayBuild)  // twow-repo#592: not rebuilt at runtime
+                    ai::path_unitless_bot::routeIncomplete.fetch_add(1, std::memory_order_relaxed);
                 travelPath.addPoint(*prevNode->getPosition(), PathNodeType::NODE_NODE);
             }
             else if (nodePath->getPathType() == TravelNodePathType::areaTrigger) //Teleport to next node.
@@ -3763,8 +3783,109 @@ void TravelNodeMap::generatePaths(bool helpers)
     generateTaxiPaths();
 }
 
+// twow-repo#592 (PATH-02): may unitless node generation run? The cheap switches first; only when they pass, the
+// navmesh tiles of maps 0/1 against the .mmtile files on disk (MMMXXYY.mmtile; LoadMaps itself loads nothing on this
+// core, the tiles come from Terrain.Preload.Continents), one "[PathGen] tiles" line.
+char const* TravelNodeMap::unitlessGenSkipCause()
+{
+    char const* cause = ai::path_unitless_bot::GenerateSkipCause(sPlayerbotAIConfig.perfPathGenUnitless,
+        sWorld.getConfig(CONFIG_BOOL_PATHFINDER_UNITLESS), sWorld.getConfig(CONFIG_BOOL_TERRAIN_PRELOAD_CONTINENTS));
+    if (cause)
+        return cause;
+
+    bool complete = true;
+    std::ostringstream out;
+    for (uint32 mapId : { 0u, 1u })
+    {
+        uint32 loaded = 0;
+        if (dtNavMesh const* mesh = MMAP::MMapFactory::createOrGetMMapManager()->GetNavMesh(mapId))
+        {
+            for (int32 i = 0; i < mesh->getMaxTiles(); ++i)
+            {
+                dtMeshTile const* tile = mesh->getTile(i);
+                if (tile && tile->header)
+                    ++loaded;
+            }
+        }
+
+        uint32 files = 0;
+        boost::system::error_code ec;
+        for (boost::filesystem::directory_iterator it(sWorld.GetDataPath() + "mmaps", ec), end; !ec && it != end; it.increment(ec))
+        {
+            std::string const name = it->path().filename().string();
+            if (it->path().extension() != ".mmtile" || name.size() < 3 ||
+                name[0] < '0' || name[0] > '9' || name[1] < '0' || name[1] > '9' || name[2] < '0' || name[2] > '9')
+                continue;
+            if (uint32((name[0] - '0') * 100 + (name[1] - '0') * 10 + (name[2] - '0')) == mapId)
+                ++files;
+        }
+
+        out << " map" << mapId << "=" << loaded << "/" << files;
+        complete = complete && ai::path_unitless_bot::TilesComplete(loaded, files);
+    }
+    sLog.outString("[PathGen] tiles%s complete=%u", out.str().c_str(), uint32(complete));
+
+    return complete ? nullptr : ai::path_unitless_bot::TilesIncompleteCause;
+}
+
+// twow-repo#592 (PATH-02): generateNodes (full generation) only adds unlinked nodes, and generateWalkPathMap builds node
+// paths without a bot (TravelNode::buildPath -> getPathFromPath(..., nullptr), the unitless PathFinder) from every
+// unlinked node to each neighbour that passes the tests below - the same tests, in the same order, as there. Nothing
+// else in generatePaths(false) pathfinds: path costs, pruning and taxi paths work on the stored points, and
+// SetMobAvoidAreaMap only constructs the PathFinder (setArea is a stub). Startup only, normally no unlinked node.
+bool TravelNodeMap::generationNeedsUnitlessPaths()
+{
+    if (hasToFullGen)
+        return true;
+
+    for (auto& startNode : m_nodes)
+    {
+        if (startNode->isLinked())
+            continue;
+
+        for (auto& endNode : getNodes(*startNode->getPosition(), 2000.0f))
+        {
+            if (endNode->isTransport() && endNode->isLinked())
+                continue;
+
+            if (startNode == endNode)
+                continue;
+
+            if (startNode->hasCompletePathTo(endNode))
+                continue;
+
+            if (startNode->getMapId() != endNode->getMapId())
+                continue;
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void TravelNodeMap::generateAll()
 {
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.PathGenUnitless): a generation that builds node paths needs unitless
+    // pathfinding (the generator's paths have no bot); before #592 such a start crashed in the first unitless
+    // calculate(). Only for it the gate decides: closed, the generation is skipped as a whole - no LoadMaps, no
+    // generateNodes/generatePaths, nothing to save; the graph is used as loaded and the runtime treats it as generated
+    // (hasToGen off). A start that needs no node path (only uncalculated links, or unlinked nodes without a neighbour to
+    // build to) runs exactly as before, with either switch value and without [PathGen] lines. Map offsets, transfers and
+    // coverage run as before.
+    bool unitlessGen = false;
+    if ((hasToGen || hasToFullGen) && generationNeedsUnitlessPaths())
+    {
+        if (char const* cause = unitlessGenSkipCause())
+        {
+            sLog.outString("[PathGen] skipped reason=generator n=%u cause=%s full=%u", genRequests, cause, uint32(hasToFullGen));
+            hasToGen = false;
+            hasToFullGen = false;
+        }
+        else
+            unitlessGen = true;
+    }
+
     if (hasToGen || hasToFullGen)
         LoadMaps();
 
@@ -3779,10 +3900,20 @@ void TravelNodeMap::generateAll()
 
     if (hasToGen || hasToFullGen)
     {
+        setGeneratorRunning(true);   // twow-repo#592: see isGeneratorRunning()
         generatePaths(false);
+        setGeneratorRunning(false);
         hasToGen = false;
         hasToFullGen = false;
         hasToSave = true;
+
+        if (unitlessGen)  // twow-repo#592: only after a generation through the open gate
+        {
+            size_t links = 0;
+            for (auto& node : m_nodes)
+                links += node->getLinks()->size();
+            sLog.outString("[PathGen] done nodes=" SIZEFMTD " links=" SIZEFMTD, m_nodes.size(), links);
+        }
     }
 
     sLog.outString("-Calculating coverage"); //This prevents crashes when bots from multiple maps try to calculate this on the fly.
@@ -4022,7 +4153,10 @@ void TravelNodeMap::loadNodeStore()
                 if (fields[6].GetBool())
                     node->setLinked(true);
                 else
+                {
                     hasToGen = true;
+                    ++genRequests;  // twow-repo#592: [PathGen] n=
+                }
 
                 saveNodes.insert(std::make_pair(fields[0].GetUInt32(), node));
 
@@ -4062,7 +4196,10 @@ void TravelNodeMap::loadNodeStore()
                 startNode->setPathTo(endNode, TravelNodePath(fields[4].GetFloat(), fields[6].GetFloat(), fields[2].GetUInt8(), fields[3].GetUInt64(), fields[7].GetBool(), { fields[8].GetUInt8(),fields[9].GetUInt8(),fields[10].GetUInt8() }, fields[5].GetFloat()), true);
 
                 if (!fields[7].GetBool())
+                {
                     hasToGen = true;
+                    ++genRequests;  // twow-repo#592: [PathGen] n=
+                }
 
             } while (result->NextRow());
 

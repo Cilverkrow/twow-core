@@ -240,6 +240,20 @@ vmap.petLOS = 1
 
 mmap.enabled = 1
 
+#    PathFinder.Unitless (twow-repo#592, PATH-02)
+#        Pathfinding without a unit: PathInfo(mapId, instanceId), the bots' map-wide paths (node
+#        generator, routes for a bot that is not on the start map). Paths of units are the same with
+#        either value.
+#        0 = such a path fails closed: NOPATH, one "[PathUnitless] reject=disabled" line and a minute
+#            line "[PathUnitless] rejects=..." while it happens. Before #592 the server crashed there.
+#        1 = map mode: the path is computed with player defaults (walk, swim, no flying) on the map's
+#            navmesh and terrain. A transport, a missing terrain, calculate(x, y, z) and the core-only
+#            post-processing still fail closed. Only with the bots' generator (AiPlayerbot.Perf.PathGenUnitless)
+#            and after the replay check; navmesh tiles are only there with Terrain.Preload.Continents = 1.
+#        Default: 0
+
+PathFinder.Unitless = 0
+
 # Collision.Models.Unload. Free model when no one uses it anymore.
 
 Collision.Models.Unload = 1
