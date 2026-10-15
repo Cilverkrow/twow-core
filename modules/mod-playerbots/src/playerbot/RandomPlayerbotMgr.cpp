@@ -1179,8 +1179,16 @@ void ReportRouteFail()
 
     uint64 const blocks = ai::stall_guard::routeFailBlocks.exchange(0, std::memory_order_relaxed);
     uint64 const skips = ai::stall_guard::routeCooldownSkips.exchange(0, std::memory_order_relaxed);
-    sLog.outBasic("[RouteFail] blocks=%llu skips=%llu cooldown_seconds=%u",
-        (unsigned long long)blocks, (unsigned long long)skips, sPlayerbotAIConfig.perfRouteFailCooldownSeconds);
+    // twow-repo#592 (AiPlayerbot.Perf.RouteFailEarlySkip): early_skips / early_wrong only with that switch on; off, the line
+    // stays as it was.
+    if (!sPlayerbotAIConfig.perfRouteFailEarlySkip)
+        sLog.outBasic("[RouteFail] blocks=%llu skips=%llu cooldown_seconds=%u",
+            (unsigned long long)blocks, (unsigned long long)skips, sPlayerbotAIConfig.perfRouteFailCooldownSeconds);
+    else
+        sLog.outBasic("[RouteFail] blocks=%llu skips=%llu cooldown_seconds=%u early_skips=%llu early_wrong=%llu",
+            (unsigned long long)blocks, (unsigned long long)skips, sPlayerbotAIConfig.perfRouteFailCooldownSeconds,
+            (unsigned long long)ai::stall_guard::routeEarlySkips.exchange(0, std::memory_order_relaxed),
+            (unsigned long long)ai::stall_guard::routeEarlyWrong.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): one [RouteTime] line per minute - every node route build

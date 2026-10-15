@@ -131,8 +131,10 @@ require_order("${route}" "outDetail->budgetStop = true;" "                return
 require_order("${route}" "outDetail->badEnd = uint32(badEndNodes.size());" "AI_VALUE2(bool, \"action useful\", \"hearthstone\")" "loop result before the hearthstone try")
 region("${node_cpp}" "TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit, ai::path_fail::RouteFailDetail* outDetail)" "\n}\n" full)
 require_text("${full}" "TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit, outDetail);" "detail passed to getRoute")
-require_order("${full}" "return TravelPath(beginPath);" "outDetail->directGap =" "direct gap only after a failed direct attempt")
-require_order("${full}" "outDetail->directGap =" "std::shared_lock<std::shared_timed_mutex> nodeMapLock(sTravelNodeMap.m_nMapMtx);" "direct gap before the node lock")
+# twow-repo#592 (AiPlayerbot.Perf.RouteFailEarlySkip): an early skip before the direct attempt reports the gap stored with
+# its cooldown (outDetail->directGap = storedGap); the gap of this search's own attempt is the one pinned here.
+require_order("${full}" "return TravelPath(beginPath);" "outDetail->directGap = beginPath.empty()" "direct gap only after a failed direct attempt")
+require_order("${full}" "outDetail->directGap = beginPath.empty()" "std::shared_lock<std::shared_timed_mutex> nodeMapLock(sTravelNodeMap.m_nMapMtx);" "direct gap before the node lock")
 
 region("${move_cpp}" "TravelPath MovementAction::ResolveMovePath(" "\nbool MovementAction::HandleSpecialMovement(" resolve)
 require_text("${resolve}" "bool const traceFail = sPlayerbotAIConfig.pathRouteFailDetail;" "trace switch")
