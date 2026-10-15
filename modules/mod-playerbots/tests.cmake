@@ -1948,6 +1948,7 @@ add_test(NAME tick_diag_597
 add_test(NAME tick_diag_597_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DDC_SOURCE_FILE=${PB_MODULE_DIR}/../mod-dungeon-clear/src/DungeonClearModule.cpp"
     -P "${PB_MODULE_DIR}/t/tick_diag_597_source_contract_tests.cmake")
 
 # twow-repo#541/#551: rndbot park / unpark (inn of the own faction and level band, verified bind,
