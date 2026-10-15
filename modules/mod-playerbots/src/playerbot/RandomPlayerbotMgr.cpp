@@ -17,6 +17,7 @@
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PacketTracePolicy.h"
+#include "playerbot/BuffTargetPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
@@ -945,6 +946,19 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // twow-repo#588 (AiPlayerbot.Buff.RealPlayerStyle): buff targets chosen in the last minute, per category.
+    if (sPlayerbotAIConfig.buffRealPlayerStyle)
+    {
+        auto take = [](ai::buff_target::Category c) { return (unsigned long long)ai::buff_target::Counter(c).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const group = take(ai::buff_target::Category::Group);
+        unsigned long long const guild = take(ai::buff_target::Category::Guild);
+        unsigned long long const strangerBot = take(ai::buff_target::Category::StrangerBot);
+        unsigned long long const strangerPlayer = take(ai::buff_target::Category::StrangerPlayer);
+        unsigned long long const cooldown = take(ai::buff_target::Category::StrangerOnCooldown);
+        sLog.outBasic("[BuffTargets] group=%llu guild=%llu stranger_bot=%llu stranger_player=%llu stranger_on_cooldown=%llu cooldown_s=%u",
+            group, guild, strangerBot, strangerPlayer, cooldown, sPlayerbotAIConfig.buffStrangerCooldownSeconds);
+    }
 
     // twow-repo#541 (AiPlayerbot.Perf.ActionBudget): expensive actions of the last minute.
     if (sPlayerbotAIConfig.perfActionBudget)

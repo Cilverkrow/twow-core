@@ -2739,6 +2739,25 @@ add_test(NAME path_fail_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/path_fail_source_contract_tests.cmake")
 
+# twow-repo#588 (owner 14.10.2026): buff targets like a real player (AiPlayerbot.Buff.RealPlayerStyle).
+add_test(NAME buff_target_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/buff_target_source_contract_tests.cmake")
+
+add_executable(buff_target_policy_tests
+  "${PB_MODULE_DIR}/t/buff_target_policy_tests.cpp")
+
+target_include_directories(buff_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(buff_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME buff_target_policy
+  COMMAND buff_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#551 (owner 11.10.2026): parked bots on inn chairs (AiPlayerbot.Park.Seats).
 add_test(NAME park_seats_source_contract
   COMMAND "${CMAKE_COMMAND}"
