@@ -2465,10 +2465,10 @@ AiPlayerbot.Perf.RouteTimeTrace = 0
 #       while the hearthstone fallback could run).
 #   4 = also the direct navmesh attempt is left out when no polygon lies within spell distance of the target (it runs
 #       late when the pair loop has to run after all).
-# Checks above the level keep running in shadow. One [RoutePrecheck] line a minute: level= checks= hits= wrong=
+# Checks above the level keep running in shadow. One [RoutePrecheck] line a minute: checks= hits= wrong=
 # end_nopoly=eq:h/c,lt5:h/c,lt25:h/c,ge25:h/c,na:h/c (target checks by direct-attempt class) start_checks=
 # start_nopoly= direct_checks= direct_nopoly= unknown_tile= exempt_water= exempt_other= wrong_end= wrong_start=
-# wrong_direct= skips_end= skips_start= skips_direct=. With AiPlayerbot.Path.RouteFailDetail = 1 the detail line gets
+# wrong_direct= skips_end= skips_start= skips_direct= level=. With AiPlayerbot.Path.RouteFailDetail = 1 the detail line gets
 # " precheck= precheck_start= precheck_direct= precheck_skip=" (direct_gap=-2: direct attempt left out).
 AiPlayerbot.Perf.RoutePrecheck = 0
 # twow-repo#592 (PATH-02 phase 2, level 2 = BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go -
