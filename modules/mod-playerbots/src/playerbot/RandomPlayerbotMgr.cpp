@@ -58,6 +58,7 @@
 #include <cstdio>
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/RouteTimePolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "Maps/MapManager.h"
@@ -1195,6 +1196,20 @@ void ReportRouteTime()
 
     sLog.outBasic("%s", ai::route_time::FormatLine(ai::route_time::Global().Take()).c_str());
 }
+
+// twow-repo#592 (PATH-02, AiPlayerbot.Perf.RoutePrecheck): one [RoutePrecheck] line per minute - target checks (and their
+// hits per direct-attempt class), start and direct checks, exemptions, wrong predictions and the work left out. World
+// thread only, same pattern as ReportRouteFail. Nothing is checked, counted or written when off.
+void ReportRoutePrecheck()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.perfRoutePrecheck || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    sLog.outBasic("%s", ai::route_precheck::FormatLine(sPlayerbotAIConfig.perfRoutePrecheck, ai::route_precheck::Global().Take()).c_str());
+}
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -1222,6 +1237,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)
     ReportRouteTime();    // twow-repo#592 (PATH-02): [RouteTime] once per minute (AiPlayerbot.Perf.RouteTimeTrace)
+    ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
 
 #ifdef MEMORY_MONITOR
     sMemoryMonitor.Print();

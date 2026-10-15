@@ -129,7 +129,7 @@ require_text("${move_cpp}" "traceEngine->TraceNote(\"M:route %lluus pairs=%u pts
 require_text("${policy}" "    if (!t.on)\n        return std::string();\n    char buf[192];" "no token text when not timed")
 # [RouteFailDetail]: the old fields unchanged, the appendix last.
 require_text("${move_cpp}" "end_dist=%.0f direct_gap=%.1f no_nodes=%u cooldown=%u budget=%u transport=%u%s\"," "detail appendix at the end")
-require_text("${move_cpp}" "std::string const suffix = route_time::FormatDetail(d.times);" "detail appendix from the times")
+require_text("${move_cpp}" "std::string const suffix = route_time::FormatDetail(d.times)" "detail appendix from the times")
 
 # 7. dispatch_*: the MovePoint of DispatchMovement, only with generatePath and the switch.
 function_body("${move_cpp}" "void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bool masterWalking)" dispatch)

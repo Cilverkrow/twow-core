@@ -6,6 +6,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/StartZonePolicy.h"
+#include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/RouteTimePolicy.h"
 #include "playerbot/BotUpdateTrace.h"
 
@@ -73,6 +74,280 @@ private:
     ai::path_fail::RouteFailDetail* const detail;
     uint32 pfStart = 0;
     uint64 startUs = 0;
+};
+
+// twow-repo#592 (PATH-02, AiPlayerbot.Perf.RoutePrecheck): the Detour side of the end point pre-check
+// (RoutePrecheckPolicy.h). The thread's own query of the map, as in PathInfo and WorldPosition::ClosestCorrectPoint;
+// nothing is loaded and no lock is taken.
+class PrecheckMesh
+{
+public:
+    explicit PrecheckMesh(uint32 mapId)
+        : query(MMAP::MMapFactory::createOrGetMMapManager()->GetNavMeshQuery(mapId)), mesh(query ? query->getAttachedNavMesh() : nullptr)
+    {
+    }
+
+    bool Valid() const { return query && mesh; }
+
+    // PathInfo::HaveTiles: the tile under the point is loaded (without it PathInfo builds a shortcut).
+    bool TileLoaded(float x, float y, float z) const
+    {
+        float const point[VERTEX_SIZE] = { y, z, x };
+        int tx = 0, ty = 0;
+        mesh->calcTileLoc(point, &tx, &ty);
+        return mesh->getTileAt(tx, ty, 0) != nullptr;
+    }
+
+    bool TileLoaded(WorldPosition const& p) const { return TileLoaded(p.getX(), p.getY(), p.getZ()); }
+
+    // Every tile under [p +- halfXY] is loaded (a box narrower than a tile lies on at most 2 x 2 tiles), so no polygon
+    // of the box can turn up later from a tile that another map thread loads. Tiles are never unloaded (MMapTileUnload 0).
+    bool BoxTilesLoaded(WorldPosition const& p, float halfXY) const
+    {
+        return TileLoaded(p.getX() - halfXY, p.getY() - halfXY, p.getZ()) && TileLoaded(p.getX() + halfXY, p.getY() - halfXY, p.getZ()) &&
+            TileLoaded(p.getX() - halfXY, p.getY() + halfXY, p.getZ()) && TileLoaded(p.getX() + halfXY, p.getY() + halfXY, p.getZ());
+    }
+
+    // A polygon of any flag (a superset of every bot filter) lies in the box. A failed query answers "maybe".
+    bool PolyNear(WorldPosition const& p, float halfXY, float halfZ) const
+    {
+        float const center[VERTEX_SIZE] = { p.getY(), p.getZ(), p.getX() };
+        float const extents[VERTEX_SIZE] = { halfXY, halfZ, halfXY };
+        dtQueryFilter filter;
+        filter.setIncludeFlags(0xFFFF);
+        filter.setExcludeFlags(0);
+        dtPolyRef ref = INVALID_POLYREF;
+        float nearest[VERTEX_SIZE];
+        dtStatus const status = query->findNearestPoly(center, extents, &filter, &ref, nearest);
+        return !dtStatusSucceed(status) || ref != INVALID_POLYREF;
+    }
+
+private:
+    dtNavMeshQuery const* const query;
+    dtNavMesh const* const mesh;
+};
+
+// The point can be swum to or lies in / under water: PathInfo may build a swim or underwater path there, and getRoute
+// retries the legs at the water surface. No terrain: answer yes (no skip).
+bool PrecheckWater(WorldPosition const& p)
+{
+    TerrainInfo const* terrain = p.getTerrain();
+    return !terrain || terrain->IsSwimmable(p.getX(), p.getY(), p.getZ()) || terrain->IsInWater(p.getX(), p.getY(), p.getZ()) ||
+        terrain->IsUnderWater(p.getX(), p.getY(), p.getZ());
+}
+
+// Every case in which PathInfo or getPathStepFrom ends a path off the navmesh, or the search is not the plain bot case.
+bool PrecheckExempt(Player* bot, WorldPosition const& startPos, WorldPosition const& endPos)
+{
+    if (!bot || !bot->IsAlive() || bot->GetTransport() || bot->CanFly() || bot->HasUnitState(UNIT_STAT_IGNORE_PATHFINDING))
+        return true;
+    if (bot->GetMapId() != startPos.getMapId() || startPos.getMapId() != endPos.getMapId())
+        return true;
+    if (bot->GetMapId() == route_precheck::TelAbimMapId && bot->GetZoneId() == route_precheck::TelAbimZoneId)
+        return true;
+    return sTravelNodeMap.gethasToGen() || sPlayerbotAIConfig.hasLog("deadzone.csv");
+}
+
+// Target check: can a target leg from one of the end nodes end within 1 yd / 2 yd of the target?
+route_precheck::Result PrecheckEnd(Player* bot, WorldPosition const& startPos, WorldPosition const& endPos, std::vector<TravelNode*> const& endNodes)
+{
+    if (PrecheckExempt(bot, startPos, endPos))
+        return route_precheck::Result::ExemptOther;
+    // A target leg starts at its node: a node this close may count as arrived without any path.
+    float const nodeReach = route_precheck::EndHalfXY;
+    for (TravelNode* node : endNodes)
+        if (node->getPosition()->sqDistance2d(endPos) <= nodeReach * nodeReach)
+            return route_precheck::Result::ExemptOther;
+
+    PrecheckMesh const mesh(endPos.getMapId());
+    return route_precheck::Decide(false,
+        [&]() {
+            if (!mesh.Valid() || !mesh.BoxTilesLoaded(endPos, route_precheck::EndHalfXY))
+                return false;
+            for (TravelNode* node : endNodes)
+                if (!mesh.TileLoaded(*node->getPosition()))
+                    return false;
+            return true;
+        },
+        [&]() { return mesh.PolyNear(endPos, route_precheck::EndHalfXY, route_precheck::EndHalfZ); },
+        [&]() {
+            if (PrecheckWater(endPos))
+                return true;
+            for (TravelNode* node : endNodes)
+                if (PrecheckWater(*node->getPosition()))
+                    return true;
+            return false;
+        });
+}
+
+// Start check: can a start leg reach any start node? Not without a polygon around the start (PathInfo::FindWalkPoly).
+route_precheck::Result PrecheckStart(Player* bot, WorldPosition const& startPos, WorldPosition const& endPos,
+    std::vector<WorldPosition> const& startPath, std::vector<TravelNode*> const& startNodes)
+{
+    if (PrecheckExempt(bot, startPos, endPos))
+        return route_precheck::Result::ExemptOther;
+    // Start legs are first cropped from the direct path: only when that path never left the start is it known.
+    if (startPath.size() != 1)
+        return route_precheck::Result::ExemptOther;
+    for (TravelNode* node : startNodes)
+    {
+        float const reach = (node->isTransport() ? route_precheck::TransportStartNodeReach : route_precheck::StartNodeReach) + route_precheck::BoxMargin;
+        if (node->getPosition()->sqDistance2d(startPos) <= reach * reach)
+            return route_precheck::Result::ExemptOther;
+    }
+
+    PrecheckMesh const mesh(startPos.getMapId());
+    return route_precheck::Decide(false,
+        [&]() {
+            if (!mesh.Valid() || !mesh.BoxTilesLoaded(startPos, route_precheck::StartHalfXY))
+                return false;
+            for (TravelNode* node : startNodes)
+                if (!mesh.TileLoaded(*node->getPosition()))
+                    return false;
+            return true;
+        },
+        [&]() { return mesh.PolyNear(startPos, route_precheck::StartHalfXY, route_precheck::StartHalfZ); },
+        [&]() {
+            if (PrecheckWater(startPos))
+                return true;
+            for (TravelNode* node : startNodes)
+                if (PrecheckWater(*node->getPosition()))
+                    return true;
+            return false;
+        });
+}
+
+// Direct check: can the direct attempt end within spell distance (2D) and 2 yd (Z) of the target?
+route_precheck::Result PrecheckDirect(Player* bot, WorldPosition const& startPos, WorldPosition const& endPos)
+{
+    if (PrecheckExempt(bot, startPos, endPos))
+        return route_precheck::Result::ExemptOther;
+    float const reach = sPlayerbotAIConfig.spellDistance + route_precheck::BoxMargin;
+    // The direct path starts at the start: a start within reach may count as arrived.
+    if (startPos.sqDistance2d(endPos) <= reach * reach)
+        return route_precheck::Result::ExemptOther;
+
+    PrecheckMesh const mesh(endPos.getMapId());
+    return route_precheck::Decide(false,
+        [&]() { return mesh.Valid() && mesh.TileLoaded(startPos) && mesh.BoxTilesLoaded(endPos, reach); },
+        [&]() { return mesh.PolyNear(endPos, reach, route_precheck::DirectHalfZ); },
+        [&]() { return PrecheckWater(startPos) || PrecheckWater(endPos); });
+}
+
+// The hearthstone fallback after the pair loop builds its path with the target leg of the loop; a skipped start check
+// would leave that leg empty, so the start check skips only while the fallback cannot run. Unknown: it may.
+bool PrecheckHearthstoneUseful(Player* bot)
+{
+    PlayerbotAI* const botAi = bot ? GetBotAI(bot) : nullptr;
+    if (!botAi)
+        return true;
+    AiObjectContext* context = botAi->GetAiObjectContext();
+    return AI_VALUE2(bool, "action useful", "hearthstone");
+}
+
+// The target and start checks of the getRoute(position) call of a getFullPath build, and the deferred direct attempt
+// once the pair loop has to run after all. True = that late direct attempt reached spell distance (never by the
+// proof); getFullPath then answers with it, as it always did.
+bool RunRoutePrecheck(route_precheck::BuildContext& build, Player* bot, Unit* unit, WorldPosition const& startPos,
+    WorldPosition const& endPos, std::vector<WorldPosition>& startPath, std::vector<TravelNode*> const& startNodes,
+    std::vector<TravelNode*> const& endNodes)
+{
+    route_precheck::Counters& counters = route_precheck::Global();
+    build.end = PrecheckEnd(bot, startPos, endPos, endNodes);
+    counters.Count(route_precheck::Kind::End, build.end, build.gap);
+    if (route_precheck::Skips(build.level, route_precheck::Kind::End, build.end))
+        build.skipped = route_precheck::Kind::End;
+    else
+    {
+        build.start = PrecheckStart(bot, startPos, endPos, startPath, startNodes);
+        counters.Count(route_precheck::Kind::Start, build.start, build.gap);
+        if (route_precheck::Skips(build.level, route_precheck::Kind::Start, build.start) && !PrecheckHearthstoneUseful(bot))
+            build.skipped = route_precheck::Kind::Start;
+    }
+
+    if (build.directDeferred && build.skipped == route_precheck::Kind::None)
+    {
+        // The pair loop runs and crops its start legs from the direct path: run the attempt now.
+        build.directLate = true;
+        ai::route_time::RouteTimes* const routeTimes = ai::route_time::Active();
+        uint32 const stepsBefore = routeTimes ? routeTimes->steps : 0;
+        {
+            ai::route_time::PhaseTimer const lateTimer(routeTimes, ai::route_time::Phase::Direct);
+            startPath = endPos.getPathFromPath({ startPos }, unit, 40);
+        }
+        if (routeTimes)
+            routeTimes->directSteps = routeTimes->steps - stepsBefore;
+        build.lateGap = startPath.empty() ? -1.0f : startPath.back().distance(endPos);
+        if (endPos.isPathTo(startPath, sPlayerbotAIConfig.spellDistance))
+        {
+            build.directLateOk = true;
+            counters.Wrong(route_precheck::Kind::Direct);
+            return true;
+        }
+    }
+
+    if (build.skipped != route_precheck::Kind::None)
+        counters.Skipped(build.skipped);
+    return false;
+}
+
+// A route came back from the pair loop: wrong for each check that had called it impossible.
+void CountPrecheckRoute(route_precheck::BuildContext const& build)
+{
+    if (build.end == route_precheck::Result::NoPoly)
+        route_precheck::Global().Wrong(route_precheck::Kind::End);
+    if (build.start == route_precheck::Result::NoPoly)
+        route_precheck::Global().Wrong(route_precheck::Kind::Start);
+}
+
+// One getFullPath build with the pre-check on: the thread's active build for its scope; on every return the deferred
+// direct attempt that never ran counts as skipped and the caller's detail gets what the checks saw. Off: nothing.
+class PrecheckScope
+{
+public:
+    PrecheckScope(uint32 level, WorldPosition const& startPos, WorldPosition const& endPos, ai::path_fail::RouteFailDetail* outDetail)
+        : detail(outDetail)
+    {
+        if (!level)
+            return;
+        build.level = level;
+        build.mapId = startPos.getMapId();
+        build.sx = startPos.getX();
+        build.sy = startPos.getY();
+        build.sz = startPos.getZ();
+        build.endMapId = endPos.getMapId();
+        build.ex = endPos.getX();
+        build.ey = endPos.getY();
+        build.ez = endPos.getZ();
+        previous = route_precheck::ActiveBuild();
+        route_precheck::ActiveBuild() = &build;
+    }
+
+    ~PrecheckScope()
+    {
+        if (!build.level)
+            return;
+        route_precheck::ActiveBuild() = previous;
+        if (build.directDeferred && !build.directLate)
+            route_precheck::Global().Skipped(route_precheck::Kind::Direct);
+        if (detail)
+        {
+            detail->precheck = build;
+            if (build.directDeferred)
+                detail->directGap = build.directLate ? build.lateGap : -2.0f;   // -2 = direct attempt left out
+        }
+    }
+
+    PrecheckScope(PrecheckScope const&) = delete;
+    PrecheckScope& operator=(PrecheckScope const&) = delete;
+
+    // The build while the switch is on, null otherwise.
+    route_precheck::BuildContext* Build() { return build.level ? &build : nullptr; }
+
+private:
+    route_precheck::BuildContext build;
+    route_precheck::BuildContext* previous = nullptr;
+    ai::path_fail::RouteFailDetail* const detail;
 };
 }
 
@@ -1858,6 +2133,23 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
 
     std::vector<TravelNode*> badStartNodes, badEndNodes;
 
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RoutePrecheck): the target and start checks of this getFullPath build
+    // (RoutePrecheckPolicy.h; other callers of getRoute run as before). Level 1 only counts and compares with the
+    // result below. From level 2 a check that proves no pair can give a route marks every start node bad: the loop then
+    // runs no A* and no leg and ends without a route - the same result, earlier; the hearthstone fallback and the
+    // route-fail cooldown after the loop run as before. Off: precheckOn stays false.
+    route_precheck::BuildContext* const precheck = route_precheck::ActiveBuild();
+    bool const precheckOn = precheck && precheck->Matches(startPos.getMapId(), startPos.getX(), startPos.getY(), startPos.getZ(),
+        endPos.getMapId(), endPos.getX(), endPos.getY(), endPos.getZ());
+    if (precheckOn && RunRoutePrecheck(*precheck, routeBot, unit, startPos, endPos, startPath, startNodes, endNodes))
+        return TravelNodeRoute();
+    if (precheckOn && precheck->skipped != route_precheck::Kind::None)
+    {
+        badStartNodes = startNodes;
+        if (precheck->skipped == route_precheck::Kind::End)
+            badEndNodes = endNodes;
+    }
+
     //Cycle over the combinations of these 5 nodes.
     for (auto& endNode : endNodes)
     {
@@ -1970,6 +2262,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
             if (hasPath)
             {
                 startPath = newStartPath;
+                if (precheckOn)   // twow-repo#592: a route although a check had called it impossible ([RoutePrecheck] wrong=)
+                    CountPrecheckRoute(*precheck);
 
                 if (sPlayerbotAIConfig.hasLog("deadzone.csv"))
                 {
@@ -2070,8 +2364,24 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     RouteTimeScope routeTimeScope(sPlayerbotAIConfig.perfRouteTimeTrace, outDetail);
     ai::route_time::RouteTimes* const routeTimes = routeTimeScope.Times();
 
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RoutePrecheck): the end point pre-check of this build (RoutePrecheckPolicy.h).
+    // The direct check runs here, the target and start checks in getRoute. Level 4 leaves the direct attempt out when no
+    // polygon lies within spell distance of the target (it cannot reach it); getRoute runs it late if its pair loop has to
+    // run. Below level 4 the direct check is only counted. Off: precheck stays null, nothing is checked.
+    PrecheckScope precheckScope(sPlayerbotAIConfig.perfRoutePrecheck, startPos, endPos, outDetail);
+    route_precheck::BuildContext* const precheck = precheckScope.Build();
+    if (precheck)
+    {
+        precheck->direct = PrecheckDirect(dynamic_cast<Player*>(unit), startPos, endPos);
+        route_precheck::Global().Count(route_precheck::Kind::Direct, precheck->direct, route_precheck::GapClass::Na);
+        precheck->directDeferred = route_precheck::Skips(precheck->level, route_precheck::Kind::Direct, precheck->direct);
+    }
+
     std::uint64_t const directStartUs = routeTimes ? ai::bot_update::NowUs() : 0;
-    beginPath = endPos.getPathFromPath({ startPos }, unit, 40);
+    if (precheck && precheck->directDeferred)
+        beginPath = { startPos };
+    else
+        beginPath = endPos.getPathFromPath({ startPos }, unit, 40);
     if (routeTimes)
     {
         routeTimes->Add(ai::route_time::Phase::Direct, ai::bot_update::SinceUs(directStartUs));
@@ -2080,6 +2390,8 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
 
     if (endPos.isPathTo(beginPath,sPlayerbotAIConfig.spellDistance)) //If we can get within spell distance a longer route won't help.
     {
+        if (precheck && precheck->direct == route_precheck::Result::NoPoly)   // twow-repo#592: called impossible
+            route_precheck::Global().Wrong(route_precheck::Kind::Direct);
         if (routeTimes)
             routeTimes->directOk = routeTimes->found = true;
         return TravelPath(beginPath);
@@ -2088,6 +2400,10 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     // twow-repo#575 (PATH-01 #1): how far the direct navmesh attempt got (-1 = no path at all).
     if (outDetail)
         outDetail->directGap = beginPath.empty() ? -1.0f : beginPath.back().distance(endPos);
+    // twow-repo#592: the direct attempt's class for the target check counters ([RoutePrecheck] end_nopoly=).
+    if (precheck)
+        precheck->gap = route_precheck::GapClassOf(!precheck->directDeferred, beginPath.size(),
+            beginPath.empty() ? -1.0f : beginPath.back().distance(endPos));
 
     //[[Node pathfinding system]]
                 //We try to find nodes near the bot and near the end position that have a route between them.
@@ -2104,6 +2420,14 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     //Find the route of nodes starting at a node closest to the start position and ending at a node closest to the endposition.
     //Also returns longPath: The path from the start position to the first node in the route.
     TravelNodeRoute route = sTravelNodeMap.getRoute(startPos, endPos, beginPath, endPath, unit, outDetail);
+
+    // twow-repo#592: the late direct attempt (level 4) reached spell distance after all - the answer it always gave.
+    if (precheck && precheck->directLateOk)
+    {
+        if (routeTimes)
+            routeTimes->directOk = routeTimes->found = true;
+        return TravelPath(beginPath);
+    }
 
     if (route.isEmpty())
     {
