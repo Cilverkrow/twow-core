@@ -2471,6 +2471,19 @@ AiPlayerbot.Perf.RouteTimeTrace = 0
 # wrong_direct= skips_end= skips_start= skips_direct=. With AiPlayerbot.Path.RouteFailDetail = 1 the detail line gets
 # " precheck= precheck_start= precheck_direct= precheck_skip=" (direct_gap=-2: direct attempt left out).
 AiPlayerbot.Perf.RoutePrecheck = 0
+# twow-repo#592 (PATH-02 phase 2, level 2 = BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go -
+# nach Abnahme an): 0..2 (default 0 = off), only read with AiPlayerbot.Perf.RouteFailCooldownSeconds > 0. During a
+# route-fail cooldown every MoveTo of the blocked bot still pays the direct navmesh attempt, the node map lock and
+# getNodes before the cooldown answers. The cooldown of a failed MoveTo search now keeps its start, the exact target
+# and how far its direct attempt got. A later search of the same bot with start and target each within 1 yd of that
+# failure, whose stored direct attempt ended at least spell distance + 5 yd from the target (or had no path: other
+# map), matches:
+#   1 = shadow: counted, the search runs as before; early_wrong counts matches whose direct attempt then reached
+#       spell distance (a direct path level 2 would lose).
+#   2 = such a search answers with the cooldown's empty route at once (no direct attempt, no lock, no getNodes).
+# [RouteFail] gets " early_skips= early_wrong=" (skips= keeps counting every cooldown skip); with
+# AiPlayerbot.Path.RouteFailDetail = 1 an early skip shows " cooldown=1 ... early_skip=1" with the stored direct_gap.
+AiPlayerbot.Perf.RouteFailEarlySkip = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental

@@ -2923,3 +2923,24 @@ set_target_properties(route_precheck_policy_tests PROPERTIES
 add_test(NAME route_precheck_policy
   COMMAND route_precheck_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#592 (PATH-02 phase 2): a repeated route failure is left out before its direct attempt (AiPlayerbot.Perf.RouteFailEarlySkip, 0 off, 1 shadow).
+add_test(NAME route_fail_early_skip_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/route_fail_early_skip_source_contract_tests.cmake")
+
+add_executable(route_fail_early_skip_policy_tests
+  "${PB_MODULE_DIR}/t/route_fail_early_skip_policy_tests.cpp")
+
+target_include_directories(route_fail_early_skip_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(route_fail_early_skip_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(route_fail_early_skip_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME route_fail_early_skip_policy
+  COMMAND route_fail_early_skip_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")

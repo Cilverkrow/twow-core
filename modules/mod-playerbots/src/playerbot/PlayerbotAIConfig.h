@@ -646,6 +646,7 @@ public:
     uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b): a node route search without a route blocks the same bot and target cell for that many seconds, clamped to 0..300 (0 = off)
     bool perfRouteTimeTrace = false;  // twow-repo#592 (PATH-02): phase times of every node route build, [RouteTime] once a minute, appended to M:route / [RouteFailDetail]; dispatch_* times the MovePoint path search in DispatchMovement (0 = off, no clock read)
     uint32 perfRoutePrecheck = 0;  // twow-repo#592 (PATH-02): end point pre-check of node route searches, 0 off, 1 shadow (count only), 2 skip the pair loop when no polygon lies within reach of the target, 3 + start check, 4 + direct attempt; clamped 0..4
+    uint32 perfRouteFailEarlySkip = 0;  // twow-repo#592 (PATH-02): with perfRouteFailCooldownSeconds, a search that repeats a stored route failure (start and exact target within 1 yd, direct attempt far from its goal) is left out before the direct attempt; 0 off, 1 shadow (count, early_wrong), 2 active; clamped 0..2
     bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.

@@ -65,7 +65,8 @@ require_text("${conf_dist}" "enable only after OB-30 measurement + owner go - na
 
 # 2. getRoute(position): the cooldown is set only on the final no-route return, behind the switch, in the #416 store.
 function_body("${travel_node}" "TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition endPos," route_body)
-require_text("${route_body}" "    if (routeBot && sPlayerbotAIConfig.perfRouteFailCooldownSeconds)\n    {\n        ai::stall_guard::RouteCooldowns().Block(routeKey, routeNow + sPlayerbotAIConfig.perfRouteFailCooldownSeconds, routeNow);\n        ai::stall_guard::routeFailBlocks.fetch_add(1, std::memory_order_relaxed);\n    }\n\n    return TravelNodeRoute();" "gated block right before the final no-route return")
+# twow-repo#592 (AiPlayerbot.Perf.RouteFailEarlySkip): the failure cooldown keeps the search's origin (unknown when off).
+require_text("${route_body}" "    if (routeBot && sPlayerbotAIConfig.perfRouteFailCooldownSeconds)\n    {\n        ai::stall_guard::RouteCooldowns().Block(routeKey, routeNow + sPlayerbotAIConfig.perfRouteFailCooldownSeconds, routeNow, failOrigin);\n        ai::stall_guard::routeFailBlocks.fetch_add(1, std::memory_order_relaxed);\n    }\n\n    return TravelNodeRoute();" "gated block right before the final no-route return")
 string(REGEX MATCHALL "routeNow [+] sPlayerbotAIConfig[.]perfRouteFailCooldownSeconds" fail_blocks "${route_body}")
 list(LENGTH fail_blocks fail_block_count)
 if(NOT fail_block_count EQUAL 1)

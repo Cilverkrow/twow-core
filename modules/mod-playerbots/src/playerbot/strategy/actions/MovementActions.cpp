@@ -87,7 +87,7 @@ void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& f
 
     float const dist = from.getMapId() == to.getMapId() ? from.distance(to) : -1.0f;
     // twow-repo#592 (PATH-02): switch-gated fields at the end of the line; all switches off = empty, the same line as before.
-    std::string const suffix = route_time::FormatDetail(d.times) + route_precheck::FormatDetail(d.precheck);
+    std::string const suffix = route_time::FormatDetail(d.times) + route_precheck::FormatDetail(d.precheck) + (d.earlySkip ? " early_skip=1" : "");
     sLog.outBasic("[RouteFailDetail] bot=%u level=%u alive=%u action=%s map=%u x=%.1f y=%.1f z=%.1f to_map=%u to_x=%.1f to_y=%.1f to_z=%.1f "
         "dist=%.0f pairs=%u bad_start=%u bad_end=%u start_nodes=%u end_nodes=%u start_node=\"%s\" start_dist=%.0f end_node=\"%s\" "
         "end_dist=%.0f direct_gap=%.1f no_nodes=%u cooldown=%u budget=%u transport=%u%s",

@@ -2078,6 +2078,13 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
         transportEntry = unit->GetTransport()->GetEntry();
 
     std::vector<WorldPosition> newStartPath;
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteFailEarlySkip): start, exact target and direct gap of this search,
+    // kept with a route-fail cooldown set below. Only getFullPath hands in a direct path (it starts at startPos); the
+    // other callers pass an empty start path, so their cooldowns stay without origin and never allow an early skip.
+    ai::stall_guard::RouteFailOrigin failOrigin;
+    if (sPlayerbotAIConfig.perfRouteFailEarlySkip && !startPath.empty())
+        failOrigin = ai::stall_guard::MakeRouteFailOrigin(startPos.getMapId(), startPos.getX(), startPos.getY(), startPos.getZ(),
+            endPos.getX(), endPos.getY(), endPos.getZ(), startPath.back().distance(endPos));
     // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): the phases of a getFullPath build; null otherwise (no clock).
     ai::route_time::RouteTimes* const routeTimes = ai::route_time::Active();
     std::uint64_t const nodesStartUs = routeTimes ? ai::bot_update::NowUs() : 0;
@@ -2149,6 +2156,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
         if (precheck->skipped == route_precheck::Kind::End)
             badEndNodes = endNodes;
     }
+    if (precheckOn && precheck->directLate && failOrigin.known)   // #592: the direct path ran late, its gap is the real one
+        failOrigin.directGap = precheck->lateGap;
 
     //Cycle over the combinations of these 5 nodes.
     for (auto& endNode : endNodes)
@@ -2347,7 +2356,7 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     // Off: no cooldown, no counter - the next MoveTo searches again as before.
     if (routeBot && sPlayerbotAIConfig.perfRouteFailCooldownSeconds)
     {
-        ai::stall_guard::RouteCooldowns().Block(routeKey, routeNow + sPlayerbotAIConfig.perfRouteFailCooldownSeconds, routeNow);
+        ai::stall_guard::RouteCooldowns().Block(routeKey, routeNow + sPlayerbotAIConfig.perfRouteFailCooldownSeconds, routeNow, failOrigin);
         ai::stall_guard::routeFailBlocks.fetch_add(1, std::memory_order_relaxed);
     }
 
@@ -2363,6 +2372,39 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     // the [RouteTime] counters and the caller's detail. Off: routeTimes stays null, nothing is timed.
     RouteTimeScope routeTimeScope(sPlayerbotAIConfig.perfRouteTimeTrace, outDetail);
     ai::route_time::RouteTimes* const routeTimes = routeTimeScope.Times();
+
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteFailEarlySkip, only with RouteFailCooldownSeconds > 0): a search that
+    // repeats a stored route failure of the same bot (cooldown running, start and exact target each within 1 yd, its direct
+    // attempt ended far from spell distance) would pay the direct attempt, the node map lock and getNodes only to be
+    // skipped by that cooldown in getRoute. Shadow (1) only counts the match and, below, whether the direct attempt then
+    // succeeded after all (early_wrong); active (2) answers with the cooldown's empty route right here. Off: no lookup.
+    bool earlySkipMatch = false;
+    if (sPlayerbotAIConfig.perfRouteFailEarlySkip && sPlayerbotAIConfig.perfRouteFailCooldownSeconds)
+    {
+        Player* const earlyBot = dynamic_cast<Player*>(unit);
+        float storedGap = -1.0f;
+        if (earlyBot && !earlyBot->GetTransport() && ai::stall_guard::RouteCooldowns().EarlySkip(
+                ai::stall_guard::RouteCooldownStore::Key(earlyBot->GetGUIDLow(), endPos.getMapId(), endPos.getX(), endPos.getY()),
+                uint32(time(nullptr)),
+                ai::stall_guard::MakeRouteFailOrigin(startPos.getMapId(), startPos.getX(), startPos.getY(), startPos.getZ(),
+                    endPos.getX(), endPos.getY(), endPos.getZ(), -1.0f),
+                sPlayerbotAIConfig.spellDistance + ai::stall_guard::EarlySkipGapMargin, storedGap))
+        {
+            earlySkipMatch = true;
+            ai::stall_guard::routeEarlySkips.fetch_add(1, std::memory_order_relaxed);
+            if (sPlayerbotAIConfig.perfRouteFailEarlySkip >= 2)
+            {
+                ai::stall_guard::routeCooldownSkips.fetch_add(1, std::memory_order_relaxed);   // skips= keeps every skip
+                if (outDetail)
+                {
+                    outDetail->cooldownSkip = true;
+                    outDetail->earlySkip = true;
+                    outDetail->directGap = storedGap;
+                }
+                return movePath;
+            }
+        }
+    }
 
     // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RoutePrecheck): the end point pre-check of this build (RoutePrecheckPolicy.h).
     // The direct check runs here, the target and start checks in getRoute. Level 4 leaves the direct attempt out when no
@@ -2392,6 +2434,8 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     {
         if (precheck && precheck->direct == route_precheck::Result::NoPoly)   // twow-repo#592: called impossible
             route_precheck::Global().Wrong(route_precheck::Kind::Direct);
+        if (earlySkipMatch)   // twow-repo#592: a direct path the early skip would have lost (shadow)
+            ai::stall_guard::routeEarlyWrong.fetch_add(1, std::memory_order_relaxed);
         if (routeTimes)
             routeTimes->directOk = routeTimes->found = true;
         return TravelPath(beginPath);
