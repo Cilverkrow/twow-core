@@ -1013,6 +1013,11 @@ AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute = 10
 # still is. 0 = every other map counts (old behaviour).
 AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 
+# twow-repo#587 (ZONE-01 Z4, owner 14.10.2026 via OB-00): TurnInStallCounts = 1: a stage-1 recovery (recompute route) of a
+# finished quest's turn-in counts as a failed turn-in; TurnInParkFailures of them within TurnInParkWindowSeconds park
+# the turn-in (#485), so a bot whose taker is unreachable quests on in its band instead of cycling. 0 = as before.
+AiPlayerbot.ZoneExit.TurnInStallCounts = 0
+
 # twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
 # RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
 #   continent (its race's start) is rescued back to it - a teleport, the cross-continent route rule stays as it is.

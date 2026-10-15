@@ -778,6 +778,7 @@ public:
     bool questFirstProgressionTurnInParkCountsRouteDanger = false;
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
+    bool zoneExitTurnInStallCounts = false;  // twow-repo#587 Z4: stage-1 turn-in recoveries count as turn-in failures
     // twow-repo#587 (ZONE-01): quest rescue on the right continent, stranded bots ask for it, no BG quests as targets.
     bool zoneExitRescueHomeContinent = false;
     uint32 zoneExitStrandedRescueAfter = 0;
