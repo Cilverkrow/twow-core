@@ -539,17 +539,21 @@ void Log::outString()
 {
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_includeTime)
         outTime(stdout);
     printf( "\n" );
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile)
     {
         outTimestamp(logfile);
         fprintf(logfile, "\n" );
         fflush(logfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outString( const char * str, ... )
@@ -559,6 +563,7 @@ void Log::outString( const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_colored)
         SetColor(true,m_colors[LogNormal]);
 
@@ -576,6 +581,7 @@ void Log::outString( const char * str, ... )
 
     printf( "\n" );
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile)
     {
         outTimestamp(logfile);
@@ -587,8 +593,10 @@ void Log::outString( const char * str, ... )
 
         fflush(logfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outInfo( const char * str, ...)
@@ -599,12 +607,14 @@ void Log::outInfo( const char * str, ...)
     std::shared_lock<std::shared_mutex> l{ logLock };
 
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     va_list ap;
     va_start(ap, str);
     vutf8printf(stdout, str, &ap);
     va_end(ap);
 
     printf ("\n");
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (nostalriusLogFile)
     {
         outTimestamp(nostalriusLogFile);
@@ -617,7 +627,9 @@ void Log::outInfo( const char * str, ...)
 
         fflush(nostalriusLogFile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outHonor(const char *str, ...)
@@ -627,6 +639,7 @@ void Log::outHonor(const char *str, ...)
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (!HasLogFilter(LOG_FILTER_HONOR))
     {
         if (m_colored)
@@ -648,6 +661,7 @@ void Log::outHonor(const char *str, ...)
         fflush(stderr);
     }
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (honorLogfile)
     {
         outTimestamp(honorLogfile);
@@ -662,6 +676,7 @@ void Log::outHonor(const char *str, ...)
         fprintf(honorLogfile, "\n" );
         fflush(honorLogfile);
     }
+    LogWaitDone(lwStartUs, lwFileUs, LogWaitMark(lwStartUs));
 }
 
 void Log::outRaid(const char* str, ...)
@@ -674,6 +689,7 @@ void Log::outRaid(const char* str, ...)
     {
         std::shared_lock<std::shared_mutex> l{ logLock };
 
+        uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
         outTimestamp(raidLogFile);
         fprintf(raidLogFile, "%s", "");
 
@@ -685,6 +701,7 @@ void Log::outRaid(const char* str, ...)
 
         fprintf(raidLogFile, "\n");
         fflush(raidLogFile);
+        LogWaitDone(lwStartUs, lwStartUs, LogWaitMark(lwStartUs));
     }
 }
 
@@ -695,6 +712,7 @@ void Log::outError( const char * err, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_colored)
         SetColor(false,m_colors[LogError]);
 
@@ -711,6 +729,7 @@ void Log::outError( const char * err, ... )
         ResetColor(false);
 
     fprintf( stderr, "\n" );
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile)
     {
         outTimestamp(logfile);
@@ -723,19 +742,23 @@ void Log::outError( const char * err, ... )
         fprintf(logfile, "\n" );
         fflush(logfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stderr);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outErrorDb()
 {
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_includeTime)
         outTime(stderr);
 
     fprintf( stderr, "\n" );
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile)
     {
         outTimestamp(logfile);
@@ -749,8 +772,10 @@ void Log::outErrorDb()
         fprintf(dberLogfile, "\n" );
         fflush(dberLogfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stderr);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outErrorDb( const char * err, ... )
@@ -760,6 +785,7 @@ void Log::outErrorDb( const char * err, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_colored)
         SetColor(false,m_colors[LogError]);
 
@@ -777,6 +803,7 @@ void Log::outErrorDb( const char * err, ... )
 
     fprintf( stderr, "\n" );
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile)
     {
         outTimestamp(logfile);
@@ -802,8 +829,10 @@ void Log::outErrorDb( const char * err, ... )
         fprintf(dberLogfile, "\n" );
         fflush(dberLogfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stderr);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outBasic( const char * str, ... )
@@ -813,6 +842,7 @@ void Log::outBasic( const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_logLevel >= LOG_LVL_BASIC)
     {
         if (m_colored)
@@ -832,6 +862,7 @@ void Log::outBasic( const char * str, ... )
         printf( "\n" );
     }
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile && m_logFileLevel >= LOG_LVL_BASIC)
     {
         va_list ap;
@@ -842,8 +873,10 @@ void Log::outBasic( const char * str, ... )
         va_end(ap);
         fflush(logfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outDetail( const char * str, ... )
@@ -853,6 +886,7 @@ void Log::outDetail( const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_logLevel >= LOG_LVL_DETAIL)
     {
 
@@ -873,6 +907,7 @@ void Log::outDetail( const char * str, ... )
         printf( "\n" );
     }
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile && m_logFileLevel >= LOG_LVL_DETAIL)
     {
         outTimestamp(logfile);
@@ -885,8 +920,10 @@ void Log::outDetail( const char * str, ... )
         fprintf(logfile, "\n" );
         fflush(logfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outDebug( const char * str, ... )
@@ -896,6 +933,7 @@ void Log::outDebug( const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_logLevel >= LOG_LVL_DEBUG)
     {
         if (m_colored)
@@ -915,6 +953,7 @@ void Log::outDebug( const char * str, ... )
         printf( "\n" );
     }
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile && m_logFileLevel >= LOG_LVL_DEBUG)
     {
         outTimestamp(logfile);
@@ -927,8 +966,10 @@ void Log::outDebug( const char * str, ... )
         fprintf(logfile, "\n" );
         fflush(logfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outWarden(const char *wrd, ...)
@@ -938,6 +979,7 @@ void Log::outWarden(const char *wrd, ...)
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_colored)
         SetColor(true, m_colors[LogWarden]);
 
@@ -957,6 +999,7 @@ void Log::outWarden(const char *wrd, ...)
 
     printf("\n");
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (wardenLogfile)
     {
         outTimestamp(wardenLogfile);
@@ -970,8 +1013,10 @@ void Log::outWarden(const char *wrd, ...)
         fprintf(wardenLogfile, "\n");
         fflush(wardenLogfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outWardenDebug(const char *wrd, ...)
@@ -984,6 +1029,7 @@ void Log::outWardenDebug(const char *wrd, ...)
     if (!wrd)
         return;
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_colored)
         SetColor(true, m_colors[LogWarden]);
 
@@ -1003,6 +1049,7 @@ void Log::outWardenDebug(const char *wrd, ...)
 
     printf("\n");
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (wardenLogfile)
     {
         outTimestamp(wardenLogfile);
@@ -1016,8 +1063,10 @@ void Log::outWardenDebug(const char *wrd, ...)
         fprintf(wardenLogfile, "\n");
         fflush(wardenLogfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outAnticheat(const char* detector, const char* player, const char* reason, const char* penalty)
@@ -1027,6 +1076,7 @@ void Log::outAnticheat(const char* detector, const char* player, const char* rea
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_colored)
         SetColor(true, m_colors[LogWarden]);
 
@@ -1040,6 +1090,7 @@ void Log::outAnticheat(const char* detector, const char* player, const char* rea
 
     printf("\n");
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (anticheatLogfile)
     {
         outTimestamp(anticheatLogfile);
@@ -1047,8 +1098,10 @@ void Log::outAnticheat(const char* detector, const char* player, const char* rea
         fprintf(anticheatLogfile, "\n");
         fflush(anticheatLogfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 //For application-level Discord bot logging.
@@ -1057,6 +1110,7 @@ void Log::outDiscord(char const* str, ...)
     if (!str)
         return;
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_includeTime)
         outTime(stdout);
 
@@ -1067,6 +1121,7 @@ void Log::outDiscord(char const* str, ...)
 
     printf("\n");
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (discordLogFile)
     {
         va_list ap;
@@ -1077,6 +1132,7 @@ void Log::outDiscord(char const* str, ...)
         va_end(ap);
         fflush(logfile);
     }
+    LogWaitDone(lwStartUs, lwFileUs, LogWaitMark(lwStartUs));
 }
 
 
@@ -1086,11 +1142,13 @@ void Log::outDiscordCore(char const* str)
     if (!str)
         return;
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_includeTime)
         outTime(stdout);
 
     puts(str);
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (discordCoreLogFile)
     {
         outTimestamp(discordCoreLogFile);
@@ -1098,6 +1156,7 @@ void Log::outDiscordCore(char const* str)
         fprintf(discordCoreLogFile, "\n");
         fflush(discordCoreLogFile);
     }
+    LogWaitDone(lwStartUs, lwFileUs, LogWaitMark(lwStartUs));
 }
 
 void Log::outSpam(const char* wrd, ...)
@@ -1107,6 +1166,7 @@ void Log::outSpam(const char* wrd, ...)
 
     if (logFiles[LOG_CHAT_SPAM])
     {
+        uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
         outTimestamp(logFiles[LOG_CHAT_SPAM]);
 
         va_list ap;
@@ -1116,6 +1176,7 @@ void Log::outSpam(const char* wrd, ...)
 
         fprintf(logFiles[LOG_CHAT_SPAM], "\n");
         fflush(logFiles[LOG_CHAT_SPAM]);
+        LogWaitDone(lwStartUs, lwStartUs, LogWaitMark(lwStartUs));
     }
 }
 
@@ -1126,6 +1187,7 @@ void Log::outCommand( uint32 account, const char * str, ... )
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     if (m_logLevel >= LOG_LVL_DETAIL)
     {
         if (m_colored)
@@ -1145,6 +1207,7 @@ void Log::outCommand( uint32 account, const char * str, ... )
         printf( "\n" );
     }
 
+    uint64 const lwFileUs = LogWaitMark(lwStartUs);
     if (logfile && m_logFileLevel >= LOG_LVL_DETAIL)
     {
         va_list ap;
@@ -1179,8 +1242,10 @@ void Log::outCommand( uint32 account, const char * str, ... )
         va_end(ap);
         fflush(gmLogfile);
     }
+    uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
 
     fflush(stdout);
+    LogWaitDone(lwStartUs, lwFileUs, lwFileEndUs);
 }
 
 void Log::outWorldPacketDump(ACE_HANDLE socketHandle, uint32 opcode,
@@ -1192,6 +1257,7 @@ void Log::outWorldPacketDump(ACE_HANDLE socketHandle, uint32 opcode,
 
     std::shared_lock<std::shared_mutex> l{ logLock };
 
+    uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
     outTimestamp(worldLogfile);
 
     fprintf(worldLogfile,
@@ -1210,6 +1276,28 @@ void Log::outWorldPacketDump(ACE_HANDLE socketHandle, uint32 opcode,
 
     fprintf(worldLogfile, "\n\n");
     fflush(worldLogfile);
+    LogWaitDone(lwStartUs, lwStartUs, LogWaitMark(lwStartUs));
+}
+
+// twow-repo#597 (TICK-01, PerformanceLog.LogWriteTrace): from World::LoadConfigSettings (also on a reload).
+// A switch-on starts with fresh counters.
+void Log::SetLogWriteTrace(bool on)
+{
+    if (on && !m_logWriteTrace.load(std::memory_order_relaxed))
+        m_logWait.Take();
+    m_logWriteTrace.store(on, std::memory_order_relaxed);
+}
+
+// twow-repo#597 (TICK-01): the [LogWait] minute line (world thread). The counters are taken first and
+// no lock is held here, so writing this line through out() only counts into the next minute.
+void Log::ReportLogWait(bool log)
+{
+    tick_diag::LogWaitSnapshot const s = m_logWait.Take();
+    if (!log)
+        return;
+    out(LOG_PERFORMANCE, "[LogWait] lines=%llu stdout_max_us=%llu file_max_us=%llu over10ms=%llu over100ms=%llu",
+        (unsigned long long)s.lines, (unsigned long long)s.stdoutMaxUs, (unsigned long long)s.fileMaxUs,
+        (unsigned long long)s.over10ms, (unsigned long long)s.over100ms);
 }
 
 void Log::WaitBeforeContinueIfNeed()

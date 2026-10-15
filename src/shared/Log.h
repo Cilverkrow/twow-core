@@ -26,7 +26,9 @@
 #include "Policies/Singleton.h"
 #include <mutex>
 #include <shared_mutex>
+#include <atomic>
 #include "Util.h"
+#include "TickDiagPolicy.h"  // twow-repo#597 (TICK-01): [LogWait] counters
 
 #include "fmt/core.h"
 
@@ -218,6 +220,7 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
             LogDiscord(type, log);
 #endif
 
+            uint64 const lwStartUs = LogWaitStart();  // twow-repo#597 ([LogWait]), 0 = off
             if (logFiles[type])
             {
                 if (timestampPrefix[type])
@@ -229,7 +232,9 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
 
                 fflush(logFiles[type]);
             }
+            uint64 const lwFileEndUs = LogWaitMark(lwStartUs);
             fflush(stdout);
+            LogWaitDone(lwStartUs, lwStartUs, lwFileEndUs);
         }
 
         template<typename... Args>
@@ -282,10 +287,34 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
 
         static void WaitBeforeContinueIfNeed();
 
+        // twow-repo#597 (TICK-01, PerformanceLog.LogWriteTrace): console (stdout/stderr) and file write time
+        // of every line, relaxed counters, one [LogWait] line per minute. Log.cpp cannot read the world
+        // config: World::LoadConfigSettings hands the switch over. ReportLogWait (world thread) takes
+        // the counters before it writes its own line, so that line counts into the next minute (no
+        // recursion, no lock held). log = false only resets the counters.
+        void SetLogWriteTrace(bool on);
+        void ReportLogWait(bool log);
+        // The directory of the log files (LogsDir, ends with '/' when set): [StallWatch] writes its own file.
+        std::string const& GetLogsDir() const { return m_logsDir; }
+
         std::list<uint32> m_smartlogExtraEntries;
         std::list<uint32> m_smartlogExtraGuids;
 
     private:
+        // twow-repo#597 ([LogWait]): 0 = off (one relaxed load, no clock read).
+        uint64 LogWaitStart() const { return m_logWriteTrace.load(std::memory_order_relaxed) ? tick_diag::NowUs() : 0; }
+        static uint64 LogWaitMark(uint64 startUs) { return startUs ? tick_diag::NowUs() : 0; }
+        // console = [start, fileStart) + [fileEnd, now), file = [fileStart, fileEnd).
+        void LogWaitDone(uint64 startUs, uint64 fileStartUs, uint64 fileEndUs)
+        {
+            if (!startUs)
+                return;
+            uint64 const nowUs = tick_diag::NowUs();
+            m_logWait.Record((fileStartUs - startUs) + (nowUs - fileEndUs), fileEndUs - fileStartUs);
+        }
+        std::atomic<bool> m_logWriteTrace{false};
+        tick_diag::LogWaitCounters m_logWait;
+
         FILE* openLogFile(char const* configFileName,char const* configTimeStampFlag, char const* mode);
         FILE* openGmlogPerAccount(uint32 account);
 
