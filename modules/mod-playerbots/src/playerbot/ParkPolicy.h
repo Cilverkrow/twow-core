@@ -264,4 +264,69 @@ inline bool RestoreRetries(char const* reason, std::uint32_t attempts)
 {
     return attempts < RestoreAttempts && reason && (std::string_view(reason) == "busy" || std::string_view(reason) == "no_ai");
 }
+
+// twow-repo#551 (owner 11.10.2026, AiPlayerbot.Park.Seats, default 0): parked bots sit on real chairs of the inn, not
+// in a ring on the floor or the street. A seat is one slot of a CHAIR gameobject (benches have several, on a line at
+// right angles to the object, size apart - as GameObject::GetClosestChairSlotPosition), within SeatRadiusYards of the
+// spot (the innkeeper) and SeatMaxHeightDiff in height (the upper floor counts). Bots without a free seat stand on the
+// rings from FallbackRingSkip on, so the first ring (3 yd) around the innkeeper stays free for players. A game_tele
+// target within TeleSnapYards of an inn of the faction parks in that inn.
+constexpr float SeatRadiusYards = 15.0f;
+constexpr float SeatMaxHeightDiff = 10.0f;
+constexpr std::uint32_t FallbackRingSkip = 8;
+constexpr float TeleSnapYards = 60.0f;
+
+struct Seat
+{
+    Point at;
+    float orientation = 0.0f;
+    std::uint32_t height = 0;   // chair height: stand state UNIT_STAND_STATE_SIT_LOW_CHAIR + height
+};
+
+inline bool SeatNearSpot(Point const& spot, Point const& chair)
+{
+    float const dx = chair.x - spot.x, dy = chair.y - spot.y, dz = chair.z - spot.z;
+    return chair.map == spot.map && dx * dx + dy * dy <= SeatRadiusYards * SeatRadiusYards && std::fabs(dz) <= SeatMaxHeightDiff;
+}
+
+// All seats of one chair object (slots 0 = a plain chair counts as one seat).
+inline std::vector<Seat> ChairSeats(Point const& chair, float orientation, float size, std::uint32_t slots, std::uint32_t height)
+{
+    std::vector<Seat> seats;
+    std::uint32_t const count = slots ? slots : 1;
+    float const across = orientation + 3.14159265f * 0.5f;
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        float const offset = size * float(i) - size * float(count - 1) / 2.0f;
+        seats.push_back(Seat{ Point{ chair.map, chair.x + offset * std::cos(across), chair.y + offset * std::sin(across), chair.z },
+            orientation, height });
+    }
+    return seats;
+}
+
+// The standing place of a bot without a seat: the rings from FallbackRingSkip on (never the first ring).
+inline Point FallbackPlace(Point const& spot, std::uint32_t slot, std::uint32_t seats)
+{
+    return SlotOffset(spot, (slot >= seats ? slot - seats : slot) + FallbackRingSkip);
+}
+
+// The inn a game_tele target belongs to: the nearest one within TeleSnapYards, -1 = none.
+inline int SnapToInn(Point const& tele, std::vector<Point> const& inns)
+{
+    int best = -1;
+    float bestSq = TeleSnapYards * TeleSnapYards;
+    for (std::size_t i = 0; i < inns.size(); ++i)
+    {
+        if (inns[i].map != tele.map)
+            continue;
+        float const dx = inns[i].x - tele.x, dy = inns[i].y - tele.y;
+        float const sq = dx * dx + dy * dy;
+        if (sq <= bestSq)
+        {
+            bestSq = sq;
+            best = int(i);
+        }
+    }
+    return best;
+}
 }

@@ -44,6 +44,9 @@
 #include <string>
 #include <map>
 #include <limits>
+#include <mutex>
+#include <unordered_map>
+#include <vector>
 
 extern SQLStorage sCreatureDataLinkGroupStorage;
 
@@ -1543,10 +1546,20 @@ class ObjectMgr
         void LoadRareRespawnRegistry();
         bool IsRareRespawnRegistered(uint32 guid) const { return m_RareRespawnRegistry.find(guid) != m_RareRespawnRegistry.end(); }
         bool HasAcceleratedRareRespawn(uint32 guid) const;
+        // twow-repo#581 QL-3: quest targets with few spawns (DynamicRespawn.QuestTarget.*). Built once on first use (map
+        // threads), read-only afterwards. nullptr = the entry is no candidate.
+        struct QuestRespawnTarget
+        {
+            std::vector<uint32> killQuests;   // quests with this entry as a kill objective
+            bool questLoot = false;           // its loot template has a quest drop
+        };
+        QuestRespawnTarget const* GetQuestRespawnTarget(uint32 entry) const;
         bool IsRareRespawnPoolBypass(uint32 guid) const;
         // Funserver.Rare.Respawn.{Divisor,MinSeconds,MaxSeconds} applied to a configured delay.
         uint32 ScaleRareRespawnDelay(uint32 seconds) const;
         robin_hood::unordered_map<uint32, RareRespawnRegistryEntry> m_RareRespawnRegistry;
+        mutable std::once_flag m_questRespawnTargetsOnce;
+        mutable std::unordered_map<uint32, QuestRespawnTarget> m_questRespawnTargets;
         // Cinematics
         void LoadCinematicsWaypoints();
         Position const* GetCinematicPosition(uint32 cinematicId, uint32 elapsed_time);

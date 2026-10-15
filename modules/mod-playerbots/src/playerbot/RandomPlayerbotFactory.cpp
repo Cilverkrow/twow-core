@@ -3,6 +3,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
+#include "playerbot/StartZonePolicy.h"
 #include "PlayerbotDatabaseContract.h"
 #include "AccountMgr.h"
 #include "ObjectMgr.h"
@@ -575,7 +576,11 @@ bool RandomPlayerbotFactory::CreateRandomBot(uint8 cls, uint8 inputRace)
 
     sObjectAccessor.AddObject(player);
 
-    if (race == RACE_GOBLIN)
+    // twow-repo#575 (PATH-01 E1, AiPlayerbot.CustomRaceStartZones): on, goblins / high elves keep the real start
+    // position and homebind that character creation gave them; off, they move to the proxy starts below.
+    bool const proxyStart = ai::start_zone::FactoryUsesProxyStart(race, sPlayerbotAIConfig.customRaceStartZones);
+
+    if (proxyStart && race == RACE_GOBLIN)
     {
         player->SetLocationMapId(1);
         player->Relocate(-618.518f, -4251.67f, 38.718f, 0.0f);
@@ -583,7 +588,7 @@ bool RandomPlayerbotFactory::CreateRandomBot(uint8 cls, uint8 inputRace)
         player->SaveToDB();
     }
 
-    if (race == RACE_HIGH_ELF)
+    if (proxyStart && race == RACE_HIGH_ELF)
     {
         player->SetLocationMapId(0);
         player->Relocate(-8949.95f, -132.493f, 83.5312f, 0.0f);

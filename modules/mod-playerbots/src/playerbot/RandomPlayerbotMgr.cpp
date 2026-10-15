@@ -18,6 +18,8 @@
 #include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PacketTracePolicy.h"
 #include "playerbot/UnreachableTargetPolicy.h"
+#include "playerbot/BuffTargetPolicy.h"
+#include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -27,6 +29,7 @@
 #include "BotDiagnostics.h"  // for SC_LOG
 #include "Objects/Player.h"
 #include "playerbot/AiFactory.h"
+#include "playerbot/StartZonePolicy.h"
 #include "PlayerbotCommandServer.h"
 #include "MemoryMonitor.h"
 
@@ -965,6 +968,19 @@ void ReportBotInbox()
             sLog.outBasic("[UnreachableTop] window_min=60 total=%u targets=%u top=%s", total, uint32(top.size()),
                 top.empty() ? "-" : ai::unreachable_target::Format(top).c_str());
         }
+    }
+
+    // twow-repo#588 (AiPlayerbot.Buff.RealPlayerStyle): buff targets chosen in the last minute, per category.
+    if (sPlayerbotAIConfig.buffRealPlayerStyle)
+    {
+        auto take = [](ai::buff_target::Category c) { return (unsigned long long)ai::buff_target::Counter(c).exchange(0, std::memory_order_relaxed); };
+        unsigned long long const group = take(ai::buff_target::Category::Group);
+        unsigned long long const guild = take(ai::buff_target::Category::Guild);
+        unsigned long long const strangerBot = take(ai::buff_target::Category::StrangerBot);
+        unsigned long long const strangerPlayer = take(ai::buff_target::Category::StrangerPlayer);
+        unsigned long long const cooldown = take(ai::buff_target::Category::StrangerOnCooldown);
+        sLog.outBasic("[BuffTargets] group=%llu guild=%llu stranger_bot=%llu stranger_player=%llu stranger_on_cooldown=%llu cooldown_s=%u",
+            group, guild, strangerBot, strangerPlayer, cooldown, sPlayerbotAIConfig.buffStrangerCooldownSeconds);
     }
 
     // twow-repo#541 (AiPlayerbot.Perf.ActionBudget): expensive actions of the last minute.
@@ -3492,8 +3508,10 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation> 
             }
         }
 
-        // Never send bots to custom player-only starting zones (no MMAP support)
-        if (zoneId == 5536 || zoneId == 5225)
+        // Never send bots to custom player-only starting zones (no MMAP support).
+        // twow-repo#575 (PATH-01 E3): Alah'Thalas 2040 is a zone of its own and is filtered too; with
+        // AiPlayerbot.CustomRaceStartZones the zones are teleport targets for their own race only.
+        if (ai::start_zone::TeleportSkipsZone(zoneId, bot->getRace(), sPlayerbotAIConfig.customRaceStartZones))
             return true;
 
         if (!area)
@@ -3938,15 +3956,22 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
         return targets;
     }
 
+    // twow-repo#587 (Z1a, AiPlayerbot.ZoneExit.RescueHomeContinent): only targets on one continent - the bot's own, or its home
+    // continent when it is off it (then its own race counts too: the way home). The cross-continent quest route rule
+    // (#544) is untouched: the rescue is a teleport.
+    bool const homeContinent = sPlayerbotAIConfig.zoneExitRescueHomeContinent && own && bot->GetMap() && bot->GetMap()->IsContinent();
+    uint32 const rescueMap = homeContinent ? ai::zone_exit::RescueContinent(bot->GetMapId(), own->mapId) : bot->GetMapId();
+    bool const offHome = homeContinent && rescueMap != bot->GetMapId();
+
     for (uint32 race = 1; race < MAX_RACES; ++race)
     {
         PlayerInfo const* info = firstInfo(race);
-        if (!info || race == bot->getRace() || Player::TeamForRace(race) != bot->GetTeam())
+        if (!info || (race == bot->getRace() && !offHome) || Player::TeamForRace(race) != bot->GetTeam())
             continue;
 
         if (level <= ai::quest_search::StartAreaMaxLevel)
         {
-            if (own && info->areaId == own->areaId)
+            if (own && info->areaId == own->areaId && !offHome)
                 continue;
             // twow-repo#575 (PATH-01 E6): no rescue of another race into the goblin / high-elf start zones.
             if (ai::path_fail::RescueSkipsStartOf(race, bot->getRace(), sPlayerbotAIConfig.pathRescueSkipCustomStarts))
@@ -3980,6 +4005,14 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
                 targets.push_back(innLocation);
     }
 
+    if (homeContinent)
+    {
+        size_t const before = targets.size();
+        targets.erase(std::remove_if(targets.begin(), targets.end(),
+            [rescueMap](WorldLocation const& t) { return t.mapid != rescueMap; }), targets.end());
+        sLog.outBasic("[ZoneExit] state=rescue_targets bot=%u level=%u map=%u home_map=%u off_home=%u targets=%u of %u",
+            bot->GetGUIDLow(), level, bot->GetMapId(), own->mapId, offHome ? 1u : 0u, uint32(targets.size()), uint32(before));
+    }
     return targets;
 }
 
@@ -6340,6 +6373,42 @@ namespace
 // Levels an inn may lie above or below the bot's level and still be chosen (ParkBot).
 static constexpr uint32 ParkLevelSlack = 5;
 
+// twow-repo#551 (Park.Seats): every seat of the CHAIR objects around a spot, once per spot (world thread). The order is the
+// spawn order, so slot n is always the same seat.
+std::vector<ai::park::Seat> const& RandomPlayerbotMgr::SeatsFor(WorldLocation const& spot, uint64 spotKey)
+{
+    auto const cached = parkSeatCache.find(spotKey);
+    if (cached != parkSeatCache.end())
+        return cached->second;
+
+    std::vector<ai::park::Seat>& seats = parkSeatCache[spotKey];
+    ai::park::Point const center = ParkPoint(spot);
+    std::map<uint32, GameObjectData const*> chairs;   // by guid: a stable order
+    auto const collect = [&](GameObjectDataPair const& pair)
+    {
+        GameObjectData const& data = pair.second;
+        if (data.position.mapId != spot.mapid)
+            return false;
+        GameObjectInfo const* info = sObjectMgr.GetGameObjectInfo(data.id);
+        if (!info || info->type != GAMEOBJECT_TYPE_CHAIR)
+            return false;
+        if (ai::park::SeatNearSpot(center, ai::park::Point{ data.position.mapId, data.position.x, data.position.y, data.position.z }))
+            chairs[pair.first] = &data;
+        return false;
+    };
+    sObjectMgr.DoGOData(collect);
+    for (auto const& [guid, data] : chairs)
+    {
+        GameObjectInfo const* info = sObjectMgr.GetGameObjectInfo(data->id);
+        for (ai::park::Seat const& seat : ai::park::ChairSeats(ai::park::Point{ data->position.mapId, data->position.x, data->position.y,
+                data->position.z }, data->position.o, info->size, info->chair.slots, info->chair.height))
+            seats.push_back(seat);
+    }
+    sLog.outBasic("[Park] state=seats map=%u x=%.0f y=%.0f chairs=%u seats=%u", spot.mapid, spot.coord_x, spot.coord_y,
+        uint32(chairs.size()), uint32(seats.size()));
+    return seats;
+}
+
 void RandomPlayerbotMgr::BuildParkSpots()
 {
     if (parkSpotsBuilt)
@@ -6496,6 +6565,12 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         ai->SetParked(true);
         bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
         ai->ChangeStrategy(ParkStrategyChange(), BotState::BOT_STATE_NON_COMBAT);
+    if (sPlayerbotAIConfig.parkSeats)   // twow-repo#551 (Park.Seats): nobody rides into the inn, nor mounts while parked
+    {
+        ai->ChangeStrategy("-mount", BotState::BOT_STATE_NON_COMBAT);
+        if (bot->IsMounted())
+            bot->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
+    }
         AiObjectContext* context = ai->GetAiObjectContext();
         sTravelMgr.SetNullTravelTarget(AI_VALUE(TravelTarget*, "travel target"));
         ai->StopMoving();
@@ -6514,12 +6589,30 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
             return false;
         }
         spot = WorldLocation(tele->mapId, tele->x, tele->y, tele->z, tele->o);
-        if (pick({ spot }, {}, false) < 0)
+        // twow-repo#551 (Park.Seats): a tele target next to an inn of the faction (Goldshire: the street in front of the
+        // Lion's Pride) parks in that inn, on its chairs.
+        bool snappedInn = false;
+        if (sPlayerbotAIConfig.parkSeats)
+        {
+            BuildParkSpots();
+            std::vector<ai::park::Point> innPoints;
+            std::vector<ParkInn> const& factionInns = parkInns[bot->GetTeam() == ALLIANCE ? 0 : 1];
+            for (ParkInn const& inn : factionInns)
+                innPoints.push_back(ParkPoint(inn.loc));
+            int const snapped = ai::park::SnapToInn(ParkPoint(spot), innPoints);
+            if (snapped >= 0)
+            {
+                spot = factionInns[snapped].loc;
+                cityZone = factionInns[snapped].cityZone;
+                snappedInn = true;
+            }
+        }
+        if (pick({ spot }, {}, snappedInn) < 0)
         {
             reason = "spot_full";
             return false;
         }
-        via = "tele";
+        via = snappedInn ? "tele_inn" : "tele";
     }
     else
     {
@@ -6587,8 +6680,24 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     while (takenSlots.count(slot))
         ++slot;
     takenSlots.insert(slot);
-    ai::park::Point const place = ai::park::SlotOffset(ParkPoint(spot), slot);
-    WorldLocation const target(place.map, place.x, place.y, place.z, spot.orientation);
+    ai::park::Point place = ai::park::SlotOffset(ParkPoint(spot), slot);
+    float orientation = spot.orientation;
+    int32 seatHeight = -1;
+    // twow-repo#551 (Park.Seats): a free chair seat of the spot first; without one the rings from 5.5 yd on, so the
+    // innkeeper stays reachable.
+    if (sPlayerbotAIConfig.parkSeats)
+    {
+        std::vector<ai::park::Seat> const& seats = SeatsFor(spot, spotKey);
+        if (slot < seats.size())
+        {
+            place = seats[slot].at;
+            orientation = seats[slot].orientation;
+            seatHeight = int32(seats[slot].height);
+        }
+        else
+            place = ai::park::FallbackPlace(ParkPoint(spot), slot, uint32(seats.size()));
+    }
+    WorldLocation const target(place.map, place.x, place.y, place.z, orientation);
 
     AreaTableEntry const* area = WorldPosition(spot).GetArea();
 
@@ -6598,6 +6707,7 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     entry.since = uint32(time(nullptr));
     entry.spotKey = spotKey;
     entry.slot = slot;
+    entry.seatHeight = seatHeight;
     entry.cityZone = cityZone;
     parkedBots[bot->GetGUIDLow()] = entry;
     parkCityCounts.Add(cityZone);   // twow-repo#551 (Park.MaxPerCity); released in ReleaseParkSpot
@@ -6606,6 +6716,12 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
     ai->SetParked(true);
     bot->SetHiddenFromBots(sPlayerbotAIConfig.parkHideFromBots);  // twow-repo#541/#551 (default off)
     ai->ChangeStrategy(ParkStrategyChange(), BotState::BOT_STATE_NON_COMBAT);
+    if (sPlayerbotAIConfig.parkSeats)   // twow-repo#551 (Park.Seats): nobody rides into the inn, nor mounts while parked
+    {
+        ai->ChangeStrategy("-mount", BotState::BOT_STATE_NON_COMBAT);
+        if (bot->IsMounted())
+            bot->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
+    }
     AiObjectContext* context = ai->GetAiObjectContext();
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
     sTravelMgr.SetNullTravelTarget(travelTarget);
@@ -6830,7 +6946,22 @@ void RandomPlayerbotMgr::ProcessParkedBots()
                 break;
             case ai::park::Stage::Parked:
             case ai::park::Stage::BindFailed:
-                if (bot->getStandState() != UNIT_STAND_STATE_SIT && !bot->IsInCombat() && !bot->IsMoving())
+                // twow-repo#551 (Park.Seats): on its chair like a player (place, facing, chair height); otherwise as before.
+                if (entry.seatHeight >= 0)
+                {
+                    uint8 const chairState = uint8(UNIT_STAND_STATE_SIT_LOW_CHAIR + entry.seatHeight);
+                    if (bot->getStandState() != chairState && !bot->IsInCombat() && !bot->IsMoving() && bot->IsAlive())
+                    {
+                        if (!bot->IsWithinDist3d(entry.inn.coord_x, entry.inn.coord_y, entry.inn.coord_z, 1.0f, SizeFactor::None))
+                            bot->NearTeleportTo(entry.inn.coord_x, entry.inn.coord_y, entry.inn.coord_z, entry.inn.orientation);
+                        else
+                        {
+                            bot->SetFacingTo(entry.inn.orientation);
+                            bot->SetStandState(chairState);
+                        }
+                    }
+                }
+                else if (bot->getStandState() != UNIT_STAND_STATE_SIT && !bot->IsInCombat() && !bot->IsMoving())
                     bot->SetStandState(UNIT_STAND_STATE_SIT);
                 // twow-repo#541 (AiPlayerbot.Park.SleepGrid): only once it has arrived; the core keeps the
                 // cells awake while the bot fights, is dead, teleports or flies.
