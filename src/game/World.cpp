@@ -1522,6 +1522,9 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_PERFLOG_TICK_STATS, "PerformanceLog.TickStats", false);
     setConfig(CONFIG_BOOL_PERFLOG_WORLD_TICK, "PerformanceLog.WorldTick", false);
     setConfigMin(CONFIG_UINT32_PERFLOG_TICK_STATS_INTERVAL, "PerformanceLog.TickStatsInterval", 60, 10);
+    // twow-repo#592 (PATH-02): ticks over 20 and 50 ms on the same line. Off by default; off, the
+    // line stays byte-identical.
+    setConfig(CONFIG_BOOL_PERFLOG_TICK_STATS_EXTENDED, "PerformanceLog.TickStatsExtended", false);
     setConfig(CONFIG_UINT32_LOG_MONEY_TRADES_TRESHOLD, "LogMoneyTreshold", 10000);
 
     setConfig(CONFIG_FLOAT_DYN_RESPAWN_CHECK_RANGE, "DynamicRespawn.Range", -1.0f);
