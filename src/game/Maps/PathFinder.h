@@ -25,6 +25,8 @@
 #include "../recastnavigation/Detour/Include/DetourNavMeshQuery.h"
 #include "MoveSplineInitArgs.h"
 
+#include <cstdint>
+
 // twow-repo#416 (7.2): poly-path builds on this thread and their time, read by
 // the playerbot [BotSlowUpdate] diagnostic (a bot update runs on one map thread).
 struct PathFinderStats
@@ -39,7 +41,48 @@ using Movement::PointsArray;
 
 class Unit;
 class Transport;
+class TerrainInfo;
 struct GridMapLiquidData;
+
+namespace path_unitless
+{
+    enum Reason : uint8_t;  // PathUnitless.h
+}
+
+// twow-repo#592 (PATH-02 variant A): what PathInfo reads from its owner, as values. Unit mode never
+// reads this - the accessors call the Unit live, exactly as before. Map mode (PathInfo(mapId,
+// instanceId) with PathFinder.Unitless = 1) computes with these player defaults on mapId; the filter
+// is the existing nullptr branch of createFilter (GROUND|WATER, the player filter).
+struct PathParams
+{
+    uint32 mapId = 0;
+    uint32 instanceId = 0;            // logs only: MMapManager ignores it
+    bool canWalk = true;              // Player::CanWalk
+    bool canSwim = true;              // Player::CanSwim
+    bool canFly = false;              // Player::CanFly is IsFlying(), a state: ground paths here
+    bool creatureCanFly = false;      // TYPEID_UNIT && Creature::CanFly
+    bool ignorePathfinding = false;   // UNIT_STAT_IGNORE_PATHFINDING
+    float boundingRadius = 0.0f;      // dead "precalculated path" branch, the value is never used
+    uint32 logGuidLow = 0;            // "%u's Path Build failed" lines
+};
+
+// twow-repo#592: one reference on a TerrainInfo for a map-mode PathInfo. Adopt() takes over the
+// reference TerrainManager::FindTerrainRef counted, the destructor releases it, a copy takes its own.
+// UnloadTerrain never deletes a referenced TerrainInfo (GridUnload = 1 only).
+class PathTerrainRef
+{
+    public:
+        PathTerrainRef() = default;
+        PathTerrainRef(PathTerrainRef const& other);
+        PathTerrainRef& operator=(PathTerrainRef const& other);
+        ~PathTerrainRef();
+
+        void Adopt(TerrainInfo* referenced);
+        TerrainInfo const* get() const { return m_terrain; }
+
+    private:
+        TerrainInfo* m_terrain = nullptr;
+};
 
 // 64*6.0f=384y  number_of_points*interval = max_path_len
 // this is way more than actual evade range
@@ -76,7 +119,8 @@ class PathInfo
     public:
         PathInfo(Unit const* owner);
         // bot calls PathFinder(mapId, instanceId) for global map paths.
-        PathInfo(uint32 /*mapId*/, uint32 /*instanceId*/) : PathInfo((Unit const*)nullptr) {}
+        // twow-repo#592: map mode with PathFinder.Unitless = 1, else calculate() fails closed (NOPATH).
+        PathInfo(uint32 mapId, uint32 instanceId);
         // bot calls PathFinder(player, true) for transport pathing.
         PathInfo(Unit const* owner, bool /*offsets*/) : PathInfo(owner) {}
         ~PathInfo();
@@ -122,6 +166,10 @@ class PathInfo
         void SetTransport(Transport* t) { m_transport = t; }
         Transport* GetTransport() const { return m_transport; }
         void FillTargetAllowedFlags(Unit* target);
+        // twow-repo#592: no Unit behind this path (map mode, or a PathInfo that fails closed).
+        bool IsUnitless() const { return !m_sourceUnit; }
+        // twow-repo#592: world thread, once a minute: one [PathUnitless] line when calls failed closed.
+        static void ReportUnitlessRejects();
     private:
 
         dtPolyRef       m_pathPolyRefs[MAX_PATH_LENGTH];   // array of detour polygon references
@@ -144,6 +192,32 @@ class PathInfo
         uint32          m_targetAllowedFlags;
 
         dtQueryFilter m_filter;                     // use single filter for all movements, update it when needed
+
+        // twow-repo#592 (PATH-02 variant A): set by PathInfo(mapId, instanceId) with PathFinder.Unitless = 1.
+        // Without a Unit and without map mode every calculate() fails closed.
+        bool            m_mapMode = false;
+        PathParams      m_params;           // map mode: what is read instead of the Unit
+        PathTerrainRef  m_terrain;          // map mode: the map's terrain, looked up on first use
+
+        // twow-repo#592: every read of the owner on the calculate() path goes through these (defined in
+        // PathFinder.cpp). With a Unit: the expression used before, evaluated at the same place, in the
+        // same order (B1-B3 of the PR checklist). Without one: the map-mode values above.
+        uint32 srcMapId() const;
+        bool srcIgnorePathfinding() const;
+        float srcBoundingRadius() const;
+        bool srcCanSwim() const;
+        bool srcCanFly() const;
+        bool srcCanWalk() const;
+        bool srcCreatureCanFly() const;
+        TerrainInfo const* srcTerrain() const;
+        uint32 srcLogGuid() const;
+        char const* srcLogName() const;
+        bool srcFindCollision(Vector3 const& start, Vector3 const& end) const;
+        void srcUpdateGroundZ(float x, float y, float& z) const;
+        bool MapModeInNoMovementArea(Vector3 const& start) const;
+
+        bool RejectUnitless(path_unitless::Reason reason, Vector3 const& start, Vector3 const& dest);
+        void CountUnitlessReject(path_unitless::Reason reason) const;
 
         inline void setStartPosition(const Vector3& point) { m_startPosition = point; }
         inline void setEndPosition(const Vector3& point) { m_actualEndPosition = point; m_endPosition = point; }
