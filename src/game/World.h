@@ -812,6 +812,7 @@ enum eConfigBoolValues
     CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED,
     CONFIG_BOOL_ROGUE_KEEP_COMBO_ON_SELECT,             // hotfix 8.25 (#484), FunserverComboPolicy.h
     CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET,     // hotfix 8.25 (#484), FunserverComboPolicy.h
+    CONFIG_BOOL_NAMES_SKIP_PROFANITY_RESERVED,          // twow-repo#593 (NAMES-01): CharacterNames.SkipProfanityReserved, default 0
     CONFIG_BOOL_VALUE_COUNT
 };
 

@@ -2131,6 +2131,16 @@ Funserver.PlayerSnare.RootDurationPct = 0
 Rogue.KeepComboPointsOnSelect = 0
 Rogue.ProcComboPointsToCurrentTarget = 0
 
+# CharacterNames.SkipProfanityReserved
+#   Skips the client name filters NamesProfanity.dbc and NamesReserved.dbc when a character or pet name
+#   is validated (create, rename, login). Without it a name that matches one of the patterns (for example
+#   "Masterion" against "master") is rejected: roster bots with such a name cannot enter the world and
+#   get the rename flag. Length, allowed letters and the reserved_name table are not affected
+#   (twow-repo#593, owner decision 2026-10-15).
+#   Default: 0 (off, upstream behaviour)
+
+CharacterNames.SkipProfanityReserved = 0
+
 # Rate.XP. XP rates (player's favorite, haha)
 
 Rate.XP.Kill = 1

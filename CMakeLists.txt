@@ -1038,6 +1038,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_riding_stages_295_contract.cmake")
+  # twow-repo#593 (NAMES-01): CharacterNames.SkipProfanityReserved skips only the name DBC patterns, default off.
+  add_test(NAME names_skip_profanity_593_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_names_skip_profanity_593_contract.cmake")
   # twow-repo#295: world migrations (riding ranks 225/300, trainer, mounts, speed values, Blink).
   add_test(NAME riding_migrations_295_contract
     COMMAND "${CMAKE_COMMAND}"
