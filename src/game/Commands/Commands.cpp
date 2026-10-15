@@ -50,6 +50,7 @@
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "PathFinder.h"                                    
+#include "PathReplay.h"
 #include "Pet.h"
 #include "Player.h"
 #include "ChatTranslator.hpp"
@@ -76,6 +77,7 @@
 #include "revision.h"
 #include "Auth/base32.h"
 #include <cctype>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -13808,6 +13810,161 @@ bool ChatHandler::HandleMmapsPathCommand(char* args)
     for (uint32 i = 0; i < pointPath.size(); ++i)
         player->SummonCreature(VISUAL_WAYPOINT, pointPath[i].x, pointPath[i].y, pointPath[i].z, 0, TEMPSUMMON_TIMED_DESPAWN, 9000);
 
+    return true;
+}
+
+// twow-repo#592 PATH-02 (PR pair 0): one [PathReplay] line per PathInfo result, points as hexfloats, so
+// two builds diff bit exact. Fixture format, limits and output: PathReplay.h.
+static void LogPathReplayResult(uint32 id, int32 step, PathInfo const& path)
+{
+    PointsArray const& points = path.getPath();
+    G3D::Vector3 const end = path.getActualEndPosition();
+
+    std::string line = "[PathReplay] id=" + std::to_string(id);
+    if (step >= 0)
+        line += " step=" + std::to_string(step);
+    char head[64];
+    snprintf(head, sizeof(head), " mode=unit type=0x%x n=%u end=", uint32(path.getPathType()), uint32(points.size()));
+    line += head;
+    AppendPathReplayPoint(line, end.x, end.y, end.z);
+    line += " pts=";
+    line += FormatPathReplayPoints(points);
+    sLog.outString("%s", line.c_str());
+}
+
+bool ChatHandler::HandleMmapsReplayCommand(char* args)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    char* nameArg = ExtractLiteralArg(&args);
+    uint32 offset = 0;
+    if (!nameArg || (*args && !ExtractUInt32(&args, offset)))
+    {
+        PSendSysMessage("Syntax: .mmaps replay <file in DataDir/%s> [offset]", PATH_REPLAY_DIR);
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    // Fixed directory: the name is a plain file name (no "..", no separators, no drive), never a path.
+    std::string const name = nameArg;
+    if (!PathReplayNameAllowed(name) || offset > PATH_REPLAY_MAX_OFFSET)
+    {
+        PSendSysMessage("[PathReplay] error=argument (plain file name in DataDir/%s, offset at most %u)", PATH_REPLAY_DIR, PATH_REPLAY_MAX_OFFSET);
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    // Probe: the selected unit, without a selection the caller. It must be on the caller's map (the
+    // command runs on the caller's thread) and not on a transport: getPathStepFrom converts to passenger
+    // coordinates there, which the replay does not model.
+    Unit* probe = GetSelectedUnit();
+    if (!probe || !probe->IsInWorld() || probe->GetMap() != player->GetMap() || probe->GetTransport())
+    {
+        SendSysMessage("[PathReplay] error=probe (select a unit on your map and not on a transport, or nothing for yourself)");
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    std::string const fileName = sWorld.GetDataPath() + PATH_REPLAY_DIR + name;
+    std::ifstream in(fileName);
+    if (!in)
+    {
+        PSendSysMessage("[PathReplay] error=open file=%s", name.c_str());
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    std::string line;
+    uint32 lineNo = 0;
+    while (lineNo < offset && std::getline(in, line))
+        ++lineNo;
+
+    bool const isPlayer = probe->GetTypeId() == TYPEID_PLAYER;
+    sLog.outString("[PathReplay] begin file=%s offset=%u probe=%s entry=%u map=%u", name.c_str(), offset,
+        isPlayer ? "player" : "creature", isPlayer ? 0u : probe->GetEntry(), probe->GetMapId());
+
+    auto const started = std::chrono::steady_clock::now();
+    uint32 linesRead = 0, rows = 0, skipped = 0, bad = 0;
+    PathReplayStop stop = PathReplayStop::None;
+    while (std::getline(in, line))
+    {
+        ++lineNo;
+        ++linesRead;
+
+        PathReplayRow row;
+        PathReplayParse const parsed = ParsePathReplayLine(line, row);
+        if (parsed == PathReplayParse::Bad)
+        {
+            ++bad;
+            sLog.outString("[PathReplay] bad line=%u", lineNo);
+        }
+        else if (parsed == PathReplayParse::Row && row.profile == PathReplayProfile::Map)
+        {
+            // PathInfo(mapId, instanceId) has no unit: it drops the map id and calculate() dereferences
+            // the null unit today. Map rows run once PR pair 2 (PathFinder.Unitless) is in the image.
+            ++skipped;
+            sLog.outString("[PathReplay] id=%u skipped=map_mode", row.id);
+        }
+        else if (parsed == PathReplayParse::Row && row.mapId != probe->GetMapId())
+        {
+            ++skipped;
+            sLog.outString("[PathReplay] id=%u skipped=other_map", row.id);
+        }
+        else if (parsed == PathReplayParse::Row)
+        {
+            ++rows;
+            G3D::Vector3 const start(row.sx, row.sy, row.sz);
+            G3D::Vector3 const dest(row.dx, row.dy, row.dz);
+            // A fresh PathInfo per row: calculate() reuses the previous path of the same object.
+            PathFinder pathFinder(probe);
+            if (row.chain == 0)
+            {
+                pathFinder.calculate(start, dest, false);
+                LogPathReplayResult(row.id, -1, pathFinder);
+            }
+            else
+            {
+                // As WorldPosition::getPathFromPath: one PathInfo for all steps, its area costs (no-op
+                // stubs in this core, kept so the replay follows the bot if they get a body).
+                pathFinder.setAreaCost(7, 10.0f);   // NAV_AREA_WATER of the bot module
+                pathFinder.setAreaCost(12, 5.0f);
+                pathFinder.setAreaCost(13, 20.0f);
+                PathReplayChainResult const chain = RunPathReplayChain(start, dest, row.chain,
+                    [&](uint32 k, float x, float y, float z)
+                    {
+                        pathFinder.calculate(G3D::Vector3(x, y, z), dest, false);
+                        LogPathReplayResult(row.id, int32(k), pathFinder);
+                        return uint32(pathFinder.getPathType());
+                    },
+                    [&](uint32 /*k*/) -> PointsArray const& { return pathFinder.getPath(); });
+                sLog.outString("[PathReplay] id=%u chain steps=%u n=%u stop=%s", row.id, chain.steps, chain.points,
+                    PathReplayChainStopName(chain.stop));
+            }
+        }
+
+        if (in.peek() == std::char_traits<char>::eof())
+            break;
+        // Line cap and wall-clock budget, checked after the running row.
+        uint64 const elapsedMs = uint64(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count());
+        stop = PathReplayShouldStop(linesRead, elapsedMs);
+        if (stop != PathReplayStop::None)
+            break;
+    }
+
+    uint32 const ms = uint32(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started).count());
+    char summary[192];
+    if (stop == PathReplayStop::None)
+        snprintf(summary, sizeof(summary), "[PathReplay] done lines=%u rows=%u skipped=%u bad=%u ms=%u",
+            linesRead, rows, skipped, bad, ms);
+    else
+        snprintf(summary, sizeof(summary), "[PathReplay] partial next=%u reason=%s lines=%u rows=%u skipped=%u bad=%u ms=%u",
+            lineNo, stop == PathReplayStop::Lines ? "lines" : "time", linesRead, rows, skipped, bad, ms);
+    sLog.outString("%s", summary);
+    SendSysMessage(summary);
     return true;
 }
 
