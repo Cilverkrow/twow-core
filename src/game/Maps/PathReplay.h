@@ -19,9 +19,9 @@
 //   mapId    map of start and dest; a unit row runs only when the probe unit stands on this map
 //   s*/d*    start and destination, decimal or C99 hexfloat (as printed by %a), finite
 //   profile  unit: PathInfo(probe), the probe is the selected unit, without a selection the caller
-//            map:  PathInfo(mapId, instanceId) without a unit. Today that constructor drops the map id
-//                  and calculate() dereferences the null unit (crash), so map rows are only reported
-//                  as skipped=map_mode. They run once PR pair 2 (PathFinder.Unitless) is merged.
+//            map:  PathInfo(mapId, instanceId) without a unit (twow-repo#592 PR pair 2). With
+//                  PathFinder.Unitless = 0 every calculate fails closed (NOPATH); with 1 it runs in map
+//                  mode with player defaults on the map's loaded terrain. Runs on any map (no probe).
 //   chain    0: one calculate (getPathTo / getPathStepFrom); 1..40: the same PathInfo is reused for up to
 //            chain calculates from the end of the last step, as WorldPosition::getPathFromPath does
 //            with maxAttempt = chain (bot default 40)
@@ -31,10 +31,10 @@
 //
 // Output (server log; the caller's chat gets the done/partial line and errors):
 //   [PathReplay] begin file=<name> offset=<n> probe=<player|creature> entry=<n> map=<n>
-//   [PathReplay] id=<id> mode=unit type=0x<PathType> n=<points> end=<x>,<y>,<z> pts=<x>,<y>,<z>;...
+//   [PathReplay] id=<id> mode=<unit|map> type=0x<PathType> n=<points> end=<x>,<y>,<z> pts=<x>,<y>,<z>;...
 //   [PathReplay] id=<id> step=<k> mode=unit type=... n=... end=... pts=...      (one per chain step)
 //   [PathReplay] id=<id> chain steps=<k> n=<points of the joined path> stop=<nopath|stall|arrived|max>
-//   [PathReplay] id=<id> skipped=<map_mode|other_map>
+//   [PathReplay] id=<id> skipped=other_map                                     (unit rows only)|other_map>
 //   [PathReplay] done lines=<n> rows=<n> skipped=<n> bad=<n> ms=<n>
 //   [PathReplay] partial next=<offset> reason=<lines|time> lines=<n> rows=<n> skipped=<n> bad=<n> ms=<n>
 // end= is PathInfo::getActualEndPosition. The diff compares the lines with id= only (begin/done carry
