@@ -1132,6 +1132,8 @@ void Map::DoUpdate(uint32 maxDiff)
 void Map::Update(uint32 t_diff)
 {
     XScopeStatTimer ScopeStatTimer{ UpdateTimer };
+    // twow-repo#597 (TICK-01, PerformanceLog.MapTickRegion): start of this region's own work.
+    uint64 const regionTraceStartUs = m_regionTraceOn ? tick_diag::NowUs() : 0;
     ScriptRegistry<AllMapScript>::ForEach([&](AllMapScript* script)
     {
         script->OnMapUpdate(this, t_diff);
@@ -1185,6 +1187,7 @@ void Map::Update(uint32 t_diff)
     if (!Instanceable())
     {
         additionnalWaitTime = WorldTimer::getMSTime();
+        uint64 const regionArriveUs = m_regionTraceOn ? tick_diag::NowUs() : 0;  // twow-repo#597
         sMapMgr.MarkContinentUpdateFinished();
         while (!sMapMgr.waitContinentUpdateFinishedUntil(start + std::chrono::milliseconds(sWorld.getConfig(CONFIG_UINT32_INTERVAL_MAPUPDATE))))
         {
@@ -1194,6 +1197,19 @@ void Map::Update(uint32 t_diff)
             ++additionnalUpdateCounts;
         }
         additionnalWaitTime = WorldTimer::getMSTimeDiffToNow(additionnalWaitTime);
+        // twow-repo#597 (TICK-01, [MapTickRegion]): pre = own work up to the barrier, post = barrier wait
+        // incl. the extra player updates; arrival and exit let the world thread find the region that
+        // arrived last and how long each stayed after it.
+        if (m_regionTraceOn)
+        {
+            uint64 const regionExitUs = tick_diag::NowUs();
+            m_regionTrace.valid = true;
+            m_regionTrace.preUs = tick_diag::ClampUs(regionArriveUs - regionTraceStartUs);
+            m_regionTrace.postUs = tick_diag::ClampUs(regionExitUs - regionArriveUs);
+            m_regionTrace.loops = additionnalUpdateCounts;
+            m_regionTrace.arriveUs = regionArriveUs;
+            m_regionTrace.exitUs = regionExitUs;
+        }
     }
     // Don't unload grids if it's battleground, since we may have manually added GOs,creatures, those doesn't load from DB at grid re-load !
     // This isn't really bother us, since as soon as we have instanced BG-s, the whole map unloads as the BG gets ended
