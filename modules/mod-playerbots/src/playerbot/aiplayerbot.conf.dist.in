@@ -47,6 +47,12 @@ AiPlayerbot.RandomBotJoinBG = 1
 # sees only real players and units fighting it (core Player flag, real players see it as always).
 # Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).
 AiPlayerbot.Park.HideFromBots = 0
+
+# twow-repo#588 (BUFF-01, owner 14.10.2026): RealPlayerStyle = 1: a bot outside a group with a real player buffs like a
+# real player - itself and its group, then members of its guild in range, and a stranger (bot or player) at most once per
+# StrangerCooldownSeconds. [BuffTargets] once a minute: chosen targets per category. 0 = every friendly player in sight.
+AiPlayerbot.Buff.RealPlayerStyle = 0
+AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
