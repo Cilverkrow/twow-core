@@ -2452,6 +2452,25 @@ AiPlayerbot.Perf.RouteFailCooldownSeconds = 0
 # " d= n= a= e= s= h= b= l= x= pf=" after pts=; with AiPlayerbot.Path.RouteFailDetail = 1 the detail line gets the
 # phase times. Cost: a few clock reads per build. 0 = off, no clock read (default).
 AiPlayerbot.Perf.RouteTimeTrace = 0
+# twow-repo#592 (PATH-02 phase 2, end point pre-check; levels 2-4 skip work, enable only after OB-30 measurement + owner
+# go - nach Abnahme an; released for measuring: 1 and 2): 0..4 (default 0 = off). A target leg of a node route search
+# only counts when its path ends within 1 yd (2D) / 2 yd (Z) of the target, and a navmesh path ends on a polygon
+# (0.5 above it). One findNearestPoly in a box of 1.25 / 2.75 / 1.25 yd around the target (any polygon flag) tells
+# when no target leg can succeed; tile not loaded, water, transport, flying, dead, ignore-pathfinding, Tel'Abim,
+# other map, generator and a node within reach are exempt and search as before.
+#   1 = shadow: check and count only; wrong= counts routes found although a check called them impossible.
+#   2 = the pair loop (A* + target / start legs) is skipped when the target check finds no polygon: the same empty
+#       route, earlier (hearthstone fallback, route-fail cooldown and HonestRouteFail unchanged).
+#   3 = also when the start check finds no polygon around the start (5.25 / 10.25 yd box) for any start leg (not
+#       while the hearthstone fallback could run).
+#   4 = also the direct navmesh attempt is left out when no polygon lies within spell distance of the target (it runs
+#       late when the pair loop has to run after all).
+# Checks above the level keep running in shadow. One [RoutePrecheck] line a minute: level= checks= hits= wrong=
+# end_nopoly=eq:h/c,lt5:h/c,lt25:h/c,ge25:h/c,na:h/c (target checks by direct-attempt class) start_checks=
+# start_nopoly= direct_checks= direct_nopoly= unknown_tile= exempt_water= exempt_other= wrong_end= wrong_start=
+# wrong_direct= skips_end= skips_start= skips_direct=. With AiPlayerbot.Path.RouteFailDetail = 1 the detail line gets
+# " precheck= precheck_start= precheck_direct= precheck_skip=" (direct_gap=-2: direct attempt left out).
+AiPlayerbot.Perf.RoutePrecheck = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental

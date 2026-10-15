@@ -1,5 +1,6 @@
 #pragma once
 
+#include "RoutePrecheckPolicy.h"
 #include "RouteTimePolicy.h"
 
 #include <atomic>
@@ -28,6 +29,7 @@ struct RouteFailDetail
     bool budgetStop = false;          // #416 1000 ms budget stopped the search
     bool transportRoute = false;      // bot on a transport: the first pair decides
     ai::route_time::RouteTimes times; // twow-repo#592 (PATH-02): phase times of the build (AiPlayerbot.Perf.RouteTimeTrace)
+    ai::route_precheck::BuildContext precheck; // twow-repo#592 (PATH-02): what the pre-check saw (AiPlayerbot.Perf.RoutePrecheck)
 };
 
 // Lines per minute for [RouteFailDetail]; every failure is counted, only the first N a minute are logged.
