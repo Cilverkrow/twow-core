@@ -2156,8 +2156,16 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
         if (precheck->skipped == route_precheck::Kind::End)
             badEndNodes = endNodes;
     }
-    if (precheckOn && precheck->directLate && failOrigin.known)   // #592: the direct path ran late, its gap is the real one
-        failOrigin.directGap = precheck->lateGap;
+    // #592: with the direct attempt deferred (level 4) the start path is { startPos } and its gap is no attempt's. Run late,
+    // its gap is the real one; never run (target / start check skip), the gap is unknown and the cooldown keeps no origin
+    // (fail closed: the pre-check proves nothing for a target up to 1 yd away).
+    if (precheckOn && precheck->directDeferred && failOrigin.known)
+    {
+        if (precheck->directLate)
+            failOrigin.directGap = precheck->lateGap;
+        else
+            failOrigin.known = false;
+    }
 
     //Cycle over the combinations of these 5 nodes.
     for (auto& endNode : endNodes)
@@ -2368,11 +2376,6 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     TravelPath movePath;
     std::vector<WorldPosition> beginPath, endPath;
 
-    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): phase times of this build; on every return they go into
-    // the [RouteTime] counters and the caller's detail. Off: routeTimes stays null, nothing is timed.
-    RouteTimeScope routeTimeScope(sPlayerbotAIConfig.perfRouteTimeTrace, outDetail);
-    ai::route_time::RouteTimes* const routeTimes = routeTimeScope.Times();
-
     // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteFailEarlySkip, only with RouteFailCooldownSeconds > 0): a search that
     // repeats a stored route failure of the same bot (cooldown running, start and exact target each within 1 yd, its direct
     // attempt ended far from spell distance) would pay the direct attempt, the node map lock and getNodes only to be
@@ -2405,6 +2408,12 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
             }
         }
     }
+
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): phase times of this build; on every return they go into
+    // the [RouteTime] counters and the caller's detail. Off: routeTimes stays null, nothing is timed. After the early
+    // skip above: a search answered there builds nothing and is no build in builds= / ms= / ge*.
+    RouteTimeScope routeTimeScope(sPlayerbotAIConfig.perfRouteTimeTrace, outDetail);
+    ai::route_time::RouteTimes* const routeTimes = routeTimeScope.Times();
 
     // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RoutePrecheck): the end point pre-check of this build (RoutePrecheckPolicy.h).
     // The direct check runs here, the target and start checks in getRoute. Level 4 leaves the direct attempt out when no

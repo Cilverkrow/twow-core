@@ -46,7 +46,7 @@ int main()
         Require(!EarlySkipMatches(stored, otherMap, minGap), "start on another map");
     }
 
-    // The stored direct attempt must have ended far from its goal (or had no path at all).
+    // The stored direct attempt must have ended far from its goal; without a measured gap (below 0) never (fail closed).
     {
         RouteFailOrigin nearGoal = stored;
         nearGoal.directGap = 29.9f;
@@ -54,7 +54,10 @@ int main()
         nearGoal.directGap = 30.0f;
         Require(EarlySkipMatches(nearGoal, stored, minGap), "direct gap at spell distance + 5");
         nearGoal.directGap = -1.0f;
-        Require(EarlySkipMatches(nearGoal, stored, minGap), "no direct path at all (other map)");
+        Require(!EarlySkipMatches(nearGoal, stored, minGap), "no direct path: never");
+        nearGoal.directGap = -2.0f;
+        Require(!EarlySkipMatches(nearGoal, stored, minGap), "direct attempt left out (-2): never");
+        Require(!EarlySkipMatches(nearGoal, stored, -5.0f), "negative gap never, whatever the limit");
     }
 
     // Unknown origin (budget stop, getRoute callers without a direct attempt): never.

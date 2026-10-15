@@ -39,7 +39,7 @@ inline bool BudgetExceeded(std::uint32_t elapsedMs, std::uint32_t budgetMs)
 // and the direct attempt may succeed after a move, so it cannot simply go first. A failure cooldown set by a getFullPath
 // search keeps where that search started, the exact target and how far its direct attempt got; a later search of the
 // same bot leaves out the direct attempt only while start and target each moved at most EarlySkipYards and that
-// attempt ended far from the spell-distance goal (or had no path at all: other map).
+// attempt ended far from the spell-distance goal. A stored gap below 0 (no direct path, or none measured) never matches.
 constexpr float EarlySkipYards = 1.0f;
 constexpr float EarlySkipGapMargin = 5.0f;   // stored direct_gap at least spell distance + this
 constexpr std::uint32_t RouteFailEarlySkipMax = 2;   // 0 off, 1 shadow, 2 active
@@ -61,7 +61,7 @@ struct RouteFailOrigin
     std::uint32_t startMap = 0;
     float sx = 0.0f, sy = 0.0f, sz = 0.0f;
     float tx = 0.0f, ty = 0.0f, tz = 0.0f;
-    float directGap = -1.0f;   // -1 = no direct path at all (other map)
+    float directGap = -1.0f;   // below 0 = no direct path / not measured: never an early skip
 };
 
 inline RouteFailOrigin MakeRouteFailOrigin(std::uint32_t startMap, float sx, float sy, float sz, float tx, float ty, float tz, float directGap)
@@ -89,7 +89,7 @@ inline bool EarlySkipMatches(RouteFailOrigin const& stored, RouteFailOrigin cons
     float const reach = EarlySkipYards * EarlySkipYards;
     if (dsx * dsx + dsy * dsy + dsz * dsz > reach || dtx * dtx + dty * dty + dtz * dtz > reach)
         return false;
-    return stored.directGap < 0.0f || stored.directGap >= minDirectGap;
+    return stored.directGap >= 0.0f && stored.directGap >= minDirectGap;
 }
 
 // Bot + map + target cell whose route search ran over budget: skipped for a
