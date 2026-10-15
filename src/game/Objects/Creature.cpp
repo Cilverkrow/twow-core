@@ -36,6 +36,7 @@
 #include "Opcodes.h"
 #include "Log.h"
 #include "LootMgr.h"
+#include "QuestTargetRespawnPolicy.h"
 #include "MapManager.h"
 #include "CreatureAI.h"
 #include "CreatureAISelector.h"
@@ -2000,7 +2001,10 @@ void Creature::SetDeathState(DeathState s)
         // twow-repo#298: an accelerated rare keeps its already scaled delay exactly.
         bool const acceleratedRare = data && sObjectMgr.HasAcceleratedRareRespawn(GetGUIDLow());
         if (!acceleratedRare)
+        {
             ApplyDynamicRespawnDelay(respawnDelay, data);
+            ApplyQuestTargetRespawnDelay(respawnDelay, data);   // twow-repo#581 QL-3 (default off)
+        }
 
         // the max/default time for corpse decay (before creature is looted/AllLootRemovedFromCorpse() is called)
         m_corpseDecayTimer = HasExtraFlag(CREATURE_FLAG_EXTRA_DESPAWN_INSTANTLY) ? 1 : m_corpseDelay * IN_MILLISECONDS;
@@ -2460,6 +2464,59 @@ private:
     uint32 m_aliveCount;
     uint32 m_deadCount;
 };
+
+// twow-repo#581 QL-3: players in range who still need this entry for an incomplete quest (kill objective or quest drop).
+class QuestTargetRespawnChecker
+{
+public:
+    QuestTargetRespawnChecker(ObjectMgr::QuestRespawnTarget const& target, uint32 lootId) : _target(target), _lootId(lootId) {}
+
+    void operator()(Player* player)
+    {
+        if (!player->IsInWorld())
+            return;
+        for (uint32 questId : _target.killQuests)
+            if (player->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE)
+            {
+                ++_count;
+                return;
+            }
+        if (_target.questLoot && LootTemplates_Creature.HaveQuestLootForPlayer(_lootId, player))
+            ++_count;
+    }
+
+    uint32 GetCount() const { return _count; }
+private:
+    ObjectMgr::QuestRespawnTarget const& _target;
+    uint32 _lootId;
+    uint32 _count = 0;
+};
+
+void Creature::ApplyQuestTargetRespawnDelay(uint32& delay, CreatureData const* data)
+{
+    if (!sWorld.getConfig(CONFIG_BOOL_DYN_RESPAWN_QUEST_TARGET) || !IsInWorld() || GetMapId() > 1)
+        return;
+    if (GetSubtype() != CREATURE_SUBTYPE_GENERIC || !data || (data->spawn_flags & SPAWN_FLAG_NO_DYNAMIC_RESPAWN))
+        return;
+    // Normal and elite quest targets only; rares and bosses keep their own rules (#298).
+    if (GetCreatureInfo()->rank > CREATURE_ELITE_ELITE)
+        return;
+
+    ObjectMgr::QuestRespawnTarget const* target = sObjectMgr.GetQuestRespawnTarget(GetEntry());
+    if (!target)
+        return;
+
+    QuestTargetRespawnChecker check(*target, GetCreatureInfo()->loot_id);
+    MaNGOS::PlayerWorker<QuestTargetRespawnChecker> searcher(check);
+    Cell::VisitWorldObjects(this, searcher, sWorld.getConfig(CONFIG_FLOAT_DYN_RESPAWN_QUEST_RANGE));
+
+    uint32 const before = delay;
+    delay = quest_target_respawn::ScaledDelay(delay, check.GetCount(), sWorld.getConfig(CONFIG_FLOAT_DYN_RESPAWN_QUEST_PER_PLAYER),
+        sWorld.getConfig(CONFIG_UINT32_DYN_RESPAWN_QUEST_MIN_TIME));
+    if (delay != before)
+        sLog.outBasic("[QuestRespawn] entry=%u guid=%u interested=%u delay_s=%u->%u", GetEntry(), GetGUIDLow(), check.GetCount(),
+            before, delay);
+}
 
 void Creature::ApplyDynamicRespawnDelay(uint32& delay, CreatureData const* data)
 {

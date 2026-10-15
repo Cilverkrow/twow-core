@@ -47,6 +47,12 @@ AiPlayerbot.RandomBotJoinBG = 1
 # sees only real players and units fighting it (core Player flag, real players see it as always).
 # Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).
 AiPlayerbot.Park.HideFromBots = 0
+
+# twow-repo#588 (BUFF-01, owner 14.10.2026): RealPlayerStyle = 1: a bot outside a group with a real player buffs like a
+# real player - itself and its group, then members of its guild in range, and a stranger (bot or player) at most once per
+# StrangerCooldownSeconds. [BuffTargets] once a minute: chosen targets per category. 0 = every friendly player in sight.
+AiPlayerbot.Buff.RealPlayerStyle = 0
+AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
@@ -79,6 +85,12 @@ AiPlayerbot.Park.QuietIdleEmoteSeconds = 600
 # its next login - caps and faction checks run again, a bot with no spot left stays active. Unpark deletes the row.
 # [Park] state=restored / restore_failed per bot.
 AiPlayerbot.Park.Persist = 0
+
+# twow-repo#551 (owner 11.10.2026): Seats = 1: a parked bot takes a free chair or bench seat of its inn (CHAIR objects
+# within 15 yd of the innkeeper, upper floor included) and sits on it like a player (chair height and facing); a bot
+# without a free seat stands on the rings from 5.5 yd on, so the innkeeper stays reachable. A game_tele target within
+# 60 yd of an inn of the faction parks in that inn. Parked bots dismount and drop the mount strategy. 0 = as before.
+AiPlayerbot.Park.Seats = 0
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
@@ -796,6 +808,12 @@ AiPlayerbot.ZoneEscape.RetrySeconds = 60
 # Area levels for areas the generated ai_playerbot_zone_level table misses or
 # gets wrong, as a comma list of <area id>:<level> (e.g. Turtle zones).
 AiPlayerbot.AreaLevelOverrides =
+# twow-repo#575 (PATH-01 wave 2, BEHAVIOUR CHANGE, "nach Abnahme an"): areas whose AreaTable team is wrong for this
+# realm, as a comma list of <area id>:<horde|alliance|none> (or 4 / 2 / 0). Such an area counts as an enemy home
+# zone for the other faction (travel targets, random teleports, quest rescue, repop / hearthstone checks).
+# Owner 14.10.2026: Stormbreaker Point (5576, Balor) is a Horde camp - 5576:horde keeps Alliance bots out of
+# the #501 trap (five L55 guards). Empty = the AreaTable teams (default).
+AiPlayerbot.AreaTeamOverrides =
 # Shared danger map (#307). Deaths of all bots (not real players, not in
 # instances or battlegrounds) are pooled per CellSize x CellSize yard cell for
 # WindowSeconds. A roster bot skips a travel destination when the destination
@@ -938,6 +956,16 @@ AiPlayerbot.Path.TaxiTrace = 0
 # high-elf start (Thalassian Highlands) and rebinds the hearthstone at the target. 1 = those two starts are rescue
 # targets only for goblins / high elves. 0 = any start of the faction (default).
 AiPlayerbot.Path.RescueSkipCustomStarts = 0
+# twow-repo#575 (PATH-01 wave 0, BEHAVIOUR CHANGE, "nach Abnahme an"; needs the wave-0 travel nodes of train 10, read at
+# boot, so a change needs a restart): 1 = goblins quest on Blackstone Island and high elves in the Thalassian Highlands /
+# Alah'Thalas. New bots keep the real start position; repop up to level 10 at the real start; random teleports into
+# these zones only for the zone's race; their quest points are travel targets for that faction only, and up to level 12
+# the bot's own start zone (for a goblin also Sparkwater Port) ignores area levels in the danger check. Exits: the
+# flying machines as scripted taxi links (311 / 322, also driven by quests 41169 / 41170 in the log), the high-elf ship
+# to Auberdine as a scripted move (41259 in the log, level 12, or level 10 and 15 minutes idle); flights 303 / 304 to
+# Light's Hope below level 50 and walking into the Plaguelands below level 20 are closed. Set together with
+# AiPlayerbot.Path.StartZoneExactBounds = 1 and AiPlayerbot.Path.RescueSkipCustomStarts = 1. 0 = off (default).
+AiPlayerbot.CustomRaceStartZones = 0
 # Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
 # its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost
 # starts there) or enemies stand near the corpse - those two shortcuts apply only from the second
@@ -989,6 +1017,17 @@ AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 # finished quest's turn-in counts as a failed turn-in; TurnInParkFailures of them within TurnInParkWindowSeconds park
 # the turn-in (#485), so a bot whose taker is unreachable quests on in its band instead of cycling. 0 = as before.
 AiPlayerbot.ZoneExit.TurnInStallCounts = 0
+
+# twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
+# RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
+#   continent (its race's start) is rescued back to it - a teleport, the cross-continent route rule stays as it is.
+# StrandedRescueAfter = N > 0: after N empty quest searches in a row that only other-continent candidates emptied, the
+#   bot asks for that rescue itself instead of grinding until the idle limit (the rescue limiter still applies).
+# SkipBattlegroundQuests = 1: quests sorted under Warsong Gulch, Arathi Basin or Alterac Valley are no quest-first
+#   targets (a bot cannot finish them in the open world). All 0 = as before.
+AiPlayerbot.ZoneExit.RescueHomeContinent = 0
+AiPlayerbot.ZoneExit.StrandedRescueAfter = 0
+AiPlayerbot.ZoneExit.SkipBattlegroundQuests = 0
 
 # Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
 AiPlayerbot.AutoTrainSpells = yes

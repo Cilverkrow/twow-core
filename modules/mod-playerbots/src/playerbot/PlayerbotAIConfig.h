@@ -544,6 +544,8 @@ public:
     // random-bot behavior remains the complete disabled-feature path.
     bool persistentActiveRosterEnabled = false;
     bool parkHideFromBots = false;  // twow-repo#541/#551: parked bots invisible to other bots (core Player flag)
+    bool buffRealPlayerStyle = false;  // twow-repo#588 (owner 14.10): buff group, then guild, strangers only once per cooldown
+    uint32 buffStrangerCooldownSeconds = 900;
     bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
     bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
     uint32 parkMaxPerInn = 0;   // twow-repo#551 (owner 10.10): parked bots per inn, 0 = ai::park::SpotCapacity (25) as before
@@ -551,6 +553,7 @@ public:
     bool parkQuiet = false;  // twow-repo#551 (owner 11.10): parked bots drop greet/emote/say/ai chat, answer whispers only
     uint32 parkQuietIdleEmoteSeconds = 600;  // twow-repo#551: one idle emote per this many seconds while quiet (0 = none)
     bool parkPersist = false;  // twow-repo#551 (owner 11.10): park state in the bot event store, restored after a restart
+    bool parkSeats = false;  // twow-repo#551 (owner 11.10): parked bots sit on inn chairs, dismount, keep 3 yd around the innkeeper
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
@@ -692,6 +695,7 @@ public:
     uint32 zoneEscapeRetrySeconds = 60;
     // #307: area id -> level for areas missing in ai_playerbot_zone_level.
     std::map<uint32, int32> areaLevelOverrides;
+    std::map<uint32, uint32> areaTeamOverrides;  // twow-repo#575 (PATH-01 wave 2): area id -> AreaTable team (2 alliance, 4 horde), empty = off
     // #307: shared danger map. Deaths of all bots (never real players) pooled
     // per cell; roster bots skip destinations and routes through cells where
     // several bots died to mobs clearly above their own level.
@@ -756,6 +760,7 @@ public:
     bool pathRpgTargetSnap = false;  // twow-repo#575 (PATH-01 #5): rpg moves go to the navmesh-snapped point around the target, 0 = off
     bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b): [TaxiUse] / [TransportWait] lines and a minute summary of bot flights and ship waits, 0 = off
     bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off
+    bool customRaceStartZones = false;  // twow-repo#575 (PATH-01 wave 0): goblins / high elves quest in their real start zones (StartZonePolicy.h), 0 = off
     bool revivePreferCorpseRun = false;  // hotfix 8.34 (#544): corpse run before the spirit-healer shortcuts
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
@@ -772,6 +777,10 @@ public:
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
     bool zoneExitTurnInStallCounts = false;  // twow-repo#587 Z4: stage-1 turn-in recoveries count as turn-in failures
+    // twow-repo#587 (ZONE-01): quest rescue on the right continent, stranded bots ask for it, no BG quests as targets.
+    bool zoneExitRescueHomeContinent = false;
+    uint32 zoneExitStrandedRescueAfter = 0;
+    bool zoneExitSkipBattlegroundQuests = false;
     // twow-repo#485: true = only a route to the other continent counts for the
     // rule above; the Deeprun Tram counts as the Eastern Kingdoms and an instance
     // as the continent of its entrance. false = any other map counts (old behaviour).
