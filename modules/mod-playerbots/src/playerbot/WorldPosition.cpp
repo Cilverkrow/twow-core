@@ -1151,14 +1151,13 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(const std::vector<Worl
     std::unique_ptr<PathFinder> pathfinder = nullptr;
 
     if (bot && instanceId == bot->GetInstanceId())
-    {
         pathfinder = std::make_unique<PathFinder>(bot);
-        ai::path_unitless_bot::modeUnit.fetch_add(1, std::memory_order_relaxed);  // twow-repo#592: [PathUnitlessBot] mode_unit=
-    }
     else
     {
         pathfinder = std::make_unique<PathFinder>(getMapId(), instanceId);
-        ai::path_unitless_bot::modeMap.fetch_add(1, std::memory_order_relaxed);   // twow-repo#592: [PathUnitlessBot] mode_map=
+        // twow-repo#592: [PathUnitlessBot] mode_map=. Only map mode is counted - it crashed before #592, so it is rare;
+        // the Unit-mode branch above is the hot path of every bot path and stays without a shared counter.
+        ai::path_unitless_bot::modeMap.fetch_add(1, std::memory_order_relaxed);
     }
 
     pathfinder->setAreaCost(NAV_AREA_WATER, 10.0f);

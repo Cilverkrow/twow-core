@@ -39,8 +39,9 @@ inline std::atomic<std::uint64_t> transportRejects{ 0 };
 // TravelNodeRoute::buildPath at runtime: a step without a complete node path, moved to the node
 // instead of rebuilding the path (that would write the node graph under the shared m_nMapMtx).
 inline std::atomic<std::uint64_t> routeIncomplete{ 0 };
-// getPathFromPath: the PathFinder kind it built (Unit mode / map mode).
-inline std::atomic<std::uint64_t> modeUnit{ 0 };
+// getPathFromPath: map-mode PathFinders it built. Unit mode (every bot path, all map threads) is not
+// counted: one shared atomic there would be a contended cache line in the hot path, for a number that
+// is only printed next to the rare ones.
 inline std::atomic<std::uint64_t> modeMap{ 0 };
 // GetFishLocations: candidates dropped because the route part is gated off.
 inline std::atomic<std::uint64_t> fishSkipped{ 0 };
