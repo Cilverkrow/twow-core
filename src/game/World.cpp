@@ -1221,6 +1221,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_FUNSERVER_RIDING_STAGES_ENABLED, "Funserver.Riding.Stages.Enabled", false);
     setConfig(CONFIG_BOOL_ROGUE_KEEP_COMBO_ON_SELECT, "Rogue.KeepComboPointsOnSelect", false);
     setConfig(CONFIG_BOOL_ROGUE_PROC_COMBO_TO_CURRENT_TARGET, "Rogue.ProcComboPointsToCurrentTarget", false);
+    // twow-repo#593 (NAMES-01, owner 2026-10-15): skip the NamesProfanity/NamesReserved DBC patterns for names.
+    setConfig(CONFIG_BOOL_NAMES_SKIP_PROFANITY_RESERVED, "CharacterNames.SkipProfanityReserved", false);
     setConfigPos(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
     setConfigMinMax(CONFIG_UINT32_MIN_LEVEL_STAT_SAVE, "PlayerSave.Stats.MinLevel", 0, 0, MAX_LEVEL);
     setConfig(CONFIG_BOOL_STATS_SAVE_ONLY_ON_LOGOUT, "PlayerSave.Stats.SaveOnlyOnLogout", true);
