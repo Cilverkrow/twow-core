@@ -1036,6 +1036,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_path_unitless_592_contract.cmake")
+  # twow-repo#597 (TICK-01): CleanupTerrain pass with TerrainCleanup.IdleMinutes / MaxGridsPerTick (both 0 = today's
+  # decisions, no stamp in GetGrid, no clock read).
+  add_executable(terrain_cleanup_597_test
+    "${TW_CORE_ROOT}/t/terrain_cleanup_597_test.cpp")
+  add_test(NAME terrain_cleanup_597_test COMMAND terrain_cleanup_597_test)
   # twow-repo#541 part C: Continents.Layout cell tables (14/16/18/20/21 regions) and their wiring.
   add_executable(continent_layout_541_test
     "${TW_CORE_ROOT}/t/continent_layout_541_test.cpp"
