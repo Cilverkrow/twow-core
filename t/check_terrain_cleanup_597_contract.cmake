@@ -158,7 +158,17 @@ if (NOT returns EQUAL 2)
   message(FATAL_ERROR "#597: CleanUpGrids returns early only at the scan gate and for an open pass (found ${returns})")
 endif()
 require_text("${cleanup}" "    m_useClockMs += diff;\n" "terrain clock from the tick diff")
-forbid_text("${cleanup}" "sLog" "log line in CleanUpGrids (this pair adds none)")
+# The only log line and the only clock reads in CleanUpGrids are the guarded [TerrainCleanup] diagnostic of
+# the T1 pair (PerformanceLog.TerrainTrace, t/check_tick_diag_597_contract.cmake). They are cut out here, so the
+# checks below (no sLog, no clock) still hold for the rest of the body.
+set(diag_start "    bool const trace = sWorld.getConfig(CONFIG_BOOL_PERFLOG_TERRAIN_TRACE);\n    uint64 const traceStartUs = trace ? tick_diag::NowUs() : 0;\n")
+set(diag_line "    uint32 const freedGrids = pass.freed;\n    if (trace && freedGrids)\n        sLog.out(LOG_PERFORMANCE, \"[TerrainCleanup] map=%u freed_grids=%u ms=%.1f\", m_mapId, freedGrids,\n            (tick_diag::NowUs() - traceStartUs) / 1000.0);\n\n    if (!pass.done)\n")
+require_text("${cleanup}" "${diag_start}" "guarded [TerrainCleanup] clock (T1)")
+require_text("${cleanup}" "${diag_line}" "[TerrainCleanup] line only when on, after the pass, before the open-pass branch (T1)")
+string(REPLACE "${diag_start}" "" cleanup "${cleanup}")
+string(REPLACE "${diag_line}" "    if (!pass.done)\n" cleanup "${cleanup}")
+forbid_text("${cleanup}" "sLog" "log line in CleanUpGrids besides the guarded [TerrainCleanup] line")
+forbid_text("${cleanup}" "trace" "other TerrainTrace use in CleanUpGrids")
 require_text("${grid_cpp}" "// Known and unchanged: the delete below takes no lock against GetGrid readers on other threads." "unlocked delete documented")
 
 # 5. Switch latch: world thread, once per tick, only on a change; never sWorld.getConfig on the query path.

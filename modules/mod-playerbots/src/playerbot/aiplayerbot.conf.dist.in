@@ -1946,6 +1946,16 @@ AiPlayerbot.WorldBotsTrace = 0
 # time of one bot AI update on the map threads, plus the five slowest calls with bot, map, combat
 # and last action. Log only. 0 = off (default).
 AiPlayerbot.BotUpdateTrace = 0
+# twow-repo#597 (TICK-01): 1 = every [BotUpdateSlow] line ends with " tick=<world loop counter>
+# region=<map>.<inst>" (the world tick and the map region of that slow bot update), so a slow update
+# can be matched with [WorldTickSlow] tick= and [MapTickRegion]. Only with AiPlayerbot.BotUpdateTrace = 1.
+# Log only. 0 = off (default, the line unchanged).
+AiPlayerbot.BotUpdateTraceTick = 0
+# twow-repo#597 (TICK-01): 1 = the [WorldBots] minute line ends with " hook_ms=<x> remote_ms=<x>
+# ahbot_ms=<x> dungeonclear_ms=<x>": the whole bot WorldScript update hook per minute and its parts
+# (remote admin commands, AhBot update, dungeon-clear reaper hook) in ms. Only with
+# AiPlayerbot.WorldBotsTrace = 1. Log only. 0 = off (default, the line unchanged).
+AiPlayerbot.WorldBotsHookTrace = 0
 # twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.

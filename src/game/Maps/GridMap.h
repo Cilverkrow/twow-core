@@ -30,6 +30,7 @@
 #include <bitset>
 #include <list>
 #include <atomic>
+#include "TickDiagPolicy.h"  // twow-repo#597 (TICK-01): [TerrainReload] counters
 
 #define MAX_HEIGHT            100000.0f                     // can be use for find ground height at surface
 #define INVALID_HEIGHT       -100000.0f                     // for check, must be equal to VMAP_INVALID_HEIGHT, real value for unknown height is VMAP_INVALID_HEIGHT_VALUE
@@ -191,10 +192,19 @@ class TerrainInfo : public Referencable<AtomicLong>
         TerrainInfo& operator=(const TerrainInfo&);
 
         GridMap* GetGrid(const float x, const float y);
-        GridMap* LoadMapAndVMap(const uint32 x, const uint32 y);
+        // twow-repo#597 (TICK-01): lazy = called from GetGrid (no RefGrid), for [TerrainReload] lazy=.
+        GridMap* LoadMapAndVMap(const uint32 x, const uint32 y, bool lazy = false);
 
         int RefGrid(const uint32& x, const uint32& y);
         int UnrefGrid(const uint32& x, const uint32& y);
+
+    public:
+        // twow-repo#597 (TICK-01, PerformanceLog.TerrainTrace): GridMap loads since the last call (any
+        // thread, relaxed). Reset by the [TerrainReload] minute line.
+        tick_diag::TerrainLoadSnapshot TakeLoadTrace() { return m_loadTrace.Take(); }
+
+    private:
+        tick_diag::TerrainLoadCounters m_loadTrace;
 
         const uint32 m_mapId;
 
@@ -237,6 +247,9 @@ class TerrainManager : public MaNGOS::Singleton<TerrainManager, MaNGOS::ClassLev
 
         void Update(const uint32 diff);
         void UnloadAll();
+        // twow-repo#597 (TICK-01, PerformanceLog.TerrainTrace): one [TerrainReload] line per terrain with
+        // loads since the last call (log = false only resets the counters). World thread.
+        void ReportTerrainReloads(bool log);
 
         // Liquid Types
         LiquidTypeEntry const* GetLiquidType(uint32 id) const { return id < GetMaxLiquidType() ? mLiquidTypes[id].get() : nullptr; }
