@@ -127,11 +127,17 @@ require_order("${update}" "${guard}" "time(0)" "guard before any clock read")
 require_order("${update}" "${guard}" "sLog.out" "guard before any line")
 require_order("${update}" "${guard}" "activateAhbotThread();" "guard before the thread start")
 require_order("${update}" "${guard}" "CleanupPropositions();" "guard before the mail LIKE query")
-# Off path (switch 0, or loaded and enabled): the old body after the guard, unchanged.
+# Off path (switch 0, or loaded and enabled): everything from the guard to the closing brace, byte for byte, as one
+# contiguous string. Together with the comments-only prefix check above this pins the whole body of Update, so nothing
+# (a line, a clock read, a thread start) can be added between the guard and the old per-tick path or inside it.
 set(old_path "\n    if (sWorld.IsShutdowning())\n        return;\n\n    if (sWorld.IsStopped())\n        return;\n\n")
-require_text("${update}" "${old_path}" "shutdown checks unchanged")
+set(old_queue "    // Carry out whatever the bot thread decided on last pass. This has to come\n    // before the nextAICheckTime early-out below, or queued work would only run\n    // once every check interval instead of on the next tick.\n")
 set(old_tail "    RunQueuedWork();\n\n    time_t now = time(0);\n\n    if (now < nextAICheckTime)\n        return;\n\n    if (updating)\n    {\n        sLog.outString(\"[AhBot] Update skipped — previous check still running\");\n        return;\n    }\n\n    sLog.outString(\"[AhBot] Scheduling auction check (next after this: in %d seconds)\", sAhBotConfig.updateInterval);\n    nextAICheckTime = time(0) + sAhBotConfig.updateInterval;\n    activateAhbotThread();\n    CleanupPropositions();")
-require_text("${update}" "${old_tail}" "per-tick schedule path unchanged")
+set(full_from_guard "${guard}${old_path}${old_queue}${old_tail}")
+string(SUBSTRING "${update}" ${guard_at} -1 update_from_guard)
+if(NOT update_from_guard STREQUAL full_from_guard)
+  message(FATAL_ERROR "#597: AhBot::Update from the guard to the closing brace differs from the pinned off path:\n${update_from_guard}")
+endif()
 # The query the guard keeps off the world thread, and the thread body that only logs "disabled" without a config.
 require_text("${ahbot}" "select id, receiver from mail where subject like 'AH Proposition%%' and deliver_time <= '%u'" "CleanupPropositions query unchanged")
 require_text("${ahbot}" "\tif (!sAhBotConfig.enabled)\n\t{\n\t\tsLog.outString(\"[AhBot] ForceUpdate called but AhBot is disabled in ahbot.conf\");\n\t\treturn;\n\t}" "ForceUpdate enabled check unchanged")
