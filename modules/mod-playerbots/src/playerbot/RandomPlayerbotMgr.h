@@ -354,10 +354,14 @@ public:
             uint64 spotKey = 0;    // the inn or city spot (capacity count), see ParkSpotKey
             uint32 slot = 0;
             uint32 cityZone = 0;   // twow-repo#551 (Park.MaxPerCity): capital zone of the spot, 0 = none
+            int32 seatHeight = -1; // twow-repo#551 (Park.Seats): chair height of the bot's seat, -1 = no seat
         };
         std::map<uint32, ParkEntry> parkedBots;
         std::map<uint64, std::set<uint32>> parkSpotSlots;  // spot key -> taken slots (capacity ai::park::SpotCapacity)
         void ReleaseParkSpot(ParkEntry const& entry);
+        // twow-repo#551 (Park.Seats): chair seats per spot key, gathered once per spot from the gameobject spawns.
+        std::map<uint64, std::vector<ai::park::Seat>> parkSeatCache;
+        std::vector<ai::park::Seat> const& SeatsFor(WorldLocation const& spot, uint64 spotKey);
         // twow-repo#541/#551: park spots per faction (0 alliance, 1 horde), built once from the inn and rpg caches:
         // inns with the level range they serve, capital spots for the overflow.
         struct ParkInn

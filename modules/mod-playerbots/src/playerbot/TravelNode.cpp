@@ -5,6 +5,7 @@
 #include "TravelNode.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/StallGuardPolicy.h"
+#include "playerbot/StartZonePolicy.h"
 
 #include <iomanip>
 #include <regex>
@@ -157,9 +158,20 @@ float TravelNodePath::getCost(Unit* unit, uint32 cGold)
                     return -1;
         }
 
+        // twow-repo#575 (PATH-01 E8, AiPlayerbot.CustomRaceStartZones): below level 20 no walk link leads out of the
+        // Thalassian Highlands / Alah'Thalas into the Plaguelands (the high-elf exit is the ship to Auberdine).
+        if (getPathType() == TravelNodePathType::walk && path.size() &&
+            ai::start_zone::WalkOutGated(sPlayerbotAIConfig.customRaceStartZones, bot->GetLevel(), path.front().getMapId(),
+                path.front().getX(), path.front().getY(), path.back().getMapId(), path.back().getX(), path.back().getY()))
+            return -1;
+
         if (getPathType() == TravelNodePathType::flightPath && pathObject)
         {
             if (!bot->IsAlive())
+                return -1;
+
+            // PATH-01 E8: the Alah'Thalas flight 303 / 304 lands in Light's Hope (L53-60), closed below level 50.
+            if (ai::start_zone::FlightGated(sPlayerbotAIConfig.customRaceStartZones, pathObject, bot->GetLevel()))
                 return -1;
 
             TaxiPathEntry const* taxiPath = sTaxiPathStore.LookupEntry(pathObject);
@@ -170,7 +182,9 @@ float TravelNodePath::getCost(Unit* unit, uint32 cGold)
                 if (!bot->isTaxiCheater() && taxiPath->price > cGold)
                     return -1;
 
-                if (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(taxiPath->to))
+                // PATH-01 E7: the goblin flying machines (311 / 322) need no known taxi node, as for a player.
+                if (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(taxiPath->to) &&
+                    !(sPlayerbotAIConfig.customRaceStartZones && ai::start_zone::IsScriptedTaxi(pathObject)))
                     return -1;
 
                 TaxiNodesEntry const* startTaxiNode = sTaxiNodesStore.LookupEntry(taxiPath->from);

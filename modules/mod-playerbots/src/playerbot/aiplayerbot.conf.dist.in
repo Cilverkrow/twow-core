@@ -86,6 +86,12 @@ AiPlayerbot.Park.QuietIdleEmoteSeconds = 600
 # [Park] state=restored / restore_failed per bot.
 AiPlayerbot.Park.Persist = 0
 
+# twow-repo#551 (owner 11.10.2026): Seats = 1: a parked bot takes a free chair or bench seat of its inn (CHAIR objects
+# within 15 yd of the innkeeper, upper floor included) and sits on it like a player (chair height and facing); a bot
+# without a free seat stands on the rings from 5.5 yd on, so the innkeeper stays reachable. A game_tele target within
+# 60 yd of an inn of the faction parks in that inn. Parked bots dismount and drop the mount strategy. 0 = as before.
+AiPlayerbot.Park.Seats = 0
+
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
 
@@ -802,6 +808,12 @@ AiPlayerbot.ZoneEscape.RetrySeconds = 60
 # Area levels for areas the generated ai_playerbot_zone_level table misses or
 # gets wrong, as a comma list of <area id>:<level> (e.g. Turtle zones).
 AiPlayerbot.AreaLevelOverrides =
+# twow-repo#575 (PATH-01 wave 2, BEHAVIOUR CHANGE, "nach Abnahme an"): areas whose AreaTable team is wrong for this
+# realm, as a comma list of <area id>:<horde|alliance|none> (or 4 / 2 / 0). Such an area counts as an enemy home
+# zone for the other faction (travel targets, random teleports, quest rescue, repop / hearthstone checks).
+# Owner 14.10.2026: Stormbreaker Point (5576, Balor) is a Horde camp - 5576:horde keeps Alliance bots out of
+# the #501 trap (five L55 guards). Empty = the AreaTable teams (default).
+AiPlayerbot.AreaTeamOverrides =
 # Shared danger map (#307). Deaths of all bots (not real players, not in
 # instances or battlegrounds) are pooled per CellSize x CellSize yard cell for
 # WindowSeconds. A roster bot skips a travel destination when the destination
@@ -944,6 +956,16 @@ AiPlayerbot.Path.TaxiTrace = 0
 # high-elf start (Thalassian Highlands) and rebinds the hearthstone at the target. 1 = those two starts are rescue
 # targets only for goblins / high elves. 0 = any start of the faction (default).
 AiPlayerbot.Path.RescueSkipCustomStarts = 0
+# twow-repo#575 (PATH-01 wave 0, BEHAVIOUR CHANGE, "nach Abnahme an"; needs the wave-0 travel nodes of train 10, read at
+# boot, so a change needs a restart): 1 = goblins quest on Blackstone Island and high elves in the Thalassian Highlands /
+# Alah'Thalas. New bots keep the real start position; repop up to level 10 at the real start; random teleports into
+# these zones only for the zone's race; their quest points are travel targets for that faction only, and up to level 12
+# the bot's own start zone (for a goblin also Sparkwater Port) ignores area levels in the danger check. Exits: the
+# flying machines as scripted taxi links (311 / 322, also driven by quests 41169 / 41170 in the log), the high-elf ship
+# to Auberdine as a scripted move (41259 in the log, level 12, or level 10 and 15 minutes idle); flights 303 / 304 to
+# Light's Hope below level 50 and walking into the Plaguelands below level 20 are closed. Set together with
+# AiPlayerbot.Path.StartZoneExactBounds = 1 and AiPlayerbot.Path.RescueSkipCustomStarts = 1. 0 = off (default).
+AiPlayerbot.CustomRaceStartZones = 0
 # Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
 # its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost
 # starts there) or enemies stand near the corpse - those two shortcuts apply only from the second
