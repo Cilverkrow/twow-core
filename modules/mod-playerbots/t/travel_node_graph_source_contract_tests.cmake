@@ -5,7 +5,8 @@ cmake_policy(VERSION 3.16)
 #         Same answer (no nodes), no switch.
 #  no. 4: one load line "[TravelNodes] walk_links_without_points=N" - walk links without path points are the ones
 #         TravelNodeRoute::buildPath would recalculate under the shared lock; the invariant "every walk link has its
-#         points" becomes visible (expected 0). Log only, no switch.
+#         points" becomes visible (expected 0). walk_links_incomplete= appended: buildPath recalculates on !getComplete(),
+#         which also holds for a walk link with points but calculated = 0. Log only, no switch.
 
 function(read_source path out_var)
   file(READ "${PB_SOURCE_DIR}/${path}" text)
@@ -68,9 +69,10 @@ require_text("${node_cpp}" "    m_map_nodes[pos.getMapId()].push_back(newNode);"
 
 # no. 4: the walk-link count at load, once, after the path points are read.
 function_body("${node_cpp}" "void TravelNodeMap::loadNodeStore()" load)
-require_text("${load}" "sLog.outString(\"[TravelNodes] walk_links_without_points=%u walk_links=%u\", walkLinksWithoutPoints, walkLinks);" "load line")
+require_text("${load}" "sLog.outString(\"[TravelNodes] walk_links_without_points=%u walk_links=%u walk_links_incomplete=%u\", walkLinksWithoutPoints, walkLinks,\n        walkLinksIncomplete);" "load line")
 require_order("${load}" "FROM ai_playerbot_travelnode_path order by node_id, to_node_id, nr" "[TravelNodes] walk_links_without_points=" "counted after the path points are loaded")
 require_text("${load}" "            if (link.second->getPathType() != TravelNodePathType::walk)\n                continue;\n            ++walkLinks;\n            if (link.second->getPath().empty())\n                ++walkLinksWithoutPoints;" "walk links without points counted")
+require_text("${load}" "            if (!link.second->getComplete())\n                ++walkLinksIncomplete;" "incomplete walk links counted (buildPath recalculates on !getComplete())")
 string(FIND "${node_cpp}" "walk_links_without_points=" first_line)
 string(FIND "${node_cpp}" "walk_links_without_points=" last_line REVERSE)
 if(NOT first_line EQUAL last_line)

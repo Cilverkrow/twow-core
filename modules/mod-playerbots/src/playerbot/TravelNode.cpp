@@ -4157,8 +4157,10 @@ void TravelNodeMap::loadNodeStore()
     // twow-repo#592 (PATH-02): walk links whose path has no points. TravelNodeRoute::buildPath would recalculate such a
     // link (TravelNode::buildPath) under the shared node map lock - a write while other map threads read the graph, and
     // without a bot a crash path. Expected 0 (OB-30 dump: 0 of 5597); anything else must keep asynchronous or sliced
-    // route stages off. One line at load.
-    uint32 walkLinks = 0, walkLinksWithoutPoints = 0;
+    // route stages off. One line at load. buildPath recalculates on !getComplete(), and the load above marks a walk link
+    // complete only when it has points and calculated = 1: walk_links_incomplete also counts the ones with points but
+    // calculated = 0 (a superset of the links without points) - the number the async gate rests on.
+    uint32 walkLinks = 0, walkLinksWithoutPoints = 0, walkLinksIncomplete = 0;
     for (auto& node : getNodes())
     {
         for (auto& link : *node->getLinks())
@@ -4168,9 +4170,12 @@ void TravelNodeMap::loadNodeStore()
             ++walkLinks;
             if (link.second->getPath().empty())
                 ++walkLinksWithoutPoints;
+            if (!link.second->getComplete())
+                ++walkLinksIncomplete;
         }
     }
-    sLog.outString("[TravelNodes] walk_links_without_points=%u walk_links=%u", walkLinksWithoutPoints, walkLinks);
+    sLog.outString("[TravelNodes] walk_links_without_points=%u walk_links=%u walk_links_incomplete=%u", walkLinksWithoutPoints, walkLinks,
+        walkLinksIncomplete);
 }
 
 void TravelNodeMap::calcMapOffset()
