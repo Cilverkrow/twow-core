@@ -100,7 +100,7 @@ void WorldRunnable::operator()()
         uint64 const updateStartUs = World::WorldTickNowUs();  // twow-repo#541 ([WorldTick])
         World::StallWatchTickBegin(updateStartUs);  // twow-repo#597 ([StallWatch]): no-op unless StallWatchMs
         sWorld.Update(diff);
-        World::StallWatchTickEnd();
+        World::StallWatchPart(world_tick_slow::TickEnd);  // twow-repo#597: RecordTick still counts as this tick
         uint64 const updateEndUs = World::WorldTickNowUs();
 		sPerfMonitor.Tick.End();
 
@@ -118,6 +118,7 @@ void WorldRunnable::operator()()
 
         // twow-repo#351: every tick's work time into the aggregated statistic.
         sPerfMonitor.RecordTick(updateTime, diff);
+        World::StallWatchTickEnd();  // twow-repo#597 ([StallWatch]): the sleep never counts as tick age
 
         sPerfMonitor.WorldSleep.Begin();
         if (updateTime < WORLD_SLEEP_CONST)
@@ -125,7 +126,11 @@ void WorldRunnable::operator()()
         sPerfMonitor.WorldSleep.End();
 
         // twow-repo#541: close the tick ([WorldTick]/[MapTick], no-op unless PerformanceLog.WorldTick).
+        // twow-repo#597 ([StallWatch]): WorldTickEnd writes the minute and slow lines through sLog, so it
+        // gets its own age window (phase=tick_end); the clock is read only while StallWatchMs is on.
+        World::StallWatchTickBegin(World::StallWatchOn() ? World::WorldTickNowUs() : 0, world_tick_slow::TickEnd);
         sWorld.WorldTickEnd(updateEndUs - updateStartUs, World::WorldTickNowUs() - updateEndUs);
+        World::StallWatchTickEnd();
 
 		sPerfMonitor.FrameEnd(diff);
     }

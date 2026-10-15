@@ -730,9 +730,10 @@ PerformanceLog.TerrainTrace = 0
 #   the running world tick (lock or long phase) reaches N ms: when the stall opens, at most once a
 #   second while it grows, and once with its peak when it ends; at most 120 lines a minute. phase =
 #   the part of World::Update the world thread was in (the [WorldTickSlow] names, plus idle, maps,
-#   maps_wait). Written with plain file I/O into "<LogsDir>stallwatch.log", not through the server
-#   log (which may be what blocks). Changing it needs a restart to start the thread; a reload to 0
-#   silences it.
+#   maps_wait, and tick_end for the work after World::Update: the statistics and WorldTickEnd with
+#   the minute and slow lines, which run through the server log). Written with plain file I/O into
+#   "<LogsDir>stallwatch.log", not through the server log (which may be what blocks). Changing it
+#   needs a restart to start the thread; a reload to 0 silences it.
 #   Default: 0 (off)
 PerformanceLog.StallWatchMs = 0
 
