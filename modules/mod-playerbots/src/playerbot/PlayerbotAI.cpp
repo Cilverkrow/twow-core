@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/ParkPolicy.h"
+#include "playerbot/StartZonePolicy.h"
 #include "playerbot/AiJitterPolicy.h"
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/BotDialogueProvider.h"
@@ -886,12 +887,38 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             // Hotfix 8.29 (twow-repo#532): Blackstone Island has no travel edge, only the flying machine.
             // Hotfix 8.29a: only a goblin in the island's box or a bot with a real master enters.
             namespace gi = ai::quest_search::goblin_island;
+            namespace sz = ai::start_zone;
             bool const islandCandidate = gi::MayBeOnIsland(bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
-            if ((islandCandidate || HasRealPlayerMaster()) &&
-                bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
+            bool const startZones = sPlayerbotAIConfig.customRaceStartZones;
+            bool const freeToTravel = bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() &&
+                !bot->IsBeingTeleported();
+
+            // twow-repo#575 (PATH-01 Q1, AiPlayerbot.CustomRaceStartZones): the goblin chain is a round trip - 41169 is
+            // handed in at Nert Blastentom in Sparkwater Port, 41170 back at Taxxlo Rustgate on the island. With one of
+            // them in the log the goblin takes the machine of that direction (311 out, 322 back), whatever its level.
+            uint32 questFlight = 0;
+            if (startZones && freeToTravel && !HasRealPlayerMaster() && bot->getRace() == sz::GoblinRace && bot->GetMapId() == 1)
+                questFlight = sz::QuestFlightPath(true, bot->getRace(), bot->GetLevel(), islandCandidate,
+                    bot->GetDistance(sz::PortMachineX, sz::PortMachineY, sz::PortMachineZ),
+                    bot->IsCurrentQuest(sz::QuestBadNews, 0), bot->IsCurrentQuest(sz::QuestSolutions, 0));
+            if (questFlight)
             {
-                if (islandCandidate && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() &&
-                    gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now)))
+                sz::Point const machine = sz::MachineOf(questFlight);
+                if (bot->GetDistance(machine.x, machine.y, machine.z) <= sz::MachineBoardDistance)
+                {
+                    sLog.outBasic("[Travel] state=quest_flight bot=%u level=%u path=%u quest=%u", bot->GetGUIDLow(), bot->GetLevel(),
+                        questFlight, questFlight == sz::IslandPath ? sz::QuestBadNews : sz::QuestSolutions);
+                    bot->GetMotionMaster()->Clear();
+                    bot->ActivateTaxiPathTo(questFlight, 0, true);
+                }
+                else
+                    bot->GetMotionMaster()->MovePoint(0, machine.x, machine.y, machine.z, MOVE_PATHFINDING);
+            }
+            else if ((islandCandidate || HasRealPlayerMaster()) && freeToTravel)
+            {
+                // PATH-01 Q1: with CustomRaceStartZones every goblin on its own leaves this way, not only roster members.
+                if (islandCandidate && sz::IslandLeaveAllowed(sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), startZones) &&
+                    !HasRealPlayerMaster() && gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now)))
                 {
                     float const dist = bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ);
                     if (dist <= gi::BoardDistance)
@@ -920,6 +947,24 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                         }
                     }
                 }
+            }
+
+            // twow-repo#575 (PATH-01 S1, AiPlayerbot.CustomRaceStartZones): the ship Alah'Thalas - Auberdine (176250) has no
+            // link in the travel graph yet. A high elf on its own that has to leave (41259 in the log, level 12, or level
+            // 10 and 15 minutes without progress) walks to Windrunner Pier and is moved to the Auberdine pier.
+            if (freeToTravel && !HasRealPlayerMaster() &&
+                sz::ShipCandidate(startZones, bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()) &&
+                sz::ShouldTakeShip(bot->GetLevel(), questProgress.IdleSeconds(now), bot->IsCurrentQuest(sz::QuestJourneyToAuberdine, 0)))
+            {
+                if (bot->GetDistance(sz::AlahDockX, sz::AlahDockY, sz::AlahDockZ) <= sz::DockBoardDistance)
+                {
+                    sLog.outBasic("[Travel] state=ship_scripted bot=%u level=%u idle_s=%u quest=%u", bot->GetGUIDLow(), bot->GetLevel(),
+                        questProgress.IdleSeconds(now), bot->IsCurrentQuest(sz::QuestJourneyToAuberdine, 0) ? sz::QuestJourneyToAuberdine : 0u);
+                    bot->GetMotionMaster()->Clear();
+                    bot->TeleportTo(sz::AuberdineMap, sz::AuberdineDockX, sz::AuberdineDockY, sz::AuberdineDockZ, bot->GetOrientation());
+                }
+                else
+                    bot->GetMotionMaster()->MovePoint(0, sz::AlahDockX, sz::AlahDockY, sz::AlahDockZ, MOVE_PATHFINDING);
             }
 
             bool rescueInCombat = false;

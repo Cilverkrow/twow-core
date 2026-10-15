@@ -2757,3 +2757,81 @@ set_target_properties(budget_start_policy_tests PROPERTIES
 add_test(NAME budget_start_policy
   COMMAND budget_start_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#588 (owner 14.10.2026): buff targets like a real player (AiPlayerbot.Buff.RealPlayerStyle).
+add_test(NAME buff_target_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/buff_target_source_contract_tests.cmake")
+
+add_executable(buff_target_policy_tests
+  "${PB_MODULE_DIR}/t/buff_target_policy_tests.cpp")
+
+target_include_directories(buff_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(buff_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME buff_target_policy
+  COMMAND buff_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#551 (owner 11.10.2026): parked bots on inn chairs (AiPlayerbot.Park.Seats).
+add_test(NAME park_seats_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/park_seats_source_contract_tests.cmake")
+
+add_executable(park_seats_policy_tests
+  "${PB_MODULE_DIR}/t/park_seats_policy_tests.cpp")
+
+target_include_directories(park_seats_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(park_seats_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME park_seats_policy
+  COMMAND park_seats_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#587 (owner 14.10.2026): bots leave start zones / the wrong continent (AiPlayerbot.ZoneExit.*).
+add_test(NAME zone_exit_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/zone_exit_source_contract_tests.cmake")
+
+add_executable(zone_exit_policy_tests
+  "${PB_MODULE_DIR}/t/zone_exit_policy_tests.cpp")
+
+target_include_directories(zone_exit_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(zone_exit_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME zone_exit_policy
+  COMMAND zone_exit_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#575 (PATH-01 wave 0): goblin / high-elf real start zones behind AiPlayerbot.CustomRaceStartZones.
+add_executable(start_zone_policy_tests
+  "${PB_MODULE_DIR}/t/start_zone_policy_tests.cpp")
+
+target_include_directories(start_zone_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(start_zone_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(start_zone_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME start_zone_policy
+  COMMAND start_zone_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME start_zone_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/start_zone_source_contract_tests.cmake")

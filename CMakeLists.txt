@@ -1021,6 +1021,14 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
   add_executable(rare_respawn_policy_test
     "${TW_CORE_ROOT}/t/rare_respawn_policy_test.cpp")
   add_test(NAME rare_respawn_policy_test COMMAND rare_respawn_policy_test)
+  # twow-repo#581 QL-3: few-spawn quest targets respawn faster per interested player (default off).
+  add_executable(quest_target_respawn_policy_test
+    "${TW_CORE_ROOT}/t/quest_target_respawn_policy_test.cpp")
+  add_test(NAME quest_target_respawn_policy_test COMMAND quest_target_respawn_policy_test)
+  add_test(NAME quest_target_respawn_581_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_quest_target_respawn_581_contract.cmake")
   # twow-repo#295: riding stages (mount speed by rank and family) and player snares, pure rules.
   add_executable(riding_stages_policy_test
     "${TW_CORE_ROOT}/t/riding_stages_policy_test.cpp")

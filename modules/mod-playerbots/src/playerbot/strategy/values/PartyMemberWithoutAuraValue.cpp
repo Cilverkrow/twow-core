@@ -4,6 +4,8 @@
 
 #include "playerbot/ServerFacade.h"
 #include "playerbot/GroupBuffPolicy.h"
+#include "playerbot/BuffTargetPolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 using namespace ai;
 
 extern std::vector<std::string> split(const std::string &s, char delim);
@@ -63,6 +65,49 @@ Unit* FriendlyUnitWithoutAuraValue::Calculate()
     bool const ignoreOutOfGroup = !ai::group_buff::MayBuffOutOfGroup(ai->IsInGroupWithRealPlayer());
 
     PlayerWithoutAuraPredicate predicate(ai, auras);
+
+    // twow-repo#588 (AiPlayerbot.Buff.RealPlayerStyle): like a real player - self and group first, then the own guild, and a
+    // stranger (bot or player) only once per StrangerCooldownSeconds per bot. Off: every friendly player in sight, as before.
+    if (sPlayerbotAIConfig.buffRealPlayerStyle && !ignoreOutOfGroup)
+    {
+        if (Unit* member = FindPartyMember(predicate, true, ignoreTank))
+        {
+            ai::buff_target::Count(ai::buff_target::Category::Group);
+            return member;
+        }
+        // The guards of the old out-of-group path: no outside buffs while that activity is off or while mounted.
+        if (!ai->AllowActivity(OUT_OF_PARTY_ACTIVITY) || AI_VALUE2(uint32, "current mount speed", "self target"))
+            return nullptr;
+
+        Player* stranger = nullptr;
+        for (ObjectGuid const& guid : AI_VALUE(std::list<ObjectGuid>, "nearest friendly players"))
+        {
+            Player* player = dynamic_cast<Player*>(ai->GetUnit(guid));
+            if (!player || player == bot || !predicate.Check(player))
+                continue;
+            if (ai::buff_target::SameGuild(bot->GetGuildId(), player->GetGuildId()))
+            {
+                ai::buff_target::Count(ai::buff_target::Category::Guild);
+                return player;
+            }
+            if (!stranger)
+                stranger = player;
+        }
+        if (!stranger)
+            return nullptr;
+
+        uint32 const now = uint32(time(nullptr));
+        if (!ai::buff_target::StrangerAllowed(now, uint32(std::max(0, AI_VALUE2(int, "manual int", "buff stranger next")))))
+        {
+            ai::buff_target::Count(ai::buff_target::Category::StrangerOnCooldown);
+            return nullptr;
+        }
+        SET_AI_VALUE2(int, "manual int", "buff stranger next",
+            int(ai::buff_target::NextStrangerAllowed(now, sPlayerbotAIConfig.buffStrangerCooldownSeconds)));
+        ai::buff_target::Count(GetBotAI(stranger) ? ai::buff_target::Category::StrangerBot : ai::buff_target::Category::StrangerPlayer);
+        return stranger;
+    }
+
     return FindPartyMember(predicate, ignoreOutOfGroup, ignoreTank);
 }
 

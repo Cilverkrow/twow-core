@@ -864,6 +864,8 @@ class Creature : public Unit
         void Respawn();
         void SaveRespawnTime() override;
         void ApplyDynamicRespawnDelay(uint32& delay, CreatureData const* data);
+        // twow-repo#581 QL-3 (DynamicRespawn.QuestTarget.*): few-spawn quest targets respawn faster per interested player.
+        void ApplyQuestTargetRespawnDelay(uint32& delay, CreatureData const* data);
         void CastSpawnSpell();
 
         uint32 GetRespawnDelay() const { return m_respawnDelay; }

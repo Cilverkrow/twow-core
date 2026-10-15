@@ -25,7 +25,8 @@ if (goblin GREATER loop)
 endif()
 # Hotfix 8.29a: the island check is gated by race/map/box before any terrain lookup.
 string(FIND "${ai_cpp}" "bool const islandCandidate = gi::MayBeOnIsland(bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());" gate)
-string(FIND "${ai_cpp}" "if (islandCandidate && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow())" gated)
+# twow-repo#575 (PATH-01 Q1): roster members only, unless AiPlayerbot.CustomRaceStartZones is on.
+string(FIND "${ai_cpp}" "if (islandCandidate && sz::IslandLeaveAllowed(sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), startZones)" gated)
 string(FIND "${ai_cpp}" "gi::ShouldLeaveIsland(bot->GetZoneId()" zone)
 if (gate EQUAL -1 OR gated EQUAL -1 OR zone LESS gate)
   message(FATAL_ERROR "goblin island: the zone lookup must be gated by MayBeOnIsland (8.29a)")
