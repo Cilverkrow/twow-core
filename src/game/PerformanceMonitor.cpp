@@ -98,10 +98,12 @@ void PerformanceMonitor::RecordTick(uint32 UpdateMs, uint32 DiffMs)
 
 	// One line per interval, never per tick. clear() keeps the capacity, so a
 	// steady tick rate stops allocating after the first interval.
+	// twow-repo#592 (PATH-02): PerformanceLog.TickStatsExtended appends over20/over50;
+	// off, the line is the #351 line byte for byte (t/tick_stats_test.cpp).
 	TickStatsSummary const Summary = SummarizeTickStats(TickSamples);
-	sLog.out(LOG_PERFORMANCE, "Tick stats: interval=%us ticks=%u p50=%ums p95=%ums p99=%ums max=%ums over100=%u over200=%u",
-		TickStatsElapsedMs / 1000, Summary.count, Summary.p50, Summary.p95, Summary.p99, Summary.max,
-		Summary.over100, Summary.over200);
+	char Line[256];
+	FormatTickStatsLine(Line, sizeof(Line), TickStatsElapsedMs / 1000, Summary, sWorld.getConfig(CONFIG_BOOL_PERFLOG_TICK_STATS_EXTENDED));
+	sLog.out(LOG_PERFORMANCE, "%s", Line);
 	TickSamples.clear();
 	TickStatsElapsedMs = 0;
 }

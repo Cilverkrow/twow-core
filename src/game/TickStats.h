@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 
 // Both counters are always reported: 100 ms is the "slow update" of the D1
@@ -19,6 +20,14 @@
 // line is comparable with the classic perf.log entries.
 constexpr uint32_t TICK_STATS_SLOW_D1_MS = 100;
 constexpr uint32_t TICK_STATS_SLOW_PERFLOG_MS = 200;
+
+// twow-repo#592 (PATH-02, PerformanceLog.TickStatsExtended): the live-near loads
+// sit between 20 and 100 ms (roster 540: p95 30-40 ms, over100 1.7/min), where
+// over100 does not move. Counted with the others, printed only with the switch.
+// Not the same edges as [BotUpdate] over10ms/over20ms (log2 buckets, >= 16.4 /
+// 32.8 ms): these are strictly above 20 and 50 ms.
+constexpr uint32_t TICK_STATS_OVER20_MS = 20;
+constexpr uint32_t TICK_STATS_OVER50_MS = 50;
 
 struct TickStatsSummary
 {
@@ -29,6 +38,8 @@ struct TickStatsSummary
     uint32_t max = 0;
     uint32_t over100 = 0;  // ticks strictly above TICK_STATS_SLOW_D1_MS
     uint32_t over200 = 0;  // ticks strictly above TICK_STATS_SLOW_PERFLOG_MS
+    uint32_t over20 = 0;   // ticks strictly above TICK_STATS_OVER20_MS (#592)
+    uint32_t over50 = 0;   // ticks strictly above TICK_STATS_OVER50_MS (#592)
 };
 
 // Nearest-rank percentile: the smallest sample with at least pct percent of
@@ -60,9 +71,25 @@ inline TickStatsSummary SummarizeTickStats(std::vector<uint32_t>& samples)
             ++s.over100;
         if (v > TICK_STATS_SLOW_PERFLOG_MS)
             ++s.over200;
+        if (v > TICK_STATS_OVER20_MS)
+            ++s.over20;
+        if (v > TICK_STATS_OVER50_MS)
+            ++s.over50;
     }
     s.p50 = TickStatsPercentile(samples, 50);
     s.p95 = TickStatsPercentile(samples, 95);
     s.p99 = TickStatsPercentile(samples, 99);
     return s;
+}
+
+// The "Tick stats" perf.log line. extended = false gives exactly the #351 line;
+// extended = true appends " over20=N over50=N" behind over200 (parsers that read
+// key=value or match "over100=" keep working). Returns the snprintf result.
+inline int FormatTickStatsLine(char* out, size_t size, uint32_t intervalSeconds, TickStatsSummary const& s, bool extended)
+{
+    if (!extended)
+        return std::snprintf(out, size, "Tick stats: interval=%us ticks=%u p50=%ums p95=%ums p99=%ums max=%ums over100=%u over200=%u",
+            intervalSeconds, s.count, s.p50, s.p95, s.p99, s.max, s.over100, s.over200);
+    return std::snprintf(out, size, "Tick stats: interval=%us ticks=%u p50=%ums p95=%ums p99=%ums max=%ums over100=%u over200=%u over20=%u over50=%u",
+        intervalSeconds, s.count, s.p50, s.p95, s.p99, s.max, s.over100, s.over200, s.over20, s.over50);
 }
