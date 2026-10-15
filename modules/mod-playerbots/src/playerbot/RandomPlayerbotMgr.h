@@ -355,6 +355,7 @@ public:
             uint32 slot = 0;
             uint32 cityZone = 0;   // twow-repo#551 (Park.MaxPerCity): capital zone of the spot, 0 = none
             int32 seatHeight = -1; // twow-repo#551 (Park.Seats): chair height of the bot's seat, -1 = no seat
+            bool seatedLogged = false; // twow-repo#551 (Park.Seats): [Park] state=seated written once
         };
         std::map<uint32, ParkEntry> parkedBots;
         std::map<uint64, std::set<uint32>> parkSpotSlots;  // spot key -> taken slots (capacity ai::park::SpotCapacity)
