@@ -3345,13 +3345,53 @@ char const* TravelNodeMap::unitlessGenSkipCause()
     return complete ? nullptr : ai::path_unitless_bot::TilesIncompleteCause;
 }
 
+// twow-repo#592 (PATH-02): generateNodes (full generation) only adds unlinked nodes, and generateWalkPathMap builds node
+// paths without a bot (TravelNode::buildPath -> getPathFromPath(..., nullptr), the unitless PathFinder) from every
+// unlinked node to each neighbour that passes the tests below - the same tests, in the same order, as there. Nothing
+// else in generatePaths(false) pathfinds: path costs, pruning and taxi paths work on the stored points, and
+// SetMobAvoidAreaMap only constructs the PathFinder (setArea is a stub). Startup only, normally no unlinked node.
+bool TravelNodeMap::generationNeedsUnitlessPaths()
+{
+    if (hasToFullGen)
+        return true;
+
+    for (auto& startNode : m_nodes)
+    {
+        if (startNode->isLinked())
+            continue;
+
+        for (auto& endNode : getNodes(*startNode->getPosition(), 2000.0f))
+        {
+            if (endNode->isTransport() && endNode->isLinked())
+                continue;
+
+            if (startNode == endNode)
+                continue;
+
+            if (startNode->hasCompletePathTo(endNode))
+                continue;
+
+            if (startNode->getMapId() != endNode->getMapId())
+                continue;
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void TravelNodeMap::generateAll()
 {
-    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.PathGenUnitless): generation needs unitless pathfinding (the generator's
-    // paths have no bot). Without the gate open it is skipped as a whole - no LoadMaps, no generateNodes/generatePaths,
-    // nothing to save; the graph is used as loaded and the runtime treats it as generated (hasToGen off). Before #592
-    // such a start crashed in the first unitless calculate(). Map offsets, transfers and coverage run as before.
-    if (hasToGen || hasToFullGen)
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.PathGenUnitless): a generation that builds node paths needs unitless
+    // pathfinding (the generator's paths have no bot); before #592 such a start crashed in the first unitless
+    // calculate(). Only for it the gate decides: closed, the generation is skipped as a whole - no LoadMaps, no
+    // generateNodes/generatePaths, nothing to save; the graph is used as loaded and the runtime treats it as generated
+    // (hasToGen off). A start that needs no node path (only uncalculated links, or unlinked nodes without a neighbour to
+    // build to) runs exactly as before, with either switch value and without [PathGen] lines. Map offsets, transfers and
+    // coverage run as before.
+    bool unitlessGen = false;
+    if ((hasToGen || hasToFullGen) && generationNeedsUnitlessPaths())
     {
         if (char const* cause = unitlessGenSkipCause())
         {
@@ -3359,6 +3399,8 @@ void TravelNodeMap::generateAll()
             hasToGen = false;
             hasToFullGen = false;
         }
+        else
+            unitlessGen = true;
     }
 
     if (hasToGen || hasToFullGen)
@@ -3380,10 +3422,13 @@ void TravelNodeMap::generateAll()
         hasToFullGen = false;
         hasToSave = true;
 
-        size_t links = 0;
-        for (auto& node : m_nodes)
-            links += node->getLinks()->size();
-        sLog.outString("[PathGen] done nodes=" SIZEFMTD " links=" SIZEFMTD, m_nodes.size(), links);  // twow-repo#592
+        if (unitlessGen)  // twow-repo#592: only after a generation through the open gate
+        {
+            size_t links = 0;
+            for (auto& node : m_nodes)
+                links += node->getLinks()->size();
+            sLog.outString("[PathGen] done nodes=" SIZEFMTD " links=" SIZEFMTD, m_nodes.size(), links);
+        }
     }
 
     sLog.outString("-Calculating coverage"); //This prevents crashes when bots from multiple maps try to calculate this on the fly.

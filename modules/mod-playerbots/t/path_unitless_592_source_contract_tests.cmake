@@ -4,8 +4,9 @@ cmake_policy(VERSION 3.16)
 # - TravelNodeRoute::buildPath rebuilds an incomplete step only while the generator runs (mayBuild = gethasToGen()),
 #   at runtime the step moves to the node (counted route_incomplete) instead of writing the node graph;
 # - getPathStepFrom: a map-mode PathFinder with a bot on a transport returns no path without calculate (T2);
-# - AiPlayerbot.Perf.PathGenUnitless (default 0) gates generateAll as a whole and the node route part of
-#   GetFishLocations (serial when on); the route part is unreachable today (core getArea stub, core contract).
+# - AiPlayerbot.Perf.PathGenUnitless (default 0) gates a generateAll that builds node paths (as a whole; one without
+#   runs as before) and the node route part of GetFishLocations (serial when on); the route part is unreachable today
+#   (core getArea stub, core contract).
 # Unit-mode paths of the bots are unchanged.
 
 function(read_source path out_var)
@@ -96,14 +97,36 @@ require_text("${gate}" "sLog.outString(\"[PathGen] tiles%s complete=%u\"" "tile 
 require_text("${gate}" "return complete ? nullptr : ai::path_unitless_bot::TilesIncompleteCause;" "incomplete tiles close the gate")
 forbid_text("${gate}" "loadMap(" "no tile loading in the gate")
 
-# 3. generateAll: skipped as a whole (no LoadMaps, generateNodes, generatePaths, save) unless the gate is open.
+# 3. generateAll: a generation that builds node paths (full, or an unlinked node with a neighbour to build to) is
+#    skipped as a whole (no LoadMaps, generateNodes, generatePaths, save) unless the gate is open. One that builds no
+#    node path (only uncalculated links) runs as before, without the gate and without [PathGen] lines.
 function_body("${travel_node}" "void TravelNodeMap::generateAll()" gen)
-require_text("${gen}" "        if (char const* cause = unitlessGenSkipCause())\n        {\n            sLog.outString(\"[PathGen] skipped reason=generator n=%u cause=%s full=%u\", genRequests, cause, uint32(hasToFullGen));\n            hasToGen = false;\n            hasToFullGen = false;\n        }" "skip block")
+require_text("${gen}" "    bool unitlessGen = false;\n    if ((hasToGen || hasToFullGen) && generationNeedsUnitlessPaths())\n    {\n        if (char const* cause = unitlessGenSkipCause())" "gate only for a generation that builds node paths")
+require_text("${gen}" "        if (char const* cause = unitlessGenSkipCause())\n        {\n            sLog.outString(\"[PathGen] skipped reason=generator n=%u cause=%s full=%u\", genRequests, cause, uint32(hasToFullGen));\n            hasToGen = false;\n            hasToFullGen = false;\n        }\n        else\n            unitlessGen = true;" "skip block")
+require_count("${gen}" "unitlessGenSkipCause()" 1 "one gate call")
 require_order("${gen}" "unitlessGenSkipCause()" "LoadMaps();" "gate before LoadMaps")
 require_order("${gen}" "unitlessGenSkipCause()" "generateNodes();" "gate before generateNodes")
 require_order("${gen}" "unitlessGenSkipCause()" "generatePaths(false);" "gate before generatePaths")
 require_order("${gen}" "unitlessGenSkipCause()" "hasToSave = true;" "gate before the save flag")
+require_text("${gen}" "        if (unitlessGen)  // twow-repo#592: only after a generation through the open gate\n        {" "done line only after a gated generation")
+require_order("${gen}" "if (unitlessGen)" "[PathGen] done nodes=" "done line inside the unitlessGen block")
 require_text("${gen}" "sLog.outString(\"[PathGen] done nodes=\" SIZEFMTD \" links=\" SIZEFMTD, m_nodes.size(), links);" "done line")
+# The need test mirrors generateWalkPathMap: the same neighbour radius and the same four tests in the same order in
+# front of its buildPath; read only (no path build, no link flag).
+function_body("${travel_node}" "bool TravelNodeMap::generationNeedsUnitlessPaths()" needs)
+function_body("${travel_node}" "void TravelNodeMap::generateWalkPathMap(uint32 mapId, BarGoLink* bar)" walk)
+set(walk_tests "            if (endNode->isTransport() && endNode->isLinked())\n                continue;\n\n            if (startNode == endNode)\n                continue;\n\n            if (startNode->hasCompletePathTo(endNode))\n                continue;\n\n            if (startNode->getMapId() != endNode->getMapId())\n                continue;\n\n")
+require_text("${walk}" "${walk_tests}            startNode->buildPath(endNode, nullptr, false);" "generateWalkPathMap: the tests in front of its unitless buildPath")
+require_text("${needs}" "${walk_tests}            return true;" "need test: the same tests")
+require_text("${walk}" "        if (startNode->isLinked())\n            continue;" "generateWalkPathMap skips linked start nodes")
+require_text("${needs}" "        if (startNode->isLinked())\n            continue;" "need test skips linked start nodes")
+require_text("${walk}" "for (auto& endNode : sTravelNodeMap.getNodes(*startNode->getPosition(), 2000.0f))" "generateWalkPathMap neighbour radius")
+require_text("${needs}" "for (auto& endNode : getNodes(*startNode->getPosition(), 2000.0f))" "need test: the same neighbour radius")
+require_order("${needs}" "    if (hasToFullGen)\n        return true;" "for (auto& startNode : m_nodes)" "a full generation always needs paths")
+forbid_text("${needs}" "buildPath(" "a path build in the need test")
+forbid_text("${needs}" "setLinked(" "a link flag write in the need test")
+forbid_text("${needs}" "getPathFromPath(" "pathfinding in the need test")
+require_text("${travel_node_h}" "        bool generationNeedsUnitlessPaths();" "need test declared")
 require_text("${gen}" "    sLog.outString(\"-Calculating mapoffset\");\n    calcMapOffset();" "map offsets still computed")
 require_text("${travel_node_h}" "        char const* unitlessGenSkipCause();" "gate declared")
 
