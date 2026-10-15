@@ -139,6 +139,22 @@ int main()
     Require(!GrindFallback(true, 9, 0), "0 = off");
     Require(!GrindFallback(false, 9, 2), "not quest-first: unaffected (stock grind rules)");
 
+    // twow-repo#594 / P3-a: fresh bots (DirectTargets) - short backoff, own grind threshold; off = 8.1 / 8.32 unchanged.
+    Require(RouteBackoffSeconds(3, false, 20) == 480 && RouteBackoffSeconds(3, true, 0) == 480, "not fresh or 0 s: the 8.1 rule");
+    Require(RouteBackoffSeconds(1, true, 20) == 20 && RouteBackoffSeconds(9, true, 20) == 20, "fresh: FreshBackoffSeconds at any count");
+    Require(FreshBot(true, 3, 5) && FreshBot(true, 5, 5) && !FreshBot(true, 6, 5), "fresh up to FreshMaxLevel");
+    Require(!FreshBot(false, 1, 5) && !FreshBot(true, 1, 0), "master off or max level 0: nobody is fresh");
+    {
+        RejectCounts counts;
+        Require(counts.FormatInactiveReasons().empty() && counts.Format().find("not_active_reasons") == std::string::npos,
+            "no reasons counted: the rejected line is unchanged");
+        counts.notActive = 2;
+        counts.notActiveReason[RejectCounts::InactiveNoMark] = 2;
+        Require(counts.Format().find(" not_active=2 ") != std::string::npos &&
+            counts.Format().find("not_active_reasons=impossible:0,map:0,no_mark:2,") != std::string::npos,
+            "reasons appended, the total stays");
+    }
+
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
 }

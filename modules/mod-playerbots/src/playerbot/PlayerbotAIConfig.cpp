@@ -598,6 +598,11 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
+    directTargetsEnabled = config.GetBoolDefault("AiPlayerbot.DirectTargets.Enable", false);
+    directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
+    directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));
+    directTargetsFreshBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshBackoffSeconds", 0)));
+    directTargetsFreshGrindFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshGrindFailures", 0)));
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
