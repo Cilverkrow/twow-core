@@ -105,7 +105,9 @@ count_text("${thal}" "    { " 5 "Thalassian zone boxes")
 region("${travel_mgr}" "static bool IsInBlackstoneOrThalassian(uint32 mapId, float x, float y)" "\n}\n" excl)
 require_text("${excl}" "return ai::path_fail::InCustomStartZone(mapId, x, y, sPlayerbotAIConfig.pathStartZoneExactBounds);" "exclusion through the switch")
 forbid_text("${excl}" "GetZoneAndAreaId" "zone lookup at boot (deadlock, see the comment)")
-count_text("${travel_mgr}" "IsInBlackstoneOrThalassian(guidP.getMapId(), guidP.getX(), guidP.getY())" 2 "exclusion call sites (quest + grind/rpg)")
+# twow-repo#575 (PATH-01 wave 0): both loaders go through SkipStartZonePoint, which keeps this exclusion as the off path.
+count_text("${travel_mgr}" "IsInBlackstoneOrThalassian(guidP.getMapId(), guidP.getX(), guidP.getY())" 1 "exclusion call (SkipStartZonePoint, off path)")
+count_text("${travel_mgr}" "if (SkipStartZonePoint(guidP, startTeam))" 2 "exclusion call sites (quest + grind/rpg)")
 
 # 2. #1 detail: optional out-param, filled only when passed, passed only with the trace on.
 require_text("${node_h}" "Unit* unit = nullptr, ai::path_fail::RouteFailDetail* outDetail = nullptr);" "getRoute out-param")
@@ -164,8 +166,9 @@ require_text("${config_cpp}" "pathTaxiTrace = config.GetBoolDefault(\"AiPlayerbo
 require_text("${conf_dist}" "
 AiPlayerbot.Path.TaxiTrace = 0
 " "TaxiTrace documented off")
-count_text("${move_cpp}" "sPlayerbotAIConfig.pathTaxiTrace" 5 "TaxiTrace gates (3 flight results, 2 dock waits)")
-count_text("${move_cpp}" "LogTaxiUse(bot, entry, " 3 "flight result logs")
+# twow-repo#575 (PATH-01 E7): plus the scripted-taxi result of the goblin flying machines.
+count_text("${move_cpp}" "sPlayerbotAIConfig.pathTaxiTrace" 6 "TaxiTrace gates (4 flight results, 2 dock waits)")
+count_text("${move_cpp}" "LogTaxiUse(bot, entry, " 4 "flight result logs")
 count_text("${move_cpp}" "LogTransportWait(bot, " 2 "dock wait logs")
 region("${move_cpp}" "bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)" "
 }
