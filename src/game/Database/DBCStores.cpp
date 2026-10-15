@@ -27,6 +27,7 @@
 #include "DBCfmt.h"
 #include "SpellMgr.h"
 #include "ObjectMgr.h"
+#include "World.h"
 
 #include <map>
 #include <vector>
@@ -684,6 +685,11 @@ char const* GetClassName(uint8 class_, uint8 locale)
 
 uint8 ValidateName(std::wstring const& name)
 {
+    // twow-repo#593 (NAMES-01): hobby server, no name filter from the client DBCs. Only the profanity/reserved
+    // patterns are skipped here; length, allowed letters and the reserved_name table are checked by the callers.
+    if (sWorld.getConfig(CONFIG_BOOL_NAMES_SKIP_PROFANITY_RESERVED))
+        return CHAR_NAME_SUCCESS;
+
     for (std::wregex const& regex : NamesProfaneValidators)
         if (std::regex_search(name, regex))
             return CHAR_NAME_PROFANE;
