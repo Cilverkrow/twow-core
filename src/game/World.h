@@ -1558,6 +1558,7 @@ class World
         // Minute lines of PerformanceLog.TerrainTrace / LogWriteTrace / MapTickRegion.
         tick_diag::RegionWindow m_regionTrace;
         std::chrono::steady_clock::time_point m_tickDiagMinuteStart{};
+        bool m_terrainTraceWasOn = false;  // TerrainTrace switch-on resets the terrain counters
         void TickDiagMinute();
         void LogMapTickRegion();
         static inline std::atomic<bool> s_stallWatchOn{false};

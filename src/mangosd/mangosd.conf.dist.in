@@ -758,6 +758,8 @@ PerformanceLog.SlowResultCallbackMs = 0
 #   region's own work before it reaches the barrier, post = its wait at the barrier (incl. the extra
 #   player updates), extra_loops = those extra updates, extra_overrun_max = how long it stayed after
 #   the last region arrived, held_barrier = ticks in which it arrived last (it held the others).
+#   More than 64 regions in a minute: the extra ones are not sampled and one more line
+#   "[MapTickRegion] regions_over_cap=<n>" follows (n = their dropped samples, one per region and tick).
 #   Default: 0 (off)
 PerformanceLog.MapTickRegion = 0
 

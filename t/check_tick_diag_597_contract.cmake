@@ -216,6 +216,13 @@ require_text("${world_cpp}" "\"[MapTickRegion] region=%u.%u pre=%.1f/%.1f/%.1f p
 slice("${world_cpp}" "void World::TickDiagMinute()" "void World::LogMapTickRegion()" minute_fn)
 require_order("${minute_fn}" "if (!terrain && !logWait && !region)" "std::chrono::steady_clock::now()" "no clock read with all three off")
 require_text("${minute_fn}" "now - m_tickDiagMinuteStart < std::chrono::seconds(60)" "once a minute")
+# Review follow-up: a TerrainTrace switch-on resets the terrain counters even while another switch keeps the
+# window open, so no loads from before the last switch-off show up in a [TerrainReload] line.
+require_order("${minute_fn}" "if (terrain && !m_terrainTraceWasOn)\n        sTerrainMgr.ReportTerrainReloads(false);\n    m_terrainTraceWasOn = terrain;" "if (!terrain && !logWait && !region)" "terrain counters reset on switch-on")
+require_text("${world_h}" "bool m_terrainTraceWasOn = false;" "terrain trace starts as off")
+# Review follow-up: the over-cap line of [MapTickRegion] is pinned and documented.
+require_text("${world_cpp}" "\"[MapTickRegion] regions_over_cap=%llu\"" "[MapTickRegion] over-cap line")
+require_text("${dist}" "\"[MapTickRegion] regions_over_cap=<n>\"" "[MapTickRegion] over-cap line documented")
 
 # ---- Only short std::mutex, no shared_mutex in the new code; tagged.
 forbid_text("${policy_h}" "shared_mutex" "shared_mutex in the policy")
