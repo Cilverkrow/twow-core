@@ -188,6 +188,9 @@ class RandomItemMgr
         std::vector<uint32> GetQuestIdsForItem(uint32 itemId);
         std::string GetPlayerSpecName(Player* player);
         uint32 GetPlayerSpecId(Player* player);
+        std::string GetRoleSpecName(Player* player);   // twow-repo#308: the premade path's weight scale
+        uint32 GetRoleSpecId(Player* player);
+        uint32 SpecIdByName(uint8 cls, std::string const& specName);
         std::vector<uint32> GetGlyphs(uint8 playerClass) { return glyphCache.at(playerClass); }
     private:
         void BuildRandomItemCache();
