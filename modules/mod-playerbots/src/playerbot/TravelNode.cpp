@@ -128,7 +128,11 @@ private:
 };
 
 // The point can be swum to or lies in / under water: PathInfo may build a swim or underwater path there, and getRoute
-// retries the legs at the water surface. No terrain: answer yes (no skip).
+// retries the legs at the water surface. No terrain: answer yes (no skip). Asked only after the polygon query found
+// nothing, at every level (shadow too, so its counts are level 2's): the terrain query may load the GridMap under p on
+// this map thread. Start and target are read by the direct attempt of the same build anyway (PathInfo::BuildPolyPath
+// asks IsSwimmable at both ends); only node positions can be read earlier than the search itself would. TerrainInfo
+// has no "grid loaded" query to answer "unknown" without loading.
 bool PrecheckWater(WorldPosition const& p)
 {
     TerrainInfo const* terrain = p.getTerrain();
