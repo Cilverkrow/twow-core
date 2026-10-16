@@ -384,7 +384,7 @@ require_text("${port_state}" "ai->ChangeStrategy(\"+pvp\", BotState::BOT_STATE_N
 require_text("${port_state}" "context->GetValue<uint32>(\"bg role\")->Set(urand(0, 9));" "bg role at port")
 
 # 7. Join: the packet and bypass of JoinQueue, shared, not duplicated.
-require_text("${join_h}" "static void SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup);" "shared join helper")
+require_text("${join_h}" "static void SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup, uint32 instanceId = 0);" "shared join helper (stage b: the pair bots' instance, 0 = first available by default)")
 region("${join_cpp}" "bool BGJoinAction::JoinQueue(uint32 type)" "void BGJoinAction::SendBattlemasterJoin(" join_queue)
 require_text("${join_queue}" "SendBattlemasterJoin(ai, bot, bgTypeId, joinAsGroup);" "JoinQueue uses the shared helper")
 require_text("${join_queue}" "sRandomPlayerbotMgr.Refresh(bot);" "legacy random bots keep their Refresh")

@@ -907,7 +907,7 @@ bool BGJoinAction::JoinQueue(uint32 type)
    return true;
 }
 
-void BGJoinAction::SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup)
+void BGJoinAction::SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup, uint32 instanceId)
 {
    ai->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
 
@@ -929,8 +929,6 @@ void BGJoinAction::SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGrou
 #else
    ObjectGuid guid = bot->GetObjectGuid();
 #endif
-   uint32 instanceId = 0; // 0 = First Available
-
    WorldPacket packet(CMSG_BATTLEMASTER_JOIN, 20);
 #ifdef MANGOSBOT_ZERO
    packet << guid << GetBattleGrounMapIdByTypeId(bgTypeId) << instanceId << uint8(joinAsGroup);

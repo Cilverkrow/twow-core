@@ -39,8 +39,9 @@ public:
     virtual bool gatherArenaTeam(ArenaType type);
 #endif
     // twow-repo#517 stage a: the non-arena battlemaster join JoinQueue sends ("bg type" reset, bypass guid), shared with
-    // RandomPlayerbotMgr::CheckBgFill, which queues roster bots from the world thread.
-    static void SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup);
+    // RandomPlayerbotMgr::CheckBgFill, which queues roster bots from the world thread. Stage b: instanceId = the client
+    // instance id a pair bot is queued for (DesiredInstanceId), 0 = first available.
+    static void SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup, uint32 instanceId = 0);
 protected:
     bool JoinQueue(uint32 type);
     std::vector<uint32> bgList;

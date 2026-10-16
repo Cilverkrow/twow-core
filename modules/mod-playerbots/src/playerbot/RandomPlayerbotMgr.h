@@ -13,6 +13,7 @@
 #include "WorldThreadCommandQueue.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "WorldPosition.h"
+#include <array>
 #include <map>
 #include <set>
 #include <list>
@@ -485,7 +486,8 @@ public:
         std::set<std::pair<uint32, uint32>> bgFillBotOnlyEnding;          // (bg type, instance) whose fill bots leave
         void WatchBotOnlyBgs(uint32 nowMs);
         void LeaveBotOnlyBg();
-        void CollectBgFillWaiting(std::set<std::pair<uint32, uint32>>& waiting) const;
+        // (bg type, entry bracket) -> smallest waiting real-player entry per side (0 = none), read live
+        void CollectBgFillWaiting(std::map<std::pair<uint32, uint32>, std::array<uint32, 2>>& waiting) const;
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;

@@ -79,25 +79,29 @@ AiPlayerbot.BG.Trace = 0
 # SlotRelease (stage b, needs Enable = 1, and in practice PlayerFill = 1, which puts the fill bots into battlegrounds):
 # a real player who has waited SlotReleaseWaitSeconds in the Warsong Gulch, Arathi Basin or Alterac Valley queue
 # without an invite gets into a running battleground of his bracket that holds fill bots. First the pair option: if
-# both sides have a free slot, one free roster bot of the other faction queues with him so the core invites both; if
-# his side is full and the other side short, that bot goes in alone first. With no pair option (or no free bot for it),
-# and only when the core would then invite him alone, one fill bot of his side leaves - only from a side above the
-# battleground's minimum, never a flag carrier or a dead bot, without Deserter - and the slot is reserved for him until
-# he is invited, leaves the queue or SlotReleaseWaitSeconds pass (at most one release per wait). A real player queued
-# as a group with his own bots has the same priority as a solo player and the group joins whole: the pair option takes
-# as many bots of the other faction as the group has members (all or none, else the release), the release lets up to
-# that many bots of his side leave at once (the side stays at or above the minimum), and a bot of a real player's group
-# is never released. A group larger than a side, one in the premade queue, or one with a member in another battleground
-# or on a taxi is left to the core queue. While SlotRelease is on, PlayerFill queues bots for a new match only when
-# both sides can be filled. 0 = off (default).
+# both sides have a free slot, one free roster bot of the other faction (more while his side is ahead) queues with him
+# for that battleground so the core invites them together; if his side is full and the other side short, one bot goes
+# in alone first. With no pair option (or not enough free bots for it), and only when the core would then invite him
+# alone and does not already, one fill bot of his side leaves - only from a side above the battleground's minimum, never
+# a flag carrier or a dead bot, without Deserter - and the slot is reserved for him until he is invited, leaves the
+# queue or SlotReleaseWaitSeconds pass (one release decision per wait). A real player queued as a group with his own
+# bots has the same priority as a solo player and the group joins whole: the pair option takes as many bots of the
+# other faction as the group has members (all or none, else the release), the release lets up to that many bots of his
+# side leave at once (the side stays at or above the minimum; cut short, it reserves nothing and the next check decides
+# again), and a bot of a real player's group is never released. A group larger than a side, one that may be in the
+# premade queue (PremadeGroupWaitForMatch on and the group at least PremadeQueue.MinGroupSize), or one with a member in
+# another battleground or on a taxi is left to the core queue. While SlotRelease is on, PlayerFill queues bots for a
+# new match only when both sides can be filled. 0 = off (default).
 AiPlayerbot.BG.SlotRelease = 0
 # SlotReleaseWaitSeconds: the player's wait before the pair or the release, and how long a released slot stays
 # reserved. 0 = 60 s (default), minimum 15; a negative value counts as 0.
 AiPlayerbot.BG.SlotReleaseWaitSeconds = 0
 # BotOnlyGraceSeconds: how long a battleground started for the fill may run without a real player (with PlayerFill or
-# SlotRelease on). Then its fill bots leave one by one, without Deserter, and the core ends it. A real player waiting
-# uninvited for that battleground and bracket, an open invite or a player inside who is not a bot pauses that (the
-# grace starts again once he is gone). 0 = 120 s (default), minimum 60; a negative value counts as 0.
+# SlotRelease on). Then its fill bots leave one by one, without Deserter, and the core ends it. An open invite or a
+# player inside who is not a bot pauses that (the grace starts again once he is gone). A real player waiting uninvited
+# for that battleground and bracket does not keep it, but the bots leave so that the core does not invite him into it;
+# when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds. 0 = 120 s (default), minimum 60;
+# a negative value counts as 0.
 AiPlayerbot.BG.BotOnlyGraceSeconds = 0
 # twow-repo#541/#551 (console rndbot park / unpark): 1 = a parked bot is not visible to other bots and
 # sees only real players and units fighting it (core Player flag, real players see it as always).
