@@ -438,7 +438,8 @@ public:
         void ScanBgFill(uint32 nowMs);
         bool IsBgFillCandidate(Player* bot) const;
         bool IsBgFillStillFree(Player* bot, PlayerbotAI* ai) const;
-        void LeaveBgFillQueue(Player* bot, PlayerbotAI* ai, uint32 guid, BgFillEntry const& entry, char const* reason);
+        bool IsBgFillInviteStillFit(Player* bot, PlayerbotAI* ai) const;
+        bool LeaveBgFillQueue(Player* bot, PlayerbotAI* ai, uint32 guid, BgFillEntry const& entry, char const* reason);
         uint32 CountBgFillRunning() const;
         void ReportBgFillMinute();
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.

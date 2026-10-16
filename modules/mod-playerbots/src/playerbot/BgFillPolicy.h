@@ -47,11 +47,12 @@ inline uint32_t NeedPerSide(uint32_t minPerTeam, uint32_t realSide, uint32_t pen
     return have >= minPerTeam ? 0 : minPerTeam - have;
 }
 
-// The per-side minimum the fill aims for: the template's, or the core's own queue minimum when that is higher
-// (AV: Alterac.MinPlayersInQueue uninvited entries per side before a match is created; 0 elsewhere).
-inline uint32_t FillMinPerTeam(uint32_t templateMin, uint32_t queueMin)
+// The core's own queue minimum (AV: Alterac.MinPlayersInQueue uninvited entries per side, 0 = off) above the template
+// minimum: the core shuffles that many entries and takes only the template minimum, so a queued real player could be
+// left out of a match the fill bots start. The fill stays out then (fail closed).
+inline bool QueueMinBlocksFill(uint32_t templateMin, uint32_t queueMin)
 {
-    return queueMin > templateMin ? queueMin : templateMin;
+    return queueMin > templateMin;
 }
 
 // Fail closed: AiPlayerbot.BG.MaxConcurrent = 0 allows no bot battleground at all.

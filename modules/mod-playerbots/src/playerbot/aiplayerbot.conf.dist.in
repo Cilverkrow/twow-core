@@ -53,11 +53,15 @@ AiPlayerbot.BG.Enable = 0
 # sides reach the battleground's minimum per team and the match starts. Only bots that are alive, not parked, in no
 # group, outside dungeons/raids/battlegrounds, not on a taxi or transport, not in combat or a quest rescue, without a
 # real-player master and without Deserter. Blood Ring and Sunnyglade Valley are not filled. The bots accept the invite
-# from the manager and get no free repair, money or consumables. A queued bot leaves the queue again when it gets busy
-# (parked, grouped, in a dungeon or a quest rescue), when no real player of its bracket waits any more, when its side
-# has more bots than needed, or after 5 minutes without an invite. 0 = off (default).
+# from the manager and get no free repair, money or consumables. A queued bot not invited yet leaves the queue again
+# when it gets busy (parked, grouped, in a dungeon, a quest rescue or a forced trip), when no real player of its bracket
+# waits any more, when its side has more bots than needed, or after 5 minutes without an invite. An invited bot declines
+# only when it got parked, has a real-player master or is in a dungeon or another battleground. Alterac Valley is not
+# filled while Alterac.MinPlayersInQueue is above its minimum per team. 0 = off (default).
 AiPlayerbot.BG.PlayerFill = 0
-# MaxConcurrent: battlegrounds with roster bots (running or forming) at the same time. 0 = none (default, fail closed);
+# MaxConcurrent: bot battlegrounds at the same time - battlegrounds started for the fill, other battlegrounds holding
+# roster bots, and brackets still forming (fill bots queued, not invited yet). A running battleground the core only
+# topped up with fill bots is not counted unless it holds other roster bots too. 0 = none (default, fail closed);
 # a negative value counts as 0.
 AiPlayerbot.BG.MaxConcurrent = 0
 # CheckIntervalSeconds: how often the manager looks for queued real players. 0 = 30 s (default), minimum 10.
