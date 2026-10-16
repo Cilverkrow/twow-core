@@ -2269,6 +2269,8 @@ static bool InGroupQueueEntry(Player* bot, BattleGroundQueueTypeId queueTypeId)
 void RandomPlayerbotMgr::CheckBgFill()
 {
     UpdateBgFillMembers();
+    // Stage b: one fill bot of an ending bot-only battleground leaves per update (nothing while none is ending).
+    LeaveBotOnlyBg();
     ReportBgFillMinute();
 
     uint32 const nowMs = WorldTimer::getMSTime();
@@ -2281,6 +2283,7 @@ void RandomPlayerbotMgr::CheckBgFill()
     // Stage b after stage a: a player stage a just queued a new match for is left alone in this scan.
     if (sPlayerbotAIConfig.bgSlotRelease)
         ScanBgSlotRelease(nowMs);
+    WatchBotOnlyBgs(nowMs);
     uint64 const scanUs = usSince(scanStart, WorldBotsClock::now());
     ++bgFillMinute.checks;
     bgFillMinute.scanUsMax = std::max(bgFillMinute.scanUsMax, scanUs);
@@ -3385,6 +3388,108 @@ void RandomPlayerbotMgr::ScanBgSlotRelease(uint32 nowMs)
         if (trace)
             sLog.outBasic("[BGFill] state=pair bot=%u for=%u bg=%u inst=%u bracket=%u", need.bot->GetGUIDLow(), need.playerGuid,
                 need.wait->bgTypeId, need.target->instanceId, need.wait->bracket);
+    }
+}
+
+// Stage b (Enable && (PlayerFill || SlotRelease)): a battleground started for the fill (stage a, startedForFill) that
+// has had no real player inside or invited for BotOnlyGraceSeconds after reaching IN_PROGRESS ends - its fill bots
+// leave one per update (LeaveBotOnlyBg, no Deserter) and the core finishes it (PrematureFinish, or empty). A real player
+// with an open invite counts as present (up to 80 s). Once per interval; bounded by the started instances (from the
+// in-battleground set), one ApplyAllBattleGrounds walk and the real players.
+void RandomPlayerbotMgr::WatchBotOnlyBgs(uint32 nowMs)
+{
+    std::set<std::pair<uint32, uint32>> started;
+    std::map<std::pair<uint32, uint32>, uint32> fillIn;   // every manager-owned fill bot of those instances
+    for (auto const& [botGuid, entry] : bgFillInBg)
+    {
+        if (!entry.instanceId)
+            continue;
+        std::pair<uint32, uint32> const key(entry.bgTypeId, entry.instanceId);
+        ++fillIn[key];
+        if (entry.startedForFill)
+            started.insert(key);
+    }
+    for (auto it = bgFillNoRealSince.begin(); it != bgFillNoRealSince.end();)
+    {
+        if (started.count(it->first))
+            ++it;
+        else
+            it = bgFillNoRealSince.erase(it);
+    }
+    for (auto it = bgFillBotOnlyEnding.begin(); it != bgFillBotOnlyEnding.end();)
+    {
+        if (started.count(*it))
+            ++it;
+        else
+            it = bgFillBotOnlyEnding.erase(it);
+    }
+    if (started.empty())
+        return;
+
+    std::set<std::pair<uint32, uint32>> inProgress;
+    sBattleGroundMgr.ApplyAllBattleGrounds([&](BattleGround const* bg)
+    {
+        if (!bg || !bg->GetInstanceID() || bg->GetStatus() != STATUS_IN_PROGRESS)
+            return;
+        std::pair<uint32, uint32> const key(uint32(bg->GetTypeID()), bg->GetInstanceID());
+        if (started.count(key))
+            inProgress.insert(key);
+    });
+
+    // Real players only (the players list also holds bots moved in by MovePlayerBot): inside, or invited.
+    std::set<std::pair<uint32, uint32>> realPresent;
+    for (auto const& [playerGuid, player] : players)
+    {
+        if (!player)
+            continue;
+        if (PlayerbotAI* playerAi = GetBotAI(player))
+            if (!playerAi->IsRealPlayer())
+                continue;
+        for (std::pair<uint32, uint32> const& key : started)
+        {
+            if ((player->InBattleGround() && player->GetBattleGroundId() == key.second) ||
+                    player->IsInvitedForBattleGroundInstance(key.second))
+                realPresent.insert(key);
+        }
+    }
+
+    uint32 const graceMs = ai::bgfill::BotOnlyGraceMs(sPlayerbotAIConfig.bgBotOnlyGraceSeconds);
+    for (std::pair<uint32, uint32> const& key : started)
+    {
+        if (!inProgress.count(key) || realPresent.count(key))
+        {
+            bgFillNoRealSince.erase(key);
+            bgFillBotOnlyEnding.erase(key);
+            continue;
+        }
+        uint32 const since = bgFillNoRealSince.emplace(key, nowMs ? nowMs : 1).first->second;
+        if (bgFillBotOnlyEnding.count(key) || !ai::bgfill::PendingExpired(nowMs, since, graceMs))
+            continue;
+        bgFillBotOnlyEnding.insert(key);
+        if (sPlayerbotAIConfig.bgTrace)
+            sLog.outBasic("[BGFill] state=botonly_end bg=%u inst=%u bots=%u", key.first, key.second, fillIn[key]);
+    }
+}
+
+// Stage b: one manager-owned fill bot of an ending bot-only battleground leaves per update, with castDeserter = false
+// (ReleaseBgFillBot); the stage-a return then runs for it. Nothing while no instance is ending; else bounded by the
+// in-battleground set.
+void RandomPlayerbotMgr::LeaveBotOnlyBg()
+{
+    if (bgFillBotOnlyEnding.empty())
+        return;
+    for (auto const& [botGuid, entry] : bgFillInBg)
+    {
+        if (!bgFillBotOnlyEnding.count(std::make_pair(entry.bgTypeId, entry.instanceId)))
+            continue;
+        Player* bot = GetPlayerBot(botGuid);
+        PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        if (!ai || !bot->IsInWorld() || bot->IsBeingTeleported())
+            continue;
+        if (!bot->InBattleGround() || bot->GetBattleGroundId() != entry.instanceId)
+            continue;
+        ReleaseBgFillBot(bot, ai);
+        return;
     }
 }
 

@@ -473,6 +473,12 @@ public:
         void ScanBgSlotRelease(uint32 nowMs);
         bool BgFillReserved(uint32 queueType, uint32 bracket, uint32 team, uint32 nowMs) const;
         bool ReleaseBgFillBot(Player* bot, PlayerbotAI* ai);
+        // twow-repo#517 stage b (Enable && (PlayerFill || SlotRelease)): a battleground started for the fill without a
+        // real player for BotOnlyGraceSeconds after IN_PROGRESS ends. Both bounded by the started-for-fill instances.
+        std::map<std::pair<uint32, uint32>, uint32> bgFillNoRealSince;   // (bg type, instance) -> no real player since (ms)
+        std::set<std::pair<uint32, uint32>> bgFillBotOnlyEnding;          // (bg type, instance) whose fill bots leave
+        void WatchBotOnlyBgs(uint32 nowMs);
+        void LeaveBotOnlyBg();
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;
