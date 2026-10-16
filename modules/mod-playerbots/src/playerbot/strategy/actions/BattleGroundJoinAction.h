@@ -108,6 +108,9 @@ public:
     static bool AcceptInvite(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId);
     // twow-repo#517 stage a: the manager takes a fill bot out of its queue again (port action 0), on the world thread.
     static void LeaveQueue(Player* bot, BattleGroundTypeId bgTypeId);
+    // twow-repo#517 stage b: what BGLeaveAction does for the bot after it left a battleground (strategies back, bg values
+    // cleared); for the manager's slot release and bot-only cleanup, on the world thread.
+    static void ApplyLeaveState(PlayerbotAI* ai, Player* bot);
 private:
     static void SendPort(Player* bot, BattleGroundTypeId bgTypeId, uint8 action);
 };
