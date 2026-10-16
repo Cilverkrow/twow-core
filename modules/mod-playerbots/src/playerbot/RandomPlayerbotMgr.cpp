@@ -2674,6 +2674,22 @@ static bool OnForcedTravel(PlayerbotAI* ai)
     return status != TravelStatus::TRAVEL_STATUS_NONE && status != TravelStatus::TRAVEL_STATUS_EXPIRED;
 }
 
+// OB-10 (#420): a group with a real player in it, or a real player's bot. Unlike PlayerbotAI::IsInGroupWithRealPlayer()
+// this looks at every online member on any map: the manager runs on the world thread while the maps are idle.
+static bool GroupHasRealPlayer(Group* group)
+{
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* member = gref->getSource();
+        if (!member)
+            continue;
+        PlayerbotAI* memberAi = GetBotAI(member);
+        if (!memberAi || memberAi->IsRealPlayer() || memberAi->HasRealPlayerMaster())
+            return true;
+    }
+    return false;
+}
+
 // A persistent-roster bot that is free to leave for a battleground now.
 bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const
 {
@@ -2727,14 +2743,18 @@ bool RandomPlayerbotMgr::IsBgFillStillFree(Player* bot, PlayerbotAI* ai) const
 
 // An invited fill bot: the real player's match is formed with it, so only hard reasons make it decline - no longer a
 // persistent-roster bot, a real-player master, in a dungeon, raid or another battleground. Parked counts as hard too:
-// ProcessParkedBots would teleport a parked bot from the battleground to its inn spot. An ad-hoc bot group or a forced
-// trip does not; a quest rescue only delays the accept (UpdateBgFillMembers). The bot is in the world.
+// ProcessParkedBots would teleport a parked bot from the battleground to its inn spot. A group with a real player (#420)
+// counts too. An ad-hoc bot group or a forced trip does not; a quest rescue only delays the accept (UpdateBgFillMembers). The bot is in the world.
 bool RandomPlayerbotMgr::IsBgFillInviteStillFit(Player* bot, PlayerbotAI* ai) const
 {
     uint32 const guid = bot->GetGUIDLow();
     if (!IsPersistentRosterMember(guid) || IsParkedBot(guid) || ai->IsParked())
         return false;
     if (ai->HasRealPlayerMaster())
+        return false;
+    // OB-10: an ad-hoc bot group after the invite is fine, a group with a real player (#420) is not; the accept would
+    // pull the bot out of a real player's group.
+    if (bot->GetGroup() && GroupHasRealPlayer(bot->GetGroup()))
         return false;
     return !bot->InBattleGround() && !bot->GetMap()->Instanceable();
 }

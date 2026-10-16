@@ -309,9 +309,15 @@ foreach(check "if (!IsPersistentRosterMember(guid) || IsParkedBot(guid) || ai->I
     "return !bot->InBattleGround() && !bot->GetMap()->Instanceable();")
   require_text("${invite_fit}" "${check}" "invited bot hard reason")
 endforeach()
+# OB-10 (#420): a group with a real player stays a hard reason after the invite; an ad-hoc bot group does not.
+require_text("${invite_fit}" "if (bot->GetGroup() && GroupHasRealPlayer(bot->GetGroup()))\n        return false;" "group with a real player declines")
+string(REPLACE "if (bot->GetGroup() && GroupHasRealPlayer(bot->GetGroup()))" "" invite_fit_rest "${invite_fit}")
 foreach(transient "GetGroup()" "OnForcedTravel" "IsQuestRescueBusy")
-  forbid_text("${invite_fit}" "${transient}" "transient reason declines an invite")
+  forbid_text("${invite_fit_rest}" "${transient}" "transient reason declines an invite")
 endforeach()
+region("${mgr_cpp}" "static bool GroupHasRealPlayer(Group* group)" "bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const" real_group)
+require_text("${real_group}" "if (!memberAi || memberAi->IsRealPlayer() || memberAi->HasRealPlayerMaster())\n            return true;" "real player or a real player's bot")
+forbid_text("${real_group}" "FindMap()" "every online member counts, on any map")
 # The flag stays set from the accept until the return: a WAIT_JOIN latched before the accept must not port again.
 region("${members}" "BGStatusAction::AcceptInvite(" "bgFillInBg[guid] = accepted;" accept_tail)
 forbid_text("${accept_tail}" "SetBgFillPending(false)" "pending flag cleared at the accept")
