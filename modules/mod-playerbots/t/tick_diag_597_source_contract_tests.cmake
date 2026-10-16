@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#597 (TICK-01, Refs #592 #541): module parts of the tick diagnostics, log only.
 # AiPlayerbot.BotUpdateTraceTick (default 0): " tick=<world loop> region=<map>.<inst>" at the END of the
 # [BotUpdateSlow] line. AiPlayerbot.WorldBotsHookTrace (default 0): " hook_ms= remote_ms= ahbot_ms=
