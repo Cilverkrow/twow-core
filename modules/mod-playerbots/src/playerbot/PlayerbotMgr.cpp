@@ -14,6 +14,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/PendingBotLoginPolicy.h"
 #include "playerbot/PlayerbotLoginMgr.h"
 #include "BotDiagnostics.h"
 #include "BotActionLog.h"
@@ -57,6 +58,7 @@ namespace {
     struct PendingBotLogin {
         ObjectGuid botGuid;
         uint32 masterAccountId;
+        PlayerbotHolder* owner = nullptr;   // twow-repo#595 (4): nullptr once that holder is destroyed
     };
     std::map<SqlQueryHolder*, PendingBotLogin> m_pendingBotLogins;
 }
@@ -170,7 +172,7 @@ bool PlayerbotHolder::AddPlayerBot(uint32 guidLow, uint32 masterAccountId)
         return false;
     }
 
-    m_pendingBotLogins[holder] = { botGuid, masterAccountId };
+    m_pendingBotLogins[holder] = { botGuid, masterAccountId, this };
 
     // MUST be the Unsafe (main-thread) variant: the plain DelayQueryHolder marks the callback
     // threadSafe and SqlResultQueue::Update farms it out to a 6-thread callback pool, running
@@ -179,13 +181,41 @@ bool PlayerbotHolder::AddPlayerBot(uint32 guidLow, uint32 masterAccountId)
     // — none of which is thread-safe. Concurrent map erase corrupts the RB-tree (SIGSEGV in
     // _Rb_tree_rebalance_for_erase) when many bots log in at once. The engine's own player login
     // uses DelayQueryHolderUnsafe for exactly this reason (see CharacterHandler.cpp:493).
-    if (!CharacterDatabase.DelayQueryHolderUnsafe(this, &PlayerbotHolder::HandlePlayerBotLoginCallback, holder))
+    // twow-repo#595 (4): a static callback, not bound to `this` - the master may log out before it runs.
+    if (!CharacterDatabase.DelayQueryHolderUnsafe(&PlayerbotHolder::HandlePendingBotLogin, holder, uint32(0)))
     {
         m_pendingBotLogins.erase(holder);
         delete holder;
         return false;
     }
     return true;
+}
+
+// twow-repo#595 (4): the .bot add login callback. Static on purpose: the holder that queued the login may have been
+// deleted meanwhile (master logout -> RemoveBotMgr), so `this` is looked up, never assumed. An orphaned login is
+// dropped and its query holder freed; every other one goes to its owner exactly as before.
+void PlayerbotHolder::HandlePendingBotLogin(QueryResult* dummy, SqlQueryHolder* holder, uint32 /*unused*/)
+{
+    if (!holder)
+        return;
+
+    switch (ai::pending_login::RouteOf(m_pendingBotLogins, holder))
+    {
+    case ai::pending_login::Route::Unknown:
+        return;
+    case ai::pending_login::Route::Orphaned:
+    {
+        auto const it = m_pendingBotLogins.find(holder);
+        uint32 const botGuid = it->second.botGuid.GetCounter();
+        m_pendingBotLogins.erase(it);
+        delete holder;
+        sLog.outBasic("[PlayerBots] login of bot %u dropped: its master's bot manager was removed before the callback", botGuid);
+        return;
+    }
+    case ai::pending_login::Route::Deliver:
+        m_pendingBotLogins.find(holder)->second.owner->HandlePlayerBotLoginCallback(dummy, holder);
+        return;
+    }
 }
 
 // Called when CharacterDatabase finishes the holder's queries. Allocates a fresh WorldSession
@@ -407,6 +437,8 @@ PlayerbotHolder::~PlayerbotHolder()
         std::lock_guard<std::mutex> lock(HolderRegistryLock());
         HolderRegistry().erase(this);
     }
+    // twow-repo#595 (4): a .bot add login still waiting for its callback must not reach this deleted holder.
+    ai::pending_login::Orphan(m_pendingBotLogins, this);
 }
 
 void PlayerbotHolder::ForEachPlayerbot(std::function<void(Player*)> callback) const

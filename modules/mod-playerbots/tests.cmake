@@ -2977,3 +2977,22 @@ set_target_properties(route_fail_early_skip_policy_tests PROPERTIES
 add_test(NAME route_fail_early_skip_policy
   COMMAND route_fail_early_skip_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#595 (4): .bot add login callback safe against a master logout before it runs.
+add_test(NAME pending_bot_login_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/pending_bot_login_source_contract_tests.cmake")
+
+add_executable(pending_bot_login_policy_tests
+  "${PB_MODULE_DIR}/t/pending_bot_login_policy_tests.cpp")
+
+target_include_directories(pending_bot_login_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(pending_bot_login_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME pending_bot_login_policy
+  COMMAND pending_bot_login_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
