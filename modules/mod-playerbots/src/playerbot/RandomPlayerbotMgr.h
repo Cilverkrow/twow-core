@@ -446,19 +446,22 @@ public:
         void ReportBgFillMinute();
         // twow-repo#517 stage b (AiPlayerbot.BG.SlotRelease): a real player waiting uninvited gets into a running
         // battleground with fill bots - pair option first (OB-00 D2), else a fill bot of his side above the minimum
-        // leaves and the slot is reserved for him. World thread only; both maps are bounded by the real players.
+        // leaves and the slot is reserved for him. Owner 16.10.: the unit is his core queue entry - a group with his own
+        // bots (k members) counts as a whole, solo is k = 1. World thread only; both maps are bounded by the real players.
         struct BgFillWait
         {
             uint32 queueType = 0;
             uint32 bgTypeId = 0;
             uint32 bracket = 0;
-            uint32 team = 0;
-            uint32 firstSeenMs = 0;   // first scan that saw him waiting uninvited in that queue
-            uint32 seenScan = 0;      // last scan that saw him (pruned in every scan that did not)
+            uint32 team = 0;          // the entry's team
+            uint32 firstSeenMs = 0;   // first scan that saw the entry waiting uninvited in that queue
+            uint32 seenScan = 0;      // last scan that saw it (pruned in every scan that did not)
             uint32 desiredInstanceId = 0;   // the core entry's DesiredInstanceId (0 = first available), read when due
-            bool released = false;    // at most one release per wait
+            uint32 size = 1;          // members of the core entry (k), read when due
+            bool released = false;    // at most one release decision per wait
         };
-        std::map<std::pair<uint32, uint32>, BgFillWait> bgFillWait;                 // (real player guid, queue type)
+        // (real player guid, queue type): one wait per core queue entry, under its first real member the scan meets
+        std::map<std::pair<uint32, uint32>, BgFillWait> bgFillWait;
         struct BgFillReservation
         {
             uint32 queueType = 0;
@@ -467,8 +470,10 @@ public:
             uint32 team = 0;
             uint32 instanceId = 0;
             uint32 untilMs = 0;
+            uint32 size = 1;          // members of the entry the slots are reserved for
+            uint32 released = 0;      // bots released for it in that decision
         };
-        std::map<std::pair<uint32, uint32>, BgFillReservation> bgFillReservations;  // (real player guid, queue type)
+        std::map<std::pair<uint32, uint32>, BgFillReservation> bgFillReservations;  // (real player guid, queue type): one per entry
         std::set<uint32> bgFillNewMatch;   // BgFillBracketKey of the brackets stage a queued a new match for this scan
         uint32 bgFillScanId = 0;
         void ScanBgSlotRelease(uint32 nowMs);
