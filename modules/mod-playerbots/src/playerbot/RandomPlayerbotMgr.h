@@ -483,14 +483,15 @@ public:
         // twow-repo#517 stage b (Enable && PlayerFill && BotOnlyCleanup, follow-up D with OB-20): a battleground started
         // for the fill without a real player for BotOnlyGraceSeconds after IN_PROGRESS is emptied - every manager bot of
         // both sides leaves until the core deletes it, without EndBattleGround (no rewards for bots). All three bounded by
-        // the started-for-fill instances and pruned once the core no longer holds the instance.
+        // the started-for-fill instances, pruned once the core no longer holds the instance, cleared while it is off.
         std::map<std::pair<uint32, uint32>, uint32> bgFillNoRealSince;   // (bg type, instance) -> no real player since (ms)
         std::set<std::pair<uint32, uint32>> bgFillBotOnlyEnding;          // (bg type, instance) whose manager bots leave
-        // (bg type, instance) whose grace ran out, until the core has deleted it (or a real player came in): true once
-        // its [BGBotOnlyEnd] line is written
+        // (bg type, instance) whose grace ran out, until the core has deleted it (or a real player is still inside at
+        // its end): true once its [BGBotOnlyEnd] line is written
         std::map<std::pair<uint32, uint32>, bool> bgFillBotOnlyWatch;
         void WatchBotOnlyBgs(uint32 nowMs);
         void LeaveBotOnlyBg();
+        bool IsBotOnlyInvite(Player* bot, uint32 bgTypeId) const;   // invited into a watched (emptied) instance
         // (bg type, entry bracket) -> smallest waiting real-player entry per side (0 = none), read live
         void CollectBgFillWaiting(std::map<std::pair<uint32, uint32>, std::array<uint32, 2>>& waiting) const;
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
