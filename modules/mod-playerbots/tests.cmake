@@ -2167,6 +2167,11 @@ add_test(NAME bg_fill_policy
   COMMAND bg_fill_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+add_test(NAME bg_fill_517_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bg_fill_517_source_contract_tests.cmake")
+
 # twow-repo#541 (audit A10): one PlayerTravelInfo per travel choice and keyed destination lookup (AiPlayerbot.Perf.TravelInfoReuse, default 0).
 add_test(NAME travel_info_reuse_source_contract
   COMMAND "${CMAKE_COMMAND}"
