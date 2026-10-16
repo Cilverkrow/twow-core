@@ -47,11 +47,14 @@ void Need()
     Require(NeedPerSide(20, 1, 0) == 19, "AV player side");
     Require(NeedPerSide(20, 0, 0) == 20, "AV other side");
 
-    using ai::bgfill::FillMinPerTeam;
-    // Alterac.MinPlayersInQueue 0 (default, and every other battleground): the template minimum.
-    Require(FillMinPerTeam(20, 0) == 20, "no queue minimum");
-    Require(FillMinPerTeam(20, 30) == 30, "queue minimum above the template");
-    Require(FillMinPerTeam(20, 10) == 20, "queue minimum below the template");
+    using ai::bgfill::QueueMinBlocksFill;
+    // Alterac.MinPlayersInQueue 0 (default, and every other battleground): the fill runs.
+    Require(!QueueMinBlocksFill(20, 0), "no queue minimum");
+    Require(!QueueMinBlocksFill(20, 10), "queue minimum below the template");
+    Require(!QueueMinBlocksFill(20, 20), "queue minimum equal to the template");
+    // Above the template: the core shuffles more entries than it takes, the real player could be left out.
+    Require(QueueMinBlocksFill(20, 21), "queue minimum above the template");
+    Require(QueueMinBlocksFill(0, 1), "queue minimum above a zero template minimum");
 }
 
 void Cap()
