@@ -106,6 +106,10 @@ public:
     // twow-repo#517 stage a: the manager accepts the invite of a fill bot on the world thread (port action 1, then
     // ApplyPortState). True when the bot is now bound for that battleground.
     static bool AcceptInvite(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId);
+    // twow-repo#517 stage a: the manager takes a fill bot out of its queue again (port action 0), on the world thread.
+    static void LeaveQueue(Player* bot, BattleGroundTypeId bgTypeId);
+private:
+    static void SendPort(Player* bot, BattleGroundTypeId bgTypeId, uint8 action);
 };
 
 class BGStatusCheckAction : public Action

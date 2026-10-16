@@ -46,6 +46,12 @@ void Need()
     // AV-sized minimum.
     Require(NeedPerSide(20, 1, 0) == 19, "AV player side");
     Require(NeedPerSide(20, 0, 0) == 20, "AV other side");
+
+    using ai::bgfill::FillMinPerTeam;
+    // Alterac.MinPlayersInQueue 0 (default, and every other battleground): the template minimum.
+    Require(FillMinPerTeam(20, 0) == 20, "no queue minimum");
+    Require(FillMinPerTeam(20, 30) == 30, "queue minimum above the template");
+    Require(FillMinPerTeam(20, 10) == 20, "queue minimum below the template");
 }
 
 void Cap()
@@ -88,6 +94,18 @@ void Interval()
     Require(!IntervalDue(10000u, 0xFFFFFFFFu - 9999u, 30000), "not due across the wrap");
 }
 
+void Pending()
+{
+    using namespace ai::bgfill;
+    uint32_t const maxMs = PendingMaxSeconds * 1000;
+    Require(PendingMaxSeconds >= 60 && PendingMaxSeconds <= 600, "pending bound of a few minutes");
+    Require(!PendingExpired(1000 + maxMs - 1, 1000, maxMs), "not expired yet");
+    Require(PendingExpired(1000 + maxMs, 1000, maxMs), "expired");
+    // Millisecond clock wrapped while the bot waited.
+    Require(!PendingExpired(1000u, 0xFFFFFFFFu - 999u, maxMs), "not expired across the wrap");
+    Require(PendingExpired(maxMs, 0xFFFFFFFFu - 999u, maxMs), "expired across the wrap");
+}
+
 void Candidates()
 {
     using namespace ai::bgfill;
@@ -104,6 +122,7 @@ int main()
     Need();
     Cap();
     Interval();
+    Pending();
     Candidates();
     std::cout << "bg fill policy tests passed\n";
     return 0;

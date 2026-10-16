@@ -24,6 +24,7 @@ class Player;
 class Unit;
 class Object;
 class Item;
+class PlayerbotAI;
 
 class CachedEvent
 {
@@ -414,6 +415,8 @@ public:
             uint32 bracket = 0;   // core bracket (Player::GetBattleGroundBracketIdFromLevel)
             uint32 team = 0;      // 0 alliance, 1 horde
             uint32 joinMs = 0;
+            uint32 instanceId = 0;          // set at accept: the instance the bot was ported into
+            bool startedForFill = false;    // set at accept: that instance had not begun yet (counts against the cap)
         };
         std::map<uint32, BgFillEntry> bgFillPending;   // queued by the manager, invite not accepted yet (<= 2 x 40 per bg)
         std::map<uint32, BgFillEntry> bgFillInBg;      // invite accepted, until the bot is out of the battleground again
@@ -425,6 +428,7 @@ public:
             uint32 joins = 0;
             uint32 accepts = 0;
             uint32 returns = 0;
+            uint32 leaves = 0;
             uint64 scanUsMax = 0;
             uint32 last = 0;
         };
@@ -433,6 +437,8 @@ public:
         void UpdateBgFillMembers();
         void ScanBgFill(uint32 nowMs);
         bool IsBgFillCandidate(Player* bot) const;
+        bool IsBgFillStillFree(Player* bot, PlayerbotAI* ai) const;
+        void LeaveBgFillQueue(Player* bot, PlayerbotAI* ai, uint32 guid, BgFillEntry const& entry, char const* reason);
         uint32 CountBgFillRunning() const;
         void ReportBgFillMinute();
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
