@@ -261,14 +261,107 @@ require_text("${log_cpp}" "fprintf(where, \"%02d:%02d:%02d \",aTm->tm_hour,aTm->
 require_text("${policy_h}" "static int const fg[15] = { 30, 31, 32, 33, 34, 35, 36, 37, 38, 31, 32, 34, 35, 36, 37 };" "ANSI table")
 require_text("${log_cpp}" "fprintf((stdout_stream? stdout : stderr), \"\\x1b[%d%sm\",UnixColorFG[color],(color>=YELLOW&&color<Color_count ?\";1\":\"\"));" "SetColor bytes unchanged")
 require_text("${log_h}" "    BLACK,\n    RED,\n    GREEN,\n    BROWN,\n    BLUE,\n    MAGENTA,\n    CYAN,\n    GREY,\n    YELLOW,\n    LRED,\n    LGREEN,\n    LBLUE,\n    LMAGENTA,\n    LCYAN,\n    WHITE\n" "Color order of the ANSI table")
-# Console streams stay as before: errors on stderr, honor text on stderr with its time on stdout.
-slice("${log_cpp}" "void Log::outError(" "\n}\n" err_fn)
-require_text("${err_fn}" "SinkConsole(line, stderr, LogError, true, \"\", text);" "outError console on stderr")
-slice("${log_cpp}" "void Log::outHonor(" "\n}\n" honor_fn)
-require_text("${honor_fn}" "if (std::string* clock = line.Add(stdout))" "outHonor time on stdout")
-require_text("${honor_fn}" "SinkConsole(line, stderr, LogNormal, false, \"\", text);" "outHonor text on stderr")
-slice("${log_cpp}" "void Log::outString( const char * str, ... )" "\n}\n" str_fn)
-require_text("${str_fn}" "SinkConsole(line, stdout, LogNormal, true, \"\", text);" "outString console on stdout")
+# Console streams, prefixes and targets stay as before, per writing path (review follow-up: every path,
+# not only three). The sink branch of fn (from fn to its SinkSubmit) must make exactly <consoles>
+# SinkConsole and <files> SinkFile calls and contain every needle (stream, color type, time flag, prefix,
+# target). Needles are written without their trailing ';' (CMake list separator).
+function(require_branch fn consoles files)
+  slice("${log_cpp}" "${fn}" "SinkSubmit(line, lwStartUs);" branch)
+  require_count("${branch}" "SinkConsole(line, " ${consoles} "${fn}: console parts")
+  require_count("${branch}" "SinkFile(line, " ${files} "${fn}: file parts")
+  foreach (needle IN LISTS ARGN)
+    require_text("${branch}" "${needle}" "${fn}: same stream / prefix / target as the synchronous path")
+  endforeach()
+endfunction()
+require_branch("void Log::outString()\n" 1 1
+  "SinkConsole(line, stdout, -1, true, \"\", \"\")"
+  "SinkFile(line, logfile, true, \"\", \"\")")
+require_branch("void Log::outString( const char * str, ... )" 1 1
+  "SinkConsole(line, stdout, LogNormal, true, \"\", text)"
+  "SinkFile(line, logfile, true, \"\", text)")
+require_branch("void Log::outInfo(" 1 1
+  "SinkConsole(line, stdout, -1, false, \"\", text)"
+  "SinkFile(line, nostalriusLogFile, true, \"\", text)")
+require_branch("void Log::outHonor(" 1 1
+  "if (std::string* clock = line.Add(stdout))"
+  "SinkConsole(line, stderr, LogNormal, false, \"\", text)"
+  "SinkFile(line, honorLogfile, true, \"\", text)")
+require_branch("void Log::outRaid(" 0 1
+  "SinkFile(line, raidLogFile, true, \"\", text)")
+require_branch("void Log::outError(" 1 1
+  "SinkConsole(line, stderr, LogError, true, \"\", text)"
+  "SinkFile(line, logfile, true, \"ERROR:\", text)")
+require_branch("void Log::outErrorDb()\n" 1 2
+  "SinkConsole(line, stderr, -1, true, \"\", \"\")"
+  "SinkFile(line, logfile, true, \"ERROR:\", \"\")"
+  "SinkFile(line, dberLogfile, true, \"\", \"\")")
+require_branch("void Log::outErrorDb( const char" 1 2
+  "SinkConsole(line, stderr, LogError, true, \"\", text)"
+  "SinkFile(line, logfile, true, \"ERROR:\", text)"
+  "SinkFile(line, dberLogfile, true, \"\", text)")
+require_branch("void Log::outBasic(" 1 1
+  "SinkConsole(line, stdout, LogDetails, true, \"\", text)"
+  "SinkFile(line, logfile, true, \"\", text)")
+require_branch("void Log::outDetail(" 1 1
+  "SinkConsole(line, stdout, LogDetails, true, \"\", text)"
+  "SinkFile(line, logfile, true, \"\", text)")
+require_branch("void Log::outDebug(" 1 1
+  "SinkConsole(line, stdout, LogDebug, true, \"\", text)"
+  "SinkFile(line, logfile, true, \"\", text)")
+require_branch("void Log::outWarden(" 1 1
+  "SinkConsole(line, stdout, LogWarden, true, \"[Warden] \", text)"
+  "SinkFile(line, wardenLogfile, true, \"[Warden] \", text)")
+require_branch("void Log::outWardenDebug(" 1 1
+  "SinkConsole(line, stdout, LogWarden, true, \"[Warden] \", text)"
+  "SinkFile(line, wardenLogfile, true, \"[Warden] \", text)")
+require_branch("void Log::outAnticheat(" 1 1
+  "log_sink::AppendF(text, \"[%s] Player %s, Cheat: %s, Penalty: %s\", detector, player, reason, penalty)"
+  "SinkConsole(line, stdout, LogWarden, true, \"\", text)"
+  "SinkFile(line, anticheatLogfile, true, \"\", text)")
+require_branch("void Log::outDiscord(" 1 1
+  "SinkConsole(line, stdout, -1, true, \"\", text)"
+  "if (discordLogFile)"
+  "SinkFile(line, logfile, true, \"\", text)")
+require_branch("void Log::outDiscordCore(" 1 1
+  "SinkConsole(line, stdout, -1, true, \"\", str)"
+  "SinkFile(line, discordCoreLogFile, true, \"\", str)")
+require_branch("void Log::outSpam(" 0 1
+  "SinkFile(line, logFiles[LOG_CHAT_SPAM], true, \"\", text)")
+require_branch("void Log::outCommand(" 1 3
+  "SinkConsole(line, stdout, LogDetails, true, \"\", text)"
+  "SinkFile(line, logfile, true, \"\", text)"
+  "SinkFile(line, openGmlogPerAccount(account), true, \"\", text, true)"
+  "SinkFile(line, gmLogfile, true, \"\", text)")
+require_branch("void Log::outWorldPacketDump(" 0 0
+  "if (std::string* dump = line.Add(worldLogfile))"
+  "SinkStamp(*dump)"
+  "\"\\n%s:\\nSOCKET: %p\\nLENGTH: %zu\\nOPCODE: %s (0x%.4X)\\nDATA:\\n\""
+  "log_sink::AppendF(*dump, \"%.2X \", (*packet)[q++])"
+  "dump->append(\"\\n\\n\")")
+require_text("${log_h}" "SinkFile(line, logFiles[type], timestampPrefix[type], \"\", log);" "out(): its file, its own timestamp flag")
+require_count("${log_h}" "SinkFile(line, " 1 "out(): one file part")
+# The builders: console = [color][time]<prefix><text>[reset]\n, file = [timestamp]<prefix><text>\n, as
+# SetColor / outTime / text / ResetColor / "\n" and outTimestamp / prefix / text / "\n" of the sync paths.
+slice("${log_cpp}" "void Log::SinkConsole(" "\n}\n" console_fn)
+require_order("${console_fn}" "log_sink::AppendAnsiColor(*out, int(m_colors[colorType]));" "SinkClock(*out);" "console: color before the time")
+require_order("${console_fn}" "if (withTime && m_includeTime)\n        SinkClock(*out);" "out->append(prefix);" "console: time before the prefix")
+require_order("${console_fn}" "out->append(prefix);" "out->append(text);" "console: prefix before the text")
+require_order("${console_fn}" "out->append(text);" "log_sink::AppendAnsiReset(*out);" "console: text before the reset")
+require_order("${console_fn}" "log_sink::AppendAnsiReset(*out);" "out->push_back('\\n');" "console: reset before the newline")
+require_text("${console_fn}" "bool const colored = m_colored && colorType >= 0 && colorType < LOG_TYPE_MAX;" "console: colored only with Colored = 1")
+slice("${log_cpp}" "void Log::SinkFile(" "\n}\n" file_fn)
+require_order("${file_fn}" "if (stamp)\n        SinkStamp(*out);" "out->append(prefix);" "file: timestamp before the prefix")
+require_order("${file_fn}" "out->append(prefix);" "out->append(text);" "file: prefix before the text")
+require_order("${file_fn}" "out->append(text);" "out->push_back('\\n');" "file: text before the newline")
+# The caller never waits in Push; the drain closes the queue first; the terminate handler is disarmed
+# at stop.
+slice("${log_cpp}" "    log_sink::PushResult Push(log_sink::Line& line)" "    void Run()\n" push_fn)
+forbid_text("${push_fn}" "wait" "the caller never waits in Push")
+forbid_text("${push_fn}" "sleep" "the caller never sleeps in Push")
+require_text("${push_fn}" "std::lock_guard<std::mutex> guard(mutex);\n            r = fifo.TryPush(line, bytes);" "Push: one short lock")
+slice("${log_cpp}" "    bool Drain(uint32 waitMs)" "\n    }\n" drain_fn)
+require_order("${drain_fn}" "fifo.Close();" "idle.wait_for(" "Drain closes the queue before it waits")
+require_order("${stop_fn}" "s_terminateSink.store(nullptr);" "m_sink->Drain(log_sink::DrainWaitMs);" "terminate handler disarmed before the drain")
 
 # ---- Tests registered; tags.
 require_text("${root_cmake}" "add_executable(log_sink_597_test\n    \"\${TW_CORE_ROOT}/t/log_sink_597_test.cpp\")" "unit test target")
