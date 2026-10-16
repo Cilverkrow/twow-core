@@ -502,21 +502,24 @@ LogFileLevel = 1
 #   its stream (stdout or stderr) as before. Queue full: the line is dropped and counted, the caller
 #   never waits. Once a minute "[LogSink] lines=<n> dropped=<n> max_depth=<n> write_max_us=<x>" goes
 #   to the performance log (PerformanceLog.File; lines = written by the writer in that minute,
-#   max_depth = deepest queue, write_max_us = slowest line of the writer over all its targets).
+#   max_depth = deepest backlog, i.e. lines queued or being written, write_max_us = slowest line of
+#   the writer over all its targets).
 #   Shutdown drains the queue (at most 5 s) and writes "[LogSink] stopped reason=<r> written=<n>
 #   dropped=<n> unwritten=<n> drained=<0|1> drain_ms=<n>". Errors are queued like every line (the
 #   writer is woken per line); the crash paths (SIGSEGV anticrash backtrace, MaxCoreStuckTime freeze
 #   detector, std::terminate e.g. after a failed assertion) wait up to 2 s for the queue first.
 #   Lines still queued when the process dies otherwise are lost: at most Log.AsyncSinkMaxLines
-#   lines (64 MiB). With PerformanceLog.LogWriteTrace = 1, [LogWait] then measures the caller's cost
-#   per line (format + enqueue) as stdout_max_us, file_max_us stays 0. Read at startup; a reload to 0
-#   drains and goes back to the synchronous log, a reload to 1 needs a restart. Not supported on
-#   Windows (says so once, the log stays synchronous).
+#   lines / 64 MiB (the bound covers queued lines and the lines the writer is still writing).
+#   With PerformanceLog.LogWriteTrace = 1, [LogWait] then measures the caller's cost per line
+#   (format + enqueue) as stdout_max_us, file_max_us stays 0. Read at startup; a reload to 0 drains
+#   and goes back to the synchronous log, a reload to 1 needs a restart. Not supported on Windows
+#   (says so once, the log stays synchronous).
 #   Default: 0 (off)
 #
 # Log.AsyncSinkMaxLines
-#   Bound of the Log.AsyncSink queue in lines (on top of a fixed 64 MiB). 0 = built-in bound of
-#   50000; other values are clamped to 16 .. 1000000. Only read at startup with Log.AsyncSink = 1.
+#   Bound of the Log.AsyncSink queue in lines not written yet, queued or being written (on top of a
+#   fixed 64 MiB for the same lines). 0 = built-in bound of 50000; other values are clamped to
+#   16 .. 1000000. Only read at startup with Log.AsyncSink = 1.
 #   Default: 0 (built-in 50000)
 
 Log.AsyncSink = 0
