@@ -120,7 +120,8 @@ region("${mgr_cpp}" "static bool CarriesBgFlag(" "bool RandomPlayerbotMgr::Relea
 region("${mgr_cpp}" "bool RandomPlayerbotMgr::ReleaseBgFillBot(Player* bot, PlayerbotAI* ai)" "void RandomPlayerbotMgr::ScanBgSlotRelease(uint32 nowMs)" release_fn)
 region("${mgr_cpp}" "void RandomPlayerbotMgr::ScanBgSlotRelease(uint32 nowMs)" "void RandomPlayerbotMgr::WatchBotOnlyBgs(uint32 nowMs)" slot)
 region("${mgr_cpp}" "void RandomPlayerbotMgr::WatchBotOnlyBgs(uint32 nowMs)" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" watch)
-region("${mgr_cpp}" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" "void RandomPlayerbotMgr::CheckBgQueue()" botonly_leave)
+region("${mgr_cpp}" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" "void RandomPlayerbotMgr::CollectBgFillWaiting(" botonly_leave)
+region("${mgr_cpp}" "void RandomPlayerbotMgr::CollectBgFillWaiting(" "void RandomPlayerbotMgr::CheckBgQueue()" collect)
 region("${mgr_cpp}" "void RandomPlayerbotMgr::CheckBgFill()" "void RandomPlayerbotMgr::CheckBgQueue()" fill_path)
 
 # 1. Keys: neutral defaults in code and dist, negative seconds read as 0, every key read.
@@ -201,6 +202,15 @@ endforeach()
 require_text("${slot}" "if (found == fillBots.end())\n                return;" "only battlegrounds holding fill bots")
 count_text("${slot}" "sBattleGroundMgr.ApplyAllBattleGrounds(" 1 "one battleground walk per scan")
 require_text("${slot}" "if (t.bgTypeId != wait->bgTypeId || t.bracket != wait->bracket)\n                continue;" "target of the player's type and bracket")
+# Final review 2: a player queued for one instance (DesiredInstanceId) is selected by the core only for that one
+# (SelectionPool::AddGroup): only that instance is a target.
+require_text("${slot}" "target.clientInstanceId = bg->GetClientInstanceID();" "target keeps the client instance id")
+require_text("${slot}" "if (t.bgTypeId != wait->bgTypeId || t.bracket != wait->bracket)\n                continue;\n            if (wait->desiredInstanceId && wait->desiredInstanceId != t.clientInstanceId)\n                continue;" "a desired instance limits the targets")
+require_text("${due_loop}" "wait.desiredInstanceId = ginfo.DesiredInstanceId;" "desired instance read from the core entry")
+require_order("${slot}" "wait.desiredInstanceId = ginfo.DesiredInstanceId;" "if (wait->desiredInstanceId && wait->desiredInstanceId != t.clientInstanceId)" "desired instance read before the target choice")
+# Final review 5: a pair or top-up bot goes into a battleground that was there already: never started for the fill (no
+# cap, no bot-only watch).
+require_text("${mgr_cpp}" "accepted.startedForFill = !entry.pairFor && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "pair and top-up bots never mark an instance started for the fill")
 require_text("${slot}" "ai::bgfill::PreferTarget(t.fill[side], t.instanceId, target->fill[side], target->instanceId)" "deterministic target choice")
 region("${policy_h}" "inline bool PreferTarget(" "struct ReleaseCand" prefer)
 require_text("${prefer}" "return fillOnSide > bestFillOnSide;" "most fill bots on the player's side first")
@@ -356,14 +366,35 @@ require_text("${watch}" "if (entry.startedForFill)\n            started.insert(k
 require_text("${watch}" "bg->GetStatus() != STATUS_IN_PROGRESS" "grace counts from IN_PROGRESS")
 require_text("${watch}" "if ((player->InBattleGround() && player->GetBattleGroundId() == key.second) ||\n                    player->IsInvitedForBattleGroundInstance(key.second))\n                realPresent.insert(key);" "a real player inside or invited counts as present")
 require_text("${watch}" "if (!playerAi->IsRealPlayer())\n                continue;" "real players only")
-require_text("${watch}" "if (!inProgress.count(key) || realPresent.count(key))\n        {\n            bgFillNoRealSince.erase(key);\n            bgFillBotOnlyEnding.erase(key);" "a real player or the end of IN_PROGRESS clears it")
+require_text("${watch}" "auto const progress = inProgress.find(key);\n        if (progress == inProgress.end() || realPresent.count(key) || waiting.count(std::make_pair(key.first, progress->second)))\n        {\n            bgFillNoRealSince.erase(key);\n            bgFillBotOnlyEnding.erase(key);" "a real player, a waiting one or the end of IN_PROGRESS clears it")
+# Final review 1: a real player waiting uninvited for that type and bracket keeps the battleground (the pair option or
+# the release would send him there) - in the watch and before every leave, before the core can invite him.
+require_text("${watch}" "inProgress[key] = uint32(bg->GetBracketId());" "watch keeps the battleground's bracket")
+require_text("${watch}" "std::set<std::pair<uint32, uint32>> waiting;\n    CollectBgFillWaiting(waiting);" "watch collects the waiting players")
+require_text("${botonly_leave}" "CollectBgFillWaiting(waiting);\n        char const* stop = nullptr;" "leave collects the waiting players before every leave")
+require_text("${botonly_leave}" "if (waiting.count(std::make_pair(key.first, uint32(bg->GetBracketId()))))\n        {\n            stop = \"waiting\";" "a waiting real player of that type and bracket stops the end")
+require_order("${botonly_leave}" "stop = \"waiting\";" "stop = \"invite\";" "the wait check first, the open invite as the second guard")
+require_order("${botonly_leave}" "CollectBgFillWaiting(waiting);" "ReleaseBgFillBot(bot, ai);" "wait checked before the leave")
+require_text("${mgr_h}" "void CollectBgFillWaiting(std::set<std::pair<uint32, uint32>>& waiting) const;" "wait collector declared const")
+require_text("${collect}" "if (sPlayerbotAIConfig.bgSlotRelease)\n    {\n        for (auto const& [waitKey, wait] : bgFillWait)\n            waiting.emplace(wait.bgTypeId, wait.bracket);\n        return;\n    }" "under SlotRelease the waits of the last scan")
+require_text("${collect}" "if (!playerAi->IsRealPlayer())\n                continue;" "the walk counts real players only")
+require_text("${collect}" "if (!ai::bgfill::IsFillQueueType(uint32(queueTypeId)) || player->IsInvitedForBattleGroundQueueType(queueTypeId))\n                continue;" "the walk counts uninvited fill queues only")
+require_text("${collect}" "for (uint32 slot = 0; slot < PLAYER_MAX_BATTLEGROUND_QUEUES; ++slot)" "the walk is bounded by the queue slots")
+require_text("${collect}" "waiting.emplace(uint32(bgTypeId), uint32(bracketId));" "the walk records type and bracket")
+forbid_text("${collect}" "GetPlayerGroupInfoData(" "core queue read in the per-update wait walk")
+# Final review 3: a player inside (or waiting) restarts the grace, so the end only pauses while he is there.
+require_text("${botonly_leave}" "stop = \"player\";\n                    restartGrace = true;" "a player inside restarts the grace")
+require_text("${botonly_leave}" "stop = \"waiting\";\n            restartGrace = true;" "a waiting player restarts the grace")
+require_text("${botonly_leave}" "if (restartGrace)\n                bgFillNoRealSince.erase(key);" "the grace restarts on a stop for a player")
+require_text("${conf_dist}" "an open invite or a player inside who is not a bot pauses that (the\n# grace starts again once he is gone)" "dist: the end pauses")
+forbid_text("${conf_dist}" "who is not a bot stops that" "dist: the end stops for good")
 require_text("${watch}" "!ai::bgfill::PendingExpired(nowMs, since, graceMs)" "ends only after the grace")
 require_text("${watch}" "\"[BGFill] state=botonly_end bg=%u inst=%u bots=%u\"" "bot-only line")
 require_text("${botonly_leave}" "if (bgFillBotOnlyEnding.empty())\n        return;" "nothing per update while no instance is ending")
 count_text("${botonly_leave}" "ReleaseBgFillBot(" 1 "one leave per update")
 # Review: each leave lets the core invite a waiting player into the freed slot before the next watch; an open invite or
 # anyone inside who is not a bot of this manager stops the end before the next leave.
-require_text("${botonly_leave}" "if (bg->GetInvitedCount(ALLIANCE) + bg->GetInvitedCount(HORDE) > bg->GetPlayersSize())\n            stop = \"invite\";" "open invite stops the end")
+require_text("${botonly_leave}" "else if (bg->GetInvitedCount(ALLIANCE) + bg->GetInvitedCount(HORDE) > bg->GetPlayersSize())\n            stop = \"invite\";" "open invite stops the end")
 require_text("${botonly_leave}" "for (auto const& member : bg->GetPlayers())\n            {\n                if (!GetPlayerBot(member.first.GetCounter()))\n                {\n                    stop = \"player\";" "a player inside who is not a manager bot stops the end")
 require_text("${botonly_leave}" "if (stop)\n        {\n            bgFillBotOnlyEnding.erase(key);" "a stop drops the ending mark")
 require_order("${botonly_leave}" "if (stop)\n        {" "ReleaseBgFillBot(bot, ai);" "presence checked before every leave")
@@ -380,7 +411,7 @@ foreach(inverted "!trace" "!sPlayerbotAIConfig.bgTrace" "trace ||" "bgTrace ||")
 endforeach()
 
 # 13. Bounded, world thread: no unbounded loop, no lock beyond the core's battleground mutex, no DB bot list.
-foreach(path_text slot watch botonly_leave)
+foreach(path_text slot watch botonly_leave collect)
   forbid_text("${${path_text}}" "ForEachPlayerbot(" "loop over all bots in ${path_text}")
   forbid_text("${${path_text}}" "GetBgBots(" "DB bot list in ${path_text}")
   forbid_text("${${path_text}}" "mutex" "lock in ${path_text}")

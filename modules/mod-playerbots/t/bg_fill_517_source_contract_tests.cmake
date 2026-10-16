@@ -366,7 +366,7 @@ forbid_text("${real_group}" "FindMap()" "every online member counts, on any map"
 # The flag stays set from the accept until the return: a WAIT_JOIN latched before the accept must not port again.
 region("${members}" "BGStatusAction::AcceptInvite(" "bgFillInBg[guid] = accepted;" accept_tail)
 forbid_text("${accept_tail}" "SetBgFillPending(false)" "pending flag cleared at the accept")
-require_text("${accept_tail}" "accepted.startedForFill = bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "instance started for the fill, or topped up")
+require_text("${accept_tail}" "accepted.startedForFill = !entry.pairFor && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "instance started for the fill (never by a stage-b pair or top-up bot), or topped up")
 require_order("${members}" "ai->OnReturnFromBattleground(uint32(time(nullptr)));" "ai->SetBgFillPending(false);\n        ++bgFillMinute.returns;" "pending flag cleared on the return")
 require_text("${ai_h}" "std::atomic<bool> bgFillPending{ false };" "pending flag is atomic")
 region("${join_cpp}" "if (statusid == STATUS_WAIT_JOIN)" "bool BGStatusCheckAction::Execute(Event& event)" wait_join)

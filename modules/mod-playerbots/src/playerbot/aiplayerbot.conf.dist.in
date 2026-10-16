@@ -91,8 +91,9 @@ AiPlayerbot.BG.SlotRelease = 0
 # reserved. 0 = 60 s (default), minimum 15; a negative value counts as 0.
 AiPlayerbot.BG.SlotReleaseWaitSeconds = 0
 # BotOnlyGraceSeconds: how long a battleground started for the fill may run without a real player (with PlayerFill or
-# SlotRelease on). Then its fill bots leave one by one, without Deserter, and the core ends it; an open invite or a
-# player inside who is not a bot stops that. 0 = 120 s (default), minimum 60; a negative value counts as 0.
+# SlotRelease on). Then its fill bots leave one by one, without Deserter, and the core ends it. A real player waiting
+# uninvited for that battleground and bracket, an open invite or a player inside who is not a bot pauses that (the
+# grace starts again once he is gone). 0 = 120 s (default), minimum 60; a negative value counts as 0.
 AiPlayerbot.BG.BotOnlyGraceSeconds = 0
 # twow-repo#541/#551 (console rndbot park / unpark): 1 = a parked bot is not visible to other bots and
 # sees only real players and units fighting it (core Player flag, real players see it as always).
