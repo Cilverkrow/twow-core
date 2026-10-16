@@ -2609,6 +2609,18 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
     }
 }
 
+// OB-10 review: a bot on a forced trip (guild founding RosterGuild.FoundTravel #485, guild meeting or errand) stays out;
+// pulling it into a battleground would break a trip that can run for an hour. A trip still in PREPARE counts too
+// (TravelTarget::IsActive() leaves PREPARE out).
+static bool OnForcedTravel(PlayerbotAI* ai)
+{
+    TravelTarget* target = ai->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
+    if (!target || !target->IsForced())
+        return false;
+    TravelStatus const status = target->GetStatus();
+    return status != TravelStatus::TRAVEL_STATUS_NONE && status != TravelStatus::TRAVEL_STATUS_EXPIRED;
+}
+
 // A persistent-roster bot that is free to leave for a battleground now.
 bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const
 {
@@ -2633,6 +2645,8 @@ bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const
         return false;
     if (ai->HasRealPlayerMaster())
         return false;
+    if (OnForcedTravel(ai))
+        return false;
     // Deserter (26013): the core's own queue check.
     if (!bot->CanJoinToBattleground())
         return false;
@@ -2652,6 +2666,8 @@ bool RandomPlayerbotMgr::IsBgFillStillFree(Player* bot, PlayerbotAI* ai) const
     if (!IsPersistentRosterMember(guid) || IsParkedBot(guid) || ai->IsParked())
         return false;
     if (bot->GetGroup() || ai->HasRealPlayerMaster() || ai->IsQuestRescueBusy())
+        return false;
+    if (OnForcedTravel(ai))
         return false;
     return !bot->InBattleGround() && !bot->GetMap()->Instanceable();
 }

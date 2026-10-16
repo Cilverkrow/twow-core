@@ -202,7 +202,8 @@ require_text("${leave_queue}" "SendPort(bot, bgTypeId, 0x0);" "leave = port acti
 require_text("${policy_h}" "return now - joinMs >= maxMs;" "pending age with an unsigned difference")
 
 # 5. Candidate filters.
-region("${mgr_cpp}" "bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const" "uint32 RandomPlayerbotMgr::CountBgFillRunning() const" candidate)
+# Ends where the pending recheck starts, so a filter dropped here is not found there.
+region("${mgr_cpp}" "bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const" "bool RandomPlayerbotMgr::IsBgFillStillFree(" candidate)
 foreach(filter
     "IsPersistentRosterMember(guid)"
     "!bot->IsAlive()"
@@ -214,10 +215,16 @@ foreach(filter
     "if (ai->HasRealPlayerMaster())\n        return false;"
     "if (!bot->CanJoinToBattleground())\n        return false;"
     "ai::bgfill::MinLoggedInSeconds * IN_MILLISECONDS"
-    "if (!bot->HasFreeBattleGroundQueueId())\n        return false;")
+    "if (!bot->HasFreeBattleGroundQueueId())\n        return false;"
+    "if (OnForcedTravel(ai))\n        return false;")
   require_text("${candidate}" "${filter}" "candidate filter")
 endforeach()
 forbid_text("${candidate}" "IsTank(" "tank/healer filter for roster bots")
+# OB-10 review: a forced trip (guild founding, meeting, errand) keeps the bot out, also while still in PREPARE.
+region("${mgr_cpp}" "static bool OnForcedTravel(PlayerbotAI* ai)" "bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const" forced_travel)
+require_text("${forced_travel}" "if (!target || !target->IsForced())\n        return false;" "only forced trips")
+require_text("${forced_travel}" "return status != TravelStatus::TRAVEL_STATUS_NONE && status != TravelStatus::TRAVEL_STATUS_EXPIRED;" "every live trip status, PREPARE included")
+forbid_text("${forced_travel}" "IsActive()" "IsActive() leaves PREPARE out")
 # The running count: ended battlegrounds out; started-for-fill instances counted from the accept on (before the bots
 # show up in GetPlayers()); running instances the core only topped up with fill bots not counted.
 region("${mgr_cpp}" "uint32 RandomPlayerbotMgr::CountBgFillRunning() const" "void RandomPlayerbotMgr::ReportBgFillMinute()" running_count)
@@ -241,7 +248,8 @@ require_text("${members}" "!bot->InBattleGroundQueueForBattleGroundQueueType(que
 require_order("${members}" "if (!IsBgFillStillFree(bot, ai))" "BGStatusAction::AcceptInvite(" "still free before the accept")
 require_text("${members}" "LeaveBgFillQueue(bot, ai, guid, entry, \"busy\");" "a busy pending bot leaves its queue")
 region("${mgr_cpp}" "bool RandomPlayerbotMgr::IsBgFillStillFree(" "void RandomPlayerbotMgr::LeaveBgFillQueue(" still_free)
-foreach(check "IsPersistentRosterMember(guid)" "IsParkedBot(guid) || ai->IsParked()" "bot->GetGroup()" "ai->HasRealPlayerMaster()" "ai->IsQuestRescueBusy()" "bot->GetMap()->Instanceable()")
+foreach(check "IsPersistentRosterMember(guid)" "IsParkedBot(guid) || ai->IsParked()" "bot->GetGroup()" "ai->HasRealPlayerMaster()" "ai->IsQuestRescueBusy()" "bot->GetMap()->Instanceable()"
+    "if (OnForcedTravel(ai))\n        return false;")
   require_text("${still_free}" "${check}" "pending recheck")
 endforeach()
 # The flag stays set from the accept until the return: a WAIT_JOIN latched before the accept must not port again.
