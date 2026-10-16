@@ -1,3 +1,6 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
 # twow-repo#597 (TICK-01, AhBot guard): live runs without ahbot.conf, and AhBot::Update scheduled an auction check on
 # every world tick (detached boost::thread + synchronous mail LIKE query + log lines, updateInterval never read = 0).
 # AiPlayerbot.AhBot.RequireConfig (aiplayerbot.conf, default 0) makes Update return as its first statement unless the
