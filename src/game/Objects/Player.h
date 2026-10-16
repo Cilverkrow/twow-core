@@ -3315,7 +3315,9 @@ public:
         void SetBGTeam(Team team) { m_bgData.bgTeam = team; m_bgData.m_needSave = true; }
         Team GetBGTeam() const { return m_bgData.bgTeam ? m_bgData.bgTeam : GetTeam(); }
 
-        void LeaveBattleground(bool teleportToEntryPoint = true);
+        // twow-repo#517 stage b: castDeserter = false only for a bot the bot manager takes out of a battleground (slot
+        // release for a waiting real player, end of a bot-only match); every other caller keeps the default.
+        void LeaveBattleground(bool teleportToEntryPoint = true, bool castDeserter = true);
         bool CanJoinToBattleground() const;
 
         bool GetBGAccessByLevel(BattleGroundTypeId bgTypeId) const;

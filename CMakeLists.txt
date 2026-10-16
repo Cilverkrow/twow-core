@@ -1005,6 +1005,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_park_hide_541_contract.cmake")
+  # twow-repo#517 stage b: Player::LeaveBattleground(castDeserter = true); only the bot module's slot release passes false.
+  add_test(NAME bg_leave_deserter_517_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_bg_leave_deserter_517_contract.cmake")
   # twow-repo#560: MMapManager tables read only under their locks (race / crash risk).
   add_test(NAME mmap_race_560_contract
     COMMAND "${CMAKE_COMMAND}"

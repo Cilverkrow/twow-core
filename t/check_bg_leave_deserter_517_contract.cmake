@@ -1,0 +1,120 @@
+cmake_policy(VERSION 3.16)
+
+if (NOT DEFINED TW_CORE_ROOT)
+  message(FATAL_ERROR "TW_CORE_ROOT is required")
+endif()
+
+# twow-repo#517 stage b (OB-00 deserter decision, OB-20): Player::LeaveBattleground gets a castDeserter parameter
+# with the neutral default true. Only the bot module's slot release and bot-only cleanup pass false (a bot the manager
+# takes out to free a slot for a waiting real player gets no Deserter); every core caller - a player leaving, a
+# logout, the AFK report, a bot leaving on its own - keeps the default and the debuff as upstream.
+
+function(read_source path out_var)
+  file(READ "${TW_CORE_ROOT}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(require_text text needle label)
+  string(FIND "${text}" "${needle}" offset)
+  if (offset EQUAL -1)
+    message(FATAL_ERROR "#517: missing ${label}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle label)
+  string(FIND "${text}" "${needle}" offset)
+  if (NOT offset EQUAL -1)
+    message(FATAL_ERROR "#517: forbidden ${label}: ${needle}")
+  endif()
+endfunction()
+
+function(require_order text first second label)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if (a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "#517: order ${label}: '${first}' must come before '${second}'")
+  endif()
+endfunction()
+
+function(count_text text needle expected label)
+  string(LENGTH "${needle}" needle_length)
+  set(count 0)
+  set(rest "${text}")
+  while(TRUE)
+    string(FIND "${rest}" "${needle}" offset)
+    if (offset EQUAL -1)
+      break()
+    endif()
+    math(EXPR count "${count} + 1")
+    math(EXPR next "${offset} + ${needle_length}")
+    string(SUBSTRING "${rest}" ${next} -1 rest)
+  endwhile()
+  if (NOT count EQUAL expected)
+    message(FATAL_ERROR "#517: ${label}: '${needle}' found ${count} times, expected ${expected}")
+  endif()
+endfunction()
+
+function(region text start_marker end_marker out)
+  string(FIND "${text}" "${start_marker}" start)
+  if (start EQUAL -1)
+    message(FATAL_ERROR "#517: missing region start: ${start_marker}")
+  endif()
+  string(SUBSTRING "${text}" ${start} -1 rest)
+  string(FIND "${rest}" "${end_marker}" length)
+  if (length EQUAL -1)
+    message(FATAL_ERROR "#517: missing region end: ${end_marker}")
+  endif()
+  string(SUBSTRING "${rest}" 0 ${length} body)
+  set(${out} "${body}" PARENT_SCOPE)
+endfunction()
+
+read_source("src/game/Objects/Player.h" player_h)
+read_source("src/game/Objects/Player.cpp" player_cpp)
+
+# 1. Neutral default: every caller that does not say otherwise casts Deserter as before.
+require_text("${player_h}" "void LeaveBattleground(bool teleportToEntryPoint = true, bool castDeserter = true);" "castDeserter defaults to true")
+count_text("${player_h}" "void LeaveBattleground(" 1 "one LeaveBattleground declaration")
+require_text("${player_cpp}" "void Player::LeaveBattleground(bool teleportToEntryPoint, bool castDeserter)\n{" "definition takes castDeserter")
+
+# 2. Both Deserter paths (the immediate aura and the delayed cast after a far teleport) sit under the parameter.
+region("${player_cpp}" "void Player::LeaveBattleground(bool teleportToEntryPoint, bool castDeserter)" "bool Player::CanJoinToBattleground() const" leave)
+set(guard "        if (castDeserter &&\n                !IsGameMaster() &&\n                sWorld.getConfig(CONFIG_BOOL_BATTLEGROUND_CAST_DESERTER) &&")
+require_text("${leave}" "${guard}" "castDeserter first in the Deserter condition")
+region("${leave}" "${guard}" "bg->RemovePlayerAtLeave(GetObjectGuid(), teleportToEntryPoint, true);" deserter_block)
+require_text("${deserter_block}" "ScheduleDelayedOperation(DELAYED_SPELL_CAST_DESERTER);" "delayed Deserter cast under the parameter")
+require_text("${deserter_block}" "AddAura(26013, 0, this);" "immediate Deserter aura under the parameter")
+count_text("${leave}" "DELAYED_SPELL_CAST_DESERTER" 1 "one delayed Deserter path in LeaveBattleground")
+count_text("${leave}" "26013" 1 "one Deserter aura in LeaveBattleground")
+count_text("${leave}" "castDeserter" 2 "castDeserter read only in the Deserter condition")
+# A widened condition would cast with castDeserter = false.
+forbid_text("${leave}" "castDeserter ||" "castDeserter widened with ||")
+forbid_text("${leave}" "!castDeserter" "castDeserter inverted")
+require_order("${leave}" "${guard}" "bg->RemovePlayerAtLeave(GetObjectGuid(), teleportToEntryPoint, true);" "Deserter decided before the player is removed")
+# The delayed operation itself is unchanged (it only runs when LeaveBattleground scheduled it).
+require_text("${player_cpp}" "if (m_DelayedOperations & DELAYED_SPELL_CAST_DESERTER)" "delayed Deserter operation kept")
+
+# 3. No core caller passes a second argument: castDeserter = false belongs to the bot module's release paths only
+#    (pinned by modules/mod-playerbots/t/bg_slot_release_517_source_contract_tests.cmake).
+file(GLOB_RECURSE core_sources "${TW_CORE_ROOT}/src/*.cpp" "${TW_CORE_ROOT}/src/*.h" "${TW_CORE_ROOT}/src/*.hpp")
+set(calls 0)
+foreach(source ${core_sources})
+  file(STRINGS "${source}" lines REGEX "LeaveBattleground[(]")
+  foreach(line ${lines})
+    if (line MATCHES "bool teleportToEntryPoint")
+      continue()
+    endif()
+    math(EXPR calls "${calls} + 1")
+    if (line MATCHES "LeaveBattleground[(][^)]*,")
+      message(FATAL_ERROR "#517: core caller passes castDeserter (${source}): ${line}")
+    endif()
+    if (line MATCHES "castDeserter")
+      message(FATAL_ERROR "#517: castDeserter named at a core call (${source}): ${line}")
+    endif()
+  endforeach()
+endforeach()
+if (calls LESS 5)
+  message(FATAL_ERROR "#517: only ${calls} LeaveBattleground calls found in src/ - the scan read nothing")
+endif()
+
+message(STATUS "bg_leave_deserter_517 contract passed")
