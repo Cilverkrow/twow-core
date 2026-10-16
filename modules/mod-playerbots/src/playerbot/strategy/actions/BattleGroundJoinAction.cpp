@@ -1575,6 +1575,23 @@ void BGStatusAction::LeaveQueue(Player* bot, BattleGroundTypeId bgTypeId)
     SendPort(bot, bgTypeId, 0x0);
 }
 
+void BGStatusAction::ApplyLeaveState(PlayerbotAI* ai, Player* bot)
+{
+    // As BGLeaveAction after its leave packet: the AiFactory strategies come back (the roster set included), the
+    // battleground values are cleared.
+    AiObjectContext* context = ai->GetAiObjectContext();
+    if (sRandomPlayerbotMgr.IsFreeBot(bot))
+        ai->SetMaster(NULL);
+    ai->ResetStrategies();
+    context->GetValue<uint32>("bg type")->Set(0);
+    context->GetValue<uint32>("bg role")->Set(0);
+    context->GetValue<uint32>("arena type")->Set(0);
+    ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get();
+    ai::PositionEntry pos = posMap["bg objective"];
+    pos.Reset();
+    posMap["bg objective"] = pos;
+}
+
 void BGStatusAction::SendPort(Player* bot, BattleGroundTypeId bgTypeId, uint8 action)
 {
     WorldPacket packet(CMSG_BATTLEFIELD_PORT, 20);

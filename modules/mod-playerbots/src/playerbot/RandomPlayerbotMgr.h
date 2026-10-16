@@ -417,6 +417,8 @@ public:
             uint32 joinMs = 0;
             uint32 instanceId = 0;          // set at accept: the instance the bot was ported into
             bool startedForFill = false;    // set at accept: that instance had not begun yet (counts against the cap)
+            uint32 acceptMs = 0;            // stage b: set at accept (the latest joined leaves first on a slot release)
+            uint32 pairFor = 0;             // stage b: pair bot queued for this waiting real player (guid), 0 = fill
         };
         std::map<uint32, BgFillEntry> bgFillPending;   // queued by the manager, invite not accepted yet (<= 2 x 40 per bg)
         std::map<uint32, BgFillEntry> bgFillInBg;      // invite accepted, until the bot is out of the battleground again
@@ -442,6 +444,35 @@ public:
         bool LeaveBgFillQueue(Player* bot, PlayerbotAI* ai, uint32 guid, BgFillEntry const& entry, char const* reason);
         uint32 CountBgFillRunning() const;
         void ReportBgFillMinute();
+        // twow-repo#517 stage b (AiPlayerbot.BG.SlotRelease): a real player waiting uninvited gets into a running
+        // battleground with fill bots - pair option first (OB-00 D2), else a fill bot of his side above the minimum
+        // leaves and the slot is reserved for him. World thread only; both maps are bounded by the real players.
+        struct BgFillWait
+        {
+            uint32 queueType = 0;
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;
+            uint32 team = 0;
+            uint32 firstSeenMs = 0;   // first scan that saw him waiting uninvited in that queue
+            uint32 seenScan = 0;      // last scan that saw him (pruned in every scan that did not)
+            bool released = false;    // at most one release per wait
+        };
+        std::map<std::pair<uint32, uint32>, BgFillWait> bgFillWait;                 // (real player guid, queue type)
+        struct BgFillReservation
+        {
+            uint32 queueType = 0;
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;
+            uint32 team = 0;
+            uint32 instanceId = 0;
+            uint32 untilMs = 0;
+        };
+        std::map<std::pair<uint32, uint32>, BgFillReservation> bgFillReservations;  // (real player guid, queue type)
+        std::set<uint32> bgFillNewMatch;   // BgFillBracketKey of the brackets stage a queued a new match for this scan
+        uint32 bgFillScanId = 0;
+        void ScanBgSlotRelease(uint32 nowMs);
+        bool BgFillReserved(uint32 queueType, uint32 bracket, uint32 team, uint32 nowMs) const;
+        bool ReleaseBgFillBot(Player* bot, PlayerbotAI* ai);
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;

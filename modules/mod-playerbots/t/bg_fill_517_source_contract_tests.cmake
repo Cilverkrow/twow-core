@@ -133,7 +133,8 @@ require_text("${conf_dist}" "restart-only" "BG keys documented as restart-only")
 
 # 2. Roster branch: LoginFreeBots(), then the gated CheckBgFill, then the roster return; no legacy BG queue count.
 region("${mgr_cpp}" "if (sPlayerbotAIConfig.persistentActiveRosterEnabled)\n    {\n        if (!persistentRosterInitialized)" "    ScaleBotActivity();\n    if (sPlayerbotAIConfig.asyncBotLogin)" roster_branch)
-require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && sPlayerbotAIConfig.bgPlayerFill)\n            CheckBgFill();" "fill gated by bgEnable && bgPlayerFill")
+# Stage b (twow-repo#517): SlotRelease runs in the same pass and needs no PlayerFill; the master switch gates both.
+require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease))\n            CheckBgFill();" "fill gated by bgEnable && (bgPlayerFill || bgSlotRelease)")
 require_order("${roster_branch}" "LoginFreeBots();" "CheckBgFill();" "LoginFreeBots before CheckBgFill")
 require_order("${roster_branch}" "CheckBgFill();" "PlayerbotHolder::UpdateAIInternal(elapsed, minimal);\n        if (sPlayerbotAIConfig.worldBotsTrace)" "CheckBgFill before the roster return")
 forbid_text("${roster_branch}" "CheckBgQueue" "legacy BG queue count in the roster branch (BGJoinAction would queue roster bots)")
