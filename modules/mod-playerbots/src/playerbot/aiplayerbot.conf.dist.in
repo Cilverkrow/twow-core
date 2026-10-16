@@ -1946,6 +1946,10 @@ AiPlayerbot.WorldBotsTrace = 0
 # time of one bot AI update on the map threads, plus the five slowest calls with bot, map, combat
 # and last action. Log only. 0 = off (default).
 AiPlayerbot.BotUpdateTrace = 0
+# twow-repo#596 D: 1 (with BotUpdateTrace = 1) = a bot whose trigger pass took 20 ms or more names its three slowest
+# trigger checks in the TIME entry of its trail: `TIME:values Xus triggers Yus slow=name:us,...`, seen in [BotUpdateSlow].
+# Times each trigger check of every pass while on. 0 = off (default), the trail as before.
+AiPlayerbot.BotUpdateTraceTriggers = 0
 # twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
