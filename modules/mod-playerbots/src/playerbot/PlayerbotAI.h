@@ -1030,6 +1030,10 @@ public:
     // leaves WAIT_JOIN alone so nothing is done twice.
     void SetBgFillPending(bool value) { bgFillPending = value; }
     bool IsBgFillPending() const { return bgFillPending; }
+    // twow-repo#517 stage a (OB-10): a fill bot is out of its battleground again. Quest search stage 0 and
+    // questProgress.lastChange = now, as the questRescueDone path in UpdateAI - but without OnQuestRescued(): that sets
+    // lastQuestRescue, and the per-bot rescue limit would then block a later real rescue.
+    void OnReturnFromBattleground(uint32 now);
     // twow-repo#541/#551 (rndbot park): a parked bot updates its AI every ai::park::AiIntervalMs only.
     bool IsParked() const { return parked; }
     // twow-repo#551 (AiPlayerbot.Park.Persist), world thread only: the stored park state was handled after this login
