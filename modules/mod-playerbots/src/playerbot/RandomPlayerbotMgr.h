@@ -455,6 +455,7 @@ public:
             uint32 team = 0;
             uint32 firstSeenMs = 0;   // first scan that saw him waiting uninvited in that queue
             uint32 seenScan = 0;      // last scan that saw him (pruned in every scan that did not)
+            uint32 desiredInstanceId = 0;   // the core entry's DesiredInstanceId (0 = first available), read when due
             bool released = false;    // at most one release per wait
         };
         std::map<std::pair<uint32, uint32>, BgFillWait> bgFillWait;                 // (real player guid, queue type)
@@ -479,6 +480,7 @@ public:
         std::set<std::pair<uint32, uint32>> bgFillBotOnlyEnding;          // (bg type, instance) whose fill bots leave
         void WatchBotOnlyBgs(uint32 nowMs);
         void LeaveBotOnlyBg();
+        void CollectBgFillWaiting(std::set<std::pair<uint32, uint32>>& waiting) const;
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;
