@@ -405,6 +405,36 @@ public:
         // twow-repo#541: [WorldBots] per-minute cost of UpdateAIInternal in the world thread.
         ai::world_bots::Window worldBotsWindow;
         void TraceWorldBots(uint64 desiredBots, uint64 sessionsUs, uint64 processUs, uint64 otherUs, uint32 logins, uint32 acks);
+        // twow-repo#517 stage a (AiPlayerbot.BG.Enable + AiPlayerbot.BG.PlayerFill): persistent-roster bots fill a
+        // battleground a real player queues for. World thread only (roster branch of UpdateAIInternal).
+        struct BgFillEntry
+        {
+            uint32 queueType = 0;
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;   // core bracket (Player::GetBattleGroundBracketIdFromLevel)
+            uint32 team = 0;      // 0 alliance, 1 horde
+            uint32 joinMs = 0;
+        };
+        std::map<uint32, BgFillEntry> bgFillPending;   // queued by the manager, invite not accepted yet (<= 2 x 40 per bg)
+        std::map<uint32, BgFillEntry> bgFillInBg;      // invite accepted, until the bot is out of the battleground again
+        uint32 lastBgFillCheckMs = 0;
+        uint32 bgFillRotate = 0;                       // guid the last candidate loop stopped at (rotating start)
+        struct BgFillMinute
+        {
+            uint32 checks = 0;
+            uint32 joins = 0;
+            uint32 accepts = 0;
+            uint32 returns = 0;
+            uint64 scanUsMax = 0;
+            uint32 last = 0;
+        };
+        BgFillMinute bgFillMinute;
+        void CheckBgFill();
+        void UpdateBgFillMembers();
+        void ScanBgFill(uint32 nowMs);
+        bool IsBgFillCandidate(Player* bot) const;
+        uint32 CountBgFillRunning() const;
+        void ReportBgFillMinute();
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;

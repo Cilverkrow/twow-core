@@ -38,6 +38,9 @@ public:
 #ifndef MANGOSBOT_ZERO
     virtual bool gatherArenaTeam(ArenaType type);
 #endif
+    // twow-repo#517 stage a: the non-arena battlemaster join JoinQueue sends ("bg type" reset, bypass guid), shared with
+    // RandomPlayerbotMgr::CheckBgFill, which queues roster bots from the world thread.
+    static void SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup);
 protected:
     bool JoinQueue(uint32 type);
     std::vector<uint32> bgList;
@@ -97,6 +100,12 @@ public:
 #endif 
     virtual bool Execute(Event& event) override;
     virtual bool isUseful() override;
+    // twow-repo#517 stage a: what BGStatusAction does for the bot once it accepted an invite (strategies, +pvp, role,
+    // objectives); shared with the manager's accept for fill bots.
+    static void ApplyPortState(PlayerbotAI* ai);
+    // twow-repo#517 stage a: the manager accepts the invite of a fill bot on the world thread (port action 1, then
+    // ApplyPortState). True when the bot is now bound for that battleground.
+    static bool AcceptInvite(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId);
 };
 
 class BGStatusCheckAction : public Action

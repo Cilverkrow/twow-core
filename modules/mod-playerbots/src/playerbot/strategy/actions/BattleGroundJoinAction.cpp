@@ -771,13 +771,6 @@ bool BGJoinAction::JoinQueue(uint32 type)
         return false;
     }*/
 
-   // get BG MapId
-#ifdef MANGOSBOT_ZERO
-   uint32 mapId = GetBattleGrounMapIdByTypeId(bgTypeId);
-#else
-   uint32 bgTypeId_ = bgTypeId;
-#endif
-   uint32 instanceId = 0; // 0 = First Available
    uint8 joinAsGroup = bot->GetGroup() && bot->GetGroup()->IsLeader(bot->GetObjectGuid());
    bool isPremade = false;
    bool isArena = false;
@@ -802,24 +795,14 @@ bool BGJoinAction::JoinQueue(uint32 type)
        return false;
    }
 #endif
-   // Battlemaster NPC may not be loaded/active (bots scattered across the world).
-   // The server itself accepts guid raw value 1337 as a queue-via-command bypass
-   // (see WorldSession::HandleBattlemasterJoinOpcode, queuedviaCommand check) -
-   // use that instead of requiring a physically loaded Battlemaster Unit.
-   ObjectGuid bmFallbackGuid = ObjectGuid(uint64(1337));
-// in wotlk only arena requires battlemaster guid
+#ifndef MANGOSBOT_ZERO
+   // The arena join's guid. The battleground join and its battlemaster bypass
+   // are in SendBattlemasterJoin (twow-repo#517: shared with the manager's fill).
 #ifndef MANGOSBOT_TWO
-   // Always the bypass, never the cached Battlemaster's own guid. A bot only
-   // needs one to be loaded nearby for "bg master" to hold a real guid, and
-   // sending that makes WorldSession::HandleBattlemasterJoinOpcode treat the
-   // request as a real click: it then runs GetNPCIfCanInteractWith, which a bot
-   // standing anywhere else fails. That path returns silently - no error, no
-   // log line - while shouldJoinBg has already counted the bot as queued.
-   // Measured with a player waiting in bracket 2: 28 bots accepted, 0 entries
-   // reached bg.log.
-   ObjectGuid guid = bmFallbackGuid;
+   ObjectGuid guid = ObjectGuid(uint64(1337));
 #else
    ObjectGuid guid = isArena ? unit->GetObjectGuid() : bot->GetObjectGuid();
+#endif
 #endif
 
    switch (bgTypeId)
@@ -905,21 +888,14 @@ bool BGJoinAction::JoinQueue(uint32 type)
    else
        sRandomPlayerbotMgr.BgBots[queueTypeId][bracketId][TeamId] += bot->GetGroup()->GetMembersCount();
 
-   ai->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
-
-   WorldPacket packet(CMSG_BATTLEMASTER_JOIN, 20);
 #ifdef MANGOSBOT_ZERO
-   packet << guid << mapId << instanceId << joinAsGroup;
    sLog.outDetail("Bot #%d %s:%d <%s> queued %s", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(), _bgType.c_str());
 #else
    sLog.outDetail("Bot #%d %s:%d <%s> queued %s %s", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(), _bgType.c_str(), isRated ? "Rated Arena" : isArena ? "Arena" :
                                                                                                                                                                                                       "");
-   if (!isArena)
+   if (isArena)
    {
-       packet << guid << bgTypeId_ << instanceId << joinAsGroup;
-   }
-   else
-   {
+       ai->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
        WorldPacket arena_packet(CMSG_BATTLEMASTER_JOIN_ARENA, 20);
        arena_packet << guid << arenaslot << asGroup << uint8(isRated);
        bot->GetSession()->HandleBattlemasterJoinArena(arena_packet);
@@ -927,13 +903,47 @@ bool BGJoinAction::JoinQueue(uint32 type)
    }
 #endif
 
+   SendBattlemasterJoin(ai, bot, bgTypeId, joinAsGroup);
+   return true;
+}
+
+void BGJoinAction::SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup)
+{
+   ai->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
+
+   // Battlemaster NPC may not be loaded/active (bots scattered across the world).
+   // The server itself accepts guid raw value 1337 as a queue-via-command bypass
+   // (see WorldSession::HandleBattlemasterJoinOpcode, queuedviaCommand check) -
+   // use that instead of requiring a physically loaded Battlemaster Unit.
+// in wotlk only arena requires battlemaster guid
+#ifndef MANGOSBOT_TWO
+   // Always the bypass, never the cached Battlemaster's own guid. A bot only
+   // needs one to be loaded nearby for "bg master" to hold a real guid, and
+   // sending that makes WorldSession::HandleBattlemasterJoinOpcode treat the
+   // request as a real click: it then runs GetNPCIfCanInteractWith, which a bot
+   // standing anywhere else fails. That path returns silently - no error, no
+   // log line - while shouldJoinBg has already counted the bot as queued.
+   // Measured with a player waiting in bracket 2: 28 bots accepted, 0 entries
+   // reached bg.log.
+   ObjectGuid guid = ObjectGuid(uint64(1337));
+#else
+   ObjectGuid guid = bot->GetObjectGuid();
+#endif
+   uint32 instanceId = 0; // 0 = First Available
+
+   WorldPacket packet(CMSG_BATTLEMASTER_JOIN, 20);
+#ifdef MANGOSBOT_ZERO
+   packet << guid << GetBattleGrounMapIdByTypeId(bgTypeId) << instanceId << uint8(joinAsGroup);
+#else
+   packet << guid << uint32(bgTypeId) << instanceId << uint8(joinAsGroup);
+#endif
+
    // Bot sessions are never registered in sWorld.m_sessions (created directly via
    // "new WorldSession(...)" in PlayerbotMgr, bypassing sWorld.AddSession()), so
    // World::UpdateSessions() never drains their recvQueue - ai->QueuePacket() here
    // would silently vanish forever. Call the opcode handler directly instead,
-   // exactly like the arena branch above already does with HandleBattlemasterJoinArena.
+   // exactly like the arena branch in JoinQueue does with HandleBattlemasterJoinArena.
    bot->GetSession()->HandleBattlemasterJoinOpcode(packet);
-   return true;
 }
 
 bool FreeBGJoinAction::shouldJoinBg(BattleGroundQueueTypeId queueTypeId, BattleGroundBracketId bracketId)
@@ -1442,6 +1452,10 @@ bool BGStatusAction::Execute(Event& event)
     if (statusid == STATUS_WAIT_JOIN) //bot may join
     {
         sLog.outDetail("Bot #%u %s:%d <%s>: Received BG status WAIT_JOIN for %s %s", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(), isArena ? "Arena" : "BG", _bgType.c_str());
+        // twow-repo#517 stage a: a fill bot's invite is accepted by the manager on the world thread
+        // (RandomPlayerbotMgr::UpdateBgFillMembers -> AcceptInvite), not here, so nothing is done twice.
+        if (ai->IsBgFillPending())
+            return true;
 #ifndef MANGOSBOT_ZERO
         if (isArena)
         {
@@ -1507,29 +1521,56 @@ bool BGStatusAction::Execute(Event& event)
 #endif
         bot->GetSession()->HandleBattleFieldPortOpcode(packet);
 
-        ai->ResetStrategies(false);
-        // Bots otherwise only fight back when attacked (assist/dps strategies react to
-        // an existing target) but never seek out enemy players on their own inside a BG.
-        // +pvp wires up the "enemy player near" -> "attack enemy player" trigger. Applied
-        // to BOTH engines (2026-07-27, was combat-only): an idle bot never enters
-        // BOT_STATE_COMBAT on its own just because an enemy is nearby, so the
-        // combat-only version never actually fired between two idle bots - only a
-        // human player's attack (which flips native combat state) could ever trigger
-        // it. AttackEnemyPlayersStrategy::InitNonCombatTriggers now also registers
-        // this trigger so idle bots can proactively start a fight.
-        ai->ChangeStrategy("+pvp", BotState::BOT_STATE_COMBAT);
-        ai->ChangeStrategy("+pvp", BotState::BOT_STATE_NON_COMBAT);
-        context->GetValue<uint32>("bg role")->Set(urand(0, 9));
-        ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get();
-        ai::PositionEntry pos = context->GetValue<ai::PositionMap&>("position")->Get()["bg objective"];
-        ai::PositionEntry pos2 = context->GetValue<ai::PositionMap&>("position")->Get()["bg siege"];
-        pos.Reset();
-        pos2.Reset();
-        posMap["bg objective"] = pos;
-        posMap["bg siege"] = pos2;
+        ApplyPortState(ai);
 
         return true;
     }
+    return true;
+}
+
+void BGStatusAction::ApplyPortState(PlayerbotAI* ai)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    ai->ResetStrategies(false);
+    // Bots otherwise only fight back when attacked (assist/dps strategies react to
+    // an existing target) but never seek out enemy players on their own inside a BG.
+    // +pvp wires up the "enemy player near" -> "attack enemy player" trigger. Applied
+    // to BOTH engines (2026-07-27, was combat-only): an idle bot never enters
+    // BOT_STATE_COMBAT on its own just because an enemy is nearby, so the
+    // combat-only version never actually fired between two idle bots - only a
+    // human player's attack (which flips native combat state) could ever trigger
+    // it. AttackEnemyPlayersStrategy::InitNonCombatTriggers now also registers
+    // this trigger so idle bots can proactively start a fight.
+    ai->ChangeStrategy("+pvp", BotState::BOT_STATE_COMBAT);
+    ai->ChangeStrategy("+pvp", BotState::BOT_STATE_NON_COMBAT);
+    context->GetValue<uint32>("bg role")->Set(urand(0, 9));
+    ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get();
+    ai::PositionEntry pos = context->GetValue<ai::PositionMap&>("position")->Get()["bg objective"];
+    ai::PositionEntry pos2 = context->GetValue<ai::PositionMap&>("position")->Get()["bg siege"];
+    pos.Reset();
+    pos2.Reset();
+    posMap["bg objective"] = pos;
+    posMap["bg siege"] = pos2;
+}
+
+bool BGStatusAction::AcceptInvite(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId)
+{
+    // As the WAIT_JOIN branch above, for a non-arena battleground the bot is not in yet (CheckBgFill takes only bots
+    // outside any battleground). The core refuses the port in combat; the manager then tries again next update.
+    ai->Unmount();
+
+    WorldPacket packet(CMSG_BATTLEFIELD_PORT, 20);
+#ifdef MANGOSBOT_ZERO
+    packet << uint32(GetBattleGrounMapIdByTypeId(bgTypeId)) << uint8(0x1);
+#else
+    packet << uint8(0) << uint8(0x0) << uint32(bgTypeId) << uint16(0x1F90) << uint8(0x1);
+#endif
+    bot->GetSession()->HandleBattleFieldPortOpcode(packet);
+
+    if (!bot->InBattleGround() || bot->GetBattleGroundTypeId() != bgTypeId)
+        return false;
+
+    ApplyPortState(ai);
     return true;
 }
 

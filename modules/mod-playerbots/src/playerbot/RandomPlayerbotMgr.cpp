@@ -61,6 +61,8 @@
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/RouteTimePolicy.h"
 #include "playerbot/PathUnitlessBotPolicy.h"
+#include "playerbot/BgFillPolicy.h"
+#include "playerbot/strategy/actions/BattleGroundJoinAction.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "Maps/MapManager.h"
 #include <fstream>
@@ -1390,6 +1392,11 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         WorldBotsClock::time_point const processEnd = WorldBotsClock::now();
         SetAIInternalUpdateDelay(sPlayerbotAIConfig.randomBotUpdateInterval);
         LoginFreeBots();
+        // twow-repo#517 stage a: roster bots fill a battleground a real player queues for, chosen and queued by this
+        // manager. The legacy BG queue count stays off on this path, so BgPlayers/BgBots/NeedBots stay 0 and
+        // BGJoinAction never queues a roster bot on its own (no overshoot).
+        if (sPlayerbotAIConfig.bgEnable && sPlayerbotAIConfig.bgPlayerFill)
+            CheckBgFill();
         PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
         if (sPlayerbotAIConfig.worldBotsTrace)
             TraceWorldBots(desiredBots.size(), usSince(sessionsStart, sessionsEnd), usSince(processStart, processEnd),
@@ -2228,6 +2235,360 @@ void RandomPlayerbotMgr::LoadBattleMastersCache()
 
     sLog.outString(">> Loaded %u battlemaster entries", count);
     sLog.outString();
+}
+
+// twow-repo#517 stage a (AiPlayerbot.BG.Enable + AiPlayerbot.BG.PlayerFill): persistent-roster bots fill a battleground
+// a real player queues for. Runs from the roster branch of UpdateAIInternal, i.e. from PlayerbotWorldScript::OnUpdate
+// (WORLDHOOK_ON_UPDATE, end of World::Update): sMapMgr.Update has waited for every continent and instance update by
+// then (MapManager::Update: continents.wait() and the instance pool's f.wait()) and the next one starts only in the
+// next world tick, so the bots' maps are idle while the manager queues them, accepts their invites and resets them
+// after the battleground - the same thread as BattleGroundMgr::Update, which drains the queue schedule.
+// Per update only the pending and in-battleground sets are walked (bounded by the bots of the running battlegrounds);
+// the real-player scan, and the bounded bot loop only when a real player waits, run once per CheckIntervalSeconds.
+void RandomPlayerbotMgr::CheckBgFill()
+{
+    UpdateBgFillMembers();
+    ReportBgFillMinute();
+
+    uint32 const nowMs = WorldTimer::getMSTime();
+    if (!ai::bgfill::IntervalDue(nowMs, lastBgFillCheckMs, ai::bgfill::CheckIntervalMs(sPlayerbotAIConfig.bgCheckIntervalSeconds)))
+        return;
+    lastBgFillCheckMs = nowMs ? nowMs : 1;
+
+    WorldBotsClock::time_point const scanStart = WorldBotsClock::now();
+    ScanBgFill(nowMs);
+    uint64 const scanUs = usSince(scanStart, WorldBotsClock::now());
+    ++bgFillMinute.checks;
+    bgFillMinute.scanUsMax = std::max(bgFillMinute.scanUsMax, scanUs);
+}
+
+// Every manager update, cheap: only the bots the fill queued (pending) or sent in (in_bg).
+void RandomPlayerbotMgr::UpdateBgFillMembers()
+{
+    for (auto it = bgFillPending.begin(); it != bgFillPending.end();)
+    {
+        uint32 const guid = it->first;
+        BgFillEntry const& entry = it->second;
+        Player* bot = GetPlayerBot(guid);
+        PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        BattleGroundQueueTypeId const queueTypeId = BattleGroundQueueTypeId(entry.queueType);
+
+        // Logged out, or out of that queue (invite expired, queue left): a stale entry, dropped.
+        if (!ai || !bot->InBattleGroundQueueForBattleGroundQueueType(queueTypeId))
+        {
+            if (ai)
+                ai->SetBgFillPending(false);
+            it = bgFillPending.erase(it);
+            continue;
+        }
+
+        // Not invited yet, or not ready to port (teleport running): next update. The core refuses the port in combat,
+        // AcceptInvite then returns false and this runs again until the 80 s invite expires.
+        if (!bot->IsInvitedForBattleGroundQueueType(queueTypeId) || bot->IsBeingTeleported() ||
+            !BGStatusAction::AcceptInvite(ai, bot, BattleGroundTypeId(entry.bgTypeId)))
+        {
+            ++it;
+            continue;
+        }
+
+        ai->SetBgFillPending(false);
+        ++bgFillMinute.accepts;
+        if (sPlayerbotAIConfig.bgTrace)
+            sLog.outBasic("[BGFill] state=accept bot=%u bg=%u inst=%u", guid, entry.bgTypeId, bot->GetBattleGroundId());
+        bgFillInBg[guid] = entry;
+        it = bgFillPending.erase(it);
+    }
+
+    for (auto it = bgFillInBg.begin(); it != bgFillInBg.end();)
+    {
+        Player* bot = GetPlayerBot(it->first);
+        if (!bot)
+        {
+            it = bgFillInBg.erase(it);
+            continue;
+        }
+        // Still in the battleground, or on the way in or out.
+        if (bot->InBattleGround() || bot->IsBeingTeleported())
+        {
+            ++it;
+            continue;
+        }
+        it = bgFillInBg.erase(it);
+    }
+}
+
+void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
+{
+    bool const trace = sPlayerbotAIConfig.bgTrace;
+
+    // 1. Real players only: the players list also holds bots moved in by MovePlayerBot. Queued for WSG/AB/AV, not
+    //    invited yet and not already in a battleground of that type. BR (OB-00 D4) and SV (stage d) are not filled.
+    uint32 real[MAX_BATTLEGROUND_QUEUE_TYPES][MAX_BATTLEGROUND_BRACKETS][2] = {};
+    bool realPlayerQueued = false;
+    for (auto const& [playerGuid, player] : players)
+    {
+        if (!player || !player->IsInWorld() || !player->InBattleGroundQueue())
+            continue;
+        if (PlayerbotAI* playerAi = GetBotAI(player))
+            if (!playerAi->IsRealPlayer())
+                continue;
+
+        for (uint32 slot = 0; slot < PLAYER_MAX_BATTLEGROUND_QUEUES; ++slot)
+        {
+            BattleGroundQueueTypeId const queueTypeId = player->GetBattleGroundQueueTypeId(slot);
+            if (!ai::bgfill::IsFillQueueType(uint32(queueTypeId)))
+                continue;
+            if (player->IsInvitedForBattleGroundQueueType(queueTypeId))
+                continue;
+            BattleGroundTypeId const bgTypeId = sServerFacade.BgTemplateId(queueTypeId);
+            if (player->InBattleGround() && player->GetBattleGround() && player->GetBattleGround()->GetTypeId() == bgTypeId)
+                continue;
+            if (!sBattleGroundMgr.GetBattleGroundTemplate(bgTypeId))
+                continue;
+            // The core queue's bracket (BattleGroundHandler), not BattleGroundMgr::GetBattleGroundBracketIdFromLevel.
+            BattleGroundBracketId const bracketId = player->GetBattleGroundBracketIdFromLevel(bgTypeId);
+            if (bracketId == BG_BRACKET_ID_NONE)
+                continue;
+            ++real[queueTypeId][bracketId][player->GetTeam() == ALLIANCE ? 0 : 1];
+            realPlayerQueued = true;
+        }
+    }
+
+    // No real player waits: return without touching any bot - no candidate loop either.
+    if (!realPlayerQueued)
+        return;
+
+    // 2. Fill bots still in their queue (UpdateBgFillMembers dropped the stale ones) and the brackets still forming.
+    uint32 pending[MAX_BATTLEGROUND_QUEUE_TYPES][MAX_BATTLEGROUND_BRACKETS][2] = {};
+    bool forming[MAX_BATTLEGROUND_QUEUE_TYPES][MAX_BATTLEGROUND_BRACKETS] = {};
+    uint32 formingBrackets = 0;
+    for (auto const& [botGuid, entry] : bgFillPending)
+    {
+        ++pending[entry.queueType][entry.bracket][entry.team];
+        if (!forming[entry.queueType][entry.bracket])
+        {
+            forming[entry.queueType][entry.bracket] = true;
+            ++formingBrackets;
+        }
+    }
+
+    // 3. Need per side and the cap, per bracket with a waiting real player.
+    struct Request
+    {
+        BattleGroundQueueTypeId queueTypeId;
+        BattleGroundTypeId bgTypeId;
+        BattleGroundBracketId bracketId;
+        uint32 team;
+        uint32 need;
+        std::vector<Player*> candidates;
+    };
+    std::vector<Request> requests;
+    bool runningCounted = false;
+    uint32 runningBgs = 0;
+    for (uint32 q = BATTLEGROUND_QUEUE_AV; q < MAX_BATTLEGROUND_QUEUE_TYPES; ++q)
+    {
+        for (uint32 b = BG_BRACKET_ID_FIRST; b < MAX_BATTLEGROUND_BRACKETS; ++b)
+        {
+            if (!real[q][b][0] && !real[q][b][1])
+                continue;
+            BattleGroundQueueTypeId const queueTypeId = BattleGroundQueueTypeId(q);
+            BattleGroundTypeId const bgTypeId = sServerFacade.BgTemplateId(queueTypeId);
+            BattleGroundBracketId const bracketId = BattleGroundBracketId(b);
+            BattleGround* bgTemplate = sBattleGroundMgr.GetBattleGroundTemplate(bgTypeId);
+            if (!bgTemplate)
+                continue;
+
+            // R11: the core queue only reacts to events, so a player it skipped (taxi, a member offline) waits for
+            // the next one. Same thread as BattleGroundMgr::Update, which swaps the schedule.
+            sBattleGroundMgr.ScheduleQueueUpdate(queueTypeId, bgTypeId, bracketId);
+
+            uint32 const minPerTeam = bgTemplate->GetMinPlayersPerTeam();
+            uint32 const needA = ai::bgfill::NeedPerSide(minPerTeam, real[q][b][0], pending[q][b][0]);
+            uint32 const needH = ai::bgfill::NeedPerSide(minPerTeam, real[q][b][1], pending[q][b][1]);
+            if (trace)
+                sLog.outBasic("[BGFill] state=queue bg=%u bracket=%u real_a=%u real_h=%u pending_a=%u pending_h=%u need_a=%u need_h=%u",
+                    uint32(bgTypeId), b, real[q][b][0], real[q][b][1], pending[q][b][0], pending[q][b][1], needA, needH);
+            if (!needA && !needH)
+                continue;
+
+            // AiPlayerbot.BgBotTeamCap 0 takes a battleground away from bots entirely; that holds here too.
+            if (sPlayerbotAIConfig.GetBgBotTeamCap(uint32(bgTypeId)) == 0)
+            {
+                if (trace)
+                    sLog.outBasic("[BGFill] state=skip reason=teamcap bg=%u bracket=%u side=%s", uint32(bgTypeId), b,
+                        needA && needH ? "AH" : needA ? "A" : "H");
+                continue;
+            }
+
+            if (!runningCounted)
+            {
+                runningBgs = CountBgFillRunning();
+                runningCounted = true;
+            }
+            uint32 const running = ai::bgfill::RunningForBracket(runningBgs, formingBrackets, forming[q][b]);
+            if (!ai::bgfill::CapAllows(running, sPlayerbotAIConfig.bgMaxConcurrent))
+            {
+                if (trace)
+                {
+                    sLog.outBasic("[BGFill] state=cap running=%u max=%u", running, sPlayerbotAIConfig.bgMaxConcurrent);
+                    sLog.outBasic("[BGFill] state=skip reason=cap bg=%u bracket=%u side=%s", uint32(bgTypeId), b,
+                        needA && needH ? "AH" : needA ? "A" : "H");
+                }
+                continue;
+            }
+
+            // From here on this bracket is forming and counts against the cap of the brackets after it.
+            if (!forming[q][b])
+            {
+                forming[q][b] = true;
+                ++formingBrackets;
+            }
+            if (needA)
+                requests.push_back(Request{ queueTypeId, bgTypeId, bracketId, 0, needA, {} });
+            if (needH)
+                requests.push_back(Request{ queueTypeId, bgTypeId, bracketId, 1, needH, {} });
+        }
+    }
+
+    if (requests.empty())
+        return;
+
+    // 4. Candidates: one bounded loop over the bots, from a rotating start so the same bots are not always chosen,
+    //    collecting at most CandidateLimit(need) per side.
+    uint32 wanted = 0;
+    for (Request const& r : requests)
+        wanted += ai::bgfill::CandidateLimit(r.need);
+    uint32 collected = 0;
+    auto const visit = [&](uint32 guid, Player* bot)
+    {
+        bgFillRotate = guid;
+        if (!IsBgFillCandidate(bot))
+            return;
+        uint32 const team = bot->GetTeam() == ALLIANCE ? 0 : 1;
+        for (Request& r : requests)
+        {
+            if (r.team != team || r.candidates.size() >= ai::bgfill::CandidateLimit(r.need))
+                continue;
+            // The core's bracket and join checks (HandleBattlemasterJoinOpcode): level range, not queued for it yet.
+            if (bot->GetBattleGroundBracketIdFromLevel(r.bgTypeId) != r.bracketId || !bot->GetBGAccessByLevel(r.bgTypeId) ||
+                bot->InBattleGroundQueueForBattleGroundQueueType(r.queueTypeId))
+                continue;
+            r.candidates.push_back(bot);
+            ++collected;
+            return;
+        }
+    };
+    PlayerBotMap const& bots = GetAllBots();
+    PlayerBotMap::const_iterator const start = bots.upper_bound(bgFillRotate);
+    for (auto it = start; it != bots.end() && collected < wanted; ++it)
+        visit(it->first, it->second);
+    for (auto it = bots.begin(); it != start && collected < wanted; ++it)
+        visit(it->first, it->second);
+
+    // 5. Join on the world thread, as BGJoinAction::JoinQueue does (same packet and battlemaster bypass). No Refresh
+    //    for roster bots: no free repair, money or consumables, they keep their own economy.
+    for (Request& r : requests)
+    {
+        uint32 joined = 0;
+        for (Player* bot : r.candidates)
+        {
+            if (joined >= r.need)
+                break;
+            PlayerbotAI* ai = GetBotAI(bot);
+            BGJoinAction::SendBattlemasterJoin(ai, bot, r.bgTypeId, false);
+            // The core refuses silently (its own checks); the next candidate tries.
+            if (!bot->InBattleGroundQueueForBattleGroundQueueType(r.queueTypeId))
+                continue;
+            ai->SetBgFillPending(true);
+            BgFillEntry entry;
+            entry.queueType = uint32(r.queueTypeId);
+            entry.bgTypeId = uint32(r.bgTypeId);
+            entry.bracket = uint32(r.bracketId);
+            entry.team = r.team;
+            entry.joinMs = nowMs;
+            bgFillPending[bot->GetGUIDLow()] = entry;
+            ++joined;
+            ++bgFillMinute.joins;
+            if (trace)
+                sLog.outBasic("[BGFill] state=join bot=%u bg=%u bracket=%u side=%s", bot->GetGUIDLow(), uint32(r.bgTypeId),
+                    uint32(r.bracketId), r.team ? "H" : "A");
+        }
+        if (joined < r.need && trace)
+            sLog.outBasic("[BGFill] state=skip reason=nobots bg=%u bracket=%u side=%s", uint32(r.bgTypeId), uint32(r.bracketId),
+                r.team ? "H" : "A");
+    }
+}
+
+// A persistent-roster bot that is free to leave for a battleground now.
+bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const
+{
+    if (!bot || !bot->IsInWorld())
+        return false;
+    uint32 const guid = bot->GetGUIDLow();
+    PlayerbotAI* ai = GetBotAI(bot);
+    if (!ai || !IsPersistentRosterMember(guid) || !bot->IsAlive())
+        return false;
+    if (IsParkedBot(guid) || ai->IsParked())
+        return false;
+    // In no group: covers a group with a real player (#420) and the ad-hoc bot groups.
+    if (bot->GetGroup())
+        return false;
+    // Not in a dungeon, raid, battleground or arena map.
+    if (bot->InBattleGround() || !bot->GetMap() || bot->GetMap()->Instanceable())
+        return false;
+    if (bot->IsTaxiFlying() || bot->GetTransport() || bot->IsInCombat() || bot->IsBeingTeleportedFar())
+        return false;
+    // Not in a running quest rescue (asked for, or done and not yet taken by the bot).
+    if (ai->IsQuestRescueBusy())
+        return false;
+    if (ai->HasRealPlayerMaster())
+        return false;
+    // Deserter (26013): the core's own queue check.
+    if (!bot->CanJoinToBattleground())
+        return false;
+    // Logged in for at least 30 s (the login stamp is a WorldTimer value, HandlePlayerLogin).
+    if (WorldTimer::getMSTimeDiffToNow(bot->GetInGameTime()) < ai::bgfill::MinLoggedInSeconds * IN_MILLISECONDS)
+        return false;
+    if (!bot->HasFreeBattleGroundQueueId())
+        return false;
+    return !bgFillPending.count(guid) && !bgFillInBg.count(guid);
+}
+
+// Battlegrounds still running (not ended) with at least one persistent-roster bot inside. Once per interval and only
+// when a bracket needs bots: battlegrounds x players (<= 80 each).
+uint32 RandomPlayerbotMgr::CountBgFillRunning() const
+{
+    uint32 running = 0;
+    sBattleGroundMgr.ApplyAllBattleGrounds([&](BattleGround const* bg)
+    {
+        if (!bg || !bg->GetInstanceID() || bg->GetStatus() == STATUS_WAIT_LEAVE)
+            return;
+        for (auto const& [playerGuid, bgPlayer] : bg->GetPlayers())
+        {
+            if (IsPersistentRosterMember(playerGuid.GetCounter()))
+            {
+                ++running;
+                return;
+            }
+        }
+    });
+    return running;
+}
+
+// [BGFill] minute line, at most once per minute (AiPlayerbot.BG.Trace).
+void RandomPlayerbotMgr::ReportBgFillMinute()
+{
+    uint32 const now = uint32(time(nullptr));
+    if (!bgFillMinute.last)
+        bgFillMinute.last = now;
+    if (now - bgFillMinute.last < 60)
+        return;
+    if (sPlayerbotAIConfig.bgTrace)
+        sLog.outBasic("[BGFill] minute checks=%u joins=%u accepts=%u returns=%u pending=%u in_bg=%u scan_us_max=%u",
+            bgFillMinute.checks, bgFillMinute.joins, bgFillMinute.accepts, bgFillMinute.returns,
+            uint32(bgFillPending.size()), uint32(bgFillInBg.size()), uint32(bgFillMinute.scanUsMax));
+    bgFillMinute = BgFillMinute();
+    bgFillMinute.last = now;
 }
 
 void RandomPlayerbotMgr::CheckBgQueue()
