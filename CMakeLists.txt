@@ -1009,6 +1009,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_tick_diag_597_contract.cmake")
+  # twow-repo#597 (TICK-01): asynchronous log sink (Log.AsyncSink, default 0 = synchronous log) - bounded
+  # FIFO, drop counting, order across targets, drain.
+  add_executable(log_sink_597_test
+    "${TW_CORE_ROOT}/t/log_sink_597_test.cpp")
+  add_test(NAME log_sink_597_test COMMAND log_sink_597_test)
   # twow-repo#541/#551: parked bots hidden from other bots (Player flag, AiPlayerbot.Park.HideFromBots).
   add_test(NAME park_hide_541_contract
     COMMAND "${CMAKE_COMMAND}"
