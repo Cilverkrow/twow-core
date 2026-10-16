@@ -100,7 +100,8 @@ inline uint32_t CandidateLimit(uint32_t need)
 // twow-repo#517 stage b (AiPlayerbot.BG.SlotRelease): a real player who has waited SlotReleaseWaitSeconds uninvited
 // gets into a running battleground that holds fill bots - first by the pair option (he and one fill bot of the other
 // faction are invited together, OB-00 D2), else a fill bot of his side leaves and his slot is reserved for him (only
-// from a side above the minimum, so no PrematureFinish, G2/OB-20).
+// from a side above the minimum, so no PrematureFinish, G2/OB-20). A real player's queue group of k members counts as
+// a whole (owner 16.10.): k pair bots, or up to k releases in one decision.
 
 // AiPlayerbot.BG.SlotReleaseWaitSeconds: 0 = this default, below the minimum = the minimum.
 constexpr uint32_t DefaultSlotReleaseWaitSeconds = 60;
@@ -140,36 +141,74 @@ inline bool DeadlinePassed(uint32_t now, uint32_t until)
     return int32_t(now - until) >= 0;
 }
 
-// Pair option (OB-00 D2): both sides of the running battleground have a free slot (the core's free slots count the
-// invited players, BattleGround::GetFreeSlotsForTeam), so the player and one fill bot of the other faction fit.
-inline bool PairPossible(uint32_t countA, uint32_t countH, uint32_t maxPerTeam)
+// Owner 16.10. (OB-00): a real player queued as a group with his own bots has the same priority as a solo player. The
+// core queues and invites the group as one entry (GroupQueueInfo) of size k, never split, so the rules below take the
+// entry's size; a solo player is k = 1 and gets exactly the stage-b results. The core takes no group joins for AV
+// (HandleBattlemasterJoinOpcode), so an AV entry is always k = 1.
+
+// Pair option (OB-00 D2): both sides of the running battleground have k free slots (the core's free slots count the
+// invited players, BattleGround::GetFreeSlotsForTeam), so the player's entry and k fill bots of the other faction fit.
+inline bool PairPossible(uint32_t countA, uint32_t countH, uint32_t maxPerTeam, uint32_t k = 1)
 {
-    return countA < maxPerTeam && countH < maxPerTeam;
+    return k <= maxPerTeam && countA <= maxPerTeam - k && countH <= maxPerTeam - k;
 }
 
-// Slot release only from a side above the minimum: it stays at or above the minimum while the player's invite is
-// open, so the core's PrematureFinish countdown does not start (G2, OB-20).
-inline bool ReleaseAllowed(uint32_t countSide, uint32_t minPerTeam)
+// Slot release only from a side above the minimum: after its releases it stays at or above the minimum while the
+// player's invite is open, so the core's PrematureFinish countdown does not start (G2, OB-20).
+inline bool ReleaseAllowed(uint32_t countSide, uint32_t minPerTeam, uint32_t releases = 1)
 {
-    return countSide > minPerTeam;
+    return countSide > minPerTeam && countSide - minPerTeam >= releases;
 }
 
-// With InvitationType 1 the core invites a lone player into a running battleground only if the free slots of both
-// sides differ by at most the differential afterwards (BattleGroundQueue::FillPlayersToBG). After one release on his
-// side that holds when the invited counts differ by at most the differential before it; otherwise the release would
-// only shrink his side and he would still wait.
-inline bool ReleaseInvitesPlayer(uint32_t invitedSide, uint32_t invitedOther, uint32_t differential)
+// The core's FillPlayersToBG with InvitationType 1, for one entry of size k on the player's side and nothing else
+// selected (fill bots of his side still queued ahead of him leave first, ScanBgSlotRelease): the entry is selected when
+// his side has k free slots (SelectionPool::AddGroup). Then, with diffSide = freeSide - k and diffOther = freeOther:
+// |diffSide - diffOther| <= differential invites it; diffSide > diffOther + differential kicks the empty other pool and
+// breaks with the entry still selected (aliFree <= diffHorde + 1), which invites it too; diffSide < diffOther -
+// differential kicks the entry. So invited exactly when freeSide >= k and invitedOther - invitedSide >= k - differential
+// (free = max - invited).
+inline bool CoreInvitesEntry(uint32_t invitedSide, uint32_t invitedOther, uint32_t maxPerTeam, uint32_t differential, uint32_t k)
 {
-    uint32_t const diff = invitedSide > invitedOther ? invitedSide - invitedOther : invitedOther - invitedSide;
-    return diff <= differential;
+    if (!k || invitedSide > maxPerTeam || maxPerTeam - invitedSide < k)
+        return false;
+    return int64_t(invitedOther) - int64_t(invitedSide) >= int64_t(k) - int64_t(differential);
 }
 
-// Top-up: the player's side is full and the other side short, so there is no pair option, and a release alone would
-// not get him invited either. One bot of the other faction queues and the core invites it alone (it evens the free
-// slots); once the counts are close enough the release applies at a later interval.
-inline bool TopUpNeeded(uint32_t invitedSide, uint32_t invitedOther, uint32_t maxPerTeam, uint32_t differential)
+// With InvitationType 1 the core invites the player's entry alone into a running battleground only if the free slots of
+// both sides differ by at most the differential afterwards (CoreInvitesEntry). After k releases on his side that holds
+// when his side is at most the differential ahead before them. The other side may be at most differential + k - 1
+// ahead: with the WSG/AB differential 0 that is exactly "a release is needed at all" (the other side less than k ahead,
+// else the core invites the entry without one); for k = 1 both halves give the stage-b rule, the invited counts differ
+// by at most the differential. Otherwise the release would only shrink his side and he would still wait.
+inline bool ReleaseInvitesPlayer(uint32_t invitedSide, uint32_t invitedOther, uint32_t differential, uint32_t k = 1)
 {
-    return invitedSide >= maxPerTeam && invitedOther < maxPerTeam && !ReleaseInvitesPlayer(invitedSide, invitedOther, differential);
+    if (invitedSide >= invitedOther)
+        return invitedSide - invitedOther <= differential;
+    return invitedOther - invitedSide <= differential + (k ? k - 1 : 0);
+}
+
+// Releases from his side for one decision: the fewest (1..k) after which the core invites his entry of size k alone
+// (CoreInvitesEntry), 0 = no release gets it in (ReleaseInvitesPlayer, or not enough bots on his side). For k = 1 that
+// is 1 exactly when ReleaseInvitesPlayer holds. Bounded by k (at most MaxPlayersPerTeam).
+inline uint32_t ReleaseCount(uint32_t invitedSide, uint32_t invitedOther, uint32_t maxPerTeam, uint32_t differential, uint32_t k = 1)
+{
+    if (!k || k > maxPerTeam || !ReleaseInvitesPlayer(invitedSide, invitedOther, differential, k))
+        return 0;
+    for (uint32_t releases = 1; releases <= k && releases <= invitedSide; ++releases)
+    {
+        if (CoreInvitesEntry(invitedSide - releases, invitedOther, maxPerTeam, differential, k))
+            return releases;
+    }
+    return 0;
+}
+
+// Top-up: the player's side has fewer than k free slots and the other side is short, so there is no pair option, and
+// releases alone would not get him invited either. One bot of the other faction queues and the core invites it alone
+// (it evens the free slots); once the counts are close enough the release applies at a later interval.
+inline bool TopUpNeeded(uint32_t invitedSide, uint32_t invitedOther, uint32_t maxPerTeam, uint32_t differential, uint32_t k = 1)
+{
+    return (k > maxPerTeam || invitedSide > maxPerTeam - k) && invitedOther < maxPerTeam &&
+        !ReleaseInvitesPlayer(invitedSide, invitedOther, differential, k);
 }
 
 // Target battleground for a waiting player: the most fill bots on his side first, then the lowest instance id.
