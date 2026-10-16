@@ -2153,6 +2153,20 @@ add_test(NAME bg_master_cache_ref_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bg_master_cache_ref_source_contract_tests.cmake")
 
+# twow-repo#517 stage a: rules of the manager's battleground fill (AiPlayerbot.BG.Enable + AiPlayerbot.BG.PlayerFill).
+add_executable(bg_fill_policy_tests
+  "${PB_MODULE_DIR}/t/bg_fill_policy_tests.cpp")
+
+target_include_directories(bg_fill_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(bg_fill_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bg_fill_policy
+  COMMAND bg_fill_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#541 (audit A10): one PlayerTravelInfo per travel choice and keyed destination lookup (AiPlayerbot.Perf.TravelInfoReuse, default 0).
 add_test(NAME travel_info_reuse_source_contract
   COMMAND "${CMAKE_COMMAND}"
