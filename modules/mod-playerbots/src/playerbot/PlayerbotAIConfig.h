@@ -233,6 +233,13 @@ public:
     bool logRandomBotJoinLfg;
     bool randomBotJoinBG;
     bool randomBotAutoJoinBG;
+    // twow-repo#517 stage a: a real player queues for WSG/AB/AV, persistent-roster bots fill it (RandomPlayerbotMgr::CheckBgFill).
+    // All default off; restart-only. bgEnable is the master switch of every AiPlayerbot.BG.* stage.
+    bool bgEnable = false;
+    bool bgPlayerFill = false;
+    uint32 bgMaxConcurrent = 0;          // 0 = no bot battleground at all (fail closed)
+    uint32 bgCheckIntervalSeconds = 0;   // 0 = 30 s, minimum 10 s (ai::bgfill::CheckIntervalMs)
+    bool bgTrace = false;                // [BGFill] lines
     uint32 randomBotBracketCount;
     bool randomBotLoginAtStartup;
     uint32 randomBotTeleLevel;
