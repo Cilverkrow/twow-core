@@ -89,6 +89,8 @@ require_text("${dist}" "\nAsyncQueries.UnsafeBudgetMs = 0\n" "documented default
 slice("${dist}" "# AsyncQueries.UnsafeBudgetMs" "\nAsyncQueries.UnsafeBudgetMs = 0\n" dist_doc)
 require_text("${dist_doc}" "Default: 0 (off)" "documented as off by default")
 require_text("${dist_doc}" "\"[UnsafeBudget] calls_capped=<n> deferred_max=<n> ran=<n> loop_max_ms=<x>\"" "line documented")
+# Review follow-up: the pre-existing PlayerbotMgr lifetime hazard that N > 0 widens stays documented.
+require_text("${dist_doc}" "Caution (mod-playerbots): a '.bot add' bot login" "bot-login lifetime caution documented")
 require_text("${dist}" "\nAsyncQueriesTickTimeout = 15000\n" "AsyncQueriesTickTimeout untouched")
 require_text("${sql_h}" "static void SetUnsafeBudgetMs(uint32 ms);" "setter")
 require_text("${sql_h}" "static std::atomic<uint32> s_unsafeBudgetMs;" "relaxed atomic budget")
