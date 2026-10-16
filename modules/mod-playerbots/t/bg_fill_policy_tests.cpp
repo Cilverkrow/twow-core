@@ -188,6 +188,97 @@ void PairAndRelease()
     Require(!PreferTarget(3, 4, 3, 4), "same instance is not better");
 }
 
+// Owner 16.10.: a real player's queue entry of size k (his group with his own bots). k = 1 gives exactly the stage-b
+// results, checked over the whole range against the stage-b formulas.
+void GroupEntry()
+{
+    using namespace ai::bgfill;
+    for (uint32_t maxPerTeam : { 0u, 1u, 10u, 15u, 40u })
+    {
+        for (uint32_t s = 0; s <= maxPerTeam; ++s)
+        {
+            for (uint32_t o = 0; o <= maxPerTeam; ++o)
+            {
+                for (uint32_t d : { 0u, DifferentialAV })
+                {
+                    uint32_t const diff = s > o ? s - o : o - s;
+                    Require(PairPossible(s, o, maxPerTeam, 1) == (s < maxPerTeam && o < maxPerTeam), "k = 1: pair as stage b");
+                    Require(PairPossible(s, o, maxPerTeam, 1) == PairPossible(s, o, maxPerTeam), "k = 1 is the default: pair");
+                    Require(ReleaseAllowed(s, o, 1) == (s > o), "k = 1: release above the minimum as stage b");
+                    Require(ReleaseAllowed(s, o, 1) == ReleaseAllowed(s, o), "k = 1 is the default: minimum");
+                    Require(ReleaseInvitesPlayer(s, o, d, 1) == (diff <= d), "k = 1: balance as stage b");
+                    Require(ReleaseInvitesPlayer(s, o, d, 1) == ReleaseInvitesPlayer(s, o, d), "k = 1 is the default: balance");
+                    Require(TopUpNeeded(s, o, maxPerTeam, d, 1) == (s >= maxPerTeam && o < maxPerTeam && diff > d), "k = 1: top-up as stage b");
+                    Require(TopUpNeeded(s, o, maxPerTeam, d, 1) == TopUpNeeded(s, o, maxPerTeam, d), "k = 1 is the default: top-up");
+                    Require(ReleaseCount(s, o, maxPerTeam, d, 1) == (s >= 1 && diff <= d ? 1u : 0u), "k = 1: one release exactly when balanced");
+                    Require(ReleaseCount(s, o, maxPerTeam, d, 1) == ReleaseCount(s, o, maxPerTeam, d), "k = 1 is the default: count");
+                }
+            }
+        }
+    }
+
+    // The core's FillPlayersToBG for one entry alone (InvitationType 1).
+    Require(!CoreInvitesEntry(10, 10, 10, 0, 1), "WSG full: no slot");
+    Require(!CoreInvitesEntry(9, 9, 10, 0, 1), "WSG equal counts block a lone invite");
+    Require(CoreInvitesEntry(9, 10, 10, 0, 1), "WSG his side behind: invited");
+    Require(CoreInvitesEntry(8, 10, 10, 0, 2), "WSG pair of two, his side two behind: invited");
+    Require(!CoreInvitesEntry(8, 9, 10, 0, 2), "WSG pair of two, his side one behind: kicked");
+    Require(!CoreInvitesEntry(9, 10, 10, 0, 2), "WSG one free slot for a group of two: not selected");
+    Require(CoreInvitesEntry(38, 37, 40, DifferentialAV, 1), "AV his side ahead within the differential");
+    Require(!CoreInvitesEntry(0, 0, 10, 0, 0), "an empty entry is nobody");
+
+    // Pair: k free slots on both sides.
+    Require(PairPossible(8, 8, 10, 2), "group of two, two free on both sides");
+    Require(!PairPossible(9, 8, 10, 2), "group of two, alliance one free");
+    Require(!PairPossible(8, 9, 10, 2), "group of two, horde one free");
+    Require(PairPossible(0, 0, 10, 10), "a full side's group into an empty battleground");
+    Require(!PairPossible(0, 0, 10, 11), "group larger than a side");
+
+    // Minimum: the side stays at or above it after all releases of the decision.
+    Require(ReleaseAllowed(7, 5, 2), "two releases from 7, minimum 5");
+    Require(!ReleaseAllowed(6, 5, 2), "two releases from 6, minimum 5");
+    Require(ReleaseAllowed(10, 5, 5), "five releases from a full side");
+    Require(!ReleaseAllowed(5, 5, 0), "never from a side at the minimum");
+
+    // Releases for one decision: the fewest that get the entry in, 0 = none does.
+    Require(ReleaseCount(10, 10, 10, 0, 2) == 2, "WSG full, group of two: two releases");
+    Require(ReleaseCount(9, 9, 10, 0, 2) == 2, "WSG 9v9, group of two: two releases");
+    Require(ReleaseCount(9, 10, 10, 0, 2) == 1, "WSG his side one behind, group of two: one release");
+    Require(ReleaseCount(10, 9, 10, 0, 2) == 0, "WSG his side ahead: no release (top-up first)");
+    Require(ReleaseCount(8, 10, 10, 0, 2) == 0, "WSG the core invites the group without a release");
+    Require(ReleaseCount(5, 5, 10, 0, 3) == 3, "WSG 5v5, group of three: three releases");
+    Require(ReleaseCount(1, 1, 10, 0, 2) == 0, "fewer bots on his side than releases needed");
+    Require(ReleaseCount(10, 10, 10, 0, 11) == 0, "group larger than a side");
+    Require(ReleaseCount(10, 10, 10, 0, 0) == 0, "empty entry");
+    // The count is the fewest, at most k, and the core then invites the entry; whenever the balance allows it and his
+    // side has k bots, some count does.
+    for (uint32_t k = 1; k <= 6; ++k)
+    {
+        for (uint32_t s = 0; s <= 10; ++s)
+        {
+            for (uint32_t o = 0; o <= 10; ++o)
+            {
+                uint32_t const r = ReleaseCount(s, o, 10, 0, k);
+                Require(r <= k, "never more releases than members");
+                if (r)
+                {
+                    Require(CoreInvitesEntry(s - r, o, 10, 0, k), "the core invites the entry after the releases");
+                    Require(r == 1 || !CoreInvitesEntry(s - r + 1, o, 10, 0, k), "the fewest releases");
+                    Require(!CoreInvitesEntry(s, o, 10, 0, k), "no release where the core invites without one");
+                }
+                else if (ReleaseInvitesPlayer(s, o, 0, k) && s >= k)
+                    Require(false, "a balanced side with k bots gets a release count");
+            }
+        }
+    }
+
+    // Top-up: his side lacks k free slots, the other side is short and releases alone would not get the entry in.
+    Require(TopUpNeeded(9, 7, 10, 0, 2), "group of two, his side one free and ahead: top-up");
+    Require(!TopUpNeeded(9, 9, 10, 0, 2), "group of two, 9v9: the releases apply");
+    Require(!TopUpNeeded(8, 8, 10, 0, 2), "group of two, two free on both sides: the pair option applies");
+    Require(!TopUpNeeded(9, 10, 10, 0, 2), "other side full");
+}
+
 ai::bgfill::ReleaseCand Cand(uint32_t guid, uint32_t joinMs, bool flag, bool combat, bool alive)
 {
     ai::bgfill::ReleaseCand c;
@@ -237,6 +328,7 @@ int main()
     Candidates();
     StageBTimes();
     PairAndRelease();
+    GroupEntry();
     Victim();
     std::cout << "bg fill policy tests passed\n";
     return 0;
