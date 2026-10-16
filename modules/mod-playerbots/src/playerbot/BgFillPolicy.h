@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 namespace ai::bgfill
 {
@@ -94,5 +95,124 @@ inline bool PendingExpired(uint32_t now, uint32_t joinMs, uint32_t maxMs)
 inline uint32_t CandidateLimit(uint32_t need)
 {
     return need * CandidateFactor;
+}
+
+// twow-repo#517 stage b (AiPlayerbot.BG.SlotRelease): a real player who has waited SlotReleaseWaitSeconds uninvited
+// gets into a running battleground that holds fill bots - first by the pair option (he and one fill bot of the other
+// faction are invited together, OB-00 D2), else a fill bot of his side leaves and his slot is reserved for him (only
+// from a side above the minimum, so no PrematureFinish, G2/OB-20).
+
+// AiPlayerbot.BG.SlotReleaseWaitSeconds: 0 = this default, below the minimum = the minimum.
+constexpr uint32_t DefaultSlotReleaseWaitSeconds = 60;
+constexpr uint32_t MinSlotReleaseWaitSeconds = 15;
+// AiPlayerbot.BG.BotOnlyGraceSeconds: a started-for-fill battleground without a real player for this long ends.
+constexpr uint32_t DefaultBotOnlyGraceSeconds = 120;
+constexpr uint32_t MinBotOnlyGraceSeconds = 60;
+// Keeps the millisecond values of both from overflowing.
+constexpr uint32_t MaxStageBSeconds = 3600;
+
+// FillPlayersToBG's allowed difference of the free slots after an invite (InvitationType 1): AV 3, else 0.
+constexpr uint32_t DifferentialAV = 3;
+
+inline uint32_t ClampSeconds(uint32_t cfgSeconds, uint32_t defaultSeconds, uint32_t minSeconds)
+{
+    uint32_t seconds = cfgSeconds ? cfgSeconds : defaultSeconds;
+    if (seconds < minSeconds)
+        seconds = minSeconds;
+    if (seconds > MaxStageBSeconds)
+        seconds = MaxStageBSeconds;
+    return seconds;
+}
+
+inline uint32_t SlotReleaseWaitMs(uint32_t cfgSeconds)
+{
+    return ClampSeconds(cfgSeconds, DefaultSlotReleaseWaitSeconds, MinSlotReleaseWaitSeconds) * 1000;
+}
+
+inline uint32_t BotOnlyGraceMs(uint32_t cfgSeconds)
+{
+    return ClampSeconds(cfgSeconds, DefaultBotOnlyGraceSeconds, MinBotOnlyGraceSeconds) * 1000;
+}
+
+// A deadline (reservation end) has passed; the signed difference keeps a wrapped millisecond clock correct.
+inline bool DeadlinePassed(uint32_t now, uint32_t until)
+{
+    return int32_t(now - until) >= 0;
+}
+
+// Pair option (OB-00 D2): both sides of the running battleground have a free slot (the core's free slots count the
+// invited players, BattleGround::GetFreeSlotsForTeam), so the player and one fill bot of the other faction fit.
+inline bool PairPossible(uint32_t countA, uint32_t countH, uint32_t maxPerTeam)
+{
+    return countA < maxPerTeam && countH < maxPerTeam;
+}
+
+// Slot release only from a side above the minimum: it stays at or above the minimum while the player's invite is
+// open, so the core's PrematureFinish countdown does not start (G2, OB-20).
+inline bool ReleaseAllowed(uint32_t countSide, uint32_t minPerTeam)
+{
+    return countSide > minPerTeam;
+}
+
+// With InvitationType 1 the core invites a lone player into a running battleground only if the free slots of both
+// sides differ by at most the differential afterwards (BattleGroundQueue::FillPlayersToBG). After one release on his
+// side that holds when the invited counts differ by at most the differential before it; otherwise the release would
+// only shrink his side and he would still wait.
+inline bool ReleaseInvitesPlayer(uint32_t invitedSide, uint32_t invitedOther, uint32_t differential)
+{
+    uint32_t const diff = invitedSide > invitedOther ? invitedSide - invitedOther : invitedOther - invitedSide;
+    return diff <= differential;
+}
+
+// Target battleground for a waiting player: the most fill bots on his side first, then the lowest instance id.
+inline bool PreferTarget(uint32_t fillOnSide, uint32_t instanceId, uint32_t bestFillOnSide, uint32_t bestInstanceId)
+{
+    if (fillOnSide != bestFillOnSide)
+        return fillOnSide > bestFillOnSide;
+    return instanceId < bestInstanceId;
+}
+
+// A manager-owned fill bot on the player's side of the target battleground.
+struct ReleaseCand
+{
+    uint32_t guid = 0;
+    uint32_t joinMs = 0;        // when it joined the battleground (accept)
+    bool carriesFlag = false;   // WSG flag aura or the battleground's flag picker
+    bool inCombat = false;
+    bool alive = true;
+};
+
+// The bot that leaves for the waiting player: never a flag carrier, never a dead one; out of combat before in combat;
+// then the latest joined (age from nowMs, so a wrapped clock stays correct); then the lowest guid. 0 = no victim.
+inline uint32_t ChooseReleaseVictim(std::vector<ReleaseCand> const& cands, uint32_t nowMs)
+{
+    ReleaseCand const* best = nullptr;
+    for (ReleaseCand const& c : cands)
+    {
+        if (!c.guid || c.carriesFlag || !c.alive)
+            continue;
+        if (!best)
+        {
+            best = &c;
+            continue;
+        }
+        if (c.inCombat != best->inCombat)
+        {
+            if (!c.inCombat)
+                best = &c;
+            continue;
+        }
+        uint32_t const age = nowMs - c.joinMs;
+        uint32_t const bestAge = nowMs - best->joinMs;
+        if (age != bestAge)
+        {
+            if (age < bestAge)
+                best = &c;
+            continue;
+        }
+        if (c.guid < best->guid)
+            best = &c;
+    }
+    return best ? best->guid : 0;
 }
 }
