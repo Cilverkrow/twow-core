@@ -164,6 +164,14 @@ inline bool ReleaseInvitesPlayer(uint32_t invitedSide, uint32_t invitedOther, ui
     return diff <= differential;
 }
 
+// Top-up: the player's side is full and the other side short, so there is no pair option, and a release alone would
+// not get him invited either. One bot of the other faction queues and the core invites it alone (it evens the free
+// slots); once the counts are close enough the release applies at a later interval.
+inline bool TopUpNeeded(uint32_t invitedSide, uint32_t invitedOther, uint32_t maxPerTeam, uint32_t differential)
+{
+    return invitedSide >= maxPerTeam && invitedOther < maxPerTeam && !ReleaseInvitesPlayer(invitedSide, invitedOther, differential);
+}
+
 // Target battleground for a waiting player: the most fill bots on his side first, then the lowest instance id.
 inline bool PreferTarget(uint32_t fillOnSide, uint32_t instanceId, uint32_t bestFillOnSide, uint32_t bestInstanceId)
 {
