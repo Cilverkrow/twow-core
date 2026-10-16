@@ -326,10 +326,10 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
         //   Start/stop take logLock exclusively, so no caller is in a write while the mode switches.
         // - Errors are queued like every line (a waiting outError would put the caller back on a
         //   stalled pipe). The writer is woken per line, so a line normally reaches its targets within
-        //   microseconds. Lines still queued when the process dies are lost (at most the queue bound:
-        //   Log.AsyncSinkMaxLines lines, 64 MiB); the crash paths flush first (FlushAsyncSink: the
-        //   SIGSEGV anticrash backtrace, the freeze detector, and std::terminate through a handler the
-        //   sink installs when it starts).
+        //   microseconds. Lines still queued or being written when the process dies are lost (at most
+        //   the bound, which covers both: Log.AsyncSinkMaxLines lines, 64 MiB); the crash paths flush
+        //   first (FlushAsyncSink: the SIGSEGV anticrash backtrace, the freeze detector, and
+        //   std::terminate through a handler the sink installs when it starts).
         // - [LogWait] (PerformanceLog.LogWriteTrace) then measures the caller's cost per line (format +
         //   enqueue) as stdout_max_us, file_max_us stays 0; the writer's I/O is [LogSink] write_max_us.
         void ApplyAsyncSinkConfig(bool reload);
@@ -341,7 +341,8 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
         // World thread, every tick (WorldTickEnd): once a minute "[LogSink] lines=<n> dropped=<n>
         // max_depth=<n> write_max_us=<x>" into the performance log. Written by the world thread, not
         // by the writer: the writer must not call sLog, and a stalled writer still gets reported (lines
-        // falls, max_depth and dropped rise). No sink: one atomic load.
+        // falls, max_depth and dropped rise; max_depth = lines queued or being written). No sink: one
+        // atomic load.
         void AsyncSinkMinute();
         bool IsAsyncSinkOn() const { return AsyncSinkOn(); }
 

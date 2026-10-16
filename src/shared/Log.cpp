@@ -541,8 +541,9 @@ std::string Log::GetTimestampStr()
 }
 
 // twow-repo#597 (TICK-01, Log.AsyncSink): the queue and the writer thread. One short std::mutex guards
-// the FIFO and the flags; the writer pops the whole queue under it and writes without any lock. It
-// never touches sLog: only this state and the FILE* handles in the lines.
+// the FIFO and the flags; the writer pops at most log_sink::PopChunk lines under it (bounded time under
+// the lock, also right after a stall) and writes them without any lock. It never touches sLog: only this
+// state and the FILE* handles in the lines.
 struct LogAsyncSinkState
 {
     explicit LogAsyncSinkState(std::size_t maxLines) : fifo(maxLines, log_sink::MaxQueuedBytes) {}
@@ -552,7 +553,7 @@ struct LogAsyncSinkState
     std::condition_variable idle;   // drain / flush: lines written
     log_sink::BoundedFifo<log_sink::Line> fifo;
     bool stop = false;      // drained: the writer ends
-    bool abandon = false;   // the drain timed out: the writer ends after its current batch
+    bool abandon = false;   // the drain timed out: the writer ends after its current chunk
     std::thread thread;     // joined or detached by Log::StopAsyncSink only
 
     log_sink::PushResult Push(log_sink::Line& line)
@@ -570,14 +571,16 @@ struct LogAsyncSinkState
 
     void Run()
     {
-        std::vector<log_sink::Line> batch;   // at most the queue bound
+        std::vector<log_sink::Line> batch;   // at most log_sink::PopChunk lines
+        batch.reserve(log_sink::PopChunk);
         std::unique_lock<std::mutex> lock(mutex);
         while (true)
         {
             work.wait(lock, [this] { return fifo.Depth() != 0 || stop || abandon; });
             if (abandon || (stop && fifo.Depth() == 0))
                 break;
-            fifo.PopAll(batch);
+            std::size_t bytes = 0;
+            fifo.PopUpTo(batch, log_sink::PopChunk, bytes);
             lock.unlock();
             uint64 maxUs = 0;
             for (log_sink::Line& line : batch)
@@ -589,13 +592,13 @@ struct LogAsyncSinkState
             std::size_t const written = batch.size();
             batch.clear();
             lock.lock();
-            fifo.MarkWritten(written, maxUs);
+            fifo.MarkWritten(written, bytes, maxUs);
             idle.notify_all();
         }
     }
 
     // Closes the queue and waits (bounded) until everything queued is written; then the writer ends
-    // (drained) or ends after its current batch (timed out, the rest stays unwritten).
+    // (drained) or ends after its current chunk (timed out, the rest stays unwritten).
     bool Drain(uint32 waitMs)
     {
         std::unique_lock<std::mutex> lock(mutex);
@@ -1829,7 +1832,7 @@ void Log::StopAsyncSink(char const* reason)
         else
         {
             // The writer is blocked in a write (stalled console pipe or disk): leave it, it ends after
-            // its current batch; the state lives on in its shared_ptr.
+            // its current chunk; the state lives on in its shared_ptr.
             m_sink->thread.detach();
             m_sinkAbandoned = true;
         }

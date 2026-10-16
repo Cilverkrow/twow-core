@@ -32,6 +32,10 @@ static constexpr std::size_t MaxQueuedBytes = 64u * 1024u * 1024u;
 // Bounded waits: drain at shutdown / reload to 0, flush before a crash ends the process.
 static constexpr std::uint32_t DrainWaitMs = 5000;
 static constexpr std::uint32_t CrashFlushWaitMs = 2000;
+// Short wait of the Discord log read, which holds logLock exclusively (every logging thread waits).
+static constexpr std::uint32_t DiscordReadFlushWaitMs = 100;
+// Lines the writer takes per turn of the sink lock (bounded time under the lock after a stall).
+static constexpr std::size_t PopChunk = 256;
 
 // Log.AsyncSinkMaxLines: 0 or less = built-in bound, else clamped to [MinMaxLines, MaxMaxLines].
 inline std::size_t EffectiveMaxLines(std::int64_t configured)
@@ -181,8 +185,9 @@ enum class PushResult
     Closed    // the sink stops: the caller writes the line itself
 };
 
-// The [LogSink] minute window. lines = lines the writer wrote, max_depth = deepest queue (the window
-// starts at the depth it found), write_max_us = slowest line of the writer (all its targets).
+// The [LogSink] minute window. lines = lines the writer wrote, max_depth = deepest backlog (lines queued
+// or being written; the window starts at the backlog it found), write_max_us = slowest line of the writer
+// (all its targets).
 struct Window
 {
     std::uint64_t lines = 0;
@@ -191,7 +196,9 @@ struct Window
     std::uint64_t writeMaxUs = 0;
 };
 
-// Ring of at most maxLines items (grown on demand, never above the bound) and maxBytes payload.
+// Ring of queued items (grown on demand, never above maxLines). The bounds cover every item not written
+// yet: queued plus the chunk the writer has popped and is still writing (Pending(), PendingBytes()). So
+// at most maxLines items / maxBytes payload are ever held, and that is also the most a crash can lose.
 template <typename T>
 class BoundedFifo
 {
@@ -204,7 +211,7 @@ public:
     {
         if (m_closed)
             return PushResult::Closed;
-        if (m_count >= m_maxLines || bytes > m_maxBytes - m_bytes)
+        if (Pending() >= m_maxLines || bytes > m_maxBytes - m_pendingBytes)
         {
             ++m_window.dropped;
             ++m_droppedTotal;
@@ -217,33 +224,42 @@ public:
         s.bytes = bytes;
         ++m_count;
         m_bytes += bytes;
+        m_pendingBytes += bytes;
         ++m_accepted;
-        m_window.maxDepth = std::max<std::uint64_t>(m_window.maxDepth, m_count);
+        m_window.maxDepth = std::max<std::uint64_t>(m_window.maxDepth, Pending());
         return PushResult::Queued;
     }
 
-    // Moves every queued item into out (cleared first), oldest first; the queue is empty afterwards.
-    std::size_t PopAll(std::vector<T>& out)
+    // Moves at most maxItems of the oldest queued items into out (cleared first), oldest first; bytes =
+    // their payload, handed back to MarkWritten. The work per call is bounded by maxItems: the writer
+    // holds the sink lock for it, and every logging caller waits on that lock.
+    std::size_t PopUpTo(std::vector<T>& out, std::size_t maxItems, std::size_t& bytes)
     {
         out.clear();
-        out.reserve(m_count);
-        for (std::size_t i = 0; i < m_count; ++i)
+        bytes = 0;
+        std::size_t const n = std::min(m_count, maxItems);
+        for (std::size_t i = 0; i < n; ++i)
         {
-            Slot& s = m_ring[(m_head + i) % m_ring.size()];
+            Slot& s = m_ring[m_head];
             out.push_back(std::move(s.item));
             s.item = T();
+            bytes += s.bytes;
             s.bytes = 0;
+            m_head = (m_head + 1) % m_ring.size();
         }
-        m_head = 0;
-        m_count = 0;
-        m_bytes = 0;
-        return out.size();
+        m_count -= n;
+        m_bytes -= bytes;
+        if (m_count == 0)
+            m_head = 0;
+        return n;
     }
 
-    // The writer finished n popped items; maxUs = its slowest one.
-    void MarkWritten(std::size_t n, std::uint64_t maxUs)
+    // The writer finished n popped items of bytes payload; maxUs = its slowest one. Only now do they
+    // leave the bound.
+    void MarkWritten(std::size_t n, std::size_t bytes, std::uint64_t maxUs)
     {
         m_written += n;
+        m_pendingBytes -= std::min(bytes, m_pendingBytes);
         m_window.lines += n;
         m_window.writeMaxUs = std::max(m_window.writeMaxUs, maxUs);
     }
@@ -253,12 +269,13 @@ public:
     {
         Window const w = m_window;
         m_window = Window();
-        m_window.maxDepth = m_count;
+        m_window.maxDepth = Pending();
         return w;
     }
 
     void Close() { m_closed = true; }
     bool Closed() const { return m_closed; }
+    // Queued, not popped yet.
     std::size_t Depth() const { return m_count; }
     std::size_t Bytes() const { return m_bytes; }
     std::size_t MaxLines() const { return m_maxLines; }
@@ -266,8 +283,10 @@ public:
     std::uint64_t Accepted() const { return m_accepted; }
     std::uint64_t Written() const { return m_written; }
     std::uint64_t DroppedTotal() const { return m_droppedTotal; }
-    // Queued or popped but not written yet (what a drain waits for, what a crash loses).
+    // Queued or popped but not written yet (what the bound covers, what a drain waits for, what a crash
+    // loses).
     std::uint64_t Pending() const { return m_accepted - m_written; }
+    std::size_t PendingBytes() const { return m_pendingBytes; }
 
 private:
     struct Slot
@@ -276,6 +295,8 @@ private:
         std::size_t bytes = 0;
     };
 
+    // Doubles the ring (at most up to the bound): O(depth) under the sink lock, but only about log2(bound / 16)
+    // times over the life of the sink (the ring never shrinks).
     void Grow()
     {
         std::size_t const size = std::min(std::max<std::size_t>(m_ring.size() * 2, 16), m_maxLines);
@@ -291,7 +312,8 @@ private:
     std::vector<Slot> m_ring;
     std::size_t m_head = 0;
     std::size_t m_count = 0;
-    std::size_t m_bytes = 0;
+    std::size_t m_bytes = 0;          // queued
+    std::size_t m_pendingBytes = 0;   // queued + popped, not written yet (the byte bound)
     bool m_closed = false;
     std::uint64_t m_accepted = 0;
     std::uint64_t m_written = 0;
