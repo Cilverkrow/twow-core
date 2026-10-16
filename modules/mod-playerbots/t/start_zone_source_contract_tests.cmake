@@ -97,6 +97,12 @@ require_text("${botai}" "bot->IsCurrentQuest(sz::QuestBadNews, 0), bot->IsCurren
 require_text("${botai}" "sz::IslandLeaveAllowed(sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), startZones)" "8.29 roster rule kept off")
 require_text("${botai}" "gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now))" "8.29 leave rule")
 require_order("${botai}" "uint32 questFlight = 0;" "else if ((islandCandidate || HasRealPlayerMaster()) && freeToTravel)" "Q1 before 8.29")
+# Wave-0 A/B 16.10.: the walk to a machine waits while the bot is in a death series or a death loop (island scorpid
+# field); 8.29 is guarded only with the switch on, off it is unchanged.
+require_text("${botai}" "else if (!IsCautious() && !IsInDeathLoop())
+                    bot->GetMotionMaster()->MovePoint(0, machine.x, machine.y, machine.z, MOVE_PATHFINDING);" "Q1 walk guarded")
+require_text("${botai}" "else if (!startZones || (!IsCautious() && !IsInDeathLoop()))
+                        bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);" "8.29 walk guarded only with the switch")
 require_text("${botai}" "sz::ShipCandidate(startZones, bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY())" "S1 gated")
 require_text("${botai}" "bot->TeleportTo(sz::AuberdineMap, sz::AuberdineDockX, sz::AuberdineDockY, sz::AuberdineDockZ, bot->GetOrientation());" "S1 move")
 
