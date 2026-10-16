@@ -3889,6 +3889,14 @@ void RandomPlayerbotMgr::LeaveBotOnlyBg()
                         stop = "player";
                         break;
                     }
+                    // OB-10 16.10.: a bot of a real player's group (its master, or its original group holds a real
+                    // player) never leaves; it keeps the battleground from emptying, so the end stops as for a player.
+                    PlayerbotAI* const botAi = GetBotAI(bot);
+                    if (botAi && InRealPlayerGroup(bot, botAi))
+                    {
+                        stop = "realgroup";
+                        break;
+                    }
                     uint32 const side = member.second.PlayerTeam == HORDE ? 1 : 0;
                     ++inside[side];
                     if (!leaver[side] && GetBotAI(bot) && bot->IsInWorld() && !bot->IsBeingTeleported() &&

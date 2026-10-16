@@ -107,7 +107,8 @@ AiPlayerbot.BG.SlotReleaseWaitSeconds = 0
 # into a battleground being emptied declines that invite.
 AiPlayerbot.BG.BotOnlyCleanup = 1
 # BotOnlyGraceSeconds: how long a battleground started for the fill may run without a real player before BotOnlyCleanup
-# empties it. An open invite or a player inside who is not a bot pauses that: before the grace has run out it starts
+# empties it. An open invite, a player inside who is not a bot, or a bot of a real player's group inside (it never
+# leaves) pauses that: before the grace has run out it starts
 # again once he is gone; once the emptying is due, it goes on at the next check after he is gone, without a new grace.
 # A real player waiting uninvited for that battleground and bracket does not keep it, but the bots leave so that the
 # core does not invite him into it; when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds.
