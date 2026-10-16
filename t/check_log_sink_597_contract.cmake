@@ -236,7 +236,13 @@ slice("${log_cpp}" "static void LogSinkTerminate()" "\n}\n" term_fn)
 require_order("${term_fn}" "sink->Flush(log_sink::CrashFlushWaitMs);" "s_prevTerminate();" "terminate: flush, then the previous handler")
 require_text("${log_cpp}" "std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);" "a crash flush never blocks on the sink mutex")
 require_text("${gm_cpp}" "std::unique_lock<std::shared_mutex> l{ sLog.logLock };\n        // twow-repo#597" "Discord log read flushes under its exclusive lock")
-require_text("${gm_cpp}" "sLog.FlushAsyncSink(log_sink::DrainWaitMs);" "Discord log read flush bounded")
+# Short wait (every logging thread waits on logLock meanwhile), and a writer that is behind keeps its
+# FILE position: no ftell/fseek after a failed flush (review follow-up).
+require_text("${policy_h}" "static constexpr std::uint32_t DiscordReadFlushWaitMs = 100;" "Discord log read wait short")
+forbid_text("${gm_cpp}" "FlushAsyncSink(log_sink::DrainWaitMs)" "a 5 s flush under the exclusive logLock")
+slice("${gm_cpp}" "std::unique_lock<std::shared_mutex> l{ sLog.logLock };" "int streamPos = ftell(logfile);" gm_flush)
+require_text("${gm_flush}" "if (!sLog.FlushAsyncSink(log_sink::DiscordReadFlushWaitMs))\n        {\n            l.unlock();" "failed flush: lock released")
+require_order("${gm_flush}" "l.unlock();" "            return;\n        }" "failed flush: no file position moved")
 
 # ---- [LogSink] minute line: world thread, off = one atomic load, counters taken before the line.
 slice("${log_cpp}" "void Log::AsyncSinkMinute()" "\n}\n" minute_fn)
