@@ -189,7 +189,8 @@ void PairAndRelease()
 }
 
 // Owner 16.10.: a real player's queue entry of size k (his group with his own bots). k = 1 gives exactly the stage-b
-// results, checked over the whole range against the stage-b formulas.
+// results, checked over the whole range against the stage-b formulas (follow-up review: but no release where the core
+// invites him already, which the AV differential allows even while his side is ahead).
 void GroupEntry()
 {
     using namespace ai::bgfill;
@@ -210,7 +211,10 @@ void GroupEntry()
                     Require(ReleaseInvitesPlayer(s, o, d, 1) == ReleaseInvitesPlayer(s, o, d), "k = 1 is the default: balance");
                     Require(TopUpNeeded(s, o, maxPerTeam, d, 1) == (s >= maxPerTeam && o < maxPerTeam && diff > d), "k = 1: top-up as stage b");
                     Require(TopUpNeeded(s, o, maxPerTeam, d, 1) == TopUpNeeded(s, o, maxPerTeam, d), "k = 1 is the default: top-up");
-                    Require(ReleaseCount(s, o, maxPerTeam, d, 1) == (s >= 1 && diff <= d ? 1u : 0u), "k = 1: one release exactly when balanced");
+                    Require(ReleaseCount(s, o, maxPerTeam, d, 1) ==
+                        (s >= 1 && diff <= d && !CoreInvitesEntry(s, o, maxPerTeam, d, 1) ? 1u : 0u),
+                        "k = 1: one release exactly when balanced and the core does not invite him already");
+                    Require(PairCount(s, o, d, 1) == 1 + (s > o + d ? s - o - d : 0), "k = 1: one pair bot plus the lead beyond the differential");
                     Require(ReleaseCount(s, o, maxPerTeam, d, 1) == ReleaseCount(s, o, maxPerTeam, d), "k = 1 is the default: count");
                 }
             }
@@ -250,24 +254,66 @@ void GroupEntry()
     Require(ReleaseCount(1, 1, 10, 0, 2) == 0, "fewer bots on his side than releases needed");
     Require(ReleaseCount(10, 10, 10, 0, 11) == 0, "group larger than a side");
     Require(ReleaseCount(10, 10, 10, 0, 0) == 0, "empty entry");
-    // The count is the fewest, at most k, and the core then invites the entry; whenever the balance allows it and his
-    // side has k bots, some count does.
-    for (uint32_t k = 1; k <= 6; ++k)
+    // Follow-up review: AV Horde 40, Alliance 38 - the core invites the Alliance player without a release.
+    Require(CoreInvitesEntry(38, 40, 40, DifferentialAV, 1), "AV his side two behind: invited");
+    Require(ReleaseCount(38, 40, 40, DifferentialAV, 1) == 0, "AV no release where the core invites without one");
+    Require(ReleaseCount(40, 38, 40, DifferentialAV, 1) == 1, "AV his side full and ahead within the differential: one release");
+    Require(ReleaseCount(39, 36, 40, DifferentialAV, 1) == 1, "AV his side three ahead: one release");
+    // The count is the fewest, at most k, and the core then invites the entry; whenever the balance allows it, his side
+    // has k bots and the core does not invite the entry already, some count does. Both differentials.
+    for (uint32_t d : { 0u, DifferentialAV })
     {
-        for (uint32_t s = 0; s <= 10; ++s)
+        uint32_t const maxPerTeam = d ? 40 : 10;
+        for (uint32_t k = 1; k <= 6; ++k)
         {
-            for (uint32_t o = 0; o <= 10; ++o)
+            for (uint32_t s = 0; s <= maxPerTeam; ++s)
             {
-                uint32_t const r = ReleaseCount(s, o, 10, 0, k);
-                Require(r <= k, "never more releases than members");
-                if (r)
+                for (uint32_t o = 0; o <= maxPerTeam; ++o)
                 {
-                    Require(CoreInvitesEntry(s - r, o, 10, 0, k), "the core invites the entry after the releases");
-                    Require(r == 1 || !CoreInvitesEntry(s - r + 1, o, 10, 0, k), "the fewest releases");
-                    Require(!CoreInvitesEntry(s, o, 10, 0, k), "no release where the core invites without one");
+                    uint32_t const r = ReleaseCount(s, o, maxPerTeam, d, k);
+                    Require(r <= k, "never more releases than members");
+                    if (r)
+                    {
+                        Require(CoreInvitesEntry(s - r, o, maxPerTeam, d, k), "the core invites the entry after the releases");
+                        Require(r == 1 || !CoreInvitesEntry(s - r + 1, o, maxPerTeam, d, k), "the fewest releases");
+                        Require(!CoreInvitesEntry(s, o, maxPerTeam, d, k), "no release where the core invites without one");
+                    }
+                    else if (ReleaseInvitesPlayer(s, o, d, k) && s >= k && !CoreInvitesEntry(s, o, maxPerTeam, d, k))
+                        Require(false, "a balanced side with k bots gets a release count");
                 }
-                else if (ReleaseInvitesPlayer(s, o, 0, k) && s >= k)
-                    Require(false, "a balanced side with k bots gets a release count");
+            }
+        }
+    }
+
+    // Follow-up review: pair bots for an entry of size k - the lead of his side beyond the differential goes along, so
+    // the free slots are even after the invite (the core's balance loop then keeps the entry and every bot) and the bots
+    // still fit (PairPossible).
+    Require(PairCount(6, 6, 0, 3) == 3, "WSG even counts: k bots");
+    Require(PairCount(7, 6, 0, 3) == 4, "WSG 7v6, group of three: four bots");
+    Require(PairCount(11, 9, 0, 4) == 6, "AB 11v9, group of four: six bots");
+    Require(PairCount(6, 7, 0, 3) == 3, "WSG his side behind: k bots");
+    Require(PairCount(30, 27, DifferentialAV, 1) == 1, "AV lead within the differential: one bot");
+    Require(PairCount(31, 27, DifferentialAV, 1) == 2, "AV lead one beyond the differential: two bots");
+    for (uint32_t d : { 0u, DifferentialAV })
+    {
+        uint32_t const maxPerTeam = d ? 40 : 15;
+        for (uint32_t k = 1; k <= 6; ++k)
+        {
+            for (uint32_t s = 0; s <= maxPerTeam; ++s)
+            {
+                for (uint32_t o = 0; o <= maxPerTeam; ++o)
+                {
+                    if (!PairPossible(s, o, maxPerTeam, k))
+                        continue;
+                    uint32_t const count = PairCount(s, o, d, k);
+                    Require(count >= k, "at least one bot per member");
+                    Require(o + count <= maxPerTeam, "the pair bots fit on the other side");
+                    // Free slots after the selection: his side max - s - k, the other side max - o - count.
+                    int64_t const freeSide = int64_t(maxPerTeam) - s - k;
+                    int64_t const freeOther = int64_t(maxPerTeam) - o - count;
+                    int64_t const gap = freeSide > freeOther ? freeSide - freeOther : freeOther - freeSide;
+                    Require(s < o || gap <= int64_t(d), "his side ahead: the free slots within the differential after the pair");
+                }
             }
         }
     }

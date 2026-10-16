@@ -101,7 +101,7 @@ inline uint32_t CandidateLimit(uint32_t need)
 // gets into a running battleground that holds fill bots - first by the pair option (he and one fill bot of the other
 // faction are invited together, OB-00 D2), else a fill bot of his side leaves and his slot is reserved for him (only
 // from a side above the minimum, so no PrematureFinish, G2/OB-20). A real player's queue group of k members counts as
-// a whole (owner 16.10.): k pair bots, or up to k releases in one decision.
+// a whole (owner 16.10.): k pair bots (more while his side is ahead, PairCount), or up to k releases in one decision.
 
 // AiPlayerbot.BG.SlotReleaseWaitSeconds: 0 = this default, below the minimum = the minimum.
 constexpr uint32_t DefaultSlotReleaseWaitSeconds = 60;
@@ -153,6 +153,17 @@ inline bool PairPossible(uint32_t countA, uint32_t countH, uint32_t maxPerTeam, 
     return k <= maxPerTeam && countA <= maxPerTeam - k && countH <= maxPerTeam - k;
 }
 
+// Pair bots for the entry of size k (follow-up review): with his side more than the differential ahead, k bots leave
+// the free slots uneven, so the core's balance loop (FillPlayersToBG) kicks his entry and invites only some of the bots;
+// the rest stay queued for him and block the next pair until they expire. The bots by which his side is ahead beyond
+// the differential go along, so the free slots are even after the invite and the core invites his entry and all of
+// them together. PairPossible keeps the room: invitedOther + count = invitedSide + k - differential <= maxPerTeam.
+inline uint32_t PairCount(uint32_t invitedSide, uint32_t invitedOther, uint32_t differential, uint32_t k = 1)
+{
+    uint32_t const ahead = invitedSide > invitedOther ? invitedSide - invitedOther : 0;
+    return k + (ahead > differential ? ahead - differential : 0);
+}
+
 // Slot release only from a side above the minimum: after its releases it stays at or above the minimum while the
 // player's invite is open, so the core's PrematureFinish countdown does not start (G2, OB-20).
 inline bool ReleaseAllowed(uint32_t countSide, uint32_t minPerTeam, uint32_t releases = 1)
@@ -188,11 +199,15 @@ inline bool ReleaseInvitesPlayer(uint32_t invitedSide, uint32_t invitedOther, ui
 }
 
 // Releases from his side for one decision: the fewest (1..k) after which the core invites his entry of size k alone
-// (CoreInvitesEntry), 0 = no release gets it in (ReleaseInvitesPlayer, or not enough bots on his side). For k = 1 that
-// is 1 exactly when ReleaseInvitesPlayer holds. Bounded by k (at most MaxPlayersPerTeam).
+// (CoreInvitesEntry), 0 = no release gets it in (ReleaseInvitesPlayer, or not enough bots on his side) or none is
+// needed (the core invites the entry without one - with the AV differential his side may be ahead and still get in; a
+// release would only shrink it, follow-up review). For k = 1 that is 1 exactly when ReleaseInvitesPlayer holds and the
+// core does not invite him already. Bounded by k (at most MaxPlayersPerTeam).
 inline uint32_t ReleaseCount(uint32_t invitedSide, uint32_t invitedOther, uint32_t maxPerTeam, uint32_t differential, uint32_t k = 1)
 {
     if (!k || k > maxPerTeam || !ReleaseInvitesPlayer(invitedSide, invitedOther, differential, k))
+        return 0;
+    if (CoreInvitesEntry(invitedSide, invitedOther, maxPerTeam, differential, k))
         return 0;
     for (uint32_t releases = 1; releases <= k && releases <= invitedSide; ++releases)
     {
