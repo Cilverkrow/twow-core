@@ -2246,6 +2246,17 @@ static uint32 BgFillBracketKey(uint32 queueType, uint32 bracket)
     return queueType * MAX_BATTLEGROUND_BRACKETS + bracket;
 }
 
+// Owner 16.10. (OB-00): a bot the fill queued is alone in its core queue entry (SendBattlemasterJoin, joinAsGroup false).
+// A bot in an entry with more members was queued by its group - a real player's group with his bots counts as a whole -
+// and belongs to that entry, never to the fill. The core's own reader, a copy under the queue's own m_Lock, on the world
+// thread as BattleGroundMgr::Update; only the copy's member count is read.
+static bool InGroupQueueEntry(Player* bot, BattleGroundQueueTypeId queueTypeId)
+{
+    GroupQueueInfo entryInfo;
+    return sBattleGroundMgr.m_BattleGroundQueues[queueTypeId].GetPlayerGroupInfoData(bot->GetObjectGuid(), &entryInfo) &&
+        entryInfo.Players.size() > 1;
+}
+
 // twow-repo#517 stage a (AiPlayerbot.BG.Enable + AiPlayerbot.BG.PlayerFill): persistent-roster bots fill a battleground
 // a real player queues for. Runs from the roster branch of UpdateAIInternal, i.e. from PlayerbotWorldScript::OnUpdate
 // (WORLDHOOK_ON_UPDATE, end of World::Update): sMapMgr.Update has waited for every continent and instance update by
@@ -2296,6 +2307,19 @@ void RandomPlayerbotMgr::UpdateBgFillMembers()
         {
             if (ai)
                 ai->SetBgFillPending(false);
+            it = bgFillPending.erase(it);
+            continue;
+        }
+
+        // Queued again in a group's entry (owner 16.10.): that entry owns the bot now, it is no fill bot any more. The
+        // core lets no group with a queued member join (Group::CanJoinBattleGroundQueue), so this is a guard: the entry
+        // is dropped without a leave, which would take the bot out of the group's entry (and the busy/unfit checks below
+        // would make it leave). Looked up only for a grouped bot, bounded by the pending set.
+        if (bot->GetGroup() && InGroupQueueEntry(bot, queueTypeId))
+        {
+            if (sPlayerbotAIConfig.bgTrace)
+                sLog.outBasic("[BGFill] state=drop bot=%u bg=%u reason=groupentry", guid, entry.bgTypeId);
+            ai->SetBgFillPending(false);
             it = bgFillPending.erase(it);
             continue;
         }
@@ -2408,7 +2432,16 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
     //    A player briefly out of the world (loading screen, far teleport) still counts: his queue slots, team, level
     //    and battleground id live on the Player object (valid until OnPlayerLogout drops him from the list), and
     //    nothing below needs his map - otherwise his waiting fill bots would leave as "abandoned".
+    //    Owner 16.10. (OB-00): a real player who queues with a group - his own bots too - has the same priority as a solo
+    //    player. The core queues and invites the group as one entry (GroupQueueInfo, BattleGroundQueue::AddGroup), so
+    //    the side's real count is that entry's size, every member, real or bot, counted once per entry: a second real
+    //    player of the same entry finds himself among the members already counted. The entry's own bracket and team
+    //    (the leader's at AddGroup) are used. Read through the core's own reader GetPlayerGroupInfoData (as
+    //    BattleGroundHandler and BattleGroundMgr::PlayerLoggedIn): it copies the entry under the queue's own m_Lock, on
+    //    the thread of BattleGroundMgr::Update; only the copy's member guids and count are read, never its
+    //    PlayerQueueInfo pointers. Bounded by the real players' queue slots and their entries, once per interval.
     uint32 real[MAX_BATTLEGROUND_QUEUE_TYPES][MAX_BATTLEGROUND_BRACKETS][2] = {};
+    std::set<std::pair<uint32, uint32>> realEntryMembers; // (queue type, member guid low) of the entries counted
     bool realPlayerQueued = false;
     // Stage b (SlotRelease): the waits of the real players seen here are stamped with this scan, the rest pruned below.
     bool const slotRelease = sPlayerbotAIConfig.bgSlotRelease;
@@ -2432,13 +2465,36 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
             BattleGroundTypeId const bgTypeId = sServerFacade.BgTemplateId(queueTypeId);
             if (player->InBattleGround() && player->GetBattleGround() && player->GetBattleGround()->GetTypeId() == bgTypeId)
                 continue;
-            if (!sBattleGroundMgr.GetBattleGroundTemplate(bgTypeId))
+            BattleGround const* bgTemplate = sBattleGroundMgr.GetBattleGroundTemplate(bgTypeId);
+            if (!bgTemplate)
                 continue;
-            // The core queue's bracket (BattleGroundHandler), not BattleGroundMgr::GetBattleGroundBracketIdFromLevel.
-            BattleGroundBracketId const bracketId = player->GetBattleGroundBracketIdFromLevel(bgTypeId);
-            if (bracketId == BG_BRACKET_ID_NONE)
+            // Counted already with the entry of another real player of his group.
+            if (realEntryMembers.count(std::make_pair(uint32(queueTypeId), player->GetGUIDLow())))
                 continue;
-            ++real[queueTypeId][bracketId][player->GetTeam() == ALLIANCE ? 0 : 1];
+            GroupQueueInfo entryInfo;
+            if (!sBattleGroundMgr.m_BattleGroundQueues[queueTypeId].GetPlayerGroupInfoData(player->GetObjectGuid(), &entryInfo))
+                continue;
+            if (entryInfo.IsInvitedToBGInstanceGUID || entryInfo.BgTypeId != bgTypeId)
+                continue;
+            // The core queue's bracket of the entry (BattleGroundHandler: the leader's
+            // Player::GetBattleGroundBracketIdFromLevel), not BattleGroundMgr::GetBattleGroundBracketIdFromLevel.
+            BattleGroundBracketId const bracketId = entryInfo.BracketId;
+            if (bracketId == BG_BRACKET_ID_NONE || bracketId >= MAX_BATTLEGROUND_BRACKETS)
+                continue;
+            uint32 const team = entryInfo.GroupTeam == ALLIANCE ? 0 : 1;
+            uint32 const entrySize = uint32(entryInfo.Players.size());
+            for (auto const& member : entryInfo.Players)
+                realEntryMembers.insert(std::make_pair(uint32(queueTypeId), member.first.GetCounter()));
+            // A group larger than a side cannot fit (the core refuses it at the join, Group::CanJoinBattleGroundQueue):
+            // no fill for it.
+            if (entrySize > bgTemplate->GetMaxPlayersPerTeam())
+            {
+                if (trace)
+                    sLog.outBasic("[BGFill] state=skip reason=groupsize bg=%u bracket=%u side=%s size=%u max=%u", uint32(bgTypeId),
+                        uint32(bracketId), team ? "H" : "A", entrySize, bgTemplate->GetMaxPlayersPerTeam());
+                continue;
+            }
+            real[queueTypeId][bracketId][team] += entrySize;
             realPlayerQueued = true;
             // Stage b: first seen waiting uninvited in this queue (one entry per real player and queue type).
             if (slotRelease)
@@ -2483,8 +2539,8 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
     // - surplus: their side has more fill bots than the minimum leaves room for next to its real players (left over
     //   from an earlier player). The core takes each side's first entries, so bots queued before a real player could
     //   start the match without him; keeping at most min - real fill bots on the side makes that unlikely, but it is no
-    //   guarantee: group members queued with a real player and the entries of logged-out bots still in the core queue
-    //   are not counted here.
+    //   guarantee: the entries of logged-out bots still in the core queue are not counted here (the members of a real
+    //   player's queued group are: real counts his whole entry).
     // Invited ones are left to the accept (or to the core's invite expiry). A bot the core does not let out keeps its
     // entry. Bounded by the pending set, once per interval; the bots that left are not picked again by this scan.
     std::set<uint32> leftThisScan;
@@ -2807,7 +2863,9 @@ bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const
         return false;
     if (IsParkedBot(guid) || ai->IsParked())
         return false;
-    // In no group: covers a group with a real player (#420) and the ad-hoc bot groups.
+    // In no group: covers a group with a real player (#420) and the ad-hoc bot groups. Owner 16.10. (OB-00): a real
+    // player's own bots, and every bot of a real player's group, are never free roster bots; queued with him they count
+    // as a whole with his entry (ScanBgFill).
     if (bot->GetGroup())
         return false;
     // Not in a dungeon, raid, battleground or arena map.

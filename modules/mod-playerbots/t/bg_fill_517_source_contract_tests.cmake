@@ -168,7 +168,37 @@ forbid_text("${real_count}" "GetMap()" "real player count tied to his map")
 require_text("${scan}" "if (!ai::bgfill::IsFillQueueType(uint32(queueTypeId)))" "only fill queue types")
 require_text("${scan}" "if (player->IsInvitedForBattleGroundQueueType(queueTypeId))\n                continue;" "invited players skipped")
 require_text("${scan}" "if (player->InBattleGround() && player->GetBattleGround() && player->GetBattleGround()->GetTypeId() == bgTypeId)\n                continue;" "players already in a battleground of that type skipped")
-require_text("${scan}" "player->GetBattleGroundBracketIdFromLevel(bgTypeId)" "core bracket formula for the player")
+# Owner 16.10. (OB-00): a real player queued with a group (his own bots too) has a solo player's priority. His side's
+# real count is his whole core queue entry (GroupQueueInfo through the core's locked reader GetPlayerGroupInfoData),
+# every member, once per entry (a second real player of the entry is among the members counted), with the entry's
+# own bracket (the core queue's, BattleGroundHandler: the leader's Player::GetBattleGroundBracketIdFromLevel) and team.
+require_text("${scan}" "std::set<std::pair<uint32, uint32>> realEntryMembers;" "scan-local set of the counted entries' members")
+set(entry_dedup "if (realEntryMembers.count(std::make_pair(uint32(queueTypeId), player->GetGUIDLow())))\n                continue;")
+set(entry_read "if (!sBattleGroundMgr.m_BattleGroundQueues[queueTypeId].GetPlayerGroupInfoData(player->GetObjectGuid(), &entryInfo))\n                continue;")
+set(entry_members "for (auto const& member : entryInfo.Players)\n                realEntryMembers.insert(std::make_pair(uint32(queueTypeId), member.first.GetCounter()));")
+set(entry_size "uint32 const entrySize = uint32(entryInfo.Players.size());")
+set(entry_count "real[queueTypeId][bracketId][team] += entrySize;")
+set(groupsize_skip "if (entrySize > bgTemplate->GetMaxPlayersPerTeam())\n            {\n                if (trace)\n                    sLog.outBasic(\"[BGFill] state=skip reason=groupsize bg=%u bracket=%u side=%s size=%u max=%u\", uint32(bgTypeId),\n                        uint32(bracketId), team ? \"H\" : \"A\", entrySize, bgTemplate->GetMaxPlayersPerTeam());\n                continue;\n            }")
+foreach(piece "${entry_dedup}" "${entry_read}" "${entry_members}" "${entry_size}" "${entry_count}" "${groupsize_skip}"
+    "if (entryInfo.IsInvitedToBGInstanceGUID || entryInfo.BgTypeId != bgTypeId)\n                continue;"
+    "BattleGroundBracketId const bracketId = entryInfo.BracketId;"
+    "if (bracketId == BG_BRACKET_ID_NONE || bracketId >= MAX_BATTLEGROUND_BRACKETS)\n                continue;"
+    "uint32 const team = entryInfo.GroupTeam == ALLIANCE ? 0 : 1;")
+  require_text("${real_count}" "${piece}" "real side counted per queue entry")
+endforeach()
+require_order("${real_count}" "${entry_dedup}" "${entry_read}" "an entry already counted is not read again")
+require_order("${real_count}" "${entry_read}" "${entry_members}" "members taken from the core entry")
+# The members are remembered also for an entry too large to fill: its other real players are not counted either.
+require_order("${real_count}" "${entry_members}" "${groupsize_skip}" "members remembered before the group size skip")
+require_order("${real_count}" "${groupsize_skip}" "${entry_count}" "a group larger than a side is not counted")
+require_order("${scan}" "${entry_count}" "realPlayerQueued = true;" "the counted entry makes a real player wait")
+count_text("${real_count}" "GetPlayerGroupInfoData(" 1 "one entry read per real player and queue slot")
+forbid_text("${scan}" "++real[" "real side counted per real player instead of per queue entry")
+forbid_text("${real_count}" "player->GetTeam()" "real side from the player instead of the entry")
+# No new locks on core structures and no unlocked reads of the core queue's maps: only the core's own reader.
+foreach(lock "lock_guard" "unique_lock" "m_Lock." "m_QueuedPlayers" "m_QueuedGroups")
+  forbid_text("${fill_path}" "${lock}" "lock or raw read of the core queue on the fill path")
+endforeach()
 require_text("${scan}" "bot->GetBattleGroundBracketIdFromLevel(r.bgTypeId) != r.bracketId" "core bracket formula for the bot")
 set(early_return "if (!realPlayerQueued)\n        return;")
 require_text("${scan}" "${early_return}" "early return without a real player")
@@ -258,6 +288,10 @@ foreach(filter
   require_text("${candidate}" "${filter}" "candidate filter")
 endforeach()
 forbid_text("${candidate}" "IsTank(" "tank/healer filter for roster bots")
+# Owner 16.10. (OB-00): the bots of a real player's group are never free roster bots (the group filter says so).
+require_text("${candidate}" "player's own bots, and every bot of a real player's group, are never free roster bots" "owner rule at the group filter")
+require_text("${conf_dist}" "the group stays together and counts as a whole toward its side's minimum" "PlayerFill documents the group rule")
+require_text("${conf_dist}" "a real player's group are never taken as free bots" "PlayerFill documents his bots are never free")
 # OB-10 review: a forced trip (guild founding, meeting, errand) keeps the bot out, also while still in PREPARE.
 region("${mgr_cpp}" "static bool OnForcedTravel(PlayerbotAI* ai)" "bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const" forced_travel)
 require_text("${forced_travel}" "if (!target || !target->IsForced())\n        return false;" "only forced trips")
@@ -294,6 +328,16 @@ set(busy_check "if (!invited && !IsBgFillStillFree(bot, ai))\n            leaveR
 set(unfit_check "else if (invited && !IsBgFillInviteStillFit(bot, ai))\n            leaveReason = \"unfit\";")
 require_text("${members}" "bool const invited = bot->IsInvitedForBattleGroundQueueType(queueTypeId);" "invite state read once")
 require_text("${members}" "${busy_check}\n        ${unfit_check}" "full recheck before the invite, hard reasons after it")
+# Owner 16.10.: a bot in a group's core queue entry (more than one member) belongs to that group, never to the fill:
+# its pending entry is dropped without a leave, before the busy/unfit leaves could take it out of the group's entry.
+set(group_entry_drop "if (bot->GetGroup() && InGroupQueueEntry(bot, queueTypeId))\n        {\n            if (sPlayerbotAIConfig.bgTrace)\n                sLog.outBasic(\"[BGFill] state=drop bot=%u bg=%u reason=groupentry\", guid, entry.bgTypeId);\n            ai->SetBgFillPending(false);\n            it = bgFillPending.erase(it);\n            continue;\n        }")
+require_text("${members}" "${group_entry_drop}" "a bot in a group's queue entry is no fill bot")
+require_order("${members}" "${group_entry_drop}" "${busy_check}" "group entry drop before the busy and unfit leaves")
+region("${mgr_cpp}" "static bool InGroupQueueEntry(Player* bot, BattleGroundQueueTypeId queueTypeId)" "void RandomPlayerbotMgr::CheckBgFill()" group_entry)
+require_text("${group_entry}" "return sBattleGroundMgr.m_BattleGroundQueues[queueTypeId].GetPlayerGroupInfoData(bot->GetObjectGuid(), &entryInfo) &&\n        entryInfo.Players.size() > 1;" "group entry = core entry with more than one member")
+foreach(lock "lock_guard" "unique_lock" "m_Lock." "m_QueuedPlayers" "LeaveBgFillQueue")
+  forbid_text("${group_entry}" "${lock}" "lock, raw core read or leave in the group entry check")
+endforeach()
 require_order("${members}" "${busy_check}" "BGStatusAction::AcceptInvite(" "still free before the accept")
 require_text("${members}" "if (LeaveBgFillQueue(bot, ai, guid, entry, leaveReason))\n                it = bgFillPending.erase(it);\n            else\n                ++it;\n            continue;" "a busy or unfit pending bot leaves its queue, kept when the core refuses")
 require_order("${members}" "if (leaveReason)" "if (!invited)\n        {\n            ++it;\n            continue;\n        }" "leave check before the not-invited wait")
@@ -360,7 +404,7 @@ require_guarded("${fill_path}" "sLog.outBasic(\"[BGFill]" "if (trace" "if (sPlay
 foreach(inverted "!trace" "!sPlayerbotAIConfig.bgTrace" "trace ||" "bgTrace ||")
   forbid_text("${fill_path}" "${inverted}" "inverted or widened trace guard")
 endforeach()
-foreach(state queue join accept cap skip return leave leave_failed)
+foreach(state queue join accept cap skip return leave leave_failed drop)
   require_text("${fill_path}" "\"[BGFill] state=${state} " "[BGFill] state=${state} line")
 endforeach()
 require_text("${fill_path}" "\"[BGFill] minute checks=%u joins=%u accepts=%u returns=%u pending=%u in_bg=%u scan_us_max=%u leaves=%u\"" "minute summary")
