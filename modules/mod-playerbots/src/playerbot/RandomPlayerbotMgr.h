@@ -480,10 +480,15 @@ public:
         void ScanBgSlotRelease(uint32 nowMs);
         bool BgFillReserved(uint32 queueType, uint32 bracket, uint32 team, uint32 nowMs) const;
         bool ReleaseBgFillBot(Player* bot, PlayerbotAI* ai);
-        // twow-repo#517 stage b (Enable && (PlayerFill || SlotRelease)): a battleground started for the fill without a
-        // real player for BotOnlyGraceSeconds after IN_PROGRESS ends. Both bounded by the started-for-fill instances.
+        // twow-repo#517 stage b (Enable && PlayerFill && BotOnlyCleanup, follow-up D with OB-20): a battleground started
+        // for the fill without a real player for BotOnlyGraceSeconds after IN_PROGRESS is emptied - every manager bot of
+        // both sides leaves until the core deletes it, without EndBattleGround (no rewards for bots). All three bounded by
+        // the started-for-fill instances and pruned once the core no longer holds the instance.
         std::map<std::pair<uint32, uint32>, uint32> bgFillNoRealSince;   // (bg type, instance) -> no real player since (ms)
-        std::set<std::pair<uint32, uint32>> bgFillBotOnlyEnding;          // (bg type, instance) whose fill bots leave
+        std::set<std::pair<uint32, uint32>> bgFillBotOnlyEnding;          // (bg type, instance) whose manager bots leave
+        // (bg type, instance) whose grace ran out, until the core has deleted it (or a real player came in): true once
+        // its [BGBotOnlyEnd] line is written
+        std::map<std::pair<uint32, uint32>, bool> bgFillBotOnlyWatch;
         void WatchBotOnlyBgs(uint32 nowMs);
         void LeaveBotOnlyBg();
         // (bg type, entry bracket) -> smallest waiting real-player entry per side (0 = none), read live

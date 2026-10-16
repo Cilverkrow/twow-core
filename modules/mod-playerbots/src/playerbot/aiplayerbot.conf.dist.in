@@ -96,12 +96,20 @@ AiPlayerbot.BG.SlotRelease = 0
 # SlotReleaseWaitSeconds: the player's wait before the pair or the release, and how long a released slot stays
 # reserved. 0 = 60 s (default), minimum 15; a negative value counts as 0.
 AiPlayerbot.BG.SlotReleaseWaitSeconds = 0
-# BotOnlyGraceSeconds: how long a battleground started for the fill may run without a real player (with PlayerFill or
-# SlotRelease on). Then its fill bots leave one by one, without Deserter, and the core ends it. An open invite or a
-# player inside who is not a bot pauses that (the grace starts again once he is gone). A real player waiting uninvited
-# for that battleground and bracket does not keep it, but the bots leave so that the core does not invite him into it;
-# when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds. 0 = 120 s (default), minimum 60;
-# a negative value counts as 0.
+# BotOnlyCleanup (needs Enable = 1 and PlayerFill = 1; without PlayerFill it does nothing, bot-only battlegrounds only
+# come from the fill): a battleground started for the fill that has run BotOnlyGraceSeconds without a real player is
+# emptied - the bot manager's bots leave it, both sides, at most two per update, without Deserter - until nobody is
+# inside and no invite is open; the core then deletes it. It does not end through a win or the PrematureFinish
+# countdown, so no marks, experience or honor go to bots. Should such a battleground end anyway (a win, or the countdown
+# while the end waits), one line is written for it, always (not behind Trace):
+# [BGBotOnlyEnd] bg=<map>,<instance> winner=<A|H|none> bots=<bots still inside>. 1 = on (default); 0, or any value but
+# 1, true or yes = off: nothing of the cleanup runs.
+AiPlayerbot.BG.BotOnlyCleanup = 1
+# BotOnlyGraceSeconds: how long a battleground started for the fill may run without a real player before BotOnlyCleanup
+# empties it. An open invite or a player inside who is not a bot pauses that (the grace starts again once he is gone).
+# A real player waiting uninvited for that battleground and bracket does not keep it, but the bots leave so that the
+# core does not invite him into it; when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds.
+# 0 = 120 s (default), minimum 60; a negative value counts as 0.
 AiPlayerbot.BG.BotOnlyGraceSeconds = 0
 # twow-repo#541/#551 (console rndbot park / unpark): 1 = a parked bot is not visible to other bots and
 # sees only real players and units fighting it (core Player flag, real players see it as always).
