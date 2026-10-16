@@ -2302,7 +2302,8 @@ void RandomPlayerbotMgr::UpdateBgFillMembers()
     for (auto it = bgFillInBg.begin(); it != bgFillInBg.end();)
     {
         Player* bot = GetPlayerBot(it->first);
-        if (!bot)
+        PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        if (!ai)
         {
             it = bgFillInBg.erase(it);
             continue;
@@ -2313,6 +2314,17 @@ void RandomPlayerbotMgr::UpdateBgFillMembers()
             ++it;
             continue;
         }
+
+        // R6 (OB-10): back on its own map after the battleground. Quest search from the start and the idle watch
+        // reset, without OnQuestRescued (rescue limiter). The travel target is not restored 1:1: status NONE, the bot
+        // picks a new one. The strategies come back through ResetStrategies() on the way out (BGLeaveAction,
+        // BGStatusAction TIME_REMOVE, the BGTactics self-heal), which rebuilds the roster bot's AiFactory set.
+        ai->OnReturnFromBattleground(uint32(time(nullptr)));
+        if (TravelTarget* target = ai->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get())
+            target->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
+        ++bgFillMinute.returns;
+        if (sPlayerbotAIConfig.bgTrace)
+            sLog.outBasic("[BGFill] state=return bot=%u bg=%u", it->first, it->second.bgTypeId);
         it = bgFillInBg.erase(it);
     }
 }
