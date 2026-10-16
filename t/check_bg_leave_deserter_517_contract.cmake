@@ -104,13 +104,19 @@ foreach(source ${core_sources})
     if (line MATCHES "bool teleportToEntryPoint")
       continue()
     endif()
+    # The Eluna submodule (src/modules/Eluna, checked out in CI) defines its own Lua wrappers
+    # "int LeaveBattleground(Eluna* E, Player* player)"; those are not calls of Player::LeaveBattleground.
+    if (line MATCHES "LeaveBattleground[(]Eluna[* ]")
+      continue()
+    endif()
     math(EXPR calls "${calls} + 1")
     if (line MATCHES "LeaveBattleground[(][^)]*,")
       message(FATAL_ERROR "#517: core caller passes castDeserter (${source}): ${line}")
     endif()
-    # Review: only the known one-line forms - no argument, or the teleport flag alone. A second argument after a nested
-    # call, or a call split over lines (a line ending in "LeaveBattleground("), fails here.
-    if (NOT line MATCHES "LeaveBattleground[(](true|false)?[)]")
+    # Review: only the known one-line forms - no argument, or the teleport flag alone (true, false or a plain variable,
+    # as Eluna's "player->LeaveBattleground(teleToEntryPoint);"). A second argument after a nested call, or a call split
+    # over lines (a line ending in "LeaveBattleground("), fails here.
+    if (NOT line MATCHES "LeaveBattleground[(]([A-Za-z_][A-Za-z0-9_]*)?[)]")
       message(FATAL_ERROR "#517: core LeaveBattleground call not in a known one-argument form (${source}): ${line}")
     endif()
     string(REGEX MATCHALL "LeaveBattleground[(]" line_calls "${line}")
