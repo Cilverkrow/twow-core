@@ -83,9 +83,13 @@ AiPlayerbot.BG.Trace = 0
 # his side is full and the other side short, that bot goes in alone first. With no pair option (or no free bot for it),
 # and only when the core would then invite him alone, one fill bot of his side leaves - only from a side above the
 # battleground's minimum, never a flag carrier or a dead bot, without Deserter - and the slot is reserved for him until
-# he is invited, leaves the queue or SlotReleaseWaitSeconds pass (at most one release per wait). Players queued as a
-# group, in another battleground or on a taxi are left to the core queue. While SlotRelease is on, PlayerFill queues
-# bots for a new match only when both sides can be filled. 0 = off (default).
+# he is invited, leaves the queue or SlotReleaseWaitSeconds pass (at most one release per wait). A real player queued
+# as a group with his own bots has the same priority as a solo player and the group joins whole: the pair option takes
+# as many bots of the other faction as the group has members (all or none, else the release), the release lets up to
+# that many bots of his side leave at once (the side stays at or above the minimum), and a bot of a real player's group
+# is never released. A group larger than a side, one in the premade queue, or one with a member in another battleground
+# or on a taxi is left to the core queue. While SlotRelease is on, PlayerFill queues bots for a new match only when
+# both sides can be filled. 0 = off (default).
 AiPlayerbot.BG.SlotRelease = 0
 # SlotReleaseWaitSeconds: the player's wait before the pair or the release, and how long a released slot stays
 # reserved. 0 = 60 s (default), minimum 15; a negative value counts as 0.
