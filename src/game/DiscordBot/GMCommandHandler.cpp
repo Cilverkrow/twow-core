@@ -117,6 +117,9 @@ namespace DiscordBot
 
         //we're going to edit writing positions to find what to read. Start locking exclusive access from here on out.
         std::unique_lock<std::shared_mutex> l{ sLog.logLock };
+        // twow-repo#597 (TICK-01, Log.AsyncSink): no new line can be queued while logLock is held; let the
+        // writer finish the queued ones before the file position moves (no sink: returns at once).
+        sLog.FlushAsyncSink(log_sink::DrainWaitMs);
 
         int streamPos = ftell(logfile);
 
