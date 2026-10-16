@@ -975,7 +975,8 @@ protected:
     // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
     std::atomic<bool> parked{ false };
     // twow-repo#517 stage a (AiPlayerbot.BG.PlayerFill): set and cleared by the world thread while the manager owns this
-    // bot's battleground queue entry (RandomPlayerbotMgr::CheckBgFill), read by BGStatusAction on the bot's map thread.
+    // bot's battleground queue entry and, after its accept, until the bot is back from that battleground
+    // (RandomPlayerbotMgr::CheckBgFill); read by BGStatusAction on the bot's map thread.
     std::atomic<bool> bgFillPending{ false };
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
@@ -1027,7 +1028,8 @@ public:
     // twow-repo#517 stage a: a quest rescue is asked for, or was done and not yet taken by the bot's own update.
     bool IsQuestRescueBusy() const { return questRescueRequested.load() || questRescueDone.load(); }
     // twow-repo#517 stage a: the manager queued this bot for a battleground and accepts its invite; BGStatusAction then
-    // leaves WAIT_JOIN alone so nothing is done twice.
+    // leaves WAIT_JOIN alone so nothing is done twice (also a WAIT_JOIN latched before the accept: the flag stays set
+    // until the bot is back from the battleground).
     void SetBgFillPending(bool value) { bgFillPending = value; }
     bool IsBgFillPending() const { return bgFillPending; }
     // twow-repo#517 stage a (OB-10): a fill bot is out of its battleground again. Quest search stage 0 and

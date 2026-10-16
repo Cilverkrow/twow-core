@@ -1559,19 +1559,31 @@ bool BGStatusAction::AcceptInvite(PlayerbotAI* ai, Player* bot, BattleGroundType
     // outside any battleground). The core refuses the port in combat; the manager then tries again next update.
     ai->Unmount();
 
-    WorldPacket packet(CMSG_BATTLEFIELD_PORT, 20);
-#ifdef MANGOSBOT_ZERO
-    packet << uint32(GetBattleGrounMapIdByTypeId(bgTypeId)) << uint8(0x1);
-#else
-    packet << uint8(0) << uint8(0x0) << uint32(bgTypeId) << uint16(0x1F90) << uint8(0x1);
-#endif
-    bot->GetSession()->HandleBattleFieldPortOpcode(packet);
+    SendPort(bot, bgTypeId, 0x1);
 
     if (!bot->InBattleGround() || bot->GetBattleGroundTypeId() != bgTypeId)
         return false;
 
     ApplyPortState(ai);
     return true;
+}
+
+void BGStatusAction::LeaveQueue(Player* bot, BattleGroundTypeId bgTypeId)
+{
+    // Port action 0 is the core's own "leave queue" (HandleBattleFieldPortOpcode): it also works before an invite,
+    // with the battleground template, and schedules the queue update itself.
+    SendPort(bot, bgTypeId, 0x0);
+}
+
+void BGStatusAction::SendPort(Player* bot, BattleGroundTypeId bgTypeId, uint8 action)
+{
+    WorldPacket packet(CMSG_BATTLEFIELD_PORT, 20);
+#ifdef MANGOSBOT_ZERO
+    packet << uint32(GetBattleGrounMapIdByTypeId(bgTypeId)) << action;
+#else
+    packet << uint8(0) << uint8(0x0) << uint32(bgTypeId) << uint16(0x1F90) << action;
+#endif
+    bot->GetSession()->HandleBattleFieldPortOpcode(packet);
 }
 
 bool BGStatusCheckAction::Execute(Event& event)

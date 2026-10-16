@@ -28,6 +28,10 @@ constexpr uint32_t MinLoggedInSeconds = 30;
 // Candidates collected per needed slot: a join the core refuses silently leaves a spare to try.
 constexpr uint32_t CandidateFactor = 2;
 
+// A fill bot not invited after this long leaves its queue again (the next interval queues fresh ones while the real
+// player still waits): it holds a FIFO place and keeps its bracket "forming" against the cap.
+constexpr uint32_t PendingMaxSeconds = 300;
+
 // Only these queues are filled: WSG, AB and AV.
 inline bool IsFillQueueType(uint32_t queueType)
 {
@@ -41,6 +45,13 @@ inline uint32_t NeedPerSide(uint32_t minPerTeam, uint32_t realSide, uint32_t pen
 {
     uint32_t const have = realSide + pendingSide;
     return have >= minPerTeam ? 0 : minPerTeam - have;
+}
+
+// The per-side minimum the fill aims for: the template's, or the core's own queue minimum when that is higher
+// (AV: Alterac.MinPlayersInQueue uninvited entries per side before a match is created; 0 elsewhere).
+inline uint32_t FillMinPerTeam(uint32_t templateMin, uint32_t queueMin)
+{
+    return queueMin > templateMin ? queueMin : templateMin;
 }
 
 // Fail closed: AiPlayerbot.BG.MaxConcurrent = 0 allows no bot battleground at all.
@@ -70,6 +81,12 @@ inline uint32_t CheckIntervalMs(uint32_t cfgSeconds)
 inline bool IntervalDue(uint32_t now, uint32_t last, uint32_t interval)
 {
     return !last || now - last >= interval;
+}
+
+// A pending fill bot queued at joinMs has waited too long (unsigned difference: a wrapped clock stays correct).
+inline bool PendingExpired(uint32_t now, uint32_t joinMs, uint32_t maxMs)
+{
+    return now - joinMs >= maxMs;
 }
 
 // How many candidates the bounded bot loop collects for a side that needs this many bots.
