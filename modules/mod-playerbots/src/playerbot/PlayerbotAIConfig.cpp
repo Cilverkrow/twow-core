@@ -385,6 +385,8 @@ bool PlayerbotAIConfig::Initialize()
     bgSlotRelease = config.GetBoolDefault("AiPlayerbot.BG.SlotRelease", false);
     bgSlotReleaseWaitSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.SlotReleaseWaitSeconds", 0)));
     bgBotOnlyGraceSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.BotOnlyGraceSeconds", 0)));
+    // Default on (OB-20); only "1", "true" or "yes" switch it on when set, anything else (also negative) is off.
+    bgBotOnlyCleanup = config.GetBoolDefault("AiPlayerbot.BG.BotOnlyCleanup", true);
     randomBotBracketCount = config.GetIntDefault("AiPlayerbot.RandomBotBracketCount", 3);
     logInGroupOnly = config.GetBoolDefault("AiPlayerbot.LogInGroupOnly", true);
     logValuesPerTick = config.GetBoolDefault("AiPlayerbot.LogValuesPerTick", false);

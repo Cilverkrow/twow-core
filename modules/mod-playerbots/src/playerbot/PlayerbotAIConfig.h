@@ -245,6 +245,8 @@ public:
     bool bgSlotRelease = false;
     uint32 bgSlotReleaseWaitSeconds = 0; // 0 = 60 s, minimum 15 s (ai::bgfill::SlotReleaseWaitMs)
     uint32 bgBotOnlyGraceSeconds = 0;    // 0 = 120 s, minimum 60 s (ai::bgfill::BotOnlyGraceMs)
+    // Follow-up D (OB-20 16.10.): the bot-only cleanup has its own switch, on by default but inert without PlayerFill.
+    bool bgBotOnlyCleanup = true;
     uint32 randomBotBracketCount;
     bool randomBotLoginAtStartup;
     uint32 randomBotTeleLevel;

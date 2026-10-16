@@ -2176,6 +2176,7 @@ add_test(NAME bg_fill_517_source_contract
 add_test(NAME bg_slot_release_517_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/bg_slot_release_517_source_contract_tests.cmake")
 
 # twow-repo#541 (audit A10): one PlayerTravelInfo per travel choice and keyed destination lookup (AiPlayerbot.Perf.TravelInfoReuse, default 0).

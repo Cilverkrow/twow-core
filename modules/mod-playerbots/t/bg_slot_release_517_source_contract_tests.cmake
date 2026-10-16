@@ -4,16 +4,31 @@ cmake_policy(VERSION 3.16)
 # twow-repo#517 stage b: behind AiPlayerbot.BG.Enable && AiPlayerbot.BG.SlotRelease (both default 0) a real player who
 # has waited SlotReleaseWaitSeconds uninvited gets into a running battleground with fill bots - pair option first
 # (OB-00 D2), else a fill bot of his side above the minimum leaves without Deserter (core castDeserter = false, OB-20)
-# and the slot is reserved for him. Plus the bot-only cleanup (BotOnlyGraceSeconds) and R5 (leave packets with the
-# real map id under BG.Enable). RandomPlayerbotMgr::ScanBgSlotRelease / WatchBotOnlyBgs / LeaveBotOnlyBg; pure rules in
-# BgFillPolicy.h (t/bg_fill_policy_tests.cpp); the core parameter in t/check_bg_leave_deserter_517_contract.cmake.
+# and the slot is reserved for him. Plus the bot-only cleanup (Enable && PlayerFill && BotOnlyCleanup, follow-up D with
+# OB-20: drained to empty, no EndBattleGround, [BGBotOnlyEnd] for the edge case) and R5 (leave packets with the real map
+# id under BG.Enable, the decline of a second invite). RandomPlayerbotMgr::ScanBgSlotRelease / WatchBotOnlyBgs /
+# LeaveBotOnlyBg; pure rules in BgFillPolicy.h (t/bg_fill_policy_tests.cpp); the core parameter in
+# t/check_bg_leave_deserter_517_contract.cmake. The core premises of the drain and the decline (CORE_SOURCE_DIR) at the
+# end.
 
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
+if(NOT DEFINED CORE_SOURCE_DIR)
+  message(FATAL_ERROR "CORE_SOURCE_DIR is required")
+endif()
 
 function(read_source path out_var)
   file(READ "${PB_SOURCE_DIR}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(read_core path out_var)
+  if(NOT EXISTS "${CORE_SOURCE_DIR}/${path}")
+    message(FATAL_ERROR "#517 b: core source missing: ${CORE_SOURCE_DIR}/${path}")
+  endif()
+  file(READ "${CORE_SOURCE_DIR}/${path}" text)
   string(REPLACE "\r" "" text "${text}")
   set(${out_var} "${text}" PARENT_SCOPE)
 endfunction()
@@ -119,8 +134,10 @@ region("${mgr_cpp}" "bool RandomPlayerbotMgr::BgFillReserved(" "static bool Carr
 region("${mgr_cpp}" "static bool CarriesBgFlag(" "bool RandomPlayerbotMgr::ReleaseBgFillBot(" flag_fn)
 region("${mgr_cpp}" "bool RandomPlayerbotMgr::ReleaseBgFillBot(Player* bot, PlayerbotAI* ai)" "void RandomPlayerbotMgr::ScanBgSlotRelease(uint32 nowMs)" release_fn)
 region("${mgr_cpp}" "void RandomPlayerbotMgr::ScanBgSlotRelease(uint32 nowMs)" "void RandomPlayerbotMgr::WatchBotOnlyBgs(uint32 nowMs)" slot)
-region("${mgr_cpp}" "void RandomPlayerbotMgr::WatchBotOnlyBgs(uint32 nowMs)" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" watch)
-region("${mgr_cpp}" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" "void RandomPlayerbotMgr::CollectBgFillWaiting(" botonly_leave)
+region("${mgr_cpp}" "void RandomPlayerbotMgr::WatchBotOnlyBgs(uint32 nowMs)" "// Stage b, every manager update while an instance is watched" watch)
+region("${mgr_cpp}" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" "// Stage b: the real players' core queue entries waiting uninvited" botonly_leave)
+region("${botonly_leave}" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" "    // Once per update, before any leave (not per bot)." botonly_end_check)
+region("${botonly_leave}" "    // Once per update, before any leave (not per bot)." "\n}\n" botonly_drain)
 region("${mgr_cpp}" "void RandomPlayerbotMgr::CollectBgFillWaiting(" "void RandomPlayerbotMgr::CheckBgQueue()" collect)
 region("${mgr_cpp}" "void RandomPlayerbotMgr::CheckBgFill()" "void RandomPlayerbotMgr::CheckBgQueue()" fill_path)
 
@@ -135,6 +152,18 @@ foreach(key SlotRelease SlotReleaseWaitSeconds BotOnlyGraceSeconds)
   require_text("${conf_dist}" "\nAiPlayerbot.BG.${key} = 0\n" "AiPlayerbot.BG.${key} documented with 0")
   count_text("${conf_dist}" "\nAiPlayerbot.BG.${key} = " 1 "AiPlayerbot.BG.${key} set once in the dist")
 endforeach()
+# Follow-up D (OB-20 16.10.): AiPlayerbot.BG.BotOnlyCleanup, default 1 in code and dist, read as the house bool (only
+# 1/true/yes switch it on when set; anything else, a negative value too, is off), used in one place: the gate.
+require_text("${config_h}" "bool bgBotOnlyCleanup = true;" "BG.BotOnlyCleanup member default on")
+require_text("${config_cpp}" "bgBotOnlyCleanup = config.GetBoolDefault(\"AiPlayerbot.BG.BotOnlyCleanup\", true);" "BG.BotOnlyCleanup read, default true")
+count_text("${config_cpp}" "\"AiPlayerbot.BG.BotOnlyCleanup\"" 1 "BG.BotOnlyCleanup read once")
+require_text("${conf_dist}" "\nAiPlayerbot.BG.BotOnlyCleanup = 1\n" "AiPlayerbot.BG.BotOnlyCleanup documented with 1")
+count_text("${conf_dist}" "\nAiPlayerbot.BG.BotOnlyCleanup = " 1 "AiPlayerbot.BG.BotOnlyCleanup set once in the dist")
+require_text("${conf_dist}" "# BotOnlyCleanup (needs Enable = 1 and PlayerFill = 1; without PlayerFill it does nothing, bot-only battlegrounds only\n# come from the fill)" "dist: BotOnlyCleanup inert without PlayerFill")
+require_text("${conf_dist}" "both sides, at most two per update, without Deserter - until nobody is\n# inside and no invite is open; the core then deletes it." "dist: drained to empty without Deserter, the core deletes it")
+require_text("${conf_dist}" "so no marks, experience or honor go to bots." "dist: no rewards for bots")
+require_text("${conf_dist}" "# [BGBotOnlyEnd] bg=<map>,<instance> winner=<A|H|none> bots=<bots still inside>." "dist: the edge case line")
+count_text("${mgr_cpp}" "sPlayerbotAIConfig.bgBotOnlyCleanup" 1 "BotOnlyCleanup read only by the gate")
 require_text("${slot}" "ai::bgfill::SlotReleaseWaitMs(sPlayerbotAIConfig.bgSlotReleaseWaitSeconds)" "wait key read through the policy clamp")
 require_text("${watch}" "ai::bgfill::BotOnlyGraceMs(sPlayerbotAIConfig.bgBotOnlyGraceSeconds)" "grace key read through the policy clamp")
 
@@ -151,6 +180,13 @@ require_order("${check}" "ai::bgfill::IntervalDue(" "ScanBgSlotRelease(nowMs);" 
 require_order("${check}" "ai::bgfill::IntervalDue(" "WatchBotOnlyBgs(nowMs);" "bot-only watch once per interval")
 count_text("${mgr_cpp}" "WatchBotOnlyBgs(nowMs);" 1 "bot-only watch called once")
 count_text("${mgr_cpp}" "LeaveBotOnlyBg();" 1 "bot-only leave called once")
+# Follow-up D (OB-20 16.10.): the bot-only cleanup only with Enable && PlayerFill && BotOnlyCleanup (bot-only matches only
+# come from the stage-a fill); SlotRelease alone runs none of it. Both calls behind the gate, nothing else of it runs.
+require_text("${check}" "bool const botOnlyCleanup = sPlayerbotAIConfig.bgEnable && sPlayerbotAIConfig.bgPlayerFill && sPlayerbotAIConfig.bgBotOnlyCleanup;" "bot-only gate Enable && PlayerFill && BotOnlyCleanup")
+require_text("${check}" "if (botOnlyCleanup)\n        LeaveBotOnlyBg();" "bot-only drain behind the gate")
+require_text("${check}" "if (botOnlyCleanup)\n        WatchBotOnlyBgs(nowMs);" "bot-only watch behind the gate")
+count_text("${check}" "botOnlyCleanup" 3 "the gate set once and read by the two calls")
+require_order("${check}" "bool const botOnlyCleanup = " "UpdateBgFillMembers();" "gate read once per update, before the passes")
 require_order("${check}" "UpdateBgFillMembers();" "LeaveBotOnlyBg();" "bot-only leave per update, after the member pass")
 require_order("${check}" "LeaveBotOnlyBg();" "ai::bgfill::IntervalDue(" "bot-only leave per update, before the interval gate")
 require_text("${scan}" "bool const slotRelease = sPlayerbotAIConfig.bgSlotRelease;" "wait tracking gated by SlotRelease")
@@ -329,7 +365,7 @@ require_order("${scan}" "reason = \"expired\";" "else if (entry.pairFor)" "pair 
 require_text("${scan}" "if (entry.pairFor)\n            continue;\n        ++pending[entry.queueType][entry.bracket][entry.team];" "pair bots not counted as new-match pending or forming")
 
 # 7. Release only above the minimum (G2/OB-20), only when it invites the player, never a flag carrier or dead bot.
-region("${slot}" "// 7. Slot release only without a pair option" "// Stage b (Enable && (PlayerFill || SlotRelease))" release_branch)
+region("${slot}" "// 7. Slot release only without a pair option" "// Stage b (Enable && PlayerFill && BotOnlyCleanup" release_branch)
 # Owner 16.10.: one decision of ReleaseCount releases (the fewest, at most k, after which the core invites the entry),
 # none when no number does, and the side stays at or above the minimum after all of them - checked again before each.
 require_text("${release_branch}" "else if (!ai::bgfill::ReleaseAllowed(bg->GetPlayersCountByTeam(sideTeam), bg->GetMinPlayersPerTeam(), releaseCount))\n            skip = \"min\";" "release only from a side that stays at or above the minimum after all releases (players inside)")
@@ -411,7 +447,7 @@ forbid_text("${release_fn}" "bgFillInBg.erase" "release drops the bot from the i
 forbid_text("${release_fn}" "++bgFillMinute.leaves" "release counted as a leave of its own")
 count_text("${mgr_cpp}" "ReleaseBgFillBot(" 3 "ReleaseBgFillBot: definition, slot release, bot-only leave")
 require_text("${release_branch}" "if (!ReleaseBgFillBot(victim, victimAi))" "slot release calls the release")
-require_text("${botonly_leave}" "ReleaseBgFillBot(bot, ai);\n        return;" "bot-only leave calls the release, one per update")
+require_text("${botonly_drain}" "if (!ReleaseBgFillBot(bot, GetBotAI(bot)))\n                break;" "bot-only drain leaves through the release (castDeserter = false)")
 file(GLOB_RECURSE module_sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
 set(leave_calls 0)
 foreach(source ${module_sources})
@@ -473,7 +509,9 @@ endforeach()
 require_order("${release_branch}" "uint32 const countBefore = bg->GetPlayersCountByTeam(sideTeam);" "ReleaseBgFillBot(victim, victimAi)" "count_before read before the release")
 require_order("${release_branch}" "ReleaseBgFillBot(victim, victimAi)" "uint32 const countAfter = bg->GetPlayersCountByTeam(sideTeam);" "count_after read after the release")
 
-# 11. Bot-only cleanup: started-for-fill instances, IN_PROGRESS, no real player inside or invited, grace, one per update.
+# 11. Bot-only cleanup: started-for-fill instances, IN_PROGRESS, no real player inside or invited, grace; then the drain
+#     (follow-up D with OB-20): every manager bot of both sides leaves until the battleground is empty and the core
+#     deletes it, without EndBattleGround (no marks, experience or honor for bots).
 require_text("${watch}" "if (entry.startedForFill)\n            started.insert(key);" "only instances started for the fill")
 require_text("${watch}" "bg->GetStatus() != STATUS_IN_PROGRESS" "grace counts from IN_PROGRESS")
 require_text("${watch}" "if ((player->InBattleGround() && player->GetBattleGroundId() == key.second) ||\n                    player->IsInvitedForBattleGroundInstance(key.second))\n                realPresent.insert(key);" "a real player inside or invited counts as present")
@@ -483,21 +521,82 @@ require_text("${watch}" "if (!inProgress.count(key) || realPresent.count(key))\n
 # while it holds the cap against his new match); the leave keeps the core from inviting him instead.
 forbid_text("${watch}" "CollectBgFillWaiting(" "a waiting player keeps the battleground in the watch")
 count_text("${mgr_cpp}" "CollectBgFillWaiting(waiting);" 1 "the waiting entries collected only by the bot-only leave")
-# Before every leave, read once per update (rules review 7: before the bot loop): a bot leaves only from a side where the
-# core then invites no waiting entry of that side (CoreInvitesEntry for its smallest entry on the counts minus the bot).
-require_text("${botonly_leave}" "if (bgFillBotOnlyEnding.empty())\n        return;\n    // Once per update, before any leave (not per bot).\n    std::map<std::pair<uint32, uint32>, std::array<uint32, 2>> waiting;\n    CollectBgFillWaiting(waiting);" "waiting entries read once per update, before the bot loop")
-require_order("${botonly_leave}" "CollectBgFillWaiting(waiting);" "for (auto const& [botGuid, entry] : bgFillInBg)" "waiting entries read before the bot loop")
-require_text("${botonly_leave}" "auto const found = waiting.find(std::make_pair(key.first, uint32(bg->GetBracketId())));" "the waiting entries of that type and the battleground's bracket")
-require_text("${botonly_leave}" "uint32 const smallest = found != waiting.end() ? found->second[side] : 0;" "the smallest waiting entry of the bot's side")
-require_text("${botonly_leave}" "uint32 const side = entry.team ? 1 : 0;" "the bot's side")
-require_text("${botonly_leave}" "if (smallest && invitedSide && ai::bgfill::CoreInvitesEntry(invitedSide - 1, bg->GetInvitedCount(otherTeam),\n                bg->GetMaxPlayersPerTeam(), bg->GetTypeID() == BATTLEGROUND_AV ? ai::bgfill::DifferentialAV : 0, smallest))" "no leave after which the core invites a waiting entry of that side")
-require_text("${botonly_leave}" "Team const sideTeam = side ? HORDE : ALLIANCE;\n        Team const otherTeam = side ? ALLIANCE : HORDE;\n        uint32 const invitedSide = bg->GetInvitedCount(sideTeam);" "live invited counts of the bot's side")
-require_order("${botonly_leave}" "ai::bgfill::CoreInvitesEntry(invitedSide - 1," "ReleaseBgFillBot(bot, ai);" "wait checked before the leave")
+require_text("${watch}" "!ai::bgfill::PendingExpired(nowMs, since, graceMs)" "ends only after the grace")
+require_text("${watch}" "\"[BGFill] state=botonly_end bg=%u inst=%u bots=%u\"" "bot-only line")
+# Follow-up D: an instance whose grace ran out is watched until the core has deleted it - also after its last fill bot
+# left (other manager bots may be inside) - and dropped early only when a real player came in before its line.
+require_text("${mgr_h}" "std::map<std::pair<uint32, uint32>, bool> bgFillBotOnlyWatch;" "watch map per instance, logged flag")
+require_text("${watch}" "bgFillBotOnlyEnding.insert(key);\n        bgFillBotOnlyWatch.emplace(key, false);" "an instance whose grace ran out is watched")
+require_text("${watch}" "for (auto const& watch : bgFillBotOnlyWatch)\n        started.insert(watch.first);" "a watched instance stays under the watch without fill bots")
+require_text("${watch}" "if (realPresent.count(key))\n            {\n                auto const watch = bgFillBotOnlyWatch.find(key);\n                if (watch != bgFillBotOnlyWatch.end() && !watch->second)\n                    bgFillBotOnlyWatch.erase(watch);\n            }" "a real player coming in ends the watch")
+
+# 11a. Per update: one walk over the core's battlegrounds while an instance is watched; a gone one is pruned with its
+#      grace and ending mark (nothing counts it as running afterwards); the [BGBotOnlyEnd] check before the drain.
+require_text("${botonly_end_check}" "void RandomPlayerbotMgr::LeaveBotOnlyBg()\n{\n    if (bgFillBotOnlyWatch.empty())\n        return;" "nothing per update while no instance is watched")
+count_text("${botonly_leave}" "sBattleGroundMgr.ApplyAllBattleGrounds(" 1 "one battleground walk per update")
+require_text("${botonly_end_check}" "if (bgFillBotOnlyWatch.count(key))\n            watched.emplace(key, bg);" "the walk keeps the watched battlegrounds")
+require_text("${botonly_end_check}" "if (found == watched.end())\n        {\n            // Deleted by the core (emptied, or after its WAIT_LEAVE): nothing of it is kept.\n            bgFillNoRealSince.erase(it->first);\n            bgFillBotOnlyEnding.erase(it->first);\n            it = bgFillBotOnlyWatch.erase(it);" "a battleground the core deleted is pruned")
+require_order("${botonly_leave}" "it = bgFillBotOnlyWatch.erase(it);" "if (bgFillBotOnlyEnding.empty())\n        return;" "the watch is checked before the drain, also without an ending instance")
+
+# 11b. The edge case line (OB-20): a watched battleground that reaches WAIT_LEAVE anyway (EndBattleGround ran) gets one
+#      [BGBotOnlyEnd] line - always written (bounded by the battleground ends), winner from the core's accessor, the
+#      manager bots still inside - once per instance (the logged flag, pruned with the instance).
+set(end_line "sLog.outBasic(\"[BGBotOnlyEnd] bg=%u,%u winner=%s bots=%u\", bg->GetMapId(), bg->GetInstanceID(),\n            winner == WINNER_ALLIANCE ? \"A\" : winner == WINNER_HORDE ? \"H\" : \"none\", bots);")
+require_text("${botonly_end_check}" "${end_line}" "[BGBotOnlyEnd] line")
+count_text("${mgr_cpp}" "\"[BGBotOnlyEnd] " 1 "one [BGBotOnlyEnd] line")
+string(FIND "${botonly_end_check}" "${end_line}" end_line_at)
+math(EXPR end_guard_from "${end_line_at} - 160")
+string(SUBSTRING "${botonly_end_check}" ${end_guard_from} 160 before_end_line)
+foreach(guard "trace" "bgTrace")
+  forbid_text("${before_end_line}" "${guard}" "[BGBotOnlyEnd] behind the trace switch")
+endforeach()
+require_text("${botonly_end_check}" "BattleGroundWinner const winner = bg->GetWinner();" "winner from the core's accessor")
+require_text("${botonly_end_check}" "if (it->second || bg->GetStatus() != STATUS_WAIT_LEAVE)\n        {\n            ++it;\n            continue;\n        }" "only a battleground in WAIT_LEAVE, only before its line")
+require_order("${botonly_end_check}" "${end_line}" "it->second = true;" "the line marks the instance logged")
+count_text("${botonly_leave}" "it->second = true;" 1 "logged set in one place")
+require_text("${botonly_end_check}" "if (GetPlayerBot(member.first.GetCounter()))\n                ++bots;\n            else\n                others = true;" "bots = the manager bots still inside")
+require_text("${botonly_end_check}" "if (others)\n        {\n            it = bgFillBotOnlyWatch.erase(it);\n            continue;\n        }" "no bot-only end with someone else inside")
+require_order("${botonly_end_check}" "if (others)" "${end_line}" "the other-player check before the line")
+
+# 11c. The drain: the ending IN_PROGRESS battlegrounds, every manager bot inside (both sides, not only the fill set), at
+#      most BotOnlyLeavesPerUpdate leaves per update, the side from the pure policy, until nobody is inside.
+require_text("${botonly_drain}" "    // Once per update, before any leave (not per bot).\n    std::map<std::pair<uint32, uint32>, std::array<uint32, 2>> waiting;\n    CollectBgFillWaiting(waiting);" "waiting entries read once per update, before the drain loop")
+require_text("${botonly_leave}" "if (bgFillBotOnlyEnding.empty())\n        return;\n\n    // Once per update, before any leave (not per bot)." "nothing of the drain while no instance is ending")
+require_order("${botonly_drain}" "CollectBgFillWaiting(waiting);" "for (std::pair<uint32, uint32> const& key : ending)" "waiting entries read before the drain loop")
+require_text("${botonly_drain}" "std::vector<std::pair<uint32, uint32>> const ending(bgFillBotOnlyEnding.begin(), bgFillBotOnlyEnding.end());" "the ending instances copied (stops erase from the set)")
+require_text("${botonly_drain}" "if (found == watched.end() || found->second->GetStatus() != STATUS_IN_PROGRESS)\n            continue;" "drain only an IN_PROGRESS battleground of the walk")
+forbid_text("${botonly_drain}" "bgFillInBg" "drain limited to the fill set (every manager bot inside leaves)")
+require_text("${botonly_drain}" "for (auto const& member : bg->GetPlayers())\n                {\n                    Player* bot = GetPlayerBot(member.first.GetCounter());\n                    if (!bot)\n                    {\n                        stop = \"player\";" "every player inside: a manager bot, else the end stops")
+require_text("${botonly_drain}" "uint32 const side = member.second.PlayerTeam == HORDE ? 1 : 0;\n                    ++inside[side];" "both sides counted")
+require_text("${botonly_drain}" "if (!leaver[side] && GetBotAI(bot) && bot->IsInWorld() && !bot->IsBeingTeleported() &&\n                            bot->InBattleGround() && bot->GetBattleGroundId() == key.second)\n                        leaver[side] = bot;" "one leaver per side, in the world and inside")
+require_text("${botonly_drain}" "if (!inside[0] && !inside[1])\n                break;" "the drain runs until nobody is inside")
+require_text("${botonly_drain}" "uint32 const side = ai::bgfill::BotOnlyDrainSide(inside[0], inside[1], mayLeave[0], mayLeave[1]);" "drain side from the policy")
+require_text("${botonly_drain}" "Player* bot = leaver[side];" "the leaver of that side")
+require_text("${botonly_drain}" "while (leaves < ai::bgfill::BotOnlyLeavesPerUpdate)" "bounded leaves per update (per battleground)")
+require_text("${botonly_drain}" "if (leaves >= ai::bgfill::BotOnlyLeavesPerUpdate)\n            break;" "bounded leaves per update (over all battlegrounds)")
+require_order("${botonly_drain}" "if (!ReleaseBgFillBot(bot, GetBotAI(bot)))\n                break;" "++leaves;" "a leave counted after the core took it")
+count_text("${botonly_drain}" "++leaves;" 1 "leaves counted in one place")
+require_text("${policy_h}" "constexpr uint32_t BotOnlyLeavesPerUpdate = 2;" "two drain leaves per update")
+region("${policy_h}" "inline uint32_t BotOnlyDrainSide(" "\n}\n" drain_side)
+require_text("${drain_side}" "bool const a = mayLeaveA && botsA;\n    bool const h = mayLeaveH && botsH;\n    if (a && h)\n        return botsH > botsA ? 1 : 0;\n    if (a)\n        return 0;\n    if (h)\n        return 1;\n    return NoDrainSide;" "the larger side that may leave first, alliance on a tie")
+# The leave rule of b2: a bot leaves only from a side where the core then invites no waiting entry of that side (its
+# smallest entry, on the live invited counts minus the bot), unless the bounded pause is over.
+require_text("${botonly_drain}" "auto const waits = waiting.find(std::make_pair(key.first, uint32(bg->GetBracketId())));" "the waiting entries of that type and the battleground's bracket")
+require_text("${botonly_drain}" "uint32 const smallest = waits != waiting.end() ? waits->second[side] : 0;" "the smallest waiting entry of the side")
+require_text("${botonly_drain}" "Team const sideTeam = side ? HORDE : ALLIANCE;\n                Team const otherTeam = side ? ALLIANCE : HORDE;" "live invited counts per side")
+require_text("${botonly_drain}" "bool const allowed = ai::bgfill::BotOnlyLeaveAllowed(bg->GetInvitedCount(sideTeam), bg->GetInvitedCount(otherTeam),\n                    bg->GetMaxPlayersPerTeam(), differential, smallest, pauseOver);" "no leave after which the core invites a waiting entry of that side")
+require_text("${botonly_drain}" "mayLeave[side] = allowed && leaver[side];" "a side leaves only where the rule allows it")
+require_text("${botonly_drain}" "uint32 const differential = bg->GetTypeID() == BATTLEGROUND_AV ? ai::bgfill::DifferentialAV : 0;" "the core's differential")
+require_order("${botonly_drain}" "ai::bgfill::BotOnlyLeaveAllowed(" "ReleaseBgFillBot(bot, GetBotAI(bot))" "wait checked before the leave")
+region("${policy_h}" "inline bool BotOnlyLeaveAllowed(" "\n}\n" leave_rule)
+require_text("${leave_rule}" "if (pauseOver || !smallestWaiting || !invitedSide)\n        return true;\n    return !CoreInvitesEntry(invitedSide - 1, invitedOther, maxPerTeam, differential, smallestWaiting);" "leave rule: no invite of the smallest waiting entry after the leave")
 # Bounded pause: held only until one more grace after the end was due, then the bots leave regardless.
-require_text("${botonly_leave}" "if (since == bgFillNoRealSince.end() || !ai::bgfill::PendingExpired(nowMs, since->second, 2 * graceMs))\n            {\n                held.insert(key);\n                continue;\n            }" "a held instance waits at most one more grace")
-require_text("${botonly_leave}" "uint32 const graceMs = ai::bgfill::BotOnlyGraceMs(sPlayerbotAIConfig.bgBotOnlyGraceSeconds);" "pause bound from the grace key")
-require_text("${botonly_leave}" "for (std::pair<uint32, uint32> const& key : held)\n    {\n        bgFillBotOnlyEnding.erase(key);" "no leave possible: the held instances pause")
-require_text("${botonly_leave}" "\"[BGFill] state=botonly_stop bg=%u inst=%u reason=waiting\"" "pause line")
+require_text("${botonly_drain}" "bool const pauseOver = since != bgFillNoRealSince.end() && ai::bgfill::PendingExpired(nowMs, since->second, 2 * graceMs);" "a held instance waits at most one more grace")
+require_text("${botonly_drain}" "uint32 const graceMs = ai::bgfill::BotOnlyGraceMs(sPlayerbotAIConfig.bgBotOnlyGraceSeconds);" "pause bound from the grace key")
+require_text("${botonly_drain}" "if (side == ai::bgfill::NoDrainSide)\n            {\n                if (blocked)\n                    held.insert(key);\n                break;\n            }" "no side may leave for a waiting player: held")
+require_text("${botonly_drain}" "blocked = blocked || (!allowed && leaver[side]);" "held only for the leave rule")
+require_text("${botonly_drain}" "for (std::pair<uint32, uint32> const& key : held)\n    {\n        bgFillBotOnlyEnding.erase(key);" "no leave possible: the held instances pause")
+require_text("${botonly_drain}" "\"[BGFill] state=botonly_stop bg=%u inst=%u reason=waiting\"" "pause line")
 forbid_text("${botonly_leave}" "stop = \"waiting\"" "a waiting player stops the end without a bound")
 count_text("${botonly_leave}" "bgFillNoRealSince.erase(key);" 1 "the grace restarts only for a player inside")
 require_text("${mgr_h}" "void CollectBgFillWaiting(std::map<std::pair<uint32, uint32>, std::array<uint32, 2>>& waiting) const;" "wait collector declared const")
@@ -514,28 +613,37 @@ require_text("${collect}" "if (entryInfo.IsInvitedToBGInstanceGUID || entryInfo.
 require_text("${collect}" "uint32& smallest = waiting[std::make_pair(uint32(bgTypeId), uint32(entryInfo.BracketId))][entryInfo.GroupTeam == ALLIANCE ? 0 : 1];" "the entry's bracket and team")
 require_text("${collect}" "if (!smallest || size < smallest)\n                smallest = size;" "the smallest entry per side")
 forbid_text("${collect}" "GetBattleGroundBracketIdFromLevel(" "the member's own level bracket")
-# Final review 3: a player inside restarts the grace, so the end only pauses while he is there.
-require_text("${botonly_leave}" "stop = \"player\";\n                    restartGrace = true;" "a player inside restarts the grace")
-require_text("${botonly_leave}" "if (restartGrace)\n                bgFillNoRealSince.erase(key);" "the grace restarts on a stop for a player")
-require_text("${conf_dist}" "An open invite or a\n# player inside who is not a bot pauses that (the grace starts again once he is gone). A real player waiting uninvited\n# for that battleground and bracket does not keep it, but the bots leave so that the core does not invite him into it;\n# when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds." "dist: the end pauses for a player, a waiting one is not invited, the wait is bounded")
+# Final review 3: a player inside restarts the grace (and ends the watch before a line), so the end only pauses while he
+# is there.
+require_text("${botonly_drain}" "stop = \"player\";\n                        restartGrace = true;" "a player inside restarts the grace")
+require_text("${botonly_drain}" "if (restartGrace)\n                {\n                    bgFillNoRealSince.erase(key);\n                    auto const watch = bgFillBotOnlyWatch.find(key);\n                    if (watch != bgFillBotOnlyWatch.end() && !watch->second)\n                        bgFillBotOnlyWatch.erase(watch);\n                }" "the grace restarts on a stop for a player")
+require_text("${conf_dist}" "An open invite or a player inside who is not a bot pauses that (the grace starts again once he is gone).\n# A real player waiting uninvited for that battleground and bracket does not keep it, but the bots leave so that the\n# core does not invite him into it; when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds." "dist: the end pauses for a player, a waiting one is not invited, the wait is bounded")
 forbid_text("${conf_dist}" "who is not a bot stops that" "dist: the end stops for good")
 require_text("${conf_dist}" "(one release decision per wait)" "dist: one release decision per wait")
 forbid_text("${conf_dist}" "at most one release per wait" "dist: one release per wait")
 require_text("${conf_dist}" "more while his side is ahead" "dist: the pair count")
 require_text("${conf_dist}" "cut short, it reserves nothing and the next check decides\n# again" "dist: a partial release")
 require_text("${conf_dist}" "one that may be in the\n# premade queue (PremadeGroupWaitForMatch on and the group at least PremadeQueue.MinGroupSize)" "dist: the premade skip")
-require_text("${watch}" "!ai::bgfill::PendingExpired(nowMs, since, graceMs)" "ends only after the grace")
-require_text("${watch}" "\"[BGFill] state=botonly_end bg=%u inst=%u bots=%u\"" "bot-only line")
-require_text("${botonly_leave}" "if (bgFillBotOnlyEnding.empty())\n        return;" "nothing per update while no instance is ending")
-count_text("${botonly_leave}" "ReleaseBgFillBot(" 1 "one leave per update")
+count_text("${botonly_leave}" "ReleaseBgFillBot(" 1 "one leave call in the drain")
 # Review: each leave lets the core invite a waiting player into the freed slot before the next watch; an open invite or
 # anyone inside who is not a bot of this manager stops the end before the next leave.
-require_text("${botonly_leave}" "if (bg->GetInvitedCount(ALLIANCE) + bg->GetInvitedCount(HORDE) > bg->GetPlayersSize())\n            stop = \"invite\";" "open invite stops the end")
-require_order("${botonly_leave}" "stop = \"invite\";" "ai::bgfill::CoreInvitesEntry(invitedSide - 1," "the guards before the side check")
-require_text("${botonly_leave}" "for (auto const& member : bg->GetPlayers())\n            {\n                if (!GetPlayerBot(member.first.GetCounter()))\n                {\n                    stop = \"player\";" "a player inside who is not a manager bot stops the end")
-require_text("${botonly_leave}" "if (stop)\n        {\n            bgFillBotOnlyEnding.erase(key);" "a stop drops the ending mark")
-require_order("${botonly_leave}" "if (stop)\n        {" "ReleaseBgFillBot(bot, ai);" "presence checked before every leave")
+require_text("${botonly_drain}" "if (bg->GetInvitedCount(ALLIANCE) + bg->GetInvitedCount(HORDE) > bg->GetPlayersSize())\n                stop = \"invite\";" "open invite stops the end")
+require_order("${botonly_drain}" "stop = \"invite\";" "ai::bgfill::BotOnlyLeaveAllowed(" "the guards before the side check")
+require_text("${botonly_drain}" "if (stop)\n            {\n                bgFillBotOnlyEnding.erase(key);" "a stop drops the ending mark")
+require_order("${botonly_drain}" "if (stop)\n            {" "ReleaseBgFillBot(bot, GetBotAI(bot))" "presence checked before every leave")
 require_guarded("${botonly_leave}" "sLog.outBasic(\"[BGFill]" "if (trace" "if (sPlayerbotAIConfig.bgTrace)" 80 "bot-only stop line without the trace switch")
+# OB-20: the module never ends a battleground itself - no EndBattleGround, EndNow, WAIT_LEAVE status, winner or
+# PrematureFinish countdown from any module source; the drain only lets the core delete the empty battleground.
+file(GLOB_RECURSE end_sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
+foreach(source ${end_sources})
+  file(READ "${source}" source_text)
+  foreach(call "EndBattleGround(" "EndNow(" "SetStatus(STATUS_WAIT_LEAVE" "SetWinner(" "m_PrematureCountDown")
+    string(FIND "${source_text}" "${call}" call_at)
+    if(NOT call_at EQUAL -1)
+      message(FATAL_ERROR "#517 b: the module ends a battleground itself (${source}): ${call}")
+    endif()
+  endforeach()
+endforeach()
 
 # 12. [BGFill] lines of stage b behind AiPlayerbot.BG.Trace (the stage-a contract checks the whole fill path too).
 require_guarded("${slot}" "sLog.outBasic(\"[BGFill]" "if (trace" "if (sPlayerbotAIConfig.bgTrace)" 80 "stage-b [BGFill] line without the trace switch")
@@ -579,5 +687,58 @@ set(decline "if (sPlayerbotAIConfig.bgEnable)\n            {\n                Ba
 require_text("${leave_before_join}" "${decline}" "leave-before-join: decline while the own battleground runs")
 require_order("${leave_before_join}" "${decline}" "bot->GetSession()->HandleLeaveBattlefieldOpcode(leave);" "decline before the leave")
 require_order("${leave_before_join}" "#ifdef MANGOSBOT_ZERO" "${decline}" "decline only in the vanilla branch")
+
+# Follow-up D (OB-20 16.10.): the decline is the core's own "leave queue" - port action 0 for the new invite's queue:
+# LeaveQueue sends CMSG_BATTLEFIELD_PORT through SendPort with action 0x0, in the vanilla layout uint32 map id (of the
+# new battleground type, _bgTypeId) + uint8 action, which HandleBattleFieldPortOpcode reads (core premise below).
+require_text("${leave_before_join}" "LeaveQueue(bot, _bgTypeId);\n                    return true;" "decline for the new invite's battleground type")
+count_text("${leave_before_join}" "LeaveQueue(" 1 "one decline")
+region("${join_cpp}" "void BGStatusAction::LeaveQueue(Player* bot, BattleGroundTypeId bgTypeId)" "void BGStatusAction::ApplyLeaveState(" decline_queue)
+require_text("${decline_queue}" "SendPort(bot, bgTypeId, 0x0);" "decline = port action 0 for that type")
+count_text("${decline_queue}" "SendPort(" 1 "the decline sends one port packet")
+region("${join_cpp}" "void BGStatusAction::SendPort(Player* bot, BattleGroundTypeId bgTypeId, uint8 action)" "bool BGStatusCheckAction::Execute(Event& event)" decline_port)
+require_text("${decline_port}" "#ifdef MANGOSBOT_ZERO\n    packet << uint32(GetBattleGrounMapIdByTypeId(bgTypeId)) << action;" "vanilla port packet: uint32 map id of the type, uint8 action")
+require_text("${decline_port}" "bot->GetSession()->HandleBattleFieldPortOpcode(packet);" "the core's port handler")
+require_text("${join_h}" "static void SendPort(Player* bot, BattleGroundTypeId bgTypeId, uint8 action);" "port action is one byte")
+
+# 15. Core premises (follow-up D, OB-20). The drain relies on the core deleting an empty battleground without
+#     EndBattleGround, before its PrematureFinish countdown, and on no count-based end other than that countdown.
+read_core("src/game/Battlegrounds/BattleGround.cpp" core_bg_cpp)
+read_core("src/game/Battlegrounds/BattleGround.h" core_bg_h)
+read_core("src/game/Handlers/BattleGroundHandler.cpp" core_bg_handler)
+read_core("src/game/World.cpp" core_world)
+region("${core_bg_cpp}" "void BattleGround::Update(uint32 diff)" "    /***           BATTLEGROUND STARTING SYSTEM            ***/" core_update)
+set(core_empty "    if (!GetPlayersSize())\n    {")
+set(core_delete "        if (!GetInvitedCount(HORDE) && !GetInvitedCount(ALLIANCE))\n            delete this;")
+set(core_premature "if (!IsArena() && GetStatus() == STATUS_IN_PROGRESS && sBattleGroundMgr.GetPrematureFinishTime() && (GetPlayersCountByTeam(ALLIANCE) < GetMinPlayersPerTeam() || GetPlayersCountByTeam(HORDE) < GetMinPlayersPerTeam()))")
+require_text("${core_update}" "${core_delete}" "core: an empty battleground without invites is deleted")
+require_order("${core_update}" "${core_empty}" "${core_delete}" "core: the delete inside the empty check")
+require_order("${core_update}" "${core_delete}" "${core_premature}" "core: the empty check before the PrematureFinish countdown")
+region("${core_update}" "${core_empty}" "    /***           BATTLEGROUND BALLANCE SYSTEM            ***/" core_empty_block)
+require_text("${core_empty_block}" "        return;\n    }" "core: the empty check returns before the countdown")
+forbid_text("${core_empty_block}" "EndBattleGround(" "core: the empty path ends through EndBattleGround")
+forbid_text("${core_empty_block}" "Reward" "core: the empty path rewards")
+# The only ends in Update are the countdown (a side below the minimum, after PrematureFinishTimer) and the WSG/AB time
+# limit; none for an empty side at once.
+count_text("${core_update}" "EndBattleGround(" 2 "core: Update ends only by the WSG/AB time limit and the countdown")
+require_text("${core_update}" "else if (m_PrematureCountDownTimer < diff)\n        {\n            // time's up!\n            EndBattleGround(GetWinningTeam());" "core: the countdown ends only when its timer runs out")
+require_text("${core_bg_h}" "BattleGroundWinner GetWinner() const { return m_Winner; }" "core: winner accessor")
+require_text("${core_bg_h}" "WINNER_HORDE            = 0,\n    WINNER_ALLIANCE         = 1,\n    WINNER_NONE             = 2" "core: winner values")
+# A leave's queue update runs in the next tick after the map update, so the last leave (empty, no invite) lets the core
+# delete the battleground before any queue update could invite into it.
+require_order("${core_world}" "    sMapMgr.Update(diff);" "    sBattleGroundMgr.Update(diff);" "core: maps (battleground updates) before the queue updates")
+# R5 decline: port action 0 takes the bot out of that queue (player slot, queue entry, invited count of the new instance)
+# and does not touch the battleground it is in.
+region("${core_bg_handler}" "void WorldSession::HandleBattleFieldPortOpcode(WorldPacket &recv_data)" "        default:\n            sLog.outError(\"Battleground port: unknown action %u\", action);" core_port)
+require_text("${core_port}" "    uint8 action = 0; // enter battle 0x1, leave queue 0x0\n    uint32 mapId = 0;\n\n    recv_data >> mapId >> action;" "core: port packet uint32 map id + uint8 action")
+require_text("${core_port}" "BattleGroundTypeId bgTypeId = GetBattleGroundTypeIdByMapId(mapId);" "core: battleground type from the map id")
+require_text("${core_port}" "if (!bg && action == 0)\n        bg = sBattleGroundMgr.GetBattleGroundTemplate(bgTypeId);" "core: action 0 works without an instance")
+region("${core_port}" "        case 0:                                         // leave queue" "            break;" core_port_leave)
+require_text("${core_port_leave}" "_player->RemoveBattleGroundQueueId(bgQueueTypeId);" "core: action 0 clears the player's queue slot")
+require_text("${core_port_leave}" "bgQueue.RemovePlayer(_player->GetObjectGuid(), true);" "core: action 0 removes him from the queue (invited count too)")
+require_text("${core_port_leave}" "sBattleGroundMgr.BuildBattleGroundStatusPacket(&data, bg, queueSlot, STATUS_NONE, 0, 0);" "core: action 0 status cleared")
+forbid_text("${core_port_leave}" "GetBattleGround()" "core: action 0 touches the current battleground")
+forbid_text("${core_port_leave}" "RemovePlayerAtLeave" "core: action 0 leaves the current battleground")
+forbid_text("${core_port_leave}" "SetBattleGroundId" "core: action 0 changes the current battleground")
 
 message(STATUS "bg_slot_release_517 source contract passed")
