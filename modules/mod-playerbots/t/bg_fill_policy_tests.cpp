@@ -170,6 +170,16 @@ void PairAndRelease()
     Require(!ReleaseInvitesPlayer(40, 36, DifferentialAV), "AV beyond the differential");
     Require(ReleaseInvitesPlayer(36, 39, DifferentialAV), "AV other side ahead within the differential");
 
+    // Top-up: his side full, the other side short and a release alone would not invite him.
+    Require(TopUpNeeded(10, 9, 10, 0), "WSG player side full, other side one short");
+    Require(TopUpNeeded(10, 7, 10, 0), "WSG player side full, other side three short");
+    Require(!TopUpNeeded(10, 10, 10, 0), "WSG both full: the release applies");
+    Require(!TopUpNeeded(9, 9, 10, 0), "WSG player side not full: the pair option applies");
+    Require(!TopUpNeeded(9, 10, 10, 0), "WSG other side full");
+    Require(!TopUpNeeded(40, 38, 40, DifferentialAV), "AV within the differential: the release applies");
+    Require(TopUpNeeded(40, 36, 40, DifferentialAV), "AV beyond the differential");
+    Require(!TopUpNeeded(0, 0, 0, 0), "no slots at all");
+
     // Target: the most fill bots on the player's side first, then the lowest instance id.
     Require(PreferTarget(3, 9, 2, 1), "more fill bots wins");
     Require(!PreferTarget(2, 1, 3, 9), "fewer fill bots loses");

@@ -1511,6 +1511,21 @@ bool BGStatusAction::Execute(Event& event)
         {
             //We are already in a BG. Joining a new one directly causes a crash when SetBattleGroundId is reset during leave right before teleporting in the new one.
             //Here we leave the current BG proper so we can join the next fresh.
+#ifdef MANGOSBOT_ZERO
+            // twow-repo#517 stage b review: with the real map id (R5, below) this leave works, and leaving a battleground
+            // that is not over means Deserter (which then refuses this very invite) and a hole in a match that may hold
+            // real players. Under BG.Enable the bot declines this invite instead (port action 0) while its battleground
+            // still runs, and leaves only one that is over (WAIT_LEAVE, no Deserter).
+            if (sPlayerbotAIConfig.bgEnable)
+            {
+                BattleGround* current = bot->GetBattleGround();
+                if (current && current->GetStatus() != STATUS_WAIT_LEAVE)
+                {
+                    LeaveQueue(bot, _bgTypeId);
+                    return true;
+                }
+            }
+#endif
             WorldPacket leave(CMSG_LEAVE_BATTLEFIELD);
 #ifdef MANGOSBOT_ZERO
             // twow-repo#517 R5 (AiPlayerbot.BG.Enable): the vanilla handler wants the player's map id (uint32), see the

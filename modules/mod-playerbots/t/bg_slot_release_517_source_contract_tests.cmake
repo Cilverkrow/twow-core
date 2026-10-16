@@ -144,6 +144,8 @@ count_text("${mgr_cpp}" "CheckBgFill();" 1 "CheckBgFill called only from the gat
 require_text("${check}" "if (sPlayerbotAIConfig.bgSlotRelease)\n        ScanBgSlotRelease(nowMs);" "pair/release scan gated by SlotRelease")
 count_text("${mgr_cpp}" "ScanBgSlotRelease(nowMs);" 1 "ScanBgSlotRelease called once, gated")
 require_order("${check}" "ScanBgFill(nowMs);" "ScanBgSlotRelease(nowMs);" "stage b after stage a in the scan")
+# Review: the pair/release scan sees the bot-only instances that end from this interval on (and skips them).
+require_order("${check}" "WatchBotOnlyBgs(nowMs);" "ScanBgSlotRelease(nowMs);" "bot-only watch before the pair/release scan")
 require_order("${check}" "ai::bgfill::IntervalDue(" "ScanBgSlotRelease(nowMs);" "stage b once per interval")
 require_order("${check}" "ai::bgfill::IntervalDue(" "WatchBotOnlyBgs(nowMs);" "bot-only watch once per interval")
 count_text("${mgr_cpp}" "WatchBotOnlyBgs(nowMs);" 1 "bot-only watch called once")
@@ -166,6 +168,12 @@ require_text("${slot}" "if (!ai::bgfill::PendingExpired(nowMs, wait.firstSeenMs,
 require_text("${slot}" "if (bgFillNewMatch.count(BgFillBracketKey(wait.queueType, wait.bracket)))\n            continue;" "a bracket stage a just queued a new match for is left alone")
 require_text("${scan}" "if (joined)\n            bgFillNewMatch.insert(bracketKey);" "new match recorded for stage b")
 require_text("${scan}" "bgFillNewMatch.clear();" "new-match set reset per scan")
+# Review: due only when the core would pick him for one free slot - not in another battleground, not on a taxi
+# (SelectionPool::AddGroup skips him), queued solo (a group needs a slot per member).
+region("${slot}" "std::vector<std::pair<uint32, BgFillWait*>> due;" "due.emplace_back(waitKey.first, &wait);" due_loop)
+require_text("${due_loop}" "if (!player || player->InBattleGround() || player->IsTaxiFlying())\n            continue;" "no pair or release for a player the core skips")
+require_text("${due_loop}" "sBattleGroundMgr.m_BattleGroundQueues[wait.queueType].GetPlayerGroupInfoData(player->GetObjectGuid(), &ginfo)" "queue group read from the core queue")
+require_text("${due_loop}" "if (ginfo.Players.size() != 1)\n        {" "queued groups not due")
 
 # 4. No partial side under SlotRelease: a new match is queued whole or not at all; without SlotRelease unchanged.
 region("${scan}" "std::set<uint32> incomplete;" "uint32 joined = 0;" whole_match)
@@ -173,10 +181,23 @@ require_text("${whole_match}" "if (sPlayerbotAIConfig.bgSlotRelease)" "whole-mat
 require_text("${whole_match}" "if (r.candidates.size() < r.need)\n                incomplete.insert(BgFillBracketKey(uint32(r.queueTypeId), uint32(r.bracketId)));" "a short side marks the whole bracket")
 require_text("${whole_match}" "if (incomplete.count(bracketKey))\n        {\n            if (trace)\n                sLog.outBasic(\"[BGFill] state=skip reason=nobots " "short bracket skipped before any join (nobots)")
 require_order("${scan}" "if (incomplete.count(bracketKey))" "BGJoinAction::SendBattlemasterJoin(ai, bot, r.bgTypeId, false);" "skip before the joins")
+# Review: under SlotRelease a bracket counts as forming (against the cap of later brackets) only once it really joins;
+# an incomplete one queues nobody and must not hold the cap. Without SlotRelease unchanged (marked at the request).
+require_text("${scan}" "if (!forming[q][b] && !sPlayerbotAIConfig.bgSlotRelease)\n            {\n                forming[q][b] = true;\n                ++formingBrackets;" "request marks forming only without SlotRelease")
+set(cap_again "if (sPlayerbotAIConfig.bgSlotRelease && !forming[uint32(r.queueTypeId)][uint32(r.bracketId)])\n        {\n            uint32 const running = ai::bgfill::RunningForBracket(runningBgs, formingBrackets, false);\n            if (!ai::bgfill::CapAllows(running, sPlayerbotAIConfig.bgMaxConcurrent))")
+require_text("${scan}" "${cap_again}" "cap again at the join under SlotRelease")
+region("${scan}" "${cap_again}" "uint32 joined = 0;" cap_again_body)
+require_order("${cap_again_body}" "                continue;\n            }" "forming[uint32(r.queueTypeId)][uint32(r.bracketId)] = true;\n            ++formingBrackets;" "a capped bracket joins nothing, a passing one is forming")
+require_order("${scan}" "if (incomplete.count(bracketKey))" "${cap_again}" "incomplete bracket skipped before it counts")
 
 # 5. Targets: running WAIT_JOIN/IN_PROGRESS battlegrounds of the type and bracket holding fill bots, one walk.
 require_text("${slot}" "if (bg->GetStatus() != STATUS_WAIT_JOIN && bg->GetStatus() != STATUS_IN_PROGRESS)\n                return;" "only running battlegrounds, not ending")
 require_text("${slot}" "++fillBots[std::make_pair(entry.bgTypeId, entry.instanceId)][entry.team];" "fill bots from the in-battleground set")
+require_text("${slot}" "if (!entry.instanceId || bgFillBotOnlyEnding.count(std::make_pair(entry.bgTypeId, entry.instanceId)))\n            continue;\n        ++fillBots[" "no target whose bot-only end runs")
+# Review: free slots are the core's invited counts (GetFreeSlotsForTeam), not the players inside.
+foreach(target_field "target.maxPerTeam = bg->GetMaxPlayersPerTeam();" "target.invited[0] = bg->GetInvitedCount(ALLIANCE);" "target.invited[1] = bg->GetInvitedCount(HORDE);")
+  require_text("${slot}" "${target_field}" "target field from the core's counts")
+endforeach()
 require_text("${slot}" "if (found == fillBots.end())\n                return;" "only battlegrounds holding fill bots")
 count_text("${slot}" "sBattleGroundMgr.ApplyAllBattleGrounds(" 1 "one battleground walk per scan")
 require_text("${slot}" "if (t.bgTypeId != wait->bgTypeId || t.bracket != wait->bracket)\n                continue;" "target of the player's type and bracket")
@@ -186,21 +207,39 @@ require_text("${prefer}" "return fillOnSide > bestFillOnSide;" "most fill bots o
 require_text("${prefer}" "return instanceId < bestInstanceId;" "then the lowest instance id")
 
 # 6. Pair before release (OB-00 D2).
-require_text("${slot}" "if (ai::bgfill::PairPossible(target->invited[0], target->invited[1], target->maxPerTeam))" "pair option on the core's free slots")
-region("${slot}" "if (ai::bgfill::PairPossible(" "// Slot release only without a pair option" pair_branch)
-require_text("${pair_branch}" "pairs.push_back(need);\n            continue;\n        }" "a pair need never falls through to the release")
+require_text("${slot}" "bool const pairOption = ai::bgfill::PairPossible(target->invited[0], target->invited[1], target->maxPerTeam);" "pair option on the core's free slots")
+# Review: his side full and the other short - no pair, and a release alone would not invite him: a top-up bot first.
+require_text("${slot}" "bool const topUp = !pairOption &&\n            ai::bgfill::TopUpNeeded(target->invited[side], target->invited[other], target->maxPerTeam, differential);" "top-up only without a pair option")
+require_text("${slot}" "uint32 const differential = target->bgTypeId == uint32(BATTLEGROUND_AV) ? ai::bgfill::DifferentialAV : 0;" "top-up differential as the core's")
+region("${policy_h}" "inline bool TopUpNeeded(" "inline bool PreferTarget(" topup_policy)
+require_text("${topup_policy}" "return invitedSide >= maxPerTeam && invitedOther < maxPerTeam && !ReleaseInvitesPlayer(invitedSide, invitedOther, differential);" "top-up: side full, other short, release would not invite")
+region("${slot}" "bool const pairOption = ai::bgfill::PairPossible(" "releases.push_back(ReleaseNeed{ playerGuid, wait, target });" pair_branch)
+require_text("${pair_branch}" "if (pairOption || topUp)\n        {" "pair or top-up branch")
+require_text("${pair_branch}" "pairs.push_back(need);\n            continue;\n        }" "a pair need does not go to the release in the same loop")
 require_text("${pair_branch}" "need.team = other;" "pair bot of the other faction")
+require_text("${pair_branch}" "need.topUp = topUp;" "top-up marked on the need")
 require_text("${pair_branch}" "if (pairPending.count(std::make_pair(playerGuid, wait->queueType)))" "one pair bot per player at a time")
 forbid_text("${pair_branch}" "ReleaseBgFillBot(" "release inside the pair branch")
+# The releases run after the pair step (step 7); a pair need reaches them only when no free bot exists for it (the pair
+# option needs one, spec point 3), a top-up never (the release would not invite him).
+region("${slot}" "for (PairNeed const& need : pairs)" "// 7. Slot release only without a pair option" pair_join)
+require_text("${pair_join}" "if (!need.bot)\n        {" "pair need without a bot")
+require_text("${pair_join}" "if (!need.topUp)\n                releases.push_back(ReleaseNeed{ need.playerGuid, need.wait, need.target });\n            continue;" "no free pair bot: the release decides, not for a top-up")
+count_text("${slot}" "releases.push_back(" 2 "releases only from the no-pair branch and the pair need without a bot")
 foreach(release_step "ai::bgfill::ReleaseAllowed(" "ai::bgfill::ChooseReleaseVictim(" "ReleaseBgFillBot(victim, victimAi)" "[BGSlotRelease]")
-  require_order("${slot}" "if (ai::bgfill::PairPossible(" "${release_step}" "pair option before ${release_step}")
+  require_order("${slot}" "bool const pairOption = ai::bgfill::PairPossible(" "${release_step}" "pair option before ${release_step}")
+  require_order("${slot}" "BGJoinAction::SendBattlemasterJoin(ai, need.bot, bgTypeId, false);" "${release_step}" "pair joins before ${release_step}")
 endforeach()
+require_text("${slot}" "for (auto const& [playerGuid, wait, target] : releases)" "release step walks the release needs")
 region("${policy_h}" "inline bool PairPossible(" "inline bool ReleaseAllowed(" pair_policy)
 require_text("${pair_policy}" "return countA < maxPerTeam && countH < maxPerTeam;" "pair needs a free slot on both sides")
 # Pair bots: stage-a candidate rules and join helper, pending with the player's guid, the spec line behind Trace.
 region("${slot}" "auto const visit = [&](uint32 guid, Player* bot)" "PlayerBotMap const& bots = GetAllBots();" pair_visit)
 require_text("${pair_visit}" "if (!IsBgFillCandidate(bot))\n            return;" "pair bot passes the stage-a candidate filters")
 require_text("${pair_visit}" "bot->GetBattleGroundBracketIdFromLevel(bgTypeId) != BattleGroundBracketId(need.wait->bracket)" "pair bot in the player's bracket (core formula)")
+require_text("${pair_visit}" "!bot->GetBGAccessByLevel(bgTypeId) ||" "pair bot passes the core's level access")
+require_text("${pair_visit}" "bot->InBattleGroundQueueForBattleGroundQueueType(BattleGroundQueueTypeId(need.wait->queueType)))\n                continue;" "pair bot not queued for it yet")
+require_text("${slot}" "\"[BGFill] state=topup bot=%u for=%u bg=%u inst=%u bracket=%u\"" "top-up line")
 require_text("${slot}" "bots.upper_bound(bgFillRotate)" "rotating start of the pair loop")
 count_text("${slot}" "&& open; ++it)" 2 "both halves of the pair loop stop once every pair has a bot")
 require_order("${slot}" "BGJoinAction::SendBattlemasterJoin(ai, need.bot, bgTypeId, false);" "entry.pairFor = need.playerGuid;" "pair bot recorded only after the join")
@@ -214,9 +253,13 @@ require_order("${scan}" "reason = \"expired\";" "else if (entry.pairFor)" "pair 
 require_text("${scan}" "if (entry.pairFor)\n            continue;\n        ++pending[entry.queueType][entry.bracket][entry.team];" "pair bots not counted as new-match pending or forming")
 
 # 7. Release only above the minimum (G2/OB-20), only when it invites the player, never a flag carrier or dead bot.
-region("${slot}" "// Slot release only without a pair option" "if (pairs.empty())\n        return;" release_branch)
+region("${slot}" "// 7. Slot release only without a pair option" "// Stage b (Enable && (PlayerFill || SlotRelease))" release_branch)
 require_text("${release_branch}" "else if (!ai::bgfill::ReleaseAllowed(bg->GetPlayersCountByTeam(sideTeam), bg->GetMinPlayersPerTeam()))\n            skip = \"min\";" "release only from a side above the minimum (players inside)")
 require_text("${release_branch}" "bg->GetTypeID() == BATTLEGROUND_AV ? ai::bgfill::DifferentialAV : 0))\n            skip = \"unbalanced\";" "release only when the core then invites the player")
+require_text("${release_branch}" "else if (!ai::bgfill::ReleaseInvitesPlayer(bg->GetInvitedCount(sideTeam), bg->GetInvitedCount(otherTeam),\n                bg->GetTypeID()" "release balance on the live invited counts")
+require_text("${release_branch}" "Team const sideTeam = side ? HORDE : ALLIANCE;\n        Team const otherTeam = side ? ALLIANCE : HORDE;" "sides of the live counts")
+require_text("${release_branch}" "else if (releasedThisScan.count(targetKey))\n            skip = \"busy\";" "one release per battleground per scan")
+require_text("${release_branch}" "if (!bot || !GetBotAI(bot) || !bot->IsInWorld() || bot->IsBeingTeleported())\n                continue;" "victims in the world, not teleporting")
 foreach(check "ai::bgfill::ReleaseAllowed(" "ai::bgfill::ReleaseInvitesPlayer(" "if (wait->released)\n            skip = \"released\";" "if (pendingAhead)" "ai::bgfill::ChooseReleaseVictim(cands, nowMs)")
   require_order("${release_branch}" "${check}" "ReleaseBgFillBot(victim, victimAi)" "${check} before the release")
 endforeach()
@@ -242,6 +285,10 @@ require_text("${victim_policy}" "if (age < bestAge)\n                best = &c;"
 require_text("${victim_policy}" "if (c.guid < best->guid)\n            best = &c;" "lowest guid on a tie")
 # Fill bots of his side still queued ahead of him leave first; another player's pair bot defers the release.
 require_text("${release_branch}" "if (!ai || entry.pairFor || !LeaveBgFillQueue(bot, ai, it->first, entry, \"reserve\"))" "queued fill bots of his side leave, pair bots defer")
+# Review: invited fill bots are not taken out (stage a: an invited bot leaves only for hard reasons).
+set(invited_ahead "if (ai && bot->IsInvitedForBattleGroundQueueType(BattleGroundQueueTypeId(entry.queueType)))\n            {\n                ++it;\n                continue;\n            }")
+require_text("${release_branch}" "${invited_ahead}" "invited fill bots stay in the queue on a release")
+require_order("${release_branch}" "${invited_ahead}" "LeaveBgFillQueue(bot, ai, it->first, entry, \"reserve\")" "invited skip before the reserve leave")
 require_text("${release_branch}" "releasedThisScan.insert(targetKey);\n        wait->released = true;" "one release per wait and per battleground per scan")
 
 # 8. castDeserter = false only in the release and bot-only paths: one core call, in ReleaseBgFillBot, called from the
@@ -286,6 +333,8 @@ foreach(reason invited left expired)
   require_text("${slot}" "reason = \"${reason}\";" "reservation ends: ${reason}")
 endforeach()
 require_order("${slot}" "reason = \"expired\";" "it = bgFillReservations.erase(it);" "ended reservations dropped")
+# Review: the success end - invited, or inside a battleground of that type - not only the deadline.
+require_text("${slot}" "if (player && (player->IsInvitedForBattleGroundQueueType(queueTypeId) ||\n                (player->InBattleGround() && player->GetBattleGroundTypeId() == BattleGroundTypeId(res.bgTypeId))))\n            reason = \"invited\";" "reservation ends when he is invited or inside")
 region("${policy_h}" "inline bool DeadlinePassed(" "inline bool PairPossible(" deadline)
 require_text("${deadline}" "return int32_t(now - until) >= 0;" "wrap-safe deadline")
 
@@ -305,13 +354,20 @@ require_order("${release_branch}" "ReleaseBgFillBot(victim, victimAi)" "uint32 c
 # 11. Bot-only cleanup: started-for-fill instances, IN_PROGRESS, no real player inside or invited, grace, one per update.
 require_text("${watch}" "if (entry.startedForFill)\n            started.insert(key);" "only instances started for the fill")
 require_text("${watch}" "bg->GetStatus() != STATUS_IN_PROGRESS" "grace counts from IN_PROGRESS")
-require_text("${watch}" "player->IsInvitedForBattleGroundInstance(key.second)" "an invited real player counts as present")
+require_text("${watch}" "if ((player->InBattleGround() && player->GetBattleGroundId() == key.second) ||\n                    player->IsInvitedForBattleGroundInstance(key.second))\n                realPresent.insert(key);" "a real player inside or invited counts as present")
 require_text("${watch}" "if (!playerAi->IsRealPlayer())\n                continue;" "real players only")
 require_text("${watch}" "if (!inProgress.count(key) || realPresent.count(key))\n        {\n            bgFillNoRealSince.erase(key);\n            bgFillBotOnlyEnding.erase(key);" "a real player or the end of IN_PROGRESS clears it")
 require_text("${watch}" "!ai::bgfill::PendingExpired(nowMs, since, graceMs)" "ends only after the grace")
 require_text("${watch}" "\"[BGFill] state=botonly_end bg=%u inst=%u bots=%u\"" "bot-only line")
 require_text("${botonly_leave}" "if (bgFillBotOnlyEnding.empty())\n        return;" "nothing per update while no instance is ending")
 count_text("${botonly_leave}" "ReleaseBgFillBot(" 1 "one leave per update")
+# Review: each leave lets the core invite a waiting player into the freed slot before the next watch; an open invite or
+# anyone inside who is not a bot of this manager stops the end before the next leave.
+require_text("${botonly_leave}" "if (bg->GetInvitedCount(ALLIANCE) + bg->GetInvitedCount(HORDE) > bg->GetPlayersSize())\n            stop = \"invite\";" "open invite stops the end")
+require_text("${botonly_leave}" "for (auto const& member : bg->GetPlayers())\n            {\n                if (!GetPlayerBot(member.first.GetCounter()))\n                {\n                    stop = \"player\";" "a player inside who is not a manager bot stops the end")
+require_text("${botonly_leave}" "if (stop)\n        {\n            bgFillBotOnlyEnding.erase(key);" "a stop drops the ending mark")
+require_order("${botonly_leave}" "if (stop)\n        {" "ReleaseBgFillBot(bot, ai);" "presence checked before every leave")
+require_guarded("${botonly_leave}" "sLog.outBasic(\"[BGFill]" "if (trace" "if (sPlayerbotAIConfig.bgTrace)" 80 "bot-only stop line without the trace switch")
 
 # 12. [BGFill] lines of stage b behind AiPlayerbot.BG.Trace (the stage-a contract checks the whole fill path too).
 require_guarded("${slot}" "sLog.outBasic(\"[BGFill]" "if (trace" "if (sPlayerbotAIConfig.bgTrace)" 80 "stage-b [BGFill] line without the trace switch")
@@ -349,5 +405,11 @@ region("${join_cpp}" "if (bot->InBattleGround() && bot->GetBattleGroundTypeId() 
 require_text("${leave_before_join}" "if (sPlayerbotAIConfig.bgEnable)\n                leave << uint32(bot->GetMapId());\n            else\n                leave << uint8(0) << uint8(0) << uint32(0) << uint16(0);" "leave-before-join: map id under BG.Enable, old bytes without")
 require_order("${leave_before_join}" "#ifdef MANGOSBOT_ZERO" "leave << uint32(bot->GetMapId());" "leave-before-join: vanilla branch")
 count_text("${join_cpp}" "uint32(bot->GetMapId())" 2 "map id only in the two R5 leave packets")
+# Review: leaving a battleground that still runs would cast Deserter (which refuses the new invite) and leave a hole;
+# under BG.Enable the bot declines the new invite instead and leaves only a battleground that is over.
+set(decline "if (sPlayerbotAIConfig.bgEnable)\n            {\n                BattleGround* current = bot->GetBattleGround();\n                if (current && current->GetStatus() != STATUS_WAIT_LEAVE)\n                {\n                    LeaveQueue(bot, _bgTypeId);\n                    return true;\n                }\n            }")
+require_text("${leave_before_join}" "${decline}" "leave-before-join: decline while the own battleground runs")
+require_order("${leave_before_join}" "${decline}" "bot->GetSession()->HandleLeaveBattlefieldOpcode(leave);" "decline before the leave")
+require_order("${leave_before_join}" "#ifdef MANGOSBOT_ZERO" "${decline}" "decline only in the vanilla branch")
 
 message(STATUS "bg_slot_release_517 source contract passed")
