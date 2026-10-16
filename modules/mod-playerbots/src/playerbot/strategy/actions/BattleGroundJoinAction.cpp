@@ -1421,11 +1421,21 @@ bool BGStatusAction::Execute(Event& event)
         sLog.outDetail("Bot #%d %s:%d <%s> leaves %s - %s", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(), isArena ? "Arena" : "BG", _bgType.c_str());
 
         WorldPacket packet(CMSG_LEAVE_BATTLEFIELD);
+#ifdef MANGOSBOT_ZERO
+        // twow-repo#517 R5 (AiPlayerbot.BG.Enable): the vanilla HandleLeaveBattlefieldOpcode reads a uint32 map id and
+        // returns unless it is the player's map, so the zero bytes never left the battleground. With the master switch
+        // off the old bytes stay.
+        if (sPlayerbotAIConfig.bgEnable)
+            packet << uint32(bot->GetMapId());
+        else
+        {
+            packet << uint8(0);
+            packet << uint8(0);                           // BattleGroundTypeId-1 ?
+            packet << uint16(0);
+        }
+#else
         packet << uint8(0);
         packet << uint8(0);                           // BattleGroundTypeId-1 ?
-#ifdef MANGOSBOT_ZERO
-        packet << uint16(0);
-#else
         packet << uint32(0);
         packet << uint16(0);
 #endif
@@ -1502,7 +1512,16 @@ bool BGStatusAction::Execute(Event& event)
             //We are already in a BG. Joining a new one directly causes a crash when SetBattleGroundId is reset during leave right before teleporting in the new one.
             //Here we leave the current BG proper so we can join the next fresh.
             WorldPacket leave(CMSG_LEAVE_BATTLEFIELD);
+#ifdef MANGOSBOT_ZERO
+            // twow-repo#517 R5 (AiPlayerbot.BG.Enable): the vanilla handler wants the player's map id (uint32), see the
+            // TIME_REMOVE leave above; the old bytes stay with the master switch off.
+            if (sPlayerbotAIConfig.bgEnable)
+                leave << uint32(bot->GetMapId());
+            else
+                leave << uint8(0) << uint8(0) << uint32(0) << uint16(0);
+#else
             leave << uint8(0) << uint8(0) << uint32(0) << uint16(0);
+#endif
             bot->GetSession()->HandleLeaveBattlefieldOpcode(leave);
             //Queue the event again to try to join next tick.
             //ai->HandleBotOutgoingPacket(event.getPacket());
