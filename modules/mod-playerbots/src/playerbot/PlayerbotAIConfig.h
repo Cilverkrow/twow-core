@@ -240,6 +240,11 @@ public:
     uint32 bgMaxConcurrent = 0;          // 0 = no bot battleground at all (fail closed)
     uint32 bgCheckIntervalSeconds = 0;   // 0 = 30 s, minimum 10 s (ai::bgfill::CheckIntervalMs)
     bool bgTrace = false;                // [BGFill] lines
+    // twow-repo#517 stage b: a waiting real player gets into a running battleground with fill bots (pair option, then
+    // slot release with a reservation), and a started-for-fill battleground without a real player ends. Restart-only.
+    bool bgSlotRelease = false;
+    uint32 bgSlotReleaseWaitSeconds = 0; // 0 = 60 s, minimum 15 s (ai::bgfill::SlotReleaseWaitMs)
+    uint32 bgBotOnlyGraceSeconds = 0;    // 0 = 120 s, minimum 60 s (ai::bgfill::BotOnlyGraceMs)
     uint32 randomBotBracketCount;
     bool randomBotLoginAtStartup;
     uint32 randomBotTeleLevel;
