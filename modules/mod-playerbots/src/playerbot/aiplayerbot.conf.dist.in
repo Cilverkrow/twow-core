@@ -52,8 +52,11 @@ AiPlayerbot.BG.Enable = 0
 # Basin or Alterac Valley, the bot manager queues free persistent-roster bots of the player's bracket so that both
 # sides reach the battleground's minimum per team and the match starts. Only bots that are alive, not parked, in no
 # group, outside dungeons/raids/battlegrounds, not on a taxi or transport, not in combat or a quest rescue, without a
-# real-player master and without Deserter. Blood Ring and Sunnyglade Valley are not filled. The bots accept the invite
-# from the manager and get no free repair, money or consumables. A queued bot not invited yet leaves the queue again
+# real-player master and without Deserter. A real player who queues with a group, his own bots too, has the same
+# priority as a solo player: the group stays together and counts as a whole toward its side's minimum, and the bots of
+# a real player's group are never taken as free bots. A group larger than a side is not filled. Blood Ring and
+# Sunnyglade Valley are not filled. The bots accept the invite from the manager and get no free repair, money or
+# consumables. A queued bot not invited yet leaves the queue again
 # when it gets busy (parked, grouped, in a dungeon, a quest rescue or a forced trip), when no real player of its bracket
 # waits any more, when its side has more bots than needed, or after 5 minutes without an invite. An invited bot declines
 # only when it got parked, has a real-player master or is in a dungeon or another battleground. Alterac Valley is not
