@@ -103,10 +103,12 @@ AiPlayerbot.BG.SlotReleaseWaitSeconds = 0
 # countdown, so no marks, experience or honor go to bots. Should such a battleground end anyway (a win, or the countdown
 # while the end waits), one line is written for it, always (not behind Trace):
 # [BGBotOnlyEnd] bg=<map>,<instance> winner=<A|H|none> bots=<bots still inside>. 1 = on (default); 0, or any value but
-# 1, true or yes = off: nothing of the cleanup runs.
+# 1, true, TRUE, yes or YES = off: nothing of the cleanup runs. A bot queued for another match that the core invites
+# into a battleground being emptied declines that invite.
 AiPlayerbot.BG.BotOnlyCleanup = 1
 # BotOnlyGraceSeconds: how long a battleground started for the fill may run without a real player before BotOnlyCleanup
-# empties it. An open invite or a player inside who is not a bot pauses that (the grace starts again once he is gone).
+# empties it. An open invite or a player inside who is not a bot pauses that: before the grace has run out it starts
+# again once he is gone; once the emptying is due, it goes on at the next check after he is gone, without a new grace.
 # A real player waiting uninvited for that battleground and bracket does not keep it, but the bots leave so that the
 # core does not invite him into it; when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds.
 # 0 = 120 s (default), minimum 60; a negative value counts as 0.
