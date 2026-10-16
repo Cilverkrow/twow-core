@@ -1010,6 +1010,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_mmap_race_560_contract.cmake")
+  # twow-repo#517 R0: BattleGroundMgr queue update scheduler under SchedulerLock (map threads vs. world thread).
+  add_test(NAME bg_scheduler_lock_517_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_bg_scheduler_lock_517_contract.cmake")
   # twow-repo#592 PATH-02 PR pair 0: `.mmaps replay` (name guard, fixture rows, hexfloats, 500 lines / 200 ms, chain rule).
   add_executable(path_replay_test
     "${TW_CORE_ROOT}/t/path_replay_test.cpp")
