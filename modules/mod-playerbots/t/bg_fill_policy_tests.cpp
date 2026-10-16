@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 // twow-repo#517 stage a and b: the pure rules of the manager's battleground fill (BgFillPolicy.h).
@@ -325,6 +326,89 @@ void GroupEntry()
     Require(!TopUpNeeded(9, 10, 10, 0, 2), "other side full");
 }
 
+// Follow-up D: drains a bot-only battleground as LeaveBotOnlyBg does - the side from BotOnlyDrainSide, a leave only where
+// BotOnlyLeaveAllowed holds - and returns the counts where it stops. Every leave is checked: the core never invites a
+// waiting entry of the leaving side afterwards, unless the pause is over.
+std::pair<uint32_t, uint32_t> Drain(uint32_t a, uint32_t h, uint32_t maxPerTeam, uint32_t d, uint32_t waitA, uint32_t waitH,
+    bool pauseOver)
+{
+    using namespace ai::bgfill;
+    for (uint32_t step = 0; step <= 2 * maxPerTeam; ++step)
+    {
+        bool const leaveA = BotOnlyLeaveAllowed(a, h, maxPerTeam, d, waitA, pauseOver);
+        bool const leaveH = BotOnlyLeaveAllowed(h, a, maxPerTeam, d, waitH, pauseOver);
+        uint32_t const side = BotOnlyDrainSide(a, h, leaveA, leaveH);
+        if (side == NoDrainSide)
+            break;
+        Require(side <= 1, "a drain side is alliance or horde");
+        if (side == 0)
+        {
+            Require(a > 0, "no leave from an empty alliance side");
+            --a;
+            Require(pauseOver || !waitA || !CoreInvitesEntry(a, h, maxPerTeam, d, waitA), "no alliance invite after the leave");
+        }
+        else
+        {
+            Require(h > 0, "no leave from an empty horde side");
+            --h;
+            Require(pauseOver || !waitH || !CoreInvitesEntry(h, a, maxPerTeam, d, waitH), "no horde invite after the leave");
+        }
+    }
+    return { a, h };
+}
+
+void BotOnlyDrain()
+{
+    using namespace ai::bgfill;
+    Require(BotOnlyLeavesPerUpdate >= 1 && BotOnlyLeavesPerUpdate <= 4, "a small fixed number of leaves per update");
+    Require(NoDrainSide > 1, "no side is neither alliance nor horde");
+
+    // Leave rule: nobody waits, an empty side, or the pause is over - the bot may leave.
+    Require(BotOnlyLeaveAllowed(5, 5, 10, 0, 0, false), "nobody waits");
+    Require(BotOnlyLeaveAllowed(0, 5, 10, 0, 1, false), "nothing on the side");
+    Require(BotOnlyLeaveAllowed(5, 5, 10, 0, 1, true), "pause over");
+    // WSG/AB: a player waiting on that side is invited once his side falls behind.
+    Require(!BotOnlyLeaveAllowed(5, 5, 10, 0, 1, false), "WSG equal counts: the leave would put him in");
+    Require(BotOnlyLeaveAllowed(6, 5, 10, 0, 1, false), "WSG his side ahead: the leave evens it");
+    Require(BotOnlyLeaveAllowed(5, 5, 10, 0, 2, false), "WSG a group of two needs two slots behind");
+    Require(!BotOnlyLeaveAllowed(5, 6, 10, 0, 2, false), "WSG group of two, his side one behind already");
+    // AV: the differential lets him in while his side is up to three ahead.
+    Require(!BotOnlyLeaveAllowed(20, 18, 40, DifferentialAV, 1, false), "AV his side two ahead");
+    Require(BotOnlyLeaveAllowed(22, 18, 40, DifferentialAV, 1, false), "AV his side four ahead");
+
+    // Side: the larger side first, alliance on a tie, only sides that may leave and hold a bot.
+    Require(BotOnlyDrainSide(5, 5, true, true) == 0, "tie: alliance");
+    Require(BotOnlyDrainSide(4, 5, true, true) == 1, "horde larger");
+    Require(BotOnlyDrainSide(6, 5, true, true) == 0, "alliance larger");
+    Require(BotOnlyDrainSide(6, 5, false, true) == 1, "alliance may not leave");
+    Require(BotOnlyDrainSide(0, 5, true, false) == NoDrainSide, "alliance empty, horde may not leave");
+    Require(BotOnlyDrainSide(0, 0, true, true) == NoDrainSide, "empty battleground");
+    Require(BotOnlyDrainSide(0, 3, true, true) == 1, "one side empty: the other goes on");
+
+    // Nobody waits: every start drains to empty.
+    for (uint32_t a = 0; a <= 15; ++a)
+        for (uint32_t h = 0; h <= 15; ++h)
+            Require(Drain(a, h, 15, 0, 0, 0, false) == std::make_pair(0u, 0u), "nobody waits: drained to empty");
+    // WSG/AB with a player (or group up to a side) waiting on one side only: drained to empty without inviting him.
+    for (uint32_t k = 1; k <= 10; ++k)
+    {
+        for (uint32_t a = 0; a <= 10; ++a)
+        {
+            for (uint32_t h = 0; h <= 10; ++h)
+            {
+                Require(Drain(a, h, 10, 0, k, 0, false) == std::make_pair(0u, 0u), "WSG waiting on alliance: drained to empty");
+                Require(Drain(a, h, 10, 0, 0, k, false) == std::make_pair(0u, 0u), "WSG waiting on horde: drained to empty");
+            }
+        }
+    }
+    // Players waiting on both sides: even counts hold at once (the bounded pause), the pause over drains it.
+    Require(Drain(10, 10, 10, 0, 1, 1, false) == std::make_pair(10u, 10u), "WSG waiting on both sides: held");
+    Require(Drain(10, 10, 10, 0, 1, 1, true) == std::make_pair(0u, 0u), "WSG waiting on both sides, pause over: empty");
+    // AV with a player waiting on alliance: horde drains freely, alliance only while four ahead - three stay (held).
+    Require(Drain(20, 20, 40, DifferentialAV, 1, 0, false) == std::make_pair(3u, 0u), "AV waiting on alliance: three held");
+    Require(Drain(20, 20, 40, DifferentialAV, 1, 0, true) == std::make_pair(0u, 0u), "AV pause over: empty");
+}
+
 ai::bgfill::ReleaseCand Cand(uint32_t guid, uint32_t joinMs, bool flag, bool combat, bool alive)
 {
     ai::bgfill::ReleaseCand c;
@@ -375,6 +459,7 @@ int main()
     StageBTimes();
     PairAndRelease();
     GroupEntry();
+    BotOnlyDrain();
     Victim();
     std::cout << "bg fill policy tests passed\n";
     return 0;

@@ -277,4 +277,42 @@ inline uint32_t ChooseReleaseVictim(std::vector<ReleaseCand> const& cands, uint3
     }
     return best ? best->guid : 0;
 }
+
+// Follow-up D (OB-20 16.10., AiPlayerbot.BG.BotOnlyCleanup): a bot-only fill battleground must not end through
+// EndBattleGround - it hands out marks and experience even with WINNER_NONE, and only bots would get them. After the
+// grace every manager bot of both sides leaves (no Deserter) until the battleground holds nobody and no open invite;
+// BattleGround::Update then deletes it, before its PrematureFinish countdown is looked at. At most this many leaves per
+// manager update.
+constexpr uint32_t BotOnlyLeavesPerUpdate = 2;
+// BotOnlyDrainSide: no side may leave now.
+constexpr uint32_t NoDrainSide = 2;
+
+// May a bot of this side leave now? Not when the core would then invite the smallest real-player entry waiting uninvited
+// on this side into the freed slot (CoreInvitesEntry on the invited counts minus that bot), unless the bounded pause has
+// run out. smallestWaiting 0 = no entry of this side waits.
+inline bool BotOnlyLeaveAllowed(uint32_t invitedSide, uint32_t invitedOther, uint32_t maxPerTeam, uint32_t differential,
+    uint32_t smallestWaiting, bool pauseOver)
+{
+    if (pauseOver || !smallestWaiting || !invitedSide)
+        return true;
+    return !CoreInvitesEntry(invitedSide - 1, invitedOther, maxPerTeam, differential, smallestWaiting);
+}
+
+// The side the next drain leave comes from: 0 alliance, 1 horde, NoDrainSide when no side has a bot that may leave. The
+// core ends a battleground for its player counts only through the PrematureFinish countdown (a side below the minimum)
+// and never at once for an empty side, so no order risks an immediate EndBattleGround. Of the sides that may leave, the
+// one with more bots inside goes first (alliance on a tie): both sides shrink evenly, neither falls behind, and the
+// core's balanced invite (InvitationType 1) has the least reason to pull a waiting player into the smaller side.
+inline uint32_t BotOnlyDrainSide(uint32_t botsA, uint32_t botsH, bool mayLeaveA, bool mayLeaveH)
+{
+    bool const a = mayLeaveA && botsA;
+    bool const h = mayLeaveH && botsH;
+    if (a && h)
+        return botsH > botsA ? 1 : 0;
+    if (a)
+        return 0;
+    if (h)
+        return 1;
+    return NoDrainSide;
+}
 }
