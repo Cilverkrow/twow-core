@@ -20,6 +20,7 @@
 #include "playerbot/UnreachableTargetPolicy.h"
 #include "playerbot/BuffTargetPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
+#include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -7045,6 +7046,10 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
 
         bot->SendHeartBeat();
         ai->Reset(true);
+        // twow-repo#601 S1 (ResetOnProgressEvents): the rescue teleport starts the quest route search afresh (counter,
+        // backoff, stage) in the bot's own update - the no_target branch above moves nothing and resets nothing.
+        if (sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents)
+            ai->RequestQuestRouteReset(ai::quest_failure_class::ResetRescue);
         ai->OnQuestRescued(now);
     }
 }

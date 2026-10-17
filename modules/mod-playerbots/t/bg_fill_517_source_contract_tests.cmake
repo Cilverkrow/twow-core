@@ -440,7 +440,11 @@ require_text("${return_hook}" "aiObjectContext->GetValue<int>(\"manual int\", \"
 require_text("${return_hook}" "questProgress.lastChange = now;" "idle watch reset")
 forbid_text("${return_hook}" "OnQuestRescued" "OnQuestRescued in the return hook (rescue limiter)")
 forbid_text("${return_hook}" "lastQuestRescue" "lastQuestRescue in the return hook (rescue limiter)")
-count_text("${return_hook}" ";" 2 "exactly two statements in the return hook")
+# twow-repo#601 S1 (deliberate): a third statement, only with AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents -
+# it asks the bot's own update to reset the grind-fallback counter and the route backoff too (an atomic event bit, no
+# value write from the world thread, still no rescue stamp). With the switch off the hook does exactly the two resets.
+require_text("${return_hook}" "    if (sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents)\n        RequestQuestRouteReset(ai::quest_failure_class::ResetBgReturn);\n}" "S1 reset request behind its switch, last")
+count_text("${return_hook}" ";" 3 "exactly the two resets plus the S1 request in the return hook")
 require_order("${members}" "ai->OnReturnFromBattleground(uint32(time(nullptr)));" "target->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);" "return hook, then travel status NONE")
 forbid_text("${members}" "SetTarget(" "travel target restored 1:1")
 

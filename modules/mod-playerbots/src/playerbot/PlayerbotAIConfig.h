@@ -795,6 +795,9 @@ public:
     // twow-repo#601 S1 "latch semantics" (OB-10 17.10.2026), all false = today's behaviour, restart-only
     // (aiplayerbot.conf.dist.in): failure classes + taker pre-validation + grind yield + pre-loop filters.
     bool questFirstProgressionFailureClasses = false;
+    // reset of the grind-fallback counter, the route backoff and the search stage on rescue teleport, level-up,
+    // login and battleground return; XP alone no longer resets the stage.
+    bool questFirstProgressionResetOnProgressEvents = false;
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
     bool directTargetsEnabled = false;
     bool directTargetsTraceInactive = false;
