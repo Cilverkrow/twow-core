@@ -134,7 +134,9 @@ require_text("${conf_dist}" "restart-only" "BG keys documented as restart-only")
 # 2. Roster branch: LoginFreeBots(), then the gated CheckBgFill, then the roster return; no legacy BG queue count.
 region("${mgr_cpp}" "if (sPlayerbotAIConfig.persistentActiveRosterEnabled)\n    {\n        if (!persistentRosterInitialized)" "    ScaleBotActivity();\n    if (sPlayerbotAIConfig.asyncBotLogin)" roster_branch)
 # Stage b (twow-repo#517): SlotRelease runs in the same pass and needs no PlayerFill; the master switch gates both.
-require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease))\n            CheckBgFill();" "fill gated by bgEnable && (bgPlayerFill || bgSlotRelease)")
+# Stage c: Announce (announced bot-own battlegrounds) runs in the same pass too, also without PlayerFill; its full gate
+# (Enable && Announce && IntervalMinutes && MaxConcurrent) is BgOwnEnabled, pinned in bg_announce_517.
+require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease || sPlayerbotAIConfig.bgAnnounce))\n            CheckBgFill();" "fill gated by bgEnable && (bgPlayerFill || bgSlotRelease || bgAnnounce)")
 require_order("${roster_branch}" "LoginFreeBots();" "CheckBgFill();" "LoginFreeBots before CheckBgFill")
 require_order("${roster_branch}" "CheckBgFill();" "PlayerbotHolder::UpdateAIInternal(elapsed, minimal);\n        if (sPlayerbotAIConfig.worldBotsTrace)" "CheckBgFill before the roster return")
 forbid_text("${roster_branch}" "CheckBgQueue" "legacy BG queue count in the roster branch (BGJoinAction would queue roster bots)")
@@ -302,7 +304,8 @@ forbid_text("${forced_travel}" "IsActive()" "IsActive() leaves PREPARE out")
 # bot inside (final review F5: skipping it whole undercounted).
 region("${mgr_cpp}" "uint32 RandomPlayerbotMgr::CountBgFillRunning() const" "void RandomPlayerbotMgr::ReportBgFillMinute()" running_count)
 require_text("${running_count}" "bg->GetStatus() == STATUS_WAIT_LEAVE)\n            return;" "ended battlegrounds not counted")
-require_text("${running_count}" "(entry.startedForFill ? started : toppedUp).emplace(entry.bgTypeId, entry.instanceId);" "fill instances from the in-battleground set")
+# Stage c: an instance a bot-own match started (startedForOwn) counts against the cap exactly like a started-for-fill one.
+require_text("${running_count}" "(entry.startedForFill || entry.startedForOwn ? started : toppedUp).emplace(entry.bgTypeId, entry.instanceId);" "fill and own instances from the in-battleground set")
 require_order("${running_count}" "if (started.count(key))\n        {\n            ++running;\n            return;\n        }" "bool const toppedUpByFill = toppedUp.count(key) != 0;" "started instances counted, then the topped-up check")
 forbid_text("${running_count}" "if (toppedUp.count(key))\n            return;" "topped-up instance skipped whole")
 require_text("${running_count}" "uint32 const playerLow = playerGuid.GetCounter();\n            if (!IsPersistentRosterMember(playerLow))\n                continue;" "other battlegrounds with a roster bot counted")
@@ -366,7 +369,8 @@ forbid_text("${real_group}" "FindMap()" "every online member counts, on any map"
 # The flag stays set from the accept until the return: a WAIT_JOIN latched before the accept must not port again.
 region("${members}" "BGStatusAction::AcceptInvite(" "bgFillInBg[guid] = accepted;" accept_tail)
 forbid_text("${accept_tail}" "SetBgFillPending(false)" "pending flag cleared at the accept")
-require_text("${accept_tail}" "accepted.startedForFill = !entry.pairFor && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "instance started for the fill (never by a stage-b pair or top-up bot), or topped up")
+# Stage c: a bot-own match's bot (entry.own) never marks an instance started for the fill (startedForOwn instead).
+require_text("${accept_tail}" "accepted.startedForFill = !entry.pairFor && !entry.own && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "instance started for the fill (never by a stage-b pair or top-up bot or a stage-c own bot), or topped up")
 require_order("${members}" "ai->OnReturnFromBattleground(uint32(time(nullptr)));" "ai->SetBgFillPending(false);\n        ++bgFillMinute.returns;" "pending flag cleared on the return")
 require_text("${ai_h}" "std::atomic<bool> bgFillPending{ false };" "pending flag is atomic")
 region("${join_cpp}" "if (statusid == STATUS_WAIT_JOIN)" "bool BGStatusCheckAction::Execute(Event& event)" wait_join)

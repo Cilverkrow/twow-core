@@ -336,6 +336,9 @@ public:
         std::list<std::string> HandleRemove(Player* bot);
 
         void MirrorAh();
+        // twow-repo#517 stage c (owner C0, AiPlayerbot.BG.BotOnlyHonorRate): PlayerbotPlayerScript::OnHonorGain, on the
+        // bot's map thread. Reads only that map's objects - no manager state.
+        static void ScaleBotOnlyHonor(Player* player, float& cp, uint8 type);
     private:
         PlayerBotMap players;
         int processTicks;
@@ -424,6 +427,9 @@ public:
             bool startedForFill = false;    // set at accept: that instance had not begun yet (counts against the cap)
             uint32 acceptMs = 0;            // stage b: set at accept (the latest joined leaves first on a slot release)
             uint32 pairFor = 0;             // stage b: pair bot queued for this waiting real player (guid), 0 = fill
+            bool own = false;               // stage c: queued by the planner for an announced bot-own match
+            bool startedForOwn = false;     // stage c, set at accept: a bot-own match started that instance - never
+                                            // startedForFill, so the bot-only cleanup never empties it
         };
         std::map<uint32, BgFillEntry> bgFillPending;   // queued by the manager, invite not accepted yet (<= 2 x 40 per bg)
         std::map<uint32, BgFillEntry> bgFillInBg;      // invite accepted, until the bot is out of the battleground again
@@ -498,6 +504,41 @@ public:
         bool IsBotOnlyInvite(Player* bot, uint32 bgTypeId) const;   // invited into a watched (emptied) instance
         // (bg type, entry bracket) -> smallest waiting real-player entry per side (0 = none), read live
         void CollectBgFillWaiting(std::map<std::pair<uint32, uint32>, std::array<uint32, 2>>& waiting) const;
+        // twow-repo#517 stage c (Enable && Announce && Announce.IntervalMinutes && MaxConcurrent; owner contract and C0
+        // 16.10.): announced bot-own battlegrounds. World thread only (CheckBgFill). Bounded: the due lines by one
+        // announcement (ai::bgfill::MaxAnnounceDue), the plan by one match (at most 2 x min candidates per side), the
+        // cooldowns by the bots that announced within BotCooldownMinutes, the type history by ai::bgfill::OwnTypeHistory.
+        struct BgAnnounceDue
+        {
+            uint32 guid = 0;
+            uint32 dueMs = 0;
+            std::string text;
+        };
+        std::vector<BgAnnounceDue> bgAnnounceDue;        // announcement lines not said yet, drained only in CheckBgFill
+        struct BgOwnPlan
+        {
+            uint32 queueType = 0;   // 0 = no announced match waits
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;
+            uint32 band = 0;        // level range (ai::bgfill::LevelBand)
+            uint32 queueAtMs = 0;   // announcement + DelaySeconds
+            std::array<std::vector<uint32>, 2> candidates;   // free roster bots per side at the announcement, announcers first
+            std::array<uint32, 2> real = { 0, 0 };            // real players' entries of that queue and bracket (last scan)
+        };
+        BgOwnPlan bgOwnPlan;
+        uint32 lastBgOwnPlanMs = 0;
+        uint32 bgOwnRotate = 0;                          // guid the planner's candidate loop stopped at
+        std::vector<uint32> bgOwnTypes;                  // started queue types, oldest first
+        std::map<uint32, uint32> bgAnnounceCooldown;     // announcer guid -> its announcement (ms)
+        uint32 bgAnnounceHourStart = 0;                  // MaxPerHour window
+        uint32 bgAnnounceHourLines = 0;
+        bool BgOwnEnabled() const;
+        void PlanBgOwn(uint32 nowMs);
+        void QueueBgOwn(uint32 nowMs);
+        void DrainBgAnnounce(uint32 nowMs);
+        bool IsBgAnnouncerFit(Player* bot) const;
+        uint32 BgOwnBand(uint32 bgTypeId, uint32 bracket) const;
+        void CountBgOwnPerBand(std::map<uint32, uint32>& perBand) const;
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;
