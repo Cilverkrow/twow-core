@@ -767,7 +767,8 @@ bool PlayerbotAI::IsQuestNoGrind()
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
 }
 
-// GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason change.
+// GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason and idle
+// episode (at most 4 per episode however the reasons alternate).
 void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
 {
     if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot ||
@@ -776,10 +777,10 @@ void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
 
     questIdleCounts[reason].fetch_add(1, std::memory_order_relaxed);
     ai::quest_grind_mode::Reason const why = ai::quest_grind_mode::Reason(reason);
-    if (!ai::quest_grind_mode::LogDue(questIdleReason, why))
+    if (!ai::quest_grind_mode::LogDue(questIdleLogged, why))
         return;
 
-    questIdleReason = reason;
+    questIdleLogged = ai::quest_grind_mode::MarkLogged(questIdleLogged, why);
     sLog.outBasic("%s", ai::quest_grind_mode::FormatIdleLine(why, bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(),
         target).c_str());
 }

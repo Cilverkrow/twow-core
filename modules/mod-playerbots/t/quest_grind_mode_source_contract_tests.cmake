@@ -11,7 +11,8 @@ cmake_policy(VERSION 3.16)
 #      6 the Grind bit of the shared entry purpose map: a pure GrindTravelDestination is not active
 #      7 ChooseTravelTargetAction: a grind fetch is never taken; quest objective mob fetches stay
 #  - the positive exceptions (attackers / group help, quest objective kills, GenericRpg, Explore, gathering, RosterGuild),
-#  - the [QuestIdle] lines (reason change per bot, minute counter on the world thread), only with GrindMode 2,
+#  - the [QuestIdle] lines (once per reason and idle episode per bot, minute counter on the world thread), only with
+#    GrindMode 2,
 #  - GrindMode 0 byte-identical branches, neutral default,
 #  - the S1 recheck nit: the abandon mark on every accept path.
 # Reads only named files below modules/mod-playerbots/src/playerbot (never a glob, never src/modules/Eluna).
@@ -235,20 +236,27 @@ require_text("${tank_assist}" "NextAction::array(0, new NextAction(\"tank assist
 region("${wbuff}" "float WorldBuffTravelMultiplier::GetValue(Action* action)" "\n}\n" wbuff_mult)
 require_order("${wbuff_mult}" "name == \"grind\" || name == \"attack anything\")" "        return 0.0f;" "attack anything multiplied to 0 during world buff travel (every GrindMode)")
 
-# ---- 10. [QuestIdle]: reason change per bot, minute counter on the world thread ---------------------
+# ---- 10. [QuestIdle]: once per reason and idle episode per bot, minute counter on the world thread ---------------------
 require_text("${policy}" "return \"[QuestIdle] reason=\" + std::string(ReasonName(reason)) + \" bot=\" + std::to_string(bot) + \" level=\" +\n        std::to_string(level) + \" zone=\" + std::to_string(zone) + \" target=\" + (target.empty() ? std::string(\"-\") : target);" "idle line format")
 require_text("${policy}" "return \"[QuestIdle] minute fallback=\" + std::to_string(counts[std::size_t(Reason::Fallback)]) +" "minute line format")
 foreach(name "fallback" "money" "opportunistic" "no_target")
   require_text("${policy}" "return \"${name}\";" "reason name ${name}")
 endforeach()
-require_text("${policy}" "return reason != Reason::None && std::uint8_t(reason) != lastReason;" "a line only when the reason changes")
+# Review fix (F1): one line per reason and idle episode (bit mask), not per reason change - alternating reasons
+# (money / no_target / money ...) logged about once a second per idle bot under the old last-reason rule.
+require_text("${policy}" "return reason != Reason::None && !(loggedMask & ReasonBit(reason));" "a line only for a reason not yet logged in this idle episode")
+require_text("${policy}" "return reason == Reason::None ? std::uint8_t(0) : std::uint8_t(1u << std::uint8_t(reason));" "one bit per reason, None none")
+require_text("${policy}" "return std::uint8_t(loggedMask | ReasonBit(reason));" "the logged reason is marked")
+forbid_text("${policy}" "!= lastReason" "the old last-reason rule (unbounded with alternating reasons)")
 region("${ai_cpp}" "void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)" "\n}\n" note_fn)
 require_order("${note_fn}" "if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot ||\n        reason >= ai::quest_grind_mode::ReasonCount)\n        return;" "questIdleCounts[reason].fetch_add(1, std::memory_order_relaxed);" "only with GrindMode 2, bounded index")
-require_order("${note_fn}" "if (!ai::quest_grind_mode::LogDue(questIdleReason, why))\n        return;" "sLog.outBasic(\"%s\", ai::quest_grind_mode::FormatIdleLine(" "the line only on a reason change")
+require_order("${note_fn}" "if (!ai::quest_grind_mode::LogDue(questIdleLogged, why))\n        return;\n\n    questIdleLogged = ai::quest_grind_mode::MarkLogged(questIdleLogged, why);" "sLog.outBasic(\"%s\", ai::quest_grind_mode::FormatIdleLine(" "the line only once per reason and idle episode")
+count_text("${ai_cpp}" "questIdleLogged" 3 "the mask is read and marked only in NoteQuestIdle (cleared in the header)")
 require_text("${ai_cpp}" "std::atomic<uint32> questIdleCounts[ai::quest_grind_mode::ReasonCount] = {};" "map-thread counters are atomics")
 require_text("${ai_cpp}" "counts[reason] = questIdleCounts[reason].exchange(0, std::memory_order_relaxed);" "minute counters taken and reset")
-require_text("${ai_h}" "uint8 questIdleReason = 0;" "per-bot last reason (one byte, bot's own thread)")
-require_text("${ai_h}" "void ClearQuestIdle() { questIdleReason = 0; }" "idle episode reset")
+require_text("${ai_h}" "uint8 questIdleLogged = 0;" "per-bot mask of logged reasons (one byte, bot's own thread)")
+require_text("${ai_h}" "void ClearQuestIdle() { questIdleLogged = 0; }" "idle episode reset")
+forbid_text("${ai_h}" "questIdleReason" "the old last-reason byte")
 region("${mgr}" "void ReportQuestIdle()" "\n}\n" report_fn)
 require_text("${report_fn}" "if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || now < lastReport + 60)\n        return;" "once a minute, only with GrindMode 2")
 require_text("${report_fn}" "sLog.outBasic(\"%s\", PlayerbotAI::TakeQuestIdleMinuteLine().c_str());" "minute line")
