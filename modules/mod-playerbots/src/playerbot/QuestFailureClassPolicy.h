@@ -251,12 +251,16 @@ constexpr std::uint32_t ResetRescue = 1u << 0;      // a rescue teleport (Random
 constexpr std::uint32_t ResetLevelUp = 1u << 1;     // the progress watch saw a higher level
 constexpr std::uint32_t ResetLogin = 1u << 2;       // the first progress check of a new PlayerbotAI (a login)
 constexpr std::uint32_t ResetBgReturn = 1u << 3;    // PlayerbotAI::OnReturnFromBattleground (#517)
+// Plan 4.1 (S1 review): a quest-state change (a quest taken, finished, handed in or dropped) resets the search stage only
+// - the counter and the backoff stay (a found route resets them anyway).
+constexpr std::uint32_t ResetQuestState = 1u << 4;
+constexpr std::uint32_t ResetEventCount = 5;
 
 inline std::string ResetEventNames(std::uint32_t events)
 {
-    static char const* const names[] = { "rescue", "level_up", "login", "bg_return" };
+    static char const* const names[ResetEventCount] = { "rescue", "level_up", "login", "bg_return", "quest_state" };
     std::string out;
-    for (std::uint32_t bit = 0; bit < 4; ++bit)
+    for (std::uint32_t bit = 0; bit < ResetEventCount; ++bit)
         if (events & (1u << bit))
             out += std::string(out.empty() ? "" : ",") + names[bit];
     return out.empty() ? std::string("none") : out;
@@ -265,6 +269,29 @@ inline std::string ResetEventNames(std::uint32_t events)
 inline bool LevelUp(std::uint32_t lastLevel, std::uint32_t level)
 {
     return lastLevel && level > lastLevel;
+}
+
+// Only a quest-state change: the stage alone is reset. Any other event in the mask resets the counter and the backoff too.
+inline bool StageOnlyReset(std::uint32_t events)
+{
+    return events == ResetQuestState;
+}
+
+// The quest log's state for the progress watch: every quest slot's quest id and whether it is finished, folded in slot
+// order (bounded by the quest log). Never 0, so 0 means "no check yet" (this login).
+constexpr std::uint32_t QuestStateSeed = 2166136261u;
+
+inline std::uint32_t MixQuestState(std::uint32_t state, std::uint32_t questId, bool complete)
+{
+    state = (state ^ questId) * 16777619u;
+    state = (state ^ (complete ? 1u : 2u)) * 16777619u;
+    return state ? state : 1u;
+}
+
+// A change between two checks; the first check of a login (lastState 0) is no change.
+inline bool QuestStateChanged(std::uint32_t lastState, std::uint32_t state)
+{
+    return lastState && state != lastState;
 }
 
 // The progress watch (PlayerbotAI.cpp, #421 C): any progress (level, XP, a gathering skill under a purpose) restarts

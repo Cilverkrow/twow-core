@@ -980,6 +980,8 @@ protected:
     // the bot's own update; the level the progress watch saw at its last check (0 = none yet: this login).
     std::atomic<uint32> questRouteResetEvents{ 0 };
     uint32 questProgressLevel = 0;
+    // The quest log state the progress watch saw at its last check (ai::quest_failure_class::MixQuestState, 0 = none yet).
+    uint32 questProgressState = 0;
     void ApplyQuestRouteReset(uint32 events);
     // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
     std::atomic<bool> parked{ false };
