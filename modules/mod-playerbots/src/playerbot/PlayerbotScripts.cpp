@@ -321,6 +321,17 @@ class PlayerbotPlayerScript : public PlayerScript
             return !ai::RosterGuildPoach::Refusal(inviter, invitee, guildId, true, guildId ? "core_invite" : "core_charter");
         }
 
+        // twow-repo#517 stage c (owner decision C0): HonorMgr::Add on the player's map thread, after Rate.Honor, never
+        // for a dishonorable kill. AiPlayerbot.BG.BotOnlyHonorRate scales a bot's honor in a battleground without a real
+        // player; with BG.Enable off or the rate 1 (default) this returns at once.
+        void OnHonorGain(Player* player, float& cp, uint8 type) override
+        {
+            if (!player || !sPlayerbotAIConfig.enabled)
+                return;
+
+            RandomPlayerbotMgr::ScaleBotOnlyHonor(player, cp, type);
+        }
+
         // Was the CreatePlayerbotMgr() call in HandlePlayerLogin. Only a person
         // at a client gets a controller for their alts.
         //
