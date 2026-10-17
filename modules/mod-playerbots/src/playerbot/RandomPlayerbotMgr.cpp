@@ -6587,6 +6587,18 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation> 
                 {
                     Player* member = gref->getSource();
                     PlayerbotAI* ai = GetBotAI(bot);
+                    // twow-repo#595 P4 B1 (AiPlayerbot.Shortcut.GroupLoopFix, critic X6): 1 = each member's own AI; a
+                    // real member (no bot AI, or a real session) is skipped and not moved. 0 = the leader's AI as before.
+                    if (sPlayerbotAIConfig.shortcutGroupLoopFix)
+                    {
+                        ai = GetBotAI(member);
+                        if (!::ai::shortcut::GroupLoopMovesMember(true, ai != nullptr, ai && ai->IsRealPlayer()))
+                        {
+                            sLog.outBasic("[Shortcut] mech=group_loop state=skip_real leader=%u member=%u",
+                                bot->GetGUIDLow(), member->GetGUIDLow());
+                            continue;
+                        }
+                    }
                     if (ai && bot != member)
                     {
                         if (member->IsTaxiFlying())
@@ -6597,7 +6609,10 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation> 
                         member->GetMotionMaster()->Clear();
                         member->TeleportTo(loc.mapid, x, y, z, 0);
                         member->SendHeartBeat();
-                        GetBotAI(member)->Reset(true);
+                        // twow-repo#595 P4 B1: null guard in both paths - with switch 0 a real member (no bot AI) is
+                        // still moved as before, but no longer crashes the world thread on a null AI.
+                        if (PlayerbotAI* memberAi = GetBotAI(member))
+                            memberAi->Reset(true);
                     }
 
                 }

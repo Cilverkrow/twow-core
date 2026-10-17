@@ -806,6 +806,7 @@ public:
     float shortcutNearRadius = 0.0f;  // yards, 0 = map visibility + ReactDistance
     std::vector<uint32> shortcutTestWatcherGuids;  // TEST ONLY: these bot guids count as real players in the snapshot
     bool shortcutTrace = false;  // [Shortcut] counter lines once a minute, measurement only
+    bool shortcutGroupLoopFix = false;  // B1: the legacy random-teleport group loop skips real members, uses the member AI
     bool pathRouteFailDetail = false;  // twow-repo#575 (PATH-01 #1): [RouteFailDetail] line per failed node route (rate-limited), 0 = off
     uint32 pathRouteFailDetailLinesPerMinute = 30;  // PATH-01 #1: detail lines per minute (all failures are counted), clamped 0..600
     bool pathHonestRouteFail = false;  // twow-repo#575 (PATH-01 #3): an empty node route makes MoveTo2 fail instead of reporting a collapsed path, 0 = off

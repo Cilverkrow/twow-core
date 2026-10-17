@@ -1,7 +1,8 @@
-# twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity): the real-player snapshot is built only
+# twow-repo#595 P4 S0 + B1 (OB-00 17.10.2026, shortcuts by player proximity): the real-player snapshot is built only
 # in RandomPlayerbotMgr::UpdateAIInternal (world thread, after sMapMgr.Update) and published behind a short
 # std::lock_guard<std::mutex>; ShortcutNear / CountShortcut never read the real-player map; every AiPlayerbot.Shortcut.*
-# key defaults to 0; the [Shortcut] counters only measure (the four teleports are unchanged).
+# key defaults to 0; the [Shortcut] counters only measure (the four teleports are unchanged); B1: the group loop of the
+# legacy random teleport keeps its 0-path, skips real members with the switch and never resets a null member AI.
 # Reads only modules/mod-playerbots/src/playerbot (never src/modules/Eluna).
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
@@ -88,14 +89,17 @@ require_text("${config_h}" "uint32 shortcutNearScope = 0;" "NearScope member def
 require_text("${config_h}" "float shortcutNearRadius = 0.0f;" "NearRadius member default 0")
 require_text("${config_h}" "std::vector<uint32> shortcutTestWatcherGuids;" "watcher list member (empty)")
 require_text("${config_h}" "bool shortcutTrace = false;" "Trace member default 0")
+require_text("${config_h}" "bool shortcutGroupLoopFix = false;" "GroupLoopFix member default 0")
 require_text("${config_cpp}" "shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault(\"AiPlayerbot.Shortcut.NearScope\", 0));" "NearScope read default 0")
 require_text("${config_cpp}" "shortcutNearRadius = std::max(0.0f, config.GetFloatDefault(\"AiPlayerbot.Shortcut.NearRadius\", 0.0f));" "NearRadius read default 0")
 require_text("${config_cpp}" "shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault(\"AiPlayerbot.Shortcut.TestWatcherGuids\", \"\"));" "watchers read default empty")
 require_text("${config_cpp}" "shortcutTrace = config.GetBoolDefault(\"AiPlayerbot.Shortcut.Trace\", false);" "Trace read default 0")
+require_text("${config_cpp}" "shortcutGroupLoopFix = config.GetBoolDefault(\"AiPlayerbot.Shortcut.GroupLoopFix\", false);" "GroupLoopFix read default 0")
 require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.NearScope = 0\n" "dist NearScope 0")
 require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.NearRadius = 0\n" "dist NearRadius 0")
 require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.TestWatcherGuids =\n" "dist watchers empty")
 require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.Trace = 0\n" "dist Trace 0")
+require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.GroupLoopFix = 0\n" "dist GroupLoopFix 0")
 require_text("${conf_dist}" "TestWatcherGuids (TEST ONLY, never on a live realm)" "watchers documented as test only")
 
 # --- 2. Policy: fail closed, bounded --------------------------------------------------------------------------------
@@ -161,6 +165,7 @@ require_text("${mgr_h}" "void CountShortcut(ai::shortcut::Mech mech, Player* bot
 # --- 6. [Shortcut] lines -------------------------------------------------------------------------------------------
 require_text("${mgr}" "[Shortcut] state=snapshot players=%u watchers=%u entries=%u age_ms=%llu scope=%u radius=%.0f" "snapshot minute line")
 require_text("${mgr}" "[Shortcut] mech=%s teleports=%u near=%u notnear=%u unknown=%u near_src=%u near_dst=%u" "counter minute line")
+require_text("${mgr}" "[Shortcut] mech=group_loop state=skip_real leader=%u member=%u" "B1 skip line")
 
 # --- 7. Counters only measure: each count sits right before the unchanged teleport ----------------------------------
 require_text("${movement}" "                // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): counted only, the teleport below is unchanged.\n                if (sPlayerbotAIConfig.shortcutTrace)\n                    sRandomPlayerbotMgr.CountShortcut(ai::shortcut::Mech::FarMove, bot, arrive.getMapId(), arrive.getX(), arrive.getY(), arrive.getZ());\n                return bot->TeleportTo(arrive.getMapId(), arrive.getX(), arrive.getY(), arrive.getZ(), farStart.getAngleTo(endPos));" "far-move arrival counted, teleport unchanged")
@@ -188,5 +193,20 @@ count_text("${movement}" "CountShortcut(" n_move)
 if(NOT n_move EQUAL 2)
   message(FATAL_ERROR "#595 shortcut S0: movement: expected 2 CountShortcut calls (hop, far move), found ${n_move}")
 endif()
+
+# --- 8. B1: the legacy random-teleport group loop -------------------------------------------------------------------
+between("${mgr}" "for (GroupReference* gref = bot->GetGroup()->GetFirstMember(); gref; gref = gref->next())\n                {\n                    Player* member = gref->getSource();\n                    PlayerbotAI* ai = GetBotAI(bot);" "            return;" group_loop)
+# 0-path: the leader's AI and the original teleport block, as before
+require_text("${group_loop}" "PlayerbotAI* ai = GetBotAI(bot);\n" "0-path: leader AI as before")
+require_text("${group_loop}" "                    if (ai && bot != member)\n                    {\n                        if (member->IsTaxiFlying())\n                            member->GetMotionMaster()->MovementExpired();\n                        if (hearth && !hostileHome)\n                            member->SetHomebindToLocation(loc, area->ID);\n\n                        member->GetMotionMaster()->Clear();\n                        member->TeleportTo(loc.mapid, x, y, z, 0);\n                        member->SendHeartBeat();" "member teleport block unchanged")
+# 1-path: the member's own AI, real members skipped
+require_text("${group_loop}" "                    if (sPlayerbotAIConfig.shortcutGroupLoopFix)\n                    {\n                        ai = GetBotAI(member);\n                        if (!::ai::shortcut::GroupLoopMovesMember(true, ai != nullptr, ai && ai->IsRealPlayer()))\n                        {" "1-path: member AI, real member skipped")
+require_order("${group_loop}" "if (sPlayerbotAIConfig.shortcutGroupLoopFix)" "if (ai && bot != member)" "switch decided before the move")
+require_order("${group_loop}" "continue;" "member->TeleportTo(loc.mapid, x, y, z, 0);" "skip before the teleport")
+require_text("${policy}" "inline bool GroupLoopMovesMember(bool fix, bool hasOwnBotAi, bool realSession)\n{\n    if (!fix)\n        return true;\n    return hasOwnBotAi && !realSession;\n}" "group-loop policy")
+# null guard in both paths
+require_text("${group_loop}" "if (PlayerbotAI* memberAi = GetBotAI(member))\n                            memberAi->Reset(true);" "member AI null guard")
+forbid_text("${group_loop}" "GetBotAI(member)->Reset(true);" "unguarded member AI reset")
+forbid_text("${mgr}" "GetBotAI(member)->Reset(true);" "unguarded member AI reset in RandomPlayerbotMgr.cpp")
 
 message(STATUS "shortcut S0 source contract passed")
