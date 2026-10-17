@@ -272,6 +272,15 @@ count_text("${leave_callers}" "if (!LeaveBgFillQueue(bot, ai, " 1 "scan checks t
 region("${join_cpp}" "void BGStatusAction::LeaveQueue(" "void BGStatusAction::SendPort(" leave_queue)
 require_text("${leave_queue}" "SendPort(bot, bgTypeId, 0x0);" "leave = port action 0")
 require_text("${policy_h}" "return now - joinMs >= maxMs;" "pending age with an unsigned difference")
+# Recheck c6 (open point 3): AiPlayerbot.BgBotTeamCap 0 takes a battleground away from bots in the stage-a fill too - the
+# skip compares with 0 exactly, continues to the next bracket, and comes before the cap count, the forming mark and any
+# request (so no bot is queued for that battleground).
+set(scan_teamcap "            if (sPlayerbotAIConfig.GetBgBotTeamCap(uint32(bgTypeId)) == 0)\n            {\n                if (trace)\n                    sLog.outBasic(\"[BGFill] state=skip reason=teamcap bg=%u bracket=%u side=%s\", uint32(bgTypeId), b,\n                        needA && needH ? \"AH\" : needA ? \"A\" : \"H\");\n                continue;\n            }\n")
+require_text("${scan}" "${scan_teamcap}" "BgBotTeamCap 0 skips the bracket in the fill scan")
+count_text("${scan}" "GetBgBotTeamCap(" 1 "one team-cap check in the fill scan")
+require_order("${scan}" "${scan_teamcap}" "uint32 const running = ai::bgfill::RunningForBracket(" "the team cap before the cap count")
+require_order("${scan}" "${scan_teamcap}" "                forming[q][b] = true;" "the team cap before the bracket is marked forming")
+require_order("${scan}" "${scan_teamcap}" "requests.push_back(" "the team cap before any request")
 
 # 5. Candidate filters.
 # Ends where the pending recheck starts, so a filter dropped here is not found there.
