@@ -26,6 +26,8 @@ struct Entry
     std::uint8_t failures = 0;
     std::uint32_t windowStart = 0;
     std::uint32_t parkedUntil = 0;   // 0 = not parked in this cycle
+    // twow-repo#601 S1: structural parks in a row (ParkNow with an abandonable reason); any other park resets it.
+    std::uint8_t structuralParks = 0;
 };
 
 struct Book
@@ -123,10 +125,67 @@ inline bool RecordFailure(Book& book, std::uint32_t questId, std::uint32_t nowMs
         return false;
 
     entry->failures = 0;
+    entry->structuralParks = 0;   // twow-repo#601 S1: a counted park breaks a structural series
     entry->parkedUntil = nowMs + (parkMs < MaxParkMs ? parkMs : MaxParkMs);
     if (!entry->parkedUntil)
         entry->parkedUntil = 1;
     return true;
+}
+
+// twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses): a structural failure (taker on the other
+// continent below MinLevelForCrossMapQuestRoute, zone clearly above the bot, no taker point at all) parks the turn-in
+// at once for parkMs instead of after maxFailures counted failures. abandonable: the reason cannot heal by itself
+// (no destination, other continent) - such parks in a row are counted, any other park ends the series, and the
+// AbandonAfterStructuralParks-th one reports abandonDue (the caller abandons the quest with
+// AbandonStructuralParked; the series then starts anew). A quest parked now is not parked again; quest 0 or a park
+// of 0 ms never parks.
+constexpr std::uint8_t AbandonAfterStructuralParks = 2;
+
+struct ParkResult
+{
+    bool parked = false;
+    bool abandonDue = false;
+};
+
+inline ParkResult ParkNow(Book& book, std::uint32_t questId, std::uint32_t nowMs, std::uint32_t parkMs, bool abandonable)
+{
+    ParkResult result;
+    if (!questId || !parkMs)
+        return result;
+
+    Entry* entry = nullptr;
+    for (Entry& candidate : book.entries)
+        if (candidate.questId == questId)
+            entry = &candidate;
+
+    if (entry && IsParkActive(*entry, nowMs))
+        return result;
+
+    if (!entry)
+    {
+        entry = &SlotFor(book, nowMs);
+        *entry = Entry();
+        entry->questId = questId;
+    }
+
+    entry->failures = 0;
+    entry->windowStart = nowMs;
+    entry->parkedUntil = nowMs + (parkMs < MaxParkMs ? parkMs : MaxParkMs);
+    if (!entry->parkedUntil)
+        entry->parkedUntil = 1;
+
+    if (!abandonable)
+        entry->structuralParks = 0;
+    else if (entry->structuralParks != 0xFF)
+        ++entry->structuralParks;
+
+    result.parked = true;
+    if (entry->structuralParks >= AbandonAfterStructuralParks)
+    {
+        result.abandonDue = true;
+        entry->structuralParks = 0;
+    }
+    return result;
 }
 
 // How a quest route request that offered only turn-ins ended (ChooseTravelTargetAction).
