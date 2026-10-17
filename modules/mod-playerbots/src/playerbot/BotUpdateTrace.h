@@ -172,7 +172,6 @@ public:
     // Any thread.
     void Add(std::uint64_t us, std::uint32_t open, std::uint32_t ok)
     {
-        calls.fetch_add(1, std::memory_order_relaxed);
         totalUs.fetch_add(us, std::memory_order_relaxed);
         buckets[BucketOf(us)].fetch_add(1, std::memory_order_relaxed);
         openSum.fetch_add(open, std::memory_order_relaxed);
@@ -183,22 +182,25 @@ public:
         }
     }
 
-    // Reads and resets everything (the reader is the per-minute line).
+    // Reads and resets everything (the reader is the per-minute line). calls is the sum of the buckets taken: an Add
+    // between the exchanges then lands in one window or the next, never as a call without its bucket - with few calls
+    // a missing bucket would turn p99 into the top bucket edge.
     CountedSnapshot Take()
     {
         CountedSnapshot s;
-        s.time.calls = calls.exchange(0, std::memory_order_relaxed);
         s.time.totalUs = totalUs.exchange(0, std::memory_order_relaxed);
         s.time.maxUs = maxUs.exchange(0, std::memory_order_relaxed);
         for (std::size_t b = 0; b < Buckets; ++b)
+        {
             s.time.buckets[b] = buckets[b].exchange(0, std::memory_order_relaxed);
+            s.time.calls += s.time.buckets[b];
+        }
         s.openSum = openSum.exchange(0, std::memory_order_relaxed);
         s.okSum = okSum.exchange(0, std::memory_order_relaxed);
         return s;
     }
 
 private:
-    std::atomic<std::uint64_t> calls{0};
     std::atomic<std::uint64_t> totalUs{0};
     std::atomic<std::uint64_t> maxUs{0};
     std::array<std::atomic<std::uint64_t>, Buckets> buckets{};

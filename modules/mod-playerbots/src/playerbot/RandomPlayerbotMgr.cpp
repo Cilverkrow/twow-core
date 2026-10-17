@@ -1103,18 +1103,30 @@ void ReportBotInbox()
 // line per slowest call (bot, map, combat, last action). Nothing is timed or written when off.
 void ReportBotUpdate()
 {
+    static bool tracing = false;
     static uint32 lastReport = 0;
-    uint32 const now = uint32(time(nullptr));
-    if (!sPlayerbotAIConfig.botUpdateTrace || now < lastReport + 60)
+    if (!sPlayerbotAIConfig.botUpdateTrace)
+    {
+        tracing = false;
         return;
-    bool const first = lastReport == 0;
+    }
+    uint32 const now = uint32(time(nullptr));
+    if (!tracing)
+    {
+        // Switched on (start or config reload): what an earlier period left is dropped, the first line comes after a
+        // full minute (same pattern as ReportShortcut; twow-repo#601 review 18.10.).
+        tracing = true;
+        lastReport = now;
+        ai::bot_update::Global().Take();
+        ai::bot_update::Prevalidate().Take();
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
     lastReport = now;
 
     ai::bot_update::Snapshot const s = ai::bot_update::Global().Take();
     ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();
-    // The first window starts whenever the switch was read; it is reset, not reported.
-    if (first)
-        return;
 
     // twow-repo#601 S1 (OB-10 18.10.): every PreValidateTurnIns call of the minute - its time and its work (open turn-ins
     // checked) and result (validated). Only with AiPlayerbot.QuestFirstProgression.FailureClasses (the only caller).
