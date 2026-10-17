@@ -783,7 +783,7 @@ void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
 
     questIdleLogged = ai::quest_grind_mode::MarkLogged(questIdleLogged, why);
     sLog.outBasic("%s", ai::quest_grind_mode::FormatIdleLine(why, bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(),
-        target).c_str());
+        target, ai::quest_failure_class::ClassName(ai::quest_failure_class::FailureClass(questIdleClass))).c_str());
 }
 
 std::string PlayerbotAI::TakeQuestIdleMinuteLine()

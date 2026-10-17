@@ -745,6 +745,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                     bot->GetGUIDLow(), bot->GetLevel(), ai::quest_failure_class::ClassName(failureDecision.failureClass),
                     uint32(offeredTurnIns.size()), uint32(takerlessTurnIns.size()), structuralParks,
                     failuresAfter == failuresBefore + 1 ? 1u : 0u, transientStreak, failuresBefore, failuresAfter);
+                // GrindMode 2: the class goes on this idle episode's [QuestIdle] lines (OB-10: measure transient chains).
+                if (ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))
+                    ai->NoteQuestIdleClass(uint8(failureDecision.failureClass));
             }
 
             // twow-repo#594 / P3: once at the end of the branch, after Z1b, the backoff and the #485 park have seen the
@@ -1431,7 +1434,8 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
     // twow-repo#601 GrindMode 2 (review): the forced order left only kill trips - no target, the bot stands idle; once per
     // choice (the caller then marks the purpose "no active travel destinations", so the order does not re-request).
-    if (!hasTarget && forcedKillSkipped)
+    // Not on a budget-aborted slice: the caller returns without marking and the next slice may still find a target.
+    if (!hasTarget && forcedKillSkipped && !chooseBudgetExceeded)
         ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::NoTarget),
             ai::quest_grind_mode::TargetText("forced_kill_trip", forcedKillEntry > 0 ? uint32(forcedKillEntry) : 0u));
 

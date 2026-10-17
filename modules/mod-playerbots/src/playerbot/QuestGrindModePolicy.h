@@ -143,10 +143,14 @@ inline std::string TargetText(char const* what, std::uint32_t entry)
     return text;
 }
 
-inline std::string FormatIdleLine(Reason reason, std::uint32_t bot, std::uint32_t level, std::uint32_t zone, std::string const& target)
+// failureClass: the bot's last S1 rejection class in this idle episode (ai::quest_failure_class::ClassName, "none"
+// without one) - lets a soak tie idle lines to transient / structural / empty_offer chains (OB-10, 17.10.).
+inline std::string FormatIdleLine(Reason reason, std::uint32_t bot, std::uint32_t level, std::uint32_t zone, std::string const& target,
+    char const* failureClass)
 {
     return "[QuestIdle] reason=" + std::string(ReasonName(reason)) + " bot=" + std::to_string(bot) + " level=" +
-        std::to_string(level) + " zone=" + std::to_string(zone) + " target=" + (target.empty() ? std::string("-") : target);
+        std::to_string(level) + " zone=" + std::to_string(zone) + " target=" + (target.empty() ? std::string("-") : target) +
+        " class=" + (failureClass && *failureClass ? std::string(failureClass) : std::string("none"));
 }
 
 // Once a minute (world thread): blocked grind decisions since the last line, per reason.
