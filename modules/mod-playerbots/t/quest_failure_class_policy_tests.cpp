@@ -223,6 +223,20 @@ int main()
         Require(ProgressResetsStage(false, false), "switch off: XP resets the stage as before");
         Require(!ProgressResetsStage(true, false), "switch on: XP alone keeps the stage");
         Require(ProgressResetsStage(true, true), "switch on: a level-up resets the stage");
+        // Plan 4.1: a quest-state change resets the stage only; the first check of a login is no change.
+        Require(ResetEventNames(ResetQuestState) == "quest_state", "quest-state event name");
+        Require(StageOnlyReset(ResetQuestState), "quest state alone: stage only");
+        Require(!StageOnlyReset(ResetQuestState | ResetLevelUp) && !StageOnlyReset(ResetRescue), "any other event: full reset");
+        Require((ResetQuestState & (ResetRescue | ResetLevelUp | ResetLogin | ResetBgReturn)) == 0, "distinct quest-state bit");
+        std::uint32_t const logA = MixQuestState(MixQuestState(QuestStateSeed, 310, false), 3100, false);
+        std::uint32_t const logB = MixQuestState(MixQuestState(QuestStateSeed, 310, true), 3100, false);
+        std::uint32_t const logC = MixQuestState(QuestStateSeed, 310, false);
+        Require(logA != logB, "a quest finished: changed");
+        Require(logA != logC, "a quest handed in or dropped: changed");
+        Require(logA == MixQuestState(MixQuestState(QuestStateSeed, 310, false), 3100, false), "same log: same state");
+        Require(QuestStateSeed != 0 && logA != 0, "a state is never 0");
+        Require(!QuestStateChanged(0, logA), "first check of a login: no change");
+        Require(QuestStateChanged(logA, logB) && !QuestStateChanged(logA, logA), "change only on a difference");
         // The idle clock is not part of this decision: ProgressTracker::Update moves lastChange on any progress.
         ai::quest_search::ProgressTracker progress;
         Require(progress.Update(100, 1000), "first sample");

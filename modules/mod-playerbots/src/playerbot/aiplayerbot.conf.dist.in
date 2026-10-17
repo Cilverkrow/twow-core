@@ -1118,8 +1118,10 @@ AiPlayerbot.QuestFirstProgression.FailureClasses = 0
 AiPlayerbot.QuestFirstProgression.TransientCountsAfter = 0
 # ResetOnProgressEvents = 1: a quest rescue teleport, a level-up, a login and the return from a battleground
 # reset the GrindFallbackFailures counter, the quest route backoff and the quest search stage ([QuestReset]
-# events=rescue,level_up,login,bg_return). XP gain alone no longer resets the quest search stage (it still counts
-# as progress for the QuestRescue.IdleMinutes clock, so a grinding bot is not rescued as idle).
+# events=rescue,level_up,login,bg_return). A quest-state change (a quest taken, finished, handed in or dropped) resets
+# the quest search stage only ([QuestReset] events=quest_state, logged only when the stage was above 0). XP gain alone
+# no longer resets the quest search stage (it still counts as progress for the QuestRescue.IdleMinutes clock, so a
+# grinding bot is not rescued as idle). Never while a real player leads the bot.
 AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
 # AbandonStructuralParked = 1 (acts only with FailureClasses = 1 and TurnInParkFailures > 0): a finished quest
 # parked twice in a row for a structural reason that does not heal by itself - no taker destination (no spawn,
