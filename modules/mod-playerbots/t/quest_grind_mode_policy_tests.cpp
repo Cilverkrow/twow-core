@@ -1,0 +1,113 @@
+// twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode, owner decision 17.10.2026): who may not grind,
+// which targets and destinations stay, the idle reasons and the bounded [QuestIdle] lines (QuestGrindModePolicy.h).
+// Hand-rolled Require(), std::exit(1) on failure, no gtest, no game library.
+#include "QuestGrindModePolicy.h"
+
+#include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <string>
+
+namespace
+{
+void Require(bool condition, char const* message)
+{
+    if (!condition)
+    {
+        std::cerr << "FAILED: " << message << '\n';
+        std::exit(1);
+    }
+}
+}
+
+int main()
+{
+    using namespace ai::quest_grind_mode;
+
+    // 1) Modes: only 2 changes anything; 1 is reserved (S2 / S4) and acts like 0; unknown values act like 0.
+    {
+        Require(ModeToday == 0 && ModeGapFiller == 1 && ModeNoGrind == 2, "mode numbers");
+        Require(!NoGrind(0), "mode 0 = today's behaviour");
+        Require(!NoGrind(1), "mode 1 = mode 0 until S4");
+        Require(NoGrind(2), "mode 2 = no grind");
+        Require(!NoGrind(3) && !NoGrind(0xFFFFFFFFu), "unknown values (also a negative conf value) act like 0");
+    }
+
+    // 2) Population: quest-first roster bots on their own below the max level.
+    {
+        Require(Applies(2, true, false, 30, 60), "quest-first bot on its own below 60");
+        Require(!Applies(0, true, false, 30, 60) && !Applies(1, true, false, 30, 60), "modes 0 and 1 apply to nobody");
+        Require(!Applies(2, false, false, 30, 60), "not quest-first (not on the roster / Enabled 0): untouched");
+        Require(!Applies(2, true, true, 30, 60), "a bot led by a real player: untouched");
+        Require(Applies(2, true, false, 59, 60), "level 59 still questing");
+        Require(!Applies(2, true, false, 60, 60), "at the max level grinding is allowed again (\"bis die Stufe 60\")");
+        Require(Applies(2, true, false, 60, 0), "max level unknown (0): no level bound");
+        Require(Applies(2, true, false, 1, 60), "level 1");
+    }
+
+    // 3) Grind targets: off -> everything as before; on -> attackers and quest objectives only.
+    {
+        Require(TargetAllowed(false, false, false), "off: any candidate");
+        Require(!TargetAllowed(true, false, false), "on: a plain mob is no target");
+        Require(TargetAllowed(true, true, false), "on: an attacker stays (self-defence, group help)");
+        Require(TargetAllowed(true, false, true), "on: a quest objective stays");
+        Require(TargetAllowed(true, true, true), "on: an attacking quest objective stays");
+    }
+
+    // 4) Grind travel destinations: only the quest objective mob destinations stay.
+    {
+        Require(GrindDestinationActive(false, false), "off: every grind destination as before");
+        Require(!GrindDestinationActive(true, false), "on: a pure grind destination is gone");
+        Require(GrindDestinationActive(true, true), "on: a quest objective mob destination stays");
+    }
+
+    // 5) Reasons.
+    {
+        Require(TargetReason(true) == Reason::Opportunistic, "on the way: opportunistic");
+        Require(TargetReason(false) == Reason::NoTarget, "idle: no_target");
+        Require(IsMoneyCondition("val::should get money"), "money trigger");
+        Require(IsMoneyCondition("travel request::val::should get money"), "money trigger behind the request gate");
+        Require(!IsMoneyCondition("val::need travel purpose::64"), "plain grind trigger is no money trigger");
+        Require(!IsMoneyCondition(""), "no condition is no money trigger");
+        Require(RequestReason(true) == Reason::Money && RequestReason(false) == Reason::Fallback, "request reasons");
+        Require(std::strcmp(ReasonName(Reason::Fallback), "fallback") == 0, "name fallback");
+        Require(std::strcmp(ReasonName(Reason::Money), "money") == 0, "name money");
+        Require(std::strcmp(ReasonName(Reason::Opportunistic), "opportunistic") == 0, "name opportunistic");
+        Require(std::strcmp(ReasonName(Reason::NoTarget), "no_target") == 0, "name no_target");
+        Require(std::strcmp(ReasonName(Reason::None), "-") == 0, "name none");
+        Require(ReasonCount == 5 && std::size_t(Reason::NoTarget) == ReasonCount - 1, "every reason has a counter slot");
+    }
+
+    // 6) Bounded log: a line only when the reason changes, never for None.
+    {
+        std::uint8_t last = 0;
+        Require(LogDue(last, Reason::Money), "first reason logs");
+        last = std::uint8_t(Reason::Money);
+        Require(!LogDue(last, Reason::Money), "same reason again: no line");
+        Require(LogDue(last, Reason::Fallback), "a new reason logs");
+        Require(!LogDue(last, Reason::None), "None never logs");
+        Require(!LogDue(0, Reason::None), "None never logs (fresh bot)");
+    }
+
+    // 7) Line formats.
+    {
+        Require(TargetText("grind_target", 299) == "grind_target:299", "target with entry");
+        Require(TargetText("travel_purpose_grind", 0) == "travel_purpose_grind", "target without entry");
+        Require(TargetText("", 5) == "-" && TargetText(nullptr, 5) == "-", "nothing blocked: -");
+        Require(FormatIdleLine(Reason::Money, 4711, 12, 40, "request_travel_grind") ==
+            "[QuestIdle] reason=money bot=4711 level=12 zone=40 target=request_travel_grind", "idle line");
+        Require(FormatIdleLine(Reason::NoTarget, 1, 2, 3, "") == "[QuestIdle] reason=no_target bot=1 level=2 zone=3 target=-",
+            "idle line with nothing named");
+        std::array<std::uint32_t, ReasonCount> counts = {};
+        counts[std::size_t(Reason::Fallback)] = 1;
+        counts[std::size_t(Reason::Money)] = 2;
+        counts[std::size_t(Reason::Opportunistic)] = 3;
+        counts[std::size_t(Reason::NoTarget)] = 4;
+        Require(FormatMinuteLine(counts) == "[QuestIdle] minute fallback=1 money=2 opportunistic=3 no_target=4", "minute line");
+    }
+
+    std::cout << "quest_grind_mode_policy_tests passed\n";
+    return 0;
+}
