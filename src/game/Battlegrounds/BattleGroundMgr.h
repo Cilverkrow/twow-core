@@ -309,6 +309,7 @@ class BattleGroundMgr
         void PlayerLoggedIn(Player* player);
         void PlayerLoggedOut(Player* player);
     private:
+        // twow-repo#517 R0: guards m_QueueUpdateScheduler (short: one find/emplace or one swap).
         std::mutex SchedulerLock;
         BattleMastersMap mBattleMastersMap;
         CreatureBattleEventIndexesMap m_CreatureBattleEventIndexMap;

@@ -1,0 +1,238 @@
+# cmake 3.x script mode (Debian trixie / CI): without a policy version TRUE in while()/if() (CMP0012) and
+# empty list elements (CMP0007) behave as in cmake 2.x; the host cmake 4.x has them NEW already.
+cmake_policy(VERSION 3.16)
+if (NOT DEFINED TW_CORE_ROOT)
+  message(FATAL_ERROR "TW_CORE_ROOT is required")
+endif()
+
+# twow-repo#597 (TICK-01, Refs #592 #541): core tick diagnostics. Six switches, each default 0 and
+# documented with that default: PerformanceLog.WorldTickSlowMs ([WorldTickSlow]), .TerrainTrace
+# ([TerrainCleanup]/[TerrainReload]), .StallWatchMs ([StallWatch]), .LogWriteTrace ([LogWait]),
+# .SlowResultCallbackMs ([ResultsSlow]), .MapTickRegion ([MapTickRegion]). This contract pins the
+# defaults, the off paths (no clock read without the switch, the old lines unchanged), the line
+# formats and the rate limits. Pure logic: t/tick_diag_597_test.cpp. Measurement only.
+
+function(read_source path out_var)
+  file(READ "${TW_CORE_ROOT}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(require_text text needle label)
+  string(FIND "${text}" "${needle}" offset)
+  if (offset EQUAL -1)
+    message(FATAL_ERROR "#597: missing ${label}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle label)
+  string(FIND "${text}" "${needle}" offset)
+  if (NOT offset EQUAL -1)
+    message(FATAL_ERROR "#597: forbidden ${label}: ${needle}")
+  endif()
+endfunction()
+
+function(require_order text first second label)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if (a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "#597: order ${label}: '${first}' must come before '${second}'")
+  endif()
+endfunction()
+
+# Number of occurrences of needle in text.
+function(count_text text needle out_var)
+  string(LENGTH "${needle}" needle_len)
+  set(count 0)
+  set(rest "${text}")
+  while (TRUE)
+    string(FIND "${rest}" "${needle}" at)
+    if (at EQUAL -1)
+      break()
+    endif()
+    math(EXPR count "${count} + 1")
+    math(EXPR next "${at} + ${needle_len}")
+    string(SUBSTRING "${rest}" ${next} -1 rest)
+  endwhile()
+  set(${out_var} ${count} PARENT_SCOPE)
+endfunction()
+
+# The text between first (inclusive) and second (exclusive).
+function(slice text first second out_var)
+  string(FIND "${text}" "${first}" a)
+  if (a EQUAL -1)
+    message(FATAL_ERROR "#597: slice start not found: ${first}")
+  endif()
+  string(SUBSTRING "${text}" ${a} -1 tail)
+  string(FIND "${tail}" "${second}" b)
+  if (b EQUAL -1)
+    message(FATAL_ERROR "#597: slice end not found: ${second}")
+  endif()
+  string(SUBSTRING "${tail}" 0 ${b} part)
+  set(${out_var} "${part}" PARENT_SCOPE)
+endfunction()
+
+read_source("src/game/World.h" world_h)
+read_source("src/game/World.cpp" world_cpp)
+read_source("src/game/WorldTickSlow.h" slow_h)
+read_source("src/game/WorldTickTrace.h" trace_h)
+read_source("src/shared/TickDiagPolicy.h" policy_h)
+read_source("src/game/Maps/MapManager.cpp" mapmgr)
+read_source("src/game/Maps/Map.cpp" map_cpp)
+read_source("src/game/Maps/Map.h" map_h)
+read_source("src/game/Maps/GridMap.cpp" grid_cpp)
+read_source("src/game/Maps/GridMap.h" grid_h)
+read_source("src/shared/Log.h" log_h)
+read_source("src/shared/Log.cpp" log_cpp)
+read_source("src/shared/Database/SqlOperations.cpp" sql_cpp)
+read_source("src/shared/Database/SqlOperations.h" sql_h)
+read_source("src/mangosd/Master.cpp" master)
+read_source("src/mangosd/WorldRunnable.cpp" runnable)
+read_source("src/mangosd/mangosd.conf.dist.in" dist)
+
+# ---- Switches: default 0, documented with that default, handed to the parts that cannot read the world config.
+require_text("${world_cpp}" "setConfig(CONFIG_UINT32_PERFLOG_WORLD_TICK_SLOW_MS, \"PerformanceLog.WorldTickSlowMs\", 0);" "WorldTickSlowMs default 0")
+require_text("${world_cpp}" "setConfig(CONFIG_BOOL_PERFLOG_TERRAIN_TRACE, \"PerformanceLog.TerrainTrace\", false);" "TerrainTrace default 0")
+require_text("${world_cpp}" "setConfig(CONFIG_UINT32_PERFLOG_STALL_WATCH_MS, \"PerformanceLog.StallWatchMs\", 0);" "StallWatchMs default 0")
+require_text("${world_cpp}" "setConfig(CONFIG_BOOL_PERFLOG_LOG_WRITE_TRACE, \"PerformanceLog.LogWriteTrace\", false);" "LogWriteTrace default 0")
+require_text("${world_cpp}" "setConfig(CONFIG_UINT32_PERFLOG_SLOW_RESULT_CALLBACK_MS, \"PerformanceLog.SlowResultCallbackMs\", 0);" "SlowResultCallbackMs default 0")
+require_text("${world_cpp}" "setConfig(CONFIG_BOOL_PERFLOG_MAP_TICK_REGION, \"PerformanceLog.MapTickRegion\", false);" "MapTickRegion default 0")
+foreach (key WorldTickSlowMs TerrainTrace StallWatchMs LogWriteTrace SlowResultCallbackMs MapTickRegion)
+  require_text("${dist}" "\nPerformanceLog.${key} = 0\n" "documented default of ${key}")
+endforeach()
+require_text("${world_cpp}" "sLog.SetLogWriteTrace(getConfig(CONFIG_BOOL_PERFLOG_LOG_WRITE_TRACE));" "Log setter from the world config")
+require_text("${world_cpp}" "SqlResultQueue::SetSlowCallbackMs(getConfig(CONFIG_UINT32_PERFLOG_SLOW_RESULT_CALLBACK_MS));" "result queue setter")
+require_text("${world_cpp}" "World::SetStallWatch(getConfig(CONFIG_UINT32_PERFLOG_STALL_WATCH_MS) != 0);" "stall watch publish switch")
+require_text("${log_h}" "std::atomic<bool> m_logWriteTrace{false};" "LogWriteTrace off until set")
+require_text("${sql_cpp}" "std::atomic<uint32> SqlResultQueue::s_slowCallbackMs{0};" "SlowResultCallbackMs off until set")
+require_text("${world_h}" "static inline std::atomic<bool> s_stallWatchOn{false};" "StallWatch off until set")
+
+# ---- [WorldTickSlow]: the #541 clocks run for it, the minute window stays PerformanceLog.WorldTick's.
+require_order("${world_cpp}" "m_worldTickOn = getConfig(CONFIG_BOOL_PERFLOG_WORLD_TICK);" "m_worldTickWindowOn = m_worldTickOn;" "window flag latched from WorldTick")
+require_text("${world_cpp}" "m_worldTickSlowMs = getConfig(CONFIG_UINT32_PERFLOG_WORLD_TICK_SLOW_MS);\n    if (m_worldTickSlowMs)\n        m_worldTickOn = true;" "clocks on only with the threshold")
+slice("${world_h}" "void TickPart(world_tick_slow::Part part)" "// twow-repo#597 (TICK-01, PerformanceLog.MapTickRegion)" tick_part)
+require_order("${tick_part}" "if (m_worldTickSlowMs)" "WorldTickNowUs()" "TickPart reads the clock only with WorldTickSlowMs")
+require_text("${tick_part}" "if (m_stallWatchOn)\n                s_stallPart.store(" "TickPart publishes only with StallWatchMs")
+slice("${world_cpp}" "void World::WorldTickEnd(uint64 updateUs, uint64 sleepUs)" "void World::LogWorldTickWindow(uint32 windowMs)" tick_end)
+require_order("${tick_end}" "if (!m_worldTickOn)" "m_worldTick.CloseTick(updateUs, sleepUs);" "off path first, unchanged")
+require_order("${tick_end}" "m_worldTick.CloseTick(updateUs, sleepUs);" "LogWorldTickSlow(updateUs);" "slow line from the closed tick")
+require_order("${tick_end}" "LogWorldTickSlow(updateUs);" "m_worldTick.PushTick();" "slow line before the tick goes into the window")
+require_order("${tick_end}" "if (!m_worldTickWindowOn)\n    {\n        m_worldTick.DropTick();" "m_worldTick.PushTick();" "no minute window without PerformanceLog.WorldTick")
+require_text("${slow_h}" "return thresholdMs && updateUs >= uint64_t(thresholdMs) * 1000;" "threshold 0 = off, at or above the threshold")
+require_text("${slow_h}" "std::string line = \"[WorldTickSlow] tick=\" + std::to_string(tick);" "[WorldTickSlow] line")
+require_text("${slow_h}" "line += \" dropped=\" + std::to_string(dropped);" "dropped= on the line")
+require_text("${world_h}" "tick_diag::RateLimiter m_worldTickSlowLimiter{60};" "at most 60 [WorldTickSlow] lines a minute")
+require_text("${trace_h}" "void EndTick(uint64_t updateUs, uint64_t sleepUs)\n    {\n        CloseTick(updateUs, sleepUs);\n        PushTick();\n    }" "EndTick unchanged in effect")
+# [MapTick] and [RegionSwitch] still follow PerformanceLog.WorldTick alone.
+require_order("${mapmgr}" "if (sWorld.WorldTickWindowOn())\n        {" "sWorld.MapTickAdd(regions);" "[MapTick] only with its minute block")
+require_text("${mapmgr}" "(GetContinentLayout() != 0 || sWorld.WorldTickWindowOn())" "[RegionSwitch] condition unchanged in effect")
+# Every job of World::Update between the #541 clocks has its part.
+foreach (part RPre RAh RDispatch MgrTransport Maps MgrBg MgrLfg MgrLft MgrGuard MgrZone MgrDynVis MgrEluna MgrOffline
+    AsyncTasks RSaveVars Results RCorpses REvents RRemove RMps RAccount RCli RTerrain RGuild RHook)
+  require_text("${world_cpp}" "TickPart(world_tick_slow::${part});" "part ${part} in World::Update")
+endforeach()
+require_order("${world_cpp}" "TickPart(world_tick_slow::RTerrain);" "sTerrainMgr.Update(diff);" "terrain cleanup in r_terrain")
+require_order("${world_cpp}" "TickPart(world_tick_slow::RHook);" "script->OnUpdate(diff);" "WorldScript hooks in r_hook")
+
+# ---- [StallWatch]: own thread, own file, plain I/O, never sLog in the loop; world thread publishes only when on.
+require_text("${master}" "if (uint32 stall_watch_ms = sWorld.getConfig(CONFIG_UINT32_PERFLOG_STALL_WATCH_MS))" "thread only with the switch")
+require_text("${master}" "sLog.GetLogsDir() + \"stallwatch.log\"" "own file in the log dir")
+require_order("${master}" "world_thread.join();" "stall_watch_thread->join();" "joined at shutdown")
+slice("${master}" "void stallWatch(uint32 thresholdMs, std::string path)" "Master::Master()" watch_fn)
+slice("${watch_fn}" "while (!World::IsStopped())" "fclose(file);" watch_loop)
+forbid_text("${watch_loop}" "sLog." "server log in the watchdog loop")
+require_text("${watch_loop}" "fwrite(line, 1, len, file);\n            fflush(file);" "plain fwrite + fflush")
+require_text("${watch_loop}" "std::this_thread::sleep_for(std::chrono::milliseconds(10));" "10 ms steps")
+require_text("${watch_fn}" "if (!file)" "fails closed without its file")
+require_order("${runnable}" "World::StallWatchTickBegin(updateStartUs);" "sWorld.Update(diff);" "tick start published before the update")
+require_order("${runnable}" "sWorld.Update(diff);" "World::StallWatchTickEnd();" "tick end published after the update")
+# Review follow-up: the work after World::Update (RecordTick, then WorldTickEnd with its sLog lines after the
+# sleep) is published as tick_end; the sleep itself never counts as tick age.
+require_order("${runnable}" "sWorld.Update(diff);\n        World::StallWatchPart(world_tick_slow::TickEnd);" "sPerfMonitor.RecordTick(updateTime, diff);\n        World::StallWatchTickEnd();" "RecordTick inside the tick")
+require_order("${runnable}" "World::StallWatchTickEnd();  // twow-repo#597 ([StallWatch]): the sleep never counts as tick age" "std::this_thread::sleep_for(std::chrono::milliseconds(WORLD_SLEEP_CONST - updateTime));" "tick unpublished before the sleep")
+require_text("${runnable}" "World::StallWatchTickBegin(World::StallWatchOn() ? World::WorldTickNowUs() : 0, world_tick_slow::TickEnd);\n        sWorld.WorldTickEnd(updateEndUs - updateStartUs, World::WorldTickNowUs() - updateEndUs);\n        World::StallWatchTickEnd();" "WorldTickEnd in its own age window, clock only when on")
+require_text("${slow_h}" "\"r_other\",\n        \"tick_end\" };" "tick_end phase name")
+slice("${world_h}" "static void StallWatchTickBegin(uint64 startUs, world_tick_slow::Part part = world_tick_slow::RPre)" "static uint64 StallTickStartUs()" stall_pub)
+count_text("${stall_pub}" "if (!s_stallWatchOn.load(std::memory_order_relaxed))\n                return;" stall_guards)
+if (NOT stall_guards EQUAL 3)
+  message(FATAL_ERROR "#597: StallWatchTickBegin/Part/End must return first when off (found ${stall_guards} guards)")
+endif()
+require_text("${policy_h}" "explicit StallTracker(std::uint32_t thresholdMs, std::uint32_t linesPerMinute = 120)" "at most 120 [StallWatch] lines a minute")
+require_text("${policy_h}" "\"[StallWatch] start=%llu oversleep_ms=%u world_tick_age_ms=%u phase=%s dropped=%u\\n\"" "[StallWatch] line")
+
+# ---- [TerrainCleanup] / [TerrainReload]: counted in LoadMapAndVMap, lazy = GetGrid, no clock read when off.
+require_text("${grid_cpp}" "pMap = LoadMapAndVMap(gx, gy, true);" "GetGrid loads lazily")
+count_text("${grid_cpp}" "uint64 const traceStartUs = trace ? tick_diag::NowUs() : 0;" terrain_clocks)
+if (NOT terrain_clocks EQUAL 2)
+  message(FATAL_ERROR "#597: TerrainTrace clocks must be guarded in CleanUpGrids and LoadMapAndVMap (found ${terrain_clocks})")
+endif()
+require_text("${grid_cpp}" "if (trace)\n                m_loadTrace.Record(tick_diag::NowUs() - traceStartUs, lazy, World::IsWorldThread());" "load recorded only when on")
+require_text("${grid_cpp}" "if (trace && freedGrids)" "cleanup line only when on and a grid was freed")
+require_text("${grid_cpp}" "\"[TerrainCleanup] map=%u freed_grids=%u ms=%.1f\"" "[TerrainCleanup] line")
+require_text("${grid_cpp}" "\"[TerrainReload] map=%u loads=%llu lazy=%llu ms_sum=%.1f max_ms=%.1f world_thread=%llu other_thread=%llu\"" "[TerrainReload] line")
+require_text("${grid_h}" "tick_diag::TerrainLoadCounters m_loadTrace;" "relaxed load counters per terrain")
+
+# ---- [LogWait]: every writing out* path timed, one relaxed load when off, the minute line without recursion.
+require_text("${log_h}" "uint64 LogWaitStart() const { return m_logWriteTrace.load(std::memory_order_relaxed) ? tick_diag::NowUs() : 0; }" "no clock read when off")
+require_text("${log_h}" "if (!startUs)\n                return;" "nothing recorded when off")
+count_text("${log_cpp}" "uint64 const lwStartUs = LogWaitStart" log_starts)
+count_text("${log_cpp}" "LogWaitDone(lwStartUs," log_dones)
+if (log_starts LESS 19 OR NOT log_starts EQUAL log_dones)
+  message(FATAL_ERROR "#597: every writing Log::out* path must be timed (starts ${log_starts}, dones ${log_dones}, need 19)")
+endif()
+require_text("${log_h}" "uint64 const lwStartUs = LogWaitStartIf(logFiles[type] != nullptr);" "the template out() timed, only when it has a file")
+# lines= counts written lines only: the paths that can write nothing start no clock and record nothing.
+require_text("${log_h}" "uint64 LogWaitStartIf(bool writes) const { return writes ? LogWaitStart() : 0; }" "nothing written, nothing counted")
+foreach (lvl BASIC DETAIL DEBUG)
+  require_text("${log_cpp}" "uint64 const lwStartUs = LogWaitStartIf(m_logLevel >= LOG_LVL_${lvl} || (logfile && m_logFileLevel >= LOG_LVL_${lvl})" "level-filtered path ${lvl} counted only when written")
+endforeach()
+require_text("${log_cpp}" "LogWaitStartIf(!HasLogFilter(LOG_FILTER_HONOR) || honorLogfile);" "outHonor counted only when written")
+require_text("${log_cpp}" "m_gmlog_per_account || gmLogfile);" "outCommand counted only when written")
+count_text("${log_cpp}" "LogWaitStartIf(" log_start_ifs)
+if (NOT log_start_ifs EQUAL 5)
+  message(FATAL_ERROR "#597: outHonor, outBasic, outDetail, outDebug and outCommand start with LogWaitStartIf (found ${log_start_ifs})")
+endif()
+require_order("${log_cpp}" "tick_diag::LogWaitSnapshot const s = m_logWait.Take();" "out(LOG_PERFORMANCE, \"[LogWait] lines=%llu stdout_max_us=%llu file_max_us=%llu over10ms=%llu over100ms=%llu\"" "counters taken before the line is written")
+
+# ---- [ResultsSlow]: per callback, latched threshold, at most 20 a minute.
+require_text("${sql_cpp}" "uint32 const slowMs = s_slowCallbackMs.load(std::memory_order_relaxed);" "threshold latched per pass")
+count_text("${sql_cpp}" "uint64 const startUs = slowMs ? tick_diag::NowUs() : 0;" result_clocks)
+if (NOT result_clocks EQUAL 2)
+  message(FATAL_ERROR "#597: thread-safe and unsafe callbacks must be timed only with the switch (found ${result_clocks})")
+endif()
+require_text("${sql_cpp}" "tick_diag::RateLimiter s_resultsSlowLimiter(20);" "at most 20 [ResultsSlow] lines a minute")
+require_text("${sql_cpp}" "\"[ResultsSlow] ms=%.1f unsafe=%u cb=%s pending=%u dropped=%u\"" "[ResultsSlow] line")
+require_text("${sql_h}" "static void SetSlowCallbackMs(uint32 ms);" "setter")
+
+# ---- [MapTickRegion]: latched per map update, no clock read in the region when off, bounded window.
+require_text("${mapmgr}" "bool const regionTraceOn = sWorld.getConfig(CONFIG_BOOL_PERFLOG_MAP_TICK_REGION);" "latched per map update")
+require_text("${mapmgr}" "iter->second->BeginRegionTrace(regionTraceOn);" "region told before it runs")
+require_order("${mapmgr}" "if (continents.valid())\n        continents.wait();" "sWorld.MapTickRegionAdd(samples);" "samples read after continents.wait()")
+require_text("${map_cpp}" "uint64 const regionTraceStartUs = m_regionTraceOn ? tick_diag::NowUs() : 0;" "region start clock only when on")
+require_order("${map_cpp}" "uint64 const regionArriveUs = m_regionTraceOn ? tick_diag::NowUs() : 0;" "sMapMgr.MarkContinentUpdateFinished();" "arrival taken before the barrier")
+require_text("${map_h}" "bool m_regionTraceOn = false;" "region trace off by default")
+require_text("${policy_h}" "static constexpr std::size_t MaxRegions = 64;" "bounded regions")
+require_text("${policy_h}" "static constexpr std::size_t SamplesKept = 1500;" "bounded samples")
+require_text("${world_cpp}" "\"[MapTickRegion] region=%u.%u pre=%.1f/%.1f/%.1f post=%.1f/%.1f/%.1f extra_loops=%llu extra_overrun_max=%.1f held_barrier=%u\"" "[MapTickRegion] line")
+
+# ---- Minute lines from the world thread; all off = config reads only.
+slice("${world_cpp}" "void World::TickDiagMinute()" "void World::LogMapTickRegion()" minute_fn)
+require_order("${minute_fn}" "if (!terrain && !logWait && !region)" "std::chrono::steady_clock::now()" "no clock read with all three off")
+require_text("${minute_fn}" "now - m_tickDiagMinuteStart < std::chrono::seconds(60)" "once a minute")
+# Review follow-up: a TerrainTrace switch-on resets the terrain counters even while another switch keeps the
+# window open, so no loads from before the last switch-off show up in a [TerrainReload] line.
+require_order("${minute_fn}" "if (terrain && !m_terrainTraceWasOn)\n        sTerrainMgr.ReportTerrainReloads(false);\n    m_terrainTraceWasOn = terrain;" "if (!terrain && !logWait && !region)" "terrain counters reset on switch-on")
+require_text("${world_h}" "bool m_terrainTraceWasOn = false;" "terrain trace starts as off")
+# Review follow-up: the over-cap line of [MapTickRegion] is pinned and documented.
+require_text("${world_cpp}" "\"[MapTickRegion] regions_over_cap=%llu\"" "[MapTickRegion] over-cap line")
+require_text("${dist}" "\"[MapTickRegion] regions_over_cap=<n>\"" "[MapTickRegion] over-cap line documented")
+
+# ---- Only short std::mutex, no shared_mutex in the new code; tagged.
+forbid_text("${policy_h}" "shared_mutex" "shared_mutex in the policy")
+forbid_text("${slow_h}" "shared_mutex" "shared_mutex in [WorldTickSlow]")
+forbid_text("${sql_cpp}" "std::shared_mutex" "shared_mutex in [ResultsSlow]")
+foreach (src world_h world_cpp slow_h policy_h mapmgr map_cpp map_h grid_cpp grid_h log_h log_cpp sql_cpp sql_h master runnable)
+  require_text("${${src}}" "twow-repo#597" "twow-repo#597 tag in ${src}")
+endforeach()
+
+message(STATUS "TICK_DIAG_597_CONTRACT=PASS")

@@ -41,6 +41,7 @@
 #include "WorldSession.h"
 #include "SQLStorages.h"
 #include "CreatureLinkingMgr.h"
+#include "TickDiagPolicy.h"  // twow-repo#597 (TICK-01): [MapTickRegion] sample
 
 #ifdef ENABLE_ELUNA
 #include "LuaValue.h"
@@ -807,6 +808,10 @@ class Map : public GridRefManager<NGridType>
         // region thread, read by the world thread after continents.wait().
         uint32 GetRegionUpdateUs() const { return m_regionUpdateUs; }
         void SetRegionUpdateUs(uint32 us) { m_regionUpdateUs = us; }
+        // twow-repo#597 (TICK-01, [MapTickRegion]): set by the world thread before the region is handed to its
+        // thread, filled by Map::Update at the barrier, read by the world thread after continents.wait().
+        void BeginRegionTrace(bool on) { m_regionTraceOn = on; m_regionTrace = tick_diag::RegionTickSample(); }
+        tick_diag::RegionTickSample const& GetRegionTrace() const { return m_regionTrace; }
         void RemoveBones(Corpse* corpse);
         void ScheduleCorpseRemoval();
 
@@ -960,6 +965,8 @@ class Map : public GridRefManager<NGridType>
         uint32 _lastPlayersUpdate;
         uint32 _inactivePlayersSkippedUpdates = 0;
         uint32 m_regionUpdateUs = 0;  // twow-repo#541
+        bool m_regionTraceOn = false;                 // twow-repo#597 (PerformanceLog.MapTickRegion)
+        tick_diag::RegionTickSample m_regionTrace;    // twow-repo#597
         uint32 _lastCellsUpdate;
 
         int8 _updateIdx;

@@ -1636,9 +1636,12 @@ void RandomPlayerbotMgr::TraceWorldBots(uint64 desiredBots, uint64 sessionsUs, u
     if (worldBotsWindow.Due(now))
     {
         ai::world_bots::Window const& w = worldBotsWindow;
-        sLog.outBasic("[WorldBots] passes=%u bots_avg=%u sessions_ms=%u process_ms=%u other_ms=%u max_pass_ms=%u share_pm=%u logins=%u teleport_ack_calls=%u online=%u",
+        // twow-repo#597 (TICK-01, AiPlayerbot.WorldBotsHookTrace): hook times at the end; empty when off.
+        std::string const hook = w.HookSuffix(sPlayerbotAIConfig.worldBotsHookTrace);
+        sLog.outBasic("[WorldBots] passes=%u bots_avg=%u sessions_ms=%u process_ms=%u other_ms=%u max_pass_ms=%u share_pm=%u logins=%u teleport_ack_calls=%u online=%u%s",
             w.passes, w.passes ? uint32(w.bots / w.passes) : 0u, uint32(w.sessionsUs / 1000), uint32(w.processUs / 1000),
-            uint32(w.otherUs / 1000), uint32(w.maxPassUs / 1000), w.PerMille(), w.logins, w.teleportAcks, uint32(GetPlayerbotsAmount()));
+            uint32(w.otherUs / 1000), uint32(w.maxPassUs / 1000), w.PerMille(), w.logins, w.teleportAcks, uint32(GetPlayerbotsAmount()),
+            hook.c_str());
         worldBotsWindow.Reset(now);
     }
     worldBotsWindow.Add(desiredBots, sessionsUs, processUs, otherUs, logins, acks);
