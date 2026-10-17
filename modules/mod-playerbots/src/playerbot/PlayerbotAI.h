@@ -1069,7 +1069,10 @@ public:
     // minute line and writes one [QuestIdle] line per reason and idle episode (at most 4). Nothing without GrindMode 2.
     void NoteQuestIdle(uint8 reason, std::string const& target);
     // GrindMode 2: a quest target was found - the idle episode ends, every reason may log once again.
-    void ClearQuestIdle() { questIdleLogged = 0; }
+    void ClearQuestIdle() { questIdleLogged = 0; questIdleClass = 0; }
+    // GrindMode 2: the S1 class (ai::quest_failure_class::FailureClass as uint8) of the bot's latest classified quest
+    // route rejection - shown as class= on its [QuestIdle] lines until the idle episode ends.
+    void NoteQuestIdleClass(uint8 failureClass) { questIdleClass = failureClass; }
     // GrindMode 2, world thread: "[QuestIdle] minute ..." with the counts since the last call (counters reset).
     static std::string TakeQuestIdleMinuteLine();
 
@@ -1077,6 +1080,7 @@ protected:
     // twow-repo#601 GrindMode: the reasons this bot already logged in its idle episode (bit mask of
     // ai::quest_grind_mode::ReasonBit, 0 = none; bot's own thread only).
     uint8 questIdleLogged = 0;
+    uint8 questIdleClass = 0;   // GrindMode 2: last S1 rejection class of the idle episode (0 = none; bot's own thread)
     std::deque<ai::death_loop::Death> recentDeaths;
     bool lastDeathHostileArea = false;   // A39: the latest death lay in an area of the hostile faction
     uint32 lastDeathLoopEscapeAt = 0;    // A39: time of the last evacuation (repeat_after_escape)
