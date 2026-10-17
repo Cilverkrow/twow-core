@@ -16,9 +16,10 @@ namespace ai::quest_grind_mode
 //   1 = RESERVED for the gap filler of stages S2 / S4; until then it behaves exactly like 0.
 //   2 = no grind as a substitute activity for quest-first roster bots on their own below the max player level: no
 //       8.32 grind fallback, no money grind, no pure grind travel destination, no "attack anything" on a creature that
-//       neither attacks the bot / its group nor is needed for an active quest. The bot stands idle and says why
-//       ([QuestIdle]). Attacks on attackers (self-defence, group help), quest objective kills, GenericRpg, Explore,
-//       gathering and RosterGuild travel stay.
+//       neither attacks the bot / its group nor is needed for an active quest, no kill trip that would end in such a
+//       refused kill (skinning / boss purpose, forced guild-order kill trip to a non-quest creature). The bot stands
+//       idle and says why ([QuestIdle]). Attacks on attackers (self-defence, group help), quest objective kills,
+//       GenericRpg, Explore, mining, herbalism, fishing, skinning own kills and RosterGuild travel stay.
 //   Any other value acts like 0.
 constexpr std::uint32_t ModeToday = 0;
 constexpr std::uint32_t ModeGapFiller = 1;   // reserved for S2 / S4, acts like ModeToday until then

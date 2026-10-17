@@ -1139,11 +1139,14 @@ AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
 #   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
 #       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
 #       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a
-#       creature that neither attacks the bot or its group nor is needed for an active quest. The bot stands idle and
-#       logs why: [QuestIdle] reason=fallback|money|opportunistic|no_target bot= level= zone= target= when its reason
-#       changes, and [QuestIdle] minute fallback= money= opportunistic= no_target= once a minute. Fights against
-#       attackers (self-defence, group help), quest objective kills, GenericRpg, Explore, gathering and RosterGuild
-#       travel stay. Other values act like 0.
+#       creature that neither attacks the bot or its group nor is needed for an active quest, and no kill trip that
+#       would end in such a refused kill: no skinning or boss travel purpose, no forced guild-order kill trip (grind
+#       mob, boss, skinning) to a creature no active quest needs. The bot stands idle and logs why: [QuestIdle]
+#       reason=fallback|money|opportunistic|no_target bot= level= zone= target= once per reason until it finds a quest
+#       route again (at most 4 lines per idle episode), and [QuestIdle] minute fallback= money= opportunistic=
+#       no_target= once a minute. Fights against attackers (self-defence, group help), quest objective kills,
+#       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
+#       stay. Other values act like 0.
 AiPlayerbot.QuestFirstProgression.GrindMode = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
