@@ -403,10 +403,13 @@ bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 qu
 
 // twow-repo#601 S1 (FailureClasses, OB-10 answer 3): the bot's open turn-ins are checked before a request may become
 // turn-in-only. One GetDestinations call for all of them (one walk over the taker keys, bounded by the quest log); per
-// taker destination its point closest to the bot is judged like a SetBestTarget candidate - turn-in route or death
-// suppression, the route danger rule, the enemy home zone, IsActive. Any routable point validates the quest; only
-// structural answers (no point at all, other continent below MinLevelForCrossMapQuestRoute, a zone clearly above the
-// bot) park it at once. Writes the checked / validated lists the grind yield reads; one [QuestTakerCheck] line.
+// taker destination its point closest to the bot is judged like a SetBestTarget candidate, in the main loop's order:
+// turn-in route or death suppression, IsActive, the battleground quest skip, the enemy home zone, the route danger
+// rule, the danger map. Any routable point validates the quest; a point the main loop would turn down before the route
+// danger rule (or for the danger map) is "not now"; only structural answers (no point at all, other continent below
+// MinLevelForCrossMapQuestRoute, a zone clearly above the bot) park it at once - so a structural class follows the
+// counters the main loop would write. Writes the checked / validated lists the grind yield reads; one
+// [QuestTakerCheck] line per request.
 std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* travelTarget)
 {
     using namespace ai::quest_failure_class;
@@ -433,12 +436,22 @@ std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* 
         {
             uint32 const questId = uint32(quest);
             bool routable = false, notNowPoint = false, crossMap = false, zoneLevel = false;
+            // twow-repo#587 (Z3): the main loop skips a battleground quest right after IsActive - not now, never parked.
+            Quest const* const questTemplate = sObjectMgr.GetQuestTemplate(questId);
+            bool const battlegroundQuest = sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && questTemplate &&
+                ai::zone_exit::IsBattlegroundQuestSort(questTemplate->GetZoneOrSort());
             for (TravelDestination* destination : takersByQuest[questId])
             {
                 WorldPosition* point = destination->GetClosestPoint(botPos);
                 if (!point)
                     continue;
                 if (travelTarget->IsDestinationDeathSuppressed(destination) || travelTarget->IsTurnInRouteSuppressed(destination, point))
+                {
+                    notNowPoint = true;
+                    continue;
+                }
+                // The main loop's order: IsActive, battleground quest, enemy home zone - all before the route danger rule.
+                if (!destination->IsActive(bot, info) || battlegroundQuest || point->isEnemyHomeZoneFor(bot->GetTeam()))
                 {
                     notNowPoint = true;
                     continue;
@@ -454,7 +467,10 @@ std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* 
                     zoneLevel = true;
                     continue;
                 }
-                if (point->isEnemyHomeZoneFor(bot->GetTeam()) || !destination->IsActive(bot, info))
+                // #307 danger map (the main loop's last deferral, same query): a death cluster on the way ages out.
+                if (sPlayerbotAIConfig.dangerMapEnabled && point->getMapId() == bot->GetMapId() &&
+                    danger_map::Instance().Query(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), point->getX(),
+                        point->getY(), bot->GetLevel(), uint32(time(nullptr)), DangerMapParams()).cells)
                 {
                     notNowPoint = true;
                     continue;
