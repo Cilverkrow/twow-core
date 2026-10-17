@@ -130,8 +130,9 @@ AiPlayerbot.BG.BotOnlyHonorRate = 1.0
 # free slots is left out (the core would put the bots into that match first). 2 (WSG), 3 (AB) or 5 (AV) of those bots,
 # alternating Alliance and Horde and at least one of each faction, each say one line of their faction's pool in the
 # World channel, 2-15 s apart; DelaySeconds after the announcement both sides queue the minimum, so real players can
-# queue too (a real player who queued is counted, only the rest are queued). If no line was really said by then (every
-# announcer got busy) and no server message went out, or a side no longer has enough free bots, nobody queues. These
+# queue too (a real player who queued is counted, only the rest are queued). If by then a faction had no line of its
+# own really said (its announcers got busy) and no server message reached it, or a side no longer has enough free bots,
+# nobody queues: each faction is called or nobody plays. These
 # battlegrounds count against MaxConcurrent and MaxBotBGPerBracket, the bots are fill bots (a waiting real player gets
 # in through SlotRelease) and BotOnlyCleanup never empties them. The World channel reaches every level, but the match is
 # for one bracket: a player of another level who answers the call gets a match only through PlayerFill, so Announce is
@@ -146,8 +147,9 @@ AiPlayerbot.BG.Announce.IntervalMinutes = 0
 # 0 = 1 (default; the owner value for a start); a negative value counts as 0.
 AiPlayerbot.BG.MaxBotBGPerBracket = 0
 # Announce.Mode: 0 = chat in the World channel (default), 1 = a server message instead, 2 = chat, and the server message
-# when no announcer qualifies (also when every announcer got busy before its line was due). The server message goes only
-# to real players of that faction whose level is in the bracket. Any other value is 0.
+# when no announcer qualifies; when the chat lines of one faction all dropped (its announcers got busy before their lines
+# were due), that faction alone gets the server message after the last line was due (both factions if none was said).
+# The server message goes only to real players of that faction whose level is in the bracket. Any other value is 0.
 AiPlayerbot.BG.Announce.Mode = 0
 # Announce.DelaySeconds: time between the announcement and the bots' queue join. 0 = 60 s (default), minimum 20,
 # at most 3600; a negative value counts as 0.
