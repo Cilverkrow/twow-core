@@ -1024,6 +1024,10 @@ void World::LoadConfigSettings(bool reload)
 
     LoadConfigSettingsCommonPart(reload);
 
+    // twow-repo#597 (TICK-01): Log.AsyncSink (default 0 = synchronous log). Started here at startup;
+    // a reload can only switch it off (drain, then synchronous).
+    sLog.ApplyAsyncSinkConfig(reload);
+
     ScriptRegistry<WorldScript>::ForEachEnabledHook(WORLDHOOK_ON_AFTER_CONFIG_LOAD, [&](WorldScript* script)
     {
         script->OnAfterConfigLoad(reload);
@@ -5473,6 +5477,8 @@ void World::WorldTickEnd(uint64 updateUs, uint64 sleepUs)
 {
     // twow-repo#597 (TICK-01): minute lines of TerrainTrace / LogWriteTrace / MapTickRegion (own switches).
     TickDiagMinute();
+    // twow-repo#597 (TICK-01, Log.AsyncSink): the [LogSink] minute line; sink off = one atomic load.
+    sLog.AsyncSinkMinute();
 
     if (!m_worldTickOn)
     {
