@@ -1018,6 +1018,15 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_unsafe_budget_597_contract.cmake")
+  # twow-repo#597 (TICK-01): asynchronous log sink (Log.AsyncSink, default 0 = synchronous log) - bounded
+  # FIFO, drop counting, order across targets, drain; the off path and the [LogSink] lines.
+  add_executable(log_sink_597_test
+    "${TW_CORE_ROOT}/t/log_sink_597_test.cpp")
+  add_test(NAME log_sink_597_test COMMAND log_sink_597_test)
+  add_test(NAME log_sink_597_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_log_sink_597_contract.cmake")
   # twow-repo#541/#551: parked bots hidden from other bots (Player flag, AiPlayerbot.Park.HideFromBots).
   add_test(NAME park_hide_541_contract
     COMMAND "${CMAKE_COMMAND}"
@@ -1028,6 +1037,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_mmap_race_560_contract.cmake")
+  # twow-repo#517 R0: BattleGroundMgr queue update scheduler under SchedulerLock (map threads vs. world thread).
+  add_test(NAME bg_scheduler_lock_517_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_bg_scheduler_lock_517_contract.cmake")
   # twow-repo#592 PATH-02 PR pair 0: `.mmaps replay` (name guard, fixture rows, hexfloats, 500 lines / 200 ms, chain rule).
   add_executable(path_replay_test
     "${TW_CORE_ROOT}/t/path_replay_test.cpp")
@@ -1045,6 +1059,15 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_path_unitless_592_contract.cmake")
+  # twow-repo#597 (TICK-01): CleanupTerrain pass with TerrainCleanup.IdleMinutes / MaxGridsPerTick (both 0 = today's
+  # decisions, no stamp in GetGrid, no clock read).
+  add_executable(terrain_cleanup_597_test
+    "${TW_CORE_ROOT}/t/terrain_cleanup_597_test.cpp")
+  add_test(NAME terrain_cleanup_597_test COMMAND terrain_cleanup_597_test)
+  add_test(NAME terrain_cleanup_597_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_terrain_cleanup_597_contract.cmake")
   # twow-repo#541 part C: Continents.Layout cell tables (14/16/18/20/21 regions) and their wiring.
   add_executable(continent_layout_541_test
     "${TW_CORE_ROOT}/t/continent_layout_541_test.cpp"

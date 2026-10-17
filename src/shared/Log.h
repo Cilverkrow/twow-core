@@ -27,13 +27,16 @@
 #include <mutex>
 #include <shared_mutex>
 #include <atomic>
+#include <memory>
 #include "Util.h"
 #include "TickDiagPolicy.h"  // twow-repo#597 (TICK-01): [LogWait] counters
+#include "LogSinkPolicy.h"   // twow-repo#597 (TICK-01): Log.AsyncSink line and queue
 
 #include "fmt/core.h"
 
 class Config;
 class ByteBuffer;
+struct LogAsyncSinkState;   // twow-repo#597 (TICK-01, Log.AsyncSink): queue + writer thread, Log.cpp
 
 enum LogLevel
 {
@@ -152,6 +155,12 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
 
     ~Log()
     {
+        // twow-repo#597 (TICK-01, Log.AsyncSink): drain the sink before the files close. A writer that
+        // did not drain in time may still use them: they stay open then (the process is ending).
+        StopAsyncSink("exit");
+        if (m_sinkAbandoned)
+            return;
+
         if(logfile != nullptr)
             fclose(logfile);
         logfile = nullptr;
@@ -222,6 +231,13 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
 
             // twow-repo#597 ([LogWait]), 0 = off or no log file of this type (no line written, not counted)
             uint64 const lwStartUs = LogWaitStartIf(logFiles[type] != nullptr);
+            if (AsyncSinkOn())  // twow-repo#597 (TICK-01, Log.AsyncSink): same bytes, written by the sink thread
+            {
+                log_sink::Line line;
+                SinkFile(line, logFiles[type], timestampPrefix[type], "", log);
+                SinkSubmit(line, lwStartUs);
+                return;
+            }
             if (logFiles[type])
             {
                 if (timestampPrefix[type])
@@ -298,6 +314,38 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
         // The directory of the log files (LogsDir, ends with '/' when set): [StallWatch] writes its own file.
         std::string const& GetLogsDir() const { return m_logsDir; }
 
+        // twow-repo#597 (TICK-01, Log.AsyncSink, default 0 = synchronous as before): the writing paths
+        // format the complete line (same bytes, timestamps at the call) and hand the bytes for console
+        // and files to ONE writer thread through one bounded FIFO, so the order of all lines across
+        // console and files stays the call order; the writer does the fwrite/fflush and never calls
+        // back into sLog. Queue full: the line is dropped and counted, the caller never blocks.
+        // - Read at startup from World::LoadConfigSettings; a reload to 0 drains and goes back to the
+        //   synchronous path, a reload to 1 needs a restart. Fails closed (stays synchronous, says so
+        //   once): Windows (console colors and code page go through the console API), no thread.
+        // - Lock order: logLock (shared, callers) -> sink mutex. The writer takes only the sink mutex.
+        //   Start/stop take logLock exclusively, so no caller is in a write while the mode switches.
+        // - Errors are queued like every line (a waiting outError would put the caller back on a
+        //   stalled pipe). The writer is woken per line, so a line normally reaches its targets within
+        //   microseconds. Lines still queued or being written when the process dies are lost (at most
+        //   the bound, which covers both: Log.AsyncSinkMaxLines lines, 64 MiB); the crash paths flush
+        //   first (FlushAsyncSink: the SIGSEGV anticrash backtrace, the freeze detector, and
+        //   std::terminate through a handler the sink installs when it starts).
+        // - [LogWait] (PerformanceLog.LogWriteTrace) then measures the caller's cost per line (format +
+        //   enqueue) as stdout_max_us, file_max_us stays 0; the writer's I/O is [LogSink] write_max_us.
+        void ApplyAsyncSinkConfig(bool reload);
+        // Drains (bounded, log_sink::DrainWaitMs) and stops the sink, then writes one "[LogSink] stopped"
+        // line synchronously. No sink: nothing. Master::Run before quick_exit, a reload to 0, ~Log.
+        void StopAsyncSink(char const* reason);
+        // Waits (bounded) until every line queued so far is written. No sink: returns at once.
+        bool FlushAsyncSink(uint32 waitMs);
+        // World thread, every tick (WorldTickEnd): once a minute "[LogSink] lines=<n> dropped=<n>
+        // max_depth=<n> write_max_us=<x>" into the performance log. Written by the world thread, not
+        // by the writer: the writer must not call sLog, and a stalled writer still gets reported (lines
+        // falls, max_depth and dropped rise; max_depth = lines queued or being written). No sink: one
+        // atomic load.
+        void AsyncSinkMinute();
+        bool IsAsyncSinkOn() const { return AsyncSinkOn(); }
+
         std::list<uint32> m_smartlogExtraEntries;
         std::list<uint32> m_smartlogExtraGuids;
 
@@ -318,6 +366,23 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
         }
         std::atomic<bool> m_logWriteTrace{false};
         tick_diag::LogWaitCounters m_logWait;
+
+        // twow-repo#597 (TICK-01, Log.AsyncSink): off = one atomic load per writing call, nothing else.
+        // m_sink is set once before the switch goes on and is never reset while the Log lives.
+        bool AsyncSinkOn() const { return m_asyncSinkOn.load(std::memory_order_acquire); }
+        void StartAsyncSink(std::size_t maxLines);
+        // The console part of a line: [color][time]<prefix><text>[reset]\n (colorType -1 = no color,
+        // withTime = this path writes the time with LogTime = 1).
+        void SinkConsole(log_sink::Line& line, FILE* stream, int colorType, bool withTime, char const* prefix, std::string const& text);
+        // A file part: [timestamp]<prefix><text>\n; a null file adds nothing.
+        void SinkFile(log_sink::Line& line, FILE* file, bool stamp, char const* prefix, std::string const& text, bool close = false);
+        // Queues the line (or writes it here if the sink is closing; drops and counts it if full) and
+        // records the caller's cost for [LogWait].
+        void SinkSubmit(log_sink::Line& line, uint64 lwStartUs);
+        std::atomic<bool> m_asyncSinkOn{false};
+        std::shared_ptr<LogAsyncSinkState> m_sink;
+        bool m_sinkAbandoned = false;
+        uint64 m_sinkMinuteStartUs = 0;   // world thread only
 
         FILE* openLogFile(char const* configFileName,char const* configTimeStampFlag, char const* mode);
         FILE* openGmlogPerAccount(uint32 account);
