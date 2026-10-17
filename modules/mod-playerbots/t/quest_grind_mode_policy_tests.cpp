@@ -68,6 +68,9 @@ int main()
     {
         Require(TargetReason(true) == Reason::Opportunistic, "on the way: opportunistic");
         Require(TargetReason(false) == Reason::NoTarget, "idle: no_target");
+        Require(TargetNoteDue(true, false), "at the destination (working): noted");
+        Require(TargetNoteDue(false, false), "no travel target: noted");
+        Require(!TargetNoteDue(false, true), "on the way to a quest: silent (the action would not attack)");
         Require(IsMoneyCondition("val::should get money"), "money trigger");
         Require(IsMoneyCondition("travel request::val::should get money"), "money trigger behind the request gate");
         Require(!IsMoneyCondition("val::need travel purpose::64"), "plain grind trigger is no money trigger");

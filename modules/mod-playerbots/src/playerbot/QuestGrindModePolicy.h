@@ -44,7 +44,8 @@ enum class Reason : std::uint8_t
     None = 0,
     Fallback,       // the 8.32 grind fallback (NeedTravelPurpose Grind) or a pure grind request without a money reason
     Money,          // "val::should get money" -> request travel target::Grind (also with GrindFallbackFailures 0)
-    Opportunistic,  // "attack anything" on a creature that is no attacker and no quest objective, on the way somewhere
+    Opportunistic,  // "attack anything" on a creature that is no attacker and no quest objective, with a travel
+                    // target (at its destination; on the way only when the action would really attack)
     NoTarget,       // the same without an active travel target (the grind strategy's "no target" kill)
 };
 constexpr std::size_t ReasonCount = 5;
@@ -80,6 +81,15 @@ inline bool GrindDestinationActive(bool noGrind, bool neededForQuest)
 inline Reason TargetReason(bool travelTargetActive)
 {
     return travelTargetActive ? Reason::Opportunistic : Reason::NoTarget;
+}
+
+// The grind target value is computed before AttackAnythingAction's "traveling and free to move -> no attack" test, so a
+// bot on its way to a quest past non-quest mobs would be counted although it would not have attacked in mode 0 either
+// (review fix). Noted only at the destination (working: opportunistic) or without a travel target (no_target); the pure
+// traveling state stays silent.
+inline bool TargetNoteDue(bool travelTargetWorking, bool travelTargetTraveling)
+{
+    return travelTargetWorking || !travelTargetTraveling;
 }
 
 // A grind travel request that was turned down: the "should get money" trigger is the money grind, anything else the
