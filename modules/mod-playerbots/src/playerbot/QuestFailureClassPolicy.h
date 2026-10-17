@@ -119,6 +119,19 @@ inline bool CountsTowardGrind(FailureClass failureClass)
     return failureClass != FailureClass::Transient;
 }
 
+// AiPlayerbot.QuestFirstProgression.TransientCountsAfter (S1 review; the value is OB-10's decision): 0 = a transient
+// rejection never counts (OB-10 17.10.). N > 0: the N-th transient rejection in a row (no other class and no route found
+// in between) counts once toward the grind fallback and the streak starts anew - a transient cause that persists
+// (QL-1 cooldown re-armed, death suppression, a hub filter a later check rejects) then reaches the grind fallback
+// instead of idling until the quest rescue. streak: this rejection included.
+inline bool TransientStreakCounts(std::uint32_t streak, std::uint32_t countsAfter)
+{
+    return countsAfter && streak >= countsAfter;
+}
+
+// The "manual int" value with the transient rejections in a row (ChooseTravelTargetAction, FailureClasses only).
+inline constexpr char const* TransientStreakValue = "quest transient streak";
+
 // ---- taker pre-validation (OB-10 answer 3) -----------------------------------------------------------------------
 
 // The taker check of one finished quest at request time (RequestQuestTravelTargetAction), before the fetch is built.

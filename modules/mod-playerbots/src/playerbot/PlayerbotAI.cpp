@@ -729,6 +729,7 @@ void PlayerbotAI::ApplyQuestRouteReset(uint32 events)
     aiObjectContext->GetValue<int>("manual int", "quest route failures")->Set(0);
     aiObjectContext->GetValue<int>("manual int", "quest route backoff until")->Set(0);
     aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
+    aiObjectContext->GetValue<int>("manual int", ai::quest_failure_class::TransientStreakValue)->Set(0);
 
     uint32 const now = uint32(time(nullptr));
     sLog.outBasic("[QuestReset] events=%s bot=%u level=%u failures=%d stage=%d backoff_s=%u",
