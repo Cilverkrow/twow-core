@@ -94,10 +94,23 @@ inline Reason RequestReason(bool moneyCondition)
     return moneyCondition ? Reason::Money : Reason::Fallback;
 }
 
-// Bounded log: one [QuestIdle] line per bot only when its reason changes (None never logs).
-inline bool LogDue(std::uint8_t lastReason, Reason reason)
+// The bit of a reason in the per-bot mask of reasons already logged in this idle episode (None has no bit).
+inline std::uint8_t ReasonBit(Reason reason)
 {
-    return reason != Reason::None && std::uint8_t(reason) != lastReason;
+    return reason == Reason::None ? std::uint8_t(0) : std::uint8_t(1u << std::uint8_t(reason));
+}
+
+// Bounded log (review fix): one [QuestIdle] line per reason and idle episode, so at most 4 lines per episode however
+// the reasons alternate (an idle bot meets money, fallback and no_target in one engine walk). None never logs. The
+// episode ends when a quest route is found (the mask is cleared). loggedMask = the reasons already logged.
+inline bool LogDue(std::uint8_t loggedMask, Reason reason)
+{
+    return reason != Reason::None && !(loggedMask & ReasonBit(reason));
+}
+
+inline std::uint8_t MarkLogged(std::uint8_t loggedMask, Reason reason)
+{
+    return std::uint8_t(loggedMask | ReasonBit(reason));
 }
 
 // The blocked thing for target=: "what" or "what:entry" (entry 0 = no entry), "-" for nothing.

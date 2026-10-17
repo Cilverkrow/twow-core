@@ -4,6 +4,7 @@
 #include "QuestGrindModePolicy.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -80,15 +81,55 @@ int main()
         Require(ReasonCount == 5 && std::size_t(Reason::NoTarget) == ReasonCount - 1, "every reason has a counter slot");
     }
 
-    // 6) Bounded log: a line only when the reason changes, never for None.
+    // 6) Bounded log (review fix): one line per reason and idle episode, never for None - alternating reasons do not
+    //    log again (live shape: money, no_target, money, ... once per 1-2 s per idle bot).
     {
-        std::uint8_t last = 0;
-        Require(LogDue(last, Reason::Money), "first reason logs");
-        last = std::uint8_t(Reason::Money);
-        Require(!LogDue(last, Reason::Money), "same reason again: no line");
-        Require(LogDue(last, Reason::Fallback), "a new reason logs");
-        Require(!LogDue(last, Reason::None), "None never logs");
+        std::uint8_t logged = 0;
+        Require(LogDue(logged, Reason::Money), "first reason logs");
+        logged = MarkLogged(logged, Reason::Money);
+        Require(!LogDue(logged, Reason::Money), "same reason again: no line");
+        Require(LogDue(logged, Reason::Fallback), "a new reason logs");
+        Require(!LogDue(logged, Reason::None), "None never logs");
         Require(!LogDue(0, Reason::None), "None never logs (fresh bot)");
+        Require(ReasonBit(Reason::None) == 0 && MarkLogged(0, Reason::None) == 0, "None has no bit");
+
+        // Alternating Money / NoTarget / Money / NoTarget / Money: 2 lines, not one per change.
+        logged = 0;
+        unsigned lines = 0;
+        Reason const walk[] = { Reason::Money, Reason::NoTarget, Reason::Money, Reason::NoTarget, Reason::Money,
+            Reason::Fallback, Reason::NoTarget, Reason::Fallback };
+        for (std::size_t i = 0; i < 5; ++i)
+            if (LogDue(logged, walk[i]))
+            {
+                ++lines;
+                logged = MarkLogged(logged, walk[i]);
+            }
+        Require(lines == 2, "alternating money / no_target logs 2 lines, not 5");
+        for (Reason const reason : walk)
+            if (LogDue(logged, reason))
+            {
+                ++lines;
+                logged = MarkLogged(logged, reason);
+            }
+        Require(lines == 3, "fallback joins once");
+
+        // Upper bound: every reason, many times - at most 4 lines per episode.
+        logged = 0;
+        lines = 0;
+        for (unsigned round = 0; round < 1000; ++round)
+            for (std::size_t r = 0; r < ReasonCount; ++r)
+                if (LogDue(logged, Reason(r)))
+                {
+                    ++lines;
+                    logged = MarkLogged(logged, Reason(r));
+                }
+        Require(lines == 4, "at most 4 lines per idle episode");
+        Require(logged == (ReasonBit(Reason::Fallback) | ReasonBit(Reason::Money) | ReasonBit(Reason::Opportunistic) |
+            ReasonBit(Reason::NoTarget)), "the four reason bits are distinct");
+
+        // A found quest route ends the episode (the AI clears the mask): the first reason logs again.
+        logged = 0;
+        Require(LogDue(logged, Reason::Money), "new episode: money logs again");
     }
 
     // 7) Line formats.

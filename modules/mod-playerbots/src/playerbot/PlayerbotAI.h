@@ -1066,16 +1066,17 @@ public:
     // with GrindMode 0 or 1 (the config is read first).
     bool IsQuestNoGrind();
     // GrindMode 2, the bot's own thread: counts a blocked grind decision (ai::quest_grind_mode::Reason as uint8) for the
-    // minute line and writes one [QuestIdle] line when the reason changed for this bot. Nothing without GrindMode 2.
+    // minute line and writes one [QuestIdle] line per reason and idle episode (at most 4). Nothing without GrindMode 2.
     void NoteQuestIdle(uint8 reason, std::string const& target);
-    // GrindMode 2: a quest target was found - the next idle reason is logged again.
-    void ClearQuestIdle() { questIdleReason = 0; }
+    // GrindMode 2: a quest target was found - the idle episode ends, every reason may log once again.
+    void ClearQuestIdle() { questIdleLogged = 0; }
     // GrindMode 2, world thread: "[QuestIdle] minute ..." with the counts since the last call (counters reset).
     static std::string TakeQuestIdleMinuteLine();
 
 protected:
-    // twow-repo#601 GrindMode: the reason of this bot's last [QuestIdle] line (0 = none; bot's own thread only).
-    uint8 questIdleReason = 0;
+    // twow-repo#601 GrindMode: the reasons this bot already logged in its idle episode (bit mask of
+    // ai::quest_grind_mode::ReasonBit, 0 = none; bot's own thread only).
+    uint8 questIdleLogged = 0;
     std::deque<ai::death_loop::Death> recentDeaths;
     bool lastDeathHostileArea = false;   // A39: the latest death lay in an area of the hostile faction
     uint32 lastDeathLoopEscapeAt = 0;    // A39: time of the last evacuation (repeat_after_escape)
