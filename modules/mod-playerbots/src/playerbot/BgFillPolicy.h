@@ -599,8 +599,8 @@ inline std::string ExpandAnnounceLine(std::string const& line, std::string const
 // Owner Q2 (17.10., AiPlayerbot.BG.Announce.ShowLevelRange): the level range of the announced bracket, "lo-hi", as the
 // core forms a match of it (BattleGroundQueue::Update and the queue announcer: Player::GetMinLevelForBattleGroundBracketId
 // up to Player::GetMaxLevelForBattleGroundBracketId - 1), the top capped at the battleground's maximum level (0 = none):
-// AV 51-60 -> "51-60", WSG/AB 50-59 -> "50-59", WSG/AB 60 (maximum 60) -> "60-60". Empty - no range shown - for a range
-// the core would not form (no bottom level, the top below the bottom) or one longer than LongestLevelRange.
+// AV 51-60 -> "51-60", WSG/AB 50-59 -> "50-59", WSG/AB 60 (maximum 60) -> "60" (one level alone, owner). Empty - no range
+// shown - for a range the core would not form (no bottom level, the top below the bottom) or one longer than LongestLevelRange.
 constexpr char const* LongestLevelRange = "999-999";
 
 inline std::string AnnounceLevelRange(uint32_t minLevel, uint32_t maxLevelExclusive, uint32_t templateMaxLevel)
@@ -612,6 +612,8 @@ inline std::string AnnounceLevelRange(uint32_t minLevel, uint32_t maxLevelExclus
         high = templateMaxLevel;
     if (high < minLevel || high > 999)
         return std::string();
+    if (high == minLevel)
+        return std::to_string(minLevel);
     return std::to_string(minLevel) + "-" + std::to_string(high);
 }
 
@@ -752,7 +754,9 @@ inline std::vector<std::string> ParseAnnouncePool(std::string const& text, uint3
 
 // The built-in pools (owner D3 style, his three examples included: the first generic line of each faction gives his
 // WSG and AB lines for those battlegrounds, "Stormpike needs you, to Alterac!" is Alliance AV). team 0 alliance, 1 horde;
-// queueType 0 = the generic pool, else that battleground's own lines.
+// queueType 0 = the generic pool, else that battleground's own lines. A battleground's own line writes the name as %bg
+// where the name ends a clause, so ShowLevelRange puts the range right after it (review c8; the same text without the
+// switch, as each own pool goes out for its own battleground only).
 inline std::string BuiltInAnnouncePool(uint32_t team, uint32_t queueType)
 {
     if (!team)
@@ -789,13 +793,13 @@ inline std::string BuiltInAnnouncePool(uint32_t team, uint32_t queueType)
                 "Throm-Ka, warriors! The Horde fights in %bg today.|"
                 "Rally, Horde! %bg will be ours!";
         case QueueWS:
-            return "Warsong Outriders, the night elves guard their flag in Warsong Gulch. Take it!|"
-                "Grom's warriors, to Warsong Gulch! Bring me their flag!";
+            return "Warsong Outriders, the night elves guard their flag in %bg. Take it!|"
+                "Grom's warriors, to %bg! Bring me their flag!";
         case QueueAB:
-            return "The Defilers march on Arathi Basin! Who joins the hunt?|"
-                "Defilers, Arathi Basin is ripe for the taking!";
+            return "The Defilers march on %bg! Who joins the hunt?|"
+                "Defilers, %bg is ripe for the taking!";
         case QueueAV:
-            return "Frostwolf clan, to arms! Alterac Valley is ours!|"
+            return "Frostwolf clan, to arms! %bg is ours!|"
                 "For Drek'Thar! The Frostwolves ride to Alterac Valley!";
         default:
             return "";
