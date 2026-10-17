@@ -101,6 +101,10 @@ require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.TestWatcherGuids =\n" "dist 
 require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.Trace = 0\n" "dist Trace 0")
 require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.GroupLoopFix = 0\n" "dist GroupLoopFix 0")
 require_text("${conf_dist}" "TestWatcherGuids (TEST ONLY, never on a live realm)" "watchers documented as test only")
+# each key exactly once (a second "= 1" line below the default would win at load)
+foreach(key NearScope NearRadius TestWatcherGuids Trace GroupLoopFix)
+  require_count("${conf_dist}" "\nAiPlayerbot.Shortcut.${key} =" 1 "dist key AiPlayerbot.Shortcut.${key} once")
+endforeach()
 
 # --- 2. Policy: fail closed, bounded --------------------------------------------------------------------------------
 require_text("${policy}" "constexpr std::uint64_t StaleMs = 5000;" "5 s staleness")
@@ -116,6 +120,7 @@ require_text("${policy}" "if (!seen && guids.size() < MaxWatchers)" "watcher lis
 forbid_text("${policy}" "#include <mutex>" "lock in the policy (the mutex lives in the manager)")
 forbid_text("${policy}" "shared_mutex" "shared_mutex in the policy")
 forbid_text("${policy}" "GetPlayers" "real-player map in the policy")
+forbid_text("${policy}" "players)" "real-player map iterated in the policy")
 # windows.h (included by RandomPlayerbotMgr.cpp under PLATFORM_WINDOWS) defines near and far as empty macros.
 foreach(body policy mgr mgr_h)
   string(REGEX MATCH "[.](near|far)[^A-Za-z0-9_]|[ ](near|far)[{;]" win_macro "${${body}}")
@@ -128,14 +133,22 @@ require_text("${policy}" "std::atomic<std::uint32_t> nearAny{0};" "counter membe
 # --- 3. Snapshot built only in UpdateAIInternal (world thread, after sMapMgr.Update) ---------------------------------
 file(GLOB_RECURSE pb_sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
 set(build_calls 0)
+set(near_calls 0)
 foreach(source ${pb_sources})
   file(READ "${source}" text)
   count_text("${text}" "BuildShortcutSnapshot()" n)
   math(EXPR build_calls "${build_calls} + ${n}")
+  count_text("${text}" "ShortcutNear(" n)
+  math(EXPR near_calls "${near_calls} + ${n}")
 endforeach()
 # declaration + definition + the one call
 if(NOT build_calls EQUAL 3)
   message(FATAL_ERROR "#595 shortcut S0: BuildShortcutSnapshot() must appear 3 times (decl, def, one call), found ${build_calls}")
+endif()
+# S0 measures only: ShortcutNear( = the declaration, the definition and the policy header comment - no caller anywhere
+# in the module. The first stage that gates a shortcut on it has to change this count on purpose.
+if(NOT near_calls EQUAL 3)
+  message(FATAL_ERROR "#595 shortcut S0: ShortcutNear( must appear 3 times (decl, def, policy comment; S0 has no caller), found ${near_calls}")
 endif()
 require_count("${mgr}" "BuildShortcutSnapshot()" 2 "definition and one call in RandomPlayerbotMgr.cpp")
 between("${mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" "sPerformanceMonitor.Init(0, 0);" upd_pre_init)
@@ -148,6 +161,14 @@ require_text("${build}" "for (auto const& [guid, player] : players)" "real playe
 require_text("${build}" "if (!player->IsGameMaster() || player->isGMVisible())" "GM rule of HasPlayerNearby")
 require_text("${build}" "for (uint32 guid : sPlayerbotAIConfig.shortcutTestWatcherGuids)" "watchers added")
 forbid_text("${build}" "TeleportTo" "teleport in the snapshot build")
+# null / offline entries never reach the world thread's dereference; only real players (D6: alt bots are not players)
+require_text("${build}" "        if (!player || !player->IsInWorld() || !IsRealPlayer(player))\n            continue;" "player null / in-world / real-player filter")
+require_text("${build}" "        Player* watcher = sObjectAccessor.FindPlayer(ObjectGuid(HIGHGUID_PLAYER, guid));\n        if (!watcher || !watcher->IsInWorld())\n            continue;" "watcher null / offline filter")
+# one entry for the player and one for a camera body that differs (far sight)
+between("${mgr}" "void AddShortcutEntries(ai::shortcut::Snapshot& snapshot, Player* player, bool watcher, float reactDistance)" "\n}\n" add_entries)
+require_text("${add_entries}" "    snapshot.entries.push_back(entry);\n" "player entry")
+require_text("${add_entries}" "    if (body && body != player && body->IsInWorld())\n    {" "camera body that differs, in world")
+require_text("${add_entries}" "        snapshot.entries.push_back(view);\n" "camera entry")
 
 # --- 4. One short std::mutex, lock_guard only, held for a pointer copy / swap ----------------------------------------
 require_text("${mgr_h}" "std::mutex shortcutSnapshotMutex;" "plain std::mutex")
@@ -157,6 +178,8 @@ require_count("${mgr}" "std::lock_guard<std::mutex> lock(shortcutSnapshotMutex);
 require_text("${build}" "{\n        std::lock_guard<std::mutex> lock(shortcutSnapshotMutex);\n        shortcutSnapshot.swap(published);\n    }" "publish = swap under the lock")
 require_text("${mgr}" "{\n    std::lock_guard<std::mutex> lock(shortcutSnapshotMutex);\n    return shortcutSnapshot;\n}" "read = pointer copy under the lock")
 require_count("${mgr}" "shortcutSnapshot.swap(" 2 "snapshot written only by the two swaps")
+# the field itself: 3 x shortcutSnapshotMutex, the two swaps and the one locked return - nothing reads it unlocked
+require_count("${mgr}" "shortcutSnapshot" 6 "every use of the snapshot field (mutex x3, swap x2, locked return)")
 
 # --- 5. No real-player map in the new map-thread code ---------------------------------------------------------------
 between("${mgr}" "ai::shortcut::Near RandomPlayerbotMgr::ShortcutNear(" "\n}\n" near_body)
@@ -167,6 +190,22 @@ foreach(body near_body count_body snap_body)
   forbid_text("${${body}}" "players)" "real-player map iterated in ${body}")
   forbid_text("${${body}}" "TeleportTo" "teleport in ${body}")
 endforeach()
+foreach(body near_body count_body)
+  require_text("${${body}}" "std::shared_ptr<ai::shortcut::Snapshot const> const snapshot = ShortcutSnapshot();" "locked pointer copy in ${body}")
+endforeach()
+# NearScope 0 = off at the query: ShortcutNear passes the configured scope (Evaluate answers Unknown for 0); only the
+# trace measures with MeasureScope.
+require_text("${near_body}" "ShortcutNowMs(), sPlayerbotAIConfig.shortcutNearScope," "ShortcutNear uses the configured NearScope")
+forbid_text("${near_body}" "MeasureScope" "trace scope in ShortcutNear (NearScope 0 must answer Unknown)")
+# the map-thread call sites keep their pre-S0 real-player map reads: one (FarMoveRouteWatched) in MovementActions.cpp,
+# none at the ghost / repop sites
+require_count("${movement}" "GetPlayers()" 1 "real-player map reads in MovementActions.cpp (pre-existing FarMoveRouteWatched only)")
+require_count("${revive}" "GetPlayers()" 0 "real-player map reads in ReviveFromCorpseAction.cpp")
+require_count("${repop}" "GetPlayers()" 0 "real-player map reads in ReleaseSpiritAction.h")
+# the new manager header block (public query + private snapshot members) reads no real-player map
+between("${mgr_h}" "// twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.*): is a real player" "        PlayerBotMap players;" mgr_h_block)
+forbid_text("${mgr_h_block}" "GetPlayers" "real-player map in the new manager header block")
+forbid_text("${mgr_h_block}" "players)" "real-player map iterated in the new manager header block")
 require_text("${count_body}" "if (!sPlayerbotAIConfig.shortcutTrace || !bot)\n        return;" "measurement only with Trace")
 require_text("${count_body}" "ai::shortcut::Record(ai::shortcut::SharedCounters(), mech, source, destination);" "atomic counters")
 require_text("${mgr_h}" "void CountShortcut(ai::shortcut::Mech mech, Player* bot, uint32 toMapId, float toX, float toY, float toZ);" "void: the count cannot steer the caller")
@@ -176,6 +215,7 @@ require_text("${mgr}" "[Shortcut] state=snapshot players=%u watchers=%u entries=
 require_text("${mgr}" "snapshot && ai::shortcut::Fresh(snapshot->builtAtMs, nowMs) ? 0u : 1u," "stale flag = not Fresh")
 # Bounded output: only with Trace, at most once a minute; each line covers one minute (drained counters).
 between("${mgr}" "void RandomPlayerbotMgr::ReportShortcut()" "\n}\n" report)
+require_text("${report}" "std::shared_ptr<ai::shortcut::Snapshot const> const snapshot = ShortcutSnapshot();" "locked pointer copy in report")
 require_text("${report}" "    if (!sPlayerbotAIConfig.shortcutTrace)\n    {\n        tracing = false;\n        return;\n    }" "minute line only with Trace")
 require_text("${report}" "    if (now < lastReport + 60)\n        return;\n    lastReport = now;" "minute line at most once a minute")
 require_text("${report}" "    if (!tracing)\n    {" "counts dropped when Trace is switched on again")
