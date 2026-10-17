@@ -367,6 +367,17 @@ endforeach()
 require_text("${plan}" "if (!ai::bgfill::CapAllows(running, sPlayerbotAIConfig.bgMaxConcurrent))" "global cap in the planner")
 require_text("${plan}" "uint32 const running = CountBgFillRunning() + uint32(formingKeys.size());" "running and forming counted")
 require_text("${plan}" "if (!ai::bgfill::OwnBandAllows(ownPerBand[BgOwnBand(uint32(bgTypeId), b)], sPlayerbotAIConfig.bgMaxBotBGPerBracket))\n                continue;" "MaxBotBGPerBracket per level range in the planner")
+# Review c4 (probes r04-r06): per type, BgBotTeamCap 0 takes the battleground away from bots and an AV queue minimum
+# above the template minimum would make the core wait for more than the match takes (as in stage a); per bracket, a slot
+# reserved for a waiting real player (stage b) is never announced over. Each skips before the type or bracket opens.
+set(plan_teamcap "        if (sPlayerbotAIConfig.GetBgBotTeamCap(uint32(bgTypeId)) == 0)\n            continue;\n")
+set(plan_av_min "        if (bgTypeId == BATTLEGROUND_AV &&\n                ai::bgfill::QueueMinBlocksFill(bgTemplate->GetMinPlayersPerTeam(), sWorld.getConfig(CONFIG_UINT32_AV_MIN_PLAYERS_IN_QUEUE)))\n            continue;\n")
+set(plan_reserved "            if (BgFillReserved(q, b, 0, nowMs) || BgFillReserved(q, b, 1, nowMs))\n                continue;\n")
+require_text("${plan}" "${plan_teamcap}${plan_av_min}        minPerTeam[q] = bgTemplate->GetMinPlayersPerTeam();" "BgBotTeamCap 0 and the AV queue minimum skip the type before it opens")
+require_text("${plan}" "${plan_reserved}" "no announcement over a slot reserved for a waiting real player")
+require_order("${plan}" "${plan_reserved}" "            open[q][b] = true;" "the reservation checked before the bracket opens")
+count_text("${plan}" "minPerTeam[q] = " 1 "a type opens in one place only")
+count_text("${plan}" "open[q][b] = true;" 1 "a bracket opens in one place only")
 require_text("${queue}" "if (!ai::bgfill::CapAllows(running, sPlayerbotAIConfig.bgMaxConcurrent))\n        skip = \"cap\";\n    else if (!ai::bgfill::OwnBandAllows(ownPerBand[plan.band], sPlayerbotAIConfig.bgMaxBotBGPerBracket))\n        skip = \"bracketcap\";" "both caps again at the queue step")
 # Review c2: the core tops up a running battleground of that type and bracket with free slots before it forms a new
 # match, so no announcement and no queue join where such a battleground runs (one ApplyAllBattleGrounds walk each).
@@ -432,10 +443,32 @@ region("${mgr_cpp}" "bool RandomPlayerbotMgr::IsBgAnnouncerFit(Player* bot) cons
 require_text("${announcer_fit}" "if (bot->GetGroup())\n        return false;" "no announcer in a group")
 require_text("${announcer_fit}" "if (!ai || ai->HasRealPlayerMaster())\n        return false;" "no announcer with a real-player master")
 require_text("${announcer_fit}" "bot->IsInCombat()" "no announcer in combat")
+# C4 (review c4, probes r01/r02): no announcer on a taxi or being teleported, and no parked bot outside a capital city -
+# the whole first check and the parked rule, both returning false.
+require_text("${announcer_fit}" "if (!bot || !bot->IsInWorld() || !bot->IsAlive() || bot->IsInCombat() || bot->IsTaxiFlying() || bot->IsBeingTeleported())\n        return false;" "no announcer out of the world, dead, in combat, on a taxi or being teleported")
+require_text("${announcer_fit}" "if ((IsParkedBot(bot->GetGUIDLow()) || ai->IsParked()) && !ai->IsInCapitalCity())\n        return false;\n    return true;" "no parked announcer outside a capital city")
+count_text("${announcer_fit}" "return true;" 1 "the announcer check accepts only at its end")
 require_text("${plan}" "if (ai::bgfill::PendingExpired(nowMs, it->second, cooldownMs))\n            it = bgAnnounceCooldown.erase(it);" "cooldowns pruned (bounded)")
 require_text("${queue}" "if (joiners[0].size() < need[0] || joiners[1].size() < need[1])" "a side short: nobody queues")
 require_order("${queue}" "if (joiners[0].size() < need[0] || joiners[1].size() < need[1])" "BGJoinAction::SendBattlemasterJoin(ai, bot, bgTypeId, false);" "the short check before any join")
 require_text("${queue}" "if (!bot || !IsBgFillCandidate(bot) || (bot->GetTeam() == ALLIANCE ? 0u : 1u) != team)\n                continue;" "the plan's bots through the candidate filter again")
+# Review c4 (probes r03/r07): the queue step skips while a slot there is reserved for a waiting real player (stage b
+# priority), in one chain with the caps and the free slots, and a skip returns before any join; each plan bot is checked
+# again against the core's join rules (level range, the planned bracket, not queued for it yet) before it joins.
+require_text("${queue}" "        skip = \"bracketcap\";\n    else if (BgFillReserved(plan.queueType, plan.bracket, 0, nowMs) || BgFillReserved(plan.queueType, plan.bracket, 1, nowMs))\n        skip = \"reserved\";\n" "no queue join over a slot reserved for a waiting real player")
+require_order("${queue}" "skip = \"reserved\";" "BGJoinAction::SendBattlemasterJoin(" "the reservation checked before any join")
+string(FIND "${queue}" "    if (skip)\n    {" skip_at)
+if(skip_at EQUAL -1)
+  message(FATAL_ERROR "#517 c: missing the queue step's skip block")
+endif()
+string(SUBSTRING "${queue}" ${skip_at} -1 skip_rest)
+string(FIND "${skip_rest}" "\n    }\n" skip_end)
+string(SUBSTRING "${skip_rest}" 0 ${skip_end} skip_block)
+require_text("${skip_block}" "        return;" "a skipped queue step returns")
+require_order("${queue}" "    if (skip)\n    {" "BGJoinAction::SendBattlemasterJoin(" "the skip before any join")
+set(queue_recheck "            if (!bot->GetBGAccessByLevel(bgTypeId) || bot->GetBattleGroundBracketIdFromLevel(bgTypeId) != bracketId ||\n                    bot->InBattleGroundQueueForBattleGroundQueueType(queueTypeId))\n                continue;\n            joiners[team].push_back(bot);")
+require_text("${queue}" "${queue_recheck}" "the plan's bots checked again for level, bracket and an existing queue entry")
+count_text("${queue}" "joiners[team].push_back(" 1 "a joiner added in one place only")
 require_text("${queue}" "uint32 const need[2] = { ai::bgfill::NeedPerSide(minPerTeam, plan.real[0], pendingSide[0]),\n        ai::bgfill::NeedPerSide(minPerTeam, plan.real[1], pendingSide[1]) };" "real players and queued bots counted, only the rest queued")
 require_order("${queue}" "BGJoinAction::SendBattlemasterJoin(ai, bot, bgTypeId, false);" "ai->SetBgFillPending(true);" "pending flag only after a join the core took")
 require_text("${queue}" "BgOwnPlan const plan = bgOwnPlan;\n    bgOwnPlan = BgOwnPlan();" "the plan is used once")
