@@ -296,6 +296,9 @@ int main()
         Require(IsAbandonMarked(marks, 42055) && IsAbandonMarked(marks, 1000 + AbandonMarkSize - 1), "a full ring keeps every mark");
         MarkAbandoned(marks, 5000);
         Require(IsAbandonMarked(marks, 5000) && !IsAbandonMarked(marks, 42055), "bounded: the oldest mark gives way");
+        MarkAbandoned(marks, 5001);
+        Require(IsAbandonMarked(marks, 5000) && IsAbandonMarked(marks, 5001) && !IsAbandonMarked(marks, 1001),
+            "the ring goes on in order (the next oldest gives way, not the newest)");
     }
 
     std::cout << "quest_failure_class_policy_tests passed\n";
