@@ -188,10 +188,11 @@ inline bool TakerOnlyOffer(bool enabled, bool validated)
 
 // The 8.5 gather rule (QuestSearchPolicy.h GatherYieldsToTurnIn) generalised to grind: a quest-first roster bot on its
 // own does not grind while a routable open turn-in waits (validated at the last request, or finished since and not yet
-// checked - the next request checks it).
-inline bool GrindYieldsToTurnIn(bool rosterOnItsOwn, std::uint32_t routableOpenTurnIns)
+// checked - the next request checks it) - but only once the quest route backoff ran out: until then no quest request
+// can run, and a bot that stopped grinding would stand idle (up to 10 min at counter >= 2).
+inline bool GrindYieldsToTurnIn(bool rosterOnItsOwn, std::uint32_t routableOpenTurnIns, bool routeBackoffRunning)
 {
-    return rosterOnItsOwn && routableOpenTurnIns > 0;
+    return rosterOnItsOwn && routableOpenTurnIns > 0 && !routeBackoffRunning;
 }
 
 // Comma-separated quest id lists in a "manual string" value ("quest turnin checked" / "quest turnin validated").

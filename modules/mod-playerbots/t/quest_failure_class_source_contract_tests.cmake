@@ -183,8 +183,12 @@ require_text("${taker_danger}" "bool const continentsOnly = sPlayerbotAIConfig.q
 require_text("${taker_danger}" "ai::death_series::RouteMargin(ai->IsCautious()),\n        continentsOnly,\n        route_danger::IsContinentSwitch(" "the local is the CrossMapContinentsOnly argument")
 require_text("${values}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && !ai->HasRealPlayerMaster())" "grind yield only with the switch, bots on their own")
 require_text("${values}" "(ai::quest_failure_class::ListHas(validated, questId) || !ai::quest_failure_class::ListHas(checked, questId))" "validated, or finished since the last check")
-require_order("${values}" "if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen))\n                    return false;" "return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&" "grind yields before the 8.32 fallback")
-require_text("${policy}" "inline bool GrindYieldsToTurnIn(bool rosterOnItsOwn, std::uint32_t routableOpenTurnIns)\n{\n    return rosterOnItsOwn && routableOpenTurnIns > 0;\n}" "the 8.5 rule, generalised")
+require_order("${values}" "if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen, routeBackoffRunning))\n                    return false;" "return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&" "grind yields before the 8.32 fallback")
+# Review fix (finding 'grind yields while the quest backoff is still running'): the yield waits for the same backoff the
+# quest request waits for (RequestQuestTravelTargetAction), so a latched bot never stops grinding into an idle wait.
+require_text("${values}" "bool const routeBackoffRunning =\n                    uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route backoff until\")));" "the request's own backoff test")
+require_text("${request}" "uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route backoff until\"))))\n        return false;" "the request waits for the same backoff")
+require_text("${policy}" "inline bool GrindYieldsToTurnIn(bool rosterOnItsOwn, std::uint32_t routableOpenTurnIns, bool routeBackoffRunning)\n{\n    return rosterOnItsOwn && routableOpenTurnIns > 0 && !routeBackoffRunning;\n}" "the 8.5 rule, generalised; not while the backoff runs")
 require_text("${search_policy}" "inline bool GatherYieldsToTurnIn(bool rosterOnItsOwn, uint32_t finishedQuests)\n{\n    return rosterOnItsOwn && finishedQuests > 0;\n}" "8.5 gather rule itself unchanged")
 
 # ---- 5. Pre-loop and main loop share one skip predicate; no range skip under the hub filter ------

@@ -180,9 +180,10 @@ int main()
 
     // 7) Grind yields to routable open turn-ins (8.5 generalised); id lists.
     {
-        Require(GrindYieldsToTurnIn(true, 1), "a routable open turn-in: no grind");
-        Require(!GrindYieldsToTurnIn(true, 0), "none: grind as before");
-        Require(!GrindYieldsToTurnIn(false, 3), "a bot led by a player: unchanged");
+        Require(GrindYieldsToTurnIn(true, 1, false), "a routable open turn-in, backoff over: no grind");
+        Require(!GrindYieldsToTurnIn(true, 0, false), "none: grind as before");
+        Require(!GrindYieldsToTurnIn(false, 3, false), "a bot led by a player: unchanged");
+        Require(!GrindYieldsToTurnIn(true, 2, true), "backoff still running: grind on (no quest request can run yet)");
         std::string list;
         ListAdd(list, 310);
         ListAdd(list, 3100);
