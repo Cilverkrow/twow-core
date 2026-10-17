@@ -3306,6 +3306,19 @@ bool Script_CanSwitchGuild(Player* inviter, ObjectGuid const& invitee, uint32 gu
     });
 }
 
+// twow-repo#517 stage c: HonorMgr::Add, on the player's map thread, after Rate.Honor and only for honor that is
+// not a dishonorable kill. Each listener may scale cp; no listener leaves it unchanged.
+void Script_OnHonorGain(Player* player, float& cp, uint8 type)
+{
+    if (!player)
+        return;
+
+    ScriptRegistry<PlayerScript>::ForEachEnabledHook(PLAYERHOOK_ON_HONOR_GAIN, [&](PlayerScript* script)
+    {
+        script->OnHonorGain(player, cp, type);
+    });
+}
+
 bool Script_IsMachineDriven(Player const* player)
 {
     if (!player)
