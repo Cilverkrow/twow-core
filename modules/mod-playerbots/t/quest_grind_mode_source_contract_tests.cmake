@@ -14,7 +14,8 @@ cmake_policy(VERSION 3.16)
 #  - the [QuestIdle] lines (once per reason and idle episode per bot, minute counter on the world thread), only with
 #    GrindMode 2,
 #  - GrindMode 0 byte-identical branches, neutral default,
-#  - the S1 recheck nit: the abandon mark on every accept path.
+#  - the S1 recheck nit: the abandon mark on every autonomous accept path (dialog, packet, accept all, share, escort
+#    confirm); the guild quest order is an officer's explicit order and stays without it.
 # Reads only named files below modules/mod-playerbots/src/playerbot (never a glob, never src/modules/Eluna).
 
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -98,6 +99,7 @@ read_source("strategy/values/GrindTargetValue.cpp" grind_target)
 read_source("strategy/actions/ChooseTravelTargetAction.cpp" choose)
 read_source("strategy/actions/ChooseTargetActions.cpp" choose_target)
 read_source("strategy/actions/AcceptQuestAction.cpp" accept)
+read_source("strategy/actions/GuildAcceptQuestOrderAction.cpp" guild_quest_order)
 read_source("strategy/generic/GrindingStrategy.h" grind_strategy_h)
 read_source("strategy/generic/GrindingStrategy.cpp" grind_strategy)
 read_source("strategy/generic/TravelStrategy.cpp" travel_strategy)
@@ -303,7 +305,7 @@ forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 2" "shipped
 require_text("${conf}" "#   1 = RESERVED for the gap filler of stages S2/S4; until then exactly like 0." "mode 1 documented as reserved")
 require_order("${conf}" "AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0" "AiPlayerbot.QuestFirstProgression.GrindMode = 0" "documented next to the S1 keys")
 
-# ---- 12. S1 recheck nit: the abandon mark on every accept path --------------------------------------
+# ---- 12. S1 recheck nit: the abandon mark on every autonomous accept path ---------------------------
 region("${accept}" "static bool SkipAbandonedQuest(PlayerbotAI* ai, Quest const* quest)" "\n}\n" abandon_fn)
 require_text("${abandon_fn}" "return sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked && !ai->HasRealPlayerMaster() &&\n        ai->GetAiObjectContext()->GetValue<TravelTarget*>(\"travel target\")->Get()->IsStructurallyAbandoned(quest->GetQuestId());" "behind the switch, bots on their own, the travel target's mark")
 region("${accept}" "static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* bot, Quest const* quest)" "\n}\n" skip_fn)
@@ -312,7 +314,15 @@ region("${accept}" "bool AcceptQuestShareAction::Execute(Event& event)" "\nbool 
 require_order("${share_fn}" "quest = qInfo->GetQuestId();" "if (SkipAbandonedQuest(ai, qInfo))\n    {\n        bot->SetDividerGuid(ObjectGuid());\n        return false;\n    }" "share path checks the mark after the catch-up branch")
 require_order("${share_fn}" "if (SkipAbandonedQuest(ai, qInfo))" "bot->AddQuest( qInfo, requester);" "before the share adds the quest")
 forbid_text("${share_fn}" "SkipQuestForRosterBot(" "the whole accept rule on the share path (would change shares with the switch at 0)")
-count_text("${accept}" "SkipAbandonedQuest(" 3 "definition, accept rule, share path")
+# Review fix (F4): the escort confirm (SMSG_QUEST_CONFIRM_ACCEPT from a group member) checks the mark too.
+region("${accept}" "bool ConfirmQuestAction::Execute(Event& event)" "\nbool QuestDetailsAction::Execute" confirm_fn)
+require_order("${confirm_fn}" "if( !bot->CanTakeQuest( qInfo, false ) )" "    if (SkipAbandonedQuest(ai, qInfo))\n        return false;\n\n    if( bot->CanAddQuest( qInfo, false ) )" "escort confirm: the mark after CanTakeQuest, before AddQuest")
+count_text("${accept}" "SkipAbandonedQuest(" 4 "definition, accept rule, share path, escort confirm")
+# Decided (review F4): the guild quest order (GuildAcceptQuestOrderAction) comes from an officer note, which only a
+# player writes - an explicit order, not an autonomous pick. It keeps taking the quest; the mark would also leave the
+# forced guild trip to the giver without an accept. UseAction's quest item is a master's "use" command.
+forbid_text("${guild_quest_order}" "IsStructurallyAbandoned" "the abandon mark on the guild quest order (decided: the officer's order wins)")
+require_text("${guild_quest_order}" "bot->GetSession()->HandleQuestgiverAcceptQuestOpcode(p);" "the guild quest order accepts through the opcode handler")
 region("${accept}" "bool QuestDetailsAction::Execute(Event& event)" "\n}\n" details_fn)
 require_order("${details_fn}" "if (SkipQuestForRosterBot(ai, bot, qInfo))" "bot->AddQuest(qInfo, requester);" "the dialog path asks the accept rule before AddQuest")
 require_text("${accept}" "#include \"playerbot/TravelMgr.h\"" "include what you use (TravelTarget)")

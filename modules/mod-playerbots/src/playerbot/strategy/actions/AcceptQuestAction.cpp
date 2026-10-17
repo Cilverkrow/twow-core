@@ -9,9 +9,11 @@
 #include "Formulas.h"
 
 // twow-repo#601 S1 recheck (AiPlayerbot.QuestFirstProgression.AbandonStructuralParked): a quest this bot abandoned after
-// two structural parks is not taken again on any accept path while the bot is on its own - QuestAction::AcceptQuest had
-// the check, the quest-giver dialog (QuestDetailsAction), accept-by-packet and the share path (AcceptQuestShareAction)
-// added the quest without it. Switch off: false before anything else is read.
+// two structural parks is not taken again on any autonomous accept path while the bot is on its own -
+// QuestAction::AcceptQuest had the check, the quest-giver dialog (QuestDetailsAction), accept-by-packet, the share path
+// (AcceptQuestShareAction) and the escort confirm (ConfirmQuestAction) added the quest without it. Not here: the
+// guild quest order (GuildAcceptQuestOrderAction, an officer's explicit order wins) and UseAction's quest item (a
+// master's "use" command). Switch off: false before anything else is read.
 static bool SkipAbandonedQuest(PlayerbotAI* ai, Quest const* quest)
 {
     return sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked && !ai->HasRealPlayerMaster() &&
@@ -274,6 +276,11 @@ bool ConfirmQuestAction::Execute(Event& event)
         ai->TellError(requester, BOT_TEXT("quest_cant_take"));
         return false;
     }
+
+    // twow-repo#601 S1 recheck (review, AbandonStructuralParked): the escort confirm a group member started
+    // (SMSG_QUEST_CONFIRM_ACCEPT) does not bring back a quest this bot abandoned while it is on its own. Switch off: no change.
+    if (SkipAbandonedQuest(ai, qInfo))
+        return false;
 
     if( bot->CanAddQuest( qInfo, false ) )
     {
