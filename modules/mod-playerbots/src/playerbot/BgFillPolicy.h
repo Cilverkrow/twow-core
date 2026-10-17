@@ -468,6 +468,15 @@ inline bool AnnounceHourOver(uint32_t now, uint32_t hourStart)
     return !hourStart || now - hourStart >= AnnounceHourMs;
 }
 
+// Every announcement needs room for one line per faction (both factions or none), so a MaxPerHour below AnnounceMinLines
+// could never announce. It counts as 0 at load (review c4: explicit and fail closed - no line, no bot-own battleground).
+constexpr uint32_t AnnounceMinLines = 2;
+
+inline uint32_t AnnounceMaxPerHour(uint32_t cfgMax)
+{
+    return cfgMax < AnnounceMinLines ? 0 : cfgMax;
+}
+
 // The type of the next bot-own battleground: of the possible ones (in the caller's fixed order), one never started
 // first, else the one started longest ago - the last started type goes last. lastTypes holds the started types,
 // oldest first. 0 = none possible.

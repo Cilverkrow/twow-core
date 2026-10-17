@@ -531,6 +531,11 @@ void Announce()
     Require(AnnounceLinesAllowed(0, 10, 5) == 5, "room for all");
     Require(AnnounceLinesAllowed(8, 10, 5) == 2, "only the rest of the hour");
     Require(AnnounceLinesAllowed(10, 10, 5) == 0 && AnnounceLinesAllowed(12, 10, 5) == 0, "hour used up");
+    Require(AnnounceMinLines == 2, "an announcement needs one line per faction");
+    Require(AnnounceMaxPerHour(0) == 0 && AnnounceMaxPerHour(1) == 0, "MaxPerHour below 2 counts as 0 (fail closed)");
+    Require(AnnounceMaxPerHour(2) == 2 && AnnounceMaxPerHour(10) == 10, "MaxPerHour from 2 on as set");
+    Require(AnnounceLinesAllowed(0, AnnounceMaxPerHour(1), AnnounceMinLines) == 0, "MaxPerHour 1: no announcement");
+    Require(AnnounceLinesAllowed(1, 2, AnnounceMinLines) < AnnounceMinLines, "one line left: no announcement");
     Require(AnnounceHourOver(5000, 0), "first window starts at once");
     Require(!AnnounceHourOver(AnnounceHourMs, 1) && AnnounceHourOver(AnnounceHourMs + 1, 1), "window of one hour");
     Require(AnnounceHourOver(0x10u, 0xFFFF0000u - AnnounceHourMs), "window across the clock wrap");
