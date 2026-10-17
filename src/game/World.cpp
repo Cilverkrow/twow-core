@@ -1199,6 +1199,10 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_UINT32_LOGIN_QUEUE_GRACE_PERIOD_SECS, "LoginQueue.GracePeriodSecs", 0);
     setConfig(CONFIG_UINT32_CHARACTER_SCREEN_MAX_IDLE_TIME, "CharacterScreenMaxIdleTime", 0);
     setConfig(CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT, "AsyncQueriesTickTimeout", 0);
+    // twow-repo#597 (TICK-01): time budget of the thread-unsafe async query callbacks of one result queue
+    // pass (0 = none, today's loop). SqlOperations cannot read the world config: hand it over (also on a reload).
+    setConfig(CONFIG_UINT32_ASYNC_QUERIES_UNSAFE_BUDGET_MS, "AsyncQueries.UnsafeBudgetMs", 0);
+    SqlResultQueue::SetUnsafeBudgetMs(getConfig(CONFIG_UINT32_ASYNC_QUERIES_UNSAFE_BUDGET_MS));
     setConfigMinMax(CONFIG_UINT32_COMPRESSION, "Compression", 1, 1, 9);
     setConfig(CONFIG_BOOL_ADDON_CHANNEL, "AddonChannel", true);
     setConfig(CONFIG_BOOL_CLEAN_CHARACTER_DB, "CleanCharacterDB", true);
@@ -4149,6 +4153,35 @@ void World::UpdateResultQueue()
     CharacterDatabase.ProcessResultQueue(getConfig(CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT));
     WorldDatabase.ProcessResultQueue(getConfig(CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT));
     LoginDatabase.ProcessResultQueue(getConfig(CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT));
+    // twow-repo#597 (TICK-01): the [UnsafeBudget] minute line of AsyncQueries.UnsafeBudgetMs (0 = one config read).
+    UnsafeBudgetMinute();
+}
+
+// twow-repo#597 (TICK-01, AsyncQueries.UnsafeBudgetMs): once a minute while the budget is on,
+// "[UnsafeBudget] calls_capped=<n> deferred_max=<n> ran=<n> loop_max_ms=<x>" over the three result queues
+// processed above. Written here, next to the queues it describes, on the world thread: the budget is a
+// behaviour switch of its own and keeps its own window (TickDiagMinute serves the PerformanceLog.* lines).
+// Off: no clock read; a switch-on starts with fresh counters.
+void World::UnsafeBudgetMinute()
+{
+    if (!getConfig(CONFIG_UINT32_ASYNC_QUERIES_UNSAFE_BUDGET_MS))
+    {
+        m_unsafeBudgetMinuteStart = std::chrono::steady_clock::time_point{};
+        return;
+    }
+
+    auto const now = std::chrono::steady_clock::now();
+    if (m_unsafeBudgetMinuteStart == std::chrono::steady_clock::time_point{})
+    {
+        // The first window starts now; counters gathered before (an earlier switch-on) are reset, not reported.
+        m_unsafeBudgetMinuteStart = now;
+        SqlResultQueue::ReportUnsafeBudget(false);
+        return;
+    }
+    if (now - m_unsafeBudgetMinuteStart < std::chrono::seconds(60))
+        return;
+    m_unsafeBudgetMinuteStart = now;
+    SqlResultQueue::ReportUnsafeBudget(true);
 }
 
 void World::UpdateRealmCharCount(uint32 accountId)

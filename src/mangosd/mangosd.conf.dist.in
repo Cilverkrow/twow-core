@@ -396,6 +396,26 @@ Continents.MotionUpdate.Threads = 1
 AsyncTasks.Threads = 2
 AsyncQueriesTickTimeout = 15000
 
+# AsyncQueries.UnsafeBudgetMs (twow-repo#597 TICK-01)
+#   Time budget per world tick for the thread-unsafe async database callbacks (player and bot logins:
+#   LoadFromDB, Map::Add, grid load), which run on the world thread. Each of the three result queues
+#   (character, world, login database) has this budget per tick; the login callbacks use the character queue.
+#   0 = no budget (the callbacks run until the queue is empty or AsyncQueriesTickTimeout is reached).
+#   N = before each unsafe callback the time already spent on unsafe callbacks in this pass is checked;
+#   at N ms or more the pass stops and the remaining callbacks stay queued, in the same order, for the next
+#   tick(s). The first unsafe callback of a pass always runs, so the queue always makes progress (a single
+#   long callback can still exceed N). Logins in a wave may wait a few ticks longer. AsyncQueriesTickTimeout
+#   is checked as before. Thread-safe callbacks (callback thread pool) are not affected.
+#   Caution (mod-playerbots): a '.bot add' bot login whose master logs out before its callback runs calls
+#   into the already deleted per-master PlayerbotMgr. This hazard exists today; N > 0 makes the window longer
+#   (the callback can wait several ticks). Keep this in mind before setting N > 0 on a live server.
+#   With N > 0, once a minute in the performance log:
+#   "[UnsafeBudget] calls_capped=<n> deferred_max=<n> ran=<n> loop_max_ms=<x>" (calls_capped = passes the
+#   budget stopped with callbacks left, deferred_max = most callbacks left queued by one stop, ran = unsafe
+#   callbacks run, loop_max_ms = longest unsafe pass).
+#   Default: 0 (off)
+AsyncQueries.UnsafeBudgetMs = 0
+
 # Movement.RelocationVmapsCheckDelay
 # Movement.MaxPointsPerPacket
 # Delayed repositionning checks. (Mounts inside / swimming ...)
