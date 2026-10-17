@@ -61,6 +61,10 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # premade path; 0 = a coin on every check (old).
 AiPlayerbot.Loot.RoleWeights = 0
 AiPlayerbot.Loot.FeralFixedSpec = 1
+# twow-repo#308 EQUIP-FLIP-01: 1 = the equip-upgrade check (every looted weapon or armour piece) takes main and off hand
+# off only when a weapon, shield or held item in the bags is an equip candidate. 0 = on every run, as before (bots took
+# their weapons off and on after every loot). A re-equip of the old main or off hand is no EquipAction event either way.
+AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade = 0
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).

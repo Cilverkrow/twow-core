@@ -13,7 +13,8 @@ namespace ai
         virtual bool Execute(Event& event) override;
         void EquipItems(Player* requester, ItemIds ids);
         void EquipItemsToSlot(Player* requester, ItemIds ids, uint8 targetSlot);
-        static void EquipItem(PlayerbotAI* ai, Player* requester, Item* item, bool silent = false);
+        // sameItemBack (twow-repo#308 EQUIP-FLIP-01): the item was on this slot before the run - no EquipAction event.
+        static void EquipItem(PlayerbotAI* ai, Player* requester, Item* item, bool silent = false, bool sameItemBack = false);
         void EquipItemToSlot(Player* requester, Item* item, uint8 targetSlot);
         virtual bool isUsefulWhenStunned() override { return true; }
 
