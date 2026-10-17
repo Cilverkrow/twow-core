@@ -1027,7 +1027,8 @@ AiPlayerbot.GrindAvoid.AvoidSeconds = 3600
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
-# Emit one QuestFirst route decision when a quest-travel request is materialized.
+# Emit one QuestFirst route decision when a quest-travel request is materialized. Also logs [QuestSearch]
+# state=grind_none when a quest-first bot's grind search finds nothing (twow-repo#601 S1, also with FailureClasses).
 AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # #303: log a [FollowDiag] snapshot (map, transports, movement generator, chase
 # target, distance, strategies) when a bot of a real player falls back to far
@@ -1090,6 +1091,69 @@ AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
 # (6.35) outranks the generic quest request (6.3) and the failure count only resets on a found route, so with 0 (default,
 # as before) a bot that fell into it grinds for good - L10+ roster bots stopped questing within about 2 hours.
 AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes = 0
+# twow-repo#601 S1 "latch semantics" (OB-00 / OB-10 17.10.2026). Three separate switches so an A/B can isolate
+# them (arm A1 sets all three to 1); all 0 = today's behaviour. Restart-only. Quest-first roster bots on their
+# own only.
+# FailureClasses = 1: every quest route search that found nothing ([QuestFirstRoute] state=rejected
+# reason=no_active_route_candidate) gets a class from its reject counts, logged as [QuestFailureClass]:
+#   structural  - a turn-in-only request whose takers were all deferred as cross_map (below
+#                 MinLevelForCrossMapQuestRoute) or zone_level, or a turn-in the destination job found no taker
+#                 point for (no spawn, script-only game object, excluded zone): the turn-in is parked at once for
+#                 TurnInParkSeconds ([QuestFirstRoute] state=parked reason=structural_*); the park resets the
+#                 GrindFallbackFailures counter as every TurnInParkFailures park does, so it never counts toward
+#                 grinding;
+#   transient   - turn-in route / death / quest-loop suppression, the local hub filter, a random range skip, a
+#                 stale or resumed list: the route backoff only, the GrindFallbackFailures counter does not grow;
+#   empty_offer - everything else (no giver mark, nothing active, enemy zone, danger map, mixed reasons): counts as
+#                 before (until a later stage adds the step to the next level band).
+# Also with FailureClasses = 1: a request is turn-in-only only for a taker checked first ([QuestTakerCheck]:
+# reachable, not on the other continent below MinLevelForCrossMapQuestRoute, not in a zone clearly above the bot,
+# not suppressed, active); a taker that fails the check for a structural reason is parked at once, otherwise the
+# request runs the normal quest giver / objective fetch. The grind fallback waits while a checked open turn-in
+# (or one finished since the last request) waits, as gathering does since hotfix 8.5. The local quest hub
+# pre-check skips the same suppressed candidates as the main loop, and no random range skip happens while the
+# hub filter is on. [QuestSearch] state=grind_none when a grind search finds nothing (also with
+# TraceTravelDecisions = 1). The parks need TurnInParkFailures > 0 (parking on); with 0 nothing is parked and a
+# structural failure counts as before.
+AiPlayerbot.QuestFirstProgression.FailureClasses = 0
+# TransientCountsAfter (acts only with FailureClasses = 1; S1 review, the value is OB-10's decision): 0 = a transient
+# rejection never counts toward GrindFallbackFailures (OB-10 17.10.2026). N > 0: the N-th transient rejection in a row
+# (no other class and no route found in between) counts once and the streak starts anew, so a transient cause that
+# persists (quest-loop cooldown, death suppression) reaches the grind fallback instead of idling until the quest
+# rescue. The streak is logged as [QuestFailureClass] streak=. Restart-only.
+AiPlayerbot.QuestFirstProgression.TransientCountsAfter = 0
+# ResetOnProgressEvents = 1: a quest rescue teleport, a level-up, a login and the return from a battleground
+# reset the GrindFallbackFailures counter, the quest route backoff and the quest search stage ([QuestReset]
+# events=rescue,level_up,login,bg_return). A quest-state change (a quest taken, finished, handed in or dropped) resets
+# the quest search stage only ([QuestReset] events=quest_state, logged only when the stage was above 0). XP gain alone
+# no longer resets the quest search stage (it still counts as progress for the QuestRescue.IdleMinutes clock, so a
+# grinding bot is not rescued as idle). Never while a real player leads the bot.
+AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
+# AbandonStructuralParked = 1 (acts only with FailureClasses = 1 and TurnInParkFailures > 0): a finished quest
+# parked twice in a row for a structural reason that does not heal by itself - no taker destination (no spawn,
+# script-only game object, excluded zone) or a taker on the other continent below MinLevelForCrossMapQuestRoute -
+# is abandoned ([QuestAbandon] quest= reason= bot=). A zone clearly above the bot is never a reason (levels heal
+# it), any other park in between starts the count again, and class quests are kept. An abandoned quest is not taken
+# again (no trip to its giver, no accept) while the bot is on its own - at most 8 such quests per bot, forgotten at
+# re-login. 0 = the quest stays parked.
+AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
+# twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
+# stand around than grind, so it shows). Restart-only.
+#   0 = today's behaviour (default).
+#   1 = RESERVED for the gap filler of stages S2/S4; until then exactly like 0.
+#   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
+#       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
+#       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a
+#       creature that neither attacks the bot or its group nor is needed for an active quest, and no kill trip that
+#       would end in such a refused kill: no skinning or boss travel purpose, no forced guild-order kill trip (grind
+#       mob, boss, skinning) to a creature no active quest needs. The bot stands idle and logs why: [QuestIdle]
+#       reason=fallback|money|opportunistic|no_target bot= level= zone= target= class= once per reason until it finds a
+#       quest route again (at most 4 lines per idle episode; class= is the latest FailureClasses rejection class,
+#       transient|structural|empty_offer, none without one), and [QuestIdle] minute fallback= money= opportunistic=
+#       no_target= once a minute. Fights against attackers (self-defence, group help), quest objective kills,
+#       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
+#       stay. Other values act like 0.
+AiPlayerbot.QuestFirstProgression.GrindMode = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
@@ -1118,6 +1182,43 @@ AiPlayerbot.RosterFarMove = 0
 # [FarMove] ... watched arrive_alt arrive_walk. ArriveBackYards 0 = arrive at the target (8.33 behaviour).
 AiPlayerbot.RosterFarMove.ArriveBackYards = 60
 AiPlayerbot.RosterFarMove.WatchRoute = 1
+# twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity; measurement, no behaviour change): the world
+# thread keeps a snapshot of where the online real players are (map, zone, area, x, y and a camera body that differs;
+# GMs only while visible), built after the map update at most once a second, only while Trace = 1 or NearScope > 0.
+# ShortcutNear(map, x, y, zone): no player on that map = not near; else near = same map AND (NearScope 2: same zone OR
+# within NearRadius 2D; NearScope 1: within NearRadius only). A snapshot older than 5 s, a zone 0 or no usable radius
+# answers unknown (the caller keeps today's behaviour). NearScope 0 = off (unknown everywhere) until a later stage uses
+# it. NearRadius in yards, 0 = the map's current visibility + AiPlayerbot.ReactDistance (continents 250 + 150 = 400 yd
+# with the defaults; the core lowers a map's visibility under load, MapUpdate.ReduceVisDist.Tick, down to
+# MapUpdate.MinVisibilityDistance, so the default radius depends on load - set NearRadius for a fixed one).
+# Freshness: the snapshot is rebuilt in the bot manager's AI pass, which runs every AiPlayerbot.RandomBotUpdateInterval;
+# keep that below about 4000 ms, or every answer is unknown (the minute line then shows stale=1).
+# Entries carry the map id, not the instance id: a player in one copy of a dungeon / battleground makes another copy of
+# the same map near (conservative; a stage that gates instance teleports must add the instance id first).
+# TestWatcherGuids (TEST ONLY, never on a live realm): a comma list of character guids (low guid, max 64) of online
+# characters that count as real players in the snapshot - the A/B watcher stand-in on a realm without real players.
+# Trace = 1: [Shortcut] mech=hop|ghost_corpse|repop|far_move teleports= near= notnear= unknown= near_src= near_dst=
+# once a minute (each teleport classified when it happens, at both ends; the teleports themselves are unchanged) and
+# [Shortcut] state=snapshot players= watchers= entries= age_ms= stale= scope= radius=. Without NearScope the trace measures
+# with scope 2. Counts left from an earlier Trace = 1 period are dropped when Trace is switched on again.
+# Reading the A/B numbers: hop, far_move and ghost_corpse are counted only after the legacy gate
+# (PlayerbotAI::HasPlayerNearby: visibility only, every entry of the manager's player list incl. alt bots; ghost_corpse
+# checks only the corpse end) has already said "nobody near". The snapshot uses visibility + ReactDistance, real
+# players only, and the zone (scope 2), so near= for those mechanisms means "the snapshot disagrees with the legacy
+# gate" (mostly the 250-400 yd band and same-zone matches), not the share of teleports a real player saw. repop has no
+# proximity gate at its site, so its near= is the plain near share.
+# All 0 / empty = today's behaviour (default).
+AiPlayerbot.Shortcut.NearScope = 0
+AiPlayerbot.Shortcut.NearRadius = 0
+AiPlayerbot.Shortcut.TestWatcherGuids =
+AiPlayerbot.Shortcut.Trace = 0
+# twow-repo#595 P4 B1 (bug fix, critic X6): the legacy random teleport (non-roster bots, console grind / revive) moved
+# every group member of a bot group leader, real players included, and checked the leader's AI instead of the
+# member's. 1 = real members (no own bot AI, or a real session) are skipped and each member's own AI is used; one
+# [Shortcut] mech=group_loop state=skip_real line per skipped member per such teleport (not behind Trace; bounded by
+# the group size, and the legacy random teleport is rare). The null check before a member AI reset is always on (a
+# real member used to crash the server there). 0 = old loop (default; owner profile 1 after the test).
+AiPlayerbot.Shortcut.GroupLoopFix = 0
 # twow-repo#575 (PATH-01 #1, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach
 # Abnahme an): 1 = every node route search that ends without a route is counted and the first LinesPerMinute of
 # them a minute are logged as [RouteFailDetail]: bot, level, alive, action, start and target (map x y z), distance,

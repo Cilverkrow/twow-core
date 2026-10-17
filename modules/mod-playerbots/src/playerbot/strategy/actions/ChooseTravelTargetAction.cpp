@@ -14,11 +14,17 @@
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/QuestTurnInParkPolicy.h"
+#include "playerbot/QuestFailureClassPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "Guild/GuildMgr.h"
+#include <algorithm>
 #include <iomanip>
+#include <map>
 #include <optional>
+#include <set>
+#include <vector>
 
 using namespace ai;
 
@@ -39,6 +45,14 @@ bool UsesQuestFirstProgression(Player const* bot)
 {
     return bot && sPlayerbotAIConfig.questFirstProgressionEnabled &&
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
+}
+
+// twow-repo#601 GrindMode 2 (review): a destination whose work is killing creatures - a grind (money) mob, a boss, or a
+// skinning destination (GatherTravelDestination::IsActive needs living creatures of the entry).
+bool IsKillTripDestination(TravelDestination const* destination)
+{
+    return dynamic_cast<GrindTravelDestination const*>(destination) || dynamic_cast<BossTravelDestination const*>(destination) ||
+        (destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning && destination->GetEntry() > 0);
 }
 
 // #421 B: within each distance range, quest givers with more other givers
@@ -309,6 +323,219 @@ bool NoteNoRouteTurnIns(AiObjectContext* context, TravelTarget* travelTarget, bo
     return parked;
 }
 
+// twow-repo#601 S1 (OB-10 answer 4): the per-candidate skips of SetBestTarget as one predicate. The main loop counts
+// its answer per reason; with AiPlayerbot.QuestFirstProgression.FailureClasses the local quest hub pre-loop asks the
+// same predicate, so a local candidate the main loop would skip no longer switches the hub filter on (soak 17.10.:
+// 121 of 165 L10+ hub_filter rejections carried such a skip, none had hub_filter as the only reason).
+enum class CandidateSkip
+{
+    None,
+    TurnInSuppressed,
+    DeathSuppressed,
+    QuestLoopSuppressed,
+    OtherMapGather,
+    GatherPurposeSuppressed,
+};
+
+CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelTarget const* persistentTarget,
+    TravelTarget const* excludedTurnInTarget, TravelDestination* destination, WorldPosition* position)
+{
+    if (excludedTurnInTarget && excludedTurnInTarget->IsTurnInRouteSuppressed(destination, position))
+        return CandidateSkip::TurnInSuppressed;
+
+    // #307: a destination this bot kept dying at is on a per-bot cooldown.
+    if (persistentTarget && persistentTarget->IsDestinationDeathSuppressed(destination))
+        return CandidateSkip::DeathSuppressed;
+
+    // twow-repo#581 (QL-1): objectives of a quest this bot kept failing at (emptied camps) are skipped for a while.
+    if (persistentTarget && persistentTarget->IsQuestLoopSuppressed(destination))
+        return CandidateSkip::QuestLoopSuppressed;
+
+    // #414: no gathering trips to another continent.
+    uint32 const gatherPurposes = uint32(TravelDestinationPurpose::GatherSkinning) | uint32(TravelDestinationPurpose::GatherMining) |
+        uint32(TravelDestinationPurpose::GatherHerbalism) | uint32(TravelDestinationPurpose::GatherFishing);
+    if (position && !ai::gather_node::StaysOnMap((uint32(destination->GetPurpose()) & gatherPurposes) != 0,
+            bot->GetMapId(), position->getMapId()))
+        return CandidateSkip::OtherMapGather;
+
+    // #422: a gathering purpose this bot died at twice without a killer.
+    if (!target->IsForced() && ai->IsGatherPurposeSuppressed(uint32(destination->GetPurpose()) & gatherPurposes))
+        return CandidateSkip::GatherPurposeSuppressed;
+
+    return CandidateSkip::None;
+}
+
+// twow-repo#601 S1: the route danger rule of SetBestTarget (#307, #485 CrossMapContinentsOnly, #575 start-zone
+// exemption) for one taker point of the taker pre-validation - the same inputs as the main loop's check.
+route_danger::Reason TakerRouteDanger(PlayerbotAI* ai, Player* bot, WorldPosition* point)
+{
+    int32 const areaLevel = std::max<int32>(0, point->getAreaLevel());
+    MapEntry const* const botMapEntry = bot->GetMap()->GetMapEntry();
+    MapEntry const* const pointMapEntry = point->getMapEntry();
+    bool const continentsOnly = sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly;
+    route_danger::Reason const danger = route_danger::Classify(point->getMapId() != bot->GetMapId(),
+        bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
+        uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()),
+        continentsOnly,
+        route_danger::IsContinentSwitch(
+            route_danger::ContinentOf(bot->GetMapId(), botMapEntry ? botMapEntry->ghostEntranceMap : -1),
+            route_danger::ContinentOf(point->getMapId(), pointMapEntry ? pointMapEntry->ghostEntranceMap : -1)));
+    if (danger == route_danger::Reason::TargetZoneLevel &&
+        ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), bot->GetLevel(),
+            point->getMapId(), point->getX(), point->getY()))
+        return route_danger::Reason::None;
+    return danger;
+}
+
+// twow-repo#601 S1: parks a turn-in at once for a structural reason (TravelTarget::ParkTurnInNow). True when parked.
+// AiPlayerbot.QuestFirstProgression.AbandonStructuralParked (OB-10 answer 3): the second structural park in a row for
+// a reason that cannot heal by itself (no taker destination, other continent below MinLevelForCrossMapQuestRoute -
+// never a zone level, never after any other park in between) abandons the quest, [QuestAbandon]; a class quest is
+// kept. The abandoned quest is marked so it is not taken again (no hourly accept / park / abandon cycle). Off: the
+// quest stays in the log, parked.
+bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 questId, char const* reason, bool abandonable)
+{
+    bool abandonDue = false;
+    if (!travelTarget->ParkTurnInNow(questId, reason, abandonable, abandonDue))
+        return false;
+
+    Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+    if (ai::quest_failure_class::AbandonParkedTurnIn(sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked, abandonDue,
+            !quest || quest->GetRequiredClasses()))
+    {
+        Player* bot = ai->GetBot();
+        sLog.outBasic("[QuestAbandon] quest=%u reason=%s bot=%u level=%u parks=%u", questId, reason, bot->GetGUIDLow(),
+            bot->GetLevel(), uint32(ai::turnin_park::AbandonAfterStructuralParks));
+        ai->DropQuest(questId, "structural_parked_twice");
+        travelTarget->NoteStructuralAbandon(questId);
+    }
+    return true;
+}
+
+// twow-repo#601 S1 (FailureClasses, OB-10 answer 3): the bot's open turn-ins are checked before a request may become
+// turn-in-only. One GetDestinations call for all of them (one walk over the taker keys, bounded by the quest log); per
+// taker destination its point closest to the bot is judged like a SetBestTarget candidate, in the main loop's order:
+// turn-in route or death suppression, IsActive, the battleground quest skip, the enemy home zone, the route danger
+// rule, the danger map. Any routable point validates the quest; a point the main loop would turn down before the route
+// danger rule (or for the danger map) is "not now"; only structural answers (no point at all, other continent below
+// MinLevelForCrossMapQuestRoute, a zone clearly above the bot) park it at once - so a structural class follows the
+// counters the main loop would write. Writes the checked / validated lists the grind yield reads; one
+// [QuestTakerCheck] line per request.
+std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* travelTarget)
+{
+    using namespace ai::quest_failure_class;
+    AiObjectContext* context = ai->GetAiObjectContext();
+    std::set<uint32> validated;
+    std::vector<int32> openTurnIns;
+    for (auto const& [questId, status] : bot->getQuestStatusMap())
+        if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && travelTarget->IsTurnInOpen(questId))
+            openTurnIns.push_back(int32(questId));
+
+    std::string checkedList, validatedList;
+    uint32 structural = 0, notNow = 0;
+    if (!openTurnIns.empty())
+    {
+        PlayerTravelInfo const info(bot);
+        WorldPosition const botPos(bot);
+        std::map<uint32, std::vector<TravelDestination*>> takersByQuest;
+        for (TravelDestination* destination : sTravelMgr.GetDestinations(info, uint32(TravelDestinationPurpose::QuestTaker),
+                openTurnIns, true, 1000000.0f))
+            if (QuestTravelDestination const* taker = dynamic_cast<QuestTravelDestination const*>(destination))
+                takersByQuest[taker->GetQuestId()].push_back(destination);
+
+        for (int32 const quest : openTurnIns)
+        {
+            uint32 const questId = uint32(quest);
+            bool routable = false, notNowPoint = false, crossMap = false, zoneLevel = false;
+            // twow-repo#587 (Z3): the main loop skips a battleground quest right after IsActive - not now, never parked.
+            Quest const* const questTemplate = sObjectMgr.GetQuestTemplate(questId);
+            bool const battlegroundQuest = sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && questTemplate &&
+                ai::zone_exit::IsBattlegroundQuestSort(questTemplate->GetZoneOrSort());
+            for (TravelDestination* destination : takersByQuest[questId])
+            {
+                WorldPosition* point = destination->GetClosestPoint(botPos);
+                if (!point)
+                    continue;
+                if (travelTarget->IsDestinationDeathSuppressed(destination) || travelTarget->IsTurnInRouteSuppressed(destination, point))
+                {
+                    notNowPoint = true;
+                    continue;
+                }
+                // The main loop's order: IsActive, battleground quest, enemy home zone - all before the route danger rule.
+                if (!destination->IsActive(bot, info) || battlegroundQuest || point->isEnemyHomeZoneFor(bot->GetTeam()))
+                {
+                    notNowPoint = true;
+                    continue;
+                }
+                route_danger::Reason const danger = TakerRouteDanger(ai, bot, point);
+                if (danger == route_danger::Reason::CrossMap)
+                {
+                    crossMap = true;
+                    continue;
+                }
+                if (danger == route_danger::Reason::TargetZoneLevel)
+                {
+                    zoneLevel = true;
+                    continue;
+                }
+                // #307 danger map (the main loop's last deferral, same query): a death cluster on the way ages out.
+                if (sPlayerbotAIConfig.dangerMapEnabled && point->getMapId() == bot->GetMapId() &&
+                    danger_map::Instance().Query(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), point->getX(),
+                        point->getY(), bot->GetLevel(), uint32(time(nullptr)), DangerMapParams()).cells)
+                {
+                    notNowPoint = true;
+                    continue;
+                }
+                routable = true;
+                break;
+            }
+
+            TakerCheck const check = FoldTakerCheck(routable, notNowPoint, crossMap, zoneLevel);
+            ListAdd(checkedList, questId);
+            if (check == TakerCheck::Routable)
+            {
+                validated.insert(questId);
+                ListAdd(validatedList, questId);
+            }
+            else if (IsStructural(check))
+            {
+                ++structural;
+                ParkStructuralTurnIn(ai, travelTarget, questId, TakerCheckName(check), AbandonableReason(check));
+            }
+            else
+                ++notNow;
+        }
+
+        sLog.outBasic("[QuestTakerCheck] bot=%u level=%u open=%u routable=%u structural=%u not_now=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(openTurnIns.size()), uint32(validated.size()), structural, notNow);
+    }
+
+    SET_AI_VALUE2(std::string, "manual string", CheckedTurnInsValue, checkedList);
+    SET_AI_VALUE2(std::string, "manual string", ValidatedTurnInsValue, validatedList);
+    return validated;
+}
+
+// twow-repo#601 S1: the offered turn-ins the destination job found no taker point for (no spawn, a script-only game
+// object, an excluded zone - the global quest giver fallback then filled the list). One walk over the list.
+std::vector<uint32> TakerlessTurnIns(PartitionedTravelList const& list, std::vector<uint32> const& offered)
+{
+    std::vector<uint32> takerless;
+    if (offered.empty())
+        return takerless;
+
+    std::set<uint32> withTaker;
+    for (auto const& [partition, points] : list)
+        for (auto const& [destination, position, distance] : points)
+            if (destination && destination->GetPurpose() == TravelDestinationPurpose::QuestTaker)
+                if (QuestTravelDestination const* taker = dynamic_cast<QuestTravelDestination const*>(destination))
+                    withTaker.insert(taker->GetQuestId());
+
+    for (uint32 const questId : offered)
+        if (!withTaker.count(questId))
+            takerless.push_back(questId);
+    return takerless;
+}
+
 }
 
 inline std::string GetTravelPurposeName(std::string purpose)
@@ -426,18 +653,73 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                     SET_AI_VALUE2(int, "manual int", "zone exit stranded", int(stranded));
             }
 
+            // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 1): the class of this
+            // rejection from its reject counts and the turn-ins it offered takers for (read here, NoteNoRouteTurnIns
+            // below clears the list). Transient: the backoff only; structural: the turn-in is parked below; empty
+            // offer: counted as before. Off (or a bot led by a real player): FailureClass::None, everything as before.
+            ai::quest_failure_class::Decision failureDecision;
+            std::vector<uint32> offeredTurnIns, takerlessTurnIns;
+            int failuresBefore = 0;
+            uint32 transientStreak = 0;
+            bool transientCounts = false;
+            if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())
+            {
+                for (std::string const& questId : split(AI_VALUE2(std::string, "manual string", HandInQuestsValue), ','))
+                    if (uint32 const id = uint32(atoi(questId.c_str())))
+                        offeredTurnIns.push_back(id);
+                takerlessTurnIns = TakerlessTurnIns(destinationList, offeredTurnIns);
+                failureDecision = ai::quest_failure_class::Classify(true, lastRejects, uint32(offeredTurnIns.size()),
+                    uint32(takerlessTurnIns.size()));
+                // The counter before this rejection (the class line logs whether it really grew) and the transient
+                // rejections in a row (TransientCountsAfter: 0 = never counted; the N-th in a row counts once).
+                failuresBefore = std::max(0, AI_VALUE2(int, "manual int", "quest route failures"));
+                if (failureDecision.failureClass == ai::quest_failure_class::FailureClass::Transient)
+                    transientStreak = uint32(std::max(0, AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue))) + 1;
+                transientCounts = ai::quest_failure_class::TransientStreakCounts(transientStreak,
+                    sPlayerbotAIConfig.questFirstProgressionTransientCountsAfter);
+                SET_AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue, transientCounts ? 0 : int(transientStreak));
+            }
+
             // Hotfix 8.1: wait before the next quest route request (2, 4, 8, then 10 min).
             if (UsesQuestFirstProgression(bot))
             {
                 uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures"))) + 1;
-                SET_AI_VALUE2(int, "manual int", "quest route failures", int(failures));
-                SET_AI_VALUE2(int, "manual int", "quest route failed at", int(uint32(time(nullptr))));   // twow-repo#601
+                // twow-repo#601 S1: a transient rejection waits the same backoff, but the grind-fallback counter does not grow
+                // (unless TransientCountsAfter = N and this is the N-th transient rejection in a row).
+                if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
+                    SET_AI_VALUE2(int, "manual int", "quest route failures", int(failures));
+                // twow-repo#601 (GrindFallbackMinutes): the time of the last counted empty search, under the same condition.
+                if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
+                    SET_AI_VALUE2(int, "manual int", "quest route failed at", int(uint32(time(nullptr))));
                 // twow-repo#594 / P3-a: one formula - a fresh bot without a rescue in this pass waits FreshBackoffSeconds.
                 bool const shortBackoff = freshBot && !rescueRequested && sPlayerbotAIConfig.directTargetsFreshBackoffSeconds;
                 uint32 const backoff = shortBackoff ?
                     ai::quest_search::RouteBackoffSeconds(failures, true, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds) :
                     ai::quest_search::RouteBackoffSeconds(failures);
                 SET_AI_VALUE2(int, "manual int", "quest route backoff until", int(uint32(time(nullptr)) + backoff));
+            }
+
+            // twow-repo#601 S1: a structural failure parks the turn-in at once for TurnInParkSeconds - every offered one
+            // when all rejects were structural, else the ones the job found no taker point for. Like a #485 park below,
+            // a park ends the backoff and resets the grind-fallback counter, so the failure never counts toward grinding.
+            uint32 structuralParks = 0;
+            if (failureDecision.parkTakerless || failureDecision.parkAllOffered)
+                for (uint32 const questId : offeredTurnIns)
+                {
+                    bool const takerless = std::find(takerlessTurnIns.begin(), takerlessTurnIns.end(), questId) != takerlessTurnIns.end();
+                    if (!takerless && !failureDecision.parkAllOffered)
+                        continue;
+                    if (ParkStructuralTurnIn(ai, travelTarget, questId,
+                            takerless ? ai::quest_failure_class::TakerCheckName(ai::quest_failure_class::TakerCheck::NoDestination) :
+                                failureDecision.reason,
+                            takerless || failureDecision.abandonable))
+                        ++structuralParks;
+                }
+            if (structuralParks)
+            {
+                SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, false);
+                SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
+                SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
             }
 
             // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
@@ -457,6 +739,20 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
             }
 
+            // twow-repo#601 S1: one line per classified rejection (bounded by the route backoff). counted = the counter
+            // grew by this rejection and no park (structural or #485) reset it; streak = transient rejections in a row.
+            if (failureDecision.failureClass != ai::quest_failure_class::FailureClass::None)
+            {
+                int const failuresAfter = AI_VALUE2(int, "manual int", "quest route failures");
+                sLog.outBasic("[QuestFailureClass] bot=%u level=%u class=%s offered=%u takerless=%u parked=%u counted=%u streak=%u failures_before=%d failures=%d",
+                    bot->GetGUIDLow(), bot->GetLevel(), ai::quest_failure_class::ClassName(failureDecision.failureClass),
+                    uint32(offeredTurnIns.size()), uint32(takerlessTurnIns.size()), structuralParks,
+                    failuresAfter == failuresBefore + 1 ? 1u : 0u, transientStreak, failuresBefore, failuresAfter);
+                // GrindMode 2: the class goes on this idle episode's [QuestIdle] lines (OB-10: measure transient chains).
+                if (ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))
+                    ai->NoteQuestIdleClass(uint8(failureDecision.failureClass));
+            }
+
             // twow-repo#594 / P3: once at the end of the branch, after Z1b, the backoff and the #485 park have seen the
             // rejection - the counts for [DirectTarget] state=summary.
             ai::quest_search::DirectTargetCounters& directTargets = ai::quest_search::DirectTargetStats();
@@ -472,6 +768,13 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 for (uint32 reason = 0; reason < ai::quest_search::RejectCounts::InactiveReasons; ++reason)
                     directTargets.inactive[reason].fetch_add(lastRejects.notActiveReason[reason], std::memory_order_relaxed);
         }
+        // twow-repo#601 S1 (OB-10 answer 5): the grind search of a quest-first bot found nothing - it asks for a quest
+        // route again once its backoff ends (the L6-8 escape). A pure log line: FailureClasses or TraceTravelDecisions.
+        else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot) &&
+            (sPlayerbotAIConfig.questFirstProgressionFailureClasses || sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions))
+            sLog.outBasic("[QuestSearch] state=grind_none bot=%u level=%u failures=%d ranges=%u moved_away=%u",
+                bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"),
+                uint32(destinationList.size()), lastRejects.movedAway);
 
         return false;
     }
@@ -484,6 +787,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // Hotfix 8.1: a route was found - no more backoff.
         SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
         SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
+        // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.
+        if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)
+            SET_AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue, 0);
+        // twow-repo#601 GrindMode 2: a quest target ends the idle episode - the next idle reason gets its line again.
+        if (ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))
+            ai->ClearQuestIdle();
 
         // #421 B: the widened search found something.
         int const stage = AI_VALUE2(int, "manual int", "quest search stage");
@@ -502,6 +811,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     }
     else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot))
     {
+        // twow-repo#601 GrindMode 2 (owner 17.10.2026): a pure grind fetch is never taken as the travel target (the
+        // request is already refused; this catches a fetch that was under way). The bot stands idle, [QuestIdle].
+        if (ai->IsQuestNoGrind())
+        {
+            int32 const grindEntry = newTarget.GetEntry();
+            ai->NoteQuestIdle(uint8(ai::quest_grind_mode::RequestReason(ai::quest_grind_mode::IsMoneyCondition(
+                AI_VALUE2(std::string, "manual string", "future travel condition")))),
+                ai::quest_grind_mode::TargetText("grind_destination", grindEntry > 0 ? uint32(grindEntry) : 0u));
+            return false;
+        }
         // Hotfix 8.32 (twow-repo#544): a quest-first bot grinds after empty quest route searches.
         sLog.outBasic("[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d distance=%.0f",
             bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"), newTarget.Distance(bot));
@@ -835,6 +1154,21 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
         AI_VALUE2(std::string, "manual string", "future travel purpose") == "quest";
     bool hasActiveLocalQuestHub = false;
+    // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 4): the pre-loop below asks the
+    // main loop's skip predicate (CandidateSkipOf) before it lets a local candidate switch the hub filter on, and no
+    // random range skip happens while the hub filter is on. false = both as before.
+    bool const failureClasses = preferLocalQuest && sPlayerbotAIConfig.questFirstProgressionFailureClasses;
+    // twow-repo#601 GrindMode 2 (review): a forced target (the guild Farm / Kill order) never asks IsActive here, in
+    // TravelTarget::CheckStatus or by status time, so the order's kill trips (drop or name-matched mobs, bosses,
+    // skinning) would be a forced trip to mobs the grind target filter then refuses - the bot parked there while the
+    // order holds. With GrindMode 2 a forced kill trip goes only to a quest objective mob. Not forced, or GrindMode 0 / 1:
+    // false before anything else is read.
+    bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrind();
+    std::vector<int32> forcedNeeded;
+    if (forcedNoGrind)
+        forcedNeeded = AI_VALUE(std::vector<int32>, "needed quest entries");
+    uint32 forcedKillSkipped = 0;
+    int32 forcedKillEntry = 0;
 
     // A reachable point is not necessarily usable. Check the normal
     // destination activation predicate before holding the bot in its current
@@ -848,7 +1182,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             for (auto const& [destination, position, distance] : travelPointList)
                 if (ai::travel_choose::OverBudget(WorldTimer::getMSTimeDiffToNow(chooseStart)))
                     break;
-                else if (IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&
+                else if ((!failureClasses || CandidateSkipOf(ai, bot, target, persistentTarget, excludedTurnInTarget, destination,
+                        position) == CandidateSkip::None) &&
+                    IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&
                     (isActive[destination] = true))
                 {
                     hasActiveLocalQuestHub = true;
@@ -880,44 +1216,39 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 break;
             }
 
-            if (excludedTurnInTarget && excludedTurnInTarget->IsTurnInRouteSuppressed(destination, position))
+            // twow-repo#601 S1: the skips in one predicate (CandidateSkipOf, same order and counters as before) - the
+            // local quest hub pre-loop asks the same one with FailureClasses.
+            switch (CandidateSkipOf(ai, bot, target, persistentTarget, excludedTurnInTarget, destination, position))
             {
-                ai->TellDebug(requester, "Skipping temporarily suppressed completed-quest turn-in route.", "debug travel");
-                ++lastRejects.turnInSuppressed;
-                continue;
+                case CandidateSkip::TurnInSuppressed:
+                    ai->TellDebug(requester, "Skipping temporarily suppressed completed-quest turn-in route.", "debug travel");
+                    ++lastRejects.turnInSuppressed;
+                    continue;
+                case CandidateSkip::DeathSuppressed:
+                    ai->TellDebug(requester, "Skipping destination after repeated deaths there.", "debug travel");
+                    ++lastRejects.deathSuppressed;
+                    continue;
+                case CandidateSkip::QuestLoopSuppressed:
+                    ai->TellDebug(requester, "Skipping quest objective after repeated failures.", "debug travel");
+                    ++lastRejects.questLoopSuppressed;
+                    continue;
+                case CandidateSkip::OtherMapGather:
+                    ai->TellDebug(requester, "Skipping gathering destination on another map.", "debug travel");
+                    ++lastRejects.otherMapGather;
+                    continue;
+                case CandidateSkip::GatherPurposeSuppressed:
+                    ++lastRejects.deathSuppressed;
+                    continue;
+                case CandidateSkip::None:
+                    break;
             }
 
-            // #307: a destination this bot kept dying at is on a per-bot cooldown.
-            if (persistentTarget && persistentTarget->IsDestinationDeathSuppressed(destination))
+            // twow-repo#601 GrindMode 2 (review): no forced kill trip to a creature that no active quest needs.
+            if (forcedNoGrind && !ai::quest_grind_mode::ForcedKillTripAllowed(true, IsKillTripDestination(destination),
+                    std::binary_search(forcedNeeded.begin(), forcedNeeded.end(), destination->GetEntry())))
             {
-                ai->TellDebug(requester, "Skipping destination after repeated deaths there.", "debug travel");
-                ++lastRejects.deathSuppressed;
-                continue;
-            }
-
-            // twow-repo#581 (QL-1): objectives of a quest this bot kept failing at (emptied camps) are skipped for a while.
-            if (persistentTarget && persistentTarget->IsQuestLoopSuppressed(destination))
-            {
-                ai->TellDebug(requester, "Skipping quest objective after repeated failures.", "debug travel");
-                ++lastRejects.questLoopSuppressed;
-                continue;
-            }
-
-            // #414: no gathering trips to another continent.
-            uint32 const gatherPurposes = uint32(TravelDestinationPurpose::GatherSkinning) | uint32(TravelDestinationPurpose::GatherMining) |
-                uint32(TravelDestinationPurpose::GatherHerbalism) | uint32(TravelDestinationPurpose::GatherFishing);
-            if (position && !ai::gather_node::StaysOnMap((uint32(destination->GetPurpose()) & gatherPurposes) != 0,
-                    bot->GetMapId(), position->getMapId()))
-            {
-                ai->TellDebug(requester, "Skipping gathering destination on another map.", "debug travel");
-                ++lastRejects.otherMapGather;
-                continue;
-            }
-
-            // #422: a gathering purpose this bot died at twice without a killer.
-            if (!target->IsForced() && ai->IsGatherPurposeSuppressed(uint32(destination->GetPurpose()) & gatherPurposes))
-            {
-                ++lastRejects.deathSuppressed;
+                if (!forcedKillSkipped++)
+                    forcedKillEntry = destination->GetEntry();
                 continue;
             }
 
@@ -1050,7 +1381,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     }
                 }
 
-                if (partition != std::prev(partitionedList.end())->first && !urand(0, 10)) //10% chance to skip to a longer partition.
+                // twow-repo#601 S1: not while the local quest hub filter is on with FailureClasses (the skip past the one
+                // eligible local candidate left only hub-filtered partitions: 21 of 165 L10+ hub rejections).
+                if (ai::quest_failure_class::RangeSkipAllowed(failureClasses, hasActiveLocalQuestHub) &&
+                    partition != std::prev(partitionedList.end())->first && !urand(0, 10)) //10% chance to skip to a longer partition.
                 {
                     ai->TellDebug(requester, "Skipping range " + PrintPartion(partition), "debug travel");
                     ++lastRejects.rangeSkip;
@@ -1100,6 +1434,13 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     if (deferredDeathCluster)
         sLog.outBasic("[QuestFirstRoute] state=deferred bot=%u level=%u reason=route_danger detail=death_cluster deferred=%u cells=%u worst_killer_level=%u selected_other=%u",
             bot->GetGUIDLow(), bot->GetLevel(), deferredDeathCluster, deathClusterCells, deathClusterWorstKillerLevel, hasTarget ? 1u : 0u);
+
+    // twow-repo#601 GrindMode 2 (review): the forced order left only kill trips - no target, the bot stands idle; once per
+    // choice (the caller then marks the purpose "no active travel destinations", so the order does not re-request).
+    // Not on a budget-aborted slice: the caller returns without marking and the next slice may still find a target.
+    if (!hasTarget && forcedKillSkipped && !chooseBudgetExceeded)
+        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::NoTarget),
+            ai::quest_grind_mode::TargetText("forced_kill_trip", forcedKillEntry > 0 ? uint32(forcedKillEntry) : 0u));
 
     ai->AddTravelChooseChecked(checked);
     if (!chooseBudgetExceeded)
@@ -1533,6 +1874,16 @@ bool RequestTravelTargetAction::isUseful() {
 
     if (!AI_VALUE(bool, "can move around"))
         return false;
+
+    // twow-repo#601 GrindMode 2 (owner 17.10.2026): no pure grind fetch for a quest-first roster bot on its own - neither
+    // the money grind ("val::should get money", 6.77, also with GrindFallbackFailures 0) nor the plain grind request
+    // (6.35; its need-travel-purpose value is already false). Before isAllowed, so the skip chance draws as before.
+    if (ai->IsQuestNoGrind() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))
+    {
+        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::RequestReason(AI_VALUE(bool, "should get money"))),
+            ai::quest_grind_mode::TargetText("request_travel_grind", 0));
+        return false;
+    }
 
     if (!isAllowed())
     {
@@ -2192,6 +2543,15 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     // twow-repo#485: this bot's parked turn-ins (TravelTarget::NoteTurnInFailure).
     TravelTarget* parkTarget = AI_VALUE(TravelTarget*, "travel target");
 
+    // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 3): the bot's open turn-ins are
+    // checked before the fetch is built - a structural one is parked now (the loop below then skips its taker), only a
+    // routable one may make this request turn-in-only. Not for a bot led by a real player (unchanged).
+    bool const failureClasses = sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) &&
+        !ai->HasRealPlayerMaster();
+    std::set<uint32> validatedTurnIns;
+    if (failureClasses)
+        validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);
+
     for (ObjectGuid guid : AI_VALUE(std::list<ObjectGuid>, "group members"))
     {
         Player* player = sObjectMgr.GetPlayer(guid);
@@ -2309,8 +2669,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
         if ((UsesQuestFirstProgression(bot) && finished > 0) || finished >= 5 || active + 2 >= MAX_QUEST_LOG_SIZE)
         {
             std::vector<std::tuple<uint32, int32, float>> handInOnly;
+            // twow-repo#601 S1: with FailureClasses only the takers checked above (TakerOnlyOffer); none = no
+            // turn-in-only request, the normal quest giver / objective fetch runs.
             for (auto& fetch : destinationFetches)
-                if (std::get<0>(fetch) & (uint32)TravelDestinationPurpose::QuestTaker)
+                if ((std::get<0>(fetch) & (uint32)TravelDestinationPurpose::QuestTaker) &&
+                    ai::quest_failure_class::TakerOnlyOffer(failureClasses, validatedTurnIns.count(uint32(std::get<1>(fetch))) > 0))
                     handInOnly.push_back(fetch);
 
             // Only if there is somewhere to hand in. An empty list would fall

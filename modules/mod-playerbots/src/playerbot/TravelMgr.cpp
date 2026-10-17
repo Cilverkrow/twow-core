@@ -6,6 +6,9 @@
 #include "playerbot/StartZonePolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
+#include <algorithm>
+#include <vector>
 #include <iomanip>
 
 #include "playerbot/strategy/values/SharedValueContext.h"
@@ -175,6 +178,12 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
 
     if (GetRelation() == 0)
     {
+        // twow-repo#601 S1 (AbandonStructuralParked): no trip to the giver of a quest this bot abandoned after two
+        // structural parks - it would be taken, parked and abandoned again every hour.
+        if (sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked && !ai->HasRealPlayerMaster() &&
+            AI_VALUE(TravelTarget*, "travel target")->IsStructurallyAbandoned(GetQuestId()))
+            return false;
+
         if (!bot->GetMap()->IsContinent())
         {
             // twow-repo#485: a giver can have no point (a script-only game object with
@@ -651,6 +660,17 @@ bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info)
 
     if (!IsPossible(info))
         return false;
+
+    // twow-repo#601 GrindMode 2 (owner 17.10.2026): the Grind bit of the shared entry purpose map (TravelValues.cpp,
+    // creatures that drop money) makes every such creature a grind destination. For a quest-first roster bot on its
+    // own only the ones needed for an active quest stay (quest objective mobs, e.g. the guild-order QuestReward
+    // objectives); a pure grind destination is not active. One sorted per-bot list, no value per creature.
+    if (ai->IsQuestNoGrind())
+    {
+        std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, "needed quest entries");
+        if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))
+            return false;
+    }
 
     return GuidPosition(bot).IsHostileTo(GuidPosition(HIGHGUID_UNIT, GetEntry()), bot->GetInstanceId());
 }
@@ -1334,6 +1354,33 @@ bool TravelTarget::IsTurnInOpen(uint32 questId) const
         return false;
 
     return bot->CanRewardQuest(quest, false) && !IsTurnInParked(questId);
+}
+
+bool TravelTarget::ParkTurnInNow(uint32 questId, char const* reason, bool abandonable, bool& abandonDue)
+{
+    abandonDue = false;
+    // Same gates as NoteTurnInFailure: parking on, roster bots on their own, a finished quest not handed in yet.
+    if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures || !questId || !bot)
+        return false;
+
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster())
+        return false;
+
+    if (bot->GetQuestStatus(questId) != QUEST_STATUS_COMPLETE || bot->GetQuestRewardStatus(questId))
+        return false;
+
+    turnin_park::ParkResult const result = turnin_park::ParkNow(turnInParks, questId, WorldTimer::getMSTime(),
+        sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds * IN_MILLISECONDS, abandonable);
+    if (!result.parked)
+        return false;
+
+    abandonDue = result.abandonDue;
+    // The #485 park line with the structural reason (structural_cross_map, structural_zone_level, structural_route,
+    // structural_no_destination). One line per park, as there.
+    sLog.outBasic("[QuestFirstRoute] state=parked bot=%u level=%u quest=%u reason=%s park_seconds=%u parked=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), questId, reason, sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds,
+        ParkedTurnInCount());
+    return true;
 }
 
 void TravelTarget::OnMoveRetryCooldown()

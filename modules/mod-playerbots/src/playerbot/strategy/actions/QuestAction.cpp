@@ -3,6 +3,7 @@
 #include "QuestAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/TravelMgr.h"
 
 using namespace ai;
 
@@ -204,6 +205,12 @@ bool QuestAction::AcceptQuest(Player* requester, Quest const* quest, uint64 ques
 {
     bool success = false;
     const uint32 questId = quest->GetQuestId();
+
+    // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.AbandonStructuralParked): a quest this bot abandoned after
+    // two structural parks is not taken again while it is on its own (no hourly accept / park / abandon cycle).
+    if (sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked && !ai->HasRealPlayerMaster() &&
+        AI_VALUE(TravelTarget*, "travel target")->IsStructurallyAbandoned(questId))
+        return false;
 
     std::string outputMessage;
     std::map<std::string, std::string> args;

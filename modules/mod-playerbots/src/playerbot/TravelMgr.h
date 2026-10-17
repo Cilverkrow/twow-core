@@ -420,6 +420,14 @@ namespace ai
         uint32 ParkedTurnInCount() const;
         // The bot can hand the quest in now and has not parked it (what the taker fetch offers).
         bool IsTurnInOpen(uint32 questId) const;
+        // twow-repo#601 S1 (FailureClasses): a structural failure parks the turn-in at once for TurnInParkSeconds
+        // (roster bots on their own, parking on - as NoteTurnInFailure). True when this parked it; abandonDue = the
+        // second abandonable structural park in a row (ai::turnin_park::ParkNow).
+        bool ParkTurnInNow(uint32 questId, char const* reason, bool abandonable, bool& abandonDue);
+        // twow-repo#601 S1 (AbandonStructuralParked): a quest abandoned after two structural parks is marked; the
+        // giver trip (QuestRelationTravelDestination::IsActive) and the accept (QuestAction::AcceptQuest) skip it.
+        void NoteStructuralAbandon(uint32 questId) { turnin_park::MarkAbandoned(abandonedTurnIns, questId); }
+        bool IsStructurallyAbandoned(uint32 questId) const { return turnin_park::IsAbandonMarked(abandonedTurnIns, questId); }
         // The move retries ran out; the target goes into cooldown.
         void OnMoveRetryCooldown();
         turnin_recovery::RecoveryAction ObserveTurnInProgress();
@@ -475,6 +483,8 @@ namespace ai
         void NoteQuestObjectiveFailure();
         // twow-repo#485: parked turn-ins of this bot (at most 16 quests, in memory only).
         turnin_park::Book turnInParks;
+        // twow-repo#601 S1: quests abandoned after two structural parks (at most 8, in memory only).
+        turnin_park::AbandonMarks abandonedTurnIns;
         void OnWorkTimeout();
 	};
 

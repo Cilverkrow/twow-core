@@ -9,6 +9,8 @@
 #include "Guild/GuildMgr.h"
 #include "playerbot/TravelChoosePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/QuestFailureClassPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 
 using namespace ai;
@@ -366,6 +368,13 @@ bool NeedTravelPurposeValue::Calculate()
     case TravelDestinationPurpose::GatherMining:
     case TravelDestinationPurpose::GatherHerbalism:
     {
+        // twow-repo#601 GrindMode 2 (review): a skinning trip is a kill trip - GatherTravelDestination::IsActive needs
+        // living creatures of the entry, and the grind target filter refuses that kill, so the bot would travel, stand
+        // and log "opportunistic" until the work time ran out. No skinning purpose for the population (no [Purpose]
+        // start); skinning the corpses of its own kills, mining, herbalism and fishing stay. GrindMode 0 / 1: false.
+        if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrind())
+            return false;
+
         // Hotfix 8.5: finished quests are handed in before the bot gathers again.
         bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
         // twow-repo#485: with turn-in parking on, only a quest the bot can hand in and has not
@@ -402,6 +411,10 @@ bool NeedTravelPurposeValue::Calculate()
         }
     }
     case TravelDestinationPurpose::Boss:
+        // twow-repo#601 GrindMode 2 (review): a boss trip is a kill trip the grind target filter refuses unless the boss
+        // attacks or a quest needs it (quest bosses come through the quest objective destinations). GrindMode 0 / 1: as before.
+        if (ai->IsQuestNoGrind())
+            return false;
         return AI_VALUE(bool, "can fight boss");
     case TravelDestinationPurpose::Mail:
         return AI_VALUE(bool, "can get mail") && AI_VALUE(bool, "should get mail");
@@ -423,9 +436,43 @@ bool NeedTravelPurposeValue::Calculate()
         // objective destinations are built independently by the quest path.
         if (UsesQuestFirstProgression(bot))
         {
+            // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 3): the 8.5 gather rule
+            // generalised to grind - a quest-first bot on its own does not grind while a routable open turn-in waits:
+            // one the last quest request validated, or one finished since (not checked yet - the next request checks
+            // it). An open turn-in the check turned down does not hold grinding back, and none does while the quest route
+            // backoff runs (RequestQuestTravelTargetAction waits for it - the bot would stand idle). Off: as before.
+            if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && !ai->HasRealPlayerMaster())
+            {
+                bool const routeBackoffRunning =
+                    uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
+                TravelTarget const* turnIns = AI_VALUE(TravelTarget*, "travel target");
+                std::string const checked = AI_VALUE2(std::string, "manual string", ai::quest_failure_class::CheckedTurnInsValue);
+                std::string const validated = AI_VALUE2(std::string, "manual string", ai::quest_failure_class::ValidatedTurnInsValue);
+                uint32 routableOpen = 0;
+                for (auto const& [questId, status] : bot->getQuestStatusMap())
+                    if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && turnIns->IsTurnInOpen(questId) &&
+                        (ai::quest_failure_class::ListHas(validated, questId) || !ai::quest_failure_class::ListHas(checked, questId)))
+                        ++routableOpen;
+                if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen, routeBackoffRunning))
+                    return false;
+            }
+
             // Hotfix 8.32 (twow-repo#544): after repeated empty quest route searches a quest-first
             // bot grinds instead of idling ("no destination").
             uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures")));
+            // twow-repo#601 GrindMode 2 (owner 17.10.2026): no grind fallback as a substitute activity - the bot stands
+            // idle; [QuestIdle] reason=fallback when the 8.32 rule (fresh threshold included) would have let it grind.
+            // GrindMode 0 / 1: IsQuestNoGrind() is false, everything below as before.
+            if (ai->IsQuestNoGrind())
+            {
+                uint32 const minFailures = ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(),
+                    sPlayerbotAIConfig.directTargetsFreshMaxLevel) && sPlayerbotAIConfig.directTargetsFreshGrindFailures ?
+                    sPlayerbotAIConfig.directTargetsFreshGrindFailures : sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures;
+                if (ai::quest_search::GrindFallback(true, failures, minFailures) && !AI_VALUE2(bool, "manual bool", "is travel refresh"))
+                    ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::Fallback),
+                        ai::quest_grind_mode::TargetText("grind_fallback_failures", failures));
+                return false;
+            }
             // twow-repo#601 (AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes): the fallback holds only that long after
             // the last empty quest route search; then the quest request (6.3, below grind 6.35) can fire again. 0 = for good.
             if (!ai::quest_search::GrindFallbackFresh(sPlayerbotAIConfig.questFirstProgressionGrindFallbackMinutes,

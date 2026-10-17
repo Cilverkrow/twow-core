@@ -291,4 +291,32 @@ require_first_statement("${travel_mgr}" "void TravelTarget::DecRetry(bool isMove
   "if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures)\n    {\n        if (isMove && moveRetryCount > 0) moveRetryCount--; else if (extendRetryCount > 0) extendRetryCount--;\n        return;\n    }"
   "DecRetry at 0 is the old one-liner")
 
+# ---------------------------------------------------------------------------------------------
+# twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, deliberate extension): a
+# structural failure parks a turn-in at once. That is a second park entry point next to
+# NoteTurnInFailure, with the same gates (key 0 parks nothing, roster bots on their own, a finished
+# quest not handed in yet) and the same visible park line; the policy decides (ParkNow).
+# The #485 no_route rule above is unchanged: the two CountsAsNoRoute calls keep every reject group
+# and the hub filter is still no "not judged" input there. The S1 classes are summed in
+# QuestFailureClassPolicy.h, where the hub filter is a transient reason (backoff only, no grind
+# count) - so the forbidden "+ lastRejects.hubFilter" sum stays forbidden in this file and the
+# transient sum is pinned in the policy instead.
+# ---------------------------------------------------------------------------------------------
+file(READ "${PB_SOURCE_DIR}/QuestFailureClassPolicy.h" failure_policy)
+string(REPLACE "\r\n" "\n" failure_policy "${failure_policy}")
+require_text("${travel_h}" "bool ParkTurnInNow(uint32 questId, char const* reason, bool abandonable, bool& abandonDue);" "structural park entry point")
+extract_between("${travel_mgr}" "bool TravelTarget::ParkTurnInNow(uint32 questId, char const* reason, bool abandonable, bool& abandonDue)"
+  "void TravelTarget::OnMoveRetryCooldown()" park_now "structural park before the move retry hook")
+require_order("${park_now}" "if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures || !questId || !bot)\n        return false;"
+  "turnin_park::ParkNow(turnInParks, questId, WorldTimer::getMSTime()," "key 0 parks nothing, before the policy")
+require_order("${park_now}" "if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster())"
+  "turnin_park::ParkNow(" "roster bots on their own only")
+require_order("${park_now}" "if (bot->GetQuestStatus(questId) != QUEST_STATUS_COMPLETE || bot->GetQuestRewardStatus(questId))"
+  "turnin_park::ParkNow(" "only a finished quest not handed in")
+require_text("${park_now}" "sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds * IN_MILLISECONDS, abandonable);" "park key read, no counting")
+require_order("${park_now}" "[QuestFirstRoute] state=parked bot=%u level=%u quest=%u reason=%s park_seconds=%u parked=%u" "return true;" "same visible park line, true only for a park")
+require_text("${policy}" "inline ParkResult ParkNow(Book& book, std::uint32_t questId, std::uint32_t nowMs, std::uint32_t parkMs, bool abandonable)" "policy park at once")
+require_text("${policy}" "entry->structuralParks = 0;   // twow-repo#601 S1: a counted park breaks a structural series" "a counted park ends a structural series")
+require_text("${failure_policy}" "return rejects.turnInSuppressed + rejects.deathSuppressed + rejects.questLoopSuppressed + rejects.hubFilter +\n        rejects.rangeSkip + rejects.movedAway + rejects.resumeSkipped;" "transient sum (with the hub filter) lives in the policy")
+
 message(STATUS "QUEST_TURNIN_PARK_CONTRACT=PASS")
