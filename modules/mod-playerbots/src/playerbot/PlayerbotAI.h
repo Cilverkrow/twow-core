@@ -1021,6 +1021,8 @@ public:
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
     // #421 C: set on the bot's thread, taken and acted on by the world thread.
     bool TakeQuestRescueRequest() { return questRescueRequested.exchange(false); }
+    // twow-repo#587: a request is pending (world thread peek, not taken).
+    bool HasQuestRescueRequest() const { return questRescueRequested.load(); }
     // twow-repo#587 (Z1b): a bot stranded on the other continent asks for the rescue (per-bot limit as the idle rescue).
     void RequestQuestRescue(uint32 now)
     {
