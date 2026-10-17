@@ -4283,13 +4283,14 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
         return;
     lastBgOwnPlanMs = nowMs ? nowMs : 1;
 
-    // MaxPerHour: the hour window, then at least one line left (0 = none at all).
+    // MaxPerHour: the hour window, then room for one line per faction (0 = none at all; below 2 counts as 0 at load).
     if (ai::bgfill::AnnounceHourOver(nowMs, bgAnnounceHourStart))
     {
         bgAnnounceHourStart = nowMs ? nowMs : 1;
         bgAnnounceHourLines = 0;
     }
-    if (!ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, 1))
+    if (ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, ai::bgfill::AnnounceMinLines) <
+            ai::bgfill::AnnounceMinLines)
     {
         if (trace)
             sLog.outBasic("[BGFill] state=skip reason=announcecap lines=%u max=%u", bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour);
@@ -4492,7 +4493,7 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
         server ? 2 : uint32(announcers.size()));
     // A bot-own battleground only with an announcement, to both factions or to none: the server message needs room for
     // two lines, chat for one announcer of each side.
-    if (allowed < 2)
+    if (allowed < ai::bgfill::AnnounceMinLines)
     {
         if (trace)
             sLog.outBasic("[BGFill] state=skip reason=%s bg=%u bracket=%u", (allowed || server) ? "announcecap" : "noannouncer",

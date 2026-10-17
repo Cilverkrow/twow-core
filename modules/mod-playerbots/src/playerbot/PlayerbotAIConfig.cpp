@@ -397,6 +397,11 @@ bool PlayerbotAIConfig::Initialize()
     bgAnnounceDelaySeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.DelaySeconds", 0)));
     bgAnnounceBotCooldownMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.BotCooldownMinutes", 0)));
     bgAnnounceMaxPerHour = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.MaxPerHour", 0)));
+    // Review c4: below 2 (one line per faction) no announcement fits, so 1 counts as 0 - no line, no bot-own battleground.
+    if (bgAnnounceMaxPerHour && !ai::bgfill::AnnounceMaxPerHour(bgAnnounceMaxPerHour))
+        sLog.outError("[BGAnnounceCfg] state=maxperhour_clamp value=%u used=0 (an announcement needs room for %u lines, one per faction)",
+            bgAnnounceMaxPerHour, ai::bgfill::AnnounceMinLines);
+    bgAnnounceMaxPerHour = ai::bgfill::AnnounceMaxPerHour(bgAnnounceMaxPerHour);
     // The text pools (D3): per faction a generic key and one per battleground (index = the queue type), each empty = its
     // built-in pool. A line outside printable ASCII or too long is dropped here, with a warning; a set key left with no
     // line at all falls back to its built-in pool (review c2: no faction pool may end up empty, which would make an

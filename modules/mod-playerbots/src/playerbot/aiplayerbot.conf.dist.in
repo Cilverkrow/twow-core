@@ -122,7 +122,7 @@ AiPlayerbot.BG.BotOnlyGraceSeconds = 0
 # also for killing bots. Only a reduction: a value of 0 or less, or above 1.0, counts as 1.0. The live owner value is
 # 0.5. With Trace = 1 each scaled gain writes [BGFill] state=honor_rate. 1.0 = unchanged (default).
 AiPlayerbot.BG.BotOnlyHonorRate = 1.0
-# Announce (stage c, needs Enable = 1, Announce.IntervalMinutes > 0, MaxConcurrent > 0 and Announce.MaxPerHour > 0, and
+# Announce (stage c, needs Enable = 1, Announce.IntervalMinutes > 0, MaxConcurrent > 0 and Announce.MaxPerHour >= 2, and
 # a persistent roster): bots play a battleground by themselves, but only an announced one. Every IntervalMinutes the bot
 # manager picks Warsong Gulch, Arathi Basin or Alterac Valley (the type started last comes last; Blood Ring and
 # Sunnyglade Valley never) and a bracket where both factions have enough free roster bots for the battleground's minimum
@@ -158,7 +158,9 @@ AiPlayerbot.BG.Announce.BotCooldownMinutes = 0
 # Announce.MaxPerHour: cap on announcement lines (chat lines and server messages) per hour window. The window starts at
 # the first announcement try and the first try after 60 minutes starts the next one (a clock window, not a sliding
 # hour: two windows back to back can carry up to 2 x MaxPerHour lines within 60 minutes). 0 = no line at all
-# (default, fail closed) - and so no bot-own battleground either; a negative value counts as 0.
+# (default, fail closed) - and so no bot-own battleground either; a negative value counts as 0. Every announcement
+# needs room for 2 lines (one per faction), so a value below 2 means no announcement and no bot-own battleground: 1
+# counts as 0 (startup warning [BGAnnounceCfg] state=maxperhour_clamp).
 AiPlayerbot.BG.Announce.MaxPerHour = 0
 # Announce.Text.Alliance / Announce.Text.Horde: the faction's generic lines, separated by |; %bg is the full battleground
 # name (Warsong Gulch, Arathi Basin, Alterac Valley). Announce.Text.<faction>.WSG / .AB / .AV: lines for that

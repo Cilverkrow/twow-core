@@ -158,7 +158,8 @@ require_text("${conf_dist}" "0 = no line at all\n# (default, fail closed)" "dist
 require_text("${conf_dist}" "BotOnlyCleanup never empties them" "dist: own battlegrounds are never drained")
 # Review c2: the dist names the whole gate, a negative value of each new integer key, the clock window of MaxPerHour and
 # that Announce is meant to run with PlayerFill.
-require_text("${conf_dist}" "# Announce (stage c, needs Enable = 1, Announce.IntervalMinutes > 0, MaxConcurrent > 0 and Announce.MaxPerHour > 0, and\n# a persistent roster)" "dist: the whole stage-c gate")
+require_text("${conf_dist}" "# Announce (stage c, needs Enable = 1, Announce.IntervalMinutes > 0, MaxConcurrent > 0 and Announce.MaxPerHour >= 2, and
+# a persistent roster)" "dist: the whole stage-c gate")
 foreach(key Announce.IntervalMinutes MaxBotBGPerBracket Announce.DelaySeconds Announce.BotCooldownMinutes Announce.MaxPerHour)
   region("${conf_dist}" "# ${key}: " "\nAiPlayerbot.BG.${key} = " key_doc)
   require_text("${key_doc}" "a negative value counts as 0" "dist: AiPlayerbot.BG.${key} negative value")
@@ -262,12 +263,14 @@ foreach(pair "plan|announce_line" "drain|fallback_line" "queue|unannounced_line"
     forbid_text("${before_line}" "${guard}" "[BGAnnounce] behind the trace switch (${which})")
   endforeach()
 endforeach()
-require_text("${plan}" "if (!ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, 1))" "MaxPerHour checked first")
-require_order("${plan}" "if (!ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, 1))" "GetAllBots()" "MaxPerHour before any bot is looked at")
+require_text("${plan}" "if (ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, ai::bgfill::AnnounceMinLines) <\n            ai::bgfill::AnnounceMinLines)" "MaxPerHour checked first")
+require_order("${plan}" "if (ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, ai::bgfill::AnnounceMinLines) <\n            ai::bgfill::AnnounceMinLines)" "GetAllBots()" "MaxPerHour before any bot is looked at")
 # Both factions or none (review c2): fewer than two lines allowed (server: one per faction; chat: one announcer of each
 # side) is no announcement; chat needs an announcer of each side, else it counts as none (mode 2: server message).
-require_text("${plan}" "    if (allowed < 2)\n    {" "fewer than two lines allowed: no announcement")
-require_order("${plan}" "    if (allowed < 2)\n    {" "${announce_line}" "MaxPerHour before the line")
+require_text("${plan}" "    if (allowed < ai::bgfill::AnnounceMinLines)
+    {" "fewer than two lines allowed: no announcement")
+require_order("${plan}" "    if (allowed < ai::bgfill::AnnounceMinLines)
+    {" "${announce_line}" "MaxPerHour before the line")
 require_text("${plan}" "if (!perTeam[0] || !perTeam[1])\n        {\n            announcers.clear();" "chat needs an announcer of each side")
 require_order("${plan}" "if (!perTeam[0] || !perTeam[1])" "bool const server = ai::bgfill::AnnounceUsesServer(mode, uint32(announcers.size()));" "one-sided chat counts as no announcer")
 require_text("${plan}" "if (announcers.size() > allowed)\n            announcers.resize(allowed);" "chat lines cut to MaxPerHour")
@@ -281,11 +284,22 @@ require_order("${plan}" "bgAnnounceHourLines += lines;" "${announce_line}" "line
 region("${policy_h}" "inline uint32_t AnnounceLinesAllowed(" "inline bool AnnounceHourOver(" lines_allowed)
 require_text("${lines_allowed}" "if (!maxPerHour || usedThisHour >= maxPerHour)\n        return 0;" "MaxPerHour 0 or used up: no line (fail closed)")
 require_text("${lines_allowed}" "return wanted < left ? wanted : left;" "never more than the rest of the hour")
+# Review c4: every announcement needs room for one line per faction, so a MaxPerHour below 2 counts as 0 at load (no line,
+# no bot-own battleground; a startup warning) and the planner's first check wants room for both factions.
+require_text("${policy_h}" "constexpr uint32_t AnnounceMinLines = 2;" "an announcement needs one line per faction")
+region("${policy_h}" "inline uint32_t AnnounceMaxPerHour(" "\n}\n" max_per_hour)
+require_text("${max_per_hour}" "return cfgMax < AnnounceMinLines ? 0 : cfgMax;" "MaxPerHour below 2 counts as 0")
+set(max_per_hour_clamp "bgAnnounceMaxPerHour = ai::bgfill::AnnounceMaxPerHour(bgAnnounceMaxPerHour);")
+require_text("${config_cpp}" "${max_per_hour_clamp}" "MaxPerHour clamped at load")
+require_order("${config_cpp}" "config.GetIntDefault(\"AiPlayerbot.BG.Announce.MaxPerHour\", 0)" "${max_per_hour_clamp}" "the clamp after the read")
+count_text("${config_cpp}" "bgAnnounceMaxPerHour = " 2 "MaxPerHour set by the read and the clamp only")
+require_text("${config_cpp}" "sLog.outError(\"[BGAnnounceCfg] state=maxperhour_clamp value=%u used=0" "the clamp warned at load")
+require_text("${conf_dist}" "Every announcement\n# needs room for 2 lines (one per faction), so a value below 2 means no announcement and no bot-own battleground: 1\n# counts as 0" "dist: MaxPerHour below 2 counts as 0")
 # The hour window of MaxPerHour (review c2): it starts again only once an hour has passed, in one place only, before the
 # line check - a reset per try would make MaxPerHour a cap per IntervalMinutes.
 set(hour_reset "if (ai::bgfill::AnnounceHourOver(nowMs, bgAnnounceHourStart))\n    {\n        bgAnnounceHourStart = nowMs ? nowMs : 1;\n        bgAnnounceHourLines = 0;\n    }")
 require_text("${plan}" "${hour_reset}" "the MaxPerHour window starts again only after an hour")
-require_order("${plan}" "${hour_reset}" "if (!ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, 1))" "the hour window before the line check")
+require_order("${plan}" "${hour_reset}" "if (ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, ai::bgfill::AnnounceMinLines) <\n            ai::bgfill::AnnounceMinLines)" "the hour window before the line check")
 count_text("${mgr_cpp}" "bgAnnounceHourLines = " 1 "the MaxPerHour count reset in one place only")
 count_text("${mgr_cpp}" "bgAnnounceHourStart = " 1 "the MaxPerHour window started in one place only")
 region("${policy_h}" "inline bool AnnounceHourOver(" "\n}\n" hour_over)
