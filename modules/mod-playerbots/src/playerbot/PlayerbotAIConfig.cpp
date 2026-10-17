@@ -411,6 +411,7 @@ bool PlayerbotAIConfig::Initialize()
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
     lootRoleWeights = config.GetBoolDefault("AiPlayerbot.Loot.RoleWeights", false);
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
+    equipKeepWeaponsUnlessUpgrade = config.GetBoolDefault("AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade", false);
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
     parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
@@ -422,6 +423,9 @@ bool PlayerbotAIConfig::Initialize()
     parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", false);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
+    // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
+    botUpdateTraceTick = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTick", false);
+    worldBotsHookTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsHookTrace", false);
     botUpdateTraceTriggers = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTriggers", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
     checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
@@ -517,6 +521,7 @@ bool PlayerbotAIConfig::Initialize()
     perfRoutePrecheck = ai::route_precheck::ClampLevel(config.GetIntDefault("AiPlayerbot.Perf.RoutePrecheck", 0));
     perfRouteFailEarlySkip = ai::stall_guard::ClampRouteFailEarlySkip(config.GetIntDefault("AiPlayerbot.Perf.RouteFailEarlySkip", 0));
     perfPathGenUnitless = config.GetBoolDefault("AiPlayerbot.Perf.PathGenUnitless", false);
+    ahBotRequireConfig = config.GetBoolDefault("AiPlayerbot.AhBot.RequireConfig", false);
     shamanImbueBySpec = config.GetBoolDefault("AiPlayerbot.Shaman.ImbueBySpec", false);
     persistentActiveRosterMaintenanceMode = config.GetBoolDefault("AiPlayerbot.PersistentActiveRoster.MaintenanceMode", false);
     persistentActiveRosterLoginWaveSize = config.GetIntDefault("AiPlayerbot.PersistentActiveRoster.LoginWaveSize", 0);

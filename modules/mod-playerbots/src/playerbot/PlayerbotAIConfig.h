@@ -548,6 +548,7 @@ public:
     uint32 buffStrangerCooldownSeconds = 900;
     bool lootRoleWeights = false;     // twow-repo#308 LOOT-ROLE-01: weight scale from the premade path from L1, quest reward by gain
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
+    bool equipKeepWeaponsUnlessUpgrade = false;   // twow-repo#308 EQUIP-FLIP-01: hands come off only for a hand-item candidate in the bags
     bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
     bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
     bool parkCellSourceStats = false;  // twow-repo#541 P2 D0: [CellSource] minute line - continent cells by source (real players / bots / active non-players)
@@ -559,6 +560,8 @@ public:
     bool parkSeats = false;  // twow-repo#551 (owner 11.10): parked bots sit on inn chairs, dismount, keep 3 yd around the innkeeper
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
+    bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
+    bool worldBotsHookTrace = false;  // twow-repo#597 (TICK-01): [WorldBots] ends with hook_ms= remote_ms= ahbot_ms= dungeonclear_ms=
     bool botUpdateTraceTriggers = false;  // twow-repo#596 D: with BotUpdateTrace, the TIME entry names the 3 slowest trigger checks of a pass >= 20 ms
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool checkValuesSkipSearches = false;  // twow-repo#541: "check values" without its six forced value searches
@@ -650,6 +653,7 @@ public:
     uint32 perfRoutePrecheck = 0;  // twow-repo#592 (PATH-02): end point pre-check of node route searches, 0 off, 1 shadow (count only), 2 skip the pair loop when no polygon lies within reach of the target, 3 + start check, 4 + direct attempt; clamped 0..4
     uint32 perfRouteFailEarlySkip = 0;  // twow-repo#592 (PATH-02): with perfRouteFailCooldownSeconds, a search that repeats a stored route failure (start and exact target within 1 yd, direct attempt far from its goal) is left out before the direct attempt; 0 off, 1 shadow (count, early_wrong), 2 active; clamped 0..2
     bool perfPathGenUnitless = false;  // twow-repo#592 (PATH-02): in-server node generator and the GetFishLocations route part with unitless pathfinding, only with PathFinder.Unitless = 1, Terrain.Preload.Continents = 1 and complete tiles (0 = a generation that builds node paths is skipped, [PathGen] skipped; one without runs as before)
+    bool ahBotRequireConfig = false;  // twow-repo#597 (TICK-01): AhBot::Update returns at once (no thread, no mail query, no line) unless ahbot.conf was loaded and AhBot.Enabled is on (0 = as before: schedules on every tick without a config)
     bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.
