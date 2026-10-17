@@ -666,6 +666,7 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
     questFirstProgressionFailureClasses = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses", false);
+    questFirstProgressionResetOnProgressEvents = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents", false);
     directTargetsEnabled = config.GetBoolDefault("AiPlayerbot.DirectTargets.Enable", false);
     directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
     directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));

@@ -975,6 +975,12 @@ protected:
     std::atomic<uint32> lastQuestRescue{ 0 };
     std::atomic<bool> questRescueRequested{ false };
     std::atomic<bool> questRescueDone{ false };
+    // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents): reset events
+    // (ai::quest_failure_class::Reset*) asked for by the world thread (rescue teleport, battleground return), taken by
+    // the bot's own update; the level the progress watch saw at its last check (0 = none yet: this login).
+    std::atomic<uint32> questRouteResetEvents{ 0 };
+    uint32 questProgressLevel = 0;
+    void ApplyQuestRouteReset(uint32 events);
     // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
     std::atomic<bool> parked{ false };
     // twow-repo#517 stage a (AiPlayerbot.BG.PlayerFill): set and cleared by the world thread while the manager owns this
@@ -1028,6 +1034,9 @@ public:
             questRescueRequested = true;
     }
     void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
+    // twow-repo#601 S1 (ResetOnProgressEvents): any thread asks the bot's own update to reset the grind-fallback
+    // counter, the quest route backoff and the quest search stage (ai::quest_failure_class::Reset* bits).
+    void RequestQuestRouteReset(uint32 events) { questRouteResetEvents.fetch_or(events); }
     // twow-repo#517 stage a: a quest rescue is asked for, or was done and not yet taken by the bot's own update.
     bool IsQuestRescueBusy() const { return questRescueRequested.load() || questRescueDone.load(); }
     // twow-repo#517 stage a: the manager queued this bot for a battleground and accepts its invite; BGStatusAction then

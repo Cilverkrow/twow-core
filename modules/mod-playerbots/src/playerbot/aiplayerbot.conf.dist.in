@@ -1110,6 +1110,11 @@ AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
 # TraceTravelDecisions = 1). The parks need TurnInParkFailures > 0 (parking on); with 0 nothing is parked and a
 # structural failure counts as before.
 AiPlayerbot.QuestFirstProgression.FailureClasses = 0
+# ResetOnProgressEvents = 1: a quest rescue teleport, a level-up, a login and the return from a battleground
+# reset the GrindFallbackFailures counter, the quest route backoff and the quest search stage ([QuestReset]
+# events=rescue,level_up,login,bg_return). XP gain alone no longer resets the quest search stage (it still counts
+# as progress for the QuestRescue.IdleMinutes clock, so a grinding bot is not rescued as idle).
+AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
