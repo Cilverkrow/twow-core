@@ -7,6 +7,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/HomeBindArea.h"
 #include "CheckMountStateAction.h"
 #include "TellLosAction.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
@@ -1433,7 +1434,7 @@ bool UseHearthStoneAction::isUseful()
     {
         WorldPosition const bind = AI_VALUE(WorldPosition, "home bind");
         // Real area level (Lakeshire 15), not the zone row (Redridge 0).
-        if (homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, bind.getAreaLevel())), bot->GetLevel()))
+        if (homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, ai::home_bind::AreaLevel(bot, bind))), bot->GetLevel()))   // twow-repo#596 D
             return false;
     }
 

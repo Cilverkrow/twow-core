@@ -3103,3 +3103,9 @@ set_target_properties(keep_weapons_policy_tests PROPERTIES
 add_test(NAME keep_weapons_policy
   COMMAND keep_weapons_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#596 D (AiPlayerbot.Perf.BindAreaFromHomebind): no terrain lookup at the far home bind position.
+add_test(NAME bind_area_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bind_area_source_contract_tests.cmake")
