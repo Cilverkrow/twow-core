@@ -111,6 +111,7 @@ require_text("${policy}" "if (!snapshot || !Fresh(snapshot->builtAtMs, nowMs))\n
 require_text("${policy}" "if (!onMap)\n        return Near::NotNear;" "no entry on the map -> NotNear")
 require_text("${policy}" "return undecided ? Near::Unknown : Near::NotNear;" "zone 0 -> Unknown")
 require_text("${policy}" "return configured > 0.0f ? configured : defaultRadius;" "radius 0 = default")
+require_text("${policy}" "        if (radius <= 0.0f)\n            undecided = true;" "no usable radius -> Unknown (fail closed)")
 require_text("${policy}" "if (!seen && guids.size() < MaxWatchers)" "watcher list capped")
 forbid_text("${policy}" "#include <mutex>" "lock in the policy (the mutex lives in the manager)")
 forbid_text("${policy}" "shared_mutex" "shared_mutex in the policy")
