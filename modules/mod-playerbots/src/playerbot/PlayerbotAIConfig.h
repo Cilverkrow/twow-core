@@ -653,6 +653,7 @@ public:
     uint32 perfRoutePrecheck = 0;  // twow-repo#592 (PATH-02): end point pre-check of node route searches, 0 off, 1 shadow (count only), 2 skip the pair loop when no polygon lies within reach of the target, 3 + start check, 4 + direct attempt; clamped 0..4
     uint32 perfRouteFailEarlySkip = 0;  // twow-repo#592 (PATH-02): with perfRouteFailCooldownSeconds, a search that repeats a stored route failure (start and exact target within 1 yd, direct attempt far from its goal) is left out before the direct attempt; 0 off, 1 shadow (count, early_wrong), 2 active; clamped 0..2
     bool perfPathGenUnitless = false;  // twow-repo#592 (PATH-02): in-server node generator and the GetFishLocations route part with unitless pathfinding, only with PathFinder.Unitless = 1, Terrain.Preload.Continents = 1 and complete tiles (0 = a generation that builds node paths is skipped, [PathGen] skipped; one without runs as before)
+    bool ahBotRequireConfig = false;  // twow-repo#597 (TICK-01): AhBot::Update returns at once (no thread, no mail query, no line) unless ahbot.conf was loaded and AhBot.Enabled is on (0 = as before: schedules on every tick without a config)
     bool shamanImbueBySpec = false;  // twow-repo#541: shaman weapon imbue per spec/level (ShamanImbuePolicy.h)
     // V1 administrative Apply is accepted only during this explicit
     // no-admission maintenance state and always returns RESTART_REQUIRED.

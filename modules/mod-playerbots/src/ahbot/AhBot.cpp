@@ -7,6 +7,7 @@
 #include "Config/Config.h"
 #include "Chat/Chat.h"
 #include "AhBotConfig.h"
+#include "AhBotGuardPolicy.h"
 #include "AuctionHouse/AuctionHouseMgr.h"
 #include "WorldSession.h"
 #include "Objects/Player.h"
@@ -39,7 +40,16 @@ void AhBot::Init()
 {
     sLog.outString("[AhBot] Initializing AhBot by ike3");
 
-    if (!sAhBotConfig.Initialize())
+    bool const configured = sAhBotConfig.Initialize();
+
+    // twow-repo#597 (TICK-01): one line per process, only with AiPlayerbot.AhBot.RequireConfig = 1, so an A/B run
+    // shows from the log alone whether Update() will stay idle. Nothing extra with 0.
+    if (sPlayerbotAIConfig.ahBotRequireConfig)
+        sLog.outString("[AhBotGuard] require_config=1 config_loaded=%u enabled=%u update=%s",
+            uint32(sAhBotConfig.configLoaded), uint32(sAhBotConfig.enabled),
+            ahbot::guard::UpdateMode(true, sAhBotConfig.configLoaded, sAhBotConfig.enabled));
+
+    if (!configured)
     {
         sLog.outString("[AhBot] Disabled or failed to load ahbot.conf — AhBot will not run");
         return;
@@ -113,6 +123,15 @@ void activateAhbotThread()
 
 void AhBot::Update()
 {
+    // twow-repo#597 (TICK-01): without a loaded, enabled ahbot.conf updateInterval is 0 and every world tick below
+    // would start a detached thread (whose ForceUpdate only logs "disabled") and run the synchronous mail LIKE query of
+    // CleanupPropositions. With AiPlayerbot.AhBot.RequireConfig = 1 return before any of that, without a line. Nothing
+    // is queued in that state (ForceUpdate and HandleCommand refuse while !enabled), so RunQueuedWork has nothing to do.
+    // With 0 the switch is the only extra read (short circuit) and everything below runs as before.
+    if (sPlayerbotAIConfig.ahBotRequireConfig &&
+        ahbot::guard::SkipUpdate(true, sAhBotConfig.configLoaded, sAhBotConfig.enabled))
+        return;
+
     if (sWorld.IsShutdowning())
         return;
 
