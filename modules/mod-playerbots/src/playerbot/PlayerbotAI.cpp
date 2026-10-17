@@ -4,6 +4,7 @@
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/AiJitterPolicy.h"
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/BotDialogueProvider.h"
@@ -13,8 +14,11 @@
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for "S:engine init"
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
+#include <array>
 #include <atomic>
+#include <cstddef>
 #include <iomanip>
+#include <string>
 
 #include "playerbot/AiFactory.h"
 
@@ -742,6 +746,50 @@ void PlayerbotAI::ApplyQuestRouteReset(uint32 events)
     sLog.outBasic("[QuestReset] events=%s bot=%u level=%u failures=%d stage=%d backoff_s=%u",
         ai::quest_failure_class::ResetEventNames(events).c_str(), bot->GetGUIDLow(), bot->GetLevel(), failures, stage,
         backoffUntil > 0 && uint32(backoffUntil) > now ? uint32(backoffUntil) - now : 0u);
+}
+
+// twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode, owner 17.10.2026): blocked grind decisions per
+// reason since the last minute line; counted on the map threads, taken by the world thread (atomics, no lock).
+namespace
+{
+std::atomic<uint32> questIdleCounts[ai::quest_grind_mode::ReasonCount] = {};
+}
+
+// GrindMode 2 only: the same population as QuestFirstProgression (Enabled + persistent roster member), on its own, below
+// the max player level. The config is read first, so GrindMode 0 / 1 return before any other test.
+bool PlayerbotAI::IsQuestNoGrind()
+{
+    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot)
+        return false;
+
+    return ai::quest_grind_mode::Applies(sPlayerbotAIConfig.questFirstProgressionGrindMode,
+        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
+        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
+}
+
+// GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason change.
+void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
+{
+    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot ||
+        reason >= ai::quest_grind_mode::ReasonCount)
+        return;
+
+    questIdleCounts[reason].fetch_add(1, std::memory_order_relaxed);
+    ai::quest_grind_mode::Reason const why = ai::quest_grind_mode::Reason(reason);
+    if (!ai::quest_grind_mode::LogDue(questIdleReason, why))
+        return;
+
+    questIdleReason = reason;
+    sLog.outBasic("%s", ai::quest_grind_mode::FormatIdleLine(why, bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(),
+        target).c_str());
+}
+
+std::string PlayerbotAI::TakeQuestIdleMinuteLine()
+{
+    std::array<uint32_t, ai::quest_grind_mode::ReasonCount> counts = {};
+    for (std::size_t reason = 0; reason < ai::quest_grind_mode::ReasonCount; ++reason)
+        counts[reason] = questIdleCounts[reason].exchange(0, std::memory_order_relaxed);
+    return ai::quest_grind_mode::FormatMinuteLine(counts);
 }
 
 // twow-repo#517 stage a: called by RandomPlayerbotMgr (world thread, the bot's map idle) once a fill bot is out of its

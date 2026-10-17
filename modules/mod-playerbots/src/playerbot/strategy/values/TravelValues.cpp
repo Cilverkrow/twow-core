@@ -10,6 +10,7 @@
 #include "playerbot/TravelChoosePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 
 using namespace ai;
@@ -448,6 +449,19 @@ bool NeedTravelPurposeValue::Calculate()
             // Hotfix 8.32 (twow-repo#544): after repeated empty quest route searches a quest-first
             // bot grinds instead of idling ("no destination").
             uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures")));
+            // twow-repo#601 GrindMode 2 (owner 17.10.2026): no grind fallback as a substitute activity - the bot stands
+            // idle; [QuestIdle] reason=fallback when the 8.32 rule (fresh threshold included) would have let it grind.
+            // GrindMode 0 / 1: IsQuestNoGrind() is false, everything below as before.
+            if (ai->IsQuestNoGrind())
+            {
+                uint32 const minFailures = ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(),
+                    sPlayerbotAIConfig.directTargetsFreshMaxLevel) && sPlayerbotAIConfig.directTargetsFreshGrindFailures ?
+                    sPlayerbotAIConfig.directTargetsFreshGrindFailures : sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures;
+                if (ai::quest_search::GrindFallback(true, failures, minFailures) && !AI_VALUE2(bool, "manual bool", "is travel refresh"))
+                    ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::Fallback),
+                        ai::quest_grind_mode::TargetText("grind_fallback_failures", failures));
+                return false;
+            }
             // twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.FreshGrindFailures): a fresh bot may grind after fewer.
             if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel) &&
                 sPlayerbotAIConfig.directTargetsFreshGrindFailures)
