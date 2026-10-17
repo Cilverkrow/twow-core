@@ -30,6 +30,7 @@
 #include <memory>
 #include <optional>
 #include <functional>
+#include <atomic>
 
 /// ---- BASE ---
 
@@ -130,6 +131,12 @@ class SqlResultQueue : public LockedQueue<MaNGOS::IQueryCallback* , std::mutex>
         CallbackQueue _threadUnsafeWaitingQueries;
         uint32 numUnsafeQueries;
         std::unique_ptr<ThreadPool> m_callbackThreads;
+
+        // twow-repo#597 (TICK-01, PerformanceLog.SlowResultCallbackMs): one [ResultsSlow] line per callback
+        // at or above the threshold (0 = off, default), at most 20 a minute. Set from the world config.
+        static void SetSlowCallbackMs(uint32 ms);
+    private:
+        static std::atomic<uint32> s_slowCallbackMs;
 };
 
 class SqlQuery : public SqlOperation

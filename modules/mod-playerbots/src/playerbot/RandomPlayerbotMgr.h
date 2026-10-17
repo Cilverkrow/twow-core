@@ -141,6 +141,10 @@ public:
         std::future<std::string> PostRemoteCommand(std::string request);
         // WORLD THREAD ONLY. Runs this tick's share of the queue above.
         void RunQueuedRemoteCommands();
+        // twow-repo#597 (TICK-01, AiPlayerbot.WorldBotsHookTrace): the bot WorldScript update hooks into the
+        // [WorldBots] minute window. World thread only (WorldScript::OnUpdate).
+        void AddWorldBotsHook(uint64 hookUs, uint64 remoteUs, uint64 ahbotUs) { worldBotsWindow.AddHook(hookUs, remoteUs, ahbotUs); }
+        void AddWorldBotsDungeonClearUs(uint64 us) { worldBotsWindow.AddDungeonClear(us); }
         void OnPlayerLogout(Player* player);
         void OnPlayerLogin(Player* player);
         void OnPlayerLoginError(uint32 bot);

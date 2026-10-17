@@ -33,6 +33,14 @@ inline std::uint64_t SinceUs(std::uint64_t startUs)
     return now > startUs ? now - startUs : 0;
 }
 
+// twow-repo#597 (TICK-01, AiPlayerbot.BotUpdateTraceTick): appended at the END of the [BotUpdateSlow]
+// description, i.e. at the end of the line (OB-10 appends its own field after region= later), so a slow
+// bot update can be matched with [WorldTickSlow] tick= and [MapTickRegion] region=.
+inline std::string TickRegionSuffix(std::uint32_t worldLoop, std::uint32_t mapId, std::uint32_t instanceId)
+{
+    return " tick=" + std::to_string(worldLoop) + " region=" + std::to_string(mapId) + "." + std::to_string(instanceId);
+}
+
 inline std::size_t BucketOf(std::uint64_t us)
 {
     std::size_t b = 0;

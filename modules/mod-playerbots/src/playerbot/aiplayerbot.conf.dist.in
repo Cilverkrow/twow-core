@@ -132,6 +132,10 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # premade path; 0 = a coin on every check (old).
 AiPlayerbot.Loot.RoleWeights = 0
 AiPlayerbot.Loot.FeralFixedSpec = 1
+# twow-repo#308 EQUIP-FLIP-01: 1 = the equip-upgrade check (every looted weapon or armour piece) takes main and off hand
+# off only when a weapon, shield or held item in the bags is an equip candidate. 0 = on every run, as before (bots took
+# their weapons off and on after every loot). A re-equip of the old main or off hand is no EquipAction event either way.
+AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade = 0
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
@@ -2017,6 +2021,16 @@ AiPlayerbot.WorldBotsTrace = 0
 # time of one bot AI update on the map threads, plus the five slowest calls with bot, map, combat
 # and last action. Log only. 0 = off (default).
 AiPlayerbot.BotUpdateTrace = 0
+# twow-repo#597 (TICK-01): 1 = every [BotUpdateSlow] line ends with " tick=<world loop counter>
+# region=<map>.<inst>" (the world tick and the map region of that slow bot update), so a slow update
+# can be matched with [WorldTickSlow] tick= and [MapTickRegion]. Only with AiPlayerbot.BotUpdateTrace = 1.
+# Log only. 0 = off (default, the line unchanged).
+AiPlayerbot.BotUpdateTraceTick = 0
+# twow-repo#597 (TICK-01): 1 = the [WorldBots] minute line ends with " hook_ms=<x> remote_ms=<x>
+# ahbot_ms=<x> dungeonclear_ms=<x>": the whole bot WorldScript update hook per minute and its parts
+# (remote admin commands, AhBot update, dungeon-clear reaper hook) in ms. Only with
+# AiPlayerbot.WorldBotsTrace = 1. Log only. 0 = off (default, the line unchanged).
+AiPlayerbot.WorldBotsHookTrace = 0
 # twow-repo#596 D: 1 (with BotUpdateTrace = 1) = a bot whose trigger pass took 20 ms or more names its three slowest
 # trigger checks in the TIME entry of its trail: `TIME:values Xus triggers Yus slow=name:us,...`, seen in [BotUpdateSlow].
 # Times each trigger check of every pass while on. 0 = off (default), the trail as before.
@@ -2591,6 +2605,19 @@ AiPlayerbot.Perf.RouteFailEarlySkip = 0
 # value. Fish candidates that would need a route are dropped ("[PathGen] skipped reason=fish", only when there were
 # any - the route part is unreachable today, PathInfo::getArea is a stub).
 AiPlayerbot.Perf.PathGenUnitless = 0
+# twow-repo#597 (TICK-01, AhBot guard): AhBot runs only with an ahbot.conf (next to mangosd.conf or in the compiled-in
+# config dir) that leaves AhBot.Enabled on. Without one ("AhBot is Disabled. No configuration file at ...") AhBot still
+# schedules an auction check on every world tick: one detached thread start, one synchronous
+# "select ... from mail where subject like 'AH Proposition%'" query and its log lines per tick, because updateInterval
+# is never read and stays 0 (live 14.10.2026: ~20 thread starts a second, 53 % of all log lines, one such start right
+# before every stall of 2 s or more).
+#   1 = AhBot::Update returns at once (no thread, no query, no log line) while the AhBot config is not loaded or
+#       AhBot.Enabled = 0; one "[AhBotGuard] require_config=1 config_loaded=<0|1> enabled=<0|1> update=<idle|scheduled>"
+#       line at startup. A realm with a loaded and enabled ahbot.conf runs exactly as with 0; .ahbot is unchanged.
+#   0 = as before, no extra line (default).
+# Read from this file, not ahbot.conf, because it has to work exactly when ahbot.conf is missing.
+# Live should run 1 after the A/B M-H1 (roster 540 without ahbot.conf, image without / with this guard).
+AiPlayerbot.AhBot.RequireConfig = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental
