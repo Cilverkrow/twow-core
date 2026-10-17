@@ -1119,7 +1119,9 @@ AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
 # parked twice in a row for a structural reason that does not heal by itself - no taker destination (no spawn,
 # script-only game object, excluded zone) or a taker on the other continent below MinLevelForCrossMapQuestRoute -
 # is abandoned ([QuestAbandon] quest= reason= bot=). A zone clearly above the bot is never a reason (levels heal
-# it), any other park in between starts the count again, and class quests are kept. 0 = the quest stays parked.
+# it), any other park in between starts the count again, and class quests are kept. An abandoned quest is not taken
+# again (no trip to its giver, no accept) while the bot is on its own - at most 8 such quests per bot, forgotten at
+# re-login. 0 = the quest stays parked.
 AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot

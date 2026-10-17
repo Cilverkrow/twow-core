@@ -175,6 +175,12 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
 
     if (GetRelation() == 0)
     {
+        // twow-repo#601 S1 (AbandonStructuralParked): no trip to the giver of a quest this bot abandoned after two
+        // structural parks - it would be taken, parked and abandoned again every hour.
+        if (sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked && !ai->HasRealPlayerMaster() &&
+            AI_VALUE(TravelTarget*, "travel target")->IsStructurallyAbandoned(GetQuestId()))
+            return false;
+
         if (!bot->GetMap()->IsContinent())
         {
             // twow-repo#485: a giver can have no point (a script-only game object with
