@@ -650,6 +650,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // offer: counted as before. Off (or a bot led by a real player): FailureClass::None, everything as before.
             ai::quest_failure_class::Decision failureDecision;
             std::vector<uint32> offeredTurnIns, takerlessTurnIns;
+            int failuresBefore = 0;
+            uint32 transientStreak = 0;
+            bool transientCounts = false;
             if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())
             {
                 for (std::string const& questId : split(AI_VALUE2(std::string, "manual string", HandInQuestsValue), ','))
@@ -658,14 +661,23 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 takerlessTurnIns = TakerlessTurnIns(destinationList, offeredTurnIns);
                 failureDecision = ai::quest_failure_class::Classify(true, lastRejects, uint32(offeredTurnIns.size()),
                     uint32(takerlessTurnIns.size()));
+                // The counter before this rejection (the class line logs whether it really grew) and the transient
+                // rejections in a row (TransientCountsAfter: 0 = never counted; the N-th in a row counts once).
+                failuresBefore = std::max(0, AI_VALUE2(int, "manual int", "quest route failures"));
+                if (failureDecision.failureClass == ai::quest_failure_class::FailureClass::Transient)
+                    transientStreak = uint32(std::max(0, AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue))) + 1;
+                transientCounts = ai::quest_failure_class::TransientStreakCounts(transientStreak,
+                    sPlayerbotAIConfig.questFirstProgressionTransientCountsAfter);
+                SET_AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue, transientCounts ? 0 : int(transientStreak));
             }
 
             // Hotfix 8.1: wait before the next quest route request (2, 4, 8, then 10 min).
             if (UsesQuestFirstProgression(bot))
             {
                 uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures"))) + 1;
-                // twow-repo#601 S1: a transient rejection waits the same backoff, but the grind-fallback counter does not grow.
-                if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass))
+                // twow-repo#601 S1: a transient rejection waits the same backoff, but the grind-fallback counter does not grow
+                // (unless TransientCountsAfter = N and this is the N-th transient rejection in a row).
+                if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
                     SET_AI_VALUE2(int, "manual int", "quest route failures", int(failures));
                 // twow-repo#594 / P3-a: one formula - a fresh bot without a rescue in this pass waits FreshBackoffSeconds.
                 bool const shortBackoff = freshBot && !rescueRequested && sPlayerbotAIConfig.directTargetsFreshBackoffSeconds;
@@ -715,13 +727,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
             }
 
-            // twow-repo#601 S1: one line per classified rejection (bounded by the route backoff).
+            // twow-repo#601 S1: one line per classified rejection (bounded by the route backoff). counted = the counter
+            // grew by this rejection and no park (structural or #485) reset it; streak = transient rejections in a row.
             if (failureDecision.failureClass != ai::quest_failure_class::FailureClass::None)
-                sLog.outBasic("[QuestFailureClass] bot=%u level=%u class=%s offered=%u takerless=%u parked=%u counted=%u failures=%d",
+            {
+                int const failuresAfter = AI_VALUE2(int, "manual int", "quest route failures");
+                sLog.outBasic("[QuestFailureClass] bot=%u level=%u class=%s offered=%u takerless=%u parked=%u counted=%u streak=%u failures_before=%d failures=%d",
                     bot->GetGUIDLow(), bot->GetLevel(), ai::quest_failure_class::ClassName(failureDecision.failureClass),
                     uint32(offeredTurnIns.size()), uint32(takerlessTurnIns.size()), structuralParks,
-                    ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) && !structuralParks ? 1u : 0u,
-                    AI_VALUE2(int, "manual int", "quest route failures"));
+                    failuresAfter == failuresBefore + 1 ? 1u : 0u, transientStreak, failuresBefore, failuresAfter);
+            }
 
             // twow-repo#594 / P3: once at the end of the branch, after Z1b, the backoff and the #485 park have seen the
             // rejection - the counts for [DirectTarget] state=summary.
@@ -757,6 +772,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // Hotfix 8.1: a route was found - no more backoff.
         SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
         SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
+        // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.
+        if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)
+            SET_AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue, 0);
 
         // #421 B: the widened search found something.
         int const stage = AI_VALUE2(int, "manual int", "quest search stage");

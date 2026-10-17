@@ -800,6 +800,9 @@ public:
     bool questFirstProgressionResetOnProgressEvents = false;
     // "parked twice -> abandon" for a structural reason that cannot heal by itself (no destination, other continent).
     bool questFirstProgressionAbandonStructuralParked = false;
+    // S1 review (OB-10 to decide): 0 = a transient rejection never counts toward the grind fallback; N = the N-th
+    // transient rejection in a row counts once (acts only with FailureClasses).
+    uint32 questFirstProgressionTransientCountsAfter = 0;
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
     bool directTargetsEnabled = false;
     bool directTargetsTraceInactive = false;

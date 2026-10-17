@@ -178,6 +178,15 @@ int main()
         Require(!AbandonParkedTurnIn(true, true, true), "class quest (or unknown): keep");
     }
 
+    // 6b) TransientCountsAfter: 0 = a transient rejection never counts (OB-10); N = the N-th in a row counts once.
+    {
+        Require(!TransientStreakCounts(1, 0) && !TransientStreakCounts(50, 0), "key 0: never counted (OB-10's rule)");
+        Require(!TransientStreakCounts(0, 3), "no transient rejection: nothing extra");
+        Require(!TransientStreakCounts(2, 3) && TransientStreakCounts(3, 3), "the 3rd in a row counts");
+        Require(TransientStreakCounts(1, 1), "N = 1: every transient rejection counts");
+        Require(std::strcmp(TransientStreakValue, "quest transient streak") == 0, "streak value name");
+    }
+
     // 7) Grind yields to routable open turn-ins (8.5 generalised); id lists.
     {
         Require(GrindYieldsToTurnIn(true, 1, false), "a routable open turn-in, backoff over: no grind");

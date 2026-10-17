@@ -1110,6 +1110,12 @@ AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
 # TraceTravelDecisions = 1). The parks need TurnInParkFailures > 0 (parking on); with 0 nothing is parked and a
 # structural failure counts as before.
 AiPlayerbot.QuestFirstProgression.FailureClasses = 0
+# TransientCountsAfter (acts only with FailureClasses = 1; S1 review, the value is OB-10's decision): 0 = a transient
+# rejection never counts toward GrindFallbackFailures (OB-10 17.10.2026). N > 0: the N-th transient rejection in a row
+# (no other class and no route found in between) counts once and the streak starts anew, so a transient cause that
+# persists (quest-loop cooldown, death suppression) reaches the grind fallback instead of idling until the quest
+# rescue. The streak is logged as [QuestFailureClass] streak=. Restart-only.
+AiPlayerbot.QuestFirstProgression.TransientCountsAfter = 0
 # ResetOnProgressEvents = 1: a quest rescue teleport, a level-up, a login and the return from a battleground
 # reset the GrindFallbackFailures counter, the quest route backoff and the quest search stage ([QuestReset]
 # events=rescue,level_up,login,bg_return). XP gain alone no longer resets the quest search stage (it still counts

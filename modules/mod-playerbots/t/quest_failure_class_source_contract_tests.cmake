@@ -122,12 +122,27 @@ require_text("${branch}" "if (sPlayerbotAIConfig.questFirstProgressionFailureCla
 require_text("${branch}" "failureDecision = ai::quest_failure_class::Classify(true, lastRejects, uint32(offeredTurnIns.size()),\n                    uint32(takerlessTurnIns.size()));" "classified from the reject counts of this choice")
 require_text("${branch}" "takerlessTurnIns = TakerlessTurnIns(destinationList, offeredTurnIns);" "takerless turn-ins from the job's list")
 require_order("${branch}" "split(AI_VALUE2(std::string, \"manual string\", HandInQuestsValue), ',')" "if (NoteNoRouteTurnIns(context, travelTarget," "offered list read before #485 clears it")
-require_text("${branch}" "[QuestFailureClass] bot=%u level=%u class=%s offered=%u takerless=%u parked=%u counted=%u failures=%d" "visible class line")
-require_text("${branch}" "if (failureDecision.failureClass != ai::quest_failure_class::FailureClass::None)\n                sLog.outBasic(\"[QuestFailureClass]" "class line only with a class (switch on)")
+require_text("${branch}" "[QuestFailureClass] bot=%u level=%u class=%s offered=%u takerless=%u parked=%u counted=%u streak=%u failures_before=%d failures=%d" "visible class line")
+require_text("${branch}" "if (failureDecision.failureClass != ai::quest_failure_class::FailureClass::None)\n            {\n                int const failuresAfter = AI_VALUE2(int, \"manual int\", \"quest route failures\");\n                sLog.outBasic(\"[QuestFailureClass]" "class line only with a class (switch on)")
+# Review fix (finding 'counted=1 next to failures=0'): counted is read from the counter after both parks.
+require_text("${branch}" "failuresAfter == failuresBefore + 1 ? 1u : 0u, transientStreak, failuresBefore, failuresAfter);" "counted = the counter really grew (after the structural and the #485 park)")
+require_order("${branch}" "if (NoteNoRouteTurnIns(context, travelTarget," "int const failuresAfter = AI_VALUE2(int, \"manual int\", \"quest route failures\");" "counter read for the class line after the #485 park")
 
 # ---- 2. Transient: the backoff only, no grind count ------------------------------------------------
 require_text("${policy}" "inline bool CountsTowardGrind(FailureClass failureClass)\n{\n    return failureClass != FailureClass::Transient;\n}" "only a transient rejection is not counted")
-require_text("${branch}" "if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass))\n                    SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "counter grows only for a counted class")
+require_text("${branch}" "if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)\n                    SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "counter grows only for a counted class (or the N-th transient in a row)")
+# Review fix (finding 'transient rejections can last indefinitely'; the value is OB-10's decision): TransientCountsAfter,
+# default 0 = OB-10's rule (a transient rejection never counts). Streak kept only with FailureClasses (inside the classify
+# block), ended by a found route (behind the switch) and by every S1 reset.
+require_text("${policy}" "inline bool TransientStreakCounts(std::uint32_t streak, std::uint32_t countsAfter)\n{\n    return countsAfter && streak >= countsAfter;\n}" "0 = a transient rejection never counts; N = the N-th in a row counts once")
+require_text("${policy}" "inline constexpr char const* TransientStreakValue = \"quest transient streak\";" "one per-bot streak value")
+region("${branch}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())" "// Hotfix 8.1: wait before the next quest route request" classify_block)
+require_text("${classify_block}" "                if (failureDecision.failureClass == ai::quest_failure_class::FailureClass::Transient)\n                    transientStreak = uint32(std::max(0, AI_VALUE2(int, \"manual int\", ai::quest_failure_class::TransientStreakValue))) + 1;" "streak grows only on a transient rejection")
+require_text("${classify_block}" "transientCounts = ai::quest_failure_class::TransientStreakCounts(transientStreak,\n                    sPlayerbotAIConfig.questFirstProgressionTransientCountsAfter);" "the policy decides with the key")
+require_text("${classify_block}" "SET_AI_VALUE2(int, \"manual int\", ai::quest_failure_class::TransientStreakValue, transientCounts ? 0 : int(transientStreak));" "a counted streak (or any other class) starts anew")
+count_text("${choose}" "TransientStreakValue, transientCounts ? 0 : int(transientStreak));" 1 "streak written once per rejection")
+require_text("${branch}" "bool transientCounts = false;" "switch off: no transient count")
+require_text("${choose}" "        // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.\n        if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)\n            SET_AI_VALUE2(int, \"manual int\", ai::quest_failure_class::TransientStreakValue, 0);" "a found route ends the streak (behind the switch)")
 require_order("${branch}" "SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", int(uint32(time(nullptr)) + backoff));" "the backoff is set for every class")
 
 # ---- 3. Structural: park at once, the park resets the counter (no grind count) ---------------------
@@ -222,6 +237,7 @@ foreach(value "quest route failures" "quest route backoff until" "quest search s
   require_text("${apply_reset}" "aiObjectContext->GetValue<int>(\"manual int\", \"${value}\")->Set(0);" "reset of ${value}")
 endforeach()
 require_text("${apply_reset}" "[QuestReset] events=%s bot=%u level=%u failures=%d stage=%d backoff_s=%u" "visible reset line")
+require_text("${apply_reset}" "aiObjectContext->GetValue<int>(\"manual int\", ai::quest_failure_class::TransientStreakValue)->Set(0);" "a reset also ends the transient streak")
 require_text("${ai_cpp}" "        if (uint32 const resetEvents = questRouteResetEvents.exchange(0))\n            ApplyQuestRouteReset(resetEvents);" "world-thread requests taken in the bot's own update")
 require_order("${ai_cpp}" "if (questRescueDone.exchange(false))" "questRouteResetEvents.exchange(0)" "taken next to the rescue flag")
 require_text("${ai_h}" "void RequestQuestRouteReset(uint32 events) { questRouteResetEvents.fetch_or(events); }" "request = atomic event bit")
@@ -281,6 +297,9 @@ foreach(key FailureClasses ResetOnProgressEvents AbandonStructuralParked)
   forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.${key} = 1" "shipped on: ${key}")
 endforeach()
 require_order("${conf}" "AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0" "AiPlayerbot.QuestFirstProgression.FailureClasses = 0" "documented next to the other quest-first progression keys")
+require_text("${config_h}" "uint32 questFirstProgressionTransientCountsAfter = 0;" "member default 0: TransientCountsAfter")
+require_text("${config_cpp}" "questFirstProgressionTransientCountsAfter = uint32(std::max<int32>(0, config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.TransientCountsAfter\", 0)));" "read with default 0: TransientCountsAfter")
+require_text("${conf}" "\nAiPlayerbot.QuestFirstProgression.TransientCountsAfter = 0\n" "documented with 0: TransientCountsAfter")
 require_text("${config_cpp}" "\"AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute\", 10)" "cross-map level default untouched (owner profile value 61 stays)")
 foreach(member "near" "far")
   forbid_text("${policy}" " ${member};" "member named ${member} (windows.h macro)")
