@@ -798,6 +798,8 @@ public:
     // reset of the grind-fallback counter, the route backoff and the search stage on rescue teleport, level-up,
     // login and battleground return; XP alone no longer resets the stage.
     bool questFirstProgressionResetOnProgressEvents = false;
+    // "parked twice -> abandon" for a structural reason that cannot heal by itself (no destination, other continent).
+    bool questFirstProgressionAbandonStructuralParked = false;
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
     bool directTargetsEnabled = false;
     bool directTargetsTraceInactive = false;

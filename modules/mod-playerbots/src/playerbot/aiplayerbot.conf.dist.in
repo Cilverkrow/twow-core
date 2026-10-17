@@ -1115,6 +1115,12 @@ AiPlayerbot.QuestFirstProgression.FailureClasses = 0
 # events=rescue,level_up,login,bg_return). XP gain alone no longer resets the quest search stage (it still counts
 # as progress for the QuestRescue.IdleMinutes clock, so a grinding bot is not rescued as idle).
 AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
+# AbandonStructuralParked = 1 (acts only with FailureClasses = 1 and TurnInParkFailures > 0): a finished quest
+# parked twice in a row for a structural reason that does not heal by itself - no taker destination (no spawn,
+# script-only game object, excluded zone) or a taker on the other continent below MinLevelForCrossMapQuestRoute -
+# is abandoned ([QuestAbandon] quest= reason= bot=). A zone clearly above the bot is never a reason (levels heal
+# it), any other park in between starts the count again, and class quests are kept. 0 = the quest stays parked.
+AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
