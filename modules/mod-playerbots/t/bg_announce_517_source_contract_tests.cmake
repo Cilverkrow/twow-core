@@ -575,7 +575,12 @@ region("${policy_h}" "inline std::string AnnounceLevelRange(" "\n}\n" level_rang
 require_text("${text_fits}" "if (text.empty() || text.size() > MaxAnnounceLineBytes)\n        return false;" "an announcement text within 255 bytes")
 require_text("${text_fits}" "if (u < 0x20 || u > 0x7E)\n            return false;" "an announcement text in printable ASCII")
 require_text("${expand_text}" "if (hasLvl && range.empty())\n        return std::string();" "a %lvl line without a range is not said")
-require_text("${expand_text}" "bool const addRange = showRange && !hasLvl && !range.empty() && plain.find(range) == std::string::npos;" "the switch adds the range once, never next to %lvl")
+require_text("${expand_text}" "bool const addRange = showRange && !hasLvl && !range.empty() && !HoldsLevelRange(plain, range);" "the switch adds the range once, never next to %lvl")
+# Review c8: a line names the range only as a number of its own (no digit on either side), and an empty line stays empty.
+region("${policy_h}" "inline bool HoldsLevelRange(" "\n}\n" holds_range)
+require_text("${holds_range}" "bool const digitBefore = at && text[at - 1] >= '0' && text[at - 1] <= '9';\n        bool const digitAfter = end < text.size() && text[end] >= '0' && text[end] <= '9';\n        if (!digitBefore && !digitAfter)\n            return true;" "the range named only with no digit next to it")
+require_text("${holds_range}" "for (size_t at = text.find(range); at != std::string::npos; at = text.find(range, at + 1))" "every place the range text occurs")
+require_text("${expand_text}" "{\n    if (line.empty())\n        return std::string();\n    bool const hasLvl" "an empty line is not said, with the switch too")
 require_text("${expand_text}" "if (!hasLvl && !addRange)\n        return AnnounceTextFits(plain) ? plain : std::string();" "switch off and no %lvl: today's text")
 require_text("${expand_text}" "std::string const plain = ExpandAnnounceLine(line, bgName);" "today's text from today's expansion")
 require_text("${expand_text}" "if (line.compare(i, 4, \"%lvl\") == 0)\n        {\n            out += range;" "every %lvl is the range")
