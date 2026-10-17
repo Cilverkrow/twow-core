@@ -711,6 +711,15 @@ void PlayerbotAI::UpdateBotSave()
     lastBotSave = now;
 }
 
+// twow-repo#517 stage a: called by RandomPlayerbotMgr (world thread, the bot's map idle) once a fill bot is out of its
+// battleground. The quest-idle watch kept counting during the match; without this a long battleground would hand the
+// bot straight to the rescue teleport.
+void PlayerbotAI::OnReturnFromBattleground(uint32 now)
+{
+    aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
+    questProgress.lastChange = now;
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
