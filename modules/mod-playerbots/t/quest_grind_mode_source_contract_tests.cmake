@@ -207,7 +207,9 @@ forbid_text("${attacker_loop}" "noGrind" "the attacker loop gated")
 require_order("${grind_target}" "needForQuestCache[entry] = needForQuest;" "if (!ai::quest_grind_mode::TargetAllowed(noGrind, false, needForQuest))" "the filter uses the loop's own quest test")
 require_order("${grind_target}" "if (!ai::quest_grind_mode::TargetAllowed(noGrind, false, needForQuest))" "if (urand(0, 100) < 20 && travelTargetWorking && !isGrindTravelDest)" "before any urand of the candidate")
 require_text("${grind_target}" "            logGrind(unit, \"ignored (GrindMode 2: not needed for a quest).\");\n            continue;" "a non-quest candidate is skipped")
-require_text("${grind_target}" "if (!result && noGrindSkipped && !assistCount)\n        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking || travelTargetTraveling))," "reason opportunistic / no_target once per pass")
+# Review fix (F3): not while the bot is only on its way (the value runs before the action's "traveling -> no attack" test).
+require_text("${grind_target}" "if (!result && noGrindSkipped && !assistCount &&\n        ai::quest_grind_mode::TargetNoteDue(travelTargetWorking, travelTargetTraveling))\n        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking))," "reason opportunistic / no_target once per pass, silent on the way")
+require_text("${policy}" "inline bool TargetNoteDue(bool travelTargetWorking, bool travelTargetTraveling)\n{\n    return travelTargetWorking || !travelTargetTraveling;\n}" "traveling alone is not counted")
 require_text("${policy}" "inline bool TargetAllowed(bool noGrind, bool attacker, bool neededForQuest)\n{\n    return !noGrind || attacker || neededForQuest;\n}" "target rule")
 require_text("${policy}" "return travelTargetActive ? Reason::Opportunistic : Reason::NoTarget;" "opportunistic on the way, no_target idle")
 

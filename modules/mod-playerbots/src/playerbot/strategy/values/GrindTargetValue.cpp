@@ -376,10 +376,12 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
     }
 
     // twow-repo#601 GrindMode 2: nothing left after the skips above - the bot stands idle, [QuestIdle] (once per pass:
-    // only the first assist round counts). On the way somewhere = opportunistic, otherwise the grind strategy's
-    // "no target" kill.
-    if (!result && noGrindSkipped && !assistCount)
-        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking || travelTargetTraveling)),
+    // only the first assist round counts). At the destination = opportunistic, without a travel target the grind
+    // strategy's "no target" kill. A bot still on its way is not counted (review fix): AttackAnythingAction asks for this
+    // value before its "traveling -> no attack" test, so that bot is questing, not idle.
+    if (!result && noGrindSkipped && !assistCount &&
+        ai::quest_grind_mode::TargetNoteDue(travelTargetWorking, travelTargetTraveling))
+        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking)),
             ai::quest_grind_mode::TargetText("grind_target", noGrindEntry));
 
     return result;
