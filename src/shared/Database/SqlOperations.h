@@ -135,8 +135,15 @@ class SqlResultQueue : public LockedQueue<MaNGOS::IQueryCallback* , std::mutex>
         // twow-repo#597 (TICK-01, PerformanceLog.SlowResultCallbackMs): one [ResultsSlow] line per callback
         // at or above the threshold (0 = off, default), at most 20 a minute. Set from the world config.
         static void SetSlowCallbackMs(uint32 ms);
+        // twow-repo#597 (TICK-01, AsyncQueries.UnsafeBudgetMs): time budget of the thread-unsafe callbacks of
+        // one Update (0 = none, default). Checked before each unsafe callback; the first one always runs, the
+        // rest stay queued in order for the next tick. Set from the world config.
+        static void SetUnsafeBudgetMs(uint32 ms);
+        // The [UnsafeBudget] minute line (world thread): takes the counters, writes the line when log is true.
+        static void ReportUnsafeBudget(bool log);
     private:
         static std::atomic<uint32> s_slowCallbackMs;
+        static std::atomic<uint32> s_unsafeBudgetMs;
 };
 
 class SqlQuery : public SqlOperation

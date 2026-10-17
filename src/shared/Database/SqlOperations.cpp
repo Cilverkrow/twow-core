@@ -26,6 +26,7 @@
 #include "Timer.h"
 #include "ThreadPool.h"
 #include "TickDiagPolicy.h"  // twow-repo#597 (TICK-01): [ResultsSlow]
+#include "UnsafeBudgetPolicy.h"  // twow-repo#597 (TICK-01): AsyncQueries.UnsafeBudgetMs
 
 #include <mutex>
 #include <typeinfo>
@@ -146,6 +147,30 @@ void SqlResultQueue::SetSlowCallbackMs(uint32 ms)
     s_slowCallbackMs.store(ms, std::memory_order_relaxed);
 }
 
+// twow-repo#597 (TICK-01, AsyncQueries.UnsafeBudgetMs): budget handed over by World::LoadConfigSettings
+// (0 = none), counters of all result queues for the [UnsafeBudget] minute line.
+std::atomic<uint32> SqlResultQueue::s_unsafeBudgetMs{0};
+
+namespace
+{
+unsafe_budget::Counters s_unsafeBudgetCounters;  // fixed size, written only while the budget is on
+}
+
+void SqlResultQueue::SetUnsafeBudgetMs(uint32 ms)
+{
+    s_unsafeBudgetMs.store(ms, std::memory_order_relaxed);
+}
+
+void SqlResultQueue::ReportUnsafeBudget(bool log)
+{
+    unsafe_budget::Snapshot const s = s_unsafeBudgetCounters.Take();
+    if (!log)
+        return;
+    char line[160];
+    if (unsafe_budget::FormatLine(line, sizeof(line), s))
+        sLog.out(LOG_PERFORMANCE, "%s", line);
+}
+
 void SqlResultQueue::Update(uint32 timeout)
 {
     uint32 begin = WorldTimer::getMSTime();
@@ -176,19 +201,40 @@ void SqlResultQueue::Update(uint32 timeout)
         }
     }
     std::future<void> job = m_callbackThreads->processWorkload();
+    // twow-repo#597 (TICK-01, AsyncQueries.UnsafeBudgetMs): latched for this pass; 0 = no budget, no clock read.
+    // Only the unsafe loop below is budgeted (thread-safe callbacks run on the callback pool above).
+    uint32 const budgetMs = s_unsafeBudgetMs.load(std::memory_order_relaxed);
+    uint32 unsafeRan = 0;        // unsafe callbacks run in this pass
+    uint64 unsafeStartUs = 0;    // budget on: taken when the first unsafe callback of the pass starts
+    bool budgetCapped = false;
     MaNGOS::IQueryCallback* s = NULL;
-    while (_threadUnsafeWaitingQueries.next(s))
+    for (;;)
     {
+        // twow-repo#597 (AsyncQueries.UnsafeBudgetMs): checked BEFORE the next callback is taken off the queue,
+        // so a stop leaves it at the front and the order stays; the first one of a pass always runs (progress).
+        if (budgetMs && unsafeRan && numUnsafeQueries &&
+            unsafe_budget::StopBefore(budgetMs, unsafeRan, tick_diag::NowUs() - unsafeStartUs))
+        {
+            budgetCapped = true;
+            break;
+        }
+        if (!_threadUnsafeWaitingQueries.next(s))
+            break;
+        if (budgetMs && !unsafeRan)
+            unsafeStartUs = tick_diag::NowUs();
         uint64 const startUs = slowMs ? tick_diag::NowUs() : 0;  // twow-repo#597 ([ResultsSlow])
         char const* const typeName = slowMs ? typeid(*s).name() : nullptr;
         s->Execute();
         delete s;
         --numUnsafeQueries;
+        ++unsafeRan;
         if (slowMs)
             ReportSlowCallback(tick_diag::NowUs() - startUs, true, typeName, numUnsafeQueries, slowMs);
         if (timeout && WorldTimer::getMSTimeDiffToNow(begin) > timeout)
             break;
     }
+    if (budgetMs && unsafeRan)  // twow-repo#597: [UnsafeBudget] counters, only with the budget
+        s_unsafeBudgetCounters.Record(unsafeRan, budgetCapped, numUnsafeQueries, tick_diag::NowUs() - unsafeStartUs);
 
     if (numUnsafeQueries > 1000) // Bottleneck here
         sLog.out(LOG_PERFORMANCE, "Database: %u unsafe queries remaining!", numUnsafeQueries);
