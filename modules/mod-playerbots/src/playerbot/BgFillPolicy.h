@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace ai::bgfill
@@ -314,5 +315,346 @@ inline uint32_t BotOnlyDrainSide(uint32_t botsA, uint32_t botsH, bool mayLeaveA,
     if (h)
         return 1;
     return NoDrainSide;
+}
+
+// twow-repo#517 stage c (AiPlayerbot.BG.Announce, owner contract and decision C0 16.10.): bots play battlegrounds by
+// themselves, but only announced - 2/3/5 otherwise silent bots say one role-play line each in the World channel (or a
+// server message goes out), DelaySeconds later both sides queue the template minimum. At most MaxBotBGPerBracket of
+// these bot-own battlegrounds per level range, MaxConcurrent stays the global cap. Bots in a battleground without a real
+// player get honor x BotOnlyHonorRate.
+
+// AiPlayerbot.BG.BotOnlyHonorRate: the owner wants a reduction only. A rate <= 0 or above 1 (and NaN, where every
+// comparison is false) counts as 1 - fail closed, honor unchanged.
+inline float BotOnlyHonorRate(float cfgRate)
+{
+    return cfgRate > 0.0f && cfgRate <= 1.0f ? cfgRate : 1.0f;
+}
+
+// The listener does any work only while the clamped rate really reduces.
+inline bool HonorRateActive(float cfgRate)
+{
+    return BotOnlyHonorRate(cfgRate) < 1.0f;
+}
+
+inline float ScaleBotOnlyHonor(float cp, float cfgRate)
+{
+    return cp * BotOnlyHonorRate(cfgRate);
+}
+
+// AiPlayerbot.BG.MaxBotBGPerBracket: 0 = this default (owner C0: one bot-own battleground per level range for a start).
+constexpr uint32_t DefaultMaxBotBGPerBracket = 1;
+
+inline uint32_t MaxOwnPerBand(uint32_t cfgMax)
+{
+    return cfgMax ? cfgMax : DefaultMaxBotBGPerBracket;
+}
+
+// Another bot-own battleground may form in a level range that holds ownInBand running or forming ones (any type).
+inline bool OwnBandAllows(uint32_t ownInBand, uint32_t cfgMax)
+{
+    return ownInBand < MaxOwnPerBand(cfgMax);
+}
+
+// Level ranges a band index can name (levels up to 159); higher ones share the last.
+constexpr uint32_t MaxLevelBands = 16;
+
+// The level range (band) a battleground bracket covers, the same for every type: brackets count from each battleground's
+// own minimum level (Player::GetBattleGroundBracketIdFromLevel - minLevel 0 keeps bracket 0 for level 1 alone and shifts
+// the others by one), so WSG bracket 4 (50-59) and AV bracket 0 (51-60) are different indexes for overlapping levels. The
+// band is the bracket's highest level, capped at the battleground's maximum level (0 = none), divided by ten: WSG 60-69
+// and AB 60-69 with maximum 60 and AV 51-60 all are band 6, WSG/AB 50-59 band 5.
+inline uint32_t LevelBand(uint32_t minLevel, uint32_t maxLevel, uint32_t bracket)
+{
+    uint32_t high;
+    if (minLevel)
+        high = minLevel + bracket * 10 + 9;
+    else
+        high = bracket ? bracket * 10 - 1 : 1;
+    if (maxLevel && high > maxLevel)
+        high = maxLevel;
+    uint32_t const band = high / 10;
+    return band < MaxLevelBands ? band : MaxLevelBands - 1;
+}
+
+// Announcers per announcement by battleground size (owner: "2-5 depending on battleground size"); 0 = no bot-own match
+// of that type (BR is excluded, OB-00 D4; SV only after stage d).
+inline uint32_t AnnouncerCount(uint32_t queueType)
+{
+    switch (queueType)
+    {
+        case QueueWS: return 2;
+        case QueueAB: return 3;
+        case QueueAV: return 5;
+        default: return 0;
+    }
+}
+
+// The due-queue of announcement lines holds at most this many entries (the largest AnnouncerCount): one announcement.
+constexpr uint32_t MaxAnnounceDue = 5;
+
+// AiPlayerbot.BG.Announce.IntervalMinutes: 0 = no bot-own battlegrounds; at most one day.
+constexpr uint32_t MaxAnnounceIntervalMinutes = 1440;
+
+inline uint32_t AnnounceIntervalMs(uint32_t cfgMinutes)
+{
+    uint32_t const minutes = cfgMinutes < MaxAnnounceIntervalMinutes ? cfgMinutes : MaxAnnounceIntervalMinutes;
+    return minutes * 60 * 1000;
+}
+
+// One planner try per interval; interval 0 is never due (fail closed). last = 0 (never tried) is due at once; the
+// unsigned difference keeps a wrapped millisecond clock correct.
+inline bool PlannerDue(uint32_t now, uint32_t last, uint32_t interval)
+{
+    return interval && (!last || now - last >= interval);
+}
+
+// AiPlayerbot.BG.Announce.DelaySeconds: announcement to queue join, so real players can queue too. 0 = 60, minimum 20
+// (every staggered line is out before the join), maximum MaxStageBSeconds.
+constexpr uint32_t DefaultAnnounceDelaySeconds = 60;
+constexpr uint32_t MinAnnounceDelaySeconds = 20;
+
+inline uint32_t AnnounceDelayMs(uint32_t cfgSeconds)
+{
+    return ClampSeconds(cfgSeconds, DefaultAnnounceDelaySeconds, MinAnnounceDelaySeconds) * 1000;
+}
+
+// AiPlayerbot.BG.Announce.BotCooldownMinutes: one bot announces at most once per cooldown. 0 = 60, at most one day.
+constexpr uint32_t DefaultAnnounceCooldownMinutes = 60;
+
+inline uint32_t AnnounceCooldownMs(uint32_t cfgMinutes)
+{
+    uint32_t minutes = cfgMinutes ? cfgMinutes : DefaultAnnounceCooldownMinutes;
+    if (minutes > MaxAnnounceIntervalMinutes)
+        minutes = MaxAnnounceIntervalMinutes;
+    return minutes * 60 * 1000;
+}
+
+// The announcers' lines are staggered 2-15 s after the announcement, all before the earliest join (MinAnnounceDelaySeconds).
+constexpr uint32_t AnnounceStaggerMinMs = 2000;
+constexpr uint32_t AnnounceStaggerMaxMs = 15000;
+
+// AiPlayerbot.BG.Announce.Mode: 0 chat (default), 1 server message, 2 chat with the server message as fallback when no
+// announcer qualifies. Any other value is chat.
+constexpr uint32_t AnnounceModeChat = 0;
+constexpr uint32_t AnnounceModeServer = 1;
+constexpr uint32_t AnnounceModeFallback = 2;
+
+inline uint32_t AnnounceMode(uint32_t cfgMode)
+{
+    return cfgMode <= AnnounceModeFallback ? cfgMode : AnnounceModeChat;
+}
+
+// Server message instead of chat: mode 1, or mode 2 with no qualifying announcer.
+inline bool AnnounceUsesServer(uint32_t mode, uint32_t announcers)
+{
+    return mode == AnnounceModeServer || (mode == AnnounceModeFallback && !announcers);
+}
+
+// AiPlayerbot.BG.Announce.MaxPerHour: hard cap on announcement lines (chat lines and server lines) per hour window.
+// 0 = no line at all (fail closed); then no bot-own battleground starts either.
+constexpr uint32_t AnnounceHourMs = 3600 * 1000;
+
+inline uint32_t AnnounceLinesAllowed(uint32_t usedThisHour, uint32_t maxPerHour, uint32_t wanted)
+{
+    if (!maxPerHour || usedThisHour >= maxPerHour)
+        return 0;
+    uint32_t const left = maxPerHour - usedThisHour;
+    return wanted < left ? wanted : left;
+}
+
+// The hour window of MaxPerHour starts again (unsigned difference: a wrapped clock stays correct).
+inline bool AnnounceHourOver(uint32_t now, uint32_t hourStart)
+{
+    return !hourStart || now - hourStart >= AnnounceHourMs;
+}
+
+// The type of the next bot-own battleground: of the possible ones (in the caller's fixed order), one never started
+// first, else the one started longest ago - the last started type goes last. lastTypes holds the started types,
+// oldest first. 0 = none possible.
+inline uint32_t PickOwnType(std::vector<uint32_t> const& lastTypes, std::vector<uint32_t> const& possible)
+{
+    uint32_t best = 0;
+    int64_t bestAt = 0;
+    for (uint32_t type : possible)
+    {
+        int64_t at = -1;
+        for (size_t i = 0; i < lastTypes.size(); ++i)
+        {
+            if (lastTypes[i] == type)
+                at = int64_t(i);
+        }
+        if (!best || at < bestAt)
+        {
+            best = type;
+            bestAt = at;
+        }
+    }
+    return best;
+}
+
+// The planner's rotation remembers this many started types.
+constexpr uint32_t OwnTypeHistory = 3;
+
+// Free roster bots the planner's candidate loop visits at most per try (C2: a hard cap per interval).
+constexpr uint32_t OwnCandidateVisitMax = 2000;
+
+// Announcement text (D3): English, role-play, per faction. A pool is lines separated by '|', %bg is the full
+// battleground name. A line outside printable ASCII, or longer than MaxAnnounceLineBytes with the longest name put in,
+// is dropped at load; at most MaxAnnouncePoolLines per key.
+constexpr uint32_t MaxAnnounceLineBytes = 255;
+constexpr uint32_t MaxAnnouncePoolLines = 64;
+
+inline char const* BgFullName(uint32_t queueType)
+{
+    switch (queueType)
+    {
+        case QueueWS: return "Warsong Gulch";
+        case QueueAB: return "Arathi Basin";
+        case QueueAV: return "Alterac Valley";
+        default: return "";
+    }
+}
+
+constexpr char const* LongestBgName = "Alterac Valley";
+
+// Every %bg replaced by the name.
+inline std::string ExpandAnnounceLine(std::string const& line, std::string const& bgName)
+{
+    std::string out;
+    out.reserve(line.size() + bgName.size());
+    for (size_t i = 0; i < line.size();)
+    {
+        if (line.compare(i, 3, "%bg") == 0)
+        {
+            out += bgName;
+            i += 3;
+        }
+        else
+            out += line[i++];
+    }
+    return out;
+}
+
+// Printable ASCII only (no control bytes, no UTF-8), not empty, and short enough with the longest name put in.
+inline bool AnnounceLineValid(std::string const& line)
+{
+    if (line.empty())
+        return false;
+    for (char c : line)
+    {
+        unsigned char const u = static_cast<unsigned char>(c);
+        if (u < 0x20 || u > 0x7E)
+            return false;
+    }
+    return ExpandAnnounceLine(line, LongestBgName).size() <= MaxAnnounceLineBytes;
+}
+
+// '|'-separated pool to lines: blanks and tabs around a line trimmed, empty lines skipped, invalid ones (and those beyond
+// MaxAnnouncePoolLines) dropped and counted.
+inline std::vector<std::string> ParseAnnouncePool(std::string const& text, uint32_t& dropped)
+{
+    std::vector<std::string> lines;
+    dropped = 0;
+    size_t start = 0;
+    while (start <= text.size())
+    {
+        size_t end = text.find('|', start);
+        if (end == std::string::npos)
+            end = text.size();
+        size_t first = start;
+        size_t last = end;
+        while (first < last && (text[first] == ' ' || text[first] == '\t'))
+            ++first;
+        while (last > first && (text[last - 1] == ' ' || text[last - 1] == '\t'))
+            --last;
+        if (last > first)
+        {
+            std::string const line = text.substr(first, last - first);
+            if (!AnnounceLineValid(line) || lines.size() >= MaxAnnouncePoolLines)
+                ++dropped;
+            else
+                lines.push_back(line);
+        }
+        start = end + 1;
+    }
+    return lines;
+}
+
+// The built-in pools (owner D3 style, his three examples included: the first generic line of each faction gives his
+// WSG and AB lines for those battlegrounds, "Stormpike needs you, to Alterac!" is Alliance AV). team 0 alliance, 1 horde;
+// queueType 0 = the generic pool, else that battleground's own lines.
+inline std::string BuiltInAnnouncePool(uint32_t team, uint32_t queueType)
+{
+    if (!team)
+    {
+        switch (queueType)
+        {
+            case 0:
+                return "For the Alliance! Join us in %bg!|"
+                    "Brothers and sisters of the Alliance, %bg awaits. Who rides with me?|"
+                    "The Horde will not hold %bg for long. To arms, Alliance!|"
+                    "Stand with me in %bg, for Stormwind and Ironforge!|"
+                    "Light guide our blades! We march on %bg.|"
+                    "Alliance, sharpen your steel. %bg needs heroes!";
+            case QueueWS:
+                return "Silverwing Sentinels, the Warsong raiders are at our gates!|"
+                    "Bring their flag home, Sentinels! To Warsong Gulch!";
+            case QueueAB:
+                return "The League of Arathor calls! Hold the farm, hold the mill, hold Arathi Basin!|"
+                    "For Arathor! Take back the basin!";
+            case QueueAV:
+                return "Stormpike needs you, to Alterac!|"
+                    "Dun Baldar stands! Who answers the Stormpike call?";
+            default:
+                return "";
+        }
+    }
+    switch (queueType)
+    {
+        case 0:
+            return "Lok'tar! The Horde gathers at %bg, who stands with us?|"
+                "Blood and thunder! %bg calls, Horde!|"
+                "For the Horde! The Alliance will fall in %bg.|"
+                "Strength and honor! Who marches with me to %bg?|"
+                "Throm-Ka, warriors! The Horde fights in %bg today.|"
+                "Rally, Horde! %bg will be ours!";
+        case QueueWS:
+            return "Warsong Outriders, the night elves guard their flag. Take it!|"
+                "Grom's warriors, to Warsong Gulch! Bring me their flag!";
+        case QueueAB:
+            return "The Defilers march on Arathi Basin! Who joins the hunt?|"
+                "Defilers, the basin is ripe for the taking!";
+        case QueueAV:
+            return "Frostwolf clan, to arms! Alterac Valley is ours!|"
+                "For Drek'Thar! The Frostwolves ride to Alterac!";
+        default:
+            return "";
+    }
+}
+
+// count distinct line indexes out of poolSize (fewer when the pool is smaller): a partial Fisher-Yates shuffle driven by
+// the caller's random rolls (a missing roll counts as 0), so the same line is never said twice in one announcement.
+inline std::vector<uint32_t> PickLineIndexes(uint32_t poolSize, uint32_t count, std::vector<uint32_t> const& rolls)
+{
+    std::vector<uint32_t> idx(poolSize);
+    for (uint32_t i = 0; i < poolSize; ++i)
+        idx[i] = i;
+    uint32_t const n = count < poolSize ? count : poolSize;
+    for (uint32_t i = 0; i < n; ++i)
+    {
+        uint32_t const roll = i < rolls.size() ? rolls[i] : 0;
+        uint32_t const j = i + roll % (poolSize - i);
+        uint32_t const tmp = idx[i];
+        idx[i] = idx[j];
+        idx[j] = tmp;
+    }
+    idx.resize(n);
+    return idx;
+}
+
+// Announcer i of an announcement: alternating sides, starting with firstTeam.
+inline uint32_t AnnouncerTeam(uint32_t i, uint32_t firstTeam)
+{
+    return (firstTeam + i) % 2;
 }
 }
