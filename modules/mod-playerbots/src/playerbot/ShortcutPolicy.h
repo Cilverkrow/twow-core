@@ -97,6 +97,7 @@ inline bool BuildDue(std::uint64_t lastBuildMs, std::uint64_t nowMs)
 //   an entry within the radius (2D)          -> Near
 //   scope 2 and an entry in the same zone    -> Near
 //   scope 2 and a zone 0 on either side      -> Unknown (unless another entry decides Near)
+//   an entry on the map with radius <= 0     -> Unknown (unless another entry decides Near)
 template <class ZoneOf>
 Near Evaluate(Snapshot const* snapshot, std::uint64_t nowMs, std::uint32_t scope, float configuredRadius,
     std::uint32_t map, float x, float y, ZoneOf zoneOf)
@@ -119,7 +120,9 @@ Near Evaluate(Snapshot const* snapshot, std::uint64_t nowMs, std::uint32_t scope
         float const radius = Radius(configuredRadius, entry.defaultRadius);
         float const dx = entry.x - x;
         float const dy = entry.y - y;
-        if (radius > 0.0f && dx * dx + dy * dy <= radius * radius)
+        if (radius <= 0.0f)
+            undecided = true;   // no usable radius (visibility and react distance 0): fail closed, never NotNear
+        else if (dx * dx + dy * dy <= radius * radius)
             return Near::Near;
 
         if (scope == ScopeZoneOrRadius)

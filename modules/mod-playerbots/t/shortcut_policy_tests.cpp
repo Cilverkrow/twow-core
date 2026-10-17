@@ -124,11 +124,20 @@ int main()
     Require(Evaluate(&twoOnMap, now, ScopeZoneOrRadius, 0.0f, 0, 3000.0f, 0.0f, elwynn) == Near::Near,
         "another entry in the same zone decides near despite a zone 0 entry");
 
-    // A zero radius never matches by distance.
+    // No usable radius (visibility and react distance 0): fail closed, never NotNear.
     Snapshot noRadius;
     noRadius.builtAtMs = now;
     noRadius.entries.push_back(MakeEntry(0, 12, 0.0f, 0.0f, 0.0f));
-    Require(Evaluate(&noRadius, now, ScopeRadius, 0.0f, 0, 0.0f, 0.0f, elwynn) == Near::NotNear, "radius 0: distance never decides");
+    Require(Evaluate(&noRadius, now, ScopeRadius, 0.0f, 0, 0.0f, 0.0f, elwynn) == Near::Unknown,
+        "negative: radius 0, scope 1, player on the spot: unknown, not not-near");
+    Require(Evaluate(&noRadius, now, ScopeZoneOrRadius, 0.0f, 0, 3000.0f, 0.0f, westfall) == Near::Unknown,
+        "negative: radius 0, scope 2, other zone: unknown");
+    Require(Evaluate(&noRadius, now, ScopeZoneOrRadius, 0.0f, 0, 3000.0f, 0.0f, elwynn) == Near::Near,
+        "radius 0, scope 2, same zone: near");
+    Require(Evaluate(&noRadius, now, ScopeRadius, 50.0f, 0, 10.0f, 0.0f, elwynn) == Near::Near,
+        "a configured radius replaces the 0 default");
+    Require(Evaluate(&noRadius, now, ScopeRadius, 0.0f, 1, 0.0f, 0.0f, elwynn) == Near::NotNear,
+        "radius 0 but no entry on that map: not near");
 
     // Watchers are plain entries.
     Snapshot watched;
