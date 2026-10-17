@@ -180,10 +180,12 @@ AiPlayerbot.BG.Announce.MaxPerHour = 0
 # name (Warsong Gulch, Arathi Basin, Alterac Valley). Announce.Text.<faction>.WSG / .AB / .AV: lines for that
 # battleground only, merged with the generic ones. Each key empty = its built-in pool (English, role-play, with lines
 # like "For the Alliance! Join us in %bg!", "Lok'tar! The Horde gathers at %bg, who stands with us?" and, for Alliance AV,
-# "Stormpike needs you, to Alterac!"). Printable ASCII only; a line with other characters, or longer than 255 bytes with
-# the battleground name put in, is dropped at startup with a warning ([BGAnnounceCfg] state=pool_drop); a key left with
-# no line at all falls back to its built-in pool. At most 64 lines per key. A line in both the generic and the
-# battleground key counts once; the same line is never said twice in one announcement.
+# "Stormpike needs you, to Alterac!"). %lvl is the level range of the announced bracket (see Announce.ShowLevelRange),
+# put in whatever ShowLevelRange says. Printable ASCII only; a line with other characters, or longer than 255 bytes with
+# the battleground name and the level range put in (a %lvl counts as 7 bytes, 999-999), is dropped at startup with a
+# warning ([BGAnnounceCfg] state=pool_drop); a key left with no line at all falls back to its built-in pool. At most 64
+# lines per key. A line in both the generic and the battleground key counts once; the same line is never said twice in
+# one announcement.
 AiPlayerbot.BG.Announce.Text.Alliance = ""
 AiPlayerbot.BG.Announce.Text.Horde = ""
 AiPlayerbot.BG.Announce.Text.Alliance.WSG = ""
@@ -192,6 +194,15 @@ AiPlayerbot.BG.Announce.Text.Alliance.AV = ""
 AiPlayerbot.BG.Announce.Text.Horde.WSG = ""
 AiPlayerbot.BG.Announce.Text.Horde.AB = ""
 AiPlayerbot.BG.Announce.Text.Horde.AV = ""
+# Announce.ShowLevelRange (owner 17.10.): 1 = every announcement line, chat and server message alike, names the level
+# range of the announced bracket as "lo-hi": the levels the core forms that bracket's match with, the top capped at the
+# battleground's maximum level (51-60 for Alterac Valley; 50-59, or 60-60 for level 60, for Warsong Gulch and Arathi
+# Basin). The range goes right after the first %bg ("For the Alliance! Join us in Warsong Gulch (50-59)!"), in a line
+# without %bg before the closing ! ? . at its end ("Stormpike needs you, to Alterac (51-60)!") or else at its end, and
+# never twice: a line with %lvl, or one that already names the range, gets nothing added. A line the range would push
+# beyond 255 bytes goes out without it. The built-in lines stay as they are; this switch adds the range to them. The
+# live owner value is 1. 0 = the lines as today (default); a %lvl in a line is put in either way.
+AiPlayerbot.BG.Announce.ShowLevelRange = 0
 # twow-repo#541/#551 (console rndbot park / unpark): 1 = a parked bot is not visible to other bots and
 # sees only real players and units fighting it (core Player flag, real players see it as always).
 # Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).

@@ -257,6 +257,7 @@ public:
     uint32 bgAnnounceDelaySeconds = 0;       // 0 = 60 s, minimum 20 s (ai::bgfill::AnnounceDelayMs)
     uint32 bgAnnounceBotCooldownMinutes = 0; // 0 = 60 min (ai::bgfill::AnnounceCooldownMs)
     uint32 bgAnnounceMaxPerHour = 0;         // 0 = no announcement line at all (fail closed)
+    bool bgAnnounceShowLevelRange = false;   // owner Q2: each line names the bracket's level range (ai::bgfill::ExpandAnnounceText)
     // Parsed text pools [team: 0 alliance, 1 horde][0 = generic, else the queue type: 1 AV, 2 WSG, 3 AB]; an empty key
     // takes the built-in pool (ai::bgfill::BuiltInAnnouncePool).
     std::vector<std::string> bgAnnounceText[2][4];
