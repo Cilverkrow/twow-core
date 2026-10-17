@@ -15,6 +15,7 @@
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "Guild/GuildMgr.h"
@@ -775,6 +776,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.
         if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)
             SET_AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue, 0);
+        // twow-repo#601 GrindMode 2: a quest target ends the idle episode - the next idle reason gets its line again.
+        if (ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))
+            ai->ClearQuestIdle();
 
         // #421 B: the widened search found something.
         int const stage = AI_VALUE2(int, "manual int", "quest search stage");
@@ -793,6 +797,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     }
     else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot))
     {
+        // twow-repo#601 GrindMode 2 (owner 17.10.2026): a pure grind fetch is never taken as the travel target (the
+        // request is already refused; this catches a fetch that was under way). The bot stands idle, [QuestIdle].
+        if (ai->IsQuestNoGrind())
+        {
+            int32 const grindEntry = newTarget.GetEntry();
+            ai->NoteQuestIdle(uint8(ai::quest_grind_mode::RequestReason(ai::quest_grind_mode::IsMoneyCondition(
+                AI_VALUE2(std::string, "manual string", "future travel condition")))),
+                ai::quest_grind_mode::TargetText("grind_destination", grindEntry > 0 ? uint32(grindEntry) : 0u));
+            return false;
+        }
         // Hotfix 8.32 (twow-repo#544): a quest-first bot grinds after empty quest route searches.
         sLog.outBasic("[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d distance=%.0f",
             bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"), newTarget.Distance(bot));
@@ -1819,6 +1833,16 @@ bool RequestTravelTargetAction::isUseful() {
 
     if (!AI_VALUE(bool, "can move around"))
         return false;
+
+    // twow-repo#601 GrindMode 2 (owner 17.10.2026): no pure grind fetch for a quest-first roster bot on its own - neither
+    // the money grind ("val::should get money", 6.77, also with GrindFallbackFailures 0) nor the plain grind request
+    // (6.35; its need-travel-purpose value is already false). Before isAllowed, so the skip chance draws as before.
+    if (ai->IsQuestNoGrind() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))
+    {
+        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::RequestReason(AI_VALUE(bool, "should get money"))),
+            ai::quest_grind_mode::TargetText("request_travel_grind", 0));
+        return false;
+    }
 
     if (!isAllowed())
     {

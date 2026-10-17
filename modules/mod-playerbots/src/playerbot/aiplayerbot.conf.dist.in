@@ -1132,6 +1132,19 @@ AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
 # again (no trip to its giver, no accept) while the bot is on its own - at most 8 such quests per bot, forgotten at
 # re-login. 0 = the quest stays parked.
 AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
+# twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
+# stand around than grind, so it shows). Restart-only.
+#   0 = today's behaviour (default).
+#   1 = RESERVED for the gap filler of stages S2/S4; until then exactly like 0.
+#   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
+#       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
+#       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a
+#       creature that neither attacks the bot or its group nor is needed for an active quest. The bot stands idle and
+#       logs why: [QuestIdle] reason=fallback|money|opportunistic|no_target bot= level= zone= target= when its reason
+#       changes, and [QuestIdle] minute fallback= money= opportunistic= no_target= once a minute. Fights against
+#       attackers (self-defence, group help), quest objective kills, GenericRpg, Explore, gathering and RosterGuild
+#       travel stay. Other values act like 0.
+AiPlayerbot.QuestFirstProgression.GrindMode = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots

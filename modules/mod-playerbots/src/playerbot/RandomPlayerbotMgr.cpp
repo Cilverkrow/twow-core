@@ -21,6 +21,7 @@
 #include "playerbot/BuffTargetPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -1253,6 +1254,20 @@ void ReportDirectTargets()
         sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str());
 }
 
+// twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode = 2): one "[QuestIdle] minute fallback= money=
+// opportunistic= no_target=" line per minute - the grind decisions turned down on the map threads since the last line
+// (atomics in PlayerbotAI.cpp). World thread only, same pattern as ReportDirectTargets. Nothing with GrindMode 0 / 1.
+void ReportQuestIdle()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    sLog.outBasic("%s", PlayerbotAI::TakeQuestIdleMinuteLine().c_str());
+}
+
 // twow-repo#592 (PATH-02): the bot side of pathfinding without a Unit, no switch - every counted case crashed before
 // #592 or does not happen with today's data. At most once a minute, and only while one of the rare counters is above 0
 // (until then no clock read): "[PathUnitlessBot] reject=bot_transport n=" (a map-mode PathFinder met a bot on a
@@ -1490,6 +1505,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportRouteTime();    // twow-repo#592 (PATH-02): [RouteTime] once per minute (AiPlayerbot.Perf.RouteTimeTrace)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
+    ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
     ReportPathUnitlessBot(); // twow-repo#592 (PATH-02): [PathUnitlessBot] at most once per minute, only with rare counts
 
 #ifdef MEMORY_MONITOR

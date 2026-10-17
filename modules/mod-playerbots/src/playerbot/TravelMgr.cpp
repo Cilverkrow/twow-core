@@ -6,6 +6,9 @@
 #include "playerbot/StartZonePolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
+#include <algorithm>
+#include <vector>
 #include <iomanip>
 
 #include "playerbot/strategy/values/SharedValueContext.h"
@@ -657,6 +660,17 @@ bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info)
 
     if (!IsPossible(info))
         return false;
+
+    // twow-repo#601 GrindMode 2 (owner 17.10.2026): the Grind bit of the shared entry purpose map (TravelValues.cpp,
+    // creatures that drop money) makes every such creature a grind destination. For a quest-first roster bot on its
+    // own only the ones needed for an active quest stay (quest objective mobs, e.g. the guild-order QuestReward
+    // objectives); a pure grind destination is not active. One sorted per-bot list, no value per creature.
+    if (ai->IsQuestNoGrind())
+    {
+        std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, "needed quest entries");
+        if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))
+            return false;
+    }
 
     return GuidPosition(bot).IsHostileTo(GuidPosition(HIGHGUID_UNIT, GetEntry()), bot->GetInstanceId());
 }
