@@ -65,15 +65,19 @@ int main()
         Require(d.failureClass == FailureClass::Structural, "cross_map only, turn-in-only: structural");
         Require(d.parkAllOffered && !d.parkTakerless, "cross_map only: park the offered turn-in");
         Require(std::strcmp(d.reason, "structural_cross_map") == 0, "reason cross map");
+        Require(d.abandonable, "cross map only: may end in an abandon");
         Require(CountsTowardGrind(d.failureClass), "structural counts here; the park resets the counter (fail closed)");
 
         RejectCounts zoneOnly;
         zoneOnly.zoneLevel = 1;
         Require(std::strcmp(Classify(true, zoneOnly, 2, 0).reason, "structural_zone_level") == 0, "reason zone level");
+        Require(!Classify(true, zoneOnly, 2, 0).abandonable, "zone level: never abandoned");
         RejectCounts both;
         both.zoneLevel = 1;
         both.crossMap = 1;
         Require(std::strcmp(Classify(true, both, 2, 0).reason, "structural_route") == 0, "reason mixed route danger");
+        Require(!Classify(true, both, 2, 0).abandonable, "mixed with zone level: never abandoned");
+        Require(!Classify(true, RejectCounts(), 1, 1).abandonable, "takerless only: the caller decides (no destination)");
     }
 
     // 3) Structural: no taker point for an offered turn-in (no spawn, script-only GO, excluded zone): the global

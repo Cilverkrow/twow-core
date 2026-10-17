@@ -74,6 +74,8 @@ struct Decision
     bool parkAllOffered = false;
     // The park reason for the offered turn-ins that had a taker point (parkAllOffered).
     char const* reason = "";
+    // Whether that reason may end in an abandon (AbandonStructuralParked): cross_map only, never a zone level.
+    bool abandonable = false;
 };
 
 // offeredTurnIns: the bot's own open turn-ins a turn-in-only request offered takers for (0: the request was not
@@ -98,6 +100,7 @@ inline Decision Classify(bool enabled, quest_search::RejectCounts const& rejects
     if (decision.parkAllOffered)
         decision.reason = !rejects.zoneLevel ? "structural_cross_map" : !rejects.crossMap ? "structural_zone_level" :
             "structural_route";
+    decision.abandonable = decision.parkAllOffered && !rejects.zoneLevel;
 
     if (transient)
         decision.failureClass = FailureClass::Transient;
@@ -206,6 +209,11 @@ inline void ListAdd(std::string& list, std::uint32_t questId)
         return;
     list += (list.empty() ? "" : ",") + std::to_string(questId);
 }
+
+// The "manual string" values of the taker pre-validation: the open turn-ins the last request checked, and the ones it
+// found routable (written per request by RequestQuestTravelTargetAction, read by the grind yield in TravelValues).
+constexpr char const* CheckedTurnInsValue = "quest turnin checked";
+constexpr char const* ValidatedTurnInsValue = "quest turnin validated";
 
 // The local quest hub filter: no random range skip while it holds the bot (a skip past the one eligible local
 // candidate leaves only hub-filtered partitions). enabled false = the old 10 % skip.

@@ -1336,6 +1336,33 @@ bool TravelTarget::IsTurnInOpen(uint32 questId) const
     return bot->CanRewardQuest(quest, false) && !IsTurnInParked(questId);
 }
 
+bool TravelTarget::ParkTurnInNow(uint32 questId, char const* reason, bool abandonable, bool& abandonDue)
+{
+    abandonDue = false;
+    // Same gates as NoteTurnInFailure: parking on, roster bots on their own, a finished quest not handed in yet.
+    if (!sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures || !questId || !bot)
+        return false;
+
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster())
+        return false;
+
+    if (bot->GetQuestStatus(questId) != QUEST_STATUS_COMPLETE || bot->GetQuestRewardStatus(questId))
+        return false;
+
+    turnin_park::ParkResult const result = turnin_park::ParkNow(turnInParks, questId, WorldTimer::getMSTime(),
+        sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds * IN_MILLISECONDS, abandonable);
+    if (!result.parked)
+        return false;
+
+    abandonDue = result.abandonDue;
+    // The #485 park line with the structural reason (structural_cross_map, structural_zone_level, structural_route,
+    // structural_no_destination). One line per park, as there.
+    sLog.outBasic("[QuestFirstRoute] state=parked bot=%u level=%u quest=%u reason=%s park_seconds=%u parked=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), questId, reason, sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds,
+        ParkedTurnInCount());
+    return true;
+}
+
 void TravelTarget::OnMoveRetryCooldown()
 {
     // twow-repo#485: this cooldown was silent (v24: 3,110 of 3,932 cooldown expiries had

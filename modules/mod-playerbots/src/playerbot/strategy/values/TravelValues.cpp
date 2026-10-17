@@ -9,6 +9,7 @@
 #include "Guild/GuildMgr.h"
 #include "playerbot/TravelChoosePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 
 using namespace ai;
@@ -423,6 +424,24 @@ bool NeedTravelPurposeValue::Calculate()
         // objective destinations are built independently by the quest path.
         if (UsesQuestFirstProgression(bot))
         {
+            // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 3): the 8.5 gather rule
+            // generalised to grind - a quest-first bot on its own does not grind while a routable open turn-in waits:
+            // one the last quest request validated, or one finished since (not checked yet - the next request checks
+            // it). An open turn-in the check turned down does not hold grinding back. Off: as before.
+            if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && !ai->HasRealPlayerMaster())
+            {
+                TravelTarget const* turnIns = AI_VALUE(TravelTarget*, "travel target");
+                std::string const checked = AI_VALUE2(std::string, "manual string", ai::quest_failure_class::CheckedTurnInsValue);
+                std::string const validated = AI_VALUE2(std::string, "manual string", ai::quest_failure_class::ValidatedTurnInsValue);
+                uint32 routableOpen = 0;
+                for (auto const& [questId, status] : bot->getQuestStatusMap())
+                    if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && turnIns->IsTurnInOpen(questId) &&
+                        (ai::quest_failure_class::ListHas(validated, questId) || !ai::quest_failure_class::ListHas(checked, questId)))
+                        ++routableOpen;
+                if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen))
+                    return false;
+            }
+
             // Hotfix 8.32 (twow-repo#544): after repeated empty quest route searches a quest-first
             // bot grinds instead of idling ("no destination").
             uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures")));

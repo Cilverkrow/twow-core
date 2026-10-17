@@ -420,6 +420,10 @@ namespace ai
         uint32 ParkedTurnInCount() const;
         // The bot can hand the quest in now and has not parked it (what the taker fetch offers).
         bool IsTurnInOpen(uint32 questId) const;
+        // twow-repo#601 S1 (FailureClasses): a structural failure parks the turn-in at once for TurnInParkSeconds
+        // (roster bots on their own, parking on - as NoteTurnInFailure). True when this parked it; abandonDue = the
+        // second abandonable structural park in a row (ai::turnin_park::ParkNow).
+        bool ParkTurnInNow(uint32 questId, char const* reason, bool abandonable, bool& abandonDue);
         // The move retries ran out; the target goes into cooldown.
         void OnMoveRetryCooldown();
         turnin_recovery::RecoveryAction ObserveTurnInProgress();
