@@ -6,6 +6,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+// The module includes windows.h before this header on Windows (RandomPlayerbotMgr.cpp): its empty near / far macros
+// must not break the policy (counter member nearAny, not near).
+#include <windows.h>
+#endif
+
 #include "ShortcutPolicy.h"
 
 namespace
@@ -155,10 +161,10 @@ int main()
     Record(counters, Mech::Repop, Near::Near, Near::Near);
     Record(counters, Mech::Count, Near::Near, Near::Near);
     MechCounters const& hop = counters.mech[std::size_t(Mech::Hop)];
-    Require(hop.near == 1 && hop.notNear == 1 && hop.unknown == 1 && hop.nearSrc == 0 && hop.nearDst == 1, "hop counts");
+    Require(hop.nearAny == 1 && hop.notNear == 1 && hop.unknown == 1 && hop.nearSrc == 0 && hop.nearDst == 1, "hop counts");
     MechCounters const& repop = counters.mech[std::size_t(Mech::Repop)];
-    Require(repop.near == 1 && repop.nearSrc == 1 && repop.nearDst == 1, "repop counts both ends");
-    Require(counters.mech[std::size_t(Mech::GhostCorpse)].near == 0 && counters.mech[std::size_t(Mech::FarMove)].near == 0,
+    Require(repop.nearAny == 1 && repop.nearSrc == 1 && repop.nearDst == 1, "repop counts both ends");
+    Require(counters.mech[std::size_t(Mech::GhostCorpse)].nearAny == 0 && counters.mech[std::size_t(Mech::FarMove)].nearAny == 0,
         "negative: other mechanisms untouched, Count ignored");
     Require(std::string(MechName(Mech::Hop)) == "hop" && std::string(MechName(Mech::GhostCorpse)) == "ghost_corpse" &&
         std::string(MechName(Mech::Repop)) == "repop" && std::string(MechName(Mech::FarMove)) == "far_move", "mechanism names");

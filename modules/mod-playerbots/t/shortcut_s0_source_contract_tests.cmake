@@ -115,6 +115,14 @@ require_text("${policy}" "if (!seen && guids.size() < MaxWatchers)" "watcher lis
 forbid_text("${policy}" "#include <mutex>" "lock in the policy (the mutex lives in the manager)")
 forbid_text("${policy}" "shared_mutex" "shared_mutex in the policy")
 forbid_text("${policy}" "GetPlayers" "real-player map in the policy")
+# windows.h (included by RandomPlayerbotMgr.cpp under PLATFORM_WINDOWS) defines near and far as empty macros.
+foreach(body policy mgr mgr_h)
+  string(REGEX MATCH "[.](near|far)[^A-Za-z0-9_]|[ ](near|far)[{;]" win_macro "${${body}}")
+  if(win_macro)
+    message(FATAL_ERROR "#595 shortcut S0: member named near / far (empty macro under windows.h) in ${body}: ${win_macro}")
+  endif()
+endforeach()
+require_text("${policy}" "std::atomic<std::uint32_t> nearAny{0};" "counter member nearAny")
 
 # --- 3. Snapshot built only in UpdateAIInternal (world thread, after sMapMgr.Update) ---------------------------------
 file(GLOB_RECURSE pb_sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
