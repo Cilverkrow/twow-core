@@ -548,7 +548,7 @@ forbid_text("${stage_c}" "mangos_string" "a new mangos_string row")
 # 9. The text pool: printable ASCII only, at most 255 bytes with the longest name, '|' separated, %bg, the built-in pool
 #    with the owner's three lines; every key through the parser.
 require_text("${policy_h}" "if (u < 0x20 || u > 0x7E)\n            return false;" "printable ASCII only")
-require_text("${policy_h}" "return ExpandAnnounceLine(line, LongestBgName).size() <= MaxAnnounceLineBytes;" "length with the longest name")
+require_text("${policy_h}" "return !ExpandAnnounceText(line, LongestBgName, LongestLevelRange, false).empty();" "length with the longest name and the longest level range")
 require_text("${policy_h}" "constexpr uint32_t MaxAnnounceLineBytes = 255;" "255 bytes")
 require_text("${policy_h}" "if (!AnnounceLineValid(line) || lines.size() >= MaxAnnouncePoolLines)\n                ++dropped;" "invalid lines dropped and counted, pool bounded")
 require_text("${policy_h}" "size_t end = text.find('|', start);" "lines separated by |")
@@ -563,6 +563,28 @@ require_text("${config_cpp}" "char const* const typeKeys[4] = { \"\", \".AV\", \
 require_text("${config_cpp}" "bool const fallback = bgAnnounceText[team][type].empty();\n                if (fallback)\n                {\n                    uint32 builtInDropped = 0;\n                    bgAnnounceText[team][type] = ai::bgfill::ParseAnnouncePool(ai::bgfill::BuiltInAnnouncePool(team, type), builtInDropped);" "an empty parsed pool falls back to the built-in one")
 require_text("${config_cpp}" "sLog.outError(\"[BGAnnounceCfg] state=pool_drop key=%s dropped=%u fallback=%s" "the load warning under its own prefix")
 forbid_text("${config_cpp}" "(\"[BGAnnounce]" "the load warning counted as an announcement")
+
+# Owner Q2 (17.10.): the level range in the calls. The pure expansion (ExpandAnnounceText, unit-tested in
+# t/bg_fill_policy_tests.cpp): %lvl always the range, the switch adds it once; the result is printable ASCII within 255
+# bytes - beyond that with the added range the line goes out without it, still beyond (or a %lvl line) it is not said;
+# with the switch off and no %lvl the text is today's ExpandAnnounceLine. The range is the core's bracket, capped at the
+# template maximum, never longer than LongestLevelRange (the length the load filter counts %lvl with).
+region("${policy_h}" "inline std::string ExpandAnnounceText(" "\n}\n" expand_text)
+region("${policy_h}" "inline bool AnnounceTextFits(" "\n}\n" text_fits)
+region("${policy_h}" "inline std::string AnnounceLevelRange(" "\n}\n" level_range)
+require_text("${text_fits}" "if (text.empty() || text.size() > MaxAnnounceLineBytes)\n        return false;" "an announcement text within 255 bytes")
+require_text("${text_fits}" "if (u < 0x20 || u > 0x7E)\n            return false;" "an announcement text in printable ASCII")
+require_text("${expand_text}" "if (hasLvl && range.empty())\n        return std::string();" "a %lvl line without a range is not said")
+require_text("${expand_text}" "bool const addRange = showRange && !hasLvl && !range.empty() && plain.find(range) == std::string::npos;" "the switch adds the range once, never next to %lvl")
+require_text("${expand_text}" "if (!hasLvl && !addRange)\n        return AnnounceTextFits(plain) ? plain : std::string();" "switch off and no %lvl: today's text")
+require_text("${expand_text}" "std::string const plain = ExpandAnnounceLine(line, bgName);" "today's text from today's expansion")
+require_text("${expand_text}" "if (line.compare(i, 4, \"%lvl\") == 0)\n        {\n            out += range;" "every %lvl is the range")
+require_text("${expand_text}" "if (addRange && !rangeAdded)\n            {\n                out += added;\n                rangeAdded = true;\n            }" "the range after the first %bg only")
+require_text("${expand_text}" "while (at && (out[at - 1] == '!' || out[at - 1] == '?' || out[at - 1] == '.'))" "without %bg: before the closing ! ? .")
+require_text("${expand_text}" "    if (AnnounceTextFits(out))\n        return out;\n    // Beyond 255 bytes with the added range: the line as without the switch (a %lvl line has none to fall back to).\n    if (addRange && AnnounceTextFits(plain))\n        return plain;\n    return std::string();" "the 255 fallback: without the range, else not said")
+require_text("${level_range}" "uint32_t high = maxLevelExclusive - 1;\n    if (templateMaxLevel && high > templateMaxLevel)\n        high = templateMaxLevel;" "the core's bracket top, capped at the template maximum")
+require_text("${level_range}" "if (high < minLevel || high > 999)\n        return std::string();" "no range the core would not form, none longer than 999-999")
+require_text("${policy_h}" "constexpr char const* LongestLevelRange = \"999-999\";" "the longest range the load filter counts")
 
 # 10. The honor listener (owner C0): only with BG.Enable and a rate that reduces; a bot (not a real player) in a
 #     battleground, on that battleground's map, with no real player among its players; then cp x clamped rate. Reads only
