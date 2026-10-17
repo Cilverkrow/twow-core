@@ -103,7 +103,8 @@ require_text("${conf_dist}" "\nAiPlayerbot.Shortcut.GroupLoopFix = 0\n" "dist Gr
 require_text("${conf_dist}" "TestWatcherGuids (TEST ONLY, never on a live realm)" "watchers documented as test only")
 # each key exactly once (a second "= 1" line below the default would win at load)
 foreach(key NearScope NearRadius TestWatcherGuids Trace GroupLoopFix)
-  require_count("${conf_dist}" "\nAiPlayerbot.Shortcut.${key} =" 1 "dist key AiPlayerbot.Shortcut.${key} once")
+  # without " =": a duplicate written as "Key=1" counts too (recheck P13)
+  require_count("${conf_dist}" "\nAiPlayerbot.Shortcut.${key}" 1 "dist key AiPlayerbot.Shortcut.${key} once")
 endforeach()
 
 # --- 2. Policy: fail closed, bounded --------------------------------------------------------------------------------
@@ -180,6 +181,8 @@ require_text("${mgr}" "{\n    std::lock_guard<std::mutex> lock(shortcutSnapshotM
 require_count("${mgr}" "shortcutSnapshot.swap(" 2 "snapshot written only by the two swaps")
 # the field itself: 3 x shortcutSnapshotMutex, the two swaps and the one locked return - nothing reads it unlocked
 require_count("${mgr}" "shortcutSnapshot" 6 "every use of the snapshot field (mutex x3, swap x2, locked return)")
+# the header: the comment, the mutex and the field only - no inline accessor that returns the field unlocked (recheck P12)
+require_count("${mgr_h}" "shortcutSnapshot" 3 "snapshot field in RandomPlayerbotMgr.h (comment, mutex, field)")
 
 # --- 5. No real-player map in the new map-thread code ---------------------------------------------------------------
 between("${mgr}" "ai::shortcut::Near RandomPlayerbotMgr::ShortcutNear(" "\n}\n" near_body)
