@@ -1928,6 +1928,29 @@ add_test(NAME world_bots_trace_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/world_bots_trace_source_contract_tests.cmake")
 
+# twow-repo#597 (TICK-01): [BotUpdateSlow] tick=/region= (AiPlayerbot.BotUpdateTraceTick) and [WorldBots]
+# hook_ms=/remote_ms=/ahbot_ms=/dungeonclear_ms= (AiPlayerbot.WorldBotsHookTrace), both default 0.
+add_executable(tick_diag_597_tests
+  "${PB_MODULE_DIR}/t/tick_diag_597_tests.cpp")
+
+target_include_directories(tick_diag_597_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(tick_diag_597_tests PRIVATE Threads::Threads)
+
+set_target_properties(tick_diag_597_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tick_diag_597
+  COMMAND tick_diag_597_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tick_diag_597_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DDC_SOURCE_FILE=${PB_MODULE_DIR}/../mod-dungeon-clear/src/DungeonClearModule.cpp"
+    -P "${PB_MODULE_DIR}/t/tick_diag_597_source_contract_tests.cmake")
+
 # twow-repo#541/#551: rndbot park / unpark (inn of the own faction and level band, verified bind,
 # reduced AI tick).
 add_executable(park_policy_tests
@@ -2995,4 +3018,62 @@ set_target_properties(pending_bot_login_policy_tests PROPERTIES
 
 add_test(NAME pending_bot_login_policy
   COMMAND pending_bot_login_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#597 (TICK-01): AhBot guard - AhBot::Update idle without a loaded, enabled ahbot.conf
+# (AiPlayerbot.AhBot.RequireConfig, default 0 = as before).
+add_test(NAME ahbot_guard_597_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/ahbot_guard_597_source_contract_tests.cmake")
+
+add_executable(ahbot_guard_597_policy_tests
+  "${PB_MODULE_DIR}/t/ahbot_guard_597_policy_tests.cpp")
+
+target_include_directories(ahbot_guard_597_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/ahbot")
+
+set_target_properties(ahbot_guard_597_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME ahbot_guard_597_policy
+  COMMAND ahbot_guard_597_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#596 D (AiPlayerbot.BotUpdateTraceTriggers): the slowest trigger checks of a slow trigger pass.
+add_test(NAME slow_triggers_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/slow_triggers_source_contract_tests.cmake")
+
+add_executable(trigger_time_policy_tests
+  "${PB_MODULE_DIR}/t/trigger_time_policy_tests.cpp")
+
+target_include_directories(trigger_time_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(trigger_time_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME trigger_time_policy
+  COMMAND trigger_time_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#308 EQUIP-FLIP-01 (AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade): no weapon unequip/re-equip on every loot.
+add_test(NAME keep_weapons_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/keep_weapons_source_contract_tests.cmake")
+
+add_executable(keep_weapons_policy_tests
+  "${PB_MODULE_DIR}/t/keep_weapons_policy_tests.cpp")
+
+target_include_directories(keep_weapons_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(keep_weapons_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME keep_weapons_policy
+  COMMAND keep_weapons_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")

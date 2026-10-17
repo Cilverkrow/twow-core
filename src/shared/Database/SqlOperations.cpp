@@ -25,6 +25,10 @@
 #include "DatabaseImpl.h"
 #include "Timer.h"
 #include "ThreadPool.h"
+#include "TickDiagPolicy.h"  // twow-repo#597 (TICK-01): [ResultsSlow]
+
+#include <mutex>
+#include <typeinfo>
 
 #define LOCK_DB_CONN(conn) SqlConnection::Lock guard(conn)
 
@@ -107,9 +111,46 @@ bool SqlQuery::Execute(SqlConnection *conn)
     return true;
 }
 
+// twow-repo#597 (TICK-01, PerformanceLog.SlowResultCallbackMs): threshold handed over by
+// World::LoadConfigSettings (0 = off), one rate limit for all result queues and callback threads.
+std::atomic<uint32> SqlResultQueue::s_slowCallbackMs{0};
+
+namespace
+{
+std::mutex s_resultsSlowMutex;                  // only taken for a callback at or above the threshold
+tick_diag::RateLimiter s_resultsSlowLimiter(20);  // at most 20 [ResultsSlow] lines a minute
+
+// One [ResultsSlow] line for a callback at or above the threshold. typeName = the callback's dynamic
+// type (read before it was deleted); pending = unsafe: unsafe callbacks still queued after it, safe:
+// its position in this pass's batch of thread-safe callbacks.
+void ReportSlowCallback(uint64 us, bool unsafe, char const* typeName, uint32 pending, uint32 slowMs)
+{
+    if (us < uint64(slowMs) * 1000)
+        return;
+    uint32 dropped = 0;
+    {
+        std::lock_guard<std::mutex> lock(s_resultsSlowMutex);
+        if (!s_resultsSlowLimiter.Allow(tick_diag::NowUs() / 1000))
+            return;
+        dropped = s_resultsSlowLimiter.TakeDropped();
+    }
+    char cb[160];
+    tick_diag::CallbackToken(cb, sizeof(cb), typeName);
+    sLog.out(LOG_PERFORMANCE, "[ResultsSlow] ms=%.1f unsafe=%u cb=%s pending=%u dropped=%u",
+        us / 1000.0, unsafe ? 1u : 0u, cb, pending, dropped);
+}
+}
+
+void SqlResultQueue::SetSlowCallbackMs(uint32 ms)
+{
+    s_slowCallbackMs.store(ms, std::memory_order_relaxed);
+}
+
 void SqlResultQueue::Update(uint32 timeout)
 {
     uint32 begin = WorldTimer::getMSTime();
+    // twow-repo#597 (TICK-01): latched for this pass; 0 = no clock read, no type lookup.
+    uint32 const slowMs = s_slowCallbackMs.load(std::memory_order_relaxed);
     /// execute the callbacks waiting in the synchronization queue
     MaNGOS::IQueryCallback* callback = NULL;
     int n = 0;
@@ -124,9 +165,13 @@ void SqlResultQueue::Update(uint32 timeout)
         {
             ++n;
             //caller->queue.add(callback);
-            m_callbackThreads << [callback, n](){
+            m_callbackThreads << [callback, n, slowMs](){
+                uint64 const startUs = slowMs ? tick_diag::NowUs() : 0;
+                char const* const typeName = slowMs ? typeid(*callback).name() : nullptr;
                 callback->Execute();
                 delete callback;
+                if (slowMs)
+                    ReportSlowCallback(tick_diag::NowUs() - startUs, false, typeName, uint32(n), slowMs);
             };
         }
     }
@@ -134,9 +179,13 @@ void SqlResultQueue::Update(uint32 timeout)
     MaNGOS::IQueryCallback* s = NULL;
     while (_threadUnsafeWaitingQueries.next(s))
     {
+        uint64 const startUs = slowMs ? tick_diag::NowUs() : 0;  // twow-repo#597 ([ResultsSlow])
+        char const* const typeName = slowMs ? typeid(*s).name() : nullptr;
         s->Execute();
         delete s;
         --numUnsafeQueries;
+        if (slowMs)
+            ReportSlowCallback(tick_diag::NowUs() - startUs, true, typeName, numUnsafeQueries, slowMs);
         if (timeout && WorldTimer::getMSTimeDiffToNow(begin) > timeout)
             break;
     }
