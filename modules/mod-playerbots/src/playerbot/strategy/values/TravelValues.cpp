@@ -427,9 +427,12 @@ bool NeedTravelPurposeValue::Calculate()
             // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 3): the 8.5 gather rule
             // generalised to grind - a quest-first bot on its own does not grind while a routable open turn-in waits:
             // one the last quest request validated, or one finished since (not checked yet - the next request checks
-            // it). An open turn-in the check turned down does not hold grinding back. Off: as before.
+            // it). An open turn-in the check turned down does not hold grinding back, and none does while the quest route
+            // backoff runs (RequestQuestTravelTargetAction waits for it - the bot would stand idle). Off: as before.
             if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && !ai->HasRealPlayerMaster())
             {
+                bool const routeBackoffRunning =
+                    uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
                 TravelTarget const* turnIns = AI_VALUE(TravelTarget*, "travel target");
                 std::string const checked = AI_VALUE2(std::string, "manual string", ai::quest_failure_class::CheckedTurnInsValue);
                 std::string const validated = AI_VALUE2(std::string, "manual string", ai::quest_failure_class::ValidatedTurnInsValue);
@@ -438,7 +441,7 @@ bool NeedTravelPurposeValue::Calculate()
                     if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && turnIns->IsTurnInOpen(questId) &&
                         (ai::quest_failure_class::ListHas(validated, questId) || !ai::quest_failure_class::ListHas(checked, questId)))
                         ++routableOpen;
-                if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen))
+                if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen, routeBackoffRunning))
                     return false;
             }
 
