@@ -524,8 +524,14 @@ public:
             uint32 queueAtMs = 0;   // announcement + DelaySeconds
             std::array<std::vector<uint32>, 2> candidates;   // free roster bots per side at the announcement, announcers first
             std::array<uint32, 2> real = { 0, 0 };            // real players' entries of that queue and bracket (last scan)
+            uint32 said = 0;        // chat lines really said (DrainBgAnnounce): no line and no server message, no queue
+            bool server = false;    // the server message went out (mode 1, or the mode-2 fallback)
         };
         BgOwnPlan bgOwnPlan;
+        // (bg type, instance) -> level range of every instance a bot-own match started, from the accept on until the core
+        // no longer holds it or it ended (PruneBgOwnInstances): an own instance stays own after its own bots are gone, so
+        // the bot-only cleanup never drains it. Bounded by MaxConcurrent.
+        std::map<std::pair<uint32, uint32>, uint32> bgOwnInstances;
         uint32 lastBgOwnPlanMs = 0;
         uint32 bgOwnRotate = 0;                          // guid the planner's candidate loop stopped at
         std::vector<uint32> bgOwnTypes;                  // started queue types, oldest first
@@ -539,6 +545,11 @@ public:
         bool IsBgAnnouncerFit(Player* bot) const;
         uint32 BgOwnBand(uint32 bgTypeId, uint32 bracket) const;
         void CountBgOwnPerBand(std::map<uint32, uint32>& perBand) const;
+        void PruneBgOwnInstances();
+        // (bg type, bracket) of every running battleground with a free slot - the core tops those up from the queue first
+        void CollectBgFreeSlotBrackets(std::set<std::pair<uint32, uint32>>& freeSlots) const;
+        void BuildBgAnnouncePool(uint32 queueType, std::array<std::vector<std::string>, 2>& pool) const;
+        uint32 SendBgAnnounceServer(uint32 queueType, uint32 bgTypeId, uint32 bracket, std::array<std::vector<std::string>, 2> const& pool);
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;

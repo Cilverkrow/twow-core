@@ -171,9 +171,10 @@ require_text("${watch}" "ai::bgfill::BotOnlyGraceMs(sPlayerbotAIConfig.bgBotOnly
 
 # 2. The gate: the master switch plus PlayerFill or SlotRelease for the pass; SlotRelease for the pair/release scan and
 #    the stage-a partial-side rule; no path without bgEnable (the roster branch is the only CheckBgFill caller).
-#    Stage c adds Announce to the pass gate (bot-own battlegrounds need no PlayerFill); nothing of stage b runs on it:
-#    the pair/release scan stays behind SlotRelease and the bot-only cleanup behind PlayerFill (below).
-require_text("${mgr_cpp}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease || sPlayerbotAIConfig.bgAnnounce))\n            CheckBgFill();" "pass gated by bgEnable && (PlayerFill || SlotRelease || Announce)")
+#    Stage c adds its full gate BgOwnEnabled() to the pass gate (bot-own battlegrounds need no PlayerFill; Announce alone
+#    opens nothing, review c2); nothing of stage b runs on it: the pair/release scan stays behind SlotRelease and the
+#    bot-only cleanup behind PlayerFill (below).
+require_text("${mgr_cpp}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease || BgOwnEnabled()))\n            CheckBgFill();" "pass gated by bgEnable && (PlayerFill || SlotRelease || BgOwnEnabled())")
 count_text("${mgr_cpp}" "CheckBgFill();" 1 "CheckBgFill called only from the gated roster branch")
 require_text("${check}" "if (sPlayerbotAIConfig.bgSlotRelease)\n        ScanBgSlotRelease(nowMs);" "pair/release scan gated by SlotRelease")
 count_text("${mgr_cpp}" "ScanBgSlotRelease(nowMs);" 1 "ScanBgSlotRelease called once, gated")
