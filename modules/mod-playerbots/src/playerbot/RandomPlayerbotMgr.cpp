@@ -4167,10 +4167,13 @@ void RandomPlayerbotMgr::CountBgOwnPerBand(std::map<uint32, uint32>& perBand) co
 // real-player master, in no group (owner D2: a real player's group bots are never announced; the same rule as the
 // stage-a candidate filter - a bot a real player invites during the stagger says nothing), and not a parked bot outside
 // a capital city. The planner takes announcers only from its free candidates (never parked); this is checked again when
-// the line is due.
+// the line is due. OB-10 review: nor a bot inside a battleground or an instance (dungeon, raid) - a call for another
+// battleground from there would not read as organic.
 bool RandomPlayerbotMgr::IsBgAnnouncerFit(Player* bot) const
 {
     if (!bot || !bot->IsInWorld() || !bot->IsAlive() || bot->IsInCombat() || bot->IsTaxiFlying() || bot->IsBeingTeleported())
+        return false;
+    if (bot->InBattleGround() || bot->GetMap()->Instanceable())
         return false;
     if (bot->GetGroup())
         return false;
@@ -4787,6 +4790,11 @@ void RandomPlayerbotMgr::QueueBgOwn(uint32 nowMs)
 // join, so the counts are final then). Once the last due line is gone, mode 2 sends the server message to each faction
 // none of whose lines was said (once per plan, within MaxPerHour, review c2/c4); otherwise QueueBgOwn queues nobody for
 // a match not announced to both factions.
+// World membership (OB-10 review): a free random bot is already on World from its login (PlayerbotHolder::
+// JoinChatChannels, IsFreeBot), and every announcer is a free bot, so the Join below is normally a no-op and the
+// announcer stays a member exactly as before. Bots answer channel lines only through the existing chat-reply path
+// (PlayerbotAI chat handling, its reply chances and chat cooldown), the same as for any World line today; stage c adds no
+// reply path and no membership a free bot would not have anyway.
 void RandomPlayerbotMgr::DrainBgAnnounce(uint32 nowMs)
 {
     if (bgAnnounceDue.empty())
