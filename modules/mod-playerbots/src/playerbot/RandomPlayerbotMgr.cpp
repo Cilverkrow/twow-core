@@ -1416,36 +1416,47 @@ void RandomPlayerbotMgr::CountShortcut(ai::shortcut::Mech mech, Player* bot, uin
 // twow-repo#595 P4 S0: [Shortcut] once a minute (AiPlayerbot.Shortcut.Trace), world thread.
 void RandomPlayerbotMgr::ReportShortcut()
 {
-    if (!sPlayerbotAIConfig.shortcutTrace)
-        return;
-
+    static bool tracing = false;
     static uint32 lastReport = 0;
+    if (!sPlayerbotAIConfig.shortcutTrace)
+    {
+        tracing = false;
+        return;
+    }
+
     uint32 const now = uint32(time(nullptr));
+    ai::shortcut::Counters& counters = ai::shortcut::SharedCounters();
+    if (!tracing)
+    {
+        // Trace switched on (start or config reload): counts left over from an earlier Trace = 1 period are dropped,
+        // the first line comes after a full minute.
+        tracing = true;
+        lastReport = now;
+        for (uint32 i = 0; i < uint32(ai::shortcut::Mech::Count); ++i)
+            ai::shortcut::Drain(counters.mech[i]);
+        return;
+    }
     if (now < lastReport + 60)
         return;
     lastReport = now;
 
+    // stale=1: the snapshot is older than StaleMs (every answer Unknown), e.g. RandomBotUpdateInterval >= about 4 s.
     std::shared_ptr<ai::shortcut::Snapshot const> const snapshot = ShortcutSnapshot();
     uint64 const nowMs = ShortcutNowMs();
-    sLog.outBasic("[Shortcut] state=snapshot players=%u watchers=%u entries=%u age_ms=%llu scope=%u radius=%.0f",
+    sLog.outBasic("[Shortcut] state=snapshot players=%u watchers=%u entries=%u age_ms=%llu stale=%u scope=%u radius=%.0f",
         snapshot ? snapshot->players : 0u, snapshot ? snapshot->watchers : 0u,
         snapshot ? uint32(snapshot->entries.size()) : 0u,
         (unsigned long long)(snapshot && nowMs >= snapshot->builtAtMs ? nowMs - snapshot->builtAtMs : 0),
+        snapshot && ai::shortcut::Fresh(snapshot->builtAtMs, nowMs) ? 0u : 1u,
         ai::shortcut::MeasureScope(sPlayerbotAIConfig.shortcutNearScope), sPlayerbotAIConfig.shortcutNearRadius);
 
-    ai::shortcut::Counters& counters = ai::shortcut::SharedCounters();
     for (uint32 i = 0; i < uint32(ai::shortcut::Mech::Count); ++i)
     {
-        ai::shortcut::MechCounters& c = counters.mech[i];
-        uint32 const nearCount = c.nearAny.exchange(0, std::memory_order_relaxed);
-        uint32 const notNear = c.notNear.exchange(0, std::memory_order_relaxed);
-        uint32 const unknown = c.unknown.exchange(0, std::memory_order_relaxed);
-        uint32 const nearSrc = c.nearSrc.exchange(0, std::memory_order_relaxed);
-        uint32 const nearDst = c.nearDst.exchange(0, std::memory_order_relaxed);
-        if (nearCount || notNear || unknown)
+        ai::shortcut::MechTotals const t = ai::shortcut::Drain(counters.mech[i]);
+        if (t.nearAny || t.notNear || t.unknown)
             sLog.outBasic("[Shortcut] mech=%s teleports=%u near=%u notnear=%u unknown=%u near_src=%u near_dst=%u",
-                ai::shortcut::MechName(ai::shortcut::Mech(i)), nearCount + notNear + unknown, nearCount, notNear, unknown,
-                nearSrc, nearDst);
+                ai::shortcut::MechName(ai::shortcut::Mech(i)), t.nearAny + t.notNear + t.unknown, t.nearAny, t.notNear,
+                t.unknown, t.nearSrc, t.nearDst);
     }
 }
 

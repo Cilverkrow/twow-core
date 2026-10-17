@@ -172,7 +172,17 @@ require_text("${count_body}" "ai::shortcut::Record(ai::shortcut::SharedCounters(
 require_text("${mgr_h}" "void CountShortcut(ai::shortcut::Mech mech, Player* bot, uint32 toMapId, float toX, float toY, float toZ);" "void: the count cannot steer the caller")
 
 # --- 6. [Shortcut] lines -------------------------------------------------------------------------------------------
-require_text("${mgr}" "[Shortcut] state=snapshot players=%u watchers=%u entries=%u age_ms=%llu scope=%u radius=%.0f" "snapshot minute line")
+require_text("${mgr}" "[Shortcut] state=snapshot players=%u watchers=%u entries=%u age_ms=%llu stale=%u scope=%u radius=%.0f" "snapshot minute line")
+require_text("${mgr}" "snapshot && ai::shortcut::Fresh(snapshot->builtAtMs, nowMs) ? 0u : 1u," "stale flag = not Fresh")
+# Bounded output: only with Trace, at most once a minute; each line covers one minute (drained counters).
+between("${mgr}" "void RandomPlayerbotMgr::ReportShortcut()" "\n}\n" report)
+require_text("${report}" "    if (!sPlayerbotAIConfig.shortcutTrace)\n    {\n        tracing = false;\n        return;\n    }" "minute line only with Trace")
+require_text("${report}" "    if (now < lastReport + 60)\n        return;\n    lastReport = now;" "minute line at most once a minute")
+require_text("${report}" "    if (!tracing)\n    {" "counts dropped when Trace is switched on again")
+require_order("${report}" "if (now < lastReport + 60)" "sLog.outBasic(" "minute guard before the first line")
+require_count("${report}" "ai::shortcut::Drain(counters.mech[i])" 2 "counters drained on Trace on and in each minute line")
+forbid_text("${report}" ".load(" "cumulative counter read in the minute line")
+require_count("${policy}" ".exchange(0, std::memory_order_relaxed);" 5 "Drain resets all five counters")
 require_text("${mgr}" "[Shortcut] mech=%s teleports=%u near=%u notnear=%u unknown=%u near_src=%u near_dst=%u" "counter minute line")
 require_text("${mgr}" "[Shortcut] mech=group_loop state=skip_real leader=%u member=%u" "B1 skip line")
 
