@@ -501,6 +501,10 @@ require_text("${announcer_fit}" "bot->IsInCombat()" "no announcer in combat")
 require_text("${announcer_fit}" "if (!bot || !bot->IsInWorld() || !bot->IsAlive() || bot->IsInCombat() || bot->IsTaxiFlying() || bot->IsBeingTeleported())\n        return false;" "no announcer out of the world, dead, in combat, on a taxi or being teleported")
 require_text("${announcer_fit}" "if ((IsParkedBot(bot->GetGUIDLow()) || ai->IsParked()) && !ai->IsInCapitalCity())\n        return false;\n    return true;" "no parked announcer outside a capital city")
 count_text("${announcer_fit}" "return true;" 1 "the announcer check accepts only at its end")
+# OB-10 review: no announcer inside a battleground or an instance, right after the first check.
+require_text("${announcer_fit}" "        return false;\n    if (bot->InBattleGround() || bot->GetMap()->Instanceable())\n        return false;\n    if (bot->GetGroup())" "no announcer inside a battleground or an instance")
+# OB-10 review: the World membership note stays with the drain (no new reply path, no membership a free bot lacks).
+require_text("${mgr_cpp}" "// World membership (OB-10 review): a free random bot is already on World from its login (PlayerbotHolder::" "World membership note at the drain")
 require_text("${plan}" "if (ai::bgfill::PendingExpired(nowMs, it->second, cooldownMs))\n            it = bgAnnounceCooldown.erase(it);" "cooldowns pruned (bounded)")
 require_text("${queue}" "if (joiners[0].size() < need[0] || joiners[1].size() < need[1])" "a side short: nobody queues")
 require_order("${queue}" "if (joiners[0].size() < need[0] || joiners[1].size() < need[1])" "BGJoinAction::SendBattlemasterJoin(ai, bot, bgTypeId, false);" "the short check before any join")
