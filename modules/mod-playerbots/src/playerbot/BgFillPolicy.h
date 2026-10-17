@@ -450,6 +450,40 @@ inline bool AnnounceUsesServer(uint32_t mode, uint32_t announcers)
     return mode == AnnounceModeServer || (mode == AnnounceModeFallback && !announcers);
 }
 
+// Per faction (owner D3, review c4): bit 0 Alliance, bit 1 Horde. A faction counts as announced once one of its chat
+// lines was really said or the server message reached it; AnnounceSidesMissing gives the factions still unannounced
+// (any of them: no queue join; mode 2 sends those factions the server message first).
+constexpr uint32_t AnnounceSideAlliance = 1;
+constexpr uint32_t AnnounceSideHorde = 2;
+constexpr uint32_t AnnounceSidesBoth = AnnounceSideAlliance | AnnounceSideHorde;
+
+inline uint32_t AnnounceSide(uint32_t team)
+{
+    return team ? AnnounceSideHorde : AnnounceSideAlliance;
+}
+
+inline uint32_t AnnounceSidesMissing(uint32_t saidA, uint32_t saidH, bool serverA, bool serverH)
+{
+    return (saidA || serverA ? 0u : AnnounceSideAlliance) | (saidH || serverH ? 0u : AnnounceSideHorde);
+}
+
+inline uint32_t AnnounceSideCount(uint32_t sides)
+{
+    return ((sides & AnnounceSideAlliance) ? 1u : 0u) + ((sides & AnnounceSideHorde) ? 1u : 0u);
+}
+
+// The sides token of a [BGAnnounce] line: A, H, both (none for an empty set).
+inline char const* AnnounceSidesName(uint32_t sides)
+{
+    switch (sides & AnnounceSidesBoth)
+    {
+        case AnnounceSideAlliance: return "A";
+        case AnnounceSideHorde: return "H";
+        case AnnounceSidesBoth: return "both";
+        default: return "none";
+    }
+}
+
 // AiPlayerbot.BG.Announce.MaxPerHour: hard cap on announcement lines (chat lines and server lines) per hour window.
 // 0 = no line at all (fail closed); then no bot-own battleground starts either.
 constexpr uint32_t AnnounceHourMs = 3600 * 1000;

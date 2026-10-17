@@ -166,6 +166,9 @@ foreach(key Announce.IntervalMinutes MaxBotBGPerBracket Announce.DelaySeconds An
 endforeach()
 require_text("${conf_dist}" "(a clock window, not a sliding\n# hour: two windows back to back can carry up to 2 x MaxPerHour lines within 60 minutes)" "dist: MaxPerHour is a clock window")
 require_text("${conf_dist}" "meant to run with PlayerFill = 1" "dist: Announce with PlayerFill")
+# Review c4: per faction - each faction called or nobody plays; mode 2 calls an unannounced faction by server message.
+require_text("${conf_dist}" "nobody queues: each faction is called or nobody plays." "dist: each faction called or nobody plays")
+require_text("${conf_dist}" "that faction alone gets the server message after the last line was due (both factions if none was said)." "dist: the mode-2 fallback per faction")
 
 # 2. The gate: the pass gate in the roster branch, the full stage-c gate (Enable && Announce && IntervalMinutes &&
 #    MaxConcurrent) read once per update in CheckBgFill; off clears the due lines and the plan; no work without it.
@@ -246,8 +249,8 @@ set(announce_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=%u mode=%s
 require_text("${plan}" "${announce_line}" "[BGAnnounce] line")
 # Three [BGAnnounce] lines, each at most once per announcement (review c2): the announcement (planner), the mode-2
 # server fallback at due time (drain) and an unannounced plan with lines=0 (queue step). None behind Trace.
-set(fallback_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=0 mode=server lines=%u\", bgOwnPlan.bgTypeId, bgOwnPlan.bracket, lines);")
-set(unannounced_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=0 mode=chat lines=0 reason=unannounced\", plan.bgTypeId, plan.bracket);")
+set(fallback_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=0 mode=server lines=%u side=%s\", bgOwnPlan.bgTypeId, bgOwnPlan.bracket, lines,\n        ai::bgfill::AnnounceSidesName(missing));")
+set(unannounced_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=0 mode=chat lines=0 reason=unannounced side=%s\", plan.bgTypeId, plan.bracket,\n            ai::bgfill::AnnounceSidesName(unannounced));")
 count_text("${mgr_cpp}" "sLog.outBasic(\"[BGAnnounce]" 3 "the [BGAnnounce] lines in the manager")
 count_text("${plan}" "sLog.outBasic(\"[BGAnnounce]" 1 "one [BGAnnounce] line in the planner")
 require_text("${drain}" "${fallback_line}" "[BGAnnounce] line of the mode-2 fallback")
@@ -406,24 +409,44 @@ require_order("${queue}" "skip = \"freeslots\";" "BGJoinAction::SendBattlemaster
 count_text("${mgr_cpp}" "CollectBgFreeSlotBrackets(freeSlots);" 2 "free slots read by the planner and the queue step only")
 # Review c2: chat needs a real line said or the server message out before anybody queues (owner contract: only an
 # announced start); the drain counts the lines said, mode 2 falls back to the server message at due time.
-require_text("${mgr_h}" "uint32 said = 0;" "lines said kept on the plan")
-require_text("${mgr_h}" "bool server = false;" "server message kept on the plan")
-set(unannounced_gate "if (!plan.server && !plan.said)\n    {")
-require_text("${queue}" "${unannounced_gate}" "no queue join for an unannounced match")
+# Review c4: per faction (owner D3) - each faction needs a line of its own said or the server message to it; the drain
+# counts the lines said per faction (the due line carries its faction), mode 2 sends the server message once per plan to
+# each faction none of whose lines was said, and the queue step skips while any faction is unannounced.
+require_text("${mgr_h}" "uint32 team = 0;        // 0 Alliance, 1 Horde" "the due line carries its faction")
+require_text("${mgr_h}" "std::array<uint32, 2> said = { 0, 0 };" "lines said kept per faction on the plan")
+require_text("${mgr_h}" "std::array<bool, 2> server = { false, false };" "server message kept per faction on the plan")
+require_text("${mgr_h}" "bool fallbackTried = false;" "the fallback tried once per plan")
+require_text("${plan}" "            due.team = team;\n" "the due line's faction from the planner")
+require_order("${plan}" "due.team = team;" "bgAnnounceDue.push_back(due);" "the faction set before the push")
+region("${policy_h}" "inline uint32_t AnnounceSidesMissing(" "\n}\n" sides_missing)
+require_text("${sides_missing}" "return (saidA || serverA ? 0u : AnnounceSideAlliance) | (saidH || serverH ? 0u : AnnounceSideHorde);" "a faction is announced by its own line said or the server message to it")
+region("${policy_h}" "inline uint32_t AnnounceSide(" "\n}\n" side_bit)
+require_text("${side_bit}" "return team ? AnnounceSideHorde : AnnounceSideAlliance;" "the side bit per team")
+require_text("${queue}" "uint32 const unannounced = ai::bgfill::AnnounceSidesMissing(plan.said[0], plan.said[1], plan.server[0], plan.server[1]);" "each faction checked at the queue step")
+set(unannounced_gate "if (unannounced)\n    {")
+require_order("${queue}" "uint32 const unannounced = " "${unannounced_gate}" "the faction check feeds the gate")
+require_text("${queue}" "${unannounced_gate}" "no queue join for a match not announced to each faction")
 require_order("${queue}" "${unannounced_gate}" "if (!ai::bgfill::CapAllows(running, sPlayerbotAIConfig.bgMaxConcurrent))" "the announcement checked first")
 require_order("${queue}" "${unannounced_gate}" "BGJoinAction::SendBattlemasterJoin(" "the announcement checked before any join")
 string(FIND "${queue}" "${unannounced_gate}" gate_at)
-string(SUBSTRING "${queue}" ${gate_at} 420 gate_body)
+string(SUBSTRING "${queue}" ${gate_at} 560 gate_body)
 require_text("${gate_body}" "        return;\n    }" "an unannounced match returns")
-require_text("${drain}" "world->AsyncSay(bot->GetObjectGuid(), due.text.c_str(), LANG_UNIVERSAL);\n        if (bgOwnPlan.queueType)\n            ++bgOwnPlan.said;" "a line counted only once it is said")
-count_text("${mgr_cpp}" "++bgOwnPlan.said;" 1 "lines said counted only by the drain")
-count_text("${mgr_cpp}" "bgOwnPlan.said = " 0 "lines said never set otherwise")
-require_text("${plan}" "bgOwnPlan.server = server;" "the server message recorded on the plan")
-require_text("${drain}" "bgOwnPlan.server = lines != 0;" "the fallback recorded on the plan")
-count_text("${mgr_cpp}" "bgOwnPlan.server = " 2 "the server flag set by the planner and the fallback only")
-require_text("${drain}" "if (!bgAnnounceDue.empty() || !bgOwnPlan.queueType || bgOwnPlan.server || bgOwnPlan.said ||\n            ai::bgfill::AnnounceMode(sPlayerbotAIConfig.bgAnnounceMode) != ai::bgfill::AnnounceModeFallback)\n        return;" "the fallback only in mode 2, once no line is due and none was said")
-require_text("${drain}" "if (pool[0].empty() || pool[1].empty() ||\n            ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, 2) < 2)" "the fallback for both factions within MaxPerHour")
-require_order("${drain}" "AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, 2) < 2" "SendBgAnnounceServer(" "MaxPerHour before the fallback message")
+require_text("${drain}" "world->AsyncSay(bot->GetObjectGuid(), due.text.c_str(), LANG_UNIVERSAL);\n        if (bgOwnPlan.queueType)\n            ++bgOwnPlan.said[due.team ? 1 : 0];" "a line counted for its faction only once it is said")
+count_text("${mgr_cpp}" "++bgOwnPlan.said" 1 "lines said counted only by the drain")
+foreach(write "bgOwnPlan.said = " "bgOwnPlan.said[0] =" "bgOwnPlan.said[1] =" "bgOwnPlan.said[team]" "bgOwnPlan.said.fill(")
+  count_text("${mgr_cpp}" "${write}" 0 "lines said never set otherwise")
+endforeach()
+require_text("${plan}" "bgOwnPlan.server = { server, server };" "the planner's server message recorded for both factions")
+count_text("${mgr_cpp}" "bgOwnPlan.server = " 1 "the server flags set as a whole by the planner only")
+require_text("${drain}" "    if (lines == wanted)\n    {\n        for (uint32 team = 0; team < 2; ++team)\n        {\n            if (missing & ai::bgfill::AnnounceSide(team))\n                bgOwnPlan.server[team] = true;\n        }\n    }" "the fallback recorded only for the factions it reached")
+count_text("${mgr_cpp}" "bgOwnPlan.server[" 3 "a faction's server flag set only by the fallback (two reads)")
+require_text("${drain}" "if (!bgAnnounceDue.empty() || !bgOwnPlan.queueType || bgOwnPlan.fallbackTried ||\n            ai::bgfill::AnnounceMode(sPlayerbotAIConfig.bgAnnounceMode) != ai::bgfill::AnnounceModeFallback)\n        return;" "the fallback only in mode 2, once no line is due, once per plan")
+require_text("${drain}" "uint32 const missing = ai::bgfill::AnnounceSidesMissing(bgOwnPlan.said[0], bgOwnPlan.said[1], bgOwnPlan.server[0], bgOwnPlan.server[1]);\n    if (!missing)\n        return;\n    bgOwnPlan.fallbackTried = true;" "the fallback only for a faction none of whose lines was said, tried once")
+count_text("${mgr_cpp}" "fallbackTried = true;" 1 "the fallback marked tried in one place")
+require_text("${drain}" "if (((missing & ai::bgfill::AnnounceSideAlliance) && pool[0].empty()) || ((missing & ai::bgfill::AnnounceSideHorde) && pool[1].empty()) ||\n            ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, wanted) < wanted)" "the fallback for every unannounced faction within MaxPerHour")
+require_text("${drain}" "uint32 const wanted = ai::bgfill::AnnounceSideCount(missing);" "one line per unannounced faction")
+require_order("${drain}" "bgOwnPlan.fallbackTried = true;" "AnnounceLinesAllowed(" "marked tried before the MaxPerHour check (once per plan, also when it is refused)")
+require_order("${drain}" "AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, wanted) < wanted" "SendBgAnnounceServer(" "MaxPerHour before the fallback message")
 require_text("${drain}" "bgAnnounceHourLines += lines;" "fallback lines counted for MaxPerHour")
 # C3 announcer margin (review c2): both sides need the minimum plus their share of the announcers; the lists can reach it.
 require_text("${plan}" "if (have < ai::bgfill::OwnCandidatesNeeded(minPerTeam[q], q))\n                continue;" "the minimum plus the announcers per side")
@@ -500,8 +523,9 @@ count_text("${server_block}" "SendSysMessage(" 1 "server message only in the ser
 # The helper runs from the planner (mode 1, or mode 2 without an announcer of each side) and the mode-2 fallback at due
 # time only.
 count_text("${mgr_cpp}" "SendBgAnnounceServer(" 3 "the server helper defined once, called by the planner and the drain")
-require_text("${plan}" "lines = SendBgAnnounceServer(queueType, uint32(bgTypeId), bracket, pool);" "the planner's server message")
-require_text("${drain}" "SendBgAnnounceServer(bgOwnPlan.queueType, bgOwnPlan.bgTypeId, bgOwnPlan.bracket, pool);" "the fallback's server message")
+require_text("${plan}" "lines = SendBgAnnounceServer(queueType, uint32(bgTypeId), bracket, pool, ai::bgfill::AnnounceSidesBoth);" "the planner's server message to both factions")
+require_text("${drain}" "SendBgAnnounceServer(bgOwnPlan.queueType, bgOwnPlan.bgTypeId, bgOwnPlan.bracket, pool, missing);" "the fallback's server message to the unannounced factions")
+require_text("${server_block}" "if (!(sides & ai::bgfill::AnnounceSide(team)) || pool[team].empty())\n            continue;" "only the factions asked for")
 require_text("${policy_h}" "return mode == AnnounceModeServer || (mode == AnnounceModeFallback && !announcers);" "server only in mode 1 or as the fallback")
 forbid_text("${stage_c}" "mangos_string" "a new mangos_string row")
 

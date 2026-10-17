@@ -4224,17 +4224,18 @@ void RandomPlayerbotMgr::BuildBgAnnouncePool(uint32 queueType, std::array<std::v
 
 // Stage c (C4): the server message - one random line of each faction's pool, only to the manager's real players of that
 // faction whose level is in the bracket (bounded by the real players; no walk over the sessions, no new text row in the database).
-// Both factions or none: the caller checked that both pools have lines and MaxPerHour has room for two. Returns the
-// faction texts sent (counted against MaxPerHour).
+// Only the factions in sides (ai::bgfill::AnnounceSide bits): both from the planner, the unannounced ones from the
+// mode-2 fallback (review c4). The caller checked that their pools have lines and MaxPerHour has room for one line each.
+// Returns the faction texts sent (counted against MaxPerHour).
 uint32 RandomPlayerbotMgr::SendBgAnnounceServer(uint32 queueType, uint32 bgTypeId, uint32 bracket,
-    std::array<std::vector<std::string>, 2> const& pool)
+    std::array<std::vector<std::string>, 2> const& pool, uint32 sides)
 {
     char const* const bgName = ai::bgfill::BgFullName(queueType);
     BattleGroundTypeId const typeId = BattleGroundTypeId(bgTypeId);
     uint32 lines = 0;
     for (uint32 team = 0; team < 2; ++team)
     {
-        if (pool[team].empty())
+        if (!(sides & ai::bgfill::AnnounceSide(team)) || pool[team].empty())
             continue;
         std::string const text = ai::bgfill::ExpandAnnounceLine(pool[team][urand(0, uint32(pool[team].size()) - 1)], bgName);
         Team const sideTeam = team ? HORDE : ALLIANCE;
@@ -4505,7 +4506,7 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
     if (server)
     {
         announcers.clear();
-        lines = SendBgAnnounceServer(queueType, uint32(bgTypeId), bracket, pool);
+        lines = SendBgAnnounceServer(queueType, uint32(bgTypeId), bracket, pool, ai::bgfill::AnnounceSidesBoth);
     }
     else
     {
@@ -4530,6 +4531,7 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
                 continue;
             BgAnnounceDue due;
             due.guid = guid;
+            due.team = team;
             due.dueMs = nowMs + urand(ai::bgfill::AnnounceStaggerMinMs, ai::bgfill::AnnounceStaggerMaxMs);
             due.text = ai::bgfill::ExpandAnnounceLine(pool[team][pick[team][said[team]++]], bgName);
             bgAnnounceDue.push_back(due);
@@ -4545,7 +4547,8 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
     }
     bgAnnounceHourLines += lines;
     // The measurement point of every announcement, always written (bounded by MaxPerHour). Chat lines are the planned
-    // ones; a plan none of whose lines is said writes a second line with lines=0 at its queue step (QueueBgOwn).
+    // ones; a faction none of whose lines is said gets the mode-2 fallback line (DrainBgAnnounce) or a second line with
+    // lines=0 at the queue step (QueueBgOwn, reason=unannounced).
     sLog.outBasic("[BGAnnounce] bg=%u bracket=%u bots=%u mode=%s lines=%u", uint32(bgTypeId), bracket, uint32(announcers.size()),
         server ? "server" : "chat", lines);
 
@@ -4557,7 +4560,7 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
     bgOwnPlan.bracket = bracket;
     bgOwnPlan.band = BgOwnBand(uint32(bgTypeId), bracket);
     bgOwnPlan.queueAtMs = nowMs + ai::bgfill::AnnounceDelayMs(sPlayerbotAIConfig.bgAnnounceDelaySeconds);
-    bgOwnPlan.server = server;
+    bgOwnPlan.server = { server, server };
     for (uint32 team = 0; team < 2; ++team)
     {
         std::vector<uint32>& list = bgOwnPlan.candidates[team];
@@ -4582,10 +4585,10 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
 }
 
 // Stage c (C3), once the announced match's DelaySeconds ran out (CheckBgFill runs a fresh scan first): nobody queues
-// unless the start was really announced (a chat line said or the server message out; else reason=unannounced). Then both
-// sides queue up to the template minimum through the stage-a join helper - the real players' entries of that queue and
-// bracket and the fill bots already queued for it count, so a real player who queued for the announced type gets the
-// stage-a fill and only the rest is queued here. The caps again (MaxConcurrent with this bracket counted once,
+// unless the start was really announced to each faction (a chat line of it said or the server message to it; else
+// reason=unannounced). Then both sides queue up to the template minimum through the stage-a join helper - the real
+// players' entries of that queue and bracket and the fill bots already queued for it count, so a real player who queued
+// for the announced type gets the stage-a fill and only the rest is queued here. The caps again (MaxConcurrent with this bracket counted once,
 // MaxBotBGPerBracket), no queue while a slot there is reserved for a waiting real player or a running battleground of
 // that type and bracket has a free slot (reason=freeslots). The plan's bots go through the stage-a candidate filter and
 // the core's join checks again: if a side cannot reach its need any more, nobody queues (reason=nobots; the
@@ -4604,14 +4607,18 @@ void RandomPlayerbotMgr::QueueBgOwn(uint32 nowMs)
     if (!bgTemplate || !ai::bgfill::IsFillQueueType(plan.queueType) || plan.bracket >= MAX_BATTLEGROUND_BRACKETS)
         return;
 
-    // Owner contract: bots play a battleground by themselves only if its start was announced. No chat line was really
-    // said (every announcer got unfit before its line was due, DrainBgAnnounce) and no server message went out: nobody
-    // queues (review c2). The [BGAnnounce] line with lines=0 makes it visible (bounded by the plans, i.e. MaxPerHour).
-    if (!plan.server && !plan.said)
+    // Owner contract: bots play a battleground by themselves only if its start was announced - to each faction (owner D3,
+    // review c4). A faction none of whose chat lines was really said (its announcers got unfit before their lines were
+    // due, DrainBgAnnounce) and that no server message reached: nobody queues (review c2). The [BGAnnounce] line with
+    // lines=0 names the unannounced side (once per plan: the plan is used once; bounded by MaxPerHour).
+    uint32 const unannounced = ai::bgfill::AnnounceSidesMissing(plan.said[0], plan.said[1], plan.server[0], plan.server[1]);
+    if (unannounced)
     {
-        sLog.outBasic("[BGAnnounce] bg=%u bracket=%u bots=0 mode=chat lines=0 reason=unannounced", plan.bgTypeId, plan.bracket);
+        sLog.outBasic("[BGAnnounce] bg=%u bracket=%u bots=0 mode=chat lines=0 reason=unannounced side=%s", plan.bgTypeId, plan.bracket,
+            ai::bgfill::AnnounceSidesName(unannounced));
         if (trace)
-            sLog.outBasic("[BGFill] state=skip reason=unannounced own=1 bg=%u bracket=%u", plan.bgTypeId, plan.bracket);
+            sLog.outBasic("[BGFill] state=skip reason=unannounced own=1 bg=%u bracket=%u said_a=%u said_h=%u", plan.bgTypeId, plan.bracket,
+                plan.said[0], plan.said[1]);
         return;
     }
 
@@ -4736,10 +4743,11 @@ void RandomPlayerbotMgr::QueueBgOwn(uint32 nowMs)
 // (IsBgAnnouncerFit), joins the World channel if needed (GetOrCreateChannel and Join on the world thread, as the join
 // opcode does) and its line goes out through Channel::AsyncSay - the ChannelBroadcaster queue, whose producer the world
 // thread already is (the opcode path), so no new producer thread. Never the synchronous channel say or the bot's own
-// world-chat helpers from here. A bot that no longer qualifies says nothing. Each line said counts for the announced
-// match (bgOwnPlan.said; one plan at a time, its lines are due 2-15 s after it, before its queue join). Once the last due
-// line is gone and none was said, mode 2 sends the server message instead (within MaxPerHour, review c2); otherwise
-// QueueBgOwn queues nobody for an unannounced match.
+// world-chat helpers from here. A bot that no longer qualifies says nothing. Each line said counts for its faction in the
+// announced match (bgOwnPlan.said per faction; one plan at a time, its lines are due 2-15 s after it, before its queue
+// join, so the counts are final then). Once the last due line is gone, mode 2 sends the server message to each faction
+// none of whose lines was said (once per plan, within MaxPerHour, review c2/c4); otherwise QueueBgOwn queues nobody for
+// a match not announced to both factions.
 void RandomPlayerbotMgr::DrainBgAnnounce(uint32 nowMs)
 {
     if (bgAnnounceDue.empty())
@@ -4766,27 +4774,42 @@ void RandomPlayerbotMgr::DrainBgAnnounce(uint32 nowMs)
             world->Join(bot->GetObjectGuid(), "");
         world->AsyncSay(bot->GetObjectGuid(), due.text.c_str(), LANG_UNIVERSAL);
         if (bgOwnPlan.queueType)
-            ++bgOwnPlan.said;
+            ++bgOwnPlan.said[due.team ? 1 : 0];
         if (sPlayerbotAIConfig.bgTrace)
             sLog.outBasic("[BGFill] state=announce bot=%u said=1 text=%s", due.guid, due.text.c_str());
     }
-    if (!bgAnnounceDue.empty() || !bgOwnPlan.queueType || bgOwnPlan.server || bgOwnPlan.said ||
+    if (!bgAnnounceDue.empty() || !bgOwnPlan.queueType || bgOwnPlan.fallbackTried ||
             ai::bgfill::AnnounceMode(sPlayerbotAIConfig.bgAnnounceMode) != ai::bgfill::AnnounceModeFallback)
         return;
-    // Mode 2 fallback at due time: both factions or none, within MaxPerHour.
+    // Mode 2 fallback at due time, tried once per plan (review c4: per faction): the server message to each faction none
+    // of whose chat lines was said - all of those factions or none, within MaxPerHour (one line each).
+    uint32 const missing = ai::bgfill::AnnounceSidesMissing(bgOwnPlan.said[0], bgOwnPlan.said[1], bgOwnPlan.server[0], bgOwnPlan.server[1]);
+    if (!missing)
+        return;
+    bgOwnPlan.fallbackTried = true;
+    uint32 const wanted = ai::bgfill::AnnounceSideCount(missing);
     std::array<std::vector<std::string>, 2> pool;
     BuildBgAnnouncePool(bgOwnPlan.queueType, pool);
-    if (pool[0].empty() || pool[1].empty() ||
-            ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, 2) < 2)
+    if (((missing & ai::bgfill::AnnounceSideAlliance) && pool[0].empty()) || ((missing & ai::bgfill::AnnounceSideHorde) && pool[1].empty()) ||
+            ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, wanted) < wanted)
     {
         if (sPlayerbotAIConfig.bgTrace)
-            sLog.outBasic("[BGFill] state=skip reason=announcecap fallback=1 bg=%u bracket=%u", bgOwnPlan.bgTypeId, bgOwnPlan.bracket);
+            sLog.outBasic("[BGFill] state=skip reason=announcecap fallback=1 bg=%u bracket=%u side=%s", bgOwnPlan.bgTypeId, bgOwnPlan.bracket,
+                ai::bgfill::AnnounceSidesName(missing));
         return;
     }
-    uint32 const lines = SendBgAnnounceServer(bgOwnPlan.queueType, bgOwnPlan.bgTypeId, bgOwnPlan.bracket, pool);
+    uint32 const lines = SendBgAnnounceServer(bgOwnPlan.queueType, bgOwnPlan.bgTypeId, bgOwnPlan.bracket, pool, missing);
     bgAnnounceHourLines += lines;
-    bgOwnPlan.server = lines != 0;
-    sLog.outBasic("[BGAnnounce] bg=%u bracket=%u bots=0 mode=server lines=%u", bgOwnPlan.bgTypeId, bgOwnPlan.bracket, lines);
+    if (lines == wanted)
+    {
+        for (uint32 team = 0; team < 2; ++team)
+        {
+            if (missing & ai::bgfill::AnnounceSide(team))
+                bgOwnPlan.server[team] = true;
+        }
+    }
+    sLog.outBasic("[BGAnnounce] bg=%u bracket=%u bots=0 mode=server lines=%u side=%s", bgOwnPlan.bgTypeId, bgOwnPlan.bracket, lines,
+        ai::bgfill::AnnounceSidesName(missing));
 }
 
 // twow-repo#517 stage c (owner decision C0, AiPlayerbot.BG.BotOnlyHonorRate, only with BG.Enable and a rate that really

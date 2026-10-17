@@ -531,6 +531,19 @@ void Announce()
     Require(AnnounceLinesAllowed(0, 10, 5) == 5, "room for all");
     Require(AnnounceLinesAllowed(8, 10, 5) == 2, "only the rest of the hour");
     Require(AnnounceLinesAllowed(10, 10, 5) == 0 && AnnounceLinesAllowed(12, 10, 5) == 0, "hour used up");
+    Require(AnnounceSide(0) == AnnounceSideAlliance && AnnounceSide(1) == AnnounceSideHorde, "side bit per team");
+    Require(AnnounceSidesMissing(1, 1, false, false) == 0, "both factions said: announced");
+    Require(AnnounceSidesMissing(2, 0, false, false) == AnnounceSideHorde, "horde said nothing: horde unannounced");
+    Require(AnnounceSidesMissing(0, 3, false, false) == AnnounceSideAlliance, "alliance said nothing: alliance unannounced");
+    Require(AnnounceSidesMissing(0, 0, false, false) == AnnounceSidesBoth, "nothing said: both unannounced");
+    Require(AnnounceSidesMissing(1, 0, false, true) == 0, "horde reached by the server fallback: announced");
+    Require(AnnounceSidesMissing(0, 0, true, true) == 0, "server message to both: announced");
+    Require(AnnounceSidesMissing(0, 0, true, false) == AnnounceSideHorde, "server to one faction only: the other unannounced");
+    Require(AnnounceSideCount(0) == 0 && AnnounceSideCount(AnnounceSideAlliance) == 1 && AnnounceSideCount(AnnounceSideHorde) == 1 &&
+        AnnounceSideCount(AnnounceSidesBoth) == 2, "side count");
+    Require(std::string(AnnounceSidesName(AnnounceSideAlliance)) == "A" && std::string(AnnounceSidesName(AnnounceSideHorde)) == "H" &&
+        std::string(AnnounceSidesName(AnnounceSidesBoth)) == "both" && std::string(AnnounceSidesName(0)) == "none", "side names");
+
     Require(AnnounceMinLines == 2, "an announcement needs one line per faction");
     Require(AnnounceMaxPerHour(0) == 0 && AnnounceMaxPerHour(1) == 0, "MaxPerHour below 2 counts as 0 (fail closed)");
     Require(AnnounceMaxPerHour(2) == 2 && AnnounceMaxPerHour(10) == 10, "MaxPerHour from 2 on as set");
