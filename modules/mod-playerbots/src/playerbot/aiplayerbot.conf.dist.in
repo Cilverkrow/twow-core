@@ -45,8 +45,9 @@ AiPlayerbot.RandomBotJoinLfg = 1
 AiPlayerbot.RandomBotJoinBG = 1
 
 # twow-repo#517 (bots in battlegrounds). All AiPlayerbot.BG.* keys are restart-only: change them and restart the
-# server (.rndbot reload is not supported for them). With Enable = 0 the server runs as without them. With Enable = 1
-# and both PlayerFill = 0 and SlotRelease = 0 only the leave of the battleground bots changes (see Enable).
+# server (.rndbot reload is not supported for them). With Enable = 0 the server runs as without them. With Enable = 1,
+# PlayerFill = 0, SlotRelease = 0, Announce = 0 and BotOnlyHonorRate = 1.0 only the leave of the battleground bots changes
+# (see Enable).
 # Enable: master switch of all BG stages. With Enable = 1 a battleground bot's leave packet carries the real map id, so
 # it really leaves a battleground that is over (it used to stay until the core removed it); invited to another
 # battleground while its own one still runs, it declines that invite instead of leaving. 0 = off (default).
@@ -73,8 +74,9 @@ AiPlayerbot.BG.MaxConcurrent = 0
 # CheckIntervalSeconds: how often the manager looks for queued real players. 0 = 30 s (default), minimum 10.
 AiPlayerbot.BG.CheckIntervalSeconds = 0
 # Trace: [BGFill] lines per event (queue, join, accept, cap, skip, leave, return; stage b: pair, topup, reserve,
-# reserve_end, botonly_end, botonly_stop) and one summary per minute. The [BGSlotRelease] line of a slot release is
-# always written. 0 = off (default).
+# reserve_end, botonly_end, botonly_stop; stage c: announce, own_queue, own_start, honor_rate) and one summary per
+# minute. The [BGSlotRelease] line of a slot release and the [BGAnnounce] line of an announcement are always written.
+# 0 = off (default).
 AiPlayerbot.BG.Trace = 0
 # SlotRelease (stage b, needs Enable = 1, and in practice PlayerFill = 1, which puts the fill bots into battlegrounds):
 # a real player who has waited SlotReleaseWaitSeconds in the Warsong Gulch, Arathi Basin or Alterac Valley queue
@@ -114,6 +116,56 @@ AiPlayerbot.BG.BotOnlyCleanup = 1
 # core does not invite him into it; when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds.
 # 0 = 120 s (default), minimum 60; a negative value counts as 0.
 AiPlayerbot.BG.BotOnlyGraceSeconds = 0
+# BotOnlyHonorRate (stage c, needs Enable = 1): honor factor for a bot in a battleground without a real player inside -
+# bonus honor and kill honor, so its rank points (credited from honor) scale too. Marks, the kill count, experience and
+# reputation stay normal. With a real player inside everybody gets the normal honor, and real players always get it,
+# also for killing bots. Only a reduction: a value of 0 or less, or above 1.0, counts as 1.0. The live owner value is
+# 0.5. With Trace = 1 each scaled gain writes [BGFill] state=honor_rate. 1.0 = unchanged (default).
+AiPlayerbot.BG.BotOnlyHonorRate = 1.0
+# Announce (stage c, needs Enable = 1 and a persistent roster): bots play a battleground by themselves, but only an
+# announced one. Every IntervalMinutes the bot manager picks Warsong Gulch, Arathi Basin or Alterac Valley (the type
+# started last comes last; Blood Ring and Sunnyglade Valley never) and a bracket where both factions have enough free
+# roster bots for the battleground's minimum (the same bots PlayerFill would take). 2 (WSG), 3 (AB) or 5 (AV) of those
+# bots, alternating Alliance and Horde, each say one line of their faction's pool in the World channel, 2-15 s apart;
+# DelaySeconds after the announcement both sides queue the minimum, so real players can queue too (a real player who
+# queued is counted, only the rest are queued). If a side no longer has enough free bots then, nobody queues. These
+# battlegrounds count against MaxConcurrent and MaxBotBGPerBracket, the bots are fill bots (a waiting real player gets
+# in through SlotRelease) and BotOnlyCleanup never empties them. One line per announcement is always written:
+# [BGAnnounce] bg=<type> bracket=<n> bots=<announcers> mode=chat|server lines=<n>. 0 = off (default).
+AiPlayerbot.BG.Announce = 0
+# Announce.IntervalMinutes: at most one announced bot-own battleground per interval. 0 = none (default), at most 1440.
+AiPlayerbot.BG.Announce.IntervalMinutes = 0
+# MaxBotBGPerBracket: bot-own battlegrounds running or forming at the same time per level range, over Warsong Gulch,
+# Arathi Basin and Alterac Valley together (the level range of a bracket: WSG and AB 60 and AV 51-60 are one range).
+# 0 = 1 (default; the owner value for a start).
+AiPlayerbot.BG.MaxBotBGPerBracket = 0
+# Announce.Mode: 0 = chat in the World channel (default), 1 = a server message instead, 2 = chat, and the server message
+# when no announcer qualifies. The server message goes only to real players of that faction whose level is in the
+# bracket. Any other value is 0.
+AiPlayerbot.BG.Announce.Mode = 0
+# Announce.DelaySeconds: time between the announcement and the bots' queue join. 0 = 60 s (default), minimum 20,
+# at most 3600.
+AiPlayerbot.BG.Announce.DelaySeconds = 0
+# Announce.BotCooldownMinutes: a bot announces at most once per this many minutes. 0 = 60 (default), at most 1440.
+AiPlayerbot.BG.Announce.BotCooldownMinutes = 0
+# Announce.MaxPerHour: hard cap on announcement lines per hour (chat lines and server messages). 0 = no line at all
+# (default, fail closed) - and so no bot-own battleground either.
+AiPlayerbot.BG.Announce.MaxPerHour = 0
+# Announce.Text.Alliance / Announce.Text.Horde: the faction's generic lines, separated by |; %bg is the full battleground
+# name (Warsong Gulch, Arathi Basin, Alterac Valley). Announce.Text.<faction>.WSG / .AB / .AV: lines for that
+# battleground only, merged with the generic ones. Each key empty = its built-in pool (English, role-play, with lines
+# like "For the Alliance! Join us in %bg!", "Lok'tar! The Horde gathers at %bg, who stands with us?" and, for Alliance AV,
+# "Stormpike needs you, to Alterac!"). Printable ASCII only; a line with other characters, or longer than 255 bytes with
+# the battleground name put in, is dropped at startup with a warning; at most 64 lines per key. The same line is never
+# said twice in one announcement.
+AiPlayerbot.BG.Announce.Text.Alliance = ""
+AiPlayerbot.BG.Announce.Text.Horde = ""
+AiPlayerbot.BG.Announce.Text.Alliance.WSG = ""
+AiPlayerbot.BG.Announce.Text.Alliance.AB = ""
+AiPlayerbot.BG.Announce.Text.Alliance.AV = ""
+AiPlayerbot.BG.Announce.Text.Horde.WSG = ""
+AiPlayerbot.BG.Announce.Text.Horde.AB = ""
+AiPlayerbot.BG.Announce.Text.Horde.AV = ""
 # twow-repo#541/#551 (console rndbot park / unpark): 1 = a parked bot is not visible to other bots and
 # sees only real players and units fighting it (core Player flag, real players see it as always).
 # Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).
