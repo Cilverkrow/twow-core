@@ -247,15 +247,21 @@ endforeach()
 # 5. The [BGAnnounce] line: always written (not behind Trace), once per announcement, after MaxPerHour (fail closed).
 set(announce_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=%u mode=%s lines=%u\", uint32(bgTypeId), bracket, uint32(announcers.size()),\n        server ? \"server\" : \"chat\", lines);")
 require_text("${plan}" "${announce_line}" "[BGAnnounce] line")
-# Three [BGAnnounce] lines, each at most once per announcement (review c2): the announcement (planner), the mode-2
-# server fallback at due time (drain) and an unannounced plan with lines=0 (queue step). None behind Trace.
+# Four [BGAnnounce] lines, each at most once per announcement (review c2/c4): the announcement (planner), the mode-2
+# server fallback at due time (drain), and at the queue step a plan not announced to each faction or one whose type and
+# bracket got a running battleground with a free slot, both with lines=0. None behind Trace.
 set(fallback_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=0 mode=server lines=%u side=%s\", bgOwnPlan.bgTypeId, bgOwnPlan.bracket, lines,\n        ai::bgfill::AnnounceSidesName(missing));")
 set(unannounced_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=0 mode=chat lines=0 reason=unannounced side=%s\", plan.bgTypeId, plan.bracket,\n            ai::bgfill::AnnounceSidesName(unannounced));")
-count_text("${mgr_cpp}" "sLog.outBasic(\"[BGAnnounce]" 3 "the [BGAnnounce] lines in the manager")
+set(freeslots_line "sLog.outBasic(\"[BGAnnounce] bg=%u bracket=%u bots=0 mode=%s lines=0 reason=freeslots\", plan.bgTypeId, plan.bracket,\n                plan.server[0] && plan.server[1] ? \"server\" : \"chat\");")
+count_text("${mgr_cpp}" "sLog.outBasic(\"[BGAnnounce]" 4 "the [BGAnnounce] lines in the manager")
 count_text("${plan}" "sLog.outBasic(\"[BGAnnounce]" 1 "one [BGAnnounce] line in the planner")
 require_text("${drain}" "${fallback_line}" "[BGAnnounce] line of the mode-2 fallback")
 require_text("${queue}" "${unannounced_line}" "[BGAnnounce] line of an unannounced plan")
-foreach(pair "plan|announce_line" "drain|fallback_line" "queue|unannounced_line")
+require_text("${queue}" "    if (skip)\n    {\n        // The call was answered by a running battleground with a free slot" "the free-slot line in the skip block")
+require_text("${queue}" "        if (std::string(skip) == \"freeslots\")\n            ${freeslots_line}" "[BGAnnounce] line of a plan a running battleground with a free slot took")
+require_order("${queue}" "${freeslots_line}" "        return;\n    }\n\n    uint32 const minPerTeam" "the free-slot line before the skip returns")
+count_text("${mgr_cpp}" "lines=0 reason=freeslots\"" 1 "the free-slot line written in one place (once per plan)")
+foreach(pair "plan|announce_line" "drain|fallback_line" "queue|unannounced_line" "queue|freeslots_line")
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 where)
   list(GET parts 1 which)
