@@ -245,6 +245,9 @@ require_order("${plan}" "if (!allowed || (server && allowed < 2))" "${announce_l
 require_text("${plan}" "if (announcers.size() > allowed)\n            announcers.resize(allowed);" "chat lines cut to MaxPerHour")
 require_order("${plan}" "if (!lines)" "${announce_line}" "no line, no announcement")
 require_order("${plan}" "bgAnnounceHourLines += lines;" "${announce_line}" "lines counted for MaxPerHour")
+region("${policy_h}" "inline uint32_t AnnounceLinesAllowed(" "inline bool AnnounceHourOver(" lines_allowed)
+require_text("${lines_allowed}" "if (!maxPerHour || usedThisHour >= maxPerHour)\n        return 0;" "MaxPerHour 0 or used up: no line (fail closed)")
+require_text("${lines_allowed}" "return wanted < left ? wanted : left;" "never more than the rest of the hour")
 
 # 6. Bot-own battlegrounds are never drained: their bots are fill bots marked own, their instance is startedForOwn and
 #    never startedForFill; the bot-only watch drops every own instance; they count against MaxConcurrent all the same.
@@ -389,5 +392,16 @@ require_order("${core_honor}" "cp *= sWorld.getConfig(CONFIG_FLOAT_RATE_HONOR);"
 require_order("${core_honor}" "    if (type != DISHONORABLE)\n    {" "Script_OnHonorGain(m_owner, cp, type);" "core hook in the non-dishonorable branch")
 region("${core_channel}" "void Channel::AsyncSay(" "\n}\n" core_async_say)
 require_text("${core_async_say}" "sWorld.GetChannelBroadcaster()->EnqueueMessage(" "AsyncSay only queues for the ChannelBroadcaster")
+
+# 13. CI runs cmake 3.x, where CMP0012 is OLD without a policy version (the host cmake 4 hides that): both stage-c
+#     contracts start with cmake_policy(VERSION 3.16).
+file(READ "${CMAKE_CURRENT_LIST_FILE}" self_text)
+file(READ "${CORE_SOURCE_DIR}/t/check_honor_gain_517_contract.cmake" core_contract_text)
+foreach(var self_text core_contract_text)
+  string(FIND "${${var}}" "cmake_policy(VERSION 3.16)" policy_at)
+  if(NOT policy_at EQUAL 0)
+    message(FATAL_ERROR "#517 c: a stage-c contract does not start with cmake_policy(VERSION 3.16) (${var})")
+  endif()
+endforeach()
 
 message(STATUS "bg_announce_517 source contract passed")
