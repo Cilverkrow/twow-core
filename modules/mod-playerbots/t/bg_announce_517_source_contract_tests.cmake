@@ -704,6 +704,13 @@ set(server_expand "        texts[team] = ai::bgfill::ExpandAnnounceText(pool[tea
 require_text("${server_block}" "${server_expand}" "the server text through the Q2 expansion, all factions or none")
 require_order("${server_block}" "${server_expand}" "SendSysMessage(" "every server text checked before any is sent")
 require_text("${server_block}" "std::string const& text = texts[team];" "the server message sends the expanded text")
+# Review c8 (probe r1): in the send loop only the empty text keeps out a faction that was not asked for (or has no
+# pool) - without it the mode-2 fallback would send an empty message to the other faction's real players and count it.
+set(server_send_skip "        if (texts[team].empty())\n            continue;\n        std::string const& text = texts[team];\n")
+require_text("${server_block}" "${server_send_skip}" "the send loop skips a faction without a text")
+require_order("${server_block}" "${server_expand}" "${server_send_skip}" "every text built before the send loop")
+require_order("${server_block}" "${server_send_skip}" "SendSysMessage(" "a faction without a text skipped before any message")
+require_order("${server_block}" "${server_send_skip}" "        ++lines;" "a faction without a text not counted")
 region("${mgr_cpp}" "std::string RandomPlayerbotMgr::BgAnnounceLevelRange(" "\n}\n" range_fn)
 require_text("${range_fn}" "if (!bgTemplate || bracket >= MAX_BATTLEGROUND_BRACKETS)\n        return std::string();" "no range without a template (fail closed)")
 require_text("${range_fn}" "return ai::bgfill::AnnounceLevelRange(Player::GetMinLevelForBattleGroundBracketId(bracketId, typeId),\n        Player::GetMaxLevelForBattleGroundBracketId(bracketId, typeId), bgTemplate->GetMaxLevel());" "the range from the core's bracket levels, capped at the template maximum")
