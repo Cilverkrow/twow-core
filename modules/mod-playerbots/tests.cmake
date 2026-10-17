@@ -2194,6 +2194,14 @@ add_test(NAME bg_fill_517_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bg_fill_517_source_contract_tests.cmake")
 
+# twow-repo#517 stage b: pair option, slot release with reservation, bot-only cleanup, R5 leave map id
+# (AiPlayerbot.BG.Enable + AiPlayerbot.BG.SlotRelease).
+add_test(NAME bg_slot_release_517_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/bg_slot_release_517_source_contract_tests.cmake")
+
 # twow-repo#541 (audit A10): one PlayerTravelInfo per travel choice and keyed destination lookup (AiPlayerbot.Perf.TravelInfoReuse, default 0).
 add_test(NAME travel_info_reuse_source_contract
   COMMAND "${CMAKE_COMMAND}"

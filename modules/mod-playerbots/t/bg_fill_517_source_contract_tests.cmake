@@ -133,7 +133,8 @@ require_text("${conf_dist}" "restart-only" "BG keys documented as restart-only")
 
 # 2. Roster branch: LoginFreeBots(), then the gated CheckBgFill, then the roster return; no legacy BG queue count.
 region("${mgr_cpp}" "if (sPlayerbotAIConfig.persistentActiveRosterEnabled)\n    {\n        if (!persistentRosterInitialized)" "    ScaleBotActivity();\n    if (sPlayerbotAIConfig.asyncBotLogin)" roster_branch)
-require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && sPlayerbotAIConfig.bgPlayerFill)\n            CheckBgFill();" "fill gated by bgEnable && bgPlayerFill")
+# Stage b (twow-repo#517): SlotRelease runs in the same pass and needs no PlayerFill; the master switch gates both.
+require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease))\n            CheckBgFill();" "fill gated by bgEnable && (bgPlayerFill || bgSlotRelease)")
 require_order("${roster_branch}" "LoginFreeBots();" "CheckBgFill();" "LoginFreeBots before CheckBgFill")
 require_order("${roster_branch}" "CheckBgFill();" "PlayerbotHolder::UpdateAIInternal(elapsed, minimal);\n        if (sPlayerbotAIConfig.worldBotsTrace)" "CheckBgFill before the roster return")
 forbid_text("${roster_branch}" "CheckBgQueue" "legacy BG queue count in the roster branch (BGJoinAction would queue roster bots)")
@@ -365,7 +366,7 @@ forbid_text("${real_group}" "FindMap()" "every online member counts, on any map"
 # The flag stays set from the accept until the return: a WAIT_JOIN latched before the accept must not port again.
 region("${members}" "BGStatusAction::AcceptInvite(" "bgFillInBg[guid] = accepted;" accept_tail)
 forbid_text("${accept_tail}" "SetBgFillPending(false)" "pending flag cleared at the accept")
-require_text("${accept_tail}" "accepted.startedForFill = bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "instance started for the fill, or topped up")
+require_text("${accept_tail}" "accepted.startedForFill = !entry.pairFor && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "instance started for the fill (never by a stage-b pair or top-up bot), or topped up")
 require_order("${members}" "ai->OnReturnFromBattleground(uint32(time(nullptr)));" "ai->SetBgFillPending(false);\n        ++bgFillMinute.returns;" "pending flag cleared on the return")
 require_text("${ai_h}" "std::atomic<bool> bgFillPending{ false };" "pending flag is atomic")
 region("${join_cpp}" "if (statusid == STATUS_WAIT_JOIN)" "bool BGStatusCheckAction::Execute(Event& event)" wait_join)
@@ -383,7 +384,7 @@ require_text("${port_state}" "ai->ChangeStrategy(\"+pvp\", BotState::BOT_STATE_N
 require_text("${port_state}" "context->GetValue<uint32>(\"bg role\")->Set(urand(0, 9));" "bg role at port")
 
 # 7. Join: the packet and bypass of JoinQueue, shared, not duplicated.
-require_text("${join_h}" "static void SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup);" "shared join helper")
+require_text("${join_h}" "static void SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup, uint32 instanceId = 0);" "shared join helper (stage b: the pair bots' instance, 0 = first available by default)")
 region("${join_cpp}" "bool BGJoinAction::JoinQueue(uint32 type)" "void BGJoinAction::SendBattlemasterJoin(" join_queue)
 require_text("${join_queue}" "SendBattlemasterJoin(ai, bot, bgTypeId, joinAsGroup);" "JoinQueue uses the shared helper")
 require_text("${join_queue}" "sRandomPlayerbotMgr.Refresh(bot);" "legacy random bots keep their Refresh")

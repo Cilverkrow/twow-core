@@ -45,8 +45,11 @@ AiPlayerbot.RandomBotJoinLfg = 1
 AiPlayerbot.RandomBotJoinBG = 1
 
 # twow-repo#517 (bots in battlegrounds). All AiPlayerbot.BG.* keys are restart-only: change them and restart the
-# server (.rndbot reload is not supported for them). With Enable = 0 or PlayerFill = 0 the server runs as without them.
-# Enable: master switch of all BG stages. 0 = off (default).
+# server (.rndbot reload is not supported for them). With Enable = 0 the server runs as without them. With Enable = 1
+# and both PlayerFill = 0 and SlotRelease = 0 only the leave of the battleground bots changes (see Enable).
+# Enable: master switch of all BG stages. With Enable = 1 a battleground bot's leave packet carries the real map id, so
+# it really leaves a battleground that is over (it used to stay until the core removed it); invited to another
+# battleground while its own one still runs, it declines that invite instead of leaving. 0 = off (default).
 AiPlayerbot.BG.Enable = 0
 # PlayerFill (stage a, needs Enable = 1 and a persistent roster): when a real player queues for Warsong Gulch, Arathi
 # Basin or Alterac Valley, the bot manager queues free persistent-roster bots of the player's bracket so that both
@@ -69,9 +72,48 @@ AiPlayerbot.BG.PlayerFill = 0
 AiPlayerbot.BG.MaxConcurrent = 0
 # CheckIntervalSeconds: how often the manager looks for queued real players. 0 = 30 s (default), minimum 10.
 AiPlayerbot.BG.CheckIntervalSeconds = 0
-# Trace: [BGFill] lines per event (queue, join, accept, cap, skip, leave, return) and one summary per minute.
-# 0 = off (default).
+# Trace: [BGFill] lines per event (queue, join, accept, cap, skip, leave, return; stage b: pair, topup, reserve,
+# reserve_end, botonly_end, botonly_stop) and one summary per minute. The [BGSlotRelease] line of a slot release is
+# always written. 0 = off (default).
 AiPlayerbot.BG.Trace = 0
+# SlotRelease (stage b, needs Enable = 1, and in practice PlayerFill = 1, which puts the fill bots into battlegrounds):
+# a real player who has waited SlotReleaseWaitSeconds in the Warsong Gulch, Arathi Basin or Alterac Valley queue
+# without an invite gets into a running battleground of his bracket that holds fill bots. First the pair option: if
+# both sides have a free slot, one free roster bot of the other faction (more while his side is ahead) queues with him
+# for that battleground so the core invites them together; if his side is full and the other side short, one bot goes
+# in alone first. With no pair option (or not enough free bots for it), and only when the core would then invite him
+# alone and does not already, one fill bot of his side leaves - only from a side above the battleground's minimum, never
+# a flag carrier or a dead bot, without Deserter - and the slot is reserved for him until he is invited, leaves the
+# queue or SlotReleaseWaitSeconds pass (one release decision per wait). A real player queued as a group with his own
+# bots has the same priority as a solo player and the group joins whole: the pair option takes as many bots of the
+# other faction as the group has members (all or none, else the release), the release lets up to that many bots of his
+# side leave at once (the side stays at or above the minimum; cut short, it reserves nothing and the next check decides
+# again), and a bot of a real player's group is never released. A group larger than a side, one that may be in the
+# premade queue (PremadeGroupWaitForMatch on and the group at least PremadeQueue.MinGroupSize), or one with a member in
+# another battleground or on a taxi is left to the core queue. While SlotRelease is on, PlayerFill queues bots for a
+# new match only when both sides can be filled. 0 = off (default).
+AiPlayerbot.BG.SlotRelease = 0
+# SlotReleaseWaitSeconds: the player's wait before the pair or the release, and how long a released slot stays
+# reserved. 0 = 60 s (default), minimum 15; a negative value counts as 0.
+AiPlayerbot.BG.SlotReleaseWaitSeconds = 0
+# BotOnlyCleanup (needs Enable = 1 and PlayerFill = 1; without PlayerFill it does nothing, bot-only battlegrounds only
+# come from the fill): a battleground started for the fill that has run BotOnlyGraceSeconds without a real player is
+# emptied - the bot manager's bots leave it, both sides, at most two per update, without Deserter - until nobody is
+# inside and no invite is open; the core then deletes it. It does not end through a win or the PrematureFinish
+# countdown, so no marks, experience or honor go to bots. Should such a battleground end anyway (a win, or the countdown
+# while the end waits), one line is written for it, always (not behind Trace):
+# [BGBotOnlyEnd] bg=<map>,<instance> winner=<A|H|none> bots=<bots still inside>. 1 = on (default); 0, or any value but
+# 1, true, TRUE, yes or YES = off: nothing of the cleanup runs. A bot queued for another match that the core invites
+# into a battleground being emptied declines that invite.
+AiPlayerbot.BG.BotOnlyCleanup = 1
+# BotOnlyGraceSeconds: how long a battleground started for the fill may run without a real player before BotOnlyCleanup
+# empties it. An open invite, a player inside who is not a bot, or a bot of a real player's group inside (it never
+# leaves) pauses that: before the grace has run out it starts
+# again once he is gone; once the emptying is due, it goes on at the next check after he is gone, without a new grace.
+# A real player waiting uninvited for that battleground and bracket does not keep it, but the bots leave so that the
+# core does not invite him into it; when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds.
+# 0 = 120 s (default), minimum 60; a negative value counts as 0.
+AiPlayerbot.BG.BotOnlyGraceSeconds = 0
 # twow-repo#541/#551 (console rndbot park / unpark): 1 = a parked bot is not visible to other bots and
 # sees only real players and units fighting it (core Player flag, real players see it as always).
 # Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).

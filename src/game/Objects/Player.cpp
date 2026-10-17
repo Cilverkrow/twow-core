@@ -21085,7 +21085,7 @@ void Player::SetBattleGroundEntryPoint(Player* leader /*= nullptr*/, bool queued
     m_bgData.m_needSave = true;
 }
 
-void Player::LeaveBattleground(bool teleportToEntryPoint)
+void Player::LeaveBattleground(bool teleportToEntryPoint, bool castDeserter)
 {
     //ClearUpdateMask( true );
     if (BattleGround *bg = GetBattleGround())
@@ -21097,7 +21097,10 @@ void Player::LeaveBattleground(bool teleportToEntryPoint)
         if (bg->IsArena() && bg->GetStatus() == STATUS_IN_PROGRESS)
             bg->UpdatePlayerScore(this, SCORE_DEATHS, 1);
 
-        if (!IsGameMaster() &&
+        // twow-repo#517 stage b (OB-00/OB-20): false as the second parameter skips both the immediate and the
+        // delayed Deserter cast; only the bot manager's slot release and bot-only cleanup pass it.
+        if (castDeserter &&
+                !IsGameMaster() &&
                 sWorld.getConfig(CONFIG_BOOL_BATTLEGROUND_CAST_DESERTER) &&
                 !sWorld.IsStopped() &&
                 (bg->GetStatus() == STATUS_IN_PROGRESS || bg->GetStatus() == STATUS_WAIT_JOIN)

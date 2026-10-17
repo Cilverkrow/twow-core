@@ -41,6 +41,7 @@
 
 #include "Battlegrounds/BattleGround.h"
 #include "Battlegrounds/BattleGroundMgr.h"
+#include "Battlegrounds/BattleGroundWS.h"
 #include "Chat/ChannelMgr.h"
 #include "Guild/GuildMgr.h"
 #include "World/WorldState.h"
@@ -1395,8 +1396,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         // twow-repo#517 stage a: roster bots fill a battleground a real player queues for, chosen and queued by this
         // manager. The legacy BG queue count stays off on this path, so BgPlayers and NeedBots stay 0 and BGJoinAction
         // never queues a roster bot on its own (no overshoot). BgBots can wrap below 0 when a fill bot gets TIME_REMOVE
-        // (BGStatusAction decrements it), but nothing reads it while BgPlayers is 0.
-        if (sPlayerbotAIConfig.bgEnable && sPlayerbotAIConfig.bgPlayerFill)
+        // (BGStatusAction decrements it), but nothing reads it while BgPlayers is 0. Stage b runs in the same pass: the
+        // pair option and slot release (SlotRelease) need no PlayerFill, the bot-only cleanup needs PlayerFill and
+        // BotOnlyCleanup (CheckBgFill).
+        if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease))
             CheckBgFill();
         PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
         if (sPlayerbotAIConfig.worldBotsTrace)
@@ -2241,6 +2244,12 @@ void RandomPlayerbotMgr::LoadBattleMastersCache()
     sLog.outString();
 }
 
+// One key per queue type and bracket (stage b's per-scan bracket sets).
+static uint32 BgFillBracketKey(uint32 queueType, uint32 bracket)
+{
+    return queueType * MAX_BATTLEGROUND_BRACKETS + bracket;
+}
+
 // Owner 16.10. (OB-00): a bot the fill queued is alone in its core queue entry (SendBattlemasterJoin, joinAsGroup false).
 // A bot in an entry with more members was queued by its group - a real player's group with his bots counts as a whole -
 // and belongs to that entry, never to the fill. The core's own reader, a copy under the queue's own m_Lock, on the world
@@ -2260,9 +2269,28 @@ static bool InGroupQueueEntry(Player* bot, BattleGroundQueueTypeId queueTypeId)
 // after the battleground - the same thread as BattleGroundMgr::Update, which drains the queue schedule.
 // Per update only the pending and in-battleground sets are walked (bounded by the bots of the running battlegrounds);
 // the real-player scan, and the bounded bot loop only when a real player waits, run once per CheckIntervalSeconds.
+// Stage b (AiPlayerbot.BG.SlotRelease, ScanBgSlotRelease) runs in the same pass, after the stage-a scan, and so does the
+// bot-only cleanup (PlayerFill and BotOnlyCleanup: WatchBotOnlyBgs per interval, LeaveBotOnlyBg per update).
 void RandomPlayerbotMgr::CheckBgFill()
 {
+    // Follow-up D (OB-20 16.10.): the bot-only cleanup only with PlayerFill (bot-only battlegrounds only come from the
+    // stage-a fill, startedForFill) and its own switch. Off: neither the watch nor the drain runs, nothing is recorded.
+    bool const botOnlyCleanup = sPlayerbotAIConfig.bgEnable && sPlayerbotAIConfig.bgPlayerFill && sPlayerbotAIConfig.bgBotOnlyCleanup;
+    // Follow-up D review: switched off while it runs (a config reload), its state goes at once - no stale instance
+    // stays for the pair/release scan or the invite check below. A drain cut short that way is left to the core (its
+    // PrematureFinish countdown can then end that battleground through EndBattleGround, with rewards for the bots
+    // inside).
+    if (!botOnlyCleanup)
+    {
+        bgFillNoRealSince.clear();
+        bgFillBotOnlyEnding.clear();
+        bgFillBotOnlyWatch.clear();
+    }
     UpdateBgFillMembers();
+    // Stage b: the watched bot-only battlegrounds per update - the [BGBotOnlyEnd] check and the drain of the ending ones
+    // (nothing while none is watched).
+    if (botOnlyCleanup)
+        LeaveBotOnlyBg();
     ReportBgFillMinute();
 
     uint32 const nowMs = WorldTimer::getMSTime();
@@ -2272,6 +2300,13 @@ void RandomPlayerbotMgr::CheckBgFill()
 
     WorldBotsClock::time_point const scanStart = WorldBotsClock::now();
     ScanBgFill(nowMs);
+    // Stage b: the bot-only watch first, so the pair/release scan sees the instances that end from now on and sends
+    // nobody there.
+    if (botOnlyCleanup)
+        WatchBotOnlyBgs(nowMs);
+    // Stage b after stage a: a player stage a just queued a new match for is left alone in this scan.
+    if (sPlayerbotAIConfig.bgSlotRelease)
+        ScanBgSlotRelease(nowMs);
     uint64 const scanUs = usSince(scanStart, WorldBotsClock::now());
     ++bgFillMinute.checks;
     bgFillMinute.scanUsMax = std::max(bgFillMinute.scanUsMax, scanUs);
@@ -2328,6 +2363,13 @@ void RandomPlayerbotMgr::UpdateBgFillMembers()
             leaveReason = "busy";
         else if (invited && !IsBgFillInviteStillFit(bot, ai))
             leaveReason = "unfit";
+        // Follow-up D review: the core tops up every battleground with free slots from the whole queue before it forms
+        // a new match (BattleGroundQueue::Update over BGFreeSlotQueue, FillPlayersToBG), and each drain leave puts a
+        // bot-only battleground back there - so a bot queued for another match can be invited into one being emptied.
+        // It declines (port action 0, which also lowers that battleground's invited count) before LeaveBotOnlyBg runs
+        // in this update, so the drain sees no open invite and the bot does not refill it.
+        else if (invited && IsBotOnlyInvite(bot, entry.bgTypeId))
+            leaveReason = "botonly";
         if (leaveReason)
         {
             if (LeaveBgFillQueue(bot, ai, guid, entry, leaveReason))
@@ -2367,9 +2409,12 @@ void RandomPlayerbotMgr::UpdateBgFillMembers()
         accepted.instanceId = bot->GetBattleGroundId();
         // Started for the fill: an instance that has not begun yet. A running one the core topped up first from the
         // queue (BattleGroundQueue::FillPlayersToBG) counts against the cap only while it holds other roster bots
-        // besides the fill bots (CountBgFillRunning).
+        // besides the fill bots (CountBgFillRunning). A stage-b pair or top-up bot goes into a battleground that was
+        // already there (WAIT_JOIN too, one the core started for real players): never started for the fill, so it
+        // takes no cap and does not put that battleground under the bot-only watch.
         BattleGround const* bg = bot->GetBattleGround();
-        accepted.startedForFill = bg && bg->GetStatus() != STATUS_IN_PROGRESS;
+        accepted.startedForFill = !entry.pairFor && bg && bg->GetStatus() != STATUS_IN_PROGRESS;
+        accepted.acceptMs = WorldTimer::getMSTime();
         ++bgFillMinute.accepts;
         if (sPlayerbotAIConfig.bgTrace)
             sLog.outBasic("[BGFill] state=accept bot=%u bg=%u inst=%u", guid, entry.bgTypeId, accepted.instanceId);
@@ -2428,6 +2473,10 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
     uint32 real[MAX_BATTLEGROUND_QUEUE_TYPES][MAX_BATTLEGROUND_BRACKETS][2] = {};
     std::set<std::pair<uint32, uint32>> realEntryMembers; // (queue type, member guid low) of the entries counted
     bool realPlayerQueued = false;
+    // Stage b (SlotRelease): the waits of the real players seen here are stamped with this scan, the rest pruned below.
+    bool const slotRelease = sPlayerbotAIConfig.bgSlotRelease;
+    uint32 const scanId = ++bgFillScanId ? bgFillScanId : ++bgFillScanId;
+    bgFillNewMatch.clear();
     for (auto const& [playerGuid, player] : players)
     {
         if (!player || !player->InBattleGroundQueue())
@@ -2477,7 +2526,54 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
             }
             real[queueTypeId][bracketId][team] += entrySize;
             realPlayerQueued = true;
+            // Stage b: first seen waiting uninvited in this queue - one wait per core queue entry (owner 16.10.: a real
+            // player's group with his bots is one unit), under the first real member this scan meets (the players map
+            // runs by guid, the dedupe above skips the others of his entry). A new wait takes over the first seen, the
+            // release and the reservation of a wait another member of the same entry held before (he logged out): the
+            // wait counts from the entry, not from the member (follow-up review: the reservation is keyed by the member
+            // too and would otherwise end as "left" while the release stays spent). Bounded by the entry's members.
+            if (slotRelease)
+            {
+                std::pair<uint32, uint32> const waitKey(playerGuid, uint32(queueTypeId));
+                BgFillWait& wait = bgFillWait[waitKey];
+                if (!wait.firstSeenMs)
+                {
+                    wait.firstSeenMs = nowMs ? nowMs : 1;
+                    for (auto const& member : entryInfo.Players)
+                    {
+                        auto const earlier = bgFillWait.find(std::make_pair(member.first.GetCounter(), uint32(queueTypeId)));
+                        if (earlier == bgFillWait.end() || &earlier->second == &wait || earlier->second.seenScan == scanId ||
+                                !earlier->second.firstSeenMs)
+                            continue;
+                        if (nowMs - earlier->second.firstSeenMs > nowMs - wait.firstSeenMs)
+                            wait.firstSeenMs = earlier->second.firstSeenMs;
+                        wait.released = wait.released || earlier->second.released;
+                        auto const reservation = bgFillReservations.find(earlier->first);
+                        if (reservation != bgFillReservations.end() && !bgFillReservations.count(waitKey))
+                        {
+                            bgFillReservations.emplace(waitKey, reservation->second);
+                            bgFillReservations.erase(reservation);
+                        }
+                    }
+                }
+                wait.queueType = uint32(queueTypeId);
+                wait.bgTypeId = uint32(bgTypeId);
+                wait.bracket = uint32(bracketId);
+                wait.team = team;
+                wait.size = entrySize;
+                wait.seenScan = scanId;
+            }
         }
+    }
+
+    // Stage b: a wait not seen in this scan ended (the player got invited, is in the battleground, left the queue or
+    // logged out); a new wait starts from zero, with a new release allowed. Bounded by the real players.
+    for (auto it = bgFillWait.begin(); it != bgFillWait.end();)
+    {
+        if (slotRelease && it->second.seenScan == scanId)
+            ++it;
+        else
+            it = bgFillWait.erase(it);
     }
 
     // AV with Alterac.MinPlayersInQueue above the template minimum: the core waits for that many uninvited entries per
@@ -2519,6 +2615,13 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
             reason = "abandoned";
         else if (ai::bgfill::PendingExpired(nowMs, entry.joinMs, ai::bgfill::PendingMaxSeconds * IN_MILLISECONDS))
             reason = "expired";
+        else if (entry.pairFor)
+        {
+            // Stage b pair bot: it stays only while its player still waits uninvited in that queue (the core invites
+            // both together); it takes no place in the new-match room below.
+            if (!bgFillWait.count(std::make_pair(entry.pairFor, entry.queueType)))
+                reason = "unpaired";
+        }
         else
         {
             BattleGroundTypeId const bgTypeId = BattleGroundTypeId(entry.bgTypeId);
@@ -2556,6 +2659,9 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
     uint32 formingBrackets = 0;
     for (auto const& [botGuid, entry] : bgFillPending)
     {
+        // Stage b pair bots go into a running battleground (already counted there), not into a new match.
+        if (entry.pairFor)
+            continue;
         ++pending[entry.queueType][entry.bracket][entry.team];
         if (!forming[entry.queueType][entry.bracket])
         {
@@ -2594,6 +2700,10 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
             // the next one. Same thread as BattleGroundMgr::Update, which swaps the schedule.
             sBattleGroundMgr.ScheduleQueueUpdate(queueTypeId, bgTypeId, bracketId);
 
+            // SlotRelease without PlayerFill: the queue kick above, no new match.
+            if (!sPlayerbotAIConfig.bgPlayerFill)
+                continue;
+
             // AV with Alterac.MinPlayersInQueue above the template minimum: no fill (avQueueMinBlocks above).
             if (avQueueMinBlocks(bgTypeId, bgTemplate))
             {
@@ -2610,6 +2720,16 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
                     uint32(bgTypeId), b, real[q][b][0], real[q][b][1], pending[q][b][0], pending[q][b][1], needA, needH);
             if (!needA && !needH)
                 continue;
+
+            // Stage b: a slot released for a waiting real player is his while it is reserved - no fill bot for that
+            // side, and so (no partial side under SlotRelease) no new match in that bracket either.
+            if ((needA && BgFillReserved(q, b, 0, nowMs)) || (needH && BgFillReserved(q, b, 1, nowMs)))
+            {
+                if (trace)
+                    sLog.outBasic("[BGFill] state=skip reason=reserved bg=%u bracket=%u side=%s", uint32(bgTypeId), b,
+                        needA && needH ? "AH" : needA ? "A" : "H");
+                continue;
+            }
 
             // AiPlayerbot.BgBotTeamCap 0 takes a battleground away from bots entirely; that holds here too.
             if (sPlayerbotAIConfig.GetBgBotTeamCap(uint32(bgTypeId)) == 0)
@@ -2636,8 +2756,10 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
                 continue;
             }
 
-            // From here on this bracket is forming and counts against the cap of the brackets after it.
-            if (!forming[q][b])
+            // From here on this bracket is forming and counts against the cap of the brackets after it. Under SlotRelease
+            // only once it really joins (step 5): a bracket the candidates cannot fill queues nobody, and must not hold
+            // the cap against a later bracket that could start.
+            if (!forming[q][b] && !sPlayerbotAIConfig.bgSlotRelease)
             {
                 forming[q][b] = true;
                 ++formingBrackets;
@@ -2687,10 +2809,43 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
     for (auto it = bots.begin(); it != start && collected < wanted; ++it)
         visit(it->first, it->second);
 
+    // Stage b (SlotRelease): a new match is queued whole or not at all. A side the candidates cannot fill would only hold
+    // FIFO places without a match; the waiting player is left to the pair option or the slot release after his wait.
+    std::set<uint32> incomplete;
+    if (sPlayerbotAIConfig.bgSlotRelease)
+    {
+        for (Request const& r : requests)
+            if (r.candidates.size() < r.need)
+                incomplete.insert(BgFillBracketKey(uint32(r.queueTypeId), uint32(r.bracketId)));
+    }
+
     // 5. Join on the world thread, as BGJoinAction::JoinQueue does (same packet and battlemaster bypass). No Refresh
     //    for roster bots: no free repair, money or consumables, they keep their own economy.
     for (Request& r : requests)
     {
+        uint32 const bracketKey = BgFillBracketKey(uint32(r.queueTypeId), uint32(r.bracketId));
+        if (incomplete.count(bracketKey))
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=nobots bg=%u bracket=%u side=%s", uint32(r.bgTypeId), uint32(r.bracketId),
+                    r.team ? "H" : "A");
+            continue;
+        }
+        // Stage b (SlotRelease): the cap again, counting only the brackets that really joined in this scan; a whole
+        // bracket that passes is forming from here on, for its other side and for the brackets after it.
+        if (sPlayerbotAIConfig.bgSlotRelease && !forming[uint32(r.queueTypeId)][uint32(r.bracketId)])
+        {
+            uint32 const running = ai::bgfill::RunningForBracket(runningBgs, formingBrackets, false);
+            if (!ai::bgfill::CapAllows(running, sPlayerbotAIConfig.bgMaxConcurrent))
+            {
+                if (trace)
+                    sLog.outBasic("[BGFill] state=skip reason=cap bg=%u bracket=%u side=%s", uint32(r.bgTypeId), uint32(r.bracketId),
+                        r.team ? "H" : "A");
+                continue;
+            }
+            forming[uint32(r.queueTypeId)][uint32(r.bracketId)] = true;
+            ++formingBrackets;
+        }
         uint32 joined = 0;
         for (Player* bot : r.candidates)
         {
@@ -2718,6 +2873,9 @@ void RandomPlayerbotMgr::ScanBgFill(uint32 nowMs)
         if (trace && joined < r.need)
             sLog.outBasic("[BGFill] state=skip reason=nobots bg=%u bracket=%u side=%s", uint32(r.bgTypeId), uint32(r.bracketId),
                 r.team ? "H" : "A");
+        // Stage b leaves the players of this bracket to the new match in this scan.
+        if (joined)
+            bgFillNewMatch.insert(bracketKey);
     }
 }
 
@@ -2820,6 +2978,18 @@ bool RandomPlayerbotMgr::IsBgFillInviteStillFit(Player* bot, PlayerbotAI* ai) co
     return !bot->InBattleGround() && !bot->GetMap()->Instanceable();
 }
 
+// Follow-up D review: the bot is invited into a battleground under the bot-only watch (its grace ran out, it is being
+// emptied). Bounded by the watched instances; empty while the cleanup is off (CheckBgFill).
+bool RandomPlayerbotMgr::IsBotOnlyInvite(Player* bot, uint32 bgTypeId) const
+{
+    for (auto const& watch : bgFillBotOnlyWatch)
+    {
+        if (watch.first.first == bgTypeId && bot->IsInvitedForBattleGroundInstance(watch.first.second))
+            return true;
+    }
+    return false;
+}
+
 // A fill bot leaves its queue again (port action 0, the core's own leave; it schedules the queue update itself). The
 // core can refuse it (its checks in HandleBattleFieldPortOpcode): a bot still in that queue keeps its flag and entry,
 // is not counted as a leave, and the caller tries again later. True when the bot is out of the queue.
@@ -2893,6 +3063,931 @@ void RandomPlayerbotMgr::ReportBgFillMinute()
             uint32(bgFillPending.size()), uint32(bgFillInBg.size()), uint32(bgFillMinute.scanUsMax), bgFillMinute.leaves);
     bgFillMinute = BgFillMinute();
     bgFillMinute.last = now;
+}
+
+// Stage b: a slot of that queue type, bracket and side is reserved for a waiting real player (until it runs out).
+bool RandomPlayerbotMgr::BgFillReserved(uint32 queueType, uint32 bracket, uint32 team, uint32 nowMs) const
+{
+    for (auto const& [playerKey, res] : bgFillReservations)
+    {
+        if (res.queueType == queueType && res.bracket == bracket && res.team == team &&
+                !ai::bgfill::DeadlinePassed(nowMs, res.untilMs))
+            return true;
+    }
+    return false;
+}
+
+// Stage b: a WSG flag carrier never leaves - the flag aura, or the battleground's own flag picker guid.
+static bool CarriesBgFlag(Player* bot, BattleGround* bg)
+{
+    if (bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG))
+        return true;
+    if (bg->GetTypeID() != BATTLEGROUND_WS)
+        return false;
+    BattleGroundWS const* ws = static_cast<BattleGroundWS const*>(bg);
+    ObjectGuid const guid = bot->GetObjectGuid();
+    return ws->GetAllianceFlagPickerGuid() == guid || ws->GetHordeFlagPickerGuid() == guid;
+}
+
+// Stage b: a manager-owned fill bot leaves its battleground - for a waiting real player (slot release) or at the end of
+// a bot-only match. The core leave with castDeserter = false (OB-00 deserter decision, OB-20), directly on the world
+// thread while the maps are idle (the leave opcode's combat refusal does not apply; the victim choice prefers bots out
+// of combat), then BGLeaveAction's after-battleground state. The bot stays in bgFillInBg, so the stage-a return runs for
+// it as for every return (OnReturnFromBattleground, travel target NONE, flag cleared): it is no leave of its own and is
+// not counted as one. True when the bot is out of the battleground.
+bool RandomPlayerbotMgr::ReleaseBgFillBot(Player* bot, PlayerbotAI* ai)
+{
+    uint32 const instanceId = bot->GetBattleGroundId();
+    bot->LeaveBattleground(true, false);
+    if (bot->InBattleGround() && bot->GetBattleGroundId() == instanceId)
+        return false;
+    BGStatusAction::ApplyLeaveState(ai, bot);
+    return true;
+}
+
+// Owner 16.10. (OB-00): a bot of a real player's group is never released, even a fill bot of this manager. Inside the
+// battleground GetGroup() is the battleground raid (it holds the real players of that side too), so the bot's own group
+// outside is its original group there; a real player's own bot (master) counts too.
+static bool InRealPlayerGroup(Player* bot, PlayerbotAI* ai)
+{
+    if (ai->HasRealPlayerMaster())
+        return true;
+    Group* group = bot->GetGroup();
+    if (group && group->isBGGroup())
+        group = bot->GetOriginalGroup();
+    return group && GroupHasRealPlayer(group);
+}
+
+// Stage b (AiPlayerbot.BG.SlotRelease), once per interval after ScanBgFill and WatchBotOnlyBgs: a real player whose core
+// queue entry has waited SlotReleaseWaitSeconds uninvited in the WSG/AB/AV queue gets into a running battleground of his
+// type and bracket that holds fill bots (not one whose bot-only end runs). Owner 16.10. (OB-00): the unit is his queue
+// entry - with his own bots in his group he has the same priority as a solo player; the group (k members) joins whole
+// and the pair option and the slot release apply to the whole entry. Pair option first (OB-00 D2): both sides have k free
+// slots, k free roster bots of the other faction queue for that instance (all or none; more while his side is ahead,
+// PairCount) and the core (InvitationType 1) invites them together. With his side short of k free slots and the other
+// side short, so that releases alone would not get him invited, one bot of the other faction queues as a top-up: the
+// core invites it alone and the release follows at a later interval. Else, and also when fewer free bots than needed
+// exist for the pair option, a slot release: up to k fill bots of his side leave in one decision (only while the side
+// stays at or above the minimum, G2/OB-20; never a bot of a real player's group) and the slots are reserved for the
+// entry. Only entries the core would select count: no member in another battleground, on a taxi or logging out, not
+// possibly in the premade queue, not larger than a side. Bounded: the waits (one per entry) with their members and
+// reservations, one ApplyAllBattleGrounds walk, the pending and in-battleground sets, one rotating bot loop only when a
+// pair bot is needed (it stops as soon as every pair has its bots), and per battleground at most one release decision
+// per scan.
+void RandomPlayerbotMgr::ScanBgSlotRelease(uint32 nowMs)
+{
+    bool const trace = sPlayerbotAIConfig.bgTrace;
+    uint32 const waitMs = ai::bgfill::SlotReleaseWaitMs(sPlayerbotAIConfig.bgSlotReleaseWaitSeconds);
+
+    // 1. Reservations end: the player is invited or in the battleground (success), out of the queue or logged out, or
+    //    the reservation ran out (fallback: nothing else is done; his side stays at or above the minimum and the core
+    //    queue may top it up).
+    for (auto it = bgFillReservations.begin(); it != bgFillReservations.end();)
+    {
+        uint32 const playerGuid = it->first.first;
+        BgFillReservation const& res = it->second;
+        BattleGroundQueueTypeId const queueTypeId = BattleGroundQueueTypeId(res.queueType);
+        Player* player = GetPlayer(playerGuid);
+        char const* reason = nullptr;
+        if (player && (player->IsInvitedForBattleGroundQueueType(queueTypeId) ||
+                (player->InBattleGround() && player->GetBattleGroundTypeId() == BattleGroundTypeId(res.bgTypeId))))
+            reason = "invited";
+        else if (!player || !player->InBattleGroundQueueForBattleGroundQueueType(queueTypeId))
+            reason = "left";
+        else if (ai::bgfill::DeadlinePassed(nowMs, res.untilMs))
+            reason = "expired";
+        if (!reason)
+        {
+            ++it;
+            continue;
+        }
+        if (trace)
+            sLog.outBasic("[BGFill] state=reserve_end for=%u bg=%u inst=%u reason=%s", playerGuid, res.bgTypeId, res.instanceId, reason);
+        it = bgFillReservations.erase(it);
+    }
+
+    // 2. Entries due: waited long enough (the same unsigned age check as the pending expiry), no new match queued for
+    //    their bracket in this scan (stage a: the core invites them there), no reservation running for them, and one
+    //    the core would select for its free slots. Each core entry once (dueMembers), with its size k, team and
+    //    desired instance read from the core's own copy.
+    std::vector<std::pair<uint32, BgFillWait*>> due;
+    std::set<uint32> dueMembers;   // member guids of the entries already due in this scan
+    uint32 const premadeWaitMs = sWorld.getConfig(CONFIG_UINT32_BATTLEGROUND_PREMADE_GROUP_WAIT_FOR_MATCH);
+    uint32 const premadeMinSize = sWorld.getConfig(CONFIG_UINT32_BATTLEGROUND_PREMADE_QUEUE_GROUP_MIN_SIZE);
+    for (auto& [waitKey, wait] : bgFillWait)
+    {
+        if (!ai::bgfill::PendingExpired(nowMs, wait.firstSeenMs, waitMs))
+            continue;
+        if (bgFillNewMatch.count(BgFillBracketKey(wait.queueType, wait.bracket)))
+            continue;
+        if (bgFillReservations.count(waitKey))
+            continue;
+        Player* player = GetPlayer(waitKey.first);
+        if (!player)
+            continue;
+        GroupQueueInfo ginfo;
+        if (!sBattleGroundMgr.m_BattleGroundQueues[wait.queueType].GetPlayerGroupInfoData(player->GetObjectGuid(), &ginfo))
+            continue;
+        if (ginfo.IsInvitedToBGInstanceGUID || ginfo.Players.empty())
+            continue;
+        // One unit per core entry: a second wait of the same entry (another real member) is not due again.
+        if (dueMembers.count(waitKey.first))
+            continue;
+        uint32 const size = uint32(ginfo.Players.size());
+        BattleGround const* bgTemplate = sBattleGroundMgr.GetBattleGroundTemplate(BattleGroundTypeId(wait.bgTypeId));
+        if (!bgTemplate)
+            continue;
+        // A group larger than a side cannot fit (ScanBgFill starts no wait for it; checked again here).
+        if (size > bgTemplate->GetMaxPlayersPerTeam())
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=groupsize for=%u bg=%u bracket=%u size=%u max=%u", waitKey.first,
+                    wait.bgTypeId, wait.bracket, size, bgTemplate->GetMaxPlayersPerTeam());
+            continue;
+        }
+        // A group in the core's premade queue (BattleGround.PremadeGroupWaitForMatch, PremadeQueue.MinGroupSize) is not
+        // seen by FillPlayersToBG, which takes the normal queues only. The join decides it by the group's member count
+        // (the entry may hold fewer), and CheckPremadeMatch moves only the head of each premade queue per update to the
+        // normal queue (after the wait for a match, or when it is smaller than the minimum); neither is visible here
+        // (follow-up review). Fail closed: with the premade queue on, an entry or group of that size stays with the
+        // core queue.
+        Group* const playerGroup = player->GetGroup();
+        uint32 const groupMembers = playerGroup ? playerGroup->GetMembersCount() : 0;
+        if (premadeWaitMs && (size >= premadeMinSize || groupMembers >= premadeMinSize))
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=premade for=%u bg=%u bracket=%u size=%u", waitKey.first, wait.bgTypeId,
+                    wait.bracket, size);
+            continue;
+        }
+        // The core leaves the whole entry out of its selection while any member is in another battleground, on a taxi,
+        // disconnected or logging out (BattleGroundQueue::SelectionPool::AddGroup, the same checks); a pair or a release
+        // now would be spent for nothing, and the release could not be repeated in this wait. It stays tracked and is
+        // due again once all are free. Bounded by the entry's members (at most a side, above).
+        bool memberBusy = false;
+        for (auto const& member : ginfo.Players)
+        {
+            Player* memberPlayer = sObjectAccessor.FindPlayer(member.first);
+            if (!memberPlayer)
+                continue;
+            if (memberPlayer->InBattleGround() || memberPlayer->IsTaxiFlying() ||
+                    !memberPlayer->GetSession()->IsConnected() || memberPlayer->GetSession()->isLogingOut())
+            {
+                memberBusy = true;
+                break;
+            }
+        }
+        if (memberBusy)
+            continue;
+        for (auto const& member : ginfo.Players)
+            dueMembers.insert(member.first.GetCounter());
+        wait.size = size;
+        wait.team = ginfo.GroupTeam == ALLIANCE ? 0 : 1;
+        // Queued for one instance (the client's instance choice, BattleGroundHandler): the core selects him only for
+        // that one (SelectionPool::AddGroup checks DesiredInstanceId against GetClientInstanceID), so only that one is
+        // a target.
+        wait.desiredInstanceId = ginfo.DesiredInstanceId;
+        due.emplace_back(waitKey.first, &wait);
+    }
+    if (due.empty())
+        return;
+
+    // 3. Running battlegrounds holding manager-owned fill bots (the stage-a in-battleground set), WAIT_JOIN or
+    //    IN_PROGRESS (not ending, and not a bot-only one under the watch - being emptied, or paused while a real player
+    //    is there; follow-up D review): one walk. Free slots are the core's (invited counts); the minimum check below
+    //    uses the players inside (what PrematureFinish counts).
+    struct Target
+    {
+        uint32 bgTypeId = 0;
+        uint32 instanceId = 0;
+        uint32 clientInstanceId = 0;   // the instance number the client sees (DesiredInstanceId)
+        uint32 bracket = 0;
+        uint32 maxPerTeam = 0;
+        uint32 invited[2] = {};
+        uint32 fill[2] = {};
+    };
+    std::map<std::pair<uint32, uint32>, std::array<uint32, 2>> fillBots;
+    for (auto const& [botGuid, entry] : bgFillInBg)
+    {
+        if (!entry.instanceId || bgFillBotOnlyWatch.count(std::make_pair(entry.bgTypeId, entry.instanceId)))
+            continue;
+        ++fillBots[std::make_pair(entry.bgTypeId, entry.instanceId)][entry.team];
+    }
+    std::vector<Target> targets;
+    if (!fillBots.empty())
+    {
+        sBattleGroundMgr.ApplyAllBattleGrounds([&](BattleGround const* bg)
+        {
+            if (!bg || !bg->GetInstanceID())
+                return;
+            if (bg->GetStatus() != STATUS_WAIT_JOIN && bg->GetStatus() != STATUS_IN_PROGRESS)
+                return;
+            auto const found = fillBots.find(std::make_pair(uint32(bg->GetTypeID()), bg->GetInstanceID()));
+            if (found == fillBots.end())
+                return;
+            Target target;
+            target.bgTypeId = uint32(bg->GetTypeID());
+            target.instanceId = bg->GetInstanceID();
+            target.clientInstanceId = bg->GetClientInstanceID();
+            target.bracket = uint32(bg->GetBracketId());
+            target.maxPerTeam = bg->GetMaxPlayersPerTeam();
+            target.invited[0] = bg->GetInvitedCount(ALLIANCE);
+            target.invited[1] = bg->GetInvitedCount(HORDE);
+            target.fill[0] = found->second[0];
+            target.fill[1] = found->second[1];
+            targets.push_back(target);
+        });
+    }
+
+    // Pair bots already waiting for an entry: one pair (or top-up) at a time per entry and queue.
+    std::set<std::pair<uint32, uint32>> pairPending;
+    for (auto const& [botGuid, entry] : bgFillPending)
+    {
+        if (entry.pairFor)
+            pairPending.emplace(entry.pairFor, entry.queueType);
+    }
+
+    // 4. Per due entry: the target (most fill bots on his side, then the lowest instance id), then the pair option (or
+    //    a top-up), else the slot release (step 7), all for the entry's size k.
+    struct PairNeed
+    {
+        uint32 playerGuid = 0;
+        BgFillWait* wait = nullptr;
+        Target const* target = nullptr;
+        uint32 team = 0;          // the pair bots' side: the other faction
+        uint32 count = 1;         // bots wanted: PairCount for a pair (all or none), 1 for a top-up
+        bool topUp = false;       // his side is short of k free slots: one bot goes in alone, the release follows later
+        std::vector<Player*> bots;
+    };
+    struct ReleaseNeed
+    {
+        uint32 playerGuid = 0;
+        BgFillWait* wait = nullptr;
+        Target const* target = nullptr;
+    };
+    std::vector<PairNeed> pairs;
+    std::vector<ReleaseNeed> releases;
+    uint32 open = 0;
+    for (auto const& [playerGuid, wait] : due)
+    {
+        uint32 const side = wait->team;
+        uint32 const other = side ? 0 : 1;
+        uint32 const size = wait->size;
+        Target const* target = nullptr;
+        for (Target const& t : targets)
+        {
+            if (t.bgTypeId != wait->bgTypeId || t.bracket != wait->bracket)
+                continue;
+            if (wait->desiredInstanceId && wait->desiredInstanceId != t.clientInstanceId)
+                continue;
+            if (!target || ai::bgfill::PreferTarget(t.fill[side], t.instanceId, target->fill[side], target->instanceId))
+                target = &t;
+        }
+        if (!target)
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=notarget for=%u bg=%u bracket=%u", playerGuid, wait->bgTypeId, wait->bracket);
+            continue;
+        }
+
+        // Pair option first (OB-00 D2), for the whole entry. A top-up when his side lacks k free slots and the other side
+        // is short: releases alone would not get him invited (ReleaseInvitesPlayer), one bot of the other faction evens
+        // the counts first.
+        uint32 const differential = target->bgTypeId == uint32(BATTLEGROUND_AV) ? ai::bgfill::DifferentialAV : 0;
+        bool const pairOption = ai::bgfill::PairPossible(target->invited[0], target->invited[1], target->maxPerTeam, size);
+        bool const topUp = !pairOption &&
+            ai::bgfill::TopUpNeeded(target->invited[side], target->invited[other], target->maxPerTeam, differential, size);
+        if (pairOption || topUp)
+        {
+            char const* skip = nullptr;
+            if (pairPending.count(std::make_pair(playerGuid, wait->queueType)))
+                skip = "pairpending";
+            else if (BgFillReserved(wait->queueType, wait->bracket, other, nowMs))
+                skip = "reserved";
+            if (skip)
+            {
+                if (trace)
+                    sLog.outBasic("[BGFill] state=skip reason=%s for=%u bg=%u inst=%u bracket=%u", skip, playerGuid,
+                        target->bgTypeId, target->instanceId, wait->bracket);
+                continue;
+            }
+            PairNeed need;
+            need.playerGuid = playerGuid;
+            need.wait = wait;
+            need.target = target;
+            need.team = other;
+            need.count = topUp ? 1 : ai::bgfill::PairCount(target->invited[side], target->invited[other], differential, size);
+            need.topUp = topUp;
+            open += need.count;
+            pairs.push_back(need);
+            continue;
+        }
+
+        releases.push_back(ReleaseNeed{ playerGuid, wait, target });
+    }
+
+    // 5. Pair bots: one rotating loop for every pair need - free roster bots of the other faction in the entry's
+    //    bracket (the stage-a candidate rules and the core's join checks); it stops once every pair has its bots (at
+    //    once without a pair need).
+    auto const visit = [&](uint32 guid, Player* bot)
+    {
+        bgFillRotate = guid;
+        if (!IsBgFillCandidate(bot))
+            return;
+        uint32 const team = bot->GetTeam() == ALLIANCE ? 0 : 1;
+        for (PairNeed& need : pairs)
+        {
+            if (need.bots.size() >= need.count || need.team != team)
+                continue;
+            BattleGroundTypeId const bgTypeId = BattleGroundTypeId(need.wait->bgTypeId);
+            if (bot->GetBattleGroundBracketIdFromLevel(bgTypeId) != BattleGroundBracketId(need.wait->bracket) ||
+                    !bot->GetBGAccessByLevel(bgTypeId) ||
+                    bot->InBattleGroundQueueForBattleGroundQueueType(BattleGroundQueueTypeId(need.wait->queueType)))
+                continue;
+            need.bots.push_back(bot);
+            --open;
+            return;
+        }
+    };
+    PlayerBotMap const& bots = GetAllBots();
+    PlayerBotMap::const_iterator const start = bots.upper_bound(bgFillRotate);
+    for (auto it = start; it != bots.end() && open; ++it)
+        visit(it->first, it->second);
+    for (auto it = bots.begin(); it != start && open; ++it)
+        visit(it->first, it->second);
+
+    // 6. The pair bots join with the stage-a join helper (no Refresh) for the target instance (follow-up review: the core
+    //    selects them only there, SelectionPool::AddGroup checks DesiredInstanceId, so another battleground of the
+    //    bracket cannot take them without him) and are pending with the entry's real player guid. With InvitationType 1
+    //    the core invites the entry and the bots together (a top-up bot alone); one not invited within the pending
+    //    expiry leaves as in stage a (ScanBgFill), and so does one whose entry no longer waits ("unpaired"). All or
+    //    nothing (owner 16.10.): with fewer free bots than the pair needs there is no pair option after all - none of
+    //    them queues and the slot release decides for the entry (a top-up has no release to fall back to - the release
+    //    would not get him in); a join the core refuses makes the bots already queued for that pair leave again.
+    for (PairNeed const& need : pairs)
+    {
+        if (need.bots.size() < need.count)
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=nobots for=%u bg=%u inst=%u bracket=%u side=%s have=%u need=%u",
+                    need.playerGuid, need.target->bgTypeId, need.target->instanceId, need.wait->bracket, need.team ? "H" : "A",
+                    uint32(need.bots.size()), need.count);
+            if (!need.topUp)
+                releases.push_back(ReleaseNeed{ need.playerGuid, need.wait, need.target });
+            continue;
+        }
+        BattleGroundTypeId const bgTypeId = BattleGroundTypeId(need.wait->bgTypeId);
+        BattleGroundQueueTypeId const queueTypeId = BattleGroundQueueTypeId(need.wait->queueType);
+        std::vector<uint32> joined;
+        for (Player* bot : need.bots)
+        {
+            PlayerbotAI* ai = GetBotAI(bot);
+            BGJoinAction::SendBattlemasterJoin(ai, bot, bgTypeId, false, need.target->clientInstanceId);
+            if (!bot->InBattleGroundQueueForBattleGroundQueueType(queueTypeId))
+            {
+                if (trace)
+                    sLog.outBasic("[BGFill] state=skip reason=refused for=%u bot=%u bg=%u", need.playerGuid, bot->GetGUIDLow(),
+                        need.wait->bgTypeId);
+                break;
+            }
+            ai->SetBgFillPending(true);
+            BgFillEntry entry;
+            entry.queueType = need.wait->queueType;
+            entry.bgTypeId = need.wait->bgTypeId;
+            entry.bracket = need.wait->bracket;
+            entry.team = need.team;
+            entry.joinMs = nowMs;
+            entry.pairFor = need.playerGuid;
+            bgFillPending[bot->GetGUIDLow()] = entry;
+            joined.push_back(bot->GetGUIDLow());
+            ++bgFillMinute.joins;
+        }
+        if (joined.size() < need.count)
+        {
+            // One the core does not let out stays pending for its entry, as any pair bot (unpaired, expired).
+            for (uint32 botGuid : joined)
+            {
+                auto const pending = bgFillPending.find(botGuid);
+                Player* bot = GetPlayerBot(botGuid);
+                PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+                if (pending != bgFillPending.end() && ai && LeaveBgFillQueue(bot, ai, botGuid, pending->second, "pairshort"))
+                    bgFillPending.erase(pending);
+            }
+            continue;
+        }
+        for (uint32 botGuid : joined)
+        {
+            if (trace && need.topUp)
+                sLog.outBasic("[BGFill] state=topup bot=%u for=%u bg=%u inst=%u bracket=%u", botGuid, need.playerGuid,
+                    need.wait->bgTypeId, need.target->instanceId, need.wait->bracket);
+            else if (trace)
+                sLog.outBasic("[BGFill] state=pair bot=%u for=%u bg=%u inst=%u bracket=%u size=%u", botGuid, need.playerGuid,
+                    need.wait->bgTypeId, need.target->instanceId, need.wait->bracket, need.count);
+        }
+    }
+
+    // 7. Slot release only without a pair option, at most once per wait and once per battleground per scan: one decision
+    //    of up to k releases for the entry.
+    std::set<std::pair<uint32, uint32>> releasedThisScan;   // fresh counts next scan
+    for (auto const& [playerGuid, wait, target] : releases)
+    {
+        uint32 const side = wait->team;
+        std::pair<uint32, uint32> const targetKey(target->bgTypeId, target->instanceId);
+        char const* skip = nullptr;
+        if (wait->released)
+            skip = "released";
+        else if (releasedThisScan.count(targetKey))
+            skip = "busy";
+        if (skip)
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=%s for=%u bg=%u inst=%u bracket=%u", skip, playerGuid,
+                    target->bgTypeId, target->instanceId, wait->bracket);
+            continue;
+        }
+
+        // Victim candidates: manager-owned fill bots of his side inside that instance (not on the way in or out), never a
+        // bot of a real player's group (owner 16.10.).
+        BattleGround* bg = nullptr;
+        std::vector<ai::bgfill::ReleaseCand> cands;
+        for (auto const& [botGuid, entry] : bgFillInBg)
+        {
+            if (entry.bgTypeId != target->bgTypeId || entry.instanceId != target->instanceId || entry.team != side)
+                continue;
+            Player* bot = GetPlayerBot(botGuid);
+            if (!bot || !GetBotAI(bot) || !bot->IsInWorld() || bot->IsBeingTeleported())
+                continue;
+            if (!bot->InBattleGround() || bot->GetBattleGroundId() != entry.instanceId)
+                continue;
+            BattleGround* botBg = bot->GetBattleGround();
+            if (!botBg)
+                continue;
+            bg = botBg;
+            if (InRealPlayerGroup(bot, GetBotAI(bot)))
+                continue;
+            ai::bgfill::ReleaseCand cand;
+            cand.guid = botGuid;
+            cand.joinMs = entry.acceptMs;
+            cand.carriesFlag = CarriesBgFlag(bot, botBg);
+            cand.inCombat = bot->IsInCombat();
+            cand.alive = bot->IsAlive();
+            cands.push_back(cand);
+        }
+
+        // Live counts from the battleground itself. Only as many releases as the core needs to invite the entry alone
+        // (InvitationType 1 keeps the free slots balanced, FillPlayersToBG; ReleaseCount for size k), none when no number
+        // of releases does - they would only shrink his side. And only from a side above the minimum that stays at or
+        // above it after all of them while the invite is open, so no PrematureFinish (G2, OB-20).
+        Team const sideTeam = side ? HORDE : ALLIANCE;
+        Team const otherTeam = side ? ALLIANCE : HORDE;
+        uint32 releaseCount = 0;
+        if (bg)
+            releaseCount = ai::bgfill::ReleaseCount(bg->GetInvitedCount(sideTeam), bg->GetInvitedCount(otherTeam),
+                bg->GetMaxPlayersPerTeam(), bg->GetTypeID() == BATTLEGROUND_AV ? ai::bgfill::DifferentialAV : 0, wait->size);
+        if (!bg)
+            skip = "novictim";
+        else if (!releaseCount)
+            skip = "unbalanced";
+        else if (!ai::bgfill::ReleaseAllowed(bg->GetPlayersCountByTeam(sideTeam), bg->GetMinPlayersPerTeam(), releaseCount))
+            skip = "min";
+        if (skip)
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=%s for=%u bg=%u inst=%u bracket=%u size=%u", skip, playerGuid,
+                    target->bgTypeId, target->instanceId, wait->bracket, wait->size);
+            continue;
+        }
+
+        // Fill bots of his side still waiting in that queue could take the freed slots ahead of him (FIFO): plain fill
+        // bots leave the queue (under SlotRelease stage a queues only whole matches, so these are left over); another
+        // player's pair bot, or a leave the core refuses, puts the release off to the next interval. Invited ones are
+        // already in the invited count.
+        bool pendingAhead = false;
+        for (auto it = bgFillPending.begin(); it != bgFillPending.end();)
+        {
+            BgFillEntry const& entry = it->second;
+            if (entry.queueType != wait->queueType || entry.bracket != wait->bracket || entry.team != side)
+            {
+                ++it;
+                continue;
+            }
+            Player* bot = GetPlayerBot(it->first);
+            PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+            if (ai && bot->IsInvitedForBattleGroundQueueType(BattleGroundQueueTypeId(entry.queueType)))
+            {
+                ++it;
+                continue;
+            }
+            if (!ai || entry.pairFor || !LeaveBgFillQueue(bot, ai, it->first, entry, "reserve"))
+            {
+                pendingAhead = true;
+                ++it;
+                continue;
+            }
+            it = bgFillPending.erase(it);
+        }
+        if (pendingAhead)
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=pending for=%u bg=%u inst=%u bracket=%u", playerGuid,
+                    target->bgTypeId, target->instanceId, wait->bracket);
+            continue;
+        }
+
+        // The victims, one by one from the same candidates: never a flag carrier or a dead bot; out of combat first, then
+        // the latest joined, then the lowest guid (a chosen one drops out with guid 0). Fewer victims than releases: none
+        // leaves - the entry would not get in - and the next interval tries again.
+        std::vector<uint32> victims;
+        while (victims.size() < releaseCount)
+        {
+            uint32 const chosen = ai::bgfill::ChooseReleaseVictim(cands, nowMs);
+            if (!chosen)
+                break;
+            victims.push_back(chosen);
+            for (ai::bgfill::ReleaseCand& cand : cands)
+            {
+                if (cand.guid == chosen)
+                    cand.guid = 0;
+            }
+        }
+        if (victims.size() < releaseCount)
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=novictim for=%u bg=%u inst=%u bracket=%u have=%u need=%u", playerGuid,
+                    target->bgTypeId, target->instanceId, wait->bracket, uint32(victims.size()), releaseCount);
+            continue;
+        }
+
+        // Each leave keeps his side above the minimum before it (live count), so the side ends at or above it.
+        uint32 released = 0;
+        for (uint32 victimGuid : victims)
+        {
+            Player* victim = GetPlayerBot(victimGuid);
+            PlayerbotAI* victimAi = victim ? GetBotAI(victim) : nullptr;
+            if (!victimAi || !ai::bgfill::ReleaseAllowed(bg->GetPlayersCountByTeam(sideTeam), bg->GetMinPlayersPerTeam()))
+                break;
+            uint32 const countBefore = bg->GetPlayersCountByTeam(sideTeam);
+            if (!ReleaseBgFillBot(victim, victimAi))
+            {
+                if (trace)
+                    sLog.outBasic("[BGFill] state=skip reason=leavefailed for=%u bg=%u inst=%u bracket=%u", playerGuid,
+                        target->bgTypeId, target->instanceId, wait->bracket);
+                break;
+            }
+            uint32 const countAfter = bg->GetPlayersCountByTeam(sideTeam);
+            ++released;
+
+            // The measurement point (OB-20): always written, one line per released bot, for the entry's real player.
+            sLog.outBasic("[BGSlotRelease] bg=%u,%u bot=%u for=%u side=%s count_before=%u count_after=%u", bg->GetMapId(),
+                bg->GetInstanceID(), victimGuid, playerGuid, side ? "H" : "A", countBefore, countAfter);
+        }
+        if (!released)
+            continue;
+        releasedThisScan.insert(targetKey);
+        // Cut short (a leave failed, or the live minimum stopped it): the entry gets in only with all releaseCount slots,
+        // so the decision is not spent and nothing is reserved - the next interval decides again on the live counts,
+        // which no longer hold the bots that left (follow-up review).
+        if (released < releaseCount)
+        {
+            if (trace)
+                sLog.outBasic("[BGFill] state=skip reason=partial for=%u bg=%u inst=%u bracket=%u released=%u need=%u", playerGuid,
+                    target->bgTypeId, target->instanceId, wait->bracket, released, releaseCount);
+            continue;
+        }
+        wait->released = true;
+
+        // The freed slots are the entry's until it is invited, leaves the queue or the reservation runs out - one
+        // reservation per entry, with the bots released for it; meanwhile no fill bot is queued for that side and bracket
+        // and no second release decision is made for it.
+        BgFillReservation res;
+        res.queueType = wait->queueType;
+        res.bgTypeId = wait->bgTypeId;
+        res.bracket = wait->bracket;
+        res.team = side;
+        res.instanceId = target->instanceId;
+        res.untilMs = nowMs + waitMs;
+        res.size = wait->size;
+        res.released = released;
+        bgFillReservations[std::make_pair(playerGuid, wait->queueType)] = res;
+        if (trace)
+            sLog.outBasic("[BGFill] state=reserve for=%u bg=%u inst=%u side=%s size=%u released=%u wait_s=%u", playerGuid,
+                res.bgTypeId, res.instanceId, side ? "H" : "A", res.size, res.released, waitMs / IN_MILLISECONDS);
+    }
+}
+
+// Stage b (Enable && PlayerFill && BotOnlyCleanup, follow-up D with OB-20): a battleground started for the fill (stage a,
+// startedForFill) that has had no real player inside or invited for BotOnlyGraceSeconds after reaching IN_PROGRESS
+// ends - every manager bot in it leaves, of both sides, without Deserter (LeaveBotOnlyBg), until it holds nobody and no
+// open invite, and the core deletes it. It must not end through EndBattleGround, which rewards whoever is inside (marks
+// and experience even without a winner), here only bots (OB-20). A real player with an open invite counts as present (up
+// to 80 s). A real player who only waits uninvited does not (follow-up review: nothing may ever bring him into that
+// battleground - no pair or release path, or one that keeps failing - while it holds the cap against the new match he
+// needs); the leave keeps the core from inviting him instead. An instance whose grace ran out stays watched
+// (bgFillBotOnlyWatch) until the core has deleted it, also once its fill bots are out and only other manager bots are
+// left; a real player present then only pauses its drain, without a new grace. Once per interval; bounded by the
+// started and watched instances, one ApplyAllBattleGrounds walk and the real players.
+void RandomPlayerbotMgr::WatchBotOnlyBgs(uint32 nowMs)
+{
+    std::set<std::pair<uint32, uint32>> started;
+    std::map<std::pair<uint32, uint32>, uint32> fillIn;   // every manager-owned fill bot of those instances
+    for (auto const& [botGuid, entry] : bgFillInBg)
+    {
+        if (!entry.instanceId)
+            continue;
+        std::pair<uint32, uint32> const key(entry.bgTypeId, entry.instanceId);
+        ++fillIn[key];
+        if (entry.startedForFill)
+            started.insert(key);
+    }
+    // Still watched after its last fill bot left: other manager bots can be inside, and it ends only once empty.
+    for (auto const& watch : bgFillBotOnlyWatch)
+        started.insert(watch.first);
+    for (auto it = bgFillNoRealSince.begin(); it != bgFillNoRealSince.end();)
+    {
+        if (started.count(it->first))
+            ++it;
+        else
+            it = bgFillNoRealSince.erase(it);
+    }
+    for (auto it = bgFillBotOnlyEnding.begin(); it != bgFillBotOnlyEnding.end();)
+    {
+        if (started.count(*it))
+            ++it;
+        else
+            it = bgFillBotOnlyEnding.erase(it);
+    }
+    if (started.empty())
+        return;
+
+    std::set<std::pair<uint32, uint32>> inProgress;
+    sBattleGroundMgr.ApplyAllBattleGrounds([&](BattleGround const* bg)
+    {
+        if (!bg || !bg->GetInstanceID() || bg->GetStatus() != STATUS_IN_PROGRESS)
+            return;
+        std::pair<uint32, uint32> const key(uint32(bg->GetTypeID()), bg->GetInstanceID());
+        if (started.count(key))
+            inProgress.insert(key);
+    });
+
+    // Real players only (the players list also holds bots moved in by MovePlayerBot): inside, or invited.
+    std::set<std::pair<uint32, uint32>> realPresent;
+    for (auto const& [playerGuid, player] : players)
+    {
+        if (!player)
+            continue;
+        if (PlayerbotAI* playerAi = GetBotAI(player))
+            if (!playerAi->IsRealPlayer())
+                continue;
+        for (std::pair<uint32, uint32> const& key : started)
+        {
+            if ((player->InBattleGround() && player->GetBattleGroundId() == key.second) ||
+                    player->IsInvitedForBattleGroundInstance(key.second))
+                realPresent.insert(key);
+        }
+    }
+
+    uint32 const graceMs = ai::bgfill::BotOnlyGraceMs(sPlayerbotAIConfig.bgBotOnlyGraceSeconds);
+    for (std::pair<uint32, uint32> const& key : started)
+    {
+        if (!inProgress.count(key) || realPresent.count(key))
+        {
+            bgFillBotOnlyEnding.erase(key);
+            // Follow-up D review: once its grace ran out (watched) the drain may have begun, the battleground is below
+            // the minimum and the core's PrematureFinish countdown runs on regardless of a grace here. A real player
+            // inside or invited then only pauses the drain: the watch and the grace are kept, so the first interval
+            // without him marks it again at once (a lapsed invite, a short visit) and a countdown end still gets its
+            // [BGBotOnlyEnd] line. Only one still inside at its end drops the watch (LeaveBotOnlyBg, no bot-only end).
+            // Before the grace ran out he starts it again. One that only left IN_PROGRESS stays watched until
+            // LeaveBotOnlyBg has looked at its end and the core has deleted it.
+            if (!bgFillBotOnlyWatch.count(key))
+                bgFillNoRealSince.erase(key);
+            continue;
+        }
+        uint32 const since = bgFillNoRealSince.emplace(key, nowMs ? nowMs : 1).first->second;
+        if (bgFillBotOnlyEnding.count(key) || !ai::bgfill::PendingExpired(nowMs, since, graceMs))
+            continue;
+        bgFillBotOnlyEnding.insert(key);
+        bgFillBotOnlyWatch.emplace(key, false);
+        if (sPlayerbotAIConfig.bgTrace)
+            sLog.outBasic("[BGFill] state=botonly_end bg=%u inst=%u bots=%u", key.first, key.second, fillIn[key]);
+    }
+}
+
+// Stage b, every manager update while an instance is watched (its grace ran out): one ApplyAllBattleGrounds walk finds
+// the watched battlegrounds. One the core no longer holds is pruned, with its grace and ending mark. One that reached
+// WAIT_LEAVE anyway - an EndBattleGround ran (a win, the WSG/AB time limit, PrematureFinish while the end waited) - gets
+// one [BGBotOnlyEnd] line, always written (bounded by the battleground ends), unless someone inside is not a manager bot
+// (then it was no bot-only end).
+// Then the drain: at most BotOnlyLeavesPerUpdate manager bots of the ending IN_PROGRESS battlegrounds leave per update,
+// with castDeserter = false (ReleaseBgFillBot); the stage-a return runs for the fill bots among them. Every manager bot
+// inside counts, of both sides, so the battleground ends up empty: without an open invite BattleGround::Update deletes
+// it at its next update - its empty check returns before the PrematureFinish countdown - and EndBattleGround never runs.
+// The side of each leave: BotOnlyDrainSide, the larger side first (no side order lets the core end it at once).
+// Each leave frees a slot, and the core may invite a waiting player into it at its next queue update (the next world
+// tick, RemovePlayerAtLeave schedules it) - long before the next WatchBotOnlyBgs. So a bot leaves only from a side where
+// that cannot happen (follow-up review, BotOnlyLeaveAllowed): no real player's entry of its side waits uninvited for that
+// battleground type and bracket, or the core would not invite the smallest of them even after the leave (CoreInvitesEntry
+// on the live invited counts minus that bot; a later leave of the other side only makes that less likely). With WSG/AB
+// (differential 0) a player waiting on one side is never invited by the drain. When no bot can leave that way (players
+// waiting on both sides, or AV near the end), the end pauses - the ending mark is dropped, the grace keeps running and
+// the watch marks it again at its next interval - but only for one more BotOnlyGraceSeconds after the end was due;
+// then the bots leave regardless, so a battleground nobody joins does not hold the cap for good.
+// Guards before every leave: an open invite (more invited than inside) or anyone inside who is not a bot of this
+// manager pauses the end - the ending mark is dropped, the watch and the grace stay (follow-up D review: the core's
+// countdown does not wait for a new grace), and the watch marks it again at its first interval without a real player
+// present. A fill or pair bot queued for another match and invited there declines first (UpdateBgFillMembers,
+// IsBotOnlyInvite), so its invite does not pause the end. The battleground pointers hold for this update: the core
+// deletes a battleground only in its own map update (BattleGround::Update from BattleGroundMap::Update), and the maps
+// are idle here (CheckBgFill). Bounded: the walk, the players of the watched battlegrounds, and one walk over the real
+// players' queue entries only while an end runs.
+void RandomPlayerbotMgr::LeaveBotOnlyBg()
+{
+    if (bgFillBotOnlyWatch.empty())
+        return;
+    std::map<std::pair<uint32, uint32>, BattleGround const*> watched;
+    sBattleGroundMgr.ApplyAllBattleGrounds([&](BattleGround const* bg)
+    {
+        if (!bg || !bg->GetInstanceID())
+            return;
+        std::pair<uint32, uint32> const key(uint32(bg->GetTypeID()), bg->GetInstanceID());
+        if (bgFillBotOnlyWatch.count(key))
+            watched.emplace(key, bg);
+    });
+    for (auto it = bgFillBotOnlyWatch.begin(); it != bgFillBotOnlyWatch.end();)
+    {
+        auto const found = watched.find(it->first);
+        if (found == watched.end())
+        {
+            // Deleted by the core (emptied, or after its WAIT_LEAVE): nothing of it is kept.
+            bgFillNoRealSince.erase(it->first);
+            bgFillBotOnlyEnding.erase(it->first);
+            it = bgFillBotOnlyWatch.erase(it);
+            continue;
+        }
+        BattleGround const* bg = found->second;
+        if (it->second || bg->GetStatus() != STATUS_WAIT_LEAVE)
+        {
+            ++it;
+            continue;
+        }
+        uint32 bots = 0;
+        bool others = false;
+        for (auto const& member : bg->GetPlayers())
+        {
+            if (GetPlayerBot(member.first.GetCounter()))
+                ++bots;
+            else
+                others = true;
+        }
+        if (others)
+        {
+            it = bgFillBotOnlyWatch.erase(it);
+            continue;
+        }
+        BattleGroundWinner const winner = bg->GetWinner();
+        sLog.outBasic("[BGBotOnlyEnd] bg=%u,%u winner=%s bots=%u", bg->GetMapId(), bg->GetInstanceID(),
+            winner == WINNER_ALLIANCE ? "A" : winner == WINNER_HORDE ? "H" : "none", bots);
+        it->second = true;
+        ++it;
+    }
+    if (bgFillBotOnlyEnding.empty())
+        return;
+
+    // Once per update, before any leave (not per bot).
+    std::map<std::pair<uint32, uint32>, std::array<uint32, 2>> waiting;
+    CollectBgFillWaiting(waiting);
+    uint32 const nowMs = WorldTimer::getMSTime();
+    uint32 const graceMs = ai::bgfill::BotOnlyGraceMs(sPlayerbotAIConfig.bgBotOnlyGraceSeconds);
+    std::set<std::pair<uint32, uint32>> held;   // ending instances whose next leave would let the core invite a waiting player
+    std::vector<std::pair<uint32, uint32>> const ending(bgFillBotOnlyEnding.begin(), bgFillBotOnlyEnding.end());
+    uint32 leaves = 0;
+    for (std::pair<uint32, uint32> const& key : ending)
+    {
+        if (leaves >= ai::bgfill::BotOnlyLeavesPerUpdate)
+            break;
+        auto const found = watched.find(key);
+        if (found == watched.end() || found->second->GetStatus() != STATUS_IN_PROGRESS)
+            continue;
+        BattleGround const* bg = found->second;
+        auto const since = bgFillNoRealSince.find(key);
+        bool const pauseOver = since != bgFillNoRealSince.end() && ai::bgfill::PendingExpired(nowMs, since->second, 2 * graceMs);
+        // The smallest waiting entry per side of that type and the battleground's bracket: the core invites it after a
+        // leave exactly when CoreInvitesEntry holds for the counts minus that bot (a larger entry or several need more).
+        auto const waits = waiting.find(std::make_pair(key.first, uint32(bg->GetBracketId())));
+        uint32 const differential = bg->GetTypeID() == BATTLEGROUND_AV ? ai::bgfill::DifferentialAV : 0;
+        while (leaves < ai::bgfill::BotOnlyLeavesPerUpdate)
+        {
+            char const* stop = nullptr;
+            std::array<uint32, 2> inside = { 0, 0 };          // manager bots inside per side
+            std::array<Player*, 2> leaver = { nullptr, nullptr };
+            if (bg->GetInvitedCount(ALLIANCE) + bg->GetInvitedCount(HORDE) > bg->GetPlayersSize())
+                stop = "invite";
+            else
+            {
+                for (auto const& member : bg->GetPlayers())
+                {
+                    Player* bot = GetPlayerBot(member.first.GetCounter());
+                    if (!bot)
+                    {
+                        stop = "player";
+                        break;
+                    }
+                    // OB-10 16.10.: a bot of a real player's group (its master, or its original group holds a real
+                    // player) never leaves; it keeps the battleground from emptying, so the end stops as for a player.
+                    PlayerbotAI* const botAi = GetBotAI(bot);
+                    if (botAi && InRealPlayerGroup(bot, botAi))
+                    {
+                        stop = "realgroup";
+                        break;
+                    }
+                    uint32 const side = member.second.PlayerTeam == HORDE ? 1 : 0;
+                    ++inside[side];
+                    if (!leaver[side] && GetBotAI(bot) && bot->IsInWorld() && !bot->IsBeingTeleported() &&
+                            bot->InBattleGround() && bot->GetBattleGroundId() == key.second)
+                        leaver[side] = bot;
+                }
+            }
+            if (stop)
+            {
+                bgFillBotOnlyEnding.erase(key);
+                if (sPlayerbotAIConfig.bgTrace)
+                    sLog.outBasic("[BGFill] state=botonly_stop bg=%u inst=%u reason=%s", key.first, key.second, stop);
+                break;
+            }
+            // Empty: the core deletes it at its next update (no open invite, checked above).
+            if (!inside[0] && !inside[1])
+                break;
+            std::array<bool, 2> mayLeave = { false, false };
+            bool blocked = false;
+            for (uint32 side = 0; side < 2; ++side)
+            {
+                Team const sideTeam = side ? HORDE : ALLIANCE;
+                Team const otherTeam = side ? ALLIANCE : HORDE;
+                uint32 const smallest = waits != waiting.end() ? waits->second[side] : 0;
+                bool const allowed = ai::bgfill::BotOnlyLeaveAllowed(bg->GetInvitedCount(sideTeam), bg->GetInvitedCount(otherTeam),
+                    bg->GetMaxPlayersPerTeam(), differential, smallest, pauseOver);
+                mayLeave[side] = allowed && leaver[side];
+                blocked = blocked || (!allowed && leaver[side]);
+            }
+            uint32 const side = ai::bgfill::BotOnlyDrainSide(inside[0], inside[1], mayLeave[0], mayLeave[1]);
+            if (side == ai::bgfill::NoDrainSide)
+            {
+                if (blocked)
+                    held.insert(key);
+                break;
+            }
+            Player* bot = leaver[side];
+            // The core refused the leave: the next update tries again.
+            if (!ReleaseBgFillBot(bot, GetBotAI(bot)))
+                break;
+            ++leaves;
+        }
+    }
+    // No bot of these could leave without the core inviting a waiting player: they pause until the next watch interval.
+    for (std::pair<uint32, uint32> const& key : held)
+    {
+        bgFillBotOnlyEnding.erase(key);
+        if (sPlayerbotAIConfig.bgTrace)
+            sLog.outBasic("[BGFill] state=botonly_stop bg=%u inst=%u reason=waiting", key.first, key.second);
+    }
+}
+
+// Stage b: the real players' core queue entries waiting uninvited in a WSG/AB/AV queue, per (bg type, the entry's
+// bracket): the smallest entry size per side (0 = none waits). Read live through the core's own reader, as ScanBgFill
+// (follow-up review: the waits of the last scan missed a player who queued since, and a member's own level bracket can
+// differ from the entry's, which is the leader's): GetPlayerGroupInfoData copies the entry under the queue's own lock;
+// only its size, team and bracket are read. Bounded by the real players' queue slots; only while a bot-only end runs,
+// once per update.
+void RandomPlayerbotMgr::CollectBgFillWaiting(std::map<std::pair<uint32, uint32>, std::array<uint32, 2>>& waiting) const
+{
+    for (auto const& [playerGuid, player] : players)
+    {
+        if (!player || !player->InBattleGroundQueue())
+            continue;
+        if (PlayerbotAI* playerAi = GetBotAI(player))
+            if (!playerAi->IsRealPlayer())
+                continue;
+        for (uint32 slot = 0; slot < PLAYER_MAX_BATTLEGROUND_QUEUES; ++slot)
+        {
+            BattleGroundQueueTypeId const queueTypeId = player->GetBattleGroundQueueTypeId(slot);
+            if (!ai::bgfill::IsFillQueueType(uint32(queueTypeId)) || player->IsInvitedForBattleGroundQueueType(queueTypeId))
+                continue;
+            BattleGroundTypeId const bgTypeId = sServerFacade.BgTemplateId(queueTypeId);
+            if (player->InBattleGround() && player->GetBattleGround() && player->GetBattleGround()->GetTypeId() == bgTypeId)
+                continue;
+            GroupQueueInfo entryInfo;
+            if (!sBattleGroundMgr.m_BattleGroundQueues[queueTypeId].GetPlayerGroupInfoData(player->GetObjectGuid(), &entryInfo))
+                continue;
+            if (entryInfo.IsInvitedToBGInstanceGUID || entryInfo.BgTypeId != bgTypeId || entryInfo.Players.empty())
+                continue;
+            if (entryInfo.BracketId == BG_BRACKET_ID_NONE || entryInfo.BracketId >= MAX_BATTLEGROUND_BRACKETS)
+                continue;
+            uint32 const size = uint32(entryInfo.Players.size());
+            uint32& smallest = waiting[std::make_pair(uint32(bgTypeId), uint32(entryInfo.BracketId))][entryInfo.GroupTeam == ALLIANCE ? 0 : 1];
+            if (!smallest || size < smallest)
+                smallest = size;
+        }
+    }
 }
 
 void RandomPlayerbotMgr::CheckBgQueue()
