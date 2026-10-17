@@ -11,6 +11,9 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/CorpseRunPolicy.h"
 #include "playerbot/StartZonePolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 // The base class. Came in through botpch.h inside the bot library; a module
 // including this header from outside has no botpch.
 #include "GenericActions.h"
@@ -293,6 +296,16 @@ namespace ai
                 sLog.outBasic("[DeathLoop] state=escape guid=%u race=%u level=%u hostile_home=%u rebound=%u to_map=%u safe=%u",
                     bot->GetGUIDLow(), uint32(bot->getRace()), bot->GetLevel(), hostileHome ? 1u : 0u, rebound ? 1u : 0u,
                     destination.getMapId(), safe ? 1u : 0u);
+            }
+
+            // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): the repop (critic C08) counted only, both teleports below
+            // are unchanged. The source is where the bot just stood up.
+            if (sPlayerbotAIConfig.shortcutTrace)
+            {
+                if (defaultPlayerInfo)
+                    sRandomPlayerbotMgr.CountShortcut(ai::shortcut::Mech::Repop, bot, defaultPlayerInfo->mapId, defaultPlayerInfo->positionX, defaultPlayerInfo->positionY, defaultPlayerInfo->positionZ);
+                else
+                    sRandomPlayerbotMgr.CountShortcut(ai::shortcut::Mech::Repop, bot, bot->GetHomebindMapId(), bot->GetHomebindX(), bot->GetHomebindY(), bot->GetHomebindZ());
             }
 
             if (defaultPlayerInfo)
