@@ -248,6 +248,24 @@ require_order("${plan}" "bgAnnounceHourLines += lines;" "${announce_line}" "line
 region("${policy_h}" "inline uint32_t AnnounceLinesAllowed(" "inline bool AnnounceHourOver(" lines_allowed)
 require_text("${lines_allowed}" "if (!maxPerHour || usedThisHour >= maxPerHour)\n        return 0;" "MaxPerHour 0 or used up: no line (fail closed)")
 require_text("${lines_allowed}" "return wanted < left ? wanted : left;" "never more than the rest of the hour")
+# The hour window of MaxPerHour (review c2): it starts again only once an hour has passed, in one place only, before the
+# line check - a reset per try would make MaxPerHour a cap per IntervalMinutes.
+set(hour_reset "if (ai::bgfill::AnnounceHourOver(nowMs, bgAnnounceHourStart))\n    {\n        bgAnnounceHourStart = nowMs ? nowMs : 1;\n        bgAnnounceHourLines = 0;\n    }")
+require_text("${plan}" "${hour_reset}" "the MaxPerHour window starts again only after an hour")
+require_order("${plan}" "${hour_reset}" "if (!ai::bgfill::AnnounceLinesAllowed(bgAnnounceHourLines, sPlayerbotAIConfig.bgAnnounceMaxPerHour, 1))" "the hour window before the line check")
+count_text("${mgr_cpp}" "bgAnnounceHourLines = " 1 "the MaxPerHour count reset in one place only")
+count_text("${mgr_cpp}" "bgAnnounceHourStart = " 1 "the MaxPerHour window started in one place only")
+region("${policy_h}" "inline bool AnnounceHourOver(" "\n}\n" hour_over)
+require_text("${hour_over}" "return !hourStart || now - hourStart >= AnnounceHourMs;" "the window lasts an hour (wrap-safe)")
+require_text("${policy_h}" "constexpr uint32_t AnnounceHourMs = 3600 * 1000;" "one hour")
+# DelaySeconds (review c2): the plan queues through the policy clamp (0 = 60 s, minimum 20 s), not earlier.
+require_text("${plan}" "bgOwnPlan.queueAtMs = nowMs + ai::bgfill::AnnounceDelayMs(sPlayerbotAIConfig.bgAnnounceDelaySeconds);" "the queue join DelaySeconds after the announcement")
+count_text("${mgr_cpp}" "bgOwnPlan.queueAtMs = " 1 "the queue time set in one place only")
+require_text("${policy_h}" "return ClampSeconds(cfgSeconds, DefaultAnnounceDelaySeconds, MinAnnounceDelaySeconds) * 1000;" "DelaySeconds through the clamp")
+# BotCooldownMinutes (review c2): recorded for every announcer whose line goes into the due-queue.
+count_text("${mgr_cpp}" "bgAnnounceCooldown[guid] = nowMs ? nowMs : 1;" 1 "the announcer cooldown recorded")
+require_order("${plan}" "bgAnnounceDue.push_back(due);" "bgAnnounceCooldown[guid] = nowMs ? nowMs : 1;" "the cooldown recorded with the due line")
+require_text("${plan}" "uint32 const cooldownMs = ai::bgfill::AnnounceCooldownMs(sPlayerbotAIConfig.bgAnnounceBotCooldownMinutes);" "BotCooldownMinutes through the policy")
 
 # 6. Bot-own battlegrounds are never drained: their bots are fill bots marked own, their instance is startedForOwn and
 #    never startedForFill; the bot-only watch drops every own instance; they count against MaxConcurrent all the same.
@@ -291,6 +309,7 @@ require_text("${per_band}" "if (entry.own)\n            forming.emplace(entry.qu
 require_text("${per_band}" "if (bgOwnPlan.queueType)\n        ++perBand[bgOwnPlan.band];" "the announced match counted")
 require_text("${plan}" "if (!IsBgFillCandidate(bot))\n            return;" "the stage-a candidate filter")
 count_text("${plan}" "visited < ai::bgfill::OwnCandidateVisitMax" 2 "both halves of the rotating loop bounded")
+require_text("${policy_h}" "constexpr uint32_t OwnCandidateVisitMax = 2000;" "the hard cap of the candidate loop per try (C2)")
 require_text("${plan}" "bots.upper_bound(bgOwnRotate)" "rotating start")
 require_text("${plan}" "if (list.size() < ai::bgfill::CandidateLimit(minPerTeam[q]))" "candidates bounded per type, bracket and side")
 require_text("${plan}" "uint32 const queueType = ai::bgfill::PickOwnType(bgOwnTypes, possible);" "type rotation")
@@ -337,6 +356,14 @@ require_text("${config_cpp}" "char const* const typeKeys[4] = { \"\", \".AV\", \
 #     that map's objects - no manager state, no lock. The trace line only behind Trace.
 require_text("${scripts_cpp}" "void OnHonorGain(Player* player, float& cp, uint8 type) override" "module listener")
 require_text("${scripts_cpp}" "RandomPlayerbotMgr::ScaleBotOnlyHonor(player, cp, type);" "listener calls the rule")
+# The override does nothing but call the rule (review c2): a cp write there would change every player's honor, real
+# players included (owner C0: real players always get the normal honor).
+region("${scripts_cpp}" "void OnHonorGain(Player* player, float& cp, uint8 type) override" "\n        }\n" honor_override)
+require_text("${honor_override}" "{\n            if (!player || !sPlayerbotAIConfig.enabled)\n                return;\n\n            RandomPlayerbotMgr::ScaleBotOnlyHonor(player, cp, type);" "the override body: guard, then the rule")
+foreach(write "cp =" "cp *=" "cp /=" "cp +=" "cp -=" "cp++" "++cp" "cp--" "--cp")
+  forbid_text("${honor_override}" "${write}" "the override changing cp itself")
+endforeach()
+count_text("${scripts_cpp}" "OnHonorGain(" 1 "one honor listener in the module scripts")
 require_text("${mgr_h}" "static void ScaleBotOnlyHonor(Player* player, float& cp, uint8 type);" "static: no manager instance on the map thread")
 set(honor_gate "if (!sPlayerbotAIConfig.bgEnable || !ai::bgfill::HonorRateActive(sPlayerbotAIConfig.bgBotOnlyHonorRate))\n        return;")
 require_text("${honor}" "${honor_gate}" "gate: Enable and a reducing rate")
