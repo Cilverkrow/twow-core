@@ -911,7 +911,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     bot->GetMotionMaster()->Clear();
                     bot->ActivateTaxiPathTo(questFlight, 0, true);
                 }
-                else
+                // twow-repo#575 (wave-0 A/B 16.10.): the walk to the machine leads through the island scorpid field (L4-8) and
+                // the spirit healer stands inside it - goblins carrying 41169 died up to 20 times in a row. A bot in a death
+                // series or a death loop waits; the 8.1 rescue or a later check brings it there.
+                else if (!IsCautious() && !IsInDeathLoop())
                     bot->GetMotionMaster()->MovePoint(0, machine.x, machine.y, machine.z, MOVE_PATHFINDING);
             }
             else if ((islandCandidate || HasRealPlayerMaster()) && freeToTravel)
@@ -928,7 +931,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                         bot->GetMotionMaster()->Clear();
                         bot->ActivateTaxiPathTo(gi::IslandPath, 0, true);
                     }
-                    else
+                    // Same field: with CustomRaceStartZones the dying bot waits here too; off, 8.29 is unchanged.
+                    else if (!startZones || (!IsCautious() && !IsInDeathLoop()))
                         bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);
                 }
                 else if (Player* const realMaster = HasRealPlayerMaster() ? GetMaster() : nullptr)

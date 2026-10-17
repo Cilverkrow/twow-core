@@ -37,6 +37,8 @@
 #include "Opcodes.h"
 #include "Utilities/robin_hood.h"
 #include "WorldTickTrace.h"
+#include "WorldTickSlow.h"   // twow-repo#597 (TICK-01)
+#include "TickDiagPolicy.h"  // twow-repo#597 (TICK-01)
 
 //#include "Creature.h"
 
@@ -211,6 +213,9 @@ enum eConfigUInt32Values
     CONFIG_UINT32_PERFLOG_SLOW_MAP_PACKETS,
     CONFIG_UINT32_PERFLOG_SLOW_PACKET_BCAST,
     CONFIG_UINT32_PERFLOG_TICK_STATS_INTERVAL,
+    CONFIG_UINT32_PERFLOG_WORLD_TICK_SLOW_MS,        // twow-repo#597 (TICK-01): [WorldTickSlow] threshold, 0 = off
+    CONFIG_UINT32_PERFLOG_STALL_WATCH_MS,            // twow-repo#597 (TICK-01): [StallWatch] threshold, 0 = off
+    CONFIG_UINT32_PERFLOG_SLOW_RESULT_CALLBACK_MS,   // twow-repo#597 (TICK-01): [ResultsSlow] threshold, 0 = off
     CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT,
     CONFIG_UINT32_LOGIN_PER_TICK,
     CONFIG_UINT32_ANTICRASH_REARM_TIMER,
@@ -785,6 +790,9 @@ enum eConfigBoolValues
     CONFIG_BOOL_PERFLOG_TICK_STATS,
     CONFIG_BOOL_PERFLOG_WORLD_TICK,  // twow-repo#541: [WorldTick]/[MapTick] phase and region timing
     CONFIG_BOOL_PERFLOG_TICK_STATS_EXTENDED,  // twow-repo#592 (PATH-02): over20/over50 on the "Tick stats" line
+    CONFIG_BOOL_PERFLOG_TERRAIN_TRACE,        // twow-repo#597 (TICK-01): [TerrainCleanup]/[TerrainReload]
+    CONFIG_BOOL_PERFLOG_LOG_WRITE_TRACE,      // twow-repo#597 (TICK-01): [LogWait]
+    CONFIG_BOOL_PERFLOG_MAP_TICK_REGION,      // twow-repo#597 (TICK-01): [MapTickRegion]
     // Solo dungeon resurrection, see Player::RepopAtGraveyard
     CONFIG_BOOL_SOLO_DUNGEON_REPOP_ALIVE,
     // Dungeon finder: fill a waiting player's group with random bots.
@@ -1068,6 +1076,61 @@ class World
         // Called by WorldRunnable after the sleep: closes the tick, one block per minute.
         void WorldTickEnd(uint64 updateUs, uint64 sleepUs);
         static uint64 WorldTickNowUs() { return uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
+        // twow-repo#597 (TICK-01): [RegionSwitch] keeps following PerformanceLog.WorldTick alone (WorldTickOn()
+        // is also true for PerformanceLog.WorldTickSlowMs).
+        bool WorldTickWindowOn() const { return m_worldTickWindowOn; }
+
+        // twow-repo#597 (TICK-01): the world thread enters a new part of the tick. With
+        // PerformanceLog.WorldTickSlowMs the part that ended is timed for [WorldTickSlow]; with
+        // PerformanceLog.StallWatchMs the new part is published for [StallWatch]. Both off: two tests
+        // of latched flags, no clock read. World thread only.
+        void TickPart(world_tick_slow::Part part)
+        {
+            if (m_worldTickSlowMs)
+            {
+                uint64 const nowUs = WorldTickNowUs();
+                m_tickParts.Add(m_tickPart, nowUs - m_tickPartStartUs);
+                m_tickPartStartUs = nowUs;
+                m_tickPart = part;
+            }
+            if (m_stallWatchOn)
+                s_stallPart.store(uint32(part), std::memory_order_relaxed);
+        }
+        // twow-repo#597 (TICK-01, PerformanceLog.MapTickRegion): the continent regions of one map update.
+        void MapTickRegionAdd(std::vector<std::pair<std::uint64_t, tick_diag::RegionTickSample>> const& regions) { m_regionTrace.AddTick(regions); }
+
+        // twow-repo#597 (TICK-01, PerformanceLog.StallWatchMs): what the [StallWatch] thread (Master.cpp)
+        // reads. Relaxed atomics, written by the world thread only while the switch is on.
+        static void SetStallWatch(bool on);
+        static bool StallWatchOn() { return s_stallWatchOn.load(std::memory_order_relaxed); }
+        // part = RPre for World::Update, TickEnd for WorldTickEnd after the sleep (its own age window).
+        static void StallWatchTickBegin(uint64 startUs, world_tick_slow::Part part = world_tick_slow::RPre)
+        {
+            if (!s_stallWatchOn.load(std::memory_order_relaxed))
+                return;
+            s_stallTickStartUs.store(startUs, std::memory_order_relaxed);
+            s_stallPart.store(uint32(part), std::memory_order_relaxed);
+        }
+        // The running tick goes on in another part (TickEnd: RecordTick after World::Update).
+        static void StallWatchPart(world_tick_slow::Part part)
+        {
+            if (!s_stallWatchOn.load(std::memory_order_relaxed))
+                return;
+            s_stallPart.store(uint32(part), std::memory_order_relaxed);
+        }
+        static void StallWatchTickEnd()
+        {
+            if (!s_stallWatchOn.load(std::memory_order_relaxed))
+                return;
+            s_stallTickStartUs.store(0, std::memory_order_relaxed);
+            s_stallPart.store(uint32(world_tick_slow::Idle), std::memory_order_relaxed);
+        }
+        static uint64 StallTickStartUs() { return s_stallTickStartUs.load(std::memory_order_relaxed); }
+        static uint32 StallPart() { return s_stallPart.load(std::memory_order_relaxed); }
+
+        // twow-repo#597 (TICK-01): marks the world thread ([TerrainReload] world_thread= / other_thread=).
+        static void MarkWorldThread();
+        static bool IsWorldThread();
 
         /// Get the active session server limit (or security level limitations)
         uint32 GetPlayerAmountLimit() const { return m_playerLimit >= 0 ? m_playerLimit : 0; }
@@ -1481,6 +1544,26 @@ class World
         world_tick::RegionWindow m_mapTick;
         std::chrono::steady_clock::time_point m_worldTickWindowStart{};
         void LogWorldTickWindow(uint32 windowMs);
+        // twow-repo#597 (TICK-01), world thread only. m_worldTickOn = the #541 clocks run (WorldTick or
+        // WorldTickSlowMs); m_worldTickWindowOn = PerformanceLog.WorldTick (the minute block).
+        bool m_worldTickWindowOn = false;
+        uint32 m_worldTickSlowMs = 0;
+        bool m_stallWatchOn = false;
+        world_tick_slow::PartTimes m_tickParts;
+        world_tick_slow::Part m_tickPart = world_tick_slow::Idle;
+        uint64 m_tickPartStartUs = 0;
+        tick_diag::RateLimiter m_worldTickSlowLimiter{60};
+        void TickPartsBegin();
+        void LogWorldTickSlow(uint64 updateUs);
+        // Minute lines of PerformanceLog.TerrainTrace / LogWriteTrace / MapTickRegion.
+        tick_diag::RegionWindow m_regionTrace;
+        std::chrono::steady_clock::time_point m_tickDiagMinuteStart{};
+        bool m_terrainTraceWasOn = false;  // TerrainTrace switch-on resets the terrain counters
+        void TickDiagMinute();
+        void LogMapTickRegion();
+        static inline std::atomic<bool> s_stallWatchOn{false};
+        static inline std::atomic<uint64> s_stallTickStartUs{0};
+        static inline std::atomic<uint32> s_stallPart{0};
         SessionMap m_sessions;
         SessionSet m_disconnectedSessions;
         robin_hood::unordered_map<uint32 /*accountId*/, time_t /*last logout*/> m_accountsLastLogout;

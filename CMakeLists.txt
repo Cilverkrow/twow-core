@@ -1000,6 +1000,15 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_world_tick_541_contract.cmake")
+  # twow-repo#597 (TICK-01): core tick diagnostics - [WorldTickSlow], [TerrainCleanup]/[TerrainReload],
+  # [StallWatch], [LogWait], [ResultsSlow], [MapTickRegion]; every switch default 0, off path unchanged.
+  add_executable(tick_diag_597_test
+    "${TW_CORE_ROOT}/t/tick_diag_597_test.cpp")
+  add_test(NAME tick_diag_597_test COMMAND tick_diag_597_test)
+  add_test(NAME tick_diag_597_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_tick_diag_597_contract.cmake")
   # twow-repo#541/#551: parked bots hidden from other bots (Player flag, AiPlayerbot.Park.HideFromBots).
   add_test(NAME park_hide_541_contract
     COMMAND "${CMAKE_COMMAND}"

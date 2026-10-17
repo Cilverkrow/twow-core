@@ -352,12 +352,17 @@ void MapManager::Update(uint32 diff)
         sWorld.WorldTickAdd(phase, nowUs - phaseStartUs);
         phaseStartUs = nowUs;
     };
+    // twow-repo#597 (TICK-01, PerformanceLog.MapTickRegion): per continent region the time before and at
+    // the barrier, latched for this map update. Off: one bool per region, no clock read.
+    bool const regionTraceOn = sWorld.getConfig(CONFIG_BOOL_PERFLOG_MAP_TICK_REGION);
     std::vector<Map*> continentMaps;
 
     // Execute any teleports scheduled in the main thread prior to map update
     // eg. area triggers, world port acks
+    sWorld.TickPart(world_tick_slow::MapTeleports);  // twow-repo#597: [StallWatch] phase
     ExecuteDelayedPlayerTeleports();
     endPhase(world_tick::Teleports);
+    sWorld.TickPart(world_tick_slow::MapsPre);
 
     uint32 mapsDiff = (uint32)i_timer.GetCurrent();
     asyncMapUpdating = true;
@@ -390,7 +395,8 @@ void MapManager::Update(uint32 diff)
         else // One threat per continent part
         {
             iter->second->SetRegionUpdateUs(0);
-            if (worldTickOn)
+            iter->second->BeginRegionTrace(regionTraceOn);  // twow-repo#597 ([MapTickRegion])
+            if (worldTickOn || regionTraceOn)
                 continentMaps.push_back(iter->second);
             continentsUpdaters.emplace_back([iter,mapsDiff,worldTickOn](){
                 Map *m = iter->second;
@@ -423,6 +429,7 @@ void MapManager::Update(uint32 diff)
     std::future<void> continents = m_continentThreads->processWorkload(std::move(continentsUpdaters),
                                                                        ThreadPool::Callable());
     endPhase(world_tick::MapsPre);
+    sWorld.TickPart(world_tick_slow::MapsWait);
 
     // twow-repo#541: instance updates run here while the world thread waits for the continents; the
     // rest of the wait (incl. continents.wait()) is the barrier on the slowest region.
@@ -453,17 +460,34 @@ void MapManager::Update(uint32 diff)
         sWorld.WorldTickAdd(world_tick::WaitContinents, waitUs > instancesUs ? waitUs - instancesUs : 0);
         phaseStartUs = nowUs;
 
-        std::vector<std::pair<uint64, uint32>> regions;
-        regions.reserve(continentMaps.size());
+        // twow-repo#597 (TICK-01): [MapTick] only with its minute block (PerformanceLog.WorldTick), not
+        // when the clocks run for [WorldTickSlow] alone.
+        if (sWorld.WorldTickWindowOn())
+        {
+            std::vector<std::pair<uint64, uint32>> regions;
+            regions.reserve(continentMaps.size());
+            for (Map* m : continentMaps)
+                if (m->GetRegionUpdateUs())
+                    regions.emplace_back(world_tick::RegionWindow::Key(m->GetId(), m->GetInstanceId()), m->GetRegionUpdateUs());
+            sWorld.MapTickAdd(regions);
+        }
+    }
+    // twow-repo#597 (TICK-01, PerformanceLog.MapTickRegion): the regions' samples of this update, written by
+    // their threads before continents.wait() returned.
+    if (regionTraceOn)
+    {
+        std::vector<std::pair<std::uint64_t, tick_diag::RegionTickSample>> samples;
+        samples.reserve(continentMaps.size());
         for (Map* m : continentMaps)
-            if (m->GetRegionUpdateUs())
-                regions.emplace_back(world_tick::RegionWindow::Key(m->GetId(), m->GetInstanceId()), m->GetRegionUpdateUs());
-        sWorld.MapTickAdd(regions);
+            if (m->GetRegionTrace().valid)
+                samples.emplace_back(tick_diag::RegionWindow::Key(m->GetId(), m->GetInstanceId()), m->GetRegionTrace());
+        sWorld.MapTickRegionAdd(samples);
     }
 
+    sWorld.TickPart(world_tick_slow::MapsSwitch);
     sWorld.GetChannelBroadcaster()->DisableSendingMessages();
     SwitchPlayersInstances();
-    if (sWorld.getConfig(CONFIG_BOOL_CONTINENTS_INSTANCIATE) && (GetContinentLayout() != 0 || worldTickOn))
+    if (sWorld.getConfig(CONFIG_BOOL_CONTINENTS_INSTANCIATE) && (GetContinentLayout() != 0 || sWorld.WorldTickWindowOn()))
         ReportRegionSwitches();  // twow-repo#541 part C: [RegionSwitch] once per minute
     asyncMapUpdating = false;
 
@@ -471,8 +495,10 @@ void MapManager::Update(uint32 diff)
     endPhase(world_tick::SwitchInstances);
 
     // Execute far teleports after all map updates have finished
+    sWorld.TickPart(world_tick_slow::MapTeleports);
     ExecuteDelayedPlayerTeleports();
     endPhase(world_tick::Teleports);
+    sWorld.TickPart(world_tick_slow::MapsPost);
 
     MapMapType::iterator crashedMapsIter = i_maps.begin();
     while (crashedMapsIter != i_maps.end())

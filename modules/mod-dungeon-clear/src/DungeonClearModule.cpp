@@ -63,6 +63,7 @@
 
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
+#include "playerbot/BotUpdateTrace.h"  // twow-repo#597 (TICK-01): NowUs for dungeonclear_ms=
 
 #include "AiObjectContextAccess.h"
 #include "DcStrategyGate.h"
@@ -481,6 +482,11 @@ public:
 
     void OnUpdate(uint32 diff) override
     {
+        // twow-repo#597 (TICK-01, AiPlayerbot.WorldBotsHookTrace): this hook's time into the [WorldBots]
+        // minute line (dungeonclear_ms=). Off: no clock read.
+        bool const hookTrace = sPlayerbotAIConfig.worldBotsHookTrace && sPlayerbotAIConfig.worldBotsTrace;
+        uint64 const hookStartUs = hookTrace ? ai::bot_update::NowUs() : 0;
+
         DcFollowerLifecycle::ReapOrphanedFollows();
         // Authoritative advanced-pull passive teardown: release any follower DC
         // put passive once its leader is no longer mid-pull (released / dc off /
@@ -532,6 +538,9 @@ public:
             // Die Routen-Abtastung liegt ebenfalls im Spieler-Haken.
 
         }
+
+        if (hookTrace)
+            sRandomPlayerbotMgr.AddWorldBotsDungeonClearUs(ai::bot_update::NowUs() - hookStartUs);
     }
 
 private:
