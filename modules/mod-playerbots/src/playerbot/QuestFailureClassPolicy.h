@@ -171,6 +171,14 @@ inline bool AbandonableReason(TakerCheck check)
     return check == TakerCheck::NoDestination || check == TakerCheck::CrossMap;
 }
 
+// AiPlayerbot.QuestFirstProgression.AbandonStructuralParked: abandon the quest when the park policy reports the
+// second abandonable structural park in a row (turnin_park::ParkNow abandonDue). A class quest (or an unknown one) is
+// kept: fail closed. enabled false = never abandon.
+inline bool AbandonParkedTurnIn(bool enabled, bool abandonDue, bool keepQuest)
+{
+    return enabled && abandonDue && !keepQuest;
+}
+
 // A turn-in-only request (takers only, no giver or objective fetch) only for a pre-validated taker. enabled false =
 // every taker fetch is kept, as before.
 inline bool TakerOnlyOffer(bool enabled, bool validated)

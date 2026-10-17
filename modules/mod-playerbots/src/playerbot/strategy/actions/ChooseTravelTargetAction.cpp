@@ -379,10 +379,26 @@ route_danger::Reason TakerRouteDanger(PlayerbotAI* ai, Player* bot, WorldPositio
 }
 
 // twow-repo#601 S1: parks a turn-in at once for a structural reason (TravelTarget::ParkTurnInNow). True when parked.
-bool ParkStructuralTurnIn(TravelTarget* travelTarget, uint32 questId, char const* reason, bool abandonable)
+// AiPlayerbot.QuestFirstProgression.AbandonStructuralParked (OB-10 answer 3): the second structural park in a row for
+// a reason that cannot heal by itself (no taker destination, other continent below MinLevelForCrossMapQuestRoute -
+// never a zone level, never after any other park in between) abandons the quest, [QuestAbandon]; a class quest is
+// kept. Off: the quest stays in the log, parked.
+bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 questId, char const* reason, bool abandonable)
 {
     bool abandonDue = false;
-    return travelTarget->ParkTurnInNow(questId, reason, abandonable, abandonDue);
+    if (!travelTarget->ParkTurnInNow(questId, reason, abandonable, abandonDue))
+        return false;
+
+    Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+    if (ai::quest_failure_class::AbandonParkedTurnIn(sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked, abandonDue,
+            !quest || quest->GetRequiredClasses()))
+    {
+        Player* bot = ai->GetBot();
+        sLog.outBasic("[QuestAbandon] quest=%u reason=%s bot=%u level=%u parks=%u", questId, reason, bot->GetGUIDLow(),
+            bot->GetLevel(), uint32(ai::turnin_park::AbandonAfterStructuralParks));
+        ai->DropQuest(questId, "structural_parked_twice");
+    }
+    return true;
 }
 
 // twow-repo#601 S1 (FailureClasses, OB-10 answer 3): the bot's open turn-ins are checked before a request may become
@@ -457,7 +473,7 @@ std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* 
             else if (IsStructural(check))
             {
                 ++structural;
-                ParkStructuralTurnIn(travelTarget, questId, TakerCheckName(check), AbandonableReason(check));
+                ParkStructuralTurnIn(ai, travelTarget, questId, TakerCheckName(check), AbandonableReason(check));
             }
             else
                 ++notNow;
@@ -651,7 +667,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                     bool const takerless = std::find(takerlessTurnIns.begin(), takerlessTurnIns.end(), questId) != takerlessTurnIns.end();
                     if (!takerless && !failureDecision.parkAllOffered)
                         continue;
-                    if (ParkStructuralTurnIn(travelTarget, questId,
+                    if (ParkStructuralTurnIn(ai, travelTarget, questId,
                             takerless ? ai::quest_failure_class::TakerCheckName(ai::quest_failure_class::TakerCheck::NoDestination) :
                                 failureDecision.reason,
                             takerless || failureDecision.abandonable))

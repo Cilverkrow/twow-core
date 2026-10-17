@@ -172,6 +172,10 @@ int main()
         Require(TakerOnlyOffer(false, false), "switch off: every taker fetch kept");
         Require(TakerOnlyOffer(true, true), "validated taker: taker-only");
         Require(!TakerOnlyOffer(true, false), "not validated: no taker-only, the normal fetch runs");
+        Require(AbandonParkedTurnIn(true, true, false), "switch on, second structural park: abandon");
+        Require(!AbandonParkedTurnIn(false, true, false), "switch off: never abandon");
+        Require(!AbandonParkedTurnIn(true, false, false), "first park: keep");
+        Require(!AbandonParkedTurnIn(true, true, true), "class quest (or unknown): keep");
     }
 
     // 7) Grind yields to routable open turn-ins (8.5 generalised); id lists.
