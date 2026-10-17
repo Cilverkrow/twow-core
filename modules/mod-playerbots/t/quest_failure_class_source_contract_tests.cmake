@@ -154,15 +154,33 @@ require_text("${prevalidate}" "sTravelMgr.GetDestinations(info, uint32(TravelDes
 count_text("${prevalidate}" "sTravelMgr.GetDestinations(" 1 "bounded: one lookup per request")
 require_text("${prevalidate}" "if (travelTarget->IsDestinationDeathSuppressed(destination) || travelTarget->IsTurnInRouteSuppressed(destination, point))" "suppressed takers are not validated")
 require_text("${prevalidate}" "route_danger::Reason const danger = TakerRouteDanger(ai, bot, point);" "route danger as in SetBestTarget")
-require_text("${prevalidate}" "if (point->isEnemyHomeZoneFor(bot->GetTeam()) || !destination->IsActive(bot, info))" "enemy zone / inactive takers are not validated")
+# Review fix (S1 findings 3 and 5): the main loop's order - suppression, IsActive / battleground quest / enemy zone, then
+# the route danger rule, then the danger map. A hostile, inactive or enemy-zone taker is "not now" (the main loop counts
+# it not_active / battleground / enemy_zone, an empty offer), never a structural cross_map / zone_level park.
+set(prevalidate_inactive "if (!destination->IsActive(bot, info) || battlegroundQuest || point->isEnemyHomeZoneFor(bot->GetTeam()))\n                {\n                    notNowPoint = true;\n                    continue;\n                }")
+require_text("${prevalidate}" "${prevalidate_inactive}" "inactive / battleground quest / enemy zone takers are not now")
+require_text("${prevalidate}" "bool const battlegroundQuest = sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && questTemplate &&\n                ai::zone_exit::IsBattlegroundQuestSort(questTemplate->GetZoneOrSort());" "the main loop's battleground quest skip (Z3)")
+require_order("${prevalidate}" "travelTarget->IsTurnInRouteSuppressed(destination, point))" "${prevalidate_inactive}" "pre-check order: suppression first")
+require_order("${prevalidate}" "${prevalidate_inactive}" "route_danger::Reason const danger = TakerRouteDanger(ai, bot, point);" "pre-check order: IsActive / enemy zone before the route danger rule")
+set(prevalidate_danger_map "if (sPlayerbotAIConfig.dangerMapEnabled && point->getMapId() == bot->GetMapId() &&\n                    danger_map::Instance().Query(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), point->getX(),\n                        point->getY(), bot->GetLevel(), uint32(time(nullptr)), DangerMapParams()).cells)\n                {\n                    notNowPoint = true;\n                    continue;\n                }")
+require_text("${prevalidate}" "${prevalidate_danger_map}" "a danger-map hit is not now (no grind yield for a taker the main loop defers)")
+require_order("${prevalidate}" "zoneLevel = true;" "${prevalidate_danger_map}" "pre-check order: the danger map after the route danger rule")
+require_order("${prevalidate}" "${prevalidate_danger_map}" "routable = true;" "routable only after every deferral")
+count_text("${prevalidate}" "isEnemyHomeZoneFor(" 1 "one enemy-zone check, before the route danger rule")
+count_text("${prevalidate}" "->IsActive(bot, info)" 1 "one IsActive check, before the route danger rule")
 require_text("${prevalidate}" "else if (IsStructural(check))" "only structural answers park")
-require_text("${prevalidate}" "[QuestTakerCheck] bot=%u level=%u open=%u routable=%u structural=%u not_now=%u" "one summary line per request")
+# Review fix (finding 'one [QuestTakerCheck] line per request'): the line follows the per-quest loop, once per request.
+require_text("${prevalidate}" "            else\n                ++notNow;\n        }\n\n        sLog.outBasic(\"[QuestTakerCheck] bot=%u level=%u open=%u routable=%u structural=%u not_now=%u\"," "one summary line per request, after the per-quest loop")
+count_text("${choose}" "sLog.outBasic(\"[QuestTakerCheck]" 1 "exactly one [QuestTakerCheck] log call")
 region("${choose}" "route_danger::Reason TakerRouteDanger(PlayerbotAI* ai, Player* bot, WorldPosition* point)" "\n}\n" taker_danger)
 foreach(input "sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute" "ai::death_series::RouteMargin(ai->IsCautious())"
               "sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly" "ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones"
               "route_danger::ContinentOf(bot->GetMapId(), botMapEntry ? botMapEntry->ghostEntranceMap : -1)")
   require_text("${taker_danger}" "${input}" "pre-validation uses the main loop's route danger input")
 endforeach()
+# Review fix (CrossMapContinentsOnly argument): the config value itself goes into route_danger::Classify.
+require_text("${taker_danger}" "bool const continentsOnly = sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly;" "CrossMapContinentsOnly read into the local")
+require_text("${taker_danger}" "ai::death_series::RouteMargin(ai->IsCautious()),\n        continentsOnly,\n        route_danger::IsContinentSwitch(" "the local is the CrossMapContinentsOnly argument")
 require_text("${values}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && !ai->HasRealPlayerMaster())" "grind yield only with the switch, bots on their own")
 require_text("${values}" "(ai::quest_failure_class::ListHas(validated, questId) || !ai::quest_failure_class::ListHas(checked, questId))" "validated, or finished since the last check")
 require_order("${values}" "if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen))\n                    return false;" "return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&" "grind yields before the 8.32 fallback")
