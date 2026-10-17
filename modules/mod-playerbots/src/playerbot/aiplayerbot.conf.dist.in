@@ -1130,6 +1130,12 @@ AiPlayerbot.Shortcut.NearScope = 0
 AiPlayerbot.Shortcut.NearRadius = 0
 AiPlayerbot.Shortcut.TestWatcherGuids =
 AiPlayerbot.Shortcut.Trace = 0
+# twow-repo#595 P4 B1 (bug fix, critic X6): the legacy random teleport (non-roster bots, console grind / revive) moved
+# every group member of a bot group leader, real players included, and checked the leader's AI instead of the
+# member's. 1 = real members (no own bot AI, or a real session) are skipped and each member's own AI is used;
+# [Shortcut] mech=group_loop state=skip_real per skipped member. The null check before a member AI reset is always
+# on (a real member used to crash the server there). 0 = old loop (default; owner profile 1 after the test).
+AiPlayerbot.Shortcut.GroupLoopFix = 0
 # twow-repo#575 (PATH-01 #1, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach
 # Abnahme an): 1 = every node route search that ends without a route is counted and the first LinesPerMinute of
 # them a minute are logged as [RouteFailDetail]: bot, level, alive, action, start and target (map x y z), distance,

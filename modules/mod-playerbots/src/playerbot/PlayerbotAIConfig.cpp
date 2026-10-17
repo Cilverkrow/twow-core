@@ -677,6 +677,7 @@ bool PlayerbotAIConfig::Initialize()
     shortcutNearRadius = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.Shortcut.NearRadius", 0.0f));
     shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault("AiPlayerbot.Shortcut.TestWatcherGuids", ""));
     shortcutTrace = config.GetBoolDefault("AiPlayerbot.Shortcut.Trace", false);
+    shortcutGroupLoopFix = config.GetBoolDefault("AiPlayerbot.Shortcut.GroupLoopFix", false);
     pathRouteFailDetail = config.GetBoolDefault("AiPlayerbot.Path.RouteFailDetail", false);
     pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault("AiPlayerbot.Path.RouteFailDetail.LinesPerMinute", 30));
     pathHonestRouteFail = config.GetBoolDefault("AiPlayerbot.Path.HonestRouteFail", false);
