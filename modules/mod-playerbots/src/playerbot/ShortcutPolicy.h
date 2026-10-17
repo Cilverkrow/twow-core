@@ -39,6 +39,8 @@ constexpr std::uint64_t BuildIntervalMs = 1000;  // the world thread rebuilds at
 constexpr std::size_t MaxWatchers = 64;          // TestWatcherGuids is capped (bounded build)
 
 // One position a real player (or a test watcher) sees from: the player, or its camera body if that differs.
+// Only the map id, no instance id: a player in one copy of a dungeon / battleground makes the other copies of that map
+// Near too. That errs on the safe side for S0; a stage that gates instance teleports must add the instance id first.
 struct Entry
 {
     std::uint32_t map = 0;
