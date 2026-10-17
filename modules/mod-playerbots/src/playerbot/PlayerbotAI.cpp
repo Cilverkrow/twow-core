@@ -4302,6 +4302,11 @@ bool PlayerbotAI::SayToGuild(std::string msg, bool likePlayer)
     return false;
 }
 
+bool PlayerbotAI::IsOnChannel(Channel const* channel) const
+{
+    return channel && channel->IsOn(bot->GetObjectGuid());
+}
+
 bool PlayerbotAI::SayToWorld(std::string msg)
 {
     if (msg.empty())

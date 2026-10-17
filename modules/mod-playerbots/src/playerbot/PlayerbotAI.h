@@ -34,6 +34,7 @@
 class Player;
 class PlayerbotMgr;
 class ChatHandler;
+class Channel;
 
 using namespace ai;
 
@@ -474,6 +475,8 @@ public:
     ChatChannelSource GetChatChannelSource(Player* bot, uint32 type, std::string channelName);
     bool SayToGuild(std::string msg, bool likePlayer = false);
     bool SayToWorld(std::string msg);
+    // twow-repo#517 stage c: whether this bot is on the channel (Channel::IsOn is private; PlayerbotAI is its friend).
+    bool IsOnChannel(Channel const* channel) const;
     bool SayToGeneral(std::string msg);
     bool SayToTrade(std::string msg);
     bool SayToLFG(std::string msg);
