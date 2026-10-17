@@ -552,6 +552,23 @@ void OwnType()
     Require(PickOwnType({ QueueAB, QueueAV, QueueWS }, all) == QueueAB, "rotation continues");
     Require(PickOwnType({ QueueAB, QueueAV, QueueWS }, { QueueWS }) == QueueWS, "only one possible: it, even if last");
     Require(PickOwnType({ QueueAV, QueueWS, QueueAV }, { QueueWS, QueueAV }) == QueueWS, "last occurrence counts");
+
+    // C2: the candidate loop's hard cap per try.
+    Require(OwnCandidateVisitMax > 0 && OwnCandidateVisitMax <= 2000, "candidate loop capped at 2000 visits per try");
+    // C3: the template minimum plus the side's share of the announcers (the larger half).
+    Require(OwnCandidatesNeeded(10, QueueWS) == 11, "WSG: min + 1 (2 announcers)");
+    Require(OwnCandidatesNeeded(10, QueueAB) == 12, "AB: min + 2 (3 announcers)");
+    Require(OwnCandidatesNeeded(20, QueueAV) == 23, "AV: min + 3 (5 announcers)");
+    Require(OwnCandidatesNeeded(5, QueueBR) == 5, "no announcers: the minimum");
+    for (uint32_t type : { QueueWS, QueueAB, QueueAV })
+    {
+        for (uint32_t min : { 1u, 2u, 5u, 10u, 20u })
+        {
+            Require(OwnCandidateLimit(min, type) >= OwnCandidatesNeeded(min, type), "the list can reach the need");
+            Require(OwnCandidateLimit(min, type) >= CandidateLimit(min), "never fewer than the stage-a limit");
+        }
+    }
+    Require(OwnCandidateLimit(1, QueueAV) == 4 && OwnCandidateLimit(10, QueueWS) == 20, "the larger of both");
 }
 
 // Stage c: the text pool (D3).
@@ -602,6 +619,24 @@ void Pool()
     lines = ParseAnnouncePool(BuiltInAnnouncePool(0, QueueAV), dropped);
     Require(lines[0] == "Stormpike needs you, to Alterac!", "owner example 3 in Alliance AV");
     Require(BuiltInAnnouncePool(0, QueueBR).empty() && BuiltInAnnouncePool(1, QueueSV).empty(), "no pool for BR or SV");
+    // D3: every battleground-specific built-in line names the battleground in full; the owner's own wording
+    // "Stormpike needs you, to Alterac!" is the only exception.
+    for (uint32_t team = 0; team < 2; ++team)
+    {
+        for (uint32_t type : { QueueWS, QueueAB, QueueAV })
+        {
+            lines = ParseAnnouncePool(BuiltInAnnouncePool(team, type), dropped);
+            for (std::string const& line : lines)
+            {
+                if (line == "Stormpike needs you, to Alterac!")
+                    continue;
+                Require(line.find(BgFullName(type)) != std::string::npos, "built-in line with the full battleground name");
+            }
+        }
+        lines = ParseAnnouncePool(BuiltInAnnouncePool(team, 0), dropped);
+        for (std::string const& line : lines)
+            Require(line.find("%bg") != std::string::npos, "generic built-in line with %bg");
+    }
 
     // Distinct lines per announcement.
     std::vector<uint32_t> idx = PickLineIndexes(8, 5, { 7, 7, 7, 7, 7 });
