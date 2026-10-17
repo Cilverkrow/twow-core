@@ -237,6 +237,15 @@ inline uint32_t RouteBackoffSeconds(uint32_t failures, bool fresh = false, uint3
 // Hotfix 8.32 (twow-repo#544): a quest-first roster bot whose quest route search found nothing
 // MinFailures times in a row (backoff 2+4 min) may travel to a grind spot instead of idling
 // (v35: ~13 % of bot time "no destination", the bots that grind progress ~5x faster). 0 = off.
+// twow-repo#601 (QuestFirstProgression.GrindFallbackMinutes): the grind fallback is "fresh" only that many minutes after
+// the last empty quest route search (lastFailAt); minutes 0 or no stamp = as before (the fallback holds until a route is
+// found, which never happens while grind 6.35 outranks the quest request 6.3 - 37,024 grind fallbacks against 2,012
+// quest route requests of L10+ bots in the 17.10. soak).
+inline bool GrindFallbackFresh(uint32_t minutes, uint32_t lastFailAt, uint32_t now)
+{
+    return !minutes || !lastFailAt || now < lastFailAt || now - lastFailAt < minutes * 60;
+}
+
 inline bool GrindFallback(bool questFirst, uint32_t routeFailures, uint32_t minFailures)
 {
     return questFirst && minFailures && routeFailures >= minFailures;

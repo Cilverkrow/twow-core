@@ -426,6 +426,11 @@ bool NeedTravelPurposeValue::Calculate()
             // Hotfix 8.32 (twow-repo#544): after repeated empty quest route searches a quest-first
             // bot grinds instead of idling ("no destination").
             uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures")));
+            // twow-repo#601 (AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes): the fallback holds only that long after
+            // the last empty quest route search; then the quest request (6.3, below grind 6.35) can fire again. 0 = for good.
+            if (!ai::quest_search::GrindFallbackFresh(sPlayerbotAIConfig.questFirstProgressionGrindFallbackMinutes,
+                    uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failed at"))), uint32(time(nullptr))))
+                return false;
             // twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.FreshGrindFailures): a fresh bot may grind after fewer.
             if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel) &&
                 sPlayerbotAIConfig.directTargetsFreshGrindFailures)
