@@ -1124,7 +1124,7 @@ AiPlayerbot.RosterFarMove.WatchRoute = 1
 # characters that count as real players in the snapshot - the A/B watcher stand-in on a realm without real players.
 # Trace = 1: [Shortcut] mech=hop|ghost_corpse|repop|far_move teleports= near= notnear= unknown= near_src= near_dst=
 # once a minute (each teleport classified when it happens, at both ends; the teleports themselves are unchanged) and
-# [Shortcut] state=snapshot players= watchers= entries= age_ms= scope= radius=. Without NearScope the trace measures
+# [Shortcut] state=snapshot players= watchers= entries= age_ms= stale= scope= radius=. Without NearScope the trace measures
 # with scope 2. All 0 / empty = today's behaviour (default).
 AiPlayerbot.Shortcut.NearScope = 0
 AiPlayerbot.Shortcut.NearRadius = 0

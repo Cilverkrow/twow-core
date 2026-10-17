@@ -260,6 +260,28 @@ inline void Record(Counters& counters, Mech mech, Near source, Near destination)
         c.nearDst.fetch_add(1, std::memory_order_relaxed);
 }
 
+// One minute of one mechanism, taken out of the counters (world thread). Every counter is reset to 0, so each
+// [Shortcut] line covers only the minute since the previous one.
+struct MechTotals
+{
+    std::uint32_t nearAny = 0;
+    std::uint32_t notNear = 0;
+    std::uint32_t unknown = 0;
+    std::uint32_t nearSrc = 0;
+    std::uint32_t nearDst = 0;
+};
+
+inline MechTotals Drain(MechCounters& c)
+{
+    MechTotals t;
+    t.nearAny = c.nearAny.exchange(0, std::memory_order_relaxed);
+    t.notNear = c.notNear.exchange(0, std::memory_order_relaxed);
+    t.unknown = c.unknown.exchange(0, std::memory_order_relaxed);
+    t.nearSrc = c.nearSrc.exchange(0, std::memory_order_relaxed);
+    t.nearDst = c.nearDst.exchange(0, std::memory_order_relaxed);
+    return t;
+}
+
 // The legacy random-teleport group loop (B1, critic X6). Off: every member but the leader is moved, as
 // today. On: a member without its own bot AI or with a real session (IsRealPlayer) is skipped.
 inline bool GroupLoopMovesMember(bool fix, bool hasOwnBotAi, bool realSession)

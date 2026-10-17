@@ -178,6 +178,18 @@ int main()
     Require(std::string(MechName(Mech::Hop)) == "hop" && std::string(MechName(Mech::GhostCorpse)) == "ghost_corpse" &&
         std::string(MechName(Mech::Repop)) == "repop" && std::string(MechName(Mech::FarMove)) == "far_move", "mechanism names");
 
+    // Drain: one minute's totals out, every counter back to 0 (the minute line is not cumulative).
+    MechTotals const hopMinute = Drain(counters.mech[std::size_t(Mech::Hop)]);
+    Require(hopMinute.nearAny == 1 && hopMinute.notNear == 1 && hopMinute.unknown == 1 && hopMinute.nearSrc == 0 &&
+        hopMinute.nearDst == 1, "drain returns the minute's counts");
+    Require(hop.nearAny == 0 && hop.notNear == 0 && hop.unknown == 0 && hop.nearSrc == 0 && hop.nearDst == 0,
+        "drain resets every counter");
+    MechTotals const hopNext = Drain(counters.mech[std::size_t(Mech::Hop)]);
+    Require(hopNext.nearAny == 0 && hopNext.notNear == 0 && hopNext.unknown == 0, "negative: a second drain is empty");
+    Record(counters, Mech::Hop, Near::Unknown, Near::Unknown);
+    Require(Drain(counters.mech[std::size_t(Mech::Hop)]).unknown == 1, "counting goes on after a drain");
+    Require(repop.nearAny == 1, "negative: draining one mechanism leaves the others");
+
     // B1 group loop.
     Require(GroupLoopMovesMember(false, false, true) && GroupLoopMovesMember(false, true, false),
         "switch 0: every member is moved, as today");
