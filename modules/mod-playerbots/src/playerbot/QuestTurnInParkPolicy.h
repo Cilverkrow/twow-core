@@ -188,6 +188,37 @@ inline ParkResult ParkNow(Book& book, std::uint32_t questId, std::uint32_t nowMs
     return result;
 }
 
+// twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.AbandonStructuralParked): the quests this bot abandoned after
+// two structural parks. The giver offers such a quest again (DropQuest leaves it QUEST_STATUS_NONE, not rewarded); taken
+// again it would be parked and abandoned once more every hour. A marked quest is neither travelled to at its giver nor
+// accepted. At most AbandonMarkSize quests (the oldest mark gives way), in memory only like the park book - a re-login
+// forgets them. Quest 0 is never marked.
+constexpr std::uint32_t AbandonMarkSize = 8;
+
+struct AbandonMarks
+{
+    std::array<std::uint32_t, AbandonMarkSize> quests{};
+    std::uint32_t next = 0;
+};
+
+inline bool IsAbandonMarked(AbandonMarks const& marks, std::uint32_t questId)
+{
+    if (!questId)
+        return false;
+    for (std::uint32_t const marked : marks.quests)
+        if (marked == questId)
+            return true;
+    return false;
+}
+
+inline void MarkAbandoned(AbandonMarks& marks, std::uint32_t questId)
+{
+    if (!questId || IsAbandonMarked(marks, questId))
+        return;
+    marks.quests[marks.next % AbandonMarkSize] = questId;
+    marks.next = (marks.next + 1) % AbandonMarkSize;
+}
+
 // How a quest route request that offered only turn-ins ended (ChooseTravelTargetAction).
 enum class RouteOutcome : std::uint8_t
 {

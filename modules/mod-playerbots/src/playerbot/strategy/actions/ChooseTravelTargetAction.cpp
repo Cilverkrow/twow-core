@@ -382,7 +382,8 @@ route_danger::Reason TakerRouteDanger(PlayerbotAI* ai, Player* bot, WorldPositio
 // AiPlayerbot.QuestFirstProgression.AbandonStructuralParked (OB-10 answer 3): the second structural park in a row for
 // a reason that cannot heal by itself (no taker destination, other continent below MinLevelForCrossMapQuestRoute -
 // never a zone level, never after any other park in between) abandons the quest, [QuestAbandon]; a class quest is
-// kept. Off: the quest stays in the log, parked.
+// kept. The abandoned quest is marked so it is not taken again (no hourly accept / park / abandon cycle). Off: the
+// quest stays in the log, parked.
 bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 questId, char const* reason, bool abandonable)
 {
     bool abandonDue = false;
@@ -397,6 +398,7 @@ bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 qu
         sLog.outBasic("[QuestAbandon] quest=%u reason=%s bot=%u level=%u parks=%u", questId, reason, bot->GetGUIDLow(),
             bot->GetLevel(), uint32(ai::turnin_park::AbandonAfterStructuralParks));
         ai->DropQuest(questId, "structural_parked_twice");
+        travelTarget->NoteStructuralAbandon(questId);
     }
     return true;
 }

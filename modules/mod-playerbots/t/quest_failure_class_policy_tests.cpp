@@ -254,6 +254,24 @@ int main()
         Require(AbandonAfterStructuralParks == 2, "parked twice -> abandon");
     }
 
+    // 11) An abandoned quest is marked and not taken again (bounded ring, quest 0 never marked).
+    {
+        using namespace ai::turnin_park;
+        AbandonMarks marks;
+        Require(!IsAbandonMarked(marks, 42055), "nothing marked at first");
+        MarkAbandoned(marks, 42055);
+        Require(IsAbandonMarked(marks, 42055), "abandoned quest marked");
+        MarkAbandoned(marks, 42055);
+        Require(marks.next == 1, "marked once");
+        MarkAbandoned(marks, 0);
+        Require(!IsAbandonMarked(marks, 0) && marks.next == 1, "quest 0 is never marked");
+        for (std::uint32_t quest = 1; quest < AbandonMarkSize; ++quest)
+            MarkAbandoned(marks, 1000 + quest);
+        Require(IsAbandonMarked(marks, 42055) && IsAbandonMarked(marks, 1000 + AbandonMarkSize - 1), "a full ring keeps every mark");
+        MarkAbandoned(marks, 5000);
+        Require(IsAbandonMarked(marks, 5000) && !IsAbandonMarked(marks, 42055), "bounded: the oldest mark gives way");
+    }
+
     std::cout << "quest_failure_class_policy_tests passed\n";
     return 0;
 }
