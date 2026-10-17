@@ -331,4 +331,36 @@ region("${accept}" "bool QuestDetailsAction::Execute(Event& event)" "\n}\n" deta
 require_order("${details_fn}" "if (SkipQuestForRosterBot(ai, bot, qInfo))" "bot->AddQuest(qInfo, requester);" "the dialog path asks the accept rule before AddQuest")
 require_text("${accept}" "#include \"playerbot/TravelMgr.h\"" "include what you use (TravelTarget)")
 
+# ---- 13. Review fix (F10 / F11): the positive exceptions and the note sites, robustly ----------------
+# GenericRpg, Explore and the gather destinations keep no GrindMode gate in any spelling (IsQuestNoGrind, the policy
+# namespace, a direct config test). Reviewer probes R01 / R02 put a NoGrind(config) gate there and passed before.
+region("${values}" "    case TravelDestinationPurpose::Explore:\n" "    case TravelDestinationPurpose::Grind:\n    {" rpg_explore_cases)
+region("${travel_mgr}" "bool RpgTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info) const" "\n}\n" rpg_active)
+region("${travel_mgr}" "bool ExploreTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info) const" "\n}\n" explore_active)
+region("${travel_mgr}" "bool GatherTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info) const" "\n}\n" gather_active)
+region("${travel_mgr}" "bool BossTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info) const" "\n}\n" boss_active)
+foreach(exception rpg_explore_cases rpg_active explore_active gather_active boss_active)
+  foreach(gate "IsQuestNoGrind" "quest_grind_mode" "GrindMode")
+    forbid_text("${${exception}}" "${gate}" "a GrindMode gate on a kept activity (${exception})")
+  endforeach()
+endforeach()
+require_text("${rpg_explore_cases}" "        return ai->HasStrategy(\"explore\", BotState::BOT_STATE_NON_COMBAT);" "Explore unchanged")
+require_text("${rpg_explore_cases}" "        if (rpgPhase < 15) //Only last 45 minutes of the hour allow generic rpg." "GenericRpg unchanged")
+# The policy is used only where this round put it (a NoGrind(config) gate elsewhere in these files fails the count).
+count_text("${travel_mgr}" "quest_grind_mode::" 1 "policy uses in TravelMgr (the grind destination filter)")
+count_text("${values}" "quest_grind_mode::" 2 "policy uses in TravelValues (the fallback note)")
+count_text("${grind_target}" "quest_grind_mode::" 4 "policy uses in GrindTargetValue (filter, note)")
+count_text("${grind_strategy}" "quest_grind_mode::" 4 "policy uses in GrindingStrategy (init, multiplier)")
+count_text("${choose}" "quest_grind_mode::" 9 "policy uses in the choose file (grind branch, request, forced kill trip, episode reset)")
+count_text("${mgr}" "quest_grind_mode::" 1 "policy uses in RandomPlayerbotMgr (minute report)")
+# Every [QuestIdle] reason site, and no more: a note per candidate (e.g. in GrindTravelDestination::IsActive, probe R15)
+# would inflate the minute counter. The IsActive filter stays silent (the requests carry the reason).
+count_text("${travel_mgr}" "NoteQuestIdle(" 0 "no note in TravelMgr (silent per-candidate filter)")
+count_text("${values}" "NoteQuestIdle(" 1 "note sites in TravelValues: fallback")
+count_text("${choose}" "NoteQuestIdle(" 3 "note sites in the choose file: grind branch, grind request, forced kill trip")
+count_text("${grind_target}" "NoteQuestIdle(" 1 "note sites in GrindTargetValue: once per pass")
+count_text("${grind_strategy}" "NoteQuestIdle(" 1 "note sites in GrindingStrategy: the multiplier")
+count_text("${mgr}" "NoteQuestIdle(" 0 "no note on the world thread")
+count_text("${ai_cpp}" "NoteQuestIdle(" 1 "the definition only")
+
 message(STATUS "QUEST_GRIND_MODE_SOURCE_CONTRACT=PASS")
