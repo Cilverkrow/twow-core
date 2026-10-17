@@ -177,6 +177,10 @@ class TerrainInfo : public Referencable<AtomicLong>
         // THIS METHOD IS NOT THREAD-SAFE!!!! AND IT SHOULDN'T BE THREAD-SAFE!!!!
         void CleanUpGrids(const uint32 diff);
 
+        // twow-repo#597 (TICK-01): TerrainCleanup.IdleMinutes / TerrainCleanup.MaxGridsPerTick (both 0 =
+        // today), latched by TerrainManager::Update on the world thread; GetGrid reads the cached value.
+        static void SetCleanupSwitches(uint32 idleMinutes, uint32 maxGridsPerTick);
+
     protected:
         friend class Map;
         // load/unload terrain data
@@ -209,6 +213,20 @@ class TerrainInfo : public Referencable<AtomicLong>
 
         // global garbage collection timer
         ShortIntervalTimer i_timer;
+
+        // twow-repo#597 (TICK-01, TerrainCleanup.IdleMinutes): last use of each grid in terrain seconds,
+        // written by GetGrid (any thread, relaxed) only with the switch on; LOS-only vmap queries
+        // (Map::isInLineOfSight) bypass GetGrid and do not count as a use. The terrain clock is advanced
+        // by CleanUpGrids from the world tick diff (no clock read) and published in m_useClockSec.
+        void StampGridUse(const uint32 x, const uint32 y);
+        std::atomic<uint32> m_GridLastUse[MAX_NUMBER_OF_GRIDS][MAX_NUMBER_OF_GRIDS];
+        uint64 m_useClockMs;                    // world thread only (CleanUpGrids)
+        std::atomic<uint32> m_useClockSec;
+        // twow-repo#597 (TICK-01, TerrainCleanup.MaxGridsPerTick): a capped scan resumes here next tick.
+        uint32 m_cleanupCursor;                 // world thread only
+        bool m_cleanupResume;                   // world thread only
+        static std::atomic<uint32> s_cleanupIdleMinutes;
+        static std::atomic<uint32> s_cleanupMaxGridsPerTick;
 
         using LOCK_TYPE = std::mutex;
         using LOCK_GUARD = std::unique_lock<LOCK_TYPE>;

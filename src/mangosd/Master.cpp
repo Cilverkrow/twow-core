@@ -447,6 +447,7 @@ void freezeDetector(uint32 _delaytime)
         else if (WorldTimer::getMSTimeDiff(lastchange, curtime) > _delaytime)
         {
             sLog.outError("World Thread hangs, kicking out server!");
+            sLog.FlushAsyncSink(log_sink::CrashFlushWaitMs);  // twow-repo#597 (Log.AsyncSink): queued lines first
             std::terminate(); // bang crash
         }
 #endif
@@ -786,6 +787,9 @@ int Master::Run()
 	sWorld.InternalShutdown();
 
     uint8 exitCode = World::GetExitCode();
+    // twow-repo#597 (TICK-01, Log.AsyncSink): quick_exit runs no destructors - drain the log sink
+    // here (bounded), with a final "[LogSink] stopped" line. No sink: nothing.
+    sLog.StopAsyncSink("shutdown");
     std::quick_exit(exitCode);
     return exitCode;
 }
@@ -935,6 +939,8 @@ void Master::_OnSignal(int s)
             sLog.outInfo("Received SIGSEGV");
             ACE_Stack_Trace st;
             sLog.outInfo("%s", st.c_str());
+            // twow-repo#597 (TICK-01, Log.AsyncSink): the backtrace must reach the log before the crash.
+            sLog.FlushAsyncSink(log_sink::CrashFlushWaitMs);
 
             if (anticrashOptions & ANTICRASH_GENERATE_COREDUMP)
                 createdump();
