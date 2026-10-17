@@ -66,6 +66,11 @@
 #include "playerbot/strategy/actions/BattleGroundJoinAction.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "Maps/MapManager.h"
+#include "Maps/Map.h"
+#include "Maps/GridMap.h"
+#include "ObjectAccessor.h"
+#include "playerbot/BotSlots.h"
+#include "playerbot/ShortcutPolicy.h"
 #include <fstream>
 #include <sstream>
 #include <functional>
@@ -1275,6 +1280,173 @@ void ReportPathUnitlessBot()
         sLog.outBasic("[PathUnitlessBot] route_incomplete=%llu mode_map=%llu",
             (unsigned long long)incomplete, (unsigned long long)mapMode);
 }
+
+// twow-repo#595 P4 S0: steady milliseconds for the shortcut snapshot (build time, staleness).
+uint64 ShortcutNowMs()
+{
+    return uint64(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+// twow-repo#595 P4 S0: one snapshot entry for a real player / watcher and one for its camera body if that differs.
+// World thread, map threads idle (after sMapMgr.Update).
+void AddShortcutEntries(ai::shortcut::Snapshot& snapshot, Player* player, bool watcher, float reactDistance)
+{
+    ai::shortcut::Entry entry;
+    entry.map = player->GetMapId();
+    player->GetZoneAndAreaId(entry.zone, entry.area);
+    entry.x = player->GetPositionX();
+    entry.y = player->GetPositionY();
+    Map* map = player->GetMap();
+    entry.defaultRadius = ai::shortcut::DefaultRadius(map ? map->GetVisibilityDistance() : 0.0f, reactDistance);
+    entry.watcher = watcher;
+    snapshot.entries.push_back(entry);
+
+    WorldObject* body = player->GetCamera().GetBody();
+    if (body && body != player && body->IsInWorld())
+    {
+        ai::shortcut::Entry view = entry;
+        view.map = body->GetMapId();
+        body->GetZoneAndAreaId(view.zone, view.area);
+        view.x = body->GetPositionX();
+        view.y = body->GetPositionY();
+        snapshot.entries.push_back(view);
+    }
+}
+}
+
+// twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.*): where the real players are, for ShortcutNear. Called only from
+// UpdateAIInternal: the world thread after sMapMgr.Update, the map threads are idle, so reading the players is safe.
+// O(real players + watchers), at most once a second, and nothing at all while Trace = 0 and NearScope = 0.
+void RandomPlayerbotMgr::BuildShortcutSnapshot()
+{
+    if (!sPlayerbotAIConfig.shortcutTrace && !sPlayerbotAIConfig.shortcutNearScope)
+    {
+        if (shortcutLastBuildMs)
+        {
+            // Switched off by a config reload: drop the snapshot, ShortcutNear answers Unknown again.
+            shortcutLastBuildMs = 0;
+            std::shared_ptr<ai::shortcut::Snapshot const> dropped;
+            {
+                std::lock_guard<std::mutex> lock(shortcutSnapshotMutex);
+                shortcutSnapshot.swap(dropped);
+            }
+        }
+        return;
+    }
+
+    uint64 const nowMs = ShortcutNowMs();
+    if (!ai::shortcut::BuildDue(shortcutLastBuildMs, nowMs))
+        return;
+    shortcutLastBuildMs = nowMs;
+
+    std::shared_ptr<ai::shortcut::Snapshot> snapshot = std::make_shared<ai::shortcut::Snapshot>();
+    snapshot->builtAtMs = nowMs;
+    float const reactDistance = sPlayerbotAIConfig.reactDistance;
+
+    // The real players (OnPlayerLogin / OnPlayerLogout keep this map, the world thread reads it here). GMs only while
+    // visible, as PlayerbotAI::HasPlayerNearby; alt bots (a bot AI without a real session) are not players.
+    for (auto const& [guid, player] : players)
+    {
+        if (!player || !player->IsInWorld() || !IsRealPlayer(player))
+            continue;
+        if (!player->IsGameMaster() || player->isGMVisible())
+        {
+            AddShortcutEntries(*snapshot, player, false, reactDistance);
+            ++snapshot->players;
+        }
+    }
+
+    // TEST ONLY (AiPlayerbot.Shortcut.TestWatcherGuids, at most 64): these characters count as real players.
+    for (uint32 guid : sPlayerbotAIConfig.shortcutTestWatcherGuids)
+    {
+        Player* watcher = sObjectAccessor.FindPlayer(ObjectGuid(HIGHGUID_PLAYER, guid));
+        if (!watcher || !watcher->IsInWorld())
+            continue;
+        AddShortcutEntries(*snapshot, watcher, true, reactDistance);
+        ++snapshot->watchers;
+    }
+
+    std::shared_ptr<ai::shortcut::Snapshot const> published = std::move(snapshot);
+    {
+        std::lock_guard<std::mutex> lock(shortcutSnapshotMutex);
+        shortcutSnapshot.swap(published);
+    }
+    // the previous snapshot (now in published) is freed here, outside the lock
+}
+
+std::shared_ptr<ai::shortcut::Snapshot const> RandomPlayerbotMgr::ShortcutSnapshot()
+{
+    std::lock_guard<std::mutex> lock(shortcutSnapshotMutex);
+    return shortcutSnapshot;
+}
+
+ai::shortcut::Near RandomPlayerbotMgr::ShortcutNear(uint32 mapId, float x, float y, uint32 zoneId)
+{
+    std::shared_ptr<ai::shortcut::Snapshot const> const snapshot = ShortcutSnapshot();
+    return ai::shortcut::Evaluate(snapshot.get(), ShortcutNowMs(), sPlayerbotAIConfig.shortcutNearScope,
+        sPlayerbotAIConfig.shortcutNearRadius, mapId, x, y, [zoneId]() { return zoneId; });
+}
+
+// twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): measurement only, on the bot's map thread. Reads the snapshot copy
+// and the bot (owned by this thread); never the real-player map. The zone is looked up only when scope 2 meets a
+// snapshot entry on that map outside the radius: the bot's cached zone, the target's zone on the bot's own terrain
+// (another map: zone 0 = unknown there).
+void RandomPlayerbotMgr::CountShortcut(ai::shortcut::Mech mech, Player* bot, uint32 toMapId, float toX, float toY, float toZ)
+{
+    if (!sPlayerbotAIConfig.shortcutTrace || !bot)
+        return;
+
+    std::shared_ptr<ai::shortcut::Snapshot const> const snapshot = ShortcutSnapshot();
+    uint64 const nowMs = ShortcutNowMs();
+    uint32 const scope = ai::shortcut::MeasureScope(sPlayerbotAIConfig.shortcutNearScope);
+    float const radius = sPlayerbotAIConfig.shortcutNearRadius;
+
+    ai::shortcut::Near const source = ai::shortcut::Evaluate(snapshot.get(), nowMs, scope, radius,
+        bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), [bot]() { return bot->GetCachedZoneId(); });
+    ai::shortcut::Near const destination = ai::shortcut::Evaluate(snapshot.get(), nowMs, scope, radius,
+        toMapId, toX, toY, [bot, toMapId, toX, toY, toZ]() -> uint32
+        {
+            TerrainInfo const* terrain = toMapId == bot->GetMapId() ? bot->GetTerrain() : nullptr;
+            return terrain ? terrain->GetZoneId(toX, toY, toZ) : 0;
+        });
+    ai::shortcut::Record(ai::shortcut::SharedCounters(), mech, source, destination);
+}
+
+// twow-repo#595 P4 S0: [Shortcut] once a minute (AiPlayerbot.Shortcut.Trace), world thread.
+void RandomPlayerbotMgr::ReportShortcut()
+{
+    if (!sPlayerbotAIConfig.shortcutTrace)
+        return;
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    std::shared_ptr<ai::shortcut::Snapshot const> const snapshot = ShortcutSnapshot();
+    uint64 const nowMs = ShortcutNowMs();
+    sLog.outBasic("[Shortcut] state=snapshot players=%u watchers=%u entries=%u age_ms=%llu scope=%u radius=%.0f",
+        snapshot ? snapshot->players : 0u, snapshot ? snapshot->watchers : 0u,
+        snapshot ? uint32(snapshot->entries.size()) : 0u,
+        (unsigned long long)(snapshot && nowMs >= snapshot->builtAtMs ? nowMs - snapshot->builtAtMs : 0),
+        ai::shortcut::MeasureScope(sPlayerbotAIConfig.shortcutNearScope), sPlayerbotAIConfig.shortcutNearRadius);
+
+    ai::shortcut::Counters& counters = ai::shortcut::SharedCounters();
+    for (uint32 i = 0; i < uint32(ai::shortcut::Mech::Count); ++i)
+    {
+        ai::shortcut::MechCounters& c = counters.mech[i];
+        uint32 const nearCount = c.near.exchange(0, std::memory_order_relaxed);
+        uint32 const notNear = c.notNear.exchange(0, std::memory_order_relaxed);
+        uint32 const unknown = c.unknown.exchange(0, std::memory_order_relaxed);
+        uint32 const nearSrc = c.nearSrc.exchange(0, std::memory_order_relaxed);
+        uint32 const nearDst = c.nearDst.exchange(0, std::memory_order_relaxed);
+        if (nearCount || notNear || unknown)
+            sLog.outBasic("[Shortcut] mech=%s teleports=%u near=%u notnear=%u unknown=%u near_src=%u near_dst=%u",
+                ai::shortcut::MechName(ai::shortcut::Mech(i)), nearCount + notNear + unknown, nearCount, notNear, unknown,
+                nearSrc, nearDst);
+    }
 }
 
 // twow-repo#541 ([WorldBots]): microseconds between two clock reads. A free function, not a lambda in
@@ -1293,6 +1465,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     ReportMemStores(GetAllBots());
     ProcessQuestRescues();
+    BuildShortcutSnapshot(); // twow-repo#595 P4 S0: real-player snapshot, only with AiPlayerbot.Shortcut.Trace / NearScope
+    ReportShortcut();     // twow-repo#595 P4 S0: [Shortcut] once per minute (AiPlayerbot.Shortcut.Trace)
     ProcessParkedBots();  // twow-repo#541/#551 (rndbot park), no-op without parked bots
     ReportBotInbox();     // twow-repo#563: [BotInbox] once per minute
     ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)

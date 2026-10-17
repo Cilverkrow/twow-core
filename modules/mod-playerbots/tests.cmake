@@ -3126,3 +3126,8 @@ set_target_properties(shortcut_policy_tests PROPERTIES
 add_test(NAME shortcut_policy
   COMMAND shortcut_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME shortcut_s0_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/shortcut_s0_source_contract_tests.cmake")

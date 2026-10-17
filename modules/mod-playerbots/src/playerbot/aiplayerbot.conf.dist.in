@@ -1113,6 +1113,23 @@ AiPlayerbot.RosterFarMove = 0
 # [FarMove] ... watched arrive_alt arrive_walk. ArriveBackYards 0 = arrive at the target (8.33 behaviour).
 AiPlayerbot.RosterFarMove.ArriveBackYards = 60
 AiPlayerbot.RosterFarMove.WatchRoute = 1
+# twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity; measurement, no behaviour change): the world
+# thread keeps a snapshot of where the online real players are (map, zone, area, x, y and a camera body that differs;
+# GMs only while visible), built after the map update at most once a second, only while Trace = 1 or NearScope > 0.
+# ShortcutNear(map, x, y, zone): no player on that map = not near; else near = same map AND (NearScope 2: same zone OR
+# within NearRadius 2D; NearScope 1: within NearRadius only). A snapshot older than 5 s or a zone 0 answers unknown (the
+# caller keeps today's behaviour). NearScope 0 = off (unknown everywhere) until a later stage uses it. NearRadius in
+# yards, 0 = the map's visibility + AiPlayerbot.ReactDistance (continents 250 + 150 = 400 yd with the defaults).
+# TestWatcherGuids (TEST ONLY, never on a live realm): a comma list of character guids (low guid, max 64) of online
+# characters that count as real players in the snapshot - the A/B watcher stand-in on a realm without real players.
+# Trace = 1: [Shortcut] mech=hop|ghost_corpse|repop|far_move teleports= near= notnear= unknown= near_src= near_dst=
+# once a minute (each teleport classified when it happens, at both ends; the teleports themselves are unchanged) and
+# [Shortcut] state=snapshot players= watchers= entries= age_ms= scope= radius=. Without NearScope the trace measures
+# with scope 2. All 0 / empty = today's behaviour (default).
+AiPlayerbot.Shortcut.NearScope = 0
+AiPlayerbot.Shortcut.NearRadius = 0
+AiPlayerbot.Shortcut.TestWatcherGuids =
+AiPlayerbot.Shortcut.Trace = 0
 # twow-repo#575 (PATH-01 #1, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach
 # Abnahme an): 1 = every node route search that ends without a route is counted and the first LinesPerMinute of
 # them a minute are logged as [RouteFailDetail]: bot, level, alive, action, start and target (map x y z), distance,

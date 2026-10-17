@@ -6,6 +6,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/WorldBotsTracePolicy.h"
+#include "playerbot/ShortcutPolicy.h"
 #include "Common.h"
 #include <unordered_set>
 #include "PlayerbotAIBase.h"
@@ -339,7 +340,22 @@ public:
         // twow-repo#517 stage c (owner C0, AiPlayerbot.BG.BotOnlyHonorRate): PlayerbotPlayerScript::OnHonorGain, on the
         // bot's map thread. Reads only that map's objects - no manager state.
         static void ScaleBotOnlyHonor(Player* player, float& cp, uint8 type);
+        // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.*): is a real player (or a test watcher) near this point? Any
+        // thread: one short lock to copy the snapshot pointer, then a scan of the copy (no player objects are read).
+        // NearScope 0, a missing / stale snapshot or a zone 0 outside the radius answer Unknown.
+        ai::shortcut::Near ShortcutNear(uint32 mapId, float x, float y, uint32 zoneId);
+        // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): count one bot shortcut teleport as near / notnear /
+        // unknown at both ends. Map thread of the bot; measurement only, the caller teleports exactly as before.
+        void CountShortcut(ai::shortcut::Mech mech, Player* bot, uint32 toMapId, float toX, float toY, float toZ);
     private:
+        // twow-repo#595 P4 S0: the real-player snapshot. Built only in UpdateAIInternal (world thread, after
+        // sMapMgr.Update); published as a shared_ptr swap under shortcutSnapshotMutex.
+        void BuildShortcutSnapshot();
+        void ReportShortcut();
+        std::shared_ptr<ai::shortcut::Snapshot const> ShortcutSnapshot();
+        std::mutex shortcutSnapshotMutex;
+        std::shared_ptr<ai::shortcut::Snapshot const> shortcutSnapshot;
+        uint64 shortcutLastBuildMs = 0;   // world thread only
         PlayerBotMap players;
         int processTicks;
         std::unordered_map<std::string, WorldLocation> namedLocations;
