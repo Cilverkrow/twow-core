@@ -12,6 +12,7 @@
 #include "Policies/SingletonImp.h"
 #include "ObjectAccessor.h"
 #include "CharacterDatabaseCleaner.h"
+#include "ScriptMgr.h"
 
 #include <algorithm>
 #include <cmath>
@@ -693,6 +694,9 @@ bool HonorMgr::Add(float cp, uint8 type, Unit* source)
     if (type != DISHONORABLE)
     {
         cp *= sWorld.getConfig(CONFIG_FLOAT_RATE_HONOR);
+        // twow-repo#517 stage c (owner C0): a module may scale this honor (AiPlayerbot.BG.BotOnlyHonorRate: bots in
+        // a battleground without a real player); spendable honor and rank points below follow the scaled value.
+        Script_OnHonorGain(m_owner, cp, type);
         if (cp <= 0.0f)
             return false;
     }
