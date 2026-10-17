@@ -179,6 +179,37 @@ GridUnload = 0
 
 CleanupTerrain = 1
 
+#    TerrainCleanup.IdleMinutes
+#    TerrainCleanup.MaxGridsPerTick
+#        twow-repo#597 (TICK-01). With CleanupTerrain = 1 every terrain frees, once a minute on the world
+#        thread, all terrain grids (map data + vmap tile) without a grid reference. Grids loaded lazily by a
+#        height/LOS query never take one, so each pass freed all of them and the next query reloaded them
+#        from disk (TICK-01: 47 % of the live world ticks > 100 ms). With GridUnload = 0 that churn hits only
+#        those lazily loaded grids; with GridUnload = 1 also the grids of unloaded map grids.
+#        Live runs CleanupTerrain = 0 as the immediate measure (OB-00, 16.10.2026): the periodic pass
+#        frees nothing then and both keys below have no effect.
+#        They matter only with CleanupTerrain = 1 (with GridUnload = 0 or 1).
+#        Exception: the one-off purge after the bot travel tables at startup (TravelMgr::LoadQuestTravelTable)
+#        runs regardless of CleanupTerrain; with CleanupTerrain = 0 it frees all grids without a reference as
+#        today and the keys below do not apply to it. After a runtime reload from CleanupTerrain = 1 to 0,
+#        GetGrid keeps stamping until restart (nothing is freed).
+#        IdleMinutes:     a grid without a reference is freed only after it was unused for at least this many
+#                         minutes (1..1440). Last use = a terrain query through TerrainInfo::GetGrid (height,
+#                         water, area, ...); LOS-only vmap use (Map::isInLineOfSight) does not count. 0 = free
+#                         at every pass (today's behaviour). Costs one relaxed atomic read per terrain query,
+#                         and with a value > 0 at most one store per grid and second.
+#        MaxGridsPerTick: at most this many grids freed per terrain (map) and world tick; each map terrain has
+#                         its own budget, so one world tick can free up to this value times the number of
+#                         terrains with an open pass. The rest of a pass continues on the next ticks, the 60 s
+#                         timer restarts when the pass is through. 0 = unlimited (today).
+#        Known and unchanged: the free takes no lock against terrain queries from threads outside the map
+#        update (std::async travel jobs); IdleMinutes only frees later, with CleanupTerrain = 0
+#        the periodic pass never frees.
+#        Default: 0, 0 (today's behaviour)
+
+TerrainCleanup.IdleMinutes = 0
+TerrainCleanup.MaxGridsPerTick = 0
+
 #    MMapTileUnload
 #        Remove navmesh tiles from the mesh again at runtime.
 #        dtNavMesh::removeTile zeroes tile->polys, and dtNavMeshQuery reads it
