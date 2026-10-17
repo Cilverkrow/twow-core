@@ -82,8 +82,14 @@ if(NOT pv_early EQUAL -1)
   message(FATAL_ERROR "#541 BotUpdate: an early return in PreValidateTurnIns would skip the prevalidate record")
 endif()
 string(FIND "${rnd_mgr}" "void ReportBotUpdate()" report_at)
-string(SUBSTRING "${rnd_mgr}" ${report_at} 2600 report_fn)
-require_order("${report_fn}" "ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();" "    if (first)\n        return;" "prevalidate window reset with the first one")
-require_order("${report_fn}" "    if (first)\n        return;" "    if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)\n        sLog.outBasic(\"[PreValidate] calls=%llu sum_us=%llu p50_us=%llu p99_us=%llu max_us=%llu open_sum=%llu ok_sum=%llu\"," "minute line only with FailureClasses")
+string(SUBSTRING "${rnd_mgr}" ${report_at} 3000 report_fn)
+# Switch-on edge (start or reload): both recorders drained, the first line after a full minute (review 18.10.).
+require_order("${report_fn}" "    if (!sPlayerbotAIConfig.botUpdateTrace)\n    {\n        tracing = false;\n        return;\n    }" "    if (!tracing)\n    {" "off resets the edge")
+require_order("${report_fn}" "    if (!tracing)\n    {" "        tracing = true;\n        lastReport = now;\n        ai::bot_update::Global().Take();\n        ai::bot_update::Prevalidate().Take();\n        return;\n    }" "switch-on edge drains both recorders")
+require_order("${report_fn}" "        ai::bot_update::Prevalidate().Take();\n        return;\n    }" "    if (now < lastReport + 60)\n        return;" "edge before the minute check")
+require_order("${report_fn}" "    if (now < lastReport + 60)\n        return;" "ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();" "prevalidate window taken with the [BotUpdate] one")
+require_order("${report_fn}" "ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();" "    if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)\n        sLog.outBasic(\"[PreValidate] calls=%llu sum_us=%llu p50_us=%llu p99_us=%llu max_us=%llu open_sum=%llu ok_sum=%llu\"," "minute line only with FailureClasses")
+# calls comes from the drained buckets, so a racing Add can never leave a call without its bucket (p99 = top edge).
+require_text("${counted_text}" "            s.time.buckets[b] = buckets[b].exchange(0, std::memory_order_relaxed);\n            s.time.calls += s.time.buckets[b];" "calls = sum of the drained buckets")
 
 message(STATUS "bot_update_trace source contract passed")
