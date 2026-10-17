@@ -134,9 +134,11 @@ require_text("${conf_dist}" "restart-only" "BG keys documented as restart-only")
 # 2. Roster branch: LoginFreeBots(), then the gated CheckBgFill, then the roster return; no legacy BG queue count.
 region("${mgr_cpp}" "if (sPlayerbotAIConfig.persistentActiveRosterEnabled)\n    {\n        if (!persistentRosterInitialized)" "    ScaleBotActivity();\n    if (sPlayerbotAIConfig.asyncBotLogin)" roster_branch)
 # Stage b (twow-repo#517): SlotRelease runs in the same pass and needs no PlayerFill; the master switch gates both.
-# Stage c: Announce (announced bot-own battlegrounds) runs in the same pass too, also without PlayerFill; its full gate
-# (Enable && Announce && IntervalMinutes && MaxConcurrent) is BgOwnEnabled, pinned in bg_announce_517.
-require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease || sPlayerbotAIConfig.bgAnnounce))\n            CheckBgFill();" "fill gated by bgEnable && (bgPlayerFill || bgSlotRelease || bgAnnounce)")
+# Stage c: announced bot-own battlegrounds run in the same pass too, also without PlayerFill, but only behind their full
+# gate BgOwnEnabled (Enable && Announce && IntervalMinutes && MaxConcurrent, pinned in bg_announce_517): Announce alone
+# opens nothing (review c2, C1 "everything off = no work at all").
+require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease || BgOwnEnabled()))\n            CheckBgFill();" "fill gated by bgEnable && (bgPlayerFill || bgSlotRelease || BgOwnEnabled())")
+forbid_text("${roster_branch}" "sPlayerbotAIConfig.bgAnnounce" "the pass opened by Announce alone")
 require_order("${roster_branch}" "LoginFreeBots();" "CheckBgFill();" "LoginFreeBots before CheckBgFill")
 require_order("${roster_branch}" "CheckBgFill();" "PlayerbotHolder::UpdateAIInternal(elapsed, minimal);\n        if (sPlayerbotAIConfig.worldBotsTrace)" "CheckBgFill before the roster return")
 forbid_text("${roster_branch}" "CheckBgQueue" "legacy BG queue count in the roster branch (BGJoinAction would queue roster bots)")
