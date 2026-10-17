@@ -281,6 +281,14 @@ count_text("${scan}" "GetBgBotTeamCap(" 1 "one team-cap check in the fill scan")
 require_order("${scan}" "${scan_teamcap}" "uint32 const running = ai::bgfill::RunningForBracket(" "the team cap before the cap count")
 require_order("${scan}" "${scan_teamcap}" "                forming[q][b] = true;" "the team cap before the bracket is marked forming")
 require_order("${scan}" "${scan_teamcap}" "requests.push_back(" "the team cap before any request")
+# Review c8 (probe r8b): a slot reserved for a waiting real player (stage b) skips that one bracket - continue, not break
+# (which would end the bracket loop of the type) - before the team cap, the cap count, the forming mark and any request.
+set(scan_reserved "            if ((needA && BgFillReserved(q, b, 0, nowMs)) || (needH && BgFillReserved(q, b, 1, nowMs)))\n            {\n                if (trace)\n                    sLog.outBasic(\"[BGFill] state=skip reason=reserved bg=%u bracket=%u side=%s\", uint32(bgTypeId), b,\n                        needA && needH ? \"AH\" : needA ? \"A\" : \"H\");\n                continue;\n            }\n")
+require_text("${scan}" "${scan_reserved}" "a reserved slot skips the bracket in the fill scan")
+count_text("${scan}" "BgFillReserved(" 2 "one reservation check (both sides) in the fill scan")
+require_order("${scan}" "${scan_reserved}" "${scan_teamcap}" "the reservation before the team cap")
+require_order("${scan}" "${scan_reserved}" "uint32 const running = ai::bgfill::RunningForBracket(" "the reservation before the cap count")
+require_order("${scan}" "${scan_reserved}" "                forming[q][b] = true;" "the reservation before the bracket is marked forming")
 
 # 5. Candidate filters.
 # Ends where the pending recheck starts, so a filter dropped here is not found there.
