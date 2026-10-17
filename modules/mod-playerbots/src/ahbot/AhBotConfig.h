@@ -15,20 +15,25 @@ public:
 public:
     bool Initialize();
 
-    bool enabled;
-    uint64 guid;
-    uint32 updateInterval;
-    uint32 historyDays, maxSellInterval;
-    uint32 itemBuyMinInterval, itemBuyMaxInterval;
-    uint32 itemSellMinInterval, itemSellMaxInterval;
-    uint32 alwaysAvailableMoney;
-    float priceMultiplier, priceQualityMultiplier;
-    uint32 defaultMinPrice, stackReducePrice;
-    uint32 maxItemLevel, maxRequiredLevel;
-    float underPriceProbability;
+    // twow-repo#597 (TICK-01): defined before Initialize(). Without an ahbot.conf Initialize() returns before it reads
+    // any of these, and the singleton comes from operator new with an empty user constructor, so they were
+    // indeterminate (live logged updateInterval as 0 and ForceUpdate saw enabled as false). 0/false is that observed
+    // behaviour; a found ahbot.conf overwrites every one of them exactly as before.
+    bool enabled = false;
+    bool configLoaded = false;  // twow-repo#597 (TICK-01): true once ahbot.conf was found and read (AhBot.Enabled may still be 0)
+    uint64 guid = 0;
+    uint32 updateInterval = 0;
+    uint32 historyDays = 0, maxSellInterval = 0;
+    uint32 itemBuyMinInterval = 0, itemBuyMaxInterval = 0;
+    uint32 itemSellMinInterval = 0, itemSellMaxInterval = 0;
+    uint32 alwaysAvailableMoney = 0;
+    float priceMultiplier = 0.0f, priceQualityMultiplier = 0.0f;
+    uint32 defaultMinPrice = 0, stackReducePrice = 0;
+    uint32 maxItemLevel = 0, maxRequiredLevel = 0;
+    float underPriceProbability = 0.0f;
     std::set<uint32> ignoreItemIds;
     std::set<uint32> ignoreVendorItemIds;
-    bool sendmail;
+    bool sendmail = false;
 
     float GetSellPriceMultiplier(std::string category)
     {
