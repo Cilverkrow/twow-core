@@ -704,6 +704,11 @@ require_text("${plan}" "${chat_drop}" "a chat text that cannot go out is not que
 require_order("${plan}" "${chat_expand}" "${chat_drop}" "the chat text checked before it is queued")
 require_order("${plan}" "${chat_drop}" "            ++lines;" "a dropped chat text not counted")
 require_text("${plan}" "std::string const levelRange = BgAnnounceLevelRange(uint32(bgTypeId), bracket);" "the planner's range for its type and bracket")
+# Review c8: the planner's range only on the chat branch (the server helper names its own), before the chat lines.
+set(plan_range "        char const* const bgName = ai::bgfill::BgFullName(queueType);\n        std::string const levelRange = BgAnnounceLevelRange(uint32(bgTypeId), bracket);\n")
+require_text("${plan}" "${plan_range}" "the chat branch's name and range")
+require_order("${plan}" "lines = SendBgAnnounceServer(queueType, uint32(bgTypeId), bracket, pool, ai::bgfill::AnnounceSidesBoth);" "${plan_range}" "the range in the chat branch, not before the server message")
+require_order("${plan}" "${plan_range}" "${chat_expand}" "the range before the chat lines")
 require_text("${server_block}" "std::string const levelRange = BgAnnounceLevelRange(bgTypeId, bracket);" "the server message's range for its type and bracket")
 set(server_expand "        texts[team] = ai::bgfill::ExpandAnnounceText(pool[team][urand(0, uint32(pool[team].size()) - 1)], bgName, levelRange,\n            sPlayerbotAIConfig.bgAnnounceShowLevelRange);\n        if (texts[team].empty())\n            return 0;\n")
 require_text("${server_block}" "${server_expand}" "the server text through the Q2 expansion, all factions or none")

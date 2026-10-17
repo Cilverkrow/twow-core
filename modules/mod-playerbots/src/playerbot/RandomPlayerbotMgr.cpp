@@ -4528,8 +4528,6 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
                 uint32(bgTypeId), bracket);
         return;
     }
-    char const* const bgName = ai::bgfill::BgFullName(queueType);
-    std::string const levelRange = BgAnnounceLevelRange(uint32(bgTypeId), bracket);
     uint32 lines = 0;
     if (server)
     {
@@ -4538,6 +4536,9 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
     }
     else
     {
+        // The server helper names its own range; the chat lines use this one (owner Q2).
+        char const* const bgName = ai::bgfill::BgFullName(queueType);
+        std::string const levelRange = BgAnnounceLevelRange(uint32(bgTypeId), bracket);
         // Cut to MaxPerHour: the announcers alternate sides from the first one on, so the first two are one of each.
         if (announcers.size() > allowed)
             announcers.resize(allowed);
