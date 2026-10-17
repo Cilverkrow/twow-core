@@ -3,10 +3,13 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
+#include <string>
 #include <utility>
 #include <vector>
 
-// twow-repo#517 stage a and b: the pure rules of the manager's battleground fill (BgFillPolicy.h).
+// twow-repo#517 stage a, b and c: the pure rules of the manager's battleground fill and bot-own battlegrounds
+// (BgFillPolicy.h).
 
 namespace
 {
@@ -446,6 +449,380 @@ void Victim()
         "latest joined across the wrap");
     Require(ChooseReleaseVictim({ Cand(0, 90000, false, false, true) }, now) == 0, "guid 0 is no victim");
 }
+
+// Stage c (owner C0): honor x BotOnlyHonorRate, a reduction only.
+void HonorRate()
+{
+    using namespace ai::bgfill;
+    Require(BotOnlyHonorRate(0.5f) == 0.5f, "owner value 0.5 applies");
+    Require(BotOnlyHonorRate(1.0f) == 1.0f, "1.0 is neutral");
+    Require(BotOnlyHonorRate(0.0f) == 1.0f, "0 counts as 1 (fail closed)");
+    Require(BotOnlyHonorRate(-0.5f) == 1.0f, "negative counts as 1");
+    Require(BotOnlyHonorRate(1.5f) == 1.0f, "above 1 counts as 1 (no increase)");
+    float const nan = std::numeric_limits<float>::quiet_NaN();
+    Require(BotOnlyHonorRate(nan) == 1.0f, "NaN counts as 1");
+    Require(BotOnlyHonorRate(0.01f) == 0.01f, "a small positive rate applies");
+    Require(!HonorRateActive(1.0f) && !HonorRateActive(0.0f) && !HonorRateActive(2.0f) && !HonorRateActive(nan),
+        "listener idle unless the rate reduces");
+    Require(HonorRateActive(0.5f) && HonorRateActive(0.99f), "listener active for a reduction");
+    Require(ScaleBotOnlyHonor(100.0f, 0.5f) == 50.0f, "100 honor at 0.5 is 50");
+    Require(ScaleBotOnlyHonor(100.0f, 3.0f) == 100.0f, "invalid rate leaves honor unchanged");
+    Require(ScaleBotOnlyHonor(100.0f, -1.0f) == 100.0f, "negative rate leaves honor unchanged");
+}
+
+// Stage c: MaxBotBGPerBracket (0 = 1) per level range, the band of a bracket for every type.
+void OwnBand()
+{
+    using namespace ai::bgfill;
+    Require(MaxOwnPerBand(0) == 1, "0 = one per level range (owner C0)");
+    Require(MaxOwnPerBand(3) == 3, "raised by the switch");
+    Require(OwnBandAllows(0, 0) && !OwnBandAllows(1, 0), "default: the second own battleground in a band is refused");
+    Require(OwnBandAllows(1, 2) && !OwnBandAllows(2, 2), "two allowed with 2");
+    // WSG (10-60), AB (20-60), AV (51-60): brackets count from each type's own minimum level.
+    Require(LevelBand(10, 60, 4) == 5, "WSG 50-59 is band 5");
+    Require(LevelBand(20, 60, 3) == 5, "AB 50-59 is band 5");
+    Require(LevelBand(10, 60, 5) == 6, "WSG 60 is band 6");
+    Require(LevelBand(20, 60, 4) == 6, "AB 60 is band 6");
+    Require(LevelBand(51, 60, 0) == 6, "AV 51-60 is band 6, with the level 60 WSG/AB");
+    Require(LevelBand(10, 60, 0) == 1 && LevelBand(10, 60, 1) == 2, "WSG 10-19 band 1, 20-29 band 2");
+    Require(LevelBand(20, 60, 0) == 2, "AB 20-29 band 2, with WSG 20-29");
+    // minLevel 0: bracket 0 is level 1 alone, the others shift by one.
+    Require(LevelBand(0, 0, 0) == 0 && LevelBand(0, 0, 1) == 0 && LevelBand(0, 0, 2) == 1, "minimum level 0 shift");
+    Require(LevelBand(10, 0, 7) == 8, "no maximum level: the bracket's top");
+    Require(LevelBand(200, 0, 7) == MaxLevelBands - 1, "bands beyond the table share the last");
+}
+
+// Stage c: announcers, timers, mode and the hourly cap.
+void Announce()
+{
+    using namespace ai::bgfill;
+    Require(AnnouncerCount(QueueWS) == 2 && AnnouncerCount(QueueAB) == 3 && AnnouncerCount(QueueAV) == 5, "2/3/5 announcers");
+    Require(AnnouncerCount(QueueBR) == 0 && AnnouncerCount(QueueSV) == 0 && AnnouncerCount(0) == 0, "BR, SV: no own match");
+    Require(AnnouncerCount(QueueAV) <= MaxAnnounceDue, "the due-queue holds one AV announcement");
+    Require(MaxAnnounceDue == 5, "due-queue bound 5");
+
+    Require(AnnounceIntervalMs(0) == 0, "interval 0 = no own battlegrounds");
+    Require(AnnounceIntervalMs(30) == 30u * 60 * 1000, "30 minutes");
+    Require(AnnounceIntervalMs(100000) == MaxAnnounceIntervalMinutes * 60u * 1000, "interval capped at a day");
+    Require(!PlannerDue(5000, 0, 0) && !PlannerDue(5000, 1000, 0), "interval 0 never due");
+    Require(PlannerDue(5000, 0, 60000), "never tried: due at once");
+    Require(!PlannerDue(60000, 1000, 60000) && PlannerDue(61000, 1000, 60000), "due after the interval");
+    Require(PlannerDue(0x100u, 0xFFFF0000u, 60000), "due across the clock wrap");
+    Require(!PlannerDue(0x100u, 0xFFFFFF00u, 60000), "not due just after the wrap");
+
+    Require(AnnounceDelayMs(0) == 60000, "delay 0 = 60 s");
+    Require(AnnounceDelayMs(5) == 20000, "delay minimum 20 s");
+    Require(AnnounceDelayMs(90) == 90000, "delay as set");
+    Require(AnnounceDelayMs(99999) == MaxStageBSeconds * 1000, "delay capped");
+    Require(AnnounceStaggerMaxMs < MinAnnounceDelaySeconds * 1000, "every staggered line before the earliest join");
+    Require(AnnounceStaggerMinMs == 2000 && AnnounceStaggerMaxMs == 15000, "stagger 2-15 s");
+    Require(AnnounceCooldownMs(0) == 60u * 60 * 1000, "cooldown 0 = 60 min");
+    Require(AnnounceCooldownMs(10) == 10u * 60 * 1000, "cooldown as set");
+    Require(AnnounceCooldownMs(99999) == MaxAnnounceIntervalMinutes * 60u * 1000, "cooldown capped");
+
+    Require(AnnounceMode(0) == AnnounceModeChat && AnnounceMode(1) == AnnounceModeServer && AnnounceMode(2) == AnnounceModeFallback,
+        "modes 0/1/2");
+    Require(AnnounceMode(7) == AnnounceModeChat, "unknown mode = chat");
+    Require(!AnnounceUsesServer(AnnounceModeChat, 0) && !AnnounceUsesServer(AnnounceModeChat, 3), "chat never uses the server line");
+    Require(AnnounceUsesServer(AnnounceModeServer, 3), "server mode");
+    Require(AnnounceUsesServer(AnnounceModeFallback, 0) && !AnnounceUsesServer(AnnounceModeFallback, 2), "fallback only without announcers");
+
+    Require(AnnounceLinesAllowed(0, 0, 5) == 0, "MaxPerHour 0 = no line (fail closed)");
+    Require(AnnounceLinesAllowed(0, 10, 5) == 5, "room for all");
+    Require(AnnounceLinesAllowed(8, 10, 5) == 2, "only the rest of the hour");
+    Require(AnnounceLinesAllowed(10, 10, 5) == 0 && AnnounceLinesAllowed(12, 10, 5) == 0, "hour used up");
+    Require(AnnounceSide(0) == AnnounceSideAlliance && AnnounceSide(1) == AnnounceSideHorde, "side bit per team");
+    Require(AnnounceSidesMissing(1, 1, false, false) == 0, "both factions said: announced");
+    Require(AnnounceSidesMissing(2, 0, false, false) == AnnounceSideHorde, "horde said nothing: horde unannounced");
+    Require(AnnounceSidesMissing(0, 3, false, false) == AnnounceSideAlliance, "alliance said nothing: alliance unannounced");
+    Require(AnnounceSidesMissing(0, 0, false, false) == AnnounceSidesBoth, "nothing said: both unannounced");
+    Require(AnnounceSidesMissing(1, 0, false, true) == 0, "horde reached by the server fallback: announced");
+    Require(AnnounceSidesMissing(0, 0, true, true) == 0, "server message to both: announced");
+    Require(AnnounceSidesMissing(0, 0, true, false) == AnnounceSideHorde, "server to one faction only: the other unannounced");
+    Require(AnnounceSideCount(0) == 0 && AnnounceSideCount(AnnounceSideAlliance) == 1 && AnnounceSideCount(AnnounceSideHorde) == 1 &&
+        AnnounceSideCount(AnnounceSidesBoth) == 2, "side count");
+    Require(std::string(AnnounceSidesName(AnnounceSideAlliance)) == "A" && std::string(AnnounceSidesName(AnnounceSideHorde)) == "H" &&
+        std::string(AnnounceSidesName(AnnounceSidesBoth)) == "both" && std::string(AnnounceSidesName(0)) == "none", "side names");
+
+    Require(AnnounceMinLines == 2, "an announcement needs one line per faction");
+    Require(AnnounceMaxPerHour(0) == 0 && AnnounceMaxPerHour(1) == 0, "MaxPerHour below 2 counts as 0 (fail closed)");
+    Require(AnnounceMaxPerHour(2) == 2 && AnnounceMaxPerHour(10) == 10, "MaxPerHour from 2 on as set");
+    Require(AnnounceLinesAllowed(0, AnnounceMaxPerHour(1), AnnounceMinLines) == 0, "MaxPerHour 1: no announcement");
+    Require(AnnounceLinesAllowed(1, 2, AnnounceMinLines) < AnnounceMinLines, "one line left: no announcement");
+    Require(AnnounceHourOver(5000, 0), "first window starts at once");
+    Require(!AnnounceHourOver(AnnounceHourMs, 1) && AnnounceHourOver(AnnounceHourMs + 1, 1), "window of one hour");
+    Require(AnnounceHourOver(0x10u, 0xFFFF0000u - AnnounceHourMs), "window across the clock wrap");
+
+    Require(AnnouncerTeam(0, 0) == 0 && AnnouncerTeam(1, 0) == 1 && AnnouncerTeam(2, 0) == 0, "alternating from alliance");
+    Require(AnnouncerTeam(0, 1) == 1 && AnnouncerTeam(1, 1) == 0, "alternating from horde");
+}
+
+// Stage c: type rotation (the last started type goes last).
+void OwnType()
+{
+    using namespace ai::bgfill;
+    std::vector<uint32_t> const all = { QueueWS, QueueAB, QueueAV };
+    Require(PickOwnType({}, {}) == 0, "nothing possible");
+    Require(PickOwnType({}, all) == QueueWS, "first start: the first possible");
+    Require(PickOwnType({ QueueWS }, all) == QueueAB, "a type never started before one started");
+    Require(PickOwnType({ QueueWS, QueueAB }, all) == QueueAV, "the one never started");
+    Require(PickOwnType({ QueueWS, QueueAB, QueueAV }, all) == QueueWS, "then the one started longest ago");
+    Require(PickOwnType({ QueueAB, QueueAV, QueueWS }, all) == QueueAB, "rotation continues");
+    Require(PickOwnType({ QueueAB, QueueAV, QueueWS }, { QueueWS }) == QueueWS, "only one possible: it, even if last");
+    Require(PickOwnType({ QueueAV, QueueWS, QueueAV }, { QueueWS, QueueAV }) == QueueWS, "last occurrence counts");
+
+    // C2: the candidate loop's hard cap per try.
+    Require(OwnCandidateVisitMax > 0 && OwnCandidateVisitMax <= 2000, "candidate loop capped at 2000 visits per try");
+    // C3: the template minimum plus the side's share of the announcers (the larger half).
+    Require(OwnCandidatesNeeded(10, QueueWS) == 11, "WSG: min + 1 (2 announcers)");
+    Require(OwnCandidatesNeeded(10, QueueAB) == 12, "AB: min + 2 (3 announcers)");
+    Require(OwnCandidatesNeeded(20, QueueAV) == 23, "AV: min + 3 (5 announcers)");
+    Require(OwnCandidatesNeeded(5, QueueBR) == 5, "no announcers: the minimum");
+    for (uint32_t type : { QueueWS, QueueAB, QueueAV })
+    {
+        for (uint32_t min : { 1u, 2u, 5u, 10u, 20u })
+        {
+            Require(OwnCandidateLimit(min, type) >= OwnCandidatesNeeded(min, type), "the list can reach the need");
+            Require(OwnCandidateLimit(min, type) >= CandidateLimit(min), "never fewer than the stage-a limit");
+        }
+    }
+    Require(OwnCandidateLimit(1, QueueAV) == 4 && OwnCandidateLimit(10, QueueWS) == 20, "the larger of both");
+}
+
+// Stage c: the text pool (D3).
+void Pool()
+{
+    using namespace ai::bgfill;
+    uint32_t dropped = 99;
+    std::vector<std::string> lines = ParseAnnouncePool("For the Alliance!| To %bg! |", dropped);
+    Require(lines.size() == 2 && lines[0] == "For the Alliance!" && lines[1] == "To %bg!" && dropped == 0, "split, trim, empty skipped");
+    lines = ParseAnnouncePool("", dropped);
+    Require(lines.empty() && dropped == 0, "empty pool");
+    lines = ParseAnnouncePool("ok|caf\xc3\xa9 au lait|tab\there|bell\x07", dropped);
+    Require(lines.size() == 1 && lines[0] == "ok" && dropped == 3, "non-ASCII and control bytes dropped");
+    std::string const exact(MaxAnnounceLineBytes, 'a');
+    std::string const tooLong(MaxAnnounceLineBytes + 1, 'a');
+    lines = ParseAnnouncePool(exact + "|" + tooLong, dropped);
+    Require(lines.size() == 1 && dropped == 1, "255 bytes kept, 256 dropped");
+    std::string const withName = std::string(MaxAnnounceLineBytes - 14, 'b') + "%bg";
+    std::string const withNameLong = std::string(MaxAnnounceLineBytes - 13, 'b') + "%bg";
+    Require(AnnounceLineValid(withName) && !AnnounceLineValid(withNameLong), "length checked with Alterac Valley put in");
+    std::string many;
+    for (uint32_t i = 0; i < MaxAnnouncePoolLines + 3; ++i)
+        many += "line|";
+    lines = ParseAnnouncePool(many, dropped);
+    Require(lines.size() == MaxAnnouncePoolLines && dropped == 3, "pool bounded");
+
+    Require(ExpandAnnounceLine("Join us in %bg!", BgFullName(QueueWS)) == "Join us in Warsong Gulch!", "%bg = full name");
+    Require(ExpandAnnounceLine("%bg and %bg", "X") == "X and X", "every %bg");
+    Require(ExpandAnnounceLine("100% bgs", "X") == "100% bgs", "no placeholder");
+    Require(std::string(BgFullName(QueueAB)) == "Arathi Basin" && std::string(BgFullName(QueueAV)) == "Alterac Valley", "full names");
+
+    // The built-in pools: valid, about 6 generic and 2 per battleground per faction, the owner's three examples.
+    for (uint32_t team = 0; team < 2; ++team)
+    {
+        lines = ParseAnnouncePool(BuiltInAnnouncePool(team, 0), dropped);
+        Require(lines.size() == 6 && dropped == 0, "six generic built-in lines");
+        for (uint32_t type : { QueueWS, QueueAB, QueueAV })
+        {
+            lines = ParseAnnouncePool(BuiltInAnnouncePool(team, type), dropped);
+            Require(lines.size() == 2 && dropped == 0, "two built-in lines per battleground");
+        }
+    }
+    lines = ParseAnnouncePool(BuiltInAnnouncePool(0, 0), dropped);
+    Require(ExpandAnnounceLine(lines[0], BgFullName(QueueWS)) == "For the Alliance! Join us in Warsong Gulch!", "owner example 1");
+    lines = ParseAnnouncePool(BuiltInAnnouncePool(1, 0), dropped);
+    Require(ExpandAnnounceLine(lines[0], BgFullName(QueueAB)) == "Lok'tar! The Horde gathers at Arathi Basin, who stands with us?",
+        "owner example 2");
+    lines = ParseAnnouncePool(BuiltInAnnouncePool(0, QueueAV), dropped);
+    Require(lines[0] == "Stormpike needs you, to Alterac!", "owner example 3 in Alliance AV");
+    Require(BuiltInAnnouncePool(0, QueueBR).empty() && BuiltInAnnouncePool(1, QueueSV).empty(), "no pool for BR or SV");
+    // D3: every battleground-specific built-in line names the battleground in full; the owner's own wording
+    // "Stormpike needs you, to Alterac!" is the only exception.
+    for (uint32_t team = 0; team < 2; ++team)
+    {
+        for (uint32_t type : { QueueWS, QueueAB, QueueAV })
+        {
+            lines = ParseAnnouncePool(BuiltInAnnouncePool(team, type), dropped);
+            for (std::string const& line : lines)
+            {
+                if (line == "Stormpike needs you, to Alterac!")
+                    continue;
+                Require(ExpandAnnounceLine(line, BgFullName(type)).find(BgFullName(type)) != std::string::npos,
+                    "built-in line with the full battleground name");
+            }
+        }
+        lines = ParseAnnouncePool(BuiltInAnnouncePool(team, 0), dropped);
+        for (std::string const& line : lines)
+            Require(line.find("%bg") != std::string::npos, "generic built-in line with %bg");
+    }
+
+    // Distinct lines per announcement.
+    std::vector<uint32_t> idx = PickLineIndexes(8, 5, { 7, 7, 7, 7, 7 });
+    Require(idx.size() == 5, "five picked");
+    for (size_t i = 0; i < idx.size(); ++i)
+        for (size_t j = i + 1; j < idx.size(); ++j)
+            Require(idx[i] != idx[j] && idx[i] < 8, "never the same line twice");
+    Require(PickLineIndexes(2, 5, { 1, 1 }).size() == 2, "fewer lines than announcers: only as many as the pool");
+    Require(PickLineIndexes(0, 3, {}).empty(), "empty pool: none");
+    Require(PickLineIndexes(4, 2, {}) == std::vector<uint32_t>({ 0, 1 }), "missing rolls count as 0");
+}
+
+// Owner Q2 (17.10.): the bracket's level range as the core forms the match (min level of the bracket up to the core's
+// max - 1), capped at the template maximum.
+void LevelRange()
+{
+    using namespace ai::bgfill;
+    Require(AnnounceLevelRange(51, 61, 60) == "51-60", "AV bracket 0 (51 + 10) is 51-60");
+    Require(AnnounceLevelRange(50, 60, 60) == "50-59", "WSG/AB 50-59");
+    Require(AnnounceLevelRange(60, 70, 60) == "60", "WSG/AB 60, capped at the template maximum: one level, written alone");
+    Require(AnnounceLevelRange(1, 2, 60) == "1" && AnnounceLevelRange(2, 10, 60) == "2-9", "minimum level 0: level 1 alone, then 2-9");
+    Require(ExpandAnnounceText("For the Alliance! Join us in %bg!", BgFullName(QueueWS), AnnounceLevelRange(60, 70, 60), true) ==
+        "For the Alliance! Join us in Warsong Gulch (60)!", "level 60 WSG reads (60)");
+    Require(AnnounceLevelRange(10, 20, 0) == "10-19", "no template maximum: the bracket's top");
+    Require(AnnounceLevelRange(0, 10, 60).empty(), "no bottom level: no range");
+    Require(AnnounceLevelRange(20, 20, 60).empty() && AnnounceLevelRange(20, 5, 60).empty(), "top not above the bottom: no range");
+    Require(AnnounceLevelRange(61, 71, 60).empty(), "bracket above the template maximum: no range");
+    Require(AnnounceLevelRange(990, 1000, 0) == "990-999" && AnnounceLevelRange(995, 1005, 0).empty(), "never longer than 999-999");
+    Require(std::string(LongestLevelRange).size() == 7, "the longest range is 7 bytes");
+}
+
+// Owner Q2: the expansion of every announcement line (chat and server message).
+void AnnounceText()
+{
+    using namespace ai::bgfill;
+    std::string const wsg = BgFullName(QueueWS);
+    std::string const av = BgFullName(QueueAV);
+    // The owner's examples.
+    Require(ExpandAnnounceText("Stormpike needs you, to Alterac!", av, "51-60", true) == "Stormpike needs you, to Alterac (51-60)!",
+        "no %bg: before the closing punctuation");
+    Require(ExpandAnnounceText("For the Alliance! Join us in %bg!", wsg, "51-60", true) == "For the Alliance! Join us in Warsong Gulch (51-60)!",
+        "%bg: right after the name");
+    // Placement.
+    Require(ExpandAnnounceText("%bg or %bg!", "X", "1-2", true) == "X (1-2) or X!", "only the first %bg gets the range");
+    Require(ExpandAnnounceText("To arms", av, "51-60", true) == "To arms (51-60)", "no closing punctuation: at the end");
+    Require(ExpandAnnounceText("Go?!...", av, "51-60", true) == "Go (51-60)?!...", "before the whole closing run of ! ? .");
+    Require(ExpandAnnounceText("Ready, set. Go", av, "51-60", true) == "Ready, set. Go (51-60)", "inner punctuation stays");
+    Require(ExpandAnnounceText("!!", av, "51-60", true) == " (51-60)!!", "a line of punctuation only");
+    // %lvl: always the range, whatever the switch says; never a second range.
+    Require(ExpandAnnounceText("Levels %lvl, to %bg!", av, "51-60", false) == "Levels 51-60, to Alterac Valley!", "%lvl with the switch off");
+    Require(ExpandAnnounceText("Levels %lvl, to %bg!", av, "51-60", true) == "Levels 51-60, to Alterac Valley!",
+        "%lvl with the switch on: no second range");
+    Require(ExpandAnnounceText("%lvl and %lvl", av, "51-60", false) == "51-60 and 51-60", "every %lvl");
+    Require(ExpandAnnounceText("%lvl", av, "", true).empty() && ExpandAnnounceText("%lvl", av, "", false).empty(),
+        "%lvl without a range: not said");
+    Require(ExpandAnnounceText("Levels %lvl, to %bg!", av, "", true).empty() && ExpandAnnounceText("Levels %lvl, to %bg!", av, "", false).empty(),
+        "a %lvl line without a range: not said, never with the placeholder left empty");
+    Require(ExpandAnnounceText("Join WSG 51-60!", wsg, "51-60", true) == "Join WSG 51-60!", "a line that already names the range: not twice");
+    // Review c8: only the range as a number of its own counts as named, not the same characters inside other numbers.
+    Require(ExpandAnnounceText("Win 11-12 times at %bg!", wsg, "1-1", true) == "Win 11-12 times at Warsong Gulch (1-1)!",
+        "1-1 inside 11-12 is not the range");
+    Require(ExpandAnnounceText("Score 12-90!", wsg, "2-9", true) == "Score 12-90 (2-9)!", "2-9 inside 12-90 is not the range");
+    Require(ExpandAnnounceText("Score 12-9!", wsg, "2-9", true) == "Score 12-9 (2-9)!" &&
+            ExpandAnnounceText("Score 2-90!", wsg, "2-9", true) == "Score 2-90 (2-9)!", "a digit on either side: not the range");
+    Require(ExpandAnnounceText("12-9 or 2-9!", wsg, "2-9", true) == "12-9 or 2-9!", "the range later in the line: named");
+    Require(ExpandAnnounceText("(51-60) %bg", av, "51-60", true) == "(51-60) Alterac Valley" &&
+            ExpandAnnounceText("51-60", av, "51-60", true) == "51-60", "the range at the start or as the whole line: named");
+    Require(HoldsLevelRange("x 51-60", "51-60") && !HoldsLevelRange("x 151-60", "51-60") && !HoldsLevelRange("x 51-600", "51-60") &&
+            !HoldsLevelRange("anything", ""), "HoldsLevelRange: digit boundaries, no empty range");
+    // Review c8 (owner): the Horde battleground lines that do not end on the name write it as %bg - the same text without
+    // the switch, the range right after the name with it.
+    struct OwnLine { uint32_t type; char const* range; char const* off; char const* on; };
+    OwnLine const ownLines[] = {
+        { QueueWS, "60-60", "Warsong Outriders, the night elves guard their flag in Warsong Gulch. Take it!",
+            "Warsong Outriders, the night elves guard their flag in Warsong Gulch (60-60). Take it!" },
+        { QueueWS, "60-60", "Grom's warriors, to Warsong Gulch! Bring me their flag!", "Grom's warriors, to Warsong Gulch (60-60)! Bring me their flag!" },
+        { QueueAB, "60-60", "The Defilers march on Arathi Basin! Who joins the hunt?", "The Defilers march on Arathi Basin (60-60)! Who joins the hunt?" },
+        { QueueAB, "60-60", "Defilers, Arathi Basin is ripe for the taking!", "Defilers, Arathi Basin (60-60) is ripe for the taking!" },
+        { QueueAV, "51-60", "Frostwolf clan, to arms! Alterac Valley is ours!", "Frostwolf clan, to arms! Alterac Valley (51-60) is ours!" },
+    };
+    uint32_t ownDropped = 0;
+    for (OwnLine const& own : ownLines)
+    {
+        std::vector<std::string> const horde = ParseAnnouncePool(BuiltInAnnouncePool(1, own.type), ownDropped);
+        bool found = false;
+        for (std::string const& line : horde)
+        {
+            if (ExpandAnnounceText(line, BgFullName(own.type), own.range, false) != own.off)
+                continue;
+            found = true;
+            Require(line.find("%bg") != std::string::npos, "the Horde battleground line writes the name as %bg");
+            Require(ExpandAnnounceText(line, BgFullName(own.type), own.range, true) == own.on, "the range right after the battleground name");
+        }
+        Require(found, "the Horde battleground line says today's text without the switch");
+    }
+    // Review c8: an empty line stays empty with the switch on (never " (lo-hi)" alone).
+    Require(ExpandAnnounceText("", av, "51-60", true).empty() && ExpandAnnounceText("", av, "51-60", false).empty() &&
+            ExpandAnnounceText("", av, "", true).empty(), "an empty line: not said");
+    Require(ExpandAnnounceText("Join %bg!", wsg, "", true) == "Join Warsong Gulch!", "no range known: the line as today");
+    Require(ExpandAnnounceText("100% bgs, %lv%l!", "X", "1-2", false) == "100% bgs, %lv%l!" &&
+            ExpandAnnounceText("100% bgs, %lv%l!", "X", "1-2", true) == "100% bgs, %lv%l (1-2)!", "no placeholder");
+
+    // Switch off, no %lvl: byte for byte today's ExpandAnnounceLine - every built-in line, every battleground, and
+    // configured lines; switch on: every built-in line gets the range exactly once and stays within 255 bytes.
+    uint32_t dropped = 0;
+    std::vector<std::string> configured = { "Join us in %bg!", "%bg and %bg", "100% bgs", "Stormpike needs you, to Alterac!", "x" };
+    for (uint32_t team = 0; team < 2; ++team)
+    {
+        for (uint32_t pool : { 0u, QueueWS, QueueAB, QueueAV })
+        {
+            std::vector<std::string> lines = ParseAnnouncePool(BuiltInAnnouncePool(team, pool), dropped);
+            Require(!lines.empty() && dropped == 0, "built-in pool parsed");
+            for (std::string const& line : lines)
+            {
+                Require(line.find("%lvl") == std::string::npos, "built-in lines stay without %lvl");
+                configured.push_back(line);
+            }
+        }
+    }
+    for (std::string const& line : configured)
+    {
+        for (uint32_t type : { QueueWS, QueueAB, QueueAV })
+        {
+            std::string const name = BgFullName(type);
+            for (char const* range : { "51-60", "60-60", "1-1", "" })
+            {
+                Require(ExpandAnnounceText(line, name, range, false) == ExpandAnnounceLine(line, name), "switch off: today's text byte for byte");
+                std::string const on = ExpandAnnounceText(line, name, range, true);
+                Require(AnnounceTextFits(on), "switch on: printable ASCII within 255 bytes");
+                if (!*range)
+                {
+                    Require(on == ExpandAnnounceLine(line, name), "no range: today's text");
+                    continue;
+                }
+                std::string const marked = std::string("(") + range + ")";
+                size_t const first = on.find(marked);
+                Require(first != std::string::npos && on.find(marked, first + 1) == std::string::npos, "switch on: the range exactly once");
+            }
+        }
+    }
+
+    // 255 bytes: the added range fits exactly, or the line goes out without it; a line too long without it is not said.
+    std::string const nameTail = " " + wsg + "!";
+    std::string const fit = std::string(MaxAnnounceLineBytes - nameTail.size() - 8, 'a') + " %bg!";
+    Require(ExpandAnnounceText(fit, wsg, "51-60", true).size() == MaxAnnounceLineBytes, "255 bytes with the range: kept");
+    std::string const over = std::string(MaxAnnounceLineBytes - nameTail.size() - 7, 'a') + " %bg!";
+    Require(ExpandAnnounceText(over, wsg, "51-60", true) == ExpandAnnounceLine(over, wsg) &&
+            ExpandAnnounceLine(over, wsg).size() == MaxAnnounceLineBytes - 7, "256 with the range: the line without it, %bg still the name");
+    std::string const plainFull(MaxAnnounceLineBytes - 1, 'p');
+    Require(ExpandAnnounceText(plainFull + "!", av, "51-60", true) == plainFull + "!", "no %bg, beyond 255 with the range: without it");
+    std::string const tooLong(MaxAnnounceLineBytes + 1, 'q');
+    Require(ExpandAnnounceText(tooLong, av, "51-60", true).empty() && ExpandAnnounceText(tooLong, av, "51-60", false).empty(),
+        "beyond 255 even without the range: not said (the load filter drops it before)");
+    std::string const lvlLong = std::string(MaxAnnounceLineBytes - 4, 'l') + "%lvl";
+    Require(ExpandAnnounceText(lvlLong, av, "1-1", true).size() == MaxAnnounceLineBytes - 1, "%lvl line within 255: kept");
+    Require(ExpandAnnounceText(lvlLong, av, "51-60", true).empty(), "%lvl line beyond 255: not said (no line without the range)");
+    Require(ExpandAnnounceText("x %bg", "caf\xc3\xa9", "51-60", false).empty(), "never anything but printable ASCII");
+
+    // Load filter: a %lvl line is accepted, counted with the longest name and the longest range.
+    std::vector<std::string> lines = ParseAnnouncePool("Join %bg, levels %lvl!|%lvl", dropped);
+    Require(lines.size() == 2 && dropped == 0, "%lvl lines accepted at load");
+    std::string const lvlFit = std::string(MaxAnnounceLineBytes - 7, 'c') + "%lvl";
+    std::string const lvlOver = std::string(MaxAnnounceLineBytes - 6, 'c') + "%lvl";
+    Require(AnnounceLineValid(lvlFit) && !AnnounceLineValid(lvlOver), "%lvl counted as 999-999 at load");
+    std::string const both = std::string(MaxAnnounceLineBytes - 14 - 7, 'd') + "%bg%lvl";
+    Require(AnnounceLineValid(both) && !AnnounceLineValid("d" + both), "%bg and %lvl both counted at load");
+}
 }
 
 int main()
@@ -461,6 +838,13 @@ int main()
     GroupEntry();
     BotOnlyDrain();
     Victim();
+    HonorRate();
+    OwnBand();
+    Announce();
+    OwnType();
+    Pool();
+    LevelRange();
+    AnnounceText();
     std::cout << "bg fill policy tests passed\n";
     return 0;
 }

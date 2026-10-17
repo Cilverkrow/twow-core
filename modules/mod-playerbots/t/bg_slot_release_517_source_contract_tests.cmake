@@ -138,7 +138,9 @@ region("${mgr_cpp}" "void RandomPlayerbotMgr::WatchBotOnlyBgs(uint32 nowMs)" "//
 region("${mgr_cpp}" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" "// Stage b: the real players' core queue entries waiting uninvited" botonly_leave)
 region("${botonly_leave}" "void RandomPlayerbotMgr::LeaveBotOnlyBg()" "    // Once per update, before any leave (not per bot)." botonly_end_check)
 region("${botonly_leave}" "    // Once per update, before any leave (not per bot)." "\n}\n" botonly_drain)
-region("${mgr_cpp}" "void RandomPlayerbotMgr::CollectBgFillWaiting(" "void RandomPlayerbotMgr::CheckBgQueue()" collect)
+# Stage c's functions follow CollectBgFillWaiting (bg_announce_517 pins them, with the same bounds); the collector region
+# ends where they start, so its rules (no level bracket of the member, no bot loop, no lock) apply to the collector alone.
+region("${mgr_cpp}" "void RandomPlayerbotMgr::CollectBgFillWaiting(" "// twow-repo#517 stage c (owner contract: bots play battlegrounds by themselves" collect)
 region("${mgr_cpp}" "void RandomPlayerbotMgr::CheckBgFill()" "void RandomPlayerbotMgr::CheckBgQueue()" fill_path)
 
 # 1. Keys: neutral defaults in code and dist, negative seconds read as 0, every key read.
@@ -169,7 +171,10 @@ require_text("${watch}" "ai::bgfill::BotOnlyGraceMs(sPlayerbotAIConfig.bgBotOnly
 
 # 2. The gate: the master switch plus PlayerFill or SlotRelease for the pass; SlotRelease for the pair/release scan and
 #    the stage-a partial-side rule; no path without bgEnable (the roster branch is the only CheckBgFill caller).
-require_text("${mgr_cpp}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease))\n            CheckBgFill();" "pass gated by bgEnable && (PlayerFill || SlotRelease)")
+#    Stage c adds its full gate BgOwnEnabled() to the pass gate (bot-own battlegrounds need no PlayerFill; Announce alone
+#    opens nothing, review c2); nothing of stage b runs on it: the pair/release scan stays behind SlotRelease and the
+#    bot-only cleanup behind PlayerFill (below).
+require_text("${mgr_cpp}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease || BgOwnEnabled()))\n            CheckBgFill();" "pass gated by bgEnable && (PlayerFill || SlotRelease || BgOwnEnabled())")
 count_text("${mgr_cpp}" "CheckBgFill();" 1 "CheckBgFill called only from the gated roster branch")
 require_text("${check}" "if (sPlayerbotAIConfig.bgSlotRelease)\n        ScanBgSlotRelease(nowMs);" "pair/release scan gated by SlotRelease")
 count_text("${mgr_cpp}" "ScanBgSlotRelease(nowMs);" 1 "ScanBgSlotRelease called once, gated")
@@ -285,7 +290,8 @@ require_text("${due_loop}" "wait.desiredInstanceId = ginfo.DesiredInstanceId;" "
 require_order("${slot}" "wait.desiredInstanceId = ginfo.DesiredInstanceId;" "if (wait->desiredInstanceId && wait->desiredInstanceId != t.clientInstanceId)" "desired instance read before the target choice")
 # Final review 5: a pair or top-up bot goes into a battleground that was there already: never started for the fill (no
 # cap, no bot-only watch).
-require_text("${mgr_cpp}" "accepted.startedForFill = !entry.pairFor && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "pair and top-up bots never mark an instance started for the fill")
+# Stage c: neither does a bot of an announced bot-own match (entry.own) - its instance is startedForOwn and never drained.
+require_text("${mgr_cpp}" "accepted.startedForFill = !entry.pairFor && !entry.own && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "pair, top-up and own bots never mark an instance started for the fill")
 require_text("${slot}" "ai::bgfill::PreferTarget(t.fill[side], t.instanceId, target->fill[side], target->instanceId)" "deterministic target choice")
 region("${policy_h}" "inline bool PreferTarget(" "struct ReleaseCand" prefer)
 require_text("${prefer}" "return fillOnSide > bestFillOnSide;" "most fill bots on the player's side first")

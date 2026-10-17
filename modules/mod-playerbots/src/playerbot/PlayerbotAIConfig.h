@@ -247,6 +247,20 @@ public:
     uint32 bgBotOnlyGraceSeconds = 0;    // 0 = 120 s, minimum 60 s (ai::bgfill::BotOnlyGraceMs)
     // Follow-up D (OB-20 16.10.): the bot-only cleanup has its own switch, on by default but inert without PlayerFill.
     bool bgBotOnlyCleanup = true;
+    // twow-repo#517 stage c (owner contract, decision C0 16.10.): announced bot-own battlegrounds and the honor rate for
+    // bots in a battleground without a real player. Restart-only; neutral defaults (no bot-own battleground, factor 1).
+    bool bgAnnounce = false;
+    uint32 bgAnnounceIntervalMinutes = 0;    // 0 = no bot-own battlegrounds (ai::bgfill::AnnounceIntervalMs)
+    uint32 bgMaxBotBGPerBracket = 0;         // 0 = 1 per level range (ai::bgfill::MaxOwnPerBand)
+    float bgBotOnlyHonorRate = 1.0f;         // 1 = neutral; <= 0 or above 1 counts as 1 (ai::bgfill::BotOnlyHonorRate)
+    uint32 bgAnnounceMode = 0;               // 0 chat, 1 server message, 2 chat with server fallback (ai::bgfill::AnnounceMode)
+    uint32 bgAnnounceDelaySeconds = 0;       // 0 = 60 s, minimum 20 s (ai::bgfill::AnnounceDelayMs)
+    uint32 bgAnnounceBotCooldownMinutes = 0; // 0 = 60 min (ai::bgfill::AnnounceCooldownMs)
+    uint32 bgAnnounceMaxPerHour = 0;         // 0 = no announcement line at all (fail closed)
+    bool bgAnnounceShowLevelRange = false;   // owner Q2: each line names the bracket's level range (ai::bgfill::ExpandAnnounceText)
+    // Parsed text pools [team: 0 alliance, 1 horde][0 = generic, else the queue type: 1 AV, 2 WSG, 3 AB]; an empty key
+    // takes the built-in pool (ai::bgfill::BuiltInAnnouncePool).
+    std::vector<std::string> bgAnnounceText[2][4];
     uint32 randomBotBracketCount;
     bool randomBotLoginAtStartup;
     uint32 randomBotTeleLevel;
