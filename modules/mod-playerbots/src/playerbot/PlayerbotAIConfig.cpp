@@ -374,6 +374,13 @@ bool PlayerbotAIConfig::Initialize()
     logRandomBotJoinLfg = config.GetBoolDefault("AiPlayerbot.LogRandomBotJoinLfg", false);
     randomBotJoinBG = config.GetBoolDefault("AiPlayerbot.RandomBotJoinBG", true);
     randomBotAutoJoinBG = config.GetBoolDefault("AiPlayerbot.RandomBotAutoJoinBG", false);
+    // twow-repo#517 stage a: roster bots fill a battleground a real player queues for. Restart-only.
+    bgEnable = config.GetBoolDefault("AiPlayerbot.BG.Enable", false);
+    bgPlayerFill = config.GetBoolDefault("AiPlayerbot.BG.PlayerFill", false);
+    // Negative values read as 0: MaxConcurrent -1 must not wrap to "no cap" (fail closed), CheckIntervalSeconds -1 is the default.
+    bgMaxConcurrent = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.MaxConcurrent", 0)));
+    bgCheckIntervalSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.CheckIntervalSeconds", 0)));
+    bgTrace = config.GetBoolDefault("AiPlayerbot.BG.Trace", false);
     randomBotBracketCount = config.GetIntDefault("AiPlayerbot.RandomBotBracketCount", 3);
     logInGroupOnly = config.GetBoolDefault("AiPlayerbot.LogInGroupOnly", true);
     logValuesPerTick = config.GetBoolDefault("AiPlayerbot.LogValuesPerTick", false);
