@@ -61,6 +61,10 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # premade path; 0 = a coin on every check (old).
 AiPlayerbot.Loot.RoleWeights = 0
 AiPlayerbot.Loot.FeralFixedSpec = 1
+# twow-repo#308 EQUIP-FLIP-01: 1 = the equip-upgrade check (every looted weapon or armour piece) takes main and off hand
+# off only when a weapon, shield or held item in the bags is an equip candidate. 0 = on every run, as before (bots took
+# their weapons off and on after every loot). A re-equip of the old main or off hand is no EquipAction event either way.
+AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade = 0
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
@@ -1956,6 +1960,10 @@ AiPlayerbot.BotUpdateTraceTick = 0
 # (remote admin commands, AhBot update, dungeon-clear reaper hook) in ms. Only with
 # AiPlayerbot.WorldBotsTrace = 1. Log only. 0 = off (default, the line unchanged).
 AiPlayerbot.WorldBotsHookTrace = 0
+# twow-repo#596 D: 1 (with BotUpdateTrace = 1) = a bot whose trigger pass took 20 ms or more names its three slowest
+# trigger checks in the TIME entry of its trail: `TIME:values Xus triggers Yus slow=name:us,...`, seen in [BotUpdateSlow].
+# Times each trigger check of every pass while on. 0 = off (default), the trail as before.
+AiPlayerbot.BotUpdateTraceTriggers = 0
 # twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
