@@ -4,11 +4,27 @@
 #include "ShareQuestAction.h"
 #include "playerbot/QuestAcceptPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/TravelMgr.h"
 #include "Formulas.h"
+
+// twow-repo#601 S1 recheck (AiPlayerbot.QuestFirstProgression.AbandonStructuralParked): a quest this bot abandoned after
+// two structural parks is not taken again on any accept path while the bot is on its own - QuestAction::AcceptQuest had
+// the check, the quest-giver dialog (QuestDetailsAction), accept-by-packet and the share path (AcceptQuestShareAction)
+// added the quest without it. Switch off: false before anything else is read.
+static bool SkipAbandonedQuest(PlayerbotAI* ai, Quest const* quest)
+{
+    return sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked && !ai->HasRealPlayerMaster() &&
+        ai->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get()->IsStructurallyAbandoned(quest->GetQuestId());
+}
 
 // Hotfix 8.11: the one accept rule for every accept path (see QuestAcceptPolicy.h).
 static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* bot, Quest const* quest)
 {
+    // twow-repo#601 S1 recheck: the abandon mark first (AbandonStructuralParked; off = no change).
+    if (SkipAbandonedQuest(ai, quest))
+        return true;
+
     bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
     // Hotfix 8.15: free quest log slots, for the accept limit that matches the cleanup.
     uint32 freeSlots = 0;
@@ -184,6 +200,14 @@ bool AcceptQuestShareAction::Execute(Event& event)
     }
 
     quest = qInfo->GetQuestId();
+    // twow-repo#601 S1 recheck (AbandonStructuralParked): a shared quest this bot abandoned is not taken again while it
+    // is on its own; the divider is cleared as for a quest it cannot take. Switch off: no change.
+    if (SkipAbandonedQuest(ai, qInfo))
+    {
+        bot->SetDividerGuid(ObjectGuid());
+        return false;
+    }
+
     if( !bot->CanTakeQuest( qInfo, false ) )
     {
         // can't take quest
