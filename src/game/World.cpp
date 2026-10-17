@@ -1200,6 +1200,10 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_BOOL_CLEAN_CHARACTER_DB, "CleanCharacterDB", true);
     setConfig(CONFIG_BOOL_GRID_UNLOAD, "GridUnload", true);
     setConfig(CONFIG_BOOL_CLEANUP_TERRAIN, "CleanupTerrain", true);
+    // twow-repo#597 (TICK-01): idle time and per-tick cap of the CleanupTerrain pass (TerrainCleanupPolicy.h);
+    // both 0 = today. Latched per tick by TerrainManager::Update, so a config reload takes effect.
+    setConfigMinMax(CONFIG_UINT32_TERRAIN_CLEANUP_IDLE_MINUTES, "TerrainCleanup.IdleMinutes", 0, 0, 1440);
+    setConfig(CONFIG_UINT32_TERRAIN_CLEANUP_MAX_GRIDS_PER_TICK, "TerrainCleanup.MaxGridsPerTick", 0);
     setConfig(CONFIG_BOOL_MMAP_TILE_UNLOAD, "MMapTileUnload", false);
     // twow-repo#290 (owner 2026-09-26): every quest can be shared, for all
     // players. Applied to the quest templates at load (restart after a change).
