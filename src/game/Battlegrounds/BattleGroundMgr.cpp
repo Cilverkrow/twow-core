@@ -1057,12 +1057,16 @@ void BattleGroundMgr::ApplyAllBattleGrounds(std::function<void(const BattleGroun
 // used to update running battlegrounds, and delete finished ones
 void BattleGroundMgr::Update(uint32 diff)
 {
-    // update scheduled queues
-    if (!m_QueueUpdateScheduler.empty())
+    // update scheduled queues. twow-repo#517 R0: map threads (BattleGround update and leave, invite
+    // expiry, level-up) schedule while the world thread swaps here, so both sides hold SchedulerLock.
+    // The lock covers only the swap; the queue updates run on the local copy without it.
+    std::vector<uint64> scheduled;
     {
-        std::vector<uint64> scheduled;
+        std::lock_guard<std::mutex> guard(SchedulerLock);
         std::swap(scheduled, m_QueueUpdateScheduler);
-
+    }
+    if (!scheduled.empty())
+    {
         for (uint64 i = 0; i < scheduled.size(); i++)
         {
             BattleGroundQueueTypeId bgQueueTypeId = BattleGroundQueueTypeId(scheduled[i] >> 16 & 255);
@@ -1637,6 +1641,8 @@ void BattleGroundMgr::ScheduleQueueUpdate(BattleGroundQueueTypeId bgQueueTypeId,
 {
     uint64 const schedule_id = ((uint64)bgQueueTypeId << 16) | ((uint64)bgTypeId << 8) | (uint64)bracket_id;
 
+    // twow-repo#517 R0: called from map threads and the world thread; see Update().
+    std::lock_guard<std::mutex> guard(SchedulerLock);
     if (std::find(m_QueueUpdateScheduler.begin(), m_QueueUpdateScheduler.end(), schedule_id) == m_QueueUpdateScheduler.end())
         m_QueueUpdateScheduler.emplace_back(schedule_id);
 }
