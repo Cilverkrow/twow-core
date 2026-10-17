@@ -1111,9 +1111,19 @@ void ReportBotUpdate()
     lastReport = now;
 
     ai::bot_update::Snapshot const s = ai::bot_update::Global().Take();
+    ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();
     // The first window starts whenever the switch was read; it is reset, not reported.
     if (first)
         return;
+
+    // twow-repo#601 S1 (OB-10 18.10.): every PreValidateTurnIns call of the minute - its time and its work (open turn-ins
+    // checked) and result (validated). Only with AiPlayerbot.QuestFirstProgression.FailureClasses (the only caller).
+    if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)
+        sLog.outBasic("[PreValidate] calls=%llu sum_us=%llu p50_us=%llu p99_us=%llu max_us=%llu open_sum=%llu ok_sum=%llu",
+            (unsigned long long)pv.time.calls, (unsigned long long)pv.time.totalUs,
+            (unsigned long long)ai::bot_update::PercentileUs(pv.time, 0.50),
+            (unsigned long long)ai::bot_update::PercentileUs(pv.time, 0.99), (unsigned long long)pv.time.maxUs,
+            (unsigned long long)pv.openSum, (unsigned long long)pv.okSum);
 
     sLog.outBasic("[BotUpdate] calls=%llu avg_us=%llu p50_us=%llu p90_us=%llu p99_us=%llu p999_us=%llu max_us=%llu over10ms=%llu over20ms=%llu",
         (unsigned long long)s.calls, (unsigned long long)(s.calls ? s.totalUs / s.calls : 0),
