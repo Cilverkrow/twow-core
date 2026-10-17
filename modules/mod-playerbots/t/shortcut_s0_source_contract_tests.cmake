@@ -214,18 +214,52 @@ if(NOT n_move EQUAL 2)
 endif()
 
 # --- 8. B1: the legacy random-teleport group loop -------------------------------------------------------------------
-between("${mgr}" "for (GroupReference* gref = bot->GetGroup()->GetFirstMember(); gref; gref = gref->next())\n                {\n                    Player* member = gref->getSource();\n                    PlayerbotAI* ai = GetBotAI(bot);" "            return;" group_loop)
-# 0-path: the leader's AI and the original teleport block, as before
-require_text("${group_loop}" "PlayerbotAI* ai = GetBotAI(bot);\n" "0-path: leader AI as before")
-require_text("${group_loop}" "                    if (ai && bot != member)\n                    {\n                        if (member->IsTaxiFlying())\n                            member->GetMotionMaster()->MovementExpired();\n                        if (hearth && !hostileHome)\n                            member->SetHomebindToLocation(loc, area->ID);\n\n                        member->GetMotionMaster()->Clear();\n                        member->TeleportTo(loc.mapid, x, y, z, 0);\n                        member->SendHeartBeat();" "member teleport block unchanged")
-# 1-path: the member's own AI, real members skipped
-require_text("${group_loop}" "                    if (sPlayerbotAIConfig.shortcutGroupLoopFix)\n                    {\n                        ai = GetBotAI(member);\n                        if (!::ai::shortcut::GroupLoopMovesMember(true, ai != nullptr, ai && ai->IsRealPlayer()))\n                        {" "1-path: member AI, real member skipped")
-require_order("${group_loop}" "if (sPlayerbotAIConfig.shortcutGroupLoopFix)" "if (ai && bot != member)" "switch decided before the move")
-require_order("${group_loop}" "continue;" "member->TeleportTo(loc.mapid, x, y, z, 0);" "skip before the teleport")
+# The whole loop is pinned as one block - the 0-path (the leader's AI, the unchanged member move), the 1-path (the
+# member's own AI, real members skipped, never the leader itself) and the null guard: any statement inserted, removed
+# or changed fails here.
+string(CONCAT b1_loop
+  "            if (bot->GetGroup())\n"
+  "            {\n"
+  "                for (GroupReference* gref = bot->GetGroup()->GetFirstMember(); gref; gref = gref->next())\n"
+  "                {\n"
+  "                    Player* member = gref->getSource();\n"
+  "                    PlayerbotAI* ai = GetBotAI(bot);\n"
+  "                    // twow-repo#595 P4 B1 (AiPlayerbot.Shortcut.GroupLoopFix, critic X6): 1 = each member's own AI; a\n"
+  "                    // real member (no bot AI, or a real session) is skipped and not moved. 0 = the leader's AI as before.\n"
+  "                    // The leader itself is never a member to skip (it is excluded from the move by bot != member anyway).\n"
+  "                    if (sPlayerbotAIConfig.shortcutGroupLoopFix && bot != member)\n"
+  "                    {\n"
+  "                        ai = GetBotAI(member);\n"
+  "                        if (!::ai::shortcut::GroupLoopMovesMember(true, ai != nullptr, ai && ai->IsRealPlayer()))\n"
+  "                        {\n"
+  "                            sLog.outBasic(\"[Shortcut] mech=group_loop state=skip_real leader=%u member=%u\",\n"
+  "                                bot->GetGUIDLow(), member->GetGUIDLow());\n"
+  "                            continue;\n"
+  "                        }\n"
+  "                    }\n"
+  "                    if (ai && bot != member)\n"
+  "                    {\n"
+  "                        if (member->IsTaxiFlying())\n"
+  "                            member->GetMotionMaster()->MovementExpired();\n"
+  "                        if (hearth && !hostileHome)\n"
+  "                            member->SetHomebindToLocation(loc, area->ID);\n"
+  "\n"
+  "                        member->GetMotionMaster()->Clear();\n"
+  "                        member->TeleportTo(loc.mapid, x, y, z, 0);\n"
+  "                        member->SendHeartBeat();\n"
+  "                        // twow-repo#595 P4 B1: null guard in both paths - with switch 0 a real member (no bot AI) is\n"
+  "                        // still moved as before, but no longer crashes the world thread on a null AI.\n"
+  "                        if (PlayerbotAI* memberAi = GetBotAI(member))\n"
+  "                            memberAi->Reset(true);\n"
+  "                    }\n"
+  "\n"
+  "                }\n"
+  "            }\n"
+  "            return;\n")
+require_text("${mgr}" "${b1_loop}" "B1 group loop as one block (0-path, 1-path, null guard)")
+require_count("${mgr}" "shortcutGroupLoopFix" 1 "the B1 switch read only in the group loop")
+require_count("${mgr}" "state=skip_real" 1 "one B1 skip line")
 require_text("${policy}" "inline bool GroupLoopMovesMember(bool fix, bool hasOwnBotAi, bool realSession)\n{\n    if (!fix)\n        return true;\n    return hasOwnBotAi && !realSession;\n}" "group-loop policy")
-# null guard in both paths
-require_text("${group_loop}" "if (PlayerbotAI* memberAi = GetBotAI(member))\n                            memberAi->Reset(true);" "member AI null guard")
-forbid_text("${group_loop}" "GetBotAI(member)->Reset(true);" "unguarded member AI reset")
 forbid_text("${mgr}" "GetBotAI(member)->Reset(true);" "unguarded member AI reset in RandomPlayerbotMgr.cpp")
 
 message(STATUS "shortcut S0 source contract passed")

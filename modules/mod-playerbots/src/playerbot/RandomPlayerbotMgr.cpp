@@ -6600,7 +6600,8 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation> 
                     PlayerbotAI* ai = GetBotAI(bot);
                     // twow-repo#595 P4 B1 (AiPlayerbot.Shortcut.GroupLoopFix, critic X6): 1 = each member's own AI; a
                     // real member (no bot AI, or a real session) is skipped and not moved. 0 = the leader's AI as before.
-                    if (sPlayerbotAIConfig.shortcutGroupLoopFix)
+                    // The leader itself is never a member to skip (it is excluded from the move by bot != member anyway).
+                    if (sPlayerbotAIConfig.shortcutGroupLoopFix && bot != member)
                     {
                         ai = GetBotAI(member);
                         if (!::ai::shortcut::GroupLoopMovesMember(true, ai != nullptr, ai && ai->IsRealPlayer()))
