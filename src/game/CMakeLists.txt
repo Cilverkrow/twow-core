@@ -347,6 +347,7 @@ set (game_SRCS
     Maps/PathFinder.h
     Maps/PathReplay.h
     Maps/PathUnitless.h
+    Maps/TerrainCleanupPolicy.h
     Maps/ZoneScript.h
     Maps/ZoneScriptMgr.h
     Maps/Pool/PoolManager.h
