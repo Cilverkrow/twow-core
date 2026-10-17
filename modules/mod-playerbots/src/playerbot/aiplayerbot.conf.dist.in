@@ -1031,7 +1031,8 @@ AiPlayerbot.GrindAvoid.AvoidSeconds = 3600
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
-# Emit one QuestFirst route decision when a quest-travel request is materialized.
+# Emit one QuestFirst route decision when a quest-travel request is materialized. Also logs [QuestSearch]
+# state=grind_none when a quest-first bot's grind search finds nothing (twow-repo#601 S1, also with FailureClasses).
 AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # #303: log a [FollowDiag] snapshot (map, transports, movement generator, chase
 # target, distance, strategies) when a bot of a real player falls back to far
@@ -1089,6 +1090,69 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+# twow-repo#601 S1 "latch semantics" (OB-00 / OB-10 17.10.2026). Three separate switches so an A/B can isolate
+# them (arm A1 sets all three to 1); all 0 = today's behaviour. Restart-only. Quest-first roster bots on their
+# own only.
+# FailureClasses = 1: every quest route search that found nothing ([QuestFirstRoute] state=rejected
+# reason=no_active_route_candidate) gets a class from its reject counts, logged as [QuestFailureClass]:
+#   structural  - a turn-in-only request whose takers were all deferred as cross_map (below
+#                 MinLevelForCrossMapQuestRoute) or zone_level, or a turn-in the destination job found no taker
+#                 point for (no spawn, script-only game object, excluded zone): the turn-in is parked at once for
+#                 TurnInParkSeconds ([QuestFirstRoute] state=parked reason=structural_*); the park resets the
+#                 GrindFallbackFailures counter as every TurnInParkFailures park does, so it never counts toward
+#                 grinding;
+#   transient   - turn-in route / death / quest-loop suppression, the local hub filter, a random range skip, a
+#                 stale or resumed list: the route backoff only, the GrindFallbackFailures counter does not grow;
+#   empty_offer - everything else (no giver mark, nothing active, enemy zone, danger map, mixed reasons): counts as
+#                 before (until a later stage adds the step to the next level band).
+# Also with FailureClasses = 1: a request is turn-in-only only for a taker checked first ([QuestTakerCheck]:
+# reachable, not on the other continent below MinLevelForCrossMapQuestRoute, not in a zone clearly above the bot,
+# not suppressed, active); a taker that fails the check for a structural reason is parked at once, otherwise the
+# request runs the normal quest giver / objective fetch. The grind fallback waits while a checked open turn-in
+# (or one finished since the last request) waits, as gathering does since hotfix 8.5. The local quest hub
+# pre-check skips the same suppressed candidates as the main loop, and no random range skip happens while the
+# hub filter is on. [QuestSearch] state=grind_none when a grind search finds nothing (also with
+# TraceTravelDecisions = 1). The parks need TurnInParkFailures > 0 (parking on); with 0 nothing is parked and a
+# structural failure counts as before.
+AiPlayerbot.QuestFirstProgression.FailureClasses = 0
+# TransientCountsAfter (acts only with FailureClasses = 1; S1 review, the value is OB-10's decision): 0 = a transient
+# rejection never counts toward GrindFallbackFailures (OB-10 17.10.2026). N > 0: the N-th transient rejection in a row
+# (no other class and no route found in between) counts once and the streak starts anew, so a transient cause that
+# persists (quest-loop cooldown, death suppression) reaches the grind fallback instead of idling until the quest
+# rescue. The streak is logged as [QuestFailureClass] streak=. Restart-only.
+AiPlayerbot.QuestFirstProgression.TransientCountsAfter = 0
+# ResetOnProgressEvents = 1: a quest rescue teleport, a level-up, a login and the return from a battleground
+# reset the GrindFallbackFailures counter, the quest route backoff and the quest search stage ([QuestReset]
+# events=rescue,level_up,login,bg_return). A quest-state change (a quest taken, finished, handed in or dropped) resets
+# the quest search stage only ([QuestReset] events=quest_state, logged only when the stage was above 0). XP gain alone
+# no longer resets the quest search stage (it still counts as progress for the QuestRescue.IdleMinutes clock, so a
+# grinding bot is not rescued as idle). Never while a real player leads the bot.
+AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
+# AbandonStructuralParked = 1 (acts only with FailureClasses = 1 and TurnInParkFailures > 0): a finished quest
+# parked twice in a row for a structural reason that does not heal by itself - no taker destination (no spawn,
+# script-only game object, excluded zone) or a taker on the other continent below MinLevelForCrossMapQuestRoute -
+# is abandoned ([QuestAbandon] quest= reason= bot=). A zone clearly above the bot is never a reason (levels heal
+# it), any other park in between starts the count again, and class quests are kept. An abandoned quest is not taken
+# again (no trip to its giver, no accept) while the bot is on its own - at most 8 such quests per bot, forgotten at
+# re-login. 0 = the quest stays parked.
+AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
+# twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
+# stand around than grind, so it shows). Restart-only.
+#   0 = today's behaviour (default).
+#   1 = RESERVED for the gap filler of stages S2/S4; until then exactly like 0.
+#   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
+#       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
+#       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a
+#       creature that neither attacks the bot or its group nor is needed for an active quest, and no kill trip that
+#       would end in such a refused kill: no skinning or boss travel purpose, no forced guild-order kill trip (grind
+#       mob, boss, skinning) to a creature no active quest needs. The bot stands idle and logs why: [QuestIdle]
+#       reason=fallback|money|opportunistic|no_target bot= level= zone= target= class= once per reason until it finds a
+#       quest route again (at most 4 lines per idle episode; class= is the latest FailureClasses rejection class,
+#       transient|structural|empty_offer, none without one), and [QuestIdle] minute fallback= money= opportunistic=
+#       no_target= once a minute. Fights against attackers (self-defence, group help), quest objective kills,
+#       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
+#       stay. Other values act like 0.
+AiPlayerbot.QuestFirstProgression.GrindMode = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots

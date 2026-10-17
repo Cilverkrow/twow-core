@@ -975,6 +975,14 @@ protected:
     std::atomic<uint32> lastQuestRescue{ 0 };
     std::atomic<bool> questRescueRequested{ false };
     std::atomic<bool> questRescueDone{ false };
+    // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents): reset events
+    // (ai::quest_failure_class::Reset*) asked for by the world thread (rescue teleport, battleground return), taken by
+    // the bot's own update; the level the progress watch saw at its last check (0 = none yet: this login).
+    std::atomic<uint32> questRouteResetEvents{ 0 };
+    uint32 questProgressLevel = 0;
+    // The quest log state the progress watch saw at its last check (ai::quest_failure_class::MixQuestState, 0 = none yet).
+    uint32 questProgressState = 0;
+    void ApplyQuestRouteReset(uint32 events);
     // twow-repo#541/#551: set by the world thread (rndbot park), read by the bot's map thread.
     std::atomic<bool> parked{ false };
     // twow-repo#517 stage a (AiPlayerbot.BG.PlayerFill): set and cleared by the world thread while the manager owns this
@@ -1030,6 +1038,9 @@ public:
             questRescueRequested = true;
     }
     void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
+    // twow-repo#601 S1 (ResetOnProgressEvents): any thread asks the bot's own update to reset the grind-fallback
+    // counter, the quest route backoff and the quest search stage (ai::quest_failure_class::Reset* bits).
+    void RequestQuestRouteReset(uint32 events) { questRouteResetEvents.fetch_or(events); }
     // twow-repo#517 stage a: a quest rescue is asked for, or was done and not yet taken by the bot's own update.
     bool IsQuestRescueBusy() const { return questRescueRequested.load() || questRescueDone.load(); }
     // twow-repo#517 stage a: the manager queued this bot for a battleground and accepts its invite; BGStatusAction then
@@ -1052,8 +1063,26 @@ public:
     uint32 GetQuestIdleSeconds(uint32 now) const { return questProgress.IdleSeconds(now); }
     // #416: time of one executed action (ms > 0), for the top-3 of this update.
     void RecordActionTime(std::string const& name, uint32 ms) { updateActions.Add(name, ms); }
+    // twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode = 2, QuestGrindModePolicy.h): this bot is a
+    // quest-first roster bot on its own below the max level and must not grind as a substitute activity. Always false
+    // with GrindMode 0 or 1 (the config is read first).
+    bool IsQuestNoGrind();
+    // GrindMode 2, the bot's own thread: counts a blocked grind decision (ai::quest_grind_mode::Reason as uint8) for the
+    // minute line and writes one [QuestIdle] line per reason and idle episode (at most 4). Nothing without GrindMode 2.
+    void NoteQuestIdle(uint8 reason, std::string const& target);
+    // GrindMode 2: a quest target was found - the idle episode ends, every reason may log once again.
+    void ClearQuestIdle() { questIdleLogged = 0; questIdleClass = 0; }
+    // GrindMode 2: the S1 class (ai::quest_failure_class::FailureClass as uint8) of the bot's latest classified quest
+    // route rejection - shown as class= on its [QuestIdle] lines until the idle episode ends.
+    void NoteQuestIdleClass(uint8 failureClass) { questIdleClass = failureClass; }
+    // GrindMode 2, world thread: "[QuestIdle] minute ..." with the counts since the last call (counters reset).
+    static std::string TakeQuestIdleMinuteLine();
 
 protected:
+    // twow-repo#601 GrindMode: the reasons this bot already logged in its idle episode (bit mask of
+    // ai::quest_grind_mode::ReasonBit, 0 = none; bot's own thread only).
+    uint8 questIdleLogged = 0;
+    uint8 questIdleClass = 0;   // GrindMode 2: last S1 rejection class of the idle episode (0 = none; bot's own thread)
     std::deque<ai::death_loop::Death> recentDeaths;
     bool lastDeathHostileArea = false;   // A39: the latest death lay in an area of the hostile faction
     uint32 lastDeathLoopEscapeAt = 0;    // A39: time of the last evacuation (repeat_after_escape)

@@ -72,7 +72,11 @@ region("${choose}" "if (futureTravelPurpose == \"quest\")\n        {\n          
 require_order("${branch}" "TraceQuestRouteRejection(bot," "WidenQuestSearch(uint32(destinationList.size()));" "trace before widen")
 require_order("${branch}" "WidenQuestSearch(uint32(destinationList.size()));" "ai->RequestQuestRescue(uint32(time(nullptr)));" "widen before Z1b")
 require_order("${branch}" "rescueRequested = true;" "SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "Z1b before the backoff")
-require_order("${branch}" "SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "if (NoteNoRouteTurnIns(context, travelTarget," "failure count still grows, then the park")
+# twow-repo#601 S1: with FailureClasses = 0 the failure count grows on every rejection as before; with FailureClasses = 1
+# a transient rejection does not grow it (unless TransientCountsAfter) - that gate is pinned in
+# quest_failure_class_source_contract. Here: the SET stays directly behind that one gate and before the #485 park.
+require_order("${branch}" "SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "if (NoteNoRouteTurnIns(context, travelTarget," "failure count grows (FailureClasses = 0: every rejection), then the park")
+require_text("${branch}" "if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)\n                    SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "the only gate on the counter SET is the S1 class (FailureClasses = 0: CountsTowardGrind(None) = true)")
 require_order("${branch}" "if (NoteNoRouteTurnIns(context, travelTarget," "ai::quest_search::DirectTargetStats();" "P3 counts at the end of the branch")
 require_text("${branch}" "bool const shortBackoff = freshBot && !rescueRequested && sPlayerbotAIConfig.directTargetsFreshBackoffSeconds;" "a Z1b rescue wins")
 require_text("${branch}" "ai::quest_search::RouteBackoffSeconds(failures, true, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds) :

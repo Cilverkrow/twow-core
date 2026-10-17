@@ -793,6 +793,21 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionGrindFallbackFailures = 0;  // hotfix 8.32 (#544), 0 = off
+    // twow-repo#601 S1 "latch semantics" (OB-10 17.10.2026), all false = today's behaviour, restart-only
+    // (aiplayerbot.conf.dist.in): failure classes + taker pre-validation + grind yield + pre-loop filters.
+    bool questFirstProgressionFailureClasses = false;
+    // reset of the grind-fallback counter, the route backoff and the search stage on rescue teleport, level-up,
+    // login and battleground return; XP alone no longer resets the stage.
+    bool questFirstProgressionResetOnProgressEvents = false;
+    // "parked twice -> abandon" for a structural reason that cannot heal by itself (no destination, other continent).
+    bool questFirstProgressionAbandonStructuralParked = false;
+    // S1 review (OB-10 to decide): 0 = a transient rejection never counts toward the grind fallback; N = the N-th
+    // transient rejection in a row counts once (acts only with FailureClasses).
+    uint32 questFirstProgressionTransientCountsAfter = 0;
+    // twow-repo#601 GrindMode (owner 17.10.2026, restart-only): 0 = today's behaviour; 1 = reserved for the S2/S4 gap
+    // filler, acts like 0 until then; 2 = no grind as a substitute activity for quest-first roster bots on their own
+    // below the max level, they stand idle and log [QuestIdle] (QuestGrindModePolicy.h). Other values act like 0.
+    uint32 questFirstProgressionGrindMode = 0;
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
     bool directTargetsEnabled = false;
     bool directTargetsTraceInactive = false;

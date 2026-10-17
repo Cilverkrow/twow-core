@@ -100,11 +100,11 @@ constexpr uint32_t WidenIntervalSeconds = 120;
 // of #307 still keeps a bot out of zones clearly above its level.
 inline float GiverRadius(uint32_t level, uint32_t stage)
 {
-    float const own = std::max(2000.f, 400.f + float(level) * 10.f);
+    float const own = (std::max)(2000.f, 400.f + float(level) * 10.f);
     if (stage >= 2)
-        return std::max(own, 12000.f);
+        return (std::max)(own, 12000.f);
     if (stage == 1)
-        return std::max(own, 6000.f);
+        return (std::max)(own, 6000.f);
     return own;
 }
 
