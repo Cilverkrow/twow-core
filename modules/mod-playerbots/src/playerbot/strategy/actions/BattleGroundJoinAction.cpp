@@ -907,7 +907,7 @@ bool BGJoinAction::JoinQueue(uint32 type)
    return true;
 }
 
-void BGJoinAction::SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup)
+void BGJoinAction::SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup, uint32 instanceId)
 {
    ai->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
 
@@ -929,8 +929,6 @@ void BGJoinAction::SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGrou
 #else
    ObjectGuid guid = bot->GetObjectGuid();
 #endif
-   uint32 instanceId = 0; // 0 = First Available
-
    WorldPacket packet(CMSG_BATTLEMASTER_JOIN, 20);
 #ifdef MANGOSBOT_ZERO
    packet << guid << GetBattleGrounMapIdByTypeId(bgTypeId) << instanceId << uint8(joinAsGroup);
@@ -1421,11 +1419,21 @@ bool BGStatusAction::Execute(Event& event)
         sLog.outDetail("Bot #%d %s:%d <%s> leaves %s - %s", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(), isArena ? "Arena" : "BG", _bgType.c_str());
 
         WorldPacket packet(CMSG_LEAVE_BATTLEFIELD);
+#ifdef MANGOSBOT_ZERO
+        // twow-repo#517 R5 (AiPlayerbot.BG.Enable): the vanilla HandleLeaveBattlefieldOpcode reads a uint32 map id and
+        // returns unless it is the player's map, so the zero bytes never left the battleground. With the master switch
+        // off the old bytes stay.
+        if (sPlayerbotAIConfig.bgEnable)
+            packet << uint32(bot->GetMapId());
+        else
+        {
+            packet << uint8(0);
+            packet << uint8(0);                           // BattleGroundTypeId-1 ?
+            packet << uint16(0);
+        }
+#else
         packet << uint8(0);
         packet << uint8(0);                           // BattleGroundTypeId-1 ?
-#ifdef MANGOSBOT_ZERO
-        packet << uint16(0);
-#else
         packet << uint32(0);
         packet << uint16(0);
 #endif
@@ -1501,8 +1509,32 @@ bool BGStatusAction::Execute(Event& event)
         {
             //We are already in a BG. Joining a new one directly causes a crash when SetBattleGroundId is reset during leave right before teleporting in the new one.
             //Here we leave the current BG proper so we can join the next fresh.
+#ifdef MANGOSBOT_ZERO
+            // twow-repo#517 stage b review: with the real map id (R5, below) this leave works, and leaving a battleground
+            // that is not over means Deserter (which then refuses this very invite) and a hole in a match that may hold
+            // real players. Under BG.Enable the bot declines this invite instead (port action 0) while its battleground
+            // still runs, and leaves only one that is over (WAIT_LEAVE, no Deserter).
+            if (sPlayerbotAIConfig.bgEnable)
+            {
+                BattleGround* current = bot->GetBattleGround();
+                if (current && current->GetStatus() != STATUS_WAIT_LEAVE)
+                {
+                    LeaveQueue(bot, _bgTypeId);
+                    return true;
+                }
+            }
+#endif
             WorldPacket leave(CMSG_LEAVE_BATTLEFIELD);
+#ifdef MANGOSBOT_ZERO
+            // twow-repo#517 R5 (AiPlayerbot.BG.Enable): the vanilla handler wants the player's map id (uint32), see the
+            // TIME_REMOVE leave above; the old bytes stay with the master switch off.
+            if (sPlayerbotAIConfig.bgEnable)
+                leave << uint32(bot->GetMapId());
+            else
+                leave << uint8(0) << uint8(0) << uint32(0) << uint16(0);
+#else
             leave << uint8(0) << uint8(0) << uint32(0) << uint16(0);
+#endif
             bot->GetSession()->HandleLeaveBattlefieldOpcode(leave);
             //Queue the event again to try to join next tick.
             //ai->HandleBotOutgoingPacket(event.getPacket());
@@ -1573,6 +1605,23 @@ void BGStatusAction::LeaveQueue(Player* bot, BattleGroundTypeId bgTypeId)
     // Port action 0 is the core's own "leave queue" (HandleBattleFieldPortOpcode): it also works before an invite,
     // with the battleground template, and schedules the queue update itself.
     SendPort(bot, bgTypeId, 0x0);
+}
+
+void BGStatusAction::ApplyLeaveState(PlayerbotAI* ai, Player* bot)
+{
+    // As BGLeaveAction after its leave packet: the AiFactory strategies come back (the roster set included), the
+    // battleground values are cleared.
+    AiObjectContext* context = ai->GetAiObjectContext();
+    if (sRandomPlayerbotMgr.IsFreeBot(bot))
+        ai->SetMaster(NULL);
+    ai->ResetStrategies();
+    context->GetValue<uint32>("bg type")->Set(0);
+    context->GetValue<uint32>("bg role")->Set(0);
+    context->GetValue<uint32>("arena type")->Set(0);
+    ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get();
+    ai::PositionEntry pos = posMap["bg objective"];
+    pos.Reset();
+    posMap["bg objective"] = pos;
 }
 
 void BGStatusAction::SendPort(Player* bot, BattleGroundTypeId bgTypeId, uint8 action)

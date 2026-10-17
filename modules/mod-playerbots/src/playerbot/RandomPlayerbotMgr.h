@@ -13,6 +13,7 @@
 #include "WorldThreadCommandQueue.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "WorldPosition.h"
+#include <array>
 #include <map>
 #include <set>
 #include <list>
@@ -421,6 +422,8 @@ public:
             uint32 joinMs = 0;
             uint32 instanceId = 0;          // set at accept: the instance the bot was ported into
             bool startedForFill = false;    // set at accept: that instance had not begun yet (counts against the cap)
+            uint32 acceptMs = 0;            // stage b: set at accept (the latest joined leaves first on a slot release)
+            uint32 pairFor = 0;             // stage b: pair bot queued for this waiting real player (guid), 0 = fill
         };
         std::map<uint32, BgFillEntry> bgFillPending;   // queued by the manager, invite not accepted yet (<= 2 x 40 per bg)
         std::map<uint32, BgFillEntry> bgFillInBg;      // invite accepted, until the bot is out of the battleground again
@@ -446,6 +449,55 @@ public:
         bool LeaveBgFillQueue(Player* bot, PlayerbotAI* ai, uint32 guid, BgFillEntry const& entry, char const* reason);
         uint32 CountBgFillRunning() const;
         void ReportBgFillMinute();
+        // twow-repo#517 stage b (AiPlayerbot.BG.SlotRelease): a real player waiting uninvited gets into a running
+        // battleground with fill bots - pair option first (OB-00 D2), else a fill bot of his side above the minimum
+        // leaves and the slot is reserved for him. Owner 16.10.: the unit is his core queue entry - a group with his own
+        // bots (k members) counts as a whole, solo is k = 1. World thread only; both maps are bounded by the real players.
+        struct BgFillWait
+        {
+            uint32 queueType = 0;
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;
+            uint32 team = 0;          // the entry's team
+            uint32 firstSeenMs = 0;   // first scan that saw the entry waiting uninvited in that queue
+            uint32 seenScan = 0;      // last scan that saw it (pruned in every scan that did not)
+            uint32 desiredInstanceId = 0;   // the core entry's DesiredInstanceId (0 = first available), read when due
+            uint32 size = 1;          // members of the core entry (k), read when due
+            bool released = false;    // at most one release decision per wait
+        };
+        // (real player guid, queue type): one wait per core queue entry, under its first real member the scan meets
+        std::map<std::pair<uint32, uint32>, BgFillWait> bgFillWait;
+        struct BgFillReservation
+        {
+            uint32 queueType = 0;
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;
+            uint32 team = 0;
+            uint32 instanceId = 0;
+            uint32 untilMs = 0;
+            uint32 size = 1;          // members of the entry the slots are reserved for
+            uint32 released = 0;      // bots released for it in that decision
+        };
+        std::map<std::pair<uint32, uint32>, BgFillReservation> bgFillReservations;  // (real player guid, queue type): one per entry
+        std::set<uint32> bgFillNewMatch;   // BgFillBracketKey of the brackets stage a queued a new match for this scan
+        uint32 bgFillScanId = 0;
+        void ScanBgSlotRelease(uint32 nowMs);
+        bool BgFillReserved(uint32 queueType, uint32 bracket, uint32 team, uint32 nowMs) const;
+        bool ReleaseBgFillBot(Player* bot, PlayerbotAI* ai);
+        // twow-repo#517 stage b (Enable && PlayerFill && BotOnlyCleanup, follow-up D with OB-20): a battleground started
+        // for the fill without a real player for BotOnlyGraceSeconds after IN_PROGRESS is emptied - every manager bot of
+        // both sides leaves until the core deletes it, without EndBattleGround (no rewards for bots). All three bounded by
+        // the started-for-fill instances, pruned once the core no longer holds the instance, cleared while it is off.
+        std::map<std::pair<uint32, uint32>, uint32> bgFillNoRealSince;   // (bg type, instance) -> no real player since (ms)
+        std::set<std::pair<uint32, uint32>> bgFillBotOnlyEnding;          // (bg type, instance) whose manager bots leave
+        // (bg type, instance) whose grace ran out, until the core has deleted it (or a real player is still inside at
+        // its end): true once its [BGBotOnlyEnd] line is written
+        std::map<std::pair<uint32, uint32>, bool> bgFillBotOnlyWatch;
+        void WatchBotOnlyBgs(uint32 nowMs);
+        void LeaveBotOnlyBg();
+        bool IsBotOnlyInvite(Player* bot, uint32 bgTypeId) const;   // invited into a watched (emptied) instance
+        // (bg type, entry bracket) -> smallest waiting real-player entry per side (0 = none), read live
+        void CollectBgFillWaiting(std::map<std::pair<uint32, uint32>, std::array<uint32, 2>>& waiting) const;
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;
