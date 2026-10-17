@@ -150,6 +150,8 @@ require_order("${branch}" "failureDecision = ai::quest_failure_class::Classify("
 require_order("${branch}" "SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", int(uint32(time(nullptr)) + backoff));" "if (failureDecision.parkTakerless || failureDecision.parkAllOffered)" "structural park after the backoff")
 require_order("${branch}" "if (failureDecision.parkTakerless || failureDecision.parkAllOffered)" "if (NoteNoRouteTurnIns(context, travelTarget," "structural park before the #485 counting")
 require_text("${branch}" "if (ParkStructuralTurnIn(ai, travelTarget, questId," "rejection branch parks through the structural helper")
+require_text("${branch}" "                            takerless ? ai::quest_failure_class::TakerCheckName(ai::quest_failure_class::TakerCheck::NoDestination) :\n                                failureDecision.reason,\n                            takerless || failureDecision.abandonable))" "rejection branch abandonable = takerless or the Classify verdict")
+count_text("${choose}" "ParkStructuralTurnIn(" 3 "the helper definition and exactly two callers")
 require_text("${branch}" "            if (structuralParks)\n            {\n                SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, false);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", 0);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", 0);\n            }" "a structural park clears counter and backoff like a #485 park")
 region("${choose}" "bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 questId, char const* reason, bool abandonable)" "\n}\n" park_helper)
 require_text("${park_helper}" "if (!travelTarget->ParkTurnInNow(questId, reason, abandonable, abandonDue))\n        return false;" "park through TravelTarget::ParkTurnInNow (parking gates there)")
@@ -186,6 +188,10 @@ require_order("${prevalidate}" "${prevalidate_danger_map}" "routable = true;" "r
 count_text("${prevalidate}" "isEnemyHomeZoneFor(" 1 "one enemy-zone check, before the route danger rule")
 count_text("${prevalidate}" "->IsActive(bot, info)" 1 "one IsActive check, before the route danger rule")
 require_text("${prevalidate}" "else if (IsStructural(check))" "only structural answers park")
+# Review fix (abandon call sites not pinned): which abandonable flag each caller passes (probes G01 / G02 passed `true`
+# and were not caught). Pre-check: the policy's AbandonableReason (never zone_level); rejection branch: takerless (no
+# destination) or the Classify verdict (cross_map only, never zone_level). The definition plus exactly these two calls.
+require_text("${prevalidate}" "                ++structural;\n                ParkStructuralTurnIn(ai, travelTarget, questId, TakerCheckName(check), AbandonableReason(check));" "pre-check abandonable = AbandonableReason(check)")
 # Review fix (finding 'one [QuestTakerCheck] line per request'): the line follows the per-quest loop, once per request.
 require_text("${prevalidate}" "            else\n                ++notNow;\n        }\n\n        sLog.outBasic(\"[QuestTakerCheck] bot=%u level=%u open=%u routable=%u structural=%u not_now=%u\"," "one summary line per request, after the per-quest loop")
 count_text("${choose}" "sLog.outBasic(\"[QuestTakerCheck]" 1 "exactly one [QuestTakerCheck] log call")

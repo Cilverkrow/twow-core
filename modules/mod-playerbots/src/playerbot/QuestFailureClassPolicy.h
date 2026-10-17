@@ -2,6 +2,7 @@
 
 #include "QuestSearchPolicy.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -234,8 +235,8 @@ inline void ListAdd(std::string& list, std::uint32_t questId)
 
 // The "manual string" values of the taker pre-validation: the open turn-ins the last request checked, and the ones it
 // found routable (written per request by RequestQuestTravelTargetAction, read by the grind yield in TravelValues).
-constexpr char const* CheckedTurnInsValue = "quest turnin checked";
-constexpr char const* ValidatedTurnInsValue = "quest turnin validated";
+inline constexpr char const* CheckedTurnInsValue = "quest turnin checked";
+inline constexpr char const* ValidatedTurnInsValue = "quest turnin validated";
 
 // The local quest hub filter: no random range skip while it holds the bot (a skip past the one eligible local
 // candidate leaves only hub-filtered partitions). enabled false = the old 10 % skip.

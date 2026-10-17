@@ -1027,7 +1027,8 @@ AiPlayerbot.GrindAvoid.AvoidSeconds = 3600
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
-# Emit one QuestFirst route decision when a quest-travel request is materialized.
+# Emit one QuestFirst route decision when a quest-travel request is materialized. Also logs [QuestSearch]
+# state=grind_none when a quest-first bot's grind search finds nothing (twow-repo#601 S1, also with FailureClasses).
 AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # #303: log a [FollowDiag] snapshot (map, transports, movement generator, chase
 # target, distance, strategies) when a bot of a real player falls back to far

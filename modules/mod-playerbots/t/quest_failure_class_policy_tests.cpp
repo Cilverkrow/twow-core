@@ -42,6 +42,9 @@ int main()
 
     // 1) Every RejectCounts reason is in exactly one class sum (a new reason must be classified on purpose).
     {
+        // A 16th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below.
+        static_assert(sizeof(RejectCounts) == (15 + RejectCounts::InactiveReasons) * sizeof(std::uint32_t),
+            "classify the new reject reason (StructuralRejects / TransientRejects / OtherRejects)");
         RejectCounts all;
         all.turnInSuppressed = 1; all.deathSuppressed = 1; all.otherMapGather = 1; all.knownInactive = 1;
         all.hubFilter = 1; all.notActive = 1; all.enemyZone = 1; all.crossMap = 1; all.zoneLevel = 1;
