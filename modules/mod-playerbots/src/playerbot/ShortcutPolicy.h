@@ -222,7 +222,7 @@ inline char const* MechName(Mech mech)
 // Per-mechanism counters, bumped on map threads (relaxed atomics, no lock), drained once a minute by the world thread.
 struct MechCounters
 {
-    std::atomic<std::uint32_t> near{0};
+    std::atomic<std::uint32_t> nearAny{0};   // not "near": windows.h defines near (and far) as empty macros
     std::atomic<std::uint32_t> notNear{0};
     std::atomic<std::uint32_t> unknown{0};
     std::atomic<std::uint32_t> nearSrc{0};
@@ -247,7 +247,7 @@ inline void Record(Counters& counters, Mech mech, Near source, Near destination)
     MechCounters& c = counters.mech[std::size_t(mech)];
     switch (Combine(source, destination))
     {
-        case Near::Near: c.near.fetch_add(1, std::memory_order_relaxed); break;
+        case Near::Near: c.nearAny.fetch_add(1, std::memory_order_relaxed); break;
         case Near::NotNear: c.notNear.fetch_add(1, std::memory_order_relaxed); break;
         default: c.unknown.fetch_add(1, std::memory_order_relaxed); break;
     }

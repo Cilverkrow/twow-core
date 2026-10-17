@@ -1437,7 +1437,7 @@ void RandomPlayerbotMgr::ReportShortcut()
     for (uint32 i = 0; i < uint32(ai::shortcut::Mech::Count); ++i)
     {
         ai::shortcut::MechCounters& c = counters.mech[i];
-        uint32 const nearCount = c.near.exchange(0, std::memory_order_relaxed);
+        uint32 const nearCount = c.nearAny.exchange(0, std::memory_order_relaxed);
         uint32 const notNear = c.notNear.exchange(0, std::memory_order_relaxed);
         uint32 const unknown = c.unknown.exchange(0, std::memory_order_relaxed);
         uint32 const nearSrc = c.nearSrc.exchange(0, std::memory_order_relaxed);
