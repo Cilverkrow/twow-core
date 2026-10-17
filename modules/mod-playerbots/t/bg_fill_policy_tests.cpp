@@ -711,6 +711,20 @@ void AnnounceText()
     Require(ExpandAnnounceText("Levels %lvl, to %bg!", av, "", true).empty() && ExpandAnnounceText("Levels %lvl, to %bg!", av, "", false).empty(),
         "a %lvl line without a range: not said, never with the placeholder left empty");
     Require(ExpandAnnounceText("Join WSG 51-60!", wsg, "51-60", true) == "Join WSG 51-60!", "a line that already names the range: not twice");
+    // Review c8: only the range as a number of its own counts as named, not the same characters inside other numbers.
+    Require(ExpandAnnounceText("Win 11-12 times at %bg!", wsg, "1-1", true) == "Win 11-12 times at Warsong Gulch (1-1)!",
+        "1-1 inside 11-12 is not the range");
+    Require(ExpandAnnounceText("Score 12-90!", wsg, "2-9", true) == "Score 12-90 (2-9)!", "2-9 inside 12-90 is not the range");
+    Require(ExpandAnnounceText("Score 12-9!", wsg, "2-9", true) == "Score 12-9 (2-9)!" &&
+            ExpandAnnounceText("Score 2-90!", wsg, "2-9", true) == "Score 2-90 (2-9)!", "a digit on either side: not the range");
+    Require(ExpandAnnounceText("12-9 or 2-9!", wsg, "2-9", true) == "12-9 or 2-9!", "the range later in the line: named");
+    Require(ExpandAnnounceText("(51-60) %bg", av, "51-60", true) == "(51-60) Alterac Valley" &&
+            ExpandAnnounceText("51-60", av, "51-60", true) == "51-60", "the range at the start or as the whole line: named");
+    Require(HoldsLevelRange("x 51-60", "51-60") && !HoldsLevelRange("x 151-60", "51-60") && !HoldsLevelRange("x 51-600", "51-60") &&
+            !HoldsLevelRange("anything", ""), "HoldsLevelRange: digit boundaries, no empty range");
+    // Review c8: an empty line stays empty with the switch on (never " (lo-hi)" alone).
+    Require(ExpandAnnounceText("", av, "51-60", true).empty() && ExpandAnnounceText("", av, "51-60", false).empty() &&
+            ExpandAnnounceText("", av, "", true).empty(), "an empty line: not said");
     Require(ExpandAnnounceText("Join %bg!", wsg, "", true) == "Join Warsong Gulch!", "no range known: the line as today");
     Require(ExpandAnnounceText("100% bgs, %lv%l!", "X", "1-2", false) == "100% bgs, %lv%l!" &&
             ExpandAnnounceText("100% bgs, %lv%l!", "X", "1-2", true) == "100% bgs, %lv%l (1-2)!", "no placeholder");

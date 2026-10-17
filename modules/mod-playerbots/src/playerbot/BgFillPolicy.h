@@ -629,19 +629,39 @@ inline bool AnnounceTextFits(std::string const& text)
     return true;
 }
 
+// Whether a text already names the range as a number of its own - no digit right before or after it ("Join WSG 51-60!"
+// holds "51-60"; "Win 11-12 times" does not hold "1-1", nor "Score 12-90!" "2-9"). Review c8.
+inline bool HoldsLevelRange(std::string const& text, std::string const& range)
+{
+    if (range.empty())
+        return false;
+    for (size_t at = text.find(range); at != std::string::npos; at = text.find(range, at + 1))
+    {
+        size_t const end = at + range.size();
+        bool const digitBefore = at && text[at - 1] >= '0' && text[at - 1] <= '9';
+        bool const digitAfter = end < text.size() && text[end] >= '0' && text[end] <= '9';
+        if (!digitBefore && !digitAfter)
+            return true;
+    }
+    return false;
+}
+
 // The text an announcement line goes out with (chat and server message alike): every %bg is the full name, every %lvl
 // the level range (a configured line asks for it, whatever showRange says). With showRange and no %lvl in the line the
 // range is added once: right after the first %bg ("Warsong Gulch (50-59)"), else before the closing run of ! ? . at the
-// end ("to Alterac (51-60)!"), else at the end - never when the line already holds it. Too long with the added range:
-// the line without it; still too long, outside printable ASCII, or a %lvl line without a range: empty - the line is not
-// said (fail closed; the load filter already drops such lines). showRange off and no %lvl: ExpandAnnounceLine, byte for byte.
+// end ("to Alterac (51-60)!"), else at the end - never when the line already names it (HoldsLevelRange). Too long with
+// the added range: the line without it; an empty line, still too long, outside printable ASCII, or a %lvl line without
+// a range: empty - the line is not said (fail closed; the load filter already drops such lines). showRange off and no
+// %lvl: ExpandAnnounceLine, byte for byte.
 inline std::string ExpandAnnounceText(std::string const& line, std::string const& bgName, std::string const& range, bool showRange)
 {
+    if (line.empty())
+        return std::string();
     bool const hasLvl = line.find("%lvl") != std::string::npos;
     if (hasLvl && range.empty())
         return std::string();
     std::string const plain = ExpandAnnounceLine(line, bgName);
-    bool const addRange = showRange && !hasLvl && !range.empty() && plain.find(range) == std::string::npos;
+    bool const addRange = showRange && !hasLvl && !range.empty() && !HoldsLevelRange(plain, range);
     if (!hasLvl && !addRange)
         return AnnounceTextFits(plain) ? plain : std::string();
     std::string const added = " (" + range + ")";
