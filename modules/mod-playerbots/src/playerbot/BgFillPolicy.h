@@ -498,6 +498,23 @@ constexpr uint32_t OwnTypeHistory = 3;
 // Free roster bots the planner's candidate loop visits at most per try (C2: a hard cap per interval).
 constexpr uint32_t OwnCandidateVisitMax = 2000;
 
+// C3: free candidates a side needs for a bot-own match - the template minimum plus that side's share of the announcers
+// (the larger half), so one bot that got busy between the announcement and the queue join (combat, a taxi, ...) does
+// not leave the side short and the players who answered the call without a match.
+inline uint32_t OwnCandidatesNeeded(uint32_t minPerTeam, uint32_t queueType)
+{
+    return minPerTeam + (AnnouncerCount(queueType) + 1) / 2;
+}
+
+// The planner collects at most this many candidates per type, bracket and side: CandidateLimit(min), but never fewer
+// than OwnCandidatesNeeded (a small template minimum with AV's five announcers).
+inline uint32_t OwnCandidateLimit(uint32_t minPerTeam, uint32_t queueType)
+{
+    uint32_t const limit = CandidateLimit(minPerTeam);
+    uint32_t const needed = OwnCandidatesNeeded(minPerTeam, queueType);
+    return limit > needed ? limit : needed;
+}
+
 // Announcement text (D3): English, role-play, per faction. A pool is lines separated by '|', %bg is the full
 // battleground name. A line outside printable ASCII, or longer than MaxAnnounceLineBytes with the longest name put in,
 // is dropped at load; at most MaxAnnouncePoolLines per key.
@@ -597,14 +614,14 @@ inline std::string BuiltInAnnouncePool(uint32_t team, uint32_t queueType)
                     "Light guide our blades! We march on %bg.|"
                     "Alliance, sharpen your steel. %bg needs heroes!";
             case QueueWS:
-                return "Silverwing Sentinels, the Warsong raiders are at our gates!|"
+                return "Silverwing Sentinels, the Warsong raiders are at our gates! To Warsong Gulch!|"
                     "Bring their flag home, Sentinels! To Warsong Gulch!";
             case QueueAB:
                 return "The League of Arathor calls! Hold the farm, hold the mill, hold Arathi Basin!|"
-                    "For Arathor! Take back the basin!";
+                    "For Arathor! Take back Arathi Basin!";
             case QueueAV:
                 return "Stormpike needs you, to Alterac!|"
-                    "Dun Baldar stands! Who answers the Stormpike call?";
+                    "Dun Baldar stands! Who answers the Stormpike call in Alterac Valley?";
             default:
                 return "";
         }
@@ -619,14 +636,14 @@ inline std::string BuiltInAnnouncePool(uint32_t team, uint32_t queueType)
                 "Throm-Ka, warriors! The Horde fights in %bg today.|"
                 "Rally, Horde! %bg will be ours!";
         case QueueWS:
-            return "Warsong Outriders, the night elves guard their flag. Take it!|"
+            return "Warsong Outriders, the night elves guard their flag in Warsong Gulch. Take it!|"
                 "Grom's warriors, to Warsong Gulch! Bring me their flag!";
         case QueueAB:
             return "The Defilers march on Arathi Basin! Who joins the hunt?|"
-                "Defilers, the basin is ripe for the taking!";
+                "Defilers, Arathi Basin is ripe for the taking!";
         case QueueAV:
             return "Frostwolf clan, to arms! Alterac Valley is ours!|"
-                "For Drek'Thar! The Frostwolves ride to Alterac!";
+                "For Drek'Thar! The Frostwolves ride to Alterac Valley!";
         default:
             return "";
     }
