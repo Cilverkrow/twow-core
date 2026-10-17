@@ -8,6 +8,8 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/DeadValues.h"
 #include "playerbot/MasterWaitPolicy.h"
+#include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 
 using namespace ai;
 
@@ -281,6 +283,9 @@ bool FindCorpseAction::Execute(Event& event)
             sLog.outDetail("[BOT CORPSE] %s: find corpse - no detailed-move activity, teleporting to corpse (deadTime=%llds > delay=%us)",
                 bot->GetName(), (long long)deadTime, delay);
             bot->GetMotionMaster()->Clear();
+            // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): ghost to corpse (critic C06) counted only, the teleport is unchanged.
+            if (sPlayerbotAIConfig.shortcutTrace)
+                sRandomPlayerbotMgr.CountShortcut(ai::shortcut::Mech::GhostCorpse, bot, moveToPos.getMapId(), moveToPos.getX(), moveToPos.getY(), moveToPos.getZ());
             bot->TeleportTo(moveToPos.getMapId(), moveToPos.getX(), moveToPos.getY(), moveToPos.getZ(), 0);
             if (IsRealPlayer(bot))
                 bot->SendHeartBeat();
