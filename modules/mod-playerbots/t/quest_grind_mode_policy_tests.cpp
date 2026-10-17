@@ -145,10 +145,13 @@ int main()
         Require(TargetText("grind_target", 299) == "grind_target:299", "target with entry");
         Require(TargetText("travel_purpose_grind", 0) == "travel_purpose_grind", "target without entry");
         Require(TargetText("", 5) == "-" && TargetText(nullptr, 5) == "-", "nothing blocked: -");
-        Require(FormatIdleLine(Reason::Money, 4711, 12, 40, "request_travel_grind") ==
-            "[QuestIdle] reason=money bot=4711 level=12 zone=40 target=request_travel_grind", "idle line");
-        Require(FormatIdleLine(Reason::NoTarget, 1, 2, 3, "") == "[QuestIdle] reason=no_target bot=1 level=2 zone=3 target=-",
-            "idle line with nothing named");
+        Require(FormatIdleLine(Reason::Money, 4711, 12, 40, "request_travel_grind", "transient") ==
+            "[QuestIdle] reason=money bot=4711 level=12 zone=40 target=request_travel_grind class=transient", "idle line");
+        Require(FormatIdleLine(Reason::NoTarget, 1, 2, 3, "", "none") ==
+            "[QuestIdle] reason=no_target bot=1 level=2 zone=3 target=- class=none", "idle line with nothing named");
+        Require(FormatIdleLine(Reason::Fallback, 1, 2, 3, "x", nullptr) == "[QuestIdle] reason=fallback bot=1 level=2 zone=3 target=x class=none" &&
+            FormatIdleLine(Reason::Fallback, 1, 2, 3, "x", "") == "[QuestIdle] reason=fallback bot=1 level=2 zone=3 target=x class=none",
+            "no class name: class=none");
         std::array<std::uint32_t, ReasonCount> counts = {};
         counts[std::size_t(Reason::Fallback)] = 1;
         counts[std::size_t(Reason::Money)] = 2;
