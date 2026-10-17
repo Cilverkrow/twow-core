@@ -179,6 +179,37 @@ GridUnload = 0
 
 CleanupTerrain = 1
 
+#    TerrainCleanup.IdleMinutes
+#    TerrainCleanup.MaxGridsPerTick
+#        twow-repo#597 (TICK-01). With CleanupTerrain = 1 every terrain frees, once a minute on the world
+#        thread, all terrain grids (map data + vmap tile) without a grid reference. Grids loaded lazily by a
+#        height/LOS query never take one, so each pass freed all of them and the next query reloaded them
+#        from disk (TICK-01: 47 % of the live world ticks > 100 ms). With GridUnload = 0 that churn hits only
+#        those lazily loaded grids; with GridUnload = 1 also the grids of unloaded map grids.
+#        Live runs CleanupTerrain = 0 as the immediate measure (OB-00, 16.10.2026): the periodic pass
+#        frees nothing then and both keys below have no effect.
+#        They matter only with CleanupTerrain = 1 (with GridUnload = 0 or 1).
+#        Exception: the one-off purge after the bot travel tables at startup (TravelMgr::LoadQuestTravelTable)
+#        runs regardless of CleanupTerrain; with CleanupTerrain = 0 it frees all grids without a reference as
+#        today and the keys below do not apply to it. After a runtime reload from CleanupTerrain = 1 to 0,
+#        GetGrid keeps stamping until restart (nothing is freed).
+#        IdleMinutes:     a grid without a reference is freed only after it was unused for at least this many
+#                         minutes (1..1440). Last use = a terrain query through TerrainInfo::GetGrid (height,
+#                         water, area, ...); LOS-only vmap use (Map::isInLineOfSight) does not count. 0 = free
+#                         at every pass (today's behaviour). Costs one relaxed atomic read per terrain query,
+#                         and with a value > 0 at most one store per grid and second.
+#        MaxGridsPerTick: at most this many grids freed per terrain (map) and world tick; each map terrain has
+#                         its own budget, so one world tick can free up to this value times the number of
+#                         terrains with an open pass. The rest of a pass continues on the next ticks, the 60 s
+#                         timer restarts when the pass is through. 0 = unlimited (today).
+#        Known and unchanged: the free takes no lock against terrain queries from threads outside the map
+#        update (std::async travel jobs); IdleMinutes only frees later, with CleanupTerrain = 0
+#        the periodic pass never frees.
+#        Default: 0, 0 (today's behaviour)
+
+TerrainCleanup.IdleMinutes = 0
+TerrainCleanup.MaxGridsPerTick = 0
+
 #    MMapTileUnload
 #        Remove navmesh tiles from the mesh again at runtime.
 #        dtNavMesh::removeTile zeroes tile->polys, and dtNavMeshQuery reads it
@@ -365,6 +396,26 @@ Continents.MotionUpdate.Threads = 1
 AsyncTasks.Threads = 2
 AsyncQueriesTickTimeout = 15000
 
+# AsyncQueries.UnsafeBudgetMs (twow-repo#597 TICK-01)
+#   Time budget per world tick for the thread-unsafe async database callbacks (player and bot logins:
+#   LoadFromDB, Map::Add, grid load), which run on the world thread. Each of the three result queues
+#   (character, world, login database) has this budget per tick; the login callbacks use the character queue.
+#   0 = no budget (the callbacks run until the queue is empty or AsyncQueriesTickTimeout is reached).
+#   N = before each unsafe callback the time already spent on unsafe callbacks in this pass is checked;
+#   at N ms or more the pass stops and the remaining callbacks stay queued, in the same order, for the next
+#   tick(s). The first unsafe callback of a pass always runs, so the queue always makes progress (a single
+#   long callback can still exceed N). Logins in a wave may wait a few ticks longer. AsyncQueriesTickTimeout
+#   is checked as before. Thread-safe callbacks (callback thread pool) are not affected.
+#   Caution (mod-playerbots): a '.bot add' bot login whose master logs out before its callback runs calls
+#   into the already deleted per-master PlayerbotMgr. This hazard exists today; N > 0 makes the window longer
+#   (the callback can wait several ticks). Keep this in mind before setting N > 0 on a live server.
+#   With N > 0, once a minute in the performance log:
+#   "[UnsafeBudget] calls_capped=<n> deferred_max=<n> ran=<n> loop_max_ms=<x>" (calls_capped = passes the
+#   budget stopped with callbacks left, deferred_max = most callbacks left queued by one stop, ran = unsafe
+#   callbacks run, loop_max_ms = longest unsafe pass).
+#   Default: 0 (off)
+AsyncQueries.UnsafeBudgetMs = 0
+
 # Movement.RelocationVmapsCheckDelay
 # Movement.MaxPointsPerPacket
 # Delayed repositionning checks. (Mounts inside / swimming ...)
@@ -491,6 +542,39 @@ LogTimestamp = 1
 # LogFileLevel. Server file level of logging. 0 = Minimum; 1 = Error; 2 = Detail; 3 = Full/Debug
 
 LogFileLevel = 1
+
+# Log.AsyncSink
+#   twow-repo#597 (TICK-01). 0 = every log line is written by the thread that logs it, console
+#   (stdout/stderr) and files with a flush per line, as before. 1 = the logging thread formats the
+#   complete line (same bytes, timestamp taken at the call) and hands it to one writer thread through
+#   one bounded queue; the writer does the writes and flushes. A stalled console pipe (docker logging
+#   driver) or disk then blocks the writer, not the world thread. All lines of all targets share the
+#   one queue, so their order across console and files stays the call order, and every line keeps
+#   its stream (stdout or stderr) as before. Queue full: the line is dropped and counted, the caller
+#   never waits. Once a minute "[LogSink] lines=<n> dropped=<n> max_depth=<n> write_max_us=<x>" goes
+#   to the performance log (PerformanceLog.File; lines = written by the writer in that minute,
+#   max_depth = deepest backlog, i.e. lines queued or being written, write_max_us = slowest line of
+#   the writer over all its targets).
+#   Shutdown drains the queue (at most 5 s) and writes "[LogSink] stopped reason=<r> written=<n>
+#   dropped=<n> unwritten=<n> drained=<0|1> drain_ms=<n>". Errors are queued like every line (the
+#   writer is woken per line); the crash paths (SIGSEGV anticrash backtrace, MaxCoreStuckTime freeze
+#   detector, std::terminate e.g. after a failed assertion) wait up to 2 s for the queue first.
+#   Lines still queued when the process dies otherwise are lost: at most Log.AsyncSinkMaxLines
+#   lines / 64 MiB (the bound covers queued lines and the lines the writer is still writing).
+#   With PerformanceLog.LogWriteTrace = 1, [LogWait] then measures the caller's cost per line
+#   (format + enqueue) as stdout_max_us, file_max_us stays 0. Read at startup; a reload to 0 drains
+#   and goes back to the synchronous log, a reload to 1 needs a restart. Not supported on Windows
+#   (says so once, the log stays synchronous).
+#   Default: 0 (off)
+#
+# Log.AsyncSinkMaxLines
+#   Bound of the Log.AsyncSink queue in lines not written yet, queued or being written (on top of a
+#   fixed 64 MiB for the same lines). 0 = built-in bound of 50000; other values are clamped to
+#   16 .. 1000000. Only read at startup with Log.AsyncSink = 1.
+#   Default: 0 (built-in 50000)
+
+Log.AsyncSink = 0
+Log.AsyncSinkMaxLines = 0
 
 # HonorLogFile. HonorLogFile name.
 
@@ -694,6 +778,77 @@ PerformanceLog.TickStatsExtended = 0
 #   they update a region. Pure measurement, clock reads only.
 #   Default: 0 (off)
 PerformanceLog.WorldTick = 0
+
+# Tick diagnostics (twow-repo#597 TICK-01). Measurement only: every switch is off by default, and
+# with all of them at 0 the server behaves and logs exactly as before. All lines go to the
+# performance log, except [StallWatch] (own file). Greppable by their [Prefix].
+#
+# PerformanceLog.WorldTickSlowMs
+#   0 = off; N = one line per world tick whose work time (World::Update, without the sleep) is
+#   at least N ms, with the phases of THAT tick in ms:
+#   "[WorldTickSlow] tick=<world loop counter> ms=<work> sessions= teleports= maps_pre= instances=
+#   wait_continents= switch_instances= maps_post= managers= mgr_transport= mgr_bg= mgr_lfg= mgr_lft=
+#   mgr_guard= mgr_zone= mgr_dynvis= mgr_eluna= mgr_offline= async_tasks= results= rest= r_pre= r_ah=
+#   r_dispatch= r_savevars= r_corpses= r_events= r_remove= r_mps= r_account= r_cli= r_terrain= r_guild=
+#   r_hook= r_other= dropped=<n>". The phases are those of [WorldTick]; mgr_* split "managers",
+#   r_* split "rest" by the jobs of World::Update (r_other = the remainder). The phase clocks of
+#   PerformanceLog.WorldTick run while this is on, even with PerformanceLog.WorldTick = 0 (the
+#   [WorldTick]/[MapTick] minute blocks still need PerformanceLog.WorldTick = 1). At most 60 lines
+#   a minute; the ones held back are counted in dropped= of the next line. Live suggestion: 50.
+#   Default: 0 (off)
+PerformanceLog.WorldTickSlowMs = 0
+
+# PerformanceLog.TerrainTrace
+#   1 = "[TerrainCleanup] map=<id> freed_grids=<n> ms=<x.x>" once per TerrainInfo::CleanUpGrids pass
+#   that frees at least one grid (CleanupTerrain), and once a minute per terrain with loads
+#   "[TerrainReload] map=<id> loads=<n> lazy=<n> ms_sum=<x> max_ms=<x> world_thread=<n>
+#   other_thread=<n>" (GridMap loads incl. vmap tile and navmesh; lazy = loaded through GetGrid
+#   without a grid reference, i.e. what the next cleanup frees again).
+#   Default: 0 (off)
+PerformanceLog.TerrainTrace = 0
+
+# PerformanceLog.StallWatchMs
+#   0 = off; N = a watchdog thread (started at server start, next to MaxCoreStuckTime) sleeps 10 ms
+#   in a loop and writes "[StallWatch] start=<epoch ms> oversleep_ms=<x> world_tick_age_ms=<y>
+#   phase=<part> dropped=<n>" when the oversleep of its sleep (process or host freeze) or the age of
+#   the running world tick (lock or long phase) reaches N ms: when the stall opens, at most once a
+#   second while it grows, and once with its peak when it ends; at most 120 lines a minute. phase =
+#   the part of World::Update the world thread was in (the [WorldTickSlow] names, plus idle, maps,
+#   maps_wait, and tick_end for the work after World::Update: the statistics and WorldTickEnd with
+#   the minute and slow lines, which run through the server log). Written with plain file I/O into
+#   "<LogsDir>stallwatch.log", not through the server log (which may be what blocks). Changing it
+#   needs a restart to start the thread; a reload to 0 silences it.
+#   Default: 0 (off)
+PerformanceLog.StallWatchMs = 0
+
+# PerformanceLog.LogWriteTrace
+#   1 = every server log line is timed: console (stdout/stderr) write and file write separately;
+#   once a minute "[LogWait] lines=<n> stdout_max_us=<x> file_max_us=<x> over10ms=<n> over100ms=<n>"
+#   (overNNms = lines whose console + file write took at least NN ms).
+#   With Log.AsyncSink = 1 a line is only formatted and queued by the caller: stdout_max_us is then
+#   that cost per line (lines = lines handed to the sink, incl. dropped ones), file_max_us stays 0;
+#   the writer's own write time is [LogSink] write_max_us.
+#   Default: 0 (off)
+PerformanceLog.LogWriteTrace = 0
+
+# PerformanceLog.SlowResultCallbackMs
+#   0 = off; N = one "[ResultsSlow] ms=<x> unsafe=<0|1> cb=<callback type> pending=<n> dropped=<n>"
+#   line per async database callback that took at least N ms (unsafe = 1: run on the world thread,
+#   e.g. player and bot logins; pending = unsafe callbacks still queued, for thread-safe ones the
+#   position in this pass). At most 20 lines a minute.
+#   Default: 0 (off)
+PerformanceLog.SlowResultCallbackMs = 0
+
+# PerformanceLog.MapTickRegion
+#   1 = once a minute per continent region "[MapTickRegion] region=<map>.<inst> pre=avg/p95/max
+#   post=avg/p95/max extra_loops=<n> extra_overrun_max=<x> held_barrier=<n>" in ms: pre = the
+#   region's own work before it reaches the barrier, post = its wait at the barrier (incl. the extra
+#   player updates), extra_loops = those extra updates, extra_overrun_max = how long it stayed after
+#   the last region arrived, held_barrier = ticks in which it arrived last (it held the others).
+#   More than 64 regions in a minute: the extra ones are not sampled and one more line
+#   "[MapTickRegion] regions_over_cap=<n>" follows (n = their dropped samples, one per region and tick).
+#   Default: 0 (off)
+PerformanceLog.MapTickRegion = 0
 
 # RaLogFile. Log file of RA commands.
 

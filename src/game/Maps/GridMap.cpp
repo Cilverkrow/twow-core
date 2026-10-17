@@ -24,6 +24,7 @@
 #include "DBCEnums.h"
 #include "DBCStores.h"
 #include "GridMap.h"
+#include "TerrainCleanupPolicy.h"
 #include "VMapFactory.h"
 #include "MoveMap.h"
 #include "World.h"
@@ -647,7 +648,21 @@ bool GridMap::ExistVMap(uint32 mapid, int gx, int gy)
 }
 
 //////////////////////////////////////////////////////////////////////////
-TerrainInfo::TerrainInfo(uint32 mapid) : m_mapId(mapid)
+// twow-repo#597 (TICK-01): TerrainCleanup.* as last latched by TerrainManager::Update (0 = today).
+std::atomic<uint32> TerrainInfo::s_cleanupIdleMinutes(0);
+std::atomic<uint32> TerrainInfo::s_cleanupMaxGridsPerTick(0);
+
+void TerrainInfo::SetCleanupSwitches(uint32 idleMinutes, uint32 maxGridsPerTick)
+{
+    // stored only on a change: GetGrid reads s_cleanupIdleMinutes on every map thread
+    idleMinutes = terrain_cleanup::ClampIdleMinutes(idleMinutes);
+    if (s_cleanupIdleMinutes.load(std::memory_order_relaxed) != idleMinutes)
+        s_cleanupIdleMinutes.store(idleMinutes, std::memory_order_relaxed);
+    if (s_cleanupMaxGridsPerTick.load(std::memory_order_relaxed) != maxGridsPerTick)
+        s_cleanupMaxGridsPerTick.store(maxGridsPerTick, std::memory_order_relaxed);
+}
+
+TerrainInfo::TerrainInfo(uint32 mapid) : m_mapId(mapid), m_useClockMs(0), m_useClockSec(0), m_cleanupCursor(0), m_cleanupResume(false)
 {
     for (int k = 0; k < MAX_NUMBER_OF_GRIDS; ++k)
     {
@@ -655,6 +670,7 @@ TerrainInfo::TerrainInfo(uint32 mapid) : m_mapId(mapid)
         {
             m_GridMaps[i][k] = nullptr;
             m_GridRef[i][k] = 0;
+            m_GridLastUse[i][k].store(0, std::memory_order_relaxed);
         }
     }
 
@@ -712,41 +728,97 @@ void TerrainInfo::Unload(const uint32 x, const uint32 y)
         if (UnrefGrid(x, y) == 0)
         {
             // TODO: add your additional logic here
+            // twow-repo#597 (TICK-01): the grid was in use until now; with TerrainCleanup.IdleMinutes its
+            // idle time starts here. Off (0): no store.
+            if (terrain_cleanup::StampEnabled(s_cleanupIdleMinutes.load(std::memory_order_relaxed)))
+                StampGridUse(x, y);
         }
     }
 }
 
+// twow-repo#597 (TICK-01): last-use stamp of one grid, at most one store per terrain second. Callers
+// check TerrainCleanup.IdleMinutes first; out-of-range coordinates are ignored (fail closed).
+void TerrainInfo::StampGridUse(const uint32 x, const uint32 y)
+{
+    if (x >= MAX_NUMBER_OF_GRIDS || y >= MAX_NUMBER_OF_GRIDS)
+        return;
+
+    uint32 const nowSec = m_useClockSec.load(std::memory_order_relaxed);
+    std::atomic<uint32>& lastUse = m_GridLastUse[x][y];
+    if (terrain_cleanup::NeedsStamp(lastUse.load(std::memory_order_relaxed), nowSec))
+        lastUse.store(nowSec, std::memory_order_relaxed);
+}
+
 // call this method only
+// twow-repo#597 (TICK-01): GetGrid loads grids lazily without a grid reference, so every lazily loaded
+// grid has ref 0 and the 60 s pass freed all of them; the next height/LOS query reloaded them from disk.
+// TerrainCleanup.IdleMinutes keeps a ref-0 grid that was used within that time, TerrainCleanup.MaxGridsPerTick
+// caps the frees per call (the scan resumes at the same grid next tick, the 60 s timer restarts only when
+// the scan is through). Both 0: every grid is examined once in today's order and the decisions are
+// today's (TerrainCleanupPolicy.h, t/terrain_cleanup_597_test.cpp).
+// Known and unchanged: the delete below takes no lock against GetGrid readers on other threads. The map
+// region threads are past their barrier while World::Update runs this, but other threads that query
+// terrain (std::async travel jobs, bot generator) are not synchronised with it. IdleMinutes > 0 frees a
+// grid later or not at all, never earlier, so it does not widen that window; CleanupTerrain = 0 closes it.
 void TerrainInfo::CleanUpGrids(const uint32 diff)
 {
     i_timer.Update(diff);
-    if (!i_timer.Passed())
+
+    // twow-repo#597: terrain clock of the last-use stamps, from the tick diff (no clock read).
+    m_useClockMs += diff;
+    uint32 const nowSec = uint32(m_useClockMs / 1000);
+    if (m_useClockSec.load(std::memory_order_relaxed) != nowSec)
+        m_useClockSec.store(nowSec, std::memory_order_relaxed);
+
+    if (!terrain_cleanup::ScanThisTick(i_timer.Passed(), m_cleanupResume))
         return;
 
-    for (int y = 0; y < MAX_NUMBER_OF_GRIDS; ++y)
-    {
-        for (int x = 0; x < MAX_NUMBER_OF_GRIDS; ++x)
+    // twow-repo#597 (TICK-01, PerformanceLog.TerrainTrace): one [TerrainCleanup] line per call that frees
+    // at least one grid (with TerrainCleanup.MaxGridsPerTick a capped pass writes one line per tick it
+    // frees in). Off: no clock read, no line.
+    bool const trace = sWorld.getConfig(CONFIG_BOOL_PERFLOG_TERRAIN_TRACE);
+    uint64 const traceStartUs = trace ? tick_diag::NowUs() : 0;
+
+    uint32 const idleMinutes = s_cleanupIdleMinutes.load(std::memory_order_relaxed);
+    uint32 const maxGridsPerTick = s_cleanupMaxGridsPerTick.load(std::memory_order_relaxed);
+
+    terrain_cleanup::PassResult const pass = terrain_cleanup::RunPass(m_cleanupCursor, maxGridsPerTick,
+        [&](uint32 x, uint32 y)
         {
-            const int16& iRef = m_GridRef[x][y];
+            // delete those GridMap objects which have refcount = 0 (and, with IdleMinutes, are idle)
+            uint32 const lastUse = terrain_cleanup::StampEnabled(idleMinutes) ? m_GridLastUse[x][y].load(std::memory_order_relaxed) : 0;
+            return terrain_cleanup::ShouldFree(m_GridMaps[x][y] != nullptr, m_GridRef[x][y], idleMinutes, nowSec, lastUse);
+        },
+        [&](uint32 x, uint32 y)
+        {
             GridMap* pMap = m_GridMaps[x][y];
+            m_GridMaps[x][y] = nullptr;
+            // delete grid data if reference count == 0
+            pMap->unloadData();
+            delete pMap;
 
-            // delete those GridMap objects which have refcount = 0
-            if (pMap && iRef == 0)
-            {
-                m_GridMaps[x][y] = nullptr;
-                // delete grid data if reference count == 0
-                pMap->unloadData();
-                delete pMap;
+            // unload VMAPS...
+            VMAP::VMapFactory::createOrGetVMapManager()->unloadMap(m_mapId, int(x), int(y));
 
-                // unload VMAPS...
-                VMAP::VMapFactory::createOrGetVMapManager()->unloadMap(m_mapId, x, y);
+            // unload mmap...
+            MMAP::MMapFactory::createOrGetMMapManager()->unloadMap(m_mapId, int(x), int(y));
+        });
 
-                // unload mmap...
-                MMAP::MMapFactory::createOrGetMMapManager()->unloadMap(m_mapId, x, y);
-            }
-        }
+    uint32 const freedGrids = pass.freed;
+    if (trace && freedGrids)
+        sLog.out(LOG_PERFORMANCE, "[TerrainCleanup] map=%u freed_grids=%u ms=%.1f", m_mapId, freedGrids,
+            (tick_diag::NowUs() - traceStartUs) / 1000.0);
+
+    if (!pass.done)
+    {
+        // twow-repo#597: TerrainCleanup.MaxGridsPerTick reached, the rest waits for the next tick
+        m_cleanupCursor = pass.nextCursor;
+        m_cleanupResume = true;
+        return;
     }
 
+    m_cleanupCursor = 0;
+    m_cleanupResume = false;
     i_timer.Reset();
 }
 
@@ -1141,15 +1213,20 @@ GridMap* TerrainInfo::GetGrid(const float x, const float y)
     int gx = (int)(32 - y / SIZE_OF_GRIDS);                 // grid x
     int gy = (int)(32 - x / SIZE_OF_GRIDS);                 // grid y
 
+    // twow-repo#597 (TICK-01): last-use stamp for TerrainCleanup.IdleMinutes, before the load so a cleanup
+    // pass sees the grid as used. Off (0): neither a load nor a store of the stamp.
+    if (terrain_cleanup::StampEnabled(s_cleanupIdleMinutes.load(std::memory_order_relaxed)))
+        StampGridUse(uint32(gx), uint32(gy));
+
     // quick check if GridMap already loaded
     GridMap* pMap = m_GridMaps[gx][gy];
     if (!pMap)
-        pMap = LoadMapAndVMap(gx, gy);
+        pMap = LoadMapAndVMap(gx, gy, true);  // twow-repo#597: lazy, without RefGrid
 
     return pMap;
 }
 
-GridMap* TerrainInfo::LoadMapAndVMap(const uint32 x, const uint32 y)
+GridMap* TerrainInfo::LoadMapAndVMap(const uint32 x, const uint32 y, bool lazy)
 {
     // double checked lock pattern
     if (!m_GridMaps[x][y])
@@ -1158,6 +1235,12 @@ GridMap* TerrainInfo::LoadMapAndVMap(const uint32 x, const uint32 y)
 
         if (!m_GridMaps[x][y])
         {
+            // twow-repo#597 (TICK-01, PerformanceLog.TerrainTrace): the cost of this load (map file, vmap
+            // tile, navmesh) and the thread that paid it, into the [TerrainReload] minute line. Off: no
+            // clock read.
+            bool const trace = sWorld.getConfig(CONFIG_BOOL_PERFLOG_TERRAIN_TRACE);
+            uint64 const traceStartUs = trace ? tick_diag::NowUs() : 0;
+
             GridMap* map = new GridMap();
 
             // map file name
@@ -1193,6 +1276,9 @@ GridMap* TerrainInfo::LoadMapAndVMap(const uint32 x, const uint32 y)
 
             // load navmesh
             MMAP::MMapFactory::createOrGetMMapManager()->loadMap(m_mapId, x, y);
+
+            if (trace)
+                m_loadTrace.Record(tick_diag::NowUs() - traceStartUs, lazy, World::IsWorldThread());
         }
     }
 
@@ -1298,9 +1384,38 @@ void TerrainManager::UnloadTerrain(const uint32 mapId)
 
 void TerrainManager::Update(const uint32 diff)
 {
+    // twow-repo#597 (TICK-01): latch TerrainCleanup.* once per tick on the world thread for CleanUpGrids
+    // and GetGrid. World::Update calls this only with CleanupTerrain = 1, but the startup purge after the bot
+    // travel tables (TravelMgr::LoadQuestTravelTable) calls it regardless; with CleanupTerrain = 0 both stay
+    // 0 there too, so that purge frees as today and GetGrid never stamps (fail closed).
+    bool const cleanupTerrain = sWorld.getConfig(CONFIG_BOOL_CLEANUP_TERRAIN);
+    TerrainInfo::SetCleanupSwitches(cleanupTerrain ? sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_IDLE_MINUTES) : 0,
+        cleanupTerrain ? sWorld.getConfig(CONFIG_UINT32_TERRAIN_CLEANUP_MAX_GRIDS_PER_TICK) : 0);
+
     // global garbage collection for GridMap objects and VMaps
     for (auto& iter : i_TerrainMap)
         iter.second->CleanUpGrids(diff);
+}
+
+// twow-repo#597 (TICK-01, PerformanceLog.TerrainTrace): the GridMap loads of the last minute per terrain
+// (lazy = through GetGrid without RefGrid, i.e. the grids CleanUpGrids frees again). The counters are
+// taken under the guard (LoadTerrain may insert from another thread), the lines written after it.
+void TerrainManager::ReportTerrainReloads(bool log)
+{
+    std::vector<std::pair<uint32, tick_diag::TerrainLoadSnapshot>> loaded;
+    {
+        Guard _guard(*this);
+        for (auto& iter : i_TerrainMap)
+        {
+            tick_diag::TerrainLoadSnapshot const s = iter.second->TakeLoadTrace();
+            if (log && s.loads)
+                loaded.emplace_back(iter.first, s);
+        }
+    }
+    for (auto const& [mapId, s] : loaded)
+        sLog.out(LOG_PERFORMANCE, "[TerrainReload] map=%u loads=%llu lazy=%llu ms_sum=%.1f max_ms=%.1f world_thread=%llu other_thread=%llu",
+            mapId, (unsigned long long)s.loads, (unsigned long long)s.lazy, s.usSum / 1000.0, s.maxUs / 1000.0,
+            (unsigned long long)s.worldThread, (unsigned long long)s.otherThread);
 }
 
 void TerrainManager::UnloadAll()

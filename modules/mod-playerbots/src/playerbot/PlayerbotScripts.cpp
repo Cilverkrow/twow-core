@@ -110,10 +110,25 @@ class PlayerbotWorldScript : public WorldScript
             // answer a waiter only once per bot update interval - long enough to
             // trip the waiter timeout on an otherwise healthy server. AhBot
             // documents the same trap above its own nextAICheckTime early-out.
-            sRandomPlayerbotMgr.RunQueuedRemoteCommands();
+            if (!sPlayerbotAIConfig.worldBotsHookTrace || !sPlayerbotAIConfig.worldBotsTrace)
+            {
+                sRandomPlayerbotMgr.RunQueuedRemoteCommands();
 
+                sRandomPlayerbotMgr.UpdateAI(diff);
+                auctionbot.Update();
+                return;
+            }
+
+            // twow-repo#597 (TICK-01, AiPlayerbot.WorldBotsHookTrace): the same three calls, timed into the
+            // [WorldBots] minute line (hook_ms= remote_ms= ahbot_ms=). Off: the plain calls above.
+            uint64 const hookStartUs = ai::bot_update::NowUs();
+            sRandomPlayerbotMgr.RunQueuedRemoteCommands();
+            uint64 const remoteEndUs = ai::bot_update::NowUs();
             sRandomPlayerbotMgr.UpdateAI(diff);
+            uint64 const ahbotStartUs = ai::bot_update::NowUs();
             auctionbot.Update();
+            uint64 const hookEndUs = ai::bot_update::NowUs();
+            sRandomPlayerbotMgr.AddWorldBotsHook(hookEndUs - hookStartUs, remoteEndUs - hookStartUs, hookEndUs - ahbotStartUs);
         }
 };
 
@@ -306,6 +321,17 @@ class PlayerbotPlayerScript : public PlayerScript
             return !ai::RosterGuildPoach::Refusal(inviter, invitee, guildId, true, guildId ? "core_invite" : "core_charter");
         }
 
+        // twow-repo#517 stage c (owner decision C0): HonorMgr::Add on the player's map thread, after Rate.Honor, never
+        // for a dishonorable kill. AiPlayerbot.BG.BotOnlyHonorRate scales a bot's honor in a battleground without a real
+        // player; with BG.Enable off or the rate 1 (default) this returns at once.
+        void OnHonorGain(Player* player, float& cp, uint8 type) override
+        {
+            if (!player || !sPlayerbotAIConfig.enabled)
+                return;
+
+            RandomPlayerbotMgr::ScaleBotOnlyHonor(player, cp, type);
+        }
+
         // Was the CreatePlayerbotMgr() call in HandlePlayerLogin. Only a person
         // at a client gets a controller for their alts.
         //
@@ -368,9 +394,14 @@ class PlayerbotPlayerScript : public PlayerScript
                     ai::bot_update::Global().Add(us, [player, ai]()
                     {
                         ai::Engine* engine = ai->GetCurrentEngine();
-                        return std::string(player->GetName()) + " map=" + std::to_string(player->GetMapId()) +
+                        std::string who = std::string(player->GetName()) + " map=" + std::to_string(player->GetMapId()) +
                             " combat=" + std::to_string(player->IsInCombat() ? 1 : 0) +
                             " action=" + (engine ? engine->GetLastAction() : std::string("-"));
+                        // twow-repo#597 (TICK-01, AiPlayerbot.BotUpdateTraceTick): world tick and map region at the
+                        // END of the [BotUpdateSlow] line. Off: the description unchanged.
+                        if (sPlayerbotAIConfig.botUpdateTraceTick)
+                            who += ai::bot_update::TickRegionSuffix(World::m_worldLoopCounter, player->GetMapId(), player->GetInstanceId());
+                        return who;
                     });
                 }
             }

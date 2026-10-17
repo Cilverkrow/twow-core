@@ -151,6 +151,7 @@ enum PlayerHook
     PLAYERHOOK_ON_REPOP_AT_GRAVEYARD,
     PLAYERHOOK_ON_QUEST_SHARE_REFUSED,
     PLAYERHOOK_CAN_SWITCH_GUILD,
+    PLAYERHOOK_ON_HONOR_GAIN,
     PLAYERHOOK_END
 };
 
@@ -271,6 +272,13 @@ class PlayerScript : public ScriptObject
         // invitee is a guid on purpose: the charter offer runs on the inviter's
         // map thread, and the invitee may be updated by another one.
         virtual bool CanSwitchGuild(Player* /*inviter*/, ObjectGuid const& /*invitee*/, uint32 /*guildId*/) { return false; }
+
+        // twow-repo#517 stage c (owner decision C0): honor the player is about to gain - every type but a
+        // dishonorable kill - right after the core's Rate.Honor. A module may scale cp; HonorMgr::Add then credits
+        // the scaled value as spendable honor and rank points (rank points come from honor). Marks, the kill count,
+        // experience and reputation are not part of it. Runs on the player's map thread (a battleground's on that
+        // battleground's map): read only objects of that map. No listener changes nothing.
+        virtual void OnHonorGain(Player* /*player*/, float& /*cp*/, uint8 /*type*/) {}
 };
 
 class CreatureScript : public ScriptObject, public UpdatableScript<Creature>

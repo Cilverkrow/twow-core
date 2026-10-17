@@ -233,6 +233,47 @@ add_test(NAME quest_turnin_park_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_turnin_park_source_contract_tests.cmake")
 
+# twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses / ResetOnProgressEvents /
+# AbandonStructuralParked, default 0): failure classes, taker pre-validation, grind yield, resets and the
+# structural park (policy).
+add_executable(quest_failure_class_policy_tests
+  "${PB_MODULE_DIR}/t/quest_failure_class_policy_tests.cpp")
+
+target_include_directories(quest_failure_class_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_failure_class_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_failure_class_policy
+  COMMAND quest_failure_class_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_failure_class_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_failure_class_source_contract_tests.cmake")
+
+# twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode, default 0; owner 17.10.2026): with 2 no grind as
+# a substitute activity for quest-first roster bots on their own below the max level, [QuestIdle] (policy).
+add_executable(quest_grind_mode_policy_tests
+  "${PB_MODULE_DIR}/t/quest_grind_mode_policy_tests.cpp")
+
+target_include_directories(quest_grind_mode_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_grind_mode_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_grind_mode_policy
+  COMMAND quest_grind_mode_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_grind_mode_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_grind_mode_source_contract_tests.cmake")
+
 # #354/#292: who may direct a bot without GM rank, and which `.bot`/`.rndbot`
 # commands stay GM tools. Decision table plus the call sites that use it.
 add_executable(roster_control_policy_tests
@@ -1928,6 +1969,29 @@ add_test(NAME world_bots_trace_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/world_bots_trace_source_contract_tests.cmake")
 
+# twow-repo#597 (TICK-01): [BotUpdateSlow] tick=/region= (AiPlayerbot.BotUpdateTraceTick) and [WorldBots]
+# hook_ms=/remote_ms=/ahbot_ms=/dungeonclear_ms= (AiPlayerbot.WorldBotsHookTrace), both default 0.
+add_executable(tick_diag_597_tests
+  "${PB_MODULE_DIR}/t/tick_diag_597_tests.cpp")
+
+target_include_directories(tick_diag_597_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(tick_diag_597_tests PRIVATE Threads::Threads)
+
+set_target_properties(tick_diag_597_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tick_diag_597
+  COMMAND tick_diag_597_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tick_diag_597_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DDC_SOURCE_FILE=${PB_MODULE_DIR}/../mod-dungeon-clear/src/DungeonClearModule.cpp"
+    -P "${PB_MODULE_DIR}/t/tick_diag_597_source_contract_tests.cmake")
+
 # twow-repo#541/#551: rndbot park / unpark (inn of the own faction and level band, verified bind,
 # reduced AI tick).
 add_executable(park_policy_tests
@@ -2151,6 +2215,41 @@ add_test(NAME bg_master_cache_ref_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bg_master_cache_ref_source_contract_tests.cmake")
+
+# twow-repo#517 stage a: rules of the manager's battleground fill (AiPlayerbot.BG.Enable + AiPlayerbot.BG.PlayerFill).
+add_executable(bg_fill_policy_tests
+  "${PB_MODULE_DIR}/t/bg_fill_policy_tests.cpp")
+
+target_include_directories(bg_fill_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(bg_fill_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bg_fill_policy
+  COMMAND bg_fill_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bg_fill_517_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bg_fill_517_source_contract_tests.cmake")
+
+# twow-repo#517 stage b: pair option, slot release with reservation, bot-only cleanup, R5 leave map id
+# (AiPlayerbot.BG.Enable + AiPlayerbot.BG.SlotRelease).
+add_test(NAME bg_slot_release_517_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/bg_slot_release_517_source_contract_tests.cmake")
+
+# twow-repo#517 stage c: announced bot-own battlegrounds (AiPlayerbot.BG.Announce, MaxBotBGPerBracket) and the bot-only
+# honor rate (AiPlayerbot.BG.BotOnlyHonorRate, core PlayerScript::OnHonorGain).
+add_test(NAME bg_announce_517_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/bg_announce_517_source_contract_tests.cmake")
 
 # twow-repo#541 (audit A10): one PlayerTravelInfo per travel choice and keyed destination lookup (AiPlayerbot.Perf.TravelInfoReuse, default 0).
 add_test(NAME travel_info_reuse_source_contract
@@ -2977,6 +3076,45 @@ add_test(NAME route_fail_early_skip_policy
   COMMAND route_fail_early_skip_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#595 (4): .bot add login callback safe against a master logout before it runs.
+add_test(NAME pending_bot_login_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/pending_bot_login_source_contract_tests.cmake")
+
+add_executable(pending_bot_login_policy_tests
+  "${PB_MODULE_DIR}/t/pending_bot_login_policy_tests.cpp")
+
+target_include_directories(pending_bot_login_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(pending_bot_login_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME pending_bot_login_policy
+  COMMAND pending_bot_login_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#597 (TICK-01): AhBot guard - AhBot::Update idle without a loaded, enabled ahbot.conf
+# (AiPlayerbot.AhBot.RequireConfig, default 0 = as before).
+add_test(NAME ahbot_guard_597_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/ahbot_guard_597_source_contract_tests.cmake")
+
+add_executable(ahbot_guard_597_policy_tests
+  "${PB_MODULE_DIR}/t/ahbot_guard_597_policy_tests.cpp")
+
+target_include_directories(ahbot_guard_597_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/ahbot")
+
+set_target_properties(ahbot_guard_597_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME ahbot_guard_597_policy
+  COMMAND ahbot_guard_597_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#596 D (AiPlayerbot.BotUpdateTraceTriggers): the slowest trigger checks of a slow trigger pass.
 add_test(NAME slow_triggers_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -3014,3 +3152,41 @@ set_target_properties(loot_role_v2_tests PROPERTIES
 add_test(NAME loot_role_v2
   COMMAND loot_role_v2_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#308 EQUIP-FLIP-01 (AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade): no weapon unequip/re-equip on every loot.
+add_test(NAME keep_weapons_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/keep_weapons_source_contract_tests.cmake")
+
+add_executable(keep_weapons_policy_tests
+  "${PB_MODULE_DIR}/t/keep_weapons_policy_tests.cpp")
+
+target_include_directories(keep_weapons_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(keep_weapons_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME keep_weapons_policy
+  COMMAND keep_weapons_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#595 P4 S0 + B1 (AiPlayerbot.Shortcut.*): real-player snapshot, ShortcutNear, [Shortcut] counters, group-loop fix.
+add_executable(shortcut_policy_tests
+  "${PB_MODULE_DIR}/t/shortcut_policy_tests.cpp")
+
+target_include_directories(shortcut_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(shortcut_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME shortcut_policy
+  COMMAND shortcut_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME shortcut_s0_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/shortcut_s0_source_contract_tests.cmake")

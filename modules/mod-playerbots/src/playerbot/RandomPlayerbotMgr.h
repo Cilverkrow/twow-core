@@ -6,6 +6,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/WorldBotsTracePolicy.h"
+#include "playerbot/ShortcutPolicy.h"
 #include "Common.h"
 #include <unordered_set>
 #include "PlayerbotAIBase.h"
@@ -13,6 +14,7 @@
 #include "WorldThreadCommandQueue.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "WorldPosition.h"
+#include <array>
 #include <map>
 #include <set>
 #include <list>
@@ -24,6 +26,7 @@ class Player;
 class Unit;
 class Object;
 class Item;
+class PlayerbotAI;
 
 class CachedEvent
 {
@@ -139,6 +142,10 @@ public:
         std::future<std::string> PostRemoteCommand(std::string request);
         // WORLD THREAD ONLY. Runs this tick's share of the queue above.
         void RunQueuedRemoteCommands();
+        // twow-repo#597 (TICK-01, AiPlayerbot.WorldBotsHookTrace): the bot WorldScript update hooks into the
+        // [WorldBots] minute window. World thread only (WorldScript::OnUpdate).
+        void AddWorldBotsHook(uint64 hookUs, uint64 remoteUs, uint64 ahbotUs) { worldBotsWindow.AddHook(hookUs, remoteUs, ahbotUs); }
+        void AddWorldBotsDungeonClearUs(uint64 us) { worldBotsWindow.AddDungeonClear(us); }
         void OnPlayerLogout(Player* player);
         void OnPlayerLogin(Player* player);
         void OnPlayerLoginError(uint32 bot);
@@ -330,7 +337,25 @@ public:
         std::list<std::string> HandleRemove(Player* bot);
 
         void MirrorAh();
+        // twow-repo#517 stage c (owner C0, AiPlayerbot.BG.BotOnlyHonorRate): PlayerbotPlayerScript::OnHonorGain, on the
+        // bot's map thread. Reads only that map's objects - no manager state.
+        static void ScaleBotOnlyHonor(Player* player, float& cp, uint8 type);
+        // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.*): is a real player (or a test watcher) near this point? Any
+        // thread: one short lock to copy the snapshot pointer, then a scan of the copy (no player objects are read).
+        // NearScope 0, a missing / stale snapshot or a zone 0 outside the radius answer Unknown.
+        ai::shortcut::Near ShortcutNear(uint32 mapId, float x, float y, uint32 zoneId);
+        // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): count one bot shortcut teleport as near / notnear /
+        // unknown at both ends. Map thread of the bot; measurement only, the caller teleports exactly as before.
+        void CountShortcut(ai::shortcut::Mech mech, Player* bot, uint32 toMapId, float toX, float toY, float toZ);
     private:
+        // twow-repo#595 P4 S0: the real-player snapshot. Built only in UpdateAIInternal (world thread, after
+        // sMapMgr.Update); published as a shared_ptr swap under shortcutSnapshotMutex.
+        void BuildShortcutSnapshot();
+        void ReportShortcut();
+        std::shared_ptr<ai::shortcut::Snapshot const> ShortcutSnapshot();
+        std::mutex shortcutSnapshotMutex;
+        std::shared_ptr<ai::shortcut::Snapshot const> shortcutSnapshot;
+        uint64 shortcutLastBuildMs = 0;   // world thread only
         PlayerBotMap players;
         int processTicks;
         std::unordered_map<std::string, WorldLocation> namedLocations;
@@ -405,6 +430,149 @@ public:
         // twow-repo#541: [WorldBots] per-minute cost of UpdateAIInternal in the world thread.
         ai::world_bots::Window worldBotsWindow;
         void TraceWorldBots(uint64 desiredBots, uint64 sessionsUs, uint64 processUs, uint64 otherUs, uint32 logins, uint32 acks);
+        // twow-repo#517 stage a (AiPlayerbot.BG.Enable + AiPlayerbot.BG.PlayerFill): persistent-roster bots fill a
+        // battleground a real player queues for. World thread only (roster branch of UpdateAIInternal).
+        struct BgFillEntry
+        {
+            uint32 queueType = 0;
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;   // core bracket (Player::GetBattleGroundBracketIdFromLevel)
+            uint32 team = 0;      // 0 alliance, 1 horde
+            uint32 joinMs = 0;
+            uint32 instanceId = 0;          // set at accept: the instance the bot was ported into
+            bool startedForFill = false;    // set at accept: that instance had not begun yet (counts against the cap)
+            uint32 acceptMs = 0;            // stage b: set at accept (the latest joined leaves first on a slot release)
+            uint32 pairFor = 0;             // stage b: pair bot queued for this waiting real player (guid), 0 = fill
+            bool own = false;               // stage c: queued by the planner for an announced bot-own match
+            bool startedForOwn = false;     // stage c, set at accept: a bot-own match started that instance - never
+                                            // startedForFill, so the bot-only cleanup never empties it
+        };
+        std::map<uint32, BgFillEntry> bgFillPending;   // queued by the manager, invite not accepted yet (<= 2 x 40 per bg)
+        std::map<uint32, BgFillEntry> bgFillInBg;      // invite accepted, until the bot is out of the battleground again
+        uint32 lastBgFillCheckMs = 0;
+        uint32 bgFillRotate = 0;                       // guid the last candidate loop stopped at (rotating start)
+        struct BgFillMinute
+        {
+            uint32 checks = 0;
+            uint32 joins = 0;
+            uint32 accepts = 0;
+            uint32 returns = 0;
+            uint32 leaves = 0;
+            uint64 scanUsMax = 0;
+            uint32 last = 0;
+        };
+        BgFillMinute bgFillMinute;
+        void CheckBgFill();
+        void UpdateBgFillMembers();
+        void ScanBgFill(uint32 nowMs);
+        bool IsBgFillCandidate(Player* bot) const;
+        bool IsBgFillStillFree(Player* bot, PlayerbotAI* ai) const;
+        bool IsBgFillInviteStillFit(Player* bot, PlayerbotAI* ai) const;
+        bool LeaveBgFillQueue(Player* bot, PlayerbotAI* ai, uint32 guid, BgFillEntry const& entry, char const* reason);
+        uint32 CountBgFillRunning() const;
+        void ReportBgFillMinute();
+        // twow-repo#517 stage b (AiPlayerbot.BG.SlotRelease): a real player waiting uninvited gets into a running
+        // battleground with fill bots - pair option first (OB-00 D2), else a fill bot of his side above the minimum
+        // leaves and the slot is reserved for him. Owner 16.10.: the unit is his core queue entry - a group with his own
+        // bots (k members) counts as a whole, solo is k = 1. World thread only; both maps are bounded by the real players.
+        struct BgFillWait
+        {
+            uint32 queueType = 0;
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;
+            uint32 team = 0;          // the entry's team
+            uint32 firstSeenMs = 0;   // first scan that saw the entry waiting uninvited in that queue
+            uint32 seenScan = 0;      // last scan that saw it (pruned in every scan that did not)
+            uint32 desiredInstanceId = 0;   // the core entry's DesiredInstanceId (0 = first available), read when due
+            uint32 size = 1;          // members of the core entry (k), read when due
+            bool released = false;    // at most one release decision per wait
+        };
+        // (real player guid, queue type): one wait per core queue entry, under its first real member the scan meets
+        std::map<std::pair<uint32, uint32>, BgFillWait> bgFillWait;
+        struct BgFillReservation
+        {
+            uint32 queueType = 0;
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;
+            uint32 team = 0;
+            uint32 instanceId = 0;
+            uint32 untilMs = 0;
+            uint32 size = 1;          // members of the entry the slots are reserved for
+            uint32 released = 0;      // bots released for it in that decision
+        };
+        std::map<std::pair<uint32, uint32>, BgFillReservation> bgFillReservations;  // (real player guid, queue type): one per entry
+        std::set<uint32> bgFillNewMatch;   // BgFillBracketKey of the brackets stage a queued a new match for this scan
+        uint32 bgFillScanId = 0;
+        void ScanBgSlotRelease(uint32 nowMs);
+        bool BgFillReserved(uint32 queueType, uint32 bracket, uint32 team, uint32 nowMs) const;
+        bool ReleaseBgFillBot(Player* bot, PlayerbotAI* ai);
+        // twow-repo#517 stage b (Enable && PlayerFill && BotOnlyCleanup, follow-up D with OB-20): a battleground started
+        // for the fill without a real player for BotOnlyGraceSeconds after IN_PROGRESS is emptied - every manager bot of
+        // both sides leaves until the core deletes it, without EndBattleGround (no rewards for bots). All three bounded by
+        // the started-for-fill instances, pruned once the core no longer holds the instance, cleared while it is off.
+        std::map<std::pair<uint32, uint32>, uint32> bgFillNoRealSince;   // (bg type, instance) -> no real player since (ms)
+        std::set<std::pair<uint32, uint32>> bgFillBotOnlyEnding;          // (bg type, instance) whose manager bots leave
+        // (bg type, instance) whose grace ran out, until the core has deleted it (or a real player is still inside at
+        // its end): true once its [BGBotOnlyEnd] line is written
+        std::map<std::pair<uint32, uint32>, bool> bgFillBotOnlyWatch;
+        void WatchBotOnlyBgs(uint32 nowMs);
+        void LeaveBotOnlyBg();
+        bool IsBotOnlyInvite(Player* bot, uint32 bgTypeId) const;   // invited into a watched (emptied) instance
+        // (bg type, entry bracket) -> smallest waiting real-player entry per side (0 = none), read live
+        void CollectBgFillWaiting(std::map<std::pair<uint32, uint32>, std::array<uint32, 2>>& waiting) const;
+        // twow-repo#517 stage c (Enable && Announce && Announce.IntervalMinutes && MaxConcurrent; owner contract and C0
+        // 16.10.): announced bot-own battlegrounds. World thread only (CheckBgFill). Bounded: the due lines by one
+        // announcement (ai::bgfill::MaxAnnounceDue), the plan by one match (at most 2 x min candidates per side), the
+        // cooldowns by the bots that announced within BotCooldownMinutes, the type history by ai::bgfill::OwnTypeHistory.
+        struct BgAnnounceDue
+        {
+            uint32 guid = 0;
+            uint32 dueMs = 0;
+            uint32 team = 0;        // 0 Alliance, 1 Horde: the faction the line speaks for (its pool)
+            std::string text;
+        };
+        std::vector<BgAnnounceDue> bgAnnounceDue;        // announcement lines not said yet, drained only in CheckBgFill
+        struct BgOwnPlan
+        {
+            uint32 queueType = 0;   // 0 = no announced match waits
+            uint32 bgTypeId = 0;
+            uint32 bracket = 0;
+            uint32 band = 0;        // level range (ai::bgfill::LevelBand)
+            uint32 queueAtMs = 0;   // announcement + DelaySeconds
+            std::array<std::vector<uint32>, 2> candidates;   // free roster bots per side at the announcement, announcers first
+            std::array<uint32, 2> real = { 0, 0 };            // real players' entries of that queue and bracket (last scan)
+            // Per faction (owner D3, review c4): chat lines really said (DrainBgAnnounce) and whether the server message
+            // reached it (mode 1, or the mode-2 fallback for a faction none of whose lines was said). A faction with
+            // neither: no queue (ai::bgfill::AnnounceSidesMissing).
+            std::array<uint32, 2> said = { 0, 0 };
+            std::array<bool, 2> server = { false, false };
+            bool fallbackTried = false;   // the mode-2 fallback is tried once per plan
+        };
+        BgOwnPlan bgOwnPlan;
+        // (bg type, instance) -> level range of every instance a bot-own match started, from the accept on until the core
+        // no longer holds it or it ended (PruneBgOwnInstances): an own instance stays own after its own bots are gone, so
+        // the bot-only cleanup never drains it. Bounded by MaxConcurrent.
+        std::map<std::pair<uint32, uint32>, uint32> bgOwnInstances;
+        uint32 lastBgOwnPlanMs = 0;
+        uint32 bgOwnRotate = 0;                          // guid the planner's candidate loop stopped at
+        std::vector<uint32> bgOwnTypes;                  // started queue types, oldest first
+        std::map<uint32, uint32> bgAnnounceCooldown;     // announcer guid -> its announcement (ms)
+        uint32 bgAnnounceHourStart = 0;                  // MaxPerHour window
+        uint32 bgAnnounceHourLines = 0;
+        bool BgOwnEnabled() const;
+        void PlanBgOwn(uint32 nowMs);
+        void QueueBgOwn(uint32 nowMs);
+        void DrainBgAnnounce(uint32 nowMs);
+        bool IsBgAnnouncerFit(Player* bot) const;
+        uint32 BgOwnBand(uint32 bgTypeId, uint32 bracket) const;
+        std::string BgAnnounceLevelRange(uint32 bgTypeId, uint32 bracket) const;   // owner Q2: "lo-hi", empty = none
+        void CountBgOwnPerBand(std::map<uint32, uint32>& perBand) const;
+        void PruneBgOwnInstances();
+        // (bg type, bracket) of every running battleground with a free slot - the core tops those up from the queue first
+        void CollectBgFreeSlotBrackets(std::set<std::pair<uint32, uint32>>& freeSlots) const;
+        void BuildBgAnnouncePool(uint32 queueType, std::array<std::vector<std::string>, 2>& pool) const;
+        uint32 SendBgAnnounceServer(uint32 queueType, uint32 bgTypeId, uint32 bracket, std::array<std::vector<std::string>, 2> const& pool,
+            uint32 sides);
         // #421 C: spawn points of the rescue anchor NPCs, looked up once.
         std::map<uint32, std::vector<WorldLocation>> questRescueAnchors;
         std::map<Team, std::map<BattleGroundTypeId, std::list<uint32> > > BattleMastersCache;

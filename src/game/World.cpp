@@ -57,6 +57,7 @@
 #include "GameEventMgr.h"
 #include "PoolManager.h"
 #include "Database/DatabaseImpl.h"
+#include "Database/SqlOperations.h"  // twow-repo#597 (TICK-01): SqlResultQueue::SetSlowCallbackMs
 #include "GridNotifiersImpl.h"
 #include "CellImpl.h"
 #include "MapPersistentStateMgr.h"
@@ -1023,6 +1024,10 @@ void World::LoadConfigSettings(bool reload)
 
     LoadConfigSettingsCommonPart(reload);
 
+    // twow-repo#597 (TICK-01): Log.AsyncSink (default 0 = synchronous log). Started here at startup;
+    // a reload can only switch it off (drain, then synchronous).
+    sLog.ApplyAsyncSinkConfig(reload);
+
     ScriptRegistry<WorldScript>::ForEachEnabledHook(WORLDHOOK_ON_AFTER_CONFIG_LOAD, [&](WorldScript* script)
     {
         script->OnAfterConfigLoad(reload);
@@ -1194,11 +1199,19 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfig(CONFIG_UINT32_LOGIN_QUEUE_GRACE_PERIOD_SECS, "LoginQueue.GracePeriodSecs", 0);
     setConfig(CONFIG_UINT32_CHARACTER_SCREEN_MAX_IDLE_TIME, "CharacterScreenMaxIdleTime", 0);
     setConfig(CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT, "AsyncQueriesTickTimeout", 0);
+    // twow-repo#597 (TICK-01): time budget of the thread-unsafe async query callbacks of one result queue
+    // pass (0 = none, today's loop). SqlOperations cannot read the world config: hand it over (also on a reload).
+    setConfig(CONFIG_UINT32_ASYNC_QUERIES_UNSAFE_BUDGET_MS, "AsyncQueries.UnsafeBudgetMs", 0);
+    SqlResultQueue::SetUnsafeBudgetMs(getConfig(CONFIG_UINT32_ASYNC_QUERIES_UNSAFE_BUDGET_MS));
     setConfigMinMax(CONFIG_UINT32_COMPRESSION, "Compression", 1, 1, 9);
     setConfig(CONFIG_BOOL_ADDON_CHANNEL, "AddonChannel", true);
     setConfig(CONFIG_BOOL_CLEAN_CHARACTER_DB, "CleanCharacterDB", true);
     setConfig(CONFIG_BOOL_GRID_UNLOAD, "GridUnload", true);
     setConfig(CONFIG_BOOL_CLEANUP_TERRAIN, "CleanupTerrain", true);
+    // twow-repo#597 (TICK-01): idle time and per-tick cap of the CleanupTerrain pass (TerrainCleanupPolicy.h);
+    // both 0 = today. Latched per tick by TerrainManager::Update, so a config reload takes effect.
+    setConfigMinMax(CONFIG_UINT32_TERRAIN_CLEANUP_IDLE_MINUTES, "TerrainCleanup.IdleMinutes", 0, 0, 1440);
+    setConfig(CONFIG_UINT32_TERRAIN_CLEANUP_MAX_GRIDS_PER_TICK, "TerrainCleanup.MaxGridsPerTick", 0);
     setConfig(CONFIG_BOOL_MMAP_TILE_UNLOAD, "MMapTileUnload", false);
     // twow-repo#290 (owner 2026-09-26): every quest can be shared, for all
     // players. Applied to the quest templates at load (restart after a change).
@@ -1528,6 +1541,19 @@ void World::LoadConfigSettingsFromFile(bool reload)
     // twow-repo#592 (PATH-02): ticks over 20 and 50 ms on the same line. Off by default; off, the
     // line stays byte-identical.
     setConfig(CONFIG_BOOL_PERFLOG_TICK_STATS_EXTENDED, "PerformanceLog.TickStatsExtended", false);
+    // twow-repo#597 (TICK-01): core tick diagnostics, each off by default (0); off = same behaviour,
+    // same log lines, no extra clock read in a hot path.
+    setConfig(CONFIG_UINT32_PERFLOG_WORLD_TICK_SLOW_MS, "PerformanceLog.WorldTickSlowMs", 0);
+    setConfig(CONFIG_BOOL_PERFLOG_TERRAIN_TRACE, "PerformanceLog.TerrainTrace", false);
+    setConfig(CONFIG_UINT32_PERFLOG_STALL_WATCH_MS, "PerformanceLog.StallWatchMs", 0);
+    setConfig(CONFIG_BOOL_PERFLOG_LOG_WRITE_TRACE, "PerformanceLog.LogWriteTrace", false);
+    setConfig(CONFIG_UINT32_PERFLOG_SLOW_RESULT_CALLBACK_MS, "PerformanceLog.SlowResultCallbackMs", 0);
+    setConfig(CONFIG_BOOL_PERFLOG_MAP_TICK_REGION, "PerformanceLog.MapTickRegion", false);
+    // Log.cpp, SqlOperations.cpp and the watchdog thread cannot read the world config: hand the
+    // switches over (also on a reload).
+    sLog.SetLogWriteTrace(getConfig(CONFIG_BOOL_PERFLOG_LOG_WRITE_TRACE));
+    SqlResultQueue::SetSlowCallbackMs(getConfig(CONFIG_UINT32_PERFLOG_SLOW_RESULT_CALLBACK_MS));
+    World::SetStallWatch(getConfig(CONFIG_UINT32_PERFLOG_STALL_WATCH_MS) != 0);
     setConfig(CONFIG_UINT32_LOG_MONEY_TRADES_TRESHOLD, "LogMoneyTreshold", 10000);
 
     setConfig(CONFIG_FLOAT_DYN_RESPAWN_CHECK_RANGE, "DynamicRespawn.Range", -1.0f);
@@ -2899,6 +2925,14 @@ void World::Update(uint32 diff)
     XScopeStatTimer ScopeStatTimer(sPerfMonitor.WorldTick);
     // twow-repo#541: latched once per tick so a tick is measured completely or not at all.
     m_worldTickOn = getConfig(CONFIG_BOOL_PERFLOG_WORLD_TICK);
+    // twow-repo#597 (TICK-01): [WorldTickSlow] needs the #541 phase clocks of every tick, also without
+    // the [WorldTick] minute block; [StallWatch] gets the part the world thread is in. Latched as above.
+    m_worldTickWindowOn = m_worldTickOn;
+    m_worldTickSlowMs = getConfig(CONFIG_UINT32_PERFLOG_WORLD_TICK_SLOW_MS);
+    if (m_worldTickSlowMs)
+        m_worldTickOn = true;
+    m_stallWatchOn = StallWatchOn();
+    TickPartsBegin();
 
     ///- Update the different timers
     for (auto& timer : m_timers)
@@ -2916,12 +2950,14 @@ void World::Update(uint32 diff)
     sMassMailMgr.Update();
 
     /// <ul><li> Handle auctions when the timer has passed
+    TickPart(world_tick_slow::RAh);
     if (m_timers[WUPDATE_AUCTIONS].Passed())
     {
         m_timers[WUPDATE_AUCTIONS].Reset();
         ///- Handle expired auctions
         sAuctionMgr.Update();
     }
+    TickPart(world_tick_slow::RPre);
 
     if (m_timers[WUPDATE_TOTAL_MONEY].Passed())
     {
@@ -2939,11 +2975,13 @@ void World::Update(uint32 diff)
     }
 
     /// <li> Handle session updates
+    TickPart(world_tick_slow::Sessions);
     uint64 const sessionsStartUs = m_worldTickOn ? WorldTickNowUs() : 0;
     UpdateSessions(diff);
     if (m_worldTickOn)
         WorldTickAdd(world_tick::Sessions, WorldTickNowUs() - sessionsStartUs);
     m_canProcessAsyncPackets = true;
+    TickPart(world_tick_slow::RDispatch);
 
     /// <li> Update uptime table
     if (m_timers[WUPDATE_UPTIME].Passed())
@@ -2976,17 +3014,27 @@ void World::Update(uint32 diff)
     lock.unlock();
 
     // twow-repo#541: everything here but sMapMgr (which times its own phases) counts as "managers".
+    TickPart(world_tick_slow::MgrTransport);
     uint64 const managersStartUs = m_worldTickOn ? WorldTickNowUs() : 0;
     sTransportMgr.Update(diff);
+    TickPart(world_tick_slow::Maps);
     uint64 const mapMgrStartUs = m_worldTickOn ? WorldTickNowUs() : 0;
     sMapMgr.Update(diff);
     uint64 const mapMgrEndUs = m_worldTickOn ? WorldTickNowUs() : 0;
+    // twow-repo#597 (TICK-01): the managers one by one for [WorldTickSlow] (mgr_*).
+    TickPart(world_tick_slow::MgrBg);
     sBattleGroundMgr.Update(diff);
+    TickPart(world_tick_slow::MgrLfg);
     sLFGMgr.Update(diff);
+    TickPart(world_tick_slow::MgrLft);
     sLFTMgr.Update(diff);
+    TickPart(world_tick_slow::MgrGuard);
     sGuardMgr.Update(diff);
+    TickPart(world_tick_slow::MgrZone);
     sZoneScriptMgr.Update(diff);
+    TickPart(world_tick_slow::MgrDynVis);
     sDynamicVisMgr.UpdateVisibility(diff);
+    TickPart(world_tick_slow::MgrEluna);
 
 #ifdef ENABLE_ELUNA
     if (Eluna* eluna = GetEluna())
@@ -2998,6 +3046,7 @@ void World::Update(uint32 diff)
 
 
     ///- Update groups with offline leaders
+    TickPart(world_tick_slow::MgrOffline);
     if (m_timers[WUPDATE_GROUPS].Passed())
     {
         m_timers[WUPDATE_GROUPS].Reset();
@@ -3008,6 +3057,7 @@ void World::Update(uint32 diff)
         }
     }
 
+    TickPart(world_tick_slow::AsyncTasks);
     uint64 const managersEndUs = m_worldTickOn ? WorldTickNowUs() : 0;
     if (m_worldTickOn)
         WorldTickAdd(world_tick::Managers, (mapMgrStartUs - managersStartUs) + (managersEndUs - mapMgrEndUs));
@@ -3017,12 +3067,14 @@ void World::Update(uint32 diff)
         job.wait();
     if (m_worldTickOn)
         WorldTickAdd(world_tick::AsyncTasks, WorldTickNowUs() - managersEndUs);
+    TickPart(world_tick_slow::ROther);
 
     updateMapSystemTime = WorldTimer::getMSTimeDiffToNow(updateMapSystemTime);
     if (getConfig(CONFIG_UINT32_PERFLOG_SLOW_MAPSYSTEM_UPDATE) && updateMapSystemTime > getConfig(CONFIG_UINT32_PERFLOG_SLOW_MAPSYSTEM_UPDATE))
         sLog.out(LOG_PERFORMANCE, "Update map system: %ums [%ums for async]", updateMapSystemTime, WorldTimer::getMSTimeDiffToNow(asyncWaitBegin));
 
     ///- Sauvegarde des variables internes (table variables) : MaJ par rapport a la DB
+    TickPart(world_tick_slow::RSaveVars);
     if (m_timers[WUPDATE_SAVE_VAR].Passed())
     {
         m_timers[WUPDATE_SAVE_VAR].Reset();
@@ -3032,16 +3084,19 @@ void World::Update(uint32 diff)
     }
 
     // execute callbacks from sql queries that were queued recently
+    TickPart(world_tick_slow::Results);
     uint32 asyncQueriesTime = WorldTimer::getMSTime();
     uint64 const resultsStartUs = m_worldTickOn ? WorldTickNowUs() : 0;
     UpdateResultQueue();
     if (m_worldTickOn)
         WorldTickAdd(world_tick::Results, WorldTickNowUs() - resultsStartUs);
+    TickPart(world_tick_slow::ROther);
     asyncQueriesTime = WorldTimer::getMSTimeDiffToNow(asyncQueriesTime);
     if (getConfig(CONFIG_UINT32_PERFLOG_SLOW_ASYNC_QUERIES) && asyncQueriesTime > getConfig(CONFIG_UINT32_PERFLOG_SLOW_ASYNC_QUERIES))
         sLog.out(LOG_PERFORMANCE, "Update async queries: %ums", asyncQueriesTime);
 
     ///- Erase old corpses
+    TickPart(world_tick_slow::RCorpses);
     if (m_timers[WUPDATE_CORPSES].Passed())
     {
         m_timers[WUPDATE_CORPSES].Reset();
@@ -3050,6 +3105,7 @@ void World::Update(uint32 diff)
     }
 
     ///- Process Game events when necessary
+    TickPart(world_tick_slow::REvents);
     if (m_timers[WUPDATE_EVENTS].Passed())
     {
         m_timers[WUPDATE_EVENTS].Reset();                   // to give time for Update() to be processed
@@ -3057,6 +3113,7 @@ void World::Update(uint32 diff)
         m_timers[WUPDATE_EVENTS].SetInterval(nextGameEvent);
         m_timers[WUPDATE_EVENTS].Reset();
     }
+    TickPart(world_tick_slow::ROther);
 
     if (m_timers[WUPDATE_CENSUS].Passed())
     {
@@ -3117,10 +3174,13 @@ void World::Update(uint32 diff)
 
     /// </ul>
     ///- Move all creatures with "delayed move" and remove and delete all objects with "delayed remove"
+    TickPart(world_tick_slow::RRemove);
     sMapMgr.RemoveAllObjectsInRemoveList();
 
     // update the instance reset times
+    TickPart(world_tick_slow::RMps);
     sMapPersistentStateMgr.Update();
+    TickPart(world_tick_slow::ROther);
 
     /// Maintenance checker
     if (m_MaintenanceTimeChecker < diff)
@@ -3185,7 +3245,9 @@ void World::Update(uint32 diff)
     }
 
     // Update liste des ban si besoin
+    TickPart(world_tick_slow::RAccount);
     sAccountMgr.Update(diff);
+    TickPart(world_tick_slow::ROther);
 
     sDailyQuestHandler.Update(diff);
 
@@ -3199,13 +3261,17 @@ void World::Update(uint32 diff)
         m_dynamicRespawnRatio = 1.f;
 
     // And last, but not least handle the issued cli commands
+    TickPart(world_tick_slow::RCli);
     ProcessCliCommands();
 
     //cleanup unused GridMap objects as well as VMaps
+    TickPart(world_tick_slow::RTerrain);
     if (getConfig(CONFIG_BOOL_CLEANUP_TERRAIN))
         sTerrainMgr.Update(diff);
 
+    TickPart(world_tick_slow::RGuild);
 	sGuildMgr.Update(diff);
+    TickPart(world_tick_slow::ROther);
 
     if (!m_ShutdownTimer && !m_stopEvent &&
         getConfig(CONFIG_UINT32_AUTO_RESTART_MAX_SERVER_UPTIME) &&
@@ -3224,10 +3290,12 @@ void World::Update(uint32 diff)
     // acted before UpdateSessions, sMapMgr, sBattleGroundMgr and sLFTMgr had
     // run, so it saw the previous tick. This is where AzerothCore fires it, and
     // where the bot tick used to sit.
+    TickPart(world_tick_slow::RHook);
     ScriptRegistry<WorldScript>::ForEachEnabledHook(WORLDHOOK_ON_UPDATE, [&](WorldScript* script)
     {
         script->OnUpdate(diff);
     });
+    TickPart(world_tick_slow::Idle);  // twow-repo#597: closes r_hook
 }
 
 /// Send a packet to all players (except self if mentioned)
@@ -4085,6 +4153,35 @@ void World::UpdateResultQueue()
     CharacterDatabase.ProcessResultQueue(getConfig(CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT));
     WorldDatabase.ProcessResultQueue(getConfig(CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT));
     LoginDatabase.ProcessResultQueue(getConfig(CONFIG_UINT32_ASYNC_QUERIES_TICK_TIMEOUT));
+    // twow-repo#597 (TICK-01): the [UnsafeBudget] minute line of AsyncQueries.UnsafeBudgetMs (0 = one config read).
+    UnsafeBudgetMinute();
+}
+
+// twow-repo#597 (TICK-01, AsyncQueries.UnsafeBudgetMs): once a minute while the budget is on,
+// "[UnsafeBudget] calls_capped=<n> deferred_max=<n> ran=<n> loop_max_ms=<x>" over the three result queues
+// processed above. Written here, next to the queues it describes, on the world thread: the budget is a
+// behaviour switch of its own and keeps its own window (TickDiagMinute serves the PerformanceLog.* lines).
+// Off: no clock read; a switch-on starts with fresh counters.
+void World::UnsafeBudgetMinute()
+{
+    if (!getConfig(CONFIG_UINT32_ASYNC_QUERIES_UNSAFE_BUDGET_MS))
+    {
+        m_unsafeBudgetMinuteStart = std::chrono::steady_clock::time_point{};
+        return;
+    }
+
+    auto const now = std::chrono::steady_clock::now();
+    if (m_unsafeBudgetMinuteStart == std::chrono::steady_clock::time_point{})
+    {
+        // The first window starts now; counters gathered before (an earlier switch-on) are reset, not reported.
+        m_unsafeBudgetMinuteStart = now;
+        SqlResultQueue::ReportUnsafeBudget(false);
+        return;
+    }
+    if (now - m_unsafeBudgetMinuteStart < std::chrono::seconds(60))
+        return;
+    m_unsafeBudgetMinuteStart = now;
+    SqlResultQueue::ReportUnsafeBudget(true);
 }
 
 void World::UpdateRealmCharCount(uint32 accountId)
@@ -5411,9 +5508,32 @@ void World::DeleteOldPDumps()
 // one block per minute into the performance log. World thread only.
 void World::WorldTickEnd(uint64 updateUs, uint64 sleepUs)
 {
+    // twow-repo#597 (TICK-01): minute lines of TerrainTrace / LogWriteTrace / MapTickRegion (own switches).
+    TickDiagMinute();
+    // twow-repo#597 (TICK-01, Log.AsyncSink): the [LogSink] minute line; sink off = one atomic load.
+    sLog.AsyncSinkMinute();
+
     if (!m_worldTickOn)
     {
         // Switched off (possibly by a reload): start the next window clean.
+        if (m_worldTick.Ticks() || m_mapTick.Ticks())
+        {
+            m_worldTick.Clear();
+            m_mapTick.Clear();
+        }
+        m_worldTickWindowStart = std::chrono::steady_clock::time_point{};
+        return;
+    }
+
+    // twow-repo#597 (TICK-01, PerformanceLog.WorldTickSlowMs): the closed tick is read before it goes
+    // into the minute window; with the clocks on for [WorldTickSlow] only, it goes nowhere.
+    m_worldTick.CloseTick(updateUs, sleepUs);
+    if (world_tick_slow::IsSlow(updateUs, m_worldTickSlowMs))
+        LogWorldTickSlow(updateUs);
+    m_tickParts.Clear();
+    if (!m_worldTickWindowOn)
+    {
+        m_worldTick.DropTick();
         if (m_worldTick.Ticks() || m_mapTick.Ticks())
         {
             m_worldTick.Clear();
@@ -5427,7 +5547,7 @@ void World::WorldTickEnd(uint64 updateUs, uint64 sleepUs)
     if (m_worldTickWindowStart == std::chrono::steady_clock::time_point{})
         m_worldTickWindowStart = now;
 
-    m_worldTick.EndTick(updateUs, sleepUs);
+    m_worldTick.PushTick();
 
     uint32 const windowMs = uint32(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_worldTickWindowStart).count());
     if (windowMs < 60 * IN_MILLISECONDS)
@@ -5437,6 +5557,119 @@ void World::WorldTickEnd(uint64 updateUs, uint64 sleepUs)
     m_worldTick.Clear();
     m_mapTick.Clear();
     m_worldTickWindowStart = now;
+}
+
+// twow-repo#597 (TICK-01, PerformanceLog.WorldTickSlowMs): start timing the parts of this tick. With
+// PerformanceLog.StallWatchMs the watchdog sees the first part. World thread only.
+void World::TickPartsBegin()
+{
+    if (m_worldTickSlowMs)
+    {
+        m_tickParts.Clear();
+        m_tickPartStartUs = WorldTickNowUs();
+        m_tickPart = world_tick_slow::RPre;
+    }
+    if (m_stallWatchOn)
+        s_stallPart.store(uint32(world_tick_slow::RPre), std::memory_order_relaxed);
+}
+
+// twow-repo#597 (TICK-01): one [WorldTickSlow] line for a tick at or above the threshold, at most 60
+// a minute; the lines held back are counted and reported as dropped= on the next line.
+void World::LogWorldTickSlow(uint64 updateUs)
+{
+    if (!m_worldTickSlowLimiter.Allow(WorldTickNowUs() / 1000))
+        return;
+    std::string const line = world_tick_slow::FormatLine(uint32(m_worldLoopCounter), updateUs, m_worldTick.tick, m_tickParts,
+        m_worldTickSlowLimiter.TakeDropped());
+    sLog.out(LOG_PERFORMANCE, "%s", line.c_str());
+}
+
+// twow-repo#597 (TICK-01): the minute lines of the diagnostics outside the [WorldTick] window -
+// [TerrainReload] (PerformanceLog.TerrainTrace), [LogWait] (PerformanceLog.LogWriteTrace) and
+// [MapTickRegion] (PerformanceLog.MapTickRegion). All off: three config reads, no clock read.
+void World::TickDiagMinute()
+{
+    bool const terrain = getConfig(CONFIG_BOOL_PERFLOG_TERRAIN_TRACE);
+    bool const logWait = getConfig(CONFIG_BOOL_PERFLOG_LOG_WRITE_TRACE);
+    bool const region = getConfig(CONFIG_BOOL_PERFLOG_MAP_TICK_REGION);
+    if (!region && !m_regionTrace.Empty())
+        m_regionTrace.Clear();
+    // A TerrainTrace switch-on starts with fresh counters, also while LogWriteTrace or MapTickRegion keeps
+    // the minute window open (loads counted before the last switch-off are not reported as this minute's).
+    if (terrain && !m_terrainTraceWasOn)
+        sTerrainMgr.ReportTerrainReloads(false);
+    m_terrainTraceWasOn = terrain;
+    if (!terrain && !logWait && !region)
+    {
+        m_tickDiagMinuteStart = std::chrono::steady_clock::time_point{};
+        return;
+    }
+
+    auto const now = std::chrono::steady_clock::now();
+    if (m_tickDiagMinuteStart == std::chrono::steady_clock::time_point{})
+    {
+        // The first window starts now; counters gathered before are reset, not reported (terrain:
+        // above, on its switch-on).
+        m_tickDiagMinuteStart = now;
+        if (logWait)
+            sLog.ReportLogWait(false);
+        m_regionTrace.Clear();
+        return;
+    }
+    if (now - m_tickDiagMinuteStart < std::chrono::seconds(60))
+        return;
+    m_tickDiagMinuteStart = now;
+
+    if (terrain)
+        sTerrainMgr.ReportTerrainReloads(true);
+    if (logWait)
+        sLog.ReportLogWait(true);
+    if (region)
+        LogMapTickRegion();
+    m_regionTrace.Clear();
+}
+
+// twow-repo#597 (TICK-01, PerformanceLog.MapTickRegion): one line per continent region and minute. pre =
+// the region's own work before the barrier, post = its wait at the barrier (incl. extra player updates),
+// extra_overrun_max = how long it stayed after the last region arrived, held_barrier = ticks in which
+// it arrived last (it held the others). Times in ms, avg/p95/max.
+void World::LogMapTickRegion()
+{
+    for (auto& [key, r] : m_regionTrace.regions)
+    {
+        tick_diag::RegionStat const pre = r.Pre();
+        tick_diag::RegionStat const post = r.Post();
+        sLog.out(LOG_PERFORMANCE, "[MapTickRegion] region=%u.%u pre=%.1f/%.1f/%.1f post=%.1f/%.1f/%.1f extra_loops=%llu extra_overrun_max=%.1f held_barrier=%u",
+            uint32(key >> 32), uint32(key & 0xFFFFFFFF), pre.avgUs / 1000.0, pre.p95Us / 1000.0, pre.maxUs / 1000.0,
+            post.avgUs / 1000.0, post.p95Us / 1000.0, post.maxUs / 1000.0, (unsigned long long)r.extraLoops,
+            r.overrunMaxUs / 1000.0, r.heldBarrier);
+    }
+    if (m_regionTrace.overflow)
+        sLog.out(LOG_PERFORMANCE, "[MapTickRegion] regions_over_cap=%llu", (unsigned long long)m_regionTrace.overflow);
+}
+
+// twow-repo#597 (TICK-01, PerformanceLog.StallWatchMs): set from the config (also on a reload). The tick
+// start is reset either way, so the watchdog never reads an age from before the switch changed.
+void World::SetStallWatch(bool on)
+{
+    s_stallWatchOn.store(on, std::memory_order_relaxed);
+    s_stallTickStartUs.store(0, std::memory_order_relaxed);
+    s_stallPart.store(uint32(world_tick_slow::Idle), std::memory_order_relaxed);
+}
+
+namespace
+{
+thread_local bool s_isWorldThread = false;  // twow-repo#597 (TICK-01)
+}
+
+void World::MarkWorldThread()
+{
+    s_isWorldThread = true;
+}
+
+bool World::IsWorldThread()
+{
+    return s_isWorldThread;
 }
 
 void World::LogWorldTickWindow(uint32 windowMs)

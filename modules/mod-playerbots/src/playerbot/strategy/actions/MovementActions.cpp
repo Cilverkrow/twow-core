@@ -23,6 +23,7 @@
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
 #include "playerbot/PathReusePolicy.h"   // twow-repo#541 (L1): Perf.PartialPathReuse
 #include "playerbot/RouteTimePolicy.h"   // twow-repo#592 (PATH-02): Perf.RouteTimeTrace
@@ -1465,6 +1466,9 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 lastMove.farMoveAt = 0;
                 counters.arrived.fetch_add(1, std::memory_order_relaxed);
                 lastMove.farMoveArrivedAt = now;
+                // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): counted only, the teleport below is unchanged.
+                if (sPlayerbotAIConfig.shortcutTrace)
+                    sRandomPlayerbotMgr.CountShortcut(ai::shortcut::Mech::FarMove, bot, arrive.getMapId(), arrive.getX(), arrive.getY(), arrive.getZ());
                 return bot->TeleportTo(arrive.getMapId(), arrive.getX(), arrive.getY(), arrive.getZ(), farStart.getAngleTo(endPos));
             }
         }
@@ -1603,6 +1607,9 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
         {
             time_t now = time(0);
             lastMove.nextTeleport = now + (time_t)MoveDelay(startPos.distance(teleportPosition));
+            // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): the hop (critic C02) counted only, the teleport is unchanged.
+            if (sPlayerbotAIConfig.shortcutTrace)
+                sRandomPlayerbotMgr.CountShortcut(ai::shortcut::Mech::Hop, bot, teleportPosition.getMapId(), teleportPosition.getX(), teleportPosition.getY(), teleportPosition.getZ());
             return bot->TeleportTo(teleportPosition.getMapId(),
                 teleportPosition.getX(),
                 teleportPosition.getY(),

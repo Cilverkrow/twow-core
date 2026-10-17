@@ -43,6 +43,166 @@ AiPlayerbot.RandomBotJoinLfg = 1
 
 # Enable BG/Arena for random Bots
 AiPlayerbot.RandomBotJoinBG = 1
+
+# twow-repo#517 (bots in battlegrounds). All AiPlayerbot.BG.* keys are restart-only: change them and restart the
+# server (.rndbot reload is not supported for them). With Enable = 0 the server runs as without them. With Enable = 1,
+# PlayerFill = 0, SlotRelease = 0, Announce = 0 and BotOnlyHonorRate = 1.0 only the leave of the battleground bots changes
+# (see Enable).
+# Enable: master switch of all BG stages. With Enable = 1 a battleground bot's leave packet carries the real map id, so
+# it really leaves a battleground that is over (it used to stay until the core removed it); invited to another
+# battleground while its own one still runs, it declines that invite instead of leaving. 0 = off (default).
+AiPlayerbot.BG.Enable = 0
+# PlayerFill (stage a, needs Enable = 1 and a persistent roster): when a real player queues for Warsong Gulch, Arathi
+# Basin or Alterac Valley, the bot manager queues free persistent-roster bots of the player's bracket so that both
+# sides reach the battleground's minimum per team and the match starts. Only bots that are alive, not parked, in no
+# group, outside dungeons/raids/battlegrounds, not on a taxi or transport, not in combat or a quest rescue, without a
+# real-player master and without Deserter. A real player who queues with a group, his own bots too, has the same
+# priority as a solo player: the group stays together and counts as a whole toward its side's minimum, and the bots of
+# a real player's group are never taken as free bots. A group larger than a side is not filled. Blood Ring and
+# Sunnyglade Valley are not filled. The bots accept the invite from the manager and get no free repair, money or
+# consumables. A queued bot not invited yet leaves the queue again
+# when it gets busy (parked, grouped, in a dungeon, a quest rescue or a forced trip), when no real player of its bracket
+# waits any more, when its side has more bots than needed, or after 5 minutes without an invite. An invited bot declines
+# only when it got parked, has a real-player master or is in a dungeon or another battleground. Alterac Valley is not
+# filled while Alterac.MinPlayersInQueue is above its minimum per team. 0 = off (default).
+AiPlayerbot.BG.PlayerFill = 0
+# MaxConcurrent: bot battlegrounds at the same time - battlegrounds started for the fill, other battlegrounds holding
+# roster bots, and brackets still forming (fill bots queued, not invited yet). A running battleground the core only
+# topped up with fill bots is not counted unless it holds other roster bots too. 0 = none (default, fail closed);
+# a negative value counts as 0.
+AiPlayerbot.BG.MaxConcurrent = 0
+# CheckIntervalSeconds: how often the manager looks for queued real players. 0 = 30 s (default), minimum 10.
+AiPlayerbot.BG.CheckIntervalSeconds = 0
+# Trace: [BGFill] lines per event (queue, join, accept, cap, skip, leave, return; stage b: pair, topup, reserve,
+# reserve_end, botonly_end, botonly_stop; stage c: announce, own_queue, own_start, honor_rate) and one summary per
+# minute. The [BGSlotRelease] line of a slot release and the [BGAnnounce] lines of an announcement (see Announce) are
+# always written.
+# 0 = off (default).
+AiPlayerbot.BG.Trace = 0
+# SlotRelease (stage b, needs Enable = 1, and in practice PlayerFill = 1, which puts the fill bots into battlegrounds):
+# a real player who has waited SlotReleaseWaitSeconds in the Warsong Gulch, Arathi Basin or Alterac Valley queue
+# without an invite gets into a running battleground of his bracket that holds fill bots. First the pair option: if
+# both sides have a free slot, one free roster bot of the other faction (more while his side is ahead) queues with him
+# for that battleground so the core invites them together; if his side is full and the other side short, one bot goes
+# in alone first. With no pair option (or not enough free bots for it), and only when the core would then invite him
+# alone and does not already, one fill bot of his side leaves - only from a side above the battleground's minimum, never
+# a flag carrier or a dead bot, without Deserter - and the slot is reserved for him until he is invited, leaves the
+# queue or SlotReleaseWaitSeconds pass (one release decision per wait). A real player queued as a group with his own
+# bots has the same priority as a solo player and the group joins whole: the pair option takes as many bots of the
+# other faction as the group has members (all or none, else the release), the release lets up to that many bots of his
+# side leave at once (the side stays at or above the minimum; cut short, it reserves nothing and the next check decides
+# again), and a bot of a real player's group is never released. A group larger than a side, one that may be in the
+# premade queue (PremadeGroupWaitForMatch on and the group at least PremadeQueue.MinGroupSize), or one with a member in
+# another battleground or on a taxi is left to the core queue. While SlotRelease is on, PlayerFill queues bots for a
+# new match only when both sides can be filled. 0 = off (default).
+AiPlayerbot.BG.SlotRelease = 0
+# SlotReleaseWaitSeconds: the player's wait before the pair or the release, and how long a released slot stays
+# reserved. 0 = 60 s (default), minimum 15; a negative value counts as 0.
+AiPlayerbot.BG.SlotReleaseWaitSeconds = 0
+# BotOnlyCleanup (needs Enable = 1 and PlayerFill = 1; without PlayerFill it does nothing, bot-only battlegrounds only
+# come from the fill): a battleground started for the fill that has run BotOnlyGraceSeconds without a real player is
+# emptied - the bot manager's bots leave it, both sides, at most two per update, without Deserter - until nobody is
+# inside and no invite is open; the core then deletes it. It does not end through a win or the PrematureFinish
+# countdown, so no marks, experience or honor go to bots. Should such a battleground end anyway (a win, or the countdown
+# while the end waits), one line is written for it, always (not behind Trace):
+# [BGBotOnlyEnd] bg=<map>,<instance> winner=<A|H|none> bots=<bots still inside>. 1 = on (default); 0, or any value but
+# 1, true, TRUE, yes or YES = off: nothing of the cleanup runs. A bot queued for another match that the core invites
+# into a battleground being emptied declines that invite.
+AiPlayerbot.BG.BotOnlyCleanup = 1
+# BotOnlyGraceSeconds: how long a battleground started for the fill may run without a real player before BotOnlyCleanup
+# empties it. An open invite, a player inside who is not a bot, or a bot of a real player's group inside (it never
+# leaves) pauses that: before the grace has run out it starts
+# again once he is gone; once the emptying is due, it goes on at the next check after he is gone, without a new grace.
+# A real player waiting uninvited for that battleground and bracket does not keep it, but the bots leave so that the
+# core does not invite him into it; when no bot can leave that way, the end waits at most one more BotOnlyGraceSeconds.
+# 0 = 120 s (default), minimum 60; a negative value counts as 0.
+AiPlayerbot.BG.BotOnlyGraceSeconds = 0
+# BotOnlyHonorRate (stage c, needs Enable = 1): honor factor for a bot in a battleground without a real player inside -
+# bonus honor and kill honor, so its rank points (credited from honor) scale too. Marks, the kill count, experience and
+# reputation stay normal. With a real player inside everybody gets the normal honor, and real players always get it,
+# also for killing bots. Only a reduction: a value of 0 or less, or above 1.0, counts as 1.0. The live owner value is
+# 0.5. With Trace = 1 each scaled gain writes [BGFill] state=honor_rate. 1.0 = unchanged (default).
+AiPlayerbot.BG.BotOnlyHonorRate = 1.0
+# Announce (stage c, needs Enable = 1, Announce.IntervalMinutes > 0, MaxConcurrent > 0 and Announce.MaxPerHour >= 2, and
+# a persistent roster): bots play a battleground by themselves, but only an announced one. Every IntervalMinutes the bot
+# manager picks Warsong Gulch, Arathi Basin or Alterac Valley (the type started last comes last; Blood Ring and
+# Sunnyglade Valley never) and a bracket where both factions have enough free roster bots for the battleground's minimum
+# plus their announcers (the same bots PlayerFill would take). A type and bracket that already has a running match with
+# free slots is left out (the core would put the bots into that match first). 2 (WSG), 3 (AB) or 5 (AV) of those bots,
+# alternating Alliance and Horde and at least one of each faction, each say one line of their faction's pool in the
+# World channel, 2-15 s apart; DelaySeconds after the announcement both sides queue the minimum, so real players can
+# queue too (a real player who queued is counted, only the rest are queued). If by then a faction had no line of its
+# own really said (its announcers got busy) and no server message reached it, or a side no longer has enough free bots,
+# nobody queues: each faction is called or nobody plays. These
+# battlegrounds count against MaxConcurrent and MaxBotBGPerBracket, the bots are fill bots (a waiting real player gets
+# in through SlotRelease) and BotOnlyCleanup never empties them. The World channel reaches every level, but the match is
+# for one bracket: a player of another level who answers the call gets a match only through PlayerFill, so Announce is
+# meant to run with PlayerFill = 1. Always written, not behind Trace, and bounded by the plans (MaxPerHour), are these
+# [BGAnnounce] lines (<type> is the numeric battleground type id):
+#   [BGAnnounce] bg=<type> bracket=<n> bots=<announcers> mode=chat|server lines=<n>
+#     the plan line: one per announcement; lines = the chat lines planned, or the server texts sent (one per faction).
+#   [BGAnnounce] bg=<type> bracket=<n> bots=0 mode=server lines=<n> side=A|H|both
+#     Mode 2 only, after the last chat line was due: the server message to the faction(s) none of whose lines was said.
+#   [BGAnnounce] bg=<type> bracket=<n> bots=0 mode=chat lines=0 reason=unannounced side=A|H|both
+#     at the queue time: that faction (or both) had no line said and no server message, so nobody queues.
+#   [BGAnnounce] bg=<type> bracket=<n> bots=0 mode=chat|server lines=0 reason=freeslots
+#     at the queue time: a running match of that type and bracket with a free slot took the call (usually the PlayerFill
+#     match of a real player who answered it), so no bot-own match forms.
+# One plan can write up to three of them: the plan line first, then the fallback line at most once, then at most one of
+# the two lines=0 lines. The plan lines (neither side= nor reason=) count the announcements. 0 = off (default).
+AiPlayerbot.BG.Announce = 0
+# Announce.IntervalMinutes: at most one announced bot-own battleground per interval. 0 = none (default), at most 1440;
+# a negative value counts as 0.
+AiPlayerbot.BG.Announce.IntervalMinutes = 0
+# MaxBotBGPerBracket: bot-own battlegrounds running or forming at the same time per level range, over Warsong Gulch,
+# Arathi Basin and Alterac Valley together (the level range of a bracket: WSG and AB 60 and AV 51-60 are one range).
+# 0 = 1 (default; the owner value for a start); a negative value counts as 0.
+AiPlayerbot.BG.MaxBotBGPerBracket = 0
+# Announce.Mode: 0 = chat in the World channel (default), 1 = a server message instead, 2 = chat, and the server message
+# when no announcer qualifies; when the chat lines of one faction all dropped (its announcers got busy before their lines
+# were due), that faction alone gets the server message after the last line was due (both factions if none was said).
+# The server message goes only to real players of that faction whose level is in the bracket. Any other value is 0.
+AiPlayerbot.BG.Announce.Mode = 0
+# Announce.DelaySeconds: time between the announcement and the bots' queue join. 0 = 60 s (default), minimum 20,
+# at most 3600; a negative value counts as 0.
+AiPlayerbot.BG.Announce.DelaySeconds = 0
+# Announce.BotCooldownMinutes: a bot announces at most once per this many minutes. 0 = 60 (default), at most 1440;
+# a negative value counts as 0.
+AiPlayerbot.BG.Announce.BotCooldownMinutes = 0
+# Announce.MaxPerHour: cap on announcement lines (chat lines and server messages) per hour window. The window starts at
+# the first announcement try and the first try after 60 minutes starts the next one (a clock window, not a sliding
+# hour: two windows back to back can carry up to 2 x MaxPerHour lines within 60 minutes). 0 = no line at all
+# (default, fail closed) - and so no bot-own battleground either; a negative value counts as 0. Every announcement
+# needs room for 2 lines (one per faction), so a value below 2 means no announcement and no bot-own battleground: 1
+# counts as 0 (startup warning [BGAnnounceCfg] state=maxperhour_clamp).
+AiPlayerbot.BG.Announce.MaxPerHour = 0
+# Announce.Text.Alliance / Announce.Text.Horde: the faction's generic lines, separated by |; %bg is the full battleground
+# name (Warsong Gulch, Arathi Basin, Alterac Valley). Announce.Text.<faction>.WSG / .AB / .AV: lines for that
+# battleground only, merged with the generic ones. Each key empty = its built-in pool (English, role-play, with lines
+# like "For the Alliance! Join us in %bg!", "Lok'tar! The Horde gathers at %bg, who stands with us?" and, for Alliance AV,
+# "Stormpike needs you, to Alterac!"). %lvl is the level range of the announced bracket (see Announce.ShowLevelRange),
+# put in whatever ShowLevelRange says. Printable ASCII only; a line with other characters, or longer than 255 bytes with
+# the battleground name and the level range put in (a %lvl counts as 7 bytes, 999-999), is dropped at startup with a
+# warning ([BGAnnounceCfg] state=pool_drop); a key left with no line at all falls back to its built-in pool. At most 64
+# lines per key. A line in both the generic and the battleground key counts once; the same line is never said twice in
+# one announcement.
+AiPlayerbot.BG.Announce.Text.Alliance = ""
+AiPlayerbot.BG.Announce.Text.Horde = ""
+AiPlayerbot.BG.Announce.Text.Alliance.WSG = ""
+AiPlayerbot.BG.Announce.Text.Alliance.AB = ""
+AiPlayerbot.BG.Announce.Text.Alliance.AV = ""
+AiPlayerbot.BG.Announce.Text.Horde.WSG = ""
+AiPlayerbot.BG.Announce.Text.Horde.AB = ""
+AiPlayerbot.BG.Announce.Text.Horde.AV = ""
+# Announce.ShowLevelRange (owner 17.10.): 1 = every announcement line, chat and server message alike, names the level
+# range of the announced bracket as "lo-hi": the levels the core forms that bracket's match with, the top capped at the
+# battleground's maximum level (51-60 for Alterac Valley; 50-59, or just 60 at level 60, for Warsong Gulch and Arathi
+# Basin). The range goes right after the first %bg ("For the Alliance! Join us in Warsong Gulch (50-59)!"), in a line
+# without %bg before the closing ! ? . at its end ("Stormpike needs you, to Alterac (51-60)!") or else at its end, and
+# never twice: a line with %lvl, or one that already names the range, gets nothing added. A line the range would push
+# beyond 255 bytes goes out without it. The built-in lines stay as they are; this switch adds the range to them. The
+# live owner value is 1. 0 = the lines as today (default); a %lvl in a line is put in either way.
+AiPlayerbot.BG.Announce.ShowLevelRange = 0
 # twow-repo#541/#551 (console rndbot park / unpark): 1 = a parked bot is not visible to other bots and
 # sees only real players and units fighting it (core Player flag, real players see it as always).
 # Saves the bot-to-bot visibility work at crowded park spots. 0 = off (default).
@@ -64,6 +224,10 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # premade path; 0 = a coin on every check (old).
 AiPlayerbot.Loot.RoleWeights = 0
 AiPlayerbot.Loot.FeralFixedSpec = 1
+# twow-repo#308 EQUIP-FLIP-01: 1 = the equip-upgrade check (every looted weapon or armour piece) takes main and off hand
+# off only when a weapon, shield or held item in the bags is an equip candidate. 0 = on every run, as before (bots took
+# their weapons off and on after every loot). A re-equip of the old main or off hand is no EquipAction event either way.
+AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade = 0
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
@@ -866,7 +1030,8 @@ AiPlayerbot.GrindAvoid.AvoidSeconds = 3600
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
-# Emit one QuestFirst route decision when a quest-travel request is materialized.
+# Emit one QuestFirst route decision when a quest-travel request is materialized. Also logs [QuestSearch]
+# state=grind_none when a quest-first bot's grind search finds nothing (twow-repo#601 S1, also with FailureClasses).
 AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # #303: log a [FollowDiag] snapshot (map, transports, movement generator, chase
 # target, distance, strategies) when a bot of a real player falls back to far
@@ -924,6 +1089,69 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+# twow-repo#601 S1 "latch semantics" (OB-00 / OB-10 17.10.2026). Three separate switches so an A/B can isolate
+# them (arm A1 sets all three to 1); all 0 = today's behaviour. Restart-only. Quest-first roster bots on their
+# own only.
+# FailureClasses = 1: every quest route search that found nothing ([QuestFirstRoute] state=rejected
+# reason=no_active_route_candidate) gets a class from its reject counts, logged as [QuestFailureClass]:
+#   structural  - a turn-in-only request whose takers were all deferred as cross_map (below
+#                 MinLevelForCrossMapQuestRoute) or zone_level, or a turn-in the destination job found no taker
+#                 point for (no spawn, script-only game object, excluded zone): the turn-in is parked at once for
+#                 TurnInParkSeconds ([QuestFirstRoute] state=parked reason=structural_*); the park resets the
+#                 GrindFallbackFailures counter as every TurnInParkFailures park does, so it never counts toward
+#                 grinding;
+#   transient   - turn-in route / death / quest-loop suppression, the local hub filter, a random range skip, a
+#                 stale or resumed list: the route backoff only, the GrindFallbackFailures counter does not grow;
+#   empty_offer - everything else (no giver mark, nothing active, enemy zone, danger map, mixed reasons): counts as
+#                 before (until a later stage adds the step to the next level band).
+# Also with FailureClasses = 1: a request is turn-in-only only for a taker checked first ([QuestTakerCheck]:
+# reachable, not on the other continent below MinLevelForCrossMapQuestRoute, not in a zone clearly above the bot,
+# not suppressed, active); a taker that fails the check for a structural reason is parked at once, otherwise the
+# request runs the normal quest giver / objective fetch. The grind fallback waits while a checked open turn-in
+# (or one finished since the last request) waits, as gathering does since hotfix 8.5. The local quest hub
+# pre-check skips the same suppressed candidates as the main loop, and no random range skip happens while the
+# hub filter is on. [QuestSearch] state=grind_none when a grind search finds nothing (also with
+# TraceTravelDecisions = 1). The parks need TurnInParkFailures > 0 (parking on); with 0 nothing is parked and a
+# structural failure counts as before.
+AiPlayerbot.QuestFirstProgression.FailureClasses = 0
+# TransientCountsAfter (acts only with FailureClasses = 1; S1 review, the value is OB-10's decision): 0 = a transient
+# rejection never counts toward GrindFallbackFailures (OB-10 17.10.2026). N > 0: the N-th transient rejection in a row
+# (no other class and no route found in between) counts once and the streak starts anew, so a transient cause that
+# persists (quest-loop cooldown, death suppression) reaches the grind fallback instead of idling until the quest
+# rescue. The streak is logged as [QuestFailureClass] streak=. Restart-only.
+AiPlayerbot.QuestFirstProgression.TransientCountsAfter = 0
+# ResetOnProgressEvents = 1: a quest rescue teleport, a level-up, a login and the return from a battleground
+# reset the GrindFallbackFailures counter, the quest route backoff and the quest search stage ([QuestReset]
+# events=rescue,level_up,login,bg_return). A quest-state change (a quest taken, finished, handed in or dropped) resets
+# the quest search stage only ([QuestReset] events=quest_state, logged only when the stage was above 0). XP gain alone
+# no longer resets the quest search stage (it still counts as progress for the QuestRescue.IdleMinutes clock, so a
+# grinding bot is not rescued as idle). Never while a real player leads the bot.
+AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
+# AbandonStructuralParked = 1 (acts only with FailureClasses = 1 and TurnInParkFailures > 0): a finished quest
+# parked twice in a row for a structural reason that does not heal by itself - no taker destination (no spawn,
+# script-only game object, excluded zone) or a taker on the other continent below MinLevelForCrossMapQuestRoute -
+# is abandoned ([QuestAbandon] quest= reason= bot=). A zone clearly above the bot is never a reason (levels heal
+# it), any other park in between starts the count again, and class quests are kept. An abandoned quest is not taken
+# again (no trip to its giver, no accept) while the bot is on its own - at most 8 such quests per bot, forgotten at
+# re-login. 0 = the quest stays parked.
+AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
+# twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
+# stand around than grind, so it shows). Restart-only.
+#   0 = today's behaviour (default).
+#   1 = RESERVED for the gap filler of stages S2/S4; until then exactly like 0.
+#   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
+#       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
+#       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a
+#       creature that neither attacks the bot or its group nor is needed for an active quest, and no kill trip that
+#       would end in such a refused kill: no skinning or boss travel purpose, no forced guild-order kill trip (grind
+#       mob, boss, skinning) to a creature no active quest needs. The bot stands idle and logs why: [QuestIdle]
+#       reason=fallback|money|opportunistic|no_target bot= level= zone= target= class= once per reason until it finds a
+#       quest route again (at most 4 lines per idle episode; class= is the latest FailureClasses rejection class,
+#       transient|structural|empty_offer, none without one), and [QuestIdle] minute fallback= money= opportunistic=
+#       no_target= once a minute. Fights against attackers (self-defence, group help), quest objective kills,
+#       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
+#       stay. Other values act like 0.
+AiPlayerbot.QuestFirstProgression.GrindMode = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
@@ -952,6 +1180,43 @@ AiPlayerbot.RosterFarMove = 0
 # [FarMove] ... watched arrive_alt arrive_walk. ArriveBackYards 0 = arrive at the target (8.33 behaviour).
 AiPlayerbot.RosterFarMove.ArriveBackYards = 60
 AiPlayerbot.RosterFarMove.WatchRoute = 1
+# twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity; measurement, no behaviour change): the world
+# thread keeps a snapshot of where the online real players are (map, zone, area, x, y and a camera body that differs;
+# GMs only while visible), built after the map update at most once a second, only while Trace = 1 or NearScope > 0.
+# ShortcutNear(map, x, y, zone): no player on that map = not near; else near = same map AND (NearScope 2: same zone OR
+# within NearRadius 2D; NearScope 1: within NearRadius only). A snapshot older than 5 s, a zone 0 or no usable radius
+# answers unknown (the caller keeps today's behaviour). NearScope 0 = off (unknown everywhere) until a later stage uses
+# it. NearRadius in yards, 0 = the map's current visibility + AiPlayerbot.ReactDistance (continents 250 + 150 = 400 yd
+# with the defaults; the core lowers a map's visibility under load, MapUpdate.ReduceVisDist.Tick, down to
+# MapUpdate.MinVisibilityDistance, so the default radius depends on load - set NearRadius for a fixed one).
+# Freshness: the snapshot is rebuilt in the bot manager's AI pass, which runs every AiPlayerbot.RandomBotUpdateInterval;
+# keep that below about 4000 ms, or every answer is unknown (the minute line then shows stale=1).
+# Entries carry the map id, not the instance id: a player in one copy of a dungeon / battleground makes another copy of
+# the same map near (conservative; a stage that gates instance teleports must add the instance id first).
+# TestWatcherGuids (TEST ONLY, never on a live realm): a comma list of character guids (low guid, max 64) of online
+# characters that count as real players in the snapshot - the A/B watcher stand-in on a realm without real players.
+# Trace = 1: [Shortcut] mech=hop|ghost_corpse|repop|far_move teleports= near= notnear= unknown= near_src= near_dst=
+# once a minute (each teleport classified when it happens, at both ends; the teleports themselves are unchanged) and
+# [Shortcut] state=snapshot players= watchers= entries= age_ms= stale= scope= radius=. Without NearScope the trace measures
+# with scope 2. Counts left from an earlier Trace = 1 period are dropped when Trace is switched on again.
+# Reading the A/B numbers: hop, far_move and ghost_corpse are counted only after the legacy gate
+# (PlayerbotAI::HasPlayerNearby: visibility only, every entry of the manager's player list incl. alt bots; ghost_corpse
+# checks only the corpse end) has already said "nobody near". The snapshot uses visibility + ReactDistance, real
+# players only, and the zone (scope 2), so near= for those mechanisms means "the snapshot disagrees with the legacy
+# gate" (mostly the 250-400 yd band and same-zone matches), not the share of teleports a real player saw. repop has no
+# proximity gate at its site, so its near= is the plain near share.
+# All 0 / empty = today's behaviour (default).
+AiPlayerbot.Shortcut.NearScope = 0
+AiPlayerbot.Shortcut.NearRadius = 0
+AiPlayerbot.Shortcut.TestWatcherGuids =
+AiPlayerbot.Shortcut.Trace = 0
+# twow-repo#595 P4 B1 (bug fix, critic X6): the legacy random teleport (non-roster bots, console grind / revive) moved
+# every group member of a bot group leader, real players included, and checked the leader's AI instead of the
+# member's. 1 = real members (no own bot AI, or a real session) are skipped and each member's own AI is used; one
+# [Shortcut] mech=group_loop state=skip_real line per skipped member per such teleport (not behind Trace; bounded by
+# the group size, and the legacy random teleport is rare). The null check before a member AI reset is always on (a
+# real member used to crash the server there). 0 = old loop (default; owner profile 1 after the test).
+AiPlayerbot.Shortcut.GroupLoopFix = 0
 # twow-repo#575 (PATH-01 #1, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach
 # Abnahme an): 1 = every node route search that ends without a route is counted and the first LinesPerMinute of
 # them a minute are logged as [RouteFailDetail]: bot, level, alive, action, start and target (map x y z), distance,
@@ -1949,6 +2214,16 @@ AiPlayerbot.WorldBotsTrace = 0
 # time of one bot AI update on the map threads, plus the five slowest calls with bot, map, combat
 # and last action. Log only. 0 = off (default).
 AiPlayerbot.BotUpdateTrace = 0
+# twow-repo#597 (TICK-01): 1 = every [BotUpdateSlow] line ends with " tick=<world loop counter>
+# region=<map>.<inst>" (the world tick and the map region of that slow bot update), so a slow update
+# can be matched with [WorldTickSlow] tick= and [MapTickRegion]. Only with AiPlayerbot.BotUpdateTrace = 1.
+# Log only. 0 = off (default, the line unchanged).
+AiPlayerbot.BotUpdateTraceTick = 0
+# twow-repo#597 (TICK-01): 1 = the [WorldBots] minute line ends with " hook_ms=<x> remote_ms=<x>
+# ahbot_ms=<x> dungeonclear_ms=<x>": the whole bot WorldScript update hook per minute and its parts
+# (remote admin commands, AhBot update, dungeon-clear reaper hook) in ms. Only with
+# AiPlayerbot.WorldBotsTrace = 1. Log only. 0 = off (default, the line unchanged).
+AiPlayerbot.WorldBotsHookTrace = 0
 # twow-repo#596 D: 1 (with BotUpdateTrace = 1) = a bot whose trigger pass took 20 ms or more names its three slowest
 # trigger checks in the TIME entry of its trail: `TIME:values Xus triggers Yus slow=name:us,...`, seen in [BotUpdateSlow].
 # Times each trigger check of every pass while on. 0 = off (default), the trail as before.
@@ -2523,6 +2798,19 @@ AiPlayerbot.Perf.RouteFailEarlySkip = 0
 # value. Fish candidates that would need a route are dropped ("[PathGen] skipped reason=fish", only when there were
 # any - the route part is unreachable today, PathInfo::getArea is a stub).
 AiPlayerbot.Perf.PathGenUnitless = 0
+# twow-repo#597 (TICK-01, AhBot guard): AhBot runs only with an ahbot.conf (next to mangosd.conf or in the compiled-in
+# config dir) that leaves AhBot.Enabled on. Without one ("AhBot is Disabled. No configuration file at ...") AhBot still
+# schedules an auction check on every world tick: one detached thread start, one synchronous
+# "select ... from mail where subject like 'AH Proposition%'" query and its log lines per tick, because updateInterval
+# is never read and stays 0 (live 14.10.2026: ~20 thread starts a second, 53 % of all log lines, one such start right
+# before every stall of 2 s or more).
+#   1 = AhBot::Update returns at once (no thread, no query, no log line) while the AhBot config is not loaded or
+#       AhBot.Enabled = 0; one "[AhBotGuard] require_config=1 config_loaded=<0|1> enabled=<0|1> update=<idle|scheduled>"
+#       line at startup. A realm with a loaded and enabled ahbot.conf runs exactly as with 0; .ahbot is unchanged.
+#   0 = as before, no extra line (default).
+# Read from this file, not ahbot.conf, because it has to work exactly when ahbot.conf is missing.
+# Live should run 1 after the A/B M-H1 (roster 540 without ahbot.conf, image without / with this guard).
+AiPlayerbot.AhBot.RequireConfig = 0
 
 # twow-repo#541 (owner 09.10.2026): 1 = shaman weapon imbue by spec and learned spells - tank Rockbiter;
 # enhancement Windfury, before that Frostbrand solo / Flametongue in a group, before that Rockbiter; elemental

@@ -52,6 +52,7 @@ bool AhBotConfig::Initialize()
     }
 
     sLog.outString("AhBot configuration read from %s.", config.GetFilename().c_str());
+    configLoaded = true;  // twow-repo#597 (TICK-01): AiPlayerbot.AhBot.RequireConfig lets AhBot::Update run only past here
 
     enabled = config.GetBoolDefault("AhBot.Enabled", true);
 

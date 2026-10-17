@@ -447,11 +447,54 @@ void freezeDetector(uint32 _delaytime)
         else if (WorldTimer::getMSTimeDiff(lastchange, curtime) > _delaytime)
         {
             sLog.outError("World Thread hangs, kicking out server!");
+            sLog.FlushAsyncSink(log_sink::CrashFlushWaitMs);  // twow-repo#597 (Log.AsyncSink): queued lines first
             std::terminate(); // bang crash
         }
 #endif
     }
 };
+
+// twow-repo#597 (TICK-01, PerformanceLog.StallWatchMs): watchdog next to the freeze detector. It sleeps
+// 10 ms in a loop and compares the oversleep of that sleep (process or host freeze) and the age of the
+// running world tick (lock or long phase, published by the world thread) with the threshold. Lines go
+// with plain fopen/fwrite/fflush into its own file (LogsDir + stallwatch.log), NOT through sLog: the
+// log may be what blocks. Fails closed: no file, no watchdog. Ends when the world stops.
+void stallWatch(uint32 thresholdMs, std::string path)
+{
+    FILE* file = fopen(path.c_str(), "a");
+    if (!file)
+    {
+        sLog.outError("[StallWatch] cannot open %s, watchdog not started", path.c_str());
+        return;
+    }
+    sLog.outString("[StallWatch] watchdog started: threshold %u ms, file %s", thresholdMs, path.c_str());
+
+    tick_diag::StallTracker tracker(thresholdMs);
+    char line[256];
+    uint64 lastUs = World::WorldTickNowUs();
+    while (!World::IsStopped())
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        uint64 const nowUs = World::WorldTickNowUs();
+        uint64 const sleptUs = nowUs > lastUs ? nowUs - lastUs : 0;
+        lastUs = nowUs;
+        if (!World::StallWatchOn())  // switched off by a reload: idle until the world stops
+            continue;
+
+        uint32 const oversleepMs = sleptUs > 10000 ? tick_diag::ClampUs((sleptUs - 10000) / 1000) : 0;
+        uint64 const tickStartUs = World::StallTickStartUs();
+        uint32 const ageMs = tickStartUs && nowUs > tickStartUs ? tick_diag::ClampUs((nowUs - tickStartUs) / 1000) : 0;
+        tick_diag::StallLine event;
+        if (!tracker.Step(tick_diag::EpochMs(), nowUs / 1000, oversleepMs, ageMs, World::StallPart(), event))
+            continue;
+        if (std::size_t const len = tick_diag::FormatStallLine(line, sizeof(line), event, world_tick_slow::PartName(event.part)))
+        {
+            fwrite(line, 1, len, file);
+            fflush(file);
+        }
+    }
+    fclose(file);
+}
 
 Master::Master()
 {
@@ -603,6 +646,11 @@ int Master::Run()
     if (uint32 freeze_delay = sConfig.GetIntDefault("MaxCoreStuckTime", 0))
         freeze_thread = new std::thread(std::bind(&freezeDetector,freeze_delay*1000));
 
+    ///- twow-repo#597 (TICK-01): [StallWatch] watchdog, only with PerformanceLog.StallWatchMs > 0 at start
+    std::thread* stall_watch_thread = nullptr;
+    if (uint32 stall_watch_ms = sWorld.getConfig(CONFIG_UINT32_PERFLOG_STALL_WATCH_MS))
+        stall_watch_thread = new std::thread(stallWatch, stall_watch_ms, sLog.GetLogsDir() + "stallwatch.log");
+
     ///- Launch the world listener socket
     uint16 wsport = sWorld.getConfig (CONFIG_UINT32_PORT_WORLD);
     std::string bind_ip = sConfig.GetStringDefault ("BindIP", "0.0.0.0");
@@ -649,6 +697,11 @@ int Master::Run()
     {
         freeze_thread->join();
         delete freeze_thread;
+    }
+    if (stall_watch_thread)  // twow-repo#597: ends on World::IsStopped(), within 10 ms
+    {
+        stall_watch_thread->join();
+        delete stall_watch_thread;
     }
 
     ///- Remove signal handling before leaving
@@ -734,6 +787,9 @@ int Master::Run()
 	sWorld.InternalShutdown();
 
     uint8 exitCode = World::GetExitCode();
+    // twow-repo#597 (TICK-01, Log.AsyncSink): quick_exit runs no destructors - drain the log sink
+    // here (bounded), with a final "[LogSink] stopped" line. No sink: nothing.
+    sLog.StopAsyncSink("shutdown");
     std::quick_exit(exitCode);
     return exitCode;
 }
@@ -883,6 +939,8 @@ void Master::_OnSignal(int s)
             sLog.outInfo("Received SIGSEGV");
             ACE_Stack_Trace st;
             sLog.outInfo("%s", st.c_str());
+            // twow-repo#597 (TICK-01, Log.AsyncSink): the backtrace must reach the log before the crash.
+            sLog.FlushAsyncSink(log_sink::CrashFlushWaitMs);
 
             if (anticrashOptions & ANTICRASH_GENERATE_COREDUMP)
                 createdump();

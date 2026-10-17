@@ -3,6 +3,8 @@
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/StartZonePolicy.h"
+#include "playerbot/QuestFailureClassPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/AiJitterPolicy.h"
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/BotDialogueProvider.h"
@@ -12,8 +14,12 @@
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for "S:engine init"
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
+#include <array>
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <iomanip>
+#include <string>
 
 #include "playerbot/AiFactory.h"
 
@@ -711,6 +717,95 @@ void PlayerbotAI::UpdateBotSave()
     lastBotSave = now;
 }
 
+// twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents, OB-10 answer 2): a rescue teleport, a
+// level-up, a login and the return from a battleground start the quest route search afresh - the grind-fallback
+// counter, the route backoff and the search stage go to 0, one [QuestReset] line. A quest-state change (plan 4.1) resets
+// the stage only, with a line only when there was a stage to reset. Bot's own update only; quest-first roster bots on
+// their own only (not while a real player leads the bot). Soak 17.10.: 145 of 278 rescue teleports arrived with the
+// counter at 2 or more and grinding won at the target on the first tick.
+void PlayerbotAI::ApplyQuestRouteReset(uint32 events)
+{
+    if (!events || !sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents || !sPlayerbotAIConfig.questFirstProgressionEnabled ||
+        !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
+        return;
+
+    int32 const failures = aiObjectContext->GetValue<int>("manual int", "quest route failures")->Get();
+    int32 const stage = aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get();
+    int32 const backoffUntil = aiObjectContext->GetValue<int>("manual int", "quest route backoff until")->Get();
+    bool const stageOnly = ai::quest_failure_class::StageOnlyReset(events);
+    if (stageOnly && stage <= 0)
+        return;
+    if (!stageOnly)
+    {
+        aiObjectContext->GetValue<int>("manual int", "quest route failures")->Set(0);
+        aiObjectContext->GetValue<int>("manual int", "quest route backoff until")->Set(0);
+        aiObjectContext->GetValue<int>("manual int", ai::quest_failure_class::TransientStreakValue)->Set(0);
+    }
+    aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
+
+    uint32 const now = uint32(time(nullptr));
+    sLog.outBasic("[QuestReset] events=%s bot=%u level=%u failures=%d stage=%d backoff_s=%u",
+        ai::quest_failure_class::ResetEventNames(events).c_str(), bot->GetGUIDLow(), bot->GetLevel(), failures, stage,
+        backoffUntil > 0 && uint32(backoffUntil) > now ? uint32(backoffUntil) - now : 0u);
+}
+
+// twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode, owner 17.10.2026): blocked grind decisions per
+// reason since the last minute line; counted on the map threads, taken by the world thread (atomics, no lock).
+namespace
+{
+std::atomic<uint32> questIdleCounts[ai::quest_grind_mode::ReasonCount] = {};
+}
+
+// GrindMode 2 only: the same population as QuestFirstProgression (Enabled + persistent roster member), on its own, below
+// the max player level. The config is read first, so GrindMode 0 / 1 return before any other test.
+bool PlayerbotAI::IsQuestNoGrind()
+{
+    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot)
+        return false;
+
+    return ai::quest_grind_mode::Applies(sPlayerbotAIConfig.questFirstProgressionGrindMode,
+        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
+        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
+}
+
+// GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason and idle
+// episode (at most 4 per episode however the reasons alternate).
+void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
+{
+    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot ||
+        reason >= ai::quest_grind_mode::ReasonCount)
+        return;
+
+    questIdleCounts[reason].fetch_add(1, std::memory_order_relaxed);
+    ai::quest_grind_mode::Reason const why = ai::quest_grind_mode::Reason(reason);
+    if (!ai::quest_grind_mode::LogDue(questIdleLogged, why))
+        return;
+
+    questIdleLogged = ai::quest_grind_mode::MarkLogged(questIdleLogged, why);
+    sLog.outBasic("%s", ai::quest_grind_mode::FormatIdleLine(why, bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(),
+        target, ai::quest_failure_class::ClassName(ai::quest_failure_class::FailureClass(questIdleClass))).c_str());
+}
+
+std::string PlayerbotAI::TakeQuestIdleMinuteLine()
+{
+    std::array<std::uint32_t, ai::quest_grind_mode::ReasonCount> counts = {};
+    for (std::size_t reason = 0; reason < ai::quest_grind_mode::ReasonCount; ++reason)
+        counts[reason] = questIdleCounts[reason].exchange(0, std::memory_order_relaxed);
+    return ai::quest_grind_mode::FormatMinuteLine(counts);
+}
+
+// twow-repo#517 stage a: called by RandomPlayerbotMgr (world thread, the bot's map idle) once a fill bot is out of its
+// battleground. The quest-idle watch kept counting during the match; without this a long battleground would hand the
+// bot straight to the rescue teleport.
+void PlayerbotAI::OnReturnFromBattleground(uint32 now)
+{
+    aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
+    questProgress.lastChange = now;
+    // twow-repo#601 S1 (ResetOnProgressEvents): the grind-fallback counter and the route backoff too - in the bot's own update
+    if (sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents)
+        RequestQuestRouteReset(ai::quest_failure_class::ResetBgReturn);
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
@@ -814,6 +909,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
             questProgress.lastChange = now;
         }
+        // twow-repo#601 S1 (ResetOnProgressEvents): resets the world thread asked for (rescue teleport, battleground return).
+        if (uint32 const resetEvents = questRouteResetEvents.exchange(0))
+            ApplyQuestRouteReset(resetEvents);
 
         if (now - lastQuestProgressCheck >= ai::quest_search::ProgressCheckSeconds)
         {
@@ -1035,8 +1133,37 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 rescueInCombat = step == ai::stuck_combat::Step::Rescue;
             }
 
+            // twow-repo#601 S1 (ResetOnProgressEvents, OB-10 answer 2): a level-up and a login (the first check of this
+            // PlayerbotAI - a new login is a new PlayerbotAI) reset the grind-fallback counter, the backoff and the stage;
+            // a quest-state change (plan 4.1: a quest taken, finished, handed in or dropped) resets the stage. Off: nothing
+            // is tracked here (no member write, no quest log walk).
+            bool levelUp = false;
+            if (sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents)
+            {
+                uint32 const progressLevel = bot->GetLevel();
+                levelUp = ai::quest_failure_class::LevelUp(questProgressLevel, progressLevel);
+                bool const firstProgressCheck = !questProgressLevel;
+                questProgressLevel = progressLevel;
+                uint32 questState = ai::quest_failure_class::QuestStateSeed;
+                for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                    if (uint32 const questId = bot->GetQuestSlotQuestId(slot))
+                        questState = ai::quest_failure_class::MixQuestState(questState, questId,
+                            bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE);
+                bool const questStateChanged = ai::quest_failure_class::QuestStateChanged(questProgressState, questState);
+                questProgressState = questState;
+                if (levelUp || firstProgressCheck || questStateChanged)
+                    ApplyQuestRouteReset((levelUp ? ai::quest_failure_class::ResetLevelUp : 0u) |
+                        (firstProgressCheck ? ai::quest_failure_class::ResetLogin : 0u) |
+                        (questStateChanged ? ai::quest_failure_class::ResetQuestState : 0u));
+            }
+
+            // Any progress (level, XP, a gathering skill under a purpose) restarts the idle clock (questProgress.lastChange)
+            // as before. With ResetOnProgressEvents only a level-up still resets the quest search stage - XP alone does not.
             if (questProgress.Update(snapshot, now))
-                aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
+            {
+                if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents, levelUp))
+                    aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
+            }
             else if (sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
                 !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && (!bot->IsInCombat() || rescueInCombat) &&
                 bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
@@ -4291,6 +4418,11 @@ bool PlayerbotAI::SayToGuild(std::string msg, bool likePlayer)
     }
 
     return false;
+}
+
+bool PlayerbotAI::IsOnChannel(Channel const* channel) const
+{
+    return channel && channel->IsOn(bot->GetObjectGuid());
 }
 
 bool PlayerbotAI::SayToWorld(std::string msg)

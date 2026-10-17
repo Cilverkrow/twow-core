@@ -38,6 +38,10 @@ public:
 #ifndef MANGOSBOT_ZERO
     virtual bool gatherArenaTeam(ArenaType type);
 #endif
+    // twow-repo#517 stage a: the non-arena battlemaster join JoinQueue sends ("bg type" reset, bypass guid), shared with
+    // RandomPlayerbotMgr::CheckBgFill, which queues roster bots from the world thread. Stage b: instanceId = the client
+    // instance id a pair bot is queued for (DesiredInstanceId), 0 = first available.
+    static void SendBattlemasterJoin(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId, bool joinAsGroup, uint32 instanceId = 0);
 protected:
     bool JoinQueue(uint32 type);
     std::vector<uint32> bgList;
@@ -97,6 +101,19 @@ public:
 #endif 
     virtual bool Execute(Event& event) override;
     virtual bool isUseful() override;
+    // twow-repo#517 stage a: what BGStatusAction does for the bot once it accepted an invite (strategies, +pvp, role,
+    // objectives); shared with the manager's accept for fill bots.
+    static void ApplyPortState(PlayerbotAI* ai);
+    // twow-repo#517 stage a: the manager accepts the invite of a fill bot on the world thread (port action 1, then
+    // ApplyPortState). True when the bot is now bound for that battleground.
+    static bool AcceptInvite(PlayerbotAI* ai, Player* bot, BattleGroundTypeId bgTypeId);
+    // twow-repo#517 stage a: the manager takes a fill bot out of its queue again (port action 0), on the world thread.
+    static void LeaveQueue(Player* bot, BattleGroundTypeId bgTypeId);
+    // twow-repo#517 stage b: what BGLeaveAction does for the bot after it left a battleground (strategies back, bg values
+    // cleared); for the manager's slot release and bot-only cleanup, on the world thread.
+    static void ApplyLeaveState(PlayerbotAI* ai, Player* bot);
+private:
+    static void SendPort(Player* bot, BattleGroundTypeId bgTypeId, uint8 action);
 };
 
 class BGStatusCheckAction : public Action
