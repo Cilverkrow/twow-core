@@ -4817,7 +4817,8 @@ void RandomPlayerbotMgr::DrainBgAnnounce(uint32 nowMs)
                 sLog.outBasic("[BGFill] state=announce bot=%u said=0 reason=%s", due.guid, cMgr ? "nochannel" : "unfit");
             continue;
         }
-        if (!world->IsOn(bot->GetObjectGuid()))
+        PlayerbotAI* const botAi = GetBotAI(bot);
+        if (!botAi || !botAi->IsOnChannel(world))
             world->Join(bot->GetObjectGuid(), "");
         world->AsyncSay(bot->GetObjectGuid(), due.text.c_str(), LANG_UNIVERSAL);
         if (bgOwnPlan.queueType)

@@ -214,7 +214,10 @@ require_text("${drain}" "if (!ai::bgfill::DeadlinePassed(nowMs, it->dueMs))\n   
 require_text("${drain}" "it = bgAnnounceDue.erase(it);" "a due line leaves the queue")
 require_text("${drain}" "ChannelMgr* cMgr = bot && IsBgAnnouncerFit(bot) ? channelMgr(bot->GetTeam()) : nullptr;" "the announcer checked again when its line is due")
 require_text("${drain}" "Channel* world = cMgr ? cMgr->GetOrCreateChannel(\"World\") : nullptr;" "World channel on the world thread")
-require_text("${drain}" "if (!world->IsOn(bot->GetObjectGuid()))\n            world->Join(bot->GetObjectGuid(), \"\");" "join on the world thread when needed")
+require_text("${drain}" "PlayerbotAI* const botAi = GetBotAI(bot);\n        if (!botAi || !botAi->IsOnChannel(world))\n            world->Join(bot->GetObjectGuid(), \"\");" "join on the world thread when needed")
+# CI 17.10.: Channel::IsOn is private (PlayerbotAI is Channel's friend, RandomPlayerbotMgr is not); the membership check
+# goes through PlayerbotAI::IsOnChannel.
+forbid_text("${drain}" "->IsOn(" "private Channel::IsOn called from the manager")
 require_text("${drain}" "world->AsyncSay(bot->GetObjectGuid(), due.text.c_str(), LANG_UNIVERSAL);" "the line through Channel::AsyncSay")
 require_order("${drain}" "IsBgAnnouncerFit(bot)" "world->AsyncSay(" "eligibility before the say")
 file(GLOB_RECURSE module_sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
