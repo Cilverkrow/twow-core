@@ -1928,6 +1928,29 @@ add_test(NAME world_bots_trace_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/world_bots_trace_source_contract_tests.cmake")
 
+# twow-repo#597 (TICK-01): [BotUpdateSlow] tick=/region= (AiPlayerbot.BotUpdateTraceTick) and [WorldBots]
+# hook_ms=/remote_ms=/ahbot_ms=/dungeonclear_ms= (AiPlayerbot.WorldBotsHookTrace), both default 0.
+add_executable(tick_diag_597_tests
+  "${PB_MODULE_DIR}/t/tick_diag_597_tests.cpp")
+
+target_include_directories(tick_diag_597_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(tick_diag_597_tests PRIVATE Threads::Threads)
+
+set_target_properties(tick_diag_597_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tick_diag_597
+  COMMAND tick_diag_597_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tick_diag_597_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DDC_SOURCE_FILE=${PB_MODULE_DIR}/../mod-dungeon-clear/src/DungeonClearModule.cpp"
+    -P "${PB_MODULE_DIR}/t/tick_diag_597_source_contract_tests.cmake")
+
 # twow-repo#541/#551: rndbot park / unpark (inn of the own faction and level band, verified bind,
 # reduced AI tick).
 add_executable(park_policy_tests
