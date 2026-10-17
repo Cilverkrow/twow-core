@@ -548,6 +548,7 @@ public:
     uint32 buffStrangerCooldownSeconds = 900;
     bool lootRoleWeights = false;     // twow-repo#308 LOOT-ROLE-01: weight scale from the premade path from L1, quest reward by gain
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
+    bool equipKeepWeaponsUnlessUpgrade = false;   // twow-repo#308 EQUIP-FLIP-01: hands come off only for a hand-item candidate in the bags
     bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
     bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
     bool parkCellSourceStats = false;  // twow-repo#541 P2 D0: [CellSource] minute line - continent cells by source (real players / bots / active non-players)
@@ -559,6 +560,7 @@ public:
     bool parkSeats = false;  // twow-repo#551 (owner 11.10): parked bots sit on inn chairs, dismount, keep 3 yd around the innkeeper
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
+    bool botUpdateTraceTriggers = false;  // twow-repo#596 D: with BotUpdateTrace, the TIME entry names the 3 slowest trigger checks of a pass >= 20 ms
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool checkValuesSkipSearches = false;  // twow-repo#541: "check values" without its six forced value searches
     bool initPetCache = false;  // twow-repo#541: "initialize pet" with a static tameable list, cached pet DB answer, cooldown

@@ -2997,3 +2997,41 @@ set_target_properties(ahbot_guard_597_policy_tests PROPERTIES
 add_test(NAME ahbot_guard_597_policy
   COMMAND ahbot_guard_597_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#596 D (AiPlayerbot.BotUpdateTraceTriggers): the slowest trigger checks of a slow trigger pass.
+add_test(NAME slow_triggers_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/slow_triggers_source_contract_tests.cmake")
+
+add_executable(trigger_time_policy_tests
+  "${PB_MODULE_DIR}/t/trigger_time_policy_tests.cpp")
+
+target_include_directories(trigger_time_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(trigger_time_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME trigger_time_policy
+  COMMAND trigger_time_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#308 EQUIP-FLIP-01 (AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade): no weapon unequip/re-equip on every loot.
+add_test(NAME keep_weapons_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/keep_weapons_source_contract_tests.cmake")
+
+add_executable(keep_weapons_policy_tests
+  "${PB_MODULE_DIR}/t/keep_weapons_policy_tests.cpp")
+
+target_include_directories(keep_weapons_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(keep_weapons_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME keep_weapons_policy
+  COMMAND keep_weapons_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
