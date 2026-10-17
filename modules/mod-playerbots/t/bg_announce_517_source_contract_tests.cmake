@@ -153,7 +153,17 @@ foreach(key Alliance Horde Alliance.WSG Alliance.AB Alliance.AV Horde.WSG Horde.
   require_text("${conf_dist}" "\nAiPlayerbot.BG.Announce.Text.${key} = \"\"\n" "AiPlayerbot.BG.Announce.Text.${key} empty (built-in pool)")
   count_text("${conf_dist}" "\nAiPlayerbot.BG.Announce.Text.${key} = " 1 "AiPlayerbot.BG.Announce.Text.${key} set once in the dist")
 endforeach()
-require_text("${conf_dist}" "# [BGAnnounce] bg=<type> bracket=<n> bots=<announcers> mode=chat|server lines=<n>. 0 = off (default)." "dist: the [BGAnnounce] line")
+# Review c4: the dist names every [BGAnnounce] variant one plan can write, each as the manager writes it, and that one
+# plan can write more than one line.
+foreach(variant "bots=<announcers> mode=chat|server lines=<n>\n#     the plan line" "bots=0 mode=server lines=<n> side=A|H|both\n#     Mode 2 only"
+    "bots=0 mode=chat lines=0 reason=unannounced side=A|H|both\n" "bots=0 mode=chat|server lines=0 reason=freeslots\n")
+  require_text("${conf_dist}" "#   [BGAnnounce] bg=<type> bracket=<n> ${variant}" "dist: a [BGAnnounce] variant")
+endforeach()
+count_text("${conf_dist}" "#   [BGAnnounce] bg=<type> bracket=<n> " 4 "dist: four [BGAnnounce] variants")
+require_text("${conf_dist}" "# One plan can write up to three of them: the plan line first, then the fallback line at most once, then at most one of\n# the two lines=0 lines. The plan lines (neither side= nor reason=) count the announcements." "dist: one plan can write more than one line")
+foreach(token "mode=server lines=%u side=%s\"" "mode=chat lines=0 reason=unannounced side=%s\"" "mode=%s lines=0 reason=freeslots\"")
+  require_text("${mgr_cpp}" "bots=0 ${token}" "the documented [BGAnnounce] variant written by the manager")
+endforeach()
 require_text("${conf_dist}" "0 = no line at all\n# (default, fail closed)" "dist: MaxPerHour 0 fails closed")
 require_text("${conf_dist}" "BotOnlyCleanup never empties them" "dist: own battlegrounds are never drained")
 # Review c2: the dist names the whole gate, a negative value of each new integer key, the clock window of MaxPerHour and
