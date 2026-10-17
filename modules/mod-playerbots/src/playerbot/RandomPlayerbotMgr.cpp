@@ -1259,9 +1259,12 @@ void ReportDirectTargets()
 // (atomics in PlayerbotAI.cpp). World thread only, same pattern as ReportDirectTargets. Nothing with GrindMode 0 / 1.
 void ReportQuestIdle()
 {
+    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))
+        return;   // GrindMode 0 / 1: not even the clock is read
+
     static uint32 lastReport = 0;
     uint32 const now = uint32(time(nullptr));
-    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || now < lastReport + 60)
+    if (now < lastReport + 60)
         return;
     lastReport = now;
 

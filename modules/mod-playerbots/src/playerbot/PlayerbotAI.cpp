@@ -17,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <iomanip>
 #include <string>
 
@@ -787,7 +788,7 @@ void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
 
 std::string PlayerbotAI::TakeQuestIdleMinuteLine()
 {
-    std::array<uint32_t, ai::quest_grind_mode::ReasonCount> counts = {};
+    std::array<std::uint32_t, ai::quest_grind_mode::ReasonCount> counts = {};
     for (std::size_t reason = 0; reason < ai::quest_grind_mode::ReasonCount; ++reason)
         counts[reason] = questIdleCounts[reason].exchange(0, std::memory_order_relaxed);
     return ai::quest_grind_mode::FormatMinuteLine(counts);

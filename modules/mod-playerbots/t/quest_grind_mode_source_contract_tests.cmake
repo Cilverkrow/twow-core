@@ -282,7 +282,9 @@ require_text("${ai_h}" "uint8 questIdleLogged = 0;" "per-bot mask of logged reas
 require_text("${ai_h}" "void ClearQuestIdle() { questIdleLogged = 0; }" "idle episode reset")
 forbid_text("${ai_h}" "questIdleReason" "the old last-reason byte")
 region("${mgr}" "void ReportQuestIdle()" "\n}\n" report_fn)
-require_text("${report_fn}" "if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || now < lastReport + 60)\n        return;" "once a minute, only with GrindMode 2")
+# Review nit: GrindMode first, so with 0 / 1 not even the clock is read.
+require_order("${report_fn}" "    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))\n        return;" "uint32 const now = uint32(time(nullptr));" "only with GrindMode 2, before the clock read")
+require_text("${report_fn}" "    if (now < lastReport + 60)\n        return;\n    lastReport = now;" "once a minute")
 require_text("${report_fn}" "sLog.outBasic(\"%s\", PlayerbotAI::TakeQuestIdleMinuteLine().c_str());" "minute line")
 region("${mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" "sPerformanceMonitor.Init(0, 0);" upd)
 require_order("${upd}" "\n    ReportDirectTargets();" "\n    ReportQuestIdle();" "minute line on the world thread, next to the other minute lines")
@@ -298,7 +300,9 @@ require_text("${grind_mult}" "TargetReason(" "opportunistic / no_target site (st
 
 # ---- 11. Neutral default, restart-only, read --------------------------------------------------------
 require_text("${config_h}" "uint32 questFirstProgressionGrindMode = 0;" "member default 0")
-require_text("${config_cpp}" "questFirstProgressionGrindMode = config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.GrindMode\", 0);" "read with default 0")
+# Not clamped on purpose (review nit rejected): only the plain `member = config.GetIntDefault("Key"` form is seen by the
+# CI read scan (t/config_key_usage_tests.py ASSIGN); a negative value wraps and acts like 0 (unit test).
+require_text("${config_cpp}" "\n    questFirstProgressionGrindMode = config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.GrindMode\", 0);" "read with default 0, in the form the CI read scan sees")
 require_text("${conf}" "\nAiPlayerbot.QuestFirstProgression.GrindMode = 0\n" "documented with 0")
 forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 1" "shipped as 1")
 forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 2" "shipped as 2")
