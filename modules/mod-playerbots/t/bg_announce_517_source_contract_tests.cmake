@@ -156,6 +156,15 @@ endforeach()
 require_text("${conf_dist}" "# [BGAnnounce] bg=<type> bracket=<n> bots=<announcers> mode=chat|server lines=<n>. 0 = off (default)." "dist: the [BGAnnounce] line")
 require_text("${conf_dist}" "0 = no line at all\n# (default, fail closed)" "dist: MaxPerHour 0 fails closed")
 require_text("${conf_dist}" "BotOnlyCleanup never empties them" "dist: own battlegrounds are never drained")
+# Review c2: the dist names the whole gate, a negative value of each new integer key, the clock window of MaxPerHour and
+# that Announce is meant to run with PlayerFill.
+require_text("${conf_dist}" "# Announce (stage c, needs Enable = 1, Announce.IntervalMinutes > 0, MaxConcurrent > 0 and Announce.MaxPerHour > 0, and\n# a persistent roster)" "dist: the whole stage-c gate")
+foreach(key Announce.IntervalMinutes MaxBotBGPerBracket Announce.DelaySeconds Announce.BotCooldownMinutes Announce.MaxPerHour)
+  region("${conf_dist}" "# ${key}: " "\nAiPlayerbot.BG.${key} = " key_doc)
+  require_text("${key_doc}" "a negative value counts as 0" "dist: AiPlayerbot.BG.${key} negative value")
+endforeach()
+require_text("${conf_dist}" "(a clock window, not a sliding\n# hour: two windows back to back can carry up to 2 x MaxPerHour lines within 60 minutes)" "dist: MaxPerHour is a clock window")
+require_text("${conf_dist}" "meant to run with PlayerFill = 1" "dist: Announce with PlayerFill")
 
 # 2. The gate: the pass gate in the roster branch, the full stage-c gate (Enable && Announce && IntervalMinutes &&
 #    MaxConcurrent) read once per update in CheckBgFill; off clears the due lines and the plan; no work without it.
@@ -462,6 +471,11 @@ endforeach()
 require_text("${config_cpp}" "bgAnnounceText[team][type] = ai::bgfill::ParseAnnouncePool(text, dropped);" "every key through the parser")
 require_text("${config_cpp}" "if (text.empty())\n                    text = ai::bgfill::BuiltInAnnouncePool(team, type);" "empty key = built-in pool")
 require_text("${config_cpp}" "char const* const typeKeys[4] = { \"\", \".AV\", \".WSG\", \".AB\" };" "pool index = queue type (AV 1, WSG 2, AB 3)")
+# Review c2: a set key left with no line falls back to its built-in pool (no faction without a line), and the load
+# warning has its own prefix, so a count of [BGAnnounce] counts announcements only.
+require_text("${config_cpp}" "bool const fallback = bgAnnounceText[team][type].empty();\n                if (fallback)\n                {\n                    uint32 builtInDropped = 0;\n                    bgAnnounceText[team][type] = ai::bgfill::ParseAnnouncePool(ai::bgfill::BuiltInAnnouncePool(team, type), builtInDropped);" "an empty parsed pool falls back to the built-in one")
+require_text("${config_cpp}" "sLog.outError(\"[BGAnnounceCfg] state=pool_drop key=%s dropped=%u fallback=%s" "the load warning under its own prefix")
+forbid_text("${config_cpp}" "(\"[BGAnnounce]" "the load warning counted as an announcement")
 
 # 10. The honor listener (owner C0): only with BG.Enable and a rate that reduces; a bot (not a real player) in a
 #     battleground, on that battleground's map, with no real player among its players; then cp x clamped rate. Reads only

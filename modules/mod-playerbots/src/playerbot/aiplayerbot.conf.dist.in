@@ -122,42 +122,52 @@ AiPlayerbot.BG.BotOnlyGraceSeconds = 0
 # also for killing bots. Only a reduction: a value of 0 or less, or above 1.0, counts as 1.0. The live owner value is
 # 0.5. With Trace = 1 each scaled gain writes [BGFill] state=honor_rate. 1.0 = unchanged (default).
 AiPlayerbot.BG.BotOnlyHonorRate = 1.0
-# Announce (stage c, needs Enable = 1 and a persistent roster): bots play a battleground by themselves, but only an
-# announced one. Every IntervalMinutes the bot manager picks Warsong Gulch, Arathi Basin or Alterac Valley (the type
-# started last comes last; Blood Ring and Sunnyglade Valley never) and a bracket where both factions have enough free
-# roster bots for the battleground's minimum (the same bots PlayerFill would take). 2 (WSG), 3 (AB) or 5 (AV) of those
-# bots, alternating Alliance and Horde, each say one line of their faction's pool in the World channel, 2-15 s apart;
-# DelaySeconds after the announcement both sides queue the minimum, so real players can queue too (a real player who
-# queued is counted, only the rest are queued). If a side no longer has enough free bots then, nobody queues. These
+# Announce (stage c, needs Enable = 1, Announce.IntervalMinutes > 0, MaxConcurrent > 0 and Announce.MaxPerHour > 0, and
+# a persistent roster): bots play a battleground by themselves, but only an announced one. Every IntervalMinutes the bot
+# manager picks Warsong Gulch, Arathi Basin or Alterac Valley (the type started last comes last; Blood Ring and
+# Sunnyglade Valley never) and a bracket where both factions have enough free roster bots for the battleground's minimum
+# plus their announcers (the same bots PlayerFill would take). A type and bracket that already has a running match with
+# free slots is left out (the core would put the bots into that match first). 2 (WSG), 3 (AB) or 5 (AV) of those bots,
+# alternating Alliance and Horde and at least one of each faction, each say one line of their faction's pool in the
+# World channel, 2-15 s apart; DelaySeconds after the announcement both sides queue the minimum, so real players can
+# queue too (a real player who queued is counted, only the rest are queued). If no line was really said by then (every
+# announcer got busy) and no server message went out, or a side no longer has enough free bots, nobody queues. These
 # battlegrounds count against MaxConcurrent and MaxBotBGPerBracket, the bots are fill bots (a waiting real player gets
-# in through SlotRelease) and BotOnlyCleanup never empties them. One line per announcement is always written:
+# in through SlotRelease) and BotOnlyCleanup never empties them. The World channel reaches every level, but the match is
+# for one bracket: a player of another level who answers the call gets a match only through PlayerFill, so Announce is
+# meant to run with PlayerFill = 1. One line per announcement is always written:
 # [BGAnnounce] bg=<type> bracket=<n> bots=<announcers> mode=chat|server lines=<n>. 0 = off (default).
 AiPlayerbot.BG.Announce = 0
-# Announce.IntervalMinutes: at most one announced bot-own battleground per interval. 0 = none (default), at most 1440.
+# Announce.IntervalMinutes: at most one announced bot-own battleground per interval. 0 = none (default), at most 1440;
+# a negative value counts as 0.
 AiPlayerbot.BG.Announce.IntervalMinutes = 0
 # MaxBotBGPerBracket: bot-own battlegrounds running or forming at the same time per level range, over Warsong Gulch,
 # Arathi Basin and Alterac Valley together (the level range of a bracket: WSG and AB 60 and AV 51-60 are one range).
-# 0 = 1 (default; the owner value for a start).
+# 0 = 1 (default; the owner value for a start); a negative value counts as 0.
 AiPlayerbot.BG.MaxBotBGPerBracket = 0
 # Announce.Mode: 0 = chat in the World channel (default), 1 = a server message instead, 2 = chat, and the server message
-# when no announcer qualifies. The server message goes only to real players of that faction whose level is in the
-# bracket. Any other value is 0.
+# when no announcer qualifies (also when every announcer got busy before its line was due). The server message goes only
+# to real players of that faction whose level is in the bracket. Any other value is 0.
 AiPlayerbot.BG.Announce.Mode = 0
 # Announce.DelaySeconds: time between the announcement and the bots' queue join. 0 = 60 s (default), minimum 20,
-# at most 3600.
+# at most 3600; a negative value counts as 0.
 AiPlayerbot.BG.Announce.DelaySeconds = 0
-# Announce.BotCooldownMinutes: a bot announces at most once per this many minutes. 0 = 60 (default), at most 1440.
+# Announce.BotCooldownMinutes: a bot announces at most once per this many minutes. 0 = 60 (default), at most 1440;
+# a negative value counts as 0.
 AiPlayerbot.BG.Announce.BotCooldownMinutes = 0
-# Announce.MaxPerHour: hard cap on announcement lines per hour (chat lines and server messages). 0 = no line at all
-# (default, fail closed) - and so no bot-own battleground either.
+# Announce.MaxPerHour: cap on announcement lines (chat lines and server messages) per hour window. The window starts at
+# the first announcement try and the first try after 60 minutes starts the next one (a clock window, not a sliding
+# hour: two windows back to back can carry up to 2 x MaxPerHour lines within 60 minutes). 0 = no line at all
+# (default, fail closed) - and so no bot-own battleground either; a negative value counts as 0.
 AiPlayerbot.BG.Announce.MaxPerHour = 0
 # Announce.Text.Alliance / Announce.Text.Horde: the faction's generic lines, separated by |; %bg is the full battleground
 # name (Warsong Gulch, Arathi Basin, Alterac Valley). Announce.Text.<faction>.WSG / .AB / .AV: lines for that
 # battleground only, merged with the generic ones. Each key empty = its built-in pool (English, role-play, with lines
 # like "For the Alliance! Join us in %bg!", "Lok'tar! The Horde gathers at %bg, who stands with us?" and, for Alliance AV,
 # "Stormpike needs you, to Alterac!"). Printable ASCII only; a line with other characters, or longer than 255 bytes with
-# the battleground name put in, is dropped at startup with a warning; at most 64 lines per key. The same line is never
-# said twice in one announcement.
+# the battleground name put in, is dropped at startup with a warning ([BGAnnounceCfg] state=pool_drop); a key left with
+# no line at all falls back to its built-in pool. At most 64 lines per key. A line in both the generic and the
+# battleground key counts once; the same line is never said twice in one announcement.
 AiPlayerbot.BG.Announce.Text.Alliance = ""
 AiPlayerbot.BG.Announce.Text.Horde = ""
 AiPlayerbot.BG.Announce.Text.Alliance.WSG = ""

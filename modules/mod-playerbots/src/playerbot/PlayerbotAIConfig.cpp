@@ -398,7 +398,9 @@ bool PlayerbotAIConfig::Initialize()
     bgAnnounceBotCooldownMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.BotCooldownMinutes", 0)));
     bgAnnounceMaxPerHour = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.MaxPerHour", 0)));
     // The text pools (D3): per faction a generic key and one per battleground (index = the queue type), each empty = its
-    // built-in pool. A line outside printable ASCII or too long is dropped here, with a warning.
+    // built-in pool. A line outside printable ASCII or too long is dropped here, with a warning; a set key left with no
+    // line at all falls back to its built-in pool (review c2: no faction pool may end up empty, which would make an
+    // announcement one-sided). The warning has its own prefix, so [BGAnnounce] counts announcements only.
     {
         char const* const teamKeys[2] = { "Alliance", "Horde" };
         char const* const typeKeys[4] = { "", ".AV", ".WSG", ".AB" };
@@ -412,9 +414,15 @@ bool PlayerbotAIConfig::Initialize()
                     text = ai::bgfill::BuiltInAnnouncePool(team, type);
                 uint32 dropped = 0;
                 bgAnnounceText[team][type] = ai::bgfill::ParseAnnouncePool(text, dropped);
-                if (dropped)
-                    sLog.outError("[BGAnnounce] %s: %u line(s) dropped (printable ASCII only, at most %u bytes with the battleground name, at most %u lines)",
-                        key.c_str(), dropped, ai::bgfill::MaxAnnounceLineBytes, ai::bgfill::MaxAnnouncePoolLines);
+                bool const fallback = bgAnnounceText[team][type].empty();
+                if (fallback)
+                {
+                    uint32 builtInDropped = 0;
+                    bgAnnounceText[team][type] = ai::bgfill::ParseAnnouncePool(ai::bgfill::BuiltInAnnouncePool(team, type), builtInDropped);
+                }
+                if (dropped || fallback)
+                    sLog.outError("[BGAnnounceCfg] state=pool_drop key=%s dropped=%u fallback=%s (printable ASCII only, at most %u bytes with the battleground name, at most %u lines)",
+                        key.c_str(), dropped, fallback ? "builtin" : "none", ai::bgfill::MaxAnnounceLineBytes, ai::bgfill::MaxAnnouncePoolLines);
             }
         }
     }
