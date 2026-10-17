@@ -154,7 +154,15 @@ require_text("${fallback_block}" "ai->NoteQuestIdle(uint8(ai::quest_grind_mode::
 require_text("${fallback_block}" "if (ai::quest_search::GrindFallback(true, failures, minFailures) && !AI_VALUE2(bool, \"manual bool\", \"is travel refresh\"))" "logged only when the 8.32 rule would have let it grind")
 require_text("${fallback_block}" "sPlayerbotAIConfig.directTargetsFreshGrindFailures : sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures;" "same threshold as the 8.32 rule (fresh included)")
 require_text("${fallback_block}" "                return false;\n            }" "no grind fallback with GrindMode 2")
-count_text("${values}" "ai->IsQuestNoGrind()" 1 "the only GrindMode test in TravelValues (GenericRpg, Explore, gathering untouched)")
+# Review fix (F5): skinning and boss trips are kill trips the grind target filter then refuses (dead trips with a
+# misleading "opportunistic"), so with GrindMode 2 those two purposes are off. Mining, herbalism, fishing, GenericRpg and
+# Explore stay: the skinning test names its purpose, the gather block is otherwise unchanged.
+region("${values}" "    case TravelDestinationPurpose::GatherHerbalism:\n    {" "        // Hotfix 8.5: finished quests are handed in before the bot gathers again." gather_head)
+require_text("${gather_head}" "        if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrind())\n            return false;" "no skinning trip (a kill trip) with GrindMode 2; mining / herbalism / fishing stay")
+region("${values}" "    case TravelDestinationPurpose::Boss:\n" "    case TravelDestinationPurpose::Mail:" boss_case)
+require_text("${boss_case}" "        if (ai->IsQuestNoGrind())\n            return false;\n        return AI_VALUE(bool, \"can fight boss\");" "no boss trip (a kill trip) with GrindMode 2, as before otherwise")
+count_text("${values}" "ai->IsQuestNoGrind()" 3 "the GrindMode tests in TravelValues: Grind fallback, skinning, boss (GenericRpg, Explore, mining, herbalism, fishing untouched)")
+require_text("${conf}" "#       mob, boss, skinning) to a creature no active quest needs." "skinning / boss / forced kill trips documented")
 
 # ---- 4. Path 2: the money grind and the plain grind request -> money / fallback ---------------------
 require_text("${travel_strategy}" "{\"val::should get money\", TravelDestinationPurpose::Grind, 6.77f}," "money trigger unchanged (blocked at the request)")

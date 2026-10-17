@@ -368,6 +368,13 @@ bool NeedTravelPurposeValue::Calculate()
     case TravelDestinationPurpose::GatherMining:
     case TravelDestinationPurpose::GatherHerbalism:
     {
+        // twow-repo#601 GrindMode 2 (review): a skinning trip is a kill trip - GatherTravelDestination::IsActive needs
+        // living creatures of the entry, and the grind target filter refuses that kill, so the bot would travel, stand
+        // and log "opportunistic" until the work time ran out. No skinning purpose for the population (no [Purpose]
+        // start); skinning the corpses of its own kills, mining, herbalism and fishing stay. GrindMode 0 / 1: false.
+        if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrind())
+            return false;
+
         // Hotfix 8.5: finished quests are handed in before the bot gathers again.
         bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
         // twow-repo#485: with turn-in parking on, only a quest the bot can hand in and has not
@@ -404,6 +411,10 @@ bool NeedTravelPurposeValue::Calculate()
         }
     }
     case TravelDestinationPurpose::Boss:
+        // twow-repo#601 GrindMode 2 (review): a boss trip is a kill trip the grind target filter refuses unless the boss
+        // attacks or a quest needs it (quest bosses come through the quest objective destinations). GrindMode 0 / 1: as before.
+        if (ai->IsQuestNoGrind())
+            return false;
         return AI_VALUE(bool, "can fight boss");
     case TravelDestinationPurpose::Mail:
         return AI_VALUE(bool, "can get mail") && AI_VALUE(bool, "should get mail");
