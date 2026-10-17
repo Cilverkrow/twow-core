@@ -194,7 +194,7 @@ require_text("${best_target}" "bool const forcedNoGrind = target->IsForced() && 
 require_text("${best_target}" "    if (forcedNoGrind)\n        forcedNeeded = AI_VALUE(std::vector<int32>, \"needed quest entries\");" "one per-bot list per choice, only when it can matter")
 require_text("${best_target}" "if (forcedNoGrind && !ai::quest_grind_mode::ForcedKillTripAllowed(true, IsKillTripDestination(destination),\n                    std::binary_search(forcedNeeded.begin(), forcedNeeded.end(), destination->GetEntry())))\n            {\n                if (!forcedKillSkipped++)\n                    forcedKillEntry = destination->GetEntry();\n                continue;\n            }" "a forced kill trip only to a quest objective mob")
 require_order("${best_target}" "if (forcedNoGrind && !ai::quest_grind_mode::ForcedKillTripAllowed(" "if (target->IsForced() || (travelInfoReuse ? reuseActive(destination)" "before the forced acceptance that skips IsActive")
-require_text("${best_target}" "    if (!hasTarget && forcedKillSkipped)\n        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::NoTarget),\n            ai::quest_grind_mode::TargetText(\"forced_kill_trip\", forcedKillEntry > 0 ? uint32(forcedKillEntry) : 0u));" "one no_target note per choice that found nothing else")
+require_text("${best_target}" "    if (!hasTarget && forcedKillSkipped && !chooseBudgetExceeded)\n        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::NoTarget),\n            ai::quest_grind_mode::TargetText(\"forced_kill_trip\", forcedKillEntry > 0 ? uint32(forcedKillEntry) : 0u));" "one no_target note per choice that found nothing else (not on a budget-aborted slice)")
 require_text("${choose}" "        SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, true);" "a failed choice marks the purpose (the order does not re-request every tick)")
 require_text("${policy}" "inline bool ForcedKillTripAllowed(bool noGrind, bool killTrip, bool neededForQuest)\n{\n    return !noGrind || !killTrip || neededForQuest;\n}" "forced kill trip rule")
 count_text("${choose}" "ai->IsQuestNoGrind()" 3 "GrindMode tests in the choose file: the grind branch, the grind request, the forced kill trip")
@@ -261,7 +261,7 @@ region("${wbuff}" "float WorldBuffTravelMultiplier::GetValue(Action* action)" "\
 require_order("${wbuff_mult}" "name == \"grind\" || name == \"attack anything\")" "        return 0.0f;" "attack anything multiplied to 0 during world buff travel (every GrindMode)")
 
 # ---- 10. [QuestIdle]: once per reason and idle episode per bot, minute counter on the world thread ---------------------
-require_text("${policy}" "return \"[QuestIdle] reason=\" + std::string(ReasonName(reason)) + \" bot=\" + std::to_string(bot) + \" level=\" +\n        std::to_string(level) + \" zone=\" + std::to_string(zone) + \" target=\" + (target.empty() ? std::string(\"-\") : target);" "idle line format")
+require_text("${policy}" "return \"[QuestIdle] reason=\" + std::string(ReasonName(reason)) + \" bot=\" + std::to_string(bot) + \" level=\" +\n        std::to_string(level) + \" zone=\" + std::to_string(zone) + \" target=\" + (target.empty() ? std::string(\"-\") : target) +\n        \" class=\" + (failureClass && *failureClass ? std::string(failureClass) : std::string(\"none\"));" "idle line format (class= since the 17.10. recheck)")
 require_text("${policy}" "return \"[QuestIdle] minute fallback=\" + std::to_string(counts[std::size_t(Reason::Fallback)]) +" "minute line format")
 foreach(name "fallback" "money" "opportunistic" "no_target")
   require_text("${policy}" "return \"${name}\";" "reason name ${name}")
@@ -279,7 +279,11 @@ count_text("${ai_cpp}" "questIdleLogged" 3 "the mask is read and marked only in 
 require_text("${ai_cpp}" "std::atomic<uint32> questIdleCounts[ai::quest_grind_mode::ReasonCount] = {};" "map-thread counters are atomics")
 require_text("${ai_cpp}" "counts[reason] = questIdleCounts[reason].exchange(0, std::memory_order_relaxed);" "minute counters taken and reset")
 require_text("${ai_h}" "uint8 questIdleLogged = 0;" "per-bot mask of logged reasons (one byte, bot's own thread)")
-require_text("${ai_h}" "void ClearQuestIdle() { questIdleLogged = 0; }" "idle episode reset")
+require_text("${ai_h}" "void ClearQuestIdle() { questIdleLogged = 0; questIdleClass = 0; }" "idle episode reset (mask and class)")
+require_text("${ai_h}" "void NoteQuestIdleClass(uint8 failureClass) { questIdleClass = failureClass; }" "idle class setter (one byte, bot's own thread)")
+count_text("${ai_cpp}" "questIdleClass" 1 "the class is only read for the idle line")
+require_text("${note_fn}" "target, ai::quest_failure_class::ClassName(ai::quest_failure_class::FailureClass(questIdleClass))).c_str());" "class= on the idle line")
+require_text("${policy}" "\" class=\" + (failureClass && *failureClass ? std::string(failureClass) : std::string(\"none\"));" "class=<name>, none without one")
 forbid_text("${ai_h}" "questIdleReason" "the old last-reason byte")
 region("${mgr}" "void ReportQuestIdle()" "\n}\n" report_fn)
 # Review nit: GrindMode first, so with 0 / 1 not even the clock is read.
@@ -351,7 +355,7 @@ count_text("${travel_mgr}" "quest_grind_mode::" 1 "policy uses in TravelMgr (the
 count_text("${values}" "quest_grind_mode::" 2 "policy uses in TravelValues (the fallback note)")
 count_text("${grind_target}" "quest_grind_mode::" 4 "policy uses in GrindTargetValue (filter, note)")
 count_text("${grind_strategy}" "quest_grind_mode::" 4 "policy uses in GrindingStrategy (init, multiplier)")
-count_text("${choose}" "quest_grind_mode::" 9 "policy uses in the choose file (grind branch, request, forced kill trip, episode reset)")
+count_text("${choose}" "quest_grind_mode::" 10 "policy uses in the choose file (grind branch, request, forced kill trip, episode reset, idle class)")
 count_text("${mgr}" "quest_grind_mode::" 1 "policy uses in RandomPlayerbotMgr (minute report)")
 # Every [QuestIdle] reason site, and no more: a note per candidate (e.g. in GrindTravelDestination::IsActive, probe R15)
 # would inflate the minute counter. The IsActive filter stays silent (the requests carry the reason).
@@ -362,5 +366,18 @@ count_text("${grind_target}" "NoteQuestIdle(" 1 "note sites in GrindTargetValue:
 count_text("${grind_strategy}" "NoteQuestIdle(" 1 "note sites in GrindingStrategy: the multiplier")
 count_text("${mgr}" "NoteQuestIdle(" 0 "no note on the world thread")
 count_text("${ai_cpp}" "NoteQuestIdle(" 1 "the definition only")
+# Recheck 17.10.: the bound of 4 lines per idle episode holds only while ClearQuestIdle runs on a found quest route alone;
+# a clear after a kill or in the grind refusal brings the alternating lines back (recheck probes P01 / P03).
+count_text("${choose}" "ClearQuestIdle(" 1 "the idle episode ends only on a found quest route")
+foreach(other values grind_target grind_strategy travel_mgr mgr ai_cpp)
+  count_text("${${other}}" "ClearQuestIdle(" 0 "no other idle episode reset (${other})")
+endforeach()
+count_text("${ai_h}" "ClearQuestIdle(" 1 "the definition only")
+# The S1 class is recorded at the [QuestFailureClass] line only, behind GrindMode 2.
+require_text("${choose}" "                if (ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))\n                    ai->NoteQuestIdleClass(uint8(failureDecision.failureClass));" "class recorded behind GrindMode 2")
+count_text("${choose}" "NoteQuestIdleClass(" 1 "one class site")
+foreach(other values grind_target grind_strategy travel_mgr mgr ai_cpp)
+  count_text("${${other}}" "NoteQuestIdleClass(" 0 "no other class site (${other})")
+endforeach()
 
 message(STATUS "QUEST_GRIND_MODE_SOURCE_CONTRACT=PASS")
