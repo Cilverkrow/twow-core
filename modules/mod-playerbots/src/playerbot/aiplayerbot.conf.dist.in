@@ -1142,8 +1142,9 @@ AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
 #       creature that neither attacks the bot or its group nor is needed for an active quest, and no kill trip that
 #       would end in such a refused kill: no skinning or boss travel purpose, no forced guild-order kill trip (grind
 #       mob, boss, skinning) to a creature no active quest needs. The bot stands idle and logs why: [QuestIdle]
-#       reason=fallback|money|opportunistic|no_target bot= level= zone= target= once per reason until it finds a quest
-#       route again (at most 4 lines per idle episode), and [QuestIdle] minute fallback= money= opportunistic=
+#       reason=fallback|money|opportunistic|no_target bot= level= zone= target= class= once per reason until it finds a
+#       quest route again (at most 4 lines per idle episode; class= is the latest FailureClasses rejection class,
+#       transient|structural|empty_offer, none without one), and [QuestIdle] minute fallback= money= opportunistic=
 #       no_target= once a minute. Fights against attackers (self-defence, group help), quest objective kills,
 #       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
 #       stay. Other values act like 0.
