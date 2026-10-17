@@ -708,6 +708,8 @@ void AnnounceText()
     Require(ExpandAnnounceText("%lvl and %lvl", av, "51-60", false) == "51-60 and 51-60", "every %lvl");
     Require(ExpandAnnounceText("%lvl", av, "", true).empty() && ExpandAnnounceText("%lvl", av, "", false).empty(),
         "%lvl without a range: not said");
+    Require(ExpandAnnounceText("Levels %lvl, to %bg!", av, "", true).empty() && ExpandAnnounceText("Levels %lvl, to %bg!", av, "", false).empty(),
+        "a %lvl line without a range: not said, never with the placeholder left empty");
     Require(ExpandAnnounceText("Join WSG 51-60!", wsg, "51-60", true) == "Join WSG 51-60!", "a line that already names the range: not twice");
     Require(ExpandAnnounceText("Join %bg!", wsg, "", true) == "Join Warsong Gulch!", "no range known: the line as today");
     Require(ExpandAnnounceText("100% bgs, %lv%l!", "X", "1-2", false) == "100% bgs, %lv%l!" &&
