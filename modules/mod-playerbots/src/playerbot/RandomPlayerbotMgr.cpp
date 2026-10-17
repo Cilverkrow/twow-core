@@ -4653,6 +4653,12 @@ void RandomPlayerbotMgr::QueueBgOwn(uint32 nowMs)
         skip = "freeslots";
     if (skip)
     {
+        // The call was answered by a running battleground with a free slot (usually the stage-a match of a real player
+        // who answered it): no bot-own match forms. Always written like an unannounced plan, so the [BGAnnounce] lines
+        // show it (review c4); once per plan, the plan is used once.
+        if (std::string(skip) == "freeslots")
+            sLog.outBasic("[BGAnnounce] bg=%u bracket=%u bots=0 mode=%s lines=0 reason=freeslots", plan.bgTypeId, plan.bracket,
+                plan.server[0] && plan.server[1] ? "server" : "chat");
         if (trace)
             sLog.outBasic("[BGFill] state=skip reason=%s own=1 bg=%u bracket=%u", skip, plan.bgTypeId, plan.bracket);
         return;
