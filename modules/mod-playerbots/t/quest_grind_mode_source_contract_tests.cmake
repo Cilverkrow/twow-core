@@ -174,8 +174,20 @@ require_text("${grind_branch}" "AI_VALUE2(std::string, \"manual string\", \"futu
 # isAllowed and the quest objective mob fetches stay as they are (old :1574, :1794, :1900).
 require_text("${choose}" "    case TravelDestinationPurpose::Grind:\n        return true;" "isAllowed Grind unchanged (the refusal is in isUseful)")
 require_text("${choose}" "subList = sTravelMgr.GetPartitions(center, partitions, travelInfo,\n                                (uint32)TravelDestinationPurpose::Grind, objectiveEntries, false, 1000000.0f);" "guild-order QuestReward objective mobs fetched as before")
-require_text("${choose}" "uint32 mobPurpose = (uint32)TravelDestinationPurpose::Grind;" "guild-order drop mobs fetched as before (IsActive decides)")
-count_text("${choose}" "ai->IsQuestNoGrind()" 2 "GrindMode tests in the choose file: the grind branch and the grind request")
+require_text("${choose}" "uint32 mobPurpose = (uint32)TravelDestinationPurpose::Grind;" "guild-order drop mobs fetched as before (SetBestTarget drops the forced kill trips)")
+# Review fix (F2): the guild order target is forced, and a forced target never asks IsActive (SetBestTarget,
+# TravelTarget::CheckStatus, no status-time expiry) - the earlier "IsActive decides" was wrong. SetBestTarget drops a
+# forced kill trip (grind mob, boss, skinning) to a creature no active quest needs, with a [QuestIdle] no_target note.
+require_text("${choose}" "bool IsKillTripDestination(TravelDestination const* destination)\n{\n    return dynamic_cast<GrindTravelDestination const*>(destination) || dynamic_cast<BossTravelDestination const*>(destination) ||\n        (destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning && destination->GetEntry() > 0);\n}" "kill trips: grind mob, boss, skinning (never a gather node, NPC or petition target)")
+region("${choose}" "bool ChooseTravelTargetAction::SetBestTarget(" "\n    return hasTarget;\n}" best_target)
+require_text("${best_target}" "bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrind();" "forced targets only; GrindMode 0 / 1 false before the roster lookup")
+require_text("${best_target}" "    if (forcedNoGrind)\n        forcedNeeded = AI_VALUE(std::vector<int32>, \"needed quest entries\");" "one per-bot list per choice, only when it can matter")
+require_text("${best_target}" "if (forcedNoGrind && !ai::quest_grind_mode::ForcedKillTripAllowed(true, IsKillTripDestination(destination),\n                    std::binary_search(forcedNeeded.begin(), forcedNeeded.end(), destination->GetEntry())))\n            {\n                if (!forcedKillSkipped++)\n                    forcedKillEntry = destination->GetEntry();\n                continue;\n            }" "a forced kill trip only to a quest objective mob")
+require_order("${best_target}" "if (forcedNoGrind && !ai::quest_grind_mode::ForcedKillTripAllowed(" "if (target->IsForced() || (travelInfoReuse ? reuseActive(destination)" "before the forced acceptance that skips IsActive")
+require_text("${best_target}" "    if (!hasTarget && forcedKillSkipped)\n        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::NoTarget),\n            ai::quest_grind_mode::TargetText(\"forced_kill_trip\", forcedKillEntry > 0 ? uint32(forcedKillEntry) : 0u));" "one no_target note per choice that found nothing else")
+require_text("${choose}" "        SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, true);" "a failed choice marks the purpose (the order does not re-request every tick)")
+require_text("${policy}" "inline bool ForcedKillTripAllowed(bool noGrind, bool killTrip, bool neededForQuest)\n{\n    return !noGrind || !killTrip || neededForQuest;\n}" "forced kill trip rule")
+count_text("${choose}" "ai->IsQuestNoGrind()" 3 "GrindMode tests in the choose file: the grind branch, the grind request, the forced kill trip")
 region("${choose}" "bool RequestNamedTravelTargetAction::Execute(Event& event)" "\nbool RequestNamedTravelTargetAction::isAllowed() const" named_request)
 forbid_text("${named_request}" "IsQuestNoGrind" "named travel (RosterGuild, guild meeting, city ...) gated")
 require_text("${choose}" "else if (futureTravelPurpose == \"petition\" && sPlayerbotAIConfig.rosterGuildFoundTravel && RosterGuildPlan::UsesRosterPath(ai))\n    {\n        newTarget.SetForced(true);" "RosterGuild travel stays (forced, IsActive not asked)")

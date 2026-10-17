@@ -47,6 +47,14 @@ bool UsesQuestFirstProgression(Player const* bot)
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());
 }
 
+// twow-repo#601 GrindMode 2 (review): a destination whose work is killing creatures - a grind (money) mob, a boss, or a
+// skinning destination (GatherTravelDestination::IsActive needs living creatures of the entry).
+bool IsKillTripDestination(TravelDestination const* destination)
+{
+    return dynamic_cast<GrindTravelDestination const*>(destination) || dynamic_cast<BossTravelDestination const*>(destination) ||
+        (destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning && destination->GetEntry() > 0);
+}
+
 // #421 B: within each distance range, quest givers with more other givers
 // around them (a quest hub) come first. Bounded: long ranges stay as they are.
 void SortQuestHubsFirst(PartitionedTravelList& list)
@@ -1144,6 +1152,17 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     // main loop's skip predicate (CandidateSkipOf) before it lets a local candidate switch the hub filter on, and no
     // random range skip happens while the hub filter is on. false = both as before.
     bool const failureClasses = preferLocalQuest && sPlayerbotAIConfig.questFirstProgressionFailureClasses;
+    // twow-repo#601 GrindMode 2 (review): a forced target (the guild Farm / Kill order) never asks IsActive here, in
+    // TravelTarget::CheckStatus or by status time, so the order's kill trips (drop or name-matched mobs, bosses,
+    // skinning) would be a forced trip to mobs the grind target filter then refuses - the bot parked there while the
+    // order holds. With GrindMode 2 a forced kill trip goes only to a quest objective mob. Not forced, or GrindMode 0 / 1:
+    // false before anything else is read.
+    bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrind();
+    std::vector<int32> forcedNeeded;
+    if (forcedNoGrind)
+        forcedNeeded = AI_VALUE(std::vector<int32>, "needed quest entries");
+    uint32 forcedKillSkipped = 0;
+    int32 forcedKillEntry = 0;
 
     // A reachable point is not necessarily usable. Check the normal
     // destination activation predicate before holding the bot in its current
@@ -1216,6 +1235,15 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     continue;
                 case CandidateSkip::None:
                     break;
+            }
+
+            // twow-repo#601 GrindMode 2 (review): no forced kill trip to a creature that no active quest needs.
+            if (forcedNoGrind && !ai::quest_grind_mode::ForcedKillTripAllowed(true, IsKillTripDestination(destination),
+                    std::binary_search(forcedNeeded.begin(), forcedNeeded.end(), destination->GetEntry())))
+            {
+                if (!forcedKillSkipped++)
+                    forcedKillEntry = destination->GetEntry();
+                continue;
             }
 
             if (!target->IsForced() && isActive.find(destination) != isActive.end() && !isActive[destination])
@@ -1400,6 +1428,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     if (deferredDeathCluster)
         sLog.outBasic("[QuestFirstRoute] state=deferred bot=%u level=%u reason=route_danger detail=death_cluster deferred=%u cells=%u worst_killer_level=%u selected_other=%u",
             bot->GetGUIDLow(), bot->GetLevel(), deferredDeathCluster, deathClusterCells, deathClusterWorstKillerLevel, hasTarget ? 1u : 0u);
+
+    // twow-repo#601 GrindMode 2 (review): the forced order left only kill trips - no target, the bot stands idle; once per
+    // choice (the caller then marks the purpose "no active travel destinations", so the order does not re-request).
+    if (!hasTarget && forcedKillSkipped)
+        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::NoTarget),
+            ai::quest_grind_mode::TargetText("forced_kill_trip", forcedKillEntry > 0 ? uint32(forcedKillEntry) : 0u));
 
     ai->AddTravelChooseChecked(checked);
     if (!chooseBudgetExceeded)

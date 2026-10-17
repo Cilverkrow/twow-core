@@ -62,6 +62,11 @@ int main()
         Require(GrindDestinationActive(false, false), "off: every grind destination as before");
         Require(!GrindDestinationActive(true, false), "on: a pure grind destination is gone");
         Require(GrindDestinationActive(true, true), "on: a quest objective mob destination stays");
+        // Forced kill trips (guild Farm / Kill order: grind mob, boss, skinning) - review fix.
+        Require(ForcedKillTripAllowed(false, true, false), "off: every forced trip as before");
+        Require(!ForcedKillTripAllowed(true, true, false), "on: no forced kill trip to a creature no quest needs");
+        Require(ForcedKillTripAllowed(true, true, true), "on: a forced kill trip to a quest objective mob stays");
+        Require(ForcedKillTripAllowed(true, false, false), "on: a forced trip that kills nothing (guild meeting, petition, gather node) stays");
     }
 
     // 5) Reasons.

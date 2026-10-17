@@ -76,6 +76,14 @@ inline bool GrindDestinationActive(bool noGrind, bool neededForQuest)
     return !noGrind || neededForQuest;
 }
 
+// A forced travel target (the guild Farm / Kill order) never asks IsActive, so a kill trip (grind mob, boss, skinning)
+// would be a forced trip to mobs the target rule above then refuses (review fix). off -> as before; on -> a forced
+// kill trip only to a creature needed for an active quest; anything that is no kill trip stays.
+inline bool ForcedKillTripAllowed(bool noGrind, bool killTrip, bool neededForQuest)
+{
+    return !noGrind || !killTrip || neededForQuest;
+}
+
 // An "attack anything" target that was turned down: on the way somewhere (travel target active) it is opportunistic,
 // otherwise it is the grind strategy's idle kill.
 inline Reason TargetReason(bool travelTargetActive)
