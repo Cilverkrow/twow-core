@@ -5,6 +5,7 @@
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
+#include "playerbot/ShortcutPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -672,6 +673,11 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
+    shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault("AiPlayerbot.Shortcut.NearScope", 0));
+    shortcutNearRadius = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.Shortcut.NearRadius", 0.0f));
+    shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault("AiPlayerbot.Shortcut.TestWatcherGuids", ""));
+    shortcutTrace = config.GetBoolDefault("AiPlayerbot.Shortcut.Trace", false);
+    shortcutGroupLoopFix = config.GetBoolDefault("AiPlayerbot.Shortcut.GroupLoopFix", false);
     pathRouteFailDetail = config.GetBoolDefault("AiPlayerbot.Path.RouteFailDetail", false);
     pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault("AiPlayerbot.Path.RouteFailDetail.LinesPerMinute", 30));
     pathHonestRouteFail = config.GetBoolDefault("AiPlayerbot.Path.HonestRouteFail", false);
