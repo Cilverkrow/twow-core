@@ -15,6 +15,7 @@
 
 #include "strategy/values/SharedValueContext.h"
 #include "playerbot/LootRolePolicy.h"
+#include "playerbot/LootRoleV2Weights.h"
 
 char * strstri (const char* str1, const char* str2);
 
@@ -909,6 +910,10 @@ void RandomItemMgr::BuildItemInfoCache()
         sLog.outError("Error loading item weight scales");
         return;
     }
+
+    // twow-repo#308 LOOT-ROLE-01 v2 (AiPlayerbot.Loot.RoleWeights = 2): the owner stat table replaces these scales in memory.
+    if (sPlayerbotAIConfig.lootRoleWeights >= 2)
+        ApplyOwnerWeightsV2();
 
     // vendor items
     sLog.outString("Loading vendor item list...");
@@ -4058,4 +4063,35 @@ void RandomItemMgr::LoadRandomEnchantments()
 float RandomItemMgr::GetItemRarity(uint32 itemId)
 {
     return rarityCache[itemId];
+}
+
+// twow-repo#308 LOOT-ROLE-01 v2 (owner 17.10.2026, AiPlayerbot.Loot.RoleWeights = 2): the 28 specs of the owner stat table
+// v2 (LootRoleV2Weights.h, checked against data/stat-weights/stat-priorities-v2.tsv) replace their weight scales in
+// memory - only the 5 priorities count, plus the old scale's weapon DPS. World thread at start, before any weight is read.
+void RandomItemMgr::ApplyOwnerWeightsV2()
+{
+    uint32 replaced = 0;
+    for (ai::loot_v2::Row const& row : ai::loot_v2::Rows)
+    {
+        uint32 const id = SpecIdByName(row.cls, row.scale);
+        if (!id)
+        {
+            sLog.outError("[LootRoleV2] no weight scale '%s' for class %u - spec '%s' keeps none", row.scale, uint32(row.cls), row.spec);
+            continue;
+        }
+        std::vector<WeightScaleStat> stats;
+        for (WeightScaleStat const& old : m_weightScales[id].stats)
+            if (ai::loot_v2::KeepFromOldScale(old.stat))
+                stats.push_back(old);
+        for (auto const& [field, weight] : ai::loot_v2::RowWeights(row))
+        {
+            WeightScaleStat stat;
+            stat.stat = field;
+            stat.weight = weight;
+            stats.push_back(stat);
+        }
+        m_weightScales[id].stats = stats;
+        ++replaced;
+    }
+    sLog.outString("[LootRoleV2] owner stat table v2: %u of %u weight scales replaced", replaced, uint32(sizeof(ai::loot_v2::Rows) / sizeof(ai::loot_v2::Rows[0])));
 }

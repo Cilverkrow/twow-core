@@ -54,8 +54,9 @@ read_source("RandomItemMgr.cpp" items)
 read_source("strategy/actions/TalkToQuestGiverAction.cpp" talk)
 
 # Switches: RoleWeights off, the feral fix (a correction of the 26.09. decision) on.
-require_text("${config_h}" "bool lootRoleWeights = false;" "RoleWeights default off")
-require_text("${config_cpp}" "lootRoleWeights = config.GetBoolDefault(\"AiPlayerbot.Loot.RoleWeights\", false);" "config default 0")
+# RoleWeights 0..2 since v2 (owner 17.10.): 2 = 1 plus the owner stat table (loot_role_v2 contract).
+require_text("${config_h}" "uint32 lootRoleWeights = 0;" "RoleWeights default off")
+require_text("${config_cpp}" "lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault(\"AiPlayerbot.Loot.RoleWeights\", 0))));" "config default 0")
 require_text("${conf_dist}" "AiPlayerbot.Loot.RoleWeights = 0" "documented off")
 require_text("${config_h}" "bool lootFeralFixedSpec = true;" "FeralFixedSpec default on")
 require_text("${config_cpp}" "lootFeralFixedSpec = config.GetBoolDefault(\"AiPlayerbot.Loot.FeralFixedSpec\", true);" "config default 1")
