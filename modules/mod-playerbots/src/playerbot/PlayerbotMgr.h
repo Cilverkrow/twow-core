@@ -33,6 +33,8 @@ public:
 
     bool AddPlayerBot(uint32 guid, uint32 masterAccountId);
 	void HandlePlayerBotLoginCallback(QueryResult * dummy, SqlQueryHolder * holder);
+    // twow-repo#595 (4): the .bot add login callback - static, so a holder deleted before it runs is never touched.
+    static void HandlePendingBotLogin(QueryResult* dummy, SqlQueryHolder* holder, uint32 unused);
 
     void LogoutPlayerBot(uint32 guid, bool allowInstant = true, bool forDelete = false,
         bool allowMasterLogoutOrShutdown = false);
