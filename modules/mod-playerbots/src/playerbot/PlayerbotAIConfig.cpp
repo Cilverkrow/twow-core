@@ -402,6 +402,8 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[BGAnnounceCfg] state=maxperhour_clamp value=%u used=0 (an announcement needs room for %u lines, one per faction)",
             bgAnnounceMaxPerHour, ai::bgfill::AnnounceMinLines);
     bgAnnounceMaxPerHour = ai::bgfill::AnnounceMaxPerHour(bgAnnounceMaxPerHour);
+    // Owner Q2 (17.10.): every announcement line names the bracket's level range; a %lvl in a line always gets it.
+    bgAnnounceShowLevelRange = config.GetBoolDefault("AiPlayerbot.BG.Announce.ShowLevelRange", false);
     // The text pools (D3): per faction a generic key and one per battleground (index = the queue type), each empty = its
     // built-in pool. A line outside printable ASCII or too long is dropped here, with a warning; a set key left with no
     // line at all falls back to its built-in pool (review c2: no faction pool may end up empty, which would make an
@@ -426,7 +428,7 @@ bool PlayerbotAIConfig::Initialize()
                     bgAnnounceText[team][type] = ai::bgfill::ParseAnnouncePool(ai::bgfill::BuiltInAnnouncePool(team, type), builtInDropped);
                 }
                 if (dropped || fallback)
-                    sLog.outError("[BGAnnounceCfg] state=pool_drop key=%s dropped=%u fallback=%s (printable ASCII only, at most %u bytes with the battleground name, at most %u lines)",
+                    sLog.outError("[BGAnnounceCfg] state=pool_drop key=%s dropped=%u fallback=%s (printable ASCII only, at most %u bytes with the battleground name and the level range, at most %u lines)",
                         key.c_str(), dropped, fallback ? "builtin" : "none", ai::bgfill::MaxAnnounceLineBytes, ai::bgfill::MaxAnnouncePoolLines);
             }
         }

@@ -549,6 +549,7 @@ public:
         void DrainBgAnnounce(uint32 nowMs);
         bool IsBgAnnouncerFit(Player* bot) const;
         uint32 BgOwnBand(uint32 bgTypeId, uint32 bracket) const;
+        std::string BgAnnounceLevelRange(uint32 bgTypeId, uint32 bracket) const;   // owner Q2: "lo-hi", empty = none
         void CountBgOwnPerBand(std::map<uint32, uint32>& perBand) const;
         void PruneBgOwnInstances();
         // (bg type, bracket) of every running battleground with a free slot - the core tops those up from the queue first

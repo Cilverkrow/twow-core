@@ -4117,6 +4117,20 @@ uint32 RandomPlayerbotMgr::BgOwnBand(uint32 bgTypeId, uint32 bracket) const
     return ai::bgfill::LevelBand(bgTemplate->GetMinLevel(), bgTemplate->GetMaxLevel(), bracket);
 }
 
+// Owner Q2 (17.10.): the level range of a battleground's bracket for the announcement text (ai::bgfill::AnnounceLevelRange)
+// - the core's own bracket levels (Player::Get{Min,Max}LevelForBattleGroundBracketId, the levels BattleGroundQueue::Update
+// forms that bracket's match with), the top capped at the template's maximum level. Empty (no range) without a template.
+std::string RandomPlayerbotMgr::BgAnnounceLevelRange(uint32 bgTypeId, uint32 bracket) const
+{
+    BattleGroundTypeId const typeId = BattleGroundTypeId(bgTypeId);
+    BattleGround const* bgTemplate = sBattleGroundMgr.GetBattleGroundTemplate(typeId);
+    if (!bgTemplate || bracket >= MAX_BATTLEGROUND_BRACKETS)
+        return std::string();
+    BattleGroundBracketId const bracketId = BattleGroundBracketId(bracket);
+    return ai::bgfill::AnnounceLevelRange(Player::GetMinLevelForBattleGroundBracketId(bracketId, typeId),
+        Player::GetMaxLevelForBattleGroundBracketId(bracketId, typeId), bgTemplate->GetMaxLevel());
+}
+
 // Stage c (owner C0, MaxBotBGPerBracket): bot-own battlegrounds per level range, any type - running (an instance a
 // bot-own match started and not ended, counted from the first accept on, as CountBgFillRunning does, and also once its
 // own bots have left it: bgOwnInstances), forming (own bots queued, per queue type and bracket) and the announced match
@@ -4226,18 +4240,31 @@ void RandomPlayerbotMgr::BuildBgAnnouncePool(uint32 queueType, std::array<std::v
 // faction whose level is in the bracket (bounded by the real players; no walk over the sessions, no new text row in the database).
 // Only the factions in sides (ai::bgfill::AnnounceSide bits): both from the planner, the unannounced ones from the
 // mode-2 fallback (review c4). The caller checked that their pools have lines and MaxPerHour has room for one line each.
+// Each faction's text goes through ai::bgfill::ExpandAnnounceText (owner Q2: the level range); a text that cannot go out
+// (never with the load filter) sends nothing to any faction - all of them or none, fail closed.
 // Returns the faction texts sent (counted against MaxPerHour).
 uint32 RandomPlayerbotMgr::SendBgAnnounceServer(uint32 queueType, uint32 bgTypeId, uint32 bracket,
     std::array<std::vector<std::string>, 2> const& pool, uint32 sides)
 {
     char const* const bgName = ai::bgfill::BgFullName(queueType);
+    std::string const levelRange = BgAnnounceLevelRange(bgTypeId, bracket);
     BattleGroundTypeId const typeId = BattleGroundTypeId(bgTypeId);
-    uint32 lines = 0;
+    std::array<std::string, 2> texts;
     for (uint32 team = 0; team < 2; ++team)
     {
         if (!(sides & ai::bgfill::AnnounceSide(team)) || pool[team].empty())
             continue;
-        std::string const text = ai::bgfill::ExpandAnnounceLine(pool[team][urand(0, uint32(pool[team].size()) - 1)], bgName);
+        texts[team] = ai::bgfill::ExpandAnnounceText(pool[team][urand(0, uint32(pool[team].size()) - 1)], bgName, levelRange,
+            sPlayerbotAIConfig.bgAnnounceShowLevelRange);
+        if (texts[team].empty())
+            return 0;
+    }
+    uint32 lines = 0;
+    for (uint32 team = 0; team < 2; ++team)
+    {
+        if (texts[team].empty())
+            continue;
+        std::string const& text = texts[team];
         Team const sideTeam = team ? HORDE : ALLIANCE;
         for (auto const& [playerGuid, player] : players)
         {
@@ -4502,6 +4529,7 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
         return;
     }
     char const* const bgName = ai::bgfill::BgFullName(queueType);
+    std::string const levelRange = BgAnnounceLevelRange(uint32(bgTypeId), bracket);
     uint32 lines = 0;
     if (server)
     {
@@ -4533,7 +4561,11 @@ void RandomPlayerbotMgr::PlanBgOwn(uint32 nowMs)
             due.guid = guid;
             due.team = team;
             due.dueMs = nowMs + urand(ai::bgfill::AnnounceStaggerMinMs, ai::bgfill::AnnounceStaggerMaxMs);
-            due.text = ai::bgfill::ExpandAnnounceLine(pool[team][pick[team][said[team]++]], bgName);
+            due.text = ai::bgfill::ExpandAnnounceText(pool[team][pick[team][said[team]++]], bgName, levelRange,
+                sPlayerbotAIConfig.bgAnnounceShowLevelRange);
+            // A text that cannot go out (never with the load filter) is not said and not counted (fail closed).
+            if (due.text.empty())
+                continue;
             bgAnnounceDue.push_back(due);
             bgAnnounceCooldown[guid] = nowMs ? nowMs : 1;
             ++lines;
