@@ -1085,6 +1085,31 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+# twow-repo#601 S1 "latch semantics" (OB-00 / OB-10 17.10.2026). Three separate switches so an A/B can isolate
+# them (arm A1 sets all three to 1); all 0 = today's behaviour. Restart-only. Quest-first roster bots on their
+# own only.
+# FailureClasses = 1: every quest route search that found nothing ([QuestFirstRoute] state=rejected
+# reason=no_active_route_candidate) gets a class from its reject counts, logged as [QuestFailureClass]:
+#   structural  - a turn-in-only request whose takers were all deferred as cross_map (below
+#                 MinLevelForCrossMapQuestRoute) or zone_level, or a turn-in the destination job found no taker
+#                 point for (no spawn, script-only game object, excluded zone): the turn-in is parked at once for
+#                 TurnInParkSeconds ([QuestFirstRoute] state=parked reason=structural_*); the park resets the
+#                 GrindFallbackFailures counter as every TurnInParkFailures park does, so it never counts toward
+#                 grinding;
+#   transient   - turn-in route / death / quest-loop suppression, the local hub filter, a random range skip, a
+#                 stale or resumed list: the route backoff only, the GrindFallbackFailures counter does not grow;
+#   empty_offer - everything else (no giver mark, nothing active, enemy zone, danger map, mixed reasons): counts as
+#                 before (until a later stage adds the step to the next level band).
+# Also with FailureClasses = 1: a request is turn-in-only only for a taker checked first ([QuestTakerCheck]:
+# reachable, not on the other continent below MinLevelForCrossMapQuestRoute, not in a zone clearly above the bot,
+# not suppressed, active); a taker that fails the check for a structural reason is parked at once, otherwise the
+# request runs the normal quest giver / objective fetch. The grind fallback waits while a checked open turn-in
+# (or one finished since the last request) waits, as gathering does since hotfix 8.5. The local quest hub
+# pre-check skips the same suppressed candidates as the main loop, and no random range skip happens while the
+# hub filter is on. [QuestSearch] state=grind_none when a grind search finds nothing (also with
+# TraceTravelDecisions = 1). The parks need TurnInParkFailures > 0 (parking on); with 0 nothing is parked and a
+# structural failure counts as before.
+AiPlayerbot.QuestFirstProgression.FailureClasses = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
