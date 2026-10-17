@@ -1941,6 +1941,9 @@ void Script_SetForcedRole(Player* player, uint8 role);
 // twow-repo#485: may this guild member take the inviter's guild invitation (guildId) or
 // charter (guildId = 0)? False unless a module says so (PlayerScript::CanSwitchGuild).
 bool Script_CanSwitchGuild(Player* inviter, ObjectGuid const& invitee, uint32 guildId);
+// twow-repo#517 stage c: lets a module scale honor (not a dishonorable kill) after Rate.Honor
+// (PlayerScript::OnHonorGain). Without a listener cp stays as it is.
+void Script_OnHonorGain(Player* player, float& cp, uint8 type);
 
 uint32 GetAreaTriggerScriptId(uint32 triggerId);
 uint32 GetEventIdScriptId(uint32 eventId);

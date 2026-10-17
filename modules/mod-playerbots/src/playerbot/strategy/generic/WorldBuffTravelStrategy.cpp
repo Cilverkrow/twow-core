@@ -11,6 +11,9 @@ float WorldBuffTravelMultiplier::GetValue(Action* action)
 
     std::string name = action->getName();
 
+    // twow-repo#601 GrindMode: "attack anything" (the grind strategy's only action; "grind" names no action) is
+    // multiplied to 0 here in every GrindMode - during world buff travel nothing grinds, so GrindMode 2 needs no branch
+    // of its own here; the grind strategy's QuestGrindModeMultiplier and the grind target filter act in addition.
     if (name == "choose travel target" || name == "request travel target" ||
         name == "request named travel target" || name == "request quest travel target" ||
         name == "choose group travel target" || name == "refresh travel target" ||

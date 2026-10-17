@@ -247,6 +247,20 @@ public:
     uint32 bgBotOnlyGraceSeconds = 0;    // 0 = 120 s, minimum 60 s (ai::bgfill::BotOnlyGraceMs)
     // Follow-up D (OB-20 16.10.): the bot-only cleanup has its own switch, on by default but inert without PlayerFill.
     bool bgBotOnlyCleanup = true;
+    // twow-repo#517 stage c (owner contract, decision C0 16.10.): announced bot-own battlegrounds and the honor rate for
+    // bots in a battleground without a real player. Restart-only; neutral defaults (no bot-own battleground, factor 1).
+    bool bgAnnounce = false;
+    uint32 bgAnnounceIntervalMinutes = 0;    // 0 = no bot-own battlegrounds (ai::bgfill::AnnounceIntervalMs)
+    uint32 bgMaxBotBGPerBracket = 0;         // 0 = 1 per level range (ai::bgfill::MaxOwnPerBand)
+    float bgBotOnlyHonorRate = 1.0f;         // 1 = neutral; <= 0 or above 1 counts as 1 (ai::bgfill::BotOnlyHonorRate)
+    uint32 bgAnnounceMode = 0;               // 0 chat, 1 server message, 2 chat with server fallback (ai::bgfill::AnnounceMode)
+    uint32 bgAnnounceDelaySeconds = 0;       // 0 = 60 s, minimum 20 s (ai::bgfill::AnnounceDelayMs)
+    uint32 bgAnnounceBotCooldownMinutes = 0; // 0 = 60 min (ai::bgfill::AnnounceCooldownMs)
+    uint32 bgAnnounceMaxPerHour = 0;         // 0 = no announcement line at all (fail closed)
+    bool bgAnnounceShowLevelRange = false;   // owner Q2: each line names the bracket's level range (ai::bgfill::ExpandAnnounceText)
+    // Parsed text pools [team: 0 alliance, 1 horde][0 = generic, else the queue type: 1 AV, 2 WSG, 3 AB]; an empty key
+    // takes the built-in pool (ai::bgfill::BuiltInAnnouncePool).
+    std::vector<std::string> bgAnnounceText[2][4];
     uint32 randomBotBracketCount;
     bool randomBotLoginAtStartup;
     uint32 randomBotTeleLevel;
@@ -779,6 +793,21 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionGrindFallbackFailures = 0;  // hotfix 8.32 (#544), 0 = off
+    // twow-repo#601 S1 "latch semantics" (OB-10 17.10.2026), all false = today's behaviour, restart-only
+    // (aiplayerbot.conf.dist.in): failure classes + taker pre-validation + grind yield + pre-loop filters.
+    bool questFirstProgressionFailureClasses = false;
+    // reset of the grind-fallback counter, the route backoff and the search stage on rescue teleport, level-up,
+    // login and battleground return; XP alone no longer resets the stage.
+    bool questFirstProgressionResetOnProgressEvents = false;
+    // "parked twice -> abandon" for a structural reason that cannot heal by itself (no destination, other continent).
+    bool questFirstProgressionAbandonStructuralParked = false;
+    // S1 review (OB-10 to decide): 0 = a transient rejection never counts toward the grind fallback; N = the N-th
+    // transient rejection in a row counts once (acts only with FailureClasses).
+    uint32 questFirstProgressionTransientCountsAfter = 0;
+    // twow-repo#601 GrindMode (owner 17.10.2026, restart-only): 0 = today's behaviour; 1 = reserved for the S2/S4 gap
+    // filler, acts like 0 until then; 2 = no grind as a substitute activity for quest-first roster bots on their own
+    // below the max level, they stand idle and log [QuestIdle] (QuestGrindModePolicy.h). Other values act like 0.
+    uint32 questFirstProgressionGrindMode = 0;
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
     bool directTargetsEnabled = false;
     bool directTargetsTraceInactive = false;
@@ -788,6 +817,12 @@ public:
     bool rosterFarMove = false;  // hotfix 8.33 (#544): cheap movement without a player nearby, 0 = off
     float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route
+    // twow-repo#595 P4 S0 + B1 (shortcuts by player proximity): all 0 = today's behaviour (ShortcutPolicy.h)
+    uint32 shortcutNearScope = 0;  // 0 = off (ShortcutNear answers Unknown), 1 = radius, 2 = same zone or radius
+    float shortcutNearRadius = 0.0f;  // yards, 0 = map visibility + ReactDistance
+    std::vector<uint32> shortcutTestWatcherGuids;  // TEST ONLY: these bot guids count as real players in the snapshot
+    bool shortcutTrace = false;  // [Shortcut] counter lines once a minute, measurement only
+    bool shortcutGroupLoopFix = false;  // B1: the legacy random-teleport group loop skips real members, uses the member AI
     bool pathRouteFailDetail = false;  // twow-repo#575 (PATH-01 #1): [RouteFailDetail] line per failed node route (rate-limited), 0 = off
     uint32 pathRouteFailDetailLinesPerMinute = 30;  // PATH-01 #1: detail lines per minute (all failures are counted), clamped 0..600
     bool pathHonestRouteFail = false;  // twow-repo#575 (PATH-01 #3): an empty node route makes MoveTo2 fail instead of reporting a collapsed path, 0 = off

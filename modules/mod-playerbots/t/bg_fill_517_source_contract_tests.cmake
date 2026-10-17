@@ -134,7 +134,11 @@ require_text("${conf_dist}" "restart-only" "BG keys documented as restart-only")
 # 2. Roster branch: LoginFreeBots(), then the gated CheckBgFill, then the roster return; no legacy BG queue count.
 region("${mgr_cpp}" "if (sPlayerbotAIConfig.persistentActiveRosterEnabled)\n    {\n        if (!persistentRosterInitialized)" "    ScaleBotActivity();\n    if (sPlayerbotAIConfig.asyncBotLogin)" roster_branch)
 # Stage b (twow-repo#517): SlotRelease runs in the same pass and needs no PlayerFill; the master switch gates both.
-require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease))\n            CheckBgFill();" "fill gated by bgEnable && (bgPlayerFill || bgSlotRelease)")
+# Stage c: announced bot-own battlegrounds run in the same pass too, also without PlayerFill, but only behind their full
+# gate BgOwnEnabled (Enable && Announce && IntervalMinutes && MaxConcurrent, pinned in bg_announce_517): Announce alone
+# opens nothing (review c2, C1 "everything off = no work at all").
+require_text("${roster_branch}" "if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease || BgOwnEnabled()))\n            CheckBgFill();" "fill gated by bgEnable && (bgPlayerFill || bgSlotRelease || BgOwnEnabled())")
+forbid_text("${roster_branch}" "sPlayerbotAIConfig.bgAnnounce" "the pass opened by Announce alone")
 require_order("${roster_branch}" "LoginFreeBots();" "CheckBgFill();" "LoginFreeBots before CheckBgFill")
 require_order("${roster_branch}" "CheckBgFill();" "PlayerbotHolder::UpdateAIInternal(elapsed, minimal);\n        if (sPlayerbotAIConfig.worldBotsTrace)" "CheckBgFill before the roster return")
 forbid_text("${roster_branch}" "CheckBgQueue" "legacy BG queue count in the roster branch (BGJoinAction would queue roster bots)")
@@ -268,6 +272,23 @@ count_text("${leave_callers}" "if (!LeaveBgFillQueue(bot, ai, " 1 "scan checks t
 region("${join_cpp}" "void BGStatusAction::LeaveQueue(" "void BGStatusAction::SendPort(" leave_queue)
 require_text("${leave_queue}" "SendPort(bot, bgTypeId, 0x0);" "leave = port action 0")
 require_text("${policy_h}" "return now - joinMs >= maxMs;" "pending age with an unsigned difference")
+# Recheck c6 (open point 3): AiPlayerbot.BgBotTeamCap 0 takes a battleground away from bots in the stage-a fill too - the
+# skip compares with 0 exactly, continues to the next bracket, and comes before the cap count, the forming mark and any
+# request (so no bot is queued for that battleground).
+set(scan_teamcap "            if (sPlayerbotAIConfig.GetBgBotTeamCap(uint32(bgTypeId)) == 0)\n            {\n                if (trace)\n                    sLog.outBasic(\"[BGFill] state=skip reason=teamcap bg=%u bracket=%u side=%s\", uint32(bgTypeId), b,\n                        needA && needH ? \"AH\" : needA ? \"A\" : \"H\");\n                continue;\n            }\n")
+require_text("${scan}" "${scan_teamcap}" "BgBotTeamCap 0 skips the bracket in the fill scan")
+count_text("${scan}" "GetBgBotTeamCap(" 1 "one team-cap check in the fill scan")
+require_order("${scan}" "${scan_teamcap}" "uint32 const running = ai::bgfill::RunningForBracket(" "the team cap before the cap count")
+require_order("${scan}" "${scan_teamcap}" "                forming[q][b] = true;" "the team cap before the bracket is marked forming")
+require_order("${scan}" "${scan_teamcap}" "requests.push_back(" "the team cap before any request")
+# Review c8 (probe r8b): a slot reserved for a waiting real player (stage b) skips that one bracket - continue, not break
+# (which would end the bracket loop of the type) - before the team cap, the cap count, the forming mark and any request.
+set(scan_reserved "            if ((needA && BgFillReserved(q, b, 0, nowMs)) || (needH && BgFillReserved(q, b, 1, nowMs)))\n            {\n                if (trace)\n                    sLog.outBasic(\"[BGFill] state=skip reason=reserved bg=%u bracket=%u side=%s\", uint32(bgTypeId), b,\n                        needA && needH ? \"AH\" : needA ? \"A\" : \"H\");\n                continue;\n            }\n")
+require_text("${scan}" "${scan_reserved}" "a reserved slot skips the bracket in the fill scan")
+count_text("${scan}" "BgFillReserved(" 2 "one reservation check (both sides) in the fill scan")
+require_order("${scan}" "${scan_reserved}" "${scan_teamcap}" "the reservation before the team cap")
+require_order("${scan}" "${scan_reserved}" "uint32 const running = ai::bgfill::RunningForBracket(" "the reservation before the cap count")
+require_order("${scan}" "${scan_reserved}" "                forming[q][b] = true;" "the reservation before the bracket is marked forming")
 
 # 5. Candidate filters.
 # Ends where the pending recheck starts, so a filter dropped here is not found there.
@@ -302,7 +323,8 @@ forbid_text("${forced_travel}" "IsActive()" "IsActive() leaves PREPARE out")
 # bot inside (final review F5: skipping it whole undercounted).
 region("${mgr_cpp}" "uint32 RandomPlayerbotMgr::CountBgFillRunning() const" "void RandomPlayerbotMgr::ReportBgFillMinute()" running_count)
 require_text("${running_count}" "bg->GetStatus() == STATUS_WAIT_LEAVE)\n            return;" "ended battlegrounds not counted")
-require_text("${running_count}" "(entry.startedForFill ? started : toppedUp).emplace(entry.bgTypeId, entry.instanceId);" "fill instances from the in-battleground set")
+# Stage c: an instance a bot-own match started (startedForOwn) counts against the cap exactly like a started-for-fill one.
+require_text("${running_count}" "(entry.startedForFill || entry.startedForOwn ? started : toppedUp).emplace(entry.bgTypeId, entry.instanceId);" "fill and own instances from the in-battleground set")
 require_order("${running_count}" "if (started.count(key))\n        {\n            ++running;\n            return;\n        }" "bool const toppedUpByFill = toppedUp.count(key) != 0;" "started instances counted, then the topped-up check")
 forbid_text("${running_count}" "if (toppedUp.count(key))\n            return;" "topped-up instance skipped whole")
 require_text("${running_count}" "uint32 const playerLow = playerGuid.GetCounter();\n            if (!IsPersistentRosterMember(playerLow))\n                continue;" "other battlegrounds with a roster bot counted")
@@ -366,7 +388,8 @@ forbid_text("${real_group}" "FindMap()" "every online member counts, on any map"
 # The flag stays set from the accept until the return: a WAIT_JOIN latched before the accept must not port again.
 region("${members}" "BGStatusAction::AcceptInvite(" "bgFillInBg[guid] = accepted;" accept_tail)
 forbid_text("${accept_tail}" "SetBgFillPending(false)" "pending flag cleared at the accept")
-require_text("${accept_tail}" "accepted.startedForFill = !entry.pairFor && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "instance started for the fill (never by a stage-b pair or top-up bot), or topped up")
+# Stage c: a bot-own match's bot (entry.own) never marks an instance started for the fill (startedForOwn instead).
+require_text("${accept_tail}" "accepted.startedForFill = !entry.pairFor && !entry.own && bg && bg->GetStatus() != STATUS_IN_PROGRESS;" "instance started for the fill (never by a stage-b pair or top-up bot or a stage-c own bot), or topped up")
 require_order("${members}" "ai->OnReturnFromBattleground(uint32(time(nullptr)));" "ai->SetBgFillPending(false);\n        ++bgFillMinute.returns;" "pending flag cleared on the return")
 require_text("${ai_h}" "std::atomic<bool> bgFillPending{ false };" "pending flag is atomic")
 region("${join_cpp}" "if (statusid == STATUS_WAIT_JOIN)" "bool BGStatusCheckAction::Execute(Event& event)" wait_join)
@@ -417,7 +440,11 @@ require_text("${return_hook}" "aiObjectContext->GetValue<int>(\"manual int\", \"
 require_text("${return_hook}" "questProgress.lastChange = now;" "idle watch reset")
 forbid_text("${return_hook}" "OnQuestRescued" "OnQuestRescued in the return hook (rescue limiter)")
 forbid_text("${return_hook}" "lastQuestRescue" "lastQuestRescue in the return hook (rescue limiter)")
-count_text("${return_hook}" ";" 2 "exactly two statements in the return hook")
+# twow-repo#601 S1 (deliberate): a third statement, only with AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents -
+# it asks the bot's own update to reset the grind-fallback counter and the route backoff too (an atomic event bit, no
+# value write from the world thread, still no rescue stamp). With the switch off the hook does exactly the two resets.
+require_text("${return_hook}" "    if (sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents)\n        RequestQuestRouteReset(ai::quest_failure_class::ResetBgReturn);\n}" "S1 reset request behind its switch, last")
+count_text("${return_hook}" ";" 3 "exactly the two resets plus the S1 request in the return hook")
 require_order("${members}" "ai->OnReturnFromBattleground(uint32(time(nullptr)));" "target->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);" "return hook, then travel status NONE")
 forbid_text("${members}" "SetTarget(" "travel target restored 1:1")
 

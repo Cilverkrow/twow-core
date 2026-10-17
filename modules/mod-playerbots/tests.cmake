@@ -233,6 +233,47 @@ add_test(NAME quest_turnin_park_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_turnin_park_source_contract_tests.cmake")
 
+# twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses / ResetOnProgressEvents /
+# AbandonStructuralParked, default 0): failure classes, taker pre-validation, grind yield, resets and the
+# structural park (policy).
+add_executable(quest_failure_class_policy_tests
+  "${PB_MODULE_DIR}/t/quest_failure_class_policy_tests.cpp")
+
+target_include_directories(quest_failure_class_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_failure_class_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_failure_class_policy
+  COMMAND quest_failure_class_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_failure_class_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_failure_class_source_contract_tests.cmake")
+
+# twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode, default 0; owner 17.10.2026): with 2 no grind as
+# a substitute activity for quest-first roster bots on their own below the max level, [QuestIdle] (policy).
+add_executable(quest_grind_mode_policy_tests
+  "${PB_MODULE_DIR}/t/quest_grind_mode_policy_tests.cpp")
+
+target_include_directories(quest_grind_mode_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_grind_mode_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_grind_mode_policy
+  COMMAND quest_grind_mode_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_grind_mode_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_grind_mode_source_contract_tests.cmake")
+
 # #354/#292: who may direct a bot without GM rank, and which `.bot`/`.rndbot`
 # commands stay GM tools. Decision table plus the call sites that use it.
 add_executable(roster_control_policy_tests
@@ -2202,6 +2243,14 @@ add_test(NAME bg_slot_release_517_source_contract
     "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/bg_slot_release_517_source_contract_tests.cmake")
 
+# twow-repo#517 stage c: announced bot-own battlegrounds (AiPlayerbot.BG.Announce, MaxBotBGPerBracket) and the bot-only
+# honor rate (AiPlayerbot.BG.BotOnlyHonorRate, core PlayerScript::OnHonorGain).
+add_test(NAME bg_announce_517_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/bg_announce_517_source_contract_tests.cmake")
+
 # twow-repo#541 (audit A10): one PlayerTravelInfo per travel choice and keyed destination lookup (AiPlayerbot.Perf.TravelInfoReuse, default 0).
 add_test(NAME travel_info_reuse_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -3109,3 +3158,22 @@ add_test(NAME bind_area_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bind_area_source_contract_tests.cmake")
+
+# twow-repo#595 P4 S0 + B1 (AiPlayerbot.Shortcut.*): real-player snapshot, ShortcutNear, [Shortcut] counters, group-loop fix.
+add_executable(shortcut_policy_tests
+  "${PB_MODULE_DIR}/t/shortcut_policy_tests.cpp")
+
+target_include_directories(shortcut_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(shortcut_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME shortcut_policy
+  COMMAND shortcut_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME shortcut_s0_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/shortcut_s0_source_contract_tests.cmake")

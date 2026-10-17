@@ -96,7 +96,10 @@ require_text("${best}" "choiceTravelInfo.emplace(bot);" "info built from this bo
 # 3. Pre-loop: old local info when off, outer break only when on, predicate unchanged.
 require_text("${preloop}" "PlayerTravelInfo const& travelInfo = travelInfoReuse ? choiceInfo() : preLoopTravelInfo.emplace(bot);" "pre-loop info gated")
 require_text("${preloop}" "if (travelInfoReuse && hasActiveLocalQuestHub)\n                break;" "outer break gated by the switch")
-require_text("${preloop}" "IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&\n                    (isActive[destination] = true))" "pre-loop predicate unchanged, only true stored")
+# twow-repo#601 S1: with FailureClasses = 0 the predicate is unchanged; with FailureClasses = 1 a CandidateSkipOf prefix
+# (the main loop's skip predicate) comes first - pinned in quest_failure_class_source_contract. Here: the hub test and
+# the true-only store stay the tail of the predicate.
+require_text("${preloop}" "IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&\n                    (isActive[destination] = true))" "pre-loop predicate unchanged with FailureClasses = 0, only true stored")
 require_text("${preloop}" "if (ai::travel_choose::OverBudget(WorldTimer::getMSTimeDiffToNow(chooseStart)))" "pre-loop budget check kept")
 
 # 4. A known false answer is rejected before the hub filter and the main check (reuse relies on it).
