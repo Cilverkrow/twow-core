@@ -723,6 +723,12 @@ void TerrainInfo::CleanUpGrids(const uint32 diff)
     if (!i_timer.Passed())
         return;
 
+    // twow-repo#597 (TICK-01, PerformanceLog.TerrainTrace): one [TerrainCleanup] line per pass that frees
+    // at least one grid. Off: no clock read, no line.
+    bool const trace = sWorld.getConfig(CONFIG_BOOL_PERFLOG_TERRAIN_TRACE);
+    uint64 const traceStartUs = trace ? tick_diag::NowUs() : 0;
+    uint32 freedGrids = 0;
+
     for (int y = 0; y < MAX_NUMBER_OF_GRIDS; ++y)
     {
         for (int x = 0; x < MAX_NUMBER_OF_GRIDS; ++x)
@@ -743,9 +749,14 @@ void TerrainInfo::CleanUpGrids(const uint32 diff)
 
                 // unload mmap...
                 MMAP::MMapFactory::createOrGetMMapManager()->unloadMap(m_mapId, x, y);
+                ++freedGrids;
             }
         }
     }
+
+    if (trace && freedGrids)
+        sLog.out(LOG_PERFORMANCE, "[TerrainCleanup] map=%u freed_grids=%u ms=%.1f", m_mapId, freedGrids,
+            (tick_diag::NowUs() - traceStartUs) / 1000.0);
 
     i_timer.Reset();
 }
@@ -1144,12 +1155,12 @@ GridMap* TerrainInfo::GetGrid(const float x, const float y)
     // quick check if GridMap already loaded
     GridMap* pMap = m_GridMaps[gx][gy];
     if (!pMap)
-        pMap = LoadMapAndVMap(gx, gy);
+        pMap = LoadMapAndVMap(gx, gy, true);  // twow-repo#597: lazy, without RefGrid
 
     return pMap;
 }
 
-GridMap* TerrainInfo::LoadMapAndVMap(const uint32 x, const uint32 y)
+GridMap* TerrainInfo::LoadMapAndVMap(const uint32 x, const uint32 y, bool lazy)
 {
     // double checked lock pattern
     if (!m_GridMaps[x][y])
@@ -1158,6 +1169,12 @@ GridMap* TerrainInfo::LoadMapAndVMap(const uint32 x, const uint32 y)
 
         if (!m_GridMaps[x][y])
         {
+            // twow-repo#597 (TICK-01, PerformanceLog.TerrainTrace): the cost of this load (map file, vmap
+            // tile, navmesh) and the thread that paid it, into the [TerrainReload] minute line. Off: no
+            // clock read.
+            bool const trace = sWorld.getConfig(CONFIG_BOOL_PERFLOG_TERRAIN_TRACE);
+            uint64 const traceStartUs = trace ? tick_diag::NowUs() : 0;
+
             GridMap* map = new GridMap();
 
             // map file name
@@ -1193,6 +1210,9 @@ GridMap* TerrainInfo::LoadMapAndVMap(const uint32 x, const uint32 y)
 
             // load navmesh
             MMAP::MMapFactory::createOrGetMMapManager()->loadMap(m_mapId, x, y);
+
+            if (trace)
+                m_loadTrace.Record(tick_diag::NowUs() - traceStartUs, lazy, World::IsWorldThread());
         }
     }
 
@@ -1301,6 +1321,27 @@ void TerrainManager::Update(const uint32 diff)
     // global garbage collection for GridMap objects and VMaps
     for (auto& iter : i_TerrainMap)
         iter.second->CleanUpGrids(diff);
+}
+
+// twow-repo#597 (TICK-01, PerformanceLog.TerrainTrace): the GridMap loads of the last minute per terrain
+// (lazy = through GetGrid without RefGrid, i.e. the grids CleanUpGrids frees again). The counters are
+// taken under the guard (LoadTerrain may insert from another thread), the lines written after it.
+void TerrainManager::ReportTerrainReloads(bool log)
+{
+    std::vector<std::pair<uint32, tick_diag::TerrainLoadSnapshot>> loaded;
+    {
+        Guard _guard(*this);
+        for (auto& iter : i_TerrainMap)
+        {
+            tick_diag::TerrainLoadSnapshot const s = iter.second->TakeLoadTrace();
+            if (log && s.loads)
+                loaded.emplace_back(iter.first, s);
+        }
+    }
+    for (auto const& [mapId, s] : loaded)
+        sLog.out(LOG_PERFORMANCE, "[TerrainReload] map=%u loads=%llu lazy=%llu ms_sum=%.1f max_ms=%.1f world_thread=%llu other_thread=%llu",
+            mapId, (unsigned long long)s.loads, (unsigned long long)s.lazy, s.usSum / 1000.0, s.maxUs / 1000.0,
+            (unsigned long long)s.worldThread, (unsigned long long)s.otherThread);
 }
 
 void TerrainManager::UnloadAll()
