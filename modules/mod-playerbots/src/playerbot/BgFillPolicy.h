@@ -559,8 +559,9 @@ inline uint32_t OwnCandidateLimit(uint32_t minPerTeam, uint32_t queueType)
 }
 
 // Announcement text (D3): English, role-play, per faction. A pool is lines separated by '|', %bg is the full
-// battleground name. A line outside printable ASCII, or longer than MaxAnnounceLineBytes with the longest name put in,
-// is dropped at load; at most MaxAnnouncePoolLines per key.
+// battleground name, %lvl the level range of the bracket (owner Q2). A line outside printable ASCII, or longer than
+// MaxAnnounceLineBytes with the longest name and the longest range put in, is dropped at load; at most
+// MaxAnnouncePoolLines per key.
 constexpr uint32_t MaxAnnounceLineBytes = 255;
 constexpr uint32_t MaxAnnouncePoolLines = 64;
 
@@ -595,7 +596,96 @@ inline std::string ExpandAnnounceLine(std::string const& line, std::string const
     return out;
 }
 
-// Printable ASCII only (no control bytes, no UTF-8), not empty, and short enough with the longest name put in.
+// Owner Q2 (17.10., AiPlayerbot.BG.Announce.ShowLevelRange): the level range of the announced bracket, "lo-hi", as the
+// core forms a match of it (BattleGroundQueue::Update and the queue announcer: Player::GetMinLevelForBattleGroundBracketId
+// up to Player::GetMaxLevelForBattleGroundBracketId - 1), the top capped at the battleground's maximum level (0 = none):
+// AV 51-60 -> "51-60", WSG/AB 50-59 -> "50-59", WSG/AB 60 (maximum 60) -> "60-60". Empty - no range shown - for a range
+// the core would not form (no bottom level, the top below the bottom) or one longer than LongestLevelRange.
+constexpr char const* LongestLevelRange = "999-999";
+
+inline std::string AnnounceLevelRange(uint32_t minLevel, uint32_t maxLevelExclusive, uint32_t templateMaxLevel)
+{
+    if (!minLevel || maxLevelExclusive <= minLevel)
+        return std::string();
+    uint32_t high = maxLevelExclusive - 1;
+    if (templateMaxLevel && high > templateMaxLevel)
+        high = templateMaxLevel;
+    if (high < minLevel || high > 999)
+        return std::string();
+    return std::to_string(minLevel) + "-" + std::to_string(high);
+}
+
+// A text that may go out: not empty, printable ASCII only (no control bytes, no UTF-8), at most MaxAnnounceLineBytes.
+inline bool AnnounceTextFits(std::string const& text)
+{
+    if (text.empty() || text.size() > MaxAnnounceLineBytes)
+        return false;
+    for (char c : text)
+    {
+        unsigned char const u = static_cast<unsigned char>(c);
+        if (u < 0x20 || u > 0x7E)
+            return false;
+    }
+    return true;
+}
+
+// The text an announcement line goes out with (chat and server message alike): every %bg is the full name, every %lvl
+// the level range (a configured line asks for it, whatever showRange says). With showRange and no %lvl in the line the
+// range is added once: right after the first %bg ("Warsong Gulch (50-59)"), else before the closing run of ! ? . at the
+// end ("to Alterac (51-60)!"), else at the end - never when the line already holds it. Too long with the added range:
+// the line without it; still too long, outside printable ASCII, or a %lvl line without a range: empty - the line is not
+// said (fail closed; the load filter already drops such lines). showRange off and no %lvl: ExpandAnnounceLine, byte for byte.
+inline std::string ExpandAnnounceText(std::string const& line, std::string const& bgName, std::string const& range, bool showRange)
+{
+    bool const hasLvl = line.find("%lvl") != std::string::npos;
+    if (hasLvl && range.empty())
+        return std::string();
+    std::string const plain = ExpandAnnounceLine(line, bgName);
+    bool const addRange = showRange && !hasLvl && !range.empty() && plain.find(range) == std::string::npos;
+    if (!hasLvl && !addRange)
+        return AnnounceTextFits(plain) ? plain : std::string();
+    std::string const added = " (" + range + ")";
+    std::string out;
+    out.reserve(line.size() + bgName.size() + added.size() + range.size());
+    bool rangeAdded = false;
+    for (size_t i = 0; i < line.size();)
+    {
+        if (line.compare(i, 4, "%lvl") == 0)
+        {
+            out += range;
+            i += 4;
+        }
+        else if (line.compare(i, 3, "%bg") == 0)
+        {
+            out += bgName;
+            if (addRange && !rangeAdded)
+            {
+                out += added;
+                rangeAdded = true;
+            }
+            i += 3;
+        }
+        else
+            out += line[i++];
+    }
+    if (addRange && !rangeAdded)
+    {
+        size_t at = out.size();
+        while (at && (out[at - 1] == '!' || out[at - 1] == '?' || out[at - 1] == '.'))
+            --at;
+        out.insert(at, added);
+    }
+    if (AnnounceTextFits(out))
+        return out;
+    // Beyond 255 bytes with the added range: the line as without the switch (a %lvl line has none to fall back to).
+    if (addRange && AnnounceTextFits(plain))
+        return plain;
+    return std::string();
+}
+
+// Load filter: printable ASCII only (no control bytes, no UTF-8), not empty, and short enough with the longest name and
+// the longest level range (for %lvl) put in. The range ShowLevelRange adds is not counted here: a line it would push
+// beyond 255 bytes goes out without it (ExpandAnnounceText).
 inline bool AnnounceLineValid(std::string const& line)
 {
     if (line.empty())
@@ -606,7 +696,7 @@ inline bool AnnounceLineValid(std::string const& line)
         if (u < 0x20 || u > 0x7E)
             return false;
     }
-    return ExpandAnnounceLine(line, LongestBgName).size() <= MaxAnnounceLineBytes;
+    return !ExpandAnnounceText(line, LongestBgName, LongestLevelRange, false).empty();
 }
 
 // '|'-separated pool to lines: blanks and tabs around a line trimmed, empty lines skipped, invalid ones (and those beyond

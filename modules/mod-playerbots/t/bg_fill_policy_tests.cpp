@@ -666,6 +666,118 @@ void Pool()
     Require(PickLineIndexes(0, 3, {}).empty(), "empty pool: none");
     Require(PickLineIndexes(4, 2, {}) == std::vector<uint32_t>({ 0, 1 }), "missing rolls count as 0");
 }
+
+// Owner Q2 (17.10.): the bracket's level range as the core forms the match (min level of the bracket up to the core's
+// max - 1), capped at the template maximum.
+void LevelRange()
+{
+    using namespace ai::bgfill;
+    Require(AnnounceLevelRange(51, 61, 60) == "51-60", "AV bracket 0 (51 + 10) is 51-60");
+    Require(AnnounceLevelRange(50, 60, 60) == "50-59", "WSG/AB 50-59");
+    Require(AnnounceLevelRange(60, 70, 60) == "60-60", "WSG/AB 60, capped at the template maximum");
+    Require(AnnounceLevelRange(1, 2, 60) == "1-1" && AnnounceLevelRange(2, 10, 60) == "2-9", "minimum level 0: level 1 alone, then 2-9");
+    Require(AnnounceLevelRange(10, 20, 0) == "10-19", "no template maximum: the bracket's top");
+    Require(AnnounceLevelRange(0, 10, 60).empty(), "no bottom level: no range");
+    Require(AnnounceLevelRange(20, 20, 60).empty() && AnnounceLevelRange(20, 5, 60).empty(), "top not above the bottom: no range");
+    Require(AnnounceLevelRange(61, 71, 60).empty(), "bracket above the template maximum: no range");
+    Require(AnnounceLevelRange(990, 1000, 0) == "990-999" && AnnounceLevelRange(995, 1005, 0).empty(), "never longer than 999-999");
+    Require(std::string(LongestLevelRange).size() == 7, "the longest range is 7 bytes");
+}
+
+// Owner Q2: the expansion of every announcement line (chat and server message).
+void AnnounceText()
+{
+    using namespace ai::bgfill;
+    std::string const wsg = BgFullName(QueueWS);
+    std::string const av = BgFullName(QueueAV);
+    // The owner's examples.
+    Require(ExpandAnnounceText("Stormpike needs you, to Alterac!", av, "51-60", true) == "Stormpike needs you, to Alterac (51-60)!",
+        "no %bg: before the closing punctuation");
+    Require(ExpandAnnounceText("For the Alliance! Join us in %bg!", wsg, "51-60", true) == "For the Alliance! Join us in Warsong Gulch (51-60)!",
+        "%bg: right after the name");
+    // Placement.
+    Require(ExpandAnnounceText("%bg or %bg!", "X", "1-2", true) == "X (1-2) or X!", "only the first %bg gets the range");
+    Require(ExpandAnnounceText("To arms", av, "51-60", true) == "To arms (51-60)", "no closing punctuation: at the end");
+    Require(ExpandAnnounceText("Go?!...", av, "51-60", true) == "Go (51-60)?!...", "before the whole closing run of ! ? .");
+    Require(ExpandAnnounceText("Ready, set. Go", av, "51-60", true) == "Ready, set. Go (51-60)", "inner punctuation stays");
+    Require(ExpandAnnounceText("!!", av, "51-60", true) == " (51-60)!!", "a line of punctuation only");
+    // %lvl: always the range, whatever the switch says; never a second range.
+    Require(ExpandAnnounceText("Levels %lvl, to %bg!", av, "51-60", false) == "Levels 51-60, to Alterac Valley!", "%lvl with the switch off");
+    Require(ExpandAnnounceText("Levels %lvl, to %bg!", av, "51-60", true) == "Levels 51-60, to Alterac Valley!",
+        "%lvl with the switch on: no second range");
+    Require(ExpandAnnounceText("%lvl and %lvl", av, "51-60", false) == "51-60 and 51-60", "every %lvl");
+    Require(ExpandAnnounceText("%lvl", av, "", true).empty() && ExpandAnnounceText("%lvl", av, "", false).empty(),
+        "%lvl without a range: not said");
+    Require(ExpandAnnounceText("Join WSG 51-60!", wsg, "51-60", true) == "Join WSG 51-60!", "a line that already names the range: not twice");
+    Require(ExpandAnnounceText("Join %bg!", wsg, "", true) == "Join Warsong Gulch!", "no range known: the line as today");
+    Require(ExpandAnnounceText("100% bgs, %lv%l!", "X", "1-2", false) == "100% bgs, %lv%l!" &&
+            ExpandAnnounceText("100% bgs, %lv%l!", "X", "1-2", true) == "100% bgs, %lv%l (1-2)!", "no placeholder");
+
+    // Switch off, no %lvl: byte for byte today's ExpandAnnounceLine - every built-in line, every battleground, and
+    // configured lines; switch on: every built-in line gets the range exactly once and stays within 255 bytes.
+    uint32_t dropped = 0;
+    std::vector<std::string> configured = { "Join us in %bg!", "%bg and %bg", "100% bgs", "Stormpike needs you, to Alterac!", "x" };
+    for (uint32_t team = 0; team < 2; ++team)
+    {
+        for (uint32_t pool : { 0u, QueueWS, QueueAB, QueueAV })
+        {
+            std::vector<std::string> lines = ParseAnnouncePool(BuiltInAnnouncePool(team, pool), dropped);
+            Require(!lines.empty() && dropped == 0, "built-in pool parsed");
+            for (std::string const& line : lines)
+            {
+                Require(line.find("%lvl") == std::string::npos, "built-in lines stay without %lvl");
+                configured.push_back(line);
+            }
+        }
+    }
+    for (std::string const& line : configured)
+    {
+        for (uint32_t type : { QueueWS, QueueAB, QueueAV })
+        {
+            std::string const name = BgFullName(type);
+            for (char const* range : { "51-60", "60-60", "1-1", "" })
+            {
+                Require(ExpandAnnounceText(line, name, range, false) == ExpandAnnounceLine(line, name), "switch off: today's text byte for byte");
+                std::string const on = ExpandAnnounceText(line, name, range, true);
+                Require(AnnounceTextFits(on), "switch on: printable ASCII within 255 bytes");
+                if (!*range)
+                {
+                    Require(on == ExpandAnnounceLine(line, name), "no range: today's text");
+                    continue;
+                }
+                std::string const marked = std::string("(") + range + ")";
+                size_t const first = on.find(marked);
+                Require(first != std::string::npos && on.find(marked, first + 1) == std::string::npos, "switch on: the range exactly once");
+            }
+        }
+    }
+
+    // 255 bytes: the added range fits exactly, or the line goes out without it; a line too long without it is not said.
+    std::string const nameTail = " " + wsg + "!";
+    std::string const fit = std::string(MaxAnnounceLineBytes - nameTail.size() - 8, 'a') + " %bg!";
+    Require(ExpandAnnounceText(fit, wsg, "51-60", true).size() == MaxAnnounceLineBytes, "255 bytes with the range: kept");
+    std::string const over = std::string(MaxAnnounceLineBytes - nameTail.size() - 7, 'a') + " %bg!";
+    Require(ExpandAnnounceText(over, wsg, "51-60", true) == ExpandAnnounceLine(over, wsg) &&
+            ExpandAnnounceLine(over, wsg).size() == MaxAnnounceLineBytes - 7, "256 with the range: the line without it, %bg still the name");
+    std::string const plainFull(MaxAnnounceLineBytes - 1, 'p');
+    Require(ExpandAnnounceText(plainFull + "!", av, "51-60", true) == plainFull + "!", "no %bg, beyond 255 with the range: without it");
+    std::string const tooLong(MaxAnnounceLineBytes + 1, 'q');
+    Require(ExpandAnnounceText(tooLong, av, "51-60", true).empty() && ExpandAnnounceText(tooLong, av, "51-60", false).empty(),
+        "beyond 255 even without the range: not said (the load filter drops it before)");
+    std::string const lvlLong = std::string(MaxAnnounceLineBytes - 4, 'l') + "%lvl";
+    Require(ExpandAnnounceText(lvlLong, av, "1-1", true).size() == MaxAnnounceLineBytes - 1, "%lvl line within 255: kept");
+    Require(ExpandAnnounceText(lvlLong, av, "51-60", true).empty(), "%lvl line beyond 255: not said (no line without the range)");
+    Require(ExpandAnnounceText("x %bg", "caf\xc3\xa9", "51-60", false).empty(), "never anything but printable ASCII");
+
+    // Load filter: a %lvl line is accepted, counted with the longest name and the longest range.
+    std::vector<std::string> lines = ParseAnnouncePool("Join %bg, levels %lvl!|%lvl", dropped);
+    Require(lines.size() == 2 && dropped == 0, "%lvl lines accepted at load");
+    std::string const lvlFit = std::string(MaxAnnounceLineBytes - 7, 'c') + "%lvl";
+    std::string const lvlOver = std::string(MaxAnnounceLineBytes - 6, 'c') + "%lvl";
+    Require(AnnounceLineValid(lvlFit) && !AnnounceLineValid(lvlOver), "%lvl counted as 999-999 at load");
+    std::string const both = std::string(MaxAnnounceLineBytes - 14 - 7, 'd') + "%bg%lvl";
+    Require(AnnounceLineValid(both) && !AnnounceLineValid("d" + both), "%bg and %lvl both counted at load");
+}
 }
 
 int main()
@@ -686,6 +798,8 @@ int main()
     Announce();
     OwnType();
     Pool();
+    LevelRange();
+    AnnounceText();
     std::cout << "bg fill policy tests passed\n";
     return 0;
 }
