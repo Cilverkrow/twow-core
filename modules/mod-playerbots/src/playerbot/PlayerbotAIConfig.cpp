@@ -4,6 +4,7 @@
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
+#include "playerbot/BgFillPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -387,6 +388,51 @@ bool PlayerbotAIConfig::Initialize()
     bgBotOnlyGraceSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.BotOnlyGraceSeconds", 0)));
     // Default on (OB-20); only "1", "true" or "yes" switch it on when set, anything else (also negative) is off.
     bgBotOnlyCleanup = config.GetBoolDefault("AiPlayerbot.BG.BotOnlyCleanup", true);
+    // twow-repo#517 stage c. Restart-only; negative numbers read as 0 (the default, or off).
+    bgAnnounce = config.GetBoolDefault("AiPlayerbot.BG.Announce", false);
+    bgAnnounceIntervalMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.IntervalMinutes", 0)));
+    bgMaxBotBGPerBracket = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.MaxBotBGPerBracket", 0)));
+    bgBotOnlyHonorRate = config.GetFloatDefault("AiPlayerbot.BG.BotOnlyHonorRate", 1.0f);
+    bgAnnounceMode = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.Mode", 0)));
+    bgAnnounceDelaySeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.DelaySeconds", 0)));
+    bgAnnounceBotCooldownMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.BotCooldownMinutes", 0)));
+    bgAnnounceMaxPerHour = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.BG.Announce.MaxPerHour", 0)));
+    // Review c4: below 2 (one line per faction) no announcement fits, so 1 counts as 0 - no line, no bot-own battleground.
+    if (bgAnnounceMaxPerHour && !ai::bgfill::AnnounceMaxPerHour(bgAnnounceMaxPerHour))
+        sLog.outError("[BGAnnounceCfg] state=maxperhour_clamp value=%u used=0 (an announcement needs room for %u lines, one per faction)",
+            bgAnnounceMaxPerHour, ai::bgfill::AnnounceMinLines);
+    bgAnnounceMaxPerHour = ai::bgfill::AnnounceMaxPerHour(bgAnnounceMaxPerHour);
+    // Owner Q2 (17.10.): every announcement line names the bracket's level range; a %lvl in a line always gets it.
+    bgAnnounceShowLevelRange = config.GetBoolDefault("AiPlayerbot.BG.Announce.ShowLevelRange", false);
+    // The text pools (D3): per faction a generic key and one per battleground (index = the queue type), each empty = its
+    // built-in pool. A line outside printable ASCII or too long is dropped here, with a warning; a set key left with no
+    // line at all falls back to its built-in pool (review c2: no faction pool may end up empty, which would make an
+    // announcement one-sided). The warning has its own prefix, so [BGAnnounce] counts announcements only.
+    {
+        char const* const teamKeys[2] = { "Alliance", "Horde" };
+        char const* const typeKeys[4] = { "", ".AV", ".WSG", ".AB" };
+        for (uint32 team = 0; team < 2; ++team)
+        {
+            for (uint32 type = 0; type < 4; ++type)
+            {
+                std::string const key = std::string("AiPlayerbot.BG.Announce.Text.") + teamKeys[team] + typeKeys[type];
+                std::string text = config.GetStringDefault(key, "");
+                if (text.empty())
+                    text = ai::bgfill::BuiltInAnnouncePool(team, type);
+                uint32 dropped = 0;
+                bgAnnounceText[team][type] = ai::bgfill::ParseAnnouncePool(text, dropped);
+                bool const fallback = bgAnnounceText[team][type].empty();
+                if (fallback)
+                {
+                    uint32 builtInDropped = 0;
+                    bgAnnounceText[team][type] = ai::bgfill::ParseAnnouncePool(ai::bgfill::BuiltInAnnouncePool(team, type), builtInDropped);
+                }
+                if (dropped || fallback)
+                    sLog.outError("[BGAnnounceCfg] state=pool_drop key=%s dropped=%u fallback=%s (printable ASCII only, at most %u bytes with the battleground name and the level range, at most %u lines)",
+                        key.c_str(), dropped, fallback ? "builtin" : "none", ai::bgfill::MaxAnnounceLineBytes, ai::bgfill::MaxAnnouncePoolLines);
+            }
+        }
+    }
     randomBotBracketCount = config.GetIntDefault("AiPlayerbot.RandomBotBracketCount", 3);
     logInGroupOnly = config.GetBoolDefault("AiPlayerbot.LogInGroupOnly", true);
     logValuesPerTick = config.GetBoolDefault("AiPlayerbot.LogValuesPerTick", false);
