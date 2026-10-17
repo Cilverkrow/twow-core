@@ -6,8 +6,25 @@
 #include "playerbot/strategy/values/ItemCountValue.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "UnequipAction.h"
+#include "playerbot/KeepWeaponsPolicy.h"
 
 using namespace ai;
+
+namespace
+{
+// twow-repo#308 EQUIP-FLIP-01: a weapon, shield or held item in the bags that is an equip candidate (EQUIP / BAD_EQUIP).
+bool HandCandidateInBags(PlayerbotAI* ai, Player* bot)
+{
+    FindItemUsageVisitor visitor(bot, ItemUsage::ITEM_USAGE_EQUIP);
+    ai->InventoryIterateItems(&visitor, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);
+    visitor.SetUsage(ItemUsage::ITEM_USAGE_BAD_EQUIP);
+    ai->InventoryIterateItems(&visitor, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);
+    for (Item* item : visitor.GetResult())
+        if (ai::keep_weapons::IsHandItem(item->GetProto()->InventoryType))
+            return true;
+    return false;
+}
+}
 
 bool EquipAction::Execute(Event& event)
 {
@@ -203,7 +220,7 @@ void EquipAction::EquipItemToSlot(Player* requester, Item* item, uint8 targetSlo
     ai->TellPlayer(requester, BOT_TEXT2("equip_command", args), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
 }
 
-void EquipAction::EquipItem(PlayerbotAI* ai, Player* requester, Item* item, bool silent)
+void EquipAction::EquipItem(PlayerbotAI* ai, Player* requester, Item* item, bool silent, bool sameItemBack)
 {
     Player* bot = ai->GetBot();
     AiObjectContext* context = ai->GetAiObjectContext();
@@ -280,7 +297,9 @@ void EquipAction::EquipItem(PlayerbotAI* ai, Player* requester, Item* item, bool
     if (oldOffhand)
         RESET_AI_VALUE2(ItemUsage, "item usage", ItemQualifier(oldOffhand).GetQualifier());
 
-    sPlayerbotAIConfig.logEvent(ai, "EquipAction", item->GetProto()->Name1, std::to_string(item->GetProto()->ItemId));
+    // twow-repo#308 EQUIP-FLIP-01 (always on): only a real change is an EquipAction event.
+    if (!sameItemBack)
+        sPlayerbotAIConfig.logEvent(ai, "EquipAction", item->GetProto()->Name1, std::to_string(item->GetProto()->ItemId));
 
     if (!silent)
     {
@@ -357,10 +376,19 @@ bool EquipUpgradesAction::Execute(Event& event)
 
     Item* oldMainhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
     Item* oldOffhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
-        
-    if (oldMainhand)
+
+    // twow-repo#308 EQUIP-FLIP-01 (AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade): the hands come off only when a weapon,
+    // shield or held item in the bags is an equip candidate; without the switch on every run, as before.
+    bool unequipHands = true;
+    if (sPlayerbotAIConfig.equipKeepWeaponsUnlessUpgrade)
+    {
+        context->ClearExpiredValues("item usage", 10);
+        unequipHands = ai::keep_weapons::UnequipHands(true, HandCandidateInBags(ai, bot));
+    }
+
+    if (unequipHands && oldMainhand)
         UnequipAction::UnequipItem(ai, bot, oldMainhand, true);
-    if (oldOffhand)
+    if (unequipHands && oldOffhand)
         UnequipAction::UnequipItem(ai, bot, oldOffhand, true);
 
     context->ClearExpiredValues("item usage", 10); //Clear old item usage.
@@ -397,7 +425,9 @@ bool EquipUpgradesAction::Execute(Event& event)
             sLog.outDetail("Bot #%d <%s> auto equips item %d (%s)", bot->GetGUIDLow(), bot->GetName(), item->GetProto()->ItemId, usage == ItemUsage::ITEM_USAGE_EQUIP ? "better than current" : usage == ItemUsage::ITEM_USAGE_BAD_EQUIP ? "wrong item but empty slot" : "");
             ai->TellDebug(ai->GetMaster(), "Equipping: " + chat->formatItem(item) + " - " + ItemUsageValue::ReasonForNeed(usage, item, 1, bot), "debug equip");
 
-            EquipItem(ai, GetMaster(), item, item == oldMainhand || item == oldOffhand);   
+            // twow-repo#308 EQUIP-FLIP-01: the old main or off hand back on is no EquipAction event (no change).
+            bool const sameHandBack = item == oldMainhand || item == oldOffhand;
+            EquipItem(ai, GetMaster(), item, sameHandBack, sameHandBack);
             didEquip = true;
         }
     }
