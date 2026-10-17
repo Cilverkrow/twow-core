@@ -778,13 +778,19 @@ bool GatherTravelDestination::IsPossible(const PlayerTravelInfo& info) const
     {
         skillId = SKILL_FISHING;
 
-        int32 reqSkillValue = sObjectMgr.GetFishingBaseSkillLevel(GetEntry());
+        // twow-repo#596 / P3-b review (CLI-PATH 18.10.2026): this branch declared its own int32 reqSkillValue, so the
+        // outer one stayed 0 and the skill check below never applied to fishing - fishing skill 1 counted as enough
+        // for every zone. AiPlayerbot.Gather.FishingSkillCheck = 1 hands the zone's value to the check (0 = as before).
+        int32 fishingSkillValue = sObjectMgr.GetFishingBaseSkillLevel(GetEntry());
 
-        if (!reqSkillValue) //no fishable zone or area should be 0
+        if (!fishingSkillValue) //no fishable zone or area should be 0
             return false;
 
-        if (reqSkillValue > 5)
-            reqSkillValue -= 5; //Give chance to levelup.
+        if (fishingSkillValue > 5)
+            fishingSkillValue -= 5; //Give chance to levelup.
+
+        if (sPlayerbotAIConfig.gatherFishingSkillCheck)
+            reqSkillValue = uint32(std::max<int32>(1, fishingSkillValue));
     }
     else if (GetEntry() > 0)
     {

@@ -3171,3 +3171,9 @@ add_test(NAME shortcut_s0_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/shortcut_s0_source_contract_tests.cmake")
+
+# twow-repo#596 / P3-b review (AiPlayerbot.Gather.FishingSkillCheck): the fishing skill check is no longer shadowed.
+add_test(NAME fishing_skill_check_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/fishing_skill_check_source_contract_tests.cmake")
