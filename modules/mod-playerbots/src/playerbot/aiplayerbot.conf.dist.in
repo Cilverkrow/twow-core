@@ -196,7 +196,7 @@ AiPlayerbot.BG.Announce.Text.Horde.AB = ""
 AiPlayerbot.BG.Announce.Text.Horde.AV = ""
 # Announce.ShowLevelRange (owner 17.10.): 1 = every announcement line, chat and server message alike, names the level
 # range of the announced bracket as "lo-hi": the levels the core forms that bracket's match with, the top capped at the
-# battleground's maximum level (51-60 for Alterac Valley; 50-59, or 60-60 for level 60, for Warsong Gulch and Arathi
+# battleground's maximum level (51-60 for Alterac Valley; 50-59, or just 60 at level 60, for Warsong Gulch and Arathi
 # Basin). The range goes right after the first %bg ("For the Alliance! Join us in Warsong Gulch (50-59)!"), in a line
 # without %bg before the closing ! ? . at its end ("Stormpike needs you, to Alterac (51-60)!") or else at its end, and
 # never twice: a line with %lvl, or one that already names the range, gets nothing added. A line the range would push

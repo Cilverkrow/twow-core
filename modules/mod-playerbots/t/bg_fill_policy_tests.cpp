@@ -648,7 +648,8 @@ void Pool()
             {
                 if (line == "Stormpike needs you, to Alterac!")
                     continue;
-                Require(line.find(BgFullName(type)) != std::string::npos, "built-in line with the full battleground name");
+                Require(ExpandAnnounceLine(line, BgFullName(type)).find(BgFullName(type)) != std::string::npos,
+                    "built-in line with the full battleground name");
             }
         }
         lines = ParseAnnouncePool(BuiltInAnnouncePool(team, 0), dropped);
@@ -674,8 +675,10 @@ void LevelRange()
     using namespace ai::bgfill;
     Require(AnnounceLevelRange(51, 61, 60) == "51-60", "AV bracket 0 (51 + 10) is 51-60");
     Require(AnnounceLevelRange(50, 60, 60) == "50-59", "WSG/AB 50-59");
-    Require(AnnounceLevelRange(60, 70, 60) == "60-60", "WSG/AB 60, capped at the template maximum");
-    Require(AnnounceLevelRange(1, 2, 60) == "1-1" && AnnounceLevelRange(2, 10, 60) == "2-9", "minimum level 0: level 1 alone, then 2-9");
+    Require(AnnounceLevelRange(60, 70, 60) == "60", "WSG/AB 60, capped at the template maximum: one level, written alone");
+    Require(AnnounceLevelRange(1, 2, 60) == "1" && AnnounceLevelRange(2, 10, 60) == "2-9", "minimum level 0: level 1 alone, then 2-9");
+    Require(ExpandAnnounceText("For the Alliance! Join us in %bg!", BgFullName(QueueWS), AnnounceLevelRange(60, 70, 60), true) ==
+        "For the Alliance! Join us in Warsong Gulch (60)!", "level 60 WSG reads (60)");
     Require(AnnounceLevelRange(10, 20, 0) == "10-19", "no template maximum: the bracket's top");
     Require(AnnounceLevelRange(0, 10, 60).empty(), "no bottom level: no range");
     Require(AnnounceLevelRange(20, 20, 60).empty() && AnnounceLevelRange(20, 5, 60).empty(), "top not above the bottom: no range");
@@ -722,6 +725,32 @@ void AnnounceText()
             ExpandAnnounceText("51-60", av, "51-60", true) == "51-60", "the range at the start or as the whole line: named");
     Require(HoldsLevelRange("x 51-60", "51-60") && !HoldsLevelRange("x 151-60", "51-60") && !HoldsLevelRange("x 51-600", "51-60") &&
             !HoldsLevelRange("anything", ""), "HoldsLevelRange: digit boundaries, no empty range");
+    // Review c8 (owner): the Horde battleground lines that do not end on the name write it as %bg - the same text without
+    // the switch, the range right after the name with it.
+    struct OwnLine { uint32_t type; char const* range; char const* off; char const* on; };
+    OwnLine const ownLines[] = {
+        { QueueWS, "60-60", "Warsong Outriders, the night elves guard their flag in Warsong Gulch. Take it!",
+            "Warsong Outriders, the night elves guard their flag in Warsong Gulch (60-60). Take it!" },
+        { QueueWS, "60-60", "Grom's warriors, to Warsong Gulch! Bring me their flag!", "Grom's warriors, to Warsong Gulch (60-60)! Bring me their flag!" },
+        { QueueAB, "60-60", "The Defilers march on Arathi Basin! Who joins the hunt?", "The Defilers march on Arathi Basin (60-60)! Who joins the hunt?" },
+        { QueueAB, "60-60", "Defilers, Arathi Basin is ripe for the taking!", "Defilers, Arathi Basin (60-60) is ripe for the taking!" },
+        { QueueAV, "51-60", "Frostwolf clan, to arms! Alterac Valley is ours!", "Frostwolf clan, to arms! Alterac Valley (51-60) is ours!" },
+    };
+    uint32_t ownDropped = 0;
+    for (OwnLine const& own : ownLines)
+    {
+        std::vector<std::string> const horde = ParseAnnouncePool(BuiltInAnnouncePool(1, own.type), ownDropped);
+        bool found = false;
+        for (std::string const& line : horde)
+        {
+            if (ExpandAnnounceText(line, BgFullName(own.type), own.range, false) != own.off)
+                continue;
+            found = true;
+            Require(line.find("%bg") != std::string::npos, "the Horde battleground line writes the name as %bg");
+            Require(ExpandAnnounceText(line, BgFullName(own.type), own.range, true) == own.on, "the range right after the battleground name");
+        }
+        Require(found, "the Horde battleground line says today's text without the switch");
+    }
     // Review c8: an empty line stays empty with the switch on (never " (lo-hi)" alone).
     Require(ExpandAnnounceText("", av, "51-60", true).empty() && ExpandAnnounceText("", av, "51-60", false).empty() &&
             ExpandAnnounceText("", av, "", true).empty(), "an empty line: not said");
