@@ -3000,6 +3000,26 @@ add_test(NAME route_fail_early_skip_policy
   COMMAND route_fail_early_skip_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#597 (TICK-01): AhBot guard - AhBot::Update idle without a loaded, enabled ahbot.conf
+# (AiPlayerbot.AhBot.RequireConfig, default 0 = as before).
+add_test(NAME ahbot_guard_597_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/ahbot_guard_597_source_contract_tests.cmake")
+
+add_executable(ahbot_guard_597_policy_tests
+  "${PB_MODULE_DIR}/t/ahbot_guard_597_policy_tests.cpp")
+
+target_include_directories(ahbot_guard_597_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/ahbot")
+
+set_target_properties(ahbot_guard_597_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME ahbot_guard_597_policy
+  COMMAND ahbot_guard_597_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#596 D (AiPlayerbot.BotUpdateTraceTriggers): the slowest trigger checks of a slow trigger pass.
 add_test(NAME slow_triggers_source_contract
   COMMAND "${CMAKE_COMMAND}"
