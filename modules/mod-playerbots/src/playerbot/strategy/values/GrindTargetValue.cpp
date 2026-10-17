@@ -10,6 +10,7 @@
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "Formulas.h"
 #include "playerbot/GrindCapPolicy.h"
+#include "playerbot/QuestGrindModePolicy.h"
 
 using namespace ai;
 
@@ -133,6 +134,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
         grind_cap::MaxLevelsAbove(rosterOnItsOwn, bot->GetLevel(),
             sPlayerbotAIConfig.grindCapLowLevelBelow, sPlayerbotAIConfig.grindCapLowLevelMargin));
     time_t const now = time(nullptr);
+    // twow-repo#601 GrindMode 2 (owner 17.10.2026): a quest-first roster bot on its own picks no "attack anything" target
+    // that is neither attacking it or its group (the attackers above stay) nor needed for an active quest.
+    bool const noGrind = ai->IsQuestNoGrind();
+    uint32 noGrindSkipped = 0;
+    uint32 noGrindEntry = 0;
 
     for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)
     {
@@ -278,6 +284,16 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
             }
         }
 
+        // twow-repo#601 GrindMode 2: only quest objectives stay (players and other creatures are skipped; a creature
+        // that attacks is taken by the attacker loop above). Off: TargetAllowed(false, ...) is true, nothing changes.
+        if (!ai::quest_grind_mode::TargetAllowed(noGrind, false, needForQuest))
+        {
+            if (!noGrindSkipped++)
+                noGrindEntry = entry;
+            logGrind(unit, "ignored (GrindMode 2: not needed for a quest).");
+            continue;
+        }
+
         if (entry && !needForQuest)
         {
             // Was < 99 (99% skip chance for anything not tied to an active quest
@@ -358,6 +374,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
     {
         ai->TellPlayer(GetMaster(), "No grind target found.");
     }
+
+    // twow-repo#601 GrindMode 2: nothing left after the skips above - the bot stands idle, [QuestIdle] (once per pass:
+    // only the first assist round counts). On the way somewhere = opportunistic, otherwise the grind strategy's
+    // "no target" kill.
+    if (!result && noGrindSkipped && !assistCount)
+        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking || travelTargetTraveling)),
+            ai::quest_grind_mode::TargetText("grind_target", noGrindEntry));
 
     return result;
 }
