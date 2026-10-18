@@ -208,6 +208,14 @@ int main()
         Require(GapStatusMs(0, 1100, 1000, 600) == 100000, "an unlimited status time gets the window too");
         Require(GapStatusMs(300000, 1000, 1000, 600) == 1 && GapStatusMs(300000, 900, 1000, 600) == 1, "window over: expires at once");
         Require(GapStatusMs(300000, 1000000, 1000, 600) == 630000, "clock stepped back: never longer than the longest window");
+        // Review C-F1 / B-F1: a COOLDOWN of a gap trip never outlives the window (the shorter of the two).
+        Require(GapCooldownMs(60000, 0, 1000, 600) == 60000 && GapCooldownMs(0, 0, 1000, 600) == 0,
+            "no window (every other target): the cooldown stays");
+        Require(GapCooldownMs(60000, 1030, 1000, 600) == 30000, "60 s cooldown, 30 s left: ends with the window");
+        Require(GapCooldownMs(60000, 1300, 1000, 600) == 60000, "60 s cooldown, 300 s left: the cooldown");
+        Require(GapCooldownMs(0, 1100, 1000, 600) == 100000, "an unlimited cooldown gets the window");
+        Require(GapCooldownMs(60000, 1000, 1000, 600) == 1 && GapCooldownMs(60000, 900, 1000, 600) == 1, "window over: at once");
+        Require(GapCooldownMs(3600000, 1000000, 1000, 600) == 630000, "clock stepped back: never longer than the longest window");
 
         // The window line: level window [max(gray + 1, L - 5), L + 1].
         Require(GapWindowLowLevel(15, 9) == 10 && GapWindowHighLevel(15) == 16, "L15 (gray 9): 10-16");
@@ -293,6 +301,17 @@ int main()
         Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=2 expired=3 engaged=4 grey_engaged=5 no_dest=6 r4_skips=1",
             "minute line format");
         Require(WindowEventCount == 6 && std::size_t(WindowEvent::R4Skips) == WindowEventCount - 1, "every event has a counter slot");
+    }
+
+    // 10) Review fixes: no money grind (B-F3), no group grind copy (C-F3 / B-F2) for the population.
+    {
+        Require(!GapGrindRequestAllowed(true, IsMoneyCondition("should get money")), "the money trigger starts no gap grind trip");
+        Require(GapGrindRequestAllowed(true, IsMoneyCondition("need travel purpose::4096")), "the plain R1 request does");
+        Require(GapGrindRequestAllowed(false, true) && GapGrindRequestAllowed(false, false), "not the gap filler: as before");
+        Require(!GapGroupCopyAllowed(true, true, false), "a member's grind trip is no copy for the population");
+        Require(GapGroupCopyAllowed(true, true, true), "a member's grind destination this bot needs for a quest stays");
+        Require(GapGroupCopyAllowed(true, false, false), "a member's other trip (quest, vendor, ...) stays");
+        Require(GapGroupCopyAllowed(false, true, false), "not the gap filler: every copy as before");
     }
 
     std::cout << "quest_grind_mode_policy_tests passed\n";

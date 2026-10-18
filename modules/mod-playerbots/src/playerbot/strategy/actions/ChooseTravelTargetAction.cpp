@@ -363,8 +363,9 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
         return CandidateSkip::OtherMapGather;
 
     // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2): a gap grind trip stays on the bot's own map (precedent #414 above); a
-    // forced target (guild order) is no gap grind trip. GrindMode 0 / 2: IsQuestGapGrind() is false before anything else.
-    if (ai->IsQuestGapGrind() && position && !target->IsForced() && !ai::quest_grind_mode::GapGrindStaysOnMap(true,
+    // forced target (guild order) is no gap grind trip. Only the gap grind choice (review C-F2: set only behind IsQuestGapGrind,
+    // never for a quest choice of grind mobs); GrindMode 0 / 2: false before anything else.
+    if (target->IsGapGrindChoice() && position && !target->IsForced() && !ai::quest_grind_mode::GapGrindStaysOnMap(true,
             (uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::Grind)) != 0, bot->GetMapId(), position->getMapId()))
         return CandidateSkip::OtherMapGrind;
 
@@ -710,6 +711,11 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     {
         newTarget.SetRelevance(targetRelevance);
     }
+
+    // twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice - only this one gets the R3 window snapshot and the
+    // own-map skip in SetBestTarget; a quest choice of grind mobs keeps the old tests. GrindMode 0 / 2: false, as before.
+    if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))
+        newTarget.SetGapGrindChoice(true);
 
     if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))
     {
@@ -1285,6 +1291,11 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             return known->second;
         return isActive[dest] = dest->IsActive(bot, choiceInfo());
     };
+    // twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice asks IsActive with the R3 window snapshot - one per
+    // choice, the reuse path below; every other choice as before (the flag is set only behind IsQuestGapGrind).
+    bool const gapGrindChoice = target->IsGapGrindChoice();
+    if (gapGrindChoice)
+        choiceTravelInfo.emplace(bot, true);
 
     bool hasTarget = false;
     TravelTarget const* persistentTarget = AI_VALUE(TravelTarget*, "travel target");
@@ -1462,7 +1473,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 distanceCheck = false;
             }
 
-            if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot)))))
+            // twow-repo#601 S2 R3 (review C-F2): the gap grind choice takes the reuse path (its window snapshot) with the switch off too.
+            if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (gapGrindChoice ? reuseActive(destination) :
+                (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot))))))
             {
                 // twow-repo#601 S3b: the deferrals after IsActive in one predicate (PostActiveDeferralOf, same order,
                 // counters and traces as before) - the local quest hub pre-loop asks the same one with HubPreloopSameFilters.
@@ -1681,6 +1694,15 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
 
     std::vector<TravelTarget*> groupTargets;
 
+    // twow-repo#601 S2 / S4 (GrindMode 1, review C-F3 / B-F2): no group copy of a grind trip for the gap filler's population - a
+    // member's grind destination stays a grind for this bot unless it needs the creature for an active quest itself (one
+    // sorted per-bot list, no value per creature); its own R1 request opens the window (R2 end, R3, own map). GrindMode 0 / 2:
+    // IsQuestGapGrind() is false, nothing read.
+    bool const gapGrind = ai->IsQuestGapGrind();
+    std::vector<int32> gapNeeded;
+    if (gapGrind)
+        gapNeeded = AI_VALUE(std::vector<int32>, "needed quest entries");
+
     PartitionedTravelList travelList;
 
     std::unordered_map<TravelDestination*, std::vector<std::string>> conditions;
@@ -1716,7 +1738,13 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
         if (groupTarget->IsForced())
             continue;
 
-        if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player)) || !groupTarget->IsConditionsActive())
+        if (gapGrind && !ai::quest_grind_mode::GapGroupCopyAllowed(true,
+                dynamic_cast<GrindTravelDestination*>(groupTarget->GetDestination()) != nullptr,
+                std::binary_search(gapNeeded.begin(), gapNeeded.end(), groupTarget->GetDestination()->GetEntry())))
+            continue;
+
+        // twow-repo#601 S2 R3 (review C-F2): a member's gap grind trip (gapWindowEnd, GrindMode 1 only) is judged with its window.
+        if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player, groupTarget->GetGapWindowEnd() != 0)) || !groupTarget->IsConditionsActive())
         {
             GetBotAI(player)->TellDebug(requester,"Target is cooling down because a group member found it to be inactive.", "debug travel");
             groupTarget->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
@@ -1871,6 +1899,12 @@ bool RefreshTravelTargetAction::isUseful()
     if (AI_VALUE(TravelTarget*, "travel target")->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
         return false;
 
+    // twow-repo#601 S2 / S4 R2 (GrindMode 1, review B-F5): no refresh of a gap grind trip, in or after its window - no renewal,
+    // and no READY again on an ended window (that would count expired= twice). gapWindowEnd: GrindMode 1 only. Before the
+    // skip chance (no urand drawn).
+    if (AI_VALUE(TravelTarget*, "travel target")->GetGapWindowEnd())
+        return false;
+
     if (!WorldPosition(bot).isOverworld())
         return false;
 
@@ -1930,6 +1964,13 @@ bool RequestTravelTargetAction::Execute(Event& event)
     if (IsAutonomousRosterTravelBlocked(ai, actionPurpose) && !event.getOwner())
         return false;
 
+    // twow-repo#601 S2 / S4 R1 (GrindMode 1, OB-10 rev. 2 point 4, review B-F3): no money grind for the gap filler's population -
+    // the money trigger ("val::should get money", 6.77) never starts a gap grind trip; the plain need-travel-purpose request
+    // (6.35, the R1 window) does. The engine goes on with the next action. GrindMode 0 / 2: IsQuestGapGrind() is false.
+    if (ai->IsQuestGapGrind() && actionPurpose == TravelDestinationPurpose::Grind &&
+        !ai::quest_grind_mode::GapGrindRequestAllowed(true, ai::quest_grind_mode::IsMoneyCondition(event.getSource())))
+        return false;
+
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
     bool const enforceGatherLeash = UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() &&
         IsGatherLeashPurpose(actionPurpose);
@@ -1937,8 +1978,9 @@ bool RequestTravelTargetAction::Execute(Event& event)
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for " + TravelDestinationPurposeName.at(actionPurpose), "debug travel");
 
+    // twow-repo#601 S2 R3 (review C-F2): the R3 window snapshot only for the grind fetch (and only for the GrindMode 1 scope).
     *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
-        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, purpose = actionPurpose,
+        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot, actionPurpose == TravelDestinationPurpose::Grind), center, purpose = actionPurpose,
             enforceGatherLeash, masterPosition]()
         {
             PartitionedTravelList list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose);
@@ -1999,8 +2041,9 @@ bool RequestTravelTargetAction::isUseful() {
     }
 
     // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): no money grind for the gap filler's population - a grind fetch only
-    // inside its R1 window (the need-travel-purpose value), whichever trigger asks (money 6.77 or plain 6.35); the trip is
-    // the window trip either way. Before the skip chance (no urand drawn). GrindMode 0 / 2: IsQuestGapGrind() is false.
+    // inside its R1 window (the need-travel-purpose value); the money trigger (6.77) is refused in Execute (review B-F3), so only
+    // the plain request (6.35) starts the window trip. Before the skip chance (no urand drawn). GrindMode 0 / 2: IsQuestGapGrind()
+    // is false.
     if (ai->IsQuestGapGrind() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)) &&
         !AI_VALUE2(bool, "need travel purpose", getQualifier()))
         return false;
