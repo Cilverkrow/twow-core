@@ -3463,3 +3463,23 @@ add_test(NAME transport_board_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/transport_board_source_contract_tests.cmake")
+
+# twow-repo#601 / #614 (AiPlayerbot.ActionLog.Guids, owner 18.10.2026): EnableActionLog for a fixed sample of bots; empty = every bot.
+add_test(NAME action_log_sample_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/action_log_sample_source_contract_tests.cmake")
+
+add_executable(action_log_sample_tests
+  "${PB_MODULE_DIR}/t/action_log_sample_tests.cpp")
+
+target_include_directories(action_log_sample_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot"
+  "${PB_MODULE_DIR}/src")
+
+set_target_properties(action_log_sample_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME action_log_sample
+  COMMAND action_log_sample_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
