@@ -1492,7 +1492,9 @@ void TravelTarget::OnRestEnded(uint32 durMs)
     restPausePending = true;
     // The rest held the bot still: a WORK phase (60 s at a quest objective) or a timed TRAVEL budget would otherwise count it as lost
     // work - quest loop / work-timeout suppression, a turn-in park, a direct-target failure. Progress-aware TRAVEL has no clock.
-    if (statusTime != 0 && !IsForced() && (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL))
+    // Not for an S2 gap grind trip (gapWindowEnd): its clock is the quest-route backoff window (OB-10 review 18.10.2026).
+    if (statusTime != 0 && !IsForced() && !gapWindowEnd &&
+        (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL))
         SetExpireIn(uint32(std::max<int32>(GetTimeLeft(), 0)) + durMs);
 }
 
@@ -1642,8 +1644,9 @@ void TravelTarget::CheckStatus()
     }
 
     // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): the status clock does not run out while the bot rests (the travel action
-    // still checks in WORK); OnRestEnded gives the rest time back when the episode ends.
-    if (statusTime != 0 && !IsForced() && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))
+    // still checks in WORK); OnRestEnded gives the rest time back when the episode ends. Not for an S2 gap grind trip (GrindMode 1,
+    // gapWindowEnd): its status time is the quest-route backoff window, which ends while resting too (OB-10 review 18.10.2026).
+    if (statusTime != 0 && !IsForced() && !gapWindowEnd && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))
         SetExpireIn(5000);
 
     if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())

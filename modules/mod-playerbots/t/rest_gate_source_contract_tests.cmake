@@ -174,10 +174,11 @@ require_text("${value_cpp}" "void RestGateValue::OnDeath(PlayerbotAI* ai)\n{\n  
 require_text("${value_cpp}" "    if (closed.applied)\n        if (TravelTarget* target = AI_VALUE(TravelTarget*, \"travel target\"))\n            target->OnRestEnded(closed.durMs);" "only an applied rest pauses the travel target")
 require_text("${value_h}" "std::string Format() override { return ai::rest_gate::Resting(episode) ? \"true\" : \"false\"; }" "a value dump does not drive the episode")
 require_order("${travel}" "    bool const restPause = restPausePending;\n    restPausePending = false;" "        restPause || RestGateValue::Resting(ai);" "the pending rest pause is consumed by the next observation")
-require_order("${travel}" "    if (statusTime != 0 && !IsForced() && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))\n        SetExpireIn(5000);" "    if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())" "the status clock does not run out while resting")
+require_order("${travel}" "    if (statusTime != 0 && !IsForced() && !gapWindowEnd && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))\n        SetExpireIn(5000);" "    if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())" "the status clock does not run out while resting, except for an S2 gap grind trip (OB-10 review)")
 region("${travel}" "void TravelTarget::OnRestEnded(uint32 durMs)" "\n}\n" rest_ended)
 require_text("${rest_ended}" "    restPausePending = true;" "OnRestEnded sets the pause")
 require_text("${rest_ended}" "SetExpireIn(uint32(std::max<int32>(GetTimeLeft(), 0)) + durMs);" "the rest time goes back to the WORK / TRAVEL clock")
+require_text("${rest_ended}" "    if (statusTime != 0 && !IsForced() && !gapWindowEnd &&\n        (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL))" "no give-back for an S2 gap grind trip (OB-10 review)")
 require_text("${travel_h}" "bool restPausePending = false;" "pause flag defaults off")
 
 # 6. OB-10 condition 2 and E5: second-sit fix, both auras, cast retry wait.
