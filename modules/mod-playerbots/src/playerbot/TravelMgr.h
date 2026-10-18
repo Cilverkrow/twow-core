@@ -51,7 +51,7 @@ namespace ai
 	{
 	public:
 		PlayerTravelInfo() {};
-		PlayerTravelInfo(Player* player);
+		PlayerTravelInfo(Player* player, bool gapGrind = false);   // twow-repo#601 S2 R3: gapGrind = a GrindMode 1 gap grind fetch / choice / trip
 		
 		const WorldPosition& GetPosition() const { return position; }
 		Team GetTeam() const { return team; }
@@ -72,7 +72,9 @@ namespace ai
 
 		// twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit - the creature level window of the gap filler's
 		// population, set in the constructor on the bot thread and read by the async grind fetch only as a value
-		// (GrindTravelDestination::IsPossible, TravelMgr::IsLocationLevelValid). 0 / 0 = no window: every other bot, GrindMode 0 / 2.
+		// (GrindTravelDestination::IsPossible, TravelMgr::IsLocationLevelValid). 0 / 0 = no window: every other bot, GrindMode 0 / 2,
+		// and every snapshot that is not for a gap grind (review C-F2: a quest objective fetch, choice or trip to grind mobs keeps
+		// the old template test and area gate; only the gap grind fetch, its choice and the gap trip pass gapGrind).
 		bool HasGapWindow() const { return gapWindowHigh != 0; }
 		uint32 GetGapWindowLow() const { return gapWindowLow; }
 		uint32 GetGapWindowHigh() const { return gapWindowHigh; }
@@ -418,6 +420,10 @@ namespace ai
 		// get the time left until this end (time(nullptr) seconds, 0 = none); its expiry counts as no failure.
 		void SetGapWindowEnd(uint32 windowEnd) { gapWindowEnd = windowEnd; }
 		uint32 GetGapWindowEnd() const { return gapWindowEnd; }
+		// twow-repo#601 S2 R3 (GrindMode 1, review C-F2): this choice is the gap grind choice (set by ChooseTravelTargetAction on the
+		// new target only, never copied) - the R3 window snapshot and the own-map skip apply to it, not to a quest choice.
+		void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }
+		bool IsGapGrindChoice() const { return gapGrindChoice; }
 
 		void IncRetry(bool isMove) { if (isMove) moveRetryCount+=2; else extendRetryCount++; }
         void DecRetry(bool isMove);
@@ -475,6 +481,7 @@ namespace ai
 		uint32 startTime = WorldTimer::getMSTime();
 		uint32 statusTime = 0;
 		uint32 gapWindowEnd = 0;   // twow-repo#601 S2 / S4 R2: 0 for every target but a GrindMode 1 gap grind trip
+		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
 
 		bool forced = false;
 		bool visitor = true;

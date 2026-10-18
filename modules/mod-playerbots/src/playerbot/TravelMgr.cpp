@@ -32,7 +32,7 @@ using namespace MaNGOS;
 // Penqle's Singleton<> requires an explicit instantiation in a .cpp file.
 INSTANTIATE_SINGLETON_1(ai::TravelMgr);
 
-PlayerTravelInfo::PlayerTravelInfo(Player* player)
+PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
 {
     PlayerbotAI* ai = GetBotAI(player);
     AiObjectContext* context = ai->GetAiObjectContext();
@@ -69,8 +69,10 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player)
 
     // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit, here on the bot thread - only the gap filler's
     // population gets its creature level window [max(gray + 1, L - 5), L + 1]; the async grind fetch reads it only as a
-    // value. GrindMode 0 / 2 and every other bot: 0 / 0 (IsQuestGapGrind reads the config first).
-    if (ai->IsQuestGapGrind())
+    // value. GrindMode 0 / 2 and every other bot: 0 / 0 (IsQuestGapGrind reads the config first). Only a snapshot for a gap
+    // grind (gapGrind: the grind fetch, its choice, the gap trip; review C-F2) - a quest objective fetch, choice or trip to grind
+    // mobs keeps the old template test and area gate.
+    if (ai->IsQuestGapGrind() && gapGrind)
     {
         gapWindowLow = ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level));
         gapWindowHigh = ai::quest_grind_mode::GapWindowHighLevel(level);
@@ -1092,6 +1094,11 @@ void TravelTarget::SetStatus(TravelStatus status) {
             m_status == TravelStatus::TRAVEL_STATUS_WORK))
         statusTime = ai::quest_grind_mode::GapStatusMs(statusTime, gapWindowEnd, uint32(time(nullptr)),
             ai::quest_search::RouteBackoffMaxSeconds);
+    // twow-repo#601 S2 / S4 R2 (review C-F1 / B-F1): a COOLDOWN of a gap grind trip (move retries, a group member's check) never
+    // outlives the window either - the shorter of the cooldown and the time left. Counted as no expiry, no failure here.
+    else if (gapWindowEnd && m_status == TravelStatus::TRAVEL_STATUS_COOLDOWN)
+        statusTime = ai::quest_grind_mode::GapCooldownMs(statusTime, gapWindowEnd, uint32(time(nullptr)),
+            ai::quest_search::RouteBackoffMaxSeconds);
 }
 
 bool TravelTarget::IsProgressAwareTurnIn() const
@@ -1506,7 +1513,9 @@ bool TravelTarget::IsDestinationActive()
     if (!GetBotAI(player)) //No ai so clear target.
         return false;
 
-    return tDestination->IsActive(player, PlayerTravelInfo(player));
+    // twow-repo#601 S2 R3 (review C-F2): the R3 window only for a gap grind trip (gapWindowEnd, GrindMode 1 only), never for a
+    // quest trip to grind mobs.
+    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0));
 }
 
 bool TravelTarget::IsConditionsActive(bool clear)
@@ -1745,6 +1754,19 @@ void TravelTarget::CheckStatus()
 
         if (destinationInactive || conditionsInactive)
         {
+            // twow-repo#601 S2 / S4 R2 (OB-10 rev. 2 point 3, review C-F1 / B-F1): a gap grind trip ends here at once - no COOLDOWN
+            // (its 60 s would hold every request past the window), no failure. Its condition is R1 itself ("need travel
+            // purpose::Grind"), so a condition end is the window end (the backoff ended or was reset): expired=. An
+            // inactive destination (a level-up out of the window, should sell) ends silently. gapWindowEnd: GrindMode 1 only.
+            if (gapWindowEnd)
+            {
+                ai->TellDebug(ai->GetMaster(), "The gap grind trip ends because its destination or its window is no longer active.", "debug travel");
+                if (conditionsInactive)
+                    PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));
+                SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+                return;
+            }
             ai->TellDebug(ai->GetMaster(), "The target is cooling down because the destination was no longer active or the conditions are no longer true.", "debug travel");
             TraceQuestCommit(tDestination, "drop", destinationInactive ? "destination_inactive" : "conditions_inactive");
             forced = false;

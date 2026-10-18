@@ -88,6 +88,32 @@ inline std::uint32_t GapStatusMs(std::uint32_t statusMs, std::uint32_t windowEnd
     return left ? (left < longest ? left : longest) * 1000u : 1u;
 }
 
+// R2 for a COOLDOWN of a gap grind trip (a move-retry or group-member cooldown; review C-F1 / B-F1): the shorter of the cooldown
+// and the time left until the window end, so no cooldown outlives the window (statusMs 0 = no limit: the window).
+// windowEnd 0 = no window: statusMs stays.
+inline std::uint32_t GapCooldownMs(std::uint32_t statusMs, std::uint32_t windowEnd, std::uint32_t now, std::uint32_t maxBackoffSeconds)
+{
+    if (!windowEnd)
+        return statusMs;
+    std::uint32_t const left = GapStatusMs(statusMs, windowEnd, now, maxBackoffSeconds);
+    return statusMs && statusMs < left ? statusMs : left;
+}
+
+// R1 (review B-F3): no money grind for the population - the money trigger ("val::should get money", 6.77) never starts a
+// gap grind trip, only the plain need-travel-purpose request (6.35, the R1 window) does. Not the gap filler: as before.
+inline bool GapGrindRequestAllowed(bool gapGrind, bool moneyCondition)
+{
+    return !gapGrind || !moneyCondition;
+}
+
+// R1 - R3 (review C-F3 / B-F2): no group copy of a grind trip for the population - a member's grind destination stays a grind for
+// this bot unless it needs the creature for an active quest itself; its own R1 request opens the window (R2 end, R3 level
+// window, own map, state=grind_window). Not the gap filler, or no grind destination: as before.
+inline bool GapGroupCopyAllowed(bool gapGrind, bool grindDestination, bool neededForQuest)
+{
+    return !gapGrind || !grindDestination || neededForQuest;
+}
+
 // The S2 level window named on the state=grind_window line: [max(gray + 1, L - 5), L + 1] (grayLevel =
 // MaNGOS::XP::GetGrayLevel(L), passed in: no game header here).
 inline std::uint32_t GapWindowLowLevel(std::uint32_t level, std::uint32_t grayLevel)
