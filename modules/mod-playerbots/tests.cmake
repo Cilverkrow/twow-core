@@ -2094,6 +2094,27 @@ add_test(NAME bot_update_trace_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bot_update_trace_source_contract_tests.cmake")
 
+# twow-repo#601 S2 diagnostic: [GrindPick] grind-target sources (BotUpdateTrace).
+add_executable(grind_pick_policy_tests
+  "${PB_MODULE_DIR}/t/grind_pick_policy_tests.cpp")
+
+target_include_directories(grind_pick_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(grind_pick_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(grind_pick_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_pick_policy
+  COMMAND grind_pick_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_pick_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_pick_source_contract_tests.cmake")
+
 # twow-repo#541: AI delay jitter (AiPlayerbot.AiDelayJitterPct, default 0).
 add_executable(ai_jitter_policy_tests
   "${PB_MODULE_DIR}/t/ai_jitter_policy_tests.cpp")

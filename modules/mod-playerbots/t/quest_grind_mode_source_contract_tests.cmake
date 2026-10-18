@@ -224,7 +224,7 @@ require_text("${policy}" "inline bool GrindDestinationActive(bool noGrind, bool 
 require_text("${grind_target}" "bool const noGrind = ai->IsQuestNoGrind();" "one GrindMode test per value pass")
 count_text("${grind_target}" "ai->IsQuestNoGrind()" 1 "one GrindMode test per value pass")
 region("${grind_target}" "std::list<ObjectGuid> attackers = context->GetValue<std::list<ObjectGuid>>(\"possible attack targets\")->Get();" "std::list<ObjectGuid> targets = *context->GetValue<std::list<ObjectGuid> >(\"possible targets\");" attacker_loop)
-require_text("${attacker_loop}" "logGrind(unit, \"(hostile) selected.\");\n        return unit;" "attackers stay (self-defence, group help)")
+require_text("${attacker_loop}" "logGrind(unit, \"(hostile) selected.\");\n        lastPickSource = ai::grind_pick::Source::Attacker;\n        return unit;" "attackers stay (self-defence, group help; the S2 [GrindPick] diagnostic only records the source)")
 forbid_text("${attacker_loop}" "noGrind" "the attacker loop gated")
 require_order("${grind_target}" "needForQuestCache[entry] = needForQuest;" "if (!ai::quest_grind_mode::TargetAllowed(noGrind, false, needForQuest))" "the filter uses the loop's own quest test")
 require_order("${grind_target}" "if (!ai::quest_grind_mode::TargetAllowed(noGrind, false, needForQuest))" "if (urand(0, 100) < 20 && travelTargetWorking && !isGrindTravelDest)" "before any urand of the candidate")

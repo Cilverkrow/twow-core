@@ -43,6 +43,14 @@ Unit* GrindTargetValue::Calculate()
         greyEngagements.Reset();
     }
 
+    // twow-repo#601 S2 diagnostic (OB-10 / OB-00 18.10.): every new grind target by source and grey, per 5-level band - the
+    // [GrindPick] minute line (ReportBotUpdate). Off: nothing but this test.
+    if (sPlayerbotAIConfig.botUpdateTrace && target && target->GetObjectGuid() != lastPickTarget)
+    {
+        lastPickTarget = target->GetObjectGuid();
+        ai::grind_pick::Global().Add(ai::grind_pick::BandOf(bot->GetLevel()), lastPickSource, creature && !MaNGOS::XP::Gain(bot, creature));
+    }
+
     return target;
 }
 
@@ -61,6 +69,8 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
     // are traceable too, tagging the reaction (hostile/neutral/friendly) to see if
     // neutral starting-zone wildlife is being systematically skipped. Remove once
     // the "bots not picking fights" investigation concludes.
+    lastPickSource = ai::grind_pick::Source::None;
+
     auto logGrind = [&](Unit* u, const std::string& reason)
     {
         if (ai->HasStrategy("debug grind", BotState::BOT_STATE_NON_COMBAT))
@@ -91,6 +101,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
         }
 
         logGrind(unit, "(hostile) selected.");
+        lastPickSource = ai::grind_pick::Source::Attacker;
         return unit;
     }
 
@@ -101,6 +112,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
 
     float distance = 0;
     Unit* result = NULL;
+    bool resultNeededForQuest = false;   // twow-repo#601 S2 diagnostic: the picked target's quest need ([GrindPick])
 
     bool travelTargetWorking = AI_VALUE(bool, "travel target working");
     bool travelTargetTraveling = AI_VALUE(bool, "travel target traveling");
@@ -346,6 +358,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
                 {
                     distance = newdistance;
                     result = unit;
+                    resultNeededForQuest = needForQuest;
                 }
             }
         }
@@ -355,6 +368,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
             {
                 distance = newdistance;
                 result = unit;
+                resultNeededForQuest = needForQuest;
             }
         }
     }
@@ -362,6 +376,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
     if (result)
     {
         logGrind(result, "selected.");
+        lastPickSource = ai::grind_pick::PickedSource(result->GetVictim() == bot, resultNeededForQuest);
     }
     else if (sPlayerbotAIConfig.hasLog("grind_target.csv"))
     {

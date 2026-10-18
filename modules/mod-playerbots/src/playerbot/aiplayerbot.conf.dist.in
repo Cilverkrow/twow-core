@@ -2269,6 +2269,9 @@ AiPlayerbot.WorldBotsTrace = 0
 # twow-repo#601 S1: with the switch QuestFirstProgression.FailureClasses on also one [PreValidate] line per
 # minute (calls, sum/p50/p99/max us, open_sum = open turn-ins checked, ok_sum = validated) for the turn-in
 # pre-check, and its trail note `TIME:prevalidate <us> n=<open> ok=<validated>` in [BotUpdateSlow].
+# twow-repo#601 S2 diagnostic: also one [GrindPick] line per 5-level band and minute - every new grind target by
+# source (attacker = attacks the bot or its group, victim = already on the bot, quest = needed for a quest, grind =
+# anything else) as picks/grey (grey = no XP). Bands without a pick are left out.
 AiPlayerbot.BotUpdateTrace = 0
 # twow-repo#597 (TICK-01): 1 = every [BotUpdateSlow] line ends with " tick=<world loop counter>
 # region=<map>.<inst>" (the world tick and the map region of that slow bot update), so a slow update
