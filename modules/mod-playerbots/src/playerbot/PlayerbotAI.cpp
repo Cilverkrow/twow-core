@@ -1704,7 +1704,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             MANGOS_ASSERT(botPos.fDist(bot) < 500.0f);
         }
     }
-    else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport()) && !isMovingToTransport)
+    // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): a bot with a ride record (boarded by the fix) stands on the
+    // vessel's deck model; the fell-off check accepts that hit for it only. Off (or no ride record): the static test as before.
+    else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport(), sPlayerbotAIConfig.pathTransportBoardFix && MovementAction::HasFixedRide(this)) && !isMovingToTransport)
     {
         if (HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
         {

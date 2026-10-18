@@ -452,7 +452,7 @@ AiPlayerbot.RandomBotRpgChance = 0.8
 # Limit whithin what distance between other bots they teleport to points in zones around real player
 # AiPlayerbot.RandomBotTeleportNearPlayerMaxAmountRadius = 0
 
-# Bot transport use style: 0 = walk on transports (currently not available), 1 = teleport on transports and ride it, 2 = teleport from dock to dock bypassing transport.
+# Bot transport use style: 0 = walk on transports (currently not available), 1 = teleport on transports and ride it, 2 = the same as 1: teleport onto the transport at the dock and ride it (the old "dock to dock bypassing transport" does not exist: the path is cut before the transport run).
 # AiPlayerbot.TransportTeleportType = 2
 
 # Chance for bot to use potions
@@ -1336,6 +1336,15 @@ AiPlayerbot.Path.TransportDeckProbe = 0
 # twow-repo#342 (S3b): minutes at a dock (and aboard) before [TransportWait] wait_timeout / overrun (S1).
 # 1-240, default 15 (= the S1 900 s).
 AiPlayerbot.Path.TransportWaitTimeoutMin = 15
+# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE, A/B first, OB-10 / OB-00 acceptance): 1 = bots board ships and zeppelins. Together:
+# a boarding point counts when it hits the vessel's own deck model (the static-only check rejected every point); the
+# vessel at its stop within 20 yd of the dock opens boarding too (the old test needed 5 yd), at most one try per 5 s; a dock
+# hop without an entry takes the entry of the ride next to it in the route (a hop with no ride or lift next to it is walked);
+# a walking bot boards only within 20 yd of the dock (farther away it walks on); a failed boarding keeps the bot waiting (no
+# teleport onward); the bot gets off only at the arrival dock stored when it boarded (never at the departure side, never to
+# an unusable point); a bot that lost its ride (fell off) within 40 yd of the arrival dock moves on, else it searches one
+# route from where it is (none: the existing rescues); only vessels with a known entry are boarded. 0 = as before (default).
+AiPlayerbot.Path.TransportBoardFix = 0
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
 # twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a
