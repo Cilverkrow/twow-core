@@ -2210,6 +2210,9 @@ AiPlayerbot.WorldBotsTrace = 0
 # twow-repo#541: 1 = one [BotUpdate] line per minute: distribution (p50/p90/p99/p999, max) of the wall
 # time of one bot AI update on the map threads, plus the five slowest calls with bot, map, combat
 # and last action. Log only. 0 = off (default).
+# twow-repo#601 S1: with the switch QuestFirstProgression.FailureClasses on also one [PreValidate] line per
+# minute (calls, sum/p50/p99/max us, open_sum = open turn-ins checked, ok_sum = validated) for the turn-in
+# pre-check, and its trail note `TIME:prevalidate <us> n=<open> ok=<validated>` in [BotUpdateSlow].
 AiPlayerbot.BotUpdateTrace = 0
 # twow-repo#597 (TICK-01): 1 = every [BotUpdateSlow] line ends with " tick=<world loop counter>
 # region=<map>.<inst>" (the world tick and the map region of that slow bot update), so a slow update
