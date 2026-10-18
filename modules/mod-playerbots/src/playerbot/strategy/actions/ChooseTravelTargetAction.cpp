@@ -21,6 +21,7 @@
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
 #include "Guild/GuildMgr.h"
+#include "Formulas.h"
 #include <algorithm>
 #include <iomanip>
 #include <map>
@@ -917,9 +918,33 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 ai::quest_grind_mode::TargetText("grind_destination", grindEntry > 0 ? uint32(grindEntry) : 0u));
             return false;
         }
-        // Hotfix 8.32 (twow-repo#544): a quest-first bot grinds after empty quest route searches.
-        sLog.outBasic("[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d distance=%.0f",
-            bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"), newTarget.Distance(bot));
+        // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): a gap grind trip. R1 again (the fetch ran async: a backoff that
+        // ended meanwhile takes no grind target, the quest request comes next); R2: the trip's window ends with the backoff
+        // (remaining, at most RouteBackoffMaxSeconds, + 30 s; READY / TRAVEL / WORK), and its expiry is no failure. One
+        // state=grind_window line per window (backoff); state=grind_fallback stays GrindMode 0. GrindMode 0 / 2: as before.
+        if (ai->IsQuestGapGrind())
+        {
+            uint32 const now = uint32(time(nullptr));
+            int const backoffUntil = std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"));
+            if (!ai::quest_grind_mode::GapWindowOpen(now < uint32(backoffUntil), false))
+                return false;
+            newTarget.SetGapWindowEnd(now + ai::quest_grind_mode::GapWindowSeconds(uint32(backoffUntil), now,
+                ai::quest_search::RouteBackoffMaxSeconds));
+            if (backoffUntil != AI_VALUE2(int, "manual int", "gap window logged"))
+            {
+                SET_AI_VALUE2(int, "manual int", "gap window logged", backoffUntil);
+                uint32 const level = bot->GetLevel();
+                sLog.outBasic("%s", ai::quest_grind_mode::FormatGapWindowLine(bot->GetGUIDLow(), level, uint32(backoffUntil) - now,
+                    ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level)),
+                    ai::quest_grind_mode::GapWindowHighLevel(level), bot->GetMapId()).c_str());
+            }
+        }
+        else
+        {
+            // Hotfix 8.32 (twow-repo#544): a quest-first bot grinds after empty quest route searches.
+            sLog.outBasic("[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d distance=%.0f",
+                bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"), newTarget.Distance(bot));
+        }
         // twow-repo#594 / P3-a: grind targets of fresh bots for [DirectTarget] state=summary.
         if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel))
             ai::quest_search::DirectTargetStats().freshGrind.fetch_add(1, std::memory_order_relaxed);
@@ -1947,6 +1972,13 @@ bool RequestTravelTargetAction::isUseful() {
             ai::quest_grind_mode::TargetText("request_travel_grind", 0));
         return false;
     }
+
+    // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): no money grind for the gap filler's population - a grind fetch only
+    // inside its R1 window (the need-travel-purpose value), whichever trigger asks (money 6.77 or plain 6.35); the trip is
+    // the window trip either way. Before the skip chance (no urand drawn). GrindMode 0 / 2: IsQuestGapGrind() is false.
+    if (ai->IsQuestGapGrind() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)) &&
+        !AI_VALUE2(bool, "need travel purpose", getQualifier()))
+        return false;
 
     if (!isAllowed())
     {

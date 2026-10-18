@@ -7,6 +7,7 @@
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include <algorithm>
 #include <vector>
@@ -933,6 +934,11 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
     if (dynamic_cast<TemporaryTravelDestination*>(tDestination) && tDestination1 != tDestination)
         delete tDestination;
 
+    // twow-repo#601 S2 / S4 R2: a gap grind window belongs to its destination; another one (world buff, go, null target)
+    // never inherits it. The refresh keeps the destination and so the window end (no renewal). CopyTarget sets it again.
+    if (tDestination1 != tDestination)
+        gapWindowEnd = 0;
+
     wPosition = wPosition1;
     tDestination = tDestination1;
 
@@ -1010,6 +1016,9 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
         TraceQuestCommit(oldQuest, "drop", "replaced_by_non_quest_target");
 
     SetTarget(target->tDestination, target->wPosition);
+    // twow-repo#601 S2 / S4 R2: the choice's window end (0 for every target but a GrindMode 1 gap grind trip); setNewTarget
+    // sets READY next, which applies it.
+    gapWindowEnd = target->gapWindowEnd;
     groupMember = target->groupMember;
     forced = target->forced;
     relevance = target->relevance;
@@ -1058,6 +1067,14 @@ void TravelTarget::SetStatus(TravelStatus status) {
         statusTime = tDestination->GetCooldownDelay();
     default: break;
     }
+
+    // twow-repo#601 S2 / S4 R2 (GrindMode 1, OB-10 rev. 2): a gap grind trip ends with its quest route backoff - READY,
+    // TRAVEL and WORK get the time left until the window end (at most RouteBackoffMaxSeconds + 30 s), so the request gate
+    // opens and the next quest search runs. gapWindowEnd is 0 for every other target: nothing changes there.
+    if (gapWindowEnd && (m_status == TravelStatus::TRAVEL_STATUS_READY || m_status == TravelStatus::TRAVEL_STATUS_TRAVEL ||
+            m_status == TravelStatus::TRAVEL_STATUS_WORK))
+        statusTime = ai::quest_grind_mode::GapStatusMs(statusTime, gapWindowEnd, uint32(time(nullptr)),
+            ai::quest_search::RouteBackoffMaxSeconds);
 }
 
 bool TravelTarget::IsProgressAwareTurnIn() const
@@ -1588,7 +1605,9 @@ void TravelTarget::CheckStatus()
             GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ? "status_time_exceeded_travel" :
             GetStatus() == TravelStatus::TRAVEL_STATUS_WORK ? "status_time_exceeded_work" :
             GetStatus() == TravelStatus::TRAVEL_STATUS_COOLDOWN ? "status_time_exceeded_cooldown" : "status_time_exceeded");
-        if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK)
+        // twow-repo#601 S2 / S4 R2 (OB-10 rev. 2 point 3): the end of a gap grind window is no failure - no work timeout,
+        // so no turn-in, quest loop or work-timeout count (gapWindowEnd is 0 for every other target).
+        if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK && !gapWindowEnd)
             OnWorkTimeout();
         // twow-repo#594 / P3-b: a direct-target trip out of travel time is a failure of its destination (out of work time
         // it ends in SetStatus).
