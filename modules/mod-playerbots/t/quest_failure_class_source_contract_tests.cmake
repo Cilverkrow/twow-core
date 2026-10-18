@@ -229,6 +229,9 @@ require_order("${skip_fn}" "return CandidateSkip::TurnInSuppressed;" "return Can
 require_order("${skip_fn}" "return CandidateSkip::DeathSuppressed;" "return CandidateSkip::QuestLoopSuppressed;" "skip order: death, then quest loop")
 require_order("${skip_fn}" "return CandidateSkip::QuestLoopSuppressed;" "return CandidateSkip::OtherMapGather;" "skip order: quest loop, then other-map gather")
 require_order("${skip_fn}" "return CandidateSkip::OtherMapGather;" "return CandidateSkip::GatherPurposeSuppressed;" "skip order: gather purpose last")
+# twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2): own map for a gap grind destination, inside the same predicate.
+require_order("${skip_fn}" "return CandidateSkip::OtherMapGather;" "return CandidateSkip::OtherMapGrind;" "skip order: other-map gather, then other-map grind")
+require_order("${skip_fn}" "return CandidateSkip::OtherMapGrind;" "return CandidateSkip::GatherPurposeSuppressed;" "skip order: other-map grind before the gather purpose")
 foreach(counter "++lastRejects.turnInSuppressed;" "++lastRejects.questLoopSuppressed;" "++lastRejects.otherMapGather;")
   require_text("${best}" "${counter}" "main loop counter kept")
 endforeach()

@@ -274,6 +274,15 @@ add_test(NAME quest_grind_mode_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_grind_mode_source_contract_tests.cmake")
 
+# twow-repo#601 S2 / S4 (GrindMode 1 = gap filler, default 0; OB-10 rev. 2 18.10.2026): grind only inside the quest route
+# backoff (R1, before the S0 lines), the grind trip ends with the backoff and its end counts as no failure (R2). Commit 2:
+# R3 window via the snapshot scope bit, own map, R4, R5, [GrindWindow] minute line. Review fixes: inactive gap trip ends at
+# once (no COOLDOWN), cooldown cap, no refresh / money / group grind copy, window only for the gap grind fetch / choice / trip.
+add_test(NAME grind_gap_window_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_gap_window_source_contract_tests.cmake")
+
 # twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.*, default 0 / empty; OB-10 / OB-00 18.10.2026): feasibility at accept
 # time - quest id lists, the solo group rule, the giver relation and the drop of open infeasible quests (policy).
 add_executable(quest_feasibility_policy_tests

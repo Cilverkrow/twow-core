@@ -771,6 +771,40 @@ bool PlayerbotAI::IsQuestNoGrind()
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
 }
 
+// twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): the same population as IsQuestNoGrind. The config is read first, so
+// GrindMode 0 / 2 return before any other test.
+bool PlayerbotAI::IsQuestGapGrind()
+{
+    if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot)
+        return false;
+
+    return ai::quest_grind_mode::GapFillerApplies(sPlayerbotAIConfig.questFirstProgressionGrindMode,
+        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
+        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
+}
+
+// twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): window starts, window ends, plain grind engagements (grey
+// ones), empty windows, R4 skips and passes left empty by R4 since the last minute line; counted on the map threads,
+// taken by the world thread (relaxed atomics, no lock).
+namespace
+{
+std::atomic<uint32> grindWindowCounts[ai::quest_grind_mode::WindowEventCount] = {};
+}
+
+void PlayerbotAI::NoteGrindWindow(uint8 event, uint32 n)
+{
+    if (event < ai::quest_grind_mode::WindowEventCount && n)
+        grindWindowCounts[event].fetch_add(n, std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeGrindWindowMinuteLine()
+{
+    std::array<std::uint32_t, ai::quest_grind_mode::WindowEventCount> counts = {};
+    for (std::size_t event = 0; event < ai::quest_grind_mode::WindowEventCount; ++event)
+        counts[event] = grindWindowCounts[event].exchange(0, std::memory_order_relaxed);
+    return ai::quest_grind_mode::FormatWindowMinuteLine(counts);
+}
+
 // GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason and idle
 // episode (at most 4 per episode however the reasons alternate).
 void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)

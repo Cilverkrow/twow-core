@@ -129,9 +129,11 @@ foreach(file DirectTargetLoader.cpp DirectTargetSnap.cpp DirectTargetDestination
   endforeach()
 endforeach()
 
-# PlayerTravelInfo, GetPartitions: untouched by P3-b.
+# PlayerTravelInfo, GetPartitions: untouched by P3-b. twow-repo#601 S2 R3 (review C-F2) gave the constructor a second parameter
+# (bool gapGrind: the GrindMode 1 window snapshot only for a gap grind fetch / choice / trip) - the region starts at the new
+# signature, the region and its forbidden tokens stay the same.
 region("${travel_h}" "class PlayerTravelInfo" "//A destination for a bot to travel to and do something." travel_info)
-region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player)" "std::string EntryTravelDestination::GetShortName() const" travel_info_ctor)
+region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)" "std::string EntryTravelDestination::GetShortName() const" travel_info_ctor)
 region("${travel_mgr}" "PartitionedTravelList TravelMgr::GetPartitions(" "void TravelMgr::ShuffleTravelPoints(" partitions)
 foreach(token DirectTarget direct_targets Station Entrance ShoreFish)
   forbid_text("${travel_info}" "${token}" "${token} in PlayerTravelInfo")
