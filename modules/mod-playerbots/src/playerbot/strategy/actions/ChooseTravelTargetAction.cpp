@@ -1964,12 +1964,12 @@ bool RequestTravelTargetAction::Execute(Event& event)
     if (IsAutonomousRosterTravelBlocked(ai, actionPurpose) && !event.getOwner())
         return false;
 
-    // twow-repo#601 S2 / S4 R1 (GrindMode 1, OB-10 rev. 2 point 4, review B-F3): no money grind for the gap filler's population -
-    // the money trigger ("val::should get money", 6.77) never starts a gap grind trip; the plain need-travel-purpose request
-    // (6.35, the R1 window) does. The engine goes on with the next action. GrindMode 0 / 2: IsQuestGapGrind() is false.
-    if (ai->IsQuestGapGrind() && actionPurpose == TravelDestinationPurpose::Grind &&
-        !ai::quest_grind_mode::GapGrindRequestAllowed(true, ai::quest_grind_mode::IsMoneyCondition(event.getSource())))
-        return false;
+    // twow-repo#601 S2 / S4 R1 / R2 (GrindMode 1, recheck of review B-F3, OB-10 18.10.2026): a grind request of the gap filler's
+    // population - isUseful let it through only inside the R1 window, whichever trigger queued it (the money trigger, 6.77,
+    // and the plain one, 6.35, share this action and Queue::Push keeps the event of the higher relevance) - starts the gap
+    // trip with R1 as its condition (GapTripCondition below), never the money condition, so the trip ends with the window.
+    // GrindMode 0 / 2: IsQuestGapGrind() is false, the event source as before.
+    bool const gapGrindRequest = ai->IsQuestGapGrind() && actionPurpose == TravelDestinationPurpose::Grind;
 
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
     bool const enforceGatherLeash = UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() &&
@@ -2005,7 +2005,8 @@ bool RequestTravelTargetAction::Execute(Event& event)
 
     AI_VALUE(TravelTarget*, "travel target")->SetStatus(TravelStatus::TRAVEL_STATUS_PREPARE);
     SET_AI_VALUE2(std::string, "manual string", "future travel purpose", getQualifier());
-    SET_AI_VALUE2(std::string, "manual string", "future travel condition", event.getSource());
+    SET_AI_VALUE2(std::string, "manual string", "future travel condition",
+        ai::quest_grind_mode::GapTripCondition(gapGrindRequest, event.getSource(), uint32(TravelDestinationPurpose::Grind)));
     SET_AI_VALUE2(int, "manual int", "future travel relevance", relevance * 100);
 
     return true;
@@ -2040,10 +2041,10 @@ bool RequestTravelTargetAction::isUseful() {
         return false;
     }
 
-    // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): no money grind for the gap filler's population - a grind fetch only
-    // inside its R1 window (the need-travel-purpose value); the money trigger (6.77) is refused in Execute (review B-F3), so only
-    // the plain request (6.35) starts the window trip. Before the skip chance (no urand drawn). GrindMode 0 / 2: IsQuestGapGrind()
-    // is false.
+    // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2, OB-10 18.10.2026): no money grind for the gap filler's population outside
+    // its R1 window - a grind fetch only inside it (the need-travel-purpose value), whichever trigger queued the request (the
+    // money trigger, 6.77, or the plain one, 6.35: one basket, Queue::Push); Execute gives the trip R1 as its condition, so it
+    // never outlives the window. Before the skip chance (no urand drawn). GrindMode 0 / 2: IsQuestGapGrind() is false.
     if (ai->IsQuestGapGrind() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)) &&
         !AI_VALUE2(bool, "need travel purpose", getQualifier()))
         return false;

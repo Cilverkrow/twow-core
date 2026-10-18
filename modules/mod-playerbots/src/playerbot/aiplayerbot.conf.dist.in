@@ -1156,11 +1156,11 @@ AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 #   0 = today's behaviour (default).
 #   1 = gap filler (twow-repo#601 S2/S4, OB-10 rev. 2): the bots of 2 (below) grind only while their quest route
 #       backoff runs (the last quest search found nothing, any FailureClasses class, a transient one too), never through
-#       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, the money grind, a travel
-#       refresh or a group member's grind trip; the grind trip ends with the backoff (remaining backoff, at most 10 min,
-#       + 30 s) and its end counts as no failure. [QuestSearch] state=grind_window bot= level= backoff_s=
-#       window=<min>-<max> map= once per window (window= the S2 creature level window max(gray + 1, L - 5) to L + 1).
-#       They grind on their own map only, at grind
+#       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, a travel refresh or a group
+#       member's grind trip (the money grind too only inside that window); the grind trip ends with the backoff
+#       (remaining backoff, at most 10 min, + 30 s) and its end counts as no failure. [QuestSearch]
+#       state=grind_window bot= level= backoff_s= window=<min>-<max> map= once per window (window= the S2 creature
+#       level window max(gray + 1, L - 5) to L + 1). They grind on their own map only, at grind
 #       destinations whose template max level and area level are in that window, and plain grind targets (no quest
 #       need, not attacking the bot) need their level in it; attackers and quest mobs stay. Grind destinations
 #       are recognised for the 20 % quest skip (bug fix, mode 1 only). [GrindWindow] minute starts= expired= engaged=
