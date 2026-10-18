@@ -18,6 +18,7 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
+#include "playerbot/DeathAddsPolicy.h"
 #include "playerbot/BotSavePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
@@ -930,6 +931,11 @@ private:
     // the same words typed. Nothing here grants anything: it can only replay a
     // command a player was already entitled to give.
     void RunPendingDialogueCommands();
+
+    // twow-repo#602 ROT-01 F6: the creatures attacking the bot while it fights, for the adds column of deaths.csv (the death clears
+    // the attacker set before OnDeath runs). Called from this bot's own AI tick only; the last snapshot is kept while the bot is dead.
+    void UpdateDeathAddsSnapshot();
+    ai::death_adds::Snapshot deathAdds;
 
 protected:
 	Player* bot;
