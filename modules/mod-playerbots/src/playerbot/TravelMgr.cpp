@@ -26,6 +26,7 @@
 #include "playerbot/RidingStagesBotPolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
 #include "Formulas.h"
+#include "playerbot/strategy/values/RestGateValue.h"
 
 using namespace ai;
 using namespace MaNGOS;
@@ -1150,8 +1151,13 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
 
     // These states are legitimate travel interruptions. They consume neither
     // a recovery stage nor a fixed overall duration.
+    // twow-repo#602 X1 (AiPlayerbot.Rotation.RestGate): a resting bot stands still on purpose. Nothing observes while it rests (the move
+    // action waits on "can move around"), so the first observation after an applied rest (OnRestEnded) is the pause.
+    bool const restPause = restPausePending;
+    restPausePending = false;
     bool const paused = bot->IsInCombat() || !bot->IsAlive() || bot->IsTaxiFlying() ||
-        bot->GetTransport() || ai->HasRealPlayerMaster();
+        bot->GetTransport() || ai->HasRealPlayerMaster() ||
+        restPause || RestGateValue::Resting(ai);
     turnin_recovery::Observation observation;
     observation.now = WorldTimer::getMSTime();
     observation.targetEntry = uint32(destination->GetEntry());
@@ -1482,8 +1488,23 @@ void TravelTarget::OnMoveRetryCooldown()
     // a good reason (the pauses of ObserveTurnInProgress).
     if (bot->IsInCombat() || !bot->IsAlive() || bot->IsTaxiFlying() || bot->GetTransport() || ai->HasRealPlayerMaster())
         return;
+    // twow-repo#602 X1 (OB-10 review 18.10.2026): a resting bot (AiPlayerbot.Rotation.RestGate) is held up for a good reason too.
+    if (RestGateValue::Resting(ai))
+        return;
 
     NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "move_failed");
+}
+
+void TravelTarget::OnRestEnded(uint32 durMs)
+{
+    // Called only for an applied episode with the switch on (RestGateValue::Finish), so mode 0 never gets here.
+    restPausePending = true;
+    // The rest held the bot still: a WORK phase (60 s at a quest objective) or a timed TRAVEL budget would otherwise count it as lost
+    // work - quest loop / work-timeout suppression, a turn-in park, a direct-target failure. Progress-aware TRAVEL has no clock.
+    // Not for an S2 gap grind trip (gapWindowEnd): its clock is the quest-route backoff window (OB-10 review 18.10.2026).
+    if (statusTime != 0 && !IsForced() && !gapWindowEnd &&
+        (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL))
+        SetExpireIn(uint32(std::max<int32>(GetTimeLeft(), 0)) + durMs);
 }
 
 void TravelTarget::DecRetry(bool isMove)
@@ -1630,6 +1651,12 @@ void TravelTarget::CheckStatus()
         sTravelMgr.SetNullTravelTarget(this);
         return;
     }
+
+    // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): the status clock does not run out while the bot rests (the travel action
+    // still checks in WORK); OnRestEnded gives the rest time back when the episode ends. Not for an S2 gap grind trip (GrindMode 1,
+    // gapWindowEnd): its status time is the quest-route backoff window, which ends while resting too (OB-10 review 18.10.2026).
+    if (statusTime != 0 && !IsForced() && !gapWindowEnd && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))
+        SetExpireIn(5000);
 
     if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())
     {

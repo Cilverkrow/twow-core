@@ -33,6 +33,21 @@ bool HighManaTrigger::IsActive()
     return AI_VALUE2(bool, "has mana", "self target") && AI_VALUE2(uint8, "mana", "self target") < 65;
 }
 
+// twow-repo#602 ROT-01 X1: the rest episode itself is the "rest gate" value (false with the switch off and in the cohort it does not
+// apply to); these only add the HP / mana target.
+bool RestHealthTrigger::IsActive()
+{
+    return sPlayerbotAIConfig.rotationRestGate && AI_VALUE(bool, "rest gate") &&
+        AI_VALUE2(uint8, "health", "self target") < sPlayerbotAIConfig.rotationRestGateTargetHp;
+}
+
+bool RestManaTrigger::IsActive()
+{
+    // bot->HasMana(): a druid in cat / bear form has no mana pool to drink for (the "has mana" value reads the stored mana).
+    return sPlayerbotAIConfig.rotationRestGate && bot->HasMana() && AI_VALUE(bool, "rest gate") &&
+        AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.rotationRestGateTargetMana;
+}
+
 bool AlmostFullManaTrigger::IsActive()
 {
     return AI_VALUE2(bool, "has mana", "self target") && AI_VALUE2(uint8, "mana", "self target") > 85;
