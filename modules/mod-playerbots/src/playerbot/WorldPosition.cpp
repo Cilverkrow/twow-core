@@ -4,6 +4,7 @@
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/RouteTimePolicy.h"
 #include "playerbot/PathUnitlessBotPolicy.h"
+#include "playerbot/TransportEdgePolicy.h"
 #include "TravelNode.h"
 
 #include "Maps/Map.h"
@@ -697,7 +698,7 @@ WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uin
     return RandomPointOnTrans(transport, radius, nullptr, path);
 }
 
-WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uint32 radius, Player* botForPath, std::vector<WorldPosition>& path)
+WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uint32 radius, Player* botForPath, std::vector<WorldPosition>& path, transport_edge::PointRejects* rejects)
 {
     GenericTransport* oldTrans = botForPath ? botForPath->GetTransport() : nullptr;
 
@@ -721,16 +722,29 @@ WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uin
 
         tries++;
 
+        // twow-repo#342 (S1): the reject counts only when the caller passes rejects (the edge trace on); same loop otherwise.
         if (pos.getZ() < transPos.getZ() - 1.0f)
+        {
+            if (rejects)
+                ++rejects->z;
             continue;
+        }
 
         if (pos.getZ() > transPos.getZ() + 1.0f)
+        {
+            if (rejects)
+                ++rejects->z;
             continue;
+        }
 
         pos += WorldPosition(0, 0, 0, 0.1f);
 
         if (!pos.isOnTransport(transport))
+        {
+            if (rejects)
+                ++rejects->on;
             continue;
+        }
 
         bestPos = pos;
 
@@ -741,13 +755,21 @@ WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uin
             std::vector<WorldPosition> posPath = pos.getPathStepFrom(botForPath, botForPath, false);
 
             if (posPath.empty())
+            {
+                if (rejects)
+                    ++rejects->path;
                 continue;
+            }
 
             WorldPosition wantedEnd = pos;
             wantedEnd.CalculatePassengerOffset(transport);
 
             if (wantedEnd.sqDistance(posPath.back()) > 5.0f)
+            {
+                if (rejects)
+                    ++rejects->path;
                 continue;
+            }
 
             bestPath = posPath;
         }

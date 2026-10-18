@@ -7,6 +7,7 @@
 #include "Movement/WaypointMovementGenerator.h"
 #include "playerbot/strategy/values/HazardsValue.h"
 #include "playerbot/strategy/values/LastMovementValue.h"
+#include "playerbot/TransportEdgePolicy.h"
 
 // Move priorities, for code ported from mod-playerbots, which arbitrates moves
 // by them. Nothing in this tree arbitrates: MoveTo takes the move and issues
@@ -28,9 +29,15 @@ namespace ai
         MovementAction(PlayerbotAI* ai, std::string name) : Action(ai, name) {}
 
         static bool MinimalMove(PlayerbotAI* ai);
-        static bool UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport);
+        // twow-repo#342 (S1): edge (optional) = the bot's transport edge state with the key of the caller's path as current
+        // key, for AiPlayerbot.Path.TransportEdgeTrace; nullptr or the trace off = no state, no counters, no lines.
+        static bool UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge = nullptr);
+        // twow-repo#342 (S1): fail reason=fell_off (PlayerbotAI, both RemovePassenger branches) / reason=stall_abandon (TravelMgr) for the bot's running
+        // transport edge episode; the callers test AiPlayerbot.Path.TransportEdgeTrace first.
+        static void TraceTransportEdgeFellOff(PlayerbotAI* ai);
+        static void TraceTransportEdgeStallAbandon(PlayerbotAI* ai);
     protected:
-        static bool MoveOnTransport(PlayerbotAI* ai, GenericTransport* transport, bool doTeleport);
+        static bool MoveOnTransport(PlayerbotAI* ai, GenericTransport* transport, bool doTeleport, transport_edge::PointRejects* rejects = nullptr);
         static bool MoveOffTransport(PlayerbotAI* ai, WorldPosition exitPos, bool doTeleport);
 
         bool ChaseTo(WorldObject *obj, float distance = 0.0f, float angle = 0.0f);
