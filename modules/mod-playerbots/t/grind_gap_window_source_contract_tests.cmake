@@ -112,6 +112,7 @@ read_source("strategy/generic/TravelStrategy.cpp" travel_strategy)
 read_source("strategy/values/GrindTargetValue.cpp" grind_target)
 read_source("strategy/actions/ChooseTargetActions.cpp" choose_target)
 read_source("RandomPlayerbotMgr.cpp" mgr)
+read_source("DirectTargetDestinations.cpp" direct_targets)
 
 # ---- 1. The pure policy ------------------------------------------------------------------------------
 require_text("${policy}" "inline bool GapFiller(std::uint32_t grindMode)\n{\n    return grindMode == ModeGapFiller;\n}" "mode 1 test")
@@ -404,6 +405,17 @@ require_text("${gap_block}" "                SET_AI_VALUE2(int, \"manual int\", 
 region("${travel_mgr}" "    if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())\n    {" "        return;\n    }" expiry2)
 require_text("${expiry2}" "        if (gapWindowEnd && (GetStatus() == TravelStatus::TRAVEL_STATUS_READY || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ||\n                GetStatus() == TravelStatus::TRAVEL_STATUS_WORK))\n            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));" "expired= only for a gap grind trip's window statuses")
 require_order("${expiry2}" "PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));" "SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);" "counted before the expiry")
+# Rebase onto P3-b (twow-repo#594, 3391e459): its TRAVEL expiry hook stays directly before SetStatus(EXPIRED) (its own contract),
+# the gap expired= block comes before it. The hook counts no failure for a gap trip: OnTravelFailure returns at once for a
+# destination without a direct-target tag (TagOf: a direct key and a DirectTargetTag), and a gap trip is a GrindTravelDestination,
+# which is no DirectTargetTag - so the window end stays no failure (OB-10 rev. 2 point 3) without a gate of its own.
+require_order("${expiry2}" "PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));" "ai::direct_targets::OnTravelFailure(ai, tDestination, \"expired\");" "the gap expired= block before the P3-b expiry hook")
+region("${expiry2}" "if (gapWindowEnd && (GetStatus() == TravelStatus::TRAVEL_STATUS_READY" "PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));" gap_expired_block)
+forbid_text("${gap_expired_block}" "OnTravelFailure" "a failure hook in the gap expired= block")
+region("${direct_targets}" "void ai::direct_targets::OnTravelFailure(PlayerbotAI* ai, TravelDestination* destination, char const* reason)\n{" "\n}\n" p3b_failure)
+require_text("${p3b_failure}" "{\n    DirectTargetTag* tag = TagOf(destination);\n    if (!tag)\n        return;" "the P3-b failure hook returns at once for an untagged destination (a gap grind trip)")
+require_text("${direct_targets}" "    if (!destination || !IsDirectKey(destination->GetEntry()))\n        return nullptr;\n    return dynamic_cast<DirectTargetTag*>(const_cast<TravelDestination*>(destination));" "a tag only for a direct key and a DirectTargetTag")
+require_text("${travel_h}" "class GrindTravelDestination : public EntryTravelDestination\n" "a grind destination is no DirectTargetTag")
 region("${choose}" "        // twow-repo#601 S2 / S4 [GrindWindow] no_dest=" "        return false;\n    }" nodest_block)
 require_text("${nodest_block}" "        if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))" "no_dest= GrindMode 1 first, grind fetches only")
 require_text("${nodest_block}" "            if (ai::quest_grind_mode::GapNoDestDue(uint32(time(nullptr)) < uint32(backoffUntil), backoffUntil,\n                    AI_VALUE2(int, \"manual int\", \"gap window logged\"), AI_VALUE2(int, \"manual int\", \"gap window empty\")))\n            {\n                SET_AI_VALUE2(int, \"manual int\", \"gap window empty\", backoffUntil);\n                PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::NoDest));" "no_dest= once per window inside the backoff")
