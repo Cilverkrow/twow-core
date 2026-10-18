@@ -224,6 +224,16 @@ class PlayerbotPlayerScript : public PlayerScript
             if (ai->GetForcedRole() == role)
                 return;
 
+            // twow-repo#602 R06a (AiPlayerbot.Rotation.SpecFromPath, OB-00 18.10.2026): a persistent roster member keeps its
+            // planned spec - roster role before the dungeon finder slot. When that spec cannot fill the role, refuse
+            // here and change nothing (no forced role, no strategy reset), so the finder's respec probe moves on and the
+            // bot does not carry the role into the open world; asking it again costs nothing.
+            bool const specFromPath = ChangeTalentsAction::SpecFromPath(bot);
+            if (role != BotRoles::BOT_ROLE_NONE && specFromPath &&
+                sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+                !(AiFactory::GetPlayerRoles(bot) & role))
+                return;
+
             ai->SetForcedRole(role);
 
             // Strategies alone are not enough. A balance druid handed the tank slot
@@ -249,7 +259,7 @@ class PlayerbotPlayerScript : public PlayerScript
                 // and still not a tank. Ask first, and leave the bot alone if the answer
                 // is no.
                 bool const reachable =
-                    !ChangeTalentsAction::getPremadePaths(bot->getClass(), "", (BotRoles)role).empty();
+                    !ChangeTalentsAction::getPremadePaths(bot->getClass(), "", (BotRoles)role, specFromPath).empty();
 
                 if (!(current & role) && reachable)
                 {

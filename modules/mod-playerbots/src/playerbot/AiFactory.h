@@ -27,10 +27,16 @@ public:
     static void AddDefaultReactionStrategies(Player* player, PlayerbotAI* const facade, ReactionEngine* reactionEngine);
 
 public:
+    // The spec tab every caller uses. twow-repo#602 R06a (AiPlayerbot.Rotation.SpecFromPath): from level 10 the tab of
+    // the bot's premade path when the switch applies to it, else the talent point majority (GetPlayerMajorityTab).
     static int GetPlayerSpecTab(const Player* player);
+    // The talent point majority (ties: the lower tab; below level 10 or without points: the class default).
+    static int GetPlayerMajorityTab(const Player* player);
     static std::map<uint32, int32> GetPlayerSpecTabs(const Player* player);
     static BotRoles GetPlayerRoles(uint8 cls, uint8 specTab);
     static BotRoles GetPlayerRoles(const Player* player);
     // #357: the premade path the bot was given ("" = none).
     static std::string GetPremadePathName(const Player* player);
+    // twow-repo#602 R06a: the tab of that path (AiPlayerbot.PremadeSpecTab), -1 = none.
+    static int GetPremadePathTab(const Player* player);
 };

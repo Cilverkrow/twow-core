@@ -21,7 +21,11 @@ namespace ai
         // all" before wiping a bot's talents in the hope that it can.
         // AutoSelectTalents itself will not tell them: given a role it cannot
         // satisfy it quietly falls back to every spec of the class and picks one.
-        static std::vector<TalentPath*> getPremadePaths(uint8 cls, std::string findName, BotRoles role = BotRoles::BOT_ROLE_NONE);
+        // twow-repo#602 R06a: byPath (AiPlayerbot.Rotation.SpecFromPath applies to the bot) = a path's role comes from
+        // its tab key and the shaman / rogue tank paths count as tanks, not from the majority of its level 60 link.
+        static std::vector<TalentPath*> getPremadePaths(uint8 cls, std::string findName, BotRoles role = BotRoles::BOT_ROLE_NONE, bool byPath = false);
+        // twow-repo#602 R06a: AiPlayerbot.Rotation.SpecFromPath applies to this bot (cohort mode).
+        static bool SpecFromPath(Player const* bot);
     private:
         static std::vector<TalentPath*> getPremadePaths(Player* bot, TalentSpec* oldSpec);
         static TalentPath* getPremadePath(uint8 cls, int id);

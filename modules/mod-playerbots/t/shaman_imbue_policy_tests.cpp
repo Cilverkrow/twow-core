@@ -5,6 +5,7 @@
 #include <string>
 
 #include "ShamanImbuePolicy.h"
+#include "SpecPathPolicy.h"
 
 namespace
 {
@@ -76,6 +77,19 @@ int main()
     Require(SpecFor(false, 0) == Spec::Elemental && SpecFor(false, 1) == Spec::Enhancement && SpecFor(false, 2) == Spec::Restoration,
         "talent tabs as in AiFactory");
     Require(SpecFor(false, -1) == Spec::Enhancement, "no talents: enhancement, as AiFactory's else branch");
+
+    // twow-repo#602 R06a (AiPlayerbot.Rotation.SpecFromPath): the shaman tank path names tree 1 (enhancement), so the
+    // tab handed to SpecFor stays 1 and the imbue is the one it had before: Rockbiter with the tank strategy, as
+    // enhancement without it (Flametongue from 10, Windfury from 30).
+    {
+        int const tankPathTab = 1;   // AiPlayerbot.PremadeSpecTab.7.3 (EXPECTED_TREE_PAGE "shaman tank")
+        int const tab = ai::spec_path::PathTabFor(true, 15, tankPathTab);
+        Require(tab == 1, "R06a: the shaman tank path keeps tab 1");
+        Require(SpecFor(true, tab) == Spec::Tank && At(SpecFor(true, tab), 15, false) == Rockbiter, "R06a: shaman tank: Rockbiter");
+        Require(SpecFor(false, tab) == Spec::Enhancement && At(SpecFor(false, tab), 15, false) == Flametongue &&
+            At(SpecFor(false, tab), 30, true) == Windfury, "R06a: tank path without the tank strategy: imbue as enhancement");
+        Require(ai::spec_path::PathTabFor(true, 9, tankPathTab) == -1, "R06a: below level 10 the majority (class default) stays");
+    }
 
     Require(std::string(TriggerAction(false, "windfury weapon")) == "windfury weapon", "switch off: the strategy's old action");
     Require(std::string(TriggerAction(true, "windfury weapon")) == ActionName, "switch on: the per-spec action");
