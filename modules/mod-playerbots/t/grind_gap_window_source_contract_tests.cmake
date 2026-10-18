@@ -11,6 +11,12 @@ cmake_policy(VERSION 3.16)
 #  - R2: the gap grind trip's READY / TRAVEL / WORK status time ends with the window; its expiry is no failure (no work
 #    timeout, no turn-in / quest loop / move retry / destination death count, no quest route counter),
 #  - one [QuestSearch] state=grind_window line per window, state=grind_fallback stays GrindMode 0,
+#  - commit 2 (OB-10 rev. 2 points 1, 2, 5): R3 the level window [max(gray + 1, L - 5), L + 1] for grind destinations
+#    (template MaxLevel in IsPossible, area level in IsLocationLevelValid) only through a scope bit of the PlayerTravelInfo
+#    snapshot set on the bot thread, never computed in the async job; own map only (CandidateSkip::OtherMapGrind inside
+#    CandidateSkipOf, still 2 call sites); R4 plain grind candidates of the population in the window, attackers / victims /
+#    quest mobs stay; R5 the isGrindTravelDest fix under mode 1 only; [GrindWindow] minute line, mode 1 alone, omitted
+#    when every count is 0,
 #  - no new config key, no lock.
 # Reads only named files below modules/mod-playerbots/src/playerbot (never a glob, never src/modules/Eluna).
 
@@ -95,6 +101,9 @@ read_source("TravelMgr.cpp" travel_mgr)
 read_source("strategy/values/TravelValues.cpp" values)
 read_source("strategy/actions/ChooseTravelTargetAction.cpp" choose)
 read_source("strategy/generic/TravelStrategy.cpp" travel_strategy)
+read_source("strategy/values/GrindTargetValue.cpp" grind_target)
+read_source("strategy/actions/ChooseTargetActions.cpp" choose_target)
+read_source("RandomPlayerbotMgr.cpp" mgr)
 
 # ---- 1. The pure policy ------------------------------------------------------------------------------
 require_text("${policy}" "inline bool GapFiller(std::uint32_t grindMode)\n{\n    return grindMode == ModeGapFiller;\n}" "mode 1 test")
@@ -160,7 +169,7 @@ require_text("${grind_branch}" "        else\n        {\n            // Hotfix 8
 forbid_text("${choose}" "\"[QuestSearch] state=grind_window" "a grind_window line outside the policy format")
 count_text("${choose}" "FormatGapWindowLine(" 1 "one window line site")
 count_text("${choose}" "SetGapWindowEnd(" 1 "one window end site")
-count_text("${choose}" "ai->IsQuestGapGrind()" 2 "the gap trip and the request")
+count_text("${choose}" "ai->IsQuestGapGrind()" 4 "the gap trip, the request; commit 2: own map (CandidateSkipOf) and no_dest=")
 foreach(src values travel_mgr ai_cpp)
   forbid_text("${${src}}" "SetGapWindowEnd(" "a window end set elsewhere (${src})")
 endforeach()
@@ -189,5 +198,133 @@ foreach(src config_h config_cpp conf)
 endforeach()
 require_text("${conf}" "\nAiPlayerbot.QuestFirstProgression.GrindMode = 0\n" "GrindMode default 0")
 forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 1" "GrindMode shipped as 1")
+
+# ==== Commit 2: R3 window, own map, R4, R5, [GrindWindow] (OB-10 rev. 2 points 1, 2, 5) =========================
+
+# ---- 8. The pure window rules ------------------------------------------------------------------------
+require_text("${policy}" "inline bool InGapWindow(std::uint32_t lowLevel, std::uint32_t highLevel, std::uint32_t level)\n{\n    return highLevel && level >= lowLevel && level <= highLevel;\n}" "R3 / R4: inside [low, high], no window fails closed")
+require_text("${policy}" "    std::uint32_t const belowLevel = level > 5u ? level - 5u : 1u;\n    return grayLevel + 1u > belowLevel ? grayLevel + 1u : belowLevel;" "window low max(gray + 1, L - 5), no wrap")
+require_text("${policy}" "inline std::uint32_t GapWindowHighLevel(std::uint32_t level)\n{\n    return level + 1u;\n}" "window high L + 1")
+require_text("${policy}" "inline bool GapGrindStaysOnMap(bool gapGrind, bool grindDestination, std::uint32_t botMap, std::uint32_t targetMap)\n{\n    return !gapGrind || !grindDestination || botMap == targetMap;\n}" "own map only for a mode-1 grind destination")
+require_text("${policy}" "    return gapGrind && !neededForQuest && !victimIsBot && !InGapWindow(lowLevel, highLevel, creatureLevel);" "R4: plain candidates only (quest mobs and creatures on the bot stay)")
+require_text("${policy}" "    return windowOpen && backoffUntil != startedFor && backoffUntil != noDestFor;" "no_dest once per window, not after its trip started")
+require_text("${policy}" "    if (!any)\n        return std::string();" "minute line omitted when every count is 0")
+require_text("${policy}" "    return \"[GrindWindow] minute starts=\" + std::to_string(counts[std::size_t(WindowEvent::Starts)]) +\n        \" expired=\" + std::to_string(counts[std::size_t(WindowEvent::Expired)]) +\n        \" engaged=\" + std::to_string(counts[std::size_t(WindowEvent::Engaged)]) +\n        \" grey_engaged=\" + std::to_string(counts[std::size_t(WindowEvent::GreyEngaged)]) +\n        \" no_dest=\" + std::to_string(counts[std::size_t(WindowEvent::NoDest)]) +\n        \" r4_skips=\" + std::to_string(counts[std::size_t(WindowEvent::R4Skips)]);" "[GrindWindow] line format")
+require_text("${policy}" "constexpr std::size_t WindowEventCount = 6;" "six counters")
+
+# ---- 9. R3 for the scope only: a value of the snapshot, set on the bot thread (OB-10 rev. 2 point 1) -----------
+require_text("${travel_h}" "bool HasGapWindow() const { return gapWindowHigh != 0; }" "the scope bit")
+require_text("${travel_h}" "uint32 gapWindowLow = 0;" "no window by default (low)")
+require_text("${travel_h}" "uint32 gapWindowHigh = 0;" "no window by default (high)")
+forbid_text("${travel_h}" "SetGapWindowLow" "a setter (the snapshot is written only by its constructor)")
+forbid_text("${travel_h}" "SetGapWindowHigh" "a setter (the snapshot is written only by its constructor)")
+region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player)\n{" "\n}\n" info_ctor)
+require_text("${info_ctor}" "    if (ai->IsQuestGapGrind())\n    {\n        gapWindowLow = ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level));\n        gapWindowHigh = ai::quest_grind_mode::GapWindowHighLevel(level);\n    }" "the scope bit from IsQuestGapGrind (GrindMode 1 first) on the bot thread")
+count_text("${travel_mgr}" "gapWindowLow = " 1 "the window written only in the snapshot constructor")
+count_text("${travel_mgr}" "gapWindowHigh = " 1 "the window written only in the snapshot constructor")
+count_text("${travel_mgr}" "ai->IsQuestGapGrind()" 1 "the scope read once, in the constructor (never in the async job)")
+region("${travel_mgr}" "bool GrindTravelDestination::IsPossible(const PlayerTravelInfo& info) const\n{" "\n}\n" grind_possible)
+require_text("${grind_possible}" "    bool const gapWindow = info.HasGapWindow();\n    if (gapWindow && !ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(), info.GetGapWindowHigh(), cInfo->MaxLevel))\n        return false;" "R3: template MaxLevel inside the window for the scope")
+require_text("${grind_possible}" "    if (!gapWindow && (int32)cInfo->MaxLevel > maxLevel) //@lvl5 max = 3, @lvl60 max = 57\n        return false;" "the old max bound for every other bot")
+require_text("${grind_possible}" "    if (!gapWindow && (int32)cInfo->MaxLevel < minLevel) //@lvl5 min = 3, @lvl60 max = 50\n        return false;" "the old min bound for every other bot")
+require_text("${grind_possible}" "    int32 maxLevel = std::max(botLevel * (0.5f + levelMod), botLevel - 5.0f + levelBoost);" "old max formula unchanged")
+require_text("${grind_possible}" "    int32 minLevel = std::max(botLevel * (0.4f + levelMod), botLevel - 12.0f + levelBoost);" "old min formula unchanged")
+require_order("${grind_possible}" "bool const gapWindow = info.HasGapWindow();" "if (cInfo->MinLootGold == 0)" "the money and elite tests stay for the scope")
+foreach(banned "IsQuestGapGrind" "GetBotAI" "sRandomPlayerbotMgr" "sPlayerbotAIConfig" "AI_VALUE" "GetGrayLevel")
+  forbid_text("${grind_possible}" "${banned}" "the scope computed in IsPossible (async job: only the snapshot value)")
+endforeach()
+region("${travel_mgr}" "bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag, bool gapWindowApplies)\n{" "\n}\n" level_valid)
+# Only where IsPossible runs (GetPartitions onlyPossible): a guild order objective / kill mob fetch keeps the old gate as it
+# keeps the old template test; the refresh of a gap grind trip (default true) keeps the window.
+require_text("${travel_mgr}" "            if (!IsLocationLevelValid(*position, info, purposeFlag, onlyPossible))" "the window only for fetches that ask IsPossible")
+count_text("${travel_mgr}" "IsLocationLevelValid(*position, info, purposeFlag" 1 "one GetPartitions call")
+require_text("${level_valid}" "    if (info.HasGapWindow() && gapWindowApplies && purposeFlag == (uint32)TravelDestinationPurpose::Grind)\n        return ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(), info.GetGapWindowHigh(), areaLevel);" "R3: area level in the same window, pure grind points of the scope only")
+require_order("${level_valid}" "sPlayerbotAIConfig.questFirstProgressionQuestAreaLevelMargin);\n    }" "if (info.HasGapWindow() && gapWindowApplies && purposeFlag == (uint32)TravelDestinationPurpose::Grind)" "after the gather and quest branches (they stay)")
+require_order("${level_valid}" "if (info.HasGapWindow() && gapWindowApplies && purposeFlag == (uint32)TravelDestinationPurpose::Grind)" "if (!areaLevel || (uint32)botLevel < areaLevel)" "replaces the area gate for the scope only")
+require_order("${level_valid}" "if (!position.isOverworld() && !canFightElite)\n        areaLevel += 10;" "if (info.HasGapWindow() && gapWindowApplies && purposeFlag" "dungeon +10 still counts")
+require_text("${level_valid}" "        int32 grindMinLevel = std::max(rawLevel * (0.4f + levelMod), rawLevel - 12.0f + levelBoost);\n        if ((int32)areaLevel <= grindMinLevel)\n            return false;" "the old zone floor for every other bot")
+foreach(banned "IsQuestGapGrind" "GetBotAI" "sRandomPlayerbotMgr" "GetGrayLevel")
+  forbid_text("${level_valid}" "${banned}" "the scope computed in IsLocationLevelValid (async job)")
+endforeach()
+count_text("${travel_mgr}" "info.HasGapWindow()" 2 "the scope bit read in IsPossible and IsLocationLevelValid only")
+region("${travel_mgr}" "bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info) const" "\n}\n" grind_active)
+foreach(banned "IsQuestGapGrind" "HasGapWindow" "InGapWindow")
+  forbid_text("${grind_active}" "${banned}" "IsActive keeps its order (the window reaches it through IsPossible(info))")
+endforeach()
+region("${travel_mgr}" "DestinationList TravelMgr::GetDestinations(" "\nvoid TravelMgr::GetPartitionsLock" get_destinations)
+forbid_text("${get_destinations}" "HasGapWindow" "a window test of its own in GetDestinations")
+
+# ---- 10. Own map only, inside the pinned CandidateSkipOf --------------------------------------------------
+region("${choose}" "CandidateSkip CandidateSkipOf(" "\n}\n" skip_fn)
+require_text("${skip_fn}" "    if (ai->IsQuestGapGrind() && position && !target->IsForced() && !ai::quest_grind_mode::GapGrindStaysOnMap(true,\n            (uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::Grind)) != 0, bot->GetMapId(), position->getMapId()))\n        return CandidateSkip::OtherMapGrind;" "own map for a mode-1 grind destination (GrindMode 1 first, guild orders stay)")
+require_order("${skip_fn}" "return CandidateSkip::OtherMapGather;" "return CandidateSkip::OtherMapGrind;" "after the gather map skip")
+require_order("${skip_fn}" "return CandidateSkip::OtherMapGrind;" "return CandidateSkip::GatherPurposeSuppressed;" "before the gather purpose skip")
+require_text("${choose}" "    OtherMapGather,\n    OtherMapGrind,\n    GatherPurposeSuppressed,\n};" "the skip reason")
+region("${choose}" "bool ChooseTravelTargetAction::SetBestTarget(" "\nstd::vector<std::string> split(" best)
+count_text("${best}" "CandidateSkipOf(ai, bot, target, persistentTarget, excludedTurnInTarget, destination," 2 "still the pre-loop and the main loop only")
+require_text("${best}" "                case CandidateSkip::OtherMapGrind:\n                    ai->TellDebug(requester, \"Skipping grind destination on another map (GrindMode 1).\", \"debug travel\");\n                    continue;" "the main loop skips it")
+count_text("${choose}" "GapGrindStaysOnMap(" 1 "the own-map rule only in CandidateSkipOf")
+
+# ---- 11. R4: plain grind candidates of the scope inside the window ------------------------------------------
+require_text("${grind_target}" "    bool const gapGrind = ai->IsQuestGapGrind();" "one GrindMode 1 test per pass")
+count_text("${grind_target}" "ai->IsQuestGapGrind()" 1 "one GrindMode 1 test per pass")
+require_text("${grind_target}" "    uint32 const gapLow = gapGrind ? ai::quest_grind_mode::GapWindowLowLevel(bot->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel())) : 0;\n    uint32 const gapHigh = gapGrind ? ai::quest_grind_mode::GapWindowHighLevel(bot->GetLevel()) : 0;" "the window once per pass")
+region("${grind_target}" "        if (entry && !needForQuest)\n        {" "            else if (urand(0, 100) < 75)" plain_block)
+require_text("${plain_block}" "            if (gapGrind && ai::quest_grind_mode::GapTargetSkipped(true, false, unit->GetVictim() == bot, gapLow, gapHigh, unit->GetLevel()))\n            {\n                ++gapSkipped;" "R4 only for the plain source (no quest need, not on the bot)")
+require_order("${plain_block}" "if (gapGrind && ai::quest_grind_mode::GapTargetSkipped(" "if (urand(0, 100) < 20 && travelTargetWorking && !isGrindTravelDest)" "R4 before any urand of the candidate")
+count_text("${grind_target}" "GapTargetSkipped(" 1 "R4 only inside the plain grind block")
+region("${grind_target}" "std::list<ObjectGuid> attackers = context->GetValue<std::list<ObjectGuid>>(\"possible attack targets\")->Get();" "std::list<ObjectGuid> targets = *context->GetValue<std::list<ObjectGuid> >(\"possible targets\");" attacker_loop)
+forbid_text("${attacker_loop}" "gap" "the attacker loop gated by R4 (self-defence stays)")
+require_text("${grind_target}" "    if (gapSkipped && !assistCount)\n        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), gapSkipped);" "r4_skips: one relaxed add per pass")
+count_text("${grind_target}" "AI_VALUE2(bool, \"need for quest\"" 1 "no new value per creature (the loop's own quest test)")
+
+# ---- 12. R5: the isGrindTravelDest fix only under mode 1 --------------------------------------------------
+require_text("${grind_target}" "    bool isGrindTravelDest = travelTarget && typeid(travelTarget->GetDestination()) == typeid(GrindTravelDestination);" "GrindMode 0 / 2 keep the old test")
+require_text("${grind_target}" "    if (gapGrind)\n        isGrindTravelDest = travelTarget && dynamic_cast<GrindTravelDestination*>(travelTarget->GetDestination()) != nullptr;" "R5 under mode 1")
+count_text("${grind_target}" "dynamic_cast<GrindTravelDestination*>" 1 "R5 once, behind gapGrind")
+require_order("${grind_target}" "bool const gapGrind = ai->IsQuestGapGrind();" "isGrindTravelDest = travelTarget && dynamic_cast<GrindTravelDestination*>" "the mode test before the fix")
+
+# ---- 13. [GrindWindow]: counted on the map threads, one line per minute on the world thread, mode 1 alone --------
+require_text("${ai_h}" "    static void NoteGrindWindow(uint8 event, uint32 n = 1);" "counter entry")
+require_text("${ai_cpp}" "std::atomic<uint32> grindWindowCounts[ai::quest_grind_mode::WindowEventCount] = {};" "relaxed counters")
+require_text("${ai_cpp}" "    if (event < ai::quest_grind_mode::WindowEventCount && n)\n        grindWindowCounts[event].fetch_add(n, std::memory_order_relaxed);" "bounded index, relaxed add")
+require_text("${ai_cpp}" "        counts[event] = grindWindowCounts[event].exchange(0, std::memory_order_relaxed);\n    return ai::quest_grind_mode::FormatWindowMinuteLine(counts);" "taken with a relaxed exchange")
+region("${mgr}" "void ReportGrindWindow()\n{" "\n}\n" report)
+require_order("${report}" "    if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode))\n        return;" "static uint32 lastReport = 0;" "gated by GrindMode 1 before the clock")
+require_text("${report}" "    std::string const line = PlayerbotAI::TakeGrindWindowMinuteLine();\n    if (!line.empty())\n        sLog.outBasic(\"%s\", line.c_str());" "omitted when every count is 0")
+foreach(banned "botUpdateTrace" "BotUpdateTrace" "std::mutex")
+  forbid_text("${report}" "${banned}" "gated by GrindMode 1 alone, no lock (OP2)")
+endforeach()
+require_order("${mgr}" "    ReportQuestIdle();" "    ReportGrindWindow();" "once per world update, next to the [QuestIdle] report")
+count_text("${mgr}" "ReportGrindWindow();" 1 "one call")
+# starts= at the window line, expired= at the window end, no_dest= at an empty fetch, engaged= at the engagement.
+require_text("${gap_block}" "                SET_AI_VALUE2(int, \"manual int\", \"gap window logged\", backoffUntil);\n                PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Starts));" "starts= once per window (with its line)")
+region("${travel_mgr}" "    if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())\n    {" "        return;\n    }" expiry2)
+require_text("${expiry2}" "        if (gapWindowEnd && (GetStatus() == TravelStatus::TRAVEL_STATUS_READY || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ||\n                GetStatus() == TravelStatus::TRAVEL_STATUS_WORK))\n            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));" "expired= only for a gap grind trip's window statuses")
+require_order("${expiry2}" "PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));" "SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);" "counted before the expiry")
+region("${choose}" "        // twow-repo#601 S2 / S4 [GrindWindow] no_dest=" "        return false;\n    }" nodest_block)
+require_text("${nodest_block}" "        if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))" "no_dest= GrindMode 1 first, grind fetches only")
+require_text("${nodest_block}" "            if (ai::quest_grind_mode::GapNoDestDue(uint32(time(nullptr)) < uint32(backoffUntil), backoffUntil,\n                    AI_VALUE2(int, \"manual int\", \"gap window logged\"), AI_VALUE2(int, \"manual int\", \"gap window empty\")))\n            {\n                SET_AI_VALUE2(int, \"manual int\", \"gap window empty\", backoffUntil);\n                PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::NoDest));" "no_dest= once per window inside the backoff")
+foreach(banned "\"quest route failures\"" "\"quest route failed at\"" "SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\"" "NoteTurnInFailure" "NoteQuestIdle")
+  forbid_text("${nodest_block}" "${banned}" "an empty window writes no failure (OB-10 rev. 2 point 3)")
+endforeach()
+require_text("${choose_target}" "    Unit* const gapTarget = (ai->IsQuestGapGrind() &&\n        AI_VALUE(TravelTarget*, \"travel target\")->GetGapWindowEnd() > uint32(time(nullptr))) ? GetTarget() : nullptr;" "engaged= GrindMode 1 first, inside a window")
+require_text("${choose_target}" "== ai::grind_pick::Source::Grind;" "engaged= the plain grind source only (attackers, victims, quest mobs not counted)")
+require_text("${choose_target}" "std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, \"needed quest entries\");" "one per-bot quest list, no value per creature")
+require_text("${choose_target}" "                if (gapTarget && gapTarget == grindTarget && gapPlain)\n                {\n                    PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Engaged));\n                    if (gapGrey)\n                        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::GreyEngaged));" "engaged= / grey_engaged= after the attack started, same target")
+count_text("${choose_target}" "AI_VALUE2(bool, \"need for quest\"" 1 "no new value per creature in AttackAnythingAction ([GrindPick] keeps its own)")
+count_text("${travel_mgr}" "PlayerbotAI::NoteGrindWindow(" 1 "expired=")
+count_text("${choose}" "PlayerbotAI::NoteGrindWindow(" 2 "starts=, no_dest=")
+count_text("${grind_target}" "PlayerbotAI::NoteGrindWindow(" 1 "r4_skips=")
+count_text("${choose_target}" "PlayerbotAI::NoteGrindWindow(" 2 "engaged=, grey_engaged=")
+foreach(src grind_target choose_target)
+  forbid_text("${${src}}" "std::mutex" "a lock (${src})")
+  forbid_text("${${src}}" "shared_mutex" "a lock (${src})")
+endforeach()
+require_text("${conf}" "[GrindWindow] minute starts= expired= engaged=\n#       grey_engaged= no_dest= r4_skips= once a minute, not when all are 0." "the minute line documented")
+foreach(src config_h config_cpp)
+  forbid_text("${${src}}" "GrindWindow" "a new config key (${src})")
+endforeach()
+forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.GrindWindow" "a new config key")
 
 message(STATUS "GRIND_GAP_WINDOW_SOURCE_CONTRACT=PASS")

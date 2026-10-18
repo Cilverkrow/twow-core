@@ -106,6 +106,12 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
     bool travelTargetTraveling = AI_VALUE(bool, "travel target traveling");
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
     bool isGrindTravelDest = travelTarget && typeid(travelTarget->GetDestination()) == typeid(GrindTravelDestination);
+    // twow-repo#601 S2 R5 (GrindMode 1 only, OB-10 rev. 2): the typeid above compares a TravelDestination pointer with the class
+    // and is always false, so the 20 % "not needed for active quest" skip below also fires at a grind destination. Fixed for
+    // the gap filler's population only (profile 1 after the A2 measurement); GrindMode 0 / 2 keep the old test.
+    bool const gapGrind = ai->IsQuestGapGrind();
+    if (gapGrind)
+        isGrindTravelDest = travelTarget && dynamic_cast<GrindTravelDestination*>(travelTarget->GetDestination()) != nullptr;
 
     struct MemberInfo {
         Player* player;
@@ -139,6 +145,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
     bool const noGrind = ai->IsQuestNoGrind();
     uint32 noGrindSkipped = 0;
     uint32 noGrindEntry = 0;
+    // twow-repo#601 S2 R4 (GrindMode 1, OB-10 rev. 2): the creature level window [max(gray + 1, L - 5), L + 1] of the gap
+    // filler's population, once per pass (0 / 0 otherwise), and its skips for [GrindWindow] r4_skips=.
+    uint32 const gapLow = gapGrind ? ai::quest_grind_mode::GapWindowLowLevel(bot->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel())) : 0;
+    uint32 const gapHigh = gapGrind ? ai::quest_grind_mode::GapWindowHighLevel(bot->GetLevel()) : 0;
+    uint32 gapSkipped = 0;
 
     for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)
     {
@@ -296,6 +307,15 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
 
         if (entry && !needForQuest)
         {
+            // twow-repo#601 S2 R4 (GrindMode 1, OB-10 rev. 2): a plain grind candidate of the gap filler's population (no quest
+            // need, not on the bot) needs its level inside the window; attackers (loop above), creatures on the bot and quest
+            // mobs - grey ones too - stay. Before any urand of the candidate. GrindMode 0 / 2: gapGrind is false.
+            if (gapGrind && ai::quest_grind_mode::GapTargetSkipped(true, false, unit->GetVictim() == bot, gapLow, gapHigh, unit->GetLevel()))
+            {
+                ++gapSkipped;
+                logGrind(unit, "ignored (GrindMode 1: level outside the window).");
+                continue;
+            }
             // Was < 99 (99% skip chance for anything not tied to an active quest
             // objective) - with grind_target.csv logging live, this was confirmed as
             // the dominant reason bots weren't engaging: 23,863 "no grind target
@@ -383,6 +403,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
         ai::quest_grind_mode::TargetNoteDue(travelTargetWorking, travelTargetTraveling))
         ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking)),
             ai::quest_grind_mode::TargetText("grind_target", noGrindEntry));
+
+    // twow-repo#601 S2 R4: the pass's skips in one relaxed add (first assist round only), [GrindWindow] r4_skips=.
+    if (gapSkipped && !assistCount)
+        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), gapSkipped);
 
     return result;
 }

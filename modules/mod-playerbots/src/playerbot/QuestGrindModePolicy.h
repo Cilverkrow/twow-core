@@ -16,7 +16,8 @@ namespace ai::quest_grind_mode
 //   1 = gap filler (S2 / S4, OB-10 rev. 2): the same population as mode 2 grinds only in the gaps of the quest search -
 //       while the quest route backoff runs (the last quest search found nothing, any S1 failure class), never through
 //       the S0 / 8.32 fallback, the money grind or a refresh renewal, and the grind trip ends with the backoff
-//       (GapFiller, GapWindowOpen, GapWindowSeconds below). Everyone else: exactly like 0.
+//       (GapFiller, GapWindowOpen, GapWindowSeconds below); it grinds on its own map inside the level window
+//       [max(gray + 1, L - 5), L + 1] (R3 destinations, R4 plain targets: InGapWindow). Everyone else: exactly like 0.
 //   2 = no grind as a substitute activity for quest-first roster bots on their own below the max player level: no
 //       8.32 grind fallback, no money grind, no pure grind travel destination, no "attack anything" on a creature that
 //       neither attacks the bot / its group nor is needed for an active quest, no kill trip that would end in such a
@@ -107,6 +108,67 @@ inline std::string FormatGapWindowLine(std::uint32_t bot, std::uint32_t level, s
     return "[QuestSearch] state=grind_window bot=" + std::to_string(bot) + " level=" + std::to_string(level) + " backoff_s=" +
         std::to_string(backoffSeconds) + " window=" + std::to_string(lowLevel) + "-" + std::to_string(highLevel) + " map=" +
         std::to_string(map);
+}
+
+// R3 / R4 (S2, OB-10 rev. 2 point 1): a level (template MaxLevel, area level or creature level) inside the window [lowLevel,
+// highLevel] of GapWindowLowLevel / GapWindowHighLevel. highLevel 0 = no window (not the population): false, so a caller
+// without its scope test fails closed.
+inline bool InGapWindow(std::uint32_t lowLevel, std::uint32_t highLevel, std::uint32_t level)
+{
+    return highLevel && level >= lowLevel && level <= highLevel;
+}
+
+// R3 own map (precedent #414 gather_node::StaysOnMap): a mode-1 grind destination only on the bot's own map.
+inline bool GapGrindStaysOnMap(bool gapGrind, bool grindDestination, std::uint32_t botMap, std::uint32_t targetMap)
+{
+    return !gapGrind || !grindDestination || botMap == targetMap;
+}
+
+// R4: a plain grind candidate of the population (not needed for an active quest, not on the bot) outside the window is
+// skipped. Attackers (taken before any candidate), creatures on the bot and quest mobs - grey ones too - stay.
+inline bool GapTargetSkipped(bool gapGrind, bool neededForQuest, bool victimIsBot, std::uint32_t lowLevel, std::uint32_t highLevel,
+    std::uint32_t creatureLevel)
+{
+    return gapGrind && !neededForQuest && !victimIsBot && !InGapWindow(lowLevel, highLevel, creatureLevel);
+}
+
+// [GrindWindow] no_dest=: an empty grind fetch inside a window (the backoff runs) counts once per window (backoff,
+// identified by its end), and not after a grind trip of that window started (startedFor = the backoff of the last
+// state=grind_window line, noDestFor = the backoff already counted).
+inline bool GapNoDestDue(bool windowOpen, std::int32_t backoffUntil, std::int32_t startedFor, std::int32_t noDestFor)
+{
+    return windowOpen && backoffUntil != startedFor && backoffUntil != noDestFor;
+}
+
+// [GrindWindow] minute counters (OB-10 rev. 2 points 2 / 5), counted on the map threads (relaxed atomics outside this pure
+// header), taken by the world thread. engaged / grey_engaged: plain grind engagements of the population inside a window and
+// those without XP - no kill hook sees a grey kill (the XP packet comes only with XP), so the engagement is counted, like
+// bot_events and [GrindPick].
+enum class WindowEvent : std::uint8_t
+{
+    Starts = 0,   // state=grind_window lines (one per window)
+    Expired,      // gap grind trips ended by their window end (R2), no failure
+    Engaged,      // plain grind engagements inside a window
+    GreyEngaged,  // of those, the ones without XP
+    NoDest,       // windows whose grind fetch found no destination (the bot stands until the backoff ends)
+    R4Skips,      // plain grind candidates R4 skipped (per grind target pass, not per engagement)
+};
+constexpr std::size_t WindowEventCount = 6;
+
+// "[GrindWindow] minute starts= expired= engaged= grey_engaged= no_dest= r4_skips="; empty (no line) when every count is 0.
+inline std::string FormatWindowMinuteLine(std::array<std::uint32_t, WindowEventCount> const& counts)
+{
+    bool any = false;
+    for (std::uint32_t const count : counts)
+        any = any || count != 0;
+    if (!any)
+        return std::string();
+    return "[GrindWindow] minute starts=" + std::to_string(counts[std::size_t(WindowEvent::Starts)]) +
+        " expired=" + std::to_string(counts[std::size_t(WindowEvent::Expired)]) +
+        " engaged=" + std::to_string(counts[std::size_t(WindowEvent::Engaged)]) +
+        " grey_engaged=" + std::to_string(counts[std::size_t(WindowEvent::GreyEngaged)]) +
+        " no_dest=" + std::to_string(counts[std::size_t(WindowEvent::NoDest)]) +
+        " r4_skips=" + std::to_string(counts[std::size_t(WindowEvent::R4Skips)]);
 }
 
 // Why a bot of the population stands idle instead of grinding.

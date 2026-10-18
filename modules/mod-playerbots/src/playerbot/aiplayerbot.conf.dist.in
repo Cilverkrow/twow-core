@@ -1159,7 +1159,11 @@ AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 #       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, the money grind or a travel
 #       refresh; the grind trip ends with the backoff (remaining backoff, at most 10 min, + 30 s) and its end counts as
 #       no failure. [QuestSearch] state=grind_window bot= level= backoff_s= window=<min>-<max> map= once per window
-#       (window= the S2 creature level window max(gray + 1, L - 5) to L + 1). For the A2 test realm arm; default 0.
+#       (window= the S2 creature level window max(gray + 1, L - 5) to L + 1). They grind on their own map only, at grind
+#       destinations whose template max level and area level are in that window, and plain grind targets (no quest
+#       need, not attacking the bot) need their level in it; attackers and quest mobs stay. Grind destinations
+#       are recognised for the 20 % quest skip (bug fix, mode 1 only). [GrindWindow] minute starts= expired= engaged=
+#       grey_engaged= no_dest= r4_skips= once a minute, not when all are 0. For the A2 test realm arm; default 0.
 #   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
 #       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
 #       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a

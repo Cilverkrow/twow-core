@@ -22,6 +22,16 @@ void Require(bool condition, char const* message)
         std::exit(1);
     }
 }
+
+// A copy of MaNGOS::XP::GetGrayLevel (src/game/Formulas.h, no game header here): the grey level the game code passes in.
+std::uint32_t GrayLevel(std::uint32_t level)
+{
+    if (level <= 5)
+        return 0;
+    if (level <= 39)
+        return level - 5 - level / 10;
+    return level - 1 - level / 5;
+}
 }
 
 int main()
@@ -207,6 +217,82 @@ int main()
         Require(GapWindowLowLevel(3, 0) == 1 && GapWindowLowLevel(1, 0) == 1 && GapWindowLowLevel(6, 0) == 1, "low levels: 1, no wrap");
         Require(FormatGapWindowLine(4711, 15, 120, 10, 16, 1) ==
             "[QuestSearch] state=grind_window bot=4711 level=15 backoff_s=120 window=10-16 map=1", "grind_window line");
+    }
+
+    // 9) twow-repo#601 S2 commit 2 (OB-10 rev. 2): the level window [max(gray + 1, L - 5), L + 1] (R3 destinations, R4 plain
+    //    targets), own map, the R4 rule, no_dest once per window and the [GrindWindow] minute line.
+    {
+        // Gray edges (GetGrayLevel: L <= 5 -> 0, L <= 39 -> L - 5 - L / 10, else L - 1 - L / 5).
+        Require(GrayLevel(5) == 0 && GrayLevel(6) == 1 && GrayLevel(9) == 4 && GrayLevel(10) == 4 && GrayLevel(39) == 31 &&
+            GrayLevel(40) == 31 && GrayLevel(60) == 47, "reference grey levels");
+        Require(GapWindowLowLevel(1, GrayLevel(1)) == 1 && GapWindowHighLevel(1) == 2, "L1: 1-2");
+        Require(GapWindowLowLevel(5, GrayLevel(5)) == 1 && GapWindowHighLevel(5) == 6, "L5 (no grey yet): 1-6");
+        Require(GapWindowLowLevel(6, GrayLevel(6)) == 2 && GapWindowHighLevel(6) == 7, "L6 (gray 1): gray + 1 = 2 above L - 5 = 1");
+        Require(GapWindowLowLevel(9, GrayLevel(9)) == 5, "L9 (gray 4): gray + 1 = 5 above L - 5 = 4");
+        Require(GapWindowLowLevel(10, GrayLevel(10)) == 5, "L10 (gray 4): gray + 1 = L - 5 = 5");
+        Require(GapWindowLowLevel(18, GrayLevel(18)) == 13 && GapWindowHighLevel(18) == 19, "L18 (gray 12): 13-19");
+        Require(GapWindowLowLevel(24, GrayLevel(24)) == 19 && GapWindowHighLevel(24) == 25, "L24 (gray 17): 19-25");
+        Require(GapWindowLowLevel(30, GrayLevel(30)) == 25, "L30 (gray 22): 25");
+        Require(GapWindowLowLevel(39, GrayLevel(39)) == 34 && GapWindowLowLevel(40, GrayLevel(40)) == 35, "L39 / L40 across the grey formula switch");
+        Require(GapWindowLowLevel(60, GrayLevel(60)) == 55 && GapWindowHighLevel(60) == 61, "L60 (gray 47): 55-61");
+
+        // L1-L60: never grey, never more than 5 below or 1 above, never empty, and L - 5 decides from L10 on.
+        for (std::uint32_t level = 1; level <= 60; ++level)
+        {
+            std::uint32_t const gray = GrayLevel(level);
+            std::uint32_t const low = GapWindowLowLevel(level, gray);
+            std::uint32_t const high = GapWindowHighLevel(level);
+            Require(low > gray, "the window is never grey (low above the grey level)");
+            Require(low >= 1 && low <= level && high == level + 1, "low in 1..L, high L + 1");
+            Require(level <= 5 || low >= level - 5, "never more than 5 levels below");
+            Require(level < 10 || low == level - 5, "from L10 on the low end is L - 5");
+            Require(level < 6 || level > 9 || low == gray + 1, "L6-9: the low end is gray + 1");
+            Require(InGapWindow(low, high, low) && InGapWindow(low, high, high) && InGapWindow(low, high, level),
+                "both ends and the bot level are inside");
+            Require(!InGapWindow(low, high, high + 1), "L + 2 is outside");
+            Require(!InGapWindow(low, high, gray) && (low == 1 || !InGapWindow(low, high, low - 1)), "grey / below the low end is outside");
+        }
+        Require(!InGapWindow(0, 0, 0) && !InGapWindow(0, 0, 10), "no window (not the population): nothing is inside (fails closed)");
+        Require(!InGapWindow(15, 21, 0), "an unknown area level (0) is outside");
+        Require(!InGapWindow(15, 21, 0xFFFFFFFEu), "an unknown area (-2 as uint32) is outside");
+
+        // Own map (precedent #414).
+        Require(GapGrindStaysOnMap(false, true, 0, 1), "not the gap filler: other maps as before");
+        Require(GapGrindStaysOnMap(true, false, 0, 1), "no grind destination: other maps as before");
+        Require(GapGrindStaysOnMap(true, true, 1, 1), "a grind destination on the own map stays");
+        Require(!GapGrindStaysOnMap(true, true, 0, 1), "a gap grind destination on another map is skipped");
+
+        // R4: only the plain grind source of the population, levels outside the window.
+        Require(!GapTargetSkipped(false, false, false, 15, 21, 5), "not the gap filler: a grey candidate as before");
+        Require(GapTargetSkipped(true, false, false, 15, 21, 14), "plain, one below the window: skipped");
+        Require(GapTargetSkipped(true, false, false, 15, 21, 22), "plain, L + 2: skipped");
+        Require(!GapTargetSkipped(true, false, false, 15, 21, 15) && !GapTargetSkipped(true, false, false, 15, 21, 21),
+            "plain, at the window ends: kept");
+        Require(!GapTargetSkipped(true, true, false, 15, 21, 5), "a quest mob stays, a grey one too");
+        Require(!GapTargetSkipped(true, false, true, 15, 21, 5), "a creature on the bot stays (self-defence)");
+        Require(GapTargetSkipped(true, false, false, 0, 0, 20), "no window although the gap filler: skipped (fails closed)");
+
+        // no_dest: once per window (backoff), never after its trip started, never outside a window.
+        Require(GapNoDestDue(true, 1600, 0, 0), "first empty fetch of a window counts");
+        Require(!GapNoDestDue(true, 1600, 0, 1600), "the same window again: no second count");
+        Require(!GapNoDestDue(true, 1600, 1600, 0), "a trip of this window started: no count");
+        Require(GapNoDestDue(true, 2200, 1600, 1600), "the next backoff is a new window");
+        Require(!GapNoDestDue(false, 1600, 0, 0), "no backoff running: no window, no count");
+
+        // [GrindWindow] minute line, omitted when every count is 0.
+        std::array<std::uint32_t, WindowEventCount> counts = {};
+        Require(FormatWindowMinuteLine(counts).empty(), "all 0: no line");
+        counts[std::size_t(WindowEvent::R4Skips)] = 1;
+        Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=0 expired=0 engaged=0 grey_engaged=0 no_dest=0 r4_skips=1",
+            "one count: a line");
+        counts[std::size_t(WindowEvent::Starts)] = 2;
+        counts[std::size_t(WindowEvent::Expired)] = 3;
+        counts[std::size_t(WindowEvent::Engaged)] = 4;
+        counts[std::size_t(WindowEvent::GreyEngaged)] = 5;
+        counts[std::size_t(WindowEvent::NoDest)] = 6;
+        Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=2 expired=3 engaged=4 grey_engaged=5 no_dest=6 r4_skips=1",
+            "minute line format");
+        Require(WindowEventCount == 6 && std::size_t(WindowEvent::R4Skips) == WindowEventCount - 1, "every event has a counter slot");
     }
 
     std::cout << "quest_grind_mode_policy_tests passed\n";

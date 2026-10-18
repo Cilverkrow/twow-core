@@ -337,6 +337,7 @@ enum class CandidateSkip
     DeathSuppressed,
     QuestLoopSuppressed,
     OtherMapGather,
+    OtherMapGrind,
     GatherPurposeSuppressed,
 };
 
@@ -360,6 +361,12 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
     if (position && !ai::gather_node::StaysOnMap((uint32(destination->GetPurpose()) & gatherPurposes) != 0,
             bot->GetMapId(), position->getMapId()))
         return CandidateSkip::OtherMapGather;
+
+    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2): a gap grind trip stays on the bot's own map (precedent #414 above); a
+    // forced target (guild order) is no gap grind trip. GrindMode 0 / 2: IsQuestGapGrind() is false before anything else.
+    if (ai->IsQuestGapGrind() && position && !target->IsForced() && !ai::quest_grind_mode::GapGrindStaysOnMap(true,
+            (uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::Grind)) != 0, bot->GetMapId(), position->getMapId()))
+        return CandidateSkip::OtherMapGrind;
 
     // #422: a gathering purpose this bot died at twice without a killer.
     if (!target->IsForced() && ai->IsGatherPurposeSuppressed(uint32(destination->GetPurpose()) & gatherPurposes))
@@ -873,6 +880,20 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"),
                 uint32(destinationList.size()), lastRejects.movedAway);
 
+        // twow-repo#601 S2 / S4 [GrindWindow] no_dest= (GrindMode 1, OB-10 rev. 2 point 2): the gap filler's grind fetch found no
+        // destination in the window on its own map (R3) - the bot stands until the backoff ends. Once per window (backoff),
+        // never after a trip of that window started. GrindMode 0 / 2: IsQuestGapGrind() is false, nothing read.
+        if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))
+        {
+            int const backoffUntil = std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"));
+            if (ai::quest_grind_mode::GapNoDestDue(uint32(time(nullptr)) < uint32(backoffUntil), backoffUntil,
+                    AI_VALUE2(int, "manual int", "gap window logged"), AI_VALUE2(int, "manual int", "gap window empty")))
+            {
+                SET_AI_VALUE2(int, "manual int", "gap window empty", backoffUntil);
+                PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::NoDest));
+            }
+        }
+
         return false;
     }
 
@@ -933,6 +954,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             if (backoffUntil != AI_VALUE2(int, "manual int", "gap window logged"))
             {
                 SET_AI_VALUE2(int, "manual int", "gap window logged", backoffUntil);
+                PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Starts));
                 uint32 const level = bot->GetLevel();
                 sLog.outBasic("%s", ai::quest_grind_mode::FormatGapWindowLine(bot->GetGUIDLow(), level, uint32(backoffUntil) - now,
                     ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level)),
@@ -1371,6 +1393,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 case CandidateSkip::OtherMapGather:
                     ai->TellDebug(requester, "Skipping gathering destination on another map.", "debug travel");
                     ++lastRejects.otherMapGather;
+                    continue;
+                case CandidateSkip::OtherMapGrind:
+                    ai->TellDebug(requester, "Skipping grind destination on another map (GrindMode 1).", "debug travel");
                     continue;
                 case CandidateSkip::GatherPurposeSuppressed:
                     ++lastRejects.deathSuppressed;
