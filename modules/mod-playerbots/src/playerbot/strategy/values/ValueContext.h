@@ -78,6 +78,7 @@
 #include "QuestValues.h"
 #include "BudgetValues.h"
 #include "MaintenanceValues.h"
+#include "RestGateValue.h"
 #include "GroupValues.h"
 #include "GuildValues.h"
 #include "TradeValues.h"
@@ -347,6 +348,7 @@ namespace ai
             creators["can free move"] = [](PlayerbotAI* ai) { return new CanFreeMoveValue(ai); };           
 
             creators["can move around"] = [](PlayerbotAI* ai) { return new CanMoveAroundValue(ai); };
+            creators["rest gate"] = [](PlayerbotAI* ai) { return new RestGateValue(ai); };   // twow-repo#602 ROT-01 X1
             creators["should home bind"] = [](PlayerbotAI* ai) { return new ShouldHomeBindValue(ai); };
             creators["should repair"] = [](PlayerbotAI* ai) { return new ShouldRepairValue(ai); };
             creators["can repair"] = [](PlayerbotAI* ai) { return new CanRepairValue(ai); };

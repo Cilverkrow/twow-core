@@ -615,6 +615,24 @@ namespace ai
         virtual bool IsActive() override;
     };
 
+    // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): eat / drink while a rest episode runs, with no lower HP bound (the "low health"
+    // food trigger stops at 20 %) and up to the rest targets. Only in UseFoodStrategy, only with the switch on.
+    class RestHealthTrigger : public Trigger
+    {
+    public:
+        RestHealthTrigger(PlayerbotAI* ai) : Trigger(ai, "rest health") {}
+
+        virtual bool IsActive() override;
+    };
+
+    class RestManaTrigger : public Trigger
+    {
+    public:
+        RestManaTrigger(PlayerbotAI* ai) : Trigger(ai, "rest mana") {}
+
+        virtual bool IsActive() override;
+    };
+
     class AlmostFullManaTrigger : public Trigger
     {
     public:

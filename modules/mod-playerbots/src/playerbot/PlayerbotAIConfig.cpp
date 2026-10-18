@@ -9,6 +9,7 @@
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
+#include "playerbot/RestGatePolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -540,6 +541,29 @@ bool PlayerbotAIConfig::Initialize()
     if (rotationEmergencyLadderFightTargetHp > 100)
         rotationEmergencyLadderFightTargetHp = 20;   // twow-repo#602 X3: out of range (also a negative value) = the default
     rotationEmergencyLadderSoloCcSpells = ai::emergency_ladder::ParseSpellList(config.GetStringDefault("AiPlayerbot.Rotation.EmergencyLadder.SoloCcSpells", "polymorph,banish,fear"));
+    rotationRestGate = config.GetIntDefault("AiPlayerbot.Rotation.RestGate", 0);
+    if (rotationRestGate > 2)
+        rotationRestGate = 0;   // twow-repo#602 X1: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    rotationRestGateStartHp = config.GetIntDefault("AiPlayerbot.Rotation.RestGate.StartHp", 70);
+    rotationRestGateStartMana = config.GetIntDefault("AiPlayerbot.Rotation.RestGate.StartMana", 40);
+    rotationRestGateTargetHp = config.GetIntDefault("AiPlayerbot.Rotation.RestGate.TargetHp", 90);
+    rotationRestGateTargetMana = config.GetIntDefault("AiPlayerbot.Rotation.RestGate.TargetMana", 85);
+    rotationRestGateMaxRestSeconds = config.GetIntDefault("AiPlayerbot.Rotation.RestGate.MaxRestSeconds", 120);
+    {
+        // twow-repo#602 X1: out-of-range values (also negative ones) fall back to the defaults, a target below its start is raised to it.
+        ai::rest_gate::Thresholds t;
+        t.startHp = rotationRestGateStartHp;
+        t.startMana = rotationRestGateStartMana;
+        t.targetHp = rotationRestGateTargetHp;
+        t.targetMana = rotationRestGateTargetMana;
+        t.maxRestSeconds = rotationRestGateMaxRestSeconds;
+        t = ai::rest_gate::Clamp(t);
+        rotationRestGateStartHp = t.startHp;
+        rotationRestGateStartMana = t.startMana;
+        rotationRestGateTargetHp = t.targetHp;
+        rotationRestGateTargetMana = t.targetMana;
+        rotationRestGateMaxRestSeconds = t.maxRestSeconds;
+    }
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
