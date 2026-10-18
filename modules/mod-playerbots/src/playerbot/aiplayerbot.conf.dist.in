@@ -1086,6 +1086,11 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+# twow-repo#601 (soak 17.10.2026): GrindFallbackMinutes = N > 0: the grind fallback above holds only N minutes after the
+# last empty quest route search; then the bot asks for a quest route again (behind the route backoff). The fallback grind
+# (6.35) outranks the generic quest request (6.3) and the failure count only resets on a found route, so with 0 (default,
+# as before) a bot that fell into it grinds for good - L10+ roster bots stopped questing within about 2 hours.
+AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes = 0
 # twow-repo#601 S1 "latch semantics" (OB-00 / OB-10 17.10.2026). Three separate switches so an A/B can isolate
 # them (arm A1 sets all three to 1); all 0 = today's behaviour. Restart-only. Quest-first roster bots on their
 # own only.
@@ -2429,6 +2434,24 @@ AiPlayerbot.CanCastSpell.CheckPower = 0
 # impossible. No per-cast spell name lookup: a few field reads and one compare per isPossible. Logs
 # [SpellIdRefresh] when the id changed, [SpellRangeRefresh] when only the range changed. 0 = as before (default).
 AiPlayerbot.CastSpell.RefreshOnLearn = 0
+# twow-repo#602 ROT-01 D0 (measurement only, no behaviour change): 1 = cast diagnostics for the rotation work. Counts
+# every CastSpellAction / CastPetSpellAction isPossible outcome (reason before CanCastSpell, or its SpellCastResult;
+# "tolerated" = possible although CanCastSpell reported a result, e.g. range/LOS), every base CastSpellAction::Execute
+# (start ok / cast false / no target) and every SMSG_CAST_RESULT the server sends to the bot (per spell id; status 2
+# results include the failures of Spell::prepare). Per class and cohort (A = even, B = odd low guid). Lines (bots.log):
+#   [RotCast] window_s= evals= possible= tolerated= starts= start_ok= srv_fail= srv_ok= srv_other= keys= dropped=
+#     unknown_dropped= role_dropped= pull_dropped=   once a minute, then the top 25
+#   [RotCast] row= cls= cohort= kind=eval|start|server action=|spell= name= verdict=ok|tolerated|fail reason= n=
+#   [RotCastTotal] window_min=60 ...   the same once an hour with the top 40 rows
+#   [RotCastUnknown] bot= name= cls= level= cohort= action= spell= reason=no_spell_id|not_known   once per bot and
+#     action (at most 120 a minute)
+#   [RotRole] guid= name= cls= level= cohort= tab= path= role=TANK|HEAL|DPS forced= free= member= autoload=
+#     suppressed= co=<combat strategies> nc=<non-combat strategies>   when a strategy reset changed the set (120/min)
+#   [RotPull] bot= name= cls= level= cohort= entry= tlevel= hp= mana= attackers= dist=   at the attack-anything pull
+#     (300/min; mana=-1 without a mana bar)
+# Not counted: subclass isPossible/Execute overrides that bypass the base, GameObject/position casts, pet cast
+# results (SMSG_PET_CAST_FAILED). bot_events.csv stays unchanged. 0 = off (default).
+AiPlayerbot.Rotation.CastTrace = 0
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,
