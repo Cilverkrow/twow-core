@@ -1012,7 +1012,8 @@ static bool BoardAnswer(Player* bot, transport_board::BotState& board, bool move
 
 // One [TransportBoard] state=stranded line per lost-ride recovery: the summary of the previous window first, the recovery
 // counted in its own window, the line within the shared S3b budget (dropped ones counted).
-static void LogTransportRecovery(Player* bot, transport_board::Ride const& ride, transport_board::Recovery kind, WorldPosition const& at)
+static void LogTransportRecovery(Player* bot, transport_board::Ride const& ride, transport_board::Recovery kind, WorldPosition const& at,
+    std::uint64_t searchUs)
 {
     transport_board::Counters& counters = transport_board::SharedCounters();
     transport_board::Snapshot snapshot;
@@ -1020,7 +1021,7 @@ static void LogTransportRecovery(Player* bot, transport_board::Ride const& ride,
         sLog.outBasic("%s", transport_board::FormatSummary(snapshot, true).c_str());
     counters.AccountRecovery(kind);
     if (counters.Take())
-        sLog.outBasic("%s", transport_board::FormatRecovery(bot->GetGUIDLow(), ride, kind, at.getMapId(), at.getX(), at.getY()).c_str());
+        sLog.outBasic("%s", transport_board::FormatRecovery(bot->GetGUIDLow(), ride, kind, at.getMapId(), at.getX(), at.getY(), searchUs).c_str());
 }
 
 // OB-10 #1 / #3: the ride record is set but the bot is not on that vessel (fell off, put off, teleported away); only an
@@ -1039,6 +1040,7 @@ static bool RecoverLostRide(PlayerbotAI* ai, LastMovement& lastMove)
     lastMove.lastTransportEntry = 0;
     WorldPosition const at(bot);
     transport_board::Recovery kind = transport_board::Recovery::NoRoute;
+    std::uint64_t searchUs = 0;   // OB-10 18.10.: the synchronous search's duration in the line (ABBA-1: > 50 ms often -> async)
     if (transport_board::RecoverNear(lost, at.getMapId(), at.getX(), at.getY()))
     {
         kind = transport_board::Recovery::Near;
@@ -1056,7 +1058,9 @@ static bool RecoverLostRide(PlayerbotAI* ai, LastMovement& lastMove)
     }
     else if (!lastMove.lastPath.empty())
     {
+        std::uint64_t const searchStartUs = ai::bot_update::NowUs();
         TravelPath route = sTravelNodeMap.getFullPath(at, lastMove.lastPath.getBack(), bot);
+        searchUs = ai::bot_update::SinceUs(searchStartUs);
         if (!route.empty())
         {
             kind = transport_board::Recovery::Search;
@@ -1065,7 +1069,7 @@ static bool RecoverLostRide(PlayerbotAI* ai, LastMovement& lastMove)
     }
     if (kind == transport_board::Recovery::NoRoute)
         lastMove.lastPath.clear();
-    LogTransportRecovery(bot, lost, kind, at);
+    LogTransportRecovery(bot, lost, kind, at, searchUs);
     return kind == transport_board::Recovery::NoRoute;
 }
 
