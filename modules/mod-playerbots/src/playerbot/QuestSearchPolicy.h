@@ -295,6 +295,14 @@ struct RescueLimiter
 {
     std::deque<uint32_t> recent;
 
+    // twow-repo#587 (QuestRescue.KeepRequestWhenFull): is a slot free now, without taking it.
+    bool HasCapacity(uint32_t now)
+    {
+        while (!recent.empty() && now - recent.front() >= RescueGlobalWindowSeconds)
+            recent.pop_front();
+        return recent.size() < RescueGlobalMax;
+    }
+
     bool TryAcquire(uint32_t now)
     {
         while (!recent.empty() && now - recent.front() >= RescueGlobalWindowSeconds)
