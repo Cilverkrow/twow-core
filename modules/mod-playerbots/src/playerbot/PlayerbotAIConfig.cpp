@@ -8,6 +8,7 @@
 #include "playerbot/ShortcutPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/SpecPathPolicy.h"
+#include "playerbot/EmergencyLadderPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -532,6 +533,13 @@ bool PlayerbotAIConfig::Initialize()
     castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
     rotationCastTrace = config.GetBoolDefault("AiPlayerbot.Rotation.CastTrace", false);
     rotationSpecFromPath = config.GetIntDefault("AiPlayerbot.Rotation.SpecFromPath", 0);
+    rotationEmergencyLadder = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder", 0);
+    if (rotationEmergencyLadder > 2)
+        rotationEmergencyLadder = 0;   // twow-repo#602 X3: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    rotationEmergencyLadderFightTargetHp = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder.FightTargetHp", 20);
+    if (rotationEmergencyLadderFightTargetHp > 100)
+        rotationEmergencyLadderFightTargetHp = 20;   // twow-repo#602 X3: out of range (also a negative value) = the default
+    rotationEmergencyLadderSoloCcSpells = ai::emergency_ladder::ParseSpellList(config.GetStringDefault("AiPlayerbot.Rotation.EmergencyLadder.SoloCcSpells", "polymorph,banish,fear"));
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
