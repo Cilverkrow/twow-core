@@ -99,11 +99,15 @@ inline std::uint32_t GapCooldownMs(std::uint32_t statusMs, std::uint32_t windowE
     return statusMs && statusMs < left ? statusMs : left;
 }
 
-// R1 (review B-F3): no money grind for the population - the money trigger ("val::should get money", 6.77) never starts a
-// gap grind trip, only the plain need-travel-purpose request (6.35, the R1 window) does. Not the gap filler: as before.
-inline bool GapGrindRequestAllowed(bool gapGrind, bool moneyCondition)
+// R1 / R2 (recheck of review B-F3, OB-10 18.10.2026): the condition a gap grind trip keeps ("future travel condition") is R1
+// itself, "need travel purpose::<grind purpose>", whichever trigger queued the grind request. The money trigger ("should get
+// money", 6.77) and the plain one (6.35) queue the same action and Queue::Push keeps one basket with the event of the higher
+// relevance, so a refusal of the money event dropped the R1 request too. RequestTravelTargetAction::isUseful allows the grind
+// request only inside the R1 window, and with R1 as its condition the trip ends with the window (CheckStatus) - a money
+// condition never holds it longer. Not the gap filler: the event source, as before.
+inline std::string GapTripCondition(bool gapGrind, std::string const& eventSource, std::uint32_t grindPurpose)
 {
-    return !gapGrind || !moneyCondition;
+    return gapGrind ? "need travel purpose::" + std::to_string(grindPurpose) : eventSource;
 }
 
 // R1 - R3 (review C-F3 / B-F2): no group copy of a grind trip for the population - a member's grind destination stays a grind for

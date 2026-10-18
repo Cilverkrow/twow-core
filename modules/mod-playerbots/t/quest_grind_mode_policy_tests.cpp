@@ -303,11 +303,16 @@ int main()
         Require(WindowEventCount == 6 && std::size_t(WindowEvent::R4Skips) == WindowEventCount - 1, "every event has a counter slot");
     }
 
-    // 10) Review fixes: no money grind (B-F3), no group grind copy (C-F3 / B-F2) for the population.
+    // 10) Review fixes: the gap trip's condition is R1, never the money condition (B-F3, recheck: the money and the plain
+    // trigger share one basket, so the money event is not refused but replaced), no group grind copy (C-F3 / B-F2).
     {
-        Require(!GapGrindRequestAllowed(true, IsMoneyCondition("should get money")), "the money trigger starts no gap grind trip");
-        Require(GapGrindRequestAllowed(true, IsMoneyCondition("need travel purpose::4096")), "the plain R1 request does");
-        Require(GapGrindRequestAllowed(false, true) && GapGrindRequestAllowed(false, false), "not the gap filler: as before");
+        Require(GapTripCondition(true, "should get money", 4096) == "need travel purpose::4096",
+            "a gap trip queued by the money trigger keeps R1 as its condition");
+        Require(!IsMoneyCondition(GapTripCondition(true, "should get money", 4096)), "never the money condition for a gap trip");
+        Require(GapTripCondition(true, "need travel purpose::4096", 4096) == "need travel purpose::4096", "the plain R1 request: R1");
+        Require(GapTripCondition(false, "should get money", 4096) == "should get money", "not the gap filler: the event source");
+        Require(GapTripCondition(false, "need travel purpose::4096", 4096) == "need travel purpose::4096", "not the gap filler: as before");
+        Require(GapTripCondition(false, "", 4096).empty(), "not the gap filler: an empty source stays empty");
         Require(!GapGroupCopyAllowed(true, true, false), "a member's grind trip is no copy for the population");
         Require(GapGroupCopyAllowed(true, true, true), "a member's grind destination this bot needs for a quest stays");
         Require(GapGroupCopyAllowed(true, false, false), "a member's other trip (quest, vendor, ...) stays");

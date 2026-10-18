@@ -7,7 +7,9 @@ cmake_policy(VERSION 3.16)
 #  - R1 in NeedTravelPurposeValue(Grind): after S1's turn-in yield, before the S0 GrindFallbackMinutes, FreshGrindFailures
 #    and 8.32 GrindFallbackFailures lines, an unconditional return (S0 and the gap filler never both), any failure class
 #    (OP4), no refresh renewal,
-#  - no money grind for the population: the grind request only inside the R1 window, the money trigger refused (review B-F3),
+#  - no money grind for the population outside the R1 window: the grind request only inside it, whichever trigger queued it,
+#    and the gap trip's condition is R1 itself, never the money condition (recheck of review B-F3, OB-10 18.10.2026), so a
+#    bot that "should get money" grinds only inside the window and never longer,
 #  - R2: the gap grind trip's READY / TRAVEL / WORK status time ends with the window; its expiry is no failure (no work
 #    timeout, no turn-in / quest loop / move retry / destination death count, no quest route counter); review fixes: an
 #    inactive destination / condition ends the trip at once (EXPIRED, expired= at a condition end, no COOLDOWN, C-F1 / B-F1),
@@ -156,14 +158,33 @@ region("${choose}" "bool RequestTravelTargetAction::isUseful() {" "\n}\n" reques
 require_text("${request_useful}" "    if (ai->IsQuestGapGrind() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)) &&\n        !AI_VALUE2(bool, \"need travel purpose\", getQualifier()))\n        return false;" "a grind fetch only inside the R1 window, whichever trigger")
 require_order("${request_useful}" "if (ai->IsQuestNoGrind() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))" "if (ai->IsQuestGapGrind() && getQualifier()" "after the mode-2 refusal")
 require_order("${request_useful}" "if (ai->IsQuestGapGrind() && getQualifier()" "if (!isAllowed())" "before the skip chance")
-# Review B-F3 (OB-10 rev. 2 point 4): the money trigger never starts a gap grind trip (Execute: the event source is the
-# trigger's condition), only the plain 6.35 request inside the R1 window.
-require_text("${policy}" "inline bool GapGrindRequestAllowed(bool gapGrind, bool moneyCondition)\n{\n    return !gapGrind || !moneyCondition;\n}" "no money grind for the population")
+# Recheck of review B-F3 (deliberate pin change, OB-10 18.10.2026): the money trigger (6.77) and the plain trigger (6.35)
+# queue the same action "request travel target::<Grind>", and Queue::Push merges baskets of one action name and keeps the
+# event of the higher relevance - the merged basket carries the money event. The former refusal of the money event in
+# Execute (GapGrindRequestAllowed) therefore dropped the R1 request as well, every tick: a bot that "should get money" never
+# started a gap trip. Now: no refusal in Execute (isUseful above already stops the grind request outside the R1 window,
+# whichever trigger), and the gap trip's stored condition ("future travel condition", SetConditions in setNewTarget) is R1
+# itself, never the money condition - so the trip ends with the window (the inactive branch below, C-F1) and a money
+# condition never holds it longer (OB-10 18.10.).
+require_text("${policy}" "inline std::string GapTripCondition(bool gapGrind, std::string const& eventSource, std::uint32_t grindPurpose)\n{\n    return gapGrind ? \"need travel purpose::\" + std::to_string(grindPurpose) : eventSource;\n}" "the gap trip's condition is R1, every other request keeps its event source")
+forbid_text("${policy}" "GapGrindRequestAllowed" "the money refusal helper (it dropped the merged R1 request)")
+# The condition is the R1 value itself: the same value name the plain request trigger reads, and setNewTarget stores it.
+require_text("${travel_strategy}" "std::string trigger = condition.empty() ? \"val::need travel purpose::\" + std::to_string((uint32)purpose) : condition;" "R1 is the need-travel-purpose value of the plain trigger")
+require_text("${choose}" "    if(!AI_VALUE2(std::string, \"manual string\", \"future travel condition\").empty())\n        AI_VALUE(TravelTarget*, \"travel target\")->SetConditions({ AI_VALUE2(std::string, \"manual string\", \"future travel condition\")});" "the stored condition becomes the trip's condition")
 region("${choose}" "bool RequestTravelTargetAction::Execute(Event& event)\n{" "    return true;\n}" request_exec)
-require_text("${request_exec}" "    if (ai->IsQuestGapGrind() && actionPurpose == TravelDestinationPurpose::Grind &&\n        !ai::quest_grind_mode::GapGrindRequestAllowed(true, ai::quest_grind_mode::IsMoneyCondition(event.getSource())))\n        return false;" "the money trigger refused for the population (GrindMode 1 first)")
-require_order("${request_exec}" "if (IsAutonomousRosterTravelBlocked(ai, actionPurpose) && !event.getOwner())" "GapGrindRequestAllowed(true," "after the roster travel block")
-require_order("${request_exec}" "GapGrindRequestAllowed(true," "std::async(std::launch::async," "before the fetch starts")
-count_text("${choose}" "GapGrindRequestAllowed(" 1 "one money refusal site")
+require_text("${request_exec}" "    bool const gapGrindRequest = ai->IsQuestGapGrind() && actionPurpose == TravelDestinationPurpose::Grind;" "the gap grind request (GrindMode 1 first)")
+require_order("${request_exec}" "if (IsAutonomousRosterTravelBlocked(ai, actionPurpose) && !event.getOwner())" "bool const gapGrindRequest =" "after the roster travel block")
+require_text("${request_exec}" "    SET_AI_VALUE2(std::string, \"manual string\", \"future travel condition\",\n        ai::quest_grind_mode::GapTripCondition(gapGrindRequest, event.getSource(), uint32(TravelDestinationPurpose::Grind)));" "the gap trip stores R1 as its condition, never the money condition")
+forbid_text("${request_exec}" "\"future travel condition\", event.getSource());" "the raw event source stored for a gap trip (the money condition would outlive the window)")
+# No refusal of the money source in Execute (it would drop the merged R1 request): no money test at all, and no early
+# return between the gap request and the fetch.
+foreach(banned "IsMoneyCondition" "should get money" "GapGrindRequestAllowed")
+  forbid_text("${request_exec}" "${banned}" "a money refusal in Execute (Queue::Push merged the R1 request into the money basket)")
+endforeach()
+region("${request_exec}" "bool const gapGrindRequest =" "std::async(std::launch::async," gap_request)
+forbid_text("${gap_request}" "return false" "a refusal of the gap grind request after the window test (isUseful)")
+count_text("${choose}" "GapTripCondition(" 1 "one gap trip condition site")
+count_text("${choose}" "GapGrindRequestAllowed(" 0 "no money refusal site")
 
 # ---- 5. The gap grind trip (ChooseTravelTargetAction) ------------------------------------------------
 region("${choose}" "else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot))\n    {" "    setNewTarget(requester, &newTarget, travelTarget);" grind_branch)
@@ -182,7 +203,7 @@ require_text("${grind_branch}" "        else\n        {\n            // Hotfix 8
 forbid_text("${choose}" "\"[QuestSearch] state=grind_window" "a grind_window line outside the policy format")
 count_text("${choose}" "FormatGapWindowLine(" 1 "one window line site")
 count_text("${choose}" "SetGapWindowEnd(" 1 "one window end site")
-count_text("${choose}" "ai->IsQuestGapGrind()" 6 "the gap trip, the request; commit 2: no_dest=; review fixes: the gap grind choice flag (own map reads it), no group grind copy, no money grind request")
+count_text("${choose}" "ai->IsQuestGapGrind()" 6 "the gap trip, the request; commit 2: no_dest=; review fixes: the gap grind choice flag (own map reads it), no group grind copy, the gap request (R1 condition)")
 foreach(src values travel_mgr ai_cpp)
   forbid_text("${${src}}" "SetGapWindowEnd(" "a window end set elsewhere (${src})")
 endforeach()
