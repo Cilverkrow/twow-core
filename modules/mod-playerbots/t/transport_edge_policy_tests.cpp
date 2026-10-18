@@ -133,6 +133,21 @@ int main()
         float const baLen = std::sqrt(300.0f * 300.0f + 100.0f * 100.0f) + std::sqrt(298.0f * 298.0f + 99.0f * 99.0f);
         Require(EdgeName(ba) == "go:177233:BA" && std::fabs(ba.rideS - baLen / 10.0f) < 0.01f, "BA ends at the arrival node of the merged stop");
 
+        // Last stop at the first stop's place with non-stop points after it: still cyclic neighbours in stop order -> one stop,
+        // the leg into it wraps over the trailing points (pins the reading the #603 sidecar uses).
+        std::vector<PathNode> const tail = {
+            N(1, 0.0f, 0.0f, 30), N(1, 600.0f, 0.0f, 30), N(1, 3.0f, 0.0f, 30), N(1, 0.0f, 400.0f), N(1, 0.0f, 100.0f),
+        };
+        std::vector<Stop> const ts = StopsOf(tail);
+        Require(ts.size() == 2 && ts[0].pos.delay == 60 && ts[0].arriveNode == 2 && ts[0].departNode == 0,
+            "last stop = first stop with points after it: one stop, delays added");
+        Key tab = K(177233, 1, 1.0f, 1.0f, 1, 598.0f, 0.0f);
+        Derive(tab, tail, 10.0f);
+        Key tba = K(177233, 1, 598.0f, 0.0f, 1, 1.0f, 1.0f);
+        Derive(tba, tail, 10.0f);
+        Require(EdgeName(tab) == "go:177233:AB" && EdgeName(tba) == "go:177233:BA" && std::fabs(tba.rideS - 59.7f) < 0.01f,
+            "trailing points: AB / BA, BA ends at the merged stop's arrival node");
+
         std::vector<PathNode> const row = { N(0, 0.0f, 0.0f, 10), N(0, 1.0f, 0.0f, 20), N(0, 500.0f, 0.0f), N(0, 1000.0f, 0.0f, 10) };
         std::vector<Stop> const rs = StopsOf(row);
         Require(rs.size() == 2 && rs[0].pos.delay == 30 && rs[0].arriveNode == 0 && rs[0].departNode == 1, "in a row: one stop");
