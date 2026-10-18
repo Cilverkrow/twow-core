@@ -20,7 +20,8 @@ cmake_policy(VERSION 3.16)
 #    snapshot set on the bot thread, never computed in the async job; own map only (CandidateSkip::OtherMapGrind inside
 #    CandidateSkipOf, still 2 call sites); R4 plain grind candidates of the population in the window, attackers / victims /
 #    quest mobs stay; R5 the isGrindTravelDest fix under mode 1 only; [GrindWindow] minute line, mode 1 alone, omitted
-#    when every count is 0,
+#    when every count is 0; OB-10 18.10.2026: r4_empty= (grind target passes in which R4 skipped a candidate and no target
+#    came out), one relaxed add per such pass after the candidate loop, part of the all-zero omission,
 #  - review fixes (C-F2, C-F3 / B-F2): the R3 window snapshot and the own-map skip only for the gap grind fetch, its choice
 #    (TravelTarget flag set only behind IsQuestGapGrind, never copied) and the gap trip - a quest objective fetch, choice or
 #    trip to grind mobs keeps the old tests; no group copy of a grind trip for the population,
@@ -262,9 +263,12 @@ require_text("${policy}" "inline std::uint32_t GapWindowHighLevel(std::uint32_t 
 require_text("${policy}" "inline bool GapGrindStaysOnMap(bool gapGrind, bool grindDestination, std::uint32_t botMap, std::uint32_t targetMap)\n{\n    return !gapGrind || !grindDestination || botMap == targetMap;\n}" "own map only for a mode-1 grind destination")
 require_text("${policy}" "    return gapGrind && !neededForQuest && !victimIsBot && !InGapWindow(lowLevel, highLevel, creatureLevel);" "R4: plain candidates only (quest mobs and creatures on the bot stay)")
 require_text("${policy}" "    return windowOpen && backoffUntil != startedFor && backoffUntil != noDestFor;" "no_dest once per window, not after its trip started")
-require_text("${policy}" "    if (!any)\n        return std::string();" "minute line omitted when every count is 0")
-require_text("${policy}" "    return \"[GrindWindow] minute starts=\" + std::to_string(counts[std::size_t(WindowEvent::Starts)]) +\n        \" expired=\" + std::to_string(counts[std::size_t(WindowEvent::Expired)]) +\n        \" engaged=\" + std::to_string(counts[std::size_t(WindowEvent::Engaged)]) +\n        \" grey_engaged=\" + std::to_string(counts[std::size_t(WindowEvent::GreyEngaged)]) +\n        \" no_dest=\" + std::to_string(counts[std::size_t(WindowEvent::NoDest)]) +\n        \" r4_skips=\" + std::to_string(counts[std::size_t(WindowEvent::R4Skips)]);" "[GrindWindow] line format")
-require_text("${policy}" "constexpr std::size_t WindowEventCount = 6;" "six counters")
+require_text("${policy}" "    for (std::uint32_t const count : counts)\n        any = any || count != 0;\n    if (!any)\n        return std::string();" "minute line omitted when every count is 0 (all slots, r4_empty= too)")
+require_text("${policy}" "    return \"[GrindWindow] minute starts=\" + std::to_string(counts[std::size_t(WindowEvent::Starts)]) +\n        \" expired=\" + std::to_string(counts[std::size_t(WindowEvent::Expired)]) +\n        \" engaged=\" + std::to_string(counts[std::size_t(WindowEvent::Engaged)]) +\n        \" grey_engaged=\" + std::to_string(counts[std::size_t(WindowEvent::GreyEngaged)]) +\n        \" no_dest=\" + std::to_string(counts[std::size_t(WindowEvent::NoDest)]) +\n        \" r4_skips=\" + std::to_string(counts[std::size_t(WindowEvent::R4Skips)]) +\n        \" r4_empty=\" + std::to_string(counts[std::size_t(WindowEvent::R4Empty)]);" "[GrindWindow] line format (OB-10 18.10.: r4_empty= last)")
+require_text("${policy}" "constexpr std::size_t WindowEventCount = 7;" "seven counters (OB-10 18.10.: r4_empty=)")
+require_text("${policy}" "    R4Skips,      // plain grind candidates R4 skipped (per grind target pass, not per engagement)\n    R4Empty,      // grind target passes in which R4 skipped a candidate and no target came out (OB-10 18.10.2026)\n};" "r4_empty= the last slot, right after r4_skips=")
+# OB-10 18.10.2026: r4_empty= counts a pass only when R4 skipped at least one candidate and no target came out.
+require_text("${policy}" "inline bool GapR4EmptyPass(std::uint32_t skipped, bool targetFound)\n{\n    return skipped != 0 && !targetFound;\n}" "r4_empty=: skipped > 0 and no target")
 
 # ---- 9. R3 for the scope only: a value of the snapshot, set on the bot thread (OB-10 rev. 2 point 1) -----------
 require_text("${travel_h}" "bool HasGapWindow() const { return gapWindowHigh != 0; }" "the scope bit")
@@ -362,7 +366,18 @@ require_order("${plain_block}" "if (gapGrind && ai::quest_grind_mode::GapTargetS
 count_text("${grind_target}" "GapTargetSkipped(" 1 "R4 only inside the plain grind block")
 region("${grind_target}" "std::list<ObjectGuid> attackers = context->GetValue<std::list<ObjectGuid>>(\"possible attack targets\")->Get();" "std::list<ObjectGuid> targets = *context->GetValue<std::list<ObjectGuid> >(\"possible targets\");" attacker_loop)
 forbid_text("${attacker_loop}" "gap" "the attacker loop gated by R4 (self-defence stays)")
-require_text("${grind_target}" "    if (gapSkipped && !assistCount)\n        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), gapSkipped);" "r4_skips: one relaxed add per pass")
+require_text("${grind_target}" "    if (gapSkipped && !assistCount)\n    {\n        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), gapSkipped);\n        if (ai::quest_grind_mode::GapR4EmptyPass(gapSkipped, result != nullptr))\n            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Empty));\n    }" "r4_skips: one relaxed add per pass; r4_empty: one more when R4 skipped and no target came out, in the same block")
+# r4_empty= after the candidate loop (the pass's result is final), never inside it (once per pass, not per candidate).
+region("${grind_target}" "    for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)" "    if (result)\n    {\n        logGrind(result, \"selected.\");" candidate_loop)
+foreach(banned "R4Empty" "GapR4EmptyPass" "NoteGrindWindow")
+  forbid_text("${candidate_loop}" "${banned}" "a [GrindWindow] count inside the candidate loop (per candidate)")
+endforeach()
+require_order("${grind_target}" "    if (result)\n    {\n        logGrind(result, \"selected.\");" "WindowEvent::R4Empty" "r4_empty= counted after the candidate loop")
+count_text("${grind_target}" "GapR4EmptyPass(" 1 "one r4_empty= rule site")
+count_text("${grind_target}" "WindowEvent::R4Empty" 1 "one r4_empty= count site")
+foreach(src choose travel_mgr choose_target values ai_cpp mgr)
+  forbid_text("${${src}}" "WindowEvent::R4Empty" "r4_empty= counted outside the grind target pass (${src})")
+endforeach()
 count_text("${grind_target}" "AI_VALUE2(bool, \"need for quest\"" 1 "no new value per creature (the loop's own quest test)")
 
 # ---- 12. R5: the isGrindTravelDest fix only under mode 1 --------------------------------------------------
@@ -402,13 +417,13 @@ require_text("${choose_target}" "                if (gapTarget && gapTarget == g
 count_text("${choose_target}" "AI_VALUE2(bool, \"need for quest\"" 1 "no new value per creature in AttackAnythingAction ([GrindPick] keeps its own)")
 count_text("${travel_mgr}" "PlayerbotAI::NoteGrindWindow(" 2 "expired= at the window end (status time) and at a condition end (review C-F1 / B-F1)")
 count_text("${choose}" "PlayerbotAI::NoteGrindWindow(" 2 "starts=, no_dest=")
-count_text("${grind_target}" "PlayerbotAI::NoteGrindWindow(" 1 "r4_skips=")
+count_text("${grind_target}" "PlayerbotAI::NoteGrindWindow(" 2 "r4_skips=, r4_empty= (OB-10 18.10.)")
 count_text("${choose_target}" "PlayerbotAI::NoteGrindWindow(" 2 "engaged=, grey_engaged=")
 foreach(src grind_target choose_target)
   forbid_text("${${src}}" "std::mutex" "a lock (${src})")
   forbid_text("${${src}}" "shared_mutex" "a lock (${src})")
 endforeach()
-require_text("${conf}" "[GrindWindow] minute starts= expired= engaged=\n#       grey_engaged= no_dest= r4_skips= once a minute, not when all are 0." "the minute line documented")
+require_text("${conf}" "[GrindWindow] minute starts= expired= engaged=\n#       grey_engaged= no_dest= r4_skips= r4_empty= once a minute, not when all are 0 (r4_empty= = grind target\n#       passes in which the level window skipped a candidate and no target was left)." "the minute line documented (OB-10 18.10.: r4_empty=)")
 foreach(src config_h config_cpp)
   forbid_text("${${src}}" "GrindWindow" "a new config key (${src})")
 endforeach()

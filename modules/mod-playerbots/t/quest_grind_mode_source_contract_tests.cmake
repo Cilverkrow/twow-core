@@ -378,7 +378,7 @@ require_text("${rpg_explore_cases}" "        if (rpgPhase < 15) //Only last 45 m
 # The policy is used only where this round put it (a NoGrind(config) gate elsewhere in these files fails the count).
 count_text("${travel_mgr}" "quest_grind_mode::" 9 "policy uses in TravelMgr (the grind destination filter; S2 / S4: the R2 status time; commit 2: R3 scope bit 2, IsPossible, IsLocationLevelValid, expired=; review fixes: the R2 cooldown cap, expired= at a condition end)")
 count_text("${values}" "quest_grind_mode::" 3 "policy uses in TravelValues (the fallback note; S2 / S4: R1)")
-count_text("${grind_target}" "quest_grind_mode::" 8 "policy uses in GrindTargetValue (filter, note; S2 commit 2: R4 window 2, R4 skip, r4_skips=)")
+count_text("${grind_target}" "quest_grind_mode::" 10 "policy uses in GrindTargetValue (filter, note; S2 commit 2: R4 window 2, R4 skip, r4_skips=; OB-10 18.10.: r4_empty= rule and count)")
 count_text("${grind_strategy}" "quest_grind_mode::" 4 "policy uses in GrindingStrategy (init, multiplier)")
 count_text("${choose}" "quest_grind_mode::" 21 "policy uses in the choose file (grind branch, request, forced kill trip, episode reset, idle class; S2 / S4: R1 again, R2 window, grind_window line; commit 2: own map, starts=, no_dest= 2; review fixes: no group grind copy; recheck: the gap trip condition replaces the money refusal 2 -> 1)")
 count_text("${mgr}" "quest_grind_mode::" 2 "policy uses in RandomPlayerbotMgr (minute reports: [QuestIdle], S2 / S4 [GrindWindow])")

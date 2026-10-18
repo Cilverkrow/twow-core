@@ -404,9 +404,14 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
         ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking)),
             ai::quest_grind_mode::TargetText("grind_target", noGrindEntry));
 
-    // twow-repo#601 S2 R4: the pass's skips in one relaxed add (first assist round only), [GrindWindow] r4_skips=.
+    // twow-repo#601 S2 R4: the pass's skips in one relaxed add (first assist round only), [GrindWindow] r4_skips=; r4_empty=
+    // (OB-10 18.10.2026): one more relaxed add when R4 skipped a candidate and the pass found no target.
     if (gapSkipped && !assistCount)
+    {
         PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), gapSkipped);
+        if (ai::quest_grind_mode::GapR4EmptyPass(gapSkipped, result != nullptr))
+            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Empty));
+    }
 
     return result;
 }

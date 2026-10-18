@@ -291,16 +291,31 @@ int main()
         std::array<std::uint32_t, WindowEventCount> counts = {};
         Require(FormatWindowMinuteLine(counts).empty(), "all 0: no line");
         counts[std::size_t(WindowEvent::R4Skips)] = 1;
-        Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=0 expired=0 engaged=0 grey_engaged=0 no_dest=0 r4_skips=1",
+        Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=0 expired=0 engaged=0 grey_engaged=0 no_dest=0 r4_skips=1 r4_empty=0",
             "one count: a line");
+        {
+            std::array<std::uint32_t, WindowEventCount> onlyEmpty = {};
+            onlyEmpty[std::size_t(WindowEvent::R4Empty)] = 1;
+            Require(FormatWindowMinuteLine(onlyEmpty) == "[GrindWindow] minute starts=0 expired=0 engaged=0 grey_engaged=0 no_dest=0 r4_skips=0 r4_empty=1",
+                "r4_empty= alone: a line (part of the all-zero omission test)");
+        }
         counts[std::size_t(WindowEvent::Starts)] = 2;
         counts[std::size_t(WindowEvent::Expired)] = 3;
         counts[std::size_t(WindowEvent::Engaged)] = 4;
         counts[std::size_t(WindowEvent::GreyEngaged)] = 5;
         counts[std::size_t(WindowEvent::NoDest)] = 6;
-        Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=2 expired=3 engaged=4 grey_engaged=5 no_dest=6 r4_skips=1",
+        counts[std::size_t(WindowEvent::R4Empty)] = 7;
+        Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=2 expired=3 engaged=4 grey_engaged=5 no_dest=6 r4_skips=1 r4_empty=7",
             "minute line format");
-        Require(WindowEventCount == 6 && std::size_t(WindowEvent::R4Skips) == WindowEventCount - 1, "every event has a counter slot");
+        Require(WindowEventCount == 7 && std::size_t(WindowEvent::R4Skips) == 5 && std::size_t(WindowEvent::R4Empty) == WindowEventCount - 1,
+            "every event has a counter slot");
+
+        // r4_empty=: a pass counts once when R4 skipped a candidate and no target came out.
+        Require(GapR4EmptyPass(1, false), "skipped and no target: counted");
+        Require(GapR4EmptyPass(5, false), "several skips, one pass: counted (once at the call site)");
+        Require(!GapR4EmptyPass(3, true), "skipped but a target found: not counted");
+        Require(!GapR4EmptyPass(0, false), "nothing skipped (no target for another reason): not counted");
+        Require(!GapR4EmptyPass(0, true), "nothing skipped, target found: not counted");
     }
 
     // 10) Review fixes: the gap trip's condition is R1, never the money condition (B-F3, recheck: the money and the plain
