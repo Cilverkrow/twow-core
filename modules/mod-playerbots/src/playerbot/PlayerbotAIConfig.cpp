@@ -1457,8 +1457,9 @@ bool PlayerbotAIConfig::Initialize()
         sRandomPlayerbotMgr.LoadBattleMastersCache();
 
     // twow-repo#601 R01-A/B (owner rule 18.10., twow-repo#615): the parsed values of the A/B switches the test arms prove in
-    // the running process (R01 steps, the switches the R01 arms pin, P3-a long, #342), one line per start. No key, no state.
-    // A new A/B switch adds its entry here (the config key without "AiPlayerbot." (FormatLine prints the full key), the parsed member).
+    // the running process (R01 steps, the switches the R01 arms pin, P3-a long, #342), one line per Initialize (start and
+    // config reload; an arm takes the line of its own start). No key, no state. A new A/B switch adds its entry here: the
+    // config key without "AiPlayerbot." (FormatLine prints the full key) and the parsed member.
     {
         using ai::config_echo::Value;
         sLog.outString("%s", ai::config_echo::FormatLine({
