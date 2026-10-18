@@ -6,6 +6,7 @@
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
 #include "playerbot/ShortcutPolicy.h"
+#include "playerbot/ActionLogSamplePolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
@@ -1040,6 +1041,7 @@ bool PlayerbotAIConfig::Initialize()
     inviteChat = config.GetBoolDefault("AiPlayerbot.InviteChat", true);
     botsSilent = config.GetBoolDefault("AiPlayerbot.BotsSilent", false);
     enableActionLog = config.GetBoolDefault("AiPlayerbot.EnableActionLog", false);
+    actionLogGuids = ai::action_log::ParseSample(config.GetStringDefault("AiPlayerbot.ActionLog.Guids", ""));   // twow-repo#601 / #614
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");
