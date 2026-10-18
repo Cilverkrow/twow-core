@@ -55,7 +55,12 @@ namespace ai
         GatherHerbalism = 1 << 16,
         GatherFishing = 1 << 17,
         Explore = 1 << 18,
-        MaxFlag = 1 << 19
+        // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.*, default 0): anvil / forge / cooking fire, dungeon and raid
+        // entrances. Cooking is Station with focus 4; fishing shore points are GatherFishing (FishAction acts on it).
+        Station = 1 << 19,
+        DungeonEntrance = 1 << 20,
+        RaidEntrance = 1 << 21,
+        MaxFlag = 1 << 22
     };
 
     const std::unordered_map<TravelDestinationPurpose, std::string> TravelDestinationPurposeName =
@@ -80,6 +85,9 @@ namespace ai
         {TravelDestinationPurpose::GatherHerbalism, "GatherHerbalism"},
         {TravelDestinationPurpose::GatherFishing, "GatherFishing"},
         {TravelDestinationPurpose::Explore, "Explore"},
+        {TravelDestinationPurpose::Station, "Station"},
+        {TravelDestinationPurpose::DungeonEntrance, "DungeonEntrance"},
+        {TravelDestinationPurpose::RaidEntrance, "RaidEntrance"},
         {TravelDestinationPurpose::MaxFlag, "MaxFlag"}
     };
 

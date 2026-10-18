@@ -1138,6 +1138,27 @@ add_test(NAME direct_targets_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/direct_targets_source_contract_tests.cmake")
 
+# twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking / Fishing / Dungeon / Raid, default 0): stations, cooking fires,
+# fishing-hole shore points and instance entrances as direct travel targets, built once at boot.
+add_executable(direct_target_policy_tests
+  "${PB_MODULE_DIR}/t/direct_target_policy_tests.cpp")
+
+target_include_directories(direct_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(direct_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME direct_target_policy
+  COMMAND direct_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME direct_targets_p3b_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/direct_targets_p3b_source_contract_tests.cmake")
+
 # #416 (7.5): value-cache eviction and prefix search.
 add_executable(value_evict_policy_tests
   "${PB_MODULE_DIR}/t/value_evict_policy_tests.cpp")

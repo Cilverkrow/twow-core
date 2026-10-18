@@ -816,6 +816,13 @@ public:
     uint32 directTargetsFreshMaxLevel = 5;
     uint32 directTargetsFreshBackoffSeconds = 0;  // 0 = the 8.1 backoff
     uint32 directTargetsFreshGrindFailures = 0;   // 0 = QuestFirstProgression.GrindFallbackFailures
+    // twow-repo#594 / P3-b (direct targets, all default 0, built at boot only, each behind directTargetsEnabled): anvil /
+    // forge, cooking fire, fishing-hole shore points, dungeon and raid entrances (DirectTargetPolicy.h)
+    bool directTargetsStation = false;
+    bool directTargetsCooking = false;
+    bool directTargetsFishing = false;
+    bool directTargetsDungeon = false;
+    bool directTargetsRaid = false;
     bool rosterFarMove = false;  // hotfix 8.33 (#544): cheap movement without a player nearby, 0 = off
     float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route

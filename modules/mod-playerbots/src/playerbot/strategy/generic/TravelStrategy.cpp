@@ -4,6 +4,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelRequestPolicy.h"
+#include "playerbot/DirectTargetDestinations.h"
 
 using namespace ai;
 
@@ -84,6 +85,30 @@ void TravelStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
         triggers.push_back(new TriggerNode(
             travel_request::TriggerName(trigger, gateRequests),
             NextAction::array(0, new NextAction("request travel target::" + std::to_string((uint32)purpose), relevance), NULL)));
+    }
+
+    // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking / Dungeon / Raid, default 0): one row per class
+    // built at boot and switched on at strategy init. Station 6.505: below trainer trade (6.51), above gathering (6.5)
+    // and so above the quest request (6.3) - as narrow as gathering and yielding to open turn-ins like it (OB-10
+    // 18.10.). Dungeon 6.299 / Raid 6.298 below the quest request, only without a running quest route backoff.
+    if (ai::direct_targets::AnyBuilt())
+    {
+        const std::vector<std::pair<TravelDestinationPurpose, float>> DirectTargetActions =
+        {
+            {TravelDestinationPurpose::Station, 6.505f},
+            {TravelDestinationPurpose::DungeonEntrance, 6.299f},
+            {TravelDestinationPurpose::RaidEntrance, 6.298f},
+        };
+
+        for (auto& [purpose, relevance] : DirectTargetActions)
+        {
+            if (!ai::direct_targets::PurposeLive(purpose))
+                continue;
+            std::string trigger = "val::need travel purpose::" + std::to_string((uint32)purpose);
+            triggers.push_back(new TriggerNode(
+                travel_request::TriggerName(trigger, gateRequests),
+                NextAction::array(0, new NextAction("request travel target::" + std::to_string((uint32)purpose), relevance), NULL)));
+        }
     }
 
     //Specific named exceptions

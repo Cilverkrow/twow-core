@@ -19,6 +19,10 @@ namespace ai
     bool HasCraftTools(SpellEntry const* spell, Player* bot);
     uint32 CraftableFromBags(SpellEntry const* spell, Player* bot);
 
+    // twow-repo#594 / P3-b: the skill-up chance (per mille) the "profession craft" trigger ranks its recipes by, for the
+    // focus recipes of the station craft trigger; skillId / skillValue of the skill line it rolls for.
+    uint32 RecipeSkillUpChance(uint32 spellId, Player* bot, uint32* outSkillId, uint32* outSkillValue);
+
     // #333: minimal crafting loop. Active for a roster bot on its own when a
     // recipe without spell focus still gives a skill-up and its reagents are in
     // the bags, at most once per AiPlayerbot.ProfessionUse.CraftIntervalSeconds.
