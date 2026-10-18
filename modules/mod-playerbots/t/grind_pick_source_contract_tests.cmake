@@ -102,15 +102,25 @@ endforeach()
 
 # ---- 2. One count per engagement, where bot_events logs it, only behind the gate -------------------------------------
 region("${choose}" "bool ai::AttackAnythingAction::Execute(Event& event)" "\n}\n" execute_fn)
-require_order("${execute_fn}" "sPlayerbotAIConfig.logEvent(ai, \"AttackAnythingAction\", grindName" "                if (sPlayerbotAIConfig.botUpdateTrace)\n                {" "counted right after the bot_events line (the phase-1 metric)")
-require_order("${execute_fn}" "                if (sPlayerbotAIConfig.botUpdateTrace)\n                {" "ai::grind_pick::Global().Add(" "the gate before every source computation and the count")
-require_order("${execute_fn}" "                if (sPlayerbotAIConfig.botUpdateTrace)\n                {" "AI_VALUE(std::list<ObjectGuid>, \"possible attack targets\")" "attacker list read only behind the gate")
-require_order("${execute_fn}" "                if (sPlayerbotAIConfig.botUpdateTrace)\n                {" "AI_VALUE2(bool, \"need for quest\"" "quest need read only behind the gate")
+set(attack_line "    bool result = AttackAction::Execute(event);")
+# OB-10 re-check: the source is read BEFORE the attack starts (afterwards the bot is on the target's attacker list and may
+# be its victim already), behind the gate; the count comes after the bot_events line, only for the same target.
+require_text("${execute_fn}" "    Unit* const pickTarget = sPlayerbotAIConfig.botUpdateTrace ? GetTarget() : nullptr;" "the gate: no target read when off")
+require_order("${execute_fn}" "Unit* const pickTarget = sPlayerbotAIConfig.botUpdateTrace ? GetTarget() : nullptr;" "    if (pickTarget)\n    {" "every source read behind the gate")
+foreach(source_read "AI_VALUE(std::list<ObjectGuid>, \"possible attack targets\")" "AI_VALUE2(bool, \"need for quest\"" "pickSource = ai::grind_pick::EngagedSource(attacker, pickTarget->GetVictim() == bot, neededForQuest);" "pickGrey = creature && !MaNGOS::XP::Gain(bot, creature);")
+  require_order("${execute_fn}" "    if (pickTarget)\n    {" "${source_read}" "source read behind the gate: ${source_read}")
+  require_order("${execute_fn}" "${source_read}" "${attack_line}" "source read before AttackAction::Execute: ${source_read}")
+endforeach()
+string(FIND "${execute_fn}" "${attack_line}" attack_at)
+string(SUBSTRING "${execute_fn}" ${attack_at} -1 after_attack)
+foreach(late_read "possible attack targets" "need for quest" "EngagedSource(" "MaNGOS::XP::Gain")
+  forbid_text("${after_attack}" "${late_read}" "a source read after AttackAction::Execute (the bot is on the attacker list by then)")
+endforeach()
+require_order("${execute_fn}" "sPlayerbotAIConfig.logEvent(ai, \"AttackAnythingAction\", grindName" "                if (pickTarget && pickTarget == grindTarget)\n                    ai::grind_pick::Global().Add(ai::grind_pick::BandOf(bot->GetLevel()), pickSource, pickGrey);" "counted right after the bot_events line (the phase-1 metric), only the same target")
 require_order("${execute_fn}" "ai::grind_pick::Global().Add(" "if (ai->HasStrategy(\"pull\", BotState::BOT_STATE_COMBAT))" "counted before the pull branch can return")
-require_text("${execute_fn}" "ai::grind_pick::EngagedSource(attacker, grindTarget->GetVictim() == bot, neededForQuest)," "the engagement's source")
-require_text("${execute_fn}" "creature && !MaNGOS::XP::Gain(bot, creature));" "grey = no XP")
 count_text("${choose}" "grind_pick::Global()" 1 "one count site")
-count_text("${choose}" "if (sPlayerbotAIConfig.botUpdateTrace)" 1 "one gate")
+count_text("${choose}" "sPlayerbotAIConfig.botUpdateTrace" 1 "one gate")
+count_text("${execute_fn}" "${attack_line}" 1 "the attack itself unchanged")
 require_text("${choose}" "#include \"playerbot/GrindPickPolicy.h\"" "include what you use")
 
 # ---- 3. The target choice is untouched: GrindTargetValue has no part in it ------------------------------------------
