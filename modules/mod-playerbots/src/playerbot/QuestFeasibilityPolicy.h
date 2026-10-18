@@ -157,8 +157,10 @@ inline bool GiverInactive(Reason reason)
 // Drop step (OB-10 rev. 2): only open quests - a complete one may still be turned in. Never the quest of the bot's guild
 // quest order (path F, an officer's note: the drop would undo the order's accept on every cleanup) and no listed quest
 // while the bot is in a group (path E: a group member's escort confirm; the solo group rule needs no group anyway) -
-// review S3a F2, those paths stay a player's decision. nullptr = keep.
-inline char const* DropReasonName(Reason reason, bool complete, bool inGroup, bool guildOrderQuest)
+// review S3a F2, those paths stay a player's decision. A group-type quest of a solo bot only while it has no objective
+// progress (OB-10 range review): one worked on in a group (a real player's share, #420) stays after the group is gone,
+// only untouched old elite quests leave the log. nullptr = keep.
+inline char const* DropReasonName(Reason reason, bool complete, bool inGroup, bool guildOrderQuest, bool progressed)
 {
     if (complete || guildOrderQuest)
         return nullptr;
@@ -166,7 +168,7 @@ inline char const* DropReasonName(Reason reason, bool complete, bool inGroup, bo
     {
         case Reason::Blocklist:
         case Reason::BlocklistCrsz0: return inGroup ? nullptr : "infeasible_blocklist";
-        case Reason::GroupSolo: return "infeasible_group_solo";
+        case Reason::GroupSolo: return progressed ? nullptr : "infeasible_group_solo";
         default: return nullptr;
     }
 }

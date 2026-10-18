@@ -41,9 +41,10 @@ struct Observation
 constexpr float NearProgressDistance = 3.0f;
 
 // twow-repo#601 S3c (review F1): a gap of more than stallSeconds / NearLegGapDivisor (150 s live) since the last
-// observation of this target means the bot was not travelling to it (a work phase, another target in between, a long
-// fight): the next observation inside the near zone starts a fresh stall window and best distance, so a stale
-// lastProgressAt never stalls the first step of a new trip at once.
+// observation of this target means the bot was not travelling to it (a work phase, another target in between; not a
+// fight - a fight is the paused branch, and lastObservedAt is stamped before it, OB-10 nit): the next observation inside
+// the near zone starts a fresh stall window and best distance, so a stale lastProgressAt never stalls the first step of
+// a new trip at once.
 constexpr std::uint32_t NearLegGapDivisor = 2;
 
 // The near zone: switched on (radius > 0), the bot on the taker's map and within the radius (3D distance).
