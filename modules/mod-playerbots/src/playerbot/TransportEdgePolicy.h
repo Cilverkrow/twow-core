@@ -27,8 +27,8 @@ namespace ai::transport_edge
 // Own line budget, separate from the RouteFailDetail.LinesPerMinute budget the [TaxiUse] / old [TransportWait] lines share.
 constexpr std::uint32_t LinesPerMinute = 120;
 
-// wait_timeout / overrun threshold of this trace (map section 3: 900 s; the longest vessel period is 356,284 ms, so about
-// 2.5 round trips). Fixed: the shared AiPlayerbot.Path.TransportWaitTimeoutMin is read only by the CLI-PATH S3b switch.
+// Default of the trace's wait_timeout / overrun threshold (map section 3: 900 s; the longest vessel period is 356,284 ms, so
+// about 2.5 round trips). The callers pass AiPlayerbot.Path.TransportWaitTimeoutMin * 60000 (S3b, default 15 = this value).
 constexpr std::uint32_t WaitTimeoutMs = 900000;
 
 // Episode gap (the S0 parser's 300 s): a wait or a ride the bot has not been seen in for longer than this, without any hook,

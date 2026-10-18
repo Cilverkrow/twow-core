@@ -5,6 +5,7 @@
 #include "playerbot/RouteTimePolicy.h"
 #include "playerbot/PathUnitlessBotPolicy.h"
 #include "playerbot/TransportEdgePolicy.h"
+#include "playerbot/TransportBoardPolicy.h"
 #include "TravelNode.h"
 
 #include "Maps/Map.h"
@@ -21,6 +22,7 @@
 #else
 #include "vmap/VMapFactory.h"
 #endif
+#include "vmap/GameObjectModel.h"   // twow-repo#342 (S3b): the vessel's own deck model (HitsVesselDeck)
 
 #include <numeric>
 #include <iomanip>
@@ -696,6 +698,64 @@ WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uin
 {
     std::vector<WorldPosition> path;
     return RandomPointOnTrans(transport, radius, nullptr, path);
+}
+
+// twow-repo#342 (S3b): the ray reads the model's bound / position / rotation / scale without the map tree lock; the vessel
+// relocates its model in sTransportMgr.Update on the world thread before the map (bot) update (D7).
+bool WorldPosition::HitsVesselDeck(GenericTransport* transport, float x, float y, float zTop, float zBottom, float* hitZ)
+{
+    GameObjectModel const* const model = transport ? transport->m_model : nullptr;
+    if (!model || zTop <= zBottom)
+        return false;
+    G3D::Ray const ray = G3D::Ray::fromOriginAndDirection(G3D::Vector3(x, y, zTop), G3D::Vector3(0.0f, 0.0f, -1.0f));
+    float dist = zTop - zBottom;
+    if (!model->intersectRay(ray, dist, hitZ == nullptr))   // nearest hit when a height is wanted
+        return false;
+    if (hitZ)
+        *hitZ = zTop - dist;
+    return true;
+}
+
+// twow-repo#342 (S3b-0, AiPlayerbot.Path.TransportDeckProbe): DeckProbeTries fixed points around the vessel's floor
+// (SetTranpotHeightToFloor), per point the static short ray (what isOnTransport / SetOnTransport see), the deck model short
+// and long ray, and the map's dynamic tree long ray; the model and whether the map tree holds it. Read only, no RNG.
+// The map is the vessel's own (FindMap: GetMap asserts on a vessel between maps), null-checked.
+transport_board::DeckProbe WorldPosition::ProbeVesselDeck(GenericTransport* transport)
+{
+    transport_board::DeckProbe probe;
+    if (!transport)
+        return probe;
+    WorldPosition base(transport);
+    base.SetTranpotHeightToFloor(transport->GetEntry());
+    Map* const map = transport->FindMap();
+    probe.model = transport->m_model != nullptr;
+    probe.inTree = probe.model && map && map->ContainsGameObjectModel(*transport->m_model);
+    for (std::uint32_t i = 0; i < transport_board::DeckProbeTries; ++i)
+    {
+        float const x = base.getX() + transport_board::DeckProbeOffsets[i][0];
+        float const y = base.getY() + transport_board::DeckProbeOffsets[i][1];
+        float const z = base.getZ();
+        float rx = 0.0f, ry = 0.0f, rz = 0.0f, hz = 0.0f;
+        ++probe.tries;
+        if (VMAP::VMapFactory::createOrGetVMapManager()->getObjectHitPos(base.getMapId(), x, y, z + 1.0f, x, y, z - 1.0f, rx, ry, rz, 0.0f))
+            ++probe.staticShort;
+        if (HitsVesselDeck(transport, x, y, z + 1.0f, z - 1.0f, nullptr))
+            ++probe.deckShort;
+        if (HitsVesselDeck(transport, x, y, z + transport_board::DeckProbeUp, z - transport_board::DeckProbeDown, &hz))
+        {
+            ++probe.deckLong;
+            if (!probe.longDzSet)
+            {
+                probe.longDz = hz - z;
+                probe.longDzSet = true;
+            }
+        }
+        G3D::Vector3 out;
+        if (map && map->GetDynamicObjectHitPos(G3D::Vector3(x, y, z + transport_board::DeckProbeUp),
+                G3D::Vector3(x, y, z - transport_board::DeckProbeDown), out, 0.0f))
+            ++probe.dynLong;
+    }
+    return probe;
 }
 
 WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uint32 radius, Player* botForPath, std::vector<WorldPosition>& path, transport_edge::PointRejects* rejects)
