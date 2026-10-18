@@ -76,11 +76,14 @@ bool ai::AttackAnythingAction::Execute(Event& event)
 
     // twow-repo#601 S2 / S4 [GrindWindow] engaged= / grey_engaged= (GrindMode 1, OB-10 rev. 2): a plain grind engagement (no
     // attacker, not on the bot, no quest need: R4's plain source) of the gap filler's population inside its window (the travel
-    // target carries a window end not yet reached). No kill hook sees a grey kill (the XP packet comes only with XP), so the
-    // engagement is counted, read before the attack like [GrindPick]. One per-bot quest list, no value per creature.
-    // GrindMode 0 / 2: IsQuestGapGrind() is false, nothing else read.
+    // target carries a window end not yet reached, and the quest route backoff still runs: R1 open, read like R1 - an expired
+    // gap trip keeps its window end, so after the backoff end no engagement counts as inside a window, recheck). No kill hook
+    // sees a grey kill (the XP packet comes only with XP), so the engagement is counted, read before the attack like
+    // [GrindPick]. Per-bot values and one per-bot quest list, no value per creature. GrindMode 0 / 2: IsQuestGapGrind() is
+    // false, nothing else read.
     Unit* const gapTarget = (ai->IsQuestGapGrind() &&
-        AI_VALUE(TravelTarget*, "travel target")->GetGapWindowEnd() > uint32(time(nullptr))) ? GetTarget() : nullptr;
+        AI_VALUE(TravelTarget*, "travel target")->GetGapWindowEnd() > uint32(time(nullptr)) &&
+        uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")))) ? GetTarget() : nullptr;
     bool gapPlain = false;
     bool gapGrey = false;
     if (gapTarget)

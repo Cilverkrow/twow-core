@@ -23,9 +23,21 @@ Unit* GrindTargetValue::Calculate()
 
     Unit* target = NULL;
     uint32 assistCount = 0;
+    // twow-repo#601 S2 R4: round 0's R4 skips; stays 0 when round 0 returns early (an attacker, no candidate at all).
+    uint32 round0GapSkipped = 0;
     while (!target && assistCount < memberCount)
     {
-        target = FindTargetForGrinding(assistCount++);
+        target = FindTargetForGrinding(assistCount++, round0GapSkipped);
+    }
+
+    // twow-repo#601 S2 R4 [GrindWindow], once per value pass after every assist round: r4_skips= round 0's skips in one relaxed
+    // add (first assist round only, as before); r4_empty= (OB-10 18.10.2026, recheck: per value pass) one more when R4
+    // skipped a candidate in round 0 and no round of the pass returned a target - a later round's target is no empty pass.
+    if (round0GapSkipped)
+    {
+        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), round0GapSkipped);
+        if (ai::quest_grind_mode::GapR4EmptyPass(round0GapSkipped, target != nullptr))
+            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Empty));
     }
 
     // #421 measuring point: grey targets engaged per bot and hour.
@@ -46,7 +58,7 @@ Unit* GrindTargetValue::Calculate()
     return target;
 }
 
-Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
+Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0GapSkipped)
 {
     uint32 memberCount = 1;
     Group* group = bot->GetGroup();
@@ -404,14 +416,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
         ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking)),
             ai::quest_grind_mode::TargetText("grind_target", noGrindEntry));
 
-    // twow-repo#601 S2 R4: the pass's skips in one relaxed add (first assist round only), [GrindWindow] r4_skips=; r4_empty=
-    // (OB-10 18.10.2026): one more relaxed add when R4 skipped a candidate and the pass found no target.
-    if (gapSkipped && !assistCount)
-    {
-        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), gapSkipped);
-        if (ai::quest_grind_mode::GapR4EmptyPass(gapSkipped, result != nullptr))
-            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Empty));
-    }
+    // twow-repo#601 S2 R4: round 0's skips go to the caller, which counts r4_skips= / r4_empty= once per value pass after its
+    // assist rounds (recheck: a later round may still return a target). Nothing counted here.
+    if (!assistCount)
+        round0GapSkipped = gapSkipped;
 
     return result;
 }

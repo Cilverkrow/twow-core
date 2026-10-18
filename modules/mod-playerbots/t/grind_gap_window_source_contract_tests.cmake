@@ -21,7 +21,10 @@ cmake_policy(VERSION 3.16)
 #    CandidateSkipOf, still 2 call sites); R4 plain grind candidates of the population in the window, attackers / victims /
 #    quest mobs stay; R5 the isGrindTravelDest fix under mode 1 only; [GrindWindow] minute line, mode 1 alone, omitted
 #    when every count is 0; OB-10 18.10.2026: r4_empty= (grind target passes in which R4 skipped a candidate and no target
-#    came out), one relaxed add per such pass after the candidate loop, part of the all-zero omission,
+#    came out), one relaxed add per such pass after the candidate loop, part of the all-zero omission; recheck (fix 3):
+#    counted once per value pass in Calculate after every assist round (round 0's skips, a later round's target is no
+#    empty pass); engaged= / grey_engaged= only while the quest route backoff still runs (R1 open); the mode-1 conf text
+#    pinned (the money grind only inside the window),
 #  - review fixes (C-F2, C-F3 / B-F2): the R3 window snapshot and the own-map skip only for the gap grind fetch, its choice
 #    (TravelTarget flag set only behind IsQuestGapGrind, never copied) and the gap trip - a quest objective fetch, choice or
 #    trip to grind mobs keeps the old tests; no group copy of a grind trip for the population,
@@ -367,13 +370,32 @@ require_order("${plain_block}" "if (gapGrind && ai::quest_grind_mode::GapTargetS
 count_text("${grind_target}" "GapTargetSkipped(" 1 "R4 only inside the plain grind block")
 region("${grind_target}" "std::list<ObjectGuid> attackers = context->GetValue<std::list<ObjectGuid>>(\"possible attack targets\")->Get();" "std::list<ObjectGuid> targets = *context->GetValue<std::list<ObjectGuid> >(\"possible targets\");" attacker_loop)
 forbid_text("${attacker_loop}" "gap" "the attacker loop gated by R4 (self-defence stays)")
-require_text("${grind_target}" "    if (gapSkipped && !assistCount)\n    {\n        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), gapSkipped);\n        if (ai::quest_grind_mode::GapR4EmptyPass(gapSkipped, result != nullptr))\n            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Empty));\n    }" "r4_skips: one relaxed add per pass; r4_empty: one more when R4 skipped and no target came out, in the same block")
+# Recheck (fix 3, deliberate pin change): Calculate calls FindTargetForGrinding again with assistCount 1, 2, ... while the
+# target is null, so a count inside FindTargetForGrinding made a pass r4_empty although a later round (a fresh draw of the
+# random skips: 20 % travel-working, critter, grey odds) returned a target. Now round 0 hands its R4 skips to the caller
+# (the caller's own local, no shared state, no lock) and Calculate counts both once per value pass after its loop:
+# r4_skips= round 0's skips (unchanged: first assist round only), r4_empty= with the pass's final target.
+region("${grind_target}" "Unit* GrindTargetValue::Calculate()\n{" "\n}\n" grind_calc)
+region("${grind_target}" "Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0GapSkipped)\n{" "    return result;\n}\n" grind_find)
+require_text("${grind_calc}" "    uint32 round0GapSkipped = 0;\n    while (!target && assistCount < memberCount)\n    {\n        target = FindTargetForGrinding(assistCount++, round0GapSkipped);\n    }" "round 0's skips into a local of the pass (0 when round 0 returns early)")
+require_text("${grind_calc}" "    if (round0GapSkipped)\n    {\n        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), round0GapSkipped);\n        if (ai::quest_grind_mode::GapR4EmptyPass(round0GapSkipped, target != nullptr))\n            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Empty));\n    }" "r4_skips: round 0's skips in one relaxed add per pass; r4_empty: one more when R4 skipped and the pass's final target is null, in the same block")
+require_order("${grind_calc}" "        target = FindTargetForGrinding(assistCount++, round0GapSkipped);\n    }" "    if (round0GapSkipped)\n    {" "r4_skips= / r4_empty= after every assist round (once per value pass, not per round)")
+region("${grind_calc}" "    while (!target && assistCount < memberCount)\n    {" "\n    }\n" grind_rounds)
+foreach(banned "NoteGrindWindow" "R4Skips" "R4Empty" "GapR4EmptyPass")
+  forbid_text("${grind_rounds}" "${banned}" "a [GrindWindow] count per assist round")
+  forbid_text("${grind_find}" "${banned}" "r4_skips= / r4_empty= counted inside FindTargetForGrinding (per assist round)")
+endforeach()
+# Round 0 alone writes its skips, once, after the candidate loop (the attacker early return and the no-candidate return
+# leave the caller's 0: not counted, as before).
+require_text("${grind_find}" "    if (!assistCount)\n        round0GapSkipped = gapSkipped;\n" "round 0 alone hands over its skips")
+require_order("${grind_find}" "    if (result)\n    {\n        logGrind(result, \"selected.\");" "        round0GapSkipped = gapSkipped;" "round 0's skips handed over after the candidate loop")
+count_text("${grind_find}" "round0GapSkipped" 2 "the out-parameter written at one site only (signature + the hand-over)")
+forbid_text("${attacker_loop}" "round0GapSkipped" "the attacker early return writing the R4 skips")
 # r4_empty= after the candidate loop (the pass's result is final), never inside it (once per pass, not per candidate).
 region("${grind_target}" "    for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)" "    if (result)\n    {\n        logGrind(result, \"selected.\");" candidate_loop)
-foreach(banned "R4Empty" "GapR4EmptyPass" "NoteGrindWindow")
+foreach(banned "R4Empty" "GapR4EmptyPass" "NoteGrindWindow" "round0GapSkipped")
   forbid_text("${candidate_loop}" "${banned}" "a [GrindWindow] count inside the candidate loop (per candidate)")
 endforeach()
-require_order("${grind_target}" "    if (result)\n    {\n        logGrind(result, \"selected.\");" "WindowEvent::R4Empty" "r4_empty= counted after the candidate loop")
 count_text("${grind_target}" "GapR4EmptyPass(" 1 "one r4_empty= rule site")
 count_text("${grind_target}" "WindowEvent::R4Empty" 1 "one r4_empty= count site")
 foreach(src choose travel_mgr choose_target values ai_cpp mgr)
@@ -422,7 +444,14 @@ require_text("${nodest_block}" "            if (ai::quest_grind_mode::GapNoDestD
 foreach(banned "\"quest route failures\"" "\"quest route failed at\"" "SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\"" "NoteTurnInFailure" "NoteQuestIdle")
   forbid_text("${nodest_block}" "${banned}" "an empty window writes no failure (OB-10 rev. 2 point 3)")
 endforeach()
-require_text("${choose_target}" "    Unit* const gapTarget = (ai->IsQuestGapGrind() &&\n        AI_VALUE(TravelTarget*, \"travel target\")->GetGapWindowEnd() > uint32(time(nullptr))) ? GetTarget() : nullptr;" "engaged= GrindMode 1 first, inside a window")
+# Recheck (fix 3, deliberate pin change): an expired gap trip keeps its window end, so the window end alone counted plain
+# engagements after the backoff end (the 30 s grace) as inside a window. engaged= / grey_engaged= also need the quest route
+# backoff still running (R1 open), read like R1 (a per-bot value, no value per creature), behind IsQuestGapGrind, before
+# the attack.
+require_text("${choose_target}" "    Unit* const gapTarget = (ai->IsQuestGapGrind() &&\n        AI_VALUE(TravelTarget*, \"travel target\")->GetGapWindowEnd() > uint32(time(nullptr)) &&\n        uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route backoff until\")))) ? GetTarget() : nullptr;" "engaged= GrindMode 1 first, inside a window and while the backoff runs (R1 open)")
+forbid_text("${choose_target}" "GetGapWindowEnd() > uint32(time(nullptr))) ? GetTarget() : nullptr;" "engaged= on the window end alone (an expired gap trip keeps it)")
+count_text("${choose_target}" "\"quest route backoff until\"" 1 "one backoff read in AttackAnythingAction (engaged=)")
+require_order("${choose_target}" "AI_VALUE2(int, \"manual int\", \"quest route backoff until\")" "    bool result = AttackAction::Execute(event);" "the backoff read before the attack")
 require_text("${choose_target}" "== ai::grind_pick::Source::Grind;" "engaged= the plain grind source only (attackers, victims, quest mobs not counted)")
 require_text("${choose_target}" "std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, \"needed quest entries\");" "one per-bot quest list, no value per creature")
 require_text("${choose_target}" "                if (gapTarget && gapTarget == grindTarget && gapPlain)\n                {\n                    PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Engaged));\n                    if (gapGrey)\n                        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::GreyEngaged));" "engaged= / grey_engaged= after the attack started, same target")
@@ -435,6 +464,10 @@ foreach(src grind_target choose_target)
   forbid_text("${${src}}" "std::mutex" "a lock (${src})")
   forbid_text("${${src}}" "shared_mutex" "a lock (${src})")
 endforeach()
+# Recheck (fix 3): the mode-1 text says the money grind happens only inside the window (27c04733), never the old "never
+# through ... the money grind".
+require_text("${conf}" "#       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, a travel refresh or a group\n#       member's grind trip (the money grind too only inside that window); the grind trip ends with the backoff" "mode-1 text: the money grind only inside the window")
+forbid_text("${conf}" "DirectTargets.FreshGrindFailures, the money grind, a travel" "mode-1 text: the old 'never through ... the money grind' wording")
 require_text("${conf}" "[GrindWindow] minute starts= expired= engaged=\n#       grey_engaged= no_dest= r4_skips= r4_empty= once a minute, not when all are 0 (r4_empty= = grind target\n#       passes in which the level window skipped a candidate and no target was left)." "the minute line documented (OB-10 18.10.: r4_empty=)")
 foreach(src config_h config_cpp)
   forbid_text("${${src}}" "GrindWindow" "a new config key (${src})")
