@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/LootObjectStack.h"
 #include "ChooseTravelTargetAction.h"
+#include "playerbot/BotUpdateTrace.h"   // OB-10 18.10.: NowUs/SinceUs/Prevalidate for "TIME:prevalidate" and [PreValidate]
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
@@ -18,7 +19,9 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
+#include "playerbot/DirectTargetDestinations.h"
 #include "Guild/GuildMgr.h"
+#include "Formulas.h"
 #include <algorithm>
 #include <iomanip>
 #include <map>
@@ -334,6 +337,7 @@ enum class CandidateSkip
     DeathSuppressed,
     QuestLoopSuppressed,
     OtherMapGather,
+    OtherMapGrind,
     GatherPurposeSuppressed,
 };
 
@@ -358,11 +362,96 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
             bot->GetMapId(), position->getMapId()))
         return CandidateSkip::OtherMapGather;
 
+    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2): a gap grind trip stays on the bot's own map (precedent #414 above); a
+    // forced target (guild order) is no gap grind trip. Only the gap grind choice (review C-F2: set only behind IsQuestGapGrind,
+    // never for a quest choice of grind mobs); GrindMode 0 / 2: false before anything else.
+    if (target->IsGapGrindChoice() && position && !target->IsForced() && !ai::quest_grind_mode::GapGrindStaysOnMap(true,
+            (uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::Grind)) != 0, bot->GetMapId(), position->getMapId()))
+        return CandidateSkip::OtherMapGrind;
+
     // #422: a gathering purpose this bot died at twice without a killer.
     if (!target->IsForced() && ai->IsGatherPurposeSuppressed(uint32(destination->GetPurpose()) & gatherPurposes))
         return CandidateSkip::GatherPurposeSuppressed;
 
     return CandidateSkip::None;
+}
+
+// twow-repo#601 S3b (OB-10 rev. 2, Q-B2): the deferrals of SetBestTarget after IsActive as one predicate, in the main
+// loop's order. Side-effect free: the main loop counts and traces its answer per reason (as before); with
+// AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters (and FailureClasses) the local quest hub pre-loop asks the same
+// predicate, so a local candidate the main loop would defer no longer switches the hub filter on (soak 17.10.: 22 of 165
+// L10+ hub_filter rejections). A danger map hit is handed back for the main loop's death_cluster line.
+enum class PostActiveDeferral
+{
+    None,
+    BattlegroundQuest,
+    EnemyZone,
+    CrossMap,
+    ZoneLevel,
+    DangerMap,
+};
+
+PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelDestination* destination,
+    WorldPosition* position, danger_map::DangerMap::Hit& dangerHit)
+{
+    // twow-repo#587 (Z3, AiPlayerbot.ZoneExit.SkipBattlegroundQuests): no battleground quest as a quest-first target.
+    if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())
+        if (QuestTravelDestination const* bgQuest = dynamic_cast<QuestTravelDestination const*>(destination))
+            if (Quest const* bgQuestTemplate = sObjectMgr.GetQuestTemplate(bgQuest->GetQuestId()))
+                if (ai::zone_exit::IsBattlegroundQuestSort(bgQuestTemplate->GetZoneOrSort()))
+                    return PostActiveDeferral::BattlegroundQuest;
+
+    // Checked after IsActive so the area lookup only happens for
+    // the point that was actually selected.
+    if (!target->IsForced() && position && position->isEnemyHomeZoneFor(bot->GetTeam()))
+        return PostActiveDeferral::EnemyZone;
+
+    // #307: a low-level roster bot defers a quest target whose route
+    // is a continent switch or whose zone is clearly above its level,
+    // instead of learning the danger by dying on the way (live: 81
+    // deaths of level 2-4 bots on the Durotar -> Undercity turn-in).
+    if (!target->IsForced() && position && UsesQuestFirstProgression(bot) &&
+        dynamic_cast<QuestTravelDestination const*>(destination))
+    {
+        // Area (sub-zone) level: a zone row such as Redridge has 0, its
+        // Lakeshire sub-area 15. getAreaLevel() resolves the real one.
+        int32 const areaLevel = std::max<int32>(0, position->getAreaLevel());
+        // twow-repo#485: CrossMapContinentsOnly limits the cross-map rule to
+        // a route to the other continent; the tram counts as the Eastern
+        // Kingdoms and an instance as the continent of its entrance.
+        MapEntry const* const botMapEntry = bot->GetMap()->GetMapEntry();
+        MapEntry const* const targetMapEntry = position->getMapEntry();
+        route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
+            bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
+            uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()),
+            sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly,
+            route_danger::IsContinentSwitch(
+                route_danger::ContinentOf(bot->GetMapId(), botMapEntry ? botMapEntry->ghostEntranceMap : -1),
+                route_danger::ContinentOf(position->getMapId(), targetMapEntry ? targetMapEntry->ghostEntranceMap : -1)));
+        if (danger == route_danger::Reason::CrossMap)
+            return PostActiveDeferral::CrossMap;
+        // twow-repo#575 (PATH-01 E5, AiPlayerbot.CustomRaceStartZones): up to level 12 a goblin / high elf
+        // is never deferred by an area level inside its own start zone (sub-areas there are DBC level 5-10)
+        // or, for the goblin, in Sparkwater Port (4021 = 36), where 41169 / 41170 change hands.
+        if (danger == route_danger::Reason::TargetZoneLevel &&
+            !ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), bot->GetLevel(),
+                position->getMapId(), position->getX(), position->getY()))
+            return PostActiveDeferral::ZoneLevel;
+    }
+
+    // #307: shared danger map. Any destination purpose; only roster
+    // bots on their own, never a bot led by a real player.
+    if (!target->IsForced() && position && sPlayerbotAIConfig.dangerMapEnabled &&
+        UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() && position->getMapId() == bot->GetMapId())
+    {
+        dangerHit = danger_map::Instance().Query(bot->GetMapId(),
+            bot->GetPositionX(), bot->GetPositionY(), position->getX(), position->getY(),
+            bot->GetLevel(), uint32(time(nullptr)), DangerMapParams());
+        if (dangerHit.cells)
+            return PostActiveDeferral::DangerMap;
+    }
+
+    return PostActiveDeferral::None;
 }
 
 // twow-repo#601 S1: the route danger rule of SetBestTarget (#307, #485 CrossMapContinentsOnly, #575 start-zone
@@ -424,6 +513,10 @@ bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 qu
 std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* travelTarget)
 {
     using namespace ai::quest_failure_class;
+    // OB-10 18.10. (AiPlayerbot.BotUpdateTrace): the whole call into the [PreValidate] minute line and the trail note
+    // "TIME:prevalidate <us> n=<open> ok=<validated>". Off: no clock read, nothing recorded.
+    bool const tracePrevalidate = sPlayerbotAIConfig.botUpdateTrace;
+    std::uint64_t const prevalidateStartUs = tracePrevalidate ? ai::bot_update::NowUs() : 0;
     AiObjectContext* context = ai->GetAiObjectContext();
     std::set<uint32> validated;
     std::vector<int32> openTurnIns;
@@ -512,6 +605,14 @@ std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* 
 
     SET_AI_VALUE2(std::string, "manual string", CheckedTurnInsValue, checkedList);
     SET_AI_VALUE2(std::string, "manual string", ValidatedTurnInsValue, validatedList);
+    if (tracePrevalidate)
+    {
+        std::uint64_t const us = ai::bot_update::SinceUs(prevalidateStartUs);
+        ai::bot_update::Prevalidate().Add(us, uint32(openTurnIns.size()), uint32(validated.size()));
+        if (ai::Engine* const traceEngine = ai->GetCurrentEngine())
+            traceEngine->TraceNote("TIME:prevalidate %lluus n=%u ok=%u", (unsigned long long)us, uint32(openTurnIns.size()),
+                uint32(validated.size()));
+    }
     return validated;
 }
 
@@ -611,6 +712,11 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         newTarget.SetRelevance(targetRelevance);
     }
 
+    // twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice - only this one gets the R3 window snapshot and the
+    // own-map skip in SetBestTarget; a quest choice of grind mobs keeps the old tests. GrindMode 0 / 2: false, as before.
+    if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))
+        newTarget.SetGapGrindChoice(true);
+
     if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))
     {
         // #416: out of time, not out of targets - the next list goes on.
@@ -619,6 +725,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
+
+        // twow-repo#594 / P3-b: empty Station / Dungeon / Raid requests for [DirectTarget] state=summary.
+        if (ai::direct_targets::AnyBuilt())
+            ai::direct_targets::NoteEmpty(ai, futureTravelPurpose);
 
         if (futureTravelPurpose == "quest")
         {
@@ -688,6 +798,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 // (unless TransientCountsAfter = N and this is the N-th transient rejection in a row).
                 if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
                     SET_AI_VALUE2(int, "manual int", "quest route failures", int(failures));
+                // twow-repo#601 (GrindFallbackMinutes): the time of the last counted empty search, under the same condition.
+                if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
+                    SET_AI_VALUE2(int, "manual int", "quest route failed at", int(uint32(time(nullptr))));
                 // twow-repo#594 / P3-a: one formula - a fresh bot without a rescue in this pass waits FreshBackoffSeconds.
                 bool const shortBackoff = freshBot && !rescueRequested && sPlayerbotAIConfig.directTargetsFreshBackoffSeconds;
                 uint32 const backoff = shortBackoff ?
@@ -773,6 +886,20 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"),
                 uint32(destinationList.size()), lastRejects.movedAway);
 
+        // twow-repo#601 S2 / S4 [GrindWindow] no_dest= (GrindMode 1, OB-10 rev. 2 point 2): the gap filler's grind fetch found no
+        // destination in the window on its own map (R3) - the bot stands until the backoff ends. Once per window (backoff),
+        // never after a trip of that window started. GrindMode 0 / 2: IsQuestGapGrind() is false, nothing read.
+        if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))
+        {
+            int const backoffUntil = std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"));
+            if (ai::quest_grind_mode::GapNoDestDue(uint32(time(nullptr)) < uint32(backoffUntil), backoffUntil,
+                    AI_VALUE2(int, "manual int", "gap window logged"), AI_VALUE2(int, "manual int", "gap window empty")))
+            {
+                SET_AI_VALUE2(int, "manual int", "gap window empty", backoffUntil);
+                PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::NoDest));
+            }
+        }
+
         return false;
     }
 
@@ -818,13 +945,42 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 ai::quest_grind_mode::TargetText("grind_destination", grindEntry > 0 ? uint32(grindEntry) : 0u));
             return false;
         }
-        // Hotfix 8.32 (twow-repo#544): a quest-first bot grinds after empty quest route searches.
-        sLog.outBasic("[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d distance=%.0f",
-            bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"), newTarget.Distance(bot));
+        // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): a gap grind trip. R1 again (the fetch ran async: a backoff that
+        // ended meanwhile takes no grind target, the quest request comes next); R2: the trip's window ends with the backoff
+        // (remaining, at most RouteBackoffMaxSeconds, + 30 s; READY / TRAVEL / WORK), and its expiry is no failure. One
+        // state=grind_window line per window (backoff); state=grind_fallback stays GrindMode 0. GrindMode 0 / 2: as before.
+        if (ai->IsQuestGapGrind())
+        {
+            uint32 const now = uint32(time(nullptr));
+            int const backoffUntil = std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"));
+            if (!ai::quest_grind_mode::GapWindowOpen(now < uint32(backoffUntil), false))
+                return false;
+            newTarget.SetGapWindowEnd(now + ai::quest_grind_mode::GapWindowSeconds(uint32(backoffUntil), now,
+                ai::quest_search::RouteBackoffMaxSeconds));
+            if (backoffUntil != AI_VALUE2(int, "manual int", "gap window logged"))
+            {
+                SET_AI_VALUE2(int, "manual int", "gap window logged", backoffUntil);
+                PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Starts));
+                uint32 const level = bot->GetLevel();
+                sLog.outBasic("%s", ai::quest_grind_mode::FormatGapWindowLine(bot->GetGUIDLow(), level, uint32(backoffUntil) - now,
+                    ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level)),
+                    ai::quest_grind_mode::GapWindowHighLevel(level), bot->GetMapId()).c_str());
+            }
+        }
+        else
+        {
+            // Hotfix 8.32 (twow-repo#544): a quest-first bot grinds after empty quest route searches.
+            sLog.outBasic("[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d distance=%.0f",
+                bot->GetGUIDLow(), bot->GetLevel(), AI_VALUE2(int, "manual int", "quest route failures"), newTarget.Distance(bot));
+        }
         // twow-repo#594 / P3-a: grind targets of fresh bots for [DirectTarget] state=summary.
         if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel))
             ai::quest_search::DirectTargetStats().freshGrind.fetch_add(1, std::memory_order_relaxed);
     }
+
+    // twow-repo#594 / P3-b: [DirectTarget] state=pick, the class cooldown, and for a shore point the "fish spot".
+    if (ai::direct_targets::AnyBuilt())
+        ai::direct_targets::OnChoice(ai, newTarget);
 
     setNewTarget(requester, &newTarget, travelTarget);
     
@@ -1050,7 +1206,8 @@ void ChooseTravelTargetAction::ReportTravelTarget(Player* bot, Player* requester
     bool const gatherTrip = destination && (destination->GetPurpose() == TravelDestinationPurpose::GatherFishing ||
         destination->GetPurpose() == TravelDestinationPurpose::GatherMining ||
         destination->GetPurpose() == TravelDestinationPurpose::GatherHerbalism ||
-        destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning);
+        destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning ||
+        ai::direct_targets::IsSilentTrip(destination));  // twow-repo#594 / P3-b: stations, shore points, entrances
 
     if (gatherTrip)
         ai->TellDebug(requester, out.str(), "debug travel");
@@ -1134,6 +1291,11 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             return known->second;
         return isActive[dest] = dest->IsActive(bot, choiceInfo());
     };
+    // twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice asks IsActive with the R3 window snapshot - one per
+    // choice, the reuse path below; every other choice as before (the flag is set only behind IsQuestGapGrind).
+    bool const gapGrindChoice = target->IsGapGrindChoice();
+    if (gapGrindChoice)
+        choiceTravelInfo.emplace(bot, true);
 
     bool hasTarget = false;
     TravelTarget const* persistentTarget = AI_VALUE(TravelTarget*, "travel target");
@@ -1155,6 +1317,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     // main loop's skip predicate (CandidateSkipOf) before it lets a local candidate switch the hub filter on, and no
     // random range skip happens while the hub filter is on. false = both as before.
     bool const failureClasses = preferLocalQuest && sPlayerbotAIConfig.questFirstProgressionFailureClasses;
+    // twow-repo#601 S3b (AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters, OB-10 rev. 2 Q-B2, only with
+    // FailureClasses): the pre-loop also asks the main loop's post-IsActive deferrals (PostActiveDeferralOf) - no
+    // counter, no trace there. false = the pre-loop as before.
+    bool const hubPreloopSameFilters = failureClasses && sPlayerbotAIConfig.questFirstProgressionHubPreloopSameFilters;
     // twow-repo#601 GrindMode 2 (review): a forced target (the guild Farm / Kill order) never asks IsActive here, in
     // TravelTarget::CheckStatus or by status time, so the order's kill trips (drop or name-matched mobs, bosses,
     // skinning) would be a forced trip to mobs the grind target filter then refuses - the bot parked there while the
@@ -1184,6 +1350,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&
                     (isActive[destination] = true))
                 {
+                    // twow-repo#601 S3b: an active local candidate the main loop defers after IsActive keeps the hub
+                    // filter off; its true IsActive answer above stays known (the main loop defers it the same way).
+                    danger_map::DangerMap::Hit preLoopHit;
+                    if (hubPreloopSameFilters && PostActiveDeferralOf(ai, bot, target, destination, position, preLoopHit) !=
+                            PostActiveDeferral::None)
+                        continue;
                     hasActiveLocalQuestHub = true;
                     break;
                 }
@@ -1232,6 +1404,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 case CandidateSkip::OtherMapGather:
                     ai->TellDebug(requester, "Skipping gathering destination on another map.", "debug travel");
                     ++lastRejects.otherMapGather;
+                    continue;
+                case CandidateSkip::OtherMapGrind:
+                    ai->TellDebug(requester, "Skipping grind destination on another map (GrindMode 1).", "debug travel");
                     continue;
                 case CandidateSkip::GatherPurposeSuppressed:
                     ++lastRejects.deathSuppressed;
@@ -1298,84 +1473,38 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 distanceCheck = false;
             }
 
-            if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot)))))
+            // twow-repo#601 S2 R3 (review C-F2): the gap grind choice takes the reuse path (its window snapshot) with the switch off too.
+            if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (gapGrindChoice ? reuseActive(destination) :
+                (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot))))))
             {
-                // twow-repo#587 (Z3, AiPlayerbot.ZoneExit.SkipBattlegroundQuests): no battleground quest as a quest-first target.
-                if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())
-                    if (QuestTravelDestination const* bgQuest = dynamic_cast<QuestTravelDestination const*>(destination))
-                        if (Quest const* bgQuestTemplate = sObjectMgr.GetQuestTemplate(bgQuest->GetQuestId()))
-                            if (ai::zone_exit::IsBattlegroundQuestSort(bgQuestTemplate->GetZoneOrSort()))
-                            {
-                                ++lastRejects.battlegroundQuest;
-                                continue;
-                            }
-
-                // Checked after IsActive so the area lookup only happens for
-                // the point that was actually selected.
-                if (!target->IsForced() && position && position->isEnemyHomeZoneFor(bot->GetTeam()))
+                // twow-repo#601 S3b: the deferrals after IsActive in one predicate (PostActiveDeferralOf, same order,
+                // counters and traces as before) - the local quest hub pre-loop asks the same one with HubPreloopSameFilters.
+                danger_map::DangerMap::Hit hit;
+                switch (PostActiveDeferralOf(ai, bot, target, destination, position, hit))
                 {
-                    ai->TellDebug(requester, "Skipping " + destination->GetTitle() + " - enemy home zone", "debug travel");
-                    ++lastRejects.enemyZone;
-                    continue;
-                }
-
-                // #307: a low-level roster bot defers a quest target whose route
-                // is a continent switch or whose zone is clearly above its level,
-                // instead of learning the danger by dying on the way (live: 81
-                // deaths of level 2-4 bots on the Durotar -> Undercity turn-in).
-                if (!target->IsForced() && position && UsesQuestFirstProgression(bot) &&
-                    dynamic_cast<QuestTravelDestination const*>(destination))
-                {
-                    // Area (sub-zone) level: a zone row such as Redridge has 0, its
-                    // Lakeshire sub-area 15. getAreaLevel() resolves the real one.
-                    int32 const areaLevel = std::max<int32>(0, position->getAreaLevel());
-                    // twow-repo#485: CrossMapContinentsOnly limits the cross-map rule to
-                    // a route to the other continent; the tram counts as the Eastern
-                    // Kingdoms and an instance as the continent of its entrance.
-                    MapEntry const* const botMapEntry = bot->GetMap()->GetMapEntry();
-                    MapEntry const* const targetMapEntry = position->getMapEntry();
-                    route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
-                        bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
-                        uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()),
-                        sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly,
-                        route_danger::IsContinentSwitch(
-                            route_danger::ContinentOf(bot->GetMapId(), botMapEntry ? botMapEntry->ghostEntranceMap : -1),
-                            route_danger::ContinentOf(position->getMapId(), targetMapEntry ? targetMapEntry->ghostEntranceMap : -1)));
-                    if (danger == route_danger::Reason::CrossMap)
-                    {
+                    case PostActiveDeferral::BattlegroundQuest:
+                        ++lastRejects.battlegroundQuest;
+                        continue;
+                    case PostActiveDeferral::EnemyZone:
+                        ai->TellDebug(requester, "Skipping " + destination->GetTitle() + " - enemy home zone", "debug travel");
+                        ++lastRejects.enemyZone;
+                        continue;
+                    case PostActiveDeferral::CrossMap:
                         ++deferredCrossMap;
                         ++lastRejects.crossMap;
                         continue;
-                    }
-                    // twow-repo#575 (PATH-01 E5, AiPlayerbot.CustomRaceStartZones): up to level 12 a goblin / high elf
-                    // is never deferred by an area level inside its own start zone (sub-areas there are DBC level 5-10)
-                    // or, for the goblin, in Sparkwater Port (4021 = 36), where 41169 / 41170 change hands.
-                    if (danger == route_danger::Reason::TargetZoneLevel &&
-                        !ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), bot->GetLevel(),
-                            position->getMapId(), position->getX(), position->getY()))
-                    {
+                    case PostActiveDeferral::ZoneLevel:
                         ++deferredZoneLevel;
                         ++lastRejects.zoneLevel;
                         continue;
-                    }
-                }
-
-                // #307: shared danger map. Any destination purpose; only roster
-                // bots on their own, never a bot led by a real player.
-                if (!target->IsForced() && position && sPlayerbotAIConfig.dangerMapEnabled &&
-                    UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() && position->getMapId() == bot->GetMapId())
-                {
-                    danger_map::DangerMap::Hit const hit = danger_map::Instance().Query(bot->GetMapId(),
-                        bot->GetPositionX(), bot->GetPositionY(), position->getX(), position->getY(),
-                        bot->GetLevel(), uint32(time(nullptr)), DangerMapParams());
-                    if (hit.cells)
-                    {
+                    case PostActiveDeferral::DangerMap:
                         ++deferredDeathCluster;
                         deathClusterCells += hit.cells;
                         deathClusterWorstKillerLevel = std::max(deathClusterWorstKillerLevel, hit.worstKillerLevel);
                         ++lastRejects.dangerMap;
                         continue;
-                    }
+                    case PostActiveDeferral::None:
+                        break;
                 }
 
                 // twow-repo#601 S1: not while the local quest hub filter is on with FailureClasses (the skip past the one
@@ -1565,6 +1694,15 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
 
     std::vector<TravelTarget*> groupTargets;
 
+    // twow-repo#601 S2 / S4 (GrindMode 1, review C-F3 / B-F2): no group copy of a grind trip for the gap filler's population - a
+    // member's grind destination stays a grind for this bot unless it needs the creature for an active quest itself (one
+    // sorted per-bot list, no value per creature); its own R1 request opens the window (R2 end, R3, own map). GrindMode 0 / 2:
+    // IsQuestGapGrind() is false, nothing read.
+    bool const gapGrind = ai->IsQuestGapGrind();
+    std::vector<int32> gapNeeded;
+    if (gapGrind)
+        gapNeeded = AI_VALUE(std::vector<int32>, "needed quest entries");
+
     PartitionedTravelList travelList;
 
     std::unordered_map<TravelDestination*, std::vector<std::string>> conditions;
@@ -1600,7 +1738,13 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
         if (groupTarget->IsForced())
             continue;
 
-        if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player)) || !groupTarget->IsConditionsActive())
+        if (gapGrind && !ai::quest_grind_mode::GapGroupCopyAllowed(true,
+                dynamic_cast<GrindTravelDestination*>(groupTarget->GetDestination()) != nullptr,
+                std::binary_search(gapNeeded.begin(), gapNeeded.end(), groupTarget->GetDestination()->GetEntry())))
+            continue;
+
+        // twow-repo#601 S2 R3 (review C-F2): a member's gap grind trip (gapWindowEnd, GrindMode 1 only) is judged with its window.
+        if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player, groupTarget->GetGapWindowEnd() != 0)) || !groupTarget->IsConditionsActive())
         {
             GetBotAI(player)->TellDebug(requester,"Target is cooling down because a group member found it to be inactive.", "debug travel");
             groupTarget->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
@@ -1755,6 +1899,12 @@ bool RefreshTravelTargetAction::isUseful()
     if (AI_VALUE(TravelTarget*, "travel target")->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
         return false;
 
+    // twow-repo#601 S2 / S4 R2 (GrindMode 1, review B-F5): no refresh of a gap grind trip, in or after its window - no renewal,
+    // and no READY again on an ended window (that would count expired= twice). gapWindowEnd: GrindMode 1 only. Before the
+    // skip chance (no urand drawn).
+    if (AI_VALUE(TravelTarget*, "travel target")->GetGapWindowEnd())
+        return false;
+
     if (!WorldPosition(bot).isOverworld())
         return false;
 
@@ -1814,6 +1964,13 @@ bool RequestTravelTargetAction::Execute(Event& event)
     if (IsAutonomousRosterTravelBlocked(ai, actionPurpose) && !event.getOwner())
         return false;
 
+    // twow-repo#601 S2 / S4 R1 / R2 (GrindMode 1, recheck of review B-F3, OB-10 18.10.2026): a grind request of the gap filler's
+    // population - isUseful let it through only inside the R1 window, whichever trigger queued it (the money trigger, 6.77,
+    // and the plain one, 6.35, share this action and Queue::Push keeps the event of the higher relevance) - starts the gap
+    // trip with R1 as its condition (GapTripCondition below), never the money condition, so the trip ends with the window.
+    // GrindMode 0 / 2: IsQuestGapGrind() is false, the event source as before.
+    bool const gapGrindRequest = ai->IsQuestGapGrind() && actionPurpose == TravelDestinationPurpose::Grind;
+
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
     bool const enforceGatherLeash = UsesQuestFirstProgression(bot) && ai->HasRealPlayerMaster() &&
         IsGatherLeashPurpose(actionPurpose);
@@ -1821,8 +1978,9 @@ bool RequestTravelTargetAction::Execute(Event& event)
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for " + TravelDestinationPurposeName.at(actionPurpose), "debug travel");
 
+    // twow-repo#601 S2 R3 (review C-F2): the R3 window snapshot only for the grind fetch (and only for the GrindMode 1 scope).
     *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
-        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, purpose = actionPurpose,
+        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot, actionPurpose == TravelDestinationPurpose::Grind), center, purpose = actionPurpose,
             enforceGatherLeash, masterPosition]()
         {
             PartitionedTravelList list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose);
@@ -1847,7 +2005,8 @@ bool RequestTravelTargetAction::Execute(Event& event)
 
     AI_VALUE(TravelTarget*, "travel target")->SetStatus(TravelStatus::TRAVEL_STATUS_PREPARE);
     SET_AI_VALUE2(std::string, "manual string", "future travel purpose", getQualifier());
-    SET_AI_VALUE2(std::string, "manual string", "future travel condition", event.getSource());
+    SET_AI_VALUE2(std::string, "manual string", "future travel condition",
+        ai::quest_grind_mode::GapTripCondition(gapGrindRequest, event.getSource(), uint32(TravelDestinationPurpose::Grind)));
     SET_AI_VALUE2(int, "manual int", "future travel relevance", relevance * 100);
 
     return true;
@@ -1881,6 +2040,14 @@ bool RequestTravelTargetAction::isUseful() {
             ai::quest_grind_mode::TargetText("request_travel_grind", 0));
         return false;
     }
+
+    // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2, OB-10 18.10.2026): no money grind for the gap filler's population outside
+    // its R1 window - a grind fetch only inside it (the need-travel-purpose value), whichever trigger queued the request (the
+    // money trigger, 6.77, or the plain one, 6.35: one basket, Queue::Push); Execute gives the trip R1 as its condition, so it
+    // never outlives the window. Before the skip chance (no urand drawn). GrindMode 0 / 2: IsQuestGapGrind() is false.
+    if (ai->IsQuestGapGrind() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)) &&
+        !AI_VALUE2(bool, "need travel purpose", getQualifier()))
+        return false;
 
     if (!isAllowed())
     {

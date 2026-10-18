@@ -51,7 +51,7 @@ namespace ai
 	{
 	public:
 		PlayerTravelInfo() {};
-		PlayerTravelInfo(Player* player);
+		PlayerTravelInfo(Player* player, bool gapGrind = false);   // twow-repo#601 S2 R3: gapGrind = a GrindMode 1 gap grind fetch / choice / trip
 		
 		const WorldPosition& GetPosition() const { return position; }
 		Team GetTeam() const { return team; }
@@ -70,10 +70,21 @@ namespace ai
 		uint8 GetUint8Value(const std::string& valueName) const { return uint8Values.at(valueName);};
 		uint8 GetUint32Value(const std::string& valueName) const { return uint32Values.at(valueName); };
 
+		// twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit - the creature level window of the gap filler's
+		// population, set in the constructor on the bot thread and read by the async grind fetch only as a value
+		// (GrindTravelDestination::IsPossible, TravelMgr::IsLocationLevelValid). 0 / 0 = no window: every other bot, GrindMode 0 / 2,
+		// and every snapshot that is not for a gap grind (review C-F2: a quest objective fetch, choice or trip to grind mobs keeps
+		// the old template test and area gate; only the gap grind fetch, its choice and the gap trip pass gapGrind).
+		bool HasGapWindow() const { return gapWindowHigh != 0; }
+		uint32 GetGapWindowLow() const { return gapWindowLow; }
+		uint32 GetGapWindowHigh() const { return gapWindowHigh; }
+
 	private:
 		WorldPosition position;
 		Team team = TEAM_NONE;
 		uint32 level = 0;
+		uint32 gapWindowLow = 0;    // twow-repo#601 S2 R3: 0 / 0 for every bot but the GrindMode 1 population
+		uint32 gapWindowHigh = 0;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };
 		uint8 groupSize = 0;
@@ -143,6 +154,9 @@ namespace ai
 		void SetExpireFast() { expireDelay = 60000; } //1 minute
 		void SetCooldownShort() { cooldownDelay = 1000; } //1 second
 		void SetCooldownLong() { cooldownDelay = 300000; } //5 minutes
+		// twow-repo#594 / P3-b: the arrival radius of the direct-target destinations (station 2, entrance 3 yd); the default stays
+		// INTERACTION_DISTANCE and no other destination calls it.
+		void SetRadiusMin(float r) { radiusMin = r; }
 		virtual std::vector<std::string> GetTravelConditions() const { return {}; }
 
 		virtual bool IsOut(const WorldPosition& pos, float radius = 0) const { return !OnMap(pos) || DistanceTo(pos) > (radius ? radius : radiusMax); }
@@ -402,6 +416,14 @@ namespace ai
 		void SetExpireIn(uint32 expireMs) { statusTime = GetExpiredTime() + expireMs; }
 		void SetForced(bool forced1) { forced = forced1; }
 		void SetGroupCopy(GuidPosition member) { groupMember = member; }
+		// twow-repo#601 S2 / S4 R2 (GrindMode 1): a gap grind trip ends with its quest route backoff - READY, TRAVEL and WORK
+		// get the time left until this end (time(nullptr) seconds, 0 = none); its expiry counts as no failure.
+		void SetGapWindowEnd(uint32 windowEnd) { gapWindowEnd = windowEnd; }
+		uint32 GetGapWindowEnd() const { return gapWindowEnd; }
+		// twow-repo#601 S2 R3 (GrindMode 1, review C-F2): this choice is the gap grind choice (set by ChooseTravelTargetAction on the
+		// new target only, never copied) - the R3 window snapshot and the own-map skip apply to it, not to a quest choice.
+		void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }
+		bool IsGapGrindChoice() const { return gapGrindChoice; }
 
 		void IncRetry(bool isMove) { if (isMove) moveRetryCount+=2; else extendRetryCount++; }
         void DecRetry(bool isMove);
@@ -458,6 +480,8 @@ namespace ai
 
 		uint32 startTime = WorldTimer::getMSTime();
 		uint32 statusTime = 0;
+		uint32 gapWindowEnd = 0;   // twow-repo#601 S2 / S4 R2: 0 for every target but a GrindMode 1 gap grind trip
+		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
 
 		bool forced = false;
 		bool visitor = true;
@@ -485,7 +509,15 @@ namespace ai
         turnin_park::Book turnInParks;
         // twow-repo#601 S1: quests abandoned after two structural parks (at most 8, in memory only).
         turnin_park::AbandonMarks abandonedTurnIns;
+        // twow-repo#601 S3c (ZoneExit.TurnInTravelStall): quests of the last turn-in work timeouts (at most 8, in memory only).
+        turnin_recovery::WorkTimeoutRing workTimeoutTurnIns;
         void OnWorkTimeout();
+        // twow-repo#601 S3c (ZoneExit.TurnInTravelStall): a stage-1 or stage-2 stall inside the near zone of the taker
+        // parks the turn-in (structural_unreachable_near), logs [UnreachableTarget] reason=near_stall and leaves the
+        // target (not parked: the route suppression and cooldown).
+        void OnNearTurnInStall(uint32 questId);
+        // S3c: switch on, a finished quest's turn-in, the bot inside TurnInNearRadius of the taker on its map.
+        bool IsNearTurnInStall();
 	};
 
 	//General container for all travel destinations.
@@ -505,6 +537,9 @@ namespace ai
 		void GetFishLocations();
 		void GetFishLocations(uint32 mapId, bool routeAllowed);  // twow-repo#592: routeAllowed = unitless generation gate open
 		void SaveFishLocations();
+		// twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking / Fishing / Dungeon / Raid, default 0): the direct-target
+		// destinations, built once at boot (DirectTargetLoader.cpp); nothing with every class switch 0.
+		void LoadDirectTargets(EntryGuidps const& guidpMap);
 
 		WorldPosition* GetFishSpot(WorldPosition start, bool onlyNearestGrid = false);
 
@@ -513,7 +548,7 @@ namespace ai
 
 		DestinationList GetDestinations(const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, const std::vector<int32>& entries = {}, bool onlyPossible = true, float maxDistance = 10000.0f) const;
 		void GetPartitionsLock(bool getLock = true);
-		static bool IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None);
+		static bool IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, bool gapWindowApplies = true);   // twow-repo#601 S2 R3: false = no GrindMode 1 window (fetches without IsPossible)
 		PartitionedTravelList GetPartitions(const WorldPosition& center, const std::vector<uint32>& distancePartitions, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, const std::vector<int32>& entries = {}, bool onlyPossible = true, float maxDistance = 10000.0f) const;
 		static void ShuffleTravelPoints(std::vector<TravelPoint>& points);
 
@@ -570,6 +605,8 @@ namespace ai
 
 		GatherTravelDestination fishMap;
 		std::list<AsyncGuidPosition> fishPoints;
+		// twow-repo#594 / P3-b: the snapped points of the direct-target destinations (never in pointsMap).
+		std::list<AsyncGuidPosition> directPoints;
 		std::unordered_map<uint32, int32> areaLevels;
 		// #416 (7.3): areaLevels is read from the map threads and the destination jobs.
 		std::recursive_mutex areaLevelMutex;

@@ -1,7 +1,8 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#601 GrindMode (owner decision 17.10.2026 via OB-00, strict: "lieber herumstehen und nichts tun als grinden").
 # AiPlayerbot.QuestFirstProgression.GrindMode, restart-only, default 0. Pins:
-#  - the pure policy QuestGrindModePolicy.h (mode 1 == mode 0 until S4, population, targets, reasons, bounded log),
+#  - the pure policy QuestGrindModePolicy.h (population, targets, reasons, bounded log; mode 1 = the S2 / S4 gap filler,
+#    pinned here only as far as modes 0 / 2 stay untouched - its own rules: grind_gap_window_source_contract_tests),
 #  - every blocked grind path with GrindMode 2:
 #      1 the 8.32 fallback NeedTravelPurposeValue(Grind)            -> reason fallback
 #      2 the money grind / plain grind request (RequestTravelTarget) -> reason money (or fallback)
@@ -126,14 +127,35 @@ foreach(member "near" "far" "min" "max")
   forbid_text("${policy}" " ${member} =" "member named ${member} (windows.h macro)")
 endforeach()
 
-# ---- 1. Modes: 0 = today, 1 = reserved (== 0 until S4), 2 = no grind -------------------------------
+# ---- 1. Modes: 0 = today, 1 = gap filler (S2 / S4), 2 = no grind ------------------------------------
+# twow-repo#601 S2 / S4 (OB-10 rev. 2, 18.10.2026): mode 1 is no longer reserved. Deliberately changed pins: ModeGapFiller
+# is used by its own helper GapFiller() (count 2), the reserved texts are gone. Replacement: mode 1 acts only through
+# quest_grind_mode::GapFiller(mode) inside PlayerbotAI::IsQuestGapGrind() (one read), asked at counted sites only;
+# NoGrind() (every mode-2 rule) stays mode 2 alone, so GrindMode 0 / 2 keep their exact behaviour.
 require_text("${policy}" "constexpr std::uint32_t ModeNoGrind = 2;" "mode 2 = no grind")
-require_text("${policy}" "constexpr std::uint32_t ModeGapFiller = 1;   // reserved for S2 / S4, acts like ModeToday until then" "mode 1 reserved")
-require_text("${policy}" "inline bool NoGrind(std::uint32_t grindMode)\n{\n    return grindMode == ModeNoGrind;\n}" "only mode 2 changes anything (1 == 0)")
-count_text("${policy}" "ModeGapFiller" 1 "mode 1 has no rule of its own until S4")
+require_text("${policy}" "constexpr std::uint32_t ModeGapFiller = 1;   // S2 / S4: grind only inside the quest route backoff (GapFiller)" "mode 1 = gap filler")
+require_text("${policy}" "inline bool NoGrind(std::uint32_t grindMode)\n{\n    return grindMode == ModeNoGrind;\n}" "the mode-2 rules stay mode 2 alone (never mode 1)")
+require_text("${policy}" "inline bool GapFiller(std::uint32_t grindMode)\n{\n    return grindMode == ModeGapFiller;\n}" "mode 1 has one test of its own")
+count_text("${policy}" "ModeGapFiller" 2 "mode 1: the constant and GapFiller() only")
+count_text("${ai_cpp}" "ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode)" 1 "mode 1 read once (IsQuestGapGrind)")
+foreach(src travel_mgr values grind_target choose grind_strategy choose_target)
+  forbid_text("${${src}}" "GapFiller(" "a mode-1 config test outside IsQuestGapGrind (${src})")
+endforeach()
+# S2 / S4 commit 2: the [GrindWindow] minute line is gated by GrindMode 1 alone on the world thread (no bot there), the
+# same way ReportQuestIdle is gated by NoGrind() - one GapFiller(config) read in the manager, nowhere else.
+count_text("${mgr}" "ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode)" 1 "mode 1 read once in the manager ([GrindWindow] minute gate)")
+count_text("${mgr}" "GapFiller(" 1 "no other mode-1 test in the manager")
+count_text("${values}" "ai->IsQuestGapGrind()" 1 "mode-1 sites in TravelValues: R1 (Grind purpose)")
+count_text("${choose}" "ai->IsQuestGapGrind()" 6 "mode-1 sites in the choose file: the grind branch (R2, window line), the grind request (no money grind); S2 commit 2: no_dest; review fixes: the gap grind choice flag (own map in CandidateSkipOf reads it), no group grind copy, the gap request (R1 as the trip condition, recheck)")
+count_text("${travel_mgr}" "ai->IsQuestGapGrind()" 1 "mode-1 sites in TravelMgr: S2 commit 2 the R3 scope bit (PlayerTravelInfo, bot thread)")
+count_text("${grind_target}" "ai->IsQuestGapGrind()" 1 "mode-1 sites in GrindTargetValue: S2 commit 2 R4 / R5, once per pass")
+count_text("${choose_target}" "ai->IsQuestGapGrind()" 1 "mode-1 sites in AttackAnythingAction: S2 commit 2 [GrindWindow] engaged=")
+foreach(src grind_strategy mgr)
+  forbid_text("${${src}}" "IsQuestGapGrind" "a mode-1 site outside this stage's gap window rules (${src})")
+endforeach()
 foreach(src ai_cpp mgr travel_mgr values grind_target choose grind_strategy)
-  forbid_text("${${src}}" "ModeGapFiller" "a mode-1 branch before S4 (${src})")
-  forbid_text("${${src}}" "questFirstProgressionGrindMode == 1" "a mode-1 branch before S4 (${src})")
+  forbid_text("${${src}}" "ModeGapFiller" "a mode-1 test outside GapFiller() (${src})")
+  forbid_text("${${src}}" "questFirstProgressionGrindMode == 1" "a mode-1 test outside GapFiller() (${src})")
   forbid_text("${${src}}" "questFirstProgressionGrindMode == 2" "a mode test outside NoGrind() (${src})")
   forbid_text("${${src}}" "questFirstProgressionGrindMode != 0" "a mode test outside NoGrind() (${src})")
 endforeach()
@@ -310,7 +332,10 @@ require_text("${config_cpp}" "\n    questFirstProgressionGrindMode = config.GetI
 require_text("${conf}" "\nAiPlayerbot.QuestFirstProgression.GrindMode = 0\n" "documented with 0")
 forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 1" "shipped as 1")
 forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 2" "shipped as 2")
-require_text("${conf}" "#   1 = RESERVED for the gap filler of stages S2/S4; until then exactly like 0." "mode 1 documented as reserved")
+# twow-repo#601 S2 / S4: mode 1 documented (deliberately replaces the RESERVED text); the default stays 0 (above).
+forbid_text("${conf}" "RESERVED for the gap filler" "mode 1 still documented as reserved")
+require_text("${conf}" "#   1 = gap filler (twow-repo#601 S2/S4, OB-10 rev. 2): the bots of 2 (below) grind only while their quest route\n#       backoff runs" "mode 1 documented")
+require_text("${conf}" "\n#   0 = today's behaviour (default).\n#   1 = gap filler" "mode 0 text unchanged")
 require_order("${conf}" "AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0" "AiPlayerbot.QuestFirstProgression.GrindMode = 0" "documented next to the S1 keys")
 
 # ---- 12. S1 recheck nit: the abandon mark on every autonomous accept path ---------------------------
@@ -351,12 +376,12 @@ endforeach()
 require_text("${rpg_explore_cases}" "        return ai->HasStrategy(\"explore\", BotState::BOT_STATE_NON_COMBAT);" "Explore unchanged")
 require_text("${rpg_explore_cases}" "        if (rpgPhase < 15) //Only last 45 minutes of the hour allow generic rpg." "GenericRpg unchanged")
 # The policy is used only where this round put it (a NoGrind(config) gate elsewhere in these files fails the count).
-count_text("${travel_mgr}" "quest_grind_mode::" 1 "policy uses in TravelMgr (the grind destination filter)")
-count_text("${values}" "quest_grind_mode::" 2 "policy uses in TravelValues (the fallback note)")
-count_text("${grind_target}" "quest_grind_mode::" 4 "policy uses in GrindTargetValue (filter, note)")
+count_text("${travel_mgr}" "quest_grind_mode::" 10 "policy uses in TravelMgr (the grind destination filter; S2 / S4: the R2 status time; commit 2: R3 scope bit 2, IsPossible, IsLocationLevelValid, expired=; review fixes: the R2 cooldown cap, expired= at a condition end; OB-10 review #552: the area gate death term)")
+count_text("${values}" "quest_grind_mode::" 3 "policy uses in TravelValues (the fallback note; S2 / S4: R1)")
+count_text("${grind_target}" "quest_grind_mode::" 10 "policy uses in GrindTargetValue (filter, note; S2 commit 2: R4 window 2, R4 skip, r4_skips=; OB-10 18.10.: r4_empty= rule and count)")
 count_text("${grind_strategy}" "quest_grind_mode::" 4 "policy uses in GrindingStrategy (init, multiplier)")
-count_text("${choose}" "quest_grind_mode::" 10 "policy uses in the choose file (grind branch, request, forced kill trip, episode reset, idle class)")
-count_text("${mgr}" "quest_grind_mode::" 1 "policy uses in RandomPlayerbotMgr (minute report)")
+count_text("${choose}" "quest_grind_mode::" 21 "policy uses in the choose file (grind branch, request, forced kill trip, episode reset, idle class; S2 / S4: R1 again, R2 window, grind_window line; commit 2: own map, starts=, no_dest= 2; review fixes: no group grind copy; recheck: the gap trip condition replaces the money refusal 2 -> 1)")
+count_text("${mgr}" "quest_grind_mode::" 2 "policy uses in RandomPlayerbotMgr (minute reports: [QuestIdle], S2 / S4 [GrindWindow])")
 # Every [QuestIdle] reason site, and no more: a note per candidate (e.g. in GrindTravelDestination::IsActive, probe R15)
 # would inflate the minute counter. The IsActive filter stays silent (the requests carry the reason).
 count_text("${travel_mgr}" "NoteQuestIdle(" 0 "no note in TravelMgr (silent per-candidate filter)")

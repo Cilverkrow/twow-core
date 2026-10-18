@@ -1,12 +1,15 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeStallAbandon
 #include "playerbot/PathUnitlessBotPolicy.h"
 #include "playerbot/UnreachableTargetPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
 #include <algorithm>
 #include <vector>
 #include <iomanip>
@@ -21,6 +24,8 @@
 #include "ObjectAccessor.h"
 #include "playerbot/HomeBindPolicy.h"
 #include "playerbot/RidingStagesBotPolicy.h"
+#include "playerbot/DirectTargetDestinations.h"
+#include "Formulas.h"
 
 using namespace ai;
 using namespace MaNGOS;
@@ -28,7 +33,7 @@ using namespace MaNGOS;
 // Penqle's Singleton<> requires an explicit instantiation in a .cpp file.
 INSTANTIATE_SINGLETON_1(ai::TravelMgr);
 
-PlayerTravelInfo::PlayerTravelInfo(Player* player)
+PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
 {
     PlayerbotAI* ai = GetBotAI(player);
     AiObjectContext* context = ai->GetAiObjectContext();
@@ -62,6 +67,17 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player)
 
     for (auto& [valueName, value] : uint32Values)
         value = AI_VALUE(uint32, valueName);
+
+    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit, here on the bot thread - only the gap filler's
+    // population gets its creature level window [max(gray + 1, L - 5), L + 1]; the async grind fetch reads it only as a
+    // value. GrindMode 0 / 2 and every other bot: 0 / 0 (IsQuestGapGrind reads the config first). Only a snapshot for a gap
+    // grind (gapGrind: the grind fetch, its choice, the gap trip; review C-F2) - a quest objective fetch, choice or trip to grind
+    // mobs keeps the old template test and area gate.
+    if (ai->IsQuestGapGrind() && gapGrind)
+    {
+        gapWindowLow = ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level));
+        gapWindowHigh = ai::quest_grind_mode::GapWindowHighLevel(level);
+    }
 }
 
 std::string EntryTravelDestination::GetShortName() const
@@ -182,6 +198,10 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
         // structural parks - it would be taken, parked and abandoned again every hour.
         if (sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked && !ai->HasRealPlayerMaster() &&
             AI_VALUE(TravelTarget*, "travel target")->IsStructurallyAbandoned(GetQuestId()))
+            return false;
+
+        // twow-repo#601 S3a (QuestFeasibility.Enable): no trip to a skipped quest's giver; never the taker (rev. 2).
+        if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(GetQuestTemplate(), ai::quest_feasibility::Path::Giver))
             return false;
 
         if (!bot->GetMap()->IsContinent())
@@ -636,12 +656,19 @@ bool GrindTravelDestination::IsPossible(const PlayerTravelInfo& info) const
 
     int32 maxLevel = std::max(botLevel * (0.5f + levelMod), botLevel - 5.0f + levelBoost);
 
-    if ((int32)cInfo->MaxLevel > maxLevel) //@lvl5 max = 3, @lvl60 max = 57
+    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the gap filler's population grinds where the template MaxLevel
+    // is inside [max(gray + 1, L - 5), L + 1] instead of the durability window below (money and elite tests stay). The
+    // window is a value of the snapshot, set on the bot thread (PlayerTravelInfo); every other bot: the old window.
+    bool const gapWindow = info.HasGapWindow();
+    if (gapWindow && !ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(), info.GetGapWindowHigh(), cInfo->MaxLevel))
+        return false;
+
+    if (!gapWindow && (int32)cInfo->MaxLevel > maxLevel) //@lvl5 max = 3, @lvl60 max = 57
         return false;
 
     int32 minLevel = std::max(botLevel * (0.4f + levelMod), botLevel - 12.0f + levelBoost);
 
-    if ((int32)cInfo->MaxLevel < minLevel) //@lvl5 min = 3, @lvl60 max = 50
+    if (!gapWindow && (int32)cInfo->MaxLevel < minLevel) //@lvl5 min = 3, @lvl60 max = 50
         return false;
 
     if (cInfo->MinLootGold == 0)
@@ -925,8 +952,18 @@ TravelTarget::TravelTarget(PlayerbotAI* ai) : AiObject(ai)
 }
 
 void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {
+    // twow-repo#594 / P3-b: a direct-target trip ends where its target leaves the destination - a reset (null target),
+    // a group copy, any new choice ([DirectTarget] state=trip_end).
+    if (ai::direct_targets::AnyBuilt())
+        ai::direct_targets::OnTargetChange(ai, tDestination, tDestination1);
+
     if (dynamic_cast<TemporaryTravelDestination*>(tDestination) && tDestination1 != tDestination)
         delete tDestination;
+
+    // twow-repo#601 S2 / S4 R2: a gap grind window belongs to its destination; another one (world buff, go, null target)
+    // never inherits it. The refresh keeps the destination and so the window end (no renewal). CopyTarget sets it again.
+    if (tDestination1 != tDestination)
+        gapWindowEnd = 0;
 
     wPosition = wPosition1;
     tDestination = tDestination1;
@@ -1005,6 +1042,9 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
         TraceQuestCommit(oldQuest, "drop", "replaced_by_non_quest_target");
 
     SetTarget(target->tDestination, target->wPosition);
+    // twow-repo#601 S2 / S4 R2: the choice's window end (0 for every target but a GrindMode 1 gap grind trip); setNewTarget
+    // sets READY next, which applies it.
+    gapWindowEnd = target->gapWindowEnd;
     groupMember = target->groupMember;
     forced = target->forced;
     relevance = target->relevance;
@@ -1022,6 +1062,11 @@ uint32 TravelTarget::GetMaxTravelTime() const
 }
 
 void TravelTarget::SetStatus(TravelStatus status) {
+    // twow-repo#594 / P3-b: a direct-target trip also ends where its target goes into cooldown, expires or is cleared on it
+    // (destination inactive, work time out, a gathering purpose ended, a reset).
+    if (ai::direct_targets::AnyBuilt())
+        ai::direct_targets::OnTargetStatus(ai, tDestination, status);
+
     m_status = status;
     startTime = WorldTimer::getMSTime();
 
@@ -1048,6 +1093,19 @@ void TravelTarget::SetStatus(TravelStatus status) {
         statusTime = tDestination->GetCooldownDelay();
     default: break;
     }
+
+    // twow-repo#601 S2 / S4 R2 (GrindMode 1, OB-10 rev. 2): a gap grind trip ends with its quest route backoff - READY,
+    // TRAVEL and WORK get the time left until the window end (at most RouteBackoffMaxSeconds + 30 s), so the request gate
+    // opens and the next quest search runs. gapWindowEnd is 0 for every other target: nothing changes there.
+    if (gapWindowEnd && (m_status == TravelStatus::TRAVEL_STATUS_READY || m_status == TravelStatus::TRAVEL_STATUS_TRAVEL ||
+            m_status == TravelStatus::TRAVEL_STATUS_WORK))
+        statusTime = ai::quest_grind_mode::GapStatusMs(statusTime, gapWindowEnd, uint32(time(nullptr)),
+            ai::quest_search::RouteBackoffMaxSeconds);
+    // twow-repo#601 S2 / S4 R2 (review C-F1 / B-F1): a COOLDOWN of a gap grind trip (move retries, a group member's check) never
+    // outlives the window either - the shorter of the cooldown and the time left. Counted as no expiry, no failure here.
+    else if (gapWindowEnd && m_status == TravelStatus::TRAVEL_STATUS_COOLDOWN)
+        statusTime = ai::quest_grind_mode::GapCooldownMs(statusTime, gapWindowEnd, uint32(time(nullptr)),
+            ai::quest_search::RouteBackoffMaxSeconds);
 }
 
 bool TravelTarget::IsProgressAwareTurnIn() const
@@ -1107,6 +1165,10 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
     // twow-repo#485: the suppression key is the target's map, the one that
     // IsTurnInRouteSuppressed is asked with; mapId above stays the bot's map.
     observation.targetMapId = wPosition->getMapId();
+    // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall): near a finished quest's taker only getting closer is
+    // progress (turnin_recovery::Observe). Objectives and the switch off: no near zone, as before.
+    if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())
+        observation.nearRadius = sPlayerbotAIConfig.zoneExitTurnInNearRadius;
 
     // Hotfix 8.13 (twow-repo#497): for a target on another map only a shorter distance counts.
     uint32 const targetMapId = observation.targetMapId;
@@ -1120,6 +1182,8 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
             observation.questId, observation.distance, transportStall.minutes);
         if (transportStep == transport_stall::Step::Abandon)
         {
+            if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=stall_abandon for a running episode
+                MovementAction::TraceTransportEdgeStallAbandon(ai);
             turnInRecovery.suppressedEntry = observation.targetEntry;
             turnInRecovery.suppressedMapId = targetMapId;
             turnInRecovery.suppressUntil = observation.now + transport_stall::CooldownMs;
@@ -1213,6 +1277,18 @@ void TravelTarget::OnWorkTimeout()
     // "Bitter Rivals", whose taker only a script spawns - 510 work timeouts, 0 turn-ins).
     if (IsProgressAwareTurnIn())
     {
+        // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, OB-10 rev. 2 Q-B4): the second work timeout of the
+        // same turn-in parks it at once (soak: bot 216 at the Azora taker, no line of sight through the door). Not
+        // abandonable: a finished quest is never dropped for it (the series of abandonable parks ends here, S1).
+        if (sPlayerbotAIConfig.zoneExitTurnInTravelStall)
+        {
+            uint32 const questId = static_cast<QuestTravelDestination*>(tDestination)->GetQuestId();
+            if (turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId))
+            {
+                bool abandonDue = false;
+                ParkTurnInNow(questId, "structural_work_timeout", false, abandonDue);
+            }
+        }
         NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "work_timeout");
         return;
     }
@@ -1395,6 +1471,10 @@ void TravelTarget::OnMoveRetryCooldown()
     // no logged start).
     TraceQuestCommit(tDestination, "blocked", "move_retry_cooldown");
 
+    // twow-repo#594 / P3-b: a direct-target destination the bot could not move to (failure memory, trip end).
+    if (ai::direct_targets::AnyBuilt())
+        ai::direct_targets::OnTravelFailure(ai, tDestination, "move_retry");
+
     if (!IsProgressAwareTurnIn())
         return;
 
@@ -1442,7 +1522,9 @@ bool TravelTarget::IsDestinationActive()
     if (!GetBotAI(player)) //No ai so clear target.
         return false;
 
-    return tDestination->IsActive(player, PlayerTravelInfo(player));
+    // twow-repo#601 S2 R3 (review C-F2): the R3 window only for a gap grind trip (gapWindowEnd, GrindMode 1 only), never for a
+    // quest trip to grind mobs.
+    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0));
 }
 
 bool TravelTarget::IsConditionsActive(bool clear)
@@ -1479,6 +1561,53 @@ bool TravelTarget::IsConditionsActive(bool clear)
     return true;
 }
 
+void TravelTarget::OnNearTurnInStall(uint32 questId)
+{
+    // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, OB-10 rev. 2 Q-B3): the bot stalled inside the near
+    // zone of the taker (Azora: every path ends at the tower wall, MoveTo stays untouched - PATH-02). The turn-in is
+    // parked at once like an S1 structural class, so the choice skips the taker for TurnInParkSeconds and the rescue
+    // reset does not send the bot back (the park book is not reset there). Not abandonable: a finished quest whose
+    // taker is out of reach keeps its reward, it is only parked again (OB-10, design S3c 2).
+    bool abandonDue = false;
+    bool const parked = ParkTurnInNow(questId, "structural_unreachable_near", false, abandonDue);
+    // The Z4 line in its format, so CLI-PATH gets the near takers in [UnreachableTop] as with stage1_recompute.
+    float const dx = wPosition ? wPosition->getX() : 0.0f, dy = wPosition ? wPosition->getY() : 0.0f, dz = wPosition ? wPosition->getZ() : 0.0f;
+    uint32 const dmap = wPosition ? wPosition->getMapId() : bot->GetMapId();
+    // switch= stays the Z4 key (TurnInStallCounts) as on every [UnreachableTarget] line; travel_stall= is this S3c switch
+    // (review HR-2: parked=1 with switch=0 is a near_stall park, not a Z4 one).
+    sLog.outBasic("[UnreachableTarget] bot=%u level=%u quest=%u entry=%d kind=turn_in map=%u zone=%u dest_map=%u dest_x=%.1f dest_y=%.1f dest_z=%.1f reason=near_stall parked=%u switch=%u travel_stall=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), bot->GetMapId(), bot->GetZoneId(), dmap, dx, dy, dz,
+        parked ? 1u : 0u, sPlayerbotAIConfig.zoneExitTurnInStallCounts ? 1u : 0u, sPlayerbotAIConfig.zoneExitTurnInTravelStall ? 1u : 0u);
+    unreachable_target::Key const key = unreachable_target::KeyOf(tDestination->GetEntry(), dmap, dx, dy);
+    unreachable_target::ShortWindow().Add(key, questId, bot->GetGUIDLow());
+    unreachable_target::LongWindow().Add(key, questId, bot->GetGUIDLow());
+
+    // Leave the target, no READY -> TRAVEL on the same taker. Parked: the choice skips it now. Not parked (parking
+    // off, or not a roster bot on its own): the stage-2 route suppression and cooldown at once (review F3), so the bot
+    // does not come straight back to the same taker.
+    TraceQuestCommit(tDestination, "abandon", "near_stall");
+    if (parked)
+    {
+        // A trip after the park starts with a fresh observation (no stage 2 straight away).
+        turnInRecovery.ResetProgress();
+        SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+        return;
+    }
+    turnInRecovery.suppressedEntry = uint32(tDestination->GetEntry());
+    turnInRecovery.suppressedMapId = dmap;
+    turnInRecovery.suppressUntil = WorldTimer::getMSTime() + sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS;
+    SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+    SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
+}
+
+bool TravelTarget::IsNearTurnInStall()
+{
+    // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall): switch first, then a finished quest's turn-in with the
+    // bot inside TurnInNearRadius of the taker on its map. Asked for a stage-1 and (review F4) a stage-2 stall alike.
+    return sPlayerbotAIConfig.zoneExitTurnInTravelStall && wPosition && IsProgressAwareTurnIn() &&
+        turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius);
+}
+
 void TravelTarget::CheckStatus()
 {
     if (!IsActive())
@@ -1511,8 +1640,19 @@ void TravelTarget::CheckStatus()
             GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ? "status_time_exceeded_travel" :
             GetStatus() == TravelStatus::TRAVEL_STATUS_WORK ? "status_time_exceeded_work" :
             GetStatus() == TravelStatus::TRAVEL_STATUS_COOLDOWN ? "status_time_exceeded_cooldown" : "status_time_exceeded");
-        if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK)
+        // twow-repo#601 S2 / S4 R2 (OB-10 rev. 2 point 3): the end of a gap grind window is no failure - no work timeout,
+        // so no turn-in, quest loop or work-timeout count (gapWindowEnd is 0 for every other target).
+        if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK && !gapWindowEnd)
             OnWorkTimeout();
+        // twow-repo#601 S2 / S4 [GrindWindow] expired= (OB-10 rev. 2): a gap grind trip ended by its window end (READY, TRAVEL
+        // or WORK carry the window time; gapWindowEnd is set only for the GrindMode 1 population). A relaxed count, no failure.
+        if (gapWindowEnd && (GetStatus() == TravelStatus::TRAVEL_STATUS_READY || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ||
+                GetStatus() == TravelStatus::TRAVEL_STATUS_WORK))
+            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));
+        // twow-repo#594 / P3-b: a direct-target trip out of travel time is a failure of its destination (out of work time
+        // it ends in SetStatus).
+        if (ai::direct_targets::AnyBuilt() && GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL)
+            ai::direct_targets::OnTravelFailure(ai, tDestination, "expired");
         SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         ai->GetAiObjectContext()->ClearValues("no active travel destinations");
         return;
@@ -1534,6 +1674,14 @@ void TravelTarget::CheckStatus()
 
             ai->TellDebug(ai->GetMaster(), "The target is starting to work because the destination has been reached.", "debug travel");
             TraceQuestCommit(tDestination, "progress", "arrived");
+            // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, review F1): the arrival ends this trip's
+            // observation, so the next trip to the same taker (after a work timeout; #329 keeps the state on a re-pick)
+            // starts a fresh stall window instead of a stale one that stalls it at once. Off: as before.
+            if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())
+                turnInRecovery.ResetProgress();
+            // twow-repo#594 / P3-b: arrivals of the direct-target destinations (failure memory, hole_present for fishing).
+            if (ai::direct_targets::AnyBuilt())
+                ai::direct_targets::OnArrive(tDestination, ai, wPosition);
             SetStatus(TravelStatus::TRAVEL_STATUS_WORK);
             return;
         }
@@ -1555,6 +1703,13 @@ void TravelTarget::CheckStatus()
                 if (IsProgressAwareTurnIn())
                 {
                     uint32 const questId = static_cast<QuestTravelDestination*>(tDestination)->GetQuestId();
+                    // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall): inside the near zone the stall ends the
+                    // trip - structural park, [UnreachableTarget] reason=near_stall, the target is left. Off: as before.
+                    if (IsNearTurnInStall())
+                    {
+                        OnNearTurnInStall(questId);
+                        return;
+                    }
                     bool const parked = sPlayerbotAIConfig.zoneExitTurnInStallCounts && NoteTurnInFailure(questId, "stall_recompute");
                     float const dx = wPosition ? wPosition->getX() : 0.0f, dy = wPosition ? wPosition->getY() : 0.0f, dz = wPosition ? wPosition->getZ() : 0.0f;
                     uint32 const dmap = wPosition ? wPosition->getMapId() : bot->GetMapId();
@@ -1572,6 +1727,14 @@ void TravelTarget::CheckStatus()
                     sLog.outBasic("[QuestFirstRoute] state=recovery_stage2 bot=%u quest=%u target_entry=%d action=suppress_route_cooldown cooldown_seconds=%u",
                         bot->GetGUIDLow(), static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry(),
                         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds);
+                // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, review F4): a near-zone stall that comes as
+                // stage 2 (the stage was kept from a stall outside the zone) ends the trip the same way - structural
+                // park, [UnreachableTarget] reason=near_stall. Off: as before.
+                if (IsNearTurnInStall())
+                {
+                    OnNearTurnInStall(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId());
+                    return;
+                }
                 TraceQuestCommit(tDestination, "abandon", "stall_suppressed");
                 // twow-repo#485: a stalled turn-in (not an objective) is a failed turn-in.
                 if (IsProgressAwareTurnIn())
@@ -1600,6 +1763,19 @@ void TravelTarget::CheckStatus()
 
         if (destinationInactive || conditionsInactive)
         {
+            // twow-repo#601 S2 / S4 R2 (OB-10 rev. 2 point 3, review C-F1 / B-F1): a gap grind trip ends here at once - no COOLDOWN
+            // (its 60 s would hold every request past the window), no failure. Its condition is R1 itself ("need travel
+            // purpose::Grind"), so a condition end is the window end (the backoff ended or was reset): expired=. An
+            // inactive destination (a level-up out of the window, should sell) ends silently. gapWindowEnd: GrindMode 1 only.
+            if (gapWindowEnd)
+            {
+                ai->TellDebug(ai->GetMaster(), "The gap grind trip ends because its destination or its window is no longer active.", "debug travel");
+                if (conditionsInactive)
+                    PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));
+                SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+                return;
+            }
             ai->TellDebug(ai->GetMaster(), "The target is cooling down because the destination was no longer active or the conditions are no longer true.", "debug travel");
             TraceQuestCommit(tDestination, "drop", destinationInactive ? "destination_inactive" : "conditions_inactive");
             forced = false;
@@ -1680,6 +1856,7 @@ void TravelMgr::Clear()
     destinationMap.clear();
     pointsMap.clear();
     fishPoints.clear();
+    directPoints.clear();
 }
 
 int32 TravelMgr::GetAreaLevel(uint32 area_id)
@@ -2260,6 +2437,9 @@ void TravelMgr::LoadQuestTravelTable()
     sTravelNodeMap.saveNodeStore();
 
     LoadFishLocations();
+
+    // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.*, default 0): boot only, after the fish locations.
+    LoadDirectTargets(guidpMap);
    
     //Creature/gos/zone export.
     if (sPlayerbotAIConfig.hasLog("creatures.csv"))
@@ -3411,7 +3591,7 @@ void TravelMgr::GetPartitionsLock(bool getLock)
     sTravelMgr.getDestinationVar.notify_one();
 }
 
-bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag)
+bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag, bool gapWindowApplies)
 {
     bool canFightElite = info.GetBoolValue("can fight elite");
     int32 botLevel = (int32)info.GetLevel();
@@ -3435,6 +3615,21 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
             return false;
         int32 const gatherAreaLevel = position.getAreaLevelOrParent();
         return gatherAreaLevel > 0 && !homebind::IsZoneClearlyAboveLevel(uint32(gatherAreaLevel), info.GetLevel());
+    }
+
+    // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.*): a station is not a fight either - open world, an area level,
+    // not clearly above the bot (as gathering). An entrance point is in the open world; its level fit is the
+    // destination's (IsPossible). These bits exist only with a class built at boot.
+    uint32 const directPurposes = (uint32)TravelDestinationPurpose::Station | (uint32)TravelDestinationPurpose::DungeonEntrance |
+        (uint32)TravelDestinationPurpose::RaidEntrance;
+    if ((purposeFlag & directPurposes) && !(purposeFlag & ~directPurposes))
+    {
+        if (!position.isOverworld())
+            return false;
+        if (!(purposeFlag & (uint32)TravelDestinationPurpose::Station))
+            return true;
+        int32 const stationAreaLevel = position.getAreaLevelOrParent();
+        return stationAreaLevel > 0 && !homebind::IsZoneClearlyAboveLevel(uint32(stationAreaLevel), info.GetLevel());
     }
 
     if (info.GetBoolValue("can fight boss"))
@@ -3483,6 +3678,22 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
 
         return quest_area_level::IsQuestLocationLevelValid(questAreaLevel, info.GetLevel(),
             sPlayerbotAIConfig.questFirstProgressionQuestAreaLevelMargin);
+    }
+
+    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): a pure grind point of the gap filler's population - its area
+    // level inside the same window [max(gray + 1, L - 5), L + 1] as the template (IsPossible) replaces the area gate (L - 2 -
+    // deaths) and the zone floor below, so the two cannot disagree; an unknown area (0) stays rejected. The window is a
+    // value of the snapshot (bot thread); every other bot and purpose: unchanged. gapWindowApplies false: a fetch without
+    // IsPossible (guild order objective / kill mobs, GetPartitions onlyPossible false) keeps the old gate, as it keeps the
+    // old template test. OB-10 review #552: the death term stays - at the window's upper end, never below its low end
+    // (GapAreaHighLevel), for the bots the old gate applied it to (no boss / elite / equal fight); the mob window (R4) is
+    // unchanged.
+    if (info.HasGapWindow() && gapWindowApplies && purposeFlag == (uint32)TravelDestinationPurpose::Grind)
+    {
+        uint32 const gapDeaths = (info.GetBoolValue("can fight boss") || canFightElite || info.GetBoolValue("can fight equal")) ? 0 :
+            info.GetUint32Value("death count");
+        return ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(),
+            ai::quest_grind_mode::GapAreaHighLevel(info.GetGapWindowLow(), info.GetGapWindowHigh(), gapDeaths), areaLevel);
     }
 
     if (!(purposeFlag & (uint32)TravelDestinationPurpose::QuestTaker))
@@ -3550,7 +3761,7 @@ PartitionedTravelList TravelMgr::GetPartitions(const WorldPosition& center, cons
 
         for (auto& position : points)
         {
-            if (!IsLocationLevelValid(*position, info, purposeFlag))
+            if (!IsLocationLevelValid(*position, info, purposeFlag, onlyPossible))   // twow-repo#601 S2 R3: window only with IsPossible
             {
                 probeRejectLevel++;
                 continue;

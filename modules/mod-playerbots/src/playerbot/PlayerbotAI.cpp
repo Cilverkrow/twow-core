@@ -12,6 +12,9 @@
 #include "playerbot/MemStoresPolicy.h"
 #include "playerbot/SpellListPolicy.h"
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for "S:engine init"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/RotCastPolicy.h"
+#include "playerbot/RotCastTrace.h"     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace)
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -28,6 +31,7 @@
 #include "Maps/GridNotifiersImpl.h"
 #include "Maps/CellImpl.h"
 #include "strategy/values/LastMovementValue.h"
+#include "strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeFellOff
 #include "playerbot/FarMovePolicy.h"
 #include "strategy/actions/LogLevelAction.h"
 #include "strategy/actions/SayAction.h"
@@ -768,6 +772,40 @@ bool PlayerbotAI::IsQuestNoGrind()
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
 }
 
+// twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): the same population as IsQuestNoGrind. The config is read first, so
+// GrindMode 0 / 2 return before any other test.
+bool PlayerbotAI::IsQuestGapGrind()
+{
+    if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot)
+        return false;
+
+    return ai::quest_grind_mode::GapFillerApplies(sPlayerbotAIConfig.questFirstProgressionGrindMode,
+        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
+        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
+}
+
+// twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): window starts, window ends, plain grind engagements (grey
+// ones), empty windows, R4 skips and passes left empty by R4 since the last minute line; counted on the map threads,
+// taken by the world thread (relaxed atomics, no lock).
+namespace
+{
+std::atomic<uint32> grindWindowCounts[ai::quest_grind_mode::WindowEventCount] = {};
+}
+
+void PlayerbotAI::NoteGrindWindow(uint8 event, uint32 n)
+{
+    if (event < ai::quest_grind_mode::WindowEventCount && n)
+        grindWindowCounts[event].fetch_add(n, std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeGrindWindowMinuteLine()
+{
+    std::array<std::uint32_t, ai::quest_grind_mode::WindowEventCount> counts = {};
+    for (std::size_t event = 0; event < ai::quest_grind_mode::WindowEventCount; ++event)
+        counts[event] = grindWindowCounts[event].exchange(0, std::memory_order_relaxed);
+    return ai::quest_grind_mode::FormatWindowMinuteLine(counts);
+}
+
 // GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason and idle
 // episode (at most 4 per episode however the reasons alternate).
 void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
@@ -794,6 +832,72 @@ std::string PlayerbotAI::TakeQuestIdleMinuteLine()
     return ai::quest_grind_mode::FormatMinuteLine(counts);
 }
 
+// twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.*, OB-10 / OB-00 18.10.2026): accept / item skips, infeasible drops and
+// giver relations found inactive since the last minute line; counted on the map threads, taken by the world thread
+// (atomics, no lock).
+namespace
+{
+std::atomic<uint32> questFeasibilitySkips{0};
+std::atomic<uint32> questFeasibilityDrops{0};
+std::atomic<uint32> questFeasibilityGiverInactive{0};
+}
+
+// S3a: Enable first - with the switch off nothing else is read. Scope, lists and the class exemption (solo group rule
+// only) in the policy.
+ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* quest)
+{
+    if (!sPlayerbotAIConfig.questFeasibilityEnable || !bot || !quest)
+        return ai::quest_feasibility::Reason::None;
+
+    uint32 const questId = quest->GetQuestId();
+    ai::quest_feasibility::Facts facts;
+    facts.enabled = true;
+    facts.rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();
+    facts.classQuest = quest->GetRequiredClasses() != 0;
+    facts.inGroup = bot->GetGroup() != nullptr;
+    facts.listed = sPlayerbotAIConfig.questFeasibilityBlocklist.count(questId) != 0;
+    facts.listedNoCustomStarts = sPlayerbotAIConfig.questFeasibilityBlocklistWhileNoCustomStarts.count(questId) != 0;
+    facts.customRaceStartZones = sPlayerbotAIConfig.customRaceStartZones;
+    facts.soloSkipGroupQuests = sPlayerbotAIConfig.questFeasibilitySoloSkipGroupQuests;
+    facts.type = quest->GetType();
+    facts.suggestedPlayers = quest->GetSuggestedPlayers();
+    return ai::quest_feasibility::SkipReason(facts);
+}
+
+// S3a, bot's own thread: one count per check that skips (minute line: checks, not distinct quests), one
+// [QuestFeasibility] state=skip line per bot, quest and path an hour (at most ai::quest_feasibility::LinesPerMinute per bot
+// and minute).
+bool PlayerbotAI::SkipInfeasibleQuest(Quest const* quest, ai::quest_feasibility::Path path)
+{
+    ai::quest_feasibility::Reason const reason = QuestFeasibilityReason(quest);
+    if (reason == ai::quest_feasibility::Reason::None)
+        return false;
+    if (path == ai::quest_feasibility::Path::Giver && !ai::quest_feasibility::GiverInactive(reason))
+        return false;
+
+    if (path == ai::quest_feasibility::Path::Giver)
+        questFeasibilityGiverInactive.fetch_add(1, std::memory_order_relaxed);
+    else
+        questFeasibilitySkips.fetch_add(1, std::memory_order_relaxed);
+
+    if (ai::quest_feasibility::LogDue(questFeasibilityLog, quest->GetQuestId(), path, uint32(time(nullptr))))
+        sLog.outBasic("%s", ai::quest_feasibility::FormatSkipLine(bot->GetGUIDLow(), bot->GetLevel(), quest->GetQuestId(),
+            reason, path).c_str());
+    return true;
+}
+
+void PlayerbotAI::NoteQuestFeasibilityDrop()
+{
+    questFeasibilityDrops.fetch_add(1, std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeQuestFeasibilityMinuteLine()
+{
+    return ai::quest_feasibility::FormatMinuteLine(questFeasibilitySkips.exchange(0, std::memory_order_relaxed),
+        questFeasibilityDrops.exchange(0, std::memory_order_relaxed),
+        questFeasibilityGiverInactive.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#517 stage a: called by RandomPlayerbotMgr (world thread, the bot's map idle) once a fill bot is out of its
 // battleground. The quest-idle watch kept counting during the match; without this a long battleground would hand the
 // bot straight to the rescue teleport.
@@ -810,6 +914,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
     HandleQueuedBotPackets();
+
+    // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): this thread's cast counters reach the minute book once
+    // the World thread closed a window.
+    if (sPlayerbotAIConfig.rotationCastTrace)
+        ai::rot_cast_rt::FlushIfDue();
 
     // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): the bot saves itself on its own schedule (BotSavePolicy.h),
     // also while parked; the core autosave timer is held back meanwhile. Off: the core saves as before.
@@ -1587,6 +1696,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             master->GetTransport()->AddPassenger(bot);
         else if (bot->GetTransport())
         {
+            if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=fell_off (master not on the vessel)
+                MovementAction::TraceTransportEdgeFellOff(this);
             WorldPosition botPos(bot);
             bot->GetTransport()->RemovePassenger(bot);
             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
@@ -1599,6 +1710,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         {
             TellPlayer(GetMaster(), "Jumping off " + std::string(bot->GetTransport()->GetName()));
         }
+
+        if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=fell_off for a boarded episode
+            MovementAction::TraceTransportEdgeFellOff(this);
 
         WorldPosition botPos(bot);
         bot->GetTransport()->RemovePassenger(bot);
@@ -2117,21 +2231,28 @@ void PlayerbotAI::OnDeath()
 
                 out << "\"";
 
-                uint32 adds = 0;
-
+                // twow-repo#602 ROT-01 F6: the death already cleared every victim (Unit::SetDeathState -> CombatStop), so the adds come
+                // from the snapshot taken while the bot fought (DeathAddsPolicy.h); a unit that still has the bot as victim comes first.
+                std::vector<uint64> live;
                 for (auto target : targets)
                 {
                     if (!target.IsCreature())
                         continue;
 
                     Unit* unit = GetUnit(target);
-                    if (!unit)
-                        continue;
+                    if (unit && unit->GetVictim() == bot)
+                        live.push_back(target.GetRawValue());
+                }
+                std::vector<uint64> const addGuids = ai::death_adds::MergeAdds(live, deathAdds,
+                    ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime()), ctarget ? ctarget->GetObjectGuid().GetRawValue() : 0);
 
-                    if (unit->GetVictim() != bot)
-                        continue;
+                uint32 adds = 0;
 
-                    if (unit == ctarget)
+                for (uint64 const guid : addGuids)
+                {
+                    Unit* unit = GetUnit(ObjectGuid(guid));
+                    // Intended (OB-10 review): adds = attackers still alive at the death; a mob the bot killed itself did not kill it.
+                    if (!unit || !unit->IsAlive())
                         continue;
 
                     out << unit->GetName() << "(" << unit->GetLevel() << ")";
@@ -2339,6 +2460,8 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
     masterIncomingPacketHandlers.Handle(helper);
     SC_PHASE("UpdateAIInternal.masterOutgoingPackets", bot ? bot->GetName() : "(null)");
     masterOutgoingPacketHandlers.Handle(helper);
+
+    UpdateDeathAddsSnapshot();
 
     SC_PHASE("UpdateAIInternal.DoNextAction", bot ? bot->GetName() : "(null)");
 	DoNextAction(minimal);
@@ -3109,6 +3232,17 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 			SC_LOG("bot=%s received SMSG_GROUP_INVITE — queued for 'group invite' trigger",
 			       bot ? bot->GetName() : "(null)");
 		}
+		// twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): the server's answer to the bot's own casts, classic
+		// layout u32 spell, u8 status (0 ok / 2 fail), u8 result. The packet still goes to its handler.
+		if (sPlayerbotAIConfig.rotationCastTrace && packet.GetOpcode() == SMSG_CAST_RESULT && bot)
+		{
+			std::size_t const size = packet.size();
+			uint32 const spellId = size >= 4 ? packet.read<uint32>(0) : 0;
+			uint8 const status = size >= 5 ? packet.read<uint8>(4) : 0;
+			uint8 const result = size >= 6 ? packet.read<uint8>(5) : 0;
+			ai::rot_cast_rt::RecordServer(bot->getClass(), ai::cohort::InB(bot->GetGUIDLow()), spellId,
+				ai::rot_cast::ServerCode(size, status, result));
+		}
 		botOutgoingPacketHandlers.AddPacket(packet);
 	}
 }
@@ -3704,6 +3838,26 @@ void PlayerbotAI::ResetStrategies(bool autoLoad)
     {
         engines[i]->initMode = false;
         engines[i]->Init();
+    }
+
+    // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): [RotRole] when the bot's strategy set, spec tab or forced
+    // role changed since its last line (also called from the World thread while the maps are idle).
+    if (sPlayerbotAIConfig.rotationCastTrace)
+    {
+        std::string const combatList = engines[(uint8)BotState::BOT_STATE_COMBAT]->ListStrategies();
+        std::string const nonCombatList = engines[(uint8)BotState::BOT_STATE_NON_COMBAT]->ListStrategies();
+        int const tab = AiFactory::GetPlayerSpecTab(bot);
+        int const majority = AiFactory::GetPlayerMajorityTab(bot);   // twow-repo#602 R06a: a majority flip is a new line
+        uint64 const signature = uint64(std::hash<std::string>()(combatList)) ^
+            (uint64(std::hash<std::string>()(nonCombatList)) * 0xC2B2AE3D27D4EB4FULL) ^
+            (uint64(uint8(tab)) << 40) ^ (uint64(m_forcedRole) << 48) ^ (uint64(uint8(majority)) << 56);
+        uint32 const guid = bot->GetGUIDLow();
+        uint32 suppressed = 0;
+        if (ai::rot_cast_rt::RoleLineDue(guid, signature, uint32(time(nullptr)), suppressed))
+            sLog.outBasic("%s", ai::rot_cast::FormatRoleLine(guid, bot->GetName(), bot->getClass(), bot->GetLevel(),
+                ai::cohort::Letter(guid), tab, majority, AiFactory::GetPremadePathName(bot), IsTank(bot), IsHeal(bot), m_forcedRole,
+                sRandomPlayerbotMgr.IsFreeBot(bot), sRandomPlayerbotMgr.IsPersistentRosterMember(guid), autoLoad, suppressed,
+                combatList, nonCombatList).c_str());
     }
 }
 
@@ -9403,6 +9557,25 @@ namespace
                 return false;
         }
     }
+}
+
+void PlayerbotAI::UpdateDeathAddsSnapshot()
+{
+    if (!bot->IsAlive())
+        return;   // keep the last snapshot: OnDeath reads it on this tick or the next
+    if (!bot->IsInCombat())
+    {
+        deathAdds.Clear();
+        return;
+    }
+    Unit::AttackerSet const& attackers = bot->getAttackers();
+    uint32 const nowMs = WorldTimer::getMSTime();
+    if (!ai::death_adds::Due(deathAdds, nowMs, uint32(attackers.size())))
+        return;
+    deathAdds.Begin(nowMs, uint32(attackers.size()));
+    for (Unit* unit : attackers)
+        if (unit && unit->IsCreature() && !deathAdds.Add(unit->GetObjectGuid().GetRawValue()))
+            break;
 }
 
 void PlayerbotAI::RunPendingDialogueCommands()

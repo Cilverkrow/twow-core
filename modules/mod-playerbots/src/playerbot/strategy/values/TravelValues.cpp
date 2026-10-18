@@ -12,6 +12,7 @@
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
+#include "playerbot/DirectTargetDestinations.h"
 
 using namespace ai;
 
@@ -457,6 +458,16 @@ bool NeedTravelPurposeValue::Calculate()
                     return false;
             }
 
+            // twow-repo#601 S2 / S4 R1 (GrindMode 1, OB-10 rev. 2): the gap filler grinds only while the quest route backoff
+            // runs (the last quest search found nothing, any S1 class - a transient one too, OP4) and S1's turn-in yield
+            // above did not hold; never as a refresh renewal. It returns before the S0 GrindFallbackMinutes, the
+            // FreshGrindFailures and the 8.32 GrindFallbackFailures lines below, so S0 stays GrindMode 0 (never both).
+            // GrindMode 0 / 2: IsQuestGapGrind() is false, everything below as before.
+            if (ai->IsQuestGapGrind())
+                return ai::quest_grind_mode::GapWindowOpen(
+                    uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"))),
+                    AI_VALUE2(bool, "manual bool", "is travel refresh"));
+
             // Hotfix 8.32 (twow-repo#544): after repeated empty quest route searches a quest-first
             // bot grinds instead of idling ("no destination").
             uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures")));
@@ -473,6 +484,11 @@ bool NeedTravelPurposeValue::Calculate()
                         ai::quest_grind_mode::TargetText("grind_fallback_failures", failures));
                 return false;
             }
+            // twow-repo#601 (AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes): the fallback holds only that long after
+            // the last empty quest route search; then the quest request (6.3, below grind 6.35) can fire again. 0 = for good.
+            if (!ai::quest_search::GrindFallbackFresh(sPlayerbotAIConfig.questFirstProgressionGrindFallbackMinutes,
+                    uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failed at"))), uint32(time(nullptr))))
+                return false;
             // twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.FreshGrindFailures): a fresh bot may grind after fewer.
             if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel) &&
                 sPlayerbotAIConfig.directTargetsFreshGrindFailures)
@@ -489,6 +505,12 @@ bool NeedTravelPurposeValue::Calculate()
 
         return !AI_VALUE2(bool, "manual bool", "is travel refresh");
     }
+    // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking / Dungeon / Raid, default 0): built at boot and
+    // switched on, a roster bot on its own; the need per class is in DirectTargetDestinations.cpp.
+    case TravelDestinationPurpose::Station:
+    case TravelDestinationPurpose::DungeonEntrance:
+    case TravelDestinationPurpose::RaidEntrance:
+        return ai::direct_targets::NeedPurpose(ai, purpose);
     default:
         return false;
     }

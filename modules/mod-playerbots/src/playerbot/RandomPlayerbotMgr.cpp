@@ -52,9 +52,13 @@
 #include "PersistentActiveRosterDatabase.h"
 #include "LoginWavePolicy.h"
 #include "playerbot/MemStoresPolicy.h"
+#include "playerbot/DirectTargetPolicy.h"
 #include "playerbot/BotUpdateTrace.h"
+#include "playerbot/GrindPickPolicy.h"   // twow-repo#601 S2 diagnostic: [GrindPick] minute line
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/PathReusePolicy.h"
+#include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
+#include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
 #if defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -1103,17 +1107,47 @@ void ReportBotInbox()
 // line per slowest call (bot, map, combat, last action). Nothing is timed or written when off.
 void ReportBotUpdate()
 {
+    static bool tracing = false;
     static uint32 lastReport = 0;
-    uint32 const now = uint32(time(nullptr));
-    if (!sPlayerbotAIConfig.botUpdateTrace || now < lastReport + 60)
+    if (!sPlayerbotAIConfig.botUpdateTrace)
+    {
+        tracing = false;
         return;
-    bool const first = lastReport == 0;
+    }
+    uint32 const now = uint32(time(nullptr));
+    if (!tracing)
+    {
+        // Switched on (start or config reload): what an earlier period left is dropped, the first line comes after a
+        // full minute (same pattern as ReportShortcut; twow-repo#601 review 18.10.).
+        tracing = true;
+        lastReport = now;
+        ai::bot_update::Global().Take();
+        ai::bot_update::Prevalidate().Take();
+        ai::grind_pick::Global().Take();
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
     lastReport = now;
 
     ai::bot_update::Snapshot const s = ai::bot_update::Global().Take();
-    // The first window starts whenever the switch was read; it is reset, not reported.
-    if (first)
-        return;
+    ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();
+    ai::grind_pick::Snapshot const gp = ai::grind_pick::Global().Take();
+
+    // twow-repo#601 S1 (OB-10 18.10.): every PreValidateTurnIns call of the minute - its time and its work (open turn-ins
+    // checked) and result (validated). Only with AiPlayerbot.QuestFirstProgression.FailureClasses (the only caller).
+    if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)
+        sLog.outBasic("[PreValidate] calls=%llu sum_us=%llu p50_us=%llu p99_us=%llu max_us=%llu open_sum=%llu ok_sum=%llu",
+            (unsigned long long)pv.time.calls, (unsigned long long)pv.time.totalUs,
+            (unsigned long long)ai::bot_update::PercentileUs(pv.time, 0.50),
+            (unsigned long long)ai::bot_update::PercentileUs(pv.time, 0.99), (unsigned long long)pv.time.maxUs,
+            (unsigned long long)pv.openSum, (unsigned long long)pv.okSum);
+
+    // twow-repo#601 S2 diagnostic (OB-10 / OB-00 18.10.): the minute's new grind targets per 5-level band by source and grey
+    // (picks/grey) - attacker, victim (on the bot), quest, grind. Bands without a pick are left out.
+    for (std::size_t band = 0; band < ai::grind_pick::Bands; ++band)
+        if (!ai::grind_pick::BandEmpty(gp, band))
+            sLog.outBasic("%s", ai::grind_pick::FormatLine(gp, band).c_str());
 
     sLog.outBasic("[BotUpdate] calls=%llu avg_us=%llu p50_us=%llu p90_us=%llu p99_us=%llu p999_us=%llu max_us=%llu over10ms=%llu over20ms=%llu",
         (unsigned long long)s.calls, (unsigned long long)(s.calls ? s.totalUs / s.calls : 0),
@@ -1234,6 +1268,8 @@ void ReportRoutePrecheck()
 // fresh_rejections = rejected quest routes of fresh bots, fresh_backoffs = of them with the short backoff, rescue_skips =
 // of them that a Z1b rescue took, fresh_grind = grind targets fresh bots chose; inactive = the IsActive reasons (P3-0).
 // World thread only, same pattern as ReportRouteFail. Nothing is written with both switches off.
+// twow-repo#594 / P3-b: with a class built at boot the line ends with picks= empty= crafts= no_focus= fail= disabled=
+// (DirectTargetPolicy.h); without one it stays as it was.
 void ReportDirectTargets()
 {
     static uint32 lastReport = 0;
@@ -1247,11 +1283,12 @@ void ReportDirectTargets()
     for (uint32 reason = 0; reason < ai::quest_search::RejectCounts::InactiveReasons; ++reason)
         reasons.notActiveReason[reason] = c.inactive[reason].exchange(0, std::memory_order_relaxed);
     sLog.outBasic("[DirectTarget] state=summary enabled=%u fresh_rejections=%u fresh_backoffs=%u rescue_skips=%u fresh_grind=%u "
-        "fresh_max_level=%u backoff_seconds=%u grind_failures=%u%s", sPlayerbotAIConfig.directTargetsEnabled ? 1u : 0u,
+        "fresh_max_level=%u backoff_seconds=%u grind_failures=%u%s%s", sPlayerbotAIConfig.directTargetsEnabled ? 1u : 0u,
         c.freshRejections.exchange(0, std::memory_order_relaxed), c.freshBackoffs.exchange(0, std::memory_order_relaxed),
         c.rescueSkips.exchange(0, std::memory_order_relaxed), c.freshGrind.exchange(0, std::memory_order_relaxed),
         sPlayerbotAIConfig.directTargetsFreshMaxLevel, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds,
-        sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str());
+        sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str(),
+        ai::direct_targets::TakeSummaryFields().c_str());
 }
 
 // twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode = 2): one "[QuestIdle] minute fallback= money=
@@ -1269,6 +1306,85 @@ void ReportQuestIdle()
     lastReport = now;
 
     sLog.outBasic("%s", PlayerbotAI::TakeQuestIdleMinuteLine().c_str());
+}
+
+// twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2 points 2 / 5): one "[GrindWindow] minute starts= expired= engaged=
+// grey_engaged= no_dest= r4_skips= r4_empty=" line per minute - the gap filler's windows, plain grind engagements, R4 skips
+// and passes left empty by R4 counted on the map threads since the last line (atomics in PlayerbotAI.cpp). Gated by
+// GrindMode 1 alone and omitted when every count is 0. World thread only, same pattern as ReportQuestFeasibility (the
+// first line after a full minute).
+void ReportGrindWindow()
+{
+    if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode))
+        return;   // GrindMode 0 / 2: not even the clock is read
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!lastReport)
+    {
+        lastReport = now;
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    std::string const line = PlayerbotAI::TakeGrindWindowMinuteLine();
+    if (!line.empty())
+        sLog.outBasic("%s", line.c_str());
+}
+
+// twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): [RotCast] once per minute, [RotCastTotal] once per hour
+// (RotCastTrace.cpp). World thread only. The first call after the switch went on clears and starts a window.
+void ReportRotCast()
+{
+    static bool tracing = false;
+    if (!sPlayerbotAIConfig.rotationCastTrace)
+    {
+        tracing = false;
+        return;   // off: not even the clock is read
+    }
+
+    ai::rot_cast_rt::Report(!tracing, uint32(time(nullptr)));
+    tracing = true;
+}
+
+// twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder): [EmergencyLadderTotal] once per hour per cohort and class
+// (EmergencyLadderTrace.cpp). World thread only. The first call after the switch went on clears and starts a window.
+void ReportEmergencyLadder()
+{
+    static bool tracing = false;
+    if (!sPlayerbotAIConfig.rotationEmergencyLadder)
+    {
+        tracing = false;
+        return;   // off: not even the clock is read
+    }
+
+    ai::emergency_ladder_rt::Report(!tracing, uint32(time(nullptr)));
+    tracing = true;
+}
+
+// twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable): one "[QuestFeasibility] minute skips= drops= giver_inactive="
+// line per minute - accept / item skips, infeasible drops and inactive giver relations counted on the map threads since
+// the last line (atomics in PlayerbotAI.cpp). World thread only, same pattern as ReportQuestIdle; the first line comes
+// after a full minute. Nothing with Enable 0.
+void ReportQuestFeasibility()
+{
+    if (!sPlayerbotAIConfig.questFeasibilityEnable)
+        return;   // Enable 0: not even the clock is read
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!lastReport)
+    {
+        lastReport = now;
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    sLog.outBasic("%s", PlayerbotAI::TakeQuestFeasibilityMinuteLine().c_str());
 }
 
 // twow-repo#592 (PATH-02): the bot side of pathfinding without a Unit, no switch - every counted case crashed before
@@ -1509,6 +1625,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
     ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
+    ReportGrindWindow();  // twow-repo#601 S2 / S4: [GrindWindow] minute once per minute, not when empty (GrindMode = 1)
+    ReportRotCast();      // twow-repo#602 ROT-01 D0: [RotCast] once per minute (AiPlayerbot.Rotation.CastTrace)
+    ReportEmergencyLadder(); // twow-repo#602 ROT-01 X3: [EmergencyLadderTotal] once per hour (AiPlayerbot.Rotation.EmergencyLadder)
+    ReportQuestFeasibility(); // twow-repo#601 S3a: [QuestFeasibility] minute once per minute (AiPlayerbot.QuestFeasibility.Enable)
     ReportPathUnitlessBot(); // twow-repo#592 (PATH-02): [PathUnitlessBot] at most once per minute, only with rare counts
 
 #ifdef MEMORY_MONITOR
@@ -7025,6 +7145,12 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
     for (auto const& [guid, bot] : GetAllBots())
     {
         PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        // twow-repo#587 (AiPlayerbot.QuestRescue.KeepRequestWhenFull, soak 17.10.: 20 of 21 stranded not served promptly):
+        // with the global limit used up a pending request stays with the bot for the next scan instead of being taken and
+        // dropped - a stranded bot (Z1b) only asks again after StrandedRescueAfter more empty searches.
+        if (sPlayerbotAIConfig.questRescueKeepRequestWhenFull && ai && ai->HasQuestRescueRequest() &&
+                !questRescueLimiter.HasCapacity(now))
+            break;
         // twow-repo#541/#551: a parked bot stands still on purpose - no rescue teleport.
         if (!ai || !ai->TakeQuestRescueRequest() || IsParkedBot(guid))
             continue;

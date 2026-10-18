@@ -1,6 +1,7 @@
 #pragma once
 #include "playerbot/strategy/Value.h"
 #include "playerbot/TravelNode.h"
+#include "playerbot/TransportEdgePolicy.h"
 
 // Declared in MovementActions.h, which includes this header the other way
 // around - a scoped enum with fixed underlying type forward-declares cleanly,
@@ -24,6 +25,7 @@ namespace ai
             lastFollow = other.lastFollow;
             lastAreaTrigger = other.lastAreaTrigger;
             lastTransportEntry = other.lastTransportEntry;
+            transportEdge = other.transportEdge;
             lastPath = other.lastPath;
             lastMoveShort = other.lastMoveShort;
             nextTeleport = other.nextTeleport;
@@ -84,6 +86,11 @@ namespace ai
         Unit* lastFollow;
         uint32 lastAreaTrigger;
         uint32 lastTransportEntry;
+        // twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace): the bot's transport edge episode (attempt / board) and
+        // the key cache of the movement callers; written only with the trace on, by the bot's own movement (bot thread).
+        // clear() leaves it alone: a running episode is closed by the next hook (route_changed / left), never dropped
+        // without a line, and the cache is checked against the path on every use.
+        transport_edge::State transportEdge;
         time_t lastFlee;
         // Number of flee actions dispatched in quick succession (within returnDelay of each
         // other). Used to detect a "subsequent" flee loop so spellcasting can take priority.

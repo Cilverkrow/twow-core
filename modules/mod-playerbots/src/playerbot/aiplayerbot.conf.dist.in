@@ -216,6 +216,9 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # twow-repo#308 LOOT-ROLE-01 (owner 15.10.2026, approved by OB-00): RoleWeights = 1: the item weight scale comes from the
 # roster's premade talent path from level 1 (below level 10 the talent tree gave a class default), and of several usable
 # quest rewards the one with the largest gain over the equipped item wins instead of the first in the list. 0 = as before.
+# RoleWeights = 2 (owner 17.10.2026): as 1, and the weight scales of the 28 specs come from the owner stat table v2
+# (data/stat-weights/stat-priorities-v2.tsv, LootRoleV2Weights.h): each spec scores an item only by its 5 priorities
+# (100/80/60/40/20 per unit, other stats 0), weapon DPS as in the old scale. In memory at start, no DB change; restart only.
 # [QuestReward] (always on): first, best and picked reward per turn-in, wrong=1 when the first is not the best for the role.
 # FeralFixedSpec = 1 (owner 26.09.: bear and cat are fixed paths): a feral druid uses the bear or the cat scale of its
 # premade path; 0 = a coin on every check (old).
@@ -1019,6 +1022,10 @@ AiPlayerbot.GrindCap.LowLevelMargin = 2
 # region, is teleported to another race's starting area / level hub of its
 # faction (at most once per bot in 2 h, 5 per 10 min world-wide). 0 = off.
 AiPlayerbot.QuestRescue.IdleMinutes = 30
+# twow-repo#587 (soak 17.10.2026): 1 = while the global rescue limit (5 per 10 minutes) is used up, a pending rescue request
+# stays with the bot for the next scan instead of being dropped. Matters for stranded bots (ZoneExit.StrandedRescueAfter),
+# which only ask again after more empty quest searches. 0 = as before (default).
+AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -1086,6 +1093,11 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
+# twow-repo#601 (soak 17.10.2026): GrindFallbackMinutes = N > 0: the grind fallback above holds only N minutes after the
+# last empty quest route search; then the bot asks for a quest route again (behind the route backoff). The fallback grind
+# (6.35) outranks the generic quest request (6.3) and the failure count only resets on a found route, so with 0 (default,
+# as before) a bot that fell into it grinds for good - L10+ roster bots stopped questing within about 2 hours.
+AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes = 0
 # twow-repo#601 S1 "latch semantics" (OB-00 / OB-10 17.10.2026). Three separate switches so an A/B can isolate
 # them (arm A1 sets all three to 1); all 0 = today's behaviour. Restart-only. Quest-first roster bots on their
 # own only.
@@ -1132,10 +1144,29 @@ AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
 # again (no trip to its giver, no accept) while the bot is on its own - at most 8 such quests per bot, forgotten at
 # re-login. 0 = the quest stays parked.
 AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
+# HubPreloopSameFilters = 1 (twow-repo#601 S3b, OB-10 18.10.2026; acts only with FailureClasses = 1): the local quest
+# hub pre-check also skips a local candidate the main loop defers after its activation check - a battleground quest
+# (ZoneExit.SkipBattlegroundQuests), an enemy home zone, a zone clearly above the bot (route danger, start-zone
+# exemption as in the main loop) or a death cluster (DangerMap.Enabled) - so such a candidate no longer turns the hub
+# filter on and leaves only hub_filter rejections. Both loops ask the same check. 0 = the pre-check as before.
+# Restart-only.
+AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 # twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
 # stand around than grind, so it shows). Restart-only.
 #   0 = today's behaviour (default).
-#   1 = RESERVED for the gap filler of stages S2/S4; until then exactly like 0.
+#   1 = gap filler (twow-repo#601 S2/S4, OB-10 rev. 2): the bots of 2 (below) grind only while their quest route
+#       backoff runs (the last quest search found nothing, any FailureClasses class, a transient one too), never through
+#       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, a travel refresh or a group
+#       member's grind trip (the money grind too only inside that window); the grind trip ends with the backoff
+#       (remaining backoff, at most 10 min, + 30 s) and its end counts as no failure. [QuestSearch]
+#       state=grind_window bot= level= backoff_s= window=<min>-<max> map= once per window (window= the S2 creature
+#       level window max(gray + 1, L - 5) to L + 1). They grind on their own map only, at grind
+#       destinations whose template max level and area level are in that window, and plain grind targets (no quest
+#       need, not attacking the bot) need their level in it; attackers and quest mobs stay. Grind destinations
+#       are recognised for the 20 % quest skip (bug fix, mode 1 only). [GrindWindow] minute starts= expired= engaged=
+#       grey_engaged= no_dest= r4_skips= r4_empty= once a minute, not when all are 0 (r4_empty= = grind target
+#       passes in which the level window skipped a candidate and no target was left). For the A2 test realm arm;
+#       default 0.
 #   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
 #       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
 #       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a
@@ -1149,6 +1180,30 @@ AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
 #       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
 #       stay. Other values act like 0.
 AiPlayerbot.QuestFirstProgression.GrindMode = 0
+# twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
+# Enable = 1: a persistent roster bot on its own (no real player leads it) does not take quests it cannot finish - not
+# from a quest giver (accept all, accept packet, quest details dialog), not from a quest item in its bags - and does not
+# travel to the giver of such a quest. Its quest log cleanup drops such quests again while they are open
+# ([QuestDrop] reason=infeasible_blocklist|infeasible_group_solo); a complete one stays and may be turned in (the taker
+# side is never blocked). The two lists apply to class quests too (explicit ids); SoloSkipGroupQuests spares class
+# quests. Shares by a player, the catch-up, the escort confirm and guild quest orders stay untouched (a player's
+# decision): the cleanup keeps listed quests while the bot is in a group and never drops its guild quest order's quest.
+# [QuestFeasibility] state=skip bot= level= quest= reason=blocklist|blocklist_crsz0|group_solo path=accept|item|giver
+# once per bot, quest and path an hour (at most 4 lines per bot a minute), [QuestFeasibility] minute skips= drops=
+# giver_inactive= once a minute; skips= and giver_inactive= count checks (one quest can count several times a minute),
+# not distinct quests. 0 = off (default).
+AiPlayerbot.QuestFeasibility.Enable = 0
+# Blocklist (acts only with Enable = 1): a comma list of quest ids (decimal, > 0, at most 512; anything else is
+# ignored). The profile carries the list. Empty = none (default).
+AiPlayerbot.QuestFeasibility.Blocklist =
+# BlocklistWhileNoCustomStarts (acts only with Enable = 1): the same, but only while AiPlayerbot.CustomRaceStartZones = 0
+# (quests with one end off Blackstone Island / the Thalassian Highlands, every race); lifts by itself with wave 0.
+# Empty = none (default).
+AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts =
+# SoloSkipGroupQuests = 1 (acts only with Enable = 1): a bot that is not in a group skips quests of type elite (1),
+# dungeon (81) or raid (62) and quests with SuggestedPlayers >= 2 (class quests excepted), does not travel to their
+# givers, and drops them while open. 0 = off (default).
+AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
@@ -1162,6 +1217,27 @@ AiPlayerbot.DirectTargets.TraceInactive = 0
 AiPlayerbot.DirectTargets.FreshMaxLevel = 5
 AiPlayerbot.DirectTargets.FreshBackoffSeconds = 0
 AiPlayerbot.DirectTargets.FreshGrindFailures = 0
+# twow-repo#594 / P3-b (direct targets, design rev. 2, 18.10.2026): each class needs the master Enable = 1 and is built
+# once at boot (a reload switches a built class off and on, never builds one: [DirectTarget] state=reload_ignored).
+# Station = 1: anvils and forges as travel targets (6.505, above gathering, yields to open turn-ins, 10 min cooldown,
+# <= 1000 yd same map) and crafting of the focus recipes there ("station craft"); needs ProfessionUse.Craft = 1 and
+# ProfessionUse.RealReagents = 1 and the "gather" strategy. Cooking = 1: the same for cooking fires (cooldown shared).
+# Fishing = 1: shore points facing fishing holes as GatherFishing destinations (the OB-10 need, tfish and a declared
+# purpose; a pole and skill >= zone skill + 45, a catch chance of at least 50 %). Dungeon = 1 / Raid = 1: the open-world
+# point of an instance entrance (6.299 / 6.298, below the quest request; only without a running quest route backoff
+# and open turn-in, <= 1500 yd same map; level fit from the meeting stones; raids at the max level). Bots do not zone in.
+# Profile rule (OB-00 + CLI-Deep): QuestFirstProgression.GrindMode 2 => DirectTargets.Dungeon = DirectTargets.Raid = 0.
+# With a class on, the GrindMode 2 idle episodes ([QuestIdle]) include direct-target trip time; picks= gives the overlap.
+# Station, Cooking and Fishing stay allowed under GrindMode 2. Boot: [DirectTarget] state=loaded class= per class and
+# state=loaded_total ms= tiles_added= rss_delta_kb=; trips: state=pick class= ... and state=trip_end class= seconds=
+# result=crafted|no_focus|expired|move_retry|arrived|inactive|ended|reset|replaced (a bot that logs out mid-trip has no
+# end line); a destination that keeps failing is disabled for 1 h (state=disable); the summary line adds picks= empty=
+# crafts= no_focus= fail= disabled=. All 0 = nothing is built, no row, no line.
+AiPlayerbot.DirectTargets.Station = 0
+AiPlayerbot.DirectTargets.Cooking = 0
+AiPlayerbot.DirectTargets.Fishing = 0
+AiPlayerbot.DirectTargets.Dungeon = 0
+AiPlayerbot.DirectTargets.Raid = 0
 # Hotfix 8.33 (twow-repo#544): with 1 a persistent roster bot on its own, out of combat on a
 # continent and with no player within visibility + react distance, moves without detailed path
 # finding: for a target on its map farther than react distance with no player at either end it
@@ -1243,6 +1319,21 @@ AiPlayerbot.Path.RpgTargetSnap = 0
 # dock for a ship / zeppelin that is not there; the first RouteFailDetail.LinesPerMinute of them a minute are logged as
 # [TaxiUse] / [TransportWait], plus [TaxiUse] summary once a minute. 0 = off (default).
 AiPlayerbot.Path.TaxiTrace = 0
+# twow-repo#342 (S1, trace, no behaviour change): 1 = one [TransportWait] state=attempt|board|arrive|fail line per bot and
+# transport edge transition (edge=go:<entry>:<AB|BA> from the vessel's TaxiPath stops, <i>-<j> with more than 2 stops,
+# lift for an elevator / tram car, - when unknown), never per tick, at most 120 lines a minute (own budget, not
+# RouteFailDetail.LinesPerMinute), plus [TransportWait] summary with the unsampled counts (min= / mins= = the window).
+# Fail lines: phase=wait|ride, end=1 for route_changed / left / exit_origin / fell_off / stall_abandon (episode over),
+# end=0 for no_ride / wait_timeout / board_point / overrun (at 15 min). wait_ms_sum = board + phase=wait end=1 fails,
+# ride_ms_sum = arrive + phase=ride end=1 fails. The [TransportWait] bot= line of TaxiTrace and [TaxiUse] stay as they
+# are. 0 = off (default).
+AiPlayerbot.Path.TransportEdgeTrace = 0
+# twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
+# disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
+# twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a
+# disallowed mount form (druid travel form, shaman Ghost Wolf) and the bot's dismount does not end the form, so druids
+# and shamans retried the same flight in a loop. 1 = the form is cancelled right before the flight. 0 = as before (default).
+AiPlayerbot.Path.TaxiCancelForm = 0
 # twow-repo#575 (PATH-01 E6, BEHAVIOUR CHANGE, "nach Abnahme an"): the quest rescue of a stuck bot up to level 10 picks a
 # start position of its faction; it could pick the goblin start (Blackstone Island, no route out for other races) or the
 # high-elf start (Thalassian Highlands) and rebinds the hearthstone at the target. 1 = those two starts are rescue
@@ -1309,6 +1400,19 @@ AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 # finished quest's turn-in counts as a failed turn-in; TurnInParkFailures of them within TurnInParkWindowSeconds park
 # the turn-in (#485), so a bot whose taker is unreachable quests on in its band instead of cycling. 0 = as before.
 AiPlayerbot.ZoneExit.TurnInStallCounts = 0
+
+# twow-repo#601 S3c (OB-10 rev. 2, 18.10.2026): TurnInTravelStall = 1 (roster bots on their own): inside TurnInNearRadius
+# yards of a finished quest's taker only getting 3 yd closer than the best distance so far counts as progress (moving
+# around the taker no longer does; a new trip after a work phase or another target starts a fresh window). A stall
+# there (TurnInStallSeconds) ends the trip: [UnreachableTarget] reason=near_stall ... switch=<TurnInStallCounts>
+# travel_stall=1, the turn-in is parked at once for TurnInParkSeconds ([QuestFirstRoute] state=parked
+# reason=structural_unreachable_near) and the bot leaves the taker. The second work timeout of the same turn-in parks it
+# too (reason=structural_work_timeout). Parks need TurnInParkFailures > 0; without them the bot leaves the taker and its
+# route stays suppressed for TurnInRouteCooldownSeconds. Such parks never abandon the quest (AbandonStructuralParked)
+# and a rescue does not lift them. TurnInNearRadius is a parameter of the switch (OB-10: 60 yd) and only acts with it
+# (0 = no near zone, at most 500). 0 = as before.
+AiPlayerbot.ZoneExit.TurnInTravelStall = 0
+AiPlayerbot.ZoneExit.TurnInNearRadius = 60
 
 # twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
 # RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
@@ -1592,6 +1696,7 @@ AiPlayerbot.ClassRaceProb.11.6 = 34    # Tauren druid chance
 # --- class 1 ---
 AiPlayerbot.PremadeSpecName.1.0 = fury
 AiPlayerbot.PremadeSpecProb.1.0 = 100
+AiPlayerbot.PremadeSpecTab.1.0 = 1
 AiPlayerbot.PremadeSpecLink.1.0.10 = -2
 AiPlayerbot.PremadeSpecLink.1.0.15 = -552
 AiPlayerbot.PremadeSpecLink.1.0.20 = -55552
@@ -1605,6 +1710,7 @@ AiPlayerbot.PremadeSpecLink.1.0.55 = 3522531233251-55555132523122531
 AiPlayerbot.PremadeSpecLink.1.0.60 = 35225312332513322-55555132523122531
 AiPlayerbot.PremadeSpecName.1.1 = protection
 AiPlayerbot.PremadeSpecProb.1.1 = 100
+AiPlayerbot.PremadeSpecTab.1.1 = 2
 AiPlayerbot.PremadeSpecLink.1.1.10 = --2
 AiPlayerbot.PremadeSpecLink.1.1.15 = --2532
 AiPlayerbot.PremadeSpecLink.1.1.20 = --2535511
@@ -1618,6 +1724,7 @@ AiPlayerbot.PremadeSpecLink.1.1.55 = 35225312332512--2535512232255122231
 AiPlayerbot.PremadeSpecLink.1.1.60 = 352253123325133231--2535512232255122231
 AiPlayerbot.PremadeSpecName.1.2 = arms
 AiPlayerbot.PremadeSpecProb.1.2 = 100
+AiPlayerbot.PremadeSpecTab.1.2 = 0
 AiPlayerbot.PremadeSpecLink.1.2.10 = 2
 AiPlayerbot.PremadeSpecLink.1.2.15 = 3522
 AiPlayerbot.PremadeSpecLink.1.2.20 = 35225311
@@ -1633,6 +1740,7 @@ AiPlayerbot.PremadeSpecLink.1.2.60 = 352253123325133231-5555513252312252
 # --- class 2 ---
 AiPlayerbot.PremadeSpecName.2.0 = holy
 AiPlayerbot.PremadeSpecProb.2.0 = 100
+AiPlayerbot.PremadeSpecTab.2.0 = 0
 AiPlayerbot.PremadeSpecLink.2.0.10 = 2
 AiPlayerbot.PremadeSpecLink.2.0.15 = 552
 AiPlayerbot.PremadeSpecLink.2.0.20 = 553252
@@ -1646,6 +1754,7 @@ AiPlayerbot.PremadeSpecLink.2.0.55 = 55325312235251351-5532531332331
 AiPlayerbot.PremadeSpecLink.2.0.60 = 55325312235251351-55325313323311-252
 AiPlayerbot.PremadeSpecName.2.1 = protection
 AiPlayerbot.PremadeSpecProb.2.1 = 100
+AiPlayerbot.PremadeSpecTab.2.1 = 1
 AiPlayerbot.PremadeSpecLink.2.1.10 = -2
 AiPlayerbot.PremadeSpecLink.2.1.15 = -552
 AiPlayerbot.PremadeSpecLink.2.1.20 = -553252
@@ -1659,6 +1768,7 @@ AiPlayerbot.PremadeSpecLink.2.1.55 = 55325312233-5532531332331551-05201
 AiPlayerbot.PremadeSpecLink.2.1.60 = 55325312233-5532531332331551-05205001203
 AiPlayerbot.PremadeSpecName.2.2 = retribution
 AiPlayerbot.PremadeSpecProb.2.2 = 100
+AiPlayerbot.PremadeSpecTab.2.2 = 2
 AiPlayerbot.PremadeSpecLink.2.2.10 = --2
 AiPlayerbot.PremadeSpecLink.2.2.15 = --552
 AiPlayerbot.PremadeSpecLink.2.2.20 = --552352
@@ -1674,6 +1784,7 @@ AiPlayerbot.PremadeSpecLink.2.2.60 = 55325312233-50325000003-5523525123325151
 # --- class 3 ---
 AiPlayerbot.PremadeSpecName.3.0 = beastmastery
 AiPlayerbot.PremadeSpecProb.3.0 = 100
+AiPlayerbot.PremadeSpecTab.3.0 = 0
 AiPlayerbot.PremadeSpecLink.3.0.10 = 2
 AiPlayerbot.PremadeSpecLink.3.0.15 = 552
 AiPlayerbot.PremadeSpecLink.3.0.20 = 5523322
@@ -1687,6 +1798,7 @@ AiPlayerbot.PremadeSpecLink.3.0.55 = 5523322152253112251-5555213251123
 AiPlayerbot.PremadeSpecLink.3.0.60 = 5523322152253112251-5555213251123251-2
 AiPlayerbot.PremadeSpecName.3.1 = marksmanship
 AiPlayerbot.PremadeSpecProb.3.1 = 100
+AiPlayerbot.PremadeSpecTab.3.1 = 1
 AiPlayerbot.PremadeSpecLink.3.1.10 = -2
 AiPlayerbot.PremadeSpecLink.3.1.15 = -552
 AiPlayerbot.PremadeSpecLink.3.1.20 = -55552
@@ -1700,6 +1812,7 @@ AiPlayerbot.PremadeSpecLink.3.1.55 = 5523322152253112-5555213251123251
 AiPlayerbot.PremadeSpecLink.3.1.60 = 5523322152253112251-5555213251123251-2
 AiPlayerbot.PremadeSpecName.3.2 = survival
 AiPlayerbot.PremadeSpecProb.3.2 = 100
+AiPlayerbot.PremadeSpecTab.3.2 = 2
 AiPlayerbot.PremadeSpecLink.3.2.10 = --2
 AiPlayerbot.PremadeSpecLink.3.2.15 = --3522
 AiPlayerbot.PremadeSpecLink.3.2.20 = --35232322
@@ -1715,6 +1828,7 @@ AiPlayerbot.PremadeSpecLink.3.2.60 = 552332215225311225--35232322511232331251
 # --- class 4 ---
 AiPlayerbot.PremadeSpecName.4.0 = combat
 AiPlayerbot.PremadeSpecProb.4.0 = 100
+AiPlayerbot.PremadeSpecTab.4.0 = 1
 AiPlayerbot.PremadeSpecLink.4.0.10 = -2
 AiPlayerbot.PremadeSpecLink.4.0.15 = -552
 AiPlayerbot.PremadeSpecLink.4.0.20 = -55552
@@ -1728,6 +1842,7 @@ AiPlayerbot.PremadeSpecLink.4.0.55 = 005032310501-5555535312325530122323011
 AiPlayerbot.PremadeSpecLink.4.0.60 = 0050323105023300102-5555535312325530122323011
 AiPlayerbot.PremadeSpecName.4.1 = assassination
 AiPlayerbot.PremadeSpecProb.4.1 = 100
+AiPlayerbot.PremadeSpecTab.4.1 = 0
 AiPlayerbot.PremadeSpecLink.4.1.10 = 2
 AiPlayerbot.PremadeSpecLink.4.1.15 = 3252
 AiPlayerbot.PremadeSpecLink.4.1.20 = 3254323
@@ -1741,6 +1856,7 @@ AiPlayerbot.PremadeSpecLink.4.1.55 = 32543231252233311125111-55555353
 AiPlayerbot.PremadeSpecLink.4.1.60 = 32543231252233311125111-5555535311200500001
 AiPlayerbot.PremadeSpecName.4.2 = subtlety
 AiPlayerbot.PremadeSpecProb.4.2 = 100
+AiPlayerbot.PremadeSpecTab.4.2 = 2
 AiPlayerbot.PremadeSpecLink.4.2.10 = --2
 AiPlayerbot.PremadeSpecLink.4.2.15 = --4521
 AiPlayerbot.PremadeSpecLink.4.2.20 = --4523323
@@ -1757,6 +1873,7 @@ AiPlayerbot.PremadeSpecLink.4.2.60 = 3254323125223331111--4523323331122321122511
 # talents are real talents, no points held back; 117 at rank 3 for evasive resistance.
 AiPlayerbot.PremadeSpecName.4.3 = rogue tank
 AiPlayerbot.PremadeSpecProb.4.3 = 0
+AiPlayerbot.PremadeSpecTab.4.3 = 1
 AiPlayerbot.PremadeSpecLink.4.3.10 = -2
 AiPlayerbot.PremadeSpecLink.4.3.15 = -552
 AiPlayerbot.PremadeSpecLink.4.3.20 = -55552
@@ -1772,6 +1889,7 @@ AiPlayerbot.PremadeSpecLink.4.3.60 = 0050323105023300102-55555353123255301220233
 # --- class 5 ---
 AiPlayerbot.PremadeSpecName.5.0 = holy
 AiPlayerbot.PremadeSpecProb.5.0 = 100
+AiPlayerbot.PremadeSpecTab.5.0 = 1
 AiPlayerbot.PremadeSpecLink.5.0.10 = -2
 AiPlayerbot.PremadeSpecLink.5.0.15 = -3252
 AiPlayerbot.PremadeSpecLink.5.0.20 = -3255322
@@ -1785,6 +1903,7 @@ AiPlayerbot.PremadeSpecLink.5.0.55 = 2355522213332311-32553233123521351
 AiPlayerbot.PremadeSpecLink.5.0.60 = 235552221333231151-32553233123521351-4
 AiPlayerbot.PremadeSpecName.5.1 = shadow
 AiPlayerbot.PremadeSpecProb.5.1 = 100
+AiPlayerbot.PremadeSpecTab.5.1 = 2
 AiPlayerbot.PremadeSpecLink.5.1.10 = --2
 AiPlayerbot.PremadeSpecLink.5.1.15 = --552
 AiPlayerbot.PremadeSpecLink.5.1.20 = --553252
@@ -1798,6 +1917,7 @@ AiPlayerbot.PremadeSpecLink.5.1.55 = 2355522213332311--55325522122511251
 AiPlayerbot.PremadeSpecLink.5.1.60 = 235552221333231151-31-55325522122511251
 AiPlayerbot.PremadeSpecName.5.2 = discipline
 AiPlayerbot.PremadeSpecProb.5.2 = 100
+AiPlayerbot.PremadeSpecTab.5.2 = 0
 AiPlayerbot.PremadeSpecLink.5.2.10 = 2
 AiPlayerbot.PremadeSpecLink.5.2.15 = 2352
 AiPlayerbot.PremadeSpecLink.5.2.20 = 235552
@@ -1813,6 +1933,7 @@ AiPlayerbot.PremadeSpecLink.5.2.60 = 235552221333231151-32553233123521351-4
 # --- class 7 ---
 AiPlayerbot.PremadeSpecName.7.0 = restoration
 AiPlayerbot.PremadeSpecProb.7.0 = 100
+AiPlayerbot.PremadeSpecTab.7.0 = 2
 AiPlayerbot.PremadeSpecLink.7.0.10 = --2
 AiPlayerbot.PremadeSpecLink.7.0.15 = --552
 AiPlayerbot.PremadeSpecLink.7.0.20 = --552352
@@ -1826,6 +1947,7 @@ AiPlayerbot.PremadeSpecLink.7.0.55 = 5523313522232123--5523532135321251
 AiPlayerbot.PremadeSpecLink.7.0.60 = 55233135222321251-05000002-5523532135321251
 AiPlayerbot.PremadeSpecName.7.1 = enhancement
 AiPlayerbot.PremadeSpecProb.7.1 = 100
+AiPlayerbot.PremadeSpecTab.7.1 = 1
 AiPlayerbot.PremadeSpecLink.7.1.10 = -2
 AiPlayerbot.PremadeSpecLink.7.1.15 = -552
 AiPlayerbot.PremadeSpecLink.7.1.20 = -55552
@@ -1839,6 +1961,7 @@ AiPlayerbot.PremadeSpecLink.7.1.55 = 550331-5555253231335232311553111
 AiPlayerbot.PremadeSpecLink.7.1.60 = 550331300202012-5555253231335232311553111
 AiPlayerbot.PremadeSpecName.7.2 = elemental
 AiPlayerbot.PremadeSpecProb.7.2 = 100
+AiPlayerbot.PremadeSpecTab.7.2 = 0
 AiPlayerbot.PremadeSpecLink.7.2.10 = 2
 AiPlayerbot.PremadeSpecLink.7.2.15 = 552
 AiPlayerbot.PremadeSpecLink.7.2.20 = 5523313
@@ -1856,6 +1979,7 @@ AiPlayerbot.PremadeSpecLink.7.2.60 = 55233135222321251-555525323-55235
 # Calming Winds, 3 points in Ancestral Guardian.
 AiPlayerbot.PremadeSpecName.7.3 = shaman tank
 AiPlayerbot.PremadeSpecProb.7.3 = 0
+AiPlayerbot.PremadeSpecTab.7.3 = 1
 AiPlayerbot.PremadeSpecLink.7.3.10 = -2
 AiPlayerbot.PremadeSpecLink.7.3.15 = -552
 AiPlayerbot.PremadeSpecLink.7.3.20 = -55552
@@ -1871,6 +1995,7 @@ AiPlayerbot.PremadeSpecLink.7.3.60 = 550331300202012-55552532013352323145530111
 # --- class 8 ---
 AiPlayerbot.PremadeSpecName.8.0 = arcane
 AiPlayerbot.PremadeSpecProb.8.0 = 100
+AiPlayerbot.PremadeSpecTab.8.0 = 0
 AiPlayerbot.PremadeSpecLink.8.0.10 = 2
 AiPlayerbot.PremadeSpecLink.8.0.15 = 2352
 AiPlayerbot.PremadeSpecLink.8.0.20 = 235255
@@ -1884,6 +2009,7 @@ AiPlayerbot.PremadeSpecLink.8.0.55 = 2352551312233311251-555232312323132
 AiPlayerbot.PremadeSpecLink.8.0.60 = 2352551312233311251-55523231232313251-22
 AiPlayerbot.PremadeSpecName.8.1 = fire
 AiPlayerbot.PremadeSpecProb.8.1 = 100
+AiPlayerbot.PremadeSpecTab.8.1 = 1
 AiPlayerbot.PremadeSpecLink.8.1.10 = -2
 AiPlayerbot.PremadeSpecLink.8.1.15 = -552
 AiPlayerbot.PremadeSpecLink.8.1.20 = -555232
@@ -1897,6 +2023,7 @@ AiPlayerbot.PremadeSpecLink.8.1.55 = 23525513122333112-55523231232313251
 AiPlayerbot.PremadeSpecLink.8.1.60 = 235255131223331125-55523231232313251-203
 AiPlayerbot.PremadeSpecName.8.2 = frost
 AiPlayerbot.PremadeSpecProb.8.2 = 100
+AiPlayerbot.PremadeSpecTab.8.2 = 2
 AiPlayerbot.PremadeSpecLink.8.2.10 = --2
 AiPlayerbot.PremadeSpecLink.8.2.15 = --2532
 AiPlayerbot.PremadeSpecLink.8.2.20 = --25333231
@@ -1912,6 +2039,7 @@ AiPlayerbot.PremadeSpecLink.8.2.60 = 235255131223331125--2533323513235113521
 # --- class 9 ---
 AiPlayerbot.PremadeSpecName.9.0 = affliction
 AiPlayerbot.PremadeSpecProb.9.0 = 100
+AiPlayerbot.PremadeSpecTab.9.0 = 0
 AiPlayerbot.PremadeSpecLink.9.0.10 = 2
 AiPlayerbot.PremadeSpecLink.9.0.15 = 552
 AiPlayerbot.PremadeSpecLink.9.0.20 = 5523223
@@ -1925,6 +2053,7 @@ AiPlayerbot.PremadeSpecLink.9.0.55 = 552322321223212151-2532331512233135-4
 AiPlayerbot.PremadeSpecLink.9.0.60 = 552322321223212151-2532331512233135-5005301
 AiPlayerbot.PremadeSpecName.9.1 = demonology
 AiPlayerbot.PremadeSpecProb.9.1 = 100
+AiPlayerbot.PremadeSpecTab.9.1 = 1
 AiPlayerbot.PremadeSpecLink.9.1.10 = -2
 AiPlayerbot.PremadeSpecLink.9.1.15 = -2532
 AiPlayerbot.PremadeSpecLink.9.1.20 = -25323313
@@ -1938,6 +2067,7 @@ AiPlayerbot.PremadeSpecLink.9.1.55 = 55232232122321214-253233151223313531-2
 AiPlayerbot.PremadeSpecLink.9.1.60 = 55232232122321214-253233151223313531-5025
 AiPlayerbot.PremadeSpecName.9.2 = destruction
 AiPlayerbot.PremadeSpecProb.9.2 = 100
+AiPlayerbot.PremadeSpecTab.9.2 = 2
 AiPlayerbot.PremadeSpecLink.9.2.10 = --2
 AiPlayerbot.PremadeSpecLink.9.2.15 = --552
 AiPlayerbot.PremadeSpecLink.9.2.20 = --552532
@@ -1953,6 +2083,7 @@ AiPlayerbot.PremadeSpecLink.9.2.60 = 5523223212232121-053030101-5525321522525151
 # --- class 11 ---
 AiPlayerbot.PremadeSpecName.11.0 = balance
 AiPlayerbot.PremadeSpecProb.11.0 = 100
+AiPlayerbot.PremadeSpecTab.11.0 = 0
 AiPlayerbot.PremadeSpecLink.11.0.10 = 2
 AiPlayerbot.PremadeSpecLink.11.0.15 = 5142
 AiPlayerbot.PremadeSpecLink.11.0.20 = 51423232
@@ -1966,6 +2097,7 @@ AiPlayerbot.PremadeSpecLink.11.0.55 = 51423233312533113321-5532332131-50305
 AiPlayerbot.PremadeSpecLink.11.0.60 = 51423233312533113321-5532332131-5030513300012
 AiPlayerbot.PremadeSpecName.11.1 = feral
 AiPlayerbot.PremadeSpecProb.11.1 = 50
+AiPlayerbot.PremadeSpecTab.11.1 = 1
 AiPlayerbot.PremadeSpecLink.11.1.10 = -2
 AiPlayerbot.PremadeSpecLink.11.1.15 = -552
 AiPlayerbot.PremadeSpecLink.11.1.20 = -5532331
@@ -1979,6 +2111,7 @@ AiPlayerbot.PremadeSpecLink.11.1.55 = 51423233312533113-553233213232221521
 AiPlayerbot.PremadeSpecLink.11.1.60 = 51423233312533113-553233213232221521-55
 AiPlayerbot.PremadeSpecName.11.2 = restoration
 AiPlayerbot.PremadeSpecProb.11.2 = 100
+AiPlayerbot.PremadeSpecTab.11.2 = 2
 AiPlayerbot.PremadeSpecLink.11.2.10 = --2
 AiPlayerbot.PremadeSpecLink.11.2.15 = --552
 AiPlayerbot.PremadeSpecLink.11.2.20 = --55552
@@ -1993,6 +2126,7 @@ AiPlayerbot.PremadeSpecLink.11.2.60 = 514232333125331131--5555513355213521
 # #308: bear (tank) shares the feral build; cat (11.1) and bear 50/50 (owner 2026-09-26).
 AiPlayerbot.PremadeSpecName.11.3 = bear
 AiPlayerbot.PremadeSpecProb.11.3 = 50
+AiPlayerbot.PremadeSpecTab.11.3 = 1
 AiPlayerbot.PremadeSpecLink.11.3.10 = -2
 AiPlayerbot.PremadeSpecLink.11.3.15 = -552
 AiPlayerbot.PremadeSpecLink.11.3.20 = -5532331
@@ -2210,6 +2344,12 @@ AiPlayerbot.WorldBotsTrace = 0
 # twow-repo#541: 1 = one [BotUpdate] line per minute: distribution (p50/p90/p99/p999, max) of the wall
 # time of one bot AI update on the map threads, plus the five slowest calls with bot, map, combat
 # and last action. Log only. 0 = off (default).
+# twow-repo#601 S1: with the switch QuestFirstProgression.FailureClasses on also one [PreValidate] line per
+# minute (calls, sum/p50/p99/max us, open_sum = open turn-ins checked, ok_sum = validated) for the turn-in
+# pre-check, and its trail note `TIME:prevalidate <us> n=<open> ok=<validated>` in [BotUpdateSlow].
+# twow-repo#601 S2 diagnostic: also one [GrindPick] line per 5-level band and minute - every new grind target by
+# source (attacker = attacks the bot or its group, victim = already on the bot, quest = needed for a quest, grind =
+# anything else) as picks/grey (grey = no XP). Bands without a pick are left out.
 AiPlayerbot.BotUpdateTrace = 0
 # twow-repo#597 (TICK-01): 1 = every [BotUpdateSlow] line ends with " tick=<world loop counter>
 # region=<map>.<inst>" (the world tick and the map region of that slow bot update), so a slow update
@@ -2229,6 +2369,11 @@ AiPlayerbot.BotUpdateTraceTriggers = 0
 # (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
 # could choose every fishing zone. 0 = as before (default).
 AiPlayerbot.Gather.FishingSkillCheck = 0
+
+# twow-repo#596 D: 1 = the zone-escape trigger and the hearthstone check take the home bind's area from the area the core
+# stored at bind time, instead of a terrain lookup at the bind position (which loaded that far grid from disk again and
+# again: 126 ms per check for a bot whose bind spot nobody is near). Same area and level. 0 = terrain lookup (default).
+AiPlayerbot.Perf.BindAreaFromHomebind = 0
 # twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
@@ -2425,6 +2570,53 @@ AiPlayerbot.CanCastSpell.CheckPower = 0
 # impossible. No per-cast spell name lookup: a few field reads and one compare per isPossible. Logs
 # [SpellIdRefresh] when the id changed, [SpellRangeRefresh] when only the range changed. 0 = as before (default).
 AiPlayerbot.CastSpell.RefreshOnLearn = 0
+# twow-repo#602 ROT-01 D0 (measurement only, no behaviour change): 1 = cast diagnostics for the rotation work. Counts
+# every CastSpellAction / CastPetSpellAction isPossible outcome (reason before CanCastSpell, or its SpellCastResult;
+# "tolerated" = possible although CanCastSpell reported a result, e.g. range/LOS), every base CastSpellAction::Execute
+# (start ok / cast false / no target) and every SMSG_CAST_RESULT the server sends to the bot (per spell id; status 2
+# results include the failures of Spell::prepare). Per class and cohort (A = even, B = odd low guid). Lines (bots.log):
+#   [RotCast] window_s= evals= possible= tolerated= starts= start_ok= srv_fail= srv_ok= srv_other= keys= dropped=
+#     unknown_dropped= role_dropped= pull_dropped=   once a minute, then the top 25
+#   [RotCast] row= cls= cohort= kind=eval|start|server action=|spell= name= verdict=ok|tolerated|fail reason= n=
+#   [RotCastTotal] window_min=60 ...   the same once an hour with the top 40 rows
+#   [RotCastUnknown] bot= name= cls= level= cohort= action= spell= reason=no_spell_id|not_known   once per bot and
+#     action (at most 120 a minute)
+#   [RotRole] guid= name= cls= level= cohort= tab= maj= path= role=TANK|HEAL|DPS forced= free= member= autoload=
+#     suppressed= co=<combat strategies> nc=<non-combat strategies>   when a strategy reset changed the set (120/min)
+#   [RotPull] bot= name= cls= level= cohort= entry= tlevel= hp= mana= attackers= dist=   at the attack-anything pull
+#     (300/min; mana=-1 without a mana bar)
+# Not counted: subclass isPossible/Execute overrides that bypass the base, GameObject/position casts, pet cast
+# results (SMSG_PET_CAST_FAILED). bot_events.csv stays unchanged. 0 = off (default).
+AiPlayerbot.Rotation.CastTrace = 0
+# twow-repo#602 ROT-01 R06a (BEHAVIOUR CHANGE, owner decision 18.10.2026, enable only after the OB-30 A/B + owner go):
+# the spec identity of a bot on a premade path is the tab of the path's named tree (AiPlayerbot.PremadeSpecTab.<class>.<index>)
+# from level 10 on, never the talent point majority: a shadow priest whose points tie at level 60 stays shadow (strategies,
+# role, gear without Loot.RoleWeights, imbues, consumables), an arms warrior stays arms. Real players, bots without a
+# premade path and paths without a tab key keep the point majority; below level 10 the class defaults stay. Also:
+# the talent role filter (dungeon finder, ChangeTalentsAction) uses the path tab and counts the shaman / rogue tank
+# paths as tanks, and a persistent roster member is not respecced for a dungeon finder slot ("roster role before the
+# slot"). At load: "[SpecPath] loaded paths= with_tab= mismatches=" (+ one "[SpecPath] mismatch" line per path whose
+# key disagrees with its level 10 link). 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
+AiPlayerbot.Rotation.SpecFromPath = 0
+# twow-repo#602 ROT-01 X3 (BEHAVIOUR CHANGE, enable only after the OB-30 A/B + owner go): emergency ladder for SOLO FREE BOTS below
+# critical health (no group, no real player, not healers - F1). Today panic -> flee wins every tick and a solo random bot's flee is a
+# MoveChase around the mob that gains no distance. Once per episode the ladder picks: a ready CLASS ESCAPE gets a 2 s window in which panic and
+# outnumbered stay quiet so its existing critical-health node fires (warrior Intimidating Shout, prot Last Stand / Shield Wall, rogue
+# Blind / Vanish, mage Ice Block, paladin Lay on Hands / Divine Shield, warlock Sacrifice with the Voidwalker); else FIGHT ON when the
+# single target is a normal mob (not elite/boss/player, at most 2 levels above) at or below FightTargetHp; else FLEE as before. An
+# episode ends when panic is not seen for 10 s or the bot leaves combat. SOLO CC: with at least 2 attackers, a normal add that attacks the bot or its pet and has no DoT gets the CC of
+# SoloCcSpells (Fear only without other mobs near) unless the bot's own target is at 30 % HP or less.
+# Lines (bots.log): "[EmergencyLadder] bot= name= cls= level= cohort= applied=0|1 trigger=panic choice=flee|escape|fight escape=
+# hp= mana= target_hp= target_gap= target_elite= target_player= attackers=" once per episode (the cohort the switch does not apply to
+# logs its decision with applied=0 and flees as before), "[EmergencyLadder] solo-cc bot= name= cls= cohort= spell= target= attackers="
+# per new solo CC target (300 lines a minute over all bots), and once an hour per cohort and class "[EmergencyLadderTotal]
+# window_min=60 cohort= cls= episodes= flee= escape= fight= escape_fallback= fight_abort= solo_cc= cc_broken= dropped=".
+# 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
+AiPlayerbot.Rotation.EmergencyLadder = 0
+# twow-repo#602 X3 (F2): the ladder fights on when the single target is at or below this HP % (default 20).
+AiPlayerbot.Rotation.EmergencyLadder.FightTargetHp = 20
+# twow-repo#602 X3 (F3): spells for solo CC on an add, comma separated, lower case spell names (default polymorph,banish,fear).
+AiPlayerbot.Rotation.EmergencyLadder.SoloCcSpells = polymorph,banish,fear
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,

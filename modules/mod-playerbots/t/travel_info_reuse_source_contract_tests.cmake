@@ -120,7 +120,10 @@ count_text("${hub}" "++lastRejects.hubFilter;" 2 "hub reject counted on both pat
 require_order("${hub}" "IsLocalQuestHubCandidate(bot, destination, position)" "else\n                {\n                    PlayerTravelInfo travelInfo(bot);\n                    if (!IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo))" "old hub path in the else branch")
 
 # 6. Main activation check: reuse when on, old expression when off.
-require_text("${best}" "if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot)))))" "main check gated, old expression kept")
+# twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice takes the reuse path with the switch off too (its R3
+# window snapshot); gapGrindChoice is false for every other choice and GrindMode 0 / 2, so the old expression is kept there.
+require_text("${best}" "if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (gapGrindChoice ? reuseActive(destination) :\n                (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot))))))" "main check gated, old expression kept")
+require_text("${best}" "bool const gapGrindChoice = target->IsGapGrindChoice();" "the gap grind choice only from its target flag (#601 S2)")
 require_text("${best}" "return isActive[dest] = dest->IsActive(bot, choiceInfo());" "miss computes and stores")
 require_order("${best}" "auto const known = isActive.find(dest);" "return isActive[dest] = dest->IsActive(bot, choiceInfo());" "known answer before the recompute")
 

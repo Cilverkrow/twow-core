@@ -3,6 +3,9 @@
 #include "DropQuestAction.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestAcceptPolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/strategy/values/GuildValues.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Formulas.h"
@@ -73,6 +76,67 @@ static void DropGreyQuestsOnItsOwn(PlayerbotAI* ai, Player* bot)
     }
 }
 
+// twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable, OB-10 rev. 2): a roster bot on its own drops the open quests it
+// cannot finish - listed ones and, with SoloSkipGroupQuests while not in a group, group quests - whatever the log size.
+// A complete one stays (a reachable taker still rewards it); scope and the class exemption (solo group rule only) in
+// PlayerbotAI::QuestFeasibilityReason. Paths E / F are not undone (review S3a F2, design rev. 2 Q-B1): no listed quest
+// while the bot is in a group (a member's escort confirm), never the quest of its guild quest order (the order would
+// accept it again on every cleanup). At most one pass over the quest log per cleanup; the guild order is asked once,
+// only when a quest would go.
+// twow-repo#601 S3a (OB-10 range review): objective progress = any kill / item counter above 0 (not ObjectiveText, which
+// HasProgress uses and every quest with a text has).
+static bool HasObjectiveCounts(Player* bot, uint32 questId)
+{
+    QuestStatusMap& statusMap = bot->getQuestStatusMap();
+    QuestStatusMap::const_iterator const it = statusMap.find(questId);
+    if (it == statusMap.end())
+        return false;
+    for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        if (it->second.m_itemcount[i] || it->second.m_creatureOrGOcount[i])
+            return true;
+    return false;
+}
+
+static void DropInfeasibleOnItsOwn(PlayerbotAI* ai, Player* bot)
+{
+    if (!sPlayerbotAIConfig.questFeasibilityEnable)
+        return;
+
+    bool const inGroup = bot->GetGroup() != nullptr;
+    bool guildOrderKnown = false;
+    uint32 guildOrderQuest = 0;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        Quest const* quest = questId ? sObjectMgr.GetQuestTemplate(questId) : nullptr;
+        if (!quest)
+            continue;
+
+        ai::quest_feasibility::Reason const why = ai->QuestFeasibilityReason(quest);
+        if (why == ai::quest_feasibility::Reason::None)
+            continue;
+
+        if (!guildOrderKnown)
+        {
+            guildOrderKnown = true;
+            if (bot->GetGuildId())
+            {
+                GuildOrder const order = ai->GetAiObjectContext()->GetValue<GuildOrder>("guild order")->Get();
+                if (order.IsQuestRewardOrder())
+                    guildOrderQuest = order.questId;
+            }
+        }
+
+        char const* reason = ai::quest_feasibility::DropReasonName(why, bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE,
+            inGroup, guildOrderQuest == questId, why == ai::quest_feasibility::Reason::GroupSolo && HasObjectiveCounts(bot, questId));
+        if (!reason)
+            continue;
+
+        ai->DropQuest(questId, reason);
+        PlayerbotAI::NoteQuestFeasibilityDrop();
+    }
+}
+
 bool CleanQuestLogAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
@@ -81,6 +145,7 @@ bool CleanQuestLogAction::Execute(Event& event)
         return false;
 
     DropGreyQuestsOnItsOwn(ai, bot);
+    DropInfeasibleOnItsOwn(ai, bot);   // twow-repo#601 S3a (QuestFeasibility.Enable; off = no change)
     IdleRotateOnItsOwn();
 
     uint8 totalQuests = 0;

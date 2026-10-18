@@ -6,6 +6,9 @@
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
 #include "playerbot/ShortcutPolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/SpecPathPolicy.h"
+#include "playerbot/EmergencyLadderPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -23,6 +26,7 @@
 #include "playerbot/BotGroupPolicy.h"
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
+#include "playerbot/DirectTargetPolicy.h"
 
 #include <iostream>
 #include <numeric>
@@ -105,6 +109,9 @@ inline ParsedUrl parseUrl(const std::string& url) {
 
 bool PlayerbotAIConfig::Initialize()
 {
+    // twow-repo#594 / P3-b: the direct targets are built on the first call only (the boot); a reload calls this again.
+    ai::direct_targets::NoteInitialize();
+
     sLog.outString("Initializing AI Playerbot by ike3, based on the original Playerbot by blueboy");
 
     // The path used to be fixed at build time - SYSCONFDIR "aiplayerbot.conf" -
@@ -469,7 +476,7 @@ bool PlayerbotAIConfig::Initialize()
     parkHideFromBots = config.GetBoolDefault("AiPlayerbot.Park.HideFromBots", false);
     buffRealPlayerStyle = config.GetBoolDefault("AiPlayerbot.Buff.RealPlayerStyle", false);
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
-    lootRoleWeights = config.GetBoolDefault("AiPlayerbot.Loot.RoleWeights", false);
+    lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     equipKeepWeaponsUnlessUpgrade = config.GetBoolDefault("AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade", false);
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
@@ -488,6 +495,8 @@ bool PlayerbotAIConfig::Initialize()
     worldBotsHookTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsHookTrace", false);
     botUpdateTraceTriggers = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTriggers", false);
     gatherFishingSkillCheck = config.GetBoolDefault("AiPlayerbot.Gather.FishingSkillCheck", false);
+
+    perfBindAreaFromHomebind = config.GetBoolDefault("AiPlayerbot.Perf.BindAreaFromHomebind", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
     checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
     initPetCache = config.GetBoolDefault("AiPlayerbot.InitPet.Cache", false);
@@ -524,6 +533,15 @@ bool PlayerbotAIConfig::Initialize()
     petDeadNoWorldPetFalse = config.GetBoolDefault("AiPlayerbot.PetDeadNoWorldPetFalse", false);
     canCastSpellChecksPower = config.GetBoolDefault("AiPlayerbot.CanCastSpell.CheckPower", false);
     castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
+    rotationCastTrace = config.GetBoolDefault("AiPlayerbot.Rotation.CastTrace", false);
+    rotationSpecFromPath = config.GetIntDefault("AiPlayerbot.Rotation.SpecFromPath", 0);
+    rotationEmergencyLadder = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder", 0);
+    if (rotationEmergencyLadder > 2)
+        rotationEmergencyLadder = 0;   // twow-repo#602 X3: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    rotationEmergencyLadderFightTargetHp = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder.FightTargetHp", 20);
+    if (rotationEmergencyLadderFightTargetHp > 100)
+        rotationEmergencyLadderFightTargetHp = 20;   // twow-repo#602 X3: out of range (also a negative value) = the default
+    rotationEmergencyLadderSoloCcSpells = ai::emergency_ladder::ParseSpellList(config.GetStringDefault("AiPlayerbot.Rotation.EmergencyLadder.SoloCcSpells", "polymorph,banish,fear"));
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
@@ -644,6 +662,7 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelBelow = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelBelow", 0);
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
+    questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -666,16 +685,37 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
+    questFirstProgressionGrindFallbackMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes", 0)));
     questFirstProgressionFailureClasses = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses", false);
     questFirstProgressionResetOnProgressEvents = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents", false);
     questFirstProgressionAbandonStructuralParked = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.AbandonStructuralParked", false);
     questFirstProgressionTransientCountsAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TransientCountsAfter", 0)));
+    // twow-repo#601 S3b: the hub pre-loop also asks the main loop's post-IsActive deferrals (acts only with FailureClasses).
+    questFirstProgressionHubPreloopSameFilters = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters", false);
     questFirstProgressionGrindMode = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindMode", 0);
+    // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
+    questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
+    questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
+    questFeasibilityBlocklistWhileNoCustomStarts = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts", ""));
+    questFeasibilitySoloSkipGroupQuests = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests", false);
     directTargetsEnabled = config.GetBoolDefault("AiPlayerbot.DirectTargets.Enable", false);
     directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
     directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));
     directTargetsFreshBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshBackoffSeconds", 0)));
     directTargetsFreshGrindFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshGrindFailures", 0)));
+    // twow-repo#594 / P3-b: read before LoadQuestTravelTable (the boot builds what is on); a reload changes only the gates and
+    // names a class it switches on that was not built at boot.
+    directTargetsStation = config.GetBoolDefault("AiPlayerbot.DirectTargets.Station", false);
+    directTargetsCooking = config.GetBoolDefault("AiPlayerbot.DirectTargets.Cooking", false);
+    directTargetsFishing = config.GetBoolDefault("AiPlayerbot.DirectTargets.Fishing", false);
+    directTargetsDungeon = config.GetBoolDefault("AiPlayerbot.DirectTargets.Dungeon", false);
+    directTargetsRaid = config.GetBoolDefault("AiPlayerbot.DirectTargets.Raid", false);
+    if (uint32 const ignored = ai::direct_targets::NoteReloadSwitches(ai::direct_targets::SwitchMask(directTargetsEnabled,
+            directTargetsStation, directTargetsCooking, directTargetsFishing, directTargetsDungeon, directTargetsRaid),
+            ai::direct_targets::InitializeCalls().load(std::memory_order_relaxed)))
+        for (uint32 kind = 0; kind < ai::direct_targets::KindCount; ++kind)
+            if (ignored & (1u << kind))
+                sLog.outBasic("[DirectTarget] state=reload_ignored class=%s", ai::direct_targets::KindName(ai::direct_targets::Kind(kind)));
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
@@ -690,6 +730,8 @@ bool PlayerbotAIConfig::Initialize()
     pathStartZoneExactBounds = config.GetBoolDefault("AiPlayerbot.Path.StartZoneExactBounds", false);
     pathRpgTargetSnap = config.GetBoolDefault("AiPlayerbot.Path.RpgTargetSnap", false);
     pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
+    pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
+    pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
     pathRescueSkipCustomStarts = config.GetBoolDefault("AiPlayerbot.Path.RescueSkipCustomStarts", false);
     customRaceStartZones = config.GetBoolDefault("AiPlayerbot.CustomRaceStartZones", false);
     revivePreferCorpseRun = config.GetBoolDefault("AiPlayerbot.Revive.PreferCorpseRun", false);
@@ -701,6 +743,9 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionMinLevelForCrossMapQuestRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.MinLevelForCrossMapQuestRoute", 10);
     questFirstProgressionCrossMapContinentsOnly = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly", false);
     zoneExitTurnInStallCounts = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInStallCounts", false);
+    zoneExitTurnInTravelStall = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInTravelStall", false);
+    zoneExitTurnInNearRadius = config.GetFloatDefault("AiPlayerbot.ZoneExit.TurnInNearRadius", 60.0f);
+    zoneExitTurnInNearRadius = std::min(500.0f, std::max(0.0f, zoneExitTurnInNearRadius));
     zoneExitRescueHomeContinent = config.GetBoolDefault("AiPlayerbot.ZoneExit.RescueHomeContinent", false);
     zoneExitStrandedRescueAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ZoneExit.StrandedRescueAfter", 0)));
     zoneExitSkipBattlegroundQuests = config.GetBoolDefault("AiPlayerbot.ZoneExit.SkipBattlegroundQuests", false);
@@ -1785,6 +1830,7 @@ void PlayerbotAIConfig::LoadTalentSpecs()
     sLog.outString("Loading TalentSpecs");
 
     uint32 maxSpecLevel = 0;
+    uint32 specPathCount = 0, specPathWithTab = 0, specPathMismatches = 0;   // twow-repo#602 R06a ([SpecPath])
 
     for (uint32 cls = 1; cls < MAX_CLASSES; ++cls)
     {
@@ -1799,6 +1845,11 @@ void PlayerbotAIConfig::LoadTalentSpecs()
                 int probability = config.GetIntDefault(os.str().c_str(), 100);
 
                 TalentPath talentPath(spec, specName, probability);
+                {
+                    // twow-repo#602 R06a: the tab of the path's named tree, written by tools/build_premade_specs.py.
+                    std::ostringstream tabKey; tabKey << "AiPlayerbot.PremadeSpecTab." << cls << "." << spec;
+                    talentPath.tab = ai::spec_path::ValidTab(config.GetIntDefault(tabKey.str().c_str(), -1));
+                }
 
                 for (uint32 level = 10; level <= 100; level++)
                 {
@@ -1887,10 +1938,26 @@ void PlayerbotAIConfig::LoadTalentSpecs()
 
                 //Only add paths that have atleast 1 spec.
                 if (talentPath.talentSpec.size() > 0)
+                {
+                    // twow-repo#602 R06a: the tab key and the main tree of the first (level 10) link must agree.
+                    ++specPathCount;
+                    if (talentPath.tab >= 0)
+                    {
+                        ++specPathWithTab;
+                        int const firstLinkTree = talentPath.talentSpec.front().highestTree();
+                        if (!ai::spec_path::TabAgreesWithFirstLink(talentPath.tab, firstLinkTree))
+                        {
+                            ++specPathMismatches;
+                            sLog.outError("%s", ai::spec_path::FormatMismatchLine(cls, talentPath.name, talentPath.tab, firstLinkTree).c_str());
+                        }
+                    }
                     classSpecs[cls].talentPath.push_back(talentPath);
+                }
             }
         }
     }
+
+    sLog.outString("%s", ai::spec_path::FormatLoadedLine(specPathCount, specPathWithTab, specPathMismatches).c_str());
 
     if (classSpecs[1].talentPath.empty())
         sLog.outErrorDb("No premade specs found!!");

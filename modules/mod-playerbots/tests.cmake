@@ -274,6 +274,42 @@ add_test(NAME quest_grind_mode_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_grind_mode_source_contract_tests.cmake")
 
+# twow-repo#601 S2 / S4 (GrindMode 1 = gap filler, default 0; OB-10 rev. 2 18.10.2026): grind only inside the quest route
+# backoff (R1, before the S0 lines), the grind trip ends with the backoff and its end counts as no failure (R2). Commit 2:
+# R3 window via the snapshot scope bit, own map, R4, R5, [GrindWindow] minute line. Review fixes: inactive gap trip ends at
+# once (no COOLDOWN), cooldown cap, no refresh / money / group grind copy, window only for the gap grind fetch / choice / trip.
+add_test(NAME grind_gap_window_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_gap_window_source_contract_tests.cmake")
+
+# twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.*, default 0 / empty; OB-10 / OB-00 18.10.2026): feasibility at accept
+# time - quest id lists, the solo group rule, the giver relation and the drop of open infeasible quests (policy).
+add_executable(quest_feasibility_policy_tests
+  "${PB_MODULE_DIR}/t/quest_feasibility_policy_tests.cpp")
+
+target_include_directories(quest_feasibility_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_feasibility_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_feasibility_policy
+  COMMAND quest_feasibility_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_feasibility_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_feasibility_source_contract_tests.cmake")
+
+# twow-repo#601 S3b (AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters, default 0, only with FailureClasses; OB-10
+# 18.10.2026): the local quest hub pre-loop and the main loop of SetBestTarget share the post-IsActive deferrals.
+add_test(NAME hub_preloop_same_filters_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/hub_preloop_same_filters_source_contract_tests.cmake")
+
 # #354/#292: who may direct a bot without GM rank, and which `.bot`/`.rndbot`
 # commands stay GM tools. Decision table plus the call sites that use it.
 add_executable(roster_control_policy_tests
@@ -1001,6 +1037,12 @@ add_test(NAME consumables_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/consumables_source_contract_tests.cmake")
 
+# twow-repo#610 BOT-REST-01 item 1 (bug fix): eating / drinking no longer leaves a melee-attacking unit state behind.
+add_test(NAME rest_sit_state_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rest_sit_state_source_contract_tests.cmake")
+
 # #357 O-12: route B talent auras for 7.1 / 7.3 and the premade budget.
 add_executable(spec_aura_policy_tests
   "${PB_MODULE_DIR}/t/spec_aura_policy_tests.cpp")
@@ -1137,6 +1179,27 @@ add_test(NAME direct_targets_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/direct_targets_source_contract_tests.cmake")
+
+# twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking / Fishing / Dungeon / Raid, default 0): stations, cooking fires,
+# fishing-hole shore points and instance entrances as direct travel targets, built once at boot.
+add_executable(direct_target_policy_tests
+  "${PB_MODULE_DIR}/t/direct_target_policy_tests.cpp")
+
+target_include_directories(direct_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(direct_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME direct_target_policy
+  COMMAND direct_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME direct_targets_p3b_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/direct_targets_p3b_source_contract_tests.cmake")
 
 # #416 (7.5): value-cache eviction and prefix search.
 add_executable(value_evict_policy_tests
@@ -2066,6 +2129,27 @@ add_test(NAME bot_update_trace_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bot_update_trace_source_contract_tests.cmake")
+
+# twow-repo#601 S2 diagnostic: [GrindPick] grind-target sources (BotUpdateTrace).
+add_executable(grind_pick_policy_tests
+  "${PB_MODULE_DIR}/t/grind_pick_policy_tests.cpp")
+
+target_include_directories(grind_pick_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(grind_pick_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(grind_pick_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_pick_policy
+  COMMAND grind_pick_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_pick_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_pick_source_contract_tests.cmake")
 
 # twow-repo#541: AI delay jitter (AiPlayerbot.AiDelayJitterPct, default 0).
 add_executable(ai_jitter_policy_tests
@@ -3134,6 +3218,25 @@ add_test(NAME trigger_time_policy
   COMMAND trigger_time_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#308 LOOT-ROLE-01 v2 (owner 17.10.2026): the owner stat table as weight scales (AiPlayerbot.Loot.RoleWeights = 2).
+add_test(NAME loot_role_v2_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/loot_role_v2_source_contract_tests.cmake")
+
+add_executable(loot_role_v2_tests
+  "${PB_MODULE_DIR}/t/loot_role_v2_tests.cpp")
+
+target_include_directories(loot_role_v2_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(loot_role_v2_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_role_v2
+  COMMAND loot_role_v2_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#308 EQUIP-FLIP-01 (AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade): no weapon unequip/re-equip on every loot.
 add_test(NAME keep_weapons_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -3151,6 +3254,31 @@ set_target_properties(keep_weapons_policy_tests PROPERTIES
 
 add_test(NAME keep_weapons_policy
   COMMAND keep_weapons_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#596 D (AiPlayerbot.Perf.BindAreaFromHomebind): no terrain lookup at the far home bind position.
+add_test(NAME bind_area_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bind_area_source_contract_tests.cmake")
+
+# twow-repo#601 (AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes): no endless 8.32 grind fallback.
+add_test(NAME grind_fallback_minutes_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_fallback_minutes_source_contract_tests.cmake")
+
+add_executable(grind_fallback_minutes_tests
+  "${PB_MODULE_DIR}/t/grind_fallback_minutes_tests.cpp")
+
+target_include_directories(grind_fallback_minutes_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(grind_fallback_minutes_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_fallback_minutes
+  COMMAND grind_fallback_minutes_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#595 P4 S0 + B1 (AiPlayerbot.Shortcut.*): real-player snapshot, ShortcutNear, [Shortcut] counters, group-loop fix.
@@ -3177,3 +3305,137 @@ add_test(NAME fishing_skill_check_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/fishing_skill_check_source_contract_tests.cmake")
+
+# twow-repo#587 (AiPlayerbot.QuestRescue.KeepRequestWhenFull): a rescue request is not dropped while the limit is used up.
+add_test(NAME rescue_keep_request_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rescue_keep_request_source_contract_tests.cmake")
+
+add_executable(rescue_limiter_capacity_tests
+  "${PB_MODULE_DIR}/t/rescue_limiter_capacity_tests.cpp")
+
+target_include_directories(rescue_limiter_capacity_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rescue_limiter_capacity_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rescue_limiter_capacity
+  COMMAND rescue_limiter_capacity_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 ROT-01 (bot cohorts for in-realm A/B: 0 off / 1 all / 2 only cohort B) and D0
+# (AiPlayerbot.Rotation.CastTrace, default 0): [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] diagnostics.
+add_executable(cohort_policy_tests
+  "${PB_MODULE_DIR}/t/cohort_policy_tests.cpp")
+
+target_include_directories(cohort_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(cohort_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cohort_policy
+  COMMAND cohort_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_executable(rot_cast_policy_tests
+  "${PB_MODULE_DIR}/t/rot_cast_policy_tests.cpp")
+
+target_include_directories(rot_cast_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rot_cast_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rot_cast_policy
+  COMMAND rot_cast_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rot_cast_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rot_cast_trace_source_contract_tests.cmake")
+
+# twow-repo#602 ROT-01 R06a (AiPlayerbot.Rotation.SpecFromPath, cohort mode, default 0): spec identity from the premade
+# path (AiPlayerbot.PremadeSpecTab) from level 10, never from the talent point majority (owner decision 18.10.2026).
+add_executable(spec_path_policy_tests
+  "${PB_MODULE_DIR}/t/spec_path_policy_tests.cpp")
+
+target_include_directories(spec_path_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(spec_path_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spec_path_policy
+  COMMAND spec_path_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spec_path_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/spec_path_source_contract_tests.cmake")
+
+# twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder, cohort mode, default 0): fight on / class escape / flee for solo free bots
+# below critical health, solo CC on an add; FightTargetHp and SoloCcSpells configurable (OB-00 18.10.2026).
+add_executable(emergency_ladder_policy_tests
+  "${PB_MODULE_DIR}/t/emergency_ladder_policy_tests.cpp")
+
+target_include_directories(emergency_ladder_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(emergency_ladder_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME emergency_ladder_policy
+  COMMAND emergency_ladder_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME emergency_ladder_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/emergency_ladder_source_contract_tests.cmake")
+
+# twow-repo#602 ROT-01 F6 (log fix, no switch): the adds column of deaths.csv from an attacker snapshot taken while the bot fights
+# (the death clears every victim before OnDeath runs); OB-10: before the X3 A/B.
+add_executable(death_adds_policy_tests
+  "${PB_MODULE_DIR}/t/death_adds_policy_tests.cpp")
+
+target_include_directories(death_adds_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(death_adds_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME death_adds_policy
+  COMMAND death_adds_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME death_adds_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/death_adds_source_contract_tests.cmake")
+
+# twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace, default 0): [TransportWait] state= lines per transport edge
+# episode (attempt / board / arrive / fail) and a summary; measurement only, the old [TransportWait] bot= line unchanged.
+add_executable(transport_edge_policy_tests
+  "${PB_MODULE_DIR}/t/transport_edge_policy_tests.cpp")
+
+target_include_directories(transport_edge_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(transport_edge_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(transport_edge_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_edge_policy
+  COMMAND transport_edge_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_edge_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/transport_edge_trace_source_contract_tests.cmake")

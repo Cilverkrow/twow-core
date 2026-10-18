@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "LootNonCombatStrategy.h"
+#include "playerbot/DirectTargetDestinations.h"
 
 using namespace ai;
 
@@ -34,6 +35,13 @@ void GatherStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
     triggers.push_back(new TriggerNode(
         "profession craft",
         NextAction::array(0, new NextAction("profession craft", 1.5f), NULL)));
+
+    // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking, default 0): the focus recipes at an anvil, forge
+    // or cooking fire, through the same "profession craft" action; only with the class built at boot and switched on.
+    if (ai::direct_targets::StationCraftLive())
+        triggers.push_back(new TriggerNode(
+            "station craft",
+            NextAction::array(0, new NextAction("profession craft", 1.6f), NULL)));
 }
 
 void RevealStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)

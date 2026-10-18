@@ -2251,6 +2251,8 @@ class Player final: public Unit
         float GetHomebindX() const { return m_homebindX; }
         float GetHomebindY() const { return m_homebindY; }
         float GetHomebindZ() const { return m_homebindZ; }
+        // twow-repo#596 D: the bind spot's area as stored at bind time - no terrain lookup at a far position.
+        uint16 GetHomebindAreaId() const { return m_homebindAreaId; }
         bool TeleportToHomebind(uint32 options = 0, bool hearthCooldown = true);
 
         // currently visible objects at player client
