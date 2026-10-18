@@ -12,6 +12,7 @@
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
+#include "playerbot/DirectTargetDestinations.h"
 
 using namespace ai;
 
@@ -494,6 +495,12 @@ bool NeedTravelPurposeValue::Calculate()
 
         return !AI_VALUE2(bool, "manual bool", "is travel refresh");
     }
+    // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking / Dungeon / Raid, default 0): built at boot and
+    // switched on, a roster bot on its own; the need per class is in DirectTargetDestinations.cpp.
+    case TravelDestinationPurpose::Station:
+    case TravelDestinationPurpose::DungeonEntrance:
+    case TravelDestinationPurpose::RaidEntrance:
+        return ai::direct_targets::NeedPurpose(ai, purpose);
     default:
         return false;
     }

@@ -52,6 +52,7 @@
 #include "PersistentActiveRosterDatabase.h"
 #include "LoginWavePolicy.h"
 #include "playerbot/MemStoresPolicy.h"
+#include "playerbot/DirectTargetPolicy.h"
 #include "playerbot/BotUpdateTrace.h"
 #include "playerbot/GrindPickPolicy.h"   // twow-repo#601 S2 diagnostic: [GrindPick] minute line
 #include "playerbot/CombatIdlePolicy.h"
@@ -1266,6 +1267,8 @@ void ReportRoutePrecheck()
 // fresh_rejections = rejected quest routes of fresh bots, fresh_backoffs = of them with the short backoff, rescue_skips =
 // of them that a Z1b rescue took, fresh_grind = grind targets fresh bots chose; inactive = the IsActive reasons (P3-0).
 // World thread only, same pattern as ReportRouteFail. Nothing is written with both switches off.
+// twow-repo#594 / P3-b: with a class built at boot the line ends with picks= empty= crafts= no_focus= fail= disabled=
+// (DirectTargetPolicy.h); without one it stays as it was.
 void ReportDirectTargets()
 {
     static uint32 lastReport = 0;
@@ -1279,11 +1282,12 @@ void ReportDirectTargets()
     for (uint32 reason = 0; reason < ai::quest_search::RejectCounts::InactiveReasons; ++reason)
         reasons.notActiveReason[reason] = c.inactive[reason].exchange(0, std::memory_order_relaxed);
     sLog.outBasic("[DirectTarget] state=summary enabled=%u fresh_rejections=%u fresh_backoffs=%u rescue_skips=%u fresh_grind=%u "
-        "fresh_max_level=%u backoff_seconds=%u grind_failures=%u%s", sPlayerbotAIConfig.directTargetsEnabled ? 1u : 0u,
+        "fresh_max_level=%u backoff_seconds=%u grind_failures=%u%s%s", sPlayerbotAIConfig.directTargetsEnabled ? 1u : 0u,
         c.freshRejections.exchange(0, std::memory_order_relaxed), c.freshBackoffs.exchange(0, std::memory_order_relaxed),
         c.rescueSkips.exchange(0, std::memory_order_relaxed), c.freshGrind.exchange(0, std::memory_order_relaxed),
         sPlayerbotAIConfig.directTargetsFreshMaxLevel, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds,
-        sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str());
+        sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str(),
+        ai::direct_targets::TakeSummaryFields().c_str());
 }
 
 // twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode = 2): one "[QuestIdle] minute fallback= money=
