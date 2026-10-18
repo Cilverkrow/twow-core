@@ -419,6 +419,7 @@ public:
     // log files (logs/bots/<name>_acc<id>_<timestamp>.log) are emitted. Default
     // off so production servers don't pay disk I/O / branch overhead.
     bool enableActionLog;
+    std::vector<uint32> actionLogGuids;  // twow-repo#601 / #614: AiPlayerbot.ActionLog.Guids, sorted; empty = every bot
     // Filename (relative to LogsDir) for the bot subsystem log. When set,
     // all sLog calls from bot .cpp files are redirected there instead of
     // writing to the main server log. Default: "bots.log". Empty = disabled.

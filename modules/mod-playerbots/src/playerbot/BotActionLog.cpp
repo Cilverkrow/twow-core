@@ -7,6 +7,7 @@
 #include "PlayerbotAI.h"
 #include "BotDiagnostics.h"  // for SC_LOG + IsActionLogEnabled
 #include "PlayerbotAIConfig.h"
+#include "playerbot/ActionLogSamplePolicy.h"   // twow-repo#601 / #614: AiPlayerbot.ActionLog.Guids
 #include "Objects/Player.h"
 #include "Objects/Unit.h"
 #include "ObjectGuid.h"
@@ -107,6 +108,10 @@ std::FILE* BotActionLog::Open(PlayerbotAI* ai)
     if (!bot) return nullptr;
 
     uint32 guid = bot->GetGUIDLow();
+    // twow-repo#601 / #614 (AiPlayerbot.ActionLog.Guids, owner 18.10.2026: a fixed sample per behaviour arm): a bot outside
+    // the sample gets no file. Empty list = every bot, as before.
+    if (!ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, guid))
+        return nullptr;
 
     {
         std::lock_guard<std::mutex> g(sFilesMutex);
@@ -205,6 +210,10 @@ std::FILE* BotActionLog::GetHandle(PlayerbotAI* ai)
         return nullptr;
     Player* bot = ai->GetBot();
     if (!bot) return nullptr;
+    // twow-repo#601 / #614 (AiPlayerbot.ActionLog.Guids): a bot outside the sample never takes the global mutex below (with
+    // 540 bots every engine line of every bot would otherwise queue on it). Empty list = every bot, as before.
+    if (!ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, bot->GetGUIDLow()))
+        return nullptr;
     {
         std::lock_guard<std::mutex> g(sFilesMutex);
         auto it = sFiles.find(bot->GetGUIDLow());
