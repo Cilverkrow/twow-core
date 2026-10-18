@@ -2,6 +2,8 @@
 #include "GenericActions.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/RandomItemMgr.h"
+#include "playerbot/RestGatePolicy.h"
+#include "playerbot/strategy/values/RestGateValue.h"
 
 namespace ai
 {
@@ -699,9 +701,17 @@ namespace ai
 
                 // twow-repo#610 BOT-REST-01: no sit through addUnitState here - UNIT_STAND_STATE_SIT is a stand state, passed to a unit-state
                 // setter (both 1), so it set UNIT_STAT_MELEE_ATTACKING with no victim. The food/drink aura seats the bot itself (NOT_SEATED).
+                // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): while resting, a bot still seated from the last meal stands up
+                // first - CastSpell would stand it up itself and fail, which cost a full wait without an aura.
+                bool const resting = RestGateValue::Resting(ai);
+                if (resting && !bot->IsStandState())
+                    bot->SetStandState(UNIT_STAND_STATE_STAND);
+
                 ai->InterruptSpell();
 
                 float drinkDuration = AI_VALUE(float, "drink duration");
+                if (resting && AI_VALUE(bool, "should eat"))
+                    drinkDuration = std::max(drinkDuration, AI_VALUE(float, "eat duration"));   // X1: the wait covers both auras
 
                 const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(24355);
                 if (!pSpellInfo)
@@ -709,7 +719,16 @@ namespace ai
 
                 ai->Unmount();
 
-                ai->CastSpell(24355, bot);
+                bool const cast = ai->CastSpell(24355, bot);
+                if (resting && !cast)
+                {
+                    // X1 (OB-10 review): a failed cast waits CastRetryMs before the next try instead of retrying every tick.
+                    castFailed = true;
+                    castFailMs = WorldTimer::getMSTime();
+                    RestGateValue::NoteCastFail(ai);
+                    return false;
+                }
+                castFailed = false;
                 SetDuration(drinkDuration);
                 bot->RemoveSpellCooldown(*pSpellInfo);
 
@@ -736,6 +755,9 @@ namespace ai
 
         bool isUseful() override
         {
+            // X1: after a failed cast while resting, wait CastRetryMs (castFailed stays false with the switch off).
+            if (castFailed && ai::rest_gate::CastRetryWaiting(castFailed, WorldTimer::getMSTime(), castFailMs))
+                return false;
             return UseAction::isUseful() && AI_VALUE(bool, "should drink");
         }
 
@@ -743,6 +765,10 @@ namespace ai
         {
             return !sServerFacade.IsInCombat(bot) && UseAction::isPossible();
         }
+
+    private:
+        bool castFailed = false;   // twow-repo#602 X1: the last drink cast while resting failed
+        uint32 castFailMs = 0;
     };
 
     class EatAction : public UseAction
@@ -777,9 +803,17 @@ namespace ai
 
                 // twow-repo#610 BOT-REST-01: no sit through addUnitState here - UNIT_STAND_STATE_SIT is a stand state, passed to a unit-state
                 // setter (both 1), so it set UNIT_STAT_MELEE_ATTACKING with no victim. The food/drink aura seats the bot itself (NOT_SEATED).
+                // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): while resting, a bot still seated from the last meal stands up
+                // first - CastSpell would stand it up itself and fail, which cost a full wait without an aura.
+                bool const resting = RestGateValue::Resting(ai);
+                if (resting && !bot->IsStandState())
+                    bot->SetStandState(UNIT_STAND_STATE_STAND);
+
                 ai->InterruptSpell();
 
                 float eatDuration = AI_VALUE(float, "eat duration");
+                if (resting && AI_VALUE(bool, "should drink"))
+                    eatDuration = std::max(eatDuration, AI_VALUE(float, "drink duration"));   // X1: the wait covers both auras
 
                 const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(24005);
                 if (!pSpellInfo)
@@ -787,7 +821,16 @@ namespace ai
 
                 ai->Unmount();
 
-                ai->CastSpell(24005, bot);
+                bool const cast = ai->CastSpell(24005, bot);
+                if (resting && !cast)
+                {
+                    // X1 (OB-10 review): a failed cast waits CastRetryMs before the next try instead of retrying every tick.
+                    castFailed = true;
+                    castFailMs = WorldTimer::getMSTime();
+                    RestGateValue::NoteCastFail(ai);
+                    return false;
+                }
+                castFailed = false;
                 SetDuration(eatDuration);
                 bot->RemoveSpellCooldown(*pSpellInfo);
 
@@ -813,6 +856,9 @@ namespace ai
 
         bool isUseful() override
         {
+            // X1: after a failed cast while resting, wait CastRetryMs (castFailed stays false with the switch off).
+            if (castFailed && ai::rest_gate::CastRetryWaiting(castFailed, WorldTimer::getMSTime(), castFailMs))
+                return false;
             return UseAction::isUseful() && AI_VALUE(bool, "should eat");
         }
 
@@ -820,5 +866,9 @@ namespace ai
         {
             return !sServerFacade.IsInCombat(bot) && UseAction::isPossible();
         }
+
+    private:
+        bool castFailed = false;   // twow-repo#602 X1: the last food cast while resting failed
+        uint32 castFailMs = 0;
     };
 }
