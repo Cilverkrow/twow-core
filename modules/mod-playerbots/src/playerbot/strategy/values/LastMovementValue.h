@@ -2,6 +2,7 @@
 #include "playerbot/strategy/Value.h"
 #include "playerbot/TravelNode.h"
 #include "playerbot/TransportEdgePolicy.h"
+#include "playerbot/TransportBoardPolicy.h"
 
 // Declared in MovementActions.h, which includes this header the other way
 // around - a scoped enum with fixed underlying type forward-declares cleanly,
@@ -26,6 +27,7 @@ namespace ai
             lastAreaTrigger = other.lastAreaTrigger;
             lastTransportEntry = other.lastTransportEntry;
             transportEdge = other.transportEdge;
+            transportDeck = other.transportDeck;
             lastPath = other.lastPath;
             lastMoveShort = other.lastMoveShort;
             nextTeleport = other.nextTeleport;
@@ -91,6 +93,10 @@ namespace ai
         // clear() leaves it alone: a running episode is closed by the next hook (route_changed / left), never dropped
         // without a line, and the cache is checked against the path on every use.
         transport_edge::State transportEdge;
+        // twow-repo#342 (S3b-0, AiPlayerbot.Path.TransportDeckProbe): the dock wait the deck probe ran in (one probe per
+        // wait); written only with the probe on, by UseTransport (bot thread). clear() leaves it alone: the wait record
+        // lapses by itself (S1's gap / same-point rule).
+        transport_board::DeckWait transportDeck;
         time_t lastFlee;
         // Number of flee actions dispatched in quick succession (within returnDelay of each
         // other). Used to detect a "subsequent" flee loop so spellcasting can take priority.
