@@ -149,20 +149,27 @@ int main()
         Require(GiverInactive(Reason::GroupSolo), "giver of a solo bot's group quest inactive (Type 0, SP >= 2 too)");
         Require(!GiverInactive(Reason::None), "feasible quest: giver unchanged");
 
-        Require(Same(DropReasonName(Reason::Blocklist, false, false, false), "infeasible_blocklist"), "open listed quest dropped");
-        Require(Same(DropReasonName(Reason::BlocklistCrsz0, false, false, false), "infeasible_blocklist"),
+        Require(Same(DropReasonName(Reason::Blocklist, false, false, false, false), "infeasible_blocklist"), "open listed quest dropped");
+        Require(Same(DropReasonName(Reason::BlocklistCrsz0, false, false, false, false), "infeasible_blocklist"),
             "open conditional quest dropped");
-        Require(Same(DropReasonName(Reason::GroupSolo, false, false, false), "infeasible_group_solo"),
+        Require(Same(DropReasonName(Reason::GroupSolo, false, false, false, false), "infeasible_group_solo"),
             "open group quest of a solo bot dropped");
-        Require(!DropReasonName(Reason::Blocklist, true, false, false), "complete listed quest kept (turn-in allowed, OB-10 rev. 2)");
-        Require(!DropReasonName(Reason::GroupSolo, true, false, false), "complete group quest kept (OB-00 Q-O2)");
-        Require(!DropReasonName(Reason::None, false, false, false), "feasible quest kept");
+        Require(!DropReasonName(Reason::Blocklist, true, false, false, false), "complete listed quest kept (turn-in allowed, OB-10 rev. 2)");
+        Require(!DropReasonName(Reason::GroupSolo, true, false, false, false), "complete group quest kept (OB-00 Q-O2)");
+        Require(!DropReasonName(Reason::None, false, false, false, false), "feasible quest kept");
         // E: a listed escort a group member's confirm brought in stays while the bot is in a group.
-        Require(!DropReasonName(Reason::Blocklist, false, true, false), "listed quest kept while in a group (escort confirm, E)");
-        Require(!DropReasonName(Reason::BlocklistCrsz0, false, true, false), "conditional quest kept while in a group (E)");
+        Require(!DropReasonName(Reason::Blocklist, false, true, false, false), "listed quest kept while in a group (escort confirm, E)");
+        Require(!DropReasonName(Reason::BlocklistCrsz0, false, true, false, false), "conditional quest kept while in a group (E)");
         // F: the guild quest order's quest is never dropped (no accept / drop churn per cleanup).
-        Require(!DropReasonName(Reason::Blocklist, false, false, true), "listed guild order quest kept (F)");
-        Require(!DropReasonName(Reason::GroupSolo, false, false, true), "group-type guild order quest kept (F)");
+        Require(!DropReasonName(Reason::Blocklist, false, false, true, false), "listed guild order quest kept (F)");
+        Require(!DropReasonName(Reason::GroupSolo, false, false, true, false), "group-type guild order quest kept (F)");
+        // OB-10 range review: a group-type quest with objective progress (worked on in a group) stays when the bot is
+        // alone again; only an untouched one is dropped. Progress does not protect a listed quest.
+        Require(!DropReasonName(Reason::GroupSolo, false, false, false, true), "progressed group-type quest kept");
+        Require(Same(DropReasonName(Reason::GroupSolo, false, false, false, false), "infeasible_group_solo"),
+            "untouched group-type quest dropped");
+        Require(Same(DropReasonName(Reason::Blocklist, false, false, false, true), "infeasible_blocklist"),
+            "progress does not keep a listed quest");
     }
 
     // 6) Names and lines.

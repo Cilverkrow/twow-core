@@ -83,6 +83,20 @@ static void DropGreyQuestsOnItsOwn(PlayerbotAI* ai, Player* bot)
 // while the bot is in a group (a member's escort confirm), never the quest of its guild quest order (the order would
 // accept it again on every cleanup). At most one pass over the quest log per cleanup; the guild order is asked once,
 // only when a quest would go.
+// twow-repo#601 S3a (OB-10 range review): objective progress = any kill / item counter above 0 (not ObjectiveText, which
+// HasProgress uses and every quest with a text has).
+static bool HasObjectiveCounts(Player* bot, uint32 questId)
+{
+    QuestStatusMap& statusMap = bot->getQuestStatusMap();
+    QuestStatusMap::const_iterator const it = statusMap.find(questId);
+    if (it == statusMap.end())
+        return false;
+    for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        if (it->second.m_itemcount[i] || it->second.m_creatureOrGOcount[i])
+            return true;
+    return false;
+}
+
 static void DropInfeasibleOnItsOwn(PlayerbotAI* ai, Player* bot)
 {
     if (!sPlayerbotAIConfig.questFeasibilityEnable)
@@ -114,7 +128,7 @@ static void DropInfeasibleOnItsOwn(PlayerbotAI* ai, Player* bot)
         }
 
         char const* reason = ai::quest_feasibility::DropReasonName(why, bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE,
-            inGroup, guildOrderQuest == questId);
+            inGroup, guildOrderQuest == questId, why == ai::quest_feasibility::Reason::GroupSolo && HasObjectiveCounts(bot, questId));
         if (!reason)
             continue;
 
