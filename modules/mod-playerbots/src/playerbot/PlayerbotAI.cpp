@@ -31,6 +31,7 @@
 #include "Maps/GridNotifiersImpl.h"
 #include "Maps/CellImpl.h"
 #include "strategy/values/LastMovementValue.h"
+#include "strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeFellOff
 #include "playerbot/FarMovePolicy.h"
 #include "strategy/actions/LogLevelAction.h"
 #include "strategy/actions/SayAction.h"
@@ -1695,6 +1696,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             master->GetTransport()->AddPassenger(bot);
         else if (bot->GetTransport())
         {
+            if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=fell_off (master not on the vessel)
+                MovementAction::TraceTransportEdgeFellOff(this);
             WorldPosition botPos(bot);
             bot->GetTransport()->RemovePassenger(bot);
             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
@@ -1707,6 +1710,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         {
             TellPlayer(GetMaster(), "Jumping off " + std::string(bot->GetTransport()->GetName()));
         }
+
+        if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=fell_off for a boarded episode
+            MovementAction::TraceTransportEdgeFellOff(this);
 
         WorldPosition botPos(bot);
         bot->GetTransport()->RemovePassenger(bot);

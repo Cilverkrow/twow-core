@@ -1319,6 +1319,15 @@ AiPlayerbot.Path.RpgTargetSnap = 0
 # dock for a ship / zeppelin that is not there; the first RouteFailDetail.LinesPerMinute of them a minute are logged as
 # [TaxiUse] / [TransportWait], plus [TaxiUse] summary once a minute. 0 = off (default).
 AiPlayerbot.Path.TaxiTrace = 0
+# twow-repo#342 (S1, trace, no behaviour change): 1 = one [TransportWait] state=attempt|board|arrive|fail line per bot and
+# transport edge transition (edge=go:<entry>:<AB|BA> from the vessel's TaxiPath stops, <i>-<j> with more than 2 stops,
+# lift for an elevator / tram car, - when unknown), never per tick, at most 120 lines a minute (own budget, not
+# RouteFailDetail.LinesPerMinute), plus [TransportWait] summary with the unsampled counts (min= / mins= = the window).
+# Fail lines: phase=wait|ride, end=1 for route_changed / left / exit_origin / fell_off / stall_abandon (episode over),
+# end=0 for no_ride / wait_timeout / board_point / overrun (at 15 min). wait_ms_sum = board + phase=wait end=1 fails,
+# ride_ms_sum = arrive + phase=ride end=1 fails. The [TransportWait] bot= line of TaxiTrace and [TaxiUse] stay as they
+# are. 0 = off (default).
+AiPlayerbot.Path.TransportEdgeTrace = 0
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
 # twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a
