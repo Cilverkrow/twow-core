@@ -2,7 +2,6 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/PathFailPolicy.h"
-#include "playerbot/TransportEdgePolicy.h"
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
@@ -730,7 +729,6 @@ bool PlayerbotAIConfig::Initialize()
     pathRpgTargetSnap = config.GetBoolDefault("AiPlayerbot.Path.RpgTargetSnap", false);
     pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
     pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
-    pathTransportWaitTimeoutMin = ai::transport_edge::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", ai::transport_edge::DefaultWaitTimeoutMin));
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
     pathRescueSkipCustomStarts = config.GetBoolDefault("AiPlayerbot.Path.RescueSkipCustomStarts", false);
     customRaceStartZones = config.GetBoolDefault("AiPlayerbot.CustomRaceStartZones", false);

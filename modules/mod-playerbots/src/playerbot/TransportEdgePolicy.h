@@ -12,35 +12,35 @@
 namespace ai::transport_edge
 {
 // twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace, default 0): one [TransportWait] state= line per transition of a
-// bot's transport edge episode (attempt -> board -> arrive, or a fail), never per tick, plus a minute summary with the
-// unsampled counts. Measurement only: nothing here changes where a bot goes or when it boards. Pure: no game includes;
-// the game side (MovementActions.cpp) fills Key / Extra and logs what Render returns.
+// bot's transport edge episode (attempt -> board -> arrive, or a fail), never per tick, plus a summary with the unsampled
+// counts. Measurement only: nothing here changes where a bot goes or when it boards. Pure: no game includes; the game side
+// (MovementActions.cpp) fills Key / Extra and logs what Render returns.
+//
+// Fail lines carry phase=wait|ride (before / after boarding) and end=0|1 (1 = the line ends the episode). Ending fails:
+// route_changed, left, exit_origin, fell_off, stall_abandon. Open fails (board / arrive may still follow): no_ride,
+// wait_timeout, board_point, overrun. So per window: attempt = board + ending fails with phase=wait + still open, and
+// board = arrive + ending fails with phase=ride + still open.
+// Summary sums: wait_ms_sum = wait_ms of the board lines + wait_ms of the fails with phase=wait end=1;
+// ride_ms_sum = ride_ms of the arrive lines + ride_ms of the fails with phase=ride end=1. The other wait_ms / ride_ms values
+// are informational (the time so far) and not in the sums.
 
 // Own line budget, separate from the RouteFailDetail.LinesPerMinute budget the [TaxiUse] / old [TransportWait] lines share.
 constexpr std::uint32_t LinesPerMinute = 120;
 
-// AiPlayerbot.Path.TransportWaitTimeoutMin: the wait_timeout / overrun threshold of this trace, shared with the later
-// transport wait switch (CLI-PATH S3b). The longest vessel period is 356,284 ms, so 15 min is about 2.5 round trips.
-constexpr std::int32_t DefaultWaitTimeoutMin = 15;
-constexpr std::int32_t MinWaitTimeoutMin = 1;
-constexpr std::int32_t MaxWaitTimeoutMin = 240;
+// wait_timeout / overrun threshold of this trace (map section 3: 900 s; the longest vessel period is 356,284 ms, so about
+// 2.5 round trips). Fixed: the shared AiPlayerbot.Path.TransportWaitTimeoutMin is read only by the CLI-PATH S3b switch.
+constexpr std::uint32_t WaitTimeoutMs = 900000;
 
-inline std::uint32_t ClampWaitTimeoutMin(std::int32_t minutes)
-{
-    if (minutes < MinWaitTimeoutMin)
-        return std::uint32_t(MinWaitTimeoutMin);
-    if (minutes > MaxWaitTimeoutMin)
-        return std::uint32_t(MaxWaitTimeoutMin);
-    return std::uint32_t(minutes);
-}
-
-inline std::uint32_t TimeoutMs(std::uint32_t minutes) { return minutes * 60u * 1000u; }
+// Episode gap (the S0 parser's 300 s): a wait or a ride the bot has not been seen in for longer than this, without any hook,
+// is closed as fail reason=left when the bot comes back to a transport (well above passiveDelay and the MoveTo2 tick).
+constexpr std::uint32_t GapMs = 300000;
 
 // Caller bounds: the NODE_TRANSPORT run scanned for the ride entry (dock hop + ride leg + dock hop) and the TaxiPath nodes.
 constexpr std::size_t MaxRunScan = 256;
 constexpr std::size_t MaxTaxiNodes = 1024;
 // A from / to point names a stop only within this distance (dock nodes are 0-16 yd from their stop) and only when the
-// second-nearest stop is at least AmbiguousMarginYards farther away (CLI-PATH: no guessing, '-' instead).
+// second-nearest stop is at least AmbiguousMarginYards farther away (CLI-PATH: no guessing, '-' instead). The same margin
+// decides the exit side of an arrive (ExitSide).
 constexpr float MaxStopMatchYards = 60.0f;
 constexpr float AmbiguousMarginYards = 10.0f;
 // Two keys name the same edge when ride and a known direction match; without a known direction, when ride and from map
@@ -58,7 +58,7 @@ struct PathNode
     std::uint32_t delay = 0;
 };
 
-// The edge of one transport run: computed by the caller once per change of the handed point.
+// The edge of one transport run: computed by the caller once per change of the run (see RunId).
 struct Key
 {
     bool valid = false;
@@ -67,13 +67,14 @@ struct Key
     std::int32_t dirFrom = -1;  // stop index (0-based, merged stops in TaxiPath order) of the from / to point, -1 = unknown
     std::int32_t dirTo = -1;
     std::uint32_t stops = 0;    // stops of the TaxiPath after merging, 0 = no TaxiPath (elevator, tram, unknown entry)
+    bool lift = false;          // the ride is a GAMEOBJECT_TYPE_TRANSPORT (elevator / tram car): edge go:<entry>:lift
     std::uint32_t fromMap = 0;  // the handed point (where the bot boards)
     float fromX = 0.0f;
     float fromY = 0.0f;
     std::uint32_t toMap = 0;    // last point of the run (where the bot gets off)
     float toX = 0.0f;
     float toY = 0.0f;
-    float cost = -1.0f;         // ride leg cost (see RideCost), -1 = unknown
+    float rideS = -1.0f;        // ride_s_formula: TaxiPath length / moveSpeed of the leg (see RideSeconds), -1 = unknown
     bool minimal = false;       // seen from MinimalMove (background bot)
 };
 
@@ -155,13 +156,11 @@ inline std::int32_t NearestStop(std::vector<Stop> const& stops, std::uint32_t ma
     return best;
 }
 
-// The transport branch of TravelNodePath::getCost is extraCost * modifier (modifier 1 for transport links); the generator
-// sets a ship leg's extraCost to its TaxiPath length / moTransport.moveSpeed (setPathAndCost). The trace cannot read the A*
-// link without a node lookup, so it reports this formula value for the leg stop i (departure node) -> stop j (arrival
-// node) in path order, wrapping,
-// same-map segments only. The shipped graph may store another value (0.003333 on 14 legs, i342 map V3); the parser
-// joins the stored one from the SQL. -1 = unknown.
-inline float RideCost(std::vector<PathNode> const& nodes, std::vector<Stop> const& stops, std::int32_t from, std::int32_t to,
+// ride_s_formula: the TaxiPath length of the leg stop i (departure node) -> stop j (arrival node) in path order, wrapping,
+// same-map segments only, divided by the template's moveSpeed. Not the A* link cost: the trace cannot read the graph link
+// without a node lookup, and the shipped graph stores another value (0.003333 on 14 legs, i342 map V3); the parser joins
+// the stored cost from the SQL. Stop delays and cross-map segments are not in it. -1 = unknown.
+inline float RideSeconds(std::vector<PathNode> const& nodes, std::vector<Stop> const& stops, std::int32_t from, std::int32_t to,
     float moveSpeed)
 {
     if (from < 0 || to < 0 || from == to || moveSpeed <= 0.0f || std::size_t(from) >= stops.size() ||
@@ -184,20 +183,23 @@ inline float RideCost(std::vector<PathNode> const& nodes, std::vector<Stop> cons
     return length / moveSpeed;
 }
 
-// Direction and cost of a key from the vessel's TaxiPath nodes (empty = no TaxiPath).
+// Direction and ride seconds of a key from the vessel's TaxiPath nodes (empty = no TaxiPath).
 inline void Derive(Key& key, std::vector<PathNode> const& nodes, float moveSpeed)
 {
     std::vector<Stop> const stops = StopsOf(nodes);
     key.stops = std::uint32_t(stops.size());
     key.dirFrom = NearestStop(stops, key.fromMap, key.fromX, key.fromY);
     key.dirTo = NearestStop(stops, key.toMap, key.toX, key.toY);
-    key.cost = RideCost(nodes, stops, key.dirFrom, key.dirTo, moveSpeed);
+    key.rideS = RideSeconds(nodes, stops, key.dirFrom, key.dirTo, moveSpeed);
 }
 
-// "AB" / "BA" for a two-stop path (A = first delay>0 stop), "<i>-<j>" for more stops (stop ordinals from 1 after merging,
-// CLI-PATH stop rule), "-" without a path or a clear match.
+// "lift" for an elevator / tram car (CLI-PATH: own key, not AB/BA), "AB" / "BA" for a two-stop path (A = first delay>0
+// stop), "<i>-<j>" for more stops (stop ordinals from 1 after merging, CLI-PATH stop rule), "-" without a path or a clear
+// match.
 inline std::string DirName(Key const& key)
 {
+    if (key.lift)
+        return "lift";
     if (key.stops < 2 || key.dirFrom < 0 || key.dirTo < 0 || key.dirFrom == key.dirTo)
         return "-";
     if (key.stops == 2)
@@ -215,7 +217,7 @@ inline std::string EdgeName(Key const& key)
 
 inline bool SameEdge(Key const& a, Key const& b)
 {
-    if (!a.valid || !b.valid || a.ride != b.ride || a.dirFrom != b.dirFrom || a.dirTo != b.dirTo)
+    if (!a.valid || !b.valid || a.ride != b.ride || a.dirFrom != b.dirFrom || a.dirTo != b.dirTo || a.lift != b.lift)
         return false;
     if (a.ride && a.dirFrom >= 0 && a.dirTo >= 0)
         return true;
@@ -225,6 +227,28 @@ inline bool SameEdge(Key const& a, Key const& b)
     return dx * dx + dy * dy <= SamePointYards * SamePointYards;
 }
 
+// Where the bot was when it got off (its position right before MoveOffTransport, i.e. on the vessel) relative to the key:
+// From = on the from map and clearly nearer the from point (or the to point is on another map), To likewise, Unknown
+// otherwise (neither map, about equally near, or a lift whose from / to differ mostly in height). From is not an arrival:
+// the aboard exit fired at the departure dock (fail reason=exit_origin).
+enum class Side : std::uint8_t { Unknown, From, To };
+
+inline Side ExitSide(Key const& key, std::uint32_t map, float x, float y)
+{
+    if (!key.valid || key.lift)
+        return Side::Unknown;
+    bool const onFrom = key.fromMap == map, onTo = key.toMap == map;
+    float const fx = key.fromX - x, fy = key.fromY - y, tx = key.toX - x, ty = key.toY - y;
+    float const dFrom = std::sqrt(fx * fx + fy * fy), dTo = std::sqrt(tx * tx + ty * ty);
+    if (onFrom && (!onTo || dFrom + AmbiguousMarginYards <= dTo))
+        return Side::From;
+    if (onTo && (!onFrom || dTo + AmbiguousMarginYards <= dFrom))
+        return Side::To;
+    return Side::Unknown;
+}
+
+inline char const* SideName(Side side) { return side == Side::From ? "from" : side == Side::To ? "to" : "-"; }
+
 // RandomPointOnTrans rejects (optional out-param, default nullptr there): z window, isOnTransport, walk path.
 struct PointRejects
 {
@@ -232,6 +256,115 @@ struct PointRejects
     std::uint32_t on = 0;
     std::uint32_t path = 0;
 };
+
+// One point of the caller's path as the run scan sees it.
+struct RunPoint
+{
+    bool transport = false;     // PathNodeType::NODE_TRANSPORT
+    std::uint32_t entry = 0;
+    std::uint32_t map = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
+constexpr std::size_t NoRide = static_cast<std::size_t>(-1);
+
+// Everything a key depends on: the handed point (from, hop), the ride entry and where it sits in the run, and the last
+// point of the run (to). The callers' cache is keyed on this, so a re-planned path with the same handed point but another
+// ride or another to point derives a new key.
+struct RunId
+{
+    std::uint32_t map = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    std::uint32_t hop = 0;
+    std::uint32_t ride = 0;
+    std::size_t rideOff = NoRide;   // offset of the first non-zero entry from the start of the run
+    std::size_t runLen = 0;         // points in the run (0 = the start point is no NODE_TRANSPORT)
+    std::uint32_t toMap = 0;
+    float toX = 0.0f;
+    float toY = 0.0f;
+};
+
+// True when the scan stops at `p`: not a transport point, or a second vessel (another non-zero entry after the ride).
+inline bool EndsRun(RunPoint const& p, std::uint32_t ride) { return !p.transport || (ride && p.entry && p.entry != ride); }
+
+// The run that starts at start (start < size), at most MaxRunScan points. at(i) returns the RunPoint of path point i.
+template <class At>
+RunId ScanRun(std::size_t start, std::size_t size, At const& at)
+{
+    RunId id;
+    RunPoint const first = at(start);
+    id.map = first.map;
+    id.x = first.x;
+    id.y = first.y;
+    id.hop = first.entry;
+    std::size_t last = start;
+    for (std::size_t i = start; i < size && i - start < MaxRunScan; ++i)
+    {
+        RunPoint const p = at(i);
+        if (EndsRun(p, id.ride))
+            break;
+        if (!id.ride && p.entry)
+        {
+            id.ride = p.entry;
+            id.rideOff = i - start;
+        }
+        last = i;
+        ++id.runLen;
+    }
+    RunPoint const end = at(last);
+    id.toMap = end.map;
+    id.toX = end.x;
+    id.toY = end.y;
+    return id;
+}
+
+// The per-tick check of a cached run, O(1): the handed point, the ride point, the last point and the point after the run
+// are where the scan found them (exact compares). The points in between do not enter the key.
+template <class At>
+bool RunStill(RunId const& id, std::size_t start, std::size_t size, At const& at)
+{
+    if (start >= size)
+        return false;
+    RunPoint const first = at(start);
+    if (first.map != id.map || first.x != id.x || first.y != id.y || first.entry != id.hop)
+        return false;
+    if (id.rideOff != NoRide)
+    {
+        if (start + id.rideOff >= size)
+            return false;
+        RunPoint const r = at(start + id.rideOff);
+        if (!r.transport || r.entry != id.ride)
+            return false;
+    }
+    std::size_t const last = start + (id.runLen ? id.runLen - 1 : 0);
+    if (last >= size)
+        return false;
+    RunPoint const end = at(last);
+    if (end.map != id.toMap || end.x != id.toX || end.y != id.toY)
+        return false;
+    if (id.runLen && id.runLen < MaxRunScan && last + 1 < size && !EndsRun(at(last + 1), id.ride))
+        return false;
+    return true;
+}
+
+// The key fields a run gives; the caller adds lift and the TaxiPath direction (Derive).
+inline Key KeyOf(RunId const& id, bool minimal)
+{
+    Key key;
+    key.valid = true;
+    key.ride = id.ride;
+    key.hop = id.hop;
+    key.minimal = minimal;
+    key.fromMap = id.map;
+    key.fromX = id.x;
+    key.fromY = id.y;
+    key.toMap = id.toMap;
+    key.toX = id.toX;
+    key.toY = id.toY;
+    return key;
+}
 
 enum class Phase : std::uint8_t { None, Attempt, Board };
 
@@ -241,83 +374,119 @@ struct Episode
     Phase phase = Phase::None;
     Key key;
     std::uint32_t waitStartMs = 0;
-    std::uint32_t lastSeenMs = 0;   // last wait tick / boarding try: a wait the bot left without a hook ends here
+    std::uint32_t lastSeenMs = 0;   // last wait / boarding / aboard tick: a wait or ride left without a hook ends here
     std::uint32_t boardMs = 0;
     bool timeoutLogged = false;
     bool overrunLogged = false;
     bool boardPointLogged = false;
 };
 
-// Per-bot state: the episode plus the caller's cache (the handed point its key was derived from).
+// Per-bot state: the episode plus the callers' key cache (two runs, so a dock node / stop node handover that alternates
+// does not re-read the TaxiPath) and which key the current hook uses.
 struct State
 {
-    Episode episode;
-    bool sourceSet = false;
-    std::uint32_t sourceMap = 0;
-    std::uint32_t sourceEntry = 0;
-    float sourceX = 0.0f;
-    float sourceY = 0.0f;
-    Key sourceKey;
-
-    bool Active() const { return sourceSet || episode.phase != Phase::None; }
-
-    // The per-tick check of the callers: exact compare, the key scan runs only when this is false.
-    bool SourceIs(std::uint32_t map, float x, float y, std::uint32_t entry) const
+    struct Slot
     {
-        return sourceSet && sourceMap == map && sourceX == x && sourceY == y && sourceEntry == entry;
+        bool set = false;
+        RunId id;
+        Key key;
+    };
+
+    static constexpr std::int8_t NoKey = -1;
+    static constexpr std::int8_t EpisodeKey = 2;   // aboard: the episode's own key
+
+    Episode episode;
+    Slot cache[2];
+    std::uint8_t lastUsed = 0;
+    std::int8_t current = NoKey;   // 0 / 1 = cache slot, EpisodeKey; an index, so a copy of the state stays valid
+
+    bool Active() const { return cache[0].set || cache[1].set || episode.phase != Phase::None; }
+
+    Key const& Current() const { return current == 0 || current == 1 ? cache[current].key : episode.key; }
+
+    // A cached slot whose run is still the path's run from start: use it (no scan, no TaxiPath read).
+    template <class At>
+    bool UseCached(std::size_t start, std::size_t size, At const& at, bool minimal)
+    {
+        for (std::uint8_t i = 0; i < 2; ++i)
+        {
+            if (cache[i].set && RunStill(cache[i].id, start, size, at))
+            {
+                cache[i].key.minimal = minimal;
+                lastUsed = i;
+                current = std::int8_t(i);
+                return true;
+            }
+        }
+        return false;
     }
 
-    void SetSource(std::uint32_t map, float x, float y, std::uint32_t entry, Key const& key)
+    // A newly derived key: replaces the slot used less recently and becomes current.
+    void Store(RunId const& id, Key const& key)
     {
-        sourceSet = true;
-        sourceMap = map;
-        sourceX = x;
-        sourceY = y;
-        sourceEntry = entry;
-        sourceKey = key;
+        std::uint8_t const slot = !cache[0].set ? 0 : !cache[1].set ? 1 : std::uint8_t(1 - lastUsed);
+        cache[slot].set = true;
+        cache[slot].id = id;
+        cache[slot].key = key;
+        lastUsed = slot;
+        current = std::int8_t(slot);
     }
 };
 
 // What one hook call has to log (Render), in this order.
 struct Step
 {
-    bool routeChanged = false;   // fail reason=route_changed for `previous` (attempted, never boarded)
+    bool routeChanged = false;   // fail reason=route_changed for `previous` (attempted, never boarded, another edge now)
+    bool left = false;           // fail reason=left for `previous`: wait or ride left without a hook (gap / not aboard)
+    bool leftAboard = false;     // the left episode had boarded
     Key previous;
     std::uint32_t previousWaitMs = 0;
+    std::uint32_t previousRideMs = 0;
     bool attempt = false;
     bool noRide = false;         // fail reason=no_ride: the run has no ride entry (once per episode)
     bool waitTimeout = false;
     bool board = false;
     bool boardPoint = false;
     bool arrive = false;
+    bool exitOrigin = false;     // fail reason=exit_origin: the aboard exit fired at the departure side
     bool overrun = false;
     bool fellOff = false;
     bool stallAbandon = false;
-    bool aboard = false;         // the episode was aboard when it ended (stall_abandon)
+    bool aboard = false;         // the episode had boarded when it ended (stall_abandon)
     std::uint32_t waitMs = 0;
     std::uint32_t rideMs = 0;
 
     bool Any() const
     {
-        return routeChanged || attempt || noRide || waitTimeout || board || boardPoint || arrive || overrun || fellOff ||
-            stallAbandon;
+        return routeChanged || left || attempt || noRide || waitTimeout || board || boardPoint || arrive || exitOrigin ||
+            overrun || fellOff || stallAbandon;
     }
 };
 
 inline std::uint32_t Since(std::uint32_t nowMs, std::uint32_t thenMs) { return nowMs - thenMs; }   // wraps like getMSTimeDiff
 
-// A new episode when none runs, the bot is no longer aboard one, or the key changed.
+// A new episode when none runs, the key changed, the old wait was left (gap), or a boarded episode is no longer aboard
+// (Begin only runs off the vessel). The old episode is closed first: route_changed (another edge within the gap) or left.
 inline void Begin(State& state, Key const& passed, std::uint32_t nowMs, Step& step)
 {
     Key const key = passed;   // a copy: `passed` may point into the state
     Episode& ep = state.episode;
-    if (ep.phase == Phase::Attempt && SameEdge(ep.key, key))
+    bool const gap = ep.phase != Phase::None && Since(nowMs, ep.lastSeenMs) > GapMs;
+    if (ep.phase == Phase::Attempt && !gap && SameEdge(ep.key, key))
         return;
-    if (ep.phase == Phase::Attempt)
+    if (ep.phase == Phase::Attempt && !gap)
     {
         step.routeChanged = true;
         step.previous = ep.key;
         step.previousWaitMs = Since(ep.lastSeenMs, ep.waitStartMs);   // observed wait, not the time since
+    }
+    else if (ep.phase != Phase::None)
+    {
+        step.left = true;
+        step.leftAboard = ep.phase == Phase::Board;
+        step.previous = ep.key;
+        step.previousWaitMs = step.leftAboard ? Since(ep.boardMs, ep.waitStartMs) : Since(ep.lastSeenMs, ep.waitStartMs);
+        step.previousRideMs = step.leftAboard ? Since(ep.lastSeenMs, ep.boardMs) : 0;
     }
     ep = Episode();
     ep.phase = Phase::Attempt;
@@ -367,14 +536,17 @@ inline Step OnBoardTry(State& state, Key const& key, std::uint32_t nowMs, bool b
     return step;
 }
 
-// The aboard exit (MoveOffTransport called): ends the episode.
-inline Step OnArrive(State& state, std::uint32_t nowMs)
+// The aboard exit (MoveOffTransport called): ends the episode as arrive, or as fail reason=exit_origin when the bot got
+// off at the departure side (`side` from ExitSide on the position before the exit).
+inline Step OnArrive(State& state, std::uint32_t nowMs, Side side)
 {
     Step step;
     Episode& ep = state.episode;
     if (ep.phase != Phase::Board)
         return step;
-    step.arrive = true;
+    step.arrive = side != Side::From;
+    step.exitOrigin = side == Side::From;
+    step.aboard = true;
     step.waitMs = Since(ep.boardMs, ep.waitStartMs);
     step.rideMs = Since(nowMs, ep.boardMs);
     step.previous = ep.key;
@@ -387,16 +559,20 @@ inline Step OnAboard(State& state, std::uint32_t nowMs, std::uint32_t timeoutMs)
 {
     Step step;
     Episode& ep = state.episode;
-    if (ep.phase != Phase::Board || ep.overrunLogged || Since(nowMs, ep.boardMs) < timeoutMs)
+    if (ep.phase != Phase::Board)
+        return step;
+    ep.lastSeenMs = nowMs;
+    if (ep.overrunLogged || Since(nowMs, ep.boardMs) < timeoutMs)
         return step;
     step.overrun = true;
+    step.aboard = true;
     step.waitMs = Since(ep.boardMs, ep.waitStartMs);
     step.rideMs = Since(nowMs, ep.boardMs);
     ep.overrunLogged = true;
     return step;
 }
 
-// PlayerbotAI removed the bot from a vessel it no longer stands on: ends a boarded episode.
+// PlayerbotAI removed the bot from a vessel it no longer stands on (or that its master is not on): ends a boarded episode.
 inline Step OnFellOff(State& state, std::uint32_t nowMs)
 {
     Step step;
@@ -428,11 +604,13 @@ inline Step OnStallAbandon(State& state, std::uint32_t nowMs)
     return step;
 }
 
-// Shared by all map threads: unsampled counts, own line budget, a summary once a minute (TaxiCounters pattern).
+// Shared by all map threads: unsampled counts, own line budget, a summary per minute with transitions (TaxiCounters
+// pattern). minute / minutes: the window the counts cover, [minute, minute + minutes) in epoch minutes.
 struct Snapshot
 {
-    std::uint32_t attempt = 0, board = 0, arrive = 0, fail = 0, dropped = 0;
+    std::uint32_t attempt = 0, board = 0, arrive = 0, fail = 0, failEnd = 0, dropped = 0;
     std::uint64_t waitMsSum = 0, rideMsSum = 0;
+    std::uint64_t minute = 0, minutes = 0;
 };
 
 struct Counters
@@ -441,13 +619,14 @@ struct Counters
     std::atomic<std::uint32_t> board{0};
     std::atomic<std::uint32_t> arrive{0};
     std::atomic<std::uint32_t> fail{0};
+    std::atomic<std::uint32_t> failEnd{0};
     std::atomic<std::uint32_t> dropped{0};
     std::atomic<std::uint32_t> logged{0};
     std::atomic<std::uint64_t> waitMsSum{0};
     std::atomic<std::uint64_t> rideMsSum{0};
     std::atomic<std::uint64_t> minute{0};
 
-    // One caller per new minute gets the previous minute (none for the very first).
+    // One caller per new minute gets the previous window (none for the very first).
     bool Roll(std::uint64_t nowSeconds, Snapshot& out)
     {
         std::uint64_t const now = nowSeconds / 60;
@@ -458,15 +637,18 @@ struct Counters
         out.board = board.exchange(0, std::memory_order_relaxed);
         out.arrive = arrive.exchange(0, std::memory_order_relaxed);
         out.fail = fail.exchange(0, std::memory_order_relaxed);
+        out.failEnd = failEnd.exchange(0, std::memory_order_relaxed);
         out.dropped = dropped.exchange(0, std::memory_order_relaxed);
         out.waitMsSum = waitMsSum.exchange(0, std::memory_order_relaxed);
         out.rideMsSum = rideMsSum.exchange(0, std::memory_order_relaxed);
+        out.minute = seen;
+        out.minutes = now - seen;
         logged.exchange(0, std::memory_order_relaxed);
         return seen != 0;
     }
 
-    // Every transition is counted; wait time is added when a wait ends (board, route change, abandon before boarding),
-    // ride time when a ride ends (arrive, fell off, abandon aboard).
+    // Every transition is counted; the sums follow the rule in the header comment (wait time when a wait ends: board or
+    // an ending fail with phase=wait; ride time when a ride ends: arrive or an ending fail with phase=ride).
     void Account(Step const& step)
     {
         if (step.attempt)
@@ -475,19 +657,24 @@ struct Counters
             board.fetch_add(1, std::memory_order_relaxed);
         if (step.arrive)
             arrive.fetch_add(1, std::memory_order_relaxed);
-        std::uint32_t const fails = std::uint32_t(step.routeChanged) + std::uint32_t(step.noRide) +
-            std::uint32_t(step.waitTimeout) + std::uint32_t(step.boardPoint) + std::uint32_t(step.overrun) +
-            std::uint32_t(step.fellOff) + std::uint32_t(step.stallAbandon);
+        std::uint32_t const ends = std::uint32_t(step.routeChanged) + std::uint32_t(step.left) +
+            std::uint32_t(step.exitOrigin) + std::uint32_t(step.fellOff) + std::uint32_t(step.stallAbandon);
+        std::uint32_t const fails = ends + std::uint32_t(step.noRide) + std::uint32_t(step.waitTimeout) +
+            std::uint32_t(step.boardPoint) + std::uint32_t(step.overrun);
         if (fails)
             fail.fetch_add(fails, std::memory_order_relaxed);
+        if (ends)
+            failEnd.fetch_add(ends, std::memory_order_relaxed);
         std::uint64_t wait = 0, ride = 0;
         if (step.board)
             wait += step.waitMs;
-        if (step.routeChanged)
+        if (step.routeChanged || (step.left && !step.leftAboard))
             wait += step.previousWaitMs;
+        if (step.left && step.leftAboard)
+            ride += step.previousRideMs;
         if (step.stallAbandon && !step.aboard)
             wait += step.waitMs;
-        if (step.arrive || step.fellOff || (step.stallAbandon && step.aboard))
+        if (step.arrive || step.exitOrigin || step.fellOff || (step.stallAbandon && step.aboard))
             ride += step.rideMs;
         if (wait)
             waitMsSum.fetch_add(wait, std::memory_order_relaxed);
@@ -495,12 +682,13 @@ struct Counters
             rideMsSum.fetch_add(ride, std::memory_order_relaxed);
     }
 
-    // One more line; true while within this minute's budget, else counted as dropped.
+    // One more line; true while within this minute's budget, else counted as dropped. No give-back of the increment: a
+    // fetch_sub racing Roll's reset would wrap `logged` and drop the rest of the minute (a uint32 cannot overflow in one
+    // minute of lines).
     bool Take()
     {
         if (logged.fetch_add(1, std::memory_order_relaxed) < LinesPerMinute)
             return true;
-        logged.fetch_sub(1, std::memory_order_relaxed);
         dropped.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
@@ -514,6 +702,9 @@ struct BotInfo
     std::uint32_t guid = 0;
     std::uint32_t level = 0;
     char team = 'H';
+    std::uint32_t atMap = 0;       // where the bot is at the transition (arrive / exit_origin: before MoveOffTransport)
+    float atX = 0.0f;
+    float atY = 0.0f;
 };
 
 struct Extra
@@ -524,55 +715,55 @@ struct Extra
     bool tele = false;             // boarding by teleport (TransportTeleportType > 0 / MinimalMove)
     bool ok = false;               // MoveOffTransport's return value
     float dExit = -1.0f;           // 2D distance bot -> to point right after MoveOffTransport, -1 = other map
+    Side side = Side::Unknown;     // ExitSide of the arrive
     PointRejects rejects;          // RandomPointOnTrans rejects of the failed boarding
 };
 
 constexpr std::size_t MaxLinesPerStep = 4;
 
-inline char const* const kAttempt =
-    "[TransportWait] state=attempt bot=%u level=%u team=%c edge=%s ride=%u hop=%u map=%u from_x=%.1f from_y=%.1f to_map=%u "
-    "to_x=%.1f to_y=%.1f cand=%u near_d2d=%.1f minimal=%u cost=%.6g";
-inline char const* const kBoard =
-    "[TransportWait] state=board bot=%u edge=%s ride=%u got=%u map=%u from_x=%.1f from_y=%.1f wait_ms=%u mode=%s";
-inline char const* const kArrive =
-    "[TransportWait] state=arrive bot=%u edge=%s ride=%u to_map=%u to_x=%.1f to_y=%.1f ride_ms=%u ok=%u d_exit=%.1f";
-inline char const* const kFail =
-    "[TransportWait] state=fail bot=%u edge=%s ride=%u map=%u from_x=%.1f from_y=%.1f reason=%s wait_ms=%u ride_ms=%u";
-inline char const* const kSummary =
-    "[TransportWait] summary attempt=%u board=%u arrive=%u fail=%u dropped=%u wait_ms_sum=%llu ride_ms_sum=%llu";
-
+// The format strings are literals at the snprintf calls, so -Wformat checks them against the arguments.
 inline std::string FormatAttempt(BotInfo const& bot, Key const& key, Extra const& extra)
 {
     char buf[512];
-    std::snprintf(buf, sizeof(buf), kAttempt, bot.guid, bot.level, bot.team, EdgeName(key).c_str(), key.ride, key.hop,
-        key.fromMap, key.fromX, key.fromY, key.toMap, key.toX, key.toY, extra.cand, extra.nearD2d, key.minimal ? 1u : 0u,
-        double(key.cost));
+    std::snprintf(buf, sizeof(buf),
+        "[TransportWait] state=attempt bot=%u level=%u team=%c edge=%s ride=%u hop=%u map=%u from_x=%.1f from_y=%.1f to_map=%u "
+        "to_x=%.1f to_y=%.1f cand=%u near_d2d=%.1f minimal=%u ride_s_formula=%.6g",
+        bot.guid, bot.level, bot.team, EdgeName(key).c_str(), key.ride, key.hop, key.fromMap, key.fromX, key.fromY, key.toMap,
+        key.toX, key.toY, extra.cand, extra.nearD2d, key.minimal ? 1u : 0u, double(key.rideS));
     return buf;
 }
 
 inline std::string FormatBoard(BotInfo const& bot, Key const& key, Extra const& extra, std::uint32_t waitMs)
 {
     char buf[512];
-    std::snprintf(buf, sizeof(buf), kBoard, bot.guid, EdgeName(key).c_str(), key.ride, extra.got, key.fromMap, key.fromX,
-        key.fromY, waitMs, extra.tele ? "tele" : "walk");
+    std::snprintf(buf, sizeof(buf),
+        "[TransportWait] state=board bot=%u edge=%s ride=%u got=%u map=%u from_x=%.1f from_y=%.1f wait_ms=%u mode=%s",
+        bot.guid, EdgeName(key).c_str(), key.ride, extra.got, key.fromMap, key.fromX, key.fromY, waitMs,
+        extra.tele ? "tele" : "walk");
     return buf;
 }
 
 inline std::string FormatArrive(BotInfo const& bot, Key const& key, Extra const& extra, std::uint32_t rideMs)
 {
     char buf[512];
-    std::snprintf(buf, sizeof(buf), kArrive, bot.guid, EdgeName(key).c_str(), key.ride, key.toMap, key.toX, key.toY, rideMs,
-        extra.ok ? 1u : 0u, extra.dExit);
+    std::snprintf(buf, sizeof(buf),
+        "[TransportWait] state=arrive bot=%u edge=%s ride=%u to_map=%u to_x=%.1f to_y=%.1f ride_ms=%u ok=%u d_exit=%.1f "
+        "side=%s at_map=%u at_x=%.1f at_y=%.1f",
+        bot.guid, EdgeName(key).c_str(), key.ride, key.toMap, key.toX, key.toY, rideMs, extra.ok ? 1u : 0u, extra.dExit,
+        SideName(extra.side), bot.atMap, bot.atX, bot.atY);
     return buf;
 }
 
-// reason board_point carries the RandomPointOnTrans rejects at the end.
+// phase / end: see the header comment. reason board_point carries the RandomPointOnTrans rejects at the end.
 inline std::string FormatFail(BotInfo const& bot, Key const& key, char const* reason, std::uint32_t waitMs, std::uint32_t rideMs,
-    PointRejects const* rejects = nullptr)
+    bool aboard, bool ends, PointRejects const* rejects = nullptr)
 {
     char buf[512];
-    int const n = std::snprintf(buf, sizeof(buf), kFail, bot.guid, EdgeName(key).c_str(), key.ride, key.fromMap, key.fromX,
-        key.fromY, reason, waitMs, rideMs);
+    int const n = std::snprintf(buf, sizeof(buf),
+        "[TransportWait] state=fail bot=%u edge=%s ride=%u map=%u from_x=%.1f from_y=%.1f reason=%s wait_ms=%u ride_ms=%u "
+        "phase=%s end=%u at_map=%u at_x=%.1f at_y=%.1f",
+        bot.guid, EdgeName(key).c_str(), key.ride, key.fromMap, key.fromX, key.fromY, reason, waitMs, rideMs,
+        aboard ? "ride" : "wait", ends ? 1u : 0u, bot.atMap, bot.atX, bot.atY);
     if (rejects && n > 0 && std::size_t(n) < sizeof(buf))
         std::snprintf(buf + n, sizeof(buf) - std::size_t(n), " rp=z:%u/on:%u/path:%u", rejects->z, rejects->on, rejects->path);
     return buf;
@@ -580,39 +771,47 @@ inline std::string FormatFail(BotInfo const& bot, Key const& key, char const* re
 
 inline std::string FormatSummary(Snapshot const& s)
 {
-    char buf[256];
-    std::snprintf(buf, sizeof(buf), kSummary, s.attempt, s.board, s.arrive, s.fail, s.dropped,
-        static_cast<unsigned long long>(s.waitMsSum), static_cast<unsigned long long>(s.rideMsSum));
+    char buf[320];
+    std::snprintf(buf, sizeof(buf),
+        "[TransportWait] summary attempt=%u board=%u arrive=%u fail=%u fail_end=%u dropped=%u wait_ms_sum=%llu ride_ms_sum=%llu "
+        "min=%llu mins=%llu",
+        s.attempt, s.board, s.arrive, s.fail, s.failEnd, s.dropped, static_cast<unsigned long long>(s.waitMsSum),
+        static_cast<unsigned long long>(s.rideMsSum), static_cast<unsigned long long>(s.minute),
+        static_cast<unsigned long long>(s.minutes));
     return buf;
 }
 
 // The lines of one step, in transition order; `key` is the episode key after the step (the previous key for the
-// route change, arrive, fell_off and stall_abandon lines comes from the step).
+// route_changed / left, arrive / exit_origin, fell_off and stall_abandon lines comes from the step).
 inline std::size_t Render(Step const& step, BotInfo const& bot, Key const& key, Extra const& extra,
     std::string (&out)[MaxLinesPerStep])
 {
     std::size_t n = 0;
     auto add = [&](std::string line) { if (n < MaxLinesPerStep) out[n++] = std::move(line); };
     if (step.routeChanged)
-        add(FormatFail(bot, step.previous, "route_changed", step.previousWaitMs, 0));
+        add(FormatFail(bot, step.previous, "route_changed", step.previousWaitMs, 0, false, true));
+    if (step.left)
+        add(FormatFail(bot, step.previous, "left", step.previousWaitMs, step.previousRideMs, step.leftAboard, true));
     if (step.attempt)
         add(FormatAttempt(bot, key, extra));
     if (step.noRide)
-        add(FormatFail(bot, key, "no_ride", 0, 0));
+        add(FormatFail(bot, key, "no_ride", 0, 0, false, false));
     if (step.waitTimeout)
-        add(FormatFail(bot, key, "wait_timeout", step.waitMs, 0));
+        add(FormatFail(bot, key, "wait_timeout", step.waitMs, 0, false, false));
     if (step.board)
         add(FormatBoard(bot, key, extra, step.waitMs));
     if (step.boardPoint)
-        add(FormatFail(bot, key, "board_point", step.waitMs, 0, &extra.rejects));
+        add(FormatFail(bot, key, "board_point", step.waitMs, 0, false, false, &extra.rejects));
     if (step.overrun)
-        add(FormatFail(bot, key, "overrun", step.waitMs, step.rideMs));
+        add(FormatFail(bot, key, "overrun", step.waitMs, step.rideMs, true, false));
     if (step.arrive)
         add(FormatArrive(bot, step.previous, extra, step.rideMs));
+    if (step.exitOrigin)
+        add(FormatFail(bot, step.previous, "exit_origin", step.waitMs, step.rideMs, true, true));
     if (step.fellOff)
-        add(FormatFail(bot, step.previous, "fell_off", step.waitMs, step.rideMs));
+        add(FormatFail(bot, step.previous, "fell_off", step.waitMs, step.rideMs, true, true));
     if (step.stallAbandon)
-        add(FormatFail(bot, step.previous, "stall_abandon", step.waitMs, step.rideMs));
+        add(FormatFail(bot, step.previous, "stall_abandon", step.waitMs, step.rideMs, step.aboard, true));
     return n;
 }
 }

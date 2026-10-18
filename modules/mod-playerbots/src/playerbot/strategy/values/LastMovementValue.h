@@ -52,8 +52,6 @@ namespace ai
             lastFollow = NULL;
             lastAreaTrigger = 0;
             lastTransportEntry = 0;
-            if (transportEdge.Active())   // twow-repo#342 (S1): only ever set with AiPlayerbot.Path.TransportEdgeTrace on
-                transportEdge = transport_edge::State();
             lastFlee = 0;
             fleeCount = 0;
             lastFleeAttempt = 0;
@@ -90,6 +88,8 @@ namespace ai
         uint32 lastTransportEntry;
         // twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace): the bot's transport edge episode (attempt / board) and
         // the key cache of the movement callers; written only with the trace on, by the bot's own movement (bot thread).
+        // clear() leaves it alone: a running episode is closed by the next hook (route_changed / left), never dropped
+        // without a line, and the cache is checked against the path on every use.
         transport_edge::State transportEdge;
         time_t lastFlee;
         // Number of flee actions dispatched in quick succession (within returnDelay of each

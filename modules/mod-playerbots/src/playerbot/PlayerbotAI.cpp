@@ -1696,6 +1696,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             master->GetTransport()->AddPassenger(bot);
         else if (bot->GetTransport())
         {
+            if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=fell_off (master not on the vessel)
+                MovementAction::TraceTransportEdgeFellOff(this);
             WorldPosition botPos(bot);
             bot->GetTransport()->RemovePassenger(bot);
             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);

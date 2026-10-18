@@ -29,10 +29,10 @@ namespace ai
         MovementAction(PlayerbotAI* ai, std::string name) : Action(ai, name) {}
 
         static bool MinimalMove(PlayerbotAI* ai);
-        // twow-repo#342 (S1): edgeKey (optional) = the transport edge of the caller's path for AiPlayerbot.Path.TransportEdgeTrace;
-        // nullptr or the trace off = no state, no counters, no lines.
-        static bool UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::Key const* edgeKey = nullptr);
-        // twow-repo#342 (S1): fail reason=fell_off (PlayerbotAI) / reason=stall_abandon (TravelMgr) for the bot's running
+        // twow-repo#342 (S1): edge (optional) = the bot's transport edge state with the key of the caller's path as current
+        // key, for AiPlayerbot.Path.TransportEdgeTrace; nullptr or the trace off = no state, no counters, no lines.
+        static bool UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge = nullptr);
+        // twow-repo#342 (S1): fail reason=fell_off (PlayerbotAI, both RemovePassenger branches) / reason=stall_abandon (TravelMgr) for the bot's running
         // transport edge episode; the callers test AiPlayerbot.Path.TransportEdgeTrace first.
         static void TraceTransportEdgeFellOff(PlayerbotAI* ai);
         static void TraceTransportEdgeStallAbandon(PlayerbotAI* ai);
