@@ -591,6 +591,7 @@ public:
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
     bool worldBotsHookTrace = false;  // twow-repo#597 (TICK-01): [WorldBots] ends with hook_ms= remote_ms= ahbot_ms= dungeonclear_ms=
     bool botUpdateTraceTriggers = false;  // twow-repo#596 D: with BotUpdateTrace, the TIME entry names the 3 slowest trigger checks of a pass >= 20 ms
+    bool perfBindAreaFromHomebind = false;  // twow-repo#596 D: home-bind area from the core stored bind area, no terrain lookup at a far position
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool checkValuesSkipSearches = false;  // twow-repo#541: "check values" without its six forced value searches
     bool initPetCache = false;  // twow-repo#541: "initialize pet" with a static tameable list, cached pet DB answer, cooldown

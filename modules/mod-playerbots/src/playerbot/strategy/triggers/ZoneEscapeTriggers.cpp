@@ -4,6 +4,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/WorldPosition.h"
+#include "playerbot/HomeBindArea.h"
 
 using namespace ai;
 
@@ -31,7 +32,7 @@ zone_escape::Facts ai::GatherZoneEscapeFacts(PlayerbotAI* ai)
     // Hearthing would not leave the zone anyway, and the start zone is where
     // a low-level bot belongs (train 5: L2 bot in a Durotar sub-area of level 8).
     WorldPosition const bind = AI_VALUE(WorldPosition, "home bind");
-    if (AreaTableEntry const* area = bind.GetArea())
+    if (AreaTableEntry const* area = ai::home_bind::Area(bot, bind))   // twow-repo#596 D
         facts.inHomeZone = bind.getMapId() == bot->GetMapId() && (area->zone ? area->zone : area->ID) == bot->GetZoneId();
 
     zone_escape::Step const lastStep = zone_escape::Step(AI_VALUE2(int, "manual int", "zone escape step"));
@@ -44,7 +45,7 @@ zone_escape::Facts ai::GatherZoneEscapeFacts(PlayerbotAI* ai)
     facts.failedHearths = uint32(std::max(0, AI_VALUE2(int, "manual int", "zone escape fails")));
     facts.hearthUsable = AI_VALUE2(bool, "action useful", "hearthstone");
     facts.hearthOnCooldown = !facts.hearthUsable && bot->HasItemCount(6948, 1) && !AI_VALUE2(bool, "spell ready", 8690) &&
-        !homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, bind.getAreaLevel())), facts.botLevel);
+        !homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, ai::home_bind::AreaLevel(bot, bind))), facts.botLevel);
     return facts;
 }
 
