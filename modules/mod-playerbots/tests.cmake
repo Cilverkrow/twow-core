@@ -3154,6 +3154,25 @@ add_test(NAME keep_weapons_policy
   COMMAND keep_weapons_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#601 (AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes): no endless 8.32 grind fallback.
+add_test(NAME grind_fallback_minutes_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_fallback_minutes_source_contract_tests.cmake")
+
+add_executable(grind_fallback_minutes_tests
+  "${PB_MODULE_DIR}/t/grind_fallback_minutes_tests.cpp")
+
+target_include_directories(grind_fallback_minutes_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(grind_fallback_minutes_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_fallback_minutes
+  COMMAND grind_fallback_minutes_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#595 P4 S0 + B1 (AiPlayerbot.Shortcut.*): real-player snapshot, ShortcutNear, [Shortcut] counters, group-loop fix.
 add_executable(shortcut_policy_tests
   "${PB_MODULE_DIR}/t/shortcut_policy_tests.cpp")
@@ -3191,3 +3210,36 @@ set_target_properties(rescue_limiter_capacity_tests PROPERTIES
 add_test(NAME rescue_limiter_capacity
   COMMAND rescue_limiter_capacity_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 ROT-01 (bot cohorts for in-realm A/B: 0 off / 1 all / 2 only cohort B) and D0
+# (AiPlayerbot.Rotation.CastTrace, default 0): [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] diagnostics.
+add_executable(cohort_policy_tests
+  "${PB_MODULE_DIR}/t/cohort_policy_tests.cpp")
+
+target_include_directories(cohort_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(cohort_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cohort_policy
+  COMMAND cohort_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_executable(rot_cast_policy_tests
+  "${PB_MODULE_DIR}/t/rot_cast_policy_tests.cpp")
+
+target_include_directories(rot_cast_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rot_cast_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rot_cast_policy
+  COMMAND rot_cast_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rot_cast_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rot_cast_trace_source_contract_tests.cmake")

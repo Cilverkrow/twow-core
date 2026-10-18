@@ -28,6 +28,11 @@ namespace ai
         void RefreshSpellIdOnLearn();
         // twow-repo#541 (audit A27): true only for pet spell actions, whose id comes from the pet's spells.
         virtual bool SpellStampTracksPet() const { return false; }
+        // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): counts one isPossible outcome (RotCastPolicy.h
+        // code) and returns `possible` unchanged; with the switch off it only returns `possible`.
+        bool RotEval(bool possible, uint16 code);
+        // twow-repo#602 ROT-01 D0: counts one Execute outcome (start ok / cast false / no target); no-op when off.
+        void RotStart(uint16 code);
 
         Unit* GetTarget() override;
         virtual std::string GetTargetName() override { return "current target"; }
@@ -44,6 +49,8 @@ namespace ai
         uint32 spellId;
         float rangeFromSpell = 0.0f;  // twow-repo#541 (audit A27): last range taken from the spell (ctor, SetSpellName, refresh)
         uint64 knownSpellStamp = 0;   // twow-repo#541 (audit A27): stamp the spell id was read against (0 = not stamped)
+        uint16 rotCastSlot = 0;       // twow-repo#602 (D0): interned action name of the [RotCast] key (0 = not yet)
+        bool rotCastUnknownLogged = false;  // twow-repo#602 (D0): [RotCastUnknown] already written for this bot + action
     };
 
     class CastPetSpellAction : public CastSpellAction

@@ -3,6 +3,9 @@
 #include "GenericActions.h"
 #include "UseItemAction.h"
 #include "playerbot/SpellStampPolicy.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/RotCastPolicy.h"
+#include "playerbot/RotCastTrace.h"
 
 using namespace ai;
 
@@ -66,6 +69,7 @@ bool CastSpellAction::Execute(Event& event)
         if (!target)
         {
             sLog.outDebug("%s: CastSpellAction::Execute aborting '%s' - target resolved to null at cast time", bot->GetName(), spellName.c_str());
+            RotStart(ai::rot_cast::StartNoTarget);
             return false;
         }
 
@@ -77,6 +81,8 @@ bool CastSpellAction::Execute(Event& event)
 
         executed = ai->CastSpell(spellName, target, nullptr, false, &spellDuration);
     }
+
+    RotStart(executed ? ai::rot_cast::StartOk : ai::rot_cast::StartFail);
 
     if (executed)
     {
@@ -97,18 +103,18 @@ bool CastSpellAction::isPossible()
     {
         if (!bot->IsMounted() && !bot->IsInCombat())
         {
-            return true;
+            return RotEval(true, ai::rot_cast::EvalMountOk);
         }
         if (bot->IsInCombat())
         {
             ai->Unmount();
-            return false;
+            return RotEval(false, ai::rot_cast::EvalMountInCombat);
         }
     }
 
     Unit* spellTarget = GetTarget();
     if (!spellTarget)
-        return false;
+        return RotEval(false, ai::rot_cast::EvalNoTarget);
 
     bool canReach = false;
     if (spellTarget == bot)
@@ -125,12 +131,14 @@ bool CastSpellAction::isPossible()
         else 
         {
             canReach = dist <= (range + sPlayerbotAIConfig.contactDistance);
+            if (!spellId && sPlayerbotAIConfig.rotationCastTrace)
+                RotEval(false, ai::rot_cast::EvalNoSpellId);   // twow-repo#602 (D0): counted; the refusal stays as pinned by A27
             if (!spellId)
                 return false;
 
             const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
             if (!pSpellInfo)
-                return false;
+                return RotEval(false, ai::rot_cast::EvalNoSpellEntry);
 
             if (range != ATTACK_DISTANCE && pSpellInfo->rangeIndex != SPELL_RANGE_IDX_COMBAT && pSpellInfo->rangeIndex != SPELL_RANGE_IDX_SELF_ONLY && pSpellInfo->rangeIndex != SPELL_RANGE_IDX_ANYWHERE)
             {
@@ -145,11 +153,48 @@ bool CastSpellAction::isPossible()
 
     if(!canReach)
     {
-        return false;
+        return RotEval(false, ai::rot_cast::EvalOutOfReach);
     }
-    
+
     // Check if the spell can be casted
-	return ai->CanCastSpell(spellName, spellTarget, 0, nullptr, true);
+    if (!sPlayerbotAIConfig.rotationCastTrace)
+	    return ai->CanCastSpell(spellName, spellTarget, 0, nullptr, true);
+
+    // twow-repo#602 ROT-01 D0: the same check, with the result it reports (checkResult is only written, never read).
+    SpellCastResult result = SPELL_CAST_OK;
+    bool const possible = ai->CanCastSpell(spellName, spellTarget, 0, nullptr, true, false, false, &result);
+    return RotEval(possible, ai::rot_cast::EvalCode(possible, uint8(result)));
+}
+
+bool CastSpellAction::RotEval(bool possible, uint16 code)
+{
+    if (!sPlayerbotAIConfig.rotationCastTrace)
+        return possible;
+
+    if (!rotCastSlot)
+        rotCastSlot = ai::rot_cast_rt::ActionSlot(getName());
+    uint32 const guid = bot->GetGUIDLow();
+    ai::rot_cast_rt::RecordEval(bot->getClass(), ai::cohort::InB(guid), rotCastSlot, code);
+
+    // Once per bot and action; also when the line budget is spent (then counted as unknown_dropped).
+    if (!rotCastUnknownLogged && ai::rot_cast::IsUnknown(code, uint8(SPELL_FAILED_NOT_KNOWN)))
+    {
+        rotCastUnknownLogged = true;
+        if (ai::rot_cast_rt::TakeUnknownBudget(uint32(time(nullptr))))
+            sLog.outBasic("%s", ai::rot_cast::FormatUnknownLine(guid, bot->GetName(), bot->getClass(), bot->GetLevel(),
+                ai::cohort::Letter(guid), getName(), spellId, code).c_str());
+    }
+    return possible;
+}
+
+void CastSpellAction::RotStart(uint16 code)
+{
+    if (!sPlayerbotAIConfig.rotationCastTrace)
+        return;
+
+    if (!rotCastSlot)
+        rotCastSlot = ai::rot_cast_rt::ActionSlot(getName());
+    ai::rot_cast_rt::RecordStart(bot->getClass(), ai::cohort::InB(bot->GetGUIDLow()), rotCastSlot, code);
 }
 
 bool CastSpellAction::isUseful()
@@ -281,17 +326,21 @@ bool CastPetSpellAction::isPossible()
 
     Unit* spellTarget = GetTarget();
     if (!spellTarget)
-        return false;
+        return RotEval(false, ai::rot_cast::EvalNoTarget);
 
+    uint16 why = ai::rot_cast::EvalPetMissing;   // twow-repo#602 (D0): the [RotCast] reason when this returns false
     Unit* pet = AI_VALUE(Unit*, "pet target");
     if (pet && ai->IsSafe(pet))
     {
+        why = ai::rot_cast::EvalPetNotReady;
         const uint32& spellId = GetSpellID();
         if (pet->HasSpell(spellId) && pet->IsSpellReady(spellId))
         {
+            why = ai::rot_cast::EvalPetTooFar;
             // Check if the pet is not too far from the owner
             if (bot->GetDistance(pet) <= sPlayerbotAIConfig.sightDistance)
             {
+                why = ai::rot_cast::EvalPetCannotReach;
                 bool canReach = false;
                 const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
                 if (pSpellInfo)
@@ -311,13 +360,18 @@ bool CastPetSpellAction::isPossible()
 
                 if (canReach)
                 {
-                    return ai->CanCastSpell(spellId, spellTarget, 0, true);
+                    if (!sPlayerbotAIConfig.rotationCastTrace)
+                        return ai->CanCastSpell(spellId, spellTarget, 0, true);
+
+                    SpellCastResult result = SPELL_CAST_OK;
+                    bool const possible = ai->CanCastSpell(spellId, spellTarget, 0, true, nullptr, false, false, false, &result);
+                    return RotEval(possible, ai::rot_cast::EvalCode(possible, uint8(result)));
                 }
             }
         }
     }
 
-    return false;
+    return RotEval(false, why);
 }
 
 bool CastAuraSpellAction::isUseful()

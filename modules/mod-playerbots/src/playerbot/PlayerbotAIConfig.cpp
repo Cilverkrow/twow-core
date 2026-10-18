@@ -523,6 +523,7 @@ bool PlayerbotAIConfig::Initialize()
     petDeadNoWorldPetFalse = config.GetBoolDefault("AiPlayerbot.PetDeadNoWorldPetFalse", false);
     canCastSpellChecksPower = config.GetBoolDefault("AiPlayerbot.CanCastSpell.CheckPower", false);
     castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
+    rotationCastTrace = config.GetBoolDefault("AiPlayerbot.Rotation.CastTrace", false);
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
@@ -666,6 +667,7 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
+    questFirstProgressionGrindFallbackMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes", 0)));
     questFirstProgressionFailureClasses = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses", false);
     questFirstProgressionResetOnProgressEvents = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents", false);
     questFirstProgressionAbandonStructuralParked = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.AbandonStructuralParked", false);
