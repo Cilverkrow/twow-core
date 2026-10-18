@@ -18,6 +18,7 @@ namespace G3D
 namespace ai
 {
     namespace transport_edge { struct PointRejects; }   // twow-repo#342 (S1): TransportEdgePolicy.h
+    namespace transport_board { struct DeckProbe; }   // twow-repo#342 (S3b-0): TransportBoardPolicy.h
 
     //Constructor types for WorldPosition
     enum WorldPositionConst
@@ -273,6 +274,11 @@ namespace ai
         // twow-repo#342 (S1): rejects (optional, filled only when passed) counts the z / isOnTransport / walk-path rejects.
         WorldPosition RandomPointOnTrans(GenericTransport* transport, uint32 radius, Player* botForPath, std::vector<WorldPosition>& path, transport_edge::PointRejects* rejects = nullptr);
         WorldPosition RandomPointOnTrans(GenericTransport* transport, uint32 radius = 10);
+        // twow-repo#342 (S3b): a vertical ray zTop -> zBottom hits this vessel's own deck model (GameObjectModel::intersectRay,
+        // no map-wide query, no tree lock). hitZ != nullptr asks for the nearest hit (StopAtFirstHit false) and its height.
+        static bool HitsVesselDeck(GenericTransport* transport, float x, float y, float zTop, float zBottom, float* hitZ);
+        // twow-repo#342 (S3b-0, AiPlayerbot.Path.TransportDeckProbe): counters only, DeckProbeTries fixed points, no RNG.
+        static transport_board::DeckProbe ProbeVesselDeck(GenericTransport* transport);
 
         GridPair getGridPair() const { return MaNGOS::ComputeGridPair(coord_x, coord_y); };
         std::vector<GridPair> getGridPairs(const WorldPosition& secondPos) const;

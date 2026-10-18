@@ -28,6 +28,7 @@
 #include "playerbot/PathReusePolicy.h"   // twow-repo#541 (L1): Perf.PartialPathReuse
 #include "playerbot/RouteTimePolicy.h"   // twow-repo#592 (PATH-02): Perf.RouteTimeTrace
 #include "playerbot/TransportEdgePolicy.h"   // twow-repo#342 (S1): Path.TransportEdgeTrace
+#include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 (S3b-0): Path.TransportDeckProbe / TransportWaitTimeoutMin
 
 using namespace ai;
 
@@ -269,10 +270,11 @@ transport_edge::State* TransportEdgeFor(Player* bot, transport_edge::State& stat
 }
 
 // UseTransport's not-boardable exit: attempt (new key), route_changed / left (old episode closed), wait_timeout (once).
+// twow-repo#342 (S3b-0): the threshold is AiPlayerbot.Path.TransportWaitTimeoutMin (default 15 = the fixed 900 s).
 void TraceTransportWait(Player* bot, transport_edge::State& state, uint32 cand, float nearD2d)
 {
     transport_edge::Step const step = transport_edge::OnWait(state, state.Current(), WorldTimer::getMSTime(),
-        transport_edge::WaitTimeoutMs);
+        transport_board::WaitTimeoutMsOf(sPlayerbotAIConfig.pathTransportWaitTimeoutMin));
     transport_edge::Extra extra;
     extra.cand = cand;
     extra.nearD2d = nearD2d;
@@ -316,10 +318,11 @@ void TraceTransportArrive(Player* bot, transport_edge::State& state, WorldPositi
     LogTransportEdge(bot, step, step.previous, extra, &exitAt);
 }
 
-// The aboard wait: overrun once when aboard longer than the threshold.
+// The aboard wait: overrun once when aboard longer than the threshold (S3b-0: the same key as the wait).
 void TraceTransportAboard(Player* bot, transport_edge::State& state)
 {
-    transport_edge::Step const step = transport_edge::OnAboard(state, WorldTimer::getMSTime(), transport_edge::WaitTimeoutMs);
+    transport_edge::Step const step = transport_edge::OnAboard(state, WorldTimer::getMSTime(),
+        transport_board::WaitTimeoutMsOf(sPlayerbotAIConfig.pathTransportWaitTimeoutMin));
     LogTransportEdge(bot, step, state.episode.key, transport_edge::Extra());
 }
 }
@@ -795,6 +798,63 @@ bool MovementAction::MoveOffTransport(PlayerbotAI* ai, WorldPosition exitPos, bo
     return true;
 }
 
+// twow-repo#342 (S3b-0, AiPlayerbot.Path.TransportDeckProbe): everything below runs only with the probe on (UseTransport
+// tests it first). Read only: nothing here changes where a bot goes or whether it boards, no RNG; counters relaxed atomics,
+// the wait record in the bot's LastMovement (bot thread).
+
+// The vessel stands in a stop frame (Transport.cpp:162) whose node lies within StopRadiusYards (2D) of the dock. Progress
+// read once; key frames are static template data; bounded by MaxTaxiNodes.
+static bool VesselAtStopNear(GenericTransport* transport, WorldPosition const& dock)
+{
+    if (!transport->GetTransportTemplate())
+        return false;
+    uint32 const progress = transport->GetPathProgress();
+    std::size_t n = 0;
+    for (KeyFrame const& frame : transport->GetKeyFrames())
+    {
+        if (++n > transport_edge::MaxTaxiNodes)
+            break;
+        if (!transport_board::AtStopFrame(progress, frame.ArriveTime, frame.DepartureTime))
+            continue;
+        if (!frame.Node || frame.Node->mapid != dock.getMapId())
+            return false;
+        float const dx = frame.Node->x - dock.getX(), dy = frame.Node->y - dock.getY();
+        return transport_board::StopNear(std::sqrt(dx * dx + dy * dy));
+    }
+    return false;
+}
+
+// The summary of the previous window first (rolled like LogTransportEdge), then the probe counted in the new window, the
+// line within the probe's own budget (dropped ones counted for the summary).
+static void LogTransportBoardLine(std::string const& line)
+{
+    transport_board::Counters& counters = transport_board::SharedCounters();
+    transport_board::Snapshot snapshot;
+    if (counters.Roll(uint64(time(nullptr)), snapshot))
+        sLog.outBasic("%s", transport_board::FormatSummary(snapshot).c_str());
+    counters.Account();
+    if (counters.Take())
+        sLog.outBasic("%s", line.c_str());
+}
+
+// Every dock wait tick and after a failed boarding: keeps the bot's wait record (handed entry + dock) and probes once per
+// wait, from the wait branch only while the vessel stands at its stop near the dock (needStop). Counted with its line.
+static void NoteDeckProbe(PlayerbotAI* ai, GenericTransport* transport, uint32 entry, WorldPosition const& dock, bool needStop)
+{
+    transport_board::DeckWait& deck = ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportDeck;
+    if (!transport_board::DeckProbeOpen(deck, entry, dock.getMapId(), dock.getX(), dock.getY(), WorldTimer::getMSTime()))
+        return;
+    if (!transport || transport->GetMapId() != dock.getMapId() || (needStop && !VesselAtStopNear(transport, dock)))
+        return;
+    GameObjectInfo const* info = sGOStorage.LookupEntry<GameObjectInfo>(transport->GetEntry());
+    if (!info)
+        return;
+    deck.probed = true;
+    transport_board::DeckProbe const probe = WorldPosition::ProbeVesselDeck(transport);
+    LogTransportBoardLine(transport_board::FormatDeck(ai->GetBot()->GetGUIDLow(), transport->GetEntry(), info->displayId,
+        WorldPosition::GetTransporFloorOffset(transport->GetEntry()), probe));
+}
+
 bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge)
 {
     AiObjectContext* context = ai->GetAiObjectContext();
@@ -862,6 +922,9 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         // point from RandomPointOnTrans); with the trace on that is 'fail reason=board_point', a boarding is 'state=board'.
         if (edgeTrace)
             TraceTransportBoard(bot, *edge, moved, doTeleport, rejects, uint32(candidates.size()), std::sqrt(minDist));
+        // twow-repo#342 (S3b-0): nothing boarded (the S1 board_point case): the deck probe, once per wait; answer unchanged.
+        if (sPlayerbotAIConfig.pathTransportDeckProbe && !bot->GetTransport() && (doTeleport || !moved))
+            NoteDeckProbe(ai, transport, entry, dockPosition, false);
 
         return true;
     }
@@ -870,6 +933,9 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         ai->TellDebug(ai->GetMaster(), "Waiting for transport on different map.", "debug move");
     else
         ai->TellDebug(ai->GetMaster(), "Waiting for transport " + std::string(transportName) + " at " + std::to_string((uint32)sqrt(minDist)) + "y from docking.", "debug move");
+
+    if (sPlayerbotAIConfig.pathTransportDeckProbe)   // twow-repo#342 (S3b-0): deck probe once per wait, vessel at its stop
+        NoteDeckProbe(ai, transport, entry, dockPosition, true);
 
     if (edgeTrace)   // twow-repo#342 (S1): state=attempt on a new key, fail route_changed / left / wait_timeout
         TraceTransportWait(bot, *edge, uint32(candidates.size()), transport ? std::sqrt(minDist) : -1.0f);
