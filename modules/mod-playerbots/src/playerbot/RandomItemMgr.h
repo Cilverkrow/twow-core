@@ -191,6 +191,7 @@ class RandomItemMgr
         std::string GetRoleSpecName(Player* player);   // twow-repo#308: the premade path's weight scale
         uint32 GetRoleSpecId(Player* player);
         uint32 SpecIdByName(uint8 cls, std::string const& specName);
+        void ApplyOwnerWeightsV2();   // twow-repo#308 v2: the owner stat table into m_weightScales (RoleWeights = 2)
         std::vector<uint32> GetGlyphs(uint8 playerClass) { return glyphCache.at(playerClass); }
     private:
         void BuildRandomItemCache();
