@@ -5,6 +5,9 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/strategy/generic/PullStrategy.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/RotCastPolicy.h"
+#include "playerbot/RotCastTrace.h"
 
 bool DpsAssistAction::isUseful()
 {
@@ -60,6 +63,17 @@ bool ai::AttackAnythingAction::Execute(Event& event)
             if (!grindName.empty())
             {
                 sPlayerbotAIConfig.logEvent(ai, "AttackAnythingAction", grindName + " (lvl " + std::to_string(grindTarget->GetLevel()) + ")", std::to_string(grindTarget->GetEntry()));
+
+                // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): the bot's HP / mana at the grind pull, as its own
+                // line (bot_events.csv unchanged); at most 300 lines a minute.
+                if (sPlayerbotAIConfig.rotationCastTrace && ai::rot_cast_rt::TakePullBudget(uint32(time(nullptr))))
+                {
+                    uint32 const guid = bot->GetGUIDLow();
+                    int const mana = bot->GetMaxPower(POWER_MANA) ? int(bot->GetPowerPercent(POWER_MANA)) : -1;
+                    sLog.outBasic("%s", ai::rot_cast::FormatPullLine(guid, bot->GetName(), bot->getClass(), bot->GetLevel(),
+                        ai::cohort::Letter(guid), grindTarget->GetEntry(), grindTarget->GetLevel(), uint32(bot->GetHealthPercent()),
+                        mana, uint32(bot->getAttackers().size()), bot->GetDistance(grindTarget)).c_str());
+                }
 
                 if (ai->HasStrategy("pull", BotState::BOT_STATE_COMBAT))
                 {
