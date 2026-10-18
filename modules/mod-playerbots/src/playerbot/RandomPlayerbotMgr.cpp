@@ -1309,9 +1309,10 @@ void ReportQuestIdle()
 }
 
 // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2 points 2 / 5): one "[GrindWindow] minute starts= expired= engaged=
-// grey_engaged= no_dest= r4_skips=" line per minute - the gap filler's windows, plain grind engagements and R4 skips counted
-// on the map threads since the last line (atomics in PlayerbotAI.cpp). Gated by GrindMode 1 alone and omitted when every
-// count is 0. World thread only, same pattern as ReportQuestFeasibility (the first line after a full minute).
+// grey_engaged= no_dest= r4_skips= r4_empty=" line per minute - the gap filler's windows, plain grind engagements, R4 skips
+// and passes left empty by R4 counted on the map threads since the last line (atomics in PlayerbotAI.cpp). Gated by
+// GrindMode 1 alone and omitted when every count is 0. World thread only, same pattern as ReportQuestFeasibility (the
+// first line after a full minute).
 void ReportGrindWindow()
 {
     if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode))

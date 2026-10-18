@@ -1164,7 +1164,9 @@ AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 #       destinations whose template max level and area level are in that window, and plain grind targets (no quest
 #       need, not attacking the bot) need their level in it; attackers and quest mobs stay. Grind destinations
 #       are recognised for the 20 % quest skip (bug fix, mode 1 only). [GrindWindow] minute starts= expired= engaged=
-#       grey_engaged= no_dest= r4_skips= once a minute, not when all are 0. For the A2 test realm arm; default 0.
+#       grey_engaged= no_dest= r4_skips= r4_empty= once a minute, not when all are 0 (r4_empty= = grind target
+#       passes in which the level window skipped a candidate and no target was left). For the A2 test realm arm;
+#       default 0.
 #   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
 #       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
 #       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a

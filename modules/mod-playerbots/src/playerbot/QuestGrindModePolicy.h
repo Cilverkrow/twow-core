@@ -182,10 +182,19 @@ enum class WindowEvent : std::uint8_t
     GreyEngaged,  // of those, the ones without XP
     NoDest,       // windows whose grind fetch found no destination (the bot stands until the backoff ends)
     R4Skips,      // plain grind candidates R4 skipped (per grind target pass, not per engagement)
+    R4Empty,      // grind target passes in which R4 skipped a candidate and no target came out (OB-10 18.10.2026)
 };
-constexpr std::size_t WindowEventCount = 6;
+constexpr std::size_t WindowEventCount = 7;
 
-// "[GrindWindow] minute starts= expired= engaged= grey_engaged= no_dest= r4_skips="; empty (no line) when every count is 0.
+// [GrindWindow] r4_empty= (OB-10 18.10.2026): a grind target pass of the population counts once when R4 skipped at least one
+// candidate (skipped) and the pass found no target - the bot has nothing to fight because of the window.
+inline bool GapR4EmptyPass(std::uint32_t skipped, bool targetFound)
+{
+    return skipped != 0 && !targetFound;
+}
+
+// "[GrindWindow] minute starts= expired= engaged= grey_engaged= no_dest= r4_skips= r4_empty="; empty (no line) when every count
+// is 0 (all of them, r4_empty= too).
 inline std::string FormatWindowMinuteLine(std::array<std::uint32_t, WindowEventCount> const& counts)
 {
     bool any = false;
@@ -198,7 +207,8 @@ inline std::string FormatWindowMinuteLine(std::array<std::uint32_t, WindowEventC
         " engaged=" + std::to_string(counts[std::size_t(WindowEvent::Engaged)]) +
         " grey_engaged=" + std::to_string(counts[std::size_t(WindowEvent::GreyEngaged)]) +
         " no_dest=" + std::to_string(counts[std::size_t(WindowEvent::NoDest)]) +
-        " r4_skips=" + std::to_string(counts[std::size_t(WindowEvent::R4Skips)]);
+        " r4_skips=" + std::to_string(counts[std::size_t(WindowEvent::R4Skips)]) +
+        " r4_empty=" + std::to_string(counts[std::size_t(WindowEvent::R4Empty)]);
 }
 
 // Why a bot of the population stands idle instead of grinding.

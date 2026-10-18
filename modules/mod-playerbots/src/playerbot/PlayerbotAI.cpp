@@ -784,8 +784,8 @@ bool PlayerbotAI::IsQuestGapGrind()
 }
 
 // twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): window starts, window ends, plain grind engagements (grey
-// ones), empty windows and R4 skips since the last minute line; counted on the map threads, taken by the world thread
-// (relaxed atomics, no lock).
+// ones), empty windows, R4 skips and passes left empty by R4 since the last minute line; counted on the map threads,
+// taken by the world thread (relaxed atomics, no lock).
 namespace
 {
 std::atomic<uint32> grindWindowCounts[ai::quest_grind_mode::WindowEventCount] = {};
