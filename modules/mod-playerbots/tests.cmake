@@ -294,6 +294,13 @@ add_test(NAME quest_feasibility_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_feasibility_source_contract_tests.cmake")
 
+# twow-repo#601 S3b (AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters, default 0, only with FailureClasses; OB-10
+# 18.10.2026): the local quest hub pre-loop and the main loop of SetBestTarget share the post-IsActive deferrals.
+add_test(NAME hub_preloop_same_filters_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/hub_preloop_same_filters_source_contract_tests.cmake")
+
 # #354/#292: who may direct a bot without GM rank, and which `.bot`/`.rndbot`
 # commands stay GM tools. Decision table plus the call sites that use it.
 add_executable(roster_control_policy_tests

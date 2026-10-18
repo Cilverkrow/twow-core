@@ -671,6 +671,8 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionResetOnProgressEvents = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents", false);
     questFirstProgressionAbandonStructuralParked = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.AbandonStructuralParked", false);
     questFirstProgressionTransientCountsAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TransientCountsAfter", 0)));
+    // twow-repo#601 S3b: the hub pre-loop also asks the main loop's post-IsActive deferrals (acts only with FailureClasses).
+    questFirstProgressionHubPreloopSameFilters = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters", false);
     questFirstProgressionGrindMode = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindMode", 0);
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);

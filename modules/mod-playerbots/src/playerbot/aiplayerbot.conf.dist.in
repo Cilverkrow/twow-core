@@ -1132,6 +1132,13 @@ AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
 # again (no trip to its giver, no accept) while the bot is on its own - at most 8 such quests per bot, forgotten at
 # re-login. 0 = the quest stays parked.
 AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
+# HubPreloopSameFilters = 1 (twow-repo#601 S3b, OB-10 18.10.2026; acts only with FailureClasses = 1): the local quest
+# hub pre-check also skips a local candidate the main loop defers after its activation check - a battleground quest
+# (ZoneExit.SkipBattlegroundQuests), an enemy home zone, a zone clearly above the bot (route danger, start-zone
+# exemption as in the main loop) or a death cluster (DangerMap.Enabled) - so such a candidate no longer turns the hub
+# filter on and leaves only hub_filter rejections. Both loops ask the same check. 0 = the pre-check as before.
+# Restart-only.
+AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 # twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
 # stand around than grind, so it shows). Restart-only.
 #   0 = today's behaviour (default).
