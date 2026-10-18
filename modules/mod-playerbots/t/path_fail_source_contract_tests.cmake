@@ -184,6 +184,19 @@ require_text("${use_taxi}" "    if (!goTaxi)
 
     return goTaxi;" "flight behaviour unchanged")
 require_text("${policy}" "constexpr float TaxiStartReach = 31.6f;" "core start reach")
+# twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): the refusal reason on res=failed lines (trace only) and the form cancel
+# before the flight (AiPlayerbot.Path.TaxiCancelForm, default 0; druid travel form / shaman Ghost Wolf).
+require_text("${config_h}" "    bool pathTaxiCancelForm = false;  // twow-repo#575 (PATH-01 b)" "TaxiCancelForm default off")
+require_text("${config_cpp}" "pathTaxiCancelForm = config.GetBoolDefault(\"AiPlayerbot.Path.TaxiCancelForm\", false);" "TaxiCancelForm read off")
+require_text("${conf_dist}" "
+AiPlayerbot.Path.TaxiCancelForm = 0
+" "TaxiCancelForm documented off")
+require_text("${use_taxi}" "    if (sPlayerbotAIConfig.pathTaxiCancelForm && unit && bot->IsInDisallowedMountForm())
+        bot->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT);" "form cancel only with the switch and a flight master")
+require_order("${use_taxi}" "bot->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT);" "bool goTaxi = bot->ActivateTaxiPathTo({tEntry->from, tEntry->to}, unit, 1);" "form cancel before the flight")
+count_text("${move_cpp}" "RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT)" 1 "one form cancel")
+require_text("${use_taxi}" "result == path_fail::TaxiResult::Failed ? TaxiRefusalReason(bot, unit, tEntry) : nullptr" "reason only on failed lines")
+require_text("${move_cpp}" "start_dist=%.1f%s%s\"" "reason appended at the end, line unchanged without it")
 
 # 6. PATH-01 E6: quest rescue skips the goblin / high-elf starts for other races, only with the switch (default 0).
 read_source("RandomPlayerbotMgr.cpp" rnd_mgr)
