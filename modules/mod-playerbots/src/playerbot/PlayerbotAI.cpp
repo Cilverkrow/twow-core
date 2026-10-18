@@ -807,7 +807,8 @@ std::atomic<uint32> questFeasibilityDrops{0};
 std::atomic<uint32> questFeasibilityGiverInactive{0};
 }
 
-// S3a: Enable first - with the switch off nothing else is read. Scope and class exemption in the policy.
+// S3a: Enable first - with the switch off nothing else is read. Scope, lists and the class exemption (solo group rule
+// only) in the policy.
 ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* quest)
 {
     if (!sPlayerbotAIConfig.questFeasibilityEnable || !bot || !quest)
@@ -828,8 +829,9 @@ ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* q
     return ai::quest_feasibility::SkipReason(facts);
 }
 
-// S3a, bot's own thread: one count per skip, one [QuestFeasibility] state=skip line per bot and quest an hour (at most
-// ai::quest_feasibility::LinesPerMinute per bot and minute). The giver relation is skipped for listed quests only.
+// S3a, bot's own thread: one count per check that skips (minute line: checks, not distinct quests), one
+// [QuestFeasibility] state=skip line per bot, quest and path an hour (at most ai::quest_feasibility::LinesPerMinute per bot
+// and minute).
 bool PlayerbotAI::SkipInfeasibleQuest(Quest const* quest, ai::quest_feasibility::Path path)
 {
     ai::quest_feasibility::Reason const reason = QuestFeasibilityReason(quest);
@@ -843,7 +845,7 @@ bool PlayerbotAI::SkipInfeasibleQuest(Quest const* quest, ai::quest_feasibility:
     else
         questFeasibilitySkips.fetch_add(1, std::memory_order_relaxed);
 
-    if (ai::quest_feasibility::LogDue(questFeasibilityLog, quest->GetQuestId(), uint32(time(nullptr))))
+    if (ai::quest_feasibility::LogDue(questFeasibilityLog, quest->GetQuestId(), path, uint32(time(nullptr))))
         sLog.outBasic("%s", ai::quest_feasibility::FormatSkipLine(bot->GetGUIDLow(), bot->GetLevel(), quest->GetQuestId(),
             reason, path).c_str());
     return true;

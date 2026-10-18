@@ -5,6 +5,7 @@
 #include "playerbot/QuestAcceptPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/strategy/values/GuildValues.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Formulas.h"
@@ -77,13 +78,19 @@ static void DropGreyQuestsOnItsOwn(PlayerbotAI* ai, Player* bot)
 
 // twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable, OB-10 rev. 2): a roster bot on its own drops the open quests it
 // cannot finish - listed ones and, with SoloSkipGroupQuests while not in a group, group quests - whatever the log size.
-// A complete one stays (a reachable taker still rewards it); class quests stay (scope and exemption in
-// PlayerbotAI::QuestFeasibilityReason). At most one pass over the quest log per cleanup.
+// A complete one stays (a reachable taker still rewards it); scope and the class exemption (solo group rule only) in
+// PlayerbotAI::QuestFeasibilityReason. Paths E / F are not undone (review S3a F2, design rev. 2 Q-B1): no listed quest
+// while the bot is in a group (a member's escort confirm), never the quest of its guild quest order (the order would
+// accept it again on every cleanup). At most one pass over the quest log per cleanup; the guild order is asked once,
+// only when a quest would go.
 static void DropInfeasibleOnItsOwn(PlayerbotAI* ai, Player* bot)
 {
     if (!sPlayerbotAIConfig.questFeasibilityEnable)
         return;
 
+    bool const inGroup = bot->GetGroup() != nullptr;
+    bool guildOrderKnown = false;
+    uint32 guildOrderQuest = 0;
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 const questId = bot->GetQuestSlotQuestId(slot);
@@ -91,8 +98,23 @@ static void DropInfeasibleOnItsOwn(PlayerbotAI* ai, Player* bot)
         if (!quest)
             continue;
 
-        char const* reason = ai::quest_feasibility::DropReasonName(ai->QuestFeasibilityReason(quest),
-            bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE);
+        ai::quest_feasibility::Reason const why = ai->QuestFeasibilityReason(quest);
+        if (why == ai::quest_feasibility::Reason::None)
+            continue;
+
+        if (!guildOrderKnown)
+        {
+            guildOrderKnown = true;
+            if (bot->GetGuildId())
+            {
+                GuildOrder const order = ai->GetAiObjectContext()->GetValue<GuildOrder>("guild order")->Get();
+                if (order.IsQuestRewardOrder())
+                    guildOrderQuest = order.questId;
+            }
+        }
+
+        char const* reason = ai::quest_feasibility::DropReasonName(why, bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE,
+            inGroup, guildOrderQuest == questId);
         if (!reason)
             continue;
 

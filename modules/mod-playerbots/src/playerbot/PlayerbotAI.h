@@ -1077,10 +1077,11 @@ public:
     // GrindMode 2, world thread: "[QuestIdle] minute ..." with the counts since the last call (counters reset).
     static std::string TakeQuestIdleMinuteLine();
     // twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable, QuestFeasibilityPolicy.h), bot's own thread: why this bot
-    // must not take the quest (roster bot on its own, class quests exempt); None with Enable 0, before anything else.
+    // must not take the quest (roster bot on its own; class quests exempt from the solo group rule only); None with
+    // Enable 0, before anything else.
     ai::quest_feasibility::Reason QuestFeasibilityReason(Quest const* quest);
-    // S3a: the same for an accept path / the quest item / the giver relation (giver: listed quests only); counts it for
-    // the minute line and writes a rate-limited [QuestFeasibility] state=skip line. True = skip.
+    // S3a: the same for an accept path / the quest item / the giver relation (giver: every reason, GiverInactive);
+    // counts it for the minute line and writes a rate-limited [QuestFeasibility] state=skip line. True = skip.
     bool SkipInfeasibleQuest(Quest const* quest, ai::quest_feasibility::Path path);
     // S3a: one infeasible quest dropped by the quest log cleanup (minute line).
     static void NoteQuestFeasibilityDrop();

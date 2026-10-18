@@ -185,7 +185,8 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
             AI_VALUE(TravelTarget*, "travel target")->IsStructurallyAbandoned(GetQuestId()))
             return false;
 
-        // twow-repo#601 S3a (QuestFeasibility.Enable): no trip to a listed quest's giver; never the taker (OB-10 rev. 2).
+        // twow-repo#601 S3a (QuestFeasibility.Enable): no trip to the giver of a quest the bot would skip at accept (listed
+        // or, solo, a group quest); never the taker (OB-10 rev. 2).
         if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(GetQuestTemplate(), ai::quest_feasibility::Path::Giver))
             return false;
 

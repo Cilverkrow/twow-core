@@ -19,9 +19,11 @@ namespace ai::quest_feasibility
 //                                                              SuggestedPlayers >= 2 quests (OB-20, OB-00 Q-O1)
 //
 // Scope: a persistent roster bot on its own (no real player leads it), the scope of quest_accept::SkipForRosterBot.
-// Class quests are never skipped or dropped. Accept paths A / B / C (the one accept rule) and the autonomous quest item
-// (G); the giver relation of a listed quest is not a travel target. Never the taker relation: a complete listed quest
-// may still be turned in (OB-10 rev. 2). Shares, catch-up, escort confirm and guild orders stay a player's decision.
+// Class quests are exempt from the generic solo group rule only; a listed id is a deliberate choice and applies to class
+// quests too (OB-00 Q-O3 lists the goblin class quests 80330, 60163, 41201). Accept paths A / B / C (the one accept
+// rule) and the autonomous quest item (G); the giver relation of a quest the bot would skip is not a travel target.
+// Never the taker relation: a complete listed quest may still be turned in (OB-10 rev. 2). Shares, catch-up, escort
+// confirm and guild orders stay a player's decision, and the drop step does not undo them.
 
 // At most this many ids per list; the rest of the text is ignored (fail closed: a typo never blocks more).
 constexpr std::size_t MaxIds = 512;
@@ -118,7 +120,7 @@ struct Facts
 {
     bool enabled = false;               // AiPlayerbot.QuestFeasibility.Enable
     bool rosterOnItsOwn = false;        // persistent roster member, no real player master
-    bool classQuest = false;            // RequiredClasses != 0
+    bool classQuest = false;            // RequiredClasses != 0 (exempt from the solo group rule only)
     bool inGroup = false;               // the bot is in a group (any group)
     bool listed = false;                // in Blocklist
     bool listedNoCustomStarts = false;  // in BlocklistWhileNoCustomStarts
@@ -128,44 +130,51 @@ struct Facts
     std::uint32_t suggestedPlayers = 0; // Quest::GetSuggestedPlayers()
 };
 
-// The one decision. Enable first, then the scope, then class quests: nothing else is looked at with the switch off.
+// The one decision. Enable first, then the scope: nothing else is looked at with the switch off. The explicit lists come
+// before the class exemption (review S3a F2: OB-00 Q-O3 decided three class quests for the conditional list); the class
+// exemption only spares class quests from the generic solo group rule.
 inline Reason SkipReason(Facts const& facts)
 {
-    if (!facts.enabled || !facts.rosterOnItsOwn || facts.classQuest)
+    if (!facts.enabled || !facts.rosterOnItsOwn)
         return Reason::None;
     if (facts.listed)
         return Reason::Blocklist;
     if (facts.listedNoCustomStarts && !facts.customRaceStartZones)
         return Reason::BlocklistCrsz0;
-    if (facts.soloSkipGroupQuests && !facts.inGroup && IsGroupQuest(facts.type, facts.suggestedPlayers))
+    if (!facts.classQuest && facts.soloSkipGroupQuests && !facts.inGroup && IsGroupQuest(facts.type, facts.suggestedPlayers))
         return Reason::GroupSolo;
     return Reason::None;
 }
 
-// The giver relation is inactive for listed quests only (design: "the giver relation of a blocked quest"); a solo bot's
-// group quest keeps today's giver gate (IsPossible: elite / dungeon need "can fight boss").
+// The giver relation of every quest the bot would skip at accept is inactive (design: "so bots don't walk to a giver
+// only to decline"); review S3a F3: IsPossible gates elite / dungeon givers only inside instances, so a solo bot's group
+// quest giver on a continent was a trip to a decline.
 inline bool GiverInactive(Reason reason)
 {
-    return reason == Reason::Blocklist || reason == Reason::BlocklistCrsz0;
+    return reason == Reason::Blocklist || reason == Reason::BlocklistCrsz0 || reason == Reason::GroupSolo;
 }
 
-// Drop step (OB-10 rev. 2): only open quests - a complete one may still be turned in. nullptr = keep.
-inline char const* DropReasonName(Reason reason, bool complete)
+// Drop step (OB-10 rev. 2): only open quests - a complete one may still be turned in. Never the quest of the bot's guild
+// quest order (path F, an officer's note: the drop would undo the order's accept on every cleanup) and no listed quest
+// while the bot is in a group (path E: a group member's escort confirm; the solo group rule needs no group anyway) -
+// review S3a F2, those paths stay a player's decision. nullptr = keep.
+inline char const* DropReasonName(Reason reason, bool complete, bool inGroup, bool guildOrderQuest)
 {
-    if (complete)
+    if (complete || guildOrderQuest)
         return nullptr;
     switch (reason)
     {
         case Reason::Blocklist:
-        case Reason::BlocklistCrsz0: return "infeasible_blocklist";
+        case Reason::BlocklistCrsz0: return inGroup ? nullptr : "infeasible_blocklist";
         case Reason::GroupSolo: return "infeasible_group_solo";
         default: return nullptr;
     }
 }
 
-// Bounded skip lines, per bot (bot's own thread only): one line per (bot, quest) per RepeatSeconds while the quest stays
-// in the ring, and at most LinesPerMinute lines per bot and minute however many listed givers a hub walk meets. Small
-// fixed ring, nothing per creature.
+// Bounded skip lines, per bot (bot's own thread only): one line per (bot, quest, path) per RepeatSeconds while the entry
+// stays in the ring, and at most LinesPerMinute lines per bot and minute however many listed givers a hub walk meets.
+// Keyed by path too (review S3a F5): a path=giver line must not silence the same quest's path=accept line for an hour.
+// Small fixed ring, nothing per creature.
 constexpr std::size_t LogRingSize = 16;
 constexpr std::uint32_t RepeatSeconds = 3600;
 constexpr std::uint32_t LinesPerMinute = 4;
@@ -173,6 +182,7 @@ constexpr std::uint32_t LinesPerMinute = 4;
 struct SkipLog
 {
     std::array<std::uint32_t, LogRingSize> quests{};
+    std::array<Path, LogRingSize> paths{};
     std::array<std::uint32_t, LogRingSize> loggedAt{};
     std::uint32_t next = 0;
     std::uint32_t minuteStart = 0;
@@ -180,12 +190,13 @@ struct SkipLog
 };
 
 // True = write the line now (and remember it); false = stay silent.
-inline bool LogDue(SkipLog& log, std::uint32_t questId, std::uint32_t now)
+inline bool LogDue(SkipLog& log, std::uint32_t questId, Path path, std::uint32_t now)
 {
     if (!questId)
         return false;
     for (std::size_t i = 0; i < LogRingSize; ++i)
-        if (log.quests[i] == questId && now >= log.loggedAt[i] && now - log.loggedAt[i] < RepeatSeconds)
+        if (log.quests[i] == questId && log.paths[i] == path && now >= log.loggedAt[i] &&
+            now - log.loggedAt[i] < RepeatSeconds)
             return false;
 
     if (now < log.minuteStart || now - log.minuteStart >= 60)
@@ -199,11 +210,12 @@ inline bool LogDue(SkipLog& log, std::uint32_t questId, std::uint32_t now)
 
     std::size_t slot = log.next % LogRingSize;
     for (std::size_t i = 0; i < LogRingSize; ++i)
-        if (log.quests[i] == questId)
+        if (log.quests[i] == questId && log.paths[i] == path)
             slot = i;   // refresh the old entry, keep the others
     if (slot == log.next % LogRingSize)
         log.next = std::uint32_t((log.next + 1) % LogRingSize);
     log.quests[slot] = questId;
+    log.paths[slot] = path;
     log.loggedAt[slot] = now;
     return true;
 }
@@ -215,7 +227,9 @@ inline std::string FormatSkipLine(std::uint32_t bot, std::uint32_t level, std::u
 }
 
 // Once a minute (world thread, only with Enable): accept / item skips, infeasible drops and giver relations found
-// inactive since the last line.
+// inactive since the last line. skips= and giver_inactive= count checks, not distinct quests (review S3a F4): IsActive
+// asks per giver candidate in both choice loops and in CheckStatus, the item pick asks up to 5 times per Execute; drops=
+// counts quests dropped.
 inline std::string FormatMinuteLine(std::uint32_t skips, std::uint32_t drops, std::uint32_t giverInactive)
 {
     return "[QuestFeasibility] minute skips=" + std::to_string(skips) + " drops=" + std::to_string(drops) +

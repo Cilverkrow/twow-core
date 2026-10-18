@@ -67,7 +67,8 @@ int main()
         Require(ParseQuestIdList(dupes + "8") == std::set<std::uint32_t>({7, 8}), "duplicates do not use up the cap");
     }
 
-    // 2) Switch off, scope, class quests: nothing else is looked at.
+    // 2) Switch off, scope: nothing else is looked at. Class quests: the explicit lists apply (review S3a F2, OB-00 Q-O3
+    //    lists 80330 / 60163 / 41201), only the generic solo group rule spares them.
     {
         Facts facts = Base();
         facts.listed = true;
@@ -77,18 +78,22 @@ int main()
 
         Facts off = facts;
         off.enabled = false;
+        off.classQuest = true;
         Require(SkipReason(off) == Reason::None, "Enable 0: never a skip");
 
         Facts led = facts;
         led.rosterOnItsOwn = false;
+        led.classQuest = true;
         Require(SkipReason(led) == Reason::None, "not a roster bot on its own (real master / not on the roster): untouched");
 
         Facts cls = facts;
         cls.classQuest = true;
-        Require(SkipReason(cls) == Reason::None, "class quest: never skipped");
+        Require(SkipReason(cls) == Reason::Blocklist, "class quest on the plain list: skipped (explicit id)");
         cls.listed = false;
         cls.listedNoCustomStarts = true;
-        Require(SkipReason(cls) == Reason::None, "class quest on the conditional list: never skipped");
+        Require(SkipReason(cls) == Reason::BlocklistCrsz0, "class quest on the conditional list: skipped (60163 goblin hunter)");
+        cls.customRaceStartZones = true;
+        Require(SkipReason(cls) == Reason::None, "class quest on the conditional list, CustomRaceStartZones 1: taken");
         Require(SkipReason(Base()) == Reason::None, "nothing listed, no rule: no skip");
     }
 
@@ -132,20 +137,32 @@ int main()
         Require(SkipReason(facts) == Reason::None, "a bot in a group takes group quests");
         facts.classQuest = true;
         facts.inGroup = false;
-        Require(SkipReason(facts) == Reason::None, "a class group quest stays");
+        Require(SkipReason(facts) == Reason::None, "a class group quest stays (class exemption: solo group rule only)");
+        facts.listed = true;
+        Require(SkipReason(facts) == Reason::Blocklist, "a listed class group quest is skipped (reason=blocklist)");
     }
 
-    // 5) Giver relation: listed quests only; drop: open quests only, both list reasons map to infeasible_blocklist.
+    // 5) Giver relation: every skip reason (review S3a F3: a solo bot does not walk to a group quest's giver to decline);
+    //    drop: open quests only, both list reasons map to infeasible_blocklist, paths E / F are not undone (review S3a F2).
     {
         Require(GiverInactive(Reason::Blocklist) && GiverInactive(Reason::BlocklistCrsz0), "giver of a listed quest inactive");
-        Require(!GiverInactive(Reason::GroupSolo) && !GiverInactive(Reason::None), "group rule / none: giver unchanged");
+        Require(GiverInactive(Reason::GroupSolo), "giver of a solo bot's group quest inactive (Type 0, SP >= 2 too)");
+        Require(!GiverInactive(Reason::None), "feasible quest: giver unchanged");
 
-        Require(Same(DropReasonName(Reason::Blocklist, false), "infeasible_blocklist"), "open listed quest dropped");
-        Require(Same(DropReasonName(Reason::BlocklistCrsz0, false), "infeasible_blocklist"), "open conditional quest dropped");
-        Require(Same(DropReasonName(Reason::GroupSolo, false), "infeasible_group_solo"), "open group quest of a solo bot dropped");
-        Require(!DropReasonName(Reason::Blocklist, true), "complete listed quest kept (turn-in allowed, OB-10 rev. 2)");
-        Require(!DropReasonName(Reason::GroupSolo, true), "complete group quest kept (OB-00 Q-O2)");
-        Require(!DropReasonName(Reason::None, false), "feasible quest kept");
+        Require(Same(DropReasonName(Reason::Blocklist, false, false, false), "infeasible_blocklist"), "open listed quest dropped");
+        Require(Same(DropReasonName(Reason::BlocklistCrsz0, false, false, false), "infeasible_blocklist"),
+            "open conditional quest dropped");
+        Require(Same(DropReasonName(Reason::GroupSolo, false, false, false), "infeasible_group_solo"),
+            "open group quest of a solo bot dropped");
+        Require(!DropReasonName(Reason::Blocklist, true, false, false), "complete listed quest kept (turn-in allowed, OB-10 rev. 2)");
+        Require(!DropReasonName(Reason::GroupSolo, true, false, false), "complete group quest kept (OB-00 Q-O2)");
+        Require(!DropReasonName(Reason::None, false, false, false), "feasible quest kept");
+        // E: a listed escort a group member's confirm brought in stays while the bot is in a group.
+        Require(!DropReasonName(Reason::Blocklist, false, true, false), "listed quest kept while in a group (escort confirm, E)");
+        Require(!DropReasonName(Reason::BlocklistCrsz0, false, true, false), "conditional quest kept while in a group (E)");
+        // F: the guild quest order's quest is never dropped (no accept / drop churn per cleanup).
+        Require(!DropReasonName(Reason::Blocklist, false, false, true), "listed guild order quest kept (F)");
+        Require(!DropReasonName(Reason::GroupSolo, false, false, true), "group-type guild order quest kept (F)");
     }
 
     // 6) Names and lines.
@@ -162,35 +179,43 @@ int main()
     // 7) Bounded skip lines: once per (bot, quest) an hour, at most LinesPerMinute per bot and minute, 16-quest ring.
     {
         SkipLog log;
-        Require(!LogDue(log, 0, 1000), "quest 0 never logs");
-        Require(LogDue(log, 100, 1000), "first skip of a quest logs");
-        Require(!LogDue(log, 100, 1001), "same quest right after: silent");
-        Require(!LogDue(log, 100, 1000 + RepeatSeconds - 1), "same quest within the hour: silent");
-        Require(LogDue(log, 100, 1000 + RepeatSeconds), "same quest after an hour: logs again");
+        Require(!LogDue(log, 0, Path::Accept, 1000), "quest 0 never logs");
+        Require(LogDue(log, 100, Path::Accept, 1000), "first skip of a quest logs");
+        Require(!LogDue(log, 100, Path::Accept, 1001), "same quest right after: silent");
+        Require(!LogDue(log, 100, Path::Accept, 1000 + RepeatSeconds - 1), "same quest within the hour: silent");
+        Require(LogDue(log, 100, Path::Accept, 1000 + RepeatSeconds), "same quest after an hour: logs again");
+
+        // Keyed by path (review S3a F5): a giver line does not silence the same quest's accept line, and back.
+        SkipLog paths;
+        Require(LogDue(paths, 41169, Path::Giver, 2000), "giver line logs");
+        Require(LogDue(paths, 41169, Path::Accept, 2001), "accept line of the same quest still logs");
+        Require(LogDue(paths, 41169, Path::Item, 2002), "item line of the same quest still logs");
+        Require(!LogDue(paths, 41169, Path::Giver, 2003) && !LogDue(paths, 41169, Path::Accept, 2003) &&
+            !LogDue(paths, 41169, Path::Item, 2003), "each (quest, path) silent within its hour");
 
         SkipLog burst;
         std::uint32_t logged = 0;
         for (std::uint32_t quest = 1; quest <= 20; ++quest)
-            logged += LogDue(burst, quest, 5000) ? 1u : 0u;
+            logged += LogDue(burst, quest, Path::Accept, 5000) ? 1u : 0u;
         Require(logged == LinesPerMinute && LinesPerMinute == 4, "at most 4 lines per bot and minute");
-        Require(LogDue(burst, 5, 5060), "next minute: a quest not yet logged logs");
-        Require(!LogDue(burst, 1, 5060), "a quest logged in the burst stays silent within its hour");
+        Require(LogDue(burst, 5, Path::Accept, 5060), "next minute: a quest not yet logged logs");
+        Require(!LogDue(burst, 1, Path::Accept, 5060), "a quest logged in the burst stays silent within its hour");
 
         // Ring: 16 distinct quests over many minutes - each logs once; the 17th evicts the oldest entry.
         SkipLog ring;
         std::uint32_t now = 10000;
         for (std::uint32_t quest = 1; quest <= LogRingSize; ++quest, now += 60)
-            Require(LogDue(ring, quest, now), "ring: distinct quest logs (one per minute)");
+            Require(LogDue(ring, quest, Path::Accept, now), "ring: distinct quest logs (one per minute)");
         for (std::uint32_t quest = 1; quest <= LogRingSize; ++quest)
-            Require(!LogDue(ring, quest, now), "ring: all 16 remembered");
-        Require(LogDue(ring, 999, now), "ring: 17th quest logs");
-        Require(LogDue(ring, 1, now + 60), "ring: the evicted oldest quest may log again (bounded memory, not silence)");
-        Require(!LogDue(ring, 3, now + 60), "ring: the other entries stay");
+            Require(!LogDue(ring, quest, Path::Accept, now), "ring: all 16 remembered");
+        Require(LogDue(ring, 999, Path::Accept, now), "ring: 17th quest logs");
+        Require(LogDue(ring, 1, Path::Accept, now + 60), "ring: the evicted oldest quest may log again (bounded memory, not silence)");
+        Require(!LogDue(ring, 3, Path::Accept, now + 60), "ring: the other entries stay");
         Require(LogRingSize == 16, "ring size 16");
 
         SkipLog back;
-        Require(LogDue(back, 7, 9000), "clock: first line");
-        Require(LogDue(back, 7, 100), "clock going back: logs (never stuck silent), bounded by the minute cap");
+        Require(LogDue(back, 7, Path::Accept, 9000), "clock: first line");
+        Require(LogDue(back, 7, Path::Accept, 100), "clock going back: logs (never stuck silent), bounded by the minute cap");
     }
 
     std::cout << "quest_feasibility_policy_tests: all passed\n";
