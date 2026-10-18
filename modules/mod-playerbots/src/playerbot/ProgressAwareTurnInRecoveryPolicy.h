@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 namespace ai::turnin_recovery
@@ -30,7 +31,27 @@ struct Observation
     // progress check; a stall suppression is keyed by the target's map, the
     // one the route choice asks about, so it also holds for cross-map turn-ins.
     std::uint32_t targetMapId = 0;
+    // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall + TurnInNearRadius): the near zone around the
+    // taker, in yards. 0 = off: Observe judges progress as before.
+    float nearRadius = 0.0f;
 };
+
+// twow-repo#601 S3c (OB-10 rev. 2, Q-B3): inside the near zone only getting this much closer than the best
+// distance so far counts as progress.
+constexpr float NearProgressDistance = 3.0f;
+
+// twow-repo#601 S3c (review F1): a gap of more than stallSeconds / NearLegGapDivisor (150 s live) since the last
+// observation of this target means the bot was not travelling to it (a work phase, another target in between; not a
+// fight - a fight is the paused branch, and lastObservedAt is stamped before it, OB-10 nit): the next observation inside
+// the near zone starts a fresh stall window and best distance, so a stale lastProgressAt never stalls the first step of
+// a new trip at once.
+constexpr std::uint32_t NearLegGapDivisor = 2;
+
+// The near zone: switched on (radius > 0), the bot on the taker's map and within the radius (3D distance).
+inline bool InNearZone(float distance, bool sameMap, float nearRadius)
+{
+    return nearRadius > 0.0f && sameMap && distance <= nearRadius;
+}
 
 struct State
 {
@@ -42,7 +63,13 @@ struct State
     float x = 0.0f;
     float y = 0.0f;
     float distance = 0.0f;
+    // twow-repo#601 S3c: the best (smallest) distance at a progress point of this target. Set with the target,
+    // lowered by each progress (reset by a map change), so a bot that drifts out of the near zone and back in is not
+    // "closer" again.
+    float bestDistance = 0.0f;
     std::uint32_t lastProgressAt = 0;
+    // twow-repo#601 S3c (review F1): the time of the last Observe call for this target (paused or not).
+    std::uint32_t lastObservedAt = 0;
     std::uint8_t recoveryStage = 0;
     std::uint32_t suppressedEntry = 0;
     std::uint32_t suppressedMapId = 0;
@@ -115,10 +142,16 @@ inline RecoveryAction Observe(State& state, Observation const& current, std::uin
         state.x = current.x;
         state.y = current.y;
         state.distance = current.distance;
+        state.bestDistance = current.distance;
         state.lastProgressAt = current.now;
+        state.lastObservedAt = current.now;
         state.recoveryStage = 0;
         return RecoveryAction::None;
     }
+
+    // twow-repo#601 S3c (review F1): how long this target went unobserved; bookkeeping only outside the near zone.
+    std::uint32_t const unobserved = current.now - state.lastObservedAt;
+    state.lastObservedAt = current.now;
 
     // A real master, combat, a transport transition, or a corpse/revive
     // transition is not a failed route. Give normal movement a fresh stall
@@ -129,13 +162,37 @@ inline RecoveryAction Observe(State& state, Observation const& current, std::uin
         return RecoveryAction::None;
     }
 
+    // twow-repo#601 S3c (Azora, map-z4.md 3.3): near the taker the move picks a new random point around it on every
+    // call, so the bot shifts 25 yd and more without getting closer, and the 2D displacement rule restarted the stall
+    // window again and again. In the near zone only a new best distance NearProgressDistance below the best so far
+    // (or a map change) is progress. Outside it, or with nearRadius 0, nothing changes.
+    bool const mapChanged = state.mapId != current.mapId;
+    bool const nearZone = InNearZone(current.distance, current.mapId == current.targetMapId, current.nearRadius);
+
+    // Review F1: a new trip into the near zone after a gap (work phase timed out, another target in between) starts a
+    // fresh window from here; the 25 yd displacement that used to restart it does not count in the near zone.
+    if (nearZone && unobserved > stallSeconds / NearLegGapDivisor)
+    {
+        state.mapId = current.mapId;
+        state.zoneId = current.zoneId;
+        state.x = current.x;
+        state.y = current.y;
+        state.distance = current.distance;
+        state.bestDistance = current.distance;
+        state.lastProgressAt = current.now;
+        return RecoveryAction::None;
+    }
+
     float const minimumSquaredDistance = minimumProgressDistance * minimumProgressDistance;
-    bool const progressed = state.mapId != current.mapId || state.zoneId != current.zoneId ||
+    bool const progressed = nearZone ? mapChanged || current.distance + NearProgressDistance <= state.bestDistance :
+        mapChanged || state.zoneId != current.zoneId ||
         SquaredDistance(state.x, state.y, current.x, current.y) >= minimumSquaredDistance ||
         current.distance + minimumProgressDistance <= state.distance;
 
     if (progressed)
     {
+        if (mapChanged || current.distance < state.bestDistance)
+            state.bestDistance = current.distance;
         state.mapId = current.mapId;
         state.zoneId = current.zoneId;
         state.x = current.x;
@@ -180,5 +237,37 @@ inline bool ShouldResetProgressOnSetTarget(State const& state, bool questTarget,
         return false;
 
     return state.targetEntry != entry || state.questId != questId;
+}
+
+// twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, OB-10 rev. 2 Q-B4): the quests of this bot's last work
+// timeouts at a taker (soak: bot 216 reached the Azora taker twice, at 2-4 yd, and both work phases ran out). At most
+// WorkTimeoutRingSize quests (the oldest gives way), in memory only like the S1 abandon mark. Quest 0 is never kept.
+constexpr std::uint32_t WorkTimeoutRingSize = 8;
+
+struct WorkTimeoutRing
+{
+    std::array<std::uint32_t, WorkTimeoutRingSize> quests{};
+    std::uint32_t next = 0;
+};
+
+// Records a work timeout of questId's turn-in. True for the second one of the same quest still in the ring (the caller
+// parks the turn-in); the quest then leaves the ring, so a later timeout starts a new pair.
+inline bool RecordWorkTimeout(WorkTimeoutRing& ring, std::uint32_t questId)
+{
+    if (!questId)
+        return false;
+
+    for (std::uint32_t& quest : ring.quests)
+    {
+        if (quest == questId)
+        {
+            quest = 0;
+            return true;
+        }
+    }
+
+    ring.quests[ring.next % WorkTimeoutRingSize] = questId;
+    ring.next = (ring.next + 1) % WorkTimeoutRingSize;
+    return false;
 }
 }

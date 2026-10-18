@@ -67,4 +67,105 @@ if(NOT top_gated EQUAL -1)
   message(FATAL_ERROR "#587 Z4: the unreachable top must not depend on the switch")
 endif()
 
+# ---------------------------------------------------------------------------------------------------------------------
+# twow-repo#601 S3c (OB-10 rev. 2, 18.10.2026): AiPlayerbot.ZoneExit.TurnInTravelStall (default 0) + TurnInNearRadius.
+# Near the taker only getting closer is progress; a stall there parks the turn-in structurally and the bot leaves the
+# target; the second work timeout of the same turn-in parks it too; a rescue reset never lifts a park.
+# ---------------------------------------------------------------------------------------------------------------------
+function(forbid_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(NOT offset EQUAL -1)
+    message(FATAL_ERROR "#601 S3c turn-in travel stall: forbidden ${description}: ${needle}")
+  endif()
+endfunction()
+
+read_source("ProgressAwareTurnInRecoveryPolicy.h" recovery)
+read_source("TravelMgr.h" travel_h)
+
+# Keys: the switch off in code and dist; the radius only acts with it.
+require_text("${config_h}" "bool zoneExitTurnInTravelStall = false;" "S3c switch default off")
+require_text("${config_h}" "float zoneExitTurnInNearRadius = 60.0f;" "S3c near radius")
+require_text("${config_cpp}" "zoneExitTurnInTravelStall = config.GetBoolDefault(\"AiPlayerbot.ZoneExit.TurnInTravelStall\", false);" "S3c config default 0")
+require_text("${config_cpp}" "zoneExitTurnInNearRadius = config.GetFloatDefault(\"AiPlayerbot.ZoneExit.TurnInNearRadius\", 60.0f);" "S3c radius read")
+require_text("${conf_dist}" "AiPlayerbot.ZoneExit.TurnInTravelStall = 0" "S3c switch documented off")
+require_text("${conf_dist}" "AiPlayerbot.ZoneExit.TurnInNearRadius = 60" "S3c radius documented")
+forbid_text("${conf_dist}" "AiPlayerbot.ZoneExit.TurnInTravelStall = 1" "S3c switch shipped on")
+
+# The pure near-zone rule: 3 yd closer than the best so far, best set with the target; radius 0 = old rule.
+require_text("${recovery}" "constexpr float NearProgressDistance = 3.0f;" "3 yd near progress")
+require_text("${recovery}" "return nearRadius > 0.0f && sameMap && distance <= nearRadius;" "near zone needs the radius and the taker's map")
+require_text("${recovery}" "float nearRadius = 0.0f;" "near zone off by default in the observation")
+require_text("${recovery}" "bool const nearZone = InNearZone(current.distance, current.mapId == current.targetMapId, current.nearRadius);" "near zone from the observation")
+require_text("${recovery}" "bool const progressed = nearZone ? mapChanged || current.distance + NearProgressDistance <= state.bestDistance :" "near zone: only a new best distance")
+require_order("${recovery}" "state.bestDistance = current.distance;\n        state.lastProgressAt = current.now;" "if (current.paused)" "best distance set with a new target")
+# Review F1: a new trip into the near zone after a gap of more than stall / 2 starts a fresh window and best distance,
+# so a stale lastProgressAt (work phase, another target in between) never stalls its first observation at once.
+require_text("${recovery}" "constexpr std::uint32_t NearLegGapDivisor = 2;" "a new trip after more than half the stall window")
+require_order("${recovery}" "std::uint32_t const unobserved = current.now - state.lastObservedAt;\n    state.lastObservedAt = current.now;" "if (current.paused)" "every observation (paused too) stamps lastObservedAt")
+require_text("${recovery}" "if (nearZone && unobserved > stallSeconds / NearLegGapDivisor)" "fresh window only inside the near zone (radius 0: old rule)")
+require_order("${recovery}" "if (nearZone && unobserved > stallSeconds / NearLegGapDivisor)" "bool const progressed = nearZone ?" "the fresh window before the progress test")
+between("${recovery}" "if (nearZone && unobserved > stallSeconds / NearLegGapDivisor)" "return RecoveryAction::None;" fresh_leg)
+require_text("${fresh_leg}" "state.bestDistance = current.distance;\n        state.lastProgressAt = current.now;" "fresh best distance and stall window")
+forbid_text("${fresh_leg}" "recoveryStage" "the fresh window keeps the recovery stage")
+# Review F1 (game side): the arrival ends the observed trip, behind the switch, turn-ins only.
+between("${travel}" "TraceQuestCommit(tDestination, \"progress\", \"arrived\");" "SetStatus(TravelStatus::TRAVEL_STATUS_WORK);" arrived)
+require_text("${arrived}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())\n                turnInRecovery.ResetProgress();" "arrival resets the observation (switch first)")
+# The radius reaches the observation only with the switch and only for a finished quest's turn-in (not objectives).
+between("${travel}" "turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()" "\n}\n" observe)
+require_text("${observe}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())\n        observation.nearRadius = sPlayerbotAIConfig.zoneExitTurnInNearRadius;" "radius behind the switch, turn-ins only")
+require_order("${observe}" "observation.nearRadius = " "return turnin_recovery::Observe(turnInRecovery, observation," "radius set before the observation")
+
+# Stage 1 inside the near zone, switch tested first: the near-stall handler, then return (no READY on that path).
+require_order("${stage1}" "if (IsProgressAwareTurnIn())" "if (IsNearTurnInStall())" "near stall for turn-ins only")
+between("${travel}" "bool TravelTarget::IsNearTurnInStall()" "\n}\n" near_check)
+require_text("${near_check}" "return sPlayerbotAIConfig.zoneExitTurnInTravelStall && wPosition && IsProgressAwareTurnIn() &&\n        turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius);" "switch first, then a turn-in inside the near zone")
+require_text("${travel_h}" "bool IsNearTurnInStall();" "near zone check declared")
+# Review F4: a near-zone stall that comes as stage 2 parks the same way, before the old stage-2 path.
+between("${travel}" "case turnin_recovery::RecoveryAction::SuppressRouteAndCooldown:" "case turnin_recovery::RecoveryAction::SuppressTransportAndCooldown:" stage2)
+require_order("${stage2}" "if (IsNearTurnInStall())\n                {\n                    OnNearTurnInStall(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId());\n                    return;\n                }" "TraceQuestCommit(tDestination, \"abandon\", \"stall_suppressed\");" "stage-2 near stall before the old stage-2 path")
+require_order("${stage2}" "OnNearTurnInStall(" "NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), \"stall\");" "stage-2 near stall before the #485 stall count")
+require_order("${stage1}" "OnNearTurnInStall(questId);\n                        return;" "bool const parked = sPlayerbotAIConfig.zoneExitTurnInStallCounts && NoteTurnInFailure(questId, \"stall_recompute\");" "near stall leaves before the Z4 count")
+# Structural park, not abandonable (a finished quest is never dropped for it), the Z4 line with reason=near_stall,
+# counted for [UnreachableTop], then the target is left.
+require_text("${travel_h}" "void OnNearTurnInStall(uint32 questId);" "near stall handler declared")
+between("${travel}" "void TravelTarget::OnNearTurnInStall(uint32 questId)" "\n}\n" near_stall)
+require_text("${near_stall}" "bool const parked = ParkTurnInNow(questId, \"structural_unreachable_near\", false, abandonDue);" "structural park, never abandonable")
+require_order("${near_stall}" "ParkTurnInNow(questId, \"structural_unreachable_near\"" "[UnreachableTarget] bot=%u level=%u quest=%u entry=%d kind=turn_in map=%u zone=%u dest_map=%u dest_x=%.1f dest_y=%.1f dest_z=%.1f reason=near_stall parked=%u switch=%u" "near_stall line after the park, Z4 format")
+require_text("${near_stall}" "unreachable_target::LongWindow().Add(key, questId, bot->GetGUIDLow());" "near stall counted for the hourly top")
+# Review HR-2: switch= stays the Z4 key; travel_stall= names the S3c switch.
+require_text("${near_stall}" "reason=near_stall parked=%u switch=%u travel_stall=%u\"" "near_stall line names the S3c switch")
+require_text("${near_stall}" "sPlayerbotAIConfig.zoneExitTurnInStallCounts ? 1u : 0u, sPlayerbotAIConfig.zoneExitTurnInTravelStall ? 1u : 0u);" "switch= Z4 key, travel_stall= S3c key")
+# Review F3: not parked (parking off) - the route is suppressed for the cooldown at once, not only the cooldown.
+require_order("${near_stall}" "SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);\n        return;\n    }" "turnInRecovery.suppressUntil = WorldTimer::getMSTime() + sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS;" "not parked: route suppression after the parked branch")
+require_text("${near_stall}" "turnInRecovery.suppressedEntry = uint32(tDestination->GetEntry());\n    turnInRecovery.suppressedMapId = dmap;" "suppression keyed like Observe's stage 2 (entry, taker map)")
+require_order("${near_stall}" "turnInRecovery.suppressUntil = " "SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);" "suppression before the cooldown")
+require_order("${near_stall}" "unreachable_target::LongWindow().Add(key, questId, bot->GetGUIDLow());" "SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);" "parked: the target is left")
+require_text("${near_stall}" "SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);" "not parked: the route cooldown")
+forbid_text("${near_stall}" "TRAVEL_STATUS_READY" "READY -> TRAVEL loop on the same taker")
+forbid_text("${near_stall}" "DropQuest(" "abandon of a finished quest")
+forbid_text("${near_stall}" "ParkStructuralTurnIn(" "S1 abandon helper (count pin 3 stays in ChooseTravelTargetAction.cpp)")
+
+# Work timeouts: the second one of the same turn-in parks it (switch first), the #485 count stays after it.
+require_text("${travel_h}" "turnin_recovery::WorkTimeoutRing workTimeoutTurnIns;" "per-bot work timeout ring")
+require_text("${recovery}" "constexpr std::uint32_t WorkTimeoutRingSize = 8;" "ring of 8 quests")
+between("${travel}" "void TravelTarget::OnWorkTimeout()" "\n}\n" work_timeout)
+require_order("${work_timeout}" "if (IsProgressAwareTurnIn())" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall)" "turn-ins only")
+require_order("${work_timeout}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall)" "turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId)" "switch before the ring")
+require_order("${work_timeout}" "ParkTurnInNow(questId, \"structural_work_timeout\", false, abandonDue);" "NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), \"work_timeout\");" "park before the kept #485 count")
+
+# A rescue reset (S1 ResetOnProgressEvents) resets the search, never the park book: the bot is not sent back 3.5 km.
+read_source("PlayerbotAI.cpp" ai_cpp)
+read_source("PlayerbotAI.h" ai_h)
+between("${ai_cpp}" "void PlayerbotAI::ApplyQuestRouteReset(uint32 events)" "\n}\n" route_reset)
+forbid_text("${route_reset}" "travel target" "travel target touched by the S1 progress reset")
+forbid_text("${route_reset}" "TravelTarget" "travel target touched by the S1 progress reset")
+between("${ai_cpp}" "void PlayerbotAI::Reset(bool full)" "\n}\n" ai_reset)
+forbid_text("${ai_reset}" "RESET_AI_VALUE(TravelTarget*" "travel target (park book) recreated by the AI reset")
+forbid_text("${ai_cpp}" "turnInParks" "park book outside TravelTarget")
+forbid_text("${ai_h}" "turnInParks" "park book outside TravelTarget")
+forbid_text("${mgr}" "turnInParks" "park book cleared by the rescue")
+forbid_text("${travel}" "turnInParks = " "park book replaced")
+forbid_text("${travel}" "turnInParks.entries.fill(" "park book cleared")
+forbid_text("${travel}" "turnInParks.entries = " "park book cleared")
+
 message(STATUS "turnin_stall source contract passed")
