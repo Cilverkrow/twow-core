@@ -523,6 +523,7 @@ bool PlayerbotAIConfig::Initialize()
     petDeadNoWorldPetFalse = config.GetBoolDefault("AiPlayerbot.PetDeadNoWorldPetFalse", false);
     canCastSpellChecksPower = config.GetBoolDefault("AiPlayerbot.CanCastSpell.CheckPower", false);
     castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
+    rotationCastTrace = config.GetBoolDefault("AiPlayerbot.Rotation.CastTrace", false);
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
