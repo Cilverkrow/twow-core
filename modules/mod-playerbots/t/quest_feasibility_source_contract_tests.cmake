@@ -2,10 +2,12 @@ cmake_policy(VERSION 3.16)
 # twow-repo#601 S3a (feasibility at accept time; design rev. 2, OB-10 review + OB-00 decisions 18.10.2026).
 # AiPlayerbot.QuestFeasibility.Enable / .Blocklist / .BlocklistWhileNoCustomStarts / .SoloSkipGroupQuests, restart-only,
 # default 0 / empty. Pins:
-#  - the pure policy QuestFeasibilityPolicy.h (no game headers, no locks; Enable / scope / class exemption first),
+#  - the pure policy QuestFeasibilityPolicy.h (no game headers, no locks; Enable / scope first, then the explicit lists,
+#    the class exemption only on the solo group rule - review S3a F2, OB-00 Q-O3 lists three class quests),
 #  - the hook sites: the one accept rule SkipQuestForRosterBot (A/B/C, still 3 call sites, after the S1 mark), the
 #    autonomous quest item (G), the giver relation (after the pinned S1 mark block, giver only - never the taker), the
-#    drop step right after the pinned grey step (open quests only, via ai->DropQuest so [QuestDrop] appears),
+#    drop step right after the pinned grey step (open quests only, via ai->DropQuest so [QuestDrop] appears; no listed
+#    quest while grouped, never the guild order's quest - review S3a F2),
 #  - paths D / D' / E / F untouched (a real player's share, catch-up, escort confirm, guild order: #420),
 #  - the [QuestFeasibility] lines (bounded skip line, minute line on the world thread only with Enable, atomics),
 #  - neutral defaults: members false / empty, conf documented with 0 / empty, never shipped as 1.
@@ -101,22 +103,27 @@ require_text("${policy}" "constexpr std::size_t MaxIds = 512;" "id list cap 512"
 require_text("${policy}" "inline std::set<std::uint32_t> ParseQuestIdList(std::string const& text)" "the parser")
 require_text("${policy}" "if (valid && value > 0 && value <= 0xFFFFFFFFull && ids.size() < MaxIds)" "decimal ids > 0, capped")
 region("${policy}" "inline Reason SkipReason(Facts const& facts)" "\n}\n" skip_reason)
-require_text("${skip_reason}" "    if (!facts.enabled || !facts.rosterOnItsOwn || facts.classQuest)\n        return Reason::None;" "Enable, scope and class exemption before anything else")
-require_order("${skip_reason}" "facts.classQuest" "facts.listed" "class exemption before the lists")
+require_text("${skip_reason}" "{\n    if (!facts.enabled || !facts.rosterOnItsOwn)\n        return Reason::None;" "Enable and scope before anything else")
 require_text("${skip_reason}" "if (facts.listedNoCustomStarts && !facts.customRaceStartZones)" "conditional list only while CustomRaceStartZones = 0")
-require_text("${skip_reason}" "if (facts.soloSkipGroupQuests && !facts.inGroup && IsGroupQuest(facts.type, facts.suggestedPlayers))" "solo group rule: key, not in a group")
+require_text("${skip_reason}" "if (!facts.classQuest && facts.soloSkipGroupQuests && !facts.inGroup && IsGroupQuest(facts.type, facts.suggestedPlayers))" "solo group rule: class quests spared, key, not in a group")
+# Review S3a F2: the explicit lists win over the class exemption (OB-00 Q-O3: 80330, 60163, 41201 are class quests).
+require_order("${skip_reason}" "if (facts.listed)\n        return Reason::Blocklist;" "facts.classQuest" "the plain list before the class exemption")
+require_order("${skip_reason}" "return Reason::BlocklistCrsz0;" "facts.classQuest" "the conditional list before the class exemption")
+count_text("${skip_reason}" "facts.classQuest" 1 "the class exemption only on the solo group rule")
 region("${policy}" "inline bool IsGroupQuest(std::uint32_t type, std::uint32_t suggestedPlayers)" "\n}\n" group_rule)
 require_text("${group_rule}" "return type == TypeElite || type == TypeDungeon || type == TypeRaid || suggestedPlayers >= 2;" "Type 1 / 81 / 62 or SuggestedPlayers >= 2 (OB-20, OB-00 Q-O1)")
 require_text("${policy}" "constexpr std::uint32_t TypeElite = 1;\nconstexpr std::uint32_t TypeRaid = 62;\nconstexpr std::uint32_t TypeDungeon = 81;" "core quest type numbers")
 region("${policy}" "inline bool GiverInactive(Reason reason)" "\n}\n" giver_rule)
-require_text("${giver_rule}" "return reason == Reason::Blocklist || reason == Reason::BlocklistCrsz0;" "giver relation: listed quests only")
-region("${policy}" "inline char const* DropReasonName(Reason reason, bool complete)" "\n}\n" drop_rule)
-require_order("${drop_rule}" "    if (complete)\n        return nullptr;" "switch (reason)" "a complete quest is never dropped (OB-10 rev. 2: turn-ins stay allowed)")
-require_text("${drop_rule}" "return \"infeasible_blocklist\";" "drop reason infeasible_blocklist")
+require_text("${giver_rule}" "return reason == Reason::Blocklist || reason == Reason::BlocklistCrsz0 || reason == Reason::GroupSolo;" "giver relation: every skip reason (review S3a F3)")
+region("${policy}" "inline char const* DropReasonName(Reason reason, bool complete, bool inGroup, bool guildOrderQuest)" "\n}\n" drop_rule)
+require_order("${drop_rule}" "    if (complete || guildOrderQuest)\n        return nullptr;" "switch (reason)" "a complete quest and the guild order's quest are never dropped (OB-10 rev. 2; F)")
+require_text("${drop_rule}" "case Reason::BlocklistCrsz0: return inGroup ? nullptr : \"infeasible_blocklist\";" "drop reason infeasible_blocklist, kept while grouped (E)")
 require_text("${drop_rule}" "return \"infeasible_group_solo\";" "drop reason infeasible_group_solo")
 require_text("${policy}" "constexpr std::size_t LogRingSize = 16;" "small per-bot ring")
 require_text("${policy}" "constexpr std::uint32_t RepeatSeconds = 3600;" "one line per bot and quest an hour")
 require_text("${policy}" "constexpr std::uint32_t LinesPerMinute = 4;" "at most 4 skip lines per bot and minute")
+require_text("${policy}" "inline bool LogDue(SkipLog& log, std::uint32_t questId, Path path, std::uint32_t now)" "skip lines keyed by quest and path (review S3a F5)")
+require_text("${policy}" "if (log.quests[i] == questId && log.paths[i] == path && now >= log.loggedAt[i] &&" "the repeat check matches quest and path")
 require_text("${policy}" "\"[QuestFeasibility] state=skip bot=\"" "greppable skip line")
 require_text("${policy}" "\"[QuestFeasibility] minute skips=\"" "greppable minute line")
 require_text("${policy}" "\" giver_inactive=\"" "minute line giver_inactive=")
@@ -126,7 +133,9 @@ require_text("${config_h}" "    bool questFeasibilityEnable = false;" "Enable me
 require_text("${config_h}" "    std::set<uint32> questFeasibilityBlocklist;" "Blocklist member (empty)")
 require_text("${config_h}" "    std::set<uint32> questFeasibilityBlocklistWhileNoCustomStarts;" "conditional list member (empty)")
 require_text("${config_h}" "    bool questFeasibilitySoloSkipGroupQuests = false;" "SoloSkipGroupQuests member default false")
-# The plain `member = config.Get...Default("Key"` form that t/config_key_usage_tests.py sees.
+# Enable and SoloSkipGroupQuests use the plain `member = config.Get...Default("Key"` form t/config_key_usage_tests.py
+# sees; the two lists are parsed (ParseQuestIdList(config.GetStringDefault(...))), so the usage scan skips them (as
+# shortcutTestWatcherGuids) and these pins hold their reads instead.
 require_text("${config_cpp}" "\n    questFeasibilityEnable = config.GetBoolDefault(\"AiPlayerbot.QuestFeasibility.Enable\", false);" "Enable read with false")
 require_text("${config_cpp}" "\n    questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault(\"AiPlayerbot.QuestFeasibility.Blocklist\", \"\"));" "Blocklist parsed, default empty")
 require_text("${config_cpp}" "\n    questFeasibilityBlocklistWhileNoCustomStarts = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault(\"AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts\", \"\"));" "conditional list parsed, default empty")
@@ -151,8 +160,8 @@ require_text("${reason_fn}" "facts.customRaceStartZones = sPlayerbotAIConfig.cus
 require_text("${reason_fn}" "facts.suggestedPlayers = quest->GetSuggestedPlayers();" "SuggestedPlayers")
 require_text("${reason_fn}" "return ai::quest_feasibility::SkipReason(facts);" "the one decision")
 region("${ai_cpp}" "bool PlayerbotAI::SkipInfeasibleQuest(Quest const* quest, ai::quest_feasibility::Path path)" "\n}\n" skip_fn_ai)
-require_text("${skip_fn_ai}" "if (path == ai::quest_feasibility::Path::Giver && !ai::quest_feasibility::GiverInactive(reason))\n        return false;" "giver relation: listed quests only")
-require_order("${skip_fn_ai}" "ai::quest_feasibility::LogDue(questFeasibilityLog, quest->GetQuestId(), uint32(time(nullptr)))" "sLog.outBasic(" "skip line only when due (rate-limited per bot and quest)")
+require_text("${skip_fn_ai}" "if (path == ai::quest_feasibility::Path::Giver && !ai::quest_feasibility::GiverInactive(reason))\n        return false;" "giver relation: the policy's giver rule")
+require_order("${skip_fn_ai}" "ai::quest_feasibility::LogDue(questFeasibilityLog, quest->GetQuestId(), path, uint32(time(nullptr)))" "sLog.outBasic(" "skip line only when due (rate-limited per bot, quest and path)")
 require_text("${ai_cpp}" "std::atomic<uint32> questFeasibilitySkips{0};" "skip counter is an atomic")
 require_text("${ai_cpp}" "std::atomic<uint32> questFeasibilityDrops{0};" "drop counter is an atomic")
 require_text("${ai_cpp}" "std::atomic<uint32> questFeasibilityGiverInactive{0};" "giver counter is an atomic")
@@ -206,7 +215,14 @@ require_order("${drop}" "    DropInfeasibleOnItsOwn(ai, bot);" "    IdleRotateOn
 count_text("${drop}" "DropInfeasibleOnItsOwn(" 2 "definition + one call")
 region("${drop}" "static void DropInfeasibleOnItsOwn(PlayerbotAI* ai, Player* bot)" "\n}\n" infeasible_fn)
 require_text("${infeasible_fn}" "{\n    if (!sPlayerbotAIConfig.questFeasibilityEnable)\n        return;" "Enable checked first")
-require_text("${infeasible_fn}" "ai::quest_feasibility::DropReasonName(ai->QuestFeasibilityReason(quest),\n            bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE);" "the policy decides with the complete state")
+require_text("${infeasible_fn}" "ai::quest_feasibility::Reason const why = ai->QuestFeasibilityReason(quest);\n        if (why == ai::quest_feasibility::Reason::None)\n            continue;" "feasible quests skipped before anything else is asked")
+require_text("${infeasible_fn}" "ai::quest_feasibility::DropReasonName(why, bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE,\n            inGroup, guildOrderQuest == questId);" "the policy decides with the complete state, the group (E) and the guild order (F)")
+# Review S3a F2: E (escort confirm needs a group) and F (guild quest order) are not undone by the drop step.
+require_text("${infeasible_fn}" "bool const inGroup = bot->GetGroup() != nullptr;" "the group state for path E")
+require_text("${infeasible_fn}" "GuildOrder const order = ai->GetAiObjectContext()->GetValue<GuildOrder>(\"guild order\")->Get();\n                if (order.IsQuestRewardOrder())\n                    guildOrderQuest = order.questId;" "the guild quest order's quest for path F")
+require_order("${infeasible_fn}" "if (why == ai::quest_feasibility::Reason::None)" "GetValue<GuildOrder>(\"guild order\")" "the guild order is asked only when a quest would go")
+require_order("${infeasible_fn}" "if (bot->GetGuildId())" "GetValue<GuildOrder>(\"guild order\")" "the guild order only for a bot in a guild")
+require_text("${drop}" "#include \"playerbot/strategy/values/GuildValues.h\"" "include what you use (GuildOrder)")
 require_order("${infeasible_fn}" "if (!reason)\n            continue;" "ai->DropQuest(questId, reason);" "only quests the policy names are dropped")
 require_text("${infeasible_fn}" "PlayerbotAI::NoteQuestFeasibilityDrop();" "drops counted for the minute line")
 forbid_text("${infeasible_fn}" "RemoveQuestAtSlot" "a silent drop without [QuestDrop]")

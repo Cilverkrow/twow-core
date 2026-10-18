@@ -1159,12 +1159,15 @@ AiPlayerbot.QuestFirstProgression.GrindMode = 0
 # twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
 # Enable = 1: a persistent roster bot on its own (no real player leads it) does not take quests it cannot finish - not
 # from a quest giver (accept all, accept packet, quest details dialog), not from a quest item in its bags - and does not
-# travel to the giver of a listed quest. Its quest log cleanup drops such quests again while they are open
+# travel to the giver of such a quest. Its quest log cleanup drops such quests again while they are open
 # ([QuestDrop] reason=infeasible_blocklist|infeasible_group_solo); a complete one stays and may be turned in (the taker
-# side is never blocked). Class quests are never skipped or dropped. Shares by a player, the catch-up, the escort
-# confirm and guild quest orders stay untouched (a player's decision). [QuestFeasibility] state=skip bot= level= quest=
-# reason=blocklist|blocklist_crsz0|group_solo path=accept|item|giver once per bot and quest an hour (at most 4 lines per
-# bot a minute), [QuestFeasibility] minute skips= drops= giver_inactive= once a minute. 0 = off (default).
+# side is never blocked). The two lists apply to class quests too (explicit ids); SoloSkipGroupQuests spares class
+# quests. Shares by a player, the catch-up, the escort confirm and guild quest orders stay untouched (a player's
+# decision): the cleanup keeps listed quests while the bot is in a group and never drops its guild quest order's quest.
+# [QuestFeasibility] state=skip bot= level= quest= reason=blocklist|blocklist_crsz0|group_solo path=accept|item|giver
+# once per bot, quest and path an hour (at most 4 lines per bot a minute), [QuestFeasibility] minute skips= drops=
+# giver_inactive= once a minute; skips= and giver_inactive= count checks (one quest can count several times a minute),
+# not distinct quests. 0 = off (default).
 AiPlayerbot.QuestFeasibility.Enable = 0
 # Blocklist (acts only with Enable = 1): a comma list of quest ids (decimal, > 0, at most 512; anything else is
 # ignored). The profile carries the list. Empty = none (default).
@@ -1174,7 +1177,8 @@ AiPlayerbot.QuestFeasibility.Blocklist =
 # Empty = none (default).
 AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts =
 # SoloSkipGroupQuests = 1 (acts only with Enable = 1): a bot that is not in a group skips quests of type elite (1),
-# dungeon (81) or raid (62) and quests with SuggestedPlayers >= 2, and drops them while open. 0 = off (default).
+# dungeon (81) or raid (62) and quests with SuggestedPlayers >= 2 (class quests excepted), does not travel to their
+# givers, and drops them while open. 0 = off (default).
 AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
