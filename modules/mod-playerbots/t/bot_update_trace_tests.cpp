@@ -73,6 +73,42 @@ int main()
     Require(inBuckets == many.calls, "buckets add up to the calls");
     Require(many.slowest.size() == SlowestKept && many.slowest.front().us == many.maxUs, "slowest matches max");
 
+    // twow-repo#601 S1 (OB-10 18.10.): PreValidateTurnIns recorder - time distribution plus open / validated sums.
+    CountedRecorder counted;
+    for (int i = 0; i < 99; ++i)
+        counted.Add(300, 3, 1);               // bucket 8: [256, 512)
+    counted.Add(9000, 12, 0);                 // bucket 13: [8192, 16384)
+    CountedSnapshot const pv = counted.Take();
+    Require(pv.time.calls == 100, "prevalidate calls counted");
+    Require(pv.time.totalUs == 99ull * 300 + 9000, "prevalidate sum kept");
+    Require(pv.time.maxUs == 9000, "prevalidate max kept");
+    Require(PercentileUs(pv.time, 0.50) == 511 && PercentileUs(pv.time, 0.99) == 511, "p50/p99 in the 300 us bucket");
+    Require(PercentileUs(pv.time, 1.0) == 16383, "p100 in the 9 ms bucket");
+    Require(pv.openSum == 99ull * 3 + 12 && pv.okSum == 99, "open / validated sums");
+    Require(pv.time.slowest.empty(), "no slow list");
+    CountedSnapshot const pvEmpty = counted.Take();
+    Require(pvEmpty.time.calls == 0 && pvEmpty.time.totalUs == 0 && pvEmpty.time.maxUs == 0 && pvEmpty.openSum == 0 &&
+        pvEmpty.okSum == 0, "prevalidate Take resets");
+    std::uint64_t pvBuckets = 0;
+    for (std::uint64_t b : pvEmpty.time.buckets)
+        pvBuckets += b;
+    Require(pvBuckets == 0, "prevalidate buckets reset");
+
+    std::vector<std::thread> pvThreads;
+    for (int t = 0; t < 8; ++t)
+        pvThreads.emplace_back([&counted, t]()
+        {
+            for (int i = 0; i < 10000; ++i)
+                counted.Add(uint64_t(i % 500 + t), 2, 1);
+        });
+    for (std::thread& th : pvThreads)
+        th.join();
+    CountedSnapshot const pvMany = counted.Take();
+    Require(pvMany.time.calls == 80000 && pvMany.openSum == 160000 && pvMany.okSum == 80000, "prevalidate across threads");
+    Require(pvMany.time.maxUs == 499 + 7, "prevalidate max across threads");
+    Require(&Prevalidate() == &Prevalidate(), "one prevalidate instance");
+    Require(static_cast<void*>(&Prevalidate()) != static_cast<void*>(&Global()), "own instance, not the update recorder");
+
     std::cout << "bot_update_trace_tests passed\n";
     return 0;
 }
