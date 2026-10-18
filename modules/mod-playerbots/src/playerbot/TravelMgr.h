@@ -488,9 +488,12 @@ namespace ai
         // twow-repo#601 S3c (ZoneExit.TurnInTravelStall): quests of the last turn-in work timeouts (at most 8, in memory only).
         turnin_recovery::WorkTimeoutRing workTimeoutTurnIns;
         void OnWorkTimeout();
-        // twow-repo#601 S3c (ZoneExit.TurnInTravelStall): a stage-1 stall inside the near zone of the taker parks the
-        // turn-in (structural_unreachable_near), logs [UnreachableTarget] reason=near_stall and leaves the target.
+        // twow-repo#601 S3c (ZoneExit.TurnInTravelStall): a stage-1 or stage-2 stall inside the near zone of the taker
+        // parks the turn-in (structural_unreachable_near), logs [UnreachableTarget] reason=near_stall and leaves the
+        // target (not parked: the route suppression and cooldown).
         void OnNearTurnInStall(uint32 questId);
+        // S3c: switch on, a finished quest's turn-in, the bot inside TurnInNearRadius of the taker on its map.
+        bool IsNearTurnInStall();
 	};
 
 	//General container for all travel destinations.

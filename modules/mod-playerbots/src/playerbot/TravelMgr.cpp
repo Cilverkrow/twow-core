@@ -185,8 +185,7 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
             AI_VALUE(TravelTarget*, "travel target")->IsStructurallyAbandoned(GetQuestId()))
             return false;
 
-        // twow-repo#601 S3a (QuestFeasibility.Enable): no trip to the giver of a quest the bot would skip at accept (listed
-        // or, solo, a group quest); never the taker (OB-10 rev. 2).
+        // twow-repo#601 S3a (QuestFeasibility.Enable): no trip to a skipped quest's giver; never the taker (rev. 2).
         if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(GetQuestTemplate(), ai::quest_feasibility::Path::Giver))
             return false;
 
@@ -1507,15 +1506,18 @@ void TravelTarget::OnNearTurnInStall(uint32 questId)
     // The Z4 line in its format, so CLI-PATH gets the near takers in [UnreachableTop] as with stage1_recompute.
     float const dx = wPosition ? wPosition->getX() : 0.0f, dy = wPosition ? wPosition->getY() : 0.0f, dz = wPosition ? wPosition->getZ() : 0.0f;
     uint32 const dmap = wPosition ? wPosition->getMapId() : bot->GetMapId();
-    sLog.outBasic("[UnreachableTarget] bot=%u level=%u quest=%u entry=%d kind=turn_in map=%u zone=%u dest_map=%u dest_x=%.1f dest_y=%.1f dest_z=%.1f reason=near_stall parked=%u switch=%u",
+    // switch= stays the Z4 key (TurnInStallCounts) as on every [UnreachableTarget] line; travel_stall= is this S3c switch
+    // (review HR-2: parked=1 with switch=0 is a near_stall park, not a Z4 one).
+    sLog.outBasic("[UnreachableTarget] bot=%u level=%u quest=%u entry=%d kind=turn_in map=%u zone=%u dest_map=%u dest_x=%.1f dest_y=%.1f dest_z=%.1f reason=near_stall parked=%u switch=%u travel_stall=%u",
         bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), bot->GetMapId(), bot->GetZoneId(), dmap, dx, dy, dz,
-        parked ? 1u : 0u, sPlayerbotAIConfig.zoneExitTurnInStallCounts ? 1u : 0u);
+        parked ? 1u : 0u, sPlayerbotAIConfig.zoneExitTurnInStallCounts ? 1u : 0u, sPlayerbotAIConfig.zoneExitTurnInTravelStall ? 1u : 0u);
     unreachable_target::Key const key = unreachable_target::KeyOf(tDestination->GetEntry(), dmap, dx, dy);
     unreachable_target::ShortWindow().Add(key, questId, bot->GetGUIDLow());
     unreachable_target::LongWindow().Add(key, questId, bot->GetGUIDLow());
 
     // Leave the target, no READY -> TRAVEL on the same taker. Parked: the choice skips it now. Not parked (parking
-    // off): the stage-2 cooldown, and the kept recovery stage suppresses the route at the next stall (#485).
+    // off, or not a roster bot on its own): the stage-2 route suppression and cooldown at once (review F3), so the bot
+    // does not come straight back to the same taker.
     TraceQuestCommit(tDestination, "abandon", "near_stall");
     if (parked)
     {
@@ -1524,8 +1526,19 @@ void TravelTarget::OnNearTurnInStall(uint32 questId)
         SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         return;
     }
+    turnInRecovery.suppressedEntry = uint32(tDestination->GetEntry());
+    turnInRecovery.suppressedMapId = dmap;
+    turnInRecovery.suppressUntil = WorldTimer::getMSTime() + sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS;
     SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
     SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
+}
+
+bool TravelTarget::IsNearTurnInStall()
+{
+    // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall): switch first, then a finished quest's turn-in with the
+    // bot inside TurnInNearRadius of the taker on its map. Asked for a stage-1 and (review F4) a stage-2 stall alike.
+    return sPlayerbotAIConfig.zoneExitTurnInTravelStall && wPosition && IsProgressAwareTurnIn() &&
+        turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius);
 }
 
 void TravelTarget::CheckStatus()
@@ -1583,6 +1596,11 @@ void TravelTarget::CheckStatus()
 
             ai->TellDebug(ai->GetMaster(), "The target is starting to work because the destination has been reached.", "debug travel");
             TraceQuestCommit(tDestination, "progress", "arrived");
+            // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, review F1): the arrival ends this trip's
+            // observation, so the next trip to the same taker (after a work timeout; #329 keeps the state on a re-pick)
+            // starts a fresh stall window instead of a stale one that stalls it at once. Off: as before.
+            if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())
+                turnInRecovery.ResetProgress();
             SetStatus(TravelStatus::TRAVEL_STATUS_WORK);
             return;
         }
@@ -1606,8 +1624,7 @@ void TravelTarget::CheckStatus()
                     uint32 const questId = static_cast<QuestTravelDestination*>(tDestination)->GetQuestId();
                     // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall): inside the near zone the stall ends the
                     // trip - structural park, [UnreachableTarget] reason=near_stall, the target is left. Off: as before.
-                    if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && wPosition &&
-                        turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius))
+                    if (IsNearTurnInStall())
                     {
                         OnNearTurnInStall(questId);
                         return;
@@ -1629,6 +1646,14 @@ void TravelTarget::CheckStatus()
                     sLog.outBasic("[QuestFirstRoute] state=recovery_stage2 bot=%u quest=%u target_entry=%d action=suppress_route_cooldown cooldown_seconds=%u",
                         bot->GetGUIDLow(), static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), tDestination->GetEntry(),
                         sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds);
+                // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, review F4): a near-zone stall that comes as
+                // stage 2 (the stage was kept from a stall outside the zone) ends the trip the same way - structural
+                // park, [UnreachableTarget] reason=near_stall. Off: as before.
+                if (IsNearTurnInStall())
+                {
+                    OnNearTurnInStall(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId());
+                    return;
+                }
                 TraceQuestCommit(tDestination, "abandon", "stall_suppressed");
                 // twow-repo#485: a stalled turn-in (not an objective) is a failed turn-in.
                 if (IsProgressAwareTurnIn())

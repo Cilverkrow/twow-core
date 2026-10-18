@@ -1343,12 +1343,14 @@ AiPlayerbot.ZoneExit.TurnInStallCounts = 0
 
 # twow-repo#601 S3c (OB-10 rev. 2, 18.10.2026): TurnInTravelStall = 1 (roster bots on their own): inside TurnInNearRadius
 # yards of a finished quest's taker only getting 3 yd closer than the best distance so far counts as progress (moving
-# around the taker no longer does). A stall there (TurnInStallSeconds) ends the trip: [UnreachableTarget]
-# reason=near_stall, the turn-in is parked at once for TurnInParkSeconds ([QuestFirstRoute] state=parked
+# around the taker no longer does; a new trip after a work phase or another target starts a fresh window). A stall
+# there (TurnInStallSeconds) ends the trip: [UnreachableTarget] reason=near_stall ... switch=<TurnInStallCounts>
+# travel_stall=1, the turn-in is parked at once for TurnInParkSeconds ([QuestFirstRoute] state=parked
 # reason=structural_unreachable_near) and the bot leaves the taker. The second work timeout of the same turn-in parks it
-# too (reason=structural_work_timeout). Parks need TurnInParkFailures > 0; without them the bot only leaves the taker for
-# TurnInRouteCooldownSeconds. Such parks never abandon the quest (AbandonStructuralParked) and a rescue does not lift
-# them. TurnInNearRadius only acts with the switch (0 = no near zone, at most 500). 0 = as before.
+# too (reason=structural_work_timeout). Parks need TurnInParkFailures > 0; without them the bot leaves the taker and its
+# route stays suppressed for TurnInRouteCooldownSeconds. Such parks never abandon the quest (AbandonStructuralParked)
+# and a rescue does not lift them. TurnInNearRadius is a parameter of the switch (OB-10: 60 yd) and only acts with it
+# (0 = no near zone, at most 500). 0 = as before.
 AiPlayerbot.ZoneExit.TurnInTravelStall = 0
 AiPlayerbot.ZoneExit.TurnInNearRadius = 60
 
