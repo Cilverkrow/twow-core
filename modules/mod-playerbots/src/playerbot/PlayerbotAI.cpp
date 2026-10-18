@@ -2225,21 +2225,28 @@ void PlayerbotAI::OnDeath()
 
                 out << "\"";
 
-                uint32 adds = 0;
-
+                // twow-repo#602 ROT-01 F6: the death already cleared every victim (Unit::SetDeathState -> CombatStop), so the adds come
+                // from the snapshot taken while the bot fought (DeathAddsPolicy.h); a unit that still has the bot as victim comes first.
+                std::vector<uint64> live;
                 for (auto target : targets)
                 {
                     if (!target.IsCreature())
                         continue;
 
                     Unit* unit = GetUnit(target);
-                    if (!unit)
-                        continue;
+                    if (unit && unit->GetVictim() == bot)
+                        live.push_back(target.GetRawValue());
+                }
+                std::vector<uint64> const addGuids = ai::death_adds::MergeAdds(live, deathAdds,
+                    ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime()), ctarget ? ctarget->GetObjectGuid().GetRawValue() : 0);
 
-                    if (unit->GetVictim() != bot)
-                        continue;
+                uint32 adds = 0;
 
-                    if (unit == ctarget)
+                for (uint64 const guid : addGuids)
+                {
+                    Unit* unit = GetUnit(ObjectGuid(guid));
+                    // Intended (OB-10 review): adds = attackers still alive at the death; a mob the bot killed itself did not kill it.
+                    if (!unit || !unit->IsAlive())
                         continue;
 
                     out << unit->GetName() << "(" << unit->GetLevel() << ")";
@@ -2447,6 +2454,8 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
     masterIncomingPacketHandlers.Handle(helper);
     SC_PHASE("UpdateAIInternal.masterOutgoingPackets", bot ? bot->GetName() : "(null)");
     masterOutgoingPacketHandlers.Handle(helper);
+
+    UpdateDeathAddsSnapshot();
 
     SC_PHASE("UpdateAIInternal.DoNextAction", bot ? bot->GetName() : "(null)");
 	DoNextAction(minimal);
@@ -9542,6 +9551,25 @@ namespace
                 return false;
         }
     }
+}
+
+void PlayerbotAI::UpdateDeathAddsSnapshot()
+{
+    if (!bot->IsAlive())
+        return;   // keep the last snapshot: OnDeath reads it on this tick or the next
+    if (!bot->IsInCombat())
+    {
+        deathAdds.Clear();
+        return;
+    }
+    Unit::AttackerSet const& attackers = bot->getAttackers();
+    uint32 const nowMs = WorldTimer::getMSTime();
+    if (!ai::death_adds::Due(deathAdds, nowMs, uint32(attackers.size())))
+        return;
+    deathAdds.Begin(nowMs, uint32(attackers.size()));
+    for (Unit* unit : attackers)
+        if (unit && unit->IsCreature() && !deathAdds.Add(unit->GetObjectGuid().GetRawValue()))
+            break;
 }
 
 void PlayerbotAI::RunPendingDialogueCommands()

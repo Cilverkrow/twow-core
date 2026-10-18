@@ -3391,3 +3391,23 @@ add_test(NAME emergency_ladder_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/emergency_ladder_source_contract_tests.cmake")
+
+# twow-repo#602 ROT-01 F6 (log fix, no switch): the adds column of deaths.csv from an attacker snapshot taken while the bot fights
+# (the death clears every victim before OnDeath runs); OB-10: before the X3 A/B.
+add_executable(death_adds_policy_tests
+  "${PB_MODULE_DIR}/t/death_adds_policy_tests.cpp")
+
+target_include_directories(death_adds_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(death_adds_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME death_adds_policy
+  COMMAND death_adds_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME death_adds_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/death_adds_source_contract_tests.cmake")
