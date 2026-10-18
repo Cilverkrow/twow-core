@@ -3210,6 +3210,25 @@ add_test(NAME shortcut_s0_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/shortcut_s0_source_contract_tests.cmake")
 
+# twow-repo#587 (AiPlayerbot.QuestRescue.KeepRequestWhenFull): a rescue request is not dropped while the limit is used up.
+add_test(NAME rescue_keep_request_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rescue_keep_request_source_contract_tests.cmake")
+
+add_executable(rescue_limiter_capacity_tests
+  "${PB_MODULE_DIR}/t/rescue_limiter_capacity_tests.cpp")
+
+target_include_directories(rescue_limiter_capacity_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rescue_limiter_capacity_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rescue_limiter_capacity
+  COMMAND rescue_limiter_capacity_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 (bot cohorts for in-realm A/B: 0 off / 1 all / 2 only cohort B) and D0
 # (AiPlayerbot.Rotation.CastTrace, default 0): [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] diagnostics.
 add_executable(cohort_policy_tests
