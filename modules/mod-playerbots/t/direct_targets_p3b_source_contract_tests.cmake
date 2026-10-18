@@ -247,7 +247,9 @@ require_order("${move_retry}" "TraceQuestCommit(tDestination, \"blocked\", \"mov
 require_order("${move_retry}" "ai::direct_targets::OnTravelFailure(ai, tDestination, \"move_retry\");" "if (!IsProgressAwareTurnIn())" "before the turn-in rule")
 region("${travel_mgr}" "if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())" "ai->GetAiObjectContext()->ClearValues(\"no active travel destinations\");" expiry)
 require_text("${expiry}" "        if (ai::direct_targets::AnyBuilt() && GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL)\n            ai::direct_targets::OnTravelFailure(ai, tDestination, \"expired\");\n        SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);" "TRAVEL expiry failure before the expiry")
-require_text("${travel_mgr}" "            TraceQuestCommit(tDestination, \"progress\", \"arrived\");\n            // twow-repo#594 / P3-b: arrivals of the direct-target destinations (failure memory, hole_present for fishing).\n            if (ai::direct_targets::AnyBuilt())\n                ai::direct_targets::OnArrive(tDestination, ai, wPosition);\n            SetStatus(TravelStatus::TRAVEL_STATUS_WORK);" "arrival hook")
+# Arrival hook: after the "arrived" trace (S3c's ResetProgress block may sit in between, #601 18.10.), right before WORK.
+require_text("${travel_mgr}" "            // twow-repo#594 / P3-b: arrivals of the direct-target destinations (failure memory, hole_present for fishing).\n            if (ai::direct_targets::AnyBuilt())\n                ai::direct_targets::OnArrive(tDestination, ai, wPosition);\n            SetStatus(TravelStatus::TRAVEL_STATUS_WORK);" "arrival hook right before WORK")
+require_order("${travel_mgr}" "TraceQuestCommit(tDestination, \"progress\", \"arrived\");" "ai::direct_targets::OnArrive(tDestination, ai, wPosition);" "arrival hook after the arrived trace")
 # OB-10 (18.10.): the trip ends where the target leaves its destination - every path (reset, group copy, purpose end, travel
 # once, cooldown, expiry) goes through SetTarget or SetStatus.
 region("${travel_mgr}" "void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {" "wPosition = wPosition1;" set_target)
