@@ -8,6 +8,9 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"
+#include "playerbot/GrindPickPolicy.h"
+#include "Formulas.h"
+#include <algorithm>
 
 bool DpsAssistAction::isUseful()
 {
@@ -63,6 +66,21 @@ bool ai::AttackAnythingAction::Execute(Event& event)
             if (!grindName.empty())
             {
                 sPlayerbotAIConfig.logEvent(ai, "AttackAnythingAction", grindName + " (lvl " + std::to_string(grindTarget->GetLevel()) + ")", std::to_string(grindTarget->GetEntry()));
+
+                // twow-repo#601 S2 diagnostic ([GrindPick], AiPlayerbot.BotUpdateTrace; OB-10 / OB-00 18.10.): this engagement -
+                // the same AttackAnythingAction target bot_events logs above - by source and grey, for the minute line in
+                // ReportBotUpdate. Off: only this test.
+                if (sPlayerbotAIConfig.botUpdateTrace)
+                {
+                    std::list<ObjectGuid> const attackers = AI_VALUE(std::list<ObjectGuid>, "possible attack targets");
+                    bool const attacker = std::find(attackers.begin(), attackers.end(), grindTarget->GetObjectGuid()) != attackers.end();
+                    uint32 const entry = grindTarget->GetEntry();
+                    bool const neededForQuest = entry && AI_VALUE2(bool, "need for quest", std::to_string(entry));
+                    Creature* const creature = dynamic_cast<Creature*>(grindTarget);
+                    ai::grind_pick::Global().Add(ai::grind_pick::BandOf(bot->GetLevel()),
+                        ai::grind_pick::EngagedSource(attacker, grindTarget->GetVictim() == bot, neededForQuest),
+                        creature && !MaNGOS::XP::Gain(bot, creature));
+                }
 
                 // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): the bot's HP / mana at the grind pull, as its own
                 // line (bot_events.csv unchanged); at most 300 lines a minute.
