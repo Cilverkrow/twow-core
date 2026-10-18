@@ -18,6 +18,8 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Battlegrounds/BattleGroundMgr.h"
 #include "playerbot/TankPathPolicy.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/SpecPathPolicy.h"
 
 namespace
 {
@@ -63,6 +65,23 @@ std::string PremadePathName(Player const* player)
 char const* TankPathStrategy(Player const* player)
 {
     return player ? ai::tank_path::StrategyFor(player->getClass(), PremadePathName(player)) : nullptr;
+}
+
+// twow-repo#602 R06a: the tab of the premade path the bot was given (AiPlayerbot.PremadeSpecTab), -1 = none.
+int PremadePathTab(Player const* player)
+{
+    if (!player)
+        return -1;
+
+    uint32 const specNo = sRandomPlayerbotMgr.GetValue(player->GetGUIDLow(), "specNo");
+    if (!specNo)
+        return -1;
+
+    for (TalentPath const& path : sPlayerbotAIConfig.classSpecs[player->getClass()].talentPath)
+        if (path.id >= 0 && uint32(path.id) + 1 == specNo)
+            return path.tab;
+
+    return -1;
 }
 }
 
@@ -136,6 +155,24 @@ AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* a
 }
 
 int AiFactory::GetPlayerSpecTab(const Player* bot)
+{
+    // twow-repo#602 R06a (AiPlayerbot.Rotation.SpecFromPath, owner decision 18.10.2026): from level 10 a bot on a
+    // premade path is the spec its path names, not its talent point majority (shadow 49/4/49 stays shadow at 60).
+    // Real players, bots a player owns (their spec is the owner's), bots without a path and paths without a tab key
+    // keep the majority.
+    if (sPlayerbotAIConfig.rotationSpecFromPath && bot && GetBotAI(bot) &&
+        ai::cohort::Applies(sPlayerbotAIConfig.rotationSpecFromPath, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsRandomBot(const_cast<Player*>(bot)))
+    {
+        int const pathTab = ai::spec_path::PathTabFor(true, bot->GetLevel(), PremadePathTab(bot));
+        if (pathTab >= 0)
+            return pathTab;
+    }
+
+    return GetPlayerMajorityTab(bot);
+}
+
+int AiFactory::GetPlayerMajorityTab(const Player* bot)
 {
     std::map<uint32, int32> tabs = GetPlayerSpecTabs(bot);
 
@@ -327,6 +364,11 @@ BotRoles AiFactory::GetPlayerRoles(uint8 cls, uint8 tab)
 std::string AiFactory::GetPremadePathName(const Player* player)
 {
     return PremadePathName(player);
+}
+
+int AiFactory::GetPremadePathTab(const Player* player)
+{
+    return PremadePathTab(player);
 }
 
 BotRoles AiFactory::GetPlayerRoles(const Player* player)

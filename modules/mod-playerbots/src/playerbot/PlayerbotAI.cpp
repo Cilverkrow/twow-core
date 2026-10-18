@@ -3798,14 +3798,15 @@ void PlayerbotAI::ResetStrategies(bool autoLoad)
         std::string const combatList = engines[(uint8)BotState::BOT_STATE_COMBAT]->ListStrategies();
         std::string const nonCombatList = engines[(uint8)BotState::BOT_STATE_NON_COMBAT]->ListStrategies();
         int const tab = AiFactory::GetPlayerSpecTab(bot);
+        int const majority = AiFactory::GetPlayerMajorityTab(bot);   // twow-repo#602 R06a: a majority flip is a new line
         uint64 const signature = uint64(std::hash<std::string>()(combatList)) ^
             (uint64(std::hash<std::string>()(nonCombatList)) * 0xC2B2AE3D27D4EB4FULL) ^
-            (uint64(uint8(tab)) << 40) ^ (uint64(m_forcedRole) << 48);
+            (uint64(uint8(tab)) << 40) ^ (uint64(m_forcedRole) << 48) ^ (uint64(uint8(majority)) << 56);
         uint32 const guid = bot->GetGUIDLow();
         uint32 suppressed = 0;
         if (ai::rot_cast_rt::RoleLineDue(guid, signature, uint32(time(nullptr)), suppressed))
             sLog.outBasic("%s", ai::rot_cast::FormatRoleLine(guid, bot->GetName(), bot->getClass(), bot->GetLevel(),
-                ai::cohort::Letter(guid), tab, AiFactory::GetPremadePathName(bot), IsTank(bot), IsHeal(bot), m_forcedRole,
+                ai::cohort::Letter(guid), tab, majority, AiFactory::GetPremadePathName(bot), IsTank(bot), IsHeal(bot), m_forcedRole,
                 sRandomPlayerbotMgr.IsFreeBot(bot), sRandomPlayerbotMgr.IsPersistentRosterMember(guid), autoLoad, suppressed,
                 combatList, nonCombatList).c_str());
     }

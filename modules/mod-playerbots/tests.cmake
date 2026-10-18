@@ -3336,3 +3336,23 @@ add_test(NAME rot_cast_trace_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/rot_cast_trace_source_contract_tests.cmake")
+
+# twow-repo#602 ROT-01 R06a (AiPlayerbot.Rotation.SpecFromPath, cohort mode, default 0): spec identity from the premade
+# path (AiPlayerbot.PremadeSpecTab) from level 10, never from the talent point majority (owner decision 18.10.2026).
+add_executable(spec_path_policy_tests
+  "${PB_MODULE_DIR}/t/spec_path_policy_tests.cpp")
+
+target_include_directories(spec_path_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(spec_path_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spec_path_policy
+  COMMAND spec_path_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spec_path_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/spec_path_source_contract_tests.cmake")

@@ -150,9 +150,9 @@ int main()
 
         RequireLine(FormatUnknownLine(4711, "Morwenna", 3, 7, 'B', "arcane shot", 0, EvalNoSpellId),
             "[RotCastUnknown] bot=4711 name=Morwenna cls=3 level=7 cohort=B action=arcane_shot spell=0 reason=no_spell_id", "unknown line");
-        RequireLine(FormatRoleLine(75, "Thaneira", 1, 12, 'B', -1, "protection", true, false, 0, true, true, false, 3,
+        RequireLine(FormatRoleLine(75, "Thaneira", 1, 12, 'B', -1, 2, "protection", true, false, 0, true, true, false, 3,
                 "dps, dps assist, tank assist", "food, quest"),
-            "[RotRole] guid=75 name=Thaneira cls=1 level=12 cohort=B tab=-1 path=protection role=TANK forced=0 free=1 member=1 "
+            "[RotRole] guid=75 name=Thaneira cls=1 level=12 cohort=B tab=-1 maj=2 path=protection role=TANK forced=0 free=1 member=1 "
             "autoload=0 suppressed=3 co=dps,_dps_assist,_tank_assist nc=food,_quest", "role line");
         RequireLine(FormatPullLine(50, "Kettlina", 11, 15, 'A', 3127, 13, 64, -1, 1, 22.71f),
             "[RotPull] bot=50 name=Kettlina cls=11 level=15 cohort=A entry=3127 tlevel=13 hp=64 mana=-1 attackers=1 dist=22.7",
@@ -163,7 +163,7 @@ int main()
     // 10) Long inputs are cut by Token(), so every field survives (BotLog line limit 4096).
     {
         std::string const longList(5000, 'x');
-        std::string const line = FormatRoleLine(1, longList, 1, 1, 'A', 0, longList, false, false, 0, false, false, true, 0,
+        std::string const line = FormatRoleLine(1, longList, 1, 1, 'A', 0, 0, longList, false, false, 0, false, false, true, 0,
             longList, longList);
         Require(line.size() < 1300, "role line bounded by the caps (name 40, path 40, co 512, nc 512)");
         Require(line.find(" co=" + std::string(509, 'x') + "... nc=") != std::string::npos, "co= cut to 512 with '...'");

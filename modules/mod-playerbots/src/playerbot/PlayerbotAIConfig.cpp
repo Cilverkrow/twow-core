@@ -7,6 +7,7 @@
 #include "playerbot/BgFillPolicy.h"
 #include "playerbot/ShortcutPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/SpecPathPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -530,6 +531,7 @@ bool PlayerbotAIConfig::Initialize()
     canCastSpellChecksPower = config.GetBoolDefault("AiPlayerbot.CanCastSpell.CheckPower", false);
     castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
     rotationCastTrace = config.GetBoolDefault("AiPlayerbot.Rotation.CastTrace", false);
+    rotationSpecFromPath = config.GetIntDefault("AiPlayerbot.Rotation.SpecFromPath", 0);
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
@@ -1816,6 +1818,7 @@ void PlayerbotAIConfig::LoadTalentSpecs()
     sLog.outString("Loading TalentSpecs");
 
     uint32 maxSpecLevel = 0;
+    uint32 specPathCount = 0, specPathWithTab = 0, specPathMismatches = 0;   // twow-repo#602 R06a ([SpecPath])
 
     for (uint32 cls = 1; cls < MAX_CLASSES; ++cls)
     {
@@ -1830,6 +1833,11 @@ void PlayerbotAIConfig::LoadTalentSpecs()
                 int probability = config.GetIntDefault(os.str().c_str(), 100);
 
                 TalentPath talentPath(spec, specName, probability);
+                {
+                    // twow-repo#602 R06a: the tab of the path's named tree, written by tools/build_premade_specs.py.
+                    std::ostringstream tabKey; tabKey << "AiPlayerbot.PremadeSpecTab." << cls << "." << spec;
+                    talentPath.tab = ai::spec_path::ValidTab(config.GetIntDefault(tabKey.str().c_str(), -1));
+                }
 
                 for (uint32 level = 10; level <= 100; level++)
                 {
@@ -1918,10 +1926,26 @@ void PlayerbotAIConfig::LoadTalentSpecs()
 
                 //Only add paths that have atleast 1 spec.
                 if (talentPath.talentSpec.size() > 0)
+                {
+                    // twow-repo#602 R06a: the tab key and the main tree of the first (level 10) link must agree.
+                    ++specPathCount;
+                    if (talentPath.tab >= 0)
+                    {
+                        ++specPathWithTab;
+                        int const firstLinkTree = talentPath.talentSpec.front().highestTree();
+                        if (!ai::spec_path::TabAgreesWithFirstLink(talentPath.tab, firstLinkTree))
+                        {
+                            ++specPathMismatches;
+                            sLog.outError("%s", ai::spec_path::FormatMismatchLine(cls, talentPath.name, talentPath.tab, firstLinkTree).c_str());
+                        }
+                    }
                     classSpecs[cls].talentPath.push_back(talentPath);
+                }
             }
         }
     }
+
+    sLog.outString("%s", ai::spec_path::FormatLoadedLine(specPathCount, specPathWithTab, specPathMismatches).c_str());
 
     if (classSpecs[1].talentPath.empty())
         sLog.outErrorDb("No premade specs found!!");
