@@ -155,4 +155,62 @@ inline Recorder& Global()
     static Recorder recorder;
     return recorder;
 }
+
+// twow-repo#601 S1 (OB-10 18.10.2026, same switch): the cost of one PreValidateTurnIns call with the work it had
+// (open turn-ins checked) and its result (turn-ins validated) - the [PreValidate] minute line covers every call, the
+// trail note "TIME:prevalidate" only the ones a [BotUpdateSlow] line shows. Atomics only, no slow list, no lock.
+struct CountedSnapshot
+{
+    Snapshot time;              // calls, totalUs, maxUs, buckets (slowest stays empty)
+    std::uint64_t openSum = 0;  // open turn-ins over all calls
+    std::uint64_t okSum = 0;    // validated turn-ins over all calls
+};
+
+class CountedRecorder
+{
+public:
+    // Any thread.
+    void Add(std::uint64_t us, std::uint32_t open, std::uint32_t ok)
+    {
+        totalUs.fetch_add(us, std::memory_order_relaxed);
+        buckets[BucketOf(us)].fetch_add(1, std::memory_order_relaxed);
+        openSum.fetch_add(open, std::memory_order_relaxed);
+        okSum.fetch_add(ok, std::memory_order_relaxed);
+        std::uint64_t seen = maxUs.load(std::memory_order_relaxed);
+        while (us > seen && !maxUs.compare_exchange_weak(seen, us, std::memory_order_relaxed))
+        {
+        }
+    }
+
+    // Reads and resets everything (the reader is the per-minute line). calls is the sum of the buckets taken: an Add
+    // between the exchanges then lands in one window or the next, never as a call without its bucket - with few calls
+    // a missing bucket would turn p99 into the top bucket edge.
+    CountedSnapshot Take()
+    {
+        CountedSnapshot s;
+        s.time.totalUs = totalUs.exchange(0, std::memory_order_relaxed);
+        s.time.maxUs = maxUs.exchange(0, std::memory_order_relaxed);
+        for (std::size_t b = 0; b < Buckets; ++b)
+        {
+            s.time.buckets[b] = buckets[b].exchange(0, std::memory_order_relaxed);
+            s.time.calls += s.time.buckets[b];
+        }
+        s.openSum = openSum.exchange(0, std::memory_order_relaxed);
+        s.okSum = okSum.exchange(0, std::memory_order_relaxed);
+        return s;
+    }
+
+private:
+    std::atomic<std::uint64_t> totalUs{0};
+    std::atomic<std::uint64_t> maxUs{0};
+    std::array<std::atomic<std::uint64_t>, Buckets> buckets{};
+    std::atomic<std::uint64_t> openSum{0};
+    std::atomic<std::uint64_t> okSum{0};
+};
+
+inline CountedRecorder& Prevalidate()
+{
+    static CountedRecorder recorder;
+    return recorder;
+}
 }
