@@ -797,6 +797,72 @@ std::string PlayerbotAI::TakeQuestIdleMinuteLine()
     return ai::quest_grind_mode::FormatMinuteLine(counts);
 }
 
+// twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.*, OB-10 / OB-00 18.10.2026): accept / item skips, infeasible drops and
+// giver relations found inactive since the last minute line; counted on the map threads, taken by the world thread
+// (atomics, no lock).
+namespace
+{
+std::atomic<uint32> questFeasibilitySkips{0};
+std::atomic<uint32> questFeasibilityDrops{0};
+std::atomic<uint32> questFeasibilityGiverInactive{0};
+}
+
+// S3a: Enable first - with the switch off nothing else is read. Scope, lists and the class exemption (solo group rule
+// only) in the policy.
+ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* quest)
+{
+    if (!sPlayerbotAIConfig.questFeasibilityEnable || !bot || !quest)
+        return ai::quest_feasibility::Reason::None;
+
+    uint32 const questId = quest->GetQuestId();
+    ai::quest_feasibility::Facts facts;
+    facts.enabled = true;
+    facts.rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();
+    facts.classQuest = quest->GetRequiredClasses() != 0;
+    facts.inGroup = bot->GetGroup() != nullptr;
+    facts.listed = sPlayerbotAIConfig.questFeasibilityBlocklist.count(questId) != 0;
+    facts.listedNoCustomStarts = sPlayerbotAIConfig.questFeasibilityBlocklistWhileNoCustomStarts.count(questId) != 0;
+    facts.customRaceStartZones = sPlayerbotAIConfig.customRaceStartZones;
+    facts.soloSkipGroupQuests = sPlayerbotAIConfig.questFeasibilitySoloSkipGroupQuests;
+    facts.type = quest->GetType();
+    facts.suggestedPlayers = quest->GetSuggestedPlayers();
+    return ai::quest_feasibility::SkipReason(facts);
+}
+
+// S3a, bot's own thread: one count per check that skips (minute line: checks, not distinct quests), one
+// [QuestFeasibility] state=skip line per bot, quest and path an hour (at most ai::quest_feasibility::LinesPerMinute per bot
+// and minute).
+bool PlayerbotAI::SkipInfeasibleQuest(Quest const* quest, ai::quest_feasibility::Path path)
+{
+    ai::quest_feasibility::Reason const reason = QuestFeasibilityReason(quest);
+    if (reason == ai::quest_feasibility::Reason::None)
+        return false;
+    if (path == ai::quest_feasibility::Path::Giver && !ai::quest_feasibility::GiverInactive(reason))
+        return false;
+
+    if (path == ai::quest_feasibility::Path::Giver)
+        questFeasibilityGiverInactive.fetch_add(1, std::memory_order_relaxed);
+    else
+        questFeasibilitySkips.fetch_add(1, std::memory_order_relaxed);
+
+    if (ai::quest_feasibility::LogDue(questFeasibilityLog, quest->GetQuestId(), path, uint32(time(nullptr))))
+        sLog.outBasic("%s", ai::quest_feasibility::FormatSkipLine(bot->GetGUIDLow(), bot->GetLevel(), quest->GetQuestId(),
+            reason, path).c_str());
+    return true;
+}
+
+void PlayerbotAI::NoteQuestFeasibilityDrop()
+{
+    questFeasibilityDrops.fetch_add(1, std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeQuestFeasibilityMinuteLine()
+{
+    return ai::quest_feasibility::FormatMinuteLine(questFeasibilitySkips.exchange(0, std::memory_order_relaxed),
+        questFeasibilityDrops.exchange(0, std::memory_order_relaxed),
+        questFeasibilityGiverInactive.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#517 stage a: called by RandomPlayerbotMgr (world thread, the bot's map idle) once a fill bot is out of its
 // battleground. The quest-idle watch kept counting during the match; without this a long battleground would hand the
 // bot straight to the rescue teleport.

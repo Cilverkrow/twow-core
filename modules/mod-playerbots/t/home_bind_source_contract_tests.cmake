@@ -10,5 +10,7 @@ file(READ "${PB_SOURCE_DIR}/strategy/actions/UseItemAction.cpp" use_item)
 
 # #307: roster bots neither bind nor hearth to a zone clearly above their level.
 require_text("${rpg_triggers}" "homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, guidP.getAreaLevel())), bot->GetLevel())" "level-appropriate inn bind (real area level)")
-require_text("${use_item}" "homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, bind.getAreaLevel())), bot->GetLevel())" "level-appropriate hearthstone (real area level)")
+# twow-repo#596 D: the bind's real area level now comes through ai::home_bind::AreaLevel (the same level, by the stored
+# bind area with AiPlayerbot.Perf.BindAreaFromHomebind, else bind.getAreaLevel() as before).
+require_text("${use_item}" "homebind::IsZoneClearlyAboveLevel(uint32(std::max<int32>(0, ai::home_bind::AreaLevel(bot, bind))), bot->GetLevel())" "level-appropriate hearthstone (real area level)")
 require_text("${use_item}" "AI_VALUE(WorldPosition, \"home bind\")" "hearthstone checks the actual bind")
