@@ -23,6 +23,7 @@
 #include "playerbot/BotGroupPolicy.h"
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
+#include "playerbot/DirectTargetPolicy.h"
 
 #include <iostream>
 #include <numeric>
@@ -105,6 +106,9 @@ inline ParsedUrl parseUrl(const std::string& url) {
 
 bool PlayerbotAIConfig::Initialize()
 {
+    // twow-repo#594 / P3-b: the direct targets are built on the first call only (the boot); a reload calls this again.
+    ai::direct_targets::NoteInitialize();
+
     sLog.outString("Initializing AI Playerbot by ike3, based on the original Playerbot by blueboy");
 
     // The path used to be fixed at build time - SYSCONFDIR "aiplayerbot.conf" -
@@ -678,6 +682,19 @@ bool PlayerbotAIConfig::Initialize()
     directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));
     directTargetsFreshBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshBackoffSeconds", 0)));
     directTargetsFreshGrindFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshGrindFailures", 0)));
+    // twow-repo#594 / P3-b: read before LoadQuestTravelTable (the boot builds what is on); a reload changes only the gates and
+    // names a class it switches on that was not built at boot.
+    directTargetsStation = config.GetBoolDefault("AiPlayerbot.DirectTargets.Station", false);
+    directTargetsCooking = config.GetBoolDefault("AiPlayerbot.DirectTargets.Cooking", false);
+    directTargetsFishing = config.GetBoolDefault("AiPlayerbot.DirectTargets.Fishing", false);
+    directTargetsDungeon = config.GetBoolDefault("AiPlayerbot.DirectTargets.Dungeon", false);
+    directTargetsRaid = config.GetBoolDefault("AiPlayerbot.DirectTargets.Raid", false);
+    if (uint32 const ignored = ai::direct_targets::NoteReloadSwitches(ai::direct_targets::SwitchMask(directTargetsEnabled,
+            directTargetsStation, directTargetsCooking, directTargetsFishing, directTargetsDungeon, directTargetsRaid),
+            ai::direct_targets::InitializeCalls().load(std::memory_order_relaxed)))
+        for (uint32 kind = 0; kind < ai::direct_targets::KindCount; ++kind)
+            if (ignored & (1u << kind))
+                sLog.outBasic("[DirectTarget] state=reload_ignored class=%s", ai::direct_targets::KindName(ai::direct_targets::Kind(kind)));
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);

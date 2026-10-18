@@ -52,6 +52,12 @@ namespace
     }
 }
 
+// twow-repo#594 / P3-b: the same chance for the station craft trigger (StationCraftTrigger.cpp).
+uint32 ai::RecipeSkillUpChance(uint32 spellId, Player* bot, uint32* outSkillId, uint32* outSkillValue)
+{
+    return CraftSkillUpChance(spellId, bot, outSkillId, outSkillValue);
+}
+
 // Every tool of the recipe is in the bags, as Spell::CheckItems demands
 // (else SPELL_FAILED_ITEM_GONE).
 bool ai::HasCraftTools(SpellEntry const* spell, Player* bot)

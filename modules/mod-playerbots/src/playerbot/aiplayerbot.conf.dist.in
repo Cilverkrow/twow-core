@@ -1174,6 +1174,27 @@ AiPlayerbot.DirectTargets.TraceInactive = 0
 AiPlayerbot.DirectTargets.FreshMaxLevel = 5
 AiPlayerbot.DirectTargets.FreshBackoffSeconds = 0
 AiPlayerbot.DirectTargets.FreshGrindFailures = 0
+# twow-repo#594 / P3-b (direct targets, design rev. 2, 18.10.2026): each class needs the master Enable = 1 and is built
+# once at boot (a reload switches a built class off and on, never builds one: [DirectTarget] state=reload_ignored).
+# Station = 1: anvils and forges as travel targets (6.505, above gathering, yields to open turn-ins, 10 min cooldown,
+# <= 1000 yd same map) and crafting of the focus recipes there ("station craft"); needs ProfessionUse.Craft = 1 and
+# ProfessionUse.RealReagents = 1 and the "gather" strategy. Cooking = 1: the same for cooking fires (cooldown shared).
+# Fishing = 1: shore points facing fishing holes as GatherFishing destinations (the OB-10 need, tfish and a declared
+# purpose; a pole and skill >= zone skill + 45, a catch chance of at least 50 %). Dungeon = 1 / Raid = 1: the open-world
+# point of an instance entrance (6.299 / 6.298, below the quest request; only without a running quest route backoff
+# and open turn-in, <= 1500 yd same map; level fit from the meeting stones; raids at the max level). Bots do not zone in.
+# Profile rule (OB-00 + CLI-Deep): QuestFirstProgression.GrindMode 2 => DirectTargets.Dungeon = DirectTargets.Raid = 0.
+# With a class on, the GrindMode 2 idle episodes ([QuestIdle]) include direct-target trip time; picks= gives the overlap.
+# Station, Cooking and Fishing stay allowed under GrindMode 2. Boot: [DirectTarget] state=loaded class= per class and
+# state=loaded_total ms= tiles_added= rss_delta_kb=; trips: state=pick class= ... and state=trip_end class= seconds=
+# result=crafted|no_focus|expired|move_retry|arrived|inactive|ended|reset|replaced (a bot that logs out mid-trip has no
+# end line); a destination that keeps failing is disabled for 1 h (state=disable); the summary line adds picks= empty=
+# crafts= no_focus= fail= disabled=. All 0 = nothing is built, no row, no line.
+AiPlayerbot.DirectTargets.Station = 0
+AiPlayerbot.DirectTargets.Cooking = 0
+AiPlayerbot.DirectTargets.Fishing = 0
+AiPlayerbot.DirectTargets.Dungeon = 0
+AiPlayerbot.DirectTargets.Raid = 0
 # Hotfix 8.33 (twow-repo#544): with 1 a persistent roster bot on its own, out of combat on a
 # continent and with no player within visibility + react distance, moves without detailed path
 # finding: for a target on its map farther than react distance with no player at either end it
