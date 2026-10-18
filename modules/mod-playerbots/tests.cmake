@@ -3172,3 +3172,36 @@ add_test(NAME shortcut_s0_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/shortcut_s0_source_contract_tests.cmake")
+
+# twow-repo#602 ROT-01 (bot cohorts for in-realm A/B: 0 off / 1 all / 2 only cohort B) and D0
+# (AiPlayerbot.Rotation.CastTrace, default 0): [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] diagnostics.
+add_executable(cohort_policy_tests
+  "${PB_MODULE_DIR}/t/cohort_policy_tests.cpp")
+
+target_include_directories(cohort_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(cohort_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cohort_policy
+  COMMAND cohort_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_executable(rot_cast_policy_tests
+  "${PB_MODULE_DIR}/t/rot_cast_policy_tests.cpp")
+
+target_include_directories(rot_cast_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rot_cast_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rot_cast_policy
+  COMMAND rot_cast_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rot_cast_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rot_cast_trace_source_contract_tests.cmake")

@@ -12,6 +12,9 @@
 #include "playerbot/MemStoresPolicy.h"
 #include "playerbot/SpellListPolicy.h"
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for "S:engine init"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/RotCastPolicy.h"
+#include "playerbot/RotCastTrace.h"     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace)
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -810,6 +813,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
     HandleQueuedBotPackets();
+
+    // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): this thread's cast counters reach the minute book once
+    // the World thread closed a window.
+    if (sPlayerbotAIConfig.rotationCastTrace)
+        ai::rot_cast_rt::FlushIfDue();
 
     // twow-repo#541 A47 (AiPlayerbot.BotSave.IntervalSeconds): the bot saves itself on its own schedule (BotSavePolicy.h),
     // also while parked; the core autosave timer is held back meanwhile. Off: the core saves as before.
@@ -3109,6 +3117,17 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 			SC_LOG("bot=%s received SMSG_GROUP_INVITE — queued for 'group invite' trigger",
 			       bot ? bot->GetName() : "(null)");
 		}
+		// twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): the server's answer to the bot's own casts, classic
+		// layout u32 spell, u8 status (0 ok / 2 fail), u8 result. The packet still goes to its handler.
+		if (sPlayerbotAIConfig.rotationCastTrace && packet.GetOpcode() == SMSG_CAST_RESULT && bot)
+		{
+			std::size_t const size = packet.size();
+			uint32 const spellId = size >= 4 ? packet.read<uint32>(0) : 0;
+			uint8 const status = size >= 5 ? packet.read<uint8>(4) : 0;
+			uint8 const result = size >= 6 ? packet.read<uint8>(5) : 0;
+			ai::rot_cast_rt::RecordServer(bot->getClass(), ai::cohort::InB(bot->GetGUIDLow()), spellId,
+				ai::rot_cast::ServerCode(size, status, result));
+		}
 		botOutgoingPacketHandlers.AddPacket(packet);
 	}
 }
@@ -3704,6 +3723,25 @@ void PlayerbotAI::ResetStrategies(bool autoLoad)
     {
         engines[i]->initMode = false;
         engines[i]->Init();
+    }
+
+    // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): [RotRole] when the bot's strategy set, spec tab or forced
+    // role changed since its last line (also called from the World thread while the maps are idle).
+    if (sPlayerbotAIConfig.rotationCastTrace)
+    {
+        std::string const combatList = engines[(uint8)BotState::BOT_STATE_COMBAT]->ListStrategies();
+        std::string const nonCombatList = engines[(uint8)BotState::BOT_STATE_NON_COMBAT]->ListStrategies();
+        int const tab = AiFactory::GetPlayerSpecTab(bot);
+        uint64 const signature = uint64(std::hash<std::string>()(combatList)) ^
+            (uint64(std::hash<std::string>()(nonCombatList)) * 0xC2B2AE3D27D4EB4FULL) ^
+            (uint64(uint8(tab)) << 40) ^ (uint64(m_forcedRole) << 48);
+        uint32 const guid = bot->GetGUIDLow();
+        uint32 suppressed = 0;
+        if (ai::rot_cast_rt::RoleLineDue(guid, signature, uint32(time(nullptr)), suppressed))
+            sLog.outBasic("%s", ai::rot_cast::FormatRoleLine(guid, bot->GetName(), bot->getClass(), bot->GetLevel(),
+                ai::cohort::Letter(guid), tab, AiFactory::GetPremadePathName(bot), IsTank(bot), IsHeal(bot), m_forcedRole,
+                sRandomPlayerbotMgr.IsFreeBot(bot), sRandomPlayerbotMgr.IsPersistentRosterMember(guid), autoLoad, suppressed,
+                combatList, nonCombatList).c_str());
     }
 }
 
