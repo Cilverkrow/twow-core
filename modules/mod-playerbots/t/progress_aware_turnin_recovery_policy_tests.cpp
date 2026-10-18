@@ -28,6 +28,14 @@ Observation At(std::uint32_t now, float x, float distance, bool paused = false, 
     observation.targetMapId = targetMap;
     return observation;
 }
+
+// twow-repo#601 S3c: the same observation with the near zone of AiPlayerbot.ZoneExit.TurnInTravelStall.
+Observation Near(std::uint32_t now, float x, float distance, float radius, std::uint32_t map = 0, std::uint32_t targetMap = 0)
+{
+    Observation observation = At(now, x, distance, false, map, 1, targetMap);
+    observation.nearRadius = radius;
+    return observation;
+}
 }
 
 int main()
@@ -175,4 +183,80 @@ int main()
         "stalled_route_recovery=PASS suppress_cooldown=PASS relog_state_reset=PASS death_route_suppression=PASS "
         "same_target_churn=PASS cross_map_stall_key=PASS death_survives_stall=PASS "
         "transport_abandon_target_map=PASS\n";
+
+    // twow-repo#601 S3c (ZoneExit.TurnInTravelStall, OB-10 rev. 2 Q-B3): the Azora case. The bot jitters 25-35 yd
+    // around the taker (every move picks a new random point) and never gets closer. With the 60 yd near zone that is
+    // a stall: stage 1 at 300 s, stage 2 at 600 s.
+    constexpr float nearRadius = 60.0f;
+    State jitter;
+    assert(ai::turnin_recovery::Observe(jitter, Near(0, 0.0f, 30.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitter, Near(60, 30.0f, 32.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitter, Near(120, 0.0f, 28.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitter, Near(180, 35.0f, 27.5f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitter, Near(240, 0.0f, 34.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitter, Near(300, 30.0f, 28.0f, nearRadius), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    assert(ai::turnin_recovery::Observe(jitter, Near(450, 0.0f, 29.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitter, Near(600, 30.0f, 31.0f, nearRadius), stall, cooldown) ==
+        RecoveryAction::SuppressRouteAndCooldown);
+
+    // Switch off (radius 0): the same jitter is progress at every 25 yd shift, as before - no stall at 300 s.
+    State jitterOff;
+    assert(ai::turnin_recovery::Observe(jitterOff, Near(0, 0.0f, 30.0f, 0.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitterOff, Near(60, 30.0f, 32.0f, 0.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitterOff, Near(120, 0.0f, 28.0f, 0.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitterOff, Near(180, 35.0f, 27.5f, 0.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitterOff, Near(240, 0.0f, 34.0f, 0.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitterOff, Near(300, 30.0f, 28.0f, 0.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(jitterOff, Near(600, 0.0f, 31.0f, 0.0f), stall, cooldown) == RecoveryAction::None);
+
+    // 3 yd closer than the best so far is progress and restarts the window; 2.5 yd is not.
+    State closer;
+    assert(ai::turnin_recovery::Observe(closer, Near(0, 0.0f, 30.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(closer, Near(200, 0.0f, 27.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(closer, Near(300, 0.0f, 27.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(closer, Near(400, 0.0f, 24.5f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(closer, Near(499, 0.0f, 24.5f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(closer, Near(500, 0.0f, 24.5f, nearRadius), stall, cooldown) == RecoveryAction::RecomputeRoute);
+
+    // Out of the near zone and back is not "closer": the 25 yd shift out counts (outside, unchanged), the return to
+    // 40 yd does not beat the best of 30 yd.
+    State wander;
+    assert(ai::turnin_recovery::Observe(wander, Near(0, 0.0f, 30.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(wander, Near(100, 100.0f, 80.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(wander, Near(200, 0.0f, 40.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(wander, Near(400, 30.0f, 40.0f, nearRadius), stall, cooldown) == RecoveryAction::RecomputeRoute);
+
+    // The approach from afar into the zone is progress; a cross-map target has no near zone (old rule).
+    State approach;
+    assert(ai::turnin_recovery::Observe(approach, Near(0, 0.0f, 500.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(approach, Near(250, 440.0f, 58.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(approach, Near(500, 440.0f, 54.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(approach, Near(799, 470.0f, 53.0f, nearRadius), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(approach, Near(800, 440.0f, 53.0f, nearRadius), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    assert(ai::turnin_recovery::InNearZone(60.0f, true, nearRadius));
+    assert(!ai::turnin_recovery::InNearZone(60.5f, true, nearRadius));
+    assert(!ai::turnin_recovery::InNearZone(10.0f, false, nearRadius));
+    assert(!ai::turnin_recovery::InNearZone(10.0f, true, 0.0f));
+    State otherMap;
+    assert(ai::turnin_recovery::Observe(otherMap, Near(0, 0.0f, 30.0f, nearRadius, 1, 0), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(otherMap, Near(300, 30.0f, 32.0f, nearRadius, 1, 0), stall, cooldown) == RecoveryAction::None);
+
+    // OB-10 rev. 2 Q-B4: the second work timeout of the same turn-in reports (the caller parks); the pair then starts
+    // anew. Eight other quests push a quest out of the ring; quest 0 is never kept.
+    ai::turnin_recovery::WorkTimeoutRing ring;
+    assert(!ai::turnin_recovery::RecordWorkTimeout(ring, 41747));
+    assert(!ai::turnin_recovery::RecordWorkTimeout(ring, 310));
+    assert(ai::turnin_recovery::RecordWorkTimeout(ring, 41747));
+    assert(!ai::turnin_recovery::RecordWorkTimeout(ring, 41747));
+    assert(ai::turnin_recovery::RecordWorkTimeout(ring, 41747));
+    assert(!ai::turnin_recovery::RecordWorkTimeout(ring, 0));
+    assert(!ai::turnin_recovery::RecordWorkTimeout(ring, 0));
+    ai::turnin_recovery::WorkTimeoutRing evict;
+    assert(!ai::turnin_recovery::RecordWorkTimeout(evict, 41747));
+    for (std::uint32_t quest = 1; quest <= ai::turnin_recovery::WorkTimeoutRingSize; ++quest)
+        assert(!ai::turnin_recovery::RecordWorkTimeout(evict, quest));
+    assert(!ai::turnin_recovery::RecordWorkTimeout(evict, 41747));
+
+    std::cout << "near_zone_jitter_stall=PASS near_zone_off_unchanged=PASS near_zone_closer_3yd=PASS "
+        "near_zone_wander_back=PASS near_zone_approach_cross_map=PASS work_timeout_ring=PASS\n";
 }
