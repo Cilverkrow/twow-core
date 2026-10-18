@@ -1019,6 +1019,10 @@ AiPlayerbot.GrindCap.LowLevelMargin = 2
 # region, is teleported to another race's starting area / level hub of its
 # faction (at most once per bot in 2 h, 5 per 10 min world-wide). 0 = off.
 AiPlayerbot.QuestRescue.IdleMinutes = 30
+# twow-repo#587 (soak 17.10.2026): 1 = while the global rescue limit (5 per 10 minutes) is used up, a pending rescue request
+# stays with the bot for the next scan instead of being dropped. Matters for stranded bots (ZoneExit.StrandedRescueAfter),
+# which only ask again after more empty quest searches. 0 = as before (default).
+AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0

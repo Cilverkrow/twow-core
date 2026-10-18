@@ -7047,6 +7047,12 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
     for (auto const& [guid, bot] : GetAllBots())
     {
         PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        // twow-repo#587 (AiPlayerbot.QuestRescue.KeepRequestWhenFull, soak 17.10.: 20 of 21 stranded not served promptly):
+        // with the global limit used up a pending request stays with the bot for the next scan instead of being taken and
+        // dropped - a stranded bot (Z1b) only asks again after StrandedRescueAfter more empty searches.
+        if (sPlayerbotAIConfig.questRescueKeepRequestWhenFull && ai && ai->HasQuestRescueRequest() &&
+                !questRescueLimiter.HasCapacity(now))
+            break;
         // twow-repo#541/#551: a parked bot stands still on purpose - no rescue teleport.
         if (!ai || !ai->TakeQuestRescueRequest() || IsParkedBot(guid))
             continue;
