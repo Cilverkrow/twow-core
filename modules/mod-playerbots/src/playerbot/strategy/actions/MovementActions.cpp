@@ -118,18 +118,46 @@ float TaxiStartDistance(Player* bot, TaxiPathEntry const* tEntry)
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+// twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): why Player::ActivateTaxiPathTo refused a flight at the right start node.
+// Its refusals send no reply or only a client packet, so the trace names the first check that holds, in the core's order.
+// Read-only; only called for a res=failed line.
+char const* TaxiRefusalReason(Player* bot, Creature* npc, TaxiPathEntry const* tEntry)
+{
+    if (bot->GetSession()->isLogingOut())
+        return "logout";
+    if (bot->IsInCombat())
+        return "combat";
+    if (bot->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_DISABLE_MOVE))
+        return "disable_move";
+    if (!bot->IsTaxiCheater() && (!bot->m_taxi.IsTaximaskNodeKnown(tEntry->from) || !bot->m_taxi.IsTaximaskNodeKnown(tEntry->to)))
+        return "unknown_node";
+    if (npc && bot->IsMounted())
+        return "mounted";
+    if (npc && bot->IsInDisallowedMountForm())
+        return "shapeshift";
+    if (npc && bot->IsNonMeleeSpellCasted(false))
+        return "casting";
+    uint32 path = 0, cost = 0;
+    sObjectMgr.GetTaxiPath(tEntry->from, tEntry->to, path, cost);
+    if (!path)
+        return "no_path";
+    if (bot->GetMoney() < cost)
+        return "money";
+    return "other";
+}
+
 void LogTaxiUse(Player* bot, uint32 entry, TaxiPathEntry const* tEntry, bool needNpc, bool npcFound, path_fail::TaxiResult result,
-    float startDist)
+    float startDist, char const* reason = nullptr)
 {
     path_fail::TaxiCounters& counters = path_fail::SharedTaxiCounters();
     LogTaxiSummary(counters);
     counters.Count(result);
     if (!counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute))
         return;
-    sLog.outBasic("[TaxiUse] bot=%u level=%u team=%s obj=%u from=%u to=%u need_npc=%u npc=%u res=%s map=%u x=%.1f y=%.1f start_dist=%.1f",
+    sLog.outBasic("[TaxiUse] bot=%u level=%u team=%s obj=%u from=%u to=%u need_npc=%u npc=%u res=%s map=%u x=%.1f y=%.1f start_dist=%.1f%s%s",
         bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->GetTeam() == ALLIANCE ? "A" : "H", entry, tEntry ? tEntry->from : 0u,
         tEntry ? tEntry->to : 0u, needNpc ? 1u : 0u, npcFound ? 1u : 0u, path_fail::TaxiResultName(result), bot->GetMapId(),
-        bot->GetPositionX(), bot->GetPositionY(), startDist);
+        bot->GetPositionX(), bot->GetPositionY(), startDist, reason ? " reason=" : "", reason ? reason : "");
 }
 
 // A dock wait: the path wants a ship / zeppelin of this entry here and it is not boardable now.
@@ -458,6 +486,13 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
 
     ai->Unmount();
 
+    // twow-repo#575 (PATH-01 b, AiPlayerbot.Path.TaxiCancelForm): with a flight master, ActivateTaxiPathTo refuses a
+    // disallowed mount form (druid travel form, shaman Ghost Wolf; Unit::IsInDisallowedMountForm) and Unmount does not end
+    // it. Flight A/B 18.10.2026: all 6 bots with res=failed in path_b were druids or shamans, one looping at Rut'theran.
+    // 0 = as before.
+    if (sPlayerbotAIConfig.pathTaxiCancelForm && unit && bot->IsInDisallowedMountForm())
+        bot->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT);
+
     bool goTaxi = bot->ActivateTaxiPathTo({tEntry->from, tEntry->to}, unit, 1);
 
     // twow-repo#575 (PATH-01 b): a refused flight farther than the core's reach from the stored start node is "tooFar".
@@ -466,7 +501,8 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
         float const startDist = TaxiStartDistance(bot, tEntry);
         path_fail::TaxiResult const result = goTaxi ? path_fail::TaxiResult::Ok :
             ((startDist < 0.0f || startDist > path_fail::TaxiStartReach) ? path_fail::TaxiResult::TooFar : path_fail::TaxiResult::Failed);
-        LogTaxiUse(bot, entry, tEntry, needNpc, unit != nullptr, result, startDist);
+        LogTaxiUse(bot, entry, tEntry, needNpc, unit != nullptr, result, startDist,
+            result == path_fail::TaxiResult::Failed ? TaxiRefusalReason(bot, unit, tEntry) : nullptr);
     }
 
     if (!goTaxi)
