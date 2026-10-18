@@ -2211,6 +2211,7 @@ void PlayerbotAI::OnDeath()
                 for (uint64 const guid : addGuids)
                 {
                     Unit* unit = GetUnit(ObjectGuid(guid));
+                    // Intended (OB-10 review): adds = attackers still alive at the death; a mob the bot killed itself did not kill it.
                     if (!unit || !unit->IsAlive())
                         continue;
 
