@@ -1,5 +1,6 @@
 // twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode, owner decision 17.10.2026): who may not grind,
-// which targets and destinations stay, the idle reasons and the bounded [QuestIdle] lines (QuestGrindModePolicy.h).
+// which targets and destinations stay, the idle reasons and the bounded [QuestIdle] lines, and (S2 / S4) where mode 1 grinds
+// in the gaps of the quest search (QuestGrindModePolicy.h).
 // Hand-rolled Require(), std::exit(1) on failure, no gtest, no game library.
 #include "QuestGrindModePolicy.h"
 
@@ -21,17 +22,29 @@ void Require(bool condition, char const* message)
         std::exit(1);
     }
 }
+
+// A copy of MaNGOS::XP::GetGrayLevel (src/game/Formulas.h, no game header here): the grey level the game code passes in.
+std::uint32_t GrayLevel(std::uint32_t level)
+{
+    if (level <= 5)
+        return 0;
+    if (level <= 39)
+        return level - 5 - level / 10;
+    return level - 1 - level / 5;
+}
 }
 
 int main()
 {
     using namespace ai::quest_grind_mode;
 
-    // 1) Modes: only 2 changes anything; 1 is reserved (S2 / S4) and acts like 0; unknown values act like 0.
+    // 1) Modes: 2 = no grind, 1 = the S2 / S4 gap filler (its own rules, never NoGrind); unknown values act like 0.
     {
         Require(ModeToday == 0 && ModeGapFiller == 1 && ModeNoGrind == 2, "mode numbers");
         Require(!NoGrind(0), "mode 0 = today's behaviour");
-        Require(!NoGrind(1), "mode 1 = mode 0 until S4");
+        Require(!NoGrind(1), "mode 1 is no NoGrind mode (it grinds inside the backoff: GapFiller)");
+        Require(GapFiller(1) && !GapFiller(0) && !GapFiller(2), "only mode 1 is the gap filler (twow-repo#601 S2 / S4)");
+        Require(!GapFiller(3) && !GapFiller(0xFFFFFFFFu), "unknown values (also a negative conf value) are no gap filler");
         Require(NoGrind(2), "mode 2 = no grind");
         Require(!NoGrind(3) && !NoGrind(0xFFFFFFFFu), "unknown values (also a negative conf value) act like 0");
     }
@@ -39,7 +52,7 @@ int main()
     // 2) Population: quest-first roster bots on their own below the max level.
     {
         Require(Applies(2, true, false, 30, 60), "quest-first bot on its own below 60");
-        Require(!Applies(0, true, false, 30, 60) && !Applies(1, true, false, 30, 60), "modes 0 and 1 apply to nobody");
+        Require(!Applies(0, true, false, 30, 60) && !Applies(1, true, false, 30, 60), "mode 2 rules apply to nobody under modes 0 and 1");
         Require(!Applies(2, false, false, 30, 60), "not quest-first (not on the roster / Enabled 0): untouched");
         Require(!Applies(2, true, true, 30, 60), "a bot led by a real player: untouched");
         Require(Applies(2, true, false, 59, 60), "level 59 still questing");
@@ -158,6 +171,177 @@ int main()
         counts[std::size_t(Reason::Opportunistic)] = 3;
         counts[std::size_t(Reason::NoTarget)] = 4;
         Require(FormatMinuteLine(counts) == "[QuestIdle] minute fallback=1 money=2 opportunistic=3 no_target=4", "minute line");
+    }
+
+    // 8) twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): the gap filler's population, R1 entry, R2 exit, the window line.
+    {
+        // Population: the same bots as Applies (mode 2), only under mode 1.
+        Require(GapFillerApplies(1, true, false, 30, 60), "mode 1: quest-first bot on its own below 60");
+        Require(!GapFillerApplies(0, true, false, 30, 60) && !GapFillerApplies(2, true, false, 30, 60) &&
+            !GapFillerApplies(3, true, false, 30, 60), "modes 0, 2 and unknown: nobody grinds in the gaps");
+        Require(!GapFillerApplies(1, false, false, 30, 60), "not quest-first: untouched (today's grind)");
+        Require(!GapFillerApplies(1, true, true, 30, 60), "led by a real player: untouched");
+        Require(GapFillerApplies(1, true, false, 59, 60) && !GapFillerApplies(1, true, false, 60, 60), "below the max level only");
+        Require(GapFillerApplies(1, true, false, 60, 0), "max level unknown (0): no level bound");
+        for (std::uint32_t level = 1; level <= 61; ++level)
+            for (int questFirst = 0; questFirst < 2; ++questFirst)
+                for (int realMaster = 0; realMaster < 2; ++realMaster)
+                    Require(GapFillerApplies(1, questFirst != 0, realMaster != 0, level, 60) ==
+                        Applies(2, questFirst != 0, realMaster != 0, level, 60), "the same population as mode 2");
+
+        // R1: a window only while the backoff runs, never as a refresh renewal.
+        Require(GapWindowOpen(true, false), "backoff running: window open");
+        Require(!GapWindowOpen(false, false), "no backoff (quest route found / backoff over / park reset): no grind");
+        Require(!GapWindowOpen(true, true), "a refresh never renews a mode-1 grind trip");
+        Require(!GapWindowOpen(false, true), "no backoff, refresh: no grind");
+
+        // R2: remaining backoff, at most RouteBackoffMaxSeconds (600), + 30 s.
+        Require(GapWindowGraceSeconds == 30, "grace 30 s");
+        Require(GapWindowSeconds(1120, 1000, 600) == 150, "120 s left: 150 s window");
+        Require(GapWindowSeconds(1600, 1000, 600) == 630, "a full 10 min backoff: 630 s");
+        Require(GapWindowSeconds(5000, 1000, 600) == 630, "never more than the longest backoff + 30 s");
+        Require(GapWindowSeconds(1000, 1000, 600) == 30 && GapWindowSeconds(900, 1000, 600) == 30, "backoff over: grace only");
+        Require(GapStatusMs(300000, 0, 1000, 600) == 300000 && GapStatusMs(0, 0, 1000, 600) == 0 && GapStatusMs(1, 0, 1000, 600) == 1,
+            "no window (every other target): the status time stays");
+        Require(GapStatusMs(300000, 1150, 1000, 600) == 150000, "WORK (5 min delay) ends with the window: 150 s");
+        Require(GapStatusMs(3600000, 1630, 1000, 600) == 630000, "READY (1 h) ends with the window: 630 s");
+        Require(GapStatusMs(0, 1100, 1000, 600) == 100000, "an unlimited status time gets the window too");
+        Require(GapStatusMs(300000, 1000, 1000, 600) == 1 && GapStatusMs(300000, 900, 1000, 600) == 1, "window over: expires at once");
+        Require(GapStatusMs(300000, 1000000, 1000, 600) == 630000, "clock stepped back: never longer than the longest window");
+        // Review C-F1 / B-F1: a COOLDOWN of a gap trip never outlives the window (the shorter of the two).
+        Require(GapCooldownMs(60000, 0, 1000, 600) == 60000 && GapCooldownMs(0, 0, 1000, 600) == 0,
+            "no window (every other target): the cooldown stays");
+        Require(GapCooldownMs(60000, 1030, 1000, 600) == 30000, "60 s cooldown, 30 s left: ends with the window");
+        Require(GapCooldownMs(60000, 1300, 1000, 600) == 60000, "60 s cooldown, 300 s left: the cooldown");
+        Require(GapCooldownMs(0, 1100, 1000, 600) == 100000, "an unlimited cooldown gets the window");
+        Require(GapCooldownMs(60000, 1000, 1000, 600) == 1 && GapCooldownMs(60000, 900, 1000, 600) == 1, "window over: at once");
+        Require(GapCooldownMs(3600000, 1000000, 1000, 600) == 630000, "clock stepped back: never longer than the longest window");
+
+        // The window line: level window [max(gray + 1, L - 5), L + 1].
+        Require(GapWindowLowLevel(15, 9) == 10 && GapWindowHighLevel(15) == 16, "L15 (gray 9): 10-16");
+        Require(GapWindowLowLevel(20, 13) == 15 && GapWindowHighLevel(20) == 21, "L20 (gray 13): 15-21");
+        Require(GapWindowLowLevel(60, 47) == 55 && GapWindowHighLevel(60) == 61, "L60 (gray 47): 55-61");
+        Require(GapWindowLowLevel(10, 4) == 5, "L10 (gray 4): 5");
+        Require(GapWindowLowLevel(3, 0) == 1 && GapWindowLowLevel(1, 0) == 1 && GapWindowLowLevel(6, 0) == 1, "low levels: 1, no wrap");
+        Require(FormatGapWindowLine(4711, 15, 120, 10, 16, 1) ==
+            "[QuestSearch] state=grind_window bot=4711 level=15 backoff_s=120 window=10-16 map=1", "grind_window line");
+    }
+
+    // 9) twow-repo#601 S2 commit 2 (OB-10 rev. 2): the level window [max(gray + 1, L - 5), L + 1] (R3 destinations, R4 plain
+    //    targets), own map, the R4 rule, no_dest once per window and the [GrindWindow] minute line.
+    {
+        // Gray edges (GetGrayLevel: L <= 5 -> 0, L <= 39 -> L - 5 - L / 10, else L - 1 - L / 5).
+        Require(GrayLevel(5) == 0 && GrayLevel(6) == 1 && GrayLevel(9) == 4 && GrayLevel(10) == 4 && GrayLevel(39) == 31 &&
+            GrayLevel(40) == 31 && GrayLevel(60) == 47, "reference grey levels");
+        Require(GapWindowLowLevel(1, GrayLevel(1)) == 1 && GapWindowHighLevel(1) == 2, "L1: 1-2");
+        Require(GapWindowLowLevel(5, GrayLevel(5)) == 1 && GapWindowHighLevel(5) == 6, "L5 (no grey yet): 1-6");
+        Require(GapWindowLowLevel(6, GrayLevel(6)) == 2 && GapWindowHighLevel(6) == 7, "L6 (gray 1): gray + 1 = 2 above L - 5 = 1");
+        Require(GapWindowLowLevel(9, GrayLevel(9)) == 5, "L9 (gray 4): gray + 1 = 5 above L - 5 = 4");
+        Require(GapWindowLowLevel(10, GrayLevel(10)) == 5, "L10 (gray 4): gray + 1 = L - 5 = 5");
+        Require(GapWindowLowLevel(18, GrayLevel(18)) == 13 && GapWindowHighLevel(18) == 19, "L18 (gray 12): 13-19");
+        Require(GapWindowLowLevel(24, GrayLevel(24)) == 19 && GapWindowHighLevel(24) == 25, "L24 (gray 17): 19-25");
+        Require(GapWindowLowLevel(30, GrayLevel(30)) == 25, "L30 (gray 22): 25");
+        Require(GapWindowLowLevel(39, GrayLevel(39)) == 34 && GapWindowLowLevel(40, GrayLevel(40)) == 35, "L39 / L40 across the grey formula switch");
+        Require(GapWindowLowLevel(60, GrayLevel(60)) == 55 && GapWindowHighLevel(60) == 61, "L60 (gray 47): 55-61");
+
+        // L1-L60: never grey, never more than 5 below or 1 above, never empty, and L - 5 decides from L10 on.
+        for (std::uint32_t level = 1; level <= 60; ++level)
+        {
+            std::uint32_t const gray = GrayLevel(level);
+            std::uint32_t const low = GapWindowLowLevel(level, gray);
+            std::uint32_t const high = GapWindowHighLevel(level);
+            Require(low > gray, "the window is never grey (low above the grey level)");
+            Require(low >= 1 && low <= level && high == level + 1, "low in 1..L, high L + 1");
+            Require(level <= 5 || low >= level - 5, "never more than 5 levels below");
+            Require(level < 10 || low == level - 5, "from L10 on the low end is L - 5");
+            Require(level < 6 || level > 9 || low == gray + 1, "L6-9: the low end is gray + 1");
+            Require(InGapWindow(low, high, low) && InGapWindow(low, high, high) && InGapWindow(low, high, level),
+                "both ends and the bot level are inside");
+            Require(!InGapWindow(low, high, high + 1), "L + 2 is outside");
+            Require(!InGapWindow(low, high, gray) && (low == 1 || !InGapWindow(low, high, low - 1)), "grey / below the low end is outside");
+        }
+        Require(!InGapWindow(0, 0, 0) && !InGapWindow(0, 0, 10), "no window (not the population): nothing is inside (fails closed)");
+        Require(!InGapWindow(15, 21, 0), "an unknown area level (0) is outside");
+        Require(!InGapWindow(15, 21, 0xFFFFFFFEu), "an unknown area (-2 as uint32) is outside");
+
+        // Area gate death term (OB-10 review #552): high - deaths, never below low; no window stays closed.
+        Require(GapAreaHighLevel(15, 21, 0) == 21, "no death: the whole window");
+        Require(GapAreaHighLevel(15, 21, 2) == 19, "two deaths: two levels off the upper end");
+        Require(GapAreaHighLevel(15, 21, 6) == 15 && GapAreaHighLevel(15, 21, 7) == 15, "never below the low end");
+        Require(GapAreaHighLevel(15, 21, 21) == 15 && GapAreaHighLevel(15, 21, 255) == 15, "many deaths: the low end, no wrap");
+        Require(GapAreaHighLevel(1, 2, 5) == 1, "L1: the low end");
+        Require(GapAreaHighLevel(0, 0, 0) == 0 && GapAreaHighLevel(15, 0, 3) == 0, "no window: 0 (fails closed)");
+        Require(InGapWindow(15, GapAreaHighLevel(15, 21, 2), 19) && !InGapWindow(15, GapAreaHighLevel(15, 21, 2), 20),
+            "two deaths: area level 19 inside, 20 outside");
+
+        // Own map (precedent #414).
+        Require(GapGrindStaysOnMap(false, true, 0, 1), "not the gap filler: other maps as before");
+        Require(GapGrindStaysOnMap(true, false, 0, 1), "no grind destination: other maps as before");
+        Require(GapGrindStaysOnMap(true, true, 1, 1), "a grind destination on the own map stays");
+        Require(!GapGrindStaysOnMap(true, true, 0, 1), "a gap grind destination on another map is skipped");
+
+        // R4: only the plain grind source of the population, levels outside the window.
+        Require(!GapTargetSkipped(false, false, false, 15, 21, 5), "not the gap filler: a grey candidate as before");
+        Require(GapTargetSkipped(true, false, false, 15, 21, 14), "plain, one below the window: skipped");
+        Require(GapTargetSkipped(true, false, false, 15, 21, 22), "plain, L + 2: skipped");
+        Require(!GapTargetSkipped(true, false, false, 15, 21, 15) && !GapTargetSkipped(true, false, false, 15, 21, 21),
+            "plain, at the window ends: kept");
+        Require(!GapTargetSkipped(true, true, false, 15, 21, 5), "a quest mob stays, a grey one too");
+        Require(!GapTargetSkipped(true, false, true, 15, 21, 5), "a creature on the bot stays (self-defence)");
+        Require(GapTargetSkipped(true, false, false, 0, 0, 20), "no window although the gap filler: skipped (fails closed)");
+
+        // no_dest: once per window (backoff), never after its trip started, never outside a window.
+        Require(GapNoDestDue(true, 1600, 0, 0), "first empty fetch of a window counts");
+        Require(!GapNoDestDue(true, 1600, 0, 1600), "the same window again: no second count");
+        Require(!GapNoDestDue(true, 1600, 1600, 0), "a trip of this window started: no count");
+        Require(GapNoDestDue(true, 2200, 1600, 1600), "the next backoff is a new window");
+        Require(!GapNoDestDue(false, 1600, 0, 0), "no backoff running: no window, no count");
+
+        // [GrindWindow] minute line, omitted when every count is 0.
+        std::array<std::uint32_t, WindowEventCount> counts = {};
+        Require(FormatWindowMinuteLine(counts).empty(), "all 0: no line");
+        counts[std::size_t(WindowEvent::R4Skips)] = 1;
+        Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=0 expired=0 engaged=0 grey_engaged=0 no_dest=0 r4_skips=1 r4_empty=0",
+            "one count: a line");
+        {
+            std::array<std::uint32_t, WindowEventCount> onlyEmpty = {};
+            onlyEmpty[std::size_t(WindowEvent::R4Empty)] = 1;
+            Require(FormatWindowMinuteLine(onlyEmpty) == "[GrindWindow] minute starts=0 expired=0 engaged=0 grey_engaged=0 no_dest=0 r4_skips=0 r4_empty=1",
+                "r4_empty= alone: a line (part of the all-zero omission test)");
+        }
+        counts[std::size_t(WindowEvent::Starts)] = 2;
+        counts[std::size_t(WindowEvent::Expired)] = 3;
+        counts[std::size_t(WindowEvent::Engaged)] = 4;
+        counts[std::size_t(WindowEvent::GreyEngaged)] = 5;
+        counts[std::size_t(WindowEvent::NoDest)] = 6;
+        counts[std::size_t(WindowEvent::R4Empty)] = 7;
+        Require(FormatWindowMinuteLine(counts) == "[GrindWindow] minute starts=2 expired=3 engaged=4 grey_engaged=5 no_dest=6 r4_skips=1 r4_empty=7",
+            "minute line format");
+        Require(WindowEventCount == 7 && std::size_t(WindowEvent::R4Skips) == 5 && std::size_t(WindowEvent::R4Empty) == WindowEventCount - 1,
+            "every event has a counter slot");
+
+        // r4_empty=: a pass counts once when R4 skipped a candidate and no target came out.
+        Require(GapR4EmptyPass(1, false), "skipped and no target: counted");
+        Require(GapR4EmptyPass(5, false), "several skips, one pass: counted (once at the call site)");
+        Require(!GapR4EmptyPass(3, true), "skipped but a target found: not counted");
+        Require(!GapR4EmptyPass(0, false), "nothing skipped (no target for another reason): not counted");
+        Require(!GapR4EmptyPass(0, true), "nothing skipped, target found: not counted");
+    }
+
+    // 10) Review fixes: the gap trip's condition is R1, never the money condition (B-F3, recheck: the money and the plain
+    // trigger share one basket, so the money event is not refused but replaced), no group grind copy (C-F3 / B-F2).
+    {
+        Require(GapTripCondition(true, "should get money", 4096) == "need travel purpose::4096",
+            "a gap trip queued by the money trigger keeps R1 as its condition");
+        Require(!IsMoneyCondition(GapTripCondition(true, "should get money", 4096)), "never the money condition for a gap trip");
+        Require(GapTripCondition(true, "need travel purpose::4096", 4096) == "need travel purpose::4096", "the plain R1 request: R1");
+        Require(GapTripCondition(false, "should get money", 4096) == "should get money", "not the gap filler: the event source");
+        Require(GapTripCondition(false, "need travel purpose::4096", 4096) == "need travel purpose::4096", "not the gap filler: as before");
+        Require(GapTripCondition(false, "", 4096).empty(), "not the gap filler: an empty source stays empty");
+        Require(!GapGroupCopyAllowed(true, true, false), "a member's grind trip is no copy for the population");
+        Require(GapGroupCopyAllowed(true, true, true), "a member's grind destination this bot needs for a quest stays");
+        Require(GapGroupCopyAllowed(true, false, false), "a member's other trip (quest, vendor, ...) stays");
+        Require(GapGroupCopyAllowed(false, true, false), "not the gap filler: every copy as before");
     }
 
     std::cout << "quest_grind_mode_policy_tests passed\n";

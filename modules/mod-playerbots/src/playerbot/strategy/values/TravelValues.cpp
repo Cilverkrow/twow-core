@@ -458,6 +458,16 @@ bool NeedTravelPurposeValue::Calculate()
                     return false;
             }
 
+            // twow-repo#601 S2 / S4 R1 (GrindMode 1, OB-10 rev. 2): the gap filler grinds only while the quest route backoff
+            // runs (the last quest search found nothing, any S1 class - a transient one too, OP4) and S1's turn-in yield
+            // above did not hold; never as a refresh renewal. It returns before the S0 GrindFallbackMinutes, the
+            // FreshGrindFailures and the 8.32 GrindFallbackFailures lines below, so S0 stays GrindMode 0 (never both).
+            // GrindMode 0 / 2: IsQuestGapGrind() is false, everything below as before.
+            if (ai->IsQuestGapGrind())
+                return ai::quest_grind_mode::GapWindowOpen(
+                    uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"))),
+                    AI_VALUE2(bool, "manual bool", "is travel refresh"));
+
             // Hotfix 8.32 (twow-repo#544): after repeated empty quest route searches a quest-first
             // bot grinds instead of idling ("no destination").
             uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures")));
