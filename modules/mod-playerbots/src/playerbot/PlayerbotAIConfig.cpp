@@ -6,6 +6,7 @@
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
 #include "playerbot/ShortcutPolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -671,6 +672,11 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionAbandonStructuralParked = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.AbandonStructuralParked", false);
     questFirstProgressionTransientCountsAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TransientCountsAfter", 0)));
     questFirstProgressionGrindMode = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindMode", 0);
+    // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
+    questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
+    questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
+    questFeasibilityBlocklistWhileNoCustomStarts = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts", ""));
+    questFeasibilitySoloSkipGroupQuests = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests", false);
     directTargetsEnabled = config.GetBoolDefault("AiPlayerbot.DirectTargets.Enable", false);
     directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
     directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));

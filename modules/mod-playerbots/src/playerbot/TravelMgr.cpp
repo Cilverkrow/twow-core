@@ -7,6 +7,7 @@
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
 #include <algorithm>
 #include <vector>
 #include <iomanip>
@@ -182,6 +183,10 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
         // structural parks - it would be taken, parked and abandoned again every hour.
         if (sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked && !ai->HasRealPlayerMaster() &&
             AI_VALUE(TravelTarget*, "travel target")->IsStructurallyAbandoned(GetQuestId()))
+            return false;
+
+        // twow-repo#601 S3a (QuestFeasibility.Enable): no trip to a listed quest's giver; never the taker (OB-10 rev. 2).
+        if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(GetQuestTemplate(), ai::quest_feasibility::Path::Giver))
             return false;
 
         if (!bot->GetMap()->IsContinent())

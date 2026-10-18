@@ -3,6 +3,8 @@
 #include "DropQuestAction.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestAcceptPolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "Formulas.h"
@@ -73,6 +75,32 @@ static void DropGreyQuestsOnItsOwn(PlayerbotAI* ai, Player* bot)
     }
 }
 
+// twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable, OB-10 rev. 2): a roster bot on its own drops the open quests it
+// cannot finish - listed ones and, with SoloSkipGroupQuests while not in a group, group quests - whatever the log size.
+// A complete one stays (a reachable taker still rewards it); class quests stay (scope and exemption in
+// PlayerbotAI::QuestFeasibilityReason). At most one pass over the quest log per cleanup.
+static void DropInfeasibleOnItsOwn(PlayerbotAI* ai, Player* bot)
+{
+    if (!sPlayerbotAIConfig.questFeasibilityEnable)
+        return;
+
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        Quest const* quest = questId ? sObjectMgr.GetQuestTemplate(questId) : nullptr;
+        if (!quest)
+            continue;
+
+        char const* reason = ai::quest_feasibility::DropReasonName(ai->QuestFeasibilityReason(quest),
+            bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE);
+        if (!reason)
+            continue;
+
+        ai->DropQuest(questId, reason);
+        PlayerbotAI::NoteQuestFeasibilityDrop();
+    }
+}
+
 bool CleanQuestLogAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
@@ -81,6 +109,7 @@ bool CleanQuestLogAction::Execute(Event& event)
         return false;
 
     DropGreyQuestsOnItsOwn(ai, bot);
+    DropInfeasibleOnItsOwn(ai, bot);   // twow-repo#601 S3a (QuestFeasibility.Enable; off = no change)
     IdleRotateOnItsOwn();
 
     uint8 totalQuests = 0;

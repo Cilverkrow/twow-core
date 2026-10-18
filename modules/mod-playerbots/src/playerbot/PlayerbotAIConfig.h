@@ -808,6 +808,12 @@ public:
     // filler, acts like 0 until then; 2 = no grind as a substitute activity for quest-first roster bots on their own
     // below the max level, they stand idle and log [QuestIdle] (QuestGrindModePolicy.h). Other values act like 0.
     uint32 questFirstProgressionGrindMode = 0;
+    // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
+    // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
+    bool questFeasibilityEnable = false;
+    std::set<uint32> questFeasibilityBlocklist;
+    std::set<uint32> questFeasibilityBlocklistWhileNoCustomStarts;  // only while customRaceStartZones = false
+    bool questFeasibilitySoloSkipGroupQuests = false;  // Type 1 / 81 / 62 or SuggestedPlayers >= 2, bot not in a group
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
     bool directTargetsEnabled = false;
     bool directTargetsTraceInactive = false;

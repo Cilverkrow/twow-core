@@ -3,6 +3,7 @@
 #include "AcceptQuestAction.h"
 #include "ShareQuestAction.h"
 #include "playerbot/QuestAcceptPolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelMgr.h"
@@ -25,6 +26,11 @@ static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* bot, Quest const* que
 {
     // twow-repo#601 S1 recheck: the abandon mark first (AbandonStructuralParked; off = no change).
     if (SkipAbandonedQuest(ai, quest))
+        return true;
+
+    // twow-repo#601 S3a (QuestFeasibility.Enable; off = no change): a roster bot on its own does not take a listed quest
+    // or, with SoloSkipGroupQuests and no group, a group quest - accept all, accept packet and the details dialog (A/B/C).
+    if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(quest, ai::quest_feasibility::Path::Accept))
         return true;
 
     bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
