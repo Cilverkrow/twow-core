@@ -58,6 +58,7 @@
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
+#include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
 #if defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -1322,6 +1323,21 @@ void ReportRotCast()
     tracing = true;
 }
 
+// twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder): [EmergencyLadderTotal] once per hour per cohort and class
+// (EmergencyLadderTrace.cpp). World thread only. The first call after the switch went on clears and starts a window.
+void ReportEmergencyLadder()
+{
+    static bool tracing = false;
+    if (!sPlayerbotAIConfig.rotationEmergencyLadder)
+    {
+        tracing = false;
+        return;   // off: not even the clock is read
+    }
+
+    ai::emergency_ladder_rt::Report(!tracing, uint32(time(nullptr)));
+    tracing = true;
+}
+
 // twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable): one "[QuestFeasibility] minute skips= drops= giver_inactive="
 // line per minute - accept / item skips, infeasible drops and inactive giver relations counted on the map threads since
 // the last line (atomics in PlayerbotAI.cpp). World thread only, same pattern as ReportQuestIdle; the first line comes
@@ -1584,6 +1600,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
     ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
     ReportRotCast();      // twow-repo#602 ROT-01 D0: [RotCast] once per minute (AiPlayerbot.Rotation.CastTrace)
+    ReportEmergencyLadder(); // twow-repo#602 ROT-01 X3: [EmergencyLadderTotal] once per hour (AiPlayerbot.Rotation.EmergencyLadder)
     ReportQuestFeasibility(); // twow-repo#601 S3a: [QuestFeasibility] minute once per minute (AiPlayerbot.QuestFeasibility.Enable)
     ReportPathUnitlessBot(); // twow-repo#592 (PATH-02): [PathUnitlessBot] at most once per minute, only with rare counts
 
