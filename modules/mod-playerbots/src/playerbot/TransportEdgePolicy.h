@@ -64,9 +64,9 @@ struct Key
     bool valid = false;
     std::uint32_t ride = 0;     // first non-zero entry in the NODE_TRANSPORT run (the ride leg's GO entry), 0 = none
     std::uint32_t hop = 0;      // entry of the point handed to UseTransport (0 for an unfilled dock hop)
-    std::int32_t dirFrom = -1;  // stop index (0-based, delay>0 stops in TaxiPath order) of the from / to point, -1 = unknown
+    std::int32_t dirFrom = -1;  // stop index (0-based, merged stops in TaxiPath order) of the from / to point, -1 = unknown
     std::int32_t dirTo = -1;
-    std::uint32_t stops = 0;    // delay>0 stops of the TaxiPath, 0 = no TaxiPath (elevator, tram, unknown entry)
+    std::uint32_t stops = 0;    // stops of the TaxiPath after merging, 0 = no TaxiPath (elevator, tram, unknown entry)
     std::uint32_t fromMap = 0;  // the handed point (where the bot boards)
     float fromX = 0.0f;
     float fromY = 0.0f;
@@ -77,17 +77,66 @@ struct Key
     bool minimal = false;       // seen from MinimalMove (background bot)
 };
 
+// A stop of the vessel after the CLI-PATH stop rule (18.10.2026): two delay>0 nodes directly in a row (adjacent in point
+// order) or the last and the first stop of the loop, on the same map within SameStopYards, are one stop (delays added,
+// 177233: 30 + 30 = 60 s). Same-place stops far apart in point order (a real return) stay separate. arriveNode /
+// departNode are the TaxiPath node indices where the vessel arrives at / leaves the stop.
+constexpr float SameStopYards = 5.0f;
+
+struct Stop
+{
+    PathNode pos;
+    std::size_t arriveNode = 0;
+    std::size_t departNode = 0;
+};
+
+inline bool SamePlace(PathNode const& a, PathNode const& b)
+{
+    float const dx = a.x - b.x, dy = a.y - b.y;
+    return a.map == b.map && dx * dx + dy * dy <= SameStopYards * SameStopYards;
+}
+
+// The stops of a TaxiPath in point order, A = the first delay>0 stop.
+inline std::vector<Stop> StopsOf(std::vector<PathNode> const& nodes)
+{
+    std::vector<Stop> stops;
+    std::size_t const n = nodes.size() < MaxTaxiNodes ? nodes.size() : MaxTaxiNodes;
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        if (!nodes[i].delay)
+            continue;
+        if (!stops.empty() && stops.back().departNode + 1 == i && SamePlace(stops.back().pos, nodes[i]))
+        {
+            stops.back().departNode = i;   // directly in a row: one stop
+            stops.back().pos.delay += nodes[i].delay;
+            continue;
+        }
+        Stop stop;
+        stop.pos = nodes[i];
+        stop.arriveNode = i;
+        stop.departNode = i;
+        stops.push_back(stop);
+    }
+    if (stops.size() > 1 && SamePlace(stops.back().pos, stops.front().pos))
+    {
+        stops.front().arriveNode = stops.back().arriveNode;   // last and first of the loop: one stop
+        stops.front().pos.delay += stops.back().pos.delay;
+        stops.pop_back();
+    }
+    return stops;
+}
+
 // Index of the stop nearest to (map, x, y); -1 when no stop of that map is within MaxStopMatchYards or the second-nearest
 // is not clearly farther (AmbiguousMarginYards).
-inline std::int32_t NearestStop(std::vector<PathNode> const& stops, std::uint32_t map, float x, float y)
+inline std::int32_t NearestStop(std::vector<Stop> const& stops, std::uint32_t map, float x, float y)
 {
     std::int32_t best = -1;
     float bestD = 0.0f, secondD = -1.0f;
     for (std::size_t i = 0; i < stops.size(); ++i)
     {
-        if (stops[i].map != map)
+        if (stops[i].pos.map != map)
             continue;
-        float const dx = stops[i].x - x, dy = stops[i].y - y;
+        float const dx = stops[i].pos.x - x, dy = stops[i].pos.y - y;
         float const d = std::sqrt(dx * dx + dy * dy);
         if (best < 0 || d < bestD)
         {
@@ -106,34 +155,21 @@ inline std::int32_t NearestStop(std::vector<PathNode> const& stops, std::uint32_
     return best;
 }
 
-// The delay>0 stops of a TaxiPath, in point order, each with the index of its node.
-inline std::vector<PathNode> StopsOf(std::vector<PathNode> const& nodes, std::vector<std::size_t>* nodeIndex = nullptr)
-{
-    std::vector<PathNode> stops;
-    for (std::size_t i = 0; i < nodes.size() && i < MaxTaxiNodes; ++i)
-        if (nodes[i].delay > 0)
-        {
-            stops.push_back(nodes[i]);
-            if (nodeIndex)
-                nodeIndex->push_back(i);
-        }
-    return stops;
-}
-
 // The transport branch of TravelNodePath::getCost is extraCost * modifier (modifier 1 for transport links); the generator
 // sets a ship leg's extraCost to its TaxiPath length / moTransport.moveSpeed (setPathAndCost). The trace cannot read the A*
-// link without a node lookup, so it reports this formula value for the leg stop i -> stop j (path order, wrapping),
+// link without a node lookup, so it reports this formula value for the leg stop i (departure node) -> stop j (arrival
+// node) in path order, wrapping,
 // same-map segments only. The shipped graph may store another value (0.003333 on 14 legs, i342 map V3); the parser
 // joins the stored one from the SQL. -1 = unknown.
-inline float RideCost(std::vector<PathNode> const& nodes, std::vector<std::size_t> const& stopNode, std::int32_t from,
-    std::int32_t to, float moveSpeed)
+inline float RideCost(std::vector<PathNode> const& nodes, std::vector<Stop> const& stops, std::int32_t from, std::int32_t to,
+    float moveSpeed)
 {
-    if (from < 0 || to < 0 || from == to || moveSpeed <= 0.0f || std::size_t(from) >= stopNode.size() ||
-        std::size_t(to) >= stopNode.size() || nodes.empty())
+    if (from < 0 || to < 0 || from == to || moveSpeed <= 0.0f || std::size_t(from) >= stops.size() ||
+        std::size_t(to) >= stops.size() || nodes.empty())
         return -1.0f;
     std::size_t const n = nodes.size() < MaxTaxiNodes ? nodes.size() : MaxTaxiNodes;
-    std::size_t i = stopNode[std::size_t(from)];
-    std::size_t const end = stopNode[std::size_t(to)];
+    std::size_t i = stops[std::size_t(from)].departNode;
+    std::size_t const end = stops[std::size_t(to)].arriveNode;
     float length = 0.0f;
     for (std::size_t steps = 0; i != end && steps < n; ++steps)
     {
@@ -151,22 +187,22 @@ inline float RideCost(std::vector<PathNode> const& nodes, std::vector<std::size_
 // Direction and cost of a key from the vessel's TaxiPath nodes (empty = no TaxiPath).
 inline void Derive(Key& key, std::vector<PathNode> const& nodes, float moveSpeed)
 {
-    std::vector<std::size_t> stopNode;
-    std::vector<PathNode> const stops = StopsOf(nodes, &stopNode);
+    std::vector<Stop> const stops = StopsOf(nodes);
     key.stops = std::uint32_t(stops.size());
     key.dirFrom = NearestStop(stops, key.fromMap, key.fromX, key.fromY);
     key.dirTo = NearestStop(stops, key.toMap, key.toX, key.toY);
-    key.cost = RideCost(nodes, stopNode, key.dirFrom, key.dirTo, moveSpeed);
+    key.cost = RideCost(nodes, stops, key.dirFrom, key.dirTo, moveSpeed);
 }
 
-// "AB" / "BA" for a two-stop path (A = first delay>0 stop), "<i>-<j>" for more stops, "-" without a path or a clear match.
+// "AB" / "BA" for a two-stop path (A = first delay>0 stop), "<i>-<j>" for more stops (stop ordinals from 1 after merging,
+// CLI-PATH stop rule), "-" without a path or a clear match.
 inline std::string DirName(Key const& key)
 {
     if (key.stops < 2 || key.dirFrom < 0 || key.dirTo < 0 || key.dirFrom == key.dirTo)
         return "-";
     if (key.stops == 2)
         return key.dirFrom == 0 ? "AB" : "BA";
-    return std::to_string(key.dirFrom) + "-" + std::to_string(key.dirTo);
+    return std::to_string(key.dirFrom + 1) + "-" + std::to_string(key.dirTo + 1);
 }
 
 // go:<entry>:<dir> (the P3-d rev3 / #603 id), "-" without a ride entry.

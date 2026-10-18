@@ -128,6 +128,12 @@ foreach(reason board_point wait_timeout route_changed fell_off stall_abandon ove
 endforeach()
 require_text("${policy}" "return key.dirFrom == 0 ? \"AB\" : \"BA\";" "AB / BA for two stops")
 require_text("${policy}" "return \"go:\" + std::to_string(key.ride) + \":\" + DirName(key);" "go:<entry>:<dir> edge id")
+# CLI-PATH stop rule (18.10.2026): cyclic neighbours / stops directly in a row on one map within 5 yd merge; ordinals from 1.
+require_text("${policy}" "constexpr float SameStopYards = 5.0f;" "same-stop radius 5 yd")
+require_text("${policy}" "if (!stops.empty() && stops.back().departNode + 1 == i && SamePlace(stops.back().pos, nodes[i]))" "stops directly in a row merge")
+require_text("${policy}" "if (stops.size() > 1 && SamePlace(stops.back().pos, stops.front().pos))" "last and first stop of the loop merge")
+require_text("${policy}" "return a.map == b.map && dx * dx + dy * dy <= SameStopYards * SameStopYards;" "merge only on the same map")
+require_text("${policy}" "return std::to_string(key.dirFrom + 1) + \"-\" + std::to_string(key.dirTo + 1);" "i-j ordinals from 1")
 require_text("${policy}" "        if (logged.fetch_add(1, std::memory_order_relaxed) < LinesPerMinute)\n            return true;\n        logged.fetch_sub(1, std::memory_order_relaxed);\n        dropped.fetch_add(1, std::memory_order_relaxed);\n        return false;" "capped Take counts drops")
 require_text("${policy}" "if (seen == now || !minute.compare_exchange_strong(seen, now, std::memory_order_relaxed))" "minute roll by CAS")
 # wait_timeout and overrun once per episode.

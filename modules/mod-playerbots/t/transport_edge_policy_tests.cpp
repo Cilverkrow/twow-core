@@ -89,11 +89,48 @@ int main()
         };
         Key k = K(5, 0, 1002.0f, 3.0f, 0, 1998.0f, -2.0f);
         Derive(k, tri, 10.0f);
-        Require(k.stops == 3 && DirName(k) == "1-2" && EdgeName(k) == "go:5:1-2", "3 stops: i-j");
+        Require(k.stops == 3 && DirName(k) == "2-3" && EdgeName(k) == "go:5:2-3", "3 stops: i-j, ordinals from 1");
         Require(std::fabs(k.cost - 100.0f) < 0.01f, "3 stops: cost of the leg only");
         Key back = K(5, 0, 2000.0f, 0.0f, 0, 0.0f, 0.0f);
         Derive(back, tri, 10.0f);
-        Require(DirName(back) == "2-0", "3 stops: backwards leg");
+        Require(DirName(back) == "3-1", "3 stops: backwards leg");
+    }
+
+    // CLI-PATH stop rule: cyclic neighbours (last + first of the loop) and stops directly in a row merge; a real return stays.
+    {
+        // 177233 shape: A at node 0, B in the middle, A again as the last node -> 2 stops, AB / BA.
+        std::vector<PathNode> const loop = {
+            N(1, 0.0f, 0.0f, 30), N(1, 300.0f, 0.0f), N(1, 600.0f, 0.0f, 30), N(1, 300.0f, 100.0f), N(1, 2.0f, 1.0f, 30),
+        };
+        std::vector<Stop> const ls = StopsOf(loop);
+        Require(ls.size() == 2 && ls[0].pos.delay == 60 && ls[0].arriveNode == 4 && ls[0].departNode == 0, "loop end + start: one stop, delays added");
+        Key ab = K(177233, 1, 3.0f, 2.0f, 1, 598.0f, 1.0f);
+        Derive(ab, loop, 10.0f);
+        Require(EdgeName(ab) == "go:177233:AB", "merged loop stop: AB");
+        Require(std::fabs(ab.cost - 60.0f) < 0.01f, "AB cost from the departure node of the merged stop");
+        Key ba = K(177233, 1, 598.0f, 1.0f, 1, 3.0f, 2.0f);
+        Derive(ba, loop, 10.0f);
+        float const baLen = std::sqrt(300.0f * 300.0f + 100.0f * 100.0f) + std::sqrt(298.0f * 298.0f + 99.0f * 99.0f);
+        Require(EdgeName(ba) == "go:177233:BA" && std::fabs(ba.cost - baLen / 10.0f) < 0.01f, "BA ends at the arrival node of the merged stop");
+
+        // Two delay>0 nodes directly in a row at one place: one stop.
+        std::vector<PathNode> const row = { N(0, 0.0f, 0.0f, 10), N(0, 1.0f, 0.0f, 20), N(0, 500.0f, 0.0f), N(0, 1000.0f, 0.0f, 10) };
+        std::vector<Stop> const rs = StopsOf(row);
+        Require(rs.size() == 2 && rs[0].pos.delay == 30 && rs[0].arriveNode == 0 && rs[0].departNode == 1, "in a row: one stop");
+
+        // A real return: the same place again far apart in point order stays its own stop.
+        std::vector<PathNode> const ret = {
+            N(0, 0.0f, 0.0f, 10), N(0, 500.0f, 0.0f), N(0, 1000.0f, 0.0f, 10), N(0, 500.0f, 10.0f), N(0, 0.0f, 1.0f, 10),
+            N(0, 1000.0f, 1000.0f), N(0, 2000.0f, 0.0f, 10),
+        };
+        Require(StopsOf(ret).size() == 4, "real return: separate stops");
+        Key amb = K(9, 0, 1.0f, 1.0f, 0, 2000.0f, 0.0f);
+        Derive(amb, ret, 10.0f);
+        Require(DirName(amb) == "-", "real return at the same place: from point equally near two stops, no guessing");
+
+        // Same place on another map does not merge.
+        std::vector<PathNode> const maps = { N(0, 0.0f, 0.0f, 10), N(0, 900.0f, 0.0f, 10), N(1, 0.0f, 0.0f, 10) };
+        Require(StopsOf(maps).size() == 3, "same xy on another map: separate stops");
     }
 
     // No path (elevator / tram / unknown entry), no ride, unclear matches.
