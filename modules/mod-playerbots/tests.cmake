@@ -3364,6 +3364,26 @@ add_test(NAME spec_path_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/spec_path_source_contract_tests.cmake")
 
+# twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate, cohort mode, default 0): rest before the next pull for solo free bots - no pull
+# and no travel while a rest episode runs, eat / drink up to 90 / 85 % at the auras' 2 %/s (OB-00 go 18.10.2026, E1-E6; OB-10 conditions).
+add_executable(rest_gate_policy_tests
+  "${PB_MODULE_DIR}/t/rest_gate_policy_tests.cpp")
+
+target_include_directories(rest_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rest_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rest_gate_policy
+  COMMAND rest_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rest_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rest_gate_source_contract_tests.cmake")
+
 # twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder, cohort mode, default 0): fight on / class escape / flee for solo free bots
 # below critical health, solo CC on an add; FightTargetHp and SoloCcSpells configurable (OB-00 18.10.2026).
 add_executable(emergency_ladder_policy_tests

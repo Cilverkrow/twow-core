@@ -2592,6 +2592,27 @@ AiPlayerbot.Rotation.EmergencyLadder = 0
 AiPlayerbot.Rotation.EmergencyLadder.FightTargetHp = 20
 # twow-repo#602 X3 (F3): spells for solo CC on an add, comma separated, lower case spell names (default polymorph,banish,fear).
 AiPlayerbot.Rotation.EmergencyLadder.SoloCcSpells = polymorph,banish,fear
+# twow-repo#602 ROT-01 X1 (BEHAVIOUR CHANGE, enable only after the OB-30 A/B + owner go): rest before the next pull for SOLO FREE BOTS (no
+# group, no real player or real master, not in a battleground). Today a solo bot pulls at any HP: food only starts in [20,50) % HP, stops
+# after about 54 % of the gap, and nothing at all happens below 20 % for warriors and rogues. With the switch a REST EPISODE starts out of
+# combat below StartHp (or below StartMana with a mana pool) and runs until TargetHp and TargetMana: no new pull and no travel / rpg
+# movement meanwhile ("can move around"), food / drink without the 20 % floor, and the food / drink wait at the 2 %/s the auras restore
+# (capped at the 25 s / 30 s aura). It ends on combat or after MaxRestSeconds (then no new episode for a minute). A turn-in's stall
+# observation counts the rest as a pause. Rest after a revive (50 % HP) follows from StartHp.
+# Lines (bots.log): "[RestGate] bot= name= cls= level= cohort= applied=0|1 start_hp= start_mana= end_hp= end_mana= dur_ms=
+# reason=done|combat|timeout minimal=" per finished episode (the cohort the switch does not apply to logs the same episodes with
+# applied=0 and does not rest; 300 lines a minute over all bots), and once an hour per cohort and class "[RestGateTotal] window_min=60
+# cohort= cls= episodes= done= combat= timeout= rest_s= cast_fail= dropped=". The trigger nodes are added when the strategies are built:
+# switching between 0 and 1/2 needs a strategy reset or restart.
+# 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
+AiPlayerbot.Rotation.RestGate = 0
+# twow-repo#602 X1 (E2/E4): a rest episode starts below StartHp % HP or (mana pool) below StartMana % mana, and ends at TargetHp % HP and
+# TargetMana % mana or after MaxRestSeconds. Values above 100 (or 0 / above 3600 seconds) fall back to the defaults.
+AiPlayerbot.Rotation.RestGate.StartHp = 70
+AiPlayerbot.Rotation.RestGate.StartMana = 40
+AiPlayerbot.Rotation.RestGate.TargetHp = 90
+AiPlayerbot.Rotation.RestGate.TargetMana = 85
+AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,

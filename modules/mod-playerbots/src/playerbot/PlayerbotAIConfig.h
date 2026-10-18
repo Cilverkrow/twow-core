@@ -629,6 +629,12 @@ public:
     uint32 rotationEmergencyLadder = 0;  // twow-repo#602 ROT-01 X3: emergency ladder for solo free bots below critical health, cohort mode 0 off / 1 all / 2 cohort B
     uint32 rotationEmergencyLadderFightTargetHp = 20;  // twow-repo#602 X3 (F2): fight on instead of fleeing when the single target is at or below this HP %
     std::vector<std::string> rotationEmergencyLadderSoloCcSpells;  // twow-repo#602 X3 (F3): spells allowed for solo CC on an add (lower case)
+    uint32 rotationRestGate = 0;  // twow-repo#602 ROT-01 X1: rest before the next pull for solo free bots, cohort mode 0 off / 1 all / 2 cohort B
+    uint32 rotationRestGateStartHp = 70;  // twow-repo#602 X1 (E2/E4): a rest episode starts below this HP % ...
+    uint32 rotationRestGateStartMana = 40;  // ... or below this mana % (mana pool only)
+    uint32 rotationRestGateTargetHp = 90;  // ... and ends at or above this HP %
+    uint32 rotationRestGateTargetMana = 85;  // ... and this mana %
+    uint32 rotationRestGateMaxRestSeconds = 120;  // ... or after this many seconds (then no new episode for a minute)
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
     bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
     bool perfPartyBuffKnownSpellGate = false;  // twow-repo#541 (audit A22): five party buff/cure triggers skip their party scan while the bot knows no rank of the action's spell (0 = off)

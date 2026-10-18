@@ -36,6 +36,7 @@
 #include "strategy/actions/SayAction.h"
 #include "strategy/actions/EmoteAction.h"
 #include "strategy/values/LastSpellCastValue.h"
+#include "strategy/values/RestGateValue.h"   // twow-repo#602 ROT-01 X1
 #include "LootObjectStack.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "PlayerbotAI.h"
@@ -2071,6 +2072,10 @@ void PlayerbotAI::OnCombatStarted()
 {
     if(!IsStateActive(BotState::BOT_STATE_COMBAT))
     {
+        // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): an open rest episode ends on the combat start (switch first).
+        if (sPlayerbotAIConfig.rotationRestGate)
+            RestGateValue::OnCombatStarted(this);
+
         // Reset the combat start timestamp
         aiObjectContext->GetValue<time_t>("combat start time")->Set(time(0));
 
@@ -2260,6 +2265,9 @@ void PlayerbotAI::OnDeath()
         SET_AI_VALUE(time_t, "combat start time", 0);
         SET_AI_VALUE2(bool, "manual bool", "enemies near corpse", false);
         SET_AI_VALUE2(bool, "manual bool", "enemies near graveyard", false);
+        // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): an open rest episode ends on the death (switch first).
+        if (sPlayerbotAIConfig.rotationRestGate)
+            RestGateValue::OnDeath(this);
         ChangeEngine(BotState::BOT_STATE_DEAD);
     }
 }

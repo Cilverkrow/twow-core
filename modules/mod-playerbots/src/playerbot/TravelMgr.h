@@ -433,6 +433,9 @@ namespace ai
         bool IsStructurallyAbandoned(uint32 questId) const { return turnin_park::IsAbandonMarked(abandonedTurnIns, questId); }
         // The move retries ran out; the target goes into cooldown.
         void OnMoveRetryCooldown();
+        // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): an applied rest episode of this bot ended after durMs - the next turn-in
+        // observation is a pause, and a running WORK / TRAVEL status clock gets the rest time back (OB-10 condition 1).
+        void OnRestEnded(uint32 durMs);
         turnin_recovery::RecoveryAction ObserveTurnInProgress();
         // Counts a death against the current completed-quest turn-in route and
         // puts the route on the death cooldown after too many (#307).
@@ -461,6 +464,7 @@ namespace ai
 
 		uint32 startTime = WorldTimer::getMSTime();
 		uint32 statusTime = 0;
+		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
 
 		bool forced = false;
 		bool visitor = true;

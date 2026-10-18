@@ -3,6 +3,7 @@
 #include "ItemUsageValue.h"
 #include "BudgetValues.h"
 #include "playerbot/GroupBuffPolicy.h"
+#include "playerbot/RestGatePolicy.h"
 
 namespace ai
 {
@@ -13,6 +14,11 @@ namespace ai
         virtual bool Calculate() override
         {
             if (bot->GetTradeData())
+                return false;
+
+            // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): no pull and no travel / rpg move while a rest episode runs. This is
+            // also the pull gate: AttackAnythingAction::isUseful reads this value before its grind-target search.
+            if (sPlayerbotAIConfig.rotationRestGate && AI_VALUE(bool, "rest gate"))
                 return false;
 
             if (!AI_VALUE(bool, "group ready"))
@@ -164,6 +170,11 @@ namespace ai
             if (!bot->HasMana())
                 return false;
 
+            // twow-repo#602 ROT-01 X1: while resting, drink up to the rest target (resting bots have no master, so the follow rules below
+            // do not apply).
+            if (sPlayerbotAIConfig.rotationRestGate && AI_VALUE(bool, "rest gate"))
+                return AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.rotationRestGateTargetMana;
+
             if (AI_VALUE2(uint8, "mana", "self target") >= 85)
                 return false;
 
@@ -207,6 +218,10 @@ namespace ai
         ShouldEatValue(PlayerbotAI* ai) : BoolCalculatedValue(ai, "should eat", 2) {}
         virtual bool Calculate() override
         {
+            // twow-repo#602 ROT-01 X1: while resting, eat up to the rest target instead of stopping at lowHealth.
+            if (sPlayerbotAIConfig.rotationRestGate && AI_VALUE(bool, "rest gate"))
+                return AI_VALUE2(uint8, "health", "self target") < sPlayerbotAIConfig.rotationRestGateTargetHp;
+
             if (AI_VALUE2(uint8, "health", "self target") >= sPlayerbotAIConfig.lowHealth)
                 return false;
 
@@ -246,6 +261,10 @@ namespace ai
         DrinkDurationValue(PlayerbotAI* ai) : FloatCalculatedValue(ai, "drink duration") {}
         virtual float Calculate() override
         {
+            // twow-repo#602 ROT-01 X1: while resting, wait as long as the drink needs at 2 %/s (capped at the 30 s aura) instead of 270 ms per %.
+            if (sPlayerbotAIConfig.rotationRestGate && AI_VALUE(bool, "rest gate"))
+                return float(ai::rest_gate::DurationMs(uint32(100.0f - bot->GetPowerPercent(POWER_MANA)), ai::rest_gate::DrinkAuraMs));
+
             Player* master = ai->GetMaster();
 
             float mpMissingPct = 100.0f - bot->GetPowerPercent();
@@ -291,6 +310,10 @@ namespace ai
         EatDurationValue(PlayerbotAI* ai) : FloatCalculatedValue(ai, "eat duration") {}
         virtual float Calculate() override
         {
+            // twow-repo#602 ROT-01 X1: while resting, wait as long as the food needs at 2 %/s (capped at the 25 s aura) instead of 270 ms per %.
+            if (sPlayerbotAIConfig.rotationRestGate && AI_VALUE(bool, "rest gate"))
+                return float(ai::rest_gate::DurationMs(uint32(100.0f - bot->GetHealthPercent()), ai::rest_gate::FoodAuraMs));
+
             Player* master = ai->GetMaster();
 
             float hpMissingPct = 100.0f - bot->GetHealthPercent();
