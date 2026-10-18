@@ -366,6 +366,84 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
     return CandidateSkip::None;
 }
 
+// twow-repo#601 S3b (OB-10 rev. 2, Q-B2): the deferrals of SetBestTarget after IsActive as one predicate, in the main
+// loop's order. Side-effect free: the main loop counts and traces its answer per reason (as before); with
+// AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters (and FailureClasses) the local quest hub pre-loop asks the same
+// predicate, so a local candidate the main loop would defer no longer switches the hub filter on (soak 17.10.: 22 of 165
+// L10+ hub_filter rejections). A danger map hit is handed back for the main loop's death_cluster line.
+enum class PostActiveDeferral
+{
+    None,
+    BattlegroundQuest,
+    EnemyZone,
+    CrossMap,
+    ZoneLevel,
+    DangerMap,
+};
+
+PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelDestination* destination,
+    WorldPosition* position, danger_map::DangerMap::Hit& dangerHit)
+{
+    // twow-repo#587 (Z3, AiPlayerbot.ZoneExit.SkipBattlegroundQuests): no battleground quest as a quest-first target.
+    if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())
+        if (QuestTravelDestination const* bgQuest = dynamic_cast<QuestTravelDestination const*>(destination))
+            if (Quest const* bgQuestTemplate = sObjectMgr.GetQuestTemplate(bgQuest->GetQuestId()))
+                if (ai::zone_exit::IsBattlegroundQuestSort(bgQuestTemplate->GetZoneOrSort()))
+                    return PostActiveDeferral::BattlegroundQuest;
+
+    // Checked after IsActive so the area lookup only happens for
+    // the point that was actually selected.
+    if (!target->IsForced() && position && position->isEnemyHomeZoneFor(bot->GetTeam()))
+        return PostActiveDeferral::EnemyZone;
+
+    // #307: a low-level roster bot defers a quest target whose route
+    // is a continent switch or whose zone is clearly above its level,
+    // instead of learning the danger by dying on the way (live: 81
+    // deaths of level 2-4 bots on the Durotar -> Undercity turn-in).
+    if (!target->IsForced() && position && UsesQuestFirstProgression(bot) &&
+        dynamic_cast<QuestTravelDestination const*>(destination))
+    {
+        // Area (sub-zone) level: a zone row such as Redridge has 0, its
+        // Lakeshire sub-area 15. getAreaLevel() resolves the real one.
+        int32 const areaLevel = std::max<int32>(0, position->getAreaLevel());
+        // twow-repo#485: CrossMapContinentsOnly limits the cross-map rule to
+        // a route to the other continent; the tram counts as the Eastern
+        // Kingdoms and an instance as the continent of its entrance.
+        MapEntry const* const botMapEntry = bot->GetMap()->GetMapEntry();
+        MapEntry const* const targetMapEntry = position->getMapEntry();
+        route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
+            bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
+            uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()),
+            sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly,
+            route_danger::IsContinentSwitch(
+                route_danger::ContinentOf(bot->GetMapId(), botMapEntry ? botMapEntry->ghostEntranceMap : -1),
+                route_danger::ContinentOf(position->getMapId(), targetMapEntry ? targetMapEntry->ghostEntranceMap : -1)));
+        if (danger == route_danger::Reason::CrossMap)
+            return PostActiveDeferral::CrossMap;
+        // twow-repo#575 (PATH-01 E5, AiPlayerbot.CustomRaceStartZones): up to level 12 a goblin / high elf
+        // is never deferred by an area level inside its own start zone (sub-areas there are DBC level 5-10)
+        // or, for the goblin, in Sparkwater Port (4021 = 36), where 41169 / 41170 change hands.
+        if (danger == route_danger::Reason::TargetZoneLevel &&
+            !ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), bot->GetLevel(),
+                position->getMapId(), position->getX(), position->getY()))
+            return PostActiveDeferral::ZoneLevel;
+    }
+
+    // #307: shared danger map. Any destination purpose; only roster
+    // bots on their own, never a bot led by a real player.
+    if (!target->IsForced() && position && sPlayerbotAIConfig.dangerMapEnabled &&
+        UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() && position->getMapId() == bot->GetMapId())
+    {
+        dangerHit = danger_map::Instance().Query(bot->GetMapId(),
+            bot->GetPositionX(), bot->GetPositionY(), position->getX(), position->getY(),
+            bot->GetLevel(), uint32(time(nullptr)), DangerMapParams());
+        if (dangerHit.cells)
+            return PostActiveDeferral::DangerMap;
+    }
+
+    return PostActiveDeferral::None;
+}
+
 // twow-repo#601 S1: the route danger rule of SetBestTarget (#307, #485 CrossMapContinentsOnly, #575 start-zone
 // exemption) for one taker point of the taker pre-validation - the same inputs as the main loop's check.
 route_danger::Reason TakerRouteDanger(PlayerbotAI* ai, Player* bot, WorldPosition* point)
@@ -1168,6 +1246,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     // main loop's skip predicate (CandidateSkipOf) before it lets a local candidate switch the hub filter on, and no
     // random range skip happens while the hub filter is on. false = both as before.
     bool const failureClasses = preferLocalQuest && sPlayerbotAIConfig.questFirstProgressionFailureClasses;
+    // twow-repo#601 S3b (AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters, OB-10 rev. 2 Q-B2, only with
+    // FailureClasses): the pre-loop also asks the main loop's post-IsActive deferrals (PostActiveDeferralOf) - no
+    // counter, no trace there. false = the pre-loop as before.
+    bool const hubPreloopSameFilters = failureClasses && sPlayerbotAIConfig.questFirstProgressionHubPreloopSameFilters;
     // twow-repo#601 GrindMode 2 (review): a forced target (the guild Farm / Kill order) never asks IsActive here, in
     // TravelTarget::CheckStatus or by status time, so the order's kill trips (drop or name-matched mobs, bosses,
     // skinning) would be a forced trip to mobs the grind target filter then refuses - the bot parked there while the
@@ -1197,6 +1279,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&
                     (isActive[destination] = true))
                 {
+                    // twow-repo#601 S3b: an active local candidate the main loop defers after IsActive keeps the hub
+                    // filter off; its true IsActive answer above stays known (the main loop defers it the same way).
+                    danger_map::DangerMap::Hit preLoopHit;
+                    if (hubPreloopSameFilters && PostActiveDeferralOf(ai, bot, target, destination, position, preLoopHit) !=
+                            PostActiveDeferral::None)
+                        continue;
                     hasActiveLocalQuestHub = true;
                     break;
                 }
@@ -1313,82 +1401,34 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
             if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot)))))
             {
-                // twow-repo#587 (Z3, AiPlayerbot.ZoneExit.SkipBattlegroundQuests): no battleground quest as a quest-first target.
-                if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())
-                    if (QuestTravelDestination const* bgQuest = dynamic_cast<QuestTravelDestination const*>(destination))
-                        if (Quest const* bgQuestTemplate = sObjectMgr.GetQuestTemplate(bgQuest->GetQuestId()))
-                            if (ai::zone_exit::IsBattlegroundQuestSort(bgQuestTemplate->GetZoneOrSort()))
-                            {
-                                ++lastRejects.battlegroundQuest;
-                                continue;
-                            }
-
-                // Checked after IsActive so the area lookup only happens for
-                // the point that was actually selected.
-                if (!target->IsForced() && position && position->isEnemyHomeZoneFor(bot->GetTeam()))
+                // twow-repo#601 S3b: the deferrals after IsActive in one predicate (PostActiveDeferralOf, same order,
+                // counters and traces as before) - the local quest hub pre-loop asks the same one with HubPreloopSameFilters.
+                danger_map::DangerMap::Hit hit;
+                switch (PostActiveDeferralOf(ai, bot, target, destination, position, hit))
                 {
-                    ai->TellDebug(requester, "Skipping " + destination->GetTitle() + " - enemy home zone", "debug travel");
-                    ++lastRejects.enemyZone;
-                    continue;
-                }
-
-                // #307: a low-level roster bot defers a quest target whose route
-                // is a continent switch or whose zone is clearly above its level,
-                // instead of learning the danger by dying on the way (live: 81
-                // deaths of level 2-4 bots on the Durotar -> Undercity turn-in).
-                if (!target->IsForced() && position && UsesQuestFirstProgression(bot) &&
-                    dynamic_cast<QuestTravelDestination const*>(destination))
-                {
-                    // Area (sub-zone) level: a zone row such as Redridge has 0, its
-                    // Lakeshire sub-area 15. getAreaLevel() resolves the real one.
-                    int32 const areaLevel = std::max<int32>(0, position->getAreaLevel());
-                    // twow-repo#485: CrossMapContinentsOnly limits the cross-map rule to
-                    // a route to the other continent; the tram counts as the Eastern
-                    // Kingdoms and an instance as the continent of its entrance.
-                    MapEntry const* const botMapEntry = bot->GetMap()->GetMapEntry();
-                    MapEntry const* const targetMapEntry = position->getMapEntry();
-                    route_danger::Reason const danger = route_danger::Classify(position->getMapId() != bot->GetMapId(),
-                        bot->GetLevel(), sPlayerbotAIConfig.questFirstProgressionMinLevelForCrossMapQuestRoute,
-                        uint32(areaLevel), ai::death_series::RouteMargin(ai->IsCautious()),
-                        sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly,
-                        route_danger::IsContinentSwitch(
-                            route_danger::ContinentOf(bot->GetMapId(), botMapEntry ? botMapEntry->ghostEntranceMap : -1),
-                            route_danger::ContinentOf(position->getMapId(), targetMapEntry ? targetMapEntry->ghostEntranceMap : -1)));
-                    if (danger == route_danger::Reason::CrossMap)
-                    {
+                    case PostActiveDeferral::BattlegroundQuest:
+                        ++lastRejects.battlegroundQuest;
+                        continue;
+                    case PostActiveDeferral::EnemyZone:
+                        ai->TellDebug(requester, "Skipping " + destination->GetTitle() + " - enemy home zone", "debug travel");
+                        ++lastRejects.enemyZone;
+                        continue;
+                    case PostActiveDeferral::CrossMap:
                         ++deferredCrossMap;
                         ++lastRejects.crossMap;
                         continue;
-                    }
-                    // twow-repo#575 (PATH-01 E5, AiPlayerbot.CustomRaceStartZones): up to level 12 a goblin / high elf
-                    // is never deferred by an area level inside its own start zone (sub-areas there are DBC level 5-10)
-                    // or, for the goblin, in Sparkwater Port (4021 = 36), where 41169 / 41170 change hands.
-                    if (danger == route_danger::Reason::TargetZoneLevel &&
-                        !ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), bot->GetLevel(),
-                            position->getMapId(), position->getX(), position->getY()))
-                    {
+                    case PostActiveDeferral::ZoneLevel:
                         ++deferredZoneLevel;
                         ++lastRejects.zoneLevel;
                         continue;
-                    }
-                }
-
-                // #307: shared danger map. Any destination purpose; only roster
-                // bots on their own, never a bot led by a real player.
-                if (!target->IsForced() && position && sPlayerbotAIConfig.dangerMapEnabled &&
-                    UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() && position->getMapId() == bot->GetMapId())
-                {
-                    danger_map::DangerMap::Hit const hit = danger_map::Instance().Query(bot->GetMapId(),
-                        bot->GetPositionX(), bot->GetPositionY(), position->getX(), position->getY(),
-                        bot->GetLevel(), uint32(time(nullptr)), DangerMapParams());
-                    if (hit.cells)
-                    {
+                    case PostActiveDeferral::DangerMap:
                         ++deferredDeathCluster;
                         deathClusterCells += hit.cells;
                         deathClusterWorstKillerLevel = std::max(deathClusterWorstKillerLevel, hit.worstKillerLevel);
                         ++lastRejects.dangerMap;
                         continue;
-                    }
+                    case PostActiveDeferral::None:
+                        break;
                 }
 
                 // twow-repo#601 S1: not while the local quest hub filter is on with FailureClasses (the skip past the one

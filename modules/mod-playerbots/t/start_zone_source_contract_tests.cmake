@@ -81,7 +81,8 @@ if(NOT allow_count EQUAL 2)
 endif()
 
 # 4. Area-level exemption: danger check and zone-below search.
-require_text("${choose}" "if (danger == route_danger::Reason::TargetZoneLevel &&\n                        !ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones" "danger exemption")
+# twow-repo#601 S3b: the danger check moved with the main loop's other post-IsActive deferrals into PostActiveDeferralOf.
+require_text("${choose}" "if (danger == route_danger::Reason::TargetZoneLevel &&\n            !ai::start_zone::ZoneLevelExempt(sPlayerbotAIConfig.customRaceStartZones" "danger exemption")
 require_text("${choose}" "ai::quest_search::ZoneBelowBot(WorldPosition(bot).getAreaLevelOrParent(), bot->GetLevel()) &&\n            !ai::start_zone::ZoneLevelExempt(" "zone-below exemption")
 
 # 5. E7 scripted taxi and E8 gates in the graph cost.

@@ -804,6 +804,10 @@ public:
     // S1 review (OB-10 to decide): 0 = a transient rejection never counts toward the grind fallback; N = the N-th
     // transient rejection in a row counts once (acts only with FailureClasses).
     uint32 questFirstProgressionTransientCountsAfter = 0;
+    // twow-repo#601 S3b (OB-10 rev. 2, Q-B2; restart-only): the local quest hub pre-loop of SetBestTarget also asks the
+    // main loop's post-IsActive deferrals (battleground quest, enemy home zone, route danger, danger map); acts only with
+    // FailureClasses. false = the pre-loop as before.
+    bool questFirstProgressionHubPreloopSameFilters = false;
     // twow-repo#601 GrindMode (owner 17.10.2026, restart-only): 0 = today's behaviour; 1 = reserved for the S2/S4 gap
     // filler, acts like 0 until then; 2 = no grind as a substitute activity for quest-first roster bots on their own
     // below the max level, they stand idle and log [QuestIdle] (QuestGrindModePolicy.h). Other values act like 0.
