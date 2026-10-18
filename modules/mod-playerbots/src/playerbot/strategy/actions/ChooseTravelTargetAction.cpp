@@ -701,6 +701,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 // (unless TransientCountsAfter = N and this is the N-th transient rejection in a row).
                 if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
                     SET_AI_VALUE2(int, "manual int", "quest route failures", int(failures));
+                // twow-repo#601 (GrindFallbackMinutes): the time of the last counted empty search, under the same condition.
+                if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
+                    SET_AI_VALUE2(int, "manual int", "quest route failed at", int(uint32(time(nullptr))));
                 // twow-repo#594 / P3-a: one formula - a fresh bot without a rescue in this pass waits FreshBackoffSeconds.
                 bool const shortBackoff = freshBot && !rescueRequested && sPlayerbotAIConfig.directTargetsFreshBackoffSeconds;
                 uint32 const backoff = shortBackoff ?
