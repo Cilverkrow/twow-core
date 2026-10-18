@@ -3463,3 +3463,12 @@ add_test(NAME transport_board_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/transport_board_source_contract_tests.cmake")
+
+# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE behind AiPlayerbot.Path.TransportBoardFix, default 0): bots board ships and
+# zeppelins (deck hit, paced stop gate, dock-hop entry inside the route, ride record, exit only at the stored arrival dock,
+# OB-10 #1 lost-ride recovery only with a ride record). The unit cases live in transport_board_policy_tests; this contract
+# pins that every behaviour sits behind the switch and that the legacy flow stays textually unchanged.
+add_test(NAME transport_board_fix_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/transport_board_fix_source_contract_tests.cmake")

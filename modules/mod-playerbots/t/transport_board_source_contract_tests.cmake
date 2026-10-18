@@ -6,6 +6,11 @@ cmake_policy(VERSION 3.16)
 # counters, one [TransportDeck] line (30 a minute, own budget) and a [TransportBoard] summary. The probe answers nothing:
 # boarding, the board gate and every UseTransport answer stay as they are. Reads named files only. Every check_* function
 # returns "" when it holds, else the reason; the negative probes at the end reuse them.
+# twow-repo#342 (S3b-1): AiPlayerbot.Path.TransportBoardFix changes the board gate, the boarding answer and the deck
+# acceptance behind its own switch (pinned by transport_board_fix_source_contract). Pins moved here for S3b-1 only: the
+# boarding answer line (BOARD_ANSWER, true off), UseTransport's 'return true;' 2 -> 1, isOnTransport's tail (the deckHit gate
+# before the static answer), HitsVesselDeck 3 -> 5 in WorldPosition.cpp (SetOnTransport may use it), the paced stop test in
+# NoteDeckProbe, the RNG forbid (no 'rand(' / <random>; 'stranded' is a word). The S3b-0 summary literal stays (fix off).
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -14,7 +19,9 @@ set(TAG "#342 S3b-0")
 set(KEY_EXPR "transport_board::WaitTimeoutMsOf(sPlayerbotAIConfig.pathTransportWaitTimeoutMin)")
 set(WAIT_GATE "    if (sPlayerbotAIConfig.pathTransportDeckProbe)   // twow-repo#342 (S3b-0): deck probe once per wait, vessel at its stop\n        NoteDeckProbe(ai, transport, entry, dockPosition, true);")
 set(BOARD_GATE "        if (sPlayerbotAIConfig.pathTransportDeckProbe && !bot->GetTransport() && (doTeleport || !moved))\n            NoteDeckProbe(ai, transport, entry, dockPosition, false);")
-set(IS_ON_TAIL "    if (result0)\n        return false;\n\n    return GetHitPosition(below);\n}")
+# twow-repo#342 (S3b-1): off (boardFix false) the answer is true, as before.
+set(BOARD_ANSWER "        return boardFix ? BoardAnswer(bot, *board, moved, doTeleport) : true;")
+set(IS_ON_TAIL "    if (result0)\n        return false;\n\n    // twow-repo#342 (S3b-1, deckHit): the deck is this vessel's dynamic model; Map::GetLosHitPosition answers static hits only\n    // (Map.cpp:3414), so without this every point counted as off the vessel. Off (deckHit false): as before.\n    if (deckHit && HitsVesselDeck(transport, coord_x, coord_y, coord_z + 0.5f, below.getZ(), nullptr))\n        return true;\n\n    return GetHitPosition(below);\n}")
 
 function(read_source path out_var)
   if(NOT EXISTS "${PB_SOURCE_DIR}/${path}")
@@ -165,15 +172,15 @@ function(check_probe_gates move out_var)
   # The answers of UseTransport are S1's (true at the exit and after the boarding try, false aboard and while waiting).
   occurrences("${use_body}" "return true;" n_true)
   occurrences("${use_body}" "return false;" n_false)
-  if(NOT n_true EQUAL 2 OR NOT n_false EQUAL 2)
-    set(${out_var} "UseTransport answers changed (true ${n_true}, false ${n_false}; expected 2 / 2)" PARENT_SCOPE)
+  if(NOT n_true EQUAL 1 OR NOT n_false EQUAL 2)
+    set(${out_var} "UseTransport answers changed (true ${n_true}, false ${n_false}; expected 1 / 2 plus the S3b-1 board answer)" PARENT_SCOPE)
     return()
   endif()
   # Boarding block: the probe after S1's board / board_point line, before the unchanged true answer, no answer of its own.
   region_of("${use_body}" "        bool const moved = MoveOnTransport(ai, transport, doTeleport, edgeTrace ? &rejects : nullptr);" "\n    }\n" board_block)
   string(FIND "${board_block}" "TraceTransportBoard(bot, *edge, moved, doTeleport, rejects," trace_at)
   string(FIND "${board_block}" "${BOARD_GATE}" probe_at)
-  string(FIND "${board_block}" "\n\n        return true;" answer_at)
+  string(FIND "${board_block}" "\n${BOARD_ANSWER}" answer_at)
   if(trace_at EQUAL -1 OR probe_at EQUAL -1 OR answer_at EQUAL -1 OR NOT trace_at LESS probe_at OR NOT probe_at LESS answer_at)
     set(${out_var} "the boarding probe must sit after TraceTransportBoard and before the true answer" PARENT_SCOPE)
     return()
@@ -209,17 +216,19 @@ function(check_probe_gates move out_var)
   endforeach()
 endfunction()
 
-# The deck ray is used only by the probe (S3b-0): isOnTransport / SetOnTransport / RandomPointOnTrans unchanged.
+# The deck ray is used by the probe (S3b-0) and, behind S3b-1's switches only, by isOnTransport (deckHit) and SetOnTransport
+# (TransportBoardFix; their gates are pinned by transport_board_fix_source_contract); RandomPointOnTrans never calls it, and
+# no boarding code reads the probe.
 function(check_deck_ray_scope wp out_var)
   set(${out_var} "" PARENT_SCOPE)
   occurrences("${wp}" "HitsVesselDeck(" n)
-  if(NOT n EQUAL 3)
-    set(${out_var} "HitsVesselDeck must be defined once and used only by the probe (short and long deck ray), found ${n}" PARENT_SCOPE)
+  if(NOT n EQUAL 5)
+    set(${out_var} "HitsVesselDeck must be defined once, used twice by the probe and once each by the gated S3b-1 deck checks, found ${n}" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${wp}" "${IS_ON_TAIL}" tail)
   if(tail EQUAL -1)
-    set(${out_var} "isOnTransport's static-only answer changed (S3b-1 TransportBoardFix)" PARENT_SCOPE)
+    set(${out_var} "isOnTransport's answer changed (the deck hit only under deckHit, then the static answer)" PARENT_SCOPE)
     return()
   endif()
   region_of("${wp}" "bool WorldPosition::SetOnTransport(" "\n}\n" set_on)
@@ -229,7 +238,7 @@ function(check_deck_ray_scope wp out_var)
     return()
   endif()
   foreach(body set_on random_on)
-    foreach(word HitsVesselDeck ProbeVesselDeck pathTransportDeckProbe)
+    foreach(word ProbeVesselDeck pathTransportDeckProbe)
       string(FIND "${${body}}" "${word}" at)
       if(NOT at EQUAL -1)
         set(${out_var} "${body}: ${word} changes the boarding point" PARENT_SCOPE)
@@ -237,6 +246,11 @@ function(check_deck_ray_scope wp out_var)
       endif()
     endforeach()
   endforeach()
+  string(FIND "${random_on}" "HitsVesselDeck" rp)
+  if(NOT rp EQUAL -1)
+    set(${out_var} "random_on: HitsVesselDeck changes the boarding point" PARENT_SCOPE)
+    return()
+  endif()
 endfunction()
 
 # The movement side of the ray scope: no deck ray in the movement code, the probe called once, from NoteDeckProbe only.
@@ -298,7 +312,9 @@ forbid_text("${policy}" "mutex" "lock in the policy")
 forbid_text("${policy}" "memory_order_seq_cst" "non-relaxed atomics")
 forbid_text("${policy}" "memory_order_acq" "non-relaxed atomics")
 forbid_text("${policy}" "logged.fetch_sub" "give-back of the line budget")
-forbid_text("${policy}" "rand" "RNG in the policy")
+# twow-repo#342 (S3b-1): the RNG forbid names the calls ('stranded' in the S3b-1 summary is a word, not an RNG).
+forbid_text("${policy}" "rand(" "RNG in the policy")
+forbid_text("${policy}" "<random>" "RNG in the policy")
 forbid_text("${policy}" "inline char const* const k" "format string variables (unchecked by -Wformat)")
 require_text("${policy}" "static_assert(WaitTimeoutMsOf(15) == transport_edge::WaitTimeoutMs, " "default threshold = the S1 constant")
 require_text("${policy}" "    if (minutes <= 0)\n        return DefaultWaitTimeoutMin;\n    return std::uint32_t(minutes) > MaxWaitTimeoutMin ? MaxWaitTimeoutMin : std::uint32_t(minutes);" "clamp <= 0 -> 15, max 240")
@@ -347,9 +363,10 @@ foreach(fn note_fn stop_fn log_fn probe_fn ray_fn)
   endforeach()
 endforeach()
 require_order("${note_fn}" "if (!transport_board::DeckProbeOpen(deck, entry, dock.getMapId(), dock.getX(), dock.getY(), WorldTimer::getMSTime()))\n        return;" "WorldPosition::ProbeVesselDeck(transport)" "once per wait before the probe")
-require_order("${note_fn}" "(needStop && !VesselAtStopNear(transport, dock))" "deck.probed = true;" "the wait branch probes only at the stop")
+# twow-repo#342 (S3b-1, CLI-Deep nit): the stop test is paced per bot (VesselAtStopNearPaced, shared with the board gate).
+require_order("${note_fn}" "(needStop && !VesselAtStopNearPaced(transport, dock, lastMove.transportBoard.stop))" "deck.probed = true;" "the wait branch probes only at the stop")
 require_order("${note_fn}" "deck.probed = true;" "WorldPosition::ProbeVesselDeck(transport)" "marked before probing")
-require_text("${note_fn}" "GetValue<LastMovement&>(\"last movement\")->Get().transportDeck;" "the bot's own wait record")
+require_text("${note_fn}" "GetValue<LastMovement&>(\"last movement\")->Get();\n    transport_board::DeckWait& deck = lastMove.transportDeck;" "the bot's own wait record")
 require_order("${log_fn}" "counters.Roll(" "if (counters.Take())" "summary before the line (rolled like LogTransportEdge)")
 require_text("${log_fn}" "transport_board::Counters& counters = transport_board::SharedCounters();" "own counters")
 forbid_text("${log_fn}" "pathRouteFailDetailLinesPerMinute" "deck lines in the TaxiUse budget")
@@ -407,15 +424,15 @@ string(REPLACE "\nstatic void NoteDeckProbe(" "\nstatic bool NoteDeckProbe(" pro
 check_probe_gates("${probe}" e)
 expect_caught(move_cpp "probe with an answer")
 # d) the boarding block answers what the probe found.
-string(REPLACE "${BOARD_GATE}\n\n        return true;" "${BOARD_GATE}\n\n        return bot->GetTransport() != nullptr;" probe "${move_cpp}")
+string(REPLACE "${BOARD_ANSWER}" "        return bot->GetTransport() != nullptr;" probe "${move_cpp}")
 check_probe_gates("${probe}" e)
 expect_caught(move_cpp "boarding answer changed")
 # e) a hook keeps the fixed S1 constant.
 string(REPLACE "        ${KEY_EXPR});\n    transport_edge::Extra extra;" "        transport_edge::WaitTimeoutMs);\n    transport_edge::Extra extra;" probe "${move_cpp}")
 check_callers("${probe}" e)
 expect_caught(move_cpp "wait hook with the fixed constant")
-# f) the deck ray changes isOnTransport (that is S3b-1's TransportBoardFix, not S3b-0).
-string(REPLACE "${IS_ON_TAIL}" "    if (result0)\n        return false;\n\n    return HitsVesselDeck(transport, coord_x, coord_y, coord_z + 0.5f, below.getZ(), nullptr) || GetHitPosition(below);\n}" probe "${wp_cpp}")
+# f) the deck ray changes isOnTransport for every caller (S3b-1 allows it only under deckHit).
+string(REPLACE "    if (deckHit && HitsVesselDeck(transport, coord_x" "    if (HitsVesselDeck(transport, coord_x" probe "${wp_cpp}")
 check_deck_ray_scope("${probe}" e)
 expect_caught(wp_cpp "deck ray in isOnTransport")
 # g) a boarding decision in UseTransport reads the deck ray.

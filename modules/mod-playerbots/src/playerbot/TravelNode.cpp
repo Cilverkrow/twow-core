@@ -10,6 +10,7 @@
 #include "playerbot/RouteTimePolicy.h"
 #include "playerbot/BotUpdateTrace.h"
 #include "playerbot/PathUnitlessBotPolicy.h"
+#include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 (S3b-1): Path.TransportBoardFix (D2 dock-hop entry)
 
 #include <iomanip>
 #include <regex>
@@ -1370,6 +1371,16 @@ std::vector<PathNodePoint>::iterator TravelPath::getNextPoint(WorldPosition star
     return startP;
 }
 
+// twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix, review 18.10.): off the vessel, a walking bot is handed to
+// HandleSpecialMovement at a run's first transport point (the dock, after a walk point) only within BoardFromDockYards
+// (2D, same map) of it; farther away UpcommingSpecialMovement answers false and the walk goes on (ClipPath keeps the dock
+// as the walk's last point), so the board gate (FixBoardOpen, same radius) never boards a bot from up to ReactDistance away.
+static bool WalkerAtDock(WorldPosition const& bot, WorldPosition const& dock)
+{
+    return ai::transport_board::WalkerNearDock(ai::transport_board::PointOf(bot.getMapId(), bot.getX(), bot.getY(), bot.getZ()),
+        ai::transport_board::PointOf(dock.getMapId(), dock.getX(), dock.getY(), dock.getZ()));
+}
+
 bool TravelPath::UpcommingSpecialMovement(WorldPosition startPos, float maxDist, bool onTransport)
 {
     if (getPath().empty())
@@ -1427,6 +1438,18 @@ bool TravelPath::UpcommingSpecialMovement(WorldPosition startPos, float maxDist,
         return true;
     }
 
+    // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): type < 2 with a filled dock hop, the walk stops at W (startP
+    // walkable, nextP the dock with an entry); keep W as the front so HandleSpecialMovement boards (the type < 2 branch below
+    // needs a transport startP and never fires at W). Off: no change.
+    if (sPlayerbotAIConfig.pathTransportBoardFix && sPlayerbotAIConfig.transportTeleportType < 2 && !onTransport &&
+        startP->isWalkable() && nextP != startP && nextP->type == PathNodeType::NODE_TRANSPORT && nextP->entry)
+    {
+        if (!WalkerAtDock(startPos, nextP->point))   // farther from the dock: walk on (review 18.10.)
+            return false;
+        cutTo(*startP, false);
+        return true;
+    }
+
     //Walk on / teleport to transport.
     if (sPlayerbotAIConfig.transportTeleportType < 2 && startP->type == PathNodeType::NODE_TRANSPORT)
     {
@@ -1434,6 +1457,10 @@ bool TravelPath::UpcommingSpecialMovement(WorldPosition startPos, float maxDist,
 
         if (!onTransport) 
         {
+            // twow-repo#342 (S3b-1, review 18.10.): with the fix a walker after a walk point farther from the dock walks on.
+            if (sPlayerbotAIConfig.pathTransportBoardFix && prevP != startP && prevP->isWalkable() &&
+                !WalkerAtDock(startPos, startP->point))
+                return false;
             cutTo(*prevP, false); //Previous point = dock, startP = where transport will stop.
             return true;
         }
@@ -1457,7 +1484,15 @@ bool TravelPath::UpcommingSpecialMovement(WorldPosition startPos, float maxDist,
         {
             if (p->type != PathNodeType::NODE_TRANSPORT)
             {
-                cutTo(*prevP, false); //PrevP = where transport will stop, startP = dock where we want to walk to.
+                // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): with a filled dock hop the walk stops at W, the last
+                // walk point (shouldMoveToNextPoint); keep W so the front is W and the next point the dock (the boarding branch of
+                // HandleSpecialMovement). Off: prevP as before. Off the vessel after a walk point and farther than
+                // BoardFromDockYards from the dock (W's next point, else startP) the walk goes on (review 18.10.).
+                if (sPlayerbotAIConfig.pathTransportBoardFix && !onTransport &&
+                    (startP->isWalkable() || (prevP != startP && prevP->isWalkable())) &&
+                    !WalkerAtDock(startPos, startP->isWalkable() ? nextP->point : startP->point))
+                    return false;
+                cutTo(sPlayerbotAIConfig.pathTransportBoardFix && startP->isWalkable() ? *startP : *prevP, false); //PrevP = where transport will stop, startP = dock where we want to walk to.
                 return true;
             }
         }
@@ -1577,6 +1612,50 @@ float TravelNodeRoute::getTotalDistance()
     return totalLength;
 }
 
+// twow-repo#342 (S3b-1 D2): the GO entry of the ride leg from -> to when it is a transport link with a non-zero object of an
+// MO transport (ship / zeppelin); 0 otherwise (walk link, lift, unknown). hasPathTo first: getPathTo inserts (TravelNode.h).
+static uint32 RideObjectOf(TravelNode* from, TravelNode* to)
+{
+    if (!from->hasPathTo(to))
+        return 0;
+    TravelNodePath* const path = from->getPathTo(to);
+    uint32 const object = uint32(path->getPathObject());
+    if (path->getPathType() != TravelNodePathType::transport || !object)
+        return 0;
+    GameObjectInfo const* info = sGOStorage.LookupEntry<GameObjectInfo>(object);
+    return info && info->type == GAMEOBJECT_TYPE_MO_TRANSPORT ? object : 0;
+}
+
+// twow-repo#342 (S3b-1 D2, AiPlayerbot.Path.TransportBoardFix): the entry the points of route link nodes[i-1] -> nodes[i]
+// carry: its own object, else the ride leg next to it in this route (next link first, previous second, none when they
+// differ). Route-local, no name rule, no graph write; getTransportId() and the stored links are unchanged. Off: the object.
+static uint32 RouteTransportEntry(std::vector<TravelNode*> const& nodes, std::size_t i, uint32 object)
+{
+    if (object || !sPlayerbotAIConfig.pathTransportBoardFix)
+        return object;
+    uint32 const next = i + 1 < nodes.size() ? RideObjectOf(nodes[i], nodes[i + 1]) : 0;
+    uint32 const prev = i >= 2 ? RideObjectOf(nodes[i - 2], nodes[i - 1]) : 0;
+    return ai::transport_board::InheritEntry(object, next, prev);
+}
+
+// twow-repo#342 (S3b-1 D2, review 18.10.): the route link from -> to is a transport link (a ride, a hop or a lift, any object).
+static bool TransportLinkOf(TravelNode* from, TravelNode* to)
+{
+    return from->hasPathTo(to) && from->getPathTo(to)->getPathType() == TravelNodePathType::transport;
+}
+
+// twow-repo#342 (S3b-1 D2, AiPlayerbot.Path.TransportBoardFix, review 18.10.): route link nodes[i-1] -> nodes[i] is a
+// 0-object dock hop with no transport link next to it in this route (the route starts or ends at a stop node, or walk links
+// on both sides): no ride to board, so its points are walked instead of waited on as a run of entry 0. Off: never.
+static bool RouteWalkHop(std::vector<TravelNode*> const& nodes, std::size_t i, uint32 object)
+{
+    if (object || !sPlayerbotAIConfig.pathTransportBoardFix)
+        return false;
+    bool const next = i + 1 < nodes.size() && TransportLinkOf(nodes[i], nodes[i + 1]);
+    bool const prev = i >= 2 && TransportLinkOf(nodes[i - 2], nodes[i - 1]);
+    return ai::transport_board::WalkHop(object, next, prev);
+}
+
 TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, std::vector<WorldPosition> pathToEnd, Unit* bot)
 {
     TravelPath travelPath;
@@ -1652,9 +1731,17 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
                 travelPath.addPoint(*prevNode->getPosition(), PathNodeType::NODE_STATIC_PORTAL, nodePath->getPathObject()); //Entry point
                 travelPath.addPoint(*node->getPosition(), PathNodeType::NODE_STATIC_PORTAL, nodePath->getPathObject());     //Exit point
             }
+            else if (nodePath->getPathType() == TravelNodePathType::transport &&
+                RouteWalkHop(nodes, std::size_t(&node - nodes.data()), uint32(nodePath->getPathObject())))
+            {
+                // twow-repo#342 (S3b-1 D2, review 18.10.): a lone dock hop (no ride next to it) is walked (off: never here).
+                travelPath.addPath(nodePath->getPath(), PathNodeType::NODE_PATH);
+            }
             else if (nodePath->getPathType() == TravelNodePathType::transport) //Move onto transport
             {
-                travelPath.addPath(nodePath->getPath(), PathNodeType::NODE_TRANSPORT, nodePath->getPathObject());
+                // twow-repo#342 (S3b-1 D2): an unfilled dock hop takes the adjacent ride's entry (off: the stored object).
+                travelPath.addPath(nodePath->getPath(), PathNodeType::NODE_TRANSPORT,
+                    RouteTransportEntry(nodes, std::size_t(&node - nodes.data()), uint32(nodePath->getPathObject())));
                 //travelPath.addPoint(*prevNode->getPosition(), PathNodeType::NODE_TRANSPORT, nodePath->getPathObject()); //Departure point
                 //travelPath.addPoint(*node->getPosition(), PathNodeType::NODE_TRANSPORT, nodePath->getPathObject());     //Arrival point        
             }

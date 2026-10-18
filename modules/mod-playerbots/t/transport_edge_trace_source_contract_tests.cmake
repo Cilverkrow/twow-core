@@ -4,6 +4,10 @@ cmake_policy(VERSION 3.16)
 # Its wait_timeout / overrun threshold is AiPlayerbot.Path.TransportWaitTimeoutMin * 60000, passed by the callers (S3b-0;
 # default 15 = the 900 s of map section 3). Off = one bool test per hook, no state, no counters, no lines; the old
 # [TransportWait] bot= line and [TaxiUse] stay byte-identical. Reads named files only.
+# twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): pins moved for the fix only (the trace itself is unchanged):
+# UseTransport's optional board state after edge (signature, region marker), its 'return true;' 2 -> 1 (the board
+# block answers 'boardFix ? BoardAnswer(...) : true'), the board head (legacyBoard keeps the old 5 yd expression), the
+# callers passing ', edge, board' and the fifth caller gate / key computation (WaitForTransport's ride-record block).
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -176,9 +180,9 @@ forbid_text("${clear_body}" "transportEdge" "clear() touching the episode (it wo
 forbid_text("${lastmove_h}" "std::mutex" "lock in a bot-own value")
 
 # 3. UseTransport: gate first, every hook behind it, the answers unchanged.
-require_text("${move_h}" "bool doTeleport, transport_edge::State* edge = nullptr);" "optional edge state, default nullptr")
+require_text("${move_h}" "bool doTeleport, transport_edge::State* edge = nullptr, transport_board::BotState* board = nullptr);" "optional edge state, default nullptr (S3b-1: then the optional board state)")
 require_text("${move_h}" "bool doTeleport, transport_edge::PointRejects* rejects = nullptr);" "optional rejects on MoveOnTransport")
-region("${move_cpp}" "bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge)" "\nbool MovementAction::MinimalMove(" use)
+region("${move_cpp}" "bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge, transport_board::BotState* board)" "\nbool MovementAction::MinimalMove(" use)
 region("${use}" "{" "\n}\n" use_body)
 require_text("${use_body}" "    bool const edgeTrace = sPlayerbotAIConfig.pathTransportEdgeTrace && edge;" "gate: switch first, then the state")
 require_order("${use_body}" "bool const edgeTrace = sPlayerbotAIConfig.pathTransportEdgeTrace && edge;" "GenericTransport* transport = bot->GetTransport();" "gate before any branch")
@@ -191,7 +195,8 @@ endif()
 foreach(hook TraceTransportArrive TraceTransportAboard TraceTransportBoard TraceTransportWait)
   count_text("${use_body}" "${hook}(" 1 "${hook} call")
 endforeach()
-count_text("${use_body}" "return true;" 2 "UseTransport true answers (unchanged)")
+count_text("${use_body}" "return true;" 1 "UseTransport true answers (S3b-1: the exit; the board block answers boardFix ? BoardAnswer : true)")
+count_text("${use_body}" "        return boardFix ? BoardAnswer(bot, *board, moved, doTeleport) : true;" 1 "the board answer, true off (S3b-1)")
 count_text("${use_body}" "return false;" 2 "UseTransport false answers (unchanged)")
 # arrive: the exit side from the bot's position before MoveOffTransport, MoveOffTransport's answer recorded (not acted on).
 require_order("${use_body}" "    WorldPosition botPos(bot);" "bool const leftTransport = MoveOffTransport(ai, exitPosition, doTeleport);" "exit position taken before the exit")
@@ -203,9 +208,9 @@ require_text("${arrive_fn}" "LogTransportEdge(bot, step, step.previous, extra, &
 # overrun in the aboard wait.
 require_text("${use_body}" "        if (edgeTrace)   // twow-repo#342 (S1): fail reason=overrun once when aboard longer than WaitTimeoutMs (15 min)\n            TraceTransportAboard(bot, *edge);\n\n        return false;\n    }" "overrun in the aboard wait")
 # OB-10 pin: board / board_point exactly where UseTransport answers true after MoveOnTransport.
-require_text("${use_body}" "    if (transport && dockPosition.mapid == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)\n    {\n        transport_edge::PointRejects rejects;\n        bool const moved = MoveOnTransport(ai, transport, doTeleport, edgeTrace ? &rejects : nullptr);\n" "boarding with rejects only when traced")
+require_text("${use_body}" "    bool const legacyBoard = transport && dockPosition.mapid == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE;\n    if (boardFix ? (FixBoardOpen(transport, entry, bot->GetMapId(), dockPosition, *board, legacyBoard) && transport_board::BoardTryDue(*board, entry, WorldTimer::getMSTime())) : legacyBoard)\n    {\n        transport_edge::PointRejects rejects;\n        bool const moved = MoveOnTransport(ai, transport, doTeleport, edgeTrace ? &rejects : nullptr);\n" "boarding with rejects only when traced (S3b-1: the legacy 5 yd test kept as legacyBoard, off the only gate)")
 region("${use_body}" "        bool const moved = MoveOnTransport(ai, transport, doTeleport, edgeTrace ? &rejects : nullptr);" "\n    }\n" board_block)
-require_order("${board_block}" "TraceTransportBoard(bot, *edge, moved, doTeleport, rejects," "        return true;" "board / board_point right before the true answer")
+require_order("${board_block}" "TraceTransportBoard(bot, *edge, moved, doTeleport, rejects," "        return boardFix ? BoardAnswer(" "board / board_point right before the answer")
 count_text("${board_block}" "return" 1 "one answer in the boarding block")
 region("${move_cpp}" "void TraceTransportBoard(Player* bot" "\n}\n" board_fn)
 require_text("${board_fn}" "boardedOn != nullptr,\n        !boardedOn && (doTeleport || !moved));" "board_point = not boarded and not walking there")
@@ -215,17 +220,18 @@ require_text("${use_body}" "    std::set<GenericTransport*> const candidates = d
 count_text("${use_body}" "getTransports(" 1 "transport scans in UseTransport")
 
 # 4. Callers: key only with the switch, derived once per run change, no node lookup, no per-tick scan.
-count_text("${move_cpp}" "if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1)" 4 "caller gates")
+count_text("${move_cpp}" "if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1)" 5 "caller gates (S3b-1: + WaitForTransport's ride-record block)")
 string(REGEX MATCHALL "if \\(sPlayerbotAIConfig\\.pathTransportEdgeTrace\\)[^\n]*\n +edge = TransportEdgeFor\\(bot, " caller_gates "${move_cpp}")
 list(LENGTH caller_gates n_caller)
-if(NOT n_caller EQUAL 4)
-  message(FATAL_ERROR "#342: each caller computes the key directly under the switch (found ${n_caller} of 4)")
+if(NOT n_caller EQUAL 5)
+  message(FATAL_ERROR "#342: each caller computes the key directly under the switch (found ${n_caller} of 5)")
 endif()
-count_text("${move_cpp}" "TransportEdgeFor(bot, " 4 "key computations")
-count_text("${move_cpp}" ", edge);" 3 "callers passing the state (MinimalMove, HandleSpecialMovement x2)")
+count_text("${move_cpp}" "TransportEdgeFor(bot, " 5 "key computations (S3b-1: + WaitForTransport's ride-record block)")
+count_text("${move_cpp}" ", edge, board);" 3 "callers passing the state (MinimalMove, HandleSpecialMovement x2; S3b-1: and the board state)")
 count_text("${move_cpp}" ", edge))" 1 "WaitForTransport passes the state")
-count_text("${move_cpp}" "transportTeleportType > 0, edge);" 2 "HandleSpecialMovement passes the state on both sides")
-require_text("${move_cpp}" "bool didTransport = UseTransport(ai, nextStep->entry, nextStep->point, exitPos, true, edge);" "MinimalMove passes the state")
+count_text("${move_cpp}" ", edge, board))" 1 "WaitForTransport's ride-record block passes the state (S3b-1)")
+count_text("${move_cpp}" "transportTeleportType > 0, edge, board);" 2 "HandleSpecialMovement passes the state on both sides")
+require_text("${move_cpp}" "bool didTransport = UseTransport(ai, nextStep->entry, nextStep->point, exitPos, true, edge, board);" "MinimalMove passes the state")
 region("${move_cpp}" "transport_edge::State* TransportEdgeFor(Player* bot" "\n}\n" keyfn)
 region("${keyfn}" "{" "if (state.UseCached(" key_head)
 forbid_text("${key_head}" "for (" "scan before the cache check")
