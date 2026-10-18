@@ -391,7 +391,8 @@ require_text("${grind_find}" "    if (!assistCount)\n        round0GapSkipped = 
 require_order("${grind_find}" "    if (result)\n    {\n        logGrind(result, \"selected.\");" "        round0GapSkipped = gapSkipped;" "round 0's skips handed over after the candidate loop")
 count_text("${grind_find}" "round0GapSkipped" 2 "the out-parameter written at one site only (signature + the hand-over)")
 forbid_text("${attacker_loop}" "round0GapSkipped" "the attacker early return writing the R4 skips")
-# r4_empty= after the candidate loop (the pass's result is final), never inside it (once per pass, not per candidate).
+# No [GrindWindow] count inside the candidate loop (once per pass, not per candidate): r4_skips= / r4_empty= are counted in
+# Calculate after its assist loop, from round 0's hand-over and the pass's final target (pinned above).
 region("${grind_target}" "    for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)" "    if (result)\n    {\n        logGrind(result, \"selected.\");" candidate_loop)
 foreach(banned "R4Empty" "GapR4EmptyPass" "NoteGrindWindow" "round0GapSkipped")
   forbid_text("${candidate_loop}" "${banned}" "a [GrindWindow] count inside the candidate loop (per candidate)")
@@ -447,8 +448,8 @@ endforeach()
 # Recheck (fix 3, deliberate pin change): an expired gap trip keeps its window end, so the window end alone counted plain
 # engagements after the backoff end (the 30 s grace) as inside a window. engaged= / grey_engaged= also need the quest route
 # backoff still running (R1 open), read like R1 (a per-bot value, no value per creature), behind IsQuestGapGrind, before
-# the attack.
-require_text("${choose_target}" "    Unit* const gapTarget = (ai->IsQuestGapGrind() &&\n        AI_VALUE(TravelTarget*, \"travel target\")->GetGapWindowEnd() > uint32(time(nullptr)) &&\n        uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route backoff until\")))) ? GetTarget() : nullptr;" "engaged= GrindMode 1 first, inside a window and while the backoff runs (R1 open)")
+# the attack. Recheck 3: nor after a silent end on an inactive destination (the trip is EXPIRED, the window end kept).
+require_text("${choose_target}" "    Unit* const gapTarget = (ai->IsQuestGapGrind() &&\n        AI_VALUE(TravelTarget*, \"travel target\")->GetGapWindowEnd() > uint32(time(nullptr)) &&\n        AI_VALUE(TravelTarget*, \"travel target\")->GetStatus() != TravelStatus::TRAVEL_STATUS_EXPIRED &&\n        uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route backoff until\")))) ? GetTarget() : nullptr;" "engaged= GrindMode 1 first, inside a window, gap trip not ended (recheck 3), while the backoff runs (R1 open)")
 forbid_text("${choose_target}" "GetGapWindowEnd() > uint32(time(nullptr))) ? GetTarget() : nullptr;" "engaged= on the window end alone (an expired gap trip keeps it)")
 count_text("${choose_target}" "\"quest route backoff until\"" 1 "one backoff read in AttackAnythingAction (engaged=)")
 require_order("${choose_target}" "AI_VALUE2(int, \"manual int\", \"quest route backoff until\")" "    bool result = AttackAction::Execute(event);" "the backoff read before the attack")
