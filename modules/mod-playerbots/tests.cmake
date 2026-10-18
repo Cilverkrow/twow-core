@@ -3411,3 +3411,25 @@ add_test(NAME death_adds_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/death_adds_source_contract_tests.cmake")
+
+# twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace, default 0): [TransportWait] state= lines per transport edge
+# episode (attempt / board / arrive / fail) and a summary; measurement only, the old [TransportWait] bot= line unchanged.
+add_executable(transport_edge_policy_tests
+  "${PB_MODULE_DIR}/t/transport_edge_policy_tests.cpp")
+
+target_include_directories(transport_edge_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(transport_edge_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(transport_edge_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_edge_policy
+  COMMAND transport_edge_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_edge_trace_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/transport_edge_trace_source_contract_tests.cmake")

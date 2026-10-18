@@ -1,6 +1,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeStallAbandon
 #include "playerbot/PathUnitlessBotPolicy.h"
 #include "playerbot/UnreachableTargetPolicy.h"
 #include "playerbot/StartZonePolicy.h"
@@ -1175,6 +1176,8 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
             observation.questId, observation.distance, transportStall.minutes);
         if (transportStep == transport_stall::Step::Abandon)
         {
+            if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=stall_abandon for a running episode
+                MovementAction::TraceTransportEdgeStallAbandon(ai);
             turnInRecovery.suppressedEntry = observation.targetEntry;
             turnInRecovery.suppressedMapId = targetMapId;
             turnInRecovery.suppressUntil = observation.now + transport_stall::CooldownMs;

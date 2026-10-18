@@ -27,6 +27,7 @@
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
 #include "playerbot/PathReusePolicy.h"   // twow-repo#541 (L1): Perf.PartialPathReuse
 #include "playerbot/RouteTimePolicy.h"   // twow-repo#592 (PATH-02): Perf.RouteTimeTrace
+#include "playerbot/TransportEdgePolicy.h"   // twow-repo#342 (S1): Path.TransportEdgeTrace
 
 using namespace ai;
 
@@ -171,6 +172,158 @@ void LogTransportWait(Player* bot, uint32 entry, WorldPosition const& dock)
     sLog.outBasic("[TransportWait] bot=%u level=%u team=%s entry=%u map=%u dock_x=%.1f dock_y=%.1f dist=%.1f",
         bot->GetGUIDLow(), uint32(bot->GetLevel()), bot->GetTeam() == ALLIANCE ? "A" : "H", entry, dock.getMapId(), dock.getX(),
         dock.getY(), dock.getMapId() == bot->GetMapId() ? WorldPosition(bot).distance(dock) : -1.0f);
+}
+
+// twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace): everything below runs only with the trace on (callers test it
+// first). State in the bot's LastMovement (bot thread), counters relaxed atomics, one line per transition.
+transport_edge::State& TransportEdgeState(PlayerbotAI* ai)
+{
+    return ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportEdge;
+}
+
+// The one read of the shared wait threshold (AiPlayerbot.Path.TransportWaitTimeoutMin; S3b reads the same member).
+uint32 TransportEdgeTimeoutMs()
+{
+    return transport_edge::TimeoutMs(sPlayerbotAIConfig.pathTransportWaitTimeoutMin);
+}
+
+// One step of the episode: the summary of the previous minute first (rolled like LogTaxiSummary), every transition
+// counted, the lines within the trace's own budget (dropped ones counted for the summary).
+void LogTransportEdge(Player* bot, transport_edge::Step const& step, transport_edge::Key const& key, transport_edge::Extra const& extra)
+{
+    if (!step.Any())
+        return;
+    transport_edge::Counters& counters = transport_edge::SharedCounters();
+    transport_edge::Snapshot snapshot;
+    if (counters.Roll(uint64(time(nullptr)), snapshot))
+        sLog.outBasic("%s", transport_edge::FormatSummary(snapshot).c_str());
+    counters.Account(step);
+    transport_edge::BotInfo info;
+    info.guid = bot->GetGUIDLow();
+    info.level = uint32(bot->GetLevel());
+    info.team = bot->GetTeam() == ALLIANCE ? 'A' : 'H';
+    std::string lines[transport_edge::MaxLinesPerStep];
+    std::size_t const n = transport_edge::Render(step, info, key, extra, lines);
+    for (std::size_t i = 0; i < n; ++i)
+        if (counters.Take())
+            sLog.outBasic("%s", lines[i].c_str());
+}
+
+// The edge key of the NODE_TRANSPORT run that starts at path[start]. Aboard: the episode's own key (the run ahead starts
+// at the exit side). Otherwise one exact compare of the handed point per tick; only when that point changed, a bounded scan
+// of the run (MaxRunScan points) and one read of the ride's GO template TaxiPath (DBC, MaxTaxiNodes). No node lookup.
+transport_edge::Key const* TransportEdgeKeyFor(PlayerbotAI* ai, std::vector<PathNodePoint> const& path, std::size_t start, bool minimal)
+{
+    transport_edge::State& state = TransportEdgeState(ai);
+    if (ai->GetBot()->GetTransport())
+        return &state.episode.key;
+    if (start >= path.size())
+        return nullptr;
+    PathNodePoint const& first = path[start];
+    if (state.SourceIs(first.point.getMapId(), first.point.getX(), first.point.getY(), first.entry))
+    {
+        state.sourceKey.minimal = minimal;
+        return &state.sourceKey;
+    }
+
+    // Key change: the scan below runs once per new handed point.
+    transport_edge::Key key;
+    key.valid = true;
+    key.hop = first.entry;
+    key.minimal = minimal;
+    key.fromMap = first.point.getMapId();
+    key.fromX = first.point.getX();
+    key.fromY = first.point.getY();
+    std::size_t last = start;
+    for (std::size_t i = start; i < path.size() && i - start < transport_edge::MaxRunScan && path[i].type == PathNodeType::NODE_TRANSPORT; ++i)
+    {
+        if (!key.ride && path[i].entry)
+            key.ride = path[i].entry;
+        last = i;
+    }
+    key.toMap = path[last].point.getMapId();
+    key.toX = path[last].point.getX();
+    key.toY = path[last].point.getY();
+
+    std::vector<transport_edge::PathNode> nodes;
+    float moveSpeed = 0.0f;
+    GameObjectInfo const* goInfo = key.ride ? sGOStorage.LookupEntry<GameObjectInfo>(key.ride) : nullptr;
+    if (goInfo && goInfo->type == GAMEOBJECT_TYPE_MO_TRANSPORT && goInfo->moTransport.taxiPathId < sTaxiPathNodesByPath.size())
+    {
+        moveSpeed = float(goInfo->moTransport.moveSpeed);
+        for (auto const& node : sTaxiPathNodesByPath[goInfo->moTransport.taxiPathId])
+        {
+            if (nodes.size() >= transport_edge::MaxTaxiNodes)
+                break;
+            if (!node.i_ptr)
+                continue;
+            transport_edge::PathNode p;
+            p.map = node->mapid;
+            p.x = node->x;
+            p.y = node->y;
+            p.z = node->z;
+            p.delay = node->delay;
+            nodes.push_back(p);
+        }
+    }
+    transport_edge::Derive(key, nodes, moveSpeed);
+    state.SetSource(key.fromMap, key.fromX, key.fromY, key.hop, key);
+    return &state.sourceKey;
+}
+
+// UseTransport's not-boardable exit: attempt (new key), route_changed (attempted key replaced), wait_timeout (once).
+void TraceTransportWait(PlayerbotAI* ai, transport_edge::Key const& key, uint32 cand, float nearD2d)
+{
+    transport_edge::State& state = TransportEdgeState(ai);
+    transport_edge::Step const step = transport_edge::OnWait(state, key, WorldTimer::getMSTime(), TransportEdgeTimeoutMs());
+    transport_edge::Extra extra;
+    extra.cand = cand;
+    extra.nearD2d = nearD2d;
+    LogTransportEdge(ai->GetBot(), step, state.episode.key, extra);
+}
+
+// Right after MoveOnTransport: board, or fail reason=board_point when nothing was boarded and the bot is not walking there.
+void TraceTransportBoard(PlayerbotAI* ai, transport_edge::Key const& key, bool moved, bool doTeleport,
+    transport_edge::PointRejects const& rejects, uint32 cand, float nearD2d)
+{
+    Player* bot = ai->GetBot();
+    GenericTransport* boardedOn = bot->GetTransport();
+    transport_edge::State& state = TransportEdgeState(ai);
+    transport_edge::Step const step = transport_edge::OnBoardTry(state, key, WorldTimer::getMSTime(), boardedOn != nullptr,
+        !boardedOn && (doTeleport || !moved));
+    transport_edge::Extra extra;
+    extra.cand = cand;
+    extra.nearD2d = nearD2d;
+    extra.got = boardedOn ? boardedOn->GetEntry() : 0;
+    extra.tele = doTeleport;
+    extra.rejects = rejects;
+    LogTransportEdge(bot, step, state.episode.key, extra);
+}
+
+// The aboard exit: arrive with MoveOffTransport's answer; d_exit = 2D distance bot -> the edge's to point right after the
+// call (a teleport the core finishes later still shows the position before it), -1 on another map.
+void TraceTransportArrive(PlayerbotAI* ai, bool ok)
+{
+    Player* bot = ai->GetBot();
+    transport_edge::Step const step = transport_edge::OnArrive(TransportEdgeState(ai), WorldTimer::getMSTime());
+    if (!step.Any())
+        return;
+    transport_edge::Extra extra;
+    extra.ok = ok;
+    if (step.previous.toMap == bot->GetMapId())
+    {
+        float const dx = bot->GetPositionX() - step.previous.toX, dy = bot->GetPositionY() - step.previous.toY;
+        extra.dExit = std::sqrt(dx * dx + dy * dy);
+    }
+    LogTransportEdge(bot, step, step.previous, extra);
+}
+
+// The aboard wait: overrun once when aboard longer than the threshold.
+void TraceTransportAboard(PlayerbotAI* ai)
+{
+    transport_edge::State& state = TransportEdgeState(ai);
+    transport_edge::Step const step = transport_edge::OnAboard(state, WorldTimer::getMSTime(), TransportEdgeTimeoutMs());
+    LogTransportEdge(ai->GetBot(), step, state.episode.key, transport_edge::Extra());
 }
 }
 
@@ -511,7 +664,7 @@ bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)
     return goTaxi;
 }
 
-bool MovementAction::MoveOnTransport(PlayerbotAI* ai, GenericTransport* transport, bool doTeleport)
+bool MovementAction::MoveOnTransport(PlayerbotAI* ai, GenericTransport* transport, bool doTeleport, transport_edge::PointRejects* rejects)
 {
     AiObjectContext* context = ai->GetAiObjectContext();
     Player* bot = ai->GetBot();
@@ -523,7 +676,7 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* ai, GenericTransport* transpor
 
     std::vector<WorldPosition> path;
 
-    WorldPosition transPos = botPos.RandomPointOnTrans(transport, 20.0f, doTeleport ? nullptr : bot, path);
+    WorldPosition transPos = botPos.RandomPointOnTrans(transport, 20.0f, doTeleport ? nullptr : bot, path, rejects);
 
     if (!transPos)
         return false;
@@ -645,11 +798,13 @@ bool MovementAction::MoveOffTransport(PlayerbotAI* ai, WorldPosition exitPos, bo
     return true;
 }
 
-bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport)
+bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::Key const* edgeKey)
 {
     AiObjectContext* context = ai->GetAiObjectContext();
     Player* bot = ai->GetBot();
     WorldPosition botPos(bot);
+    // twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace): off = this one test; no state, no counters, no lines.
+    bool const edgeTrace = sPlayerbotAIConfig.pathTransportEdgeTrace && edgeKey;
 
     GenericTransport* transport = bot->GetTransport();
 
@@ -662,7 +817,9 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
         if (dockPosition.mapid == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
         {
-            MoveOffTransport(ai, exitPosition, doTeleport);
+            bool const leftTransport = MoveOffTransport(ai, exitPosition, doTeleport);
+            if (edgeTrace)   // twow-repo#342 (S1): state=arrive, ok = MoveOffTransport's answer (still not acted on)
+                TraceTransportArrive(ai, leftTransport);
             ai->TellDebug(ai->GetMaster(), "Leaving transport " + transportName, "debug move");
             return true;
         }
@@ -672,6 +829,9 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
         ai->TellDebug(ai->GetMaster(), "Waiting ontop of transport " + transportName + " at " + std::to_string((uint32)dockPosition.fDist(transport)) + "y from docking.", "debug move");
 
+        if (edgeTrace)   // twow-repo#342 (S1): fail reason=overrun once when aboard longer than TransportWaitTimeoutMin
+            TraceTransportAboard(ai);
+
         return false;
     }
 
@@ -679,7 +839,8 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
     std::string transportName;
 
-    for (auto& trans : dockPosition.getTransports(entry))
+    std::set<GenericTransport*> const candidates = dockPosition.getTransports(entry);   // twow-repo#342: named for cand=
+    for (auto& trans : candidates)
     {
         float distance = dockPosition.sqDistance2d(trans);
 
@@ -697,7 +858,13 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
     if (transport && dockPosition.mapid == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
     {
-        MoveOnTransport(ai, transport, doTeleport);
+        transport_edge::PointRejects rejects;
+        bool const moved = MoveOnTransport(ai, transport, doTeleport, edgeTrace ? &rejects : nullptr);
+
+        // twow-repo#342 (S1, OB-10 pin): this answers true also when nothing was boarded (MoveOnTransport false, e.g. no
+        // point from RandomPointOnTrans); with the trace on that is 'fail reason=board_point', a boarding is 'state=board'.
+        if (edgeTrace)
+            TraceTransportBoard(ai, *edgeKey, moved, doTeleport, rejects, uint32(candidates.size()), std::sqrt(minDist));
 
         return true;
     }
@@ -707,7 +874,23 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
     else
         ai->TellDebug(ai->GetMaster(), "Waiting for transport " + std::string(transportName) + " at " + std::to_string((uint32)sqrt(minDist)) + "y from docking.", "debug move");
 
+    if (edgeTrace)   // twow-repo#342 (S1): state=attempt on a new key, fail route_changed / wait_timeout
+        TraceTransportWait(ai, *edgeKey, uint32(candidates.size()), transport ? std::sqrt(minDist) : -1.0f);
+
     return false;
+}
+
+// twow-repo#342 (S1): the two episode ends outside the movement code; the callers test the trace switch first.
+void MovementAction::TraceTransportEdgeFellOff(PlayerbotAI* ai)
+{
+    transport_edge::Step const step = transport_edge::OnFellOff(TransportEdgeState(ai), WorldTimer::getMSTime());
+    LogTransportEdge(ai->GetBot(), step, step.previous, transport_edge::Extra());
+}
+
+void MovementAction::TraceTransportEdgeStallAbandon(PlayerbotAI* ai)
+{
+    transport_edge::Step const step = transport_edge::OnStallAbandon(TransportEdgeState(ai), WorldTimer::getMSTime());
+    LogTransportEdge(ai->GetBot(), step, step.previous, transport_edge::Extra());
 }
 
 bool MovementAction::MinimalMove(PlayerbotAI* ai)
@@ -771,7 +954,11 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
 
         WorldPosition exitPos = (exitStep != path.end()) ? exitStep->point : nextStep->point;
 
-        bool didTransport = UseTransport(ai, nextStep->entry, nextStep->point, exitPos, true);
+        transport_edge::Key const* edgeKey = nullptr;
+        if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1)
+            edgeKey = TransportEdgeKeyFor(ai, path, 0, true);
+
+        bool didTransport = UseTransport(ai, nextStep->entry, nextStep->point, exitPos, true, edgeKey);
 
         if (!didTransport) //We did not board yet or are on the transport so just wait.
         {
@@ -879,7 +1066,11 @@ bool MovementAction::WaitForTransport()
     PathNodePoint dockPoint = path.getPath().front();
     PathNodePoint telePoint = *std::next(path.getPath().begin());
         
-    if (!UseTransport(ai, dockPoint.entry, dockPoint.point, telePoint.point, sPlayerbotAIConfig.transportTeleportType > 0))
+    transport_edge::Key const* edgeKey = nullptr;
+    if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): aboard, the stored episode key
+        edgeKey = TransportEdgeKeyFor(ai, path.getPath(), 0, false);
+
+    if (!UseTransport(ai, dockPoint.entry, dockPoint.point, telePoint.point, sPlayerbotAIConfig.transportTeleportType > 0, edgeKey))
         return true;
 
     lastMove.lastTransportEntry = 0;
@@ -1084,7 +1275,10 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
     //We are getting 'on' transport.
     if (nextPoint.type == PathNodeType::NODE_TRANSPORT)
     {
-        bool usedTransport = UseTransport(ai, nextPoint.entry, nextPoint.point, WorldPosition(), sPlayerbotAIConfig.transportTeleportType > 0);
+        transport_edge::Key const* edgeKey = nullptr;
+        if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1)
+            edgeKey = TransportEdgeKeyFor(ai, path.getPath(), 1, false);
+        bool usedTransport = UseTransport(ai, nextPoint.entry, nextPoint.point, WorldPosition(), sPlayerbotAIConfig.transportTeleportType > 0, edgeKey);
         if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
             LogTransportWait(bot, nextPoint.entry, nextPoint.point);
 
@@ -1099,7 +1293,10 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
 
     if (currentPoint.type == PathNodeType::NODE_TRANSPORT)
     {
-        bool usedTransport = UseTransport(ai, currentPoint.entry, currentPoint.point, nextPoint.point, sPlayerbotAIConfig.transportTeleportType > 0);
+        transport_edge::Key const* edgeKey = nullptr;
+        if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1)
+            edgeKey = TransportEdgeKeyFor(ai, path.getPath(), 0, false);
+        bool usedTransport = UseTransport(ai, currentPoint.entry, currentPoint.point, nextPoint.point, sPlayerbotAIConfig.transportTeleportType > 0, edgeKey);
         if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
             LogTransportWait(bot, currentPoint.entry, currentPoint.point);
 

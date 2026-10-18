@@ -31,6 +31,7 @@
 #include "Maps/GridNotifiersImpl.h"
 #include "Maps/CellImpl.h"
 #include "strategy/values/LastMovementValue.h"
+#include "strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeFellOff
 #include "playerbot/FarMovePolicy.h"
 #include "strategy/actions/LogLevelAction.h"
 #include "strategy/actions/SayAction.h"
@@ -1707,6 +1708,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         {
             TellPlayer(GetMaster(), "Jumping off " + std::string(bot->GetTransport()->GetName()));
         }
+
+        if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=fell_off for a boarded episode
+            MovementAction::TraceTransportEdgeFellOff(this);
 
         WorldPosition botPos(bot);
         bot->GetTransport()->RemovePassenger(bot);
