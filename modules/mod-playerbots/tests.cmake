@@ -3300,6 +3300,12 @@ add_test(NAME shortcut_s0_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/shortcut_s0_source_contract_tests.cmake")
 
+# twow-repo#596 / P3-b review (AiPlayerbot.Gather.FishingSkillCheck): the fishing skill check is no longer shadowed.
+add_test(NAME fishing_skill_check_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/fishing_skill_check_source_contract_tests.cmake")
+
 # twow-repo#587 (AiPlayerbot.QuestRescue.KeepRequestWhenFull): a rescue request is not dropped while the limit is used up.
 add_test(NAME rescue_keep_request_source_contract
   COMMAND "${CMAKE_COMMAND}"
