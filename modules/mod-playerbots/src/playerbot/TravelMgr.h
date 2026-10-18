@@ -70,10 +70,19 @@ namespace ai
 		uint8 GetUint8Value(const std::string& valueName) const { return uint8Values.at(valueName);};
 		uint8 GetUint32Value(const std::string& valueName) const { return uint32Values.at(valueName); };
 
+		// twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit - the creature level window of the gap filler's
+		// population, set in the constructor on the bot thread and read by the async grind fetch only as a value
+		// (GrindTravelDestination::IsPossible, TravelMgr::IsLocationLevelValid). 0 / 0 = no window: every other bot, GrindMode 0 / 2.
+		bool HasGapWindow() const { return gapWindowHigh != 0; }
+		uint32 GetGapWindowLow() const { return gapWindowLow; }
+		uint32 GetGapWindowHigh() const { return gapWindowHigh; }
+
 	private:
 		WorldPosition position;
 		Team team = TEAM_NONE;
 		uint32 level = 0;
+		uint32 gapWindowLow = 0;    // twow-repo#601 S2 R3: 0 / 0 for every bot but the GrindMode 1 population
+		uint32 gapWindowHigh = 0;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };
 		uint8 groupSize = 0;
@@ -532,7 +541,7 @@ namespace ai
 
 		DestinationList GetDestinations(const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, const std::vector<int32>& entries = {}, bool onlyPossible = true, float maxDistance = 10000.0f) const;
 		void GetPartitionsLock(bool getLock = true);
-		static bool IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None);
+		static bool IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, bool gapWindowApplies = true);   // twow-repo#601 S2 R3: false = no GrindMode 1 window (fetches without IsPossible)
 		PartitionedTravelList GetPartitions(const WorldPosition& center, const std::vector<uint32>& distancePartitions, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, const std::vector<int32>& entries = {}, bool onlyPossible = true, float maxDistance = 10000.0f) const;
 		static void ShuffleTravelPoints(std::vector<TravelPoint>& points);
 

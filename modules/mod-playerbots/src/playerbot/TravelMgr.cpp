@@ -24,6 +24,7 @@
 #include "playerbot/HomeBindPolicy.h"
 #include "playerbot/RidingStagesBotPolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
+#include "Formulas.h"
 
 using namespace ai;
 using namespace MaNGOS;
@@ -65,6 +66,15 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player)
 
     for (auto& [valueName, value] : uint32Values)
         value = AI_VALUE(uint32, valueName);
+
+    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit, here on the bot thread - only the gap filler's
+    // population gets its creature level window [max(gray + 1, L - 5), L + 1]; the async grind fetch reads it only as a
+    // value. GrindMode 0 / 2 and every other bot: 0 / 0 (IsQuestGapGrind reads the config first).
+    if (ai->IsQuestGapGrind())
+    {
+        gapWindowLow = ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level));
+        gapWindowHigh = ai::quest_grind_mode::GapWindowHighLevel(level);
+    }
 }
 
 std::string EntryTravelDestination::GetShortName() const
@@ -643,12 +653,19 @@ bool GrindTravelDestination::IsPossible(const PlayerTravelInfo& info) const
 
     int32 maxLevel = std::max(botLevel * (0.5f + levelMod), botLevel - 5.0f + levelBoost);
 
-    if ((int32)cInfo->MaxLevel > maxLevel) //@lvl5 max = 3, @lvl60 max = 57
+    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the gap filler's population grinds where the template MaxLevel
+    // is inside [max(gray + 1, L - 5), L + 1] instead of the durability window below (money and elite tests stay). The
+    // window is a value of the snapshot, set on the bot thread (PlayerTravelInfo); every other bot: the old window.
+    bool const gapWindow = info.HasGapWindow();
+    if (gapWindow && !ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(), info.GetGapWindowHigh(), cInfo->MaxLevel))
+        return false;
+
+    if (!gapWindow && (int32)cInfo->MaxLevel > maxLevel) //@lvl5 max = 3, @lvl60 max = 57
         return false;
 
     int32 minLevel = std::max(botLevel * (0.4f + levelMod), botLevel - 12.0f + levelBoost);
 
-    if ((int32)cInfo->MaxLevel < minLevel) //@lvl5 min = 3, @lvl60 max = 50
+    if (!gapWindow && (int32)cInfo->MaxLevel < minLevel) //@lvl5 min = 3, @lvl60 max = 50
         return false;
 
     if (cInfo->MinLootGold == 0)
@@ -1609,6 +1626,11 @@ void TravelTarget::CheckStatus()
         // so no turn-in, quest loop or work-timeout count (gapWindowEnd is 0 for every other target).
         if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK && !gapWindowEnd)
             OnWorkTimeout();
+        // twow-repo#601 S2 / S4 [GrindWindow] expired= (OB-10 rev. 2): a gap grind trip ended by its window end (READY, TRAVEL
+        // or WORK carry the window time; gapWindowEnd is set only for the GrindMode 1 population). A relaxed count, no failure.
+        if (gapWindowEnd && (GetStatus() == TravelStatus::TRAVEL_STATUS_READY || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ||
+                GetStatus() == TravelStatus::TRAVEL_STATUS_WORK))
+            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));
         // twow-repo#594 / P3-b: a direct-target trip out of travel time is a failure of its destination (out of work time
         // it ends in SetStatus).
         if (ai::direct_targets::AnyBuilt() && GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL)
@@ -3538,7 +3560,7 @@ void TravelMgr::GetPartitionsLock(bool getLock)
     sTravelMgr.getDestinationVar.notify_one();
 }
 
-bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag)
+bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag, bool gapWindowApplies)
 {
     bool canFightElite = info.GetBoolValue("can fight elite");
     int32 botLevel = (int32)info.GetLevel();
@@ -3627,6 +3649,15 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
             sPlayerbotAIConfig.questFirstProgressionQuestAreaLevelMargin);
     }
 
+    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): a pure grind point of the gap filler's population - its area
+    // level inside the same window [max(gray + 1, L - 5), L + 1] as the template (IsPossible) replaces the area gate (L - 2 -
+    // deaths) and the zone floor below, so the two cannot disagree; an unknown area (0) stays rejected. The window is a
+    // value of the snapshot (bot thread); every other bot and purpose: unchanged. gapWindowApplies false: a fetch without
+    // IsPossible (guild order objective / kill mobs, GetPartitions onlyPossible false) keeps the old gate, as it keeps the
+    // old template test.
+    if (info.HasGapWindow() && gapWindowApplies && purposeFlag == (uint32)TravelDestinationPurpose::Grind)
+        return ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(), info.GetGapWindowHigh(), areaLevel);
+
     if (!(purposeFlag & (uint32)TravelDestinationPurpose::QuestTaker))
     {
         if (!areaLevel || (uint32)botLevel < areaLevel) //Skip points that are in a area that is too high level.
@@ -3692,7 +3723,7 @@ PartitionedTravelList TravelMgr::GetPartitions(const WorldPosition& center, cons
 
         for (auto& position : points)
         {
-            if (!IsLocationLevelValid(*position, info, purposeFlag))
+            if (!IsLocationLevelValid(*position, info, purposeFlag, onlyPossible))   // twow-repo#601 S2 R3: window only with IsPossible
             {
                 probeRejectLevel++;
                 continue;
