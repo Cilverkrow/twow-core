@@ -2369,7 +2369,6 @@ AiPlayerbot.BotUpdateTraceTriggers = 0
 # (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
 # could choose every fishing zone. 0 = as before (default).
 AiPlayerbot.Gather.FishingSkillCheck = 0
-
 # twow-repo#596 D: 1 = the zone-escape trigger and the hearthstone check take the home bind's area from the area the core
 # stored at bind time, instead of a terrain lookup at the bind position (which loaded that far grid from disk again and
 # again: 126 ms per check for a bot whose bind spot nobody is near). Same area and level. 0 = terrain lookup (default).
