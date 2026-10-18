@@ -60,7 +60,8 @@ inline bool Fresh(Snapshot const& s, std::uint32_t nowMs)
 }
 
 // The adds at a death: the units that still have the bot as victim (the old rule, kept in case the core ever keeps it), then the fresh
-// snapshot; each guid once, the current target (the killer column) never. Order is kept: live first, then snapshot order.
+// snapshot; each guid once, the bot's current target (the column before) never. That target need not be the killer: a mob B that kills
+// the bot while it targets A is counted as an add. Order is kept: live first, then snapshot order.
 inline std::vector<std::uint64_t> MergeAdds(std::vector<std::uint64_t> const& live, Snapshot const& s, bool fresh, std::uint64_t currentTarget)
 {
     std::vector<std::uint64_t> adds;
