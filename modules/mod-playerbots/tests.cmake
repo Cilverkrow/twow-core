@@ -274,6 +274,15 @@ add_test(NAME quest_grind_mode_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_grind_mode_source_contract_tests.cmake")
 
+# twow-repo#601 S2 / S4 (GrindMode 1 = gap filler, default 0; OB-10 rev. 2 18.10.2026): grind only inside the quest route
+# backoff (R1, before the S0 lines), the grind trip ends with the backoff and its end counts as no failure (R2). Commit 2:
+# R3 window via the snapshot scope bit, own map, R4, R5, [GrindWindow] minute line. Review fixes: inactive gap trip ends at
+# once (no COOLDOWN), cooldown cap, no refresh / money / group grind copy, window only for the gap grind fetch / choice / trip.
+add_test(NAME grind_gap_window_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_gap_window_source_contract_tests.cmake")
+
 # twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.*, default 0 / empty; OB-10 / OB-00 18.10.2026): feasibility at accept
 # time - quest id lists, the solo group rule, the giver relation and the drop of open infeasible quests (policy).
 add_executable(quest_feasibility_policy_tests
@@ -3403,3 +3412,23 @@ add_test(NAME emergency_ladder_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/emergency_ladder_source_contract_tests.cmake")
+
+# twow-repo#602 ROT-01 F6 (log fix, no switch): the adds column of deaths.csv from an attacker snapshot taken while the bot fights
+# (the death clears every victim before OnDeath runs); OB-10: before the X3 A/B.
+add_executable(death_adds_policy_tests
+  "${PB_MODULE_DIR}/t/death_adds_policy_tests.cpp")
+
+target_include_directories(death_adds_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(death_adds_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME death_adds_policy
+  COMMAND death_adds_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME death_adds_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/death_adds_source_contract_tests.cmake")

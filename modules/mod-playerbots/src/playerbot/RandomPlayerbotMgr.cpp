@@ -1309,6 +1309,32 @@ void ReportQuestIdle()
     sLog.outBasic("%s", PlayerbotAI::TakeQuestIdleMinuteLine().c_str());
 }
 
+// twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2 points 2 / 5): one "[GrindWindow] minute starts= expired= engaged=
+// grey_engaged= no_dest= r4_skips= r4_empty=" line per minute - the gap filler's windows, plain grind engagements, R4 skips
+// and passes left empty by R4 counted on the map threads since the last line (atomics in PlayerbotAI.cpp). Gated by
+// GrindMode 1 alone and omitted when every count is 0. World thread only, same pattern as ReportQuestFeasibility (the
+// first line after a full minute).
+void ReportGrindWindow()
+{
+    if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode))
+        return;   // GrindMode 0 / 2: not even the clock is read
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!lastReport)
+    {
+        lastReport = now;
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    std::string const line = PlayerbotAI::TakeGrindWindowMinuteLine();
+    if (!line.empty())
+        sLog.outBasic("%s", line.c_str());
+}
+
 // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): [RotCast] once per minute, [RotCastTotal] once per hour
 // (RotCastTrace.cpp). World thread only. The first call after the switch went on clears and starts a window.
 void ReportRotCast()
@@ -1615,6 +1641,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
     ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
+    ReportGrindWindow();  // twow-repo#601 S2 / S4: [GrindWindow] minute once per minute, not when empty (GrindMode = 1)
     ReportRotCast();      // twow-repo#602 ROT-01 D0: [RotCast] once per minute (AiPlayerbot.Rotation.CastTrace)
     ReportEmergencyLadder(); // twow-repo#602 ROT-01 X3: [EmergencyLadderTotal] once per hour (AiPlayerbot.Rotation.EmergencyLadder)
     ReportRestGate();     // twow-repo#602 ROT-01 X1: [RestGateTotal] once per hour (AiPlayerbot.Rotation.RestGate)

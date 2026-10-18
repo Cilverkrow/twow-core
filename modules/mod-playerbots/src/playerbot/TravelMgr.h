@@ -51,7 +51,7 @@ namespace ai
 	{
 	public:
 		PlayerTravelInfo() {};
-		PlayerTravelInfo(Player* player);
+		PlayerTravelInfo(Player* player, bool gapGrind = false);   // twow-repo#601 S2 R3: gapGrind = a GrindMode 1 gap grind fetch / choice / trip
 		
 		const WorldPosition& GetPosition() const { return position; }
 		Team GetTeam() const { return team; }
@@ -70,10 +70,21 @@ namespace ai
 		uint8 GetUint8Value(const std::string& valueName) const { return uint8Values.at(valueName);};
 		uint8 GetUint32Value(const std::string& valueName) const { return uint32Values.at(valueName); };
 
+		// twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit - the creature level window of the gap filler's
+		// population, set in the constructor on the bot thread and read by the async grind fetch only as a value
+		// (GrindTravelDestination::IsPossible, TravelMgr::IsLocationLevelValid). 0 / 0 = no window: every other bot, GrindMode 0 / 2,
+		// and every snapshot that is not for a gap grind (review C-F2: a quest objective fetch, choice or trip to grind mobs keeps
+		// the old template test and area gate; only the gap grind fetch, its choice and the gap trip pass gapGrind).
+		bool HasGapWindow() const { return gapWindowHigh != 0; }
+		uint32 GetGapWindowLow() const { return gapWindowLow; }
+		uint32 GetGapWindowHigh() const { return gapWindowHigh; }
+
 	private:
 		WorldPosition position;
 		Team team = TEAM_NONE;
 		uint32 level = 0;
+		uint32 gapWindowLow = 0;    // twow-repo#601 S2 R3: 0 / 0 for every bot but the GrindMode 1 population
+		uint32 gapWindowHigh = 0;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };
 		uint8 groupSize = 0;
@@ -405,6 +416,14 @@ namespace ai
 		void SetExpireIn(uint32 expireMs) { statusTime = GetExpiredTime() + expireMs; }
 		void SetForced(bool forced1) { forced = forced1; }
 		void SetGroupCopy(GuidPosition member) { groupMember = member; }
+		// twow-repo#601 S2 / S4 R2 (GrindMode 1): a gap grind trip ends with its quest route backoff - READY, TRAVEL and WORK
+		// get the time left until this end (time(nullptr) seconds, 0 = none); its expiry counts as no failure.
+		void SetGapWindowEnd(uint32 windowEnd) { gapWindowEnd = windowEnd; }
+		uint32 GetGapWindowEnd() const { return gapWindowEnd; }
+		// twow-repo#601 S2 R3 (GrindMode 1, review C-F2): this choice is the gap grind choice (set by ChooseTravelTargetAction on the
+		// new target only, never copied) - the R3 window snapshot and the own-map skip apply to it, not to a quest choice.
+		void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }
+		bool IsGapGrindChoice() const { return gapGrindChoice; }
 
 		void IncRetry(bool isMove) { if (isMove) moveRetryCount+=2; else extendRetryCount++; }
         void DecRetry(bool isMove);
@@ -464,6 +483,8 @@ namespace ai
 
 		uint32 startTime = WorldTimer::getMSTime();
 		uint32 statusTime = 0;
+		uint32 gapWindowEnd = 0;   // twow-repo#601 S2 / S4 R2: 0 for every target but a GrindMode 1 gap grind trip
+		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
 		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
 
 		bool forced = false;
@@ -531,7 +552,7 @@ namespace ai
 
 		DestinationList GetDestinations(const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, const std::vector<int32>& entries = {}, bool onlyPossible = true, float maxDistance = 10000.0f) const;
 		void GetPartitionsLock(bool getLock = true);
-		static bool IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None);
+		static bool IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, bool gapWindowApplies = true);   // twow-repo#601 S2 R3: false = no GrindMode 1 window (fetches without IsPossible)
 		PartitionedTravelList GetPartitions(const WorldPosition& center, const std::vector<uint32>& distancePartitions, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, const std::vector<int32>& entries = {}, bool onlyPossible = true, float maxDistance = 10000.0f) const;
 		static void ShuffleTravelPoints(std::vector<TravelPoint>& points);
 

@@ -772,6 +772,40 @@ bool PlayerbotAI::IsQuestNoGrind()
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
 }
 
+// twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): the same population as IsQuestNoGrind. The config is read first, so
+// GrindMode 0 / 2 return before any other test.
+bool PlayerbotAI::IsQuestGapGrind()
+{
+    if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot)
+        return false;
+
+    return ai::quest_grind_mode::GapFillerApplies(sPlayerbotAIConfig.questFirstProgressionGrindMode,
+        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
+        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
+}
+
+// twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): window starts, window ends, plain grind engagements (grey
+// ones), empty windows, R4 skips and passes left empty by R4 since the last minute line; counted on the map threads,
+// taken by the world thread (relaxed atomics, no lock).
+namespace
+{
+std::atomic<uint32> grindWindowCounts[ai::quest_grind_mode::WindowEventCount] = {};
+}
+
+void PlayerbotAI::NoteGrindWindow(uint8 event, uint32 n)
+{
+    if (event < ai::quest_grind_mode::WindowEventCount && n)
+        grindWindowCounts[event].fetch_add(n, std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeGrindWindowMinuteLine()
+{
+    std::array<std::uint32_t, ai::quest_grind_mode::WindowEventCount> counts = {};
+    for (std::size_t event = 0; event < ai::quest_grind_mode::WindowEventCount; ++event)
+        counts[event] = grindWindowCounts[event].exchange(0, std::memory_order_relaxed);
+    return ai::quest_grind_mode::FormatWindowMinuteLine(counts);
+}
+
 // GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason and idle
 // episode (at most 4 per episode however the reasons alternate).
 void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
@@ -2196,21 +2230,28 @@ void PlayerbotAI::OnDeath()
 
                 out << "\"";
 
-                uint32 adds = 0;
-
+                // twow-repo#602 ROT-01 F6: the death already cleared every victim (Unit::SetDeathState -> CombatStop), so the adds come
+                // from the snapshot taken while the bot fought (DeathAddsPolicy.h); a unit that still has the bot as victim comes first.
+                std::vector<uint64> live;
                 for (auto target : targets)
                 {
                     if (!target.IsCreature())
                         continue;
 
                     Unit* unit = GetUnit(target);
-                    if (!unit)
-                        continue;
+                    if (unit && unit->GetVictim() == bot)
+                        live.push_back(target.GetRawValue());
+                }
+                std::vector<uint64> const addGuids = ai::death_adds::MergeAdds(live, deathAdds,
+                    ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime()), ctarget ? ctarget->GetObjectGuid().GetRawValue() : 0);
 
-                    if (unit->GetVictim() != bot)
-                        continue;
+                uint32 adds = 0;
 
-                    if (unit == ctarget)
+                for (uint64 const guid : addGuids)
+                {
+                    Unit* unit = GetUnit(ObjectGuid(guid));
+                    // Intended (OB-10 review): adds = attackers still alive at the death; a mob the bot killed itself did not kill it.
+                    if (!unit || !unit->IsAlive())
                         continue;
 
                     out << unit->GetName() << "(" << unit->GetLevel() << ")";
@@ -2421,6 +2462,8 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
     masterIncomingPacketHandlers.Handle(helper);
     SC_PHASE("UpdateAIInternal.masterOutgoingPackets", bot ? bot->GetName() : "(null)");
     masterOutgoingPacketHandlers.Handle(helper);
+
+    UpdateDeathAddsSnapshot();
 
     SC_PHASE("UpdateAIInternal.DoNextAction", bot ? bot->GetName() : "(null)");
 	DoNextAction(minimal);
@@ -9516,6 +9559,25 @@ namespace
                 return false;
         }
     }
+}
+
+void PlayerbotAI::UpdateDeathAddsSnapshot()
+{
+    if (!bot->IsAlive())
+        return;   // keep the last snapshot: OnDeath reads it on this tick or the next
+    if (!bot->IsInCombat())
+    {
+        deathAdds.Clear();
+        return;
+    }
+    Unit::AttackerSet const& attackers = bot->getAttackers();
+    uint32 const nowMs = WorldTimer::getMSTime();
+    if (!ai::death_adds::Due(deathAdds, nowMs, uint32(attackers.size())))
+        return;
+    deathAdds.Begin(nowMs, uint32(attackers.size()));
+    for (Unit* unit : attackers)
+        if (unit && unit->IsCreature() && !deathAdds.Add(unit->GetObjectGuid().GetRawValue()))
+            break;
 }
 
 void PlayerbotAI::RunPendingDialogueCommands()
