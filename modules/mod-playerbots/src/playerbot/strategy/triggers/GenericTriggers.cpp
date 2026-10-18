@@ -197,7 +197,8 @@ bool PanicTrigger::EmergencyLadder(bool panic)
         ladderStartMs = nowMs;
         ladderChoice = uint8(choice);
         ladderFallbackCounted = false;
-        ai::emergency_ladder_rt::RecordEpisode(bot->getClass(), cohortB, choice);
+        ladderWon = false;
+        ai::emergency_ladder_rt::RecordEpisode(bot->getClass(), cohortB, choice, el::EscapeOverFight(s));
         if (ai::emergency_ladder_rt::TakeLineBudget(uint32(time(nullptr))))
         {
             int const mana = bot->GetMaxPower(POWER_MANA) ? int(bot->GetPowerPercent(POWER_MANA)) : -1;
@@ -215,9 +216,18 @@ bool PanicTrigger::EmergencyLadder(bool panic)
         el::Situation const s = LadderSituation(ai, bot, nullptr);
         if (el::FightStillHolds(s))
             return false;   // no flee: the killing blow
-        // The fight is over: target dead or gone (a won fight, not an abort) or its conditions broke (a second mob, the target healed).
-        // Either way the ladder decides again - a new episode, which may find an escape ready.
-        if (s.hasTarget)
+        // Won: nothing left to flee from - no new episode, counted once (OB-10 review 18.10.).
+        if (el::FightWon(s))
+        {
+            if (!ladderWon)
+                ai::emergency_ladder_rt::RecordFightWon(bot->getClass(), cohortB);
+            ladderWon = true;
+            return false;
+        }
+        // The fight is over: target dead or gone with a mob still on the bot, or its conditions broke (a second mob, the target healed).
+        // Either way the ladder decides again - a new episode, which may find an escape ready. Only a fight that was not won before
+        // counts as an abort.
+        if (s.hasTarget && !ladderWon)
             ai::emergency_ladder_rt::RecordFightAbort(bot->getClass(), cohortB);
         ladderOpen = false;
         return EmergencyLadder(panic);   // one level: a new decision is Fight only while FightStillHolds, which returns above

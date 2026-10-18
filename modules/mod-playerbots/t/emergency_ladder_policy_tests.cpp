@@ -86,6 +86,25 @@ int main()
         s = Nearly(10); s.escapeReady = true;
         Require(FightStillHolds(s), "a fight already running is not ended by an escape getting ready");
         Require(!FightStillHolds(Situation()), "no target: the fight is over");
+        // Won (OB-10 review 18.10.): target gone and no attacker left - no new episode.
+        Situation won; won.hasTarget = false; won.attackers = 0;
+        Require(FightWon(won), "target dead, nothing attacks: won");
+        won.attackers = 1;
+        Require(!FightWon(won), "target dead but a mob still on the bot: decide again");
+        Require(!FightWon(Nearly(10)), "target alive: not won");
+        Situation zeroAttackers = Nearly(10); zeroAttackers.attackers = 0;
+        Require(!FightWon(zeroAttackers), "attacker count 0 with a live target (cache lag): not won");
+    }
+
+    // 2b) escape_over_fight: an escape chosen although the fight fit.
+    {
+        Situation s = Nearly(5); s.escapeReady = true;
+        Require(Decide(s) == Choice::Escape && EscapeOverFight(s), "Shout on a target at 5 %: escape over fight");
+        s = Nearly(40); s.escapeReady = true;
+        Require(Decide(s) == Choice::Escape && !EscapeOverFight(s), "target too healthy: escape, not over a fight");
+        s = Nearly(5); s.attackers = 2; s.escapeReady = true;
+        Require(!EscapeOverFight(s), "two attackers: no fight to pass over");
+        Require(!EscapeOverFight(Nearly(5)), "no escape ready: fight");
     }
 
     // 3) Escape window: 2 s, also across a millisecond-timer wrap.
@@ -142,10 +161,11 @@ int main()
             "target_hp=0 target_gap=0 target_elite=0 target_player=0 attackers=2", "episode line without target");
         RequireLine(FormatSoloCcLine(8, "Kettlina", 8, 'B', "polymorph", 3127, 2),
             "[EmergencyLadder] solo-cc bot=8 name=Kettlina cls=8 cohort=B spell=polymorph target=3127 attackers=2", "solo cc line");
-        Counters c; c.episodes = 5; c.flee = 2; c.escape = 2; c.fight = 1; c.escapeFallback = 1; c.soloCc = 3; c.ccBroken = 1;
+        Counters c; c.episodes = 5; c.flee = 2; c.escape = 2; c.fight = 1; c.escapeFallback = 1; c.fightWon = 1; c.escapeOverFight = 1;
+        c.soloCc = 3; c.ccBroken = 1;
         RequireLine(FormatTotalLine(60, 'B', 4, c, 7),
             "[EmergencyLadderTotal] window_min=60 cohort=B cls=4 episodes=5 flee=2 escape=2 fight=1 escape_fallback=1 fight_abort=0 "
-            "solo_cc=3 cc_broken=1 dropped=7", "total line");
+            "fight_won=1 escape_over_fight=1 solo_cc=3 cc_broken=1 dropped=7", "total line");
         Require(Counters().Empty() && !c.Empty(), "empty counters");
         std::string const longName(200, 'x');
         Require(FormatEpisodeLine(1, longName, 1, 1, 'A', true, "panic", Choice::Flee, nullptr, 1, 1, s).find(std::string(41, 'x')) ==
