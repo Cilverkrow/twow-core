@@ -639,6 +639,7 @@ namespace ai
         uint8 ladderChoice = 0;         // ai::emergency_ladder::Choice
         char const* ladderEscape = nullptr;
         bool ladderFallbackCounted = false;
+        bool ladderWon = false;         // the fight episode's target died with no attacker left (counted once)
         uint32 ladderLastSeenMs = 0;    // last evaluation with panic active (a gap ends the episode)
     };
 

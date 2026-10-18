@@ -44,6 +44,13 @@ inline bool FightFits(Situation const& s)
         s.targetHp <= s.fightTargetHp;
 }
 
+// OB-10 review 18.10.: an escape chosen although the fight would have fit (e.g. Intimidating Shout on a target at 5 %) - counted as
+// escape_over_fight=, the number behind a later fight-first change in the class strategies.
+inline bool EscapeOverFight(Situation const& s)
+{
+    return s.escapeReady && FightFits(s);
+}
+
 inline Choice Decide(Situation const& s)
 {
     if (s.escapeReady)
@@ -59,6 +66,13 @@ inline Choice Decide(Situation const& s)
 inline bool FightStillHolds(Situation const& s)
 {
     return FightFits(s);
+}
+
+// A fight is won when its target is dead or gone and nothing attacks the bot any more: no new episode (it would log a flee with 0
+// attackers, OB-10 review 18.10.); the episode stays open until panic ends, combat ends or the gap.
+inline bool FightWon(Situation const& s)
+{
+    return !s.hasTarget && s.attackers == 0;
 }
 
 // An episode ends when panic is not seen for this long (the trigger is not evaluated outside combat, and a config reload can switch the
@@ -167,18 +181,19 @@ inline std::string FormatSoloCcLine(std::uint32_t guid, std::string const& name,
 // Per class and cohort counters of one hour.
 struct Counters
 {
-    std::uint64_t episodes = 0, flee = 0, escape = 0, fight = 0, escapeFallback = 0, fightAbort = 0, soloCc = 0, ccBroken = 0;
+    std::uint64_t episodes = 0, flee = 0, escape = 0, fight = 0, escapeFallback = 0, fightAbort = 0, fightWon = 0, escapeOverFight = 0,
+        soloCc = 0, ccBroken = 0;
     bool Empty() const { return !episodes && !soloCc && !ccBroken; }
 };
 
 inline std::string FormatTotalLine(std::uint32_t windowMin, char cohort, std::uint32_t cls, Counters const& c, std::uint32_t dropped)
 {
-    char buf[320];
+    char buf[384];
     std::snprintf(buf, sizeof(buf), "[EmergencyLadderTotal] window_min=%u cohort=%c cls=%u episodes=%llu flee=%llu escape=%llu fight=%llu "
-        "escape_fallback=%llu fight_abort=%llu solo_cc=%llu cc_broken=%llu dropped=%u", windowMin, cohort, cls,
-        (unsigned long long)c.episodes, (unsigned long long)c.flee, (unsigned long long)c.escape, (unsigned long long)c.fight,
-        (unsigned long long)c.escapeFallback, (unsigned long long)c.fightAbort, (unsigned long long)c.soloCc,
-        (unsigned long long)c.ccBroken, dropped);
+        "escape_fallback=%llu fight_abort=%llu fight_won=%llu escape_over_fight=%llu solo_cc=%llu cc_broken=%llu dropped=%u", windowMin,
+        cohort, cls, (unsigned long long)c.episodes, (unsigned long long)c.flee, (unsigned long long)c.escape, (unsigned long long)c.fight,
+        (unsigned long long)c.escapeFallback, (unsigned long long)c.fightAbort, (unsigned long long)c.fightWon,
+        (unsigned long long)c.escapeOverFight, (unsigned long long)c.soloCc, (unsigned long long)c.ccBroken, dropped);
     return buf;
 }
 }

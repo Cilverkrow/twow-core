@@ -26,11 +26,13 @@ Counters& Slot(std::uint8_t cls, bool cohortB)
 
 namespace ai::emergency_ladder_rt
 {
-void RecordEpisode(std::uint8_t cls, bool cohortB, Choice choice)
+void RecordEpisode(std::uint8_t cls, bool cohortB, Choice choice, bool escapeOverFight)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     Counters& c = Slot(cls, cohortB);
     ++c.episodes;
+    if (escapeOverFight)
+        ++c.escapeOverFight;
     if (choice == Choice::Fight)
         ++c.fight;
     else if (choice == Choice::Escape)
@@ -49,6 +51,12 @@ void RecordFightAbort(std::uint8_t cls, bool cohortB)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     ++Slot(cls, cohortB).fightAbort;
+}
+
+void RecordFightWon(std::uint8_t cls, bool cohortB)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    ++Slot(cls, cohortB).fightWon;
 }
 
 void RecordSoloCc(std::uint8_t cls, bool cohortB)

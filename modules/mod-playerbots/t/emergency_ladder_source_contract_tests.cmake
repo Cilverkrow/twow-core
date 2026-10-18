@@ -135,7 +135,9 @@ require_text("${triggers_cpp}" "    if (!applied)\n        return true;\n" "the 
 require_text("${triggers_cpp}" "ai::emergency_ladder_rt::RecordEscapeFallback(bot->getClass(), cohortB);" "escape fallback per class (OB-10 18.10.)")
 require_text("${triggers_cpp}" "    if (ladderOpen && (el::EpisodeStale(nowMs, ladderLastSeenMs) || !bot->IsInCombat()))\n        ladderOpen = false;" "episode ends after a gap or outside combat (review 18.10.)")
 require_text("${triggers_cpp}" "    if (escapeOpen && ai::emergency_ladder::EpisodeStale(nowMs, escapeLastSeenMs))\n        escapeOpen = false;" "outnumbered window ends after a gap")
-require_order("${triggers_cpp}" "        if (s.hasTarget)\n            ai::emergency_ladder_rt::RecordFightAbort(" "        return EmergencyLadder(panic);" "a won fight is no abort; the ladder decides again")
+require_order("${triggers_cpp}" "        if (el::FightWon(s))\n        {\n            if (!ladderWon)\n                ai::emergency_ladder_rt::RecordFightWon(bot->getClass(), cohortB);\n            ladderWon = true;\n            return false;\n        }" "        if (s.hasTarget && !ladderWon)\n            ai::emergency_ladder_rt::RecordFightAbort(" "a won fight opens no new episode (OB-10 review 18.10.)")
+require_order("${triggers_cpp}" "        if (s.hasTarget && !ladderWon)\n            ai::emergency_ladder_rt::RecordFightAbort(" "        return EmergencyLadder(panic);" "a won fight is no abort; the ladder decides again")
+require_text("${triggers_cpp}" "ai::emergency_ladder_rt::RecordEpisode(bot->getClass(), cohortB, choice, el::EscapeOverFight(s));" "escape_over_fight counted per episode (OB-10 review 18.10.)")
 require_text("${config_cpp}" "    if (rotationEmergencyLadder > 2)\n        rotationEmergencyLadder = 0;" "unknown mode is off")
 
 # 5. Solo CC: switch first, own branch ending before the group members.
