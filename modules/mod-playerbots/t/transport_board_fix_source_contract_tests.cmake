@@ -520,7 +520,8 @@ function(check_recovery move out_var)
     return()
   endif()
   missing_of("${rec}" m "    if (kind == transport_board::Recovery::NoRoute)\n        lastMove.lastPath.clear();"
-    "            points.erase(points.begin(), points.begin() + i);   // up to the arrival dock" "        EndFixedRide(lastMove, lost.entry);" "LogTransportRecovery(bot, lost, kind, at);")
+    "            points.erase(points.begin(), points.begin() + i);   // up to the arrival dock" "        EndFixedRide(lastMove, lost.entry);" "LogTransportRecovery(bot, lost, kind, at, searchUs);"
+    "        std::uint64_t const searchStartUs = ai::bot_update::NowUs();\n        TravelPath route = sTravelNodeMap.getFullPath(at, lastMove.lastPath.getBack(), bot);\n        searchUs = ai::bot_update::SinceUs(searchStartUs);")
   if(m)
     set(${out_var} "recovery outcomes (${m})" PARENT_SCOPE)
     return()
@@ -591,7 +592,7 @@ require_text("${policy}" "    if (nextRide && prevRide && nextRide != prevRide)\
 require_text("${policy}" "    if (s.tryMs && s.tryEntry == entry && transport_edge::Since(nowMs, s.tryMs) < BoardRetryMs)\n        return false;" "board throttle per ride, wrap-safe")
 require_text("${policy}" "    return c.set && c.ride == ride && c.map == map && c.x == x && c.y == y && transport_edge::Since(nowMs, c.ms) < StopCheckMs;" "stop test answer per vessel and dock")
 require_text("${policy}" "    return Near2d(ride.arrival, map, x, y, RecoverNearYards) || Near2d(ride.exit, map, x, y, RecoverNearYards);" "near the arrival dock or the exit")
-require_text("${policy}" "    std::snprintf(buf, sizeof(buf),\n        \"[TransportBoard] state=stranded bot=%u ride=%u kind=%s at_map=%u at_x=%.1f at_y=%.1f arrival_map=%u arrival_x=%.1f \"\n        \"arrival_y=%.1f d_arrival=%.1f\",\n" "stranded line literal")
+require_text("${policy}" "    std::snprintf(buf, sizeof(buf),\n        \"[TransportBoard] state=stranded bot=%u ride=%u kind=%s at_map=%u at_x=%.1f at_y=%.1f arrival_map=%u arrival_x=%.1f \"\n        \"arrival_y=%.1f d_arrival=%.1f search_us=%llu\",\n" "stranded line literal (search_us: OB-10 18.10.)")
 require_text("${policy}" "    if (recovery)\n    {\n        std::snprintf(buf, sizeof(buf),\n            \"[TransportBoard] summary probes=%u dropped=%u stranded_near=%u stranded_search=%u stranded_noroute=%u min=%llu mins=%llu\",\n" "summary with the recovery counters only with the fix")
 require_text("${policy}" "inline std::string FormatSummary(Snapshot const& s, bool recovery = false)" "the S3b-0 summary by default")
 require_text("${move_cpp}" "sLog.outBasic(\"%s\", transport_board::FormatSummary(snapshot, sPlayerbotAIConfig.pathTransportBoardFix).c_str());" "the probe's summary: the S3b-0 line off")

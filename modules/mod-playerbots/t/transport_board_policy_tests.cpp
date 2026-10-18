@@ -338,11 +338,11 @@ int main()
         "recovery names");
     Require(FormatRecovery(42, ride, Recovery::Near, 1, -4330.0f, 2430.5f) ==
             "[TransportBoard] state=stranded bot=42 ride=177233 kind=near at_map=1 at_x=-4330.0 at_y=2430.5 arrival_map=1 "
-            "arrival_x=-4347.5 arrival_y=2430.5 d_arrival=17.5",
+            "arrival_x=-4347.5 arrival_y=2430.5 d_arrival=17.5 search_us=0",
         "stranded line");
-    Require(FormatRecovery(7, ride, Recovery::NoRoute, 0, 1.0f, 2.0f) ==
+    Require(FormatRecovery(7, ride, Recovery::NoRoute, 0, 1.0f, 2.0f, 51234) ==
             "[TransportBoard] state=stranded bot=7 ride=177233 kind=noroute at_map=0 at_x=1.0 at_y=2.0 arrival_map=1 "
-            "arrival_x=-4347.5 arrival_y=2430.5 d_arrival=-1.0",
+            "arrival_x=-4347.5 arrival_y=2430.5 d_arrival=-1.0 search_us=51234",
         "stranded line on another map");
     {
         // Recovery counters: counted after the roll, reported in the summary window, reset by it.
