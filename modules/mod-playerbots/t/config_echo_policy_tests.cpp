@@ -25,7 +25,7 @@ int main()
     Require(Value(true) == "1" && Value(false) == "0", "bool as 1 / 0");
     Require(Value(std::uint32_t(0)) == "0" && Value(std::uint32_t(15)) == "15" && Value(std::uint32_t(4294967295u)) == "4294967295",
         "uint32 as decimal");
-    Require(Value(60.0f) == "60.0" && Value(0.0f) == "0.0" && Value(12.25f) == "12.2", "float with one decimal");
+    Require(Value(60.0f) == "60.0" && Value(0.0f) == "0.0" && Value(12.26f) == "12.3" && Value(12.24f) == "12.2", "float with one decimal");
 
     Require(FormatLine({}) == "[ConfigEcho]", "no entries: only the tag");
     std::string const line = FormatLine({
