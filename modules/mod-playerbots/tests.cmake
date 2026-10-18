@@ -3439,3 +3439,27 @@ add_test(NAME fishing_skill_check_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/fishing_skill_check_source_contract_tests.cmake")
+
+
+# twow-repo#342 (S3b-0, no behaviour change): AiPlayerbot.Path.TransportWaitTimeoutMin is the S1 wait threshold the callers
+# pass (default 15 = 900 s), and AiPlayerbot.Path.TransportDeckProbe (default 0) probes the vessel deck once per dock wait:
+# one [TransportDeck] line (30 a minute, own budget) and a [TransportBoard] summary; the boarding answer is unchanged.
+add_executable(transport_board_policy_tests
+  "${PB_MODULE_DIR}/t/transport_board_policy_tests.cpp")
+
+target_include_directories(transport_board_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(transport_board_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(transport_board_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_board_policy
+  COMMAND transport_board_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_board_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/transport_board_source_contract_tests.cmake")

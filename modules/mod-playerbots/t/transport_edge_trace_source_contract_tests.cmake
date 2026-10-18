@@ -1,9 +1,9 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#342 (S1, measurement patch, OB-10 decision + CLI-PATH review 18.10.2026): AiPlayerbot.Path.TransportEdgeTrace
 # (default 0) writes one [TransportWait] state=attempt|board|arrive|fail line per transport edge transition and a summary.
-# Its wait_timeout / overrun threshold is the fixed 900 s of map section 3 (the shared TransportWaitTimeoutMin key is read
-# only by CLI-PATH S3b). Off = one bool test per hook, no state, no counters, no lines; the old [TransportWait] bot= line
-# and [TaxiUse] stay byte-identical. Reads named files only.
+# Its wait_timeout / overrun threshold is AiPlayerbot.Path.TransportWaitTimeoutMin * 60000, passed by the callers (S3b-0;
+# default 15 = the 900 s of map section 3). Off = one bool test per hook, no state, no counters, no lines; the old
+# [TransportWait] bot= line and [TaxiUse] stay byte-identical. Reads named files only.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -84,7 +84,7 @@ read_source("strategy/actions/MovementActions.cpp" move_cpp)
 read_source("strategy/actions/DebugAction.cpp" debug_cpp)
 
 # 0. Key: default off in code and in every dist file that carries the neighbouring Path keys; read once next to TaxiTrace.
-#    Threshold: the trace's own fixed 900 s (map section 3); S1 does not read the shared S3b key.
+#    Threshold: the policy keeps the 900 s default (map section 3) and no key; the callers pass the S3b-0 key (section 4).
 require_text("${config_h}" "    bool pathTransportEdgeTrace = false;  // twow-repo#342 (S1)" "TransportEdgeTrace default off")
 require_text("${config_cpp}" "pathTransportEdgeTrace = config.GetBoolDefault(\"AiPlayerbot.Path.TransportEdgeTrace\", false);" "trace read off")
 require_order("${config_cpp}" "pathTaxiTrace = config.GetBoolDefault(" "pathTransportEdgeTrace = config.GetBoolDefault(" "key parsed next to TaxiTrace")
@@ -240,10 +240,12 @@ require_text("${keyfn}" "    key.lift = goInfo && goInfo->type == GAMEOBJECT_TYP
 require_text("${keyfn}" "    if (bot->GetTransport())\n    {\n        state.current = transport_edge::State::EpisodeKey;\n        return &state;\n    }" "aboard: the stored key")
 require_text("${keyfn}" "    state.Store(id, key);\n    return &state;" "derived key stored with its run")
 region("${move_cpp}" "// twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace): everything below" "\nvoid MovementAction::CreateWp(" helpers)
-foreach(word getNode sTravelNodeMap getTransports getGameObjectsNear mutex pathTransportWaitTimeoutMin)
+foreach(word getNode sTravelNodeMap getTransports getGameObjectsNear mutex)
   forbid_text("${helpers}" "${word}" "${word} in the edge trace helpers")
 endforeach()
-count_text("${helpers}" "transport_edge::WaitTimeoutMs" 2 "fixed threshold in the wait and aboard hooks")
+# twow-repo#342 (S3b-0): the wait and aboard hooks pass the TransportWaitTimeoutMin key (byte-identical at 15), not the constant.
+count_text("${helpers}" "transport_board::WaitTimeoutMsOf(sPlayerbotAIConfig.pathTransportWaitTimeoutMin)" 2 "key threshold in the wait and aboard hooks")
+forbid_text("${helpers}" "transport_edge::WaitTimeoutMs" "the fixed constant in the hooks")
 region("${helpers}" "void TraceTransportWait(" "\n// #303" per_tick)
 forbid_text("${per_tick}" "for (" "loop in a per-tick hook")
 forbid_text("${per_tick}" "while (" "loop in a per-tick hook")

@@ -1328,6 +1328,14 @@ AiPlayerbot.Path.TaxiTrace = 0
 # ride_ms_sum = arrive + phase=ride end=1 fails. The [TransportWait] bot= line of TaxiTrace and [TaxiUse] stay as they
 # are. 0 = off (default).
 AiPlayerbot.Path.TransportEdgeTrace = 0
+# twow-repo#342 (S3b, trace, no behaviour change): 1 = once per dock wait, while the vessel stands at its stop near the dock
+# or after a failed boarding, 8 fixed points of the vessel are probed (static hit, deck model short / long ray, map dynamic
+# ray, model in the map tree): one [TransportDeck] line (30 a minute, own budget) and the [TransportBoard] summary.
+# 0 = off (default).
+AiPlayerbot.Path.TransportDeckProbe = 0
+# twow-repo#342 (S3b): minutes at a dock (and aboard) before [TransportWait] wait_timeout / overrun (S1).
+# 1-240, default 15 (= the S1 900 s).
+AiPlayerbot.Path.TransportWaitTimeoutMin = 15
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
 # twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a
