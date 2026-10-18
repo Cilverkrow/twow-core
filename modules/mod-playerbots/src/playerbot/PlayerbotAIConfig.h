@@ -857,6 +857,10 @@ public:
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
     bool zoneExitTurnInStallCounts = false;  // twow-repo#587 Z4: stage-1 turn-in recoveries count as turn-in failures
+    // twow-repo#601 S3c: a TRAVEL stall inside TurnInNearRadius yards of the taker parks the turn-in, and a second work
+    // timeout of the same turn-in does too (OB-10 rev. 2). The radius only acts with the switch; 0 = no near zone.
+    bool zoneExitTurnInTravelStall = false;
+    float zoneExitTurnInNearRadius = 60.0f;
     // twow-repo#587 (ZONE-01): quest rescue on the right continent, stranded bots ask for it, no BG quests as targets.
     bool zoneExitRescueHomeContinent = false;
     uint32 zoneExitStrandedRescueAfter = 0;

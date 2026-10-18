@@ -1337,6 +1337,17 @@ AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 # the turn-in (#485), so a bot whose taker is unreachable quests on in its band instead of cycling. 0 = as before.
 AiPlayerbot.ZoneExit.TurnInStallCounts = 0
 
+# twow-repo#601 S3c (OB-10 rev. 2, 18.10.2026): TurnInTravelStall = 1 (roster bots on their own): inside TurnInNearRadius
+# yards of a finished quest's taker only getting 3 yd closer than the best distance so far counts as progress (moving
+# around the taker no longer does). A stall there (TurnInStallSeconds) ends the trip: [UnreachableTarget]
+# reason=near_stall, the turn-in is parked at once for TurnInParkSeconds ([QuestFirstRoute] state=parked
+# reason=structural_unreachable_near) and the bot leaves the taker. The second work timeout of the same turn-in parks it
+# too (reason=structural_work_timeout). Parks need TurnInParkFailures > 0; without them the bot only leaves the taker for
+# TurnInRouteCooldownSeconds. Such parks never abandon the quest (AbandonStructuralParked) and a rescue does not lift
+# them. TurnInNearRadius only acts with the switch (0 = no near zone, at most 500). 0 = as before.
+AiPlayerbot.ZoneExit.TurnInTravelStall = 0
+AiPlayerbot.ZoneExit.TurnInNearRadius = 60
+
 # twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
 # RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
 #   continent (its race's start) is rescued back to it - a teleport, the cross-continent route rule stays as it is.
