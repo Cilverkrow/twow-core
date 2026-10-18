@@ -626,6 +626,9 @@ public:
     bool castSpellRefreshOnLearn = false;  // twow-repo#541 (audit A27): spell actions re-read spell id/range when the bot learned spells, levelled, spent talent points or (pet spell actions) got another pet (0 = off)
     bool rotationCastTrace = false;  // twow-repo#602 ROT-01 D0: [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] cast diagnostics, measurement only (0 = off)
     uint32 rotationSpecFromPath = 0;  // twow-repo#602 ROT-01 R06a: spec tab from the premade path from level 10, cohort mode 0 off / 1 all / 2 cohort B
+    uint32 rotationEmergencyLadder = 0;  // twow-repo#602 ROT-01 X3: emergency ladder for solo free bots below critical health, cohort mode 0 off / 1 all / 2 cohort B
+    uint32 rotationEmergencyLadderFightTargetHp = 20;  // twow-repo#602 X3 (F2): fight on instead of fleeing when the single target is at or below this HP %
+    std::vector<std::string> rotationEmergencyLadderSoloCcSpells;  // twow-repo#602 X3 (F3): spells allowed for solo CC on an add (lower case)
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
     bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
     bool perfPartyBuffKnownSpellGate = false;  // twow-repo#541 (audit A22): five party buff/cure triggers skip their party scan while the bot knows no rank of the action's spell (0 = off)

@@ -5,6 +5,9 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/strategy/values/PositionValue.h"
 #include "playerbot/strategy/values/AoeValues.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/EmergencyLadderPolicy.h"
+#include "playerbot/EmergencyLadderTrace.h"
 
 #include <regex>
 
@@ -80,15 +83,187 @@ bool HasAggroTrigger::IsActive()
     return AI_VALUE2(bool, "has aggro", "current target");
 }
 
+namespace
+{
+// twow-repo#602 ROT-01 X3: the bots the emergency ladder may act for - a solo free bot without a real player, not a healer (F1, OB-00
+// 18.10.2026: healers stay outside the ladder). The cohort is checked by the caller.
+bool LadderBot(PlayerbotAI* ai, Player* bot)
+{
+    return !bot->GetGroup() && !ai->IsRealPlayer() && sRandomPlayerbotMgr.IsFreeBot(bot) && !ai->ContainsStrategy(STRATEGY_TYPE_HEAL);
+}
+
+// twow-repo#602 X3: the first class escape that is known and off cooldown, or nullptr. Only escapes with an existing critical-health node in
+// the class strategies (they fire on their own while panic stays quiet): warrior Intimidating Shout, prot warrior Last Stand / Shield Wall
+// (F4), rogue Blind / Vanish (not on the tank path, whose strategy turns Vanish off), mage Ice Block, paladin Lay on Hands / Divine Shield,
+// warlock Sacrifice (Voidwalker out). The bear has no critical-health node (Frenzied Regeneration sits on low health): DruidKit.
+char const* ReadyEscape(PlayerbotAI* ai, Player* bot)
+{
+    auto ready = [ai, bot](char const* spell)
+    {
+        uint32 const id = ai->GetAiObjectContext()->GetValue<uint32>("spell id", spell)->Get();
+        return id && sServerFacade.IsSpellReady(bot, id);
+    };
+    switch (bot->getClass())
+    {
+    case CLASS_WARRIOR:
+        if (ai->ContainsStrategy(STRATEGY_TYPE_TANK))
+            // Last Stand falls back to Intimidating Shout in its node (ProtectionWarriorStrategy), so the shout counts as an escape too.
+            return ready("last stand") ? "last stand" : (ready("shield wall") ? "shield wall" :
+                (ready("intimidating shout") ? "intimidating shout" : nullptr));
+        return ready("intimidating shout") ? "intimidating shout" : nullptr;
+    case CLASS_ROGUE:
+        if (ready("blind"))
+            return "blind";
+        return !ai->HasStrategy("tank rogue", BotState::BOT_STATE_COMBAT) && ready("vanish") ? "vanish" : nullptr;
+    case CLASS_MAGE:
+        return ready("ice block") ? "ice block" : nullptr;
+    case CLASS_PALADIN:
+        // Divine Shield falls back to Divine Protection in its node (PaladinStrategy), so that counts as an escape too.
+        return ready("lay on hands") ? "lay on hands" : (ready("divine shield") ? "divine shield" :
+            (ready("divine protection") ? "divine protection" : nullptr));
+    case CLASS_WARLOCK:
+    {
+        // Sacrifice is the Voidwalker's spell (1860): ready as the pet spell action sees it - the pet knows it and it is off cooldown.
+        Pet* pet = bot->GetPet();
+        if (!pet || !pet->IsAlive() || pet->GetEntry() != 1860)
+            return nullptr;
+        uint32 const id = ai->GetAiObjectContext()->GetValue<uint32>("spell id", "sacrifice")->Get();
+        return id && pet->HasSpell(id) && pet->IsSpellReady(id) ? "sacrifice" : nullptr;
+    }
+    default:
+        return nullptr;
+    }
+}
+
+ai::emergency_ladder::Situation LadderSituation(PlayerbotAI* ai, Player* bot, char const* escape)
+{
+    ai::emergency_ladder::Situation s;
+    Unit* target = ai->GetAiObjectContext()->GetValue<Unit*>("current target")->Get();
+    s.hasTarget = target && target->IsAlive();
+    if (s.hasTarget)
+    {
+        s.targetPlayer = target->IsPlayer();
+        Creature* creature = target->ToCreature();
+        s.targetElite = creature && (creature->IsElite() || creature->IsWorldBoss());
+        s.targetHp = uint32(target->GetHealthPercent());
+        s.levelGap = int(target->GetLevel()) - int(bot->GetLevel());
+    }
+    s.attackers = ai->GetAiObjectContext()->GetValue<uint8>("my attacker count")->Get();
+    s.escapeReady = escape != nullptr;
+    s.fightTargetHp = sPlayerbotAIConfig.rotationEmergencyLadderFightTargetHp;
+    return s;
+}
+}
+
 bool PanicTrigger::IsActive()
 {
-    return !ai->IsInPvp() &&
+    bool const panic = !ai->IsInPvp() &&
            AI_VALUE2(uint8, "health", "self target") < sPlayerbotAIConfig.criticalHealth &&
-		   (!AI_VALUE2(bool, "has mana", "self target") || 
+		   (!AI_VALUE2(bool, "has mana", "self target") ||
             AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.lowMana);
+    // twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder): with the switch off nothing below runs, not even the episode state.
+    if (!sPlayerbotAIConfig.rotationEmergencyLadder)
+        return panic;
+    return EmergencyLadder(panic);
+}
+
+// One episode = panic active without a break. The choice is made once; a bot the switch does not apply to (cohort A in mode 2) logs it with
+// applied=0 and flees as before - the paired counterpart of cohort B.
+bool PanicTrigger::EmergencyLadder(bool panic)
+{
+    namespace el = ai::emergency_ladder;
+    if (!panic)
+    {
+        ladderOpen = false;
+        return false;
+    }
+    if (!LadderBot(ai, bot))
+        return true;
+
+    uint32 const guid = bot->GetGUIDLow();
+    bool const cohortB = ai::cohort::InB(guid);
+    bool const applied = ai::cohort::Applies(sPlayerbotAIConfig.rotationEmergencyLadder, guid);
+    uint32 const nowMs = WorldTimer::getMSTime();
+    // An episode left open by the last fight (the trigger is not evaluated outside combat) or across a config reload is over.
+    if (ladderOpen && (el::EpisodeStale(nowMs, ladderLastSeenMs) || !bot->IsInCombat()))
+        ladderOpen = false;
+    ladderLastSeenMs = nowMs;
+    if (!ladderOpen)
+    {
+        ladderEscape = ReadyEscape(ai, bot);
+        el::Situation const s = LadderSituation(ai, bot, ladderEscape);
+        el::Choice const choice = el::Decide(s);
+        ladderOpen = true;
+        ladderStartMs = nowMs;
+        ladderChoice = uint8(choice);
+        ladderFallbackCounted = false;
+        ai::emergency_ladder_rt::RecordEpisode(bot->getClass(), cohortB, choice);
+        if (ai::emergency_ladder_rt::TakeLineBudget(uint32(time(nullptr))))
+        {
+            int const mana = bot->GetMaxPower(POWER_MANA) ? int(bot->GetPowerPercent(POWER_MANA)) : -1;
+            sLog.outBasic("%s", el::FormatEpisodeLine(guid, bot->GetName(), bot->getClass(), bot->GetLevel(), ai::cohort::Letter(guid), applied,
+                "panic", choice, choice == el::Choice::Escape ? ladderEscape : nullptr, uint32(bot->GetHealthPercent()), mana, s).c_str());
+        }
+    }
+    if (!applied)
+        return true;
+
+    switch (el::Choice(ladderChoice))
+    {
+    case el::Choice::Fight:
+    {
+        el::Situation const s = LadderSituation(ai, bot, nullptr);
+        if (el::FightStillHolds(s))
+            return false;   // no flee: the killing blow
+        // The fight is over: target dead or gone (a won fight, not an abort) or its conditions broke (a second mob, the target healed).
+        // Either way the ladder decides again - a new episode, which may find an escape ready.
+        if (s.hasTarget)
+            ai::emergency_ladder_rt::RecordFightAbort(bot->getClass(), cohortB);
+        ladderOpen = false;
+        return EmergencyLadder(panic);   // one level: a new decision is Fight only while FightStillHolds, which returns above
+    }
+    case el::Choice::Escape:
+        if (el::EscapeWindowOpen(nowMs, ladderStartMs))
+            return false;   // the class escape node fires on its own
+        // Window over: an escape that is still ready was never cast (its node did not fire) - counted per class (OB-10 18.10.).
+        if (!ladderFallbackCounted && ladderEscape && ReadyEscape(ai, bot) == ladderEscape)
+            ai::emergency_ladder_rt::RecordEscapeFallback(bot->getClass(), cohortB);
+        ladderFallbackCounted = true;
+        return true;
+    default:
+        return true;
+    }
 }
 
 bool OutNumberedTrigger::IsActive()
+{
+    // twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder): with the switch off only this test is added.
+    if (!sPlayerbotAIConfig.rotationEmergencyLadder)
+        return Outnumbered();
+
+    bool const outnumbered = Outnumbered();
+    // Below critical health the ladder gives a ready class escape its window first (escape part only; panic decides fight / flee).
+    if (!outnumbered || AI_VALUE2(uint8, "health", "self target") >= sPlayerbotAIConfig.criticalHealth || !LadderBot(ai, bot) ||
+        !ai::cohort::Applies(sPlayerbotAIConfig.rotationEmergencyLadder, bot->GetGUIDLow()))
+    {
+        escapeOpen = false;
+        return outnumbered;
+    }
+    uint32 const nowMs = WorldTimer::getMSTime();
+    if (escapeOpen && ai::emergency_ladder::EpisodeStale(nowMs, escapeLastSeenMs))
+        escapeOpen = false;   // left over from an earlier fight or a config reload
+    escapeLastSeenMs = nowMs;
+    if (!escapeOpen)
+    {
+        if (!ReadyEscape(ai, bot))
+            return true;
+        escapeOpen = true;
+        escapeStartMs = nowMs;
+    }
+    return !ai::emergency_ladder::EscapeWindowOpen(nowMs, escapeStartMs);
+}
+
+bool OutNumberedTrigger::Outnumbered()
 {
     // Below level 10, Hunter has no viable kiting toolkit (ranged abilities have an 8yd
     // minimum range, no traps yet, only Concussive Shot to slow) - fleeing mid-fight can't
