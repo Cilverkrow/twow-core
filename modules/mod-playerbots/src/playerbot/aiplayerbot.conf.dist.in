@@ -2572,6 +2572,25 @@ AiPlayerbot.Rotation.CastTrace = 0
 # slot"). At load: "[SpecPath] loaded paths= with_tab= mismatches=" (+ one "[SpecPath] mismatch" line per path whose
 # key disagrees with its level 10 link). 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
 AiPlayerbot.Rotation.SpecFromPath = 0
+# twow-repo#602 ROT-01 X3 (BEHAVIOUR CHANGE, enable only after the OB-30 A/B + owner go): emergency ladder for SOLO FREE BOTS below
+# critical health (no group, no real player, not healers - F1). Today panic -> flee wins every tick and a solo random bot's flee is a
+# MoveChase around the mob that gains no distance. Once per episode the ladder picks: a ready CLASS ESCAPE gets a 2 s window in which panic and
+# outnumbered stay quiet so its existing critical-health node fires (warrior Intimidating Shout, prot Last Stand / Shield Wall, rogue
+# Blind / Vanish, mage Ice Block, paladin Lay on Hands / Divine Shield, warlock Sacrifice with the Voidwalker); else FIGHT ON when the
+# single target is a normal mob (not elite/boss/player, at most 2 levels above) at or below FightTargetHp; else FLEE as before. An
+# episode ends when panic is not seen for 10 s or the bot leaves combat. SOLO CC: with at least 2 attackers, a normal add that attacks the bot or its pet and has no DoT gets the CC of
+# SoloCcSpells (Fear only without other mobs near) unless the bot's own target is at 30 % HP or less.
+# Lines (bots.log): "[EmergencyLadder] bot= name= cls= level= cohort= applied=0|1 trigger=panic choice=flee|escape|fight escape=
+# hp= mana= target_hp= target_gap= target_elite= target_player= attackers=" once per episode (the cohort the switch does not apply to
+# logs its decision with applied=0 and flees as before), "[EmergencyLadder] solo-cc bot= name= cls= cohort= spell= target= attackers="
+# per new solo CC target (300 lines a minute over all bots), and once an hour per cohort and class "[EmergencyLadderTotal]
+# window_min=60 cohort= cls= episodes= flee= escape= fight= escape_fallback= fight_abort= solo_cc= cc_broken= dropped=".
+# 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
+AiPlayerbot.Rotation.EmergencyLadder = 0
+# twow-repo#602 X3 (F2): the ladder fights on when the single target is at or below this HP % (default 20).
+AiPlayerbot.Rotation.EmergencyLadder.FightTargetHp = 20
+# twow-repo#602 X3 (F3): spells for solo CC on an add, comma separated, lower case spell names (default polymorph,banish,fear).
+AiPlayerbot.Rotation.EmergencyLadder.SoloCcSpells = polymorph,banish,fear
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,

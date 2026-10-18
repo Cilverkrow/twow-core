@@ -623,13 +623,39 @@ namespace ai
         virtual bool IsActive() override;
     };
 
-    BEGIN_TRIGGER(PanicTrigger, Trigger)
+    // twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder): real classes for the ladder's episode state (one trigger object per bot,
+    // used on the bot's thread). With the switch off IsActive is the old condition and the members are never touched.
+    class PanicTrigger : public Trigger
+    {
+    public:
+        PanicTrigger(PlayerbotAI* ai) : Trigger(ai) {}
+        virtual bool IsActive() override;
         virtual std::string getName() override { return "panic"; }
-    END_TRIGGER()
 
-    BEGIN_TRIGGER(OutNumberedTrigger, Trigger)
+    private:
+        bool EmergencyLadder(bool panic);
+        bool ladderOpen = false;        // an episode (panic active) is running
+        uint32 ladderStartMs = 0;
+        uint8 ladderChoice = 0;         // ai::emergency_ladder::Choice
+        char const* ladderEscape = nullptr;
+        bool ladderFallbackCounted = false;
+        bool ladderWon = false;         // the fight episode's target died with no attacker left (counted once)
+        uint32 ladderLastSeenMs = 0;    // last evaluation with panic active (a gap ends the episode)
+    };
+
+    class OutNumberedTrigger : public Trigger
+    {
+    public:
+        OutNumberedTrigger(PlayerbotAI* ai) : Trigger(ai) {}
+        virtual bool IsActive() override;
         virtual std::string getName() override { return "outnumbered"; }
-    END_TRIGGER()
+
+    private:
+        bool Outnumbered();
+        bool escapeOpen = false;        // twow-repo#602 X3: the escape window of an outnumbered episode below critical health
+        uint32 escapeStartMs = 0;
+        uint32 escapeLastSeenMs = 0;
+    };
 
 	class NoPetTrigger : public Trigger
 	{
