@@ -143,6 +143,9 @@ namespace ai
 		void SetExpireFast() { expireDelay = 60000; } //1 minute
 		void SetCooldownShort() { cooldownDelay = 1000; } //1 second
 		void SetCooldownLong() { cooldownDelay = 300000; } //5 minutes
+		// twow-repo#594 / P3-b: the arrival radius of the direct-target destinations (station 2, entrance 3 yd); the default stays
+		// INTERACTION_DISTANCE and no other destination calls it.
+		void SetRadiusMin(float r) { radiusMin = r; }
 		virtual std::vector<std::string> GetTravelConditions() const { return {}; }
 
 		virtual bool IsOut(const WorldPosition& pos, float radius = 0) const { return !OnMap(pos) || DistanceTo(pos) > (radius ? radius : radiusMax); }
@@ -513,6 +516,9 @@ namespace ai
 		void GetFishLocations();
 		void GetFishLocations(uint32 mapId, bool routeAllowed);  // twow-repo#592: routeAllowed = unitless generation gate open
 		void SaveFishLocations();
+		// twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking / Fishing / Dungeon / Raid, default 0): the direct-target
+		// destinations, built once at boot (DirectTargetLoader.cpp); nothing with every class switch 0.
+		void LoadDirectTargets(EntryGuidps const& guidpMap);
 
 		WorldPosition* GetFishSpot(WorldPosition start, bool onlyNearestGrid = false);
 
@@ -578,6 +584,8 @@ namespace ai
 
 		GatherTravelDestination fishMap;
 		std::list<AsyncGuidPosition> fishPoints;
+		// twow-repo#594 / P3-b: the snapped points of the direct-target destinations (never in pointsMap).
+		std::list<AsyncGuidPosition> directPoints;
 		std::unordered_map<uint32, int32> areaLevels;
 		// #416 (7.3): areaLevels is read from the map threads and the destination jobs.
 		std::recursive_mutex areaLevelMutex;

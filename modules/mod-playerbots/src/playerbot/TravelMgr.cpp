@@ -22,6 +22,7 @@
 #include "ObjectAccessor.h"
 #include "playerbot/HomeBindPolicy.h"
 #include "playerbot/RidingStagesBotPolicy.h"
+#include "playerbot/DirectTargetDestinations.h"
 
 using namespace ai;
 using namespace MaNGOS;
@@ -924,6 +925,11 @@ TravelTarget::TravelTarget(PlayerbotAI* ai) : AiObject(ai)
 }
 
 void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {
+    // twow-repo#594 / P3-b: a direct-target trip ends where its target leaves the destination - a reset (null target),
+    // a group copy, any new choice ([DirectTarget] state=trip_end).
+    if (ai::direct_targets::AnyBuilt())
+        ai::direct_targets::OnTargetChange(ai, tDestination, tDestination1);
+
     if (dynamic_cast<TemporaryTravelDestination*>(tDestination) && tDestination1 != tDestination)
         delete tDestination;
 
@@ -1021,6 +1027,11 @@ uint32 TravelTarget::GetMaxTravelTime() const
 }
 
 void TravelTarget::SetStatus(TravelStatus status) {
+    // twow-repo#594 / P3-b: a direct-target trip also ends where its target goes into cooldown, expires or is cleared on it
+    // (destination inactive, work time out, a gathering purpose ended, a reset).
+    if (ai::direct_targets::AnyBuilt())
+        ai::direct_targets::OnTargetStatus(ai, tDestination, status);
+
     m_status = status;
     startTime = WorldTimer::getMSTime();
 
@@ -1410,6 +1421,10 @@ void TravelTarget::OnMoveRetryCooldown()
     // no logged start).
     TraceQuestCommit(tDestination, "blocked", "move_retry_cooldown");
 
+    // twow-repo#594 / P3-b: a direct-target destination the bot could not move to (failure memory, trip end).
+    if (ai::direct_targets::AnyBuilt())
+        ai::direct_targets::OnTravelFailure(ai, tDestination, "move_retry");
+
     if (!IsProgressAwareTurnIn())
         return;
 
@@ -1575,6 +1590,10 @@ void TravelTarget::CheckStatus()
             GetStatus() == TravelStatus::TRAVEL_STATUS_COOLDOWN ? "status_time_exceeded_cooldown" : "status_time_exceeded");
         if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK)
             OnWorkTimeout();
+        // twow-repo#594 / P3-b: a direct-target trip out of travel time is a failure of its destination (out of work time
+        // it ends in SetStatus).
+        if (ai::direct_targets::AnyBuilt() && GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL)
+            ai::direct_targets::OnTravelFailure(ai, tDestination, "expired");
         SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         ai->GetAiObjectContext()->ClearValues("no active travel destinations");
         return;
@@ -1601,6 +1620,9 @@ void TravelTarget::CheckStatus()
             // starts a fresh stall window instead of a stale one that stalls it at once. Off: as before.
             if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())
                 turnInRecovery.ResetProgress();
+            // twow-repo#594 / P3-b: arrivals of the direct-target destinations (failure memory, hole_present for fishing).
+            if (ai::direct_targets::AnyBuilt())
+                ai::direct_targets::OnArrive(tDestination, ai, wPosition);
             SetStatus(TravelStatus::TRAVEL_STATUS_WORK);
             return;
         }
@@ -1762,6 +1784,7 @@ void TravelMgr::Clear()
     destinationMap.clear();
     pointsMap.clear();
     fishPoints.clear();
+    directPoints.clear();
 }
 
 int32 TravelMgr::GetAreaLevel(uint32 area_id)
@@ -2342,6 +2365,9 @@ void TravelMgr::LoadQuestTravelTable()
     sTravelNodeMap.saveNodeStore();
 
     LoadFishLocations();
+
+    // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.*, default 0): boot only, after the fish locations.
+    LoadDirectTargets(guidpMap);
    
     //Creature/gos/zone export.
     if (sPlayerbotAIConfig.hasLog("creatures.csv"))
@@ -3517,6 +3543,21 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
             return false;
         int32 const gatherAreaLevel = position.getAreaLevelOrParent();
         return gatherAreaLevel > 0 && !homebind::IsZoneClearlyAboveLevel(uint32(gatherAreaLevel), info.GetLevel());
+    }
+
+    // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.*): a station is not a fight either - open world, an area level,
+    // not clearly above the bot (as gathering). An entrance point is in the open world; its level fit is the
+    // destination's (IsPossible). These bits exist only with a class built at boot.
+    uint32 const directPurposes = (uint32)TravelDestinationPurpose::Station | (uint32)TravelDestinationPurpose::DungeonEntrance |
+        (uint32)TravelDestinationPurpose::RaidEntrance;
+    if ((purposeFlag & directPurposes) && !(purposeFlag & ~directPurposes))
+    {
+        if (!position.isOverworld())
+            return false;
+        if (!(purposeFlag & (uint32)TravelDestinationPurpose::Station))
+            return true;
+        int32 const stationAreaLevel = position.getAreaLevelOrParent();
+        return stationAreaLevel > 0 && !homebind::IsZoneClearlyAboveLevel(uint32(stationAreaLevel), info.GetLevel());
     }
 
     if (info.GetBoolValue("can fight boss"))

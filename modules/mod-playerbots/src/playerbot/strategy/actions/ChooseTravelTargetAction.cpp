@@ -19,6 +19,7 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
+#include "playerbot/DirectTargetDestinations.h"
 #include "Guild/GuildMgr.h"
 #include <algorithm>
 #include <iomanip>
@@ -711,6 +712,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
 
+        // twow-repo#594 / P3-b: empty Station / Dungeon / Raid requests for [DirectTarget] state=summary.
+        if (ai::direct_targets::AnyBuilt())
+            ai::direct_targets::NoteEmpty(ai, futureTravelPurpose);
+
         if (futureTravelPurpose == "quest")
         {
             // #421 A: which filters took every candidate.
@@ -919,6 +924,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel))
             ai::quest_search::DirectTargetStats().freshGrind.fetch_add(1, std::memory_order_relaxed);
     }
+
+    // twow-repo#594 / P3-b: [DirectTarget] state=pick, the class cooldown, and for a shore point the "fish spot".
+    if (ai::direct_targets::AnyBuilt())
+        ai::direct_targets::OnChoice(ai, newTarget);
 
     setNewTarget(requester, &newTarget, travelTarget);
     
@@ -1144,7 +1153,8 @@ void ChooseTravelTargetAction::ReportTravelTarget(Player* bot, Player* requester
     bool const gatherTrip = destination && (destination->GetPurpose() == TravelDestinationPurpose::GatherFishing ||
         destination->GetPurpose() == TravelDestinationPurpose::GatherMining ||
         destination->GetPurpose() == TravelDestinationPurpose::GatherHerbalism ||
-        destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning);
+        destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning ||
+        ai::direct_targets::IsSilentTrip(destination));  // twow-repo#594 / P3-b: stations, shore points, entrances
 
     if (gatherTrip)
         ai->TellDebug(requester, out.str(), "debug travel");
