@@ -40,6 +40,12 @@ struct Observation
 // distance so far counts as progress.
 constexpr float NearProgressDistance = 3.0f;
 
+// twow-repo#601 S3c (review F1): a gap of more than stallSeconds / NearLegGapDivisor (150 s live) since the last
+// observation of this target means the bot was not travelling to it (a work phase, another target in between, a long
+// fight): the next observation inside the near zone starts a fresh stall window and best distance, so a stale
+// lastProgressAt never stalls the first step of a new trip at once.
+constexpr std::uint32_t NearLegGapDivisor = 2;
+
 // The near zone: switched on (radius > 0), the bot on the taker's map and within the radius (3D distance).
 inline bool InNearZone(float distance, bool sameMap, float nearRadius)
 {
@@ -61,6 +67,8 @@ struct State
     // "closer" again.
     float bestDistance = 0.0f;
     std::uint32_t lastProgressAt = 0;
+    // twow-repo#601 S3c (review F1): the time of the last Observe call for this target (paused or not).
+    std::uint32_t lastObservedAt = 0;
     std::uint8_t recoveryStage = 0;
     std::uint32_t suppressedEntry = 0;
     std::uint32_t suppressedMapId = 0;
@@ -135,9 +143,14 @@ inline RecoveryAction Observe(State& state, Observation const& current, std::uin
         state.distance = current.distance;
         state.bestDistance = current.distance;
         state.lastProgressAt = current.now;
+        state.lastObservedAt = current.now;
         state.recoveryStage = 0;
         return RecoveryAction::None;
     }
+
+    // twow-repo#601 S3c (review F1): how long this target went unobserved; bookkeeping only outside the near zone.
+    std::uint32_t const unobserved = current.now - state.lastObservedAt;
+    state.lastObservedAt = current.now;
 
     // A real master, combat, a transport transition, or a corpse/revive
     // transition is not a failed route. Give normal movement a fresh stall
@@ -154,6 +167,21 @@ inline RecoveryAction Observe(State& state, Observation const& current, std::uin
     // (or a map change) is progress. Outside it, or with nearRadius 0, nothing changes.
     bool const mapChanged = state.mapId != current.mapId;
     bool const nearZone = InNearZone(current.distance, current.mapId == current.targetMapId, current.nearRadius);
+
+    // Review F1: a new trip into the near zone after a gap (work phase timed out, another target in between) starts a
+    // fresh window from here; the 25 yd displacement that used to restart it does not count in the near zone.
+    if (nearZone && unobserved > stallSeconds / NearLegGapDivisor)
+    {
+        state.mapId = current.mapId;
+        state.zoneId = current.zoneId;
+        state.x = current.x;
+        state.y = current.y;
+        state.distance = current.distance;
+        state.bestDistance = current.distance;
+        state.lastProgressAt = current.now;
+        return RecoveryAction::None;
+    }
+
     float const minimumSquaredDistance = minimumProgressDistance * minimumProgressDistance;
     bool const progressed = nearZone ? mapChanged || current.distance + NearProgressDistance <= state.bestDistance :
         mapChanged || state.zoneId != current.zoneId ||
