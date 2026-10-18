@@ -53,6 +53,7 @@
 #include "LoginWavePolicy.h"
 #include "playerbot/MemStoresPolicy.h"
 #include "playerbot/BotUpdateTrace.h"
+#include "playerbot/GrindPickPolicy.h"   // twow-repo#601 S2 diagnostic: [GrindPick] minute line
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
@@ -1120,6 +1121,7 @@ void ReportBotUpdate()
         lastReport = now;
         ai::bot_update::Global().Take();
         ai::bot_update::Prevalidate().Take();
+        ai::grind_pick::Global().Take();
         return;
     }
     if (now < lastReport + 60)
@@ -1128,6 +1130,7 @@ void ReportBotUpdate()
 
     ai::bot_update::Snapshot const s = ai::bot_update::Global().Take();
     ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();
+    ai::grind_pick::Snapshot const gp = ai::grind_pick::Global().Take();
 
     // twow-repo#601 S1 (OB-10 18.10.): every PreValidateTurnIns call of the minute - its time and its work (open turn-ins
     // checked) and result (validated). Only with AiPlayerbot.QuestFirstProgression.FailureClasses (the only caller).
@@ -1137,6 +1140,12 @@ void ReportBotUpdate()
             (unsigned long long)ai::bot_update::PercentileUs(pv.time, 0.50),
             (unsigned long long)ai::bot_update::PercentileUs(pv.time, 0.99), (unsigned long long)pv.time.maxUs,
             (unsigned long long)pv.openSum, (unsigned long long)pv.okSum);
+
+    // twow-repo#601 S2 diagnostic (OB-10 / OB-00 18.10.): the minute's new grind targets per 5-level band by source and grey
+    // (picks/grey) - attacker, victim (on the bot), quest, grind. Bands without a pick are left out.
+    for (std::size_t band = 0; band < ai::grind_pick::Bands; ++band)
+        if (!ai::grind_pick::BandEmpty(gp, band))
+            sLog.outBasic("%s", ai::grind_pick::FormatLine(gp, band).c_str());
 
     sLog.outBasic("[BotUpdate] calls=%llu avg_us=%llu p50_us=%llu p90_us=%llu p99_us=%llu p999_us=%llu max_us=%llu over10ms=%llu over20ms=%llu",
         (unsigned long long)s.calls, (unsigned long long)(s.calls ? s.totalUs / s.calls : 0),

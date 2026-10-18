@@ -85,8 +85,8 @@ string(FIND "${rnd_mgr}" "void ReportBotUpdate()" report_at)
 string(SUBSTRING "${rnd_mgr}" ${report_at} 3000 report_fn)
 # Switch-on edge (start or reload): both recorders drained, the first line after a full minute (review 18.10.).
 require_order("${report_fn}" "    if (!sPlayerbotAIConfig.botUpdateTrace)\n    {\n        tracing = false;\n        return;\n    }" "    if (!tracing)\n    {" "off resets the edge")
-require_order("${report_fn}" "    if (!tracing)\n    {" "        tracing = true;\n        lastReport = now;\n        ai::bot_update::Global().Take();\n        ai::bot_update::Prevalidate().Take();\n        return;\n    }" "switch-on edge drains both recorders")
-require_order("${report_fn}" "        ai::bot_update::Prevalidate().Take();\n        return;\n    }" "    if (now < lastReport + 60)\n        return;" "edge before the minute check")
+require_order("${report_fn}" "    if (!tracing)\n    {" "        tracing = true;\n        lastReport = now;\n        ai::bot_update::Global().Take();\n        ai::bot_update::Prevalidate().Take();\n        ai::grind_pick::Global().Take();\n        return;\n    }" "switch-on edge drains every recorder (incl. the S2 [GrindPick] diagnostic)")
+require_order("${report_fn}" "        ai::grind_pick::Global().Take();\n        return;\n    }" "    if (now < lastReport + 60)\n        return;" "edge before the minute check")
 require_order("${report_fn}" "    if (now < lastReport + 60)\n        return;" "ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();" "prevalidate window taken with the [BotUpdate] one")
 require_order("${report_fn}" "ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();" "    if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)\n        sLog.outBasic(\"[PreValidate] calls=%llu sum_us=%llu p50_us=%llu p99_us=%llu max_us=%llu open_sum=%llu ok_sum=%llu\"," "minute line only with FailureClasses")
 # calls comes from the drained buckets, so a racing Add can never leave a call without its bucket (p99 = top edge).
