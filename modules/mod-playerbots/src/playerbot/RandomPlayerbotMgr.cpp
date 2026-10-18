@@ -1309,6 +1309,29 @@ void ReportRotCast()
     tracing = true;
 }
 
+// twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable): one "[QuestFeasibility] minute skips= drops= giver_inactive="
+// line per minute - accept / item skips, infeasible drops and inactive giver relations counted on the map threads since
+// the last line (atomics in PlayerbotAI.cpp). World thread only, same pattern as ReportQuestIdle; the first line comes
+// after a full minute. Nothing with Enable 0.
+void ReportQuestFeasibility()
+{
+    if (!sPlayerbotAIConfig.questFeasibilityEnable)
+        return;   // Enable 0: not even the clock is read
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!lastReport)
+    {
+        lastReport = now;
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    sLog.outBasic("%s", PlayerbotAI::TakeQuestFeasibilityMinuteLine().c_str());
+}
+
 // twow-repo#592 (PATH-02): the bot side of pathfinding without a Unit, no switch - every counted case crashed before
 // #592 or does not happen with today's data. At most once a minute, and only while one of the rare counters is above 0
 // (until then no clock read): "[PathUnitlessBot] reject=bot_transport n=" (a map-mode PathFinder met a bot on a
@@ -1548,6 +1571,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
     ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
     ReportRotCast();      // twow-repo#602 ROT-01 D0: [RotCast] once per minute (AiPlayerbot.Rotation.CastTrace)
+    ReportQuestFeasibility(); // twow-repo#601 S3a: [QuestFeasibility] minute once per minute (AiPlayerbot.QuestFeasibility.Enable)
     ReportPathUnitlessBot(); // twow-repo#592 (PATH-02): [PathUnitlessBot] at most once per minute, only with rare counts
 
 #ifdef MEMORY_MONITOR

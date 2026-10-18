@@ -1144,6 +1144,13 @@ AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents = 0
 # again (no trip to its giver, no accept) while the bot is on its own - at most 8 such quests per bot, forgotten at
 # re-login. 0 = the quest stays parked.
 AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
+# HubPreloopSameFilters = 1 (twow-repo#601 S3b, OB-10 18.10.2026; acts only with FailureClasses = 1): the local quest
+# hub pre-check also skips a local candidate the main loop defers after its activation check - a battleground quest
+# (ZoneExit.SkipBattlegroundQuests), an enemy home zone, a zone clearly above the bot (route danger, start-zone
+# exemption as in the main loop) or a death cluster (DangerMap.Enabled) - so such a candidate no longer turns the hub
+# filter on and leaves only hub_filter rejections. Both loops ask the same check. 0 = the pre-check as before.
+# Restart-only.
+AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 # twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
 # stand around than grind, so it shows). Restart-only.
 #   0 = today's behaviour (default).
@@ -1161,6 +1168,30 @@ AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
 #       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
 #       stay. Other values act like 0.
 AiPlayerbot.QuestFirstProgression.GrindMode = 0
+# twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
+# Enable = 1: a persistent roster bot on its own (no real player leads it) does not take quests it cannot finish - not
+# from a quest giver (accept all, accept packet, quest details dialog), not from a quest item in its bags - and does not
+# travel to the giver of such a quest. Its quest log cleanup drops such quests again while they are open
+# ([QuestDrop] reason=infeasible_blocklist|infeasible_group_solo); a complete one stays and may be turned in (the taker
+# side is never blocked). The two lists apply to class quests too (explicit ids); SoloSkipGroupQuests spares class
+# quests. Shares by a player, the catch-up, the escort confirm and guild quest orders stay untouched (a player's
+# decision): the cleanup keeps listed quests while the bot is in a group and never drops its guild quest order's quest.
+# [QuestFeasibility] state=skip bot= level= quest= reason=blocklist|blocklist_crsz0|group_solo path=accept|item|giver
+# once per bot, quest and path an hour (at most 4 lines per bot a minute), [QuestFeasibility] minute skips= drops=
+# giver_inactive= once a minute; skips= and giver_inactive= count checks (one quest can count several times a minute),
+# not distinct quests. 0 = off (default).
+AiPlayerbot.QuestFeasibility.Enable = 0
+# Blocklist (acts only with Enable = 1): a comma list of quest ids (decimal, > 0, at most 512; anything else is
+# ignored). The profile carries the list. Empty = none (default).
+AiPlayerbot.QuestFeasibility.Blocklist =
+# BlocklistWhileNoCustomStarts (acts only with Enable = 1): the same, but only while AiPlayerbot.CustomRaceStartZones = 0
+# (quests with one end off Blackstone Island / the Thalassian Highlands, every race); lifts by itself with wave 0.
+# Empty = none (default).
+AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts =
+# SoloSkipGroupQuests = 1 (acts only with Enable = 1): a bot that is not in a group skips quests of type elite (1),
+# dungeon (81) or raid (62) and quests with SuggestedPlayers >= 2 (class quests excepted), does not travel to their
+# givers, and drops them while open. 0 = off (default).
+AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
@@ -1321,6 +1352,19 @@ AiPlayerbot.QuestFirstProgression.CrossMapContinentsOnly = 0
 # finished quest's turn-in counts as a failed turn-in; TurnInParkFailures of them within TurnInParkWindowSeconds park
 # the turn-in (#485), so a bot whose taker is unreachable quests on in its band instead of cycling. 0 = as before.
 AiPlayerbot.ZoneExit.TurnInStallCounts = 0
+
+# twow-repo#601 S3c (OB-10 rev. 2, 18.10.2026): TurnInTravelStall = 1 (roster bots on their own): inside TurnInNearRadius
+# yards of a finished quest's taker only getting 3 yd closer than the best distance so far counts as progress (moving
+# around the taker no longer does; a new trip after a work phase or another target starts a fresh window). A stall
+# there (TurnInStallSeconds) ends the trip: [UnreachableTarget] reason=near_stall ... switch=<TurnInStallCounts>
+# travel_stall=1, the turn-in is parked at once for TurnInParkSeconds ([QuestFirstRoute] state=parked
+# reason=structural_unreachable_near) and the bot leaves the taker. The second work timeout of the same turn-in parks it
+# too (reason=structural_work_timeout). Parks need TurnInParkFailures > 0; without them the bot leaves the taker and its
+# route stays suppressed for TurnInRouteCooldownSeconds. Such parks never abandon the quest (AbandonStructuralParked)
+# and a rescue does not lift them. TurnInNearRadius is a parameter of the switch (OB-10: 60 yd) and only acts with it
+# (0 = no near zone, at most 500). 0 = as before.
+AiPlayerbot.ZoneExit.TurnInTravelStall = 0
+AiPlayerbot.ZoneExit.TurnInNearRadius = 60
 
 # twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
 # RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
