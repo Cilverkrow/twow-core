@@ -495,6 +495,7 @@ bool PlayerbotAIConfig::Initialize()
     worldBotsHookTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsHookTrace", false);
     botUpdateTraceTriggers = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTriggers", false);
     perfBindAreaFromHomebind = config.GetBoolDefault("AiPlayerbot.Perf.BindAreaFromHomebind", false);
+    gatherFishingSkillCheck = config.GetBoolDefault("AiPlayerbot.Gather.FishingSkillCheck", false);
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
     checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
     initPetCache = config.GetBoolDefault("AiPlayerbot.InitPet.Cache", false);

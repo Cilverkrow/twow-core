@@ -2369,6 +2369,10 @@ AiPlayerbot.BotUpdateTraceTriggers = 0
 # stored at bind time, instead of a terrain lookup at the bind position (which loaded that far grid from disk again and
 # again: 126 ms per check for a bot whose bind spot nobody is near). Same area and level. 0 = terrain lookup (default).
 AiPlayerbot.Perf.BindAreaFromHomebind = 0
+# twow-repo#596 / P3-b review (CLI-PATH 18.10.2026): 1 = a fishing travel destination needs the fishing skill of its zone
+# (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
+# could choose every fishing zone. 0 = as before (default).
+AiPlayerbot.Gather.FishingSkillCheck = 0
 # twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
