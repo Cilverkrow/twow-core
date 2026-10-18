@@ -264,6 +264,16 @@ int main()
         Require(!InGapWindow(15, 21, 0), "an unknown area level (0) is outside");
         Require(!InGapWindow(15, 21, 0xFFFFFFFEu), "an unknown area (-2 as uint32) is outside");
 
+        // Area gate death term (OB-10 review #552): high - deaths, never below low; no window stays closed.
+        Require(GapAreaHighLevel(15, 21, 0) == 21, "no death: the whole window");
+        Require(GapAreaHighLevel(15, 21, 2) == 19, "two deaths: two levels off the upper end");
+        Require(GapAreaHighLevel(15, 21, 6) == 15 && GapAreaHighLevel(15, 21, 7) == 15, "never below the low end");
+        Require(GapAreaHighLevel(15, 21, 21) == 15 && GapAreaHighLevel(15, 21, 255) == 15, "many deaths: the low end, no wrap");
+        Require(GapAreaHighLevel(1, 2, 5) == 1, "L1: the low end");
+        Require(GapAreaHighLevel(0, 0, 0) == 0 && GapAreaHighLevel(15, 0, 3) == 0, "no window: 0 (fails closed)");
+        Require(InGapWindow(15, GapAreaHighLevel(15, 21, 2), 19) && !InGapWindow(15, GapAreaHighLevel(15, 21, 2), 20),
+            "two deaths: area level 19 inside, 20 outside");
+
         // Own map (precedent #414).
         Require(GapGrindStaysOnMap(false, true, 0, 1), "not the gap filler: other maps as before");
         Require(GapGrindStaysOnMap(true, false, 0, 1), "no grind destination: other maps as before");

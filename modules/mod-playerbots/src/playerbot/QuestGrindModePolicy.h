@@ -148,6 +148,17 @@ inline bool InGapWindow(std::uint32_t lowLevel, std::uint32_t highLevel, std::ui
     return highLevel && level >= lowLevel && level <= highLevel;
 }
 
+// R3 area gate (OB-10 review #552): the death term of the old area gate (L - 2 - deaths, #307 death series) stays at the
+// upper end of the area window - highLevel - deaths, never below lowLevel - so a bot that just died several times does not
+// grind in the same dangerous area. The low end and the mob window (R4) are unchanged. highLevel 0 = no window: 0 (fails
+// closed in InGapWindow).
+inline std::uint32_t GapAreaHighLevel(std::uint32_t lowLevel, std::uint32_t highLevel, std::uint32_t deaths)
+{
+    if (!highLevel)
+        return 0;
+    return deaths < highLevel && highLevel - deaths > lowLevel ? highLevel - deaths : lowLevel;
+}
+
 // R3 own map (precedent #414 gather_node::StaysOnMap): a mode-1 grind destination only on the bot's own map.
 inline bool GapGrindStaysOnMap(bool gapGrind, bool grindDestination, std::uint32_t botMap, std::uint32_t targetMap)
 {

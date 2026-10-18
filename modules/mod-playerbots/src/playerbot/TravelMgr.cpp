@@ -3676,9 +3676,16 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
     // deaths) and the zone floor below, so the two cannot disagree; an unknown area (0) stays rejected. The window is a
     // value of the snapshot (bot thread); every other bot and purpose: unchanged. gapWindowApplies false: a fetch without
     // IsPossible (guild order objective / kill mobs, GetPartitions onlyPossible false) keeps the old gate, as it keeps the
-    // old template test.
+    // old template test. OB-10 review #552: the death term stays - at the window's upper end, never below its low end
+    // (GapAreaHighLevel), for the bots the old gate applied it to (no boss / elite / equal fight); the mob window (R4) is
+    // unchanged.
     if (info.HasGapWindow() && gapWindowApplies && purposeFlag == (uint32)TravelDestinationPurpose::Grind)
-        return ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(), info.GetGapWindowHigh(), areaLevel);
+    {
+        uint32 const gapDeaths = (info.GetBoolValue("can fight boss") || canFightElite || info.GetBoolValue("can fight equal")) ? 0 :
+            info.GetUint32Value("death count");
+        return ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(),
+            ai::quest_grind_mode::GapAreaHighLevel(info.GetGapWindowLow(), info.GetGapWindowHigh(), gapDeaths), areaLevel);
+    }
 
     if (!(purposeFlag & (uint32)TravelDestinationPurpose::QuestTaker))
     {
