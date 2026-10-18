@@ -274,6 +274,33 @@ add_test(NAME quest_grind_mode_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_grind_mode_source_contract_tests.cmake")
 
+# twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.*, default 0 / empty; OB-10 / OB-00 18.10.2026): feasibility at accept
+# time - quest id lists, the solo group rule, the giver relation and the drop of open infeasible quests (policy).
+add_executable(quest_feasibility_policy_tests
+  "${PB_MODULE_DIR}/t/quest_feasibility_policy_tests.cpp")
+
+target_include_directories(quest_feasibility_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_feasibility_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_feasibility_policy
+  COMMAND quest_feasibility_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_feasibility_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_feasibility_source_contract_tests.cmake")
+
+# twow-repo#601 S3b (AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters, default 0, only with FailureClasses; OB-10
+# 18.10.2026): the local quest hub pre-loop and the main loop of SetBestTarget share the post-IsActive deferrals.
+add_test(NAME hub_preloop_same_filters_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/hub_preloop_same_filters_source_contract_tests.cmake")
+
 # #354/#292: who may direct a bot without GM rank, and which `.bot`/`.rndbot`
 # commands stay GM tools. Decision table plus the call sites that use it.
 add_executable(roster_control_policy_tests
@@ -3193,6 +3220,12 @@ set_target_properties(keep_weapons_policy_tests PROPERTIES
 add_test(NAME keep_weapons_policy
   COMMAND keep_weapons_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#596 D (AiPlayerbot.Perf.BindAreaFromHomebind): no terrain lookup at the far home bind position.
+add_test(NAME bind_area_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bind_area_source_contract_tests.cmake")
 
 # twow-repo#601 (AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes): no endless 8.32 grind fallback.
 add_test(NAME grind_fallback_minutes_source_contract

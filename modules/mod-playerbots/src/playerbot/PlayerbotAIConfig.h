@@ -591,6 +591,7 @@ public:
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
     bool worldBotsHookTrace = false;  // twow-repo#597 (TICK-01): [WorldBots] ends with hook_ms= remote_ms= ahbot_ms= dungeonclear_ms=
     bool botUpdateTraceTriggers = false;  // twow-repo#596 D: with BotUpdateTrace, the TIME entry names the 3 slowest trigger checks of a pass >= 20 ms
+    bool perfBindAreaFromHomebind = false;  // twow-repo#596 D: home-bind area from the core stored bind area, no terrain lookup at a far position
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool checkValuesSkipSearches = false;  // twow-repo#541: "check values" without its six forced value searches
     bool initPetCache = false;  // twow-repo#541: "initialize pet" with a static tameable list, cached pet DB answer, cooldown
@@ -806,10 +807,20 @@ public:
     // S1 review (OB-10 to decide): 0 = a transient rejection never counts toward the grind fallback; N = the N-th
     // transient rejection in a row counts once (acts only with FailureClasses).
     uint32 questFirstProgressionTransientCountsAfter = 0;
+    // twow-repo#601 S3b (OB-10 rev. 2, Q-B2; restart-only): the local quest hub pre-loop of SetBestTarget also asks the
+    // main loop's post-IsActive deferrals (battleground quest, enemy home zone, route danger, danger map); acts only with
+    // FailureClasses. false = the pre-loop as before.
+    bool questFirstProgressionHubPreloopSameFilters = false;
     // twow-repo#601 GrindMode (owner 17.10.2026, restart-only): 0 = today's behaviour; 1 = reserved for the S2/S4 gap
     // filler, acts like 0 until then; 2 = no grind as a substitute activity for quest-first roster bots on their own
     // below the max level, they stand idle and log [QuestIdle] (QuestGrindModePolicy.h). Other values act like 0.
     uint32 questFirstProgressionGrindMode = 0;
+    // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
+    // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
+    bool questFeasibilityEnable = false;
+    std::set<uint32> questFeasibilityBlocklist;
+    std::set<uint32> questFeasibilityBlocklistWhileNoCustomStarts;  // only while customRaceStartZones = false
+    bool questFeasibilitySoloSkipGroupQuests = false;  // Type 1 / 81 / 62 or SuggestedPlayers >= 2, bot not in a group
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
     bool directTargetsEnabled = false;
     bool directTargetsTraceInactive = false;
@@ -856,6 +867,10 @@ public:
     // #307: quest targets on another continent wait until this level (0 = off).
     uint32 questFirstProgressionMinLevelForCrossMapQuestRoute = 10;
     bool zoneExitTurnInStallCounts = false;  // twow-repo#587 Z4: stage-1 turn-in recoveries count as turn-in failures
+    // twow-repo#601 S3c: a TRAVEL stall inside TurnInNearRadius yards of the taker parks the turn-in, and a second work
+    // timeout of the same turn-in does too (OB-10 rev. 2). The radius only acts with the switch; 0 = no near zone.
+    bool zoneExitTurnInTravelStall = false;
+    float zoneExitTurnInNearRadius = 60.0f;
     // twow-repo#587 (ZONE-01): quest rescue on the right continent, stranded bots ask for it, no BG quests as targets.
     bool zoneExitRescueHomeContinent = false;
     uint32 zoneExitStrandedRescueAfter = 0;

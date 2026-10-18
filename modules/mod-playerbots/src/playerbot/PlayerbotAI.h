@@ -23,6 +23,7 @@
 #include <atomic>
 #include <functional>
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/StuckCombatPolicy.h"
 #include "playerbot/FishingPolicy.h"
@@ -1077,12 +1078,25 @@ public:
     void NoteQuestIdleClass(uint8 failureClass) { questIdleClass = failureClass; }
     // GrindMode 2, world thread: "[QuestIdle] minute ..." with the counts since the last call (counters reset).
     static std::string TakeQuestIdleMinuteLine();
+    // twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable, QuestFeasibilityPolicy.h), bot's own thread: why this bot
+    // must not take the quest (roster bot on its own; class quests exempt from the solo group rule only); None with
+    // Enable 0, before anything else.
+    ai::quest_feasibility::Reason QuestFeasibilityReason(Quest const* quest);
+    // S3a: the same for an accept path / the quest item / the giver relation (giver: every reason, GiverInactive);
+    // counts it for the minute line and writes a rate-limited [QuestFeasibility] state=skip line. True = skip.
+    bool SkipInfeasibleQuest(Quest const* quest, ai::quest_feasibility::Path path);
+    // S3a: one infeasible quest dropped by the quest log cleanup (minute line).
+    static void NoteQuestFeasibilityDrop();
+    // S3a, world thread: "[QuestFeasibility] minute ..." with the counts since the last call (counters reset).
+    static std::string TakeQuestFeasibilityMinuteLine();
 
 protected:
     // twow-repo#601 GrindMode: the reasons this bot already logged in its idle episode (bit mask of
     // ai::quest_grind_mode::ReasonBit, 0 = none; bot's own thread only).
     uint8 questIdleLogged = 0;
     uint8 questIdleClass = 0;   // GrindMode 2: last S1 rejection class of the idle episode (0 = none; bot's own thread)
+    // twow-repo#601 S3a: the bot's recent [QuestFeasibility] skip lines (16 quests, bot's own thread only).
+    ai::quest_feasibility::SkipLog questFeasibilityLog;
     std::deque<ai::death_loop::Death> recentDeaths;
     bool lastDeathHostileArea = false;   // A39: the latest death lay in an area of the hostile faction
     uint32 lastDeathLoopEscapeAt = 0;    // A39: time of the last evacuation (repeat_after_escape)
