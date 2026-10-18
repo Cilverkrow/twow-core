@@ -288,13 +288,13 @@ inline char const* RoleText(bool tank, bool heal)
 }
 
 inline std::string FormatRoleLine(std::uint32_t guid, std::string const& name, std::uint32_t cls, std::uint32_t level,
-    char cohort, int tab, std::string const& path, bool tank, bool heal, std::uint32_t forced, bool freeBot, bool member,
+    char cohort, int tab, int majorityTab, std::string const& path, bool tank, bool heal, std::uint32_t forced, bool freeBot, bool member,
     bool autoLoad, std::uint32_t suppressed, std::string const& combat, std::string const& nonCombat)
 {
     char buf[1536];
-    std::snprintf(buf, sizeof(buf), "[RotRole] guid=%u name=%s cls=%u level=%u cohort=%c tab=%d path=%s role=%s forced=%u "
+    std::snprintf(buf, sizeof(buf), "[RotRole] guid=%u name=%s cls=%u level=%u cohort=%c tab=%d maj=%d path=%s role=%s forced=%u "
         "free=%u member=%u autoload=%u suppressed=%u co=%s nc=%s", guid, Token(name, 40).c_str(), cls, level, cohort, tab,
-        Token(path, 40).c_str(), RoleText(tank, heal), forced, freeBot ? 1u : 0u, member ? 1u : 0u, autoLoad ? 1u : 0u,
+        majorityTab, Token(path, 40).c_str(), RoleText(tank, heal), forced, freeBot ? 1u : 0u, member ? 1u : 0u, autoLoad ? 1u : 0u,
         suppressed, Token(combat, 512).c_str(), Token(nonCombat, 512).c_str());
     return buf;
 }

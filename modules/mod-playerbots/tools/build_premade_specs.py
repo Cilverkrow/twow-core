@@ -29,10 +29,37 @@ Two things it takes care of that are easy to get wrong:
   Rate.Talent = 1. At a higher rate the level 60 entries simply carry more
   points, up to the full build.
 
+  Spec identity (twow-repo#602 R06a, owner 2026-10-18). Every path carries
+      AiPlayerbot.PremadeSpecTab.<class>.<specno> = <tab>
+  directly after its PremadeSpecProb line: the Turtle TalentTab page (0, 1, 2)
+  of the path's main tree, taken from EXPECTED_TREE_PAGE. The server reads the
+  bot's spec from this key and never from the point majority of its current
+  talents: at a higher rate the side trees can catch up with the main tree
+  (see --check-levels), and a majority read would then flip the spec.
+
+  Majority check (--check-levels). simulate_server() replays, for every level
+  10..60, what the server does with the emitted links: the budget is
+  int((level - 9) * Rate.Talent) minus the path's aura reserve,
+  ChangeTalentsAction::GetBestPremadeSpec takes the first link (in level order)
+  whose point total reaches the budget, else the last one, and
+  TalentSpec::CropTalents cuts it down to the budget, largest tree first (equal
+  trees in random order - every order is evaluated). Each level at which the
+  expected tree is not strictly the largest is reported, with the verdict of
+  the majority read TalentSpec::highestTree: sure, coin-toss, or tie (saved
+  only by its lower-page rule).
+
+  Side-tree cap (--side-tree-cap, off by default so a default run reproduces
+  the shipped links byte for byte). The side trees are filled in the role order
+  of SIDE_TREE_ORDER instead of TalentTab page order, and no side tree may
+  reach the main tree's points at any level; the majority check then has to be
+  clean, or the path is BROKEN.
+
 Usage:
     build_premade_specs.py --dbc /path/to/dbc [--rate 1.0] [--out file] [--talent-classes 4,7]
+                           [--side-tree-cap] [--check-levels]
 """
 import argparse
+import itertools
 import os
 import struct
 import sys
@@ -101,6 +128,64 @@ EXPECTED_TREE_PAGE = {
     8: {'arcane': 0, 'fire': 1, 'frost': 2},
     9: {'affliction': 0, 'demonology': 1, 'destruction': 2},
     11: {'balance': 0, 'feral': 1, 'restoration': 2, 'bear': 1},
+}
+
+# --side-tree-cap only (twow-repo#602 R06a, OB-10 2026-10-18): the order in which
+# a path fills its two side trees (TalentTab pages) once the main tree is full.
+# Role rule: healer -> the mana/regen tree first, tank -> survivability/threat,
+# damage -> crit/hit. Talent names are those of the Turtle Talent.dbc (client
+# patch v8). Without the option the side trees keep TalentTab page order.
+SIDE_TREE_ORDER = {
+    # Warrior: 0 arms, 1 fury, 2 protection.
+    (1, 'fury'):          [0, 2],  # arms: Impale, Deep Wounds, Precision Cut (crit)
+    (1, 'protection'):    [0, 1],  # arms: Deflection (parry), Tactical Mastery,
+                                   # Improved Heroic Strike (threat)
+    (1, 'arms'):          [1, 2],  # fury: Cruelty (crit), Unbridled Wrath
+    # Paladin: 0 holy, 1 protection, 2 retribution.
+    (2, 'holy'):          [2, 1],  # retribution: Benediction (seal/judgement cost),
+                                   # Improved Blessings (Wisdom) - mana
+    (2, 'protection'):    [0, 2],  # holy: Sanctity Aura, Holy Power (holy damage =
+                                   # threat), Improved Lay on Hands, Ironclad
+    (2, 'retribution'):   [0, 1],  # holy: Holy Power, Blessed Strikes (crit); the
+                                   # hit of protection (Precision 3/3) is in the build
+    # Hunter: 0 beast mastery, 1 marksmanship, 2 survival.
+    (3, 'beastmastery'):  [1, 2],  # marksmanship: Lethal Shots, Mortal Shots (crit)
+    (3, 'marksmanship'):  [2, 0],  # survival: Surefooted (hit), Killer Instinct,
+                                   # Lightning Reflexes (crit)
+    (3, 'survival'):      [1, 0],  # marksmanship: Lethal Shots, Mortal Shots (crit)
+    # Rogue: 0 assassination, 1 combat, 2 subtlety.
+    (4, 'combat'):        [0, 2],  # assassination: Malice (crit), Lethality
+    (4, 'assassination'): [1, 2],  # combat: Precision (hit), Dual Wield Specialization
+    (4, 'subtlety'):      [0, 1],  # assassination: Malice (crit), Lethality
+    (4, 'rogue tank'):    [0, 2],  # assassination: Malice, Murder (damage = threat)
+    # Priest: 0 discipline, 1 holy, 2 shadow.
+    (5, 'holy'):          [0, 2],  # discipline: Mental Agility, Meditation,
+                                   # Mental Strength (mana/regen)
+    (5, 'shadow'):        [0, 1],  # discipline: Force of Will, Piercing Light (crit)
+    (5, 'discipline'):    [1, 2],  # holy: Improved Healing, Holy Focus (mana cost),
+                                   # Inspiration
+    # Shaman: 0 elemental, 1 enhancement, 2 restoration.
+    (7, 'restoration'):   [0, 1],  # elemental: Convection, Elemental Focus (mana)
+    (7, 'enhancement'):   [0, 2],  # elemental: Elemental Devastation, Call of Thunder (crit)
+    (7, 'elemental'):     [2, 1],  # restoration: Tidal Mastery, Nature's Grace (crit)
+    (7, 'shaman tank'):   [0, 2],  # elemental: Concussion, Call of Flame (spell
+                                   # damage = threat), Elemental Warding
+    # Mage: 0 arcane, 1 fire, 2 frost.
+    (8, 'arcane'):        [1, 2],  # fire: Critical Mass, Incinerate (crit)
+    (8, 'fire'):          [0, 2],  # arcane: Arcane Instability (crit), Arcane Focus
+    (8, 'frost'):         [0, 1],  # arcane: Arcane Instability (crit), Arcane Focus
+    # Warlock: 0 affliction, 1 demonology, 2 destruction.
+    (9, 'affliction'):    [2, 1],  # destruction: Devastation, Ruin, Bane (crit)
+    (9, 'demonology'):    [2, 0],  # destruction: Devastation, Ruin (crit); the hit of
+                                   # affliction (Suppression 5/5) is in the build
+    (9, 'destruction'):   [0, 1],  # affliction: Suppression (hit)
+    # Druid: 0 balance, 1 feral, 2 restoration.
+    (11, 'balance'):      [2, 1],  # restoration: Genesis, Reflection; the feral crit
+                                   # talents only work in forms
+    (11, 'feral'):        [0, 2],  # balance: Natural Weapons, Omen of Clarity, Vengeance
+    (11, 'restoration'):  [0, 1],  # balance: Moonglow, Omen of Clarity, Nature's Grace (mana)
+    (11, 'bear'):         [0, 2],  # balance: Natural Weapons, Omen of Clarity (threat);
+                                   # keeps the build shared with feral
 }
 
 # Roll weights of the premade paths (default 100). Owner 2026-09-26 (#308):
@@ -400,9 +485,28 @@ def build_link(entries, ranks):
     return '-'.join(parts).rstrip('-')
 
 
-def prefix(entries, target, main_tree, budget):
-    order = ([entry for entry in entries if entry['page'] == main_tree]
-             + [entry for entry in entries if entry['page'] != main_tree])
+def tree_order(entries, main_tree, side_order=None):
+    """Talents in fill order: the main tree, then the side trees - in
+    TalentTab page order, or in side_order (--side-tree-cap)."""
+    pages = [main_tree] + list(side_order if side_order is not None else
+                               [page for page in (0, 1, 2) if page != main_tree])
+    return [entry for page in pages for entry in entries if entry['page'] == page]
+
+
+def page_points(entries, ranks, page):
+    return sum(ranks.get(entry['id'], 0) for entry in entries if entry['page'] == page)
+
+
+def side_tree_reaches_main(entries, ranks, main_tree):
+    """True when a side tree has as many points as the main tree (or more)."""
+    main = page_points(entries, ranks, main_tree)
+    return any(page_points(entries, ranks, page) >= main
+               for page in (0, 1, 2) if page != main_tree
+               if page_points(entries, ranks, page) > 0)
+
+
+def prefix(entries, target, main_tree, budget, side_order=None):
+    order = tree_order(entries, main_tree, side_order)
     ranks, spent = {}, 0
     for entry in order:
         if spent >= budget:
@@ -414,18 +518,18 @@ def prefix(entries, target, main_tree, budget):
     return ranks
 
 
-def extend_target(entries, target, main_tree, desired, spell_ids, excluded=frozenset()):
+def extend_target(entries, target, main_tree, desired, spell_ids, excluded=frozenset(),
+                  side_order=None, side_cap=False):
     """Fill a Rate-1 target deterministically for higher talent rates.
 
     The accepted target remains untouched at Rate 1.  For an additive higher
     rate, finish the selected main tree first, then visit the other trees in
-    ascending Turtle TalentTab page order.  A rank is retained only when the
-    same DBC checks used for emitted prefixes accept it.
+    ascending Turtle TalentTab page order (or in side_order).  A rank is
+    retained only when the same DBC checks used for emitted prefixes accept it.
+    With side_cap no side tree may reach the main tree's points.
     """
     ranks = dict(target)
-    order = ([entry for entry in entries if entry['page'] == main_tree] +
-             [entry for page in (0, 1, 2) if page != main_tree
-              for entry in entries if entry['page'] == page])
+    order = tree_order(entries, main_tree, side_order)
     while sum(ranks.values()) < desired:
         added = False
         for entry in order:
@@ -436,6 +540,10 @@ def extend_target(entries, target, main_tree, desired, spell_ids, excluded=froze
                 continue
             candidate = dict(ranks)
             candidate[entry['id']] = current + 1
+            if (side_cap and entry['page'] != main_tree and
+                    page_points(entries, candidate, entry['page']) >=
+                    page_points(entries, candidate, main_tree)):
+                continue
             if not check(entries, candidate, desired, spell_ids, True):
                 ranks = candidate
                 added = True
@@ -445,12 +553,10 @@ def extend_target(entries, target, main_tree, desired, spell_ids, excluded=froze
     return ranks
 
 
-def legal_prefix(entries, target, main_tree, budget, spell_ids):
+def legal_prefix(entries, target, main_tree, budget, spell_ids, side_order=None):
     """Return the deterministic, DBC-legal Rate-2 prefix of a target."""
     ranks = {}
-    order = ([entry for entry in entries if entry['page'] == main_tree] +
-             [entry for page in (0, 1, 2) if page != main_tree
-              for entry in entries if entry['page'] == page])
+    order = tree_order(entries, main_tree, side_order)
     while sum(ranks.values()) < budget:
         added = False
         for entry in order:
@@ -468,6 +574,120 @@ def legal_prefix(entries, target, main_tree, budget, spell_ids):
     return ranks
 
 
+def link_tree_points(link):
+    """Points per TalentTab page (0, 1, 2) of a talent link, without a DBC: the
+    link holds one digit per talent in tree order and '-' between the trees."""
+    parts = (link.split('-') + ['', '', ''])[:3]
+    if len(link.split('-')) > 3 or any(not part.isdigit() for part in parts if part):
+        raise ValueError('not a talent link: %r' % link)
+    return tuple(sum(int(digit) for digit in part) for part in parts)
+
+
+def crop_orders(points):
+    """Every tree order TalentSpec::CropTalents can use: largest tree first, and
+    equal trees in either order (SORT_BY_POINTS_TREE breaks ties with irand)."""
+    orders = set()
+    for order in itertools.permutations((0, 1, 2)):
+        if all(points[order[i]] >= points[order[i + 1]] for i in range(2)):
+            orders.add(order)
+    return sorted(orders)
+
+
+def crop(points, budget, order):
+    """Points per tree after CropTalents(budget) walks the trees in this order.
+    Inside a tree the ranks are kept in row order, so only the totals matter."""
+    left, result = budget, [0, 0, 0]
+    for page in order:
+        result[page] = min(points[page], left)
+        left -= result[page]
+    return tuple(result)
+
+
+def simulate_server(links_by_level, rate, expected_tree, reserved=None,
+                    levels=VALIDATION_LEVELS):
+    """Replay the server for one path at every level and return the levels at
+    which the expected tree is not strictly the largest after the crop.
+
+    links_by_level: {level: link} as in AiPlayerbot.PremadeSpecLink.<c>.<s>.<level>.
+    reserved: optional function level -> points the path pays for its talent
+    auras (ChangeTalentsAction::PremadeBudget); None means nothing reserved.
+
+    Mirrors ChangeTalentsAction::GetBestPremadeSpec (first link in level order
+    whose total reaches the budget, else the last link) and
+    TalentSpec::CropTalents (only when the link holds more than the budget;
+    largest tree first, ties in every order). Each result is a dict with level,
+    budget, the picked link level, its tree points, the cropped points per tie
+    order and kind, judged by the majority read TalentSpec::highestTree (equal
+    trees: the lower page wins):
+      'sure'      every crop order makes highestTree name another tree,
+      'coin-toss' it depends on the random crop order,
+      'tie'       the expected tree only ties, and highestTree's lower-page rule
+                  still names it."""
+    specs = [(level, link_tree_points(link))
+             for level, link in sorted(links_by_level.items()) if link]
+    flips = []
+    if not specs:
+        return flips
+    for level in levels:
+        budget = int((level - 9) * rate) if level >= 10 else 0
+        if reserved is not None:
+            budget = max(0, budget - reserved(level))
+        if budget <= 0:
+            continue
+        picked = next(((spec_level, points) for spec_level, points in specs
+                       if sum(points) >= budget), specs[-1])
+        points = picked[1]
+        results = ([crop(points, budget, order) for order in crop_orders(points)]
+                   if sum(points) > budget else [points])
+        strict = [result[expected_tree] > max(result[page] for page in (0, 1, 2)
+                                              if page != expected_tree)
+                  for result in results]
+        if all(strict):
+            continue
+        flipped = [highest_tree(result) != expected_tree for result in results]
+        flips.append({
+            'level': level, 'budget': budget, 'link_level': picked[0],
+            'points': points, 'results': sorted(set(results)),
+            'kind': ('sure' if all(flipped) else
+                     'coin-toss' if any(flipped) else 'tie'),
+        })
+    return flips
+
+
+def highest_tree(points):
+    """TalentSpec::highestTree: the strictly largest tree, else the C++ fallback
+    (page 0 if it beats one tree, else page 1 if it beats one, else page 0)."""
+    p1, p2, p3 = points
+    if p1 > p2 and p1 > p3:
+        return 0
+    if p2 > p1 and p2 > p3:
+        return 1
+    if p3 > p1 and p3 > p2:
+        return 2
+    if p1 > p2 or p1 > p3:
+        return 0
+    if p2 > p3 or p2 > p1:
+        return 1
+    return 0
+
+
+FLIP_KINDS = ('tie', 'coin-toss', 'sure')
+
+
+def summarize_flips(flips):
+    """(first level not strictly won, worst kind, first 'sure' level or None)
+    of a simulate_server() result, None for a clean path."""
+    if not flips:
+        return None
+    sure = [flip['level'] for flip in flips if flip['kind'] == 'sure']
+    worst = max((flip['kind'] for flip in flips), key=FLIP_KINDS.index)
+    return (flips[0]['level'], worst, sure[0] if sure else None)
+
+
+def format_points(points):
+    return '/'.join(str(value) for value in points)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -480,6 +700,14 @@ def main():
                     help='comma-separated classes whose SPEC_AURAS are real talents in '
                          'this Talent.dbc (twow-repo#409 stage 2), as in '
                          'AiPlayerbot.SpecAura.TalentClasses')
+    ap.add_argument('--side-tree-cap', action='store_true',
+                    help='fill the side trees in SIDE_TREE_ORDER and keep each of '
+                         'them below the main tree at every level (twow-repo#602 '
+                         'R06a; changes the links, off by default)')
+    ap.add_argument('--check-levels', action='store_true',
+                    help='print, per path, every level 10-60 at which the server '
+                         '(GetBestPremadeSpec + CropTalents) leaves the main tree '
+                         'not strictly the largest')
     args = ap.parse_args()
     talent_classes = frozenset(int(c) for c in args.talent_classes.split(',') if c.strip())
     if args.rate <= 0:
@@ -549,17 +777,39 @@ def main():
                     failures += 1
                     continue
 
+            side_order = None
+            if args.side_tree_cap:
+                side_order = SIDE_TREE_ORDER.get((cls, name))
+                if sorted(side_order or []) != [page for page in (0, 1, 2)
+                                                if page != main_tree]:
+                    print('  BROKEN  class %d %s: SIDE_TREE_ORDER %r does not name '
+                          'the two side trees of main tree %d' %
+                          (cls, name, side_order, main_tree), file=sys.stderr)
+                    failures += 1
+                    continue
+
             desired = int((60 - 9) * args.rate) - reserved_points(cls, name, 60, talent_classes)
             active_target = target
             if args.rate > 1:
                 active_target = extend_target(entries, target, main_tree,
-                                              desired, spell_ids, excluded)
+                                              desired, spell_ids, excluded,
+                                              side_order, args.side_tree_cap)
                 if sum(active_target.values()) != desired:
-                    print('  BROKEN  class %d %s: only %d of %d legal points' %
-                          (cls, name, sum(active_target.values()), desired),
+                    print('  BROKEN  class %d %s: only %d of %d legal points%s' %
+                          (cls, name, sum(active_target.values()), desired,
+                           ' under the side-tree cap' if args.side_tree_cap else ''),
                           file=sys.stderr)
                     failures += 1
                     continue
+            if args.side_tree_cap and side_tree_reaches_main(entries, active_target,
+                                                             main_tree):
+                print('  BROKEN  class %d %s: a side tree reaches the main tree '
+                      '(%s) despite the side-tree cap' %
+                      (cls, name, format_points([page_points(entries, active_target, page)
+                                                 for page in (0, 1, 2)])),
+                      file=sys.stderr)
+                failures += 1
+                continue
 
             previous = {}
             prefixes = {}
@@ -569,10 +819,14 @@ def main():
                 budget = max(0, int((level - 9) * args.rate) -
                              reserved_points(cls, name, level, talent_classes))
                 ranks = (legal_prefix(entries, active_target, main_tree,
-                                      budget, spell_ids) if args.rate > 1 else
-                         prefix(entries, active_target, main_tree, budget))
+                                      budget, spell_ids, side_order) if args.rate > 1 else
+                         prefix(entries, active_target, main_tree, budget, side_order))
                 problem = check(entries, ranks, budget, spell_ids,
                                 strict_prerequisites)
+                if (not problem and args.side_tree_cap and
+                        side_tree_reaches_main(entries, ranks, main_tree)):
+                    problem = 'a side tree reaches the main tree (%s)' % format_points(
+                        [page_points(entries, ranks, page) for page in (0, 1, 2)])
                 if problem:
                     print('  BROKEN  class %d %s at level %d: %s' %
                           (cls, name, level, problem), file=sys.stderr)
@@ -595,11 +849,43 @@ def main():
                 if level in LEVELS:
                     prefixes[level] = ranks
             else:
+                links = {level: build_link(entries, prefixes[level]) for level in LEVELS}
+                if args.side_tree_cap or args.check_levels:
+                    flips = simulate_server(
+                        links, args.rate, main_tree,
+                        lambda level: reserved_points(cls, name, level, talent_classes))
+                    if args.check_levels:
+                        for flip in flips:
+                            print('  FLIP    class %d.%d %-14s level %2d budget %3d: '
+                                  'link %d (%s) -> %s, %s' %
+                                  (cls, index, name, flip['level'], flip['budget'],
+                                   flip['link_level'], format_points(flip['points']),
+                                   ' or '.join(format_points(result)
+                                               for result in flip['results']),
+                                   flip['kind']), file=sys.stderr)
+                        summary = summarize_flips(flips)
+                        print('  LEVELS  class %d.%d %-14s main tree %d: %s' %
+                              (cls, index, name, main_tree,
+                               'clean' if summary is None else
+                               '%d flip levels, first %d, %s%s' %
+                               (len(flips), summary[0], summary[1],
+                                '' if summary[2] is None else
+                                ', sure from %d' % summary[2])),
+                              file=sys.stderr)
+                    if args.side_tree_cap and flips:
+                        print('  BROKEN  class %d %s: main tree %d not strictly the '
+                              'largest at level %d despite the side-tree cap' %
+                              (cls, name, main_tree, flips[0]['level']), file=sys.stderr)
+                        failures += 1
+                        continue
                 out.append('AiPlayerbot.PremadeSpecName.%d.%d = %s' %
                            (cls, index, name))
                 out.append('AiPlayerbot.PremadeSpecProb.%d.%d = %d' % (cls, index, PROBABILITY.get((cls, name), 100)))
+                # #602 R06a: the spec identity, from the path and never from the
+                # point majority (owner 2026-10-18).
+                out.append('AiPlayerbot.PremadeSpecTab.%d.%d = %d' % (cls, index, expected_tree))
                 for level in LEVELS:
-                    link = build_link(entries, prefixes[level])
+                    link = links[level]
                     # #357: a level whose points all go to talent auras has no
                     # link (the loader skips empty ones anyway).
                     if not link:
