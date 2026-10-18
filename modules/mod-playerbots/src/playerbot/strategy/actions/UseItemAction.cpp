@@ -15,6 +15,7 @@
 #include "playerbot/HomeBindPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ConsumablesPolicy.h"
+#include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 using namespace ai;
@@ -1547,6 +1548,10 @@ bool UseRandomQuestItemAction::Execute(Event& event)
             Quest const* qInfo = sObjectMgr.GetQuestTemplate(proto->StartQuest);
             if (bot->CanTakeQuest(qInfo, false))
             {
+                // twow-repo#601 S3a (QuestFeasibility.Enable; off = no change): a roster bot on its own does not start a
+                // quest it cannot finish from an item in its bags (path G); the item stays in the bag.
+                if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(qInfo, ai::quest_feasibility::Path::Item))
+                    continue;
                 item = questItem;
                 break;
             }
