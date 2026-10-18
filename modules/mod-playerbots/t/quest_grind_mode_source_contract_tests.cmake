@@ -376,7 +376,7 @@ endforeach()
 require_text("${rpg_explore_cases}" "        return ai->HasStrategy(\"explore\", BotState::BOT_STATE_NON_COMBAT);" "Explore unchanged")
 require_text("${rpg_explore_cases}" "        if (rpgPhase < 15) //Only last 45 minutes of the hour allow generic rpg." "GenericRpg unchanged")
 # The policy is used only where this round put it (a NoGrind(config) gate elsewhere in these files fails the count).
-count_text("${travel_mgr}" "quest_grind_mode::" 9 "policy uses in TravelMgr (the grind destination filter; S2 / S4: the R2 status time; commit 2: R3 scope bit 2, IsPossible, IsLocationLevelValid, expired=; review fixes: the R2 cooldown cap, expired= at a condition end)")
+count_text("${travel_mgr}" "quest_grind_mode::" 10 "policy uses in TravelMgr (the grind destination filter; S2 / S4: the R2 status time; commit 2: R3 scope bit 2, IsPossible, IsLocationLevelValid, expired=; review fixes: the R2 cooldown cap, expired= at a condition end; OB-10 review #552: the area gate death term)")
 count_text("${values}" "quest_grind_mode::" 3 "policy uses in TravelValues (the fallback note; S2 / S4: R1)")
 count_text("${grind_target}" "quest_grind_mode::" 10 "policy uses in GrindTargetValue (filter, note; S2 commit 2: R4 window 2, R4 skip, r4_skips=; OB-10 18.10.: r4_empty= rule and count)")
 count_text("${grind_strategy}" "quest_grind_mode::" 4 "policy uses in GrindingStrategy (init, multiplier)")
