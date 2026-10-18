@@ -72,6 +72,7 @@ class TalentSpec {
         int id =0;
         std::string name = "";
         int probability = 100;
+        int tab = -1;  // twow-repo#602 R06a: tab of the path's named tree (AiPlayerbot.PremadeSpecTab), -1 = not given
         std::vector<TalentSpec> talentSpec;
     };
 

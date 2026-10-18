@@ -4,6 +4,9 @@
 #include "ChangeTalentsAction.h"
 #include "playerbot/AiFactory.h"
 #include "playerbot/SpecAuraPolicy.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/SpecPathPolicy.h"
+#include "playerbot/TankPathPolicy.h"
 
 using namespace ai;
 
@@ -160,7 +163,7 @@ bool ChangeTalentsAction::Execute(Event& event)
     return true;
 }
 
-std::vector<TalentPath*> ChangeTalentsAction::getPremadePaths(uint8 cls, std::string findName, BotRoles role)
+std::vector<TalentPath*> ChangeTalentsAction::getPremadePaths(uint8 cls, std::string findName, BotRoles role, bool byPath)
 {
     std::vector<TalentPath*> ret;
     for (auto& path : sPlayerbotAIConfig.classSpecs[cls].talentPath)
@@ -168,13 +171,32 @@ std::vector<TalentPath*> ChangeTalentsAction::getPremadePaths(uint8 cls, std::st
         if (!findName.empty() && path.name.find(findName) == std::string::npos)
             continue;
 
-        if (role != BotRoles::BOT_ROLE_NONE && AiFactory::GetPlayerRoles(cls, path.talentSpec.back().highestTree()) != role)
-            continue;
+        if (!byPath)
+        {
+            if (role != BotRoles::BOT_ROLE_NONE && AiFactory::GetPlayerRoles(cls, path.talentSpec.back().highestTree()) != role)
+                continue;
+        }
+        else if (role != BotRoles::BOT_ROLE_NONE)
+        {
+            // twow-repo#602 R06a: the path's own tree, and the tank paths are tanks (as AiFactory::GetPlayerRoles says).
+            BotRoles const pathRole = ai::tank_path::IsTankPath(cls, path.name) ? BotRoles::BOT_ROLE_TANK :
+                AiFactory::GetPlayerRoles(cls, uint8(ai::spec_path::PathRoleTab(path.tab, path.talentSpec.back().highestTree())));
+            if (pathRole != role)
+                continue;
+        }
 
         ret.push_back(&path);
     }
 
     return ret;
+}
+
+bool ChangeTalentsAction::SpecFromPath(Player const* bot)
+{
+    // As AiFactory::GetPlayerSpecTab: only for bots whose spec the module plans (random and roster bots).
+    return bot && sPlayerbotAIConfig.rotationSpecFromPath &&
+        ai::cohort::Applies(sPlayerbotAIConfig.rotationSpecFromPath, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsRandomBot(const_cast<Player*>(bot));
 }
 
 std::vector<TalentPath*> ChangeTalentsAction::getPremadePaths(Player* bot, TalentSpec* oldSpec)
@@ -331,7 +353,14 @@ bool ChangeTalentsAction::AutoSelectTalents(Player* bot, std::ostringstream* out
         TalentSpec oldSpec(bot);
         int currentTree = oldSpec.highestTree();
         std::vector<TalentPath*> paths;
-        
+        // twow-repo#602 R06a (AiPlayerbot.Rotation.SpecFromPath): a path stands for the tree its tab key names.
+        bool const byPath = SpecFromPath(bot);
+        auto pathTree = [byPath](TalentPath* p)
+        {
+            int const lastLinkTree = p->talentSpec.back().highestTree();
+            return byPath ? ai::spec_path::PathRoleTab(p->tab, lastLinkTree) : lastLinkTree;
+        };
+
         if (oldSpec.points)
             paths = getPremadePaths(bot, &oldSpec);
 
@@ -340,7 +369,7 @@ bool ChangeTalentsAction::AutoSelectTalents(Player* bot, std::ostringstream* out
             if (bot->CalculateTalentsPoints() > 0)
                 *out << "No specs like the current spec found.";
 
-            paths = getPremadePaths(bot->getClass(), "", role);
+            paths = getPremadePaths(bot->getClass(), "", role, byPath);
 
             if (paths.empty() && role != BotRoles::BOT_ROLE_NONE)
                 paths = getPremadePaths(bot->getClass(), "", BotRoles::BOT_ROLE_NONE);
@@ -352,7 +381,7 @@ bool ChangeTalentsAction::AutoSelectTalents(Player* bot, std::ostringstream* out
             bool hasSameTree = false;
             for (auto it : paths)
             {
-                if (it->talentSpec.back().highestTree() == currentTree)
+                if (pathTree(it) == currentTree)
                 {
                     hasSameTree = true;
                     break;
@@ -365,7 +394,7 @@ bool ChangeTalentsAction::AutoSelectTalents(Player* bot, std::ostringstream* out
                 while (it != paths.end()) 
                 {
                     TalentPath* path = *it;
-                    if (path->talentSpec.back().highestTree() != currentTree) 
+                    if (pathTree(path) != currentTree)
                     {
                         it = paths.erase(it);
                     }

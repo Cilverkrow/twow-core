@@ -1648,6 +1648,7 @@ AiPlayerbot.ClassRaceProb.11.6 = 34    # Tauren druid chance
 # --- class 1 ---
 AiPlayerbot.PremadeSpecName.1.0 = fury
 AiPlayerbot.PremadeSpecProb.1.0 = 100
+AiPlayerbot.PremadeSpecTab.1.0 = 1
 AiPlayerbot.PremadeSpecLink.1.0.10 = -2
 AiPlayerbot.PremadeSpecLink.1.0.15 = -552
 AiPlayerbot.PremadeSpecLink.1.0.20 = -55552
@@ -1661,6 +1662,7 @@ AiPlayerbot.PremadeSpecLink.1.0.55 = 3522531233251-55555132523122531
 AiPlayerbot.PremadeSpecLink.1.0.60 = 35225312332513322-55555132523122531
 AiPlayerbot.PremadeSpecName.1.1 = protection
 AiPlayerbot.PremadeSpecProb.1.1 = 100
+AiPlayerbot.PremadeSpecTab.1.1 = 2
 AiPlayerbot.PremadeSpecLink.1.1.10 = --2
 AiPlayerbot.PremadeSpecLink.1.1.15 = --2532
 AiPlayerbot.PremadeSpecLink.1.1.20 = --2535511
@@ -1674,6 +1676,7 @@ AiPlayerbot.PremadeSpecLink.1.1.55 = 35225312332512--2535512232255122231
 AiPlayerbot.PremadeSpecLink.1.1.60 = 352253123325133231--2535512232255122231
 AiPlayerbot.PremadeSpecName.1.2 = arms
 AiPlayerbot.PremadeSpecProb.1.2 = 100
+AiPlayerbot.PremadeSpecTab.1.2 = 0
 AiPlayerbot.PremadeSpecLink.1.2.10 = 2
 AiPlayerbot.PremadeSpecLink.1.2.15 = 3522
 AiPlayerbot.PremadeSpecLink.1.2.20 = 35225311
@@ -1689,6 +1692,7 @@ AiPlayerbot.PremadeSpecLink.1.2.60 = 352253123325133231-5555513252312252
 # --- class 2 ---
 AiPlayerbot.PremadeSpecName.2.0 = holy
 AiPlayerbot.PremadeSpecProb.2.0 = 100
+AiPlayerbot.PremadeSpecTab.2.0 = 0
 AiPlayerbot.PremadeSpecLink.2.0.10 = 2
 AiPlayerbot.PremadeSpecLink.2.0.15 = 552
 AiPlayerbot.PremadeSpecLink.2.0.20 = 553252
@@ -1702,6 +1706,7 @@ AiPlayerbot.PremadeSpecLink.2.0.55 = 55325312235251351-5532531332331
 AiPlayerbot.PremadeSpecLink.2.0.60 = 55325312235251351-55325313323311-252
 AiPlayerbot.PremadeSpecName.2.1 = protection
 AiPlayerbot.PremadeSpecProb.2.1 = 100
+AiPlayerbot.PremadeSpecTab.2.1 = 1
 AiPlayerbot.PremadeSpecLink.2.1.10 = -2
 AiPlayerbot.PremadeSpecLink.2.1.15 = -552
 AiPlayerbot.PremadeSpecLink.2.1.20 = -553252
@@ -1715,6 +1720,7 @@ AiPlayerbot.PremadeSpecLink.2.1.55 = 55325312233-5532531332331551-05201
 AiPlayerbot.PremadeSpecLink.2.1.60 = 55325312233-5532531332331551-05205001203
 AiPlayerbot.PremadeSpecName.2.2 = retribution
 AiPlayerbot.PremadeSpecProb.2.2 = 100
+AiPlayerbot.PremadeSpecTab.2.2 = 2
 AiPlayerbot.PremadeSpecLink.2.2.10 = --2
 AiPlayerbot.PremadeSpecLink.2.2.15 = --552
 AiPlayerbot.PremadeSpecLink.2.2.20 = --552352
@@ -1730,6 +1736,7 @@ AiPlayerbot.PremadeSpecLink.2.2.60 = 55325312233-50325000003-5523525123325151
 # --- class 3 ---
 AiPlayerbot.PremadeSpecName.3.0 = beastmastery
 AiPlayerbot.PremadeSpecProb.3.0 = 100
+AiPlayerbot.PremadeSpecTab.3.0 = 0
 AiPlayerbot.PremadeSpecLink.3.0.10 = 2
 AiPlayerbot.PremadeSpecLink.3.0.15 = 552
 AiPlayerbot.PremadeSpecLink.3.0.20 = 5523322
@@ -1743,6 +1750,7 @@ AiPlayerbot.PremadeSpecLink.3.0.55 = 5523322152253112251-5555213251123
 AiPlayerbot.PremadeSpecLink.3.0.60 = 5523322152253112251-5555213251123251-2
 AiPlayerbot.PremadeSpecName.3.1 = marksmanship
 AiPlayerbot.PremadeSpecProb.3.1 = 100
+AiPlayerbot.PremadeSpecTab.3.1 = 1
 AiPlayerbot.PremadeSpecLink.3.1.10 = -2
 AiPlayerbot.PremadeSpecLink.3.1.15 = -552
 AiPlayerbot.PremadeSpecLink.3.1.20 = -55552
@@ -1756,6 +1764,7 @@ AiPlayerbot.PremadeSpecLink.3.1.55 = 5523322152253112-5555213251123251
 AiPlayerbot.PremadeSpecLink.3.1.60 = 5523322152253112251-5555213251123251-2
 AiPlayerbot.PremadeSpecName.3.2 = survival
 AiPlayerbot.PremadeSpecProb.3.2 = 100
+AiPlayerbot.PremadeSpecTab.3.2 = 2
 AiPlayerbot.PremadeSpecLink.3.2.10 = --2
 AiPlayerbot.PremadeSpecLink.3.2.15 = --3522
 AiPlayerbot.PremadeSpecLink.3.2.20 = --35232322
@@ -1771,6 +1780,7 @@ AiPlayerbot.PremadeSpecLink.3.2.60 = 552332215225311225--35232322511232331251
 # --- class 4 ---
 AiPlayerbot.PremadeSpecName.4.0 = combat
 AiPlayerbot.PremadeSpecProb.4.0 = 100
+AiPlayerbot.PremadeSpecTab.4.0 = 1
 AiPlayerbot.PremadeSpecLink.4.0.10 = -2
 AiPlayerbot.PremadeSpecLink.4.0.15 = -552
 AiPlayerbot.PremadeSpecLink.4.0.20 = -55552
@@ -1784,6 +1794,7 @@ AiPlayerbot.PremadeSpecLink.4.0.55 = 005032310501-5555535312325530122323011
 AiPlayerbot.PremadeSpecLink.4.0.60 = 0050323105023300102-5555535312325530122323011
 AiPlayerbot.PremadeSpecName.4.1 = assassination
 AiPlayerbot.PremadeSpecProb.4.1 = 100
+AiPlayerbot.PremadeSpecTab.4.1 = 0
 AiPlayerbot.PremadeSpecLink.4.1.10 = 2
 AiPlayerbot.PremadeSpecLink.4.1.15 = 3252
 AiPlayerbot.PremadeSpecLink.4.1.20 = 3254323
@@ -1797,6 +1808,7 @@ AiPlayerbot.PremadeSpecLink.4.1.55 = 32543231252233311125111-55555353
 AiPlayerbot.PremadeSpecLink.4.1.60 = 32543231252233311125111-5555535311200500001
 AiPlayerbot.PremadeSpecName.4.2 = subtlety
 AiPlayerbot.PremadeSpecProb.4.2 = 100
+AiPlayerbot.PremadeSpecTab.4.2 = 2
 AiPlayerbot.PremadeSpecLink.4.2.10 = --2
 AiPlayerbot.PremadeSpecLink.4.2.15 = --4521
 AiPlayerbot.PremadeSpecLink.4.2.20 = --4523323
@@ -1813,6 +1825,7 @@ AiPlayerbot.PremadeSpecLink.4.2.60 = 3254323125223331111--4523323331122321122511
 # talents are real talents, no points held back; 117 at rank 3 for evasive resistance.
 AiPlayerbot.PremadeSpecName.4.3 = rogue tank
 AiPlayerbot.PremadeSpecProb.4.3 = 0
+AiPlayerbot.PremadeSpecTab.4.3 = 1
 AiPlayerbot.PremadeSpecLink.4.3.10 = -2
 AiPlayerbot.PremadeSpecLink.4.3.15 = -552
 AiPlayerbot.PremadeSpecLink.4.3.20 = -55552
@@ -1828,6 +1841,7 @@ AiPlayerbot.PremadeSpecLink.4.3.60 = 0050323105023300102-55555353123255301220233
 # --- class 5 ---
 AiPlayerbot.PremadeSpecName.5.0 = holy
 AiPlayerbot.PremadeSpecProb.5.0 = 100
+AiPlayerbot.PremadeSpecTab.5.0 = 1
 AiPlayerbot.PremadeSpecLink.5.0.10 = -2
 AiPlayerbot.PremadeSpecLink.5.0.15 = -3252
 AiPlayerbot.PremadeSpecLink.5.0.20 = -3255322
@@ -1841,6 +1855,7 @@ AiPlayerbot.PremadeSpecLink.5.0.55 = 2355522213332311-32553233123521351
 AiPlayerbot.PremadeSpecLink.5.0.60 = 235552221333231151-32553233123521351-4
 AiPlayerbot.PremadeSpecName.5.1 = shadow
 AiPlayerbot.PremadeSpecProb.5.1 = 100
+AiPlayerbot.PremadeSpecTab.5.1 = 2
 AiPlayerbot.PremadeSpecLink.5.1.10 = --2
 AiPlayerbot.PremadeSpecLink.5.1.15 = --552
 AiPlayerbot.PremadeSpecLink.5.1.20 = --553252
@@ -1854,6 +1869,7 @@ AiPlayerbot.PremadeSpecLink.5.1.55 = 2355522213332311--55325522122511251
 AiPlayerbot.PremadeSpecLink.5.1.60 = 235552221333231151-31-55325522122511251
 AiPlayerbot.PremadeSpecName.5.2 = discipline
 AiPlayerbot.PremadeSpecProb.5.2 = 100
+AiPlayerbot.PremadeSpecTab.5.2 = 0
 AiPlayerbot.PremadeSpecLink.5.2.10 = 2
 AiPlayerbot.PremadeSpecLink.5.2.15 = 2352
 AiPlayerbot.PremadeSpecLink.5.2.20 = 235552
@@ -1869,6 +1885,7 @@ AiPlayerbot.PremadeSpecLink.5.2.60 = 235552221333231151-32553233123521351-4
 # --- class 7 ---
 AiPlayerbot.PremadeSpecName.7.0 = restoration
 AiPlayerbot.PremadeSpecProb.7.0 = 100
+AiPlayerbot.PremadeSpecTab.7.0 = 2
 AiPlayerbot.PremadeSpecLink.7.0.10 = --2
 AiPlayerbot.PremadeSpecLink.7.0.15 = --552
 AiPlayerbot.PremadeSpecLink.7.0.20 = --552352
@@ -1882,6 +1899,7 @@ AiPlayerbot.PremadeSpecLink.7.0.55 = 5523313522232123--5523532135321251
 AiPlayerbot.PremadeSpecLink.7.0.60 = 55233135222321251-05000002-5523532135321251
 AiPlayerbot.PremadeSpecName.7.1 = enhancement
 AiPlayerbot.PremadeSpecProb.7.1 = 100
+AiPlayerbot.PremadeSpecTab.7.1 = 1
 AiPlayerbot.PremadeSpecLink.7.1.10 = -2
 AiPlayerbot.PremadeSpecLink.7.1.15 = -552
 AiPlayerbot.PremadeSpecLink.7.1.20 = -55552
@@ -1895,6 +1913,7 @@ AiPlayerbot.PremadeSpecLink.7.1.55 = 550331-5555253231335232311553111
 AiPlayerbot.PremadeSpecLink.7.1.60 = 550331300202012-5555253231335232311553111
 AiPlayerbot.PremadeSpecName.7.2 = elemental
 AiPlayerbot.PremadeSpecProb.7.2 = 100
+AiPlayerbot.PremadeSpecTab.7.2 = 0
 AiPlayerbot.PremadeSpecLink.7.2.10 = 2
 AiPlayerbot.PremadeSpecLink.7.2.15 = 552
 AiPlayerbot.PremadeSpecLink.7.2.20 = 5523313
@@ -1912,6 +1931,7 @@ AiPlayerbot.PremadeSpecLink.7.2.60 = 55233135222321251-555525323-55235
 # Calming Winds, 3 points in Ancestral Guardian.
 AiPlayerbot.PremadeSpecName.7.3 = shaman tank
 AiPlayerbot.PremadeSpecProb.7.3 = 0
+AiPlayerbot.PremadeSpecTab.7.3 = 1
 AiPlayerbot.PremadeSpecLink.7.3.10 = -2
 AiPlayerbot.PremadeSpecLink.7.3.15 = -552
 AiPlayerbot.PremadeSpecLink.7.3.20 = -55552
@@ -1927,6 +1947,7 @@ AiPlayerbot.PremadeSpecLink.7.3.60 = 550331300202012-55552532013352323145530111
 # --- class 8 ---
 AiPlayerbot.PremadeSpecName.8.0 = arcane
 AiPlayerbot.PremadeSpecProb.8.0 = 100
+AiPlayerbot.PremadeSpecTab.8.0 = 0
 AiPlayerbot.PremadeSpecLink.8.0.10 = 2
 AiPlayerbot.PremadeSpecLink.8.0.15 = 2352
 AiPlayerbot.PremadeSpecLink.8.0.20 = 235255
@@ -1940,6 +1961,7 @@ AiPlayerbot.PremadeSpecLink.8.0.55 = 2352551312233311251-555232312323132
 AiPlayerbot.PremadeSpecLink.8.0.60 = 2352551312233311251-55523231232313251-22
 AiPlayerbot.PremadeSpecName.8.1 = fire
 AiPlayerbot.PremadeSpecProb.8.1 = 100
+AiPlayerbot.PremadeSpecTab.8.1 = 1
 AiPlayerbot.PremadeSpecLink.8.1.10 = -2
 AiPlayerbot.PremadeSpecLink.8.1.15 = -552
 AiPlayerbot.PremadeSpecLink.8.1.20 = -555232
@@ -1953,6 +1975,7 @@ AiPlayerbot.PremadeSpecLink.8.1.55 = 23525513122333112-55523231232313251
 AiPlayerbot.PremadeSpecLink.8.1.60 = 235255131223331125-55523231232313251-203
 AiPlayerbot.PremadeSpecName.8.2 = frost
 AiPlayerbot.PremadeSpecProb.8.2 = 100
+AiPlayerbot.PremadeSpecTab.8.2 = 2
 AiPlayerbot.PremadeSpecLink.8.2.10 = --2
 AiPlayerbot.PremadeSpecLink.8.2.15 = --2532
 AiPlayerbot.PremadeSpecLink.8.2.20 = --25333231
@@ -1968,6 +1991,7 @@ AiPlayerbot.PremadeSpecLink.8.2.60 = 235255131223331125--2533323513235113521
 # --- class 9 ---
 AiPlayerbot.PremadeSpecName.9.0 = affliction
 AiPlayerbot.PremadeSpecProb.9.0 = 100
+AiPlayerbot.PremadeSpecTab.9.0 = 0
 AiPlayerbot.PremadeSpecLink.9.0.10 = 2
 AiPlayerbot.PremadeSpecLink.9.0.15 = 552
 AiPlayerbot.PremadeSpecLink.9.0.20 = 5523223
@@ -1981,6 +2005,7 @@ AiPlayerbot.PremadeSpecLink.9.0.55 = 552322321223212151-2532331512233135-4
 AiPlayerbot.PremadeSpecLink.9.0.60 = 552322321223212151-2532331512233135-5005301
 AiPlayerbot.PremadeSpecName.9.1 = demonology
 AiPlayerbot.PremadeSpecProb.9.1 = 100
+AiPlayerbot.PremadeSpecTab.9.1 = 1
 AiPlayerbot.PremadeSpecLink.9.1.10 = -2
 AiPlayerbot.PremadeSpecLink.9.1.15 = -2532
 AiPlayerbot.PremadeSpecLink.9.1.20 = -25323313
@@ -1994,6 +2019,7 @@ AiPlayerbot.PremadeSpecLink.9.1.55 = 55232232122321214-253233151223313531-2
 AiPlayerbot.PremadeSpecLink.9.1.60 = 55232232122321214-253233151223313531-5025
 AiPlayerbot.PremadeSpecName.9.2 = destruction
 AiPlayerbot.PremadeSpecProb.9.2 = 100
+AiPlayerbot.PremadeSpecTab.9.2 = 2
 AiPlayerbot.PremadeSpecLink.9.2.10 = --2
 AiPlayerbot.PremadeSpecLink.9.2.15 = --552
 AiPlayerbot.PremadeSpecLink.9.2.20 = --552532
@@ -2009,6 +2035,7 @@ AiPlayerbot.PremadeSpecLink.9.2.60 = 5523223212232121-053030101-5525321522525151
 # --- class 11 ---
 AiPlayerbot.PremadeSpecName.11.0 = balance
 AiPlayerbot.PremadeSpecProb.11.0 = 100
+AiPlayerbot.PremadeSpecTab.11.0 = 0
 AiPlayerbot.PremadeSpecLink.11.0.10 = 2
 AiPlayerbot.PremadeSpecLink.11.0.15 = 5142
 AiPlayerbot.PremadeSpecLink.11.0.20 = 51423232
@@ -2022,6 +2049,7 @@ AiPlayerbot.PremadeSpecLink.11.0.55 = 51423233312533113321-5532332131-50305
 AiPlayerbot.PremadeSpecLink.11.0.60 = 51423233312533113321-5532332131-5030513300012
 AiPlayerbot.PremadeSpecName.11.1 = feral
 AiPlayerbot.PremadeSpecProb.11.1 = 50
+AiPlayerbot.PremadeSpecTab.11.1 = 1
 AiPlayerbot.PremadeSpecLink.11.1.10 = -2
 AiPlayerbot.PremadeSpecLink.11.1.15 = -552
 AiPlayerbot.PremadeSpecLink.11.1.20 = -5532331
@@ -2035,6 +2063,7 @@ AiPlayerbot.PremadeSpecLink.11.1.55 = 51423233312533113-553233213232221521
 AiPlayerbot.PremadeSpecLink.11.1.60 = 51423233312533113-553233213232221521-55
 AiPlayerbot.PremadeSpecName.11.2 = restoration
 AiPlayerbot.PremadeSpecProb.11.2 = 100
+AiPlayerbot.PremadeSpecTab.11.2 = 2
 AiPlayerbot.PremadeSpecLink.11.2.10 = --2
 AiPlayerbot.PremadeSpecLink.11.2.15 = --552
 AiPlayerbot.PremadeSpecLink.11.2.20 = --55552
@@ -2049,6 +2078,7 @@ AiPlayerbot.PremadeSpecLink.11.2.60 = 514232333125331131--5555513355213521
 # #308: bear (tank) shares the feral build; cat (11.1) and bear 50/50 (owner 2026-09-26).
 AiPlayerbot.PremadeSpecName.11.3 = bear
 AiPlayerbot.PremadeSpecProb.11.3 = 50
+AiPlayerbot.PremadeSpecTab.11.3 = 1
 AiPlayerbot.PremadeSpecLink.11.3.10 = -2
 AiPlayerbot.PremadeSpecLink.11.3.15 = -552
 AiPlayerbot.PremadeSpecLink.11.3.20 = -5532331
@@ -2496,13 +2526,23 @@ AiPlayerbot.CastSpell.RefreshOnLearn = 0
 #   [RotCastTotal] window_min=60 ...   the same once an hour with the top 40 rows
 #   [RotCastUnknown] bot= name= cls= level= cohort= action= spell= reason=no_spell_id|not_known   once per bot and
 #     action (at most 120 a minute)
-#   [RotRole] guid= name= cls= level= cohort= tab= path= role=TANK|HEAL|DPS forced= free= member= autoload=
+#   [RotRole] guid= name= cls= level= cohort= tab= maj= path= role=TANK|HEAL|DPS forced= free= member= autoload=
 #     suppressed= co=<combat strategies> nc=<non-combat strategies>   when a strategy reset changed the set (120/min)
 #   [RotPull] bot= name= cls= level= cohort= entry= tlevel= hp= mana= attackers= dist=   at the attack-anything pull
 #     (300/min; mana=-1 without a mana bar)
 # Not counted: subclass isPossible/Execute overrides that bypass the base, GameObject/position casts, pet cast
 # results (SMSG_PET_CAST_FAILED). bot_events.csv stays unchanged. 0 = off (default).
 AiPlayerbot.Rotation.CastTrace = 0
+# twow-repo#602 ROT-01 R06a (BEHAVIOUR CHANGE, owner decision 18.10.2026, enable only after the OB-30 A/B + owner go):
+# the spec identity of a bot on a premade path is the tab of the path's named tree (AiPlayerbot.PremadeSpecTab.<class>.<index>)
+# from level 10 on, never the talent point majority: a shadow priest whose points tie at level 60 stays shadow (strategies,
+# role, gear without Loot.RoleWeights, imbues, consumables), an arms warrior stays arms. Real players, bots without a
+# premade path and paths without a tab key keep the point majority; below level 10 the class defaults stay. Also:
+# the talent role filter (dungeon finder, ChangeTalentsAction) uses the path tab and counts the shaman / rogue tank
+# paths as tanks, and a persistent roster member is not respecced for a dungeon finder slot ("roster role before the
+# slot"). At load: "[SpecPath] loaded paths= with_tab= mismatches=" (+ one "[SpecPath] mismatch" line per path whose
+# key disagrees with its level 10 link). 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
+AiPlayerbot.Rotation.SpecFromPath = 0
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,
