@@ -3134,6 +3134,25 @@ add_test(NAME trigger_time_policy
   COMMAND trigger_time_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#308 LOOT-ROLE-01 v2 (owner 17.10.2026): the owner stat table as weight scales (AiPlayerbot.Loot.RoleWeights = 2).
+add_test(NAME loot_role_v2_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/loot_role_v2_source_contract_tests.cmake")
+
+add_executable(loot_role_v2_tests
+  "${PB_MODULE_DIR}/t/loot_role_v2_tests.cpp")
+
+target_include_directories(loot_role_v2_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(loot_role_v2_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_role_v2
+  COMMAND loot_role_v2_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#308 EQUIP-FLIP-01 (AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade): no weapon unequip/re-equip on every loot.
 add_test(NAME keep_weapons_source_contract
   COMMAND "${CMAKE_COMMAND}"

@@ -216,6 +216,9 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # twow-repo#308 LOOT-ROLE-01 (owner 15.10.2026, approved by OB-00): RoleWeights = 1: the item weight scale comes from the
 # roster's premade talent path from level 1 (below level 10 the talent tree gave a class default), and of several usable
 # quest rewards the one with the largest gain over the equipped item wins instead of the first in the list. 0 = as before.
+# RoleWeights = 2 (owner 17.10.2026): as 1, and the weight scales of the 28 specs come from the owner stat table v2
+# (data/stat-weights/stat-priorities-v2.tsv, LootRoleV2Weights.h): each spec scores an item only by its 5 priorities
+# (100/80/60/40/20 per unit, other stats 0), weapon DPS as in the old scale. In memory at start, no DB change; restart only.
 # [QuestReward] (always on): first, best and picked reward per turn-in, wrong=1 when the first is not the best for the role.
 # FeralFixedSpec = 1 (owner 26.09.: bear and cat are fixed paths): a feral druid uses the bear or the cat scale of its
 # premade path; 0 = a coin on every check (old).

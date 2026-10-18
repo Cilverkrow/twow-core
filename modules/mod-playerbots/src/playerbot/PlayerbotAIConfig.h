@@ -574,7 +574,7 @@ public:
     bool parkHideFromBots = false;  // twow-repo#541/#551: parked bots invisible to other bots (core Player flag)
     bool buffRealPlayerStyle = false;  // twow-repo#588 (owner 14.10): buff group, then guild, strangers only once per cooldown
     uint32 buffStrangerCooldownSeconds = 900;
-    bool lootRoleWeights = false;     // twow-repo#308 LOOT-ROLE-01: weight scale from the premade path from L1, quest reward by gain
+    uint32 lootRoleWeights = 0;       // twow-repo#308 LOOT-ROLE-01: 1 = weight scale from the premade path from L1, quest reward by gain; 2 = and the owner stat table v2
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
     bool equipKeepWeaponsUnlessUpgrade = false;   // twow-repo#308 EQUIP-FLIP-01: hands come off only for a hand-item candidate in the bags
     bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
