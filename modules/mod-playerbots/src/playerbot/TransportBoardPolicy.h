@@ -427,7 +427,9 @@ inline std::string FormatSummary(Snapshot const& s, bool recovery = false)
 
 // S3b-1 (OB-10 #1): one line per lost-ride recovery. at_* = the bot when the loss was seen; d_arrival = 2D distance to the
 // stored arrival dock, -1 on another map.
-inline std::string FormatRecovery(std::uint32_t guid, Ride const& ride, Recovery kind, std::uint32_t atMap, float atX, float atY)
+// searchUs: the duration of the one route search (getFullPath, bot thread; OB-10 18.10.), 0 without one.
+inline std::string FormatRecovery(std::uint32_t guid, Ride const& ride, Recovery kind, std::uint32_t atMap, float atX, float atY,
+    std::uint64_t searchUs = 0)
 {
     float dArrival = -1.0f;
     if (ride.arrival.set && ride.arrival.map == atMap)
@@ -438,9 +440,9 @@ inline std::string FormatRecovery(std::uint32_t guid, Ride const& ride, Recovery
     char buf[256];
     std::snprintf(buf, sizeof(buf),
         "[TransportBoard] state=stranded bot=%u ride=%u kind=%s at_map=%u at_x=%.1f at_y=%.1f arrival_map=%u arrival_x=%.1f "
-        "arrival_y=%.1f d_arrival=%.1f",
+        "arrival_y=%.1f d_arrival=%.1f search_us=%llu",
         guid, ride.entry, RecoveryName(kind), atMap, double(atX), double(atY), ride.arrival.map, double(ride.arrival.x),
-        double(ride.arrival.y), double(dArrival));
+        double(ride.arrival.y), double(dArrival), (unsigned long long)searchUs);
     return buf;
 }
 }
