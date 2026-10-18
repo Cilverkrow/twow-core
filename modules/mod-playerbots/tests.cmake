@@ -1028,6 +1028,12 @@ add_test(NAME consumables_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/consumables_source_contract_tests.cmake")
 
+# twow-repo#610 BOT-REST-01 item 1 (bug fix): eating / drinking no longer leaves a melee-attacking unit state behind.
+add_test(NAME rest_sit_state_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/rest_sit_state_source_contract_tests.cmake")
+
 # #357 O-12: route B talent auras for 7.1 / 7.3 and the premade budget.
 add_executable(spec_aura_policy_tests
   "${PB_MODULE_DIR}/t/spec_aura_policy_tests.cpp")

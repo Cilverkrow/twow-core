@@ -697,7 +697,8 @@ namespace ai
                     return false;
                 }
 
-                bot->addUnitState(UNIT_STAND_STATE_SIT);
+                // twow-repo#610 BOT-REST-01: no sit through addUnitState here - UNIT_STAND_STATE_SIT is a stand state, passed to a unit-state
+                // setter (both 1), so it set UNIT_STAT_MELEE_ATTACKING with no victim. The food/drink aura seats the bot itself (NOT_SEATED).
                 ai->InterruptSpell();
 
                 float drinkDuration = AI_VALUE(float, "drink duration");
@@ -774,7 +775,8 @@ namespace ai
                     return false;
                 }
 
-                bot->addUnitState(UNIT_STAND_STATE_SIT);
+                // twow-repo#610 BOT-REST-01: no sit through addUnitState here - UNIT_STAND_STATE_SIT is a stand state, passed to a unit-state
+                // setter (both 1), so it set UNIT_STAT_MELEE_ATTACKING with no victim. The food/drink aura seats the bot itself (NOT_SEATED).
                 ai->InterruptSpell();
 
                 float eatDuration = AI_VALUE(float, "eat duration");
