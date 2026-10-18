@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/LootObjectStack.h"
 #include "ChooseTravelTargetAction.h"
+#include "playerbot/BotUpdateTrace.h"   // OB-10 18.10.: NowUs/SinceUs/Prevalidate for "TIME:prevalidate" and [PreValidate]
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
@@ -424,6 +425,10 @@ bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 qu
 std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* travelTarget)
 {
     using namespace ai::quest_failure_class;
+    // OB-10 18.10. (AiPlayerbot.BotUpdateTrace): the whole call into the [PreValidate] minute line and the trail note
+    // "TIME:prevalidate <us> n=<open> ok=<validated>". Off: no clock read, nothing recorded.
+    bool const tracePrevalidate = sPlayerbotAIConfig.botUpdateTrace;
+    std::uint64_t const prevalidateStartUs = tracePrevalidate ? ai::bot_update::NowUs() : 0;
     AiObjectContext* context = ai->GetAiObjectContext();
     std::set<uint32> validated;
     std::vector<int32> openTurnIns;
@@ -512,6 +517,14 @@ std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* 
 
     SET_AI_VALUE2(std::string, "manual string", CheckedTurnInsValue, checkedList);
     SET_AI_VALUE2(std::string, "manual string", ValidatedTurnInsValue, validatedList);
+    if (tracePrevalidate)
+    {
+        std::uint64_t const us = ai::bot_update::SinceUs(prevalidateStartUs);
+        ai::bot_update::Prevalidate().Add(us, uint32(openTurnIns.size()), uint32(validated.size()));
+        if (ai::Engine* const traceEngine = ai->GetCurrentEngine())
+            traceEngine->TraceNote("TIME:prevalidate %lluus n=%u ok=%u", (unsigned long long)us, uint32(openTurnIns.size()),
+                uint32(validated.size()));
+    }
     return validated;
 }
 
@@ -688,6 +701,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 // (unless TransientCountsAfter = N and this is the N-th transient rejection in a row).
                 if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
                     SET_AI_VALUE2(int, "manual int", "quest route failures", int(failures));
+                // twow-repo#601 (GrindFallbackMinutes): the time of the last counted empty search, under the same condition.
+                if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)
+                    SET_AI_VALUE2(int, "manual int", "quest route failed at", int(uint32(time(nullptr))));
                 // twow-repo#594 / P3-a: one formula - a fresh bot without a rescue in this pass waits FreshBackoffSeconds.
                 bool const shortBackoff = freshBot && !rescueRequested && sPlayerbotAIConfig.directTargetsFreshBackoffSeconds;
                 uint32 const backoff = shortBackoff ?

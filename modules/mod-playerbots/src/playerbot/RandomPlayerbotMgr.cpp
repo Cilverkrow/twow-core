@@ -55,6 +55,7 @@
 #include "playerbot/BotUpdateTrace.h"
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/PathReusePolicy.h"
+#include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #if defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -1103,17 +1104,39 @@ void ReportBotInbox()
 // line per slowest call (bot, map, combat, last action). Nothing is timed or written when off.
 void ReportBotUpdate()
 {
+    static bool tracing = false;
     static uint32 lastReport = 0;
-    uint32 const now = uint32(time(nullptr));
-    if (!sPlayerbotAIConfig.botUpdateTrace || now < lastReport + 60)
+    if (!sPlayerbotAIConfig.botUpdateTrace)
+    {
+        tracing = false;
         return;
-    bool const first = lastReport == 0;
+    }
+    uint32 const now = uint32(time(nullptr));
+    if (!tracing)
+    {
+        // Switched on (start or config reload): what an earlier period left is dropped, the first line comes after a
+        // full minute (same pattern as ReportShortcut; twow-repo#601 review 18.10.).
+        tracing = true;
+        lastReport = now;
+        ai::bot_update::Global().Take();
+        ai::bot_update::Prevalidate().Take();
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
     lastReport = now;
 
     ai::bot_update::Snapshot const s = ai::bot_update::Global().Take();
-    // The first window starts whenever the switch was read; it is reset, not reported.
-    if (first)
-        return;
+    ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();
+
+    // twow-repo#601 S1 (OB-10 18.10.): every PreValidateTurnIns call of the minute - its time and its work (open turn-ins
+    // checked) and result (validated). Only with AiPlayerbot.QuestFirstProgression.FailureClasses (the only caller).
+    if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)
+        sLog.outBasic("[PreValidate] calls=%llu sum_us=%llu p50_us=%llu p99_us=%llu max_us=%llu open_sum=%llu ok_sum=%llu",
+            (unsigned long long)pv.time.calls, (unsigned long long)pv.time.totalUs,
+            (unsigned long long)ai::bot_update::PercentileUs(pv.time, 0.50),
+            (unsigned long long)ai::bot_update::PercentileUs(pv.time, 0.99), (unsigned long long)pv.time.maxUs,
+            (unsigned long long)pv.openSum, (unsigned long long)pv.okSum);
 
     sLog.outBasic("[BotUpdate] calls=%llu avg_us=%llu p50_us=%llu p90_us=%llu p99_us=%llu p999_us=%llu max_us=%llu over10ms=%llu over20ms=%llu",
         (unsigned long long)s.calls, (unsigned long long)(s.calls ? s.totalUs / s.calls : 0),
@@ -1269,6 +1292,21 @@ void ReportQuestIdle()
     lastReport = now;
 
     sLog.outBasic("%s", PlayerbotAI::TakeQuestIdleMinuteLine().c_str());
+}
+
+// twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): [RotCast] once per minute, [RotCastTotal] once per hour
+// (RotCastTrace.cpp). World thread only. The first call after the switch went on clears and starts a window.
+void ReportRotCast()
+{
+    static bool tracing = false;
+    if (!sPlayerbotAIConfig.rotationCastTrace)
+    {
+        tracing = false;
+        return;   // off: not even the clock is read
+    }
+
+    ai::rot_cast_rt::Report(!tracing, uint32(time(nullptr)));
+    tracing = true;
 }
 
 // twow-repo#592 (PATH-02): the bot side of pathfinding without a Unit, no switch - every counted case crashed before
@@ -1509,6 +1547,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
     ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
+    ReportRotCast();      // twow-repo#602 ROT-01 D0: [RotCast] once per minute (AiPlayerbot.Rotation.CastTrace)
     ReportPathUnitlessBot(); // twow-repo#592 (PATH-02): [PathUnitlessBot] at most once per minute, only with rare counts
 
 #ifdef MEMORY_MONITOR
