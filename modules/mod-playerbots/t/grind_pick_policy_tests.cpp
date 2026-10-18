@@ -29,10 +29,12 @@ int main()
     Require(BandOf(60) == Bands - 1 && BandOf(63) == Bands - 1, "L60 and above in the last band");
     Require(BandOf(0) == 0, "level 0 in band 0");
 
-    // Source of a target from "possible targets": the bot as victim first, then the quest need, else grind.
-    Require(PickedSource(true, true) == Source::Victim, "victim wins over quest (self-defence)");
-    Require(PickedSource(false, true) == Source::Quest, "quest need");
-    Require(PickedSource(false, false) == Source::Grind, "plain grind pick");
+    // Source of an engagement: attacker first (GrindTargetValue takes attackers before anything), then the bot as victim,
+    // then the quest need, else grind.
+    Require(EngagedSource(true, true, true) == Source::Attacker, "attacker wins");
+    Require(EngagedSource(false, true, true) == Source::Victim, "victim wins over quest (self-defence)");
+    Require(EngagedSource(false, false, true) == Source::Quest, "quest need");
+    Require(EngagedSource(false, false, false) == Source::Grind, "plain grind pick");
 
     Counters counters;
     counters.Add(BandOf(17), Source::Attacker, true);
@@ -54,6 +56,11 @@ int main()
 
     Snapshot const empty = counters.Take();
     Require(BandEmpty(empty, b), "Take resets");
+
+    // A band whose window holds only a grey (a racing Add) is still reported, not lost.
+    Snapshot greyOnly;
+    greyOnly.grey[4][std::size_t(Source::Grind)] = 1;
+    Require(!BandEmpty(greyOnly, 4), "grey-only band reported");
 
     // Many map threads at once.
     std::vector<std::thread> threads;

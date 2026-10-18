@@ -9,15 +9,17 @@
 namespace ai::grind_pick
 {
 // twow-repo#601 S2 diagnostic (OB-10 / OB-00 18.10.2026, AiPlayerbot.BotUpdateTrace, no own key): where the bots' grind
-// targets come from. The phase-1 grey share (L15-19 37.9 %) counts AttackAnythingAction targets, picked near the bot by
-// GrindTargetValue - not only at grind destinations - so before S2 changes the grind window this splits every new grind
-// target into its source and whether it was grey (no XP): an attacker of the bot or its group, a creature already on
-// the bot, a creature needed for an active quest, or a plain grind pick. One [GrindPick] line per 5-level band and minute.
+// engagements come from. The phase-1 grey share (L15-19 37.9 %) counts AttackAnythingAction targets (bot_events), which
+// GrindTargetValue picks near the bot - not only at grind destinations - so before S2 changes the grind window this
+// splits every such engagement, counted where bot_events logs it, into its source and whether it was grey (no XP): an
+// attacker of the bot or its group, a creature already on the bot, a creature needed for an active quest, or a plain
+// grind pick. One [GrindPick] line per 5-level band and minute. A count is an engagement, not a recalculation of the
+// "grind target" value (review: that value is recomputed every ~2 s by many callers and can flip between candidates).
 enum class Source : std::uint8_t
 {
     None = 0,
-    Attacker,   // "possible attack targets": attacks the bot or its group (self-defence, no grey test)
-    Victim,     // picked from "possible targets" while its victim is the bot
+    Attacker,   // in "possible attack targets": attacks the bot or its group (self-defence, no grey test)
+    Victim,     // not an attacker, but its victim is the bot
     Quest,      // needed for an active quest
     Grind,      // everything else (opportunistic / grind destination)
     Count
@@ -44,10 +46,11 @@ inline char const* SourceName(Source source)
     }
 }
 
-// The source of a target picked from "possible targets" (the attacker loop is Attacker before this is asked).
-inline Source PickedSource(bool victimIsBot, bool neededForQuest)
+// The source of one engagement (AttackAnythingAction): an attacker of the bot or its group first (GrindTargetValue takes
+// those before anything else), then a creature already on the bot, then a quest need, else a plain grind pick.
+inline Source EngagedSource(bool attacker, bool victimIsBot, bool neededForQuest)
 {
-    return victimIsBot ? Source::Victim : neededForQuest ? Source::Quest : Source::Grind;
+    return attacker ? Source::Attacker : victimIsBot ? Source::Victim : neededForQuest ? Source::Quest : Source::Grind;
 }
 
 struct Snapshot
@@ -75,8 +78,10 @@ public:
         for (std::size_t b = 0; b < Bands; ++b)
             for (std::size_t i = 0; i < SourceCount; ++i)
             {
-                s.picks[b][i] = picks[b][i].exchange(0, std::memory_order_relaxed);
+                // greys first (Add counts the pick first): a racing Add never leaves more grey than picks in this window,
+                // at most its grey moves to the next one (BandEmpty also looks at greys, so it is not lost)
                 s.grey[b][i] = greys[b][i].exchange(0, std::memory_order_relaxed);
+                s.picks[b][i] = picks[b][i].exchange(0, std::memory_order_relaxed);
             }
         return s;
     }
@@ -95,7 +100,7 @@ inline Counters& Global()
 inline bool BandEmpty(Snapshot const& s, std::size_t band)
 {
     for (std::size_t i = 1; i < SourceCount; ++i)
-        if (s.picks[band][i])
+        if (s.picks[band][i] || s.grey[band][i])
             return false;
     return true;
 }
