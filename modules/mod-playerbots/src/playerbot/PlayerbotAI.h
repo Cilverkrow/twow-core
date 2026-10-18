@@ -1068,6 +1068,9 @@ public:
     // quest-first roster bot on its own below the max level and must not grind as a substitute activity. Always false
     // with GrindMode 0 or 1 (the config is read first).
     bool IsQuestNoGrind();
+    // twow-repo#601 S2 / S4 (GrindMode = 1, OB-10 rev. 2): the same population, under the gap filler (grind only inside
+    // the quest route backoff). Always false with GrindMode 0 or 2 (the config is read first).
+    bool IsQuestGapGrind();
     // GrindMode 2, the bot's own thread: counts a blocked grind decision (ai::quest_grind_mode::Reason as uint8) for the
     // minute line and writes one [QuestIdle] line per reason and idle episode (at most 4). Nothing without GrindMode 2.
     void NoteQuestIdle(uint8 reason, std::string const& target);

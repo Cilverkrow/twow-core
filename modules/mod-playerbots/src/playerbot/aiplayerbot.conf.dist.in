@@ -1154,7 +1154,12 @@ AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 # twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
 # stand around than grind, so it shows). Restart-only.
 #   0 = today's behaviour (default).
-#   1 = RESERVED for the gap filler of stages S2/S4; until then exactly like 0.
+#   1 = gap filler (twow-repo#601 S2/S4, OB-10 rev. 2): the bots of 2 (below) grind only while their quest route
+#       backoff runs (the last quest search found nothing, any FailureClasses class, a transient one too), never through
+#       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, the money grind or a travel
+#       refresh; the grind trip ends with the backoff (remaining backoff, at most 10 min, + 30 s) and its end counts as
+#       no failure. [QuestSearch] state=grind_window bot= level= backoff_s= window=<min>-<max> map= once per window
+#       (window= the S2 creature level window max(gray + 1, L - 5) to L + 1). For the A2 test realm arm; default 0.
 #   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
 #       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
 #       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a

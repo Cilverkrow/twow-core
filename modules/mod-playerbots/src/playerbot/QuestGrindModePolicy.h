@@ -13,7 +13,10 @@ namespace ai::quest_grind_mode
 //
 // AiPlayerbot.QuestFirstProgression.GrindMode (restart-only, default 0):
 //   0 = today's behaviour (every new branch is skipped).
-//   1 = RESERVED for the gap filler of stages S2 / S4; until then it behaves exactly like 0.
+//   1 = gap filler (S2 / S4, OB-10 rev. 2): the same population as mode 2 grinds only in the gaps of the quest search -
+//       while the quest route backoff runs (the last quest search found nothing, any S1 failure class), never through
+//       the S0 / 8.32 fallback, the money grind or a refresh renewal, and the grind trip ends with the backoff
+//       (GapFiller, GapWindowOpen, GapWindowSeconds below). Everyone else: exactly like 0.
 //   2 = no grind as a substitute activity for quest-first roster bots on their own below the max player level: no
 //       8.32 grind fallback, no money grind, no pure grind travel destination, no "attack anything" on a creature that
 //       neither attacks the bot / its group nor is needed for an active quest, no kill trip that would end in such a
@@ -22,10 +25,10 @@ namespace ai::quest_grind_mode
 //       GenericRpg, Explore, mining, herbalism, fishing, skinning own kills and RosterGuild travel stay.
 //   Any other value acts like 0.
 constexpr std::uint32_t ModeToday = 0;
-constexpr std::uint32_t ModeGapFiller = 1;   // reserved for S2 / S4, acts like ModeToday until then
+constexpr std::uint32_t ModeGapFiller = 1;   // S2 / S4: grind only inside the quest route backoff (GapFiller)
 constexpr std::uint32_t ModeNoGrind = 2;
 
-// Only mode 2 changes anything; mode 1 is the same as mode 0 until S4.
+// Mode 2 only: no grind as a substitute activity. Mode 1 has its own rules (GapFiller below), never these.
 inline bool NoGrind(std::uint32_t grindMode)
 {
     return grindMode == ModeNoGrind;
@@ -37,6 +40,73 @@ inline bool NoGrind(std::uint32_t grindMode)
 inline bool Applies(std::uint32_t grindMode, bool questFirst, bool realMaster, std::uint32_t level, std::uint32_t maxLevel)
 {
     return NoGrind(grindMode) && questFirst && !realMaster && (!maxLevel || level < maxLevel);
+}
+
+// twow-repo#601 S2 / S4 (OB-10 rev. 2): mode 1 only. Every mode-1 branch asks this first, so modes 0 and 2 keep their
+// exact behaviour.
+inline bool GapFiller(std::uint32_t grindMode)
+{
+    return grindMode == ModeGapFiller;
+}
+
+// The population of mode 1: the same quest-first roster bots on their own below the max player level as Applies (mode 2).
+inline bool GapFillerApplies(std::uint32_t grindMode, bool questFirst, bool realMaster, std::uint32_t level, std::uint32_t maxLevel)
+{
+    return GapFiller(grindMode) && questFirst && !realMaster && (!maxLevel || level < maxLevel);
+}
+
+// R1 (entry): a mode-1 bot of the population grinds only while the quest route backoff runs - the last quest search found
+// nothing and the quest request waits for it. Any S1 failure class opens a window, a transient one too (OP4: "no route
+// now"; the window is bounded by the backoff anyway). S1's turn-in yield (GrindYieldsToTurnIn) is asked before this and
+// never holds while the backoff runs. No refresh renews a mode-1 grind trip (travelRefresh: the "is travel refresh" pass).
+inline bool GapWindowOpen(bool routeBackoffRunning, bool travelRefresh)
+{
+    return routeBackoffRunning && !travelRefresh;
+}
+
+// R2 (exit): the window of a mode-1 grind trip - the remaining backoff, at most the longest backoff (maxBackoffSeconds =
+// quest_search::RouteBackoffMaxSeconds), plus GapWindowGraceSeconds. The trip expires with the backoff, the request gate
+// opens and the next quest search runs: a grind window never outlives its backoff.
+constexpr std::uint32_t GapWindowGraceSeconds = 30;
+
+inline std::uint32_t GapWindowSeconds(std::uint32_t backoffUntil, std::uint32_t now, std::uint32_t maxBackoffSeconds)
+{
+    std::uint32_t const remaining = backoffUntil > now ? backoffUntil - now : 0u;
+    return (remaining < maxBackoffSeconds ? remaining : maxBackoffSeconds) + GapWindowGraceSeconds;
+}
+
+// The status time (ms) of a mode-1 grind trip in READY, TRAVEL and WORK: the time left until its window end (absolute,
+// seconds; 0 = no window, statusMs stays). At or past the end 1 ms: the trip expires at once. Never longer than the
+// longest window (fails closed on a clock step back).
+inline std::uint32_t GapStatusMs(std::uint32_t statusMs, std::uint32_t windowEnd, std::uint32_t now, std::uint32_t maxBackoffSeconds)
+{
+    if (!windowEnd)
+        return statusMs;
+    std::uint32_t const longest = maxBackoffSeconds + GapWindowGraceSeconds;
+    std::uint32_t const left = windowEnd > now ? windowEnd - now : 0u;
+    return left ? (left < longest ? left : longest) * 1000u : 1u;
+}
+
+// The S2 level window named on the state=grind_window line: [max(gray + 1, L - 5), L + 1] (grayLevel =
+// MaNGOS::XP::GetGrayLevel(L), passed in: no game header here).
+inline std::uint32_t GapWindowLowLevel(std::uint32_t level, std::uint32_t grayLevel)
+{
+    std::uint32_t const belowLevel = level > 5u ? level - 5u : 1u;
+    return grayLevel + 1u > belowLevel ? grayLevel + 1u : belowLevel;
+}
+
+inline std::uint32_t GapWindowHighLevel(std::uint32_t level)
+{
+    return level + 1u;
+}
+
+// One line per window (one backoff), at its first grind trip; separate from state=grind_fallback (mode 0 only).
+inline std::string FormatGapWindowLine(std::uint32_t bot, std::uint32_t level, std::uint32_t backoffSeconds, std::uint32_t lowLevel,
+    std::uint32_t highLevel, std::uint32_t map)
+{
+    return "[QuestSearch] state=grind_window bot=" + std::to_string(bot) + " level=" + std::to_string(level) + " backoff_s=" +
+        std::to_string(backoffSeconds) + " window=" + std::to_string(lowLevel) + "-" + std::to_string(highLevel) + " map=" +
+        std::to_string(map);
 }
 
 // Why a bot of the population stands idle instead of grinding.

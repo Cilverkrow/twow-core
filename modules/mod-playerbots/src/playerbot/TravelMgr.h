@@ -405,6 +405,10 @@ namespace ai
 		void SetExpireIn(uint32 expireMs) { statusTime = GetExpiredTime() + expireMs; }
 		void SetForced(bool forced1) { forced = forced1; }
 		void SetGroupCopy(GuidPosition member) { groupMember = member; }
+		// twow-repo#601 S2 / S4 R2 (GrindMode 1): a gap grind trip ends with its quest route backoff - READY, TRAVEL and WORK
+		// get the time left until this end (time(nullptr) seconds, 0 = none); its expiry counts as no failure.
+		void SetGapWindowEnd(uint32 windowEnd) { gapWindowEnd = windowEnd; }
+		uint32 GetGapWindowEnd() const { return gapWindowEnd; }
 
 		void IncRetry(bool isMove) { if (isMove) moveRetryCount+=2; else extendRetryCount++; }
         void DecRetry(bool isMove);
@@ -461,6 +465,7 @@ namespace ai
 
 		uint32 startTime = WorldTimer::getMSTime();
 		uint32 statusTime = 0;
+		uint32 gapWindowEnd = 0;   // twow-repo#601 S2 / S4 R2: 0 for every target but a GrindMode 1 gap grind trip
 
 		bool forced = false;
 		bool visitor = true;
