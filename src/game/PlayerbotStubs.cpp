@@ -24,7 +24,7 @@ class Player;
 void Playerbot_OnPlayerDestroyed(Player const*) {}
 
 void BotActionLog_LogCastStart  (WorldObject*, uint32, uint64, uint32)         {}
-void BotActionLog_LogCastResult (WorldObject*, uint32, uint8, const char*)     {}
+void BotActionLog_LogCastResult (WorldObject*, uint32, uint8, const char*, uint8, uint8) {}
 void BotActionLog_LogDamage     (Unit*, Unit*, uint32, uint32, const char*)    {}
 void BotActionLog_LogAuraAttempt(Unit*, uint32, int32, uint64)                 {}
 void BotActionLog_LogAuraApply  (Unit*, uint32, int32, uint64)                 {}
