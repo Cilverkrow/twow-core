@@ -1003,6 +1003,11 @@ protected:
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
+    // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the episode reset a park asks for (world thread, SetParked)
+    // and the pending band rescue (QuestBand.cpp: (rung + 1) | requestedAt << 32, 0 = none; bot thread writes, world thread takes).
+    std::atomic<bool> bandEpisodeResetPending{ false };
+    std::atomic<uint64> bandRescue{ 0 };
+    std::atomic<uint32> bandTripFromZone{ 0 };   // the zone the last band step left (from_zone= of the lines on any thread)
     uint32 lastBotSave = 0;          // twow-repo#541 A47: time of this bot's last own save (seconds)
     bool botSaveScheduled = false;   // A47: first save offset applied
     ai::stall_guard::TopActions updateActions;
@@ -1087,6 +1092,46 @@ public:
     // GrindMode 1, world thread: "[GrindWindow] minute ..." with the counts since the last call (counters reset); empty when
     // every count is 0 (no line).
     static std::string TakeGrindWindowMinuteLine();
+    // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, QuestBand.cpp): the band step. Every member reads the switch
+    // first or touches only state the band path writes; nothing with BandLadder 0.
+    // The band episode of this bot (bot thread only): the last two zones it left by a band step and the band it left them in,
+    // the expiries since the last arrival / rescue, the running trip's facts for the lines, the last band rescue and the
+    // rate limit of the skip lines.
+    struct BandEpisode
+    {
+        uint32 leftZones[2] = { 0, 0 };
+        uint32 leftBandMin = 0;
+        uint32 expiries = 0;
+        uint32 fromZone = 0;
+        uint32 rung = 0;
+        uint32 stepAt = 0;
+        uint32 lastBandRescue = 0;
+        uint32 skipLogAt = 0;
+    };
+    BandEpisode& GetBandEpisode() { return bandEpisode; }
+    uint32 GetBandTripFromZone() const { return bandTripFromZone.load(std::memory_order_relaxed); }
+    // Config first (BandLadder), then the ladder is built, the cohort, a persistent quest-first roster bot on its own (no real
+    // master, no group) below the max level.
+    bool InQuestBandScope();
+    // InQuestBandScope() and the bot's ladder key has a usable row for its race and level (O(1) bitmap): the giver filter.
+    bool QuestBandGiverFilter();
+    // Switch first, then a band trip runs (travel target with a band end, active) - the idle quest rescue waits for it.
+    bool BandTripRunning();
+    // A park ended the episode (SetParked): consumed by the next band step on the bot thread.
+    bool TakeBandEpisodeReset() { return bandEpisodeResetPending.exchange(false, std::memory_order_relaxed); }
+    void OnBandStep(uint32 now, uint32 fromZone, uint32 bandMin, uint32 rung);
+    void OnBandArrived(uint32 now);
+    // An expiry (end or cooldown): logs it, and the second one of the episode asks for the forward rescue.
+    void OnBandExpired(uint32 now, uint32 rung, bool cooldown, float distLeft);
+    // World thread (ProcessQuestRescues): the band rescue's rung + 1, 0 = a plain rescue (an old one is dropped).
+    uint32 TakeBandRescueRung(uint32 now);
+    // World thread: a band rescue waits (written only by OnBandExpired, BandLadder > 0). The global limiter refused its taken
+    // request: it is put back for the next scan (no per-bot check - the band slot was already stamped).
+    bool HasBandRescuePending() const { return bandRescue.load(std::memory_order_relaxed) != 0; }
+    void RequeueBandRescue() { questRescueRequested = true; }
+    // Minute counters (ai::quest_band::Event as uint8; any thread, relaxed) and the world thread's minute lines.
+    static void NoteBand(uint8 event, bool cohortB);
+    static std::vector<std::string> TakeQuestBandMinuteLines();
     // GrindMode 2, the bot's own thread: counts a blocked grind decision (ai::quest_grind_mode::Reason as uint8) for the
     // minute line and writes one [QuestIdle] line per reason and idle episode (at most 4). Nothing without GrindMode 2.
     void NoteQuestIdle(uint8 reason, std::string const& target);
@@ -1114,6 +1159,7 @@ protected:
     // ai::quest_grind_mode::ReasonBit, 0 = none; bot's own thread only).
     uint8 questIdleLogged = 0;
     uint8 questIdleClass = 0;   // GrindMode 2: last S1 rejection class of the idle episode (0 = none; bot's own thread)
+    BandEpisode bandEpisode;     // twow-repo#601 S5a: the band episode (bot's own thread only)
     // twow-repo#601 S3a: the bot's recent [QuestFeasibility] skip lines (16 quests, bot's own thread only).
     ai::quest_feasibility::SkipLog questFeasibilityLog;
     std::deque<ai::death_loop::Death> recentDeaths;

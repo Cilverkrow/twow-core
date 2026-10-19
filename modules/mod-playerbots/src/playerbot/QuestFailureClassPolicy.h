@@ -255,11 +255,15 @@ constexpr std::uint32_t ResetBgReturn = 1u << 3;    // PlayerbotAI::OnReturnFrom
 // Plan 4.1 (S1 review): a quest-state change (a quest taken, finished, handed in or dropped) resets the search stage only
 // - the counter and the backoff stay (a found route resets them anyway).
 constexpr std::uint32_t ResetQuestState = 1u << 4;
-constexpr std::uint32_t ResetEventCount = 5;
+// twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder only): a band step, a band arrival and a band rescue - the
+// counter, the backoff, the transient streak and the stage go to 0 even with ResetOnProgressEvents = 0 (QuestBand.cpp).
+constexpr std::uint32_t ResetBandStep = 1u << 5;
+constexpr std::uint32_t ResetEventCount = 6;
 
 inline std::string ResetEventNames(std::uint32_t events)
 {
-    static char const* const names[ResetEventCount] = { "rescue", "level_up", "login", "bg_return", "quest_state" };
+    static char const* const names[ResetEventCount] = { "rescue", "level_up", "login", "bg_return", "quest_state",
+        "band_step" };
     std::string out;
     for (std::uint32_t bit = 0; bit < ResetEventCount; ++bit)
         if (events & (1u << bit))
