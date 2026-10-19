@@ -116,7 +116,8 @@ set(entries
   "Loot.RoleWeights|lootRoleWeights"
   "BotUpdateTrace|botUpdateTrace"
   "EnableActionLog|enableActionLog"
-  "LogInGroupOnly|logInGroupOnly")
+  "LogInGroupOnly|logInGroupOnly"
+  "Grind.GreyByLevel|grindGreyByLevel")
 foreach(entry IN LISTS entries)
   string(REPLACE "|" ";" parts "${entry}")
   list(GET parts 0 key)
