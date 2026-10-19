@@ -1,0 +1,196 @@
+#pragma once
+
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+namespace ai::bot_activity
+{
+// twow-repo#601 R01 L1 (owner decision D1 19.10.2026 "rum stehen ist keine Option", OB-00 D10, AiPlayerbot.ActivityTrace):
+// what a roster bot does with its time. Once a minute the bot's own state is sorted into one kind - dead, in combat,
+// travelling to or working at a quest target, at a grind target, at any other target (vendor, trainer, gather, explore,
+// a band trip), or idle (none of these: no target, or a target in cooldown / expired). The seconds since the last sample
+// go to that kind. A gap longer than MaxCreditSeconds (the bot was not updated) is counted as gap, never as a kind.
+// One [BotActivity] line per bot and clock hour (seconds per kind) and one [BotActivityMin] line per minute with the
+// totals per 5-level band. Only values the bot already holds: no search, no per-creature value, no lock. Pure (std
+// only), so the unit test and the source contract pin it without game headers.
+enum class Kind : std::uint8_t
+{
+    Quest = 0,  // travel target is a quest giver, objective or taker, and active (prepare / ready / travel / work)
+    Grind,      // travel target is a grind destination, active
+    Combat,     // in combat (whatever the target)
+    Other,      // any other active travel target, or a taxi flight without one
+    Idle,       // alive, not in combat, no active travel target, not flying
+    Dead,       // dead or ghost
+    Count
+};
+
+enum class Dest : std::uint8_t
+{
+    None = 0,   // no travel target, or the null destination
+    Quest,
+    Grind,
+    Other
+};
+
+constexpr std::size_t KindCount = std::size_t(Kind::Count);
+constexpr std::uint32_t SampleSeconds = 60;
+constexpr std::uint32_t MaxCreditSeconds = 120;
+constexpr std::uint32_t HourSeconds = 3600;
+constexpr std::size_t Bands = 13;   // L0-4, L5-9, L10-14, ..., L55-59, L60 (the R01 bands 10-14 / 15-19 / 20-24)
+
+inline std::size_t BandOf(std::uint32_t level)
+{
+    std::size_t const band = std::size_t(level / 5);
+    return band < Bands ? band : Bands - 1;
+}
+
+inline char const* KindName(Kind kind)
+{
+    switch (kind)
+    {
+        case Kind::Quest: return "quest";
+        case Kind::Grind: return "grind";
+        case Kind::Combat: return "combat";
+        case Kind::Other: return "other";
+        case Kind::Idle: return "idle";
+        case Kind::Dead: return "dead";
+        default: return "none";
+    }
+}
+
+// TravelTarget status (TravelMgr.h TravelStatus): PREPARE 1, READY 2, TRAVEL 3, WORK 4 are active; NONE 0, COOLDOWN 5
+// ("free to do what the bot wants") and EXPIRED 6 are not.
+inline bool TravelActive(std::uint8_t status)
+{
+    return status >= 1 && status <= 4;
+}
+
+inline Kind Classify(bool alive, bool inCombat, bool travelActive, Dest dest, bool taxiFlying)
+{
+    if (!alive)
+        return Kind::Dead;
+    if (inCombat)
+        return Kind::Combat;
+    if (travelActive && dest != Dest::None)
+        return dest == Dest::Quest ? Kind::Quest : dest == Dest::Grind ? Kind::Grind : Kind::Other;
+    if (taxiFlying)
+        return Kind::Other;
+    return Kind::Idle;
+}
+
+// Per bot (its own update thread only). The first sample after login credits nothing; each later one credits the
+// seconds since the previous one to the kind seen now (at most a minute's error at a change). The hour of a sample is
+// time / 3600; a sample in a new hour first closes the old one.
+struct Clock
+{
+    std::uint32_t lastSample = 0;
+    std::uint32_t hour = 0;
+    std::array<std::uint32_t, KindCount> seconds{};
+    std::uint32_t gap = 0;
+
+    bool Due(std::uint32_t now) const { return !lastSample || now - lastSample >= SampleSeconds; }
+
+    bool HourDone(std::uint32_t now) const { return lastSample && now / HourSeconds != hour; }
+
+    void StartHour(std::uint32_t now)
+    {
+        hour = now / HourSeconds;
+        seconds = {};
+        gap = 0;
+    }
+
+    // -> the seconds credited to kind (0: first sample or a gap)
+    std::uint32_t Add(Kind kind, std::uint32_t now)
+    {
+        if (!lastSample)
+        {
+            lastSample = now;
+            StartHour(now);
+            return 0;
+        }
+        std::uint32_t const elapsed = now - lastSample;
+        lastSample = now;
+        if (elapsed > MaxCreditSeconds)
+        {
+            gap += elapsed;
+            return 0;
+        }
+        if (kind < Kind::Count)
+            seconds[std::size_t(kind)] += elapsed;
+        return elapsed;
+    }
+};
+
+// "[BotActivity] bot=12 level=14 zone=40 hour=493512 quest=1800 grind=300 combat=900 other=120 idle=420 dead=0 gap=0"
+// - seconds of the clock hour `hour` (unix time / 3600).
+inline std::string FormatLine(std::uint32_t bot, std::uint32_t level, std::uint32_t zone, Clock const& c)
+{
+    std::string line = "[BotActivity] bot=" + std::to_string(bot) + " level=" + std::to_string(level) + " zone=" +
+        std::to_string(zone) + " hour=" + std::to_string(c.hour);
+    for (std::size_t i = 0; i < KindCount; ++i)
+        line += std::string(" ") + KindName(Kind(i)) + "=" + std::to_string(c.seconds[i]);
+    line += " gap=" + std::to_string(c.gap);
+    return line;
+}
+
+struct Snapshot
+{
+    std::array<std::array<std::uint32_t, KindCount>, Bands> seconds{};
+    std::array<std::uint32_t, Bands> samples{};
+};
+
+// Any thread (the bots' map threads add, the world thread takes once a minute). Relaxed atomics only, no lock.
+class Counters
+{
+public:
+    void Add(std::size_t band, Kind kind, std::uint32_t credited)
+    {
+        if (band >= Bands || kind >= Kind::Count)
+            return;
+        sampleCount[band].fetch_add(1, std::memory_order_relaxed);
+        kindSeconds[band][std::size_t(kind)].fetch_add(credited, std::memory_order_relaxed);
+    }
+
+    Snapshot Take()
+    {
+        Snapshot s;
+        for (std::size_t b = 0; b < Bands; ++b)
+        {
+            s.samples[b] = sampleCount[b].exchange(0, std::memory_order_relaxed);
+            for (std::size_t i = 0; i < KindCount; ++i)
+                s.seconds[b][i] = kindSeconds[b][i].exchange(0, std::memory_order_relaxed);
+        }
+        return s;
+    }
+
+private:
+    std::array<std::atomic<std::uint32_t>, Bands> sampleCount{};
+    std::array<std::array<std::atomic<std::uint32_t>, KindCount>, Bands> kindSeconds{};
+};
+
+inline Counters& Global()
+{
+    static Counters counters;
+    return counters;
+}
+
+// "[BotActivityMin] L10-14=n/quest/grind/combat/other/idle/dead L15-19=..." - per band with samples this minute: the
+// sample count and the credited seconds per kind. One line a minute; empty bands are left out.
+inline std::string FormatMinuteLine(Snapshot const& s)
+{
+    std::string line = "[BotActivityMin]";
+    for (std::size_t b = 0; b < Bands; ++b)
+    {
+        if (!s.samples[b])
+            continue;
+        line += " L" + std::to_string(b * 5) + (b + 1 < Bands ? "-" + std::to_string(b * 5 + 4) : std::string("+")) + "=" +
+            std::to_string(s.samples[b]);
+        for (std::size_t i = 0; i < KindCount; ++i)
+            line += "/" + std::to_string(s.seconds[b][i]);
+    }
+    return line;
+}
+}
