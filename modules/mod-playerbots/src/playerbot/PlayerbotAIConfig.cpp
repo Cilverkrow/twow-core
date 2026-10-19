@@ -30,6 +30,7 @@
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/DirectTargetPolicy.h"
 #include "playerbot/TransportBoardPolicy.h"
+#include "playerbot/ConfigEchoPolicy.h"
 
 #include <iostream>
 #include <numeric>
@@ -1454,6 +1455,52 @@ bool PlayerbotAIConfig::Initialize()
 
     if (sPlayerbotAIConfig.randomBotJoinBG)
         sRandomPlayerbotMgr.LoadBattleMastersCache();
+
+    // twow-repo#601 R01-A/B (owner rule 18.10., twow-repo#615): the parsed values of the A/B switches the test arms prove in
+    // the running process (R01 steps, the switches the R01 arms pin, P3-a long, #342), one line per Initialize (start and
+    // config reload; an arm takes the line of its own start). No key, no state. A new A/B switch adds its entry here: the
+    // config key without "AiPlayerbot." (FormatLine prints the full key) and the parsed member.
+    {
+        using ai::config_echo::Value;
+        sLog.outString("%s", ai::config_echo::FormatLine({
+            {"QuestFirstProgression.Enabled", Value(questFirstProgressionEnabled)},
+            {"QuestFirstProgression.FailureClasses", Value(questFirstProgressionFailureClasses)},
+            {"QuestFirstProgression.ResetOnProgressEvents", Value(questFirstProgressionResetOnProgressEvents)},
+            {"QuestFirstProgression.AbandonStructuralParked", Value(questFirstProgressionAbandonStructuralParked)},
+            {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
+            {"QuestFirstProgression.HubPreloopSameFilters", Value(questFirstProgressionHubPreloopSameFilters)},
+            {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
+            {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
+            {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
+            {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
+            {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
+            {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"QuestFeasibility.Enable", Value(questFeasibilityEnable)},
+            {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
+            {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
+            {"QuestFeasibility.SoloSkipGroupQuests", Value(questFeasibilitySoloSkipGroupQuests)},
+            {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
+            {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
+            {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
+            {"DirectTargets.Enable", Value(directTargetsEnabled)},
+            {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
+            {"DirectTargets.FreshGrindFailures", Value(directTargetsFreshGrindFailures)},
+            {"Path.TaxiCancelForm", Value(pathTaxiCancelForm)},
+            {"Path.TransportEdgeTrace", Value(pathTransportEdgeTrace)},
+            {"Path.TransportDeckProbe", Value(pathTransportDeckProbe)},
+            {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
+            {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
+            {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
+            {"Rotation.RestGate", Value(rotationRestGate)},
+            {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
+            {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
+            {"Loot.RoleWeights", Value(lootRoleWeights)},
+            {"BotUpdateTrace", Value(botUpdateTrace)},
+            {"EnableActionLog", Value(enableActionLog)},
+            {"LogInGroupOnly", Value(logInGroupOnly)},
+            {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
+        }).c_str());
+    }
 
     sLog.outString("---------------------------------------");
     sLog.outString("        AI Playerbot initialized       ");
