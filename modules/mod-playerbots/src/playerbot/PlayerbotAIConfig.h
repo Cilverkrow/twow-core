@@ -836,6 +836,12 @@ public:
     // out of line in PlayerbotAIConfig.cpp: the cohort headers stay out of the botpch chain (rot_cast_trace contract)
     bool S1For(uint32 guidLow) const;
     bool S3For(uint32 guidLow) const;
+    // twow-repo#601 S5a (OB-00 D9 19.10.2026, restart-only for the ladder): band step to the next quest hub of
+    // hub-ladder.tsv. 0 = off (default), 1 = all bots, 2 = only odd low guids (cohort B), 3 = only even low guids
+    // (cohort A); any other value acts like 0. QuestBandPolicy.h.
+    uint32 questFirstProgressionBandLadder = 0;
+    // Path of hub-ladder.tsv; "" = ladder off. Read once at boot behind the switch, fail closed (QuestBand.cpp).
+    std::string questFirstProgressionBandLadderFile;
     // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
     // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
     bool questFeasibilityEnable = false;

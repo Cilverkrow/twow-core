@@ -27,6 +27,8 @@
 #include "playerbot/DirectTargetDestinations.h"
 #include "Formulas.h"
 #include "playerbot/strategy/values/RestGateValue.h"
+#include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 S5a: DialogStatusValue::getDialogStatus (band giver filter F)
+#include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): the band trip hooks, the ladder loader
 
 using namespace ai;
 using namespace MaNGOS;
@@ -79,6 +81,12 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
         gapWindowLow = ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level));
         gapWindowHigh = ai::quest_grind_mode::GapWindowHighLevel(level);
     }
+
+    // twow-repo#601 S5a (BandLadder, S5A-DESIGN.md 5.4): the band giver filter bit, here on the bot thread - only an in-scope bot
+    // whose band has a usable ladder row (QuestBandGiverFilter reads the switch first); the giver checks of IsPossible (E) and
+    // IsActive (F) read it only as a value. BandLadder 0 and every other bot: false / 0, as before.
+    bandGiverFilter = ai->QuestBandGiverFilter();
+    bandGreyLevel = bandGiverFilter ? MaNGOS::XP::GetGrayLevel(level) : 0;
 }
 
 std::string EntryTravelDestination::GetShortName() const
@@ -147,6 +155,14 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
         if ((int32)info.GetLevel() < quest->GetMinLevel() || (int32)info.GetLevel() > quest->GetMaxLevel())
             return false;
 
+        // twow-repo#601 S5a (BandLadder, giver filter E): an in-scope bot whose band has a usable ladder row skips the giver of a
+        // quest the accept rule would refuse (grey or red; class quests stay; QuestAcceptPolicy.h), so a worked-out zone comes
+        // back empty. The snapshot bit only (async job); quest level 0 = the bot's level (Player::GetQuestLevelForPlayer).
+        if (!forceThisQuest && info.HasBandGiverFilter() && ai::quest_band::GreyGiverSkip(info.GetLevel(),
+                quest->GetQuestLevel() > 0 ? uint32(quest->GetQuestLevel()) : info.GetLevel(), info.GetBandGreyLevel(),
+                quest->GetRequiredClasses() != 0))
+            return false;
+
         if (OnMap(info.GetPosition())) //CanTakeQuest will check required conditions which will fail on a different map.
             if (quest->GetRequiredCondition())          //So we skip this quest for now.
                 return false;
@@ -213,6 +229,13 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
             if (!closestPoint || closestPoint->getMapId() != bot->GetMapId()) //This gives issues for bot->CanTakeQuest so stop here.
                 return false;
         }
+
+        // twow-repo#601 S5a (BandLadder, giver filter F, OB-10 Q1 19.10.2026): for an in-scope bot whose band has a usable ladder
+        // row the giver counts only while it offers this quest to the bot (DIALOG_STATUS_AVAILABLE; a quest in the log, done or
+        // repeatable is no reason to stay). One static per-quest status, no value per creature. Snapshot bit false: as before.
+        if (!forceThisQuest && info.HasBandGiverFilter() &&
+            DialogStatusValue::getDialogStatus(bot, GetEntry(), GetQuestId()) != DIALOG_STATUS_AVAILABLE)
+            return false;
 
         if (forceThisQuest)
         {
@@ -966,6 +989,11 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
     if (tDestination1 != tDestination)
         gapWindowEnd = 0;
 
+    // twow-repo#601 S5a (BandLadder): a band trip another destination replaces (zone escape, death suppression, park, rescue,
+    // battleground, world buff, go, a reset) ends here - one skip line (replaced / park), no failure; bandTripEnd goes to 0.
+    if (tDestination1 != tDestination && bandTripEnd)
+        NoteBandTripReplaced();
+
     wPosition = wPosition1;
     tDestination = tDestination1;
 
@@ -1046,6 +1074,8 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
     // twow-repo#601 S2 / S4 R2: the choice's window end (0 for every target but a GrindMode 1 gap grind trip); setNewTarget
     // sets READY next, which applies it.
     gapWindowEnd = target->gapWindowEnd;
+    // twow-repo#601 S5a (BandLadder): the band step's trip end (0 for every other choice; a group copy builds a new target).
+    bandTripEnd = target->bandTripEnd;
     groupMember = target->groupMember;
     forced = target->forced;
     relevance = target->relevance;
@@ -1107,6 +1137,11 @@ void TravelTarget::SetStatus(TravelStatus status) {
     else if (gapWindowEnd && m_status == TravelStatus::TRAVEL_STATUS_COOLDOWN)
         statusTime = ai::quest_grind_mode::GapCooldownMs(statusTime, gapWindowEnd, uint32(time(nullptr)),
             ai::quest_search::RouteBackoffMaxSeconds);
+
+    // twow-repo#601 S5a (BandLadder): a band trip lasts exactly until its fixed end - READY / TRAVEL / WORK get the time left,
+    // a COOLDOWN at most that, 1 ms once ended (capped: a clock step back fails closed). bandTripEnd is 0 for every other target.
+    if (bandTripEnd)
+        statusTime = ai::quest_band::TripStatusMs(uint8(m_status), statusTime, bandTripEnd, uint32(time(nullptr)));
 }
 
 bool TravelTarget::IsProgressAwareTurnIn() const
@@ -1652,6 +1687,19 @@ void TravelTarget::CheckStatus()
         return;
     }
 
+    // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): a band trip ends here and only here by its own fixed
+    // end, a COOLDOWN (move retries, a group member's check), a lost scope or a hub without an end - before the rest-gate
+    // hold, so no SetExpireIn (rest hold, rest give-back, leader wait) can extend it. No failure is counted.
+    if (bandTripEnd || (tDestination && tDestination->IsBandHub()))
+    {
+        uint8 const verdict = CheckBandTrip();
+        if (verdict != uint8(ai::quest_band::TripVerdict::Running))
+        {
+            EndBandTrip(verdict);
+            return;
+        }
+    }
+
     // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): the status clock does not run out while the bot rests (the travel action
     // still checks in WORK); OnRestEnded gives the rest time back when the episode ends. Not for an S2 gap grind trip (GrindMode 1,
     // gapWindowEnd): its status time is the quest-route backoff window, which ends while resting too (OB-10 review 18.10.2026).
@@ -1696,6 +1744,14 @@ void TravelTarget::CheckStatus()
                 ai->TellDebug(ai->GetMaster(), "The target is clearing because it was a travel once destination.", "debug travel");
                 ai->ChangeStrategy("nc -travel once", BotState::BOT_STATE_NON_COMBAT);
                 sTravelMgr.SetNullTravelTarget(this);
+                return;
+            }
+
+            // twow-repo#601 S5a (BandLadder): a band trip ends at the hub (arrived) - no WORK phase at a hub; the quest search
+            // starts afresh there (ResetBandStep).
+            if (bandTripEnd)
+            {
+                EndBandTrip(ai::quest_band::EndArrived);
                 return;
             }
 
@@ -1799,6 +1855,16 @@ void TravelTarget::CheckStatus()
                 ai->TellDebug(ai->GetMaster(), "The gap grind trip ends because its destination or its window is no longer active.", "debug travel");
                 if (conditionsInactive)
                     PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));
+                SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+                return;
+            }
+            // twow-repo#601 S5a (BandLadder, OB-10 Q1 19.10.2026): a quest giver trip that the band giver filter made inactive
+            // because its quest is now in the log or done ends at once (EXPIRED, giver_done=) - a success, no 60 s COOLDOWN,
+            // no failure. GiverTripDoneFor reads the switch first: BandLadder 0 never gets past it.
+            if (destinationInactive && ai::quest_band::GiverTripDoneFor(ai, bot, tDestination))
+            {
+                ai->TellDebug(ai->GetMaster(), "The quest giver trip ends because its quest was taken.", "debug travel");
                 SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
                 ai->GetAiObjectContext()->ClearValues("no active travel destinations");
                 return;
@@ -2467,6 +2533,9 @@ void TravelMgr::LoadQuestTravelTable()
 
     // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.*, default 0): boot only, after the fish locations.
     LoadDirectTargets(guidpMap);
+
+    // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, default 0): boot only, after the travel nodes are final.
+    ai::quest_band::LoadLadder();
    
     //Creature/gos/zone export.
     if (sPlayerbotAIConfig.hasLog("creatures.csv"))

@@ -78,6 +78,11 @@ namespace ai
 		bool HasGapWindow() const { return gapWindowHigh != 0; }
 		uint32 GetGapWindowLow() const { return gapWindowLow; }
 		uint32 GetGapWindowHigh() const { return gapWindowHigh; }
+		// twow-repo#601 S5a (BandLadder, S5A-DESIGN.md 5.4): the band giver filter bit and the grey level, set in the constructor on the
+		// bot thread (PlayerbotAI::QuestBandGiverFilter: switch first, then the scope and a usable ladder row for the bot's band);
+		// read by QuestRelationTravelDestination::IsPossible / IsActive only as values. false / 0 for every other bot.
+		bool HasBandGiverFilter() const { return bandGiverFilter; }
+		uint32 GetBandGreyLevel() const { return bandGreyLevel; }
 
 	private:
 		WorldPosition position;
@@ -85,6 +90,8 @@ namespace ai
 		uint32 level = 0;
 		uint32 gapWindowLow = 0;    // twow-repo#601 S2 R3: 0 / 0 for every bot but the GrindMode 1 population
 		uint32 gapWindowHigh = 0;
+		bool bandGiverFilter = false;    // twow-repo#601 S5a: false for every bot but an in-scope BandLadder bot with a usable row
+		uint32 bandGreyLevel = 0;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };
 		uint8 groupSize = 0;
@@ -143,6 +150,8 @@ namespace ai
 
 		virtual int32 GetEntry() const { return 0; }
 		virtual TravelDestinationPurpose GetPurpose() const { return TravelDestinationPurpose::None; }
+		// twow-repo#601 S5a (BandLadder): true only for the boot-built band hubs (QuestBand.h).
+		virtual bool IsBandHub() const { return false; }
 
 		virtual std::string GetShortName() const { return ""; };
 
@@ -420,6 +429,14 @@ namespace ai
 		// get the time left until this end (time(nullptr) seconds, 0 = none); its expiry counts as no failure.
 		void SetGapWindowEnd(uint32 windowEnd) { gapWindowEnd = windowEnd; }
 		uint32 GetGapWindowEnd() const { return gapWindowEnd; }
+		// twow-repo#601 S5a (BandLadder): the band trip's wall-clock end (time(nullptr) s), decided once at the step; 0 = no band
+		// trip. The trip ends only in CheckStatus (CheckBandTrip / EndBandTrip, QuestBand.cpp) or when another destination
+		// replaces it (NoteBandTripReplaced from SetTarget); nothing extends it.
+		void SetBandTripEnd(uint32 tripEnd) { bandTripEnd = tripEnd; }
+		uint32 GetBandTripEnd() const { return bandTripEnd; }
+		void EndBandTrip(uint8 how);            // a TripVerdict as uint8 or ai::quest_band::EndArrived (QuestBand.cpp)
+		void NoteBandTripReplaced();            // SetTarget to another destination while the trip ran (QuestBand.cpp)
+		uint8 CheckBandTrip() const;            // ai::quest_band::TripVerdict as uint8 (QuestBand.cpp)
 		// twow-repo#601 S2 R3 (GrindMode 1, review C-F2): this choice is the gap grind choice (set by ChooseTravelTargetAction on the
 		// new target only, never copied) - the R3 window snapshot and the own-map skip apply to it, not to a quest choice.
 		void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }
@@ -484,6 +501,7 @@ namespace ai
 		uint32 startTime = WorldTimer::getMSTime();
 		uint32 statusTime = 0;
 		uint32 gapWindowEnd = 0;   // twow-repo#601 S2 / S4 R2: 0 for every target but a GrindMode 1 gap grind trip
+		uint32 bandTripEnd = 0;    // twow-repo#601 S5a: 0 for every target but a running band trip
 		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
 		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
 
