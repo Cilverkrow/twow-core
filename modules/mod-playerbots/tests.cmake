@@ -3565,6 +3565,26 @@ add_test(NAME cast_result_names
   COMMAND cast_result_names_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, AiPlayerbot.CastWait.Preparing, default 0, behaviour change): hold the internal AI
+# until the real end of the bot's own PREPARING cast (deadline once per spell, never shorten, release at the end).
+add_test(NAME cast_wait_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/cast_wait_source_contract_tests.cmake")
+
+add_executable(cast_wait_policy_tests
+  "${PB_MODULE_DIR}/t/cast_wait_policy_tests.cpp")
+
+target_include_directories(cast_wait_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(cast_wait_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cast_wait_policy
+  COMMAND cast_wait_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
 # end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process; no key, no state.
 add_executable(config_echo_policy_tests

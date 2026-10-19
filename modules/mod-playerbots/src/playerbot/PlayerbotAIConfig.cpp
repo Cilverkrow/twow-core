@@ -582,6 +582,9 @@ bool PlayerbotAIConfig::Initialize()
         rotationRestGateMaxRestSeconds = t.maxRestSeconds;
     }
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
+    castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
+    if (castWaitPreparing > 2)
+        castWaitPreparing = 0;   // twow-repo#602: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
     perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
