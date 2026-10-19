@@ -355,7 +355,9 @@ void BotActionLog::LogCastResult(PlayerbotAI* ai, uint32 spellId, uint8 result, 
         return;
     }
     // twow-repo#602 (L1-b, OB-10): result=1 alone could not tell SPELL_IN_PROGRESS from LINE_OF_SIGHT or a bot-side cancel;
-    // reason=none state=null is a cast the bot cancelled before any server check (PlayerbotAI::CastSpell, e.g. while moving).
+    // reason=none = no result went through this spell's member SendCastResult. With state=null that is usually a cast the bot
+    // cancelled before any server check (PlayerbotAI::CastSpell, e.g. while moving), but a rejection sent only through the static
+    // Spell::SendCastResult(Player*, SpellEntry const*, ...) overload reads the same - do not read "none" as "moving cancel" alone.
     char const* const name = ai::cast_result::Name(reason);
     Write(ai, "CAST_FAIL", "spell=%s(%u) result=%u phase=%s reason=%s code=0x%02x state=%s",
           spellName, spellId, (unsigned)result, phase ? phase : "?", name ? name : "none", (unsigned)reason,
