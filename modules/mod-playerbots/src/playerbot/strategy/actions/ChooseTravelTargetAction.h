@@ -32,6 +32,9 @@ namespace ai
         ai::quest_search::RejectCounts lastRejects;
         // #421 B: no quest target - widen the quest search.
         void WidenQuestSearch(uint32 ranges);
+        // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the band step from the empty quest search
+        // (QuestBand.cpp). True = a band trip started.
+        bool TryBandStep(Player* requester, TravelTarget* travelTarget, uint32 searchedStage, bool freshBot, bool rescueRequested);
     public:
         static DestinationList FindDestination(PlayerTravelInfo info, std::string name, bool zones = true, bool npcs = true, bool quests = true, bool mobs = true, bool bosses = true, bool gather = true);
     private:

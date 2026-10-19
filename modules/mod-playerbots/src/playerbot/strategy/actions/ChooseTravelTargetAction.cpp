@@ -737,6 +737,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // #421 A: which filters took every candidate.
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
                 uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format());
+            // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
+            uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
+                uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
             WidenQuestSearch(uint32(destinationList.size()));
 
             // twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.Enable): a fresh bot (level <= FreshMaxLevel) gets the short
@@ -792,6 +795,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                     sPlayerbotAIConfig.questFirstProgressionTransientCountsAfter);
                 SET_AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue, transientCounts ? 0 : int(transientStreak));
             }
+
+            // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the zone is done - step to the next hub. Decided
+            // before the 8.1 failure count and backoff (a step counts nothing); a Z1b rescue and P3-a fresh bots win.
+            if (sPlayerbotAIConfig.questFirstProgressionBandLadder &&
+                TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested))
+                return true;
 
             // Hotfix 8.1: wait before the next quest route request (2, 4, 8, then 10 min).
             if (UsesQuestFirstProgression(bot))
@@ -1748,6 +1757,10 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
                 std::binary_search(gapNeeded.begin(), gapNeeded.end(), groupTarget->GetDestination()->GetEntry())))
             continue;
 
+        // twow-repo#601 S5a (BandLadder): a band hub trip is no group candidate (no copy, no member COOLDOWN on it).
+        if (groupTarget->GetDestination()->IsBandHub())
+            continue;
+
         // twow-repo#601 S2 R3 (review C-F2): a member's gap grind trip (gapWindowEnd, GrindMode 1 only) is judged with its window.
         if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player, groupTarget->GetGapWindowEnd() != 0)) || !groupTarget->IsConditionsActive())
         {
@@ -1908,6 +1921,11 @@ bool RefreshTravelTargetAction::isUseful()
     // and no READY again on an ended window (that would count expired= twice). gapWindowEnd: GrindMode 1 only. Before the
     // skip chance (no urand drawn).
     if (AI_VALUE(TravelTarget*, "travel target")->GetGapWindowEnd())
+        return false;
+
+    // twow-repo#601 S5a (BandLadder): no refresh of a band hub trip, running or ended (no renewal, no hub trip without an end).
+    // Before the skip chance (no urand drawn). Only band hubs answer true (QuestBand.h).
+    if (AI_VALUE(TravelTarget*, "travel target")->GetDestination()->IsBandHub())
         return false;
 
     if (!WorldPosition(bot).isOverworld())

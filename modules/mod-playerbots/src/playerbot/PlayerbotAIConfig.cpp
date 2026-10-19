@@ -735,6 +735,14 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#601 R01 v4: cohort mode of the S1 / S3 key groups (R01CohortPolicy.h), 0 = all bots.
     questFirstProgressionS1Cohort = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.S1Cohort", 0);
     questFirstProgressionS3Cohort = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.S3Cohort", 0);
+    // twow-repo#601 S5a: the band step (QuestBandPolicy.h); the ladder file is read once at boot behind the switch (QuestBand.cpp).
+    questFirstProgressionBandLadder = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandLadder", 0);
+    if (questFirstProgressionBandLadder > 3)
+    {
+        sLog.outError("[QuestBand] config key=BandLadder value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questFirstProgressionBandLadder);
+        questFirstProgressionBandLadder = 0;
+    }
+    questFirstProgressionBandLadderFile = config.GetStringDefault("AiPlayerbot.QuestFirstProgression.BandLadderFile", "");
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
     questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
@@ -1489,6 +1497,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
             {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
             {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
+            {"QuestFirstProgression.BandLadder", Value(questFirstProgressionBandLadder)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},

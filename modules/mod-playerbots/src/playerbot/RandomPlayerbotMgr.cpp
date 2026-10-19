@@ -22,6 +22,7 @@
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): band rescue targets, [QuestBand] minute line
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -1362,6 +1363,31 @@ void ReportGrindWindow()
         sLog.outBasic("%s", line.c_str());
 }
 
+// twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the [QuestBand] minute line (cohort=A|B steps= arrived=
+// expired= ..., QuestBandPolicy.h FormatMinute) once a minute per cohort - the band steps, ends, rescues and skips counted
+// on the map threads since the last line (relaxed atomics in QuestBand.cpp), omitted when every count of the cohort is 0.
+// Gated by the switch alone (not even the clock is read with 0); the first call only starts the clock.
+// World thread only, same pattern as ReportGrindWindow.
+void ReportQuestBand()
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionBandLadder)
+        return;
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!lastReport)
+    {
+        lastReport = now;
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    for (std::string const& line : PlayerbotAI::TakeQuestBandMinuteLines())
+        sLog.outBasic("%s", line.c_str());
+}
+
 // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): [RotCast] once per minute, [RotCastTotal] once per hour
 // (RotCastTrace.cpp). World thread only. The first call after the switch went on clears and starts a window.
 void ReportRotCast()
@@ -1670,6 +1696,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
     ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
     ReportGrindWindow();  // twow-repo#601 S2 / S4: [GrindWindow] minute once per minute, not when empty (GrindMode = 1)
+    ReportQuestBand();    // twow-repo#601 S5a: [QuestBand] minute once per minute per cohort, not when empty (BandLadder > 0)
     ReportRotCast();      // twow-repo#602 ROT-01 D0: [RotCast] once per minute (AiPlayerbot.Rotation.CastTrace)
     ReportEmergencyLadder(); // twow-repo#602 ROT-01 X3: [EmergencyLadderTotal] once per hour (AiPlayerbot.Rotation.EmergencyLadder)
     ReportRestGate();     // twow-repo#602 ROT-01 X1: [RestGateTotal] once per hour (AiPlayerbot.Rotation.RestGate)
@@ -7202,9 +7229,17 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
 
         // The bot asks again next minute while it stays stuck.
         if (!questRescueLimiter.TryAcquire(now))
+        {
+            // twow-repo#601 S5a (BandLadder): a band rescue is asked for once per episode - with the global limit used up
+            // its request stays for the next scan (the hub stays in bandRescue until taken, 600 s at most). Switch first;
+            // bandRescue is 0 unless BandLadder > 0.
+            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && ai->HasBandRescuePending())
+                ai->RequeueBandRescue();
             continue;
+        }
 
-        std::vector<WorldLocation> const targets = QuestRescueTargets(bot);
+        uint32 const bandRung = ai->TakeBandRescueRung(now);   // twow-repo#601 S5a: a band rescue (rung + 1), 0 = a plain rescue
+        std::vector<WorldLocation> const targets = bandRung ? ai::quest_band::HubRescueTargets(bot, bandRung - 1) : QuestRescueTargets(bot);
         if (targets.empty())
         {
             sLog.outBasic("[QuestRescue] state=no_target bot=%u level=%u race=%u zone=%u",
@@ -7232,6 +7267,13 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
             bot->SetHomebindToLocation(target, area ? area->ID : 0);
             sLog.outBasic("[QuestRescue] state=rebind bot=%u level=%u to_map=%u to_x=%.0f to_y=%.0f area=%u",
                 bot->GetGUIDLow(), bot->GetLevel(), target.mapid, target.coord_x, target.coord_y, area ? area->ID : 0);
+        }
+
+        // twow-repo#601 S5a (BandLadder): a band rescue arrives at the hub - a fresh quest search there (band step reset), one line.
+        if (bandRung)
+        {
+            ai->RequestQuestRouteReset(ai::quest_failure_class::ResetBandStep);
+            ai::quest_band::LogRescueTeleport(bot, bandRung - 1);
         }
 
         bot->SendHeartBeat();

@@ -283,6 +283,27 @@ add_test(NAME grind_gap_window_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_gap_window_source_contract_tests.cmake")
 
+# twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, default 0 / BandLadderFile ""; OB-00 D9 19.10.2026): the
+# band step to the next quest hub of hub-ladder.tsv with a fixed-end trip, the band giver filter, giver_done, log_full, the
+# second-expiry forward rescue (policy) and the hooks, inert at 0 (source contract).
+add_executable(quest_band_policy_tests
+  "${PB_MODULE_DIR}/t/quest_band_policy_tests.cpp")
+
+target_include_directories(quest_band_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_band_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_band_policy
+  COMMAND quest_band_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_band_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_band_source_contract_tests.cmake")
+
 # twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.*, default 0 / empty; OB-10 / OB-00 18.10.2026): feasibility at accept
 # time - quest id lists, the solo group rule, the giver relation and the drop of open infeasible quests (policy).
 add_executable(quest_feasibility_policy_tests
