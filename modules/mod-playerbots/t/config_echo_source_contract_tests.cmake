@@ -122,6 +122,7 @@ set(entries
   "Path.TransportWaitTimeoutMin|pathTransportWaitTimeoutMin"
   "Path.PosStuck|pathPosStuck"
   "Path.PosStuck.Minutes|pathPosStuckMinutes"
+  "Path.TransportBoardFix|pathTransportBoardFix"
   "Rotation.EmergencyLadder|rotationEmergencyLadder"
   "Rotation.SpecFromPath|rotationSpecFromPath"
   "Rotation.RestGate|rotationRestGate"
