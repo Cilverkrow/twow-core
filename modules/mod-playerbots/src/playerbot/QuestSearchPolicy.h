@@ -130,6 +130,15 @@ inline bool SkipGreyTarget(bool rosterOnItsOwn, bool grey, bool neededForQuest, 
     return rosterOnItsOwn && grey && !neededForQuest && !attacksBot;
 }
 
+// twow-repo#601 / #614 (L1-b, 19.10.2026): grey as the core colours it - Formulas.h GetColorCode: GRAY = mob level <=
+// MaNGOS::XP::GetGrayLevel(player level). MaNGOS::XP::Gain is no grey test before a kill: outside dungeons it multiplies by
+// the damage-origin share (Creature::GetXPModifierDueToDamageOrigin), which is 0 for every mob nobody has damaged yet - so
+// every untouched mob read as "no XP" (L1-b: 364,754 "not xp" skips against 1,376 grind picks in 6 h).
+inline bool GreyByLevel(uint32_t mobLevel, uint32_t grayLevel)
+{
+    return mobLevel <= grayLevel;
+}
+
 // Grey engagements per bot and hour - the measuring point for the rule above.
 constexpr uint32_t GreyReportSeconds = 3600;
 struct GreyEngagements

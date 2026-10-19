@@ -3524,3 +3524,22 @@ add_test(NAME config_echo_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/config_echo_source_contract_tests.cmake")
+
+# twow-repo#601 / #614 (AiPlayerbot.Grind.GreyByLevel, L1 observation 19.10.2026): grey by the mob's level, not by XP::Gain.
+add_test(NAME grey_by_level_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grey_by_level_source_contract_tests.cmake")
+
+add_executable(grey_by_level_tests
+  "${PB_MODULE_DIR}/t/grey_by_level_tests.cpp")
+
+target_include_directories(grey_by_level_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(grey_by_level_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grey_by_level
+  COMMAND grey_by_level_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")

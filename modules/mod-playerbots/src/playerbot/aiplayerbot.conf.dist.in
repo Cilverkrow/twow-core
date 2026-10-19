@@ -711,6 +711,12 @@ AiPlayerbot.InviteChat = 1
 # the action log lock. The core does not rotate the files (one per bot and login, appended); rotate outside (copy + truncate).
 AiPlayerbot.ActionLog.Guids =
 
+# twow-repo#601 / #614 (L1 observation 19.10.2026, a bug fix): 1 = the #421 rule "a roster bot on its own does not grind grey
+# creatures it does not need" judges grey by the mob's level, as the core colours it (mob level <= the grey level of the bot).
+# 0 = as before: MaNGOS::XP::Gain, which is 0 for every mob nobody has damaged yet, so a roster bot skipped every untouched
+# non-quest mob and could not grind at all.
+AiPlayerbot.Grind.GreyByLevel = 0
+
 # Redirect all bot subsystem log output to a dedicated file so the main
 # server.log stays clean. Path is relative to the server's LogsDir setting.
 #
