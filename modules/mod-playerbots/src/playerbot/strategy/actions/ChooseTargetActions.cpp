@@ -10,6 +10,7 @@
 #include "playerbot/RotCastTrace.h"
 #include "playerbot/GrindPickPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestSearchPolicy.h"   // twow-repo#614: GreyByLevel
 #include "Formulas.h"
 #include <algorithm>
 
@@ -71,7 +72,7 @@ bool ai::AttackAnythingAction::Execute(Event& event)
         bool const neededForQuest = entry && AI_VALUE2(bool, "need for quest", std::to_string(entry));
         Creature* const creature = dynamic_cast<Creature*>(pickTarget);
         pickSource = ai::grind_pick::EngagedSource(attacker, pickTarget->GetVictim() == bot, neededForQuest);
-        pickGrey = creature && !MaNGOS::XP::Gain(bot, creature);
+        pickGrey = creature && ai::quest_search::GreyByLevel(creature->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel()));   // #614: by level, not XP::Gain
     }
 
     // twow-repo#601 S2 / S4 [GrindWindow] engaged= / grey_engaged= (GrindMode 1, OB-10 rev. 2): a plain grind engagement (no
@@ -96,7 +97,7 @@ bool ai::AttackAnythingAction::Execute(Event& event)
         gapPlain = creature && ai::grind_pick::EngagedSource(
             std::find(attackers.begin(), attackers.end(), gapTarget->GetObjectGuid()) != attackers.end(), gapTarget->GetVictim() == bot,
             std::binary_search(needed.begin(), needed.end(), int32(gapTarget->GetEntry()))) == ai::grind_pick::Source::Grind;
-        gapGrey = creature && !MaNGOS::XP::Gain(bot, creature);
+        gapGrey = creature && ai::quest_search::GreyByLevel(creature->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel()));   // #614: by level, not XP::Gain
     }
 
     bool result = AttackAction::Execute(event);
