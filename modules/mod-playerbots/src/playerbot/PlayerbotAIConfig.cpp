@@ -1514,6 +1514,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.RestGate", Value(rotationRestGate)},
+            {"CastWait.Preparing", Value(castWaitPreparing)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},

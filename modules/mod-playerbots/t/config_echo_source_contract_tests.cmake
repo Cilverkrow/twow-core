@@ -113,6 +113,7 @@ set(entries
   "Rotation.EmergencyLadder|rotationEmergencyLadder"
   "Rotation.SpecFromPath|rotationSpecFromPath"
   "Rotation.RestGate|rotationRestGate"
+  "CastWait.Preparing|castWaitPreparing"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
   "Loot.RoleWeights|lootRoleWeights"
