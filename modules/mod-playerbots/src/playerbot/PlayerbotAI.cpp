@@ -767,7 +767,9 @@ void PlayerbotAI::UpdateBotSave()
 // counter at 2 or more and grinding won at the target on the first tick.
 void PlayerbotAI::ApplyQuestRouteReset(uint32 events)
 {
+    // twow-repo#601 R01 v4: S1Cohort - the S1 group acts for this bot's cohort only (R01CohortPolicy.h)
     if (!events || !sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents || !sPlayerbotAIConfig.questFirstProgressionEnabled ||
+        !sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) ||
         !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
         return;
 
@@ -884,7 +886,8 @@ std::atomic<uint32> questFeasibilityGiverInactive{0};
 // only) in the policy.
 ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* quest)
 {
-    if (!sPlayerbotAIConfig.questFeasibilityEnable || !bot || !quest)
+    // twow-repo#601 R01 v4: S3Cohort - the one choke point of the feasibility rule (accept, item, giver trip, log drop)
+    if (!sPlayerbotAIConfig.questFeasibilityEnable || !bot || !quest || !sPlayerbotAIConfig.S3For(bot->GetGUIDLow()))
         return ai::quest_feasibility::Reason::None;
 
     uint32 const questId = quest->GetQuestId();
@@ -1313,7 +1316,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             // as before. With ResetOnProgressEvents only a level-up still resets the quest search stage - XP alone does not.
             if (questProgress.Update(snapshot, now))
             {
-                if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents, levelUp))
+                if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents &&
+                        sPlayerbotAIConfig.S1For(bot->GetGUIDLow()), levelUp))
                     aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
             }
             else if (sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&

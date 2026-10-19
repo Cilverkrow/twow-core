@@ -152,7 +152,7 @@ require_order("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 0" "AiPla
 
 # ---- 3. The game-side helper: Enable first, the S3a scope, atomics, bounded line ------------------------
 region("${ai_cpp}" "ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* quest)" "\n}\n" reason_fn)
-require_text("${reason_fn}" "{\n    if (!sPlayerbotAIConfig.questFeasibilityEnable || !bot || !quest)\n        return ai::quest_feasibility::Reason::None;" "Enable checked first")
+require_text("${reason_fn}" "{\n    // twow-repo#601 R01 v4: S3Cohort - the one choke point of the feasibility rule (accept, item, giver trip, log drop)\n    if (!sPlayerbotAIConfig.questFeasibilityEnable || !bot || !quest || !sPlayerbotAIConfig.S3For(bot->GetGUIDLow()))\n        return ai::quest_feasibility::Reason::None;" "Enable checked first")
 require_text("${reason_fn}" "facts.rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();" "scope: roster bot on its own (as SkipForRosterBot)")
 require_text("${reason_fn}" "facts.classQuest = quest->GetRequiredClasses() != 0;" "class quests exempt")
 require_text("${reason_fn}" "facts.inGroup = bot->GetGroup() != nullptr;" "solo scope: not in a group")

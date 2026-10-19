@@ -1192,6 +1192,14 @@ AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 #       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
 #       stay. Other values act like 0.
 AiPlayerbot.QuestFirstProgression.GrindMode = 0
+# twow-repo#601 R01 v4 (cohort mode, an A/B inside one realm): for which bots the S1 key group (FailureClasses,
+# ResetOnProgressEvents, AbandonStructuralParked) and the S3 key group (QuestFeasibility.Enable with its lists,
+# HubPreloopSameFilters, ZoneExit.TurnInTravelStall with TurnInNearRadius) act as their keys are set. 0 or 1 = every
+# bot (default, as before), 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); any other value = no
+# bot. A cohort value never switches a group on - the keys stay as set. Restart-only. Global log lines ([PreValidate],
+# the [QuestFeasibility] minute line, [QuestTurnInStall] fields) still follow the keys.
+AiPlayerbot.QuestFirstProgression.S1Cohort = 0
+AiPlayerbot.QuestFirstProgression.S3Cohort = 0
 # twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
 # Enable = 1: a persistent roster bot on its own (no real player leads it) does not take quests it cannot finish - not
 # from a quest giver (accept all, accept packet, quest details dialog), not from a quest item in its bags - and does not

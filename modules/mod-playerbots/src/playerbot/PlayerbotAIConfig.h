@@ -829,6 +829,13 @@ public:
     // filler, acts like 0 until then; 2 = no grind as a substitute activity for quest-first roster bots on their own
     // below the max level, they stand idle and log [QuestIdle] (QuestGrindModePolicy.h). Other values act like 0.
     uint32 questFirstProgressionGrindMode = 0;
+    // twow-repo#601 R01 v4 cohort mode (rule in ai::r01_cohort): for which bots the S1 / S3 key groups act - 0 or 1 = all
+    // (default), 2 = only cohort B (odd low guid), 3 = only cohort A (even); other values = none. Restart-only.
+    uint32 questFirstProgressionS1Cohort = 0;
+    uint32 questFirstProgressionS3Cohort = 0;
+    // out of line in PlayerbotAIConfig.cpp: the cohort headers stay out of the botpch chain (rot_cast_trace contract)
+    bool S1For(uint32 guidLow) const;
+    bool S3For(uint32 guidLow) const;
     // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
     // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
     bool questFeasibilityEnable = false;
