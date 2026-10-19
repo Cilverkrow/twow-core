@@ -31,6 +31,7 @@
 #include "playerbot/DirectTargetPolicy.h"
 #include "playerbot/TransportBoardPolicy.h"
 #include "playerbot/ConfigEchoPolicy.h"
+#include "playerbot/R01CohortPolicy.h"
 
 #include <iostream>
 #include <numeric>
@@ -109,6 +110,17 @@ inline ParsedUrl parseUrl(const std::string& url) {
     parsed.port = parsed.https ? 443 : (match[4].length() ? std::stoi(match[4]) : 80);
     parsed.path = match[5].length() ? match[5] : std::string("/");
     return parsed;
+}
+
+// twow-repo#601 R01 v4 (S1Cohort / S3Cohort): does the S1 / S3 key group act for this bot (R01CohortPolicy.h)?
+bool PlayerbotAIConfig::S1For(uint32 guidLow) const
+{
+    return ai::r01_cohort::Applies(questFirstProgressionS1Cohort, guidLow);
+}
+
+bool PlayerbotAIConfig::S3For(uint32 guidLow) const
+{
+    return ai::r01_cohort::Applies(questFirstProgressionS3Cohort, guidLow);
 }
 
 bool PlayerbotAIConfig::Initialize()
@@ -720,6 +732,9 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#601 S3b: the hub pre-loop also asks the main loop's post-IsActive deferrals (acts only with FailureClasses).
     questFirstProgressionHubPreloopSameFilters = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters", false);
     questFirstProgressionGrindMode = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindMode", 0);
+    // twow-repo#601 R01 v4: cohort mode of the S1 / S3 key groups (R01CohortPolicy.h), 0 = all bots.
+    questFirstProgressionS1Cohort = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.S1Cohort", 0);
+    questFirstProgressionS3Cohort = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.S3Cohort", 0);
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
     questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
@@ -1484,6 +1499,8 @@ bool PlayerbotAIConfig::Initialize()
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
             {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
+            {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
+            {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
             {"DirectTargets.Enable", Value(directTargetsEnabled)},
             {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
             {"DirectTargets.FreshGrindFailures", Value(directTargetsFreshGrindFailures)},

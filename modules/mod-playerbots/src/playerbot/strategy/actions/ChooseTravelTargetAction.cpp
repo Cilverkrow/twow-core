@@ -489,7 +489,9 @@ bool ParkStructuralTurnIn(PlayerbotAI* ai, TravelTarget* travelTarget, uint32 qu
         return false;
 
     Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
-    if (ai::quest_failure_class::AbandonParkedTurnIn(sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked, abandonDue,
+    // twow-repo#601 R01 v4 (S1Cohort): only this mark makes the other AbandonStructuralParked sites act
+    if (ai::quest_failure_class::AbandonParkedTurnIn(sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked &&
+            sPlayerbotAIConfig.S1For(ai->GetBot()->GetGUIDLow()), abandonDue,
             !quest || quest->GetRequiredClasses()))
     {
         Player* bot = ai->GetBot();
@@ -772,7 +774,8 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             int failuresBefore = 0;
             uint32 transientStreak = 0;
             bool transientCounts = false;
-            if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())
+            if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&
+                UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())
             {
                 for (std::string const& questId : split(AI_VALUE2(std::string, "manual string", HandInQuestsValue), ','))
                     if (uint32 const id = uint32(atoi(questId.c_str())))
@@ -912,7 +915,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
         SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
         // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.
-        if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)
+        if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()))
             SET_AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue, 0);
         // twow-repo#601 GrindMode 2: a quest target ends the idle episode - the next idle reason gets its line again.
         if (ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))
@@ -1316,11 +1319,13 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 4): the pre-loop below asks the
     // main loop's skip predicate (CandidateSkipOf) before it lets a local candidate switch the hub filter on, and no
     // random range skip happens while the hub filter is on. false = both as before.
-    bool const failureClasses = preferLocalQuest && sPlayerbotAIConfig.questFirstProgressionFailureClasses;
+    bool const failureClasses = preferLocalQuest && sPlayerbotAIConfig.questFirstProgressionFailureClasses &&
+        sPlayerbotAIConfig.S1For(bot->GetGUIDLow());
     // twow-repo#601 S3b (AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters, OB-10 rev. 2 Q-B2, only with
     // FailureClasses): the pre-loop also asks the main loop's post-IsActive deferrals (PostActiveDeferralOf) - no
     // counter, no trace there. false = the pre-loop as before.
-    bool const hubPreloopSameFilters = failureClasses && sPlayerbotAIConfig.questFirstProgressionHubPreloopSameFilters;
+    bool const hubPreloopSameFilters = failureClasses && sPlayerbotAIConfig.questFirstProgressionHubPreloopSameFilters &&
+        sPlayerbotAIConfig.S3For(bot->GetGUIDLow());
     // twow-repo#601 GrindMode 2 (review): a forced target (the guild Farm / Kill order) never asks IsActive here, in
     // TravelTarget::CheckStatus or by status time, so the order's kill trips (drop or name-matched mobs, bosses,
     // skinning) would be a forced trip to mobs the grind target filter then refuses - the bot parked there while the
@@ -2710,8 +2715,8 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 3): the bot's open turn-ins are
     // checked before the fetch is built - a structural one is parked now (the loop below then skips its taker), only a
     // routable one may make this request turn-in-only. Not for a bot led by a real player (unchanged).
-    bool const failureClasses = sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) &&
-        !ai->HasRealPlayerMaster();
+    bool const failureClasses = sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&
+        UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster();
     std::set<uint32> validatedTurnIns;
     if (failureClasses)
         validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);
