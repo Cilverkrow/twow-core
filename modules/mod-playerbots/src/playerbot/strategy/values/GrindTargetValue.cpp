@@ -42,7 +42,9 @@ Unit* GrindTargetValue::Calculate()
 
     // #421 measuring point: grey targets engaged per bot and hour.
     Creature* creature = target ? dynamic_cast<Creature*>(target) : nullptr;
-    if (creature && creature->GetObjectGuid() != lastGreyTarget && !MaNGOS::XP::Gain(bot, creature))
+    // twow-repo#601 / #614: grey by level (QuestSearchPolicy.h GreyByLevel); XP::Gain is 0 for every untouched mob.
+    if (creature && creature->GetObjectGuid() != lastGreyTarget &&
+        ai::quest_search::GreyByLevel(creature->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel())))
     {
         lastGreyTarget = creature->GetObjectGuid();
         greyEngagements.Add(uint32(time(nullptr)));
@@ -345,7 +347,15 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             }
             // #421: a roster bot on its own never grinds grey creatures it does
             // not need (Deygo, L14, on level-1 wolves); others keep the old odds.
-            else if (creature && !MaNGOS::XP::Gain(bot, creature) &&
+            // twow-repo#601 / #614 (AiPlayerbot.Grind.GreyByLevel, L1-b 19.10.2026): "no XP" = grey by the mob's level, no kill
+            // reward or a zero XP template - for the #421 skip of roster bots on their own and the old 50-in-51 skip of every other
+            // bot. Off: XP::Gain as before, which is 0 for every mob nobody has damaged yet, so almost every untouched non-quest
+            // mob was skipped as "not xp".
+            else if (creature && (sPlayerbotAIConfig.grindGreyByLevel ?
+                    ai::quest_search::NoXpTarget(
+                        ai::quest_search::GreyByLevel(creature->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel())),
+                        creature->HasUnitState(UNIT_STAT_NO_KILL_REWARD), creature->GetCreatureInfo()->xp_multiplier == 0) :
+                    !MaNGOS::XP::Gain(bot, creature)) &&
                 (ai::quest_search::SkipGreyTarget(rosterOnItsOwn, true, false, creature->GetVictim() == bot) || urand(0, 50)))
             {
                 logGrind(unit, "ignored (not xp and not needed for quest).");
