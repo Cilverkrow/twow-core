@@ -66,7 +66,9 @@ require_text("${choose_cpp}" "gapGrey = creature && ${by_level};" "[GrindWindow]
 # XP::Gain only in the switch-off branch of the #421 skip, nowhere else.
 count_text("${grind_cpp}" "MaNGOS::XP::Gain(" 1 "XP::Gain only in the switch-off branch")
 count_text("${choose_cpp}" "MaNGOS::XP::Gain(" 0 "no XP::Gain grey test in ChooseTargetActions")
-require_text("${grind_cpp}" "else if (creature && (sPlayerbotAIConfig.grindGreyByLevel ?\n                    ${by_level} :\n                    !MaNGOS::XP::Gain(bot, creature)) &&" "the #421 skip: by level with the switch, XP::Gain as before without")
+require_text("${policy}" "inline bool NoXpTarget(bool greyByLevel, bool noKillReward, bool zeroXpMultiplier)\n{\n    return greyByLevel || noKillReward || zeroXpMultiplier;\n}" "no XP = grey by level, no kill reward or a zero XP template")
+# The whole grind skip predicate (the #421 rule of roster bots on their own and the old 50-in-51 skip of every other bot).
+require_text("${grind_cpp}" "else if (creature && (sPlayerbotAIConfig.grindGreyByLevel ?\n                    ai::quest_search::NoXpTarget(\n                        ${by_level},\n                        creature->HasUnitState(UNIT_STAT_NO_KILL_REWARD), creature->GetCreatureInfo()->xp_multiplier == 0) :\n                    !MaNGOS::XP::Gain(bot, creature)) &&\n                (ai::quest_search::SkipGreyTarget(rosterOnItsOwn, true, false, creature->GetVictim() == bot) || urand(0, 50)))" "the whole grind skip predicate: NoXpTarget with the switch, XP::Gain as before without")
 require_order("${grind_cpp}" "sPlayerbotAIConfig.grindGreyByLevel ?" "!MaNGOS::XP::Gain(bot, creature)" "switch before the old test")
 
 message(STATUS "grey_by_level source contract passed")

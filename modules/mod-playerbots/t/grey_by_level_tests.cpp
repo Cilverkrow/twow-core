@@ -42,6 +42,13 @@ int main()
     // L60: grey level 47
     Require(GreyByLevel(47, GrayLevel(60)) && !GreyByLevel(48, GrayLevel(60)), "L60 bot");
 
+    // CLI-Deep review: no kill reward or a zero XP template stays "no XP" even when not grey by level.
+    using ai::quest_search::NoXpTarget;
+    Require(!NoXpTarget(false, false, false), "a green mob with a kill reward: XP");
+    Require(NoXpTarget(true, false, false), "grey: no XP");
+    Require(NoXpTarget(false, true, false), "no kill reward: no XP");
+    Require(NoXpTarget(false, false, true), "zero XP template: no XP");
+
     std::cout << "grey_by_level_tests passed\n";
     return 0;
 }

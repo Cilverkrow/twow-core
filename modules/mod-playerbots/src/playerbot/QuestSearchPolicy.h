@@ -139,6 +139,14 @@ inline bool GreyByLevel(uint32_t mobLevel, uint32_t grayLevel)
     return mobLevel <= grayLevel;
 }
 
+// The "no XP" test of the grind skip with AiPlayerbot.Grind.GreyByLevel (CLI-Deep review 19.10.2026): grey by level, or a
+// mob that never rewards a kill (UNIT_STAT_NO_KILL_REWARD) or whose template gives no XP (xp_multiplier 0) - the reasons
+// for which XP::Gain is rightly 0 whatever the damage origin.
+inline bool NoXpTarget(bool greyByLevel, bool noKillReward, bool zeroXpMultiplier)
+{
+    return greyByLevel || noKillReward || zeroXpMultiplier;
+}
+
 // Grey engagements per bot and hour - the measuring point for the rule above.
 constexpr uint32_t GreyReportSeconds = 3600;
 struct GreyEngagements
