@@ -33,17 +33,70 @@ int main()
     Require(!TravelActive(0) && TravelActive(1) && TravelActive(2) && TravelActive(3) && TravelActive(4), "1-4 active");
     Require(!TravelActive(5) && !TravelActive(6) && !TravelActive(7), "cooldown, expired and above not active");
 
-    // Kinds: dead before combat before the target before a flight; idle is what is left.
-    Require(Classify(false, true, true, Dest::Quest, true) == Kind::Dead, "dead wins");
-    Require(Classify(true, true, true, Dest::Quest, false) == Kind::Combat, "combat before the target");
-    Require(Classify(true, false, true, Dest::Quest, false) == Kind::Quest, "active quest target");
-    Require(Classify(true, false, true, Dest::Grind, false) == Kind::Grind, "active grind target");
-    Require(Classify(true, false, true, Dest::Other, false) == Kind::Other, "active other target");
-    Require(Classify(true, false, true, Dest::None, false) == Kind::Idle, "active status without a destination is idle");
-    Require(Classify(true, false, false, Dest::Quest, false) == Kind::Idle, "quest target in cooldown is idle");
-    Require(Classify(true, false, false, Dest::None, true) == Kind::Other, "taxi flight without target is other");
-    Require(Classify(true, false, true, Dest::Quest, true) == Kind::Quest, "taxi flight to a quest target is quest");
-    Require(Classify(true, false, false, Dest::None, false) == Kind::Idle, "nothing is idle");
+    // Kinds: parked, dead, combat, then the target (stuck / grind_idle first), a flight; idle is what is left.
+    auto make = [](std::uint8_t status, Dest dest, float moved = 50.0f) {
+        State s;
+        s.status = status;
+        s.dest = dest;
+        s.moved = moved;
+        s.combatSinceSample = true;
+        return s;
+    };
+    {
+        State s = make(StatusTravel, Dest::Quest);
+        s.parked = true;
+        s.alive = false;
+        Require(Classify(s) == Kind::Parked, "parked wins");
+        s.parked = false;
+        s.inCombat = true;
+        Require(Classify(s) == Kind::Dead, "dead before combat");
+        s.alive = true;
+        Require(Classify(s) == Kind::Combat, "combat before the target");
+    }
+    Require(Classify(make(StatusTravel, Dest::Quest)) == Kind::Quest, "travelling to a quest target");
+    Require(Classify(make(StatusWork, Dest::Quest, 0.0f)) == Kind::Quest, "standing at a quest target in WORK is quest");
+    Require(Classify(make(StatusTravel, Dest::Grind)) == Kind::Grind, "travelling to a grind target");
+    Require(Classify(make(StatusWork, Dest::Grind, 0.0f)) == Kind::Grind, "grind WORK with a fight since the last sample");
+    Require(Classify(make(StatusTravel, Dest::Other)) == Kind::Other, "travelling to another target");
+    Require(Classify(make(2, Dest::Quest, 0.0f)) == Kind::Quest, "READY without moving is not stuck (only TRAVEL)");
+    Require(Classify(make(StatusTravel, Dest::None)) == Kind::Idle, "active status without a destination is idle");
+    Require(Classify(make(5, Dest::Quest)) == Kind::Idle, "quest target in cooldown is idle");
+    Require(Classify(make(6, Dest::Grind)) == Kind::Idle, "expired grind target is idle");
+    // OB-10 review: the L1-b stalls - TRAVEL without moving is stuck, a grind target without a fight is grind_idle
+    Require(Classify(make(StatusTravel, Dest::Quest, 4.9f)) == Kind::Stuck, "Azora: TRAVEL to the taker, 4.9 yd moved");
+    Require(Classify(make(StatusTravel, Dest::Quest, 5.0f)) == Kind::Quest, "5 yd moved is travelling");
+    Require(Classify(make(StatusTravel, Dest::Grind, 0.0f)) == Kind::Stuck, "TRAVEL to a grind spot without moving");
+    {
+        State s = make(StatusWork, Dest::Grind, 30.0f);
+        s.combatSinceSample = false;
+        Require(Classify(s) == Kind::GrindIdle, "Fristan: grind WORK without any fight");
+        s.status = StatusTravel;
+        s.moved = 0.0f;
+        Require(Classify(s) == Kind::Stuck, "stuck before grind_idle");
+    }
+    {
+        State s = make(StatusTravel, Dest::Quest, 0.0f);
+        s.taxiFlying = true;
+        Require(Classify(s) == Kind::Quest, "on a taxi to a quest target: never stuck");
+        s.status = 0;
+        s.dest = Dest::None;
+        Require(Classify(s) == Kind::Other, "taxi flight without target is other");
+        s.taxiFlying = false;
+        Require(Classify(s) == Kind::Idle, "nothing is idle");
+    }
+
+    // Position and combat notes of the clock.
+    {
+        Clock c;
+        Require(c.Move(0, 10.0f, 10.0f) > 1e8f, "no previous position: far");
+        Require(c.Move(0, 13.0f, 14.0f) == 5.0f, "3-4-5: 5 yd");
+        Require(c.Move(1, 13.0f, 14.0f) > 1e8f, "map change: far");
+        Require(!c.TakeCombat(), "no combat noted");
+        c.NoteCombat(false);
+        c.NoteCombat(true);
+        c.NoteCombat(false);
+        Require(c.TakeCombat() && !c.TakeCombat(), "combat once in the interval, cleared by Take");
+    }
 
     // Clock: the first sample credits nothing, later ones the seconds since the previous one; a long gap is gap.
     {
@@ -61,8 +114,8 @@ int main()
         std::uint32_t const t1 = 3600u * 500001u + 10u;
         Require(c.Add(Kind::Grind, t1) == 0 && c.HourDone(t1), "long gap into the next hour, hour done");
         std::string const line = FormatLine(12, 14, 40, c);
-        Require(line == "[BotActivity] bot=12 level=14 zone=40 hour=500000 quest=60 grind=0 combat=90 other=0 idle=120 dead=0 gap=3240",
-            "hour line");
+        Require(line == "[BotActivity] bot=12 level=14 zone=40 hour=500000 quest=60 grind=0 grind_idle=0 stuck=0 combat=90 other=0 "
+            "idle=120 dead=0 parked=0 gap=3240", "hour line");
         c.StartHour(t1);
         Require(c.hour == 500001u && c.gap == 0 && c.seconds[std::size_t(Kind::Quest)] == 0, "fresh hour");
         Require(c.Add(Kind::Grind, t1 + 60) == 60 && !c.HourDone(t1 + 60), "credit in the new hour");
@@ -79,7 +132,7 @@ int main()
         Snapshot const s = counters.Take();
         Require(s.samples[2] == 2 && s.seconds[2][std::size_t(Kind::Quest)] == 60 && s.seconds[2][std::size_t(Kind::Idle)] == 60,
             "band 10-14 counted");
-        Require(FormatMinuteLine(s) == "[BotActivityMin] L10-14=2/60/0/0/0/60/0 L60+=1/0/0/0/0/0/30", "minute line");
+        Require(FormatMinuteLine(s) == "[BotActivityMin] L10-14=2/60/0/0/0/0/0/60/0/0 L60+=1/0/0/0/0/0/0/0/30/0", "minute line");
         Require(FormatMinuteLine(counters.Take()) == "[BotActivityMin]", "Take resets");
     }
 

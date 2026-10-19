@@ -529,21 +529,27 @@ void PlayerbotAI::ReportIdle(uint32 idleSeconds)
 // bot's own clock hour to one [BotActivity] line once a sample falls into the next hour.
 void PlayerbotAI::SampleActivity(uint32 now)
 {
+    // OB-10 review: combat at any update of the interval (grind_idle = a grind target without a single fight)
+    activityClock.NoteCombat(bot->IsInCombat());
     if (!activityClock.Due(now))
         return;
 
-    ai::bot_activity::Dest dest = ai::bot_activity::Dest::None;
-    uint8 status = 0;
+    ai::bot_activity::State state;
     if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
     {
-        status = uint8(target->GetStatus());
+        state.status = uint8(target->GetStatus());
         TravelDestination* const destination = target->GetDestination();
-        dest = !destination || dynamic_cast<NullTravelDestination*>(destination) ? ai::bot_activity::Dest::None :
+        state.dest = !destination || dynamic_cast<NullTravelDestination*>(destination) ? ai::bot_activity::Dest::None :
             dynamic_cast<QuestTravelDestination*>(destination) ? ai::bot_activity::Dest::Quest :
             dynamic_cast<GrindTravelDestination*>(destination) ? ai::bot_activity::Dest::Grind : ai::bot_activity::Dest::Other;
     }
-    ai::bot_activity::Kind const kind = ai::bot_activity::Classify(bot->IsAlive(), bot->IsInCombat(),
-        ai::bot_activity::TravelActive(status), dest, bot->IsTaxiFlying());
+    state.alive = bot->IsAlive();
+    state.parked = IsParked();
+    state.inCombat = bot->IsInCombat();
+    state.combatSinceSample = activityClock.TakeCombat();
+    state.taxiFlying = bot->IsTaxiFlying();
+    state.moved = activityClock.Move(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+    ai::bot_activity::Kind const kind = ai::bot_activity::Classify(state);
 
     // the seconds since the last sample still belong to its hour; the line for that hour follows
     if (uint32 const credited = activityClock.Add(kind, now))

@@ -2351,13 +2351,15 @@ AiPlayerbot.NonCombatStrategies = +grind,+loot,+custom::say,+return,+delayed rol
 # Intervals
 AiPlayerbot.RandomBotUpdateInterval = 500
 # twow-repo#601 R01 L1 (owner decision 19.10.2026: bots must not stand around; the idle share is a main R01 guard):
-# 1 = what each persistent roster bot does with its time. Once a minute its state is sorted into one kind: quest
-# (active travel target at a quest giver, objective or taker), grind (active grind target), combat, other (any other
-# active target, or a taxi flight), idle (alive, no combat, no active target) or dead (dead or ghost). The seconds since
-# the last sample go to that kind; a gap over 120 s (bot not updated) counts as gap. One line per bot and clock hour,
-# "[BotActivity] bot= level= zone= hour=<unix time/3600> quest= grind= combat= other= idle= dead= gap=" (seconds), and
-# one line per minute, "[BotActivityMin] L10-14=<samples>/<quest>/<grind>/<combat>/<other>/<idle>/<dead> ..." per
-# 5-level band (empty bands left out). Log only, no behaviour change; at most one line per roster bot and hour plus
+# 1 = what each persistent roster bot does with its time. Once a minute its state is sorted into one kind: parked,
+# dead (dead or ghost), combat, stuck (an active target in TRAVEL, not on a taxi, moved less than 5 yd since the last
+# sample), grind_idle (grind target in WORK without any combat since the last sample), quest (active travel target at a
+# quest giver, objective or taker), grind (active grind target), other (any other active target, or a taxi flight) or
+# idle (alive, no combat, no active target). The seconds since the last sample go to that kind; a gap over 120 s (bot
+# not updated) counts as gap. One line per bot and clock hour, "[BotActivity] bot= level= zone= hour=<unix time/3600>
+# quest= grind= grind_idle= stuck= combat= other= idle= dead= parked= gap=" (seconds), and one line per minute,
+# "[BotActivityMin] L10-14=<samples>/<quest>/<grind>/<grind_idle>/<stuck>/<combat>/<other>/<idle>/<dead>/<parked> ..."
+# per 5-level band (empty bands left out). Log only, no behaviour change; at most one line per roster bot and hour plus
 # one a minute. 0 = off (default).
 AiPlayerbot.ActivityTrace = 0
 # twow-repo#541: 1 = one [WorldBots] line per minute with what the bot manager cost the serial world

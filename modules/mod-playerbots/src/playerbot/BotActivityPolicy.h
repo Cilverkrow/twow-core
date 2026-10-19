@@ -3,27 +3,35 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
 namespace ai::bot_activity
 {
 // twow-repo#601 R01 L1 (owner decision D1 19.10.2026 "rum stehen ist keine Option", OB-00 D10, AiPlayerbot.ActivityTrace):
-// what a roster bot does with its time. Once a minute the bot's own state is sorted into one kind - dead, in combat,
-// travelling to or working at a quest target, at a grind target, at any other target (vendor, trainer, gather, explore,
-// a band trip), or idle (none of these: no target, or a target in cooldown / expired). The seconds since the last sample
-// go to that kind. A gap longer than MaxCreditSeconds (the bot was not updated) is counted as gap, never as a kind.
-// One [BotActivity] line per bot and clock hour (seconds per kind) and one [BotActivityMin] line per minute with the
-// totals per 5-level band. Only values the bot already holds: no search, no per-creature value, no lock. Pure (std
-// only), so the unit test and the source contract pin it without game headers.
+// what a roster bot does with its time. Once a minute the bot's own state is sorted into one kind - parked, dead, in
+// combat, stuck (travelling to a target but not moving), at a grind target without a fight, travelling to or working at
+// a quest target, at a grind target, at any other target (vendor, trainer, gather, explore, a band trip), or idle (none
+// of these: no target, or a target in cooldown / expired). The seconds since the last sample go to that kind. A gap
+// longer than MaxCreditSeconds (the bot was not updated) is counted as gap, never as a kind. One [BotActivity] line per
+// bot and clock hour (seconds per kind) and one [BotActivityMin] line per minute with the totals per 5-level band. Only
+// values the bot already holds: no search, no per-creature value, no lock. Pure (std only), so the unit test and the
+// source contract pin it without game headers.
+// OB-10 review 19.10.2026: an active target hides a stall (L1-b: Fristan 4+ h at a grind target without a kill, the
+// Azora bots 40-60 min in TRAVEL to an unreachable taker), so a target in TRAVEL with less than StuckYards moved since
+// the last sample is stuck, and a grind target in WORK without any combat since the last sample is grind_idle.
 enum class Kind : std::uint8_t
 {
     Quest = 0,  // travel target is a quest giver, objective or taker, and active (prepare / ready / travel / work)
-    Grind,      // travel target is a grind destination, active
+    Grind,      // travel target is a grind destination, active, with combat since the last sample (or not yet at work)
+    GrindIdle,  // grind destination in WORK, no combat at any update since the last sample
+    Stuck,      // an active target in TRAVEL, not on a taxi, moved less than StuckYards since the last sample
     Combat,     // in combat (whatever the target)
     Other,      // any other active travel target, or a taxi flight without one
     Idle,       // alive, not in combat, no active travel target, not flying
     Dead,       // dead or ghost
+    Parked,     // parked roster bot (rndbot park, sleeping at an inn)
     Count
 };
 
@@ -39,6 +47,9 @@ constexpr std::size_t KindCount = std::size_t(Kind::Count);
 constexpr std::uint32_t SampleSeconds = 60;
 constexpr std::uint32_t MaxCreditSeconds = 120;
 constexpr std::uint32_t HourSeconds = 3600;
+constexpr float StuckYards = 5.0f;
+constexpr std::uint8_t StatusTravel = 3;   // TravelMgr.h TRAVEL_STATUS_TRAVEL
+constexpr std::uint8_t StatusWork = 4;     // TravelMgr.h TRAVEL_STATUS_WORK
 constexpr std::size_t Bands = 13;   // L0-4, L5-9, L10-14, ..., L55-59, L60 (the R01 bands 10-14 / 15-19 / 20-24)
 
 inline std::size_t BandOf(std::uint32_t level)
@@ -53,10 +64,13 @@ inline char const* KindName(Kind kind)
     {
         case Kind::Quest: return "quest";
         case Kind::Grind: return "grind";
+        case Kind::GrindIdle: return "grind_idle";
+        case Kind::Stuck: return "stuck";
         case Kind::Combat: return "combat";
         case Kind::Other: return "other";
         case Kind::Idle: return "idle";
         case Kind::Dead: return "dead";
+        case Kind::Parked: return "parked";
         default: return "none";
     }
 }
@@ -68,28 +82,77 @@ inline bool TravelActive(std::uint8_t status)
     return status >= 1 && status <= 4;
 }
 
-inline Kind Classify(bool alive, bool inCombat, bool travelActive, Dest dest, bool taxiFlying)
+// The bot's state at one sample. moved = yards since the previous sample (2D; a map change or no previous sample counts
+// as far), combatSinceSample = in combat at any update since the previous sample.
+struct State
 {
-    if (!alive)
+    bool alive = true;
+    bool parked = false;
+    bool inCombat = false;
+    bool combatSinceSample = false;
+    bool taxiFlying = false;
+    std::uint8_t status = 0;   // TravelTarget status, 0 without a target
+    Dest dest = Dest::None;
+    float moved = 1e9f;
+};
+
+inline Kind Classify(State const& s)
+{
+    if (s.parked)
+        return Kind::Parked;
+    if (!s.alive)
         return Kind::Dead;
-    if (inCombat)
+    if (s.inCombat)
         return Kind::Combat;
-    if (travelActive && dest != Dest::None)
-        return dest == Dest::Quest ? Kind::Quest : dest == Dest::Grind ? Kind::Grind : Kind::Other;
-    if (taxiFlying)
+    if (TravelActive(s.status) && s.dest != Dest::None)
+    {
+        if (s.status == StatusTravel && !s.taxiFlying && s.moved < StuckYards)
+            return Kind::Stuck;
+        if (s.dest == Dest::Grind)
+            return s.status == StatusWork && !s.combatSinceSample ? Kind::GrindIdle : Kind::Grind;
+        return s.dest == Dest::Quest ? Kind::Quest : Kind::Other;
+    }
+    if (s.taxiFlying)
         return Kind::Other;
     return Kind::Idle;
 }
 
 // Per bot (its own update thread only). The first sample after login credits nothing; each later one credits the
 // seconds since the previous one to the kind seen now (at most a minute's error at a change). The hour of a sample is
-// time / 3600; a sample in a new hour first closes the old one.
+// time / 3600; a sample in a new hour first closes the old one. NoteCombat runs at every gated update (one bool), the
+// position is kept at each sample.
 struct Clock
 {
     std::uint32_t lastSample = 0;
     std::uint32_t hour = 0;
     std::array<std::uint32_t, KindCount> seconds{};
     std::uint32_t gap = 0;
+    bool combatSeen = false;
+    bool hasPos = false;
+    std::uint32_t lastMap = 0;
+    float lastX = 0.0f;
+    float lastY = 0.0f;
+
+    void NoteCombat(bool inCombat) { combatSeen = combatSeen || inCombat; }
+
+    // yards since the previous sample's position (far without one or after a map change); keeps this position and
+    // clears the combat note for the next interval
+    float Move(std::uint32_t map, float x, float y)
+    {
+        float const moved = hasPos && map == lastMap ? std::sqrt((x - lastX) * (x - lastX) + (y - lastY) * (y - lastY)) : 1e9f;
+        hasPos = true;
+        lastMap = map;
+        lastX = x;
+        lastY = y;
+        return moved;
+    }
+
+    bool TakeCombat()
+    {
+        bool const seen = combatSeen;
+        combatSeen = false;
+        return seen;
+    }
 
     bool Due(std::uint32_t now) const { return !lastSample || now - lastSample >= SampleSeconds; }
 
@@ -124,8 +187,8 @@ struct Clock
     }
 };
 
-// "[BotActivity] bot=12 level=14 zone=40 hour=493512 quest=1800 grind=300 combat=900 other=120 idle=420 dead=0 gap=0"
-// - seconds of the clock hour `hour` (unix time / 3600).
+// "[BotActivity] bot=12 level=14 zone=40 hour=493512 quest=1800 grind=300 grind_idle=0 stuck=60 combat=840 other=120
+// idle=420 dead=0 parked=0 gap=0" - seconds of the clock hour `hour` (unix time / 3600).
 inline std::string FormatLine(std::uint32_t bot, std::uint32_t level, std::uint32_t zone, Clock const& c)
 {
     std::string line = "[BotActivity] bot=" + std::to_string(bot) + " level=" + std::to_string(level) + " zone=" +
@@ -177,8 +240,8 @@ inline Counters& Global()
     return counters;
 }
 
-// "[BotActivityMin] L10-14=n/quest/grind/combat/other/idle/dead L15-19=..." - per band with samples this minute: the
-// sample count and the credited seconds per kind. One line a minute; empty bands are left out.
+// "[BotActivityMin] L10-14=n/quest/grind/grind_idle/stuck/combat/other/idle/dead/parked L15-19=..." - per band with
+// samples this minute: the sample count and the credited seconds per kind. One line a minute; empty bands are left out.
 inline std::string FormatMinuteLine(Snapshot const& s)
 {
     std::string line = "[BotActivityMin]";
