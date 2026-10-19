@@ -57,6 +57,7 @@
 #include "playerbot/GrindPickPolicy.h"   // twow-repo#601 S2 diagnostic: [GrindPick] minute line
 #include "playerbot/BotActivityPolicy.h"   // twow-repo#601 R01 L1: [BotActivityMin] minute line
 #include "playerbot/CombatIdlePolicy.h"
+#include "playerbot/CastWaitPolicy.h"
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1202,6 +1203,25 @@ void ReportCombatIdle()
         (unsigned long long)ai::combat_idle::woken.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.CastWait.Preparing): one [CastWait] line per minute - casts held to their real end (waits =
+// spells, wait_ms = granted delay), waits the per-spell deadline cut (capped), waits released early because the spell
+// stopped PREPARING (released), and the AI passes the waits saved (est.: wait / ReactDelay). Nothing is written when off.
+void ReportCastWait()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.castWaitPreparing || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[CastWait] mode=%u waits=%llu wait_ms=%llu capped=%llu released=%llu saved_ticks_est=%llu",
+        sPlayerbotAIConfig.castWaitPreparing,
+        (unsigned long long)ai::cast_wait::waits.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::cast_wait::waitMs.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::cast_wait::capped.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::cast_wait::released.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::cast_wait::savedTicks.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): one [LazyEngineInit] line per minute. deferred = engine
 // rebuilds put off because the engine was not running, caught = rebuilds run later at the start of Engine::DoNextAction
 // (Reset(false) path, mid-walk engine change), saved = deferred - caught (a window can catch rebuilds deferred in an
@@ -1662,6 +1682,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportBotActivity();  // twow-repo#601 R01 L1: [BotActivityMin] once per minute (AiPlayerbot.ActivityTrace)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
+    ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
     ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)

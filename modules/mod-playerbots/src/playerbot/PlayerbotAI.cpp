@@ -7,6 +7,7 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/AiJitterPolicy.h"
 #include "playerbot/CombatIdlePolicy.h"
+#include "playerbot/BotActionLog.h"           // twow-repo#602: CAST_WAIT lines (AiPlayerbot.CastWait.Preparing)
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "playerbot/MemStoresPolicy.h"
@@ -1780,6 +1781,20 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         e->OnUpdateAI(this, bot->GetName());
 #endif
 
+    // twow-repo#602 (AiPlayerbot.CastWait.Preparing, OB-10 guard 3): a cast wait ends as soon as its spell is no longer
+    // PREPARING (cast, interrupted, cancelled); the delay goes back to what was pending before the wait.
+    if (sPlayerbotAIConfig.castWaitPreparing && ai::cast_wait::Active(castWait))
+    {
+        Spell* const castSpell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        if (ai::cast_wait::ShouldRelease(castWait, uint64(uintptr_t(castSpell)), castSpell ? castSpell->GetCastTime() : 0,
+            castSpell && castSpell->getState() == SPELL_STATE_PREPARING))
+        {
+            aiInternalUpdateDelay = ai::cast_wait::ReleasedDelay(castWait, WorldTimer::getMSTime(), aiInternalUpdateDelay);
+            ai::cast_wait::Clear(castWait);
+            ai::cast_wait::released.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
     // Only update the internal ai when no reaction is running and the internal ai can be updated
     SC_PHASE("UpdateAI.UpdateAIReaction", bot ? bot->GetName() : "(null)");
     if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())
@@ -1797,6 +1812,32 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             if (!CanUpdateAIInternal())
             {
                 return;
+            }
+        }
+        // twow-repo#602 (AiPlayerbot.CastWait.Preparing, default 0): a spell with a cast time is PREPARING until it is
+        // cast, so the branch above never held the AI for it and the engine re-ran every ReactDelay against its own
+        // cast (SPELL_IN_PROGRESS). Hold it until the real end (m_timer, pushback included), capped per spell. Bots of a
+        // real player keep answering their master's commands at once (as with AiPlayerbot.Perf.CombatIdleYield).
+        else if (sPlayerbotAIConfig.castWaitPreparing && currentSpell && currentSpell->getState() == SPELL_STATE_PREPARING &&
+            currentSpell->GetCastedTime() > 0U && ai::cohort::Applies(sPlayerbotAIConfig.castWaitPreparing, bot->GetGUIDLow()) &&
+            !HasRealPlayerMaster())
+        {
+            ai::cast_wait::Grant const grant = ai::cast_wait::Extend(castWait, uint64(uintptr_t(currentSpell)), WorldTimer::getMSTime(),
+                currentSpell->GetCastedTime(), currentSpell->GetCastTime(), sPlayerbotAIConfig.reactDelay, sWorld.GetAverageDiff(),
+                aiInternalUpdateDelay);
+            if (grant.firstSighting)
+                ai::cast_wait::waits.fetch_add(1, std::memory_order_relaxed);
+            if (grant.cappedNow)
+                ai::cast_wait::capped.fetch_add(1, std::memory_order_relaxed);
+            if (grant.delay)
+            {
+                aiInternalUpdateDelay = grant.delay;
+                ai::cast_wait::waitMs.fetch_add(grant.delay, std::memory_order_relaxed);
+                ai::cast_wait::savedTicks.fetch_add(ai::cast_wait::SavedTicks(grant.delay, sPlayerbotAIConfig.reactDelay), std::memory_order_relaxed);
+                BotActionLog::Write(this, "CAST_WAIT", "spell=%u ms=%u first=%u capped=%u", currentSpell->m_spellInfo->Id, grant.delay,
+                    grant.firstSighting ? 1u : 0u, castWait.capped ? 1u : 0u);
+                if (!CanUpdateAIInternal())
+                    return;
             }
         }
 
