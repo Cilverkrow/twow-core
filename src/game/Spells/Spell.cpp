@@ -4526,13 +4526,15 @@ void Spell::finish(bool ok)
     if (m_spellState == SPELL_STATE_FINISHED)
         return;
 
+    uint32 const stateBefore = m_spellState;
     m_spellState = SPELL_STATE_FINISHED;
 
     // BotActionLog hook: cast result. `ok` is true on success,
-    // false on cancel/interrupt/fail.
+    // false on cancel/interrupt/fail. twow-repo#602: a failure also carries the
+    // last cast result sent (SPELL_CAST_OK = none sent) and the state it ended in.
     {
-        extern void BotActionLog_LogCastResult(WorldObject* caster, uint32 spellId, uint8 result, const char* phase);
-        BotActionLog_LogCastResult(m_caster, m_spellInfo->Id, ok ? 0 : 1, "finish");
+        extern void BotActionLog_LogCastResult(WorldObject* caster, uint32 spellId, uint8 result, const char* phase, uint8 reason, uint8 state);
+        BotActionLog_LogCastResult(m_caster, m_spellInfo->Id, ok ? 0 : 1, "finish", m_botLogResult, uint8(stateBefore));
     }
 
     // Clear the creature's casting target so it faces victim
@@ -4632,6 +4634,8 @@ void Spell::finish(bool ok)
 
 void Spell::SendCastResult(SpellCastResult result)
 {
+    m_botLogResult = uint8(result);
+
     if (!m_caster->IsPlayer())
         return;
 
