@@ -118,7 +118,7 @@ require_text("${classify}" "decision.abandonable = decision.parkAllOffered && !r
 require_order("${classify}" "if (transient)\n        decision.failureClass = FailureClass::Transient;" "else if (decision.parkTakerless || decision.parkAllOffered)\n        decision.failureClass = FailureClass::Structural;" "transient wins over structural")
 require_text("${classify}" "else\n        decision.failureClass = FailureClass::EmptyOffer;" "the rest is an empty offer (today's behaviour)")
 region("${choose}" "if (futureTravelPurpose == \"quest\")\n        {\n            // #421 A: which filters took every candidate." "        return false;\n    }" branch)
-require_text("${branch}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())" "classes only with the switch, quest-first bots on their own")
+require_text("${branch}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&\n                UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())" "classes only with the switch, quest-first bots on their own")
 require_text("${branch}" "failureDecision = ai::quest_failure_class::Classify(true, lastRejects, uint32(offeredTurnIns.size()),\n                    uint32(takerlessTurnIns.size()));" "classified from the reject counts of this choice")
 require_text("${branch}" "takerlessTurnIns = TakerlessTurnIns(destinationList, offeredTurnIns);" "takerless turn-ins from the job's list")
 require_order("${branch}" "split(AI_VALUE2(std::string, \"manual string\", HandInQuestsValue), ',')" "if (NoteNoRouteTurnIns(context, travelTarget," "offered list read before #485 clears it")
@@ -136,13 +136,13 @@ require_text("${branch}" "if (ai::quest_failure_class::CountsTowardGrind(failure
 # block), ended by a found route (behind the switch) and by every S1 reset.
 require_text("${policy}" "inline bool TransientStreakCounts(std::uint32_t streak, std::uint32_t countsAfter)\n{\n    return countsAfter && streak >= countsAfter;\n}" "0 = a transient rejection never counts; N = the N-th in a row counts once")
 require_text("${policy}" "inline constexpr char const* TransientStreakValue = \"quest transient streak\";" "one per-bot streak value")
-region("${branch}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())" "// Hotfix 8.1: wait before the next quest route request" classify_block)
+region("${branch}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&\n                UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster())" "// Hotfix 8.1: wait before the next quest route request" classify_block)
 require_text("${classify_block}" "                if (failureDecision.failureClass == ai::quest_failure_class::FailureClass::Transient)\n                    transientStreak = uint32(std::max(0, AI_VALUE2(int, \"manual int\", ai::quest_failure_class::TransientStreakValue))) + 1;" "streak grows only on a transient rejection")
 require_text("${classify_block}" "transientCounts = ai::quest_failure_class::TransientStreakCounts(transientStreak,\n                    sPlayerbotAIConfig.questFirstProgressionTransientCountsAfter);" "the policy decides with the key")
 require_text("${classify_block}" "SET_AI_VALUE2(int, \"manual int\", ai::quest_failure_class::TransientStreakValue, transientCounts ? 0 : int(transientStreak));" "a counted streak (or any other class) starts anew")
 count_text("${choose}" "TransientStreakValue, transientCounts ? 0 : int(transientStreak));" 1 "streak written once per rejection")
 require_text("${branch}" "bool transientCounts = false;" "switch off: no transient count")
-require_text("${choose}" "        // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.\n        if (sPlayerbotAIConfig.questFirstProgressionFailureClasses)\n            SET_AI_VALUE2(int, \"manual int\", ai::quest_failure_class::TransientStreakValue, 0);" "a found route ends the streak (behind the switch)")
+require_text("${choose}" "        // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.\n        if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()))\n            SET_AI_VALUE2(int, \"manual int\", ai::quest_failure_class::TransientStreakValue, 0);" "a found route ends the streak (behind the switch)")
 require_order("${branch}" "SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", int(uint32(time(nullptr)) + backoff));" "the backoff is set for every class")
 
 # ---- 3. Structural: park at once, the park resets the counter (no grind count) ---------------------
@@ -162,7 +162,7 @@ require_text("${park_now}" "entry->parkedUntil = nowMs + (parkMs < MaxParkMs ? p
 
 # ---- 4. Taker-only only with a pre-validated taker; grind yields to routable open turn-ins ---------
 region("${choose}" "bool RequestQuestTravelTargetAction::Execute(Event& event)" "bool RequestQuestTravelTargetAction::isAllowed() const" request)
-require_text("${request}" "bool const failureClasses = sPlayerbotAIConfig.questFirstProgressionFailureClasses && UsesQuestFirstProgression(bot) &&\n        !ai->HasRealPlayerMaster();" "pre-validation only with the switch")
+require_text("${request}" "bool const failureClasses = sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&\n        UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster();" "pre-validation only with the switch")
 require_text("${request}" "    if (failureClasses)\n        validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);" "pre-validation call")
 require_order("${request}" "validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);" "for (ObjectGuid guid : AI_VALUE(std::list<ObjectGuid>, \"group members\"))" "checked (and structural ones parked) before the taker fetches are built")
 require_text("${request}" "if ((std::get<0>(fetch) & (uint32)TravelDestinationPurpose::QuestTaker) &&\n                    ai::quest_failure_class::TakerOnlyOffer(failureClasses, validatedTurnIns.count(uint32(std::get<1>(fetch))) > 0))\n                    handInOnly.push_back(fetch);" "turn-in-only offers validated takers only")
@@ -204,7 +204,7 @@ endforeach()
 # Review fix (CrossMapContinentsOnly argument): the config value itself goes into route_danger::Classify.
 require_text("${taker_danger}" "bool const continentsOnly = sPlayerbotAIConfig.questFirstProgressionCrossMapContinentsOnly;" "CrossMapContinentsOnly read into the local")
 require_text("${taker_danger}" "ai::death_series::RouteMargin(ai->IsCautious()),\n        continentsOnly,\n        route_danger::IsContinentSwitch(" "the local is the CrossMapContinentsOnly argument")
-require_text("${values}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && !ai->HasRealPlayerMaster())" "grind yield only with the switch, bots on their own")
+require_text("${values}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&\n                !ai->HasRealPlayerMaster())" "grind yield only with the switch, bots on their own")
 require_text("${values}" "(ai::quest_failure_class::ListHas(validated, questId) || !ai::quest_failure_class::ListHas(checked, questId))" "validated, or finished since the last check")
 require_order("${values}" "if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen, routeBackoffRunning))\n                    return false;" "return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&" "grind yields before the 8.32 fallback")
 # Review fix (finding 'grind yields while the quest backoff is still running'): the yield waits for the same backoff the
@@ -217,7 +217,7 @@ require_text("${search_policy}" "inline bool GatherYieldsToTurnIn(bool rosterOnI
 # ---- 5. Pre-loop and main loop share one skip predicate; no range skip under the hub filter ------
 region("${choose}" "bool ChooseTravelTargetAction::SetBestTarget(" "\nstd::vector<std::string> split(" best)
 region("${best}" "if (preferLocalQuest && !target->IsForced() && !resumeSkip)" "for (auto& [partition, travelPointList] : partitionedList)" preloop)
-require_text("${best}" "bool const failureClasses = preferLocalQuest && sPlayerbotAIConfig.questFirstProgressionFailureClasses;" "pre-loop switch")
+require_text("${best}" "bool const failureClasses = preferLocalQuest && sPlayerbotAIConfig.questFirstProgressionFailureClasses &&\n        sPlayerbotAIConfig.S1For(bot->GetGUIDLow());" "pre-loop switch")
 require_text("${preloop}" "else if ((!failureClasses || CandidateSkipOf(ai, bot, target, persistentTarget, excludedTurnInTarget, destination,\n                        position) == CandidateSkip::None) &&\n                    IsLocalActiveQuestHubDestination(bot, destination, position, travelInfo) &&\n                    (isActive[destination] = true))" "pre-loop asks the skip predicate first (switch off: skipped)")
 require_text("${best}" "switch (CandidateSkipOf(ai, bot, target, persistentTarget, excludedTurnInTarget, destination, position))" "main loop asks the same predicate")
 count_text("${best}" "CandidateSkipOf(ai, bot, target, persistentTarget, excludedTurnInTarget, destination," 2 "exactly the pre-loop and the main loop, same arguments")
@@ -277,7 +277,7 @@ require_text("${apply_reset}" "!sRandomPlayerbotMgr.IsPersistentRosterMember(bot
 require_text("${policy}" "inline bool LevelUp(std::uint32_t lastLevel, std::uint32_t level)\n{\n    return lastLevel && level > lastLevel;\n}" "level-up only upwards, not on the first check")
 
 # ---- 7. XP: no stage reset with the switch, still progress for the idle clock -------------------
-require_text("${ai_cpp}" "            if (questProgress.Update(snapshot, now))\n            {\n                if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents, levelUp))\n                    aiObjectContext->GetValue<int>(\"manual int\", \"quest search stage\")->Set(0);\n            }\n            else if (" "stage reset decided by the policy; the rescue branch stays the else")
+require_text("${ai_cpp}" "            if (questProgress.Update(snapshot, now))\n            {\n                if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents &&\n                        sPlayerbotAIConfig.S1For(bot->GetGUIDLow()), levelUp))\n                    aiObjectContext->GetValue<int>(\"manual int\", \"quest search stage\")->Set(0);\n            }\n            else if (" "stage reset decided by the policy; the rescue branch stays the else")
 require_text("${policy}" "inline bool ProgressResetsStage(bool resetOnProgressEvents, bool levelUp)\n{\n    return !resetOnProgressEvents || levelUp;\n}" "switch off: XP resets the stage as before")
 require_text("${search_policy}" "        if (lastChange && newSnapshot == snapshot)\n            return false;\n        snapshot = newSnapshot;\n        lastChange = now;\n        return true;" "the idle clock moves on any progress (XP included), unchanged")
 require_text("${ai_cpp}" "uint64 snapshot = (uint64(bot->GetLevel()) << 40) ^ uint64(bot->GetUInt32Value(PLAYER_XP));" "XP stays in the progress snapshot")
@@ -288,7 +288,7 @@ require_text("${policy}" "inline bool AbandonParkedTurnIn(bool enabled, bool aba
 require_text("${park_policy}" "constexpr std::uint8_t AbandonAfterStructuralParks = 2;" "parked twice -> abandon")
 require_text("${park_now}" "if (!abandonable)\n        entry->structuralParks = 0;" "a non-structural park ends the series")
 require_text("${park_policy}" "entry->structuralParks = 0;   // twow-repo#601 S1: a counted park breaks a structural series" "a counted #485 park ends the series")
-require_text("${park_helper}" "if (ai::quest_failure_class::AbandonParkedTurnIn(sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked, abandonDue,\n            !quest || quest->GetRequiredClasses()))" "abandon behind its switch; class / unknown quests kept")
+require_text("${park_helper}" "if (ai::quest_failure_class::AbandonParkedTurnIn(sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked &&\n            sPlayerbotAIConfig.S1For(ai->GetBot()->GetGUIDLow()), abandonDue,\n            !quest || quest->GetRequiredClasses()))" "abandon behind its switch; class / unknown quests kept")
 require_order("${park_helper}" "[QuestAbandon] quest=%u reason=%s bot=%u level=%u parks=%u" "ai->DropQuest(questId, \"structural_parked_twice\");" "log line before the abandon")
 count_text("${choose}" "DropQuest(" 1 "the S1 abandon is the only quest drop in the choose action")
 # Review fix (finding 'abandoned quest can be accepted again'): the abandon marks the quest; the giver trip and the

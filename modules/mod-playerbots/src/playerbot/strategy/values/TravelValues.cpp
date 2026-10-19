@@ -442,7 +442,8 @@ bool NeedTravelPurposeValue::Calculate()
             // one the last quest request validated, or one finished since (not checked yet - the next request checks
             // it). An open turn-in the check turned down does not hold grinding back, and none does while the quest route
             // backoff runs (RequestQuestTravelTargetAction waits for it - the bot would stand idle). Off: as before.
-            if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && !ai->HasRealPlayerMaster())
+            if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&
+                !ai->HasRealPlayerMaster())
             {
                 bool const routeBackoffRunning =
                     uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));

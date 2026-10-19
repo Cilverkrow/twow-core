@@ -109,16 +109,16 @@ require_text("${fresh_leg}" "state.bestDistance = current.distance;\n        sta
 forbid_text("${fresh_leg}" "recoveryStage" "the fresh window keeps the recovery stage")
 # Review F1 (game side): the arrival ends the observed trip, behind the switch, turn-ins only.
 between("${travel}" "TraceQuestCommit(tDestination, \"progress\", \"arrived\");" "SetStatus(TravelStatus::TRAVEL_STATUS_WORK);" arrived)
-require_text("${arrived}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())\n                turnInRecovery.ResetProgress();" "arrival resets the observation (switch first)")
+require_text("${arrived}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn())\n                turnInRecovery.ResetProgress();" "arrival resets the observation (switch first)")
 # The radius reaches the observation only with the switch and only for a finished quest's turn-in (not objectives).
 between("${travel}" "turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()" "\n}\n" observe)
-require_text("${observe}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())\n        observation.nearRadius = sPlayerbotAIConfig.zoneExitTurnInNearRadius;" "radius behind the switch, turn-ins only")
+require_text("${observe}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn())\n        observation.nearRadius = sPlayerbotAIConfig.zoneExitTurnInNearRadius;" "radius behind the switch, turn-ins only")
 require_order("${observe}" "observation.nearRadius = " "return turnin_recovery::Observe(turnInRecovery, observation," "radius set before the observation")
 
 # Stage 1 inside the near zone, switch tested first: the near-stall handler, then return (no READY on that path).
 require_order("${stage1}" "if (IsProgressAwareTurnIn())" "if (IsNearTurnInStall())" "near stall for turn-ins only")
 between("${travel}" "bool TravelTarget::IsNearTurnInStall()" "\n}\n" near_check)
-require_text("${near_check}" "return sPlayerbotAIConfig.zoneExitTurnInTravelStall && wPosition && IsProgressAwareTurnIn() &&\n        turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius);" "switch first, then a turn-in inside the near zone")
+require_text("${near_check}" "return sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && wPosition && IsProgressAwareTurnIn() &&\n        turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius);" "switch first, then a turn-in inside the near zone")
 require_text("${travel_h}" "bool IsNearTurnInStall();" "near zone check declared")
 # Review F4: a near-zone stall that comes as stage 2 parks the same way, before the old stage-2 path.
 between("${travel}" "case turnin_recovery::RecoveryAction::SuppressRouteAndCooldown:" "case turnin_recovery::RecoveryAction::SuppressTransportAndCooldown:" stage2)
@@ -149,8 +149,8 @@ forbid_text("${near_stall}" "ParkStructuralTurnIn(" "S1 abandon helper (count pi
 require_text("${travel_h}" "turnin_recovery::WorkTimeoutRing workTimeoutTurnIns;" "per-bot work timeout ring")
 require_text("${recovery}" "constexpr std::uint32_t WorkTimeoutRingSize = 8;" "ring of 8 quests")
 between("${travel}" "void TravelTarget::OnWorkTimeout()" "\n}\n" work_timeout)
-require_order("${work_timeout}" "if (IsProgressAwareTurnIn())" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall)" "turn-ins only")
-require_order("${work_timeout}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall)" "turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId)" "switch before the ring")
+require_order("${work_timeout}" "if (IsProgressAwareTurnIn())" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()))" "turn-ins only")
+require_order("${work_timeout}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()))" "turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId)" "switch before the ring")
 require_order("${work_timeout}" "ParkTurnInNow(questId, \"structural_work_timeout\", false, abandonDue);" "NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), \"work_timeout\");" "park before the kept #485 count")
 
 # A rescue reset (S1 ResetOnProgressEvents) resets the search, never the park book: the bot is not sent back 3.5 km.

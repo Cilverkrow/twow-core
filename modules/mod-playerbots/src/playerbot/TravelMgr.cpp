@@ -1173,7 +1173,7 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
     observation.targetMapId = wPosition->getMapId();
     // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall): near a finished quest's taker only getting closer is
     // progress (turnin_recovery::Observe). Objectives and the switch off: no near zone, as before.
-    if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())
+    if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn())
         observation.nearRadius = sPlayerbotAIConfig.zoneExitTurnInNearRadius;
 
     // Hotfix 8.13 (twow-repo#497): for a target on another map only a shorter distance counts.
@@ -1286,7 +1286,7 @@ void TravelTarget::OnWorkTimeout()
         // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, OB-10 rev. 2 Q-B4): the second work timeout of the
         // same turn-in parks it at once (soak: bot 216 at the Azora taker, no line of sight through the door). Not
         // abandonable: a finished quest is never dropped for it (the series of abandonable parks ends here, S1).
-        if (sPlayerbotAIConfig.zoneExitTurnInTravelStall)
+        if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()))
         {
             uint32 const questId = static_cast<QuestTravelDestination*>(tDestination)->GetQuestId();
             if (turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId))
@@ -1625,7 +1625,7 @@ bool TravelTarget::IsNearTurnInStall()
 {
     // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall): switch first, then a finished quest's turn-in with the
     // bot inside TurnInNearRadius of the taker on its map. Asked for a stage-1 and (review F4) a stage-2 stall alike.
-    return sPlayerbotAIConfig.zoneExitTurnInTravelStall && wPosition && IsProgressAwareTurnIn() &&
+    return sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && wPosition && IsProgressAwareTurnIn() &&
         turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius);
 }
 
@@ -1704,7 +1704,7 @@ void TravelTarget::CheckStatus()
             // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, review F1): the arrival ends this trip's
             // observation, so the next trip to the same taker (after a work timeout; #329 keeps the state on a re-pick)
             // starts a fresh stall window instead of a stale one that stalls it at once. Off: as before.
-            if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && IsProgressAwareTurnIn())
+            if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn())
                 turnInRecovery.ResetProgress();
             // twow-repo#594 / P3-b: arrivals of the direct-target destinations (failure memory, hole_present for fishing).
             if (ai::direct_targets::AnyBuilt())

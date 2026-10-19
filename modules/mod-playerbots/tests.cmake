@@ -303,6 +303,25 @@ add_test(NAME quest_feasibility_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_feasibility_source_contract_tests.cmake")
 
+# twow-repo#601 R01 v4: S1Cohort / S3Cohort - for which bots the S1 / S3 key groups act (cohort mode in one realm).
+add_executable(r01_cohort_policy_tests
+  "${PB_MODULE_DIR}/t/r01_cohort_policy_tests.cpp")
+
+target_include_directories(r01_cohort_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(r01_cohort_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME r01_cohort_policy
+  COMMAND r01_cohort_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME r01_cohort_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/r01_cohort_source_contract_tests.cmake")
+
 # twow-repo#601 S3b (AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters, default 0, only with FailureClasses; OB-10
 # 18.10.2026): the local quest hub pre-loop and the main loop of SetBestTarget share the post-IsActive deferrals.
 add_test(NAME hub_preloop_same_filters_source_contract
