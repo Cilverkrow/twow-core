@@ -115,6 +115,7 @@ set(entries
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
   "Loot.RoleWeights|lootRoleWeights"
   "BotUpdateTrace|botUpdateTrace"
+  "ActivityTrace|activityTrace"
   "EnableActionLog|enableActionLog"
   "LogInGroupOnly|logInGroupOnly")
 foreach(entry IN LISTS entries)

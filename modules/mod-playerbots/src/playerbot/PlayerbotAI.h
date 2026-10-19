@@ -25,6 +25,7 @@
 #include <functional>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/BotActivityPolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/StuckCombatPolicy.h"
 #include "playerbot/FishingPolicy.h"
@@ -962,6 +963,9 @@ protected:
     std::atomic<uint32> lastUpdateTime{ 0 };
     uint32 lastIdleLog = 0;
     void ReportIdle(uint32 idleSeconds);
+    // twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace): one activity sample a minute, [BotActivity] per clock hour.
+    ai::bot_activity::Clock activityClock;
+    void SampleActivity(uint32 now);
     // Hotfix 8.2: targets this bot could not get closer to.
     ai::unreachable::Approach reachApproach;
     ai::unreachable::IgnoreList unreachableTargets;

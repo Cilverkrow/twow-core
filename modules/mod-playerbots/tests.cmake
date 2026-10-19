@@ -3525,3 +3525,24 @@ add_test(NAME config_echo_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/config_echo_source_contract_tests.cmake")
+
+# twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): [BotActivity] / [BotActivityMin].
+add_executable(bot_activity_policy_tests
+  "${PB_MODULE_DIR}/t/bot_activity_policy_tests.cpp")
+
+target_include_directories(bot_activity_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(bot_activity_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(bot_activity_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_activity_policy
+  COMMAND bot_activity_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME bot_activity_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/bot_activity_source_contract_tests.cmake")
