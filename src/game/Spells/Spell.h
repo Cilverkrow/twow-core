@@ -584,6 +584,7 @@ class Spell
         bool m_autoRepeat = false;
         bool m_delayed = false;
         bool m_successCast = false;
+        uint8 m_botLogResult = SPELL_CAST_OK;               // twow-repo#602: last cast result sent, for the bot action log's CAST_FAIL reason
         bool m_forceConsumeItem = false;
         bool m_isChannelingVisual = false;                  // For summoning ritual helpers visual spell
                                                             // no effect handled, only channel start/update is sent

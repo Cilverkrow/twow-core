@@ -8,6 +8,7 @@
 #include "BotDiagnostics.h"  // for SC_LOG + IsActionLogEnabled
 #include "PlayerbotAIConfig.h"
 #include "playerbot/ActionLogSamplePolicy.h"   // twow-repo#601 / #614: AiPlayerbot.ActionLog.Guids
+#include "playerbot/CastResultNames.h"        // twow-repo#602: CAST_FAIL reason=
 #include "Objects/Player.h"
 #include "Objects/Unit.h"
 #include "ObjectGuid.h"
@@ -344,13 +345,21 @@ void BotActionLog::LogCastStart(PlayerbotAI* ai, uint32 spellId, ObjectGuid targ
           castTimeMs);
 }
 
-void BotActionLog::LogCastResult(PlayerbotAI* ai, uint32 spellId, uint8 result, const char* phase)
+void BotActionLog::LogCastResult(PlayerbotAI* ai, uint32 spellId, uint8 result, const char* phase, uint8 reason, uint8 state)
 {
     SpellEntry const* info = sSpellMgr.GetSpellEntry(spellId);
     const char* spellName = info ? info->SpellName[0].c_str() : "?";
-    Write(ai, result == 0 ? "CAST_OK" : "CAST_FAIL",
-          "spell=%s(%u) result=%u phase=%s",
-          spellName, spellId, (unsigned)result, phase ? phase : "?");
+    if (result == 0)
+    {
+        Write(ai, "CAST_OK", "spell=%s(%u) result=%u phase=%s", spellName, spellId, (unsigned)result, phase ? phase : "?");
+        return;
+    }
+    // twow-repo#602 (L1-b, OB-10): result=1 alone could not tell SPELL_IN_PROGRESS from LINE_OF_SIGHT or a bot-side cancel;
+    // reason=none state=null is a cast the bot cancelled before any server check (PlayerbotAI::CastSpell, e.g. while moving).
+    char const* const name = ai::cast_result::Name(reason);
+    Write(ai, "CAST_FAIL", "spell=%s(%u) result=%u phase=%s reason=%s code=0x%02x state=%s",
+          spellName, spellId, (unsigned)result, phase ? phase : "?", name ? name : "none", (unsigned)reason,
+          ai::cast_result::StateName(state));
 }
 
 void BotActionLog::LogAuraApply(PlayerbotAI* ai, uint32 spellId, int32 durationMs, ObjectGuid casterGuid, bool force)
@@ -436,12 +445,12 @@ void BotActionLog_LogCastStart(WorldObject* caster, uint32 spellId, uint64 targe
     BotActionLog::LogCastStart(ai, spellId, ObjectGuid(targetGuidRaw), castTimeMs);
 }
 
-void BotActionLog_LogCastResult(WorldObject* caster, uint32 spellId, uint8 result, const char* phase)
+void BotActionLog_LogCastResult(WorldObject* caster, uint32 spellId, uint8 result, const char* phase, uint8 reason, uint8 state)
 {
     if (!caster || !caster->IsPlayer()) return;
     PlayerbotAI* ai = GetBotAI(static_cast<Player*>(caster));
     if (!ai) return;
-    BotActionLog::LogCastResult(ai, spellId, result, phase);
+    BotActionLog::LogCastResult(ai, spellId, result, phase, reason, state);
 }
 
 void BotActionLog_LogDamage(Unit* attacker, Unit* victim, uint32 damage, uint32 spellId, const char* damageType)
