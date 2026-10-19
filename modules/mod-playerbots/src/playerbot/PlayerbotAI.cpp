@@ -354,6 +354,13 @@ void PlayerbotAI::SetParked(bool value)
     // twow-repo#551 (AiPlayerbot.Park.Quiet): a quiet parked bot emotes rarely, spread by guid.
     nextParkIdleEmote = value && sPlayerbotAIConfig.parkQuiet
         ? ai::park::FirstIdleEmote(bot->GetGUIDLow(), uint32(time(nullptr)), sPlayerbotAIConfig.parkQuietIdleEmoteSeconds) : 0;
+    // twow-repo#601 S5a (BandLadder): a park ends the band episode (no pre-park expiry turns into a rescue) and drops a pending
+    // band rescue. The trip itself ends through the park's null target (TravelTarget::SetTarget, skip reason=park).
+    if (value && sPlayerbotAIConfig.questFirstProgressionBandLadder)
+    {
+        bandEpisodeResetPending.store(true, std::memory_order_relaxed);
+        bandRescue.store(0, std::memory_order_relaxed);
+    }
 }
 
 bool PlayerbotAI::AllowDelayJitter() const
@@ -767,9 +774,18 @@ void PlayerbotAI::UpdateBotSave()
 // counter at 2 or more and grinding won at the target on the first tick.
 void PlayerbotAI::ApplyQuestRouteReset(uint32 events)
 {
+    // twow-repo#601 S5a (BandLadder): the band step bit is no S1 event - it resets whatever ResetOnProgressEvents and the
+    // S1 cohort say (only the band path sets it; BandLadder holds its own cohort). Other events of the same request still
+    // need the S1 gate below.
+    uint32 const bandStep = events & ai::quest_failure_class::ResetBandStep;
+    events &= ~ai::quest_failure_class::ResetBandStep;
     // twow-repo#601 R01 v4: S1Cohort - the S1 group acts for this bot's cohort only (R01CohortPolicy.h)
     if (!events || !sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents || !sPlayerbotAIConfig.questFirstProgressionEnabled ||
         !sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) ||
+        !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
+        events = 0;
+    events |= bandStep;
+    if (!events || !sPlayerbotAIConfig.questFirstProgressionEnabled ||
         !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
         return;
 
@@ -1322,7 +1338,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             }
             else if (sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
                 !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && (!bot->IsInCombat() || rescueInCombat) &&
-                bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported())
+                bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported() &&
+                !BandTripRunning())   // twow-repo#601 S5a: a running band trip is not cut by the idle rescue (switch first)
             {
                 uint32 const stage = uint32(std::max(0, aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get()));
                 // Hotfix 8.1: a bot that stopped asking for routes never reaches the last

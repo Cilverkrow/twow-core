@@ -231,6 +231,11 @@ int main()
         Require(StageOnlyReset(ResetQuestState), "quest state alone: stage only");
         Require(!StageOnlyReset(ResetQuestState | ResetLevelUp) && !StageOnlyReset(ResetRescue), "any other event: full reset");
         Require((ResetQuestState & (ResetRescue | ResetLevelUp | ResetLogin | ResetBgReturn)) == 0, "distinct quest-state bit");
+        // twow-repo#601 S5a (BandLadder): the band step bit is its own, named, and a full reset.
+        Require(ResetEventNames(ResetBandStep) == "band_step", "band step event name");
+        Require((ResetBandStep & (ResetRescue | ResetLevelUp | ResetLogin | ResetBgReturn | ResetQuestState)) == 0,
+            "distinct band step bit");
+        Require(!StageOnlyReset(ResetBandStep), "band step: full reset");
         std::uint32_t const logA = MixQuestState(MixQuestState(QuestStateSeed, 310, false), 3100, false);
         std::uint32_t const logB = MixQuestState(MixQuestState(QuestStateSeed, 310, true), 3100, false);
         std::uint32_t const logC = MixQuestState(QuestStateSeed, 310, false);

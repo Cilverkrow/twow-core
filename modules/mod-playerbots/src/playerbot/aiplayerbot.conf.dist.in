@@ -1200,6 +1200,24 @@ AiPlayerbot.QuestFirstProgression.GrindMode = 0
 # the [QuestFeasibility] minute line, [QuestTurnInStall] fields) still follow the keys.
 AiPlayerbot.QuestFirstProgression.S1Cohort = 0
 AiPlayerbot.QuestFirstProgression.S3Cohort = 0
+# twow-repo#601 S5a BandLadder (OB-00 D9 19.10.2026): a band step to the next quest hub of the hub ladder file. A
+# quest-first roster bot on its own below the max level whose zone has no acceptable quest and no open turn-in left (the
+# second empty quest search in a row, EmptyOffer) travels to a hub of its level band (or the next band from 2 levels
+# below it) outside the radius it searched. The trip has a wall-clock end decided once at the step (120 s + 3 x the
+# straight walk at 7 yd/s, 5 to 45 min); nothing extends it, its end is no failure, and the second expiry of an episode
+# asks for a forward rescue to the hub (at most one rescue per bot per hour, idle rescues included). For bots whose band
+# has a usable ladder row the quest giver search also skips grey quests (the accept rule) and givers without an
+# available quest for the bot. [QuestBand] state=step|arrived|expired|rescue|skip lines, [QuestBand] state=minute once
+# a minute per cohort (not when all counts are 0), [HubLadder] state=loaded|off|row_skipped|row_degraded at boot.
+#   0 = off (default), 1 = all bots, 2 = only odd low guids (cohort B), 3 = only even low guids (cohort A). Other
+#   values act like 0 (one error line).
+AiPlayerbot.QuestFirstProgression.BandLadder = 0
+# Path of the hub ladder file (hub-ladder.tsv, "# version=1"; e.g. "/opt/turtle/etc/hub-ladder.tsv", mounted read-only).
+# "" = no ladder, the band step stays off (default). Read once at boot and only with BandLadder > 0; a reload from 0 to
+# 1 loads no ladder. Fail closed: a missing, unreadable, too long or wrong-version file or a missing column turns the
+# band step off ([HubLadder] state=off reason=...); a row whose hub has no travel node of that name within 2 yd is
+# skipped. The boot line [HubLadder] state=loaded carries fnv= (FNV-1a 32 of the file bytes).
+AiPlayerbot.QuestFirstProgression.BandLadderFile = ""
 # twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
 # Enable = 1: a persistent roster bot on its own (no real player leads it) does not take quests it cannot finish - not
 # from a quest giver (accept all, accept packet, quest details dialog), not from a quest item in its bags - and does not
