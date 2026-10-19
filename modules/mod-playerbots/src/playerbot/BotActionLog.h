@@ -51,11 +51,12 @@ public:
     // Convenience: log a spell-cast attempt with its target.
     static void LogCastStart(PlayerbotAI* ai, uint32 spellId, ObjectGuid targetGuid, uint32 castTimeMs);
 
-    // Convenience: log a spell-cast result. `result` is a SpellCastResult
-    // enum value (0 = success, otherwise failure code from SpellMgr).
-    // `phase` is "PREPARE" / "CAST" / "EFFECT" — where in the cast
-    // pipeline the result fired.
-    static void LogCastResult(PlayerbotAI* ai, uint32 spellId, uint8 result, const char* phase);
+    // Convenience: log a spell-cast result. `result` is 0 on success, 1 on
+    // failure (Spell::finish). `phase` is where in the cast pipeline the
+    // result fired. twow-repo#602: on failure `reason` is the last
+    // SpellCastResult the spell sent (0xFF = none sent) and `state` the
+    // spell state it ended in; the line gets reason=/code=/state=.
+    static void LogCastResult(PlayerbotAI* ai, uint32 spellId, uint8 result, const char* phase, uint8 reason, uint8 state);
 
     // Convenience: log an aura apply/remove. We skip very-short auras
     // (< 3s) and movement-class auras to keep the log readable; pass
