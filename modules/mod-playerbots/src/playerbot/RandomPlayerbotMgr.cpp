@@ -55,6 +55,7 @@
 #include "playerbot/DirectTargetPolicy.h"
 #include "playerbot/BotUpdateTrace.h"
 #include "playerbot/GrindPickPolicy.h"   // twow-repo#601 S2 diagnostic: [GrindPick] minute line
+#include "playerbot/BotActivityPolicy.h"   // twow-repo#601 R01 L1: [BotActivityMin] minute line
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
@@ -1103,6 +1104,32 @@ void ReportBotInbox()
     }
 }
 
+// twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): one [BotActivityMin] line per minute
+// with the roster bots' activity seconds per band and kind (PlayerbotAI::SampleActivity adds them). Nothing when off.
+void ReportBotActivity()
+{
+    static bool tracing = false;
+    static uint32 lastReport = 0;
+    if (!sPlayerbotAIConfig.activityTrace)
+    {
+        tracing = false;
+        return;
+    }
+    uint32 const now = uint32(time(nullptr));
+    if (!tracing)
+    {
+        // switched on (start or config reload): drop what an earlier period left, the first line after a full minute
+        tracing = true;
+        lastReport = now;
+        ai::bot_activity::Global().Take();
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("%s", ai::bot_activity::FormatMinuteLine(ai::bot_activity::Global().Take()).c_str());
+}
+
 // twow-repo#541 (spikes per region update, AiPlayerbot.BotUpdateTrace): one [BotUpdate] line per minute
 // with the distribution of one bot's UpdateAI wall time over all map threads, and one [BotUpdateSlow]
 // line per slowest call (bot, map, combat, last action). Nothing is timed or written when off.
@@ -1632,6 +1659,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ProcessParkedBots();  // twow-repo#541/#551 (rndbot park), no-op without parked bots
     ReportBotInbox();     // twow-repo#563: [BotInbox] once per minute
     ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)
+    ReportBotActivity();  // twow-repo#601 R01 L1: [BotActivityMin] once per minute (AiPlayerbot.ActivityTrace)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)

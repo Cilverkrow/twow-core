@@ -493,6 +493,7 @@ bool PlayerbotAIConfig::Initialize()
     parkPersist = config.GetBoolDefault("AiPlayerbot.Park.Persist", false);
     parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", false);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
+    activityTrace = config.GetBoolDefault("AiPlayerbot.ActivityTrace", false);   // twow-repo#601 R01 L1
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
     botUpdateTraceTick = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTick", false);
@@ -1497,6 +1498,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
+            {"ActivityTrace", Value(activityTrace)},
             {"EnableActionLog", Value(enableActionLog)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
