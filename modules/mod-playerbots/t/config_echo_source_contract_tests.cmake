@@ -110,6 +110,7 @@ set(entries
   "Path.TransportWaitTimeoutMin|pathTransportWaitTimeoutMin"
   "Rotation.EmergencyLadder|rotationEmergencyLadder"
   "Rotation.SpecFromPath|rotationSpecFromPath"
+  "Rotation.RestGate|rotationRestGate"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
   "Loot.RoleWeights|lootRoleWeights"
@@ -131,11 +132,18 @@ endforeach()
 # list keys echo their parsed size
 require_text("${echo}" "{\"QuestFeasibility.Blocklist.count\", Value(uint32(questFeasibilityBlocklist.size()))}," "Blocklist size")
 require_text("${echo}" "{\"QuestFeasibility.BlocklistWhileNoCustomStarts.count\", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))}," "BlocklistWhileNoCustomStarts size")
+require_text("${echo}" "{\"ActionLog.Guids.count\", Value(uint32(actionLogGuids.size()))}," "ActionLog.Guids size")
+string(REGEX MATCH "
+ *actionLogGuids = [^
+]*\"AiPlayerbot\.ActionLog\.Guids\"" parsed_guids "${config_cpp}")
+if(parsed_guids STREQUAL "")
+  message(FATAL_ERROR "#601 ConfigEcho: actionLogGuids is not parsed from AiPlayerbot.ActionLog.Guids")
+endif()
 # every entry in the echo is listed above (no unpinned entry slips in)
 string(REGEX MATCHALL "\\{\"[^\"]+\", " all_entries "${echo}")
 list(LENGTH all_entries n_entries)
 list(LENGTH entries n_listed)
-math(EXPR n_expected "${n_listed} + 2")
+math(EXPR n_expected "${n_listed} + 3")
 if(NOT n_entries EQUAL n_expected)
   message(FATAL_ERROR "#601 ConfigEcho: ${n_entries} echo entries, ${n_expected} pinned here - add the new entry to this contract")
 endif()

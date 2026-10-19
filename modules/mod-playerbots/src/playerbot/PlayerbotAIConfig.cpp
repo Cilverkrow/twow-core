@@ -1491,12 +1491,14 @@ bool PlayerbotAIConfig::Initialize()
             {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
+            {"Rotation.RestGate", Value(rotationRestGate)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"EnableActionLog", Value(enableActionLog)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
+            {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
         }).c_str());
     }
 
