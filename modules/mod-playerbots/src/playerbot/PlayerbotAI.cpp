@@ -524,6 +524,43 @@ void PlayerbotAI::ReportIdle(uint32 idleSeconds)
         uint32(bot->getQuestStatusMap().size()), strategies.c_str());
 }
 
+// twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace): sort the bot's state into one kind (BotActivityPolicy.h) and credit
+// the seconds since the last sample; the minute totals per band go to ai::bot_activity::Global() ([BotActivityMin]), the
+// bot's own clock hour to one [BotActivity] line once a sample falls into the next hour.
+void PlayerbotAI::SampleActivity(uint32 now)
+{
+    // OB-10 review: combat at any update of the interval (grind_idle = a grind target without a single fight)
+    activityClock.NoteCombat(bot->IsInCombat());
+    if (!activityClock.Due(now))
+        return;
+
+    ai::bot_activity::State state;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+    {
+        state.status = uint8(target->GetStatus());
+        TravelDestination* const destination = target->GetDestination();
+        state.dest = !destination || dynamic_cast<NullTravelDestination*>(destination) ? ai::bot_activity::Dest::None :
+            dynamic_cast<QuestTravelDestination*>(destination) ? ai::bot_activity::Dest::Quest :
+            dynamic_cast<GrindTravelDestination*>(destination) ? ai::bot_activity::Dest::Grind : ai::bot_activity::Dest::Other;
+    }
+    state.alive = bot->IsAlive();
+    state.parked = IsParked();
+    state.inCombat = bot->IsInCombat();
+    state.combatSinceSample = activityClock.TakeCombat();
+    state.taxiFlying = bot->IsTaxiFlying();
+    state.moved = activityClock.Move(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+    ai::bot_activity::Kind const kind = ai::bot_activity::Classify(state);
+
+    // the seconds since the last sample still belong to its hour; the line for that hour follows
+    if (uint32 const credited = activityClock.Add(kind, now))
+        ai::bot_activity::Global().Add(ai::bot_activity::BandOf(bot->GetLevel()), kind, credited);
+    if (activityClock.HourDone(now))
+    {
+        sLog.outBasic("%s", ai::bot_activity::FormatLine(bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), activityClock).c_str());
+        activityClock.StartHour(now);
+    }
+}
+
 bool PlayerbotAI::IsInGroupWithRealPlayer()
 {
     if (HasRealPlayerMaster())
@@ -1008,6 +1045,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
     // Hotfix 8.1: [TankPath] diagnostic (tank rogue / tank shaman only).
     UpdateTankPathDiag(uint32(time(nullptr)));
+
+    // twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): what a roster bot does with its
+    // time, one sample a minute. Off: nothing is read or written.
+    if (sPlayerbotAIConfig.activityTrace && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster())
+        SampleActivity(uint32(time(nullptr)));
 
     // #421 C: progress watch. Progress (level, XP, quest state) resets the
     // quest search; a roster bot on its own that made none for 20 minutes
