@@ -1834,7 +1834,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 aiInternalUpdateDelay = grant.delay;
                 ai::cast_wait::waitMs.fetch_add(grant.delay, std::memory_order_relaxed);
                 ai::cast_wait::savedTicks.fetch_add(ai::cast_wait::SavedTicks(grant.delay, sPlayerbotAIConfig.reactDelay), std::memory_order_relaxed);
-                BotActionLog::Write(this, "CAST_WAIT", "spell=%u ms=%u first=%u capped=%u", currentSpell->m_spellInfo->Id, grant.delay,
+                ai::botdiag::BotActionLog::Write(this, "CAST_WAIT", "spell=%u ms=%u first=%u capped=%u", currentSpell->m_spellInfo->Id, grant.delay,
                     grant.firstSighting ? 1u : 0u, castWait.capped ? 1u : 0u);
                 if (!CanUpdateAIInternal())
                     return;
