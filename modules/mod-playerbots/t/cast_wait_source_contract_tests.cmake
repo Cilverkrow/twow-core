@@ -84,6 +84,7 @@ function(check policy ai_cpp ai_h config_h config_cpp dist mgr_cpp out_var)
   need("${dist}" "\nAiPlayerbot.CastWait.Preparing = 0\n" "dist key, default 0")
   need("${config_h}" "uint32 castWaitPreparing = 0;" "config member, default 0")
   need("${config_cpp}" "castWaitPreparing = config.GetIntDefault(\"AiPlayerbot.CastWait.Preparing\", 0);\n    if (castWaitPreparing > 2)\n        castWaitPreparing = 0;" "config read, > 2 = off")
+  need("${config_cpp}" "{\"CastWait.Preparing\", Value(castWaitPreparing)}," "parsed mode in [ConfigEcho] (owner rule #615)")
 
   # 2. Pure policy (std only).
   string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
