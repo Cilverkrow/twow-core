@@ -77,4 +77,36 @@ inline std::string FormatMinuteLine(std::array<std::uint32_t, EventCount> const&
         " no_quest=" + std::to_string(counts[std::size_t(Event::NoQuest)]) +
         " grind_refused=" + std::to_string(counts[std::size_t(Event::GrindRefused)]);
 }
+// Per-bot episode (OB-00 20.10.: the owner wants to see how often "no quest found" happens, per bot, band and zone): from the
+// first no_quest / grind_refused until the next quest target, each kind logs once - "[QuestOrder] state=no_quest|grind_refused
+// bot= level= band= zone= map=" - and the end "[QuestOrder] state=quest_found ... seconds= had=" gives the episode length.
+// band = level / 5 (0 = L0-4, ..., 12 = L60), as [BotActivity]. A bot that logs out mid-episode has no end line.
+inline std::uint8_t EpisodeBit(Event event)
+{
+    return event == Event::NoQuest ? std::uint8_t(1) : event == Event::GrindRefused ? std::uint8_t(2) : std::uint8_t(0);
+}
+
+inline std::uint32_t BandOf(std::uint32_t level)
+{
+    return level / 5 < 12 ? level / 5 : 12;
+}
+
+inline std::string FormatEpisodeLine(Event event, std::uint32_t bot, std::uint32_t level, std::uint32_t zone, std::uint32_t map)
+{
+    return std::string("[QuestOrder] state=") + (event == Event::NoQuest ? "no_quest" : "grind_refused") + " bot=" +
+        std::to_string(bot) + " level=" + std::to_string(level) + " band=" + std::to_string(BandOf(level)) + " zone=" +
+        std::to_string(zone) + " map=" + std::to_string(map);
+}
+
+inline std::string FormatEpisodeEndLine(std::uint32_t bot, std::uint32_t level, std::uint32_t zone, std::uint32_t seconds,
+    std::uint8_t logged)
+{
+    std::string had;
+    if (logged & 1)
+        had = "no_quest";
+    if (logged & 2)
+        had += had.empty() ? "grind_refused" : ",grind_refused";
+    return "[QuestOrder] state=quest_found bot=" + std::to_string(bot) + " level=" + std::to_string(level) + " band=" +
+        std::to_string(BandOf(level)) + " zone=" + std::to_string(zone) + " seconds=" + std::to_string(seconds) + " had=" + had;
+}
 }

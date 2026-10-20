@@ -1097,6 +1097,11 @@ public:
     static void NoteQuestOrder(uint8 event);
     // QuestFirstOrder, world thread: "[QuestOrder] minute ..." with the counts since the last call (counters reset).
     static std::string TakeQuestOrderMinuteLine();
+    // QuestFirstOrder, the bot's own thread: one "[QuestOrder] state=no_quest|grind_refused" line per kind and episode (OB-00:
+    // how often no quest is found, per bot / band / zone); EndQuestOrderEpisode: a quest target ends it ("state=quest_found
+    // seconds="). Nothing logged before the first no_quest / grind_refused of the bot.
+    void NoteQuestOrderEpisode(uint8 event);
+    void EndQuestOrderEpisode();
     // twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): adds n to one minute counter
     // (ai::quest_grind_mode::WindowEvent as uint8; any thread, relaxed). Called only on GrindMode 1 paths.
     static void NoteGrindWindow(uint8 event, uint32 n = 1);
@@ -1170,6 +1175,8 @@ protected:
     // ai::quest_grind_mode::ReasonBit, 0 = none; bot's own thread only).
     uint8 questIdleLogged = 0;
     uint8 questIdleClass = 0;   // GrindMode 2: last S1 rejection class of the idle episode (0 = none; bot's own thread)
+    uint8 questOrderLogged = 0;    // twow-repo#601 QuestFirstOrder: kinds logged in the episode (EpisodeBit; bot's own thread)
+    uint32 questOrderSince = 0;    // QuestFirstOrder: episode start (epoch s, 0 = none)
     BandEpisode bandEpisode;     // twow-repo#601 S5a: the band episode (bot's own thread only)
     // twow-repo#601 S3a: the bot's recent [QuestFeasibility] skip lines (16 quests, bot's own thread only).
     ai::quest_feasibility::SkipLog questFeasibilityLog;

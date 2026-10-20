@@ -457,7 +457,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     // twow-repo#601 decision order (QuestFirstOrder): a pass left empty by the skips (round 0 only) - with a travel target the
     // bot goes on with its quest work; without one it has no quest work at all (a quest search defect, no_quest=).
     if (!result && questOrderSkipped && !assistCount)
-        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::EmptyEvent(AI_VALUE(bool, "travel target active"))));
+    {
+        ai::quest_first_order::Event const empty = ai::quest_first_order::EmptyEvent(AI_VALUE(bool, "travel target active"));
+        PlayerbotAI::NoteQuestOrder(uint8(empty));
+        // The per-bot episode line (OB-00 20.10.): no quest work at all, once per episode.
+        if (empty == ai::quest_first_order::Event::NoQuest)
+            ai->NoteQuestOrderEpisode(uint8(empty));
+    }
 
     // twow-repo#601 S2 R4: round 0's skips go to the caller, which counts r4_skips= / r4_empty= once per value pass after its
     // assist rounds (recheck: a later round may still return a target). Nothing counted here.

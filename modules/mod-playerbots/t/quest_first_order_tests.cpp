@@ -51,6 +51,19 @@ int main()
     std::array<std::uint32_t, EventCount> counts = {7, 2, 1, 3, 4, 5};
     Require(FormatMinuteLine(counts) == "[QuestOrder] minute skipped=7 objective=2 blocker=1 quest_work=3 no_quest=4 grind_refused=5", "minute line");
 
+    // Per-bot episode lines (OB-00 20.10.): kinds, band, end line.
+    Require(EpisodeBit(Event::NoQuest) == 1 && EpisodeBit(Event::GrindRefused) == 2 && EpisodeBit(Event::Skipped) == 0 &&
+        EpisodeBit(Event::QuestWork) == 0, "episode bits: only no_quest and grind_refused");
+    Require(BandOf(1) == 0 && BandOf(5) == 1 && BandOf(14) == 2 && BandOf(59) == 11 && BandOf(60) == 12, "bands as [BotActivity]");
+    Require(FormatEpisodeLine(Event::NoQuest, 5, 3, 12, 0) == "[QuestOrder] state=no_quest bot=5 level=3 band=0 zone=12 map=0",
+        "no_quest line");
+    Require(FormatEpisodeLine(Event::GrindRefused, 7, 11, 40, 0) ==
+        "[QuestOrder] state=grind_refused bot=7 level=11 band=2 zone=40 map=0", "grind_refused line");
+    Require(FormatEpisodeEndLine(5, 4, 12, 600, 3) ==
+        "[QuestOrder] state=quest_found bot=5 level=4 band=0 zone=12 seconds=600 had=no_quest,grind_refused", "end line, both kinds");
+    Require(FormatEpisodeEndLine(5, 4, 12, 60, 2) ==
+        "[QuestOrder] state=quest_found bot=5 level=4 band=0 zone=12 seconds=60 had=grind_refused", "end line, one kind");
+
     std::cout << "quest_first_order_tests passed\n";
     return 0;
 }

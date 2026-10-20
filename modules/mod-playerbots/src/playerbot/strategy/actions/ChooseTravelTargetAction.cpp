@@ -930,6 +930,8 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // twow-repo#601 GrindMode 2: a quest target ends the idle episode - the next idle reason gets its line again.
         if (ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))
             ai->ClearQuestIdle();
+        // twow-repo#601 QuestFirstOrder: a quest target ends a "no quest" episode (state=quest_found seconds=; nothing without one).
+        ai->EndQuestOrderEpisode();
 
         // #421 B: the widened search found something.
         int const stage = AI_VALUE2(int, "manual int", "quest search stage");
@@ -964,6 +966,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (ai->IsQuestFirstOrder())
         {
             PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));
+            ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));
             return false;
         }
         // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): a gap grind trip. R1 again (the fetch ran async: a backoff that
@@ -2077,6 +2080,7 @@ bool RequestTravelTargetAction::isUseful() {
     if (ai->IsQuestFirstOrder() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))
     {
         PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));
+        ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));
         return false;
     }
 

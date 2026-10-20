@@ -728,8 +728,12 @@ AiPlayerbot.Grind.GreyByLevel = 0
 # reason to grind; the bot stands visibly. A quest objective of another active quest still wins the tie against a turn-in walk.
 # "[QuestOrder] minute skipped= objective= blocker= quest_work= no_quest= grind_refused=" once a minute: skipped= candidate skips
 # per value pass (not bots), objective= / blocker= picks, quest_work= / no_quest= passes left empty with / without a travel
-# target, grind_refused= refused grind requests. GrindMode 1 and 2 keep their own rules. Mode (CohortPolicy.h, in-realm A/B): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low
-# guid; cohort A stays as before). Any other value acts like 0.
+# target, grind_refused= refused grind requests. Per bot, once per kind and episode: "[QuestOrder] state=no_quest|grind_refused
+# bot= level= band= zone= map=", ended by the next quest target with "state=quest_found ... seconds= had=" (how often and how long
+# no quest is found, per bot / band / zone - the input for S5a / R08). With BandLadder >= 1 the S5a band step is tried on every
+# empty quest search before the grind fallback counts, so "no quest in this zone" first leads to the next hub; without it the
+# bot stands. GrindMode 1 and 2 keep their own rules. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every
+# bot, 2 = only cohort B (odd low guid; cohort A stays as before). Any other value acts like 0.
 AiPlayerbot.Grind.QuestFirstOrder = 0
 
 # Redirect all bot subsystem log output to a dedicated file so the main
