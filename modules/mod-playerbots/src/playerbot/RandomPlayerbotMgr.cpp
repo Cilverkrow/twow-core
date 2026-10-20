@@ -10054,6 +10054,8 @@ void RandomPlayerbotMgr::ReportParkSleep()
     // twow-repo#541 P2 D0 (AiPlayerbot.Park.CellSourceStats): the continent cells by source, per continent cell update.
     // cells_total = real + bot_only + npc_only; activation = the grid activation distance (yards, it shrinks under load).
     Map::SetCellSourceStats(sPlayerbotAIConfig.parkCellSourceStats);
+    // twow-repo#541 P2 D5 (AiPlayerbot.Park.CellSourceKinds): the per-kind count rides on the D0 pass split, so only with both.
+    Map::SetCellSourceKinds(sPlayerbotAIConfig.parkCellSourceStats && sPlayerbotAIConfig.parkCellSourceKinds);
     static uint32 lastSourceReport = 0;
     if (sPlayerbotAIConfig.parkCellSourceStats && now >= lastSourceReport + 60)
     {
@@ -10076,6 +10078,62 @@ void RandomPlayerbotMgr::ReportParkSleep()
                 "real_players=%.1f bots=%.1f active_npcs=%.1f activation=%.0f", (unsigned long long)updates,
                 perUpdate(real + botOnly + npcOnly), perUpdate(real), perUpdate(botOnly), perUpdate(npcOnly), perUpdate(realPlayers),
                 perUpdate(bots), perUpdate(activeNpcs), perUpdate(yards));
+        }
+
+        // twow-repo#541 P2 D5: objects / first-marked cells of each kind per sampled update (the cells of all kinds sum to
+        // cells_npc_only of the sampled updates); every 10th minute the 10 objects per continent with the most such cells.
+        if (sPlayerbotAIConfig.parkCellSourceKinds)
+        {
+            Map::CellSourceKindStats& k = Map::GetCellSourceKindStats();
+            uint64 const samples = k.samples.exchange(0, std::memory_order_relaxed);
+            uint64 kindObjects[Map::CELL_SOURCE_KIND_COUNT];
+            uint64 kindCells[Map::CELL_SOURCE_KIND_COUNT];
+            for (int kind = 0; kind < Map::CELL_SOURCE_KIND_COUNT; ++kind)
+            {
+                kindObjects[kind] = k.objects[kind].exchange(0, std::memory_order_relaxed);
+                kindCells[kind] = k.cells[kind].exchange(0, std::memory_order_relaxed);
+            }
+            if (!firstSource)
+            {
+                auto const perSample = [samples](uint64 sum) { return samples ? double(sum) / double(samples) : 0.0; };
+                std::string line = "[CellSourceKinds] samples=" + std::to_string(samples);
+                char field[64];
+                for (int kind = 0; kind < Map::CELL_SOURCE_KIND_COUNT; ++kind)
+                {
+                    snprintf(field, sizeof(field), " %s=%.1f/%.0f", Map::CellSourceKindName(uint8(kind)), perSample(kindObjects[kind]),
+                        perSample(kindCells[kind]));
+                    line += field;
+                }
+                sLog.outBasic("%s", line.c_str());
+            }
+
+            // The rows of the previous request (one sampled update per continent instance), then the next request.
+            static uint32 kindReports = 0;
+            if (kindReports++ % 10 == 0)
+            {
+                std::vector<Map::CellSourceTopRow> rows = Map::TakeCellSourceTop();
+                std::sort(rows.begin(), rows.end(), [](Map::CellSourceTopRow const& a, Map::CellSourceTopRow const& b)
+                    { return a.mapId != b.mapId ? a.mapId < b.mapId : a.cells > b.cells; });
+                for (size_t i = 0; i < rows.size();)
+                {
+                    size_t end = i;
+                    uint64 mapCells = 0;
+                    std::set<uint32> instances;
+                    for (; end < rows.size() && rows[end].mapId == rows[i].mapId; ++end)
+                    {
+                        mapCells += rows[end].cells;
+                        instances.insert(rows[end].instanceId);
+                    }
+                    sLog.outBasic("[CellSourceTop] map=%u instances=%u objects=%u cells=%llu", rows[i].mapId, uint32(instances.size()),
+                        uint32(end - i), (unsigned long long)mapCells);
+                    for (size_t r = i; r < end && r < i + 10; ++r)
+                        sLog.outBasic("[CellSourceTop] map=%u inst=%u rank=%u kind=%s entry=%u guid=%u cells=%u x=%.0f y=%.0f nearest=%.0f",
+                            rows[r].mapId, rows[r].instanceId, uint32(r - i + 1), Map::CellSourceKindName(rows[r].kind), rows[r].entry,
+                            rows[r].guidLow, rows[r].cells, rows[r].x, rows[r].y, rows[r].nearestPlayer);
+                    i = end;
+                }
+                Map::RequestCellSourceTop();
+            }
         }
     }
 
