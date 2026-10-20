@@ -89,7 +89,8 @@ require_text("${grind_cpp}" "bot->GetDistance(unit) <= unit->GetAttackDistance(b
 require_order("${grind_cpp}" "\"(hostile) selected.\"" "bool const questOrder" "attacker loop before the rule")
 require_order("${grind_cpp}" "ignored (GrindMode 2: not needed for a quest)." "ignored (QuestFirstOrder: not needed for a quest, not in the way)." "after the GrindMode 2 skip")
 require_order("${grind_cpp}" "ignored (QuestFirstOrder: not needed for a quest, not in the way)." "ignored (not needed for active quest)." "before the old random skips")
-require_text("${grind_cpp}" "if (!result && questOrderSkipped && !assistCount)\n        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::EmptyEvent(AI_VALUE(bool, \"travel target active\"))));" "empty pass: quest work or no quest")
+require_text("${grind_cpp}" "if (!result && questOrderSkipped && !assistCount)\n    {\n        ai::quest_first_order::Event const empty = ai::quest_first_order::EmptyEvent(AI_VALUE(bool, \"travel target active\"));\n        PlayerbotAI::NoteQuestOrder(uint8(empty));" "empty pass: quest work or no quest")
+require_text("${grind_cpp}" "        if (empty == ai::quest_first_order::Event::NoQuest)\n            ai->NoteQuestOrderEpisode(uint8(empty));" "no_quest episode line only without quest work")
 
 # AttackAnythingAction itself unchanged (the target value carries the rule).
 forbid_text("${choose_cpp}" "QuestFirstOrder" "a second rule in AttackAnythingAction")
@@ -111,9 +112,18 @@ require_text("${travel_values_cpp}" "if (purpose == TravelDestinationPurpose::Ga
 count_text("${travel_values_cpp}" "ai->IsQuestNoGrindTrip()" 2 "skinning + boss trip")
 require_text("${travel_mgr_cpp}" "    if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)\n    {\n        std::vector<int32> const& needed" "no pure grind destination")
 require_text("${travel_cpp}" "bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrindTrip();" "no forced kill trip to a non-quest creature")
-require_text("${travel_cpp}" "if (ai->IsQuestFirstOrder() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))\n    {\n        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n        return false;\n    }" "grind request refused")
-require_text("${travel_cpp}" "        if (ai->IsQuestFirstOrder())\n        {\n            PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n            return false;\n        }" "a grind fetch under way refused")
-require_order("${travel_cpp}" "PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n            return false;" "[QuestSearch] state=grind_fallback" "refused before the 8.32 fallback line")
+require_text("${travel_cpp}" "if (ai->IsQuestFirstOrder() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))\n    {\n        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n        ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));\n        return false;\n    }" "grind request refused")
+require_text("${travel_cpp}" "        if (ai->IsQuestFirstOrder())\n        {\n            PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n            ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));\n            return false;\n        }" "a grind fetch under way refused")
+require_order("${travel_cpp}" "ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));\n            return false;" "[QuestSearch] state=grind_fallback" "refused before the 8.32 fallback line")
 require_text("${policy}" "\" grind_refused=\" + std::to_string(counts[std::size_t(Event::GrindRefused)])" "grind_refused= in the minute line")
+
+# OB-00 20.10. (owner: how often "no quest found" happens): the per-bot episode lines, once per kind and episode, ended by a
+# quest target.
+require_text("${ai_cpp}" "    if (!bot || !bit || (questOrderLogged & bit))\n        return;" "once per kind and episode")
+require_text("${ai_cpp}" "void PlayerbotAI::EndQuestOrderEpisode()\n{\n    if (!questOrderLogged || !bot)\n        return;" "end line only after an episode")
+require_text("${travel_cpp}" "        ai->EndQuestOrderEpisode();" "a quest target ends the episode")
+require_order("${travel_cpp}" "ai->EndQuestOrderEpisode();" "[QuestSearch] state=found bot=%u" "in the quest target found branch")
+count_text("${travel_cpp}" "ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));" 2 "grind_refused episode at both refusals")
+require_text("${policy}" "return std::string(\"[QuestOrder] state=\") + (event == Event::NoQuest ? \"no_quest\" : \"grind_refused\") + \" bot=\" +" "episode line")
 
 message(STATUS "quest_first_order source contract passed")

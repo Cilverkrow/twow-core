@@ -888,6 +888,32 @@ std::string PlayerbotAI::TakeQuestOrderMinuteLine()
     return ai::quest_first_order::FormatMinuteLine(counts);
 }
 
+// QuestFirstOrder, the bot's own thread: the per-bot episode lines (OB-00 20.10.: how often "no quest found" happens).
+void PlayerbotAI::NoteQuestOrderEpisode(uint8 event)
+{
+    std::uint8_t const bit = ai::quest_first_order::EpisodeBit(ai::quest_first_order::Event(event));
+    if (!bot || !bit || (questOrderLogged & bit))
+        return;
+
+    if (!questOrderLogged)
+        questOrderSince = uint32(time(nullptr));
+    questOrderLogged = uint8(questOrderLogged | bit);
+    sLog.outBasic("%s", ai::quest_first_order::FormatEpisodeLine(ai::quest_first_order::Event(event), bot->GetGUIDLow(),
+        bot->GetLevel(), bot->GetZoneId(), bot->GetMapId()).c_str());
+}
+
+void PlayerbotAI::EndQuestOrderEpisode()
+{
+    if (!questOrderLogged || !bot)
+        return;
+
+    uint32 const now = uint32(time(nullptr));
+    sLog.outBasic("%s", ai::quest_first_order::FormatEpisodeEndLine(bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(),
+        now > questOrderSince ? now - questOrderSince : 0u, questOrderLogged).c_str());
+    questOrderLogged = 0;
+    questOrderSince = 0;
+}
+
 // twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): window starts, window ends, plain grind engagements (grey
 // ones), empty windows, R4 skips and passes left empty by R4 since the last minute line; counted on the map threads,
 // taken by the world thread (relaxed atomics, no lock).
