@@ -246,6 +246,14 @@ AiPlayerbot.Park.SleepGrid = 0
 # distance. With the switch the players are marked in two passes (real clients first); 0 = off (default).
 AiPlayerbot.Park.CellSourceStats = 0
 
+# twow-repo#541 P2 D5 (diagnostics, no gameplay change; acts only with CellSourceStats = 1): 1 = on 1 of 64 continent cell
+# updates classify every active non-player (pet of a bot / of a player, summon, DB spawn flag active, formation, AOI flag
+# with Visibility.ForceActiveObjects, game object spawn flag / AOI, transport, dynamic object, other) and count the cells
+# it marks first (no player and no earlier object marked them). [CellSourceKinds] once a minute: per sampled update the
+# objects/cells of each kind (the cells sum to cells_npc_only of that update). [CellSourceTop] every 10 minutes: the 10
+# objects per continent with the most such cells (entry, guid, kind, position, distance to the nearest player). 0 = off (default).
+AiPlayerbot.Park.CellSourceKinds = 0
+
 # twow-repo#551 (owner 10.10.2026, test profile 20 / 150): MaxPerInn = parked bots per inn (0 = 25 as before);
 # MaxPerCity = parked bots per capital zone, its inns and city spots together (0 = no limit). A full inn sends
 # the bot to the next inn with room (any level with AnyLevelInn=1, else the level band), a full city to the next
