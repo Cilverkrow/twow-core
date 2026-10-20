@@ -1071,7 +1071,9 @@ bool PlayerbotAIConfig::Initialize()
     enableActionLog = config.GetBoolDefault("AiPlayerbot.EnableActionLog", false);
     actionLogGuids = ai::action_log::ParseSample(config.GetStringDefault("AiPlayerbot.ActionLog.Guids", ""));   // twow-repo#601 / #614
     grindGreyByLevel = config.GetBoolDefault("AiPlayerbot.Grind.GreyByLevel", false);   // twow-repo#601 / #614
-    grindQuestFirstOrder = config.GetBoolDefault("AiPlayerbot.Grind.QuestFirstOrder", false);   // twow-repo#601 decision order
+    grindQuestFirstOrder = config.GetIntDefault("AiPlayerbot.Grind.QuestFirstOrder", 0);   // twow-repo#601 decision order
+    if (grindQuestFirstOrder > 2)
+        grindQuestFirstOrder = 0;   // an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");
