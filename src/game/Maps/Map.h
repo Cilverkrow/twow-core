@@ -409,6 +409,51 @@ class Map : public GridRefManager<NGridType>
         static CellSourceStats& GetCellSourceStats();
         static void SetCellSourceStats(bool on);
 
+        // twow-repo#541 P2 D5 (AiPlayerbot.Park.CellSourceKinds, default off, only with CellSourceStats): which kind of active
+        // non-player keeps the npc-only continent cells awake. On a sample of the continent cell updates (1 of 64) every active
+        // non-player is classified and the cells it marks first (no player and no earlier active non-player marked them) are
+        // counted for its kind. Sums taken by the bot module with exchange(0) for the [CellSourceKinds] minute line. On request
+        // the next sampled update of each continent instance also lists every active non-player for the [CellSourceTop] lines.
+        enum CellSourceKind : uint8
+        {
+            CELL_SOURCE_PET_BOT,          // pet or guardian of a bot (owner without a client socket)
+            CELL_SOURCE_PET_PLAYER,       // pet or guardian of a real player
+            CELL_SOURCE_SUMMON,           // temporary summon spawned active (scripts, escorts)
+            CELL_SOURCE_SPAWN_ACTIVE,     // creature spawn with SPAWN_FLAG_ACTIVE (DB)
+            CELL_SOURCE_FORMATION,        // creature in a formation group
+            CELL_SOURCE_AOI,              // creature with a large/gigantic/infinite AOI flag (Visibility.ForceActiveObjects)
+            CELL_SOURCE_GO_SPAWN_ACTIVE,  // game object spawn with SPAWN_FLAG_ACTIVE (DB)
+            CELL_SOURCE_GO_AOI,           // large or infinite game object (Visibility.ForceActiveObjects)
+            CELL_SOURCE_TRANSPORT,        // transport game object
+            CELL_SOURCE_DYNOBJECT,        // dynamic object (farsight)
+            CELL_SOURCE_OTHER,            // none of the above (script command, viewers)
+            CELL_SOURCE_KIND_COUNT
+        };
+        struct CellSourceKindStats
+        {
+            std::atomic<uint64> samples{ 0 };                          // sampled continent cell updates
+            std::atomic<uint64> objects[CELL_SOURCE_KIND_COUNT] = {};  // active non-players per kind, summed over the samples
+            std::atomic<uint64> cells[CELL_SOURCE_KIND_COUNT] = {};    // cells they mark first, summed over the samples
+        };
+        struct CellSourceTopRow
+        {
+            uint32 mapId;
+            uint32 instanceId;      // continent layer (Continents.Instanciate)
+            uint32 entry;
+            uint32 guidLow;
+            uint8 kind;
+            uint32 cells;           // cells this object marked first in the listed update
+            float x;
+            float y;
+            float nearestPlayer;    // 2D yards to the nearest player or bot on the map, -1 = none
+        };
+        static CellSourceKindStats& GetCellSourceKindStats();
+        static void SetCellSourceKinds(bool on);
+        static char const* CellSourceKindName(uint8 kind);
+        // Module side: TakeCellSourceTop returns (and clears) the rows of the last request, RequestCellSourceTop starts the next.
+        static std::vector<CellSourceTopRow> TakeCellSourceTop();
+        static void RequestCellSourceTop();
+
         inline void UpdateCellsAroundObject(uint32 now, uint32 diff, WorldObject const* object);
         inline void UpdateActiveCellsSynch(uint32 now, uint32 diff);
         inline void MarkCellsAroundObject(WorldObject const* object);

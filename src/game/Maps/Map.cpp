@@ -20,6 +20,8 @@
  */
 
 #include "Map.h"
+#include <algorithm>
+#include <cmath>
 #include <shared_mutex>
 #include "MapManager.h"
 #include "Player.h"
@@ -863,6 +865,172 @@ void AddCellSourceTally(CellSourceCount const& count, uint64 cellsTotal, uint64 
     stats.activeNpcs.fetch_add(activeNpcs, std::memory_order_relaxed);
     stats.activationYards.fetch_add(uint64(activationYards), std::memory_order_relaxed);
 }
+
+// twow-repo#541 P2 D5 (AiPlayerbot.Park.CellSourceKinds): see Map.h. Sampled, so the unsampled updates keep the D0 path.
+std::atomic<bool> s_cellSourceKinds{ false };
+std::atomic<uint32> s_cellSourceKindSample{ 0 };
+uint32 constexpr CELL_SOURCE_KIND_SAMPLE = 64;
+// [CellSourceTop] request: set by the module, served once per continent instance (map id << 32 | instance id, kept until the next request).
+std::atomic<bool> s_cellSourceTopPending{ false };
+std::mutex s_cellSourceTopLock;
+std::vector<Map::CellSourceTopRow> s_cellSourceTopRows;
+std::vector<uint64> s_cellSourceTopServed;
+
+struct CellSourceKindTally
+{
+    uint32 objects[Map::CELL_SOURCE_KIND_COUNT] = {};
+    uint64 cells[Map::CELL_SOURCE_KIND_COUNT] = {};
+    std::vector<Map::CellSourceTopRow> rows;   // filled only for a [CellSourceTop] request
+};
+
+// Order = what keeps the object active first: a pet follows its owner, a summon its script; the DB spawn flag and the
+// formation hold without Visibility.ForceActiveObjects, the AOI kinds only with it.
+uint8 ClassifyActiveNonPlayer(Map& map, WorldObject const* object)
+{
+    if (Creature const* creature = object->ToCreature())
+    {
+        if (creature->IsPet())
+        {
+            Player const* owner = creature->GetCharmerOrOwnerGuid().IsPlayer() ? map.GetPlayer(creature->GetCharmerOrOwnerGuid()) : nullptr;
+            return owner && owner->HasClientSocket() ? Map::CELL_SOURCE_PET_PLAYER : Map::CELL_SOURCE_PET_BOT;
+        }
+        if (creature->IsTemporarySummon())
+            return Map::CELL_SOURCE_SUMMON;
+        CreatureData const* data = creature->GetCreatureData();
+        if (data && (data->spawn_flags & SPAWN_FLAG_ACTIVE))
+            return Map::CELL_SOURCE_SPAWN_ACTIVE;
+        if (creature->GetCreatureGroup() && creature->GetCreatureGroup()->IsFormation())
+            return Map::CELL_SOURCE_FORMATION;
+        if (creature->HasExtraFlag(CREATURE_FLAG_EXTRA_LARGE_AOI) || creature->HasExtraFlag(CREATURE_FLAG_EXTRA_GIGANTIC_AOI) ||
+            creature->HasExtraFlag(CREATURE_FLAG_EXTRA_INFINITE_AOI))
+            return Map::CELL_SOURCE_AOI;
+        return Map::CELL_SOURCE_OTHER;
+    }
+    if (GameObject const* go = object->ToGameObject())
+    {
+        if (go->GetGoType() == GAMEOBJECT_TYPE_MO_TRANSPORT || go->GetGoType() == GAMEOBJECT_TYPE_TRANSPORT)
+            return Map::CELL_SOURCE_TRANSPORT;
+        GameObjectData const* data = go->GetGOData();
+        if (data && (data->spawn_flags & SPAWN_FLAG_ACTIVE))
+            return Map::CELL_SOURCE_GO_SPAWN_ACTIVE;
+        if (go->GetGOInfo() && (go->GetGOInfo()->IsLargeGameObject() || go->GetGOInfo()->IsInfiniteGameObject()))
+            return Map::CELL_SOURCE_GO_AOI;
+        return Map::CELL_SOURCE_OTHER;
+    }
+    if (object->GetTypeId() == TYPEID_DYNAMICOBJECT)
+        return Map::CELL_SOURCE_DYNOBJECT;
+    return Map::CELL_SOURCE_OTHER;
+}
+
+// The cells in the object's activation area that no player and no earlier active non-player marked (same area as
+// MarkCellsAroundObject). Called right before the object marks them.
+uint32 CountUnmarkedCellsAround(Map& map, WorldObject const* object)
+{
+    if (!object || !object->IsInWorld() || !object->IsPositionValid())
+        return 0;
+    CellArea area = Cell::CalculateCellArea(object->GetPositionX(), object->GetPositionY(), object->GetGridActivationDistance());
+    uint32 count = 0;
+    for (uint32 x = area.low_bound.x_coord; x <= area.high_bound.x_coord; ++x)
+        for (uint32 y = area.low_bound.y_coord; y <= area.high_bound.y_coord; ++y)
+            if (!map.isCellMarked((y * TOTAL_NUMBER_OF_CELLS_PER_MAP) + x))
+                ++count;
+    return count;
+}
+
+float NearestPlayerDistance(Map& map, WorldObject const* object)
+{
+    float best = -1.0f;
+    for (auto const& ref : map.GetPlayers())
+    {
+        Player const* player = ref.getSource();
+        if (!player)
+            continue;
+        float const dx = player->GetPositionX() - object->GetPositionX();
+        float const dy = player->GetPositionY() - object->GetPositionY();
+        float const d = std::sqrt(dx * dx + dy * dy);
+        if (best < 0.0f || d < best)
+            best = d;
+    }
+    return best;
+}
+
+void TallyCellSourceKind(Map& map, WorldObject const* object, CellSourceKindTally& tally, bool top)
+{
+    uint8 const kind = ClassifyActiveNonPlayer(map, object);
+    uint32 const cells = CountUnmarkedCellsAround(map, object);
+    ++tally.objects[kind];
+    tally.cells[kind] += cells;
+    if (top)
+        tally.rows.push_back({ map.GetId(), map.GetInstanceId(), object->GetEntry(), object->GetGUIDLow(), kind, cells, object->GetPositionX(),
+            object->GetPositionY(), NearestPlayerDistance(map, object) });
+}
+
+// Is this a sampled update, and does it serve a pending [CellSourceTop] request for this continent instance?
+bool CellSourceKindSample(Map const& map, bool sourceStats, bool& top)
+{
+    top = false;
+    if (!sourceStats || !s_cellSourceKinds.load(std::memory_order_relaxed) ||
+        s_cellSourceKindSample.fetch_add(1, std::memory_order_relaxed) % CELL_SOURCE_KIND_SAMPLE != 0)
+        return false;
+    if (s_cellSourceTopPending.load(std::memory_order_relaxed))
+    {
+        std::lock_guard<std::mutex> guard(s_cellSourceTopLock);
+        uint64 const key = (uint64(map.GetId()) << 32) | map.GetInstanceId();
+        top = std::find(s_cellSourceTopServed.begin(), s_cellSourceTopServed.end(), key) == s_cellSourceTopServed.end();
+        if (top)
+            s_cellSourceTopServed.push_back(key);
+    }
+    return true;
+}
+
+void AddCellSourceKindTally(CellSourceKindTally& tally)
+{
+    Map::CellSourceKindStats& stats = Map::GetCellSourceKindStats();
+    stats.samples.fetch_add(1, std::memory_order_relaxed);
+    for (int kind = 0; kind < Map::CELL_SOURCE_KIND_COUNT; ++kind)
+    {
+        stats.objects[kind].fetch_add(tally.objects[kind], std::memory_order_relaxed);
+        stats.cells[kind].fetch_add(tally.cells[kind], std::memory_order_relaxed);
+    }
+    if (!tally.rows.empty())
+    {
+        std::lock_guard<std::mutex> guard(s_cellSourceTopLock);
+        s_cellSourceTopRows.insert(s_cellSourceTopRows.end(), tally.rows.begin(), tally.rows.end());
+    }
+}
+}
+
+Map::CellSourceKindStats& Map::GetCellSourceKindStats()
+{
+    static CellSourceKindStats stats;
+    return stats;
+}
+
+void Map::SetCellSourceKinds(bool on)
+{
+    s_cellSourceKinds.store(on, std::memory_order_relaxed);
+}
+
+char const* Map::CellSourceKindName(uint8 kind)
+{
+    static char const* const names[CELL_SOURCE_KIND_COUNT] = { "pet_bot", "pet_player", "summon", "spawn_active", "formation",
+        "aoi", "go_spawn_active", "go_aoi", "transport", "dynobj", "other" };
+    return kind < CELL_SOURCE_KIND_COUNT ? names[kind] : "?";
+}
+
+std::vector<Map::CellSourceTopRow> Map::TakeCellSourceTop()
+{
+    std::lock_guard<std::mutex> guard(s_cellSourceTopLock);
+    std::vector<CellSourceTopRow> rows;
+    rows.swap(s_cellSourceTopRows);
+    return rows;
+}
+
+void Map::RequestCellSourceTop()
+{
+    std::lock_guard<std::mutex> guard(s_cellSourceTopLock);
+    s_cellSourceTopServed.clear();
+    s_cellSourceTopPending.store(true, std::memory_order_relaxed);
 }
 
 Map::CellSourceStats& Map::GetCellSourceStats()
@@ -916,10 +1084,17 @@ inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)
             (pass == 0 ? sourceCount.real : sourceCount.withBots) = marked_cells.count();
     }
 
+    // twow-repo#541 P2 D5: on a sampled update each active non-player is classified and its first-marked cells counted.
+    bool cellSourceTop = false;
+    bool const cellSourceKinds = CellSourceKindSample(*this, sourceStats, cellSourceTop);
+    CellSourceKindTally kindTally;
+
     for (m_activeNonPlayersIter = m_activeNonPlayers.begin(); m_activeNonPlayersIter != m_activeNonPlayers.end(); ++m_activeNonPlayersIter)
     {
         if (gridSleep && SkipSleepingOwnerObject(*this, *m_activeNonPlayersIter))
             continue;
+        if (cellSourceKinds)
+            TallyCellSourceKind(*this, *m_activeNonPlayersIter, kindTally, cellSourceTop);
         MarkCellsAroundObject(*m_activeNonPlayersIter);
     }
 
@@ -927,6 +1102,8 @@ inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)
         AddGridSleepTally(tally, marked_cells.count());
     if (sourceStats)
         AddCellSourceTally(sourceCount, marked_cells.count(), m_activeNonPlayers.size(), GetGridActivationDistance());
+    if (cellSourceKinds)
+        AddCellSourceKindTally(kindTally);
 
     const int nthreads = m_cellThreads->size();
     for (int step = 0; step < 2; step++)
@@ -971,6 +1148,11 @@ inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
             (pass == 0 ? sourceCount.real : sourceCount.withBots) = marked_cells.count();
     }
 
+    // twow-repo#541 P2 D5: on a sampled update each active non-player is classified and its first-marked cells counted.
+    bool cellSourceTop = false;
+    bool const cellSourceKinds = CellSourceKindSample(*this, sourceStats, cellSourceTop);
+    CellSourceKindTally kindTally;
+
     // non-player active objects
     for (m_activeNonPlayersIter = m_activeNonPlayers.begin(); m_activeNonPlayersIter != m_activeNonPlayers.end();)
     {
@@ -982,6 +1164,8 @@ inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
         ++m_activeNonPlayersIter;
         if (gridSleep && SkipSleepingOwnerObject(*this, obj))
             continue;
+        if (cellSourceKinds)
+            TallyCellSourceKind(*this, obj, kindTally, cellSourceTop);
         UpdateCellsAroundObject(now, diff, obj);
     }
 
@@ -989,6 +1173,8 @@ inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
         AddGridSleepTally(tally, marked_cells.count());
     if (sourceStats)
         AddCellSourceTally(sourceCount, marked_cells.count(), m_activeNonPlayers.size(), GetGridActivationDistance());
+    if (cellSourceKinds)
+        AddCellSourceKindTally(kindTally);
 }
 
 inline void Map::UpdateCells(uint32 map_diff)
