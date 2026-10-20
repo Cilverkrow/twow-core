@@ -373,7 +373,7 @@ bool NeedTravelPurposeValue::Calculate()
         // living creatures of the entry, and the grind target filter refuses that kill, so the bot would travel, stand
         // and log "opportunistic" until the work time ran out. No skinning purpose for the population (no [Purpose]
         // start); skinning the corpses of its own kills, mining, herbalism and fishing stay. GrindMode 0 / 1: false.
-        if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrind())
+        if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)
             return false;
 
         // Hotfix 8.5: finished quests are handed in before the bot gathers again.
@@ -414,7 +414,7 @@ bool NeedTravelPurposeValue::Calculate()
     case TravelDestinationPurpose::Boss:
         // twow-repo#601 GrindMode 2 (review): a boss trip is a kill trip the grind target filter refuses unless the boss
         // attacks or a quest needs it (quest bosses come through the quest objective destinations). GrindMode 0 / 1: as before.
-        if (ai->IsQuestNoGrind())
+        if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)
             return false;
         return AI_VALUE(bool, "can fight boss");
     case TravelDestinationPurpose::Mail:

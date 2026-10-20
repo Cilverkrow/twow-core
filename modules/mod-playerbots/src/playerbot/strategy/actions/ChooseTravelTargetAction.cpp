@@ -17,6 +17,7 @@
 #include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
@@ -957,6 +958,14 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 ai::quest_grind_mode::TargetText("grind_destination", grindEntry > 0 ? uint32(grindEntry) : 0u));
             return false;
         }
+        // twow-repo#601 decision order (QuestFirstOrder, owner 20.10.2026 "es gibt immer eine Quest"; CLI-Deep review): the 8.32
+        // grind fallback and the money grind are no quest work - the grind target filter would refuse the kills there anyway.
+        // Refused like GrindMode 2 (a fetch under way); the bot stands visibly, grind_refused= / no_quest=.
+        if (ai->IsQuestFirstOrder())
+        {
+            PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));
+            return false;
+        }
         // twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): a gap grind trip. R1 again (the fetch ran async: a backoff that
         // ended meanwhile takes no grind target, the quest request comes next); R2: the trip's window ends with the backoff
         // (remaining, at most RouteBackoffMaxSeconds, + 30 s; READY / TRAVEL / WORK), and its expiry is no failure. One
@@ -1340,7 +1349,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     // skinning) would be a forced trip to mobs the grind target filter then refuses - the bot parked there while the
     // order holds. With GrindMode 2 a forced kill trip goes only to a quest objective mob. Not forced, or GrindMode 0 / 1:
     // false before anything else is read.
-    bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrind();
+    bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrindTrip();   // + QuestFirstOrder (#601 review)
     std::vector<int32> forcedNeeded;
     if (forcedNoGrind)
         forcedNeeded = AI_VALUE(std::vector<int32>, "needed quest entries");
@@ -2061,6 +2070,13 @@ bool RequestTravelTargetAction::isUseful() {
     {
         ai->NoteQuestIdle(uint8(ai::quest_grind_mode::RequestReason(AI_VALUE(bool, "should get money"))),
             ai::quest_grind_mode::TargetText("request_travel_grind", 0));
+        return false;
+    }
+    // twow-repo#601 decision order (QuestFirstOrder, owner 20.10.2026; CLI-Deep review): the same for its population - no grind
+    // fallback (8.32) and no money grind as a substitute for quest work. Counted per refused request (grind_refused=).
+    if (ai->IsQuestFirstOrder() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))
+    {
+        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));
         return false;
     }
 

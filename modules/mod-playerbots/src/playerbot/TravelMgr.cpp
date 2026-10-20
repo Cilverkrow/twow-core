@@ -716,7 +716,7 @@ bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info)
     // creatures that drop money) makes every such creature a grind destination. For a quest-first roster bot on its
     // own only the ones needed for an active quest stay (quest objective mobs, e.g. the guild-order QuestReward
     // objectives); a pure grind destination is not active. One sorted per-bot list, no value per creature.
-    if (ai->IsQuestNoGrind())
+    if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)
     {
         std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, "needed quest entries");
         if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))

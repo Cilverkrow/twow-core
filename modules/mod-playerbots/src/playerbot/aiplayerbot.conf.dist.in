@@ -723,9 +723,12 @@ AiPlayerbot.Grind.GreyByLevel = 0
 # roster bot on its own below the max level takes as its grind ("attack anything") target only a creature that attacks it or
 # its group, one needed for an active quest (kill or drop), or one in its way (hostile, in front inside 1.5 x its aggro distance,
 # attacks on sight, below bot level + 3). Everything else is skipped, so the walk to the quest giver, quest travel and turn-ins
-# are not interrupted. "[QuestOrder] minute skipped= objective= blocker= quest_work= no_quest=" once a minute; no_quest= counts
-# passes without any travel target (no quest work found: a quest search defect, not a reason to grind). GrindMode 2 keeps its
-# own, stricter rule. Mode (CohortPolicy.h, in-realm A/B): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low
+# are not interrupted. No kill trip either: the grind fallback after empty quest searches (8.32) and the money grind are refused,
+# as are pure grind destinations, boss, skinning and forced guild kill trips - no quest found is a quest search defect, never a
+# reason to grind; the bot stands visibly. A quest objective of another active quest still wins the tie against a turn-in walk.
+# "[QuestOrder] minute skipped= objective= blocker= quest_work= no_quest= grind_refused=" once a minute: skipped= candidate skips
+# per value pass (not bots), objective= / blocker= picks, quest_work= / no_quest= passes left empty with / without a travel
+# target, grind_refused= refused grind requests. GrindMode 1 and 2 keep their own rules. Mode (CohortPolicy.h, in-realm A/B): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low
 # guid; cohort A stays as before). Any other value acts like 0.
 AiPlayerbot.Grind.QuestFirstOrder = 0
 

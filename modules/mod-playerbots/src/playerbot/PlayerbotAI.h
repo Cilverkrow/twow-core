@@ -1091,6 +1091,8 @@ public:
     // below the max level whose "attack anything" target must be a quest objective or block its way (QuestFirstOrderPolicy.h).
     // Always false with the switch 0 (the config is read first).
     bool IsQuestFirstOrder();
+    // GrindMode 2 or QuestFirstOrder: no kill trip the grind target filter would refuse (grind / boss / skinning / forced).
+    bool IsQuestNoGrindTrip();
     // QuestFirstOrder: adds 1 to one minute counter (ai::quest_first_order::Event as uint8; any thread, relaxed).
     static void NoteQuestOrder(uint8 event);
     // QuestFirstOrder, world thread: "[QuestOrder] minute ..." with the counts since the last call (counters reset).
