@@ -725,7 +725,8 @@ AiPlayerbot.Grind.GreyByLevel = 0
 # attacks on sight, below bot level + 3). Everything else is skipped, so the walk to the quest giver, quest travel and turn-ins
 # are not interrupted. "[QuestOrder] minute skipped= objective= blocker= quest_work= no_quest=" once a minute; no_quest= counts
 # passes without any travel target (no quest work found: a quest search defect, not a reason to grind). GrindMode 2 keeps its
-# own, stricter rule. 0 = as before.
+# own, stricter rule. Mode (CohortPolicy.h, in-realm A/B): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low
+# guid; cohort A stays as before). Any other value acts like 0.
 AiPlayerbot.Grind.QuestFirstOrder = 0
 
 # Redirect all bot subsystem log output to a dedicated file so the main

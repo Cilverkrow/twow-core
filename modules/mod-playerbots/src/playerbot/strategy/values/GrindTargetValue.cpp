@@ -162,8 +162,9 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     uint32 noGrindEntry = 0;
     // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): the same population picks only a
     // quest objective or a creature in its way (attackers above stay), so "attack anything" no longer wins over the quest work.
-    // GrindMode 2 keeps its own, stricter rule (no path blockers). Off: false, nothing else read.
-    bool const questOrder = !noGrind && ai->IsQuestFirstOrder();
+    // GrindMode 2 keeps its own, stricter rule (no path blockers) and GrindMode 1 its gap window (CLI-Deep review: the R4
+    // window comes after this skip, so it must not run for the gap filler). Off: false, nothing else read.
+    bool const questOrder = !noGrind && !gapGrind && ai->IsQuestFirstOrder();
     uint32 questOrderSkipped = 0;
     // twow-repo#601 S2 R4 (GrindMode 1, OB-10 rev. 2): the creature level window [max(gray + 1, L - 5), L + 1] of the gap
     // filler's population, once per pass (0 / 0 otherwise), and its skips for [GrindWindow] r4_skips=.

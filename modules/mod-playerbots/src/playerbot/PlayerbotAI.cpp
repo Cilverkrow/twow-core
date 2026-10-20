@@ -844,13 +844,13 @@ bool PlayerbotAI::IsQuestGapGrind()
 
 // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026 via OB-00): the same population as
 // QuestFirstProgression (Enabled + persistent roster member), on its own, below the max player level. The config is read
-// first, so with 0 nothing else is tested.
+// first, so with 0 nothing else is tested. Mode 2 (OB-00 20.10.: in-realm A/B): only cohort B (odd low guid, CohortPolicy.h).
 bool PlayerbotAI::IsQuestFirstOrder()
 {
     if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)
         return false;
 
-    return ai::quest_first_order::Applies(true,
+    return ai::quest_first_order::Applies(ai::cohort::Applies(sPlayerbotAIConfig.grindQuestFirstOrder, bot->GetGUIDLow()),
         sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
 }

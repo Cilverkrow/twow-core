@@ -62,8 +62,11 @@ read_source("strategy/values/GrindTargetValue.cpp" grind_cpp)
 read_source("strategy/actions/ChooseTargetActions.cpp" choose_cpp)
 
 # Switch, default 0, documented, echoed.
-require_text("${config_h}" "bool grindQuestFirstOrder = false;" "default off")
-require_text("${config_cpp}" "grindQuestFirstOrder = config.GetBoolDefault(\"AiPlayerbot.Grind.QuestFirstOrder\", false);" "config read")
+require_text("${config_h}" "uint32 grindQuestFirstOrder = 0;" "default off")
+require_text("${config_cpp}" "grindQuestFirstOrder = config.GetIntDefault(\"AiPlayerbot.Grind.QuestFirstOrder\", 0);" "config read")
+require_text("${config_cpp}" "if (grindQuestFirstOrder > 2)
+        grindQuestFirstOrder = 0;" "an unknown mode is off")
+require_text("${ai_cpp}" "return ai::quest_first_order::Applies(ai::cohort::Applies(sPlayerbotAIConfig.grindQuestFirstOrder, bot->GetGUIDLow())," "mode 2 = cohort B only (CohortPolicy)")
 require_text("${config_cpp}" "{\"Grind.QuestFirstOrder\", Value(grindQuestFirstOrder)}," "ConfigEcho entry")
 require_text("${conf_dist}" "\nAiPlayerbot.Grind.QuestFirstOrder = 0\n" "documented, 0 by default")
 forbid_text("${conf_dist}" "AiPlayerbot.Grind.QuestFirstOrder = 1" "default 1 in the dist")
@@ -79,7 +82,7 @@ require_text("${ai_cpp}" "bool PlayerbotAI::IsQuestFirstOrder()\n{\n    if (!sPl
 require_text("${ai_cpp}" "sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),\n        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));" "quest-first roster population")
 
 # GrindTargetValue: GrindMode 2 first, attackers untouched (loop before), the skip after the GrindMode 2 skip.
-require_text("${grind_cpp}" "bool const questOrder = !noGrind && ai->IsQuestFirstOrder();" "GrindMode 2 keeps precedence")
+require_text("${grind_cpp}" "bool const questOrder = !noGrind && !gapGrind && ai->IsQuestFirstOrder();" "GrindMode 2 and GrindMode 1 keep precedence")
 count_text("${grind_cpp}" "ai->IsQuestFirstOrder()" 1 "one population read per pass")
 require_text("${grind_cpp}" "if (questOrder && !ai::quest_first_order::TargetAllowed(true, needForQuest, !needForQuest &&" "skip gated by the switch, way test only without quest need")
 require_text("${grind_cpp}" "bot->GetDistance(unit) <= unit->GetAttackDistance(bot) * 1.5f" "the distance itself (isInFront ignores it)")
