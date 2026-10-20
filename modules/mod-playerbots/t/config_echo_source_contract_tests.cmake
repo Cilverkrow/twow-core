@@ -122,7 +122,8 @@ set(entries
   "ActivityTrace|activityTrace"
   "EnableActionLog|enableActionLog"
   "LogInGroupOnly|logInGroupOnly"
-  "Grind.GreyByLevel|grindGreyByLevel")
+  "Grind.GreyByLevel|grindGreyByLevel"
+  "Grind.QuestFirstOrder|grindQuestFirstOrder")
 foreach(entry IN LISTS entries)
   string(REPLACE "|" ";" parts "${entry}")
   list(GET parts 0 key)

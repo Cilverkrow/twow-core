@@ -1087,6 +1087,14 @@ public:
     // twow-repo#601 S2 / S4 (GrindMode = 1, OB-10 rev. 2): the same population, under the gap filler (grind only inside
     // the quest route backoff). Always false with GrindMode 0 or 2 (the config is read first).
     bool IsQuestGapGrind();
+    // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): a quest-first roster bot on its own
+    // below the max level whose "attack anything" target must be a quest objective or block its way (QuestFirstOrderPolicy.h).
+    // Always false with the switch 0 (the config is read first).
+    bool IsQuestFirstOrder();
+    // QuestFirstOrder: adds 1 to one minute counter (ai::quest_first_order::Event as uint8; any thread, relaxed).
+    static void NoteQuestOrder(uint8 event);
+    // QuestFirstOrder, world thread: "[QuestOrder] minute ..." with the counts since the last call (counters reset).
+    static std::string TakeQuestOrderMinuteLine();
     // twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): adds n to one minute counter
     // (ai::quest_grind_mode::WindowEvent as uint8; any thread, relaxed). Called only on GrindMode 1 paths.
     static void NoteGrindWindow(uint8 event, uint32 n = 1);

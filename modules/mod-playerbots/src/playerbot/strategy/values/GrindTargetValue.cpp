@@ -11,6 +11,7 @@
 #include "Formulas.h"
 #include "playerbot/GrindCapPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 
 using namespace ai;
 
@@ -159,6 +160,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     bool const noGrind = ai->IsQuestNoGrind();
     uint32 noGrindSkipped = 0;
     uint32 noGrindEntry = 0;
+    // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): the same population picks only a
+    // quest objective or a creature in its way (attackers above stay), so "attack anything" no longer wins over the quest work.
+    // GrindMode 2 keeps its own, stricter rule (no path blockers). Off: false, nothing else read.
+    bool const questOrder = !noGrind && ai->IsQuestFirstOrder();
+    uint32 questOrderSkipped = 0;
     // twow-repo#601 S2 R4 (GrindMode 1, OB-10 rev. 2): the creature level window [max(gray + 1, L - 5), L + 1] of the gap
     // filler's population, once per pass (0 / 0 otherwise), and its skips for [GrindWindow] r4_skips=.
     uint32 const gapLow = gapGrind ? ai::quest_grind_mode::GapWindowLowLevel(bot->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel())) : 0;
@@ -319,6 +325,20 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             continue;
         }
 
+        // twow-repo#601 decision order (QuestFirstOrder): a quest objective or a creature in the bot's way (the "attack before
+        // being attacked" rule of AttackAnythingAction) stays; the way test only for a candidate without quest need. Off:
+        // questOrder is false, nothing is tested.
+        if (questOrder && !ai::quest_first_order::TargetAllowed(true, needForQuest, !needForQuest &&
+                ai::quest_first_order::BlocksPath(unit->IsPlayer(), bot->isInFront(unit, M_PI_F * 0.5f),
+                    bot->GetDistance(unit) <= unit->GetAttackDistance(bot) * 1.5f, unit->CanAttackOnSight(bot), unit->GetLevel(), bot->GetLevel())))
+        {
+            ++questOrderSkipped;
+            if (!assistCount)
+                PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::Skipped));
+            logGrind(unit, "ignored (QuestFirstOrder: not needed for a quest, not in the way).");
+            continue;
+        }
+
         if (entry && !needForQuest)
         {
             // twow-repo#601 S2 R4 (GrindMode 1, OB-10 rev. 2): a plain grind candidate of the gap filler's population (no quest
@@ -404,6 +424,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     if (result)
     {
         logGrind(result, "selected.");
+
+        // twow-repo#601 decision order (QuestFirstOrder): what the pick is - quest objective or a creature in the way.
+        if (questOrder)
+        {
+            auto const cached = needForQuestCache.find(result->GetEntry());
+            PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::PickEvent(cached != needForQuestCache.end() && cached->second)));
+        }
     }
     else if (sPlayerbotAIConfig.hasLog("grind_target.csv"))
     {
@@ -425,6 +452,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         ai::quest_grind_mode::TargetNoteDue(travelTargetWorking, travelTargetTraveling))
         ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking)),
             ai::quest_grind_mode::TargetText("grind_target", noGrindEntry));
+
+    // twow-repo#601 decision order (QuestFirstOrder): a pass left empty by the skips (round 0 only) - with a travel target the
+    // bot goes on with its quest work; without one it has no quest work at all (a quest search defect, no_quest=).
+    if (!result && questOrderSkipped && !assistCount)
+        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::EmptyEvent(AI_VALUE(bool, "travel target active"))));
 
     // twow-repo#601 S2 R4: round 0's skips go to the caller, which counts r4_skips= / r4_empty= once per value pass after its
     // assist rounds (recheck: a later round may still return a target). Nothing counted here.

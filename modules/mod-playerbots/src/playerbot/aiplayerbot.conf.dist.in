@@ -718,6 +718,16 @@ AiPlayerbot.ActionLog.Guids =
 # non-quest mob was skipped and bots could hardly grind.
 AiPlayerbot.Grind.GreyByLevel = 0
 
+# twow-repo#601 decision order (owner decision 20.10.2026: a quest-first bot always has a quest; L1-c: "attack anything" 5.0
+# ties with "move to rpg target" 5.0 and, with GreyByLevel 1, always wins - turn-ins per bot-h 2.5-3.9 -> 0.6): 1 = a quest-first
+# roster bot on its own below the max level takes as its grind ("attack anything") target only a creature that attacks it or
+# its group, one needed for an active quest (kill or drop), or one in its way (hostile, in front inside 1.5 x its aggro distance,
+# attacks on sight, below bot level + 3). Everything else is skipped, so the walk to the quest giver, quest travel and turn-ins
+# are not interrupted. "[QuestOrder] minute skipped= objective= blocker= quest_work= no_quest=" once a minute; no_quest= counts
+# passes without any travel target (no quest work found: a quest search defect, not a reason to grind). GrindMode 2 keeps its
+# own, stricter rule. 0 = as before.
+AiPlayerbot.Grind.QuestFirstOrder = 0
+
 # Redirect all bot subsystem log output to a dedicated file so the main
 # server.log stays clean. Path is relative to the server's LogsDir setting.
 #
