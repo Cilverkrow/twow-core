@@ -48,8 +48,8 @@ int main()
     // Events and the minute line.
     Require(PickEvent(true) == Event::Objective && PickEvent(false) == Event::Blocker, "pick events");
     Require(EmptyEvent(true) == Event::QuestWork && EmptyEvent(false) == Event::NoQuest, "empty events");
-    std::array<std::uint32_t, EventCount> counts = {7, 2, 1, 3, 4};
-    Require(FormatMinuteLine(counts) == "[QuestOrder] minute skipped=7 objective=2 blocker=1 quest_work=3 no_quest=4", "minute line");
+    std::array<std::uint32_t, EventCount> counts = {7, 2, 1, 3, 4, 5};
+    Require(FormatMinuteLine(counts) == "[QuestOrder] minute skipped=7 objective=2 blocker=1 quest_work=3 no_quest=4 grind_refused=5", "minute line");
 
     std::cout << "quest_first_order_tests passed\n";
     return 0;

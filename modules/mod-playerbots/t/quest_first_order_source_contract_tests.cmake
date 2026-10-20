@@ -100,4 +100,20 @@ require_text("${mgr_cpp}" "void ReportQuestOrder()\n{\n    if (!sPlayerbotAIConf
 require_text("${mgr_cpp}" "    ReportQuestOrder();" "minute line called")
 require_text("${ai_cpp}" "return ai::quest_first_order::FormatMinuteLine(counts);" "minute line format")
 
+# CLI-Deep review (grind fallback): no kill trip the filter would refuse. GrindMode 1 / 2 first in the population itself; the
+# GrindMode 2 trip points take QuestFirstOrder too (IsQuestNoGrindTrip); the grind request and a fetch under way are refused.
+read_source("strategy/actions/ChooseTravelTargetAction.cpp" travel_cpp)
+read_source("strategy/values/TravelValues.cpp" travel_values_cpp)
+read_source("TravelMgr.cpp" travel_mgr_cpp)
+require_text("${ai_cpp}" "    if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)\n        return false;\n\n    // GrindMode 1 (gap filler) and 2 (no grind) keep their own rules for the same population (CLI-Deep review).\n    if (IsQuestNoGrind() || IsQuestGapGrind())\n        return false;" "switch first, then GrindMode 1 / 2 first in IsQuestFirstOrder")
+require_text("${ai_cpp}" "bool PlayerbotAI::IsQuestNoGrindTrip()\n{\n    return IsQuestNoGrind() || IsQuestFirstOrder();\n}" "no grind trip = GrindMode 2 or QuestFirstOrder")
+require_text("${travel_values_cpp}" "if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrindTrip())" "no skinning kill trip")
+count_text("${travel_values_cpp}" "ai->IsQuestNoGrindTrip()" 2 "skinning + boss trip")
+require_text("${travel_mgr_cpp}" "    if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)\n    {\n        std::vector<int32> const& needed" "no pure grind destination")
+require_text("${travel_cpp}" "bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrindTrip();" "no forced kill trip to a non-quest creature")
+require_text("${travel_cpp}" "if (ai->IsQuestFirstOrder() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))\n    {\n        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n        return false;\n    }" "grind request refused")
+require_text("${travel_cpp}" "        if (ai->IsQuestFirstOrder())\n        {\n            PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n            return false;\n        }" "a grind fetch under way refused")
+require_order("${travel_cpp}" "PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n            return false;" "[QuestSearch] state=grind_fallback" "refused before the 8.32 fallback line")
+require_text("${policy}" "\" grind_refused=\" + std::to_string(counts[std::size_t(Event::GrindRefused)])" "grind_refused= in the minute line")
+
 message(STATUS "quest_first_order source contract passed")

@@ -1385,7 +1385,7 @@ void ReportGrindWindow()
 }
 
 // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): one "[QuestOrder] minute skipped=
-// objective= blocker= quest_work= no_quest=" line per minute - the grind candidates turned down, the picks and the passes left
+// objective= blocker= quest_work= no_quest= grind_refused=" line per minute - the grind candidates turned down, the picks and the passes left
 // empty (with / without a travel target) counted on the map threads since the last line (atomics in PlayerbotAI.cpp). Gated
 // by the switch alone (not even the clock is read with 0); the first call only starts the clock. World thread only, same
 // pattern as ReportGrindWindow; always printed with the switch on (a 0 line shows the switch works and nothing was skipped).

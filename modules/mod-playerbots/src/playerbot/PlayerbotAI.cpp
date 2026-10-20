@@ -850,9 +850,21 @@ bool PlayerbotAI::IsQuestFirstOrder()
     if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)
         return false;
 
+    // GrindMode 1 (gap filler) and 2 (no grind) keep their own rules for the same population (CLI-Deep review).
+    if (IsQuestNoGrind() || IsQuestGapGrind())
+        return false;
+
     return ai::quest_first_order::Applies(ai::cohort::Applies(sPlayerbotAIConfig.grindQuestFirstOrder, bot->GetGUIDLow()),
         sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
+}
+
+// twow-repo#601 (CLI-Deep review of QuestFirstOrder): no grind as a substitute trip - GrindMode 2 or QuestFirstOrder. The kill
+// trips the grind target filter of both would refuse (pure grind destination, boss, skinning, forced guild kill trip) are not
+// taken, so the bot never travels to a spot where it may not fight.
+bool PlayerbotAI::IsQuestNoGrindTrip()
+{
+    return IsQuestNoGrind() || IsQuestFirstOrder();
 }
 
 // QuestFirstOrder: skipped candidates, picks (objective / blocker) and passes left empty (quest work / no quest) since the
