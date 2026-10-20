@@ -19,6 +19,7 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/DeathAddsPolicy.h"
+#include "playerbot/CastWaitPolicy.h"
 #include "playerbot/BotSavePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
@@ -1217,6 +1218,7 @@ protected:
     uint32 faceTargetUpdateDelay;
     bool combatIdleTick = false;   // twow-repo#541 (audit A17): last DoNextAction ran the combat engine and executed nothing
     ObjectGuid combatIdleVictim;   // twow-repo#541 (audit A17): victim of a pending stretched wait (empty = none)
+    ai::cast_wait::Watch castWait;   // twow-repo#602 (AiPlayerbot.CastWait.Preparing): pending wait for the bot's own PREPARING cast
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;

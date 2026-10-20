@@ -2706,6 +2706,17 @@ AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
 # leaves melee reach or the auto attack stops (not on new attackers or trigger changes). Reactions and the
 # 500 ms facing correction are unchanged. One [CombatIdle] line per minute. 0 = as before (default).
 AiPlayerbot.Perf.CombatIdleYield = 0
+# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): a bot AI holds
+# its internal AI pass until the real end of its own cast while that cast is PREPARING (spells with a cast time:
+# Smite, Lesser Heal, Frostbolt, ...). Today the wait ends after the nominal cast time and the combat engine re-runs
+# every ReactDelay until the pushed-back cast lands, getting SPELL_IN_PROGRESS for its own cast each time. The wait
+# follows the spell's remaining time (pushback included) plus ReactDelay and one average world diff, is capped once
+# per spell at max(2 x cast time, cast time + 1.5 s), never shortens a longer delay, and is released as soon as the
+# spell is no longer PREPARING (cast, interrupted, cancelled). Reactions are not held, nor bots of a real player
+# (they answer their master at once). Channels and auto-repeat are unchanged. One [CastWait] line per minute;
+# CAST_WAIT lines in the action log of sampled bots.
+# 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
+AiPlayerbot.CastWait.Preparing = 0
 # twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
 # request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
 # their condition while the bot's travel target is being prepared or is active. The request actions are rejected
