@@ -1071,6 +1071,7 @@ bool PlayerbotAIConfig::Initialize()
     enableActionLog = config.GetBoolDefault("AiPlayerbot.EnableActionLog", false);
     actionLogGuids = ai::action_log::ParseSample(config.GetStringDefault("AiPlayerbot.ActionLog.Guids", ""));   // twow-repo#601 / #614
     grindGreyByLevel = config.GetBoolDefault("AiPlayerbot.Grind.GreyByLevel", false);   // twow-repo#601 / #614
+    grindQuestFirstOrder = config.GetBoolDefault("AiPlayerbot.Grind.QuestFirstOrder", false);   // twow-repo#601 decision order
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");
@@ -1533,6 +1534,7 @@ bool PlayerbotAIConfig::Initialize()
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
+            {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
         }).c_str());
     }
 
