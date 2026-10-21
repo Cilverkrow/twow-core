@@ -121,7 +121,8 @@ require_order("${conf_dist}" "AiPlayerbot.Rotation.SpecFromPath = 0" "AiPlayerbo
 region("${triggers_cpp}" "bool PanicTrigger::IsActive()\n{\n" "\n}\n" panic)
 require_text("${panic}" "    bool const panic = !ai->IsInPvp() &&\n           AI_VALUE2(uint8, \"health\", \"self target\") < sPlayerbotAIConfig.criticalHealth &&" "panic condition unchanged")
 require_order("${panic}" "    if (!sPlayerbotAIConfig.rotationEmergencyLadder)\n        return panic;\n" "    return EmergencyLadder(panic);" "off path before the ladder")
-region("${triggers_cpp}" "bool OutNumberedTrigger::IsActive()\n{\n" "\n}\n" outnumbered)
+# twow-repo#602 MeleeFleeBreak: the X3 part of "outnumbered" moved unchanged into OutnumberedActive(), which IsActive() calls
+region("${triggers_cpp}" "bool OutNumberedTrigger::OutnumberedActive()\n{\n" "\n}\n" outnumbered)
 require_text("${outnumbered}" "{\n    // twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder): with the switch off only this test is added.\n    if (!sPlayerbotAIConfig.rotationEmergencyLadder)\n        return Outnumbered();\n" "outnumbered off path first")
 require_text("${triggers_cpp}" "\nbool OutNumberedTrigger::Outnumbered()\n{\n    // Below level 10, Hunter has no viable kiting toolkit" "old outnumbered body moved unchanged")
 require_text("${triggers_h}" "        PanicTrigger(PlayerbotAI* ai) : Trigger(ai) {}\n" "panic trigger keeps the macro's constructor")
