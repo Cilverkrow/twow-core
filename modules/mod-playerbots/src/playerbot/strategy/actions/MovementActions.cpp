@@ -1533,13 +1533,27 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
 
     std::vector<WorldPosition> path = movePath.getPointPath();
 
-    if (!generatePath || !bot->IsFreeFlying())
+    bool const pointMove = !generatePath || !bot->IsFreeFlying();
+    // twow-repo#592 (PATH-02 A20, AiPlayerbot.Perf.DispatchPrecomputedPath, default 0): the MovePoint below searches a core
+    // path that MovePath replaces right away. On, the MovePoint comes after the path is final and takes it as its spline
+    // (MotionMaster::MovePoint with a PointsArray): same generator, same final spline, one path search and two spline
+    // launches less per dispatch. Fewer than 2 points (MovePath would do nothing): the MovePoint as before.
+#ifdef MANGOSBOT_ZERO
+    bool const precomputedPath = pointMove && sPlayerbotAIConfig.perfDispatchPrecomputedPath;
+    WorldPosition const pointTarget = path.back();   // the MovePoint target as before: the end of the path before the hazard pass
+#else
+    bool const precomputedPath = false;
+#endif
+    // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): dispatch_* in [RouteTime] times the MovePoint (with
+    // generatePath: the core path search; with A20 on: the MovePoint that takes the built path), per level band.
+    bool const timeDispatch = generatePath && sPlayerbotAIConfig.perfRouteTimeTrace;
+
+    if (pointMove && !precomputedPath)
     {
         WorldPosition movePosition = path.back();
 
         // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RouteTimeTrace): with generatePath this MovePoint runs a core path search
         // (MOVE_PATHFINDING) that MovePath below replaces right away (CLI audit A20); dispatch_* in [RouteTime].
-        bool const timeDispatch = generatePath && sPlayerbotAIConfig.perfRouteTimeTrace;
         std::uint64_t const dispatchStartUs = timeDispatch ? ai::bot_update::NowUs() : 0;
 
 #ifdef MANGOSBOT_ZERO
@@ -1565,7 +1579,7 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
             bot->IsFlying());
 #endif
         if (timeDispatch)
-            route_time::Global().AddDispatch(ai::bot_update::SinceUs(dispatchStartUs));
+            route_time::Global().AddDispatch(ai::bot_update::SinceUs(dispatchStartUs), route_time::LevelBand(bot->GetLevel()));
     }
 
     GeneratePathAvoidingHazards(path);
@@ -1587,6 +1601,28 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
             if (bot->GetTransport())
                 bot->GetTransport()->CalculatePassengerOffset(p.x, p.y, p.z);
         }
+
+#ifdef MANGOSBOT_ZERO
+        if (precomputedPath)
+        {
+            // A20: the MovePoint of the block above, now with the final path as its spline. Target, id and options stay
+            // as they were (MOVE_PATHFINDING too, for a re-init after a speed change); the spline gets MovePath's
+            // settings (no fly, run). Fewer than 2 points: the MovePoint as before, MovePath would do nothing.
+            std::uint64_t const dispatchStartUs = timeDispatch ? ai::bot_update::NowUs() : 0;
+            uint32 moveOptions = (moveMode == FORCED_MOVEMENT_WALK) ? MOVE_WALK_MODE : MOVE_RUN_MODE;
+            if (generatePath)
+                moveOptions |= MOVE_PATHFINDING;
+            if (pointPath.size() >= 2)
+                mm.MovePoint(pointTarget.getMapId(), pointTarget.getX(), pointTarget.getY(), pointTarget.getZ(), moveOptions,
+                    pointPath, false, false);
+            else
+                mm.MovePoint(pointTarget.getMapId(), pointTarget.getX(), pointTarget.getY(), pointTarget.getZ(), moveOptions);
+            if (timeDispatch)
+                route_time::Global().AddDispatch(ai::bot_update::SinceUs(dispatchStartUs), route_time::LevelBand(bot->GetLevel()));
+            WaitForReach(size);
+            return;
+        }
+#endif
 
 #ifndef MANGOSBOT_TWO
         mm.MovePath(pointPath, moveMode, false, false);
@@ -1622,6 +1658,19 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
 #endif
     }
     WaitForReach(size);
+}
+
+// twow-repo#592 (PATH-02 diag, AiPlayerbot.Perf.RouteTimeTrace): one reason per dispatch, against the bot's previous
+// dispatch (route_time::ClassifyDispatch); the bot's own record, written only with the trace on.
+void MovementAction::CountDispatchReason(WorldPosition const& startPos, WorldPosition const& endPos, LastMovement& lastMove)
+{
+    bool const sameMap = lastMove.dispatchSet && lastMove.dispatchTarget.getMapId() == endPos.getMapId();
+    float const targetMoved = sameMap ? lastMove.dispatchTarget.distance(endPos) : 0.0f;
+    float const moved = lastMove.dispatchFrom.getMapId() == startPos.getMapId() ? lastMove.dispatchFrom.distance(startPos) : route_time::RetryYards;
+    route_time::Global().AddDispatchReason(route_time::ClassifyDispatch(inFollow, lastMove.dispatchSet, sameMap, targetMoved, moved));
+    lastMove.dispatchSet = true;
+    lastMove.dispatchTarget = endPos;
+    lastMove.dispatchFrom = startPos;
 }
 
 
@@ -2017,6 +2066,10 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
         }
     }
     // END DEBUG
+
+    // twow-repo#592 (PATH-02 diag): the reason of this dispatch in [RouteTime] (AiPlayerbot.Perf.RouteTimeTrace only).
+    if (sPlayerbotAIConfig.perfRouteTimeTrace)
+        CountDispatchReason(startPos, endPos, lastMove);
 
     DispatchMovement(movePath, generatePath, masterWalking);
 
@@ -3030,6 +3083,15 @@ void MovementAction::UpdateMovementState()
 
 bool MovementAction::Follow(Unit* target, float distance, float angle)
 {
+    // twow-repo#592 (PATH-02 diag): every MoveTo2 dispatch below counts as follow in [RouteTime]; restored on every return.
+    struct FollowScope
+    {
+        bool& flag;
+        bool const previous;
+        explicit FollowScope(bool& f) : flag(f), previous(f) { flag = true; }
+        ~FollowScope() { flag = previous; }
+    } const followScope(inFollow);
+
     if (!ai->IsSafe(target))
         return MoveTo2(target);
 

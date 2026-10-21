@@ -146,11 +146,18 @@ function_body("${move_cpp}" "void MovementAction::DispatchMovement(TravelPath mo
 require_text("${dispatch}" "bool const timeDispatch = generatePath && sPlayerbotAIConfig.perfRouteTimeTrace;" "dispatch timed only with generatePath and the switch")
 require_text("${dispatch}" "std::uint64_t const dispatchStartUs = timeDispatch ? ai::bot_update::NowUs() : 0;" "dispatch clock gated")
 require_order("${dispatch}" "dispatchStartUs = timeDispatch" "        mm.MovePoint(movePosition.getMapId()," "clock before the first MovePoint")
-require_order("${dispatch}" "        mm.MovePoint(movePosition.getMapId()," "        if (timeDispatch)\n            route_time::Global().AddDispatch(ai::bot_update::SinceUs(dispatchStartUs));" "dispatch counted after the MovePoint")
+require_order("${dispatch}" "        mm.MovePoint(movePosition.getMapId()," "        if (timeDispatch)\n            route_time::Global().AddDispatch(ai::bot_update::SinceUs(dispatchStartUs), route_time::LevelBand(bot->GetLevel()));" "dispatch counted after the MovePoint")
 require_order("${dispatch}" "route_time::Global().AddDispatch(" "GeneratePathAvoidingHazards(path);" "only the first MovePoint block (before MovePath)")
+# PATH-02 A20 (AiPlayerbot.Perf.DispatchPrecomputedPath): the second count times the MovePoint that takes the built path;
+# both are gated by timeDispatch and only one of them runs per dispatch (dispatch_path_source_contract).
 count_text("${dispatch}" "AddDispatch(" dispatch_adds)
-if(NOT dispatch_adds EQUAL 1)
-  message(FATAL_ERROR "#592 RouteTime: expected exactly one dispatch count in DispatchMovement, found ${dispatch_adds}")
+if(NOT dispatch_adds EQUAL 2)
+  message(FATAL_ERROR "#592 RouteTime: expected two dispatch counts in DispatchMovement (MovePoint as before / A20), found ${dispatch_adds}")
+endif()
+count_text("${dispatch}" "        if (timeDispatch)\n            route_time::Global().AddDispatch(" dispatch_gated_first)
+count_text("${dispatch}" "            if (timeDispatch)\n                route_time::Global().AddDispatch(" dispatch_gated_a20)
+if(NOT dispatch_gated_first EQUAL 1 OR NOT dispatch_gated_a20 EQUAL 1)
+  message(FATAL_ERROR "#592 RouteTime: every dispatch count must be gated by timeDispatch (${dispatch_gated_first} / ${dispatch_gated_a20})")
 endif()
 
 # 8. [RouteTime]: gated minute line on the world thread, next to [RouteFail], before the PerfMon Init.

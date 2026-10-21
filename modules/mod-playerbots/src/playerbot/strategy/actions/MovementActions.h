@@ -150,6 +150,9 @@ namespace ai
         bool IsValidPosition(const WorldPosition& position, const WorldPosition& visibleFromPosition);
         bool IsHazardNearPosition(const WorldPosition& position, HazardPosition* outHazard = nullptr);
         bool GeneratePathAvoidingHazards(std::vector<WorldPosition>& movePath);
+        // twow-repo#592 (PATH-02 diag): the reason of a dispatch in [RouteTime] (AiPlayerbot.Perf.RouteTimeTrace).
+        void CountDispatchReason(WorldPosition const& startPos, WorldPosition const& endPos, LastMovement& lastMove);
+        bool inFollow = false;   // set by Follow(target, distance, angle) for its scope: its dispatches count as follow
     };
 
     class FleeAction : public MovementAction

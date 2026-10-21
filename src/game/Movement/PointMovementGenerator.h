@@ -30,6 +30,12 @@ class PointMovementGenerator
     public:
         PointMovementGenerator(uint32 _id, float _x, float _y, float _z, uint32 options, float speed = 0.0f, float finalOrientation = -10.0f) :
           m_id(_id), m_x(_x), m_y(_y), m_z(_z), m_o(finalOrientation), m_options(options), m_speed(speed), m_recalculateSpeed(false) {}
+        // twow-repo#592 (PATH-02 A20): the bot module hands over the path it already built. The first Initialize
+        // launches it as MotionMaster::MovePath would (MovebyPath, walk/fly flags only) instead of searching its own
+        // path to (x, y, z); m_options keeps MOVE_PATHFINDING, so a re-init after a speed change works as before.
+        PointMovementGenerator(uint32 _id, float _x, float _y, float _z, uint32 options, Movement::PointsArray const& path, bool pathFly, bool pathWalk) :
+          m_id(_id), m_x(_x), m_y(_y), m_z(_z), m_o(-10.0f), m_options(options), m_speed(0.0f), m_recalculateSpeed(false),
+          m_path(path), m_pathFly(pathFly), m_pathWalk(pathWalk) {}
         virtual ~PointMovementGenerator() {}
 
         virtual void Initialize(T&);
@@ -51,6 +57,9 @@ class PointMovementGenerator
         uint32 m_options;
         float m_speed;
         bool m_recalculateSpeed;
+        Movement::PointsArray m_path;   // A20: the handed-over path, used by the first Initialize only (then freed)
+        bool m_pathFly = false;
+        bool m_pathWalk = false;
 };
 
 template<class T>

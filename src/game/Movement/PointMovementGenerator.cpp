@@ -36,6 +36,22 @@ void PointMovementGenerator<T>::Initialize(T& unit)
         unit.StopMoving();
 
     unit.AddUnitState(UNIT_STAT_ROAMING | UNIT_STAT_ROAMING_MOVE);
+
+    // twow-repo#592 (PATH-02 A20): a handed-over path is launched once, with the same spline settings as
+    // MotionMaster::MovePath (which the bot used to call right after a MovePoint whose own path search it threw away).
+    // Later inits (speed change) search the path to (m_x, m_y, m_z) with m_options as before.
+    if (m_path.size() >= 2)
+    {
+        Movement::MoveSplineInit pathInit(unit, "PointMovementGenerator<T>::Initialize path");
+        pathInit.MovebyPath(m_path);
+        pathInit.SetWalk(m_pathWalk);
+        if (m_pathFly)
+            pathInit.SetFly();
+        Movement::PointsArray().swap(m_path);
+        pathInit.Launch();
+        return;
+    }
+
     Movement::MoveSplineInit init(unit, "PointMovementGenerator<T>::Initialize");
     init.MoveTo(m_x, m_y, m_z, m_options);
     if (m_speed > 0.0f)

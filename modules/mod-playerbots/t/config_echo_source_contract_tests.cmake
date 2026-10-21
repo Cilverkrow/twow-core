@@ -117,6 +117,8 @@ set(entries
   "CastWait.Preparing|castWaitPreparing"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
+  "Perf.RouteTimeTrace|perfRouteTimeTrace"
+  "Perf.DispatchPrecomputedPath|perfDispatchPrecomputedPath"
   "Loot.RoleWeights|lootRoleWeights"
   "BotUpdateTrace|botUpdateTrace"
   "ActivityTrace|activityTrace"

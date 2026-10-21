@@ -640,6 +640,7 @@ bool PlayerbotAIConfig::Initialize()
     perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
     perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault("AiPlayerbot.Perf.RouteFailCooldownSeconds", 0));
     perfRouteTimeTrace = config.GetBoolDefault("AiPlayerbot.Perf.RouteTimeTrace", false);
+    perfDispatchPrecomputedPath = config.GetBoolDefault("AiPlayerbot.Perf.DispatchPrecomputedPath", false);
     perfRoutePrecheck = ai::route_precheck::ClampLevel(config.GetIntDefault("AiPlayerbot.Perf.RoutePrecheck", 0));
     perfRouteFailEarlySkip = ai::stall_guard::ClampRouteFailEarlySkip(config.GetIntDefault("AiPlayerbot.Perf.RouteFailEarlySkip", 0));
     perfPathGenUnitless = config.GetBoolDefault("AiPlayerbot.Perf.PathGenUnitless", false);
@@ -1527,6 +1528,8 @@ bool PlayerbotAIConfig::Initialize()
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
+            {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
+            {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"ActivityTrace", Value(activityTrace)},
