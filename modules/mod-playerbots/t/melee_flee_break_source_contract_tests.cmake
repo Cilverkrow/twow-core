@@ -88,11 +88,12 @@ function(check policy trig_cpp trig_h flee_cpp config_h config_cpp dist mgr_cpp 
 
   # 4. The break: melee only, cohort mode, the loop test with FleeMultiplier's inputs; a hold returns false.
   between("${trig_cpp}" "bool OutNumberedTrigger::MeleeFleeBreak(bool active)" "\n}\n" brk)
-  need("${brk}" "mfb::Applies(sPlayerbotAIConfig.rotationMeleeFleeBreak, bot->GetGUIDLow(), ai->IsRanged(bot))" "cohort mode, ranged excluded")
+  need("${brk}" "bool const ranged = ai->IsRanged(bot);" "ranged from IsRanged")
+  need("${brk}" "mfb::Applies(sPlayerbotAIConfig.rotationMeleeFleeBreak, bot->GetGUIDLow(), ranged,\n            sPlayerbotAIConfig.rotationMeleeFleeBreakRanged)" "cohort mode, ranged only with MeleeFleeBreak.Ranged")
   need("${brk}" "mfb::Holds(int64(time(nullptr)), int64(lastMovement.lastFleeAttempt), lastMovement.fleeCount,\n            int64(sPlayerbotAIConfig.returnDelay / 1000))" "loop test with last movement and ReturnDelay")
-  need("${brk}" "mfb::held.fetch_add(1, std::memory_order_relaxed);\n        return false;" "a hold keeps the trigger quiet")
+  need("${brk}" "mfb::held.fetch_add(1, std::memory_order_relaxed);\n        if (ranged)\n            mfb::heldRanged.fetch_add(1, std::memory_order_relaxed);\n        return false;" "a hold keeps the trigger quiet, ranged part counted")
   need("${trig_h}" "bool MeleeFleeBreak(bool active);" "member function")
-  need("${policy}" "return !ranged && ai::cohort::Applies(mode, guidLow);" "melee only, cohort rule")
+  need("${policy}" "return (!ranged || rangedToo) && ai::cohort::Applies(mode, guidLow);" "melee, ranged only with rangedToo, cohort rule")
 
   # 5. The loop test mirrors FleeMultiplier (FleeStrategy.cpp), whose ranged break stays as it is.
   need("${policy}" "return lastFleeAttempt != 0 && now - lastFleeAttempt <= windowSeconds && fleeCount >= 2;" "loop test")
@@ -111,6 +112,13 @@ function(check policy trig_cpp trig_h flee_cpp config_h config_cpp dist mgr_cpp 
   # 7. Report once per minute after [CastWait], nothing when off.
   before("${mgr_cpp}" "    ReportCastWait();" "    ReportMeleeFleeBreak();" "report after ReportCastWait")
   need("${mgr_cpp}" "if (!sPlayerbotAIConfig.rotationMeleeFleeBreak || now < lastReport + 60)" "report only when on")
+
+  # 8. MeleeFleeBreak.Ranged (step 2, 21.10.): default 0, a bool read, in [ConfigEcho] and in the report; no own cohort (follows the mode).
+  need("${dist}" "\nAiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0\n" "dist key Ranged, default 0")
+  need("${config_h}" "bool rotationMeleeFleeBreakRanged = false;" "config member Ranged, default off")
+  need("${config_cpp}" "rotationMeleeFleeBreakRanged = config.GetBoolDefault(\"AiPlayerbot.Rotation.MeleeFleeBreak.Ranged\", false);" "config read Ranged")
+  need("${config_cpp}" "{\"Rotation.MeleeFleeBreak.Ranged\", Value(rotationMeleeFleeBreakRanged)}," "Ranged in [ConfigEcho]")
+  need("${mgr_cpp}" "(unsigned long long)ai::melee_flee_break::heldRanged.exchange(0, std::memory_order_relaxed));" "held_ranged in the report")
 
   set(${out_var} "${errors}" PARENT_SCOPE)
 endfunction()
@@ -139,9 +147,12 @@ endfunction()
 probe("default on" dist "\nAiPlayerbot.Rotation.MeleeFleeBreak = 0\n" "\nAiPlayerbot.Rotation.MeleeFleeBreak = 1\n")
 probe("unknown mode kept" config_cpp "    if (rotationMeleeFleeBreak > 2)\n        rotationMeleeFleeBreak = 0;" "")
 probe("switch not first" trig_cpp "    if (!sPlayerbotAIConfig.rotationMeleeFleeBreak)\n        return OutnumberedActive();\n" "")
-probe("ranged included" trig_cpp "bot->GetGUIDLow(), ai->IsRanged(bot))" "bot->GetGUIDLow(), false)")
+probe("ranged included" trig_cpp "bool const ranged = ai->IsRanged(bot);" "bool const ranged = false;")
+probe("ranged without its switch" policy "return (!ranged || rangedToo) && ai::cohort::Applies(mode, guidLow);" "return ai::cohort::Applies(mode, guidLow);")
+probe("Ranged default on" dist "\nAiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0\n" "\nAiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 1\n")
+probe("Ranged not echoed" config_cpp "{\"Rotation.MeleeFleeBreak.Ranged\", Value(rotationMeleeFleeBreakRanged)}," "")
 probe("one flee holds" policy "fleeCount >= 2;" "fleeCount >= 1;")
-probe("hold fires" trig_cpp "mfb::held.fetch_add(1, std::memory_order_relaxed);\n        return false;" "mfb::held.fetch_add(1, std::memory_order_relaxed);\n        return true;")
+probe("hold fires" trig_cpp "mfb::heldRanged.fetch_add(1, std::memory_order_relaxed);\n        return false;" "mfb::heldRanged.fetch_add(1, std::memory_order_relaxed);\n        return true;")
 probe("FleeMultiplier changed for melee" flee_cpp "if (!ai->IsRanged(bot))\n        return 1.0f;" "if (!ai->IsRanged(bot) && !sPlayerbotAIConfig.rotationMeleeFleeBreak)\n        return 1.0f;")
 probe("panic touched" trig_cpp "    if (!sPlayerbotAIConfig.rotationEmergencyLadder)\n        return panic;" "    if (!sPlayerbotAIConfig.rotationEmergencyLadder && !sPlayerbotAIConfig.rotationMeleeFleeBreak)\n        return panic;")
 probe("impure policy" policy "#include <cstdint>" "#include <cstdint>\n#include \"Entities/Player.h\"")

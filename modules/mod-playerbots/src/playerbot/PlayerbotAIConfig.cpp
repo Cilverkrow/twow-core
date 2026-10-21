@@ -589,6 +589,7 @@ bool PlayerbotAIConfig::Initialize()
     rotationMeleeFleeBreak = config.GetIntDefault("AiPlayerbot.Rotation.MeleeFleeBreak", 0);
     if (rotationMeleeFleeBreak > 2)
         rotationMeleeFleeBreak = 0;   // twow-repo#602: an unknown mode is off
+    rotationMeleeFleeBreakRanged = config.GetBoolDefault("AiPlayerbot.Rotation.MeleeFleeBreak.Ranged", false);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
     perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
@@ -1533,6 +1534,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
+            {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
