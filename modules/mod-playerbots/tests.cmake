@@ -3178,6 +3178,14 @@ add_test(NAME route_time_policy
   COMMAND route_time_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#592 (PATH-02 A20 + diag): DispatchMovement hands its built path to MovePoint (AiPlayerbot.Perf.DispatchPrecomputedPath,
+# default 0); [RouteTime] dispatches=/reasons and level bands (log-only, AiPlayerbot.Perf.RouteTimeTrace).
+add_test(NAME dispatch_path_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/dispatch_path_source_contract_tests.cmake")
+
 # twow-repo#592 (PATH-02 phase 2): the travel node graph read path under the shared node map lock (getNodes with find()),
 # [TravelNodes] walk_links_without_points= at load.
 add_test(NAME travel_node_graph_source_contract

@@ -45,6 +45,9 @@ namespace ai
             pathReuseBack = other.pathReuseBack;
             pathReuseStartMap = other.pathReuseStartMap;
             pathReuseBuiltMs = other.pathReuseBuiltMs;
+            dispatchSet = other.dispatchSet;
+            dispatchTarget = other.dispatchTarget;
+            dispatchFrom = other.dispatchFrom;
             moveEvent = Event();
         }
 
@@ -127,6 +130,12 @@ namespace ai
         WorldPosition pathReuseBack;
         uint32 pathReuseStartMap = 0;
         uint32 pathReuseBuiltMs = 0;
+        // twow-repo#592 (PATH-02 diag, AiPlayerbot.Perf.RouteTimeTrace): target and start of the bot's previous dispatch
+        // (MoveTo2), for the reason count in [RouteTime]. Written and read only with the trace on, by the bot's own movement;
+        // clear() leaves it alone (a cleared path to the same target is still the same target).
+        bool dispatchSet = false;
+        WorldPosition dispatchTarget;
+        WorldPosition dispatchFrom;
         Event moveEvent;
     };
 
