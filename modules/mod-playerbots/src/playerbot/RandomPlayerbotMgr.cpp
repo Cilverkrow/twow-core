@@ -22,6 +22,7 @@
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): band rescue targets, [QuestBand] minute line
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
@@ -1383,6 +1384,30 @@ void ReportGrindWindow()
         sLog.outBasic("%s", line.c_str());
 }
 
+// twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): one "[QuestOrder] minute skipped=
+// objective= blocker= quest_work= no_quest= grind_refused=" line per minute - the grind candidates turned down, the picks and the passes left
+// empty (with / without a travel target) counted on the map threads since the last line (atomics in PlayerbotAI.cpp). Gated
+// by the switch alone (not even the clock is read with 0); the first call only starts the clock. World thread only, same
+// pattern as ReportGrindWindow; always printed with the switch on (a 0 line shows the switch works and nothing was skipped).
+void ReportQuestOrder()
+{
+    if (!sPlayerbotAIConfig.grindQuestFirstOrder)
+        return;
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!lastReport)
+    {
+        lastReport = now;
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    sLog.outBasic("%s", PlayerbotAI::TakeQuestOrderMinuteLine().c_str());
+}
+
 // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the [QuestBand] minute line (cohort=A|B steps= arrived=
 // expired= ..., QuestBandPolicy.h FormatMinute) once a minute per cohort - the band steps, ends, rescues and skips counted
 // on the map threads since the last line (relaxed atomics in QuestBand.cpp), omitted when every count of the cohort is 0.
@@ -1717,6 +1742,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
     ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
     ReportGrindWindow();  // twow-repo#601 S2 / S4: [GrindWindow] minute once per minute, not when empty (GrindMode = 1)
+    ReportQuestOrder();   // twow-repo#601 decision order: [QuestOrder] minute once per minute (AiPlayerbot.Grind.QuestFirstOrder)
     ReportQuestBand();    // twow-repo#601 S5a: [QuestBand] minute once per minute per cohort, not when empty (BandLadder > 0)
     ReportRotCast();      // twow-repo#602 ROT-01 D0: [RotCast] once per minute (AiPlayerbot.Rotation.CastTrace)
     ReportEmergencyLadder(); // twow-repo#602 ROT-01 X3: [EmergencyLadderTotal] once per hour (AiPlayerbot.Rotation.EmergencyLadder)

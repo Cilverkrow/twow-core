@@ -182,10 +182,10 @@ require_text("${fallback_block}" "                return false;\n            }" 
 # misleading "opportunistic"), so with GrindMode 2 those two purposes are off. Mining, herbalism, fishing, GenericRpg and
 # Explore stay: the skinning test names its purpose, the gather block is otherwise unchanged.
 region("${values}" "    case TravelDestinationPurpose::GatherHerbalism:\n    {" "        // Hotfix 8.5: finished quests are handed in before the bot gathers again." gather_head)
-require_text("${gather_head}" "        if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrind())\n            return false;" "no skinning trip (a kill trip) with GrindMode 2; mining / herbalism / fishing stay")
+require_text("${gather_head}" "        if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)\n            return false;" "no skinning trip (a kill trip) with GrindMode 2 (and QuestFirstOrder); mining / herbalism / fishing stay")
 region("${values}" "    case TravelDestinationPurpose::Boss:\n" "    case TravelDestinationPurpose::Mail:" boss_case)
-require_text("${boss_case}" "        if (ai->IsQuestNoGrind())\n            return false;\n        return AI_VALUE(bool, \"can fight boss\");" "no boss trip (a kill trip) with GrindMode 2, as before otherwise")
-count_text("${values}" "ai->IsQuestNoGrind()" 3 "the GrindMode tests in TravelValues: Grind fallback, skinning, boss (GenericRpg, Explore, mining, herbalism, fishing untouched)")
+require_text("${boss_case}" "        if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)\n            return false;\n        return AI_VALUE(bool, \"can fight boss\");" "no boss trip (a kill trip) with GrindMode 2 (and QuestFirstOrder), as before otherwise")
+count_text("${values}" "ai->IsQuestNoGrind()" 1 "the GrindMode test in TravelValues: Grind fallback; skinning and boss via IsQuestNoGrindTrip (#601 QuestFirstOrder review) (GenericRpg, Explore, mining, herbalism, fishing untouched)")
 require_text("${conf}" "#       mob, boss, skinning) to a creature no active quest needs." "skinning / boss / forced kill trips documented")
 
 # ---- 4. Path 2: the money grind and the plain grind request -> money / fallback ---------------------
@@ -212,14 +212,14 @@ require_text("${choose}" "uint32 mobPurpose = (uint32)TravelDestinationPurpose::
 # forced kill trip (grind mob, boss, skinning) to a creature no active quest needs, with a [QuestIdle] no_target note.
 require_text("${choose}" "bool IsKillTripDestination(TravelDestination const* destination)\n{\n    return dynamic_cast<GrindTravelDestination const*>(destination) || dynamic_cast<BossTravelDestination const*>(destination) ||\n        (destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning && destination->GetEntry() > 0);\n}" "kill trips: grind mob, boss, skinning (never a gather node, NPC or petition target)")
 region("${choose}" "bool ChooseTravelTargetAction::SetBestTarget(" "\n    return hasTarget;\n}" best_target)
-require_text("${best_target}" "bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrind();" "forced targets only; GrindMode 0 / 1 false before the roster lookup")
+require_text("${best_target}" "bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrindTrip();   // + QuestFirstOrder (#601 review)" "forced targets only; GrindMode 0 / 1 false before the roster lookup")
 require_text("${best_target}" "    if (forcedNoGrind)\n        forcedNeeded = AI_VALUE(std::vector<int32>, \"needed quest entries\");" "one per-bot list per choice, only when it can matter")
 require_text("${best_target}" "if (forcedNoGrind && !ai::quest_grind_mode::ForcedKillTripAllowed(true, IsKillTripDestination(destination),\n                    std::binary_search(forcedNeeded.begin(), forcedNeeded.end(), destination->GetEntry())))\n            {\n                if (!forcedKillSkipped++)\n                    forcedKillEntry = destination->GetEntry();\n                continue;\n            }" "a forced kill trip only to a quest objective mob")
 require_order("${best_target}" "if (forcedNoGrind && !ai::quest_grind_mode::ForcedKillTripAllowed(" "if (target->IsForced() || (travelInfoReuse ? reuseActive(destination)" "before the forced acceptance that skips IsActive")
 require_text("${best_target}" "    if (!hasTarget && forcedKillSkipped && !chooseBudgetExceeded)\n        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::NoTarget),\n            ai::quest_grind_mode::TargetText(\"forced_kill_trip\", forcedKillEntry > 0 ? uint32(forcedKillEntry) : 0u));" "one no_target note per choice that found nothing else (not on a budget-aborted slice)")
 require_text("${choose}" "        SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, true);" "a failed choice marks the purpose (the order does not re-request every tick)")
 require_text("${policy}" "inline bool ForcedKillTripAllowed(bool noGrind, bool killTrip, bool neededForQuest)\n{\n    return !noGrind || !killTrip || neededForQuest;\n}" "forced kill trip rule")
-count_text("${choose}" "ai->IsQuestNoGrind()" 3 "GrindMode tests in the choose file: the grind branch, the grind request, the forced kill trip")
+count_text("${choose}" "ai->IsQuestNoGrind()" 2 "GrindMode tests in the choose file: the grind branch, the grind request (the forced kill trip via IsQuestNoGrindTrip, #601 QuestFirstOrder review)")
 region("${choose}" "bool RequestNamedTravelTargetAction::Execute(Event& event)" "\nbool RequestNamedTravelTargetAction::isAllowed() const" named_request)
 forbid_text("${named_request}" "IsQuestNoGrind" "named travel (RosterGuild, guild meeting, city ...) gated")
 require_text("${choose}" "else if (futureTravelPurpose == \"petition\" && sPlayerbotAIConfig.rosterGuildFoundTravel && RosterGuildPlan::UsesRosterPath(ai))\n    {\n        newTarget.SetForced(true);" "RosterGuild travel stays (forced, IsActive not asked)")
@@ -234,12 +234,12 @@ require_text("${purpose_map}" "if (cInfo->MinLootGold > 0)\n        {\n         
 forbid_text("${purpose_map}" "IsQuestNoGrind" "the shared, all-bot purpose map gated per bot")
 require_text("${travel_mgr}" "                case TravelDestinationPurpose::Grind:\n                    dests.push_back(AddDestination<GrindTravelDestination>(entry, purposeFlag));" "the Grind bit becomes a GrindTravelDestination")
 region("${travel_mgr}" "bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info) const" "\n}\n" grind_active)
-require_order("${grind_active}" "if (!IsPossible(info))\n        return false;" "if (ai->IsQuestNoGrind())" "after IsPossible")
-require_order("${grind_active}" "if (ai->IsQuestNoGrind())" "return GuidPosition(bot).IsHostileTo(GuidPosition(HIGHGUID_UNIT, GetEntry()), bot->GetInstanceId());" "before the hostility test")
+require_order("${grind_active}" "if (!IsPossible(info))\n        return false;" "if (ai->IsQuestNoGrindTrip())" "after IsPossible")
+require_order("${grind_active}" "if (ai->IsQuestNoGrindTrip())" "return GuidPosition(bot).IsHostileTo(GuidPosition(HIGHGUID_UNIT, GetEntry()), bot->GetInstanceId());" "before the hostility test")
 require_text("${grind_active}" "std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, \"needed quest entries\");" "one sorted per-bot list")
 require_text("${grind_active}" "if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))\n            return false;" "only quest objective mob destinations stay")
 forbid_text("${grind_active}" "\"need for quest\"" "a value per creature")
-count_text("${travel_mgr}" "ai->IsQuestNoGrind()" 1 "only the grind destination is gated in TravelMgr")
+count_text("${travel_mgr}" "ai->IsQuestNoGrindTrip()" 1 "only the grind destination is gated in TravelMgr (GrindMode 2 or QuestFirstOrder)")
 require_text("${policy}" "inline bool GrindDestinationActive(bool noGrind, bool neededForQuest)\n{\n    return !noGrind || neededForQuest;\n}" "destination rule")
 
 # ---- 7. Path 3: the opportunistic "attack anything" (grind target) ---------------------------------

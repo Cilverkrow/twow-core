@@ -5,6 +5,7 @@
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/AiJitterPolicy.h"
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/BotActionLog.h"           // twow-repo#602: CAST_WAIT lines (AiPlayerbot.CastWait.Preparing)
@@ -839,6 +840,78 @@ bool PlayerbotAI::IsQuestGapGrind()
     return ai::quest_grind_mode::GapFillerApplies(sPlayerbotAIConfig.questFirstProgressionGrindMode,
         sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
+}
+
+// twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026 via OB-00): the same population as
+// QuestFirstProgression (Enabled + persistent roster member), on its own, below the max player level. The config is read
+// first, so with 0 nothing else is tested. Mode 2 (OB-00 20.10.: in-realm A/B): only cohort B (odd low guid, CohortPolicy.h).
+bool PlayerbotAI::IsQuestFirstOrder()
+{
+    if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)
+        return false;
+
+    // GrindMode 1 (gap filler) and 2 (no grind) keep their own rules for the same population (CLI-Deep review).
+    if (IsQuestNoGrind() || IsQuestGapGrind())
+        return false;
+
+    return ai::quest_first_order::Applies(ai::cohort::Applies(sPlayerbotAIConfig.grindQuestFirstOrder, bot->GetGUIDLow()),
+        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
+        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
+}
+
+// twow-repo#601 (CLI-Deep review of QuestFirstOrder): no grind as a substitute trip - GrindMode 2 or QuestFirstOrder. The kill
+// trips the grind target filter of both would refuse (pure grind destination, boss, skinning, forced guild kill trip) are not
+// taken, so the bot never travels to a spot where it may not fight.
+bool PlayerbotAI::IsQuestNoGrindTrip()
+{
+    return IsQuestNoGrind() || IsQuestFirstOrder();
+}
+
+// QuestFirstOrder: skipped candidates, picks (objective / blocker) and passes left empty (quest work / no quest) since the
+// last minute line; counted on the map threads, taken by the world thread (relaxed atomics, no lock).
+namespace
+{
+std::atomic<uint32> questOrderCounts[ai::quest_first_order::EventCount] = {};
+}
+
+void PlayerbotAI::NoteQuestOrder(uint8 event)
+{
+    if (event < ai::quest_first_order::EventCount)
+        questOrderCounts[event].fetch_add(1, std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeQuestOrderMinuteLine()
+{
+    std::array<std::uint32_t, ai::quest_first_order::EventCount> counts = {};
+    for (std::size_t event = 0; event < ai::quest_first_order::EventCount; ++event)
+        counts[event] = questOrderCounts[event].exchange(0, std::memory_order_relaxed);
+    return ai::quest_first_order::FormatMinuteLine(counts);
+}
+
+// QuestFirstOrder, the bot's own thread: the per-bot episode lines (OB-00 20.10.: how often "no quest found" happens).
+void PlayerbotAI::NoteQuestOrderEpisode(uint8 event)
+{
+    std::uint8_t const bit = ai::quest_first_order::EpisodeBit(ai::quest_first_order::Event(event));
+    if (!bot || !bit || (questOrderLogged & bit))
+        return;
+
+    if (!questOrderLogged)
+        questOrderSince = uint32(time(nullptr));
+    questOrderLogged = uint8(questOrderLogged | bit);
+    sLog.outBasic("%s", ai::quest_first_order::FormatEpisodeLine(ai::quest_first_order::Event(event), bot->GetGUIDLow(),
+        bot->GetLevel(), bot->GetZoneId(), bot->GetMapId()).c_str());
+}
+
+void PlayerbotAI::EndQuestOrderEpisode()
+{
+    if (!questOrderLogged || !bot)
+        return;
+
+    uint32 const now = uint32(time(nullptr));
+    sLog.outBasic("%s", ai::quest_first_order::FormatEpisodeEndLine(bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(),
+        now > questOrderSince ? now - questOrderSince : 0u, questOrderLogged).c_str());
+    questOrderLogged = 0;
+    questOrderSince = 0;
 }
 
 // twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): window starts, window ends, plain grind engagements (grey
