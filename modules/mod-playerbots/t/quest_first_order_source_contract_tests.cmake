@@ -1,0 +1,129 @@
+# twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026 via OB-00): "attack anything" of quest-first
+# roster bots on their own takes only quest objectives, attackers and creatures in the way, so it no longer wins over the walk
+# to the quest giver, quest travel and turn-ins. Switch first, GrindMode 2 keeps precedence, the way test checks the distance
+# itself (the core's isInFront ignores it), [QuestOrder] minute line, ConfigEcho.
+
+# cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
+cmake_policy(VERSION 3.16)
+
+function(read_source path out_var)
+  file(READ "${PB_SOURCE_DIR}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "#601 QuestFirstOrder: missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(NOT offset EQUAL -1)
+    message(FATAL_ERROR "#601 QuestFirstOrder: forbidden ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(require_order text first second description)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if(a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "#601 QuestFirstOrder: order ${description}: '${first}' must come before '${second}'")
+  endif()
+endfunction()
+
+function(count_text text needle expected description)
+  string(LENGTH "${needle}" len)
+  set(n 0)
+  set(rest "${text}")
+  while(TRUE)
+    string(FIND "${rest}" "${needle}" at)
+    if(at EQUAL -1)
+      break()
+    endif()
+    math(EXPR n "${n} + 1")
+    math(EXPR at "${at} + ${len}")
+    string(SUBSTRING "${rest}" ${at} -1 rest)
+  endwhile()
+  if(NOT n EQUAL ${expected})
+    message(FATAL_ERROR "#601 QuestFirstOrder: ${description}: expected ${expected} x '${needle}', found ${n}")
+  endif()
+endfunction()
+
+read_source("QuestFirstOrderPolicy.h" policy)
+read_source("PlayerbotAIConfig.h" config_h)
+read_source("PlayerbotAIConfig.cpp" config_cpp)
+read_source("aiplayerbot.conf.dist.in" conf_dist)
+read_source("PlayerbotAI.cpp" ai_cpp)
+read_source("RandomPlayerbotMgr.cpp" mgr_cpp)
+read_source("strategy/values/GrindTargetValue.cpp" grind_cpp)
+read_source("strategy/actions/ChooseTargetActions.cpp" choose_cpp)
+
+# Switch, default 0, documented, echoed.
+require_text("${config_h}" "uint32 grindQuestFirstOrder = 0;" "default off")
+require_text("${config_cpp}" "grindQuestFirstOrder = config.GetIntDefault(\"AiPlayerbot.Grind.QuestFirstOrder\", 0);" "config read")
+require_text("${config_cpp}" "if (grindQuestFirstOrder > 2)
+        grindQuestFirstOrder = 0;" "an unknown mode is off")
+require_text("${ai_cpp}" "return ai::quest_first_order::Applies(ai::cohort::Applies(sPlayerbotAIConfig.grindQuestFirstOrder, bot->GetGUIDLow())," "mode 2 = cohort B only (CohortPolicy)")
+require_text("${config_cpp}" "{\"Grind.QuestFirstOrder\", Value(grindQuestFirstOrder)}," "ConfigEcho entry")
+require_text("${conf_dist}" "\nAiPlayerbot.Grind.QuestFirstOrder = 0\n" "documented, 0 by default")
+forbid_text("${conf_dist}" "AiPlayerbot.Grind.QuestFirstOrder = 1" "default 1 in the dist")
+
+# Pure rules.
+require_text("${policy}" "return enabled && questFirstRosterBot && !realPlayerMaster && level < maxLevel;" "population")
+require_text("${policy}" "return !isPlayer && inFront && withinAggro && attacksOnSight && mobLevel < botLevel + 3;" "in the way, with the distance")
+require_text("${policy}" "return !applies || neededForQuest || blocksPath;" "target rule")
+forbid_text("${policy}" "#include \"" "game headers in the pure policy")
+
+# Population: the config first, then the quest-first roster population (as IsQuestNoGrind).
+require_text("${ai_cpp}" "bool PlayerbotAI::IsQuestFirstOrder()\n{\n    if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)\n        return false;" "switch read first")
+require_text("${ai_cpp}" "sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),\n        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));" "quest-first roster population")
+
+# GrindTargetValue: GrindMode 2 first, attackers untouched (loop before), the skip after the GrindMode 2 skip.
+require_text("${grind_cpp}" "bool const questOrder = !noGrind && !gapGrind && ai->IsQuestFirstOrder();" "GrindMode 2 and GrindMode 1 keep precedence")
+count_text("${grind_cpp}" "ai->IsQuestFirstOrder()" 1 "one population read per pass")
+require_text("${grind_cpp}" "if (questOrder && !ai::quest_first_order::TargetAllowed(true, needForQuest, !needForQuest &&" "skip gated by the switch, way test only without quest need")
+require_text("${grind_cpp}" "bot->GetDistance(unit) <= unit->GetAttackDistance(bot) * 1.5f" "the distance itself (isInFront ignores it)")
+require_order("${grind_cpp}" "\"(hostile) selected.\"" "bool const questOrder" "attacker loop before the rule")
+require_order("${grind_cpp}" "ignored (GrindMode 2: not needed for a quest)." "ignored (QuestFirstOrder: not needed for a quest, not in the way)." "after the GrindMode 2 skip")
+require_order("${grind_cpp}" "ignored (QuestFirstOrder: not needed for a quest, not in the way)." "ignored (not needed for active quest)." "before the old random skips")
+require_text("${grind_cpp}" "if (!result && questOrderSkipped && !assistCount)\n    {\n        ai::quest_first_order::Event const empty = ai::quest_first_order::EmptyEvent(AI_VALUE(bool, \"travel target active\"));\n        PlayerbotAI::NoteQuestOrder(uint8(empty));" "empty pass: quest work or no quest")
+require_text("${grind_cpp}" "        if (empty == ai::quest_first_order::Event::NoQuest)\n            ai->NoteQuestOrderEpisode(uint8(empty));" "no_quest episode line only without quest work")
+
+# AttackAnythingAction itself unchanged (the target value carries the rule).
+forbid_text("${choose_cpp}" "QuestFirstOrder" "a second rule in AttackAnythingAction")
+forbid_text("${choose_cpp}" "grindQuestFirstOrder" "a second rule in AttackAnythingAction")
+
+# Minute line: gated by the switch alone, called from the world update.
+require_text("${mgr_cpp}" "void ReportQuestOrder()\n{\n    if (!sPlayerbotAIConfig.grindQuestFirstOrder)\n        return;" "minute line gated by the switch")
+require_text("${mgr_cpp}" "    ReportQuestOrder();" "minute line called")
+require_text("${ai_cpp}" "return ai::quest_first_order::FormatMinuteLine(counts);" "minute line format")
+
+# CLI-Deep review (grind fallback): no kill trip the filter would refuse. GrindMode 1 / 2 first in the population itself; the
+# GrindMode 2 trip points take QuestFirstOrder too (IsQuestNoGrindTrip); the grind request and a fetch under way are refused.
+read_source("strategy/actions/ChooseTravelTargetAction.cpp" travel_cpp)
+read_source("strategy/values/TravelValues.cpp" travel_values_cpp)
+read_source("TravelMgr.cpp" travel_mgr_cpp)
+require_text("${ai_cpp}" "    if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)\n        return false;\n\n    // GrindMode 1 (gap filler) and 2 (no grind) keep their own rules for the same population (CLI-Deep review).\n    if (IsQuestNoGrind() || IsQuestGapGrind())\n        return false;" "switch first, then GrindMode 1 / 2 first in IsQuestFirstOrder")
+require_text("${ai_cpp}" "bool PlayerbotAI::IsQuestNoGrindTrip()\n{\n    return IsQuestNoGrind() || IsQuestFirstOrder();\n}" "no grind trip = GrindMode 2 or QuestFirstOrder")
+require_text("${travel_values_cpp}" "if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrindTrip())" "no skinning kill trip")
+count_text("${travel_values_cpp}" "ai->IsQuestNoGrindTrip()" 2 "skinning + boss trip")
+require_text("${travel_mgr_cpp}" "    if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)\n    {\n        std::vector<int32> const& needed" "no pure grind destination")
+require_text("${travel_cpp}" "bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrindTrip();" "no forced kill trip to a non-quest creature")
+require_text("${travel_cpp}" "if (ai->IsQuestFirstOrder() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))\n    {\n        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n        ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));\n        return false;\n    }" "grind request refused")
+require_text("${travel_cpp}" "        if (ai->IsQuestFirstOrder())\n        {\n            PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n            ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));\n            return false;\n        }" "a grind fetch under way refused")
+require_order("${travel_cpp}" "ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));\n            return false;" "[QuestSearch] state=grind_fallback" "refused before the 8.32 fallback line")
+require_text("${policy}" "\" grind_refused=\" + std::to_string(counts[std::size_t(Event::GrindRefused)])" "grind_refused= in the minute line")
+
+# OB-00 20.10. (owner: how often "no quest found" happens): the per-bot episode lines, once per kind and episode, ended by a
+# quest target.
+require_text("${ai_cpp}" "    if (!bot || !bit || (questOrderLogged & bit))\n        return;" "once per kind and episode")
+require_text("${ai_cpp}" "void PlayerbotAI::EndQuestOrderEpisode()\n{\n    if (!questOrderLogged || !bot)\n        return;" "end line only after an episode")
+require_text("${travel_cpp}" "        ai->EndQuestOrderEpisode();" "a quest target ends the episode")
+require_order("${travel_cpp}" "ai->EndQuestOrderEpisode();" "[QuestSearch] state=found bot=%u" "in the quest target found branch")
+count_text("${travel_cpp}" "ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));" 2 "grind_refused episode at both refusals")
+require_text("${policy}" "return std::string(\"[QuestOrder] state=\") + (event == Event::NoQuest ? \"no_quest\" : \"grind_refused\") + \" bot=\" +" "episode line")
+
+message(STATUS "quest_first_order source contract passed")

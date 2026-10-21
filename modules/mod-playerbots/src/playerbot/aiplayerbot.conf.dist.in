@@ -726,6 +726,24 @@ AiPlayerbot.ActionLog.Guids =
 # non-quest mob was skipped and bots could hardly grind.
 AiPlayerbot.Grind.GreyByLevel = 0
 
+# twow-repo#601 decision order (owner decision 20.10.2026: a quest-first bot always has a quest; L1-c: "attack anything" 5.0
+# ties with "move to rpg target" 5.0 and, with GreyByLevel 1, always wins - turn-ins per bot-h 2.5-3.9 -> 0.6): 1 = a quest-first
+# roster bot on its own below the max level takes as its grind ("attack anything") target only a creature that attacks it or
+# its group, one needed for an active quest (kill or drop), or one in its way (hostile, in front inside 1.5 x its aggro distance,
+# attacks on sight, below bot level + 3). Everything else is skipped, so the walk to the quest giver, quest travel and turn-ins
+# are not interrupted. No kill trip either: the grind fallback after empty quest searches (8.32) and the money grind are refused,
+# as are pure grind destinations, boss, skinning and forced guild kill trips - no quest found is a quest search defect, never a
+# reason to grind; the bot stands visibly. A quest objective of another active quest still wins the tie against a turn-in walk.
+# "[QuestOrder] minute skipped= objective= blocker= quest_work= no_quest= grind_refused=" once a minute: skipped= candidate skips
+# per value pass (not bots), objective= / blocker= picks, quest_work= / no_quest= passes left empty with / without a travel
+# target, grind_refused= refused grind requests. Per bot, once per kind and episode: "[QuestOrder] state=no_quest|grind_refused
+# bot= level= band= zone= map=", ended by the next quest target with "state=quest_found ... seconds= had=" (how often and how long
+# no quest is found, per bot / band / zone - the input for S5a / R08). With BandLadder >= 1 the S5a band step is tried on every
+# empty quest search before the grind fallback counts, so "no quest in this zone" first leads to the next hub; without it the
+# bot stands. GrindMode 1 and 2 keep their own rules. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every
+# bot, 2 = only cohort B (odd low guid; cohort A stays as before). Any other value acts like 0.
+AiPlayerbot.Grind.QuestFirstOrder = 0
+
 # Redirect all bot subsystem log output to a dedicated file so the main
 # server.log stays clean. Path is relative to the server's LogsDir setting.
 #

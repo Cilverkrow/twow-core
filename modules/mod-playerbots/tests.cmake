@@ -3652,3 +3652,23 @@ set_target_properties(grey_by_level_tests PROPERTIES
 add_test(NAME grey_by_level
   COMMAND grey_by_level_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): "attack anything" of quest-first roster
+# bots only on quest objectives, attackers and creatures in the way.
+add_test(NAME quest_first_order_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_first_order_source_contract_tests.cmake")
+
+add_executable(quest_first_order_tests
+  "${PB_MODULE_DIR}/t/quest_first_order_tests.cpp")
+
+target_include_directories(quest_first_order_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_first_order_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_first_order
+  COMMAND quest_first_order_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
