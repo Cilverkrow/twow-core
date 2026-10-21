@@ -3612,6 +3612,26 @@ add_test(NAME cast_wait_policy
   COMMAND cast_wait_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 (death analysis 21.10.2026, AiPlayerbot.Rotation.MeleeFleeBreak, default 0, behaviour change): "outnumbered"
+# stays quiet for a melee bot while its flee loop holds (FleeMultiplier's loop test), so it fights; ranged and panic unchanged.
+add_test(NAME melee_flee_break_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/melee_flee_break_source_contract_tests.cmake")
+
+add_executable(melee_flee_break_policy_tests
+  "${PB_MODULE_DIR}/t/melee_flee_break_policy_tests.cpp")
+
+target_include_directories(melee_flee_break_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(melee_flee_break_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME melee_flee_break_policy
+  COMMAND melee_flee_break_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
 # end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process; no key, no state.
 add_executable(config_echo_policy_tests

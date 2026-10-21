@@ -586,6 +586,9 @@ bool PlayerbotAIConfig::Initialize()
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
         castWaitPreparing = 0;   // twow-repo#602: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    rotationMeleeFleeBreak = config.GetIntDefault("AiPlayerbot.Rotation.MeleeFleeBreak", 0);
+    if (rotationMeleeFleeBreak > 2)
+        rotationMeleeFleeBreak = 0;   // twow-repo#602: an unknown mode is off
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
     perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
@@ -1528,6 +1531,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
+            {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
