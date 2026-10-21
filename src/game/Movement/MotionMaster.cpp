@@ -451,6 +451,17 @@ void MotionMaster::MovePoint(uint32 id, float x, float y, float z, uint32 option
         Mutate(new PointMovementGenerator<Creature>(id, x, y, z, options, speed, finalOrientation));
 }
 
+void MotionMaster::MovePoint(uint32 id, float x, float y, float z, uint32 options, Movement::PointsArray const& pointPath, bool flying, bool walk)
+{
+    DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "%s targeted point by path (Id: %u X: %f Y: %f Z: %f, %u points)",
+                     m_owner->GetGuidStr().c_str(), id, x, y, z, uint32(pointPath.size()));
+
+    if (m_owner->IsPlayer())
+        Mutate(new PointMovementGenerator<Player>(id, x, y, z, options, pointPath, flying, walk));
+    else
+        Mutate(new PointMovementGenerator<Creature>(id, x, y, z, options, pointPath, flying, walk));
+}
+
 void MotionMaster::MoveSeekAssistance(float x, float y, float z)
 {
     if (m_owner->IsPlayer())

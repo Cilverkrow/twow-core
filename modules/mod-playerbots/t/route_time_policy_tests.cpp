@@ -136,14 +136,64 @@ int main()
             "[RouteTime] builds=2 ms=116 ge16=2 ge33=1 ge50=1 ge100=1 max_ms=100 direct_ms=6 astar_ms=20 endleg_ms=60 startleg_ms=7"
             " step_max_us=15000 dsteps_ok=0:0,1:1,2:0,4:0,8:0,16:0,40:0 dsteps_fail=0:0,1:0,2:0,4:1,8:0,16:0,40:0"
             " dispatch_n=2 dispatch_ms=2 dispatch_max_us=1500 ok=1 fail=1 nodes_ms=0 hearth_ms=2 build_ms=0 lock_ms=0"
-            " step_max_ge12=1 astar_max_ge12=1 pf=41",
+            " step_max_ge12=1 astar_max_ge12=1 pf=41"
+            " dispatches=0 new_target=0 repath=0 retry=0 follow=0 lv0=2/116/1/1/2/2 lv1=0/0/0/0/0/0 lv20=0/0/0/0/0/0 lv40=0/0/0/0/0/0",
             "[RouteTime] line");
         RequireText(FormatLine(c.Take()),
             "[RouteTime] builds=0 ms=0 ge16=0 ge33=0 ge50=0 ge100=0 max_ms=0 direct_ms=0 astar_ms=0 endleg_ms=0 startleg_ms=0"
             " step_max_us=0 dsteps_ok=0:0,1:0,2:0,4:0,8:0,16:0,40:0 dsteps_fail=0:0,1:0,2:0,4:0,8:0,16:0,40:0"
             " dispatch_n=0 dispatch_ms=0 dispatch_max_us=0 ok=0 fail=0 nodes_ms=0 hearth_ms=0 build_ms=0 lock_ms=0"
-            " step_max_ge12=0 astar_max_ge12=0 pf=0",
+            " step_max_ge12=0 astar_max_ge12=0 pf=0"
+            " dispatches=0 new_target=0 repath=0 retry=0 follow=0 lv0=0/0/0/0/0/0 lv1=0/0/0/0/0/0 lv20=0/0/0/0/0/0 lv40=0/0/0/0/0/0",
             "an empty minute");
+    }
+
+    // PATH-02 diag: level bands 0 / 1-19 / 20-39 / 40+.
+    Require(LevelBand(0) == 0 && LevelBand(1) == 1 && LevelBand(19) == 1, "no level = lv0, 1-19 = lv1");
+    Require(LevelBand(20) == 2 && LevelBand(39) == 2 && LevelBand(40) == 3 && LevelBand(60) == 3 && LevelBand(255) == 3, "20-39 = lv20, 40+ = lv40");
+
+    // PATH-02 diag: dispatch reasons against the previous dispatch.
+    Require(ClassifyDispatch(true, false, false, 0.0f, 0.0f) == DispatchReason::Follow, "follow wins over everything");
+    Require(ClassifyDispatch(false, false, false, 0.0f, 0.0f) == DispatchReason::NewTarget, "first dispatch = new target");
+    Require(ClassifyDispatch(false, true, false, 0.0f, 50.0f) == DispatchReason::NewTarget, "other map = new target");
+    Require(ClassifyDispatch(false, true, true, SameTargetYards + 0.1f, 0.0f) == DispatchReason::NewTarget, "target moved beyond 10 yd = new target");
+    Require(ClassifyDispatch(false, true, true, SameTargetYards, 0.0f) == DispatchReason::Retry, "same target (10 yd inclusive), no progress = retry");
+    Require(ClassifyDispatch(false, true, true, 3.0f, RetryYards - 0.1f) == DispatchReason::Retry, "under 2 yd moved = retry");
+    Require(ClassifyDispatch(false, true, true, 3.0f, RetryYards) == DispatchReason::Repath, "2 yd moved = repath");
+
+    // PATH-02 diag: reasons and level bands in the line, after pf=.
+    {
+        Counters c;
+        RouteTimes low;
+        low.band = LevelBand(12);
+        low.totalUs = 40000;
+        c.AddBuild(low);
+        RouteTimes high;
+        high.band = LevelBand(60);
+        high.totalUs = 120000;
+        c.AddBuild(high);
+        RouteTimes high2;
+        high2.band = LevelBand(58);
+        high2.totalUs = 2500;
+        c.AddBuild(high2);
+        RouteTimes bad;
+        bad.band = 9;   // out of range: counted as lv0, never out of bounds
+        c.AddBuild(bad);
+        c.AddDispatch(3000, LevelBand(60));
+        c.AddDispatch(1000, LevelBand(25));
+        c.AddDispatch(500, 7);
+        c.AddDispatchReason(DispatchReason::NewTarget);
+        c.AddDispatchReason(DispatchReason::Repath);
+        c.AddDispatchReason(DispatchReason::Repath);
+        c.AddDispatchReason(DispatchReason::Retry);
+        c.AddDispatchReason(DispatchReason::Follow);
+        std::string const line = FormatLine(c.Take());
+        std::string const diag = " dispatches=5 new_target=1 repath=2 retry=1 follow=1 lv0=1/0/0/0/1/0 lv1=1/40/1/0/0/0 lv20=0/0/0/0/1/1"
+            " lv40=2/122/1/1/1/3";
+        Require(line.size() > diag.size() && line.compare(line.size() - diag.size(), diag.size(), diag) == 0, "diag fields at the end of the line");
+        Require(line.find(" pf=0 dispatches=") != std::string::npos, "diag right after pf=");
+        Snapshot const s = c.Take();
+        Require(s.dispatches == 0 && s.bandBuilds[3] == 0 && s.reasons[1] == 0, "diag counters taken once");
     }
 
     // Shared by all map threads: no build and no maximum lost.

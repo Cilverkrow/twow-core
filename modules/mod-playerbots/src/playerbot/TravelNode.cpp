@@ -2438,6 +2438,9 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     // skip above: a search answered there builds nothing and is no build in builds= / ms= / ge*.
     RouteTimeScope routeTimeScope(sPlayerbotAIConfig.perfRouteTimeTrace, outDetail);
     ai::route_time::RouteTimes* const routeTimes = routeTimeScope.Times();
+    // PATH-02 diag: the level band of the unit the route is built for ([RouteTime] lv0..lv40).
+    if (routeTimes && unit)
+        routeTimes->band = ai::route_time::LevelBand(unit->GetLevel());
 
     // twow-repo#592 (PATH-02, AiPlayerbot.Perf.RoutePrecheck): the end point pre-check of this build (RoutePrecheckPolicy.h).
     // The direct check runs here, the target and start checks in getRoute. Level 4 leaves the direct attempt out when no
