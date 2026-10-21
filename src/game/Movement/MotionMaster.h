@@ -146,6 +146,10 @@ class MotionMaster : std::stack<MovementGenerator *>
         void MovePoint(uint32 id, float x, float y, float z, uint32 options, float speed,
                        float finalOrientation, bool /*generatePath*/, bool /*forceDestination*/)
         { MovePoint(id, x, y, z, options, speed, finalOrientation); }
+        // twow-repo#592 (PATH-02 A20): MovePoint to (x, y, z) whose spline is the bot's precomputed path (at least two
+        // points), launched like MovePath(pointPath, ..., flying, walk). Replaces "MovePoint + MovePath" without the
+        // discarded path search of the first; the point generator (id, MovementInform, speed-change re-init) is the same.
+        void MovePoint(uint32 id, float x, float y, float z, uint32 options, Movement::PointsArray const& pointPath, bool flying, bool walk);
         void MoveSeekAssistance(float x,float y,float z);
         void MoveSeekAssistanceDistract(uint32 timer);
         void MoveWaypoint(uint32 startPoint = 0, uint32 source = 0, uint32 initialDelay = 0, uint32 overwriteGuid = 0, uint32 overwriteEntry = 0, bool repeat = true);

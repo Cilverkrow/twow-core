@@ -3060,7 +3060,18 @@ AiPlayerbot.Perf.RouteFailCooldownSeconds = 0
 # build_ms= lock_ms= step_max_ge12= astar_max_ge12= pf=. With AiPlayerbot.BotUpdateTrace = 1 the M:route token gets
 # " d= n= a= e= s= h= b= l= x= pf=" after pts=; with AiPlayerbot.Path.RouteFailDetail = 1 the detail line gets the
 # phase times. Cost: a few clock reads per build. 0 = off, no clock read (default).
+# PATH-02 diag (log-only): the line ends with dispatches= new_target= repath= retry= follow= (every MoveTo dispatch, by
+# reason against the bot's previous dispatch: first one, other map or target moved > 10 yd = new_target; bot moved < 2 yd
+# = retry; else repath; inside Follow = follow) and lv0= lv1= lv20= lv40= with builds/ms/ge33/ge100/dispatch_n/dispatch_ms
+# per level band of the moving unit (lv0 = no unit, lv1 = 1-19, lv20 = 20-39, lv40 = 40+).
 AiPlayerbot.Perf.RouteTimeTrace = 0
+# twow-repo#592 (PATH-02 A20, work saved, same movement; enable only after OB-30 measurement + owner go - nach Abnahme an):
+# 1 = DispatchMovement gives the path it built (hazard pass and ground heights included) to the MovePoint as its spline,
+# instead of MovePoint(MOVE_PATHFINDING) followed by MovePath. Saves one core path search (PathFinder, up to about
+# 150 yd) and two spline launches per ground dispatch. Same point generator (id, MovementInform, re-init with a path
+# search after a speed change), same final spline (run, no fly). Paths with fewer than 2 points move as before. With
+# AiPlayerbot.Perf.RouteTimeTrace = 1 dispatch_ms= in [RouteTime] then times this MovePoint. 0 = as before (default).
+AiPlayerbot.Perf.DispatchPrecomputedPath = 0
 # twow-repo#592 (PATH-02 phase 2, end point pre-check; levels 2-4 skip work, enable only after OB-30 measurement + owner
 # go - nach Abnahme an; released for measuring: 1 and 2): 0..4 (default 0 = off). A target leg of a node route search
 # only counts when its path ends within 1 yd (2D) / 2 yd (Z) of the target, and a navmesh path ends on a polygon
