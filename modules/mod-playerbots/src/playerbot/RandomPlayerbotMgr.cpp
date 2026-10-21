@@ -1227,7 +1227,7 @@ void ReportCastWait()
 
 // twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak): one [MeleeFleeBreak] line per minute - "outnumbered" evaluations
 // held for melee bots in a flee loop (held), hold windows started (breaks), and evaluations that still sent such a bot
-// to flee (allowed). Nothing is written when off.
+// to flee (allowed); with MeleeFleeBreak.Ranged the ranged part of held (held_ranged). Nothing is written when off.
 void ReportMeleeFleeBreak()
 {
     static uint32 lastReport = 0;
@@ -1235,11 +1235,12 @@ void ReportMeleeFleeBreak()
     if (!sPlayerbotAIConfig.rotationMeleeFleeBreak || now < lastReport + 60)
         return;
     lastReport = now;
-    sLog.outBasic("[MeleeFleeBreak] mode=%u held=%llu breaks=%llu allowed=%llu",
-        sPlayerbotAIConfig.rotationMeleeFleeBreak,
+    sLog.outBasic("[MeleeFleeBreak] mode=%u ranged=%u held=%llu breaks=%llu allowed=%llu held_ranged=%llu",
+        sPlayerbotAIConfig.rotationMeleeFleeBreak, sPlayerbotAIConfig.rotationMeleeFleeBreakRanged ? 1u : 0u,
         (unsigned long long)ai::melee_flee_break::held.exchange(0, std::memory_order_relaxed),
         (unsigned long long)ai::melee_flee_break::breaks.exchange(0, std::memory_order_relaxed),
-        (unsigned long long)ai::melee_flee_break::allowed.exchange(0, std::memory_order_relaxed));
+        (unsigned long long)ai::melee_flee_break::allowed.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::melee_flee_break::heldRanged.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): one [LazyEngineInit] line per minute. deferred = engine
