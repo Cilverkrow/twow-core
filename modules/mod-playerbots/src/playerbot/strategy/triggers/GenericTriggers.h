@@ -670,6 +670,9 @@ namespace ai
 
     private:
         bool Outnumbered();
+        bool OutnumberedActive();
+        bool MeleeFleeBreak(bool active);
+        bool fleeBreakHeld = false;     // twow-repo#602 MeleeFleeBreak: the last evaluation was held (a new hold counts as a break)
         bool escapeOpen = false;        // twow-repo#602 X3: the escape window of an outnumbered episode below critical health
         uint32 escapeStartMs = 0;
         uint32 escapeLastSeenMs = 0;

@@ -115,6 +115,7 @@ set(entries
   "Rotation.SpecFromPath|rotationSpecFromPath"
   "Rotation.RestGate|rotationRestGate"
   "CastWait.Preparing|castWaitPreparing"
+  "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
   "Perf.RouteTimeTrace|perfRouteTimeTrace"

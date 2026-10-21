@@ -2742,6 +2742,15 @@ AiPlayerbot.Perf.CombatIdleYield = 0
 # CAST_WAIT lines in the action log of sampled bots.
 # 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
 AiPlayerbot.CastWait.Preparing = 0
+# twow-repo#602 ROT-01 (death analysis 21.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): below
+# MediumHealth the "outnumbered" trigger sends a bot to flee as soon as the mobs fighting it outweigh it. Ranged bots
+# leave a flee loop after two flee steps (FleeMultiplier); melee bots had no such break, could not outrun the mobs and
+# fled on every AI tick until they died, without swinging. With the switch, "outnumbered" stays quiet for a melee bot
+# while its flee loop holds (two flee steps within ReturnDelay), so it fights; after the window one new flee attempt is
+# allowed. Ranged bots and the panic trigger (critical health, Rotation.EmergencyLadder) are unchanged. One
+# [MeleeFleeBreak] line per minute (held, breaks, allowed).
+# 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
+AiPlayerbot.Rotation.MeleeFleeBreak = 0
 # twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
 # request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
 # their condition while the bot's travel target is being prepared or is active. The request actions are rejected

@@ -60,6 +60,7 @@
 #include "playerbot/BotActivityPolicy.h"   // twow-repo#601 R01 L1: [BotActivityMin] minute line
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/CastWaitPolicy.h"
+#include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1224,6 +1225,23 @@ void ReportCastWait()
         (unsigned long long)ai::cast_wait::savedTicks.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak): one [MeleeFleeBreak] line per minute - "outnumbered" evaluations
+// held for melee bots in a flee loop (held), hold windows started (breaks), and evaluations that still sent such a bot
+// to flee (allowed). Nothing is written when off.
+void ReportMeleeFleeBreak()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationMeleeFleeBreak || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[MeleeFleeBreak] mode=%u held=%llu breaks=%llu allowed=%llu",
+        sPlayerbotAIConfig.rotationMeleeFleeBreak,
+        (unsigned long long)ai::melee_flee_break::held.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::melee_flee_break::breaks.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::melee_flee_break::allowed.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): one [LazyEngineInit] line per minute. deferred = engine
 // rebuilds put off because the engine was not running, caught = rebuilds run later at the start of Engine::DoNextAction
 // (Reset(false) path, mid-walk engine change), saved = deferred - caught (a window can catch rebuilds deferred in an
@@ -1734,6 +1752,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
+    ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
     ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)
