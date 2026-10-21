@@ -8,6 +8,8 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/EmergencyLadderTrace.h"
+#include "playerbot/MeleeFleeBreakPolicy.h"
+#include "playerbot/strategy/values/LastMovementValue.h"
 
 #include <regex>
 
@@ -261,6 +263,39 @@ bool PanicTrigger::EmergencyLadder(bool panic)
 }
 
 bool OutNumberedTrigger::IsActive()
+{
+    // twow-repo#602 ROT-01 (AiPlayerbot.Rotation.MeleeFleeBreak): with the switch off only this test is added.
+    if (!sPlayerbotAIConfig.rotationMeleeFleeBreak)
+        return OutnumberedActive();
+    return MeleeFleeBreak(OutnumberedActive());
+}
+
+// MeleeFleeBreakPolicy.h: a melee bot whose flee loop holds (two flee dispatches within ReturnDelay) is not sent to flee
+// again until the window has passed - it fights instead. Ranged bots and bots outside the cohort are unchanged.
+bool OutNumberedTrigger::MeleeFleeBreak(bool active)
+{
+    namespace mfb = ai::melee_flee_break;
+    if (!active || !mfb::Applies(sPlayerbotAIConfig.rotationMeleeFleeBreak, bot->GetGUIDLow(), ai->IsRanged(bot)))
+    {
+        fleeBreakHeld = false;
+        return active;
+    }
+    LastMovement& lastMovement = AI_VALUE(LastMovement&, "last movement");
+    if (mfb::Holds(int64(time(nullptr)), int64(lastMovement.lastFleeAttempt), lastMovement.fleeCount,
+            int64(sPlayerbotAIConfig.returnDelay / 1000)))
+    {
+        if (!fleeBreakHeld)
+            mfb::breaks.fetch_add(1, std::memory_order_relaxed);
+        fleeBreakHeld = true;
+        mfb::held.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    fleeBreakHeld = false;
+    mfb::allowed.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+bool OutNumberedTrigger::OutnumberedActive()
 {
     // twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder): with the switch off only this test is added.
     if (!sPlayerbotAIConfig.rotationEmergencyLadder)
