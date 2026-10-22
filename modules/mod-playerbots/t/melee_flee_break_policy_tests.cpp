@@ -24,11 +24,13 @@ int main()
     std::int64_t const window = 7;   // ReturnDelay 7000 ms
 
     // 1. Applies: melee only; mode 0 off, 1 all, 2 cohort B (odd guid), unknown modes off.
-    Require(!Applies(0, 3, false) && !Applies(0, 4, false), "mode 0 off");
-    Require(Applies(1, 3, false) && Applies(1, 4, false), "mode 1 every melee bot");
-    Require(Applies(2, 3, false) && !Applies(2, 4, false), "mode 2 cohort B only");
-    Require(!Applies(1, 3, true) && !Applies(2, 3, true), "ranged bots keep FleeMultiplier's own break");
-    Require(!Applies(3, 3, false) && !Applies(7, 4, false), "unknown mode off");
+    Require(!Applies(0, 3, false, false) && !Applies(0, 4, false, false) && !Applies(0, 3, true, true), "mode 0 off, also with Ranged");
+    Require(Applies(1, 3, false, false) && Applies(1, 4, false, false), "mode 1 every melee bot");
+    Require(Applies(2, 3, false, false) && !Applies(2, 4, false, false), "mode 2 cohort B only");
+    Require(!Applies(1, 3, true, false) && !Applies(2, 3, true, false), "ranged bots keep FleeMultiplier's own break");
+    Require(Applies(1, 3, true, true) && Applies(1, 4, true, true), "MeleeFleeBreak.Ranged: ranged bots too, mode 1");
+    Require(Applies(2, 3, true, true) && !Applies(2, 4, true, true), "MeleeFleeBreak.Ranged follows the cohort of mode 2");
+    Require(!Applies(3, 3, false, true) && !Applies(7, 4, true, true), "unknown mode off");
 
     // 2. Holds: no flee yet, one flee, two flees in the window, the window boundary, an old flee.
     Require(!Holds(1000, 0, 0, window), "never fled");

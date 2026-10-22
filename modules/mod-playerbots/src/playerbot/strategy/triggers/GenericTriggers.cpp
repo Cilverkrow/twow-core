@@ -271,11 +271,14 @@ bool OutNumberedTrigger::IsActive()
 }
 
 // MeleeFleeBreakPolicy.h: a melee bot whose flee loop holds (two flee dispatches within ReturnDelay) is not sent to flee
-// again until the window has passed - it fights instead. Ranged bots and bots outside the cohort are unchanged.
+// again until the window has passed - it fights instead. Ranged bots (unless MeleeFleeBreak.Ranged) and bots outside the
+// cohort are unchanged.
 bool OutNumberedTrigger::MeleeFleeBreak(bool active)
 {
     namespace mfb = ai::melee_flee_break;
-    if (!active || !mfb::Applies(sPlayerbotAIConfig.rotationMeleeFleeBreak, bot->GetGUIDLow(), ai->IsRanged(bot)))
+    bool const ranged = ai->IsRanged(bot);
+    if (!active || !mfb::Applies(sPlayerbotAIConfig.rotationMeleeFleeBreak, bot->GetGUIDLow(), ranged,
+            sPlayerbotAIConfig.rotationMeleeFleeBreakRanged))
     {
         fleeBreakHeld = false;
         return active;
@@ -288,6 +291,8 @@ bool OutNumberedTrigger::MeleeFleeBreak(bool active)
             mfb::breaks.fetch_add(1, std::memory_order_relaxed);
         fleeBreakHeld = true;
         mfb::held.fetch_add(1, std::memory_order_relaxed);
+        if (ranged)
+            mfb::heldRanged.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
     fleeBreakHeld = false;

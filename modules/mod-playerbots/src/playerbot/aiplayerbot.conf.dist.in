@@ -2751,6 +2751,11 @@ AiPlayerbot.CastWait.Preparing = 0
 # [MeleeFleeBreak] line per minute (held, breaks, allowed).
 # 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
 AiPlayerbot.Rotation.MeleeFleeBreak = 0
+# twow-repo#602 ROT-01 (death analysis step 2, 21.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): 1 = the same
+# hold for ranged bots, in the cohort Rotation.MeleeFleeBreak selects. On track C 89-100 % of the ranged flee episodes started
+# by "outnumbered" ended in death, against 3-11 % of their kite episodes; FleeMultiplier's 0.01 did not stop that loop. Only
+# "outnumbered" is held, the kite triggers are untouched. held_ranged in the [MeleeFleeBreak] line. 0 = off (default).
+AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
 # twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
 # request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
 # their condition while the bot's travel target is being prepared or is active. The request actions are rejected
