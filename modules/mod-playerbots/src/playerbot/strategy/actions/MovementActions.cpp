@@ -100,6 +100,23 @@ void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& f
         d.cooldownSkip ? 1u : 0u, d.budgetStop ? 1u : 0u, d.transportRoute ? 1u : 0u, suffix.c_str());
 }
 
+// twow-repo#575 (QFO 41747, AiPlayerbot.Path.PartialNoop): one line per no-op partial move within the minute's budget, plus a
+// summary of the previous minute (all no-ops, logged lines).
+void LogPartialNoop(Player* bot, std::string const& action, WorldPosition const& from, WorldPosition const& to, WorldPosition const& pathEnd)
+{
+    path_fail::Counters& counters = path_fail::PartialNoopCounters();
+    uint32 noops = 0, logged = 0, unused = 0;
+    if (counters.Roll(uint64(time(nullptr)), noops, logged, unused))
+        sLog.outBasic("[MoveTo] summary partial_noop=%u logged=%u", noops, logged);
+    if (!counters.Take(path_fail::DefaultLinesPerMinute))
+        return;
+
+    sLog.outBasic("[MoveTo] state=partial_noop bot=%u level=%u action=%s map=%u x=%.1f y=%.1f z=%.1f to_x=%.1f to_y=%.1f to_z=%.1f "
+        "dist=%.1f end_x=%.1f end_y=%.1f end_z=%.1f end_gap=%.1f",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), action.c_str(), from.getMapId(), from.getX(), from.getY(), from.getZ(),
+        to.getX(), to.getY(), to.getZ(), from.distance(to), pathEnd.getX(), pathEnd.getY(), pathEnd.getZ(), pathEnd.distance(to));
+}
+
 // twow-repo#575 (PATH-01 b, AiPlayerbot.Path.TaxiTrace): summary of the previous minute, once.
 void LogTaxiSummary(path_fail::TaxiCounters& counters)
 {
@@ -1857,7 +1874,22 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     if (movePath.empty())
         return false;
 
-     
+    // twow-repo#575 (QFO 41747, AiPlayerbot.Path.PartialNoop): the path ends short of the target and the bot already stands
+    // at that end (navmesh island, e.g. the Tower of Azora interior). Without the switch the shortcut below leaves the bot's
+    // own position, MoveTo reports success and the travel retry counter never runs; on, the move fails, so travel targets
+    // count the retry, cool down and a turn-in counts as failed (#485 park), rpg targets are dropped.
+    if (sPlayerbotAIConfig.pathPartialNoop && !noPath && !bot->GetTransport())
+    {
+        WorldPosition const pathEnd = movePath.getBack();
+        bool const sameMap = pathEnd.getMapId() == startPos.getMapId() && pathEnd.getMapId() == endPos.getMapId();
+        if (path_fail::IsPartialNoop(sameMap, sameMap ? startPos.distance(pathEnd) : 0.0f, sameMap ? pathEnd.distance(endPos) : 0.0f,
+                sPlayerbotAIConfig.pathPartialNoopReach, sPlayerbotAIConfig.pathPartialNoopGap))
+        {
+            LogPartialNoop(bot, getName(), startPos, endPos, pathEnd);
+            return false;
+        }
+    }
+
     if (!bot->GetTransport())
         movePath.makeShortCut(startPos, sPlayerbotAIConfig.reactDistance, bot);
 
