@@ -81,6 +81,21 @@ struct Counters
 
 inline Counters& SharedCounters() { static Counters counters; return counters; }
 
+// twow-repo#575 (QFO 41747, AiPlayerbot.Path.PartialNoop): a target on a navmesh island (Tower of Azora, 22.10.2026) gets a
+// partial path that ends short of it; once the bot stands at that end every MoveTo built the same path again, moved nowhere
+// and reported success, so the travel retry counter never ran and the bot stood for up to 100 min. The move is a no-op when
+// the bot is within reach of the path's end while that end is more than gap from the target (same map only).
+constexpr float PartialNoopDefaultReach = 2.0f;
+constexpr float PartialNoopDefaultGap = 5.0f;
+
+inline bool IsPartialNoop(bool sameMap, float botToPathEnd, float pathEndToTarget, float reach, float gap)
+{
+    return sameMap && botToPathEnd <= reach && pathEndToTarget > gap;
+}
+
+// [MoveTo] state=partial_noop lines: every no-op is counted (failed), the first DefaultLinesPerMinute a minute are logged.
+inline Counters& PartialNoopCounters() { static Counters counters; return counters; }
+
 // twow-repo#575 (PATH-01 b, AiPlayerbot.Path.TaxiTrace): what bot flights and ship boardings do at runtime. The bot
 // travel graph stores TaxiPath ids from another numbering (0 of 270 flight links carry the right id), and 6 Turtle
 // ships have no link; this counts flight attempts by result and transport waits, with a line budget per minute.

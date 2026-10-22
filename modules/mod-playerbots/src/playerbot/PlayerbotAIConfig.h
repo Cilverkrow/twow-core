@@ -879,6 +879,9 @@ public:
     bool pathRouteFailDetail = false;  // twow-repo#575 (PATH-01 #1): [RouteFailDetail] line per failed node route (rate-limited), 0 = off
     uint32 pathRouteFailDetailLinesPerMinute = 30;  // PATH-01 #1: detail lines per minute (all failures are counted), clamped 0..600
     bool pathHonestRouteFail = false;  // twow-repo#575 (PATH-01 #3): an empty node route makes MoveTo2 fail instead of reporting a collapsed path, 0 = off
+    bool pathPartialNoop = false;  // twow-repo#575 (QFO 41747): a partial path whose end the bot already stands at makes MoveTo2 fail, 0 = off
+    float pathPartialNoopReach = 2.0f;  // yards bot -> path end that count as "already there", clamped 0.5..10
+    float pathPartialNoopGap = 5.0f;  // yards path end -> target above which the path counts as partial, clamped 1..100
     bool pathStartZoneExactBounds = false;  // twow-repo#575 (PATH-01 #4): Blackstone / Thalassian exclusion uses the zone boxes, 0 = old boxes
     bool pathRpgTargetSnap = false;  // twow-repo#575 (PATH-01 #5): rpg moves go to the navmesh-snapped point around the target, 0 = off
     bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b): [TaxiUse] / [TransportWait] lines and a minute summary of bot flights and ship waits, 0 = off

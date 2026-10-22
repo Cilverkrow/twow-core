@@ -97,6 +97,21 @@ int main()
     Require(!InCustomStartZone(0, -8949.95f, -132.5f, true), "Northshire stays a target");
     Require(!InCustomStartZone(530, -100.0f, -7500.0f, true), "other maps: never");
 
+    // twow-repo#575 (QFO 41747, AiPlayerbot.Path.PartialNoop): Tower of Azora probe values (22.10.2026) - the bot stands at the
+    // partial end (-9549.6,-700.3), 18.4 yd from the turn-in NPC.
+    {
+        float const reach = PartialNoopDefaultReach, gap = PartialNoopDefaultGap;
+        Require(IsPartialNoop(true, 0.0f, 18.4f, reach, gap), "Azora: at the partial end, 18.4 yd short = no-op");
+        Require(IsPartialNoop(true, 2.0f, 18.4f, reach, gap), "reach is inclusive");
+        Require(!IsPartialNoop(true, 2.1f, 18.4f, reach, gap), "still walking towards the partial end: a real move");
+        Require(!IsPartialNoop(true, 30.0f, 18.4f, reach, gap), "far from the partial end: a real move");
+        Require(!IsPartialNoop(true, 0.0f, 5.0f, reach, gap), "gap is exclusive: a path ending 5 yd short counts as arrived");
+        Require(!IsPartialNoop(true, 0.0f, 0.0f, reach, gap), "complete path, bot at the target: no no-op");
+        Require(!IsPartialNoop(true, 1.0f, 0.4f, reach, gap), "complete path (end gap 0.4 like the fixed tile): no no-op");
+        Require(!IsPartialNoop(false, 0.0f, 18.4f, reach, gap), "other map: never");
+        Require(IsPartialNoop(true, 9.0f, 18.4f, 10.0f, gap) && !IsPartialNoop(true, 0.0f, 18.4f, reach, 20.0f), "tuning applies");
+    }
+
     std::cout << "path_fail_policy_tests passed\n";
     return 0;
 }
