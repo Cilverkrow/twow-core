@@ -1714,6 +1714,8 @@ Unit* MovementAction::GetMover(Player* bot)
 
 bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react, bool noPath, bool ignoreEnemyTargets)
 {
+    partialNoopHit = false;
+
     if (!endPos.isValid())
         return false;
 
@@ -1886,6 +1888,8 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 sPlayerbotAIConfig.pathPartialNoopReach, sPlayerbotAIConfig.pathPartialNoopGap))
         {
             LogPartialNoop(bot, getName(), startPos, endPos, pathEnd);
+            partialNoopHit = true;
+            partialNoopEnd = pathEnd;
             return false;
         }
     }
