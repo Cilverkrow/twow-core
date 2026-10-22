@@ -18,10 +18,13 @@ namespace ai::melee_flee_break
 // two flee dispatches within the window the bot fights until the window has passed, then one new attempt is allowed.
 // Panic (critical health, X3 EmergencyLadder) is not touched. Pure rules, no game types.
 
-// The switch applies: mode 1 = every bot, 2 = cohort B only (CohortPolicy.h); ranged bots keep FleeMultiplier's own break.
-inline bool Applies(std::uint32_t mode, std::uint32_t guidLow, bool ranged)
+// The switch applies: mode 1 = every bot, 2 = cohort B only (CohortPolicy.h); ranged bots keep FleeMultiplier's own break unless
+// rangedToo (AiPlayerbot.Rotation.MeleeFleeBreak.Ranged, death analysis step 2, 21.10.2026: on track C 89-100 % of the ranged flee
+// episodes started by "outnumbered" ended in death, against 3-11 % of their kite episodes - FleeMultiplier's 0.01 does not stop the
+// loop either, the damped flee runs whenever nothing else is executable). Only "outnumbered" is held; the kite triggers are untouched.
+inline bool Applies(std::uint32_t mode, std::uint32_t guidLow, bool ranged, bool rangedToo)
 {
-    return !ranged && ai::cohort::Applies(mode, guidLow);
+    return (!ranged || rangedToo) && ai::cohort::Applies(mode, guidLow);
 }
 
 // The same loop test as FleeMultiplier (FleeStrategy.cpp): the last flee dispatch lies within the window (seconds,
@@ -35,4 +38,5 @@ inline bool Holds(std::int64_t now, std::int64_t lastFleeAttempt, std::uint32_t 
 inline std::atomic<std::uint64_t> held{ 0 };      // trigger evaluations that would have fired but were held
 inline std::atomic<std::uint64_t> breaks{ 0 };    // hold windows started (first held evaluation after a fired or quiet one)
 inline std::atomic<std::uint64_t> allowed{ 0 };   // evaluations that fired for a melee bot the switch applies to
+inline std::atomic<std::uint64_t> heldRanged{ 0 };   // the part of `held` that fell on ranged bots (MeleeFleeBreak.Ranged)
 }
