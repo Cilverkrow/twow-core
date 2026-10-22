@@ -86,7 +86,7 @@ require_text("${policy}" "inline Counters& PartialNoopCounters() { static Counte
 
 # 3. MoveTo2: gated, after the resolved path and its empty check, before the shortcut; fails; logs within budget.
 region("${move_cpp}" "bool MovementAction::MoveTo2(" "\nbool MovementAction::" moveto2)
-region("${moveto2}" "    if (sPlayerbotAIConfig.pathPartialNoop && !noPath && !bot->GetTransport())\n    {" "\n    }\n" gate)
+region("${moveto2}" "    if (sPlayerbotAIConfig.pathPartialNoop && partialNoopScope && !noPath && !bot->GetTransport() && !bot->InBattleGround())\n    {" "\n    }\n" gate)
 require_text("${gate}" "WorldPosition const pathEnd = movePath.getBack();" "path end")
 require_text("${gate}" "bool const sameMap = pathEnd.getMapId() == startPos.getMapId() && pathEnd.getMapId() == endPos.getMapId();" "same map on both sides")
 require_text("${gate}" "if (path_fail::IsPartialNoop(sameMap, sameMap ? startPos.distance(pathEnd) : 0.0f, sameMap ? pathEnd.distance(endPos) : 0.0f,\n                sPlayerbotAIConfig.pathPartialNoopReach, sPlayerbotAIConfig.pathPartialNoopGap))" "decision call")
@@ -123,5 +123,20 @@ require_text("${island}" "[PathIsland] bot=%u level=%u quest=%u npc=%d purpose=%
 require_order("${mtt_cpp}" "bool canMove = MoveTo(mapId, x, y, z, false, false);" "if (!canMove && partialNoopHit)" "line after the move")
 require_order("${mtt_cpp}" "if (!canMove && partialNoopHit)" "        target->IncRetry(true);" "line before the retry")
 count_text("${mtt_cpp}" "[PathIsland]" 1 "one island line")
+
+# 5. Scope (OB-10 review 23.10.2026): only the travel and rpg target moves, never in a battleground. Every other MoveTo
+#    caller (battleground tactics, corpse run, positions, follow) keeps "stand at the nearest point".
+read_source("strategy/actions/MoveToRpgTargetAction.cpp" rpg_cpp)
+require_text("${move_h}" "        bool partialNoopScope = false;" "scope member, default off")
+require_text("${moveto2}" "if (sPlayerbotAIConfig.pathPartialNoop && partialNoopScope && !noPath && !bot->GetTransport() && !bot->InBattleGround())" "gate needs the scope and no battleground")
+count_text("${move_cpp}" "partialNoopScope = true;" 0 "scope set in MovementActions.cpp")
+count_text("${move_cpp}" "partialNoopScope" 1 "scope read once (the gate)")
+require_text("${mtt_cpp}" "    partialNoopScope = true;\n    bool canMove = MoveTo(mapId, x, y, z, false, false);\n    partialNoopScope = false;\n" "travel move in scope")
+count_text("${mtt_cpp}" "partialNoopScope = true;" 1 "travel scope set once")
+region("${rpg_cpp}" "    partialNoopScope = true;" "    partialNoopScope = false;\n" rpg_scope)
+require_text("${rpg_scope}" "couldMove = MoveTo(mapId, movePos.getX(), movePos.getY(), movePos.getZ(), false, false);" "rpg snapped move in scope")
+require_text("${rpg_scope}" "couldMove = MoveTo(mapId, x, y, z, false, false);" "rpg move in scope")
+count_text("${rpg_cpp}" "partialNoopScope = true;" 1 "rpg scope set once")
+count_text("${rpg_cpp}" "partialNoopScope = false;" 1 "rpg scope reset once")
 
 message(STATUS "#575 PartialNoop source contract OK")

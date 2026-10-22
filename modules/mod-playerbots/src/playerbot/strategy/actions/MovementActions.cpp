@@ -1880,7 +1880,7 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     // at that end (navmesh island, e.g. the Tower of Azora interior). Without the switch the shortcut below leaves the bot's
     // own position, MoveTo reports success and the travel retry counter never runs; on, the move fails, so travel targets
     // count the retry, cool down and a turn-in counts as failed (#485 park), rpg targets are dropped.
-    if (sPlayerbotAIConfig.pathPartialNoop && !noPath && !bot->GetTransport())
+    if (sPlayerbotAIConfig.pathPartialNoop && partialNoopScope && !noPath && !bot->GetTransport() && !bot->InBattleGround())
     {
         WorldPosition const pathEnd = movePath.getBack();
         bool const sameMap = pathEnd.getMapId() == startPos.getMapId() && pathEnd.getMapId() == endPos.getMapId();
