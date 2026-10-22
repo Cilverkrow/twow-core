@@ -180,7 +180,9 @@ bool MoveToTravelTargetAction::Execute(Event& event)
         }
     }
 
+    partialNoopScope = true;
     bool canMove = MoveTo(mapId, x, y, z, false, false);
+    partialNoopScope = false;
 
     // twow-repo#575 (QFO 41747, owner 22.10.2026, AiPlayerbot.Path.PartialNoop): the target lies on a navmesh island - one line
     // per bot and target, so every island shows up as a list in the test logs (quest 0 = no quest destination).
