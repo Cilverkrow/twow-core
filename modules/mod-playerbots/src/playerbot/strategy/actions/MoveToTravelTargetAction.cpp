@@ -182,6 +182,22 @@ bool MoveToTravelTargetAction::Execute(Event& event)
 
     bool canMove = MoveTo(mapId, x, y, z, false, false);
 
+    // twow-repo#575 (QFO 41747, owner 22.10.2026, AiPlayerbot.Path.PartialNoop): the target lies on a navmesh island - one line
+    // per bot and target, so every island shows up as a list in the test logs (quest 0 = no quest destination).
+    if (!canMove && partialNoopHit)
+    {
+        GuidPosition const* spawn = dynamic_cast<GuidPosition const*>(target->GetPosition());
+        WorldPosition const& spot = *target->GetPosition();
+        if (islandBook.FirstTime(path_fail::IslandKey(spawn ? spawn->GetRawValue() : 0, target->GetEntry(), spot.getX(), spot.getY())))
+        {
+            QuestTravelDestination const* quest = dynamic_cast<QuestTravelDestination const*>(target->GetDestination());
+            sLog.outBasic("[PathIsland] bot=%u level=%u quest=%u npc=%d purpose=%u map=%u x=%.1f y=%.1f z=%.1f gap=%.1f end_x=%.1f end_y=%.1f end_z=%.1f",
+                bot->GetGUIDLow(), uint32(bot->GetLevel()), quest ? quest->GetQuestId() : 0u, target->GetEntry(),
+                target->GetDestination() ? uint32(target->GetDestination()->GetPurpose()) : 0u, spot.getMapId(), spot.getX(), spot.getY(),
+                spot.getZ(), partialNoopEnd.distance(spot), partialNoopEnd.getX(), partialNoopEnd.getY(), partialNoopEnd.getZ());
+        }
+    }
+
     if (!canMove)
     {
         target->IncRetry(true);

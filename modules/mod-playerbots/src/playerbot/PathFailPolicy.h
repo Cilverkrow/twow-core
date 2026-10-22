@@ -3,10 +3,12 @@
 #include "RoutePrecheckPolicy.h"
 #include "RouteTimePolicy.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace ai::path_fail
 {
@@ -95,6 +97,35 @@ inline bool IsPartialNoop(bool sameMap, float botToPathEnd, float pathEndToTarge
 
 // [MoveTo] state=partial_noop lines: every no-op is counted (failed), the first DefaultLinesPerMinute a minute are logged.
 inline Counters& PartialNoopCounters() { static Counters counters; return counters; }
+
+// [PathIsland] (owner 22.10.2026, "dann fallen uns diese auch in Zukunft auf"): one line per bot and travel target that ends
+// in a partial no-op, so islands show up as a list in the test logs. Key = the target's spawn guid, else entry + position.
+inline std::uint64_t IslandKey(std::uint64_t spawnGuid, std::int32_t entry, float x, float y)
+{
+    if (spawnGuid)
+        return spawnGuid;
+    return (std::uint64_t(std::uint32_t(entry)) << 32) ^ (std::uint64_t(std::uint16_t(std::int32_t(x))) << 16) ^
+        std::uint64_t(std::uint16_t(std::int32_t(y)));
+}
+
+// Per bot: the keys already reported; at most IslandBookMax (the oldest goes first), so a bot never grows it without bound.
+constexpr std::size_t IslandBookMax = 64;
+
+struct IslandBook
+{
+    std::vector<std::uint64_t> keys;
+
+    // True the first time a key is seen (the line is due), false for a key already reported.
+    bool FirstTime(std::uint64_t key)
+    {
+        if (std::find(keys.begin(), keys.end(), key) != keys.end())
+            return false;
+        if (keys.size() >= IslandBookMax)
+            keys.erase(keys.begin());
+        keys.push_back(key);
+        return true;
+    }
+};
 
 // twow-repo#575 (PATH-01 b, AiPlayerbot.Path.TaxiTrace): what bot flights and ship boardings do at runtime. The bot
 // travel graph stores TaxiPath ids from another numbering (0 of 270 flight links carry the right id), and 6 Turtle

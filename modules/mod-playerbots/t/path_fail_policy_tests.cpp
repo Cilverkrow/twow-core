@@ -112,6 +112,23 @@ int main()
         Require(IsPartialNoop(true, 9.0f, 18.4f, 10.0f, gap) && !IsPartialNoop(true, 0.0f, 18.4f, reach, 20.0f), "tuning applies");
     }
 
+    // [PathIsland]: one line per bot and target; the per-bot book is bounded.
+    {
+        Require(IslandKey(2590700, 62634, -9556.95f, -717.49f) == 2590700, "spawn guid is the key");
+        Require(IslandKey(0, 62634, -9556.95f, -717.49f) == IslandKey(0, 62634, -9556.2f, -717.1f), "no guid: entry + whole-yard position");
+        Require(IslandKey(0, 62634, -9556.95f, -717.49f) != IslandKey(0, 62634, -9500.0f, -717.49f), "no guid: another spot is another key");
+        Require(IslandKey(0, 62634, 10.0f, 20.0f) != IslandKey(0, 313, 10.0f, 20.0f), "no guid: another entry is another key");
+
+        IslandBook book;
+        Require(book.FirstTime(2590700), "first time: line due");
+        Require(!book.FirstTime(2590700), "same bot and target: no second line");
+        Require(book.FirstTime(80934), "another target: line due");
+        for (std::uint64_t key = 1; key <= IslandBookMax; ++key)
+            book.FirstTime(1000 + key);
+        Require(book.keys.size() == IslandBookMax, "book bounded");
+        Require(book.FirstTime(2590700), "the oldest key left the book: reported again");
+    }
+
     std::cout << "path_fail_policy_tests passed\n";
     return 0;
 }
