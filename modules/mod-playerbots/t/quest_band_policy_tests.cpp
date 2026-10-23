@@ -225,6 +225,30 @@ int main()
         g = f; g.priorFailures = 0; Require(BandStepDue(g) == StepVerdict::NotDue, "first empty search");
         g = f; g.freeSlots = 4; Require(BandStepDue(g) == StepVerdict::SkipLogFull, "log full");
         g = f; g.freeSlots = 4; g.emptyOffer = false; Require(BandStepDue(g) == StepVerdict::NotDue, "not due beats log full");
+        Require(StepTrigger(f) == std::string("empty_offer"), "today's step: trigger=empty_offer");
+    }
+    // F1 (BandStepAfterEmptySearches, OB-00 23.10.2026): candidate v46.6 - a transient search (death / quest-loop
+    // suppression) after a park reset the failure counter: never due by the EmptyOffer rule; the streak decides.
+    {
+        StepFacts f;
+        f.emptyOffer = false;
+        f.priorFailures = 0;
+        f.freeSlots = 12;
+        f.slotGate = 5;
+        f.emptyStreak = 9;
+        Require(BandStepDue(f) == StepVerdict::NotDue, "F1 off (0): a streak alone is never due");
+        f.streakSteps = 3;
+        f.emptyStreak = 2;
+        Require(BandStepDue(f) == StepVerdict::NotDue, "two failed searches of three");
+        f.emptyStreak = 3;
+        Require(BandStepDue(f) == StepVerdict::Due && StepTrigger(f) == std::string("streak"), "the third: due, trigger=streak");
+        StepFacts g = f; g.emptyStreak = 7; Require(BandStepDue(g) == StepVerdict::Due, "above N: due");
+        g = f; g.openTurnIns = 1; Require(BandStepDue(g) == StepVerdict::NotDue, "streak, but an open turn-in");
+        g = f; g.offered = 1; Require(BandStepDue(g) == StepVerdict::NotDue, "streak, but an offered turn-in");
+        g = f; g.dangerMap = 1; Require(BandStepDue(g) == StepVerdict::NotDue, "streak, but a danger map");
+        g = f; g.freeSlots = 4; Require(BandStepDue(g) == StepVerdict::SkipLogFull, "streak, log full");
+        g = f; g.emptyOffer = true; g.priorFailures = 1; Require(StepTrigger(g) == std::string("empty_offer"), "both: empty_offer wins");
+        Require(BandEmptyStreakValue == std::string("band empty streak") && MaxStreakSteps == 10, "value name and config range");
     }
     // giver filter = the accept rule; giver_done
     Require(GreyGiverSkip(20, 12, 13, false) && !GreyGiverSkip(20, 14, 13, false), "grey quest giver skipped, green kept");
@@ -279,6 +303,30 @@ int main()
         Require(NextRung(ladder, facts(1, 'A', 0, 40, 44, 0.f, 0.f, 0.f)).empty() &&
             FirstReject(NextRung(ladder, facts(1, 'A', 0, 40, 44, 0.f, 0.f, 0.f))) == Reject::NoBand, "no band: no_band");
         Require(CurrentBandMin(ladder, 14, 17) == 15 && CurrentBandMin(ladder, 14, 30) == 0, "current band");
+    }
+    // F2 (BandLadderSameZoneNext): orc L6 at Razor Hill - band 6-9 has only Razor Hill (same zone), 10-12 is 4 levels up
+    {
+        RungFacts f = facts(2, 'H', 1, 6, 14, 340.f, -4686.f, 2000.f);
+        std::vector<Candidate> c = NextRung(ladder, f);
+        Require(c.size() == 1 && c[0].reject == Reject::SameZone, "F2 off: only the same-zone rung, no step");
+        f.sameZoneLead = 3;
+        Require(NextRung(ladder, f).size() == 1, "lead 3: 6 + 3 < 10, still no next band");
+        f.sameZoneLead = 4;
+        c = NextRung(ladder, f);
+        Require(c.size() == 3 && c[0].reject == Reject::SameZone && c[1].reject == Reject::SameZone &&
+            c[2].reject == Reject::None && ladder.rungs[std::size_t(c[2].index)].hubId == 1531,
+            "lead 4: the next band 10-12, Razor Hill again same zone, Crossroads chosen");
+        // a current-band rung outside the zone (only in the searched radius) keeps the lead at 2: no relaxation
+        RungFacts g = facts(2, 'H', 1, 10, 14, 340.f, -4686.f, 6000.f);
+        g.sameZoneLead = 10;
+        c = NextRung(ladder, g);
+        Require(c.size() == 2 && c[0].reject == Reject::SameZone && c[1].reject == Reject::InRadius,
+            "not every rung in the zone: the next band stays out");
+        // the lead never adds a band that is already a candidate (L11: 13-14 within 2 levels anyway)
+        RungFacts h2 = facts(2, 'H', 1, 11, 14, 340.f, -4686.f, 2000.f);
+        std::size_t const before = NextRung(ladder, h2).size();
+        h2.sameZoneLead = 10;
+        Require(NextRung(ladder, h2).size() == before, "lead changes nothing when the next band is in reach");
     }
 
     // ---- trip clock -----------------------------------------------------------------------------------------------

@@ -94,6 +94,8 @@ set(entries
   "QuestFirstProgression.GrindFallbackMinutes|questFirstProgressionGrindFallbackMinutes"
   "QuestFirstProgression.GrindFallbackFailures|questFirstProgressionGrindFallbackFailures"
   "QuestFirstProgression.BandLadder|questFirstProgressionBandLadder"
+  "QuestFirstProgression.BandStepAfterEmptySearches|questFirstProgressionBandStepAfterEmptySearches"
+  "QuestFirstProgression.BandLadderSameZoneNext|questFirstProgressionBandLadderSameZoneNext"
   "QuestFirstProgression.TurnInParkFailures|questFirstProgressionTurnInParkFailures"
   "QuestFirstProgression.MinLevelForCrossMapQuestRoute|questFirstProgressionMinLevelForCrossMapQuestRoute"
   "QuestRescue.KeepRequestWhenFull|questRescueKeepRequestWhenFull"

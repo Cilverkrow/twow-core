@@ -1253,6 +1253,18 @@ AiPlayerbot.QuestFirstProgression.BandLadder = 0
 # band step off ([HubLadder] state=off reason=...); a row whose hub has no travel node of that name within 2 yd is
 # skipped. The boot line [HubLadder] state=loaded carries fnv= (FNV-1a 32 of the file bytes).
 AiPlayerbot.QuestFirstProgression.BandLadderFile = ""
+# twow-repo#601 S5a F1 (OB-00 23.10.2026, candidate v46.6: 71 % of the failed searches of the band cohort were transient -
+# death / quest-loop suppression - so the EmptyOffer rule fired for 5 of 88 bots while they stood through the backoff).
+# With BandLadder on, the band step is also due after this many quest searches in a row without a route, whatever their
+# class (still no open or offered turn-in, no danger map). Only a found route or a band step resets the streak; a park
+# never does. The step line carries trigger=empty_offer|streak streak=N.
+#   0 = off (default: only the EmptyOffer rule), 1..10; other values act like 0 (one error line).
+AiPlayerbot.QuestFirstProgression.BandStepAfterEmptySearches = 0
+# twow-repo#601 S5a F2: when every rung of the bot's band lies in the zone it stands in (no_rung detail=same_zone), the
+# next band is a candidate from this many levels below its min on, instead of 2. A hub in an area clearly above the bot
+# is still vetoed (hub_above).
+#   0 = off (default), 1..10; other values act like 0 (one error line).
+AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
 # twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
 # Enable = 1: a persistent roster bot on its own (no real player leads it) does not take quests it cannot finish - not
 # from a quest giver (accept all, accept packet, quest details dialog), not from a quest item in its bags - and does not

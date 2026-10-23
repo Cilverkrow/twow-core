@@ -755,6 +755,19 @@ bool PlayerbotAIConfig::Initialize()
         questFirstProgressionBandLadder = 0;
     }
     questFirstProgressionBandLadderFile = config.GetStringDefault("AiPlayerbot.QuestFirstProgression.BandLadderFile", "");
+    // twow-repo#601 S5a F1 / F2 (OB-00 23.10.2026): the band streak trigger and the same-zone lead, 0 = off, 1..10.
+    questFirstProgressionBandStepAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandStepAfterEmptySearches", 0);
+    if (questFirstProgressionBandStepAfterEmptySearches > 10)
+    {
+        sLog.outError("[QuestBand] config key=BandStepAfterEmptySearches value=%u result=off (0 off, 1..10)", questFirstProgressionBandStepAfterEmptySearches);
+        questFirstProgressionBandStepAfterEmptySearches = 0;
+    }
+    questFirstProgressionBandLadderSameZoneNext = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext", 0);
+    if (questFirstProgressionBandLadderSameZoneNext > 10)
+    {
+        sLog.outError("[QuestBand] config key=BandLadderSameZoneNext value=%u result=off (0 off, 1..10)", questFirstProgressionBandLadderSameZoneNext);
+        questFirstProgressionBandLadderSameZoneNext = 0;
+    }
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
     questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
@@ -1521,6 +1534,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
             {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
             {"QuestFirstProgression.BandLadder", Value(questFirstProgressionBandLadder)},
+            {"QuestFirstProgression.BandStepAfterEmptySearches", Value(questFirstProgressionBandStepAfterEmptySearches)},
+            {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
