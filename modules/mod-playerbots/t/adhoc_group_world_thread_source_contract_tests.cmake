@@ -35,6 +35,46 @@ read_source("strategy/actions/LeaveGroupAction.cpp" leave)
 read_source("PlayerbotAIConfig.cpp" config_source)
 read_source("PlayerbotAIConfig.h" config_header)
 read_source("aiplayerbot.conf.dist.in" config_template)
+read_source("strategy/actions/AcceptInvitationAction.h" accept)
+read_source("PlayerbotScripts.cpp" scripts)
+
+if(NOT DEFINED CORE_SOURCE_DIR)
+  message(FATAL_ERROR "#628 ad-hoc world thread: CORE_SOURCE_DIR is required")
+endif()
+file(READ "${CORE_SOURCE_DIR}/src/game/World.cpp" world)
+file(READ "${CORE_SOURCE_DIR}/src/game/Maps/MapManager.cpp" map_manager)
+file(READ "${CORE_SOURCE_DIR}/src/game/WorldSession.h" session)
+file(READ "${CORE_SOURCE_DIR}/src/game/Group/Group.cpp" group_cpp)
+string(REPLACE "\r" "" world "${world}")
+string(REPLACE "\r" "" map_manager "${map_manager}")
+string(REPLACE "\r" "" session "${session}")
+string(REPLACE "\r" "" group_cpp "${group_cpp}")
+
+function(require_order text first second description)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if(a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "#628 ad-hoc world thread: ${description}: '${first}' before '${second}'")
+  endif()
+endfunction()
+
+# Why the world thread (OB-10 review): the core handles group opcodes there, and the manager runs when no map
+# thread updates a bot - the world script hook fires after sMapMgr.Update, which returns only after the instance
+# pool and continents.wait(). The roster branch of UpdateAIInternal is reached from that hook (CheckBgFill, #517).
+require_text("${session}" "PACKET_PROCESS_GROUP = PACKET_PROCESS_WORLD," "group opcodes are world-thread opcodes")
+require_order("${world}" "    sMapMgr.Update(diff);" "ForEachEnabledHook(WORLDHOOK_ON_UPDATE" "world script hook after the map update")
+require_order("${map_manager}" "continents.wait();" "asyncMapUpdating = false;" "map update returns after the continents")
+require_text("${scripts}" "sRandomPlayerbotMgr.UpdateAI(diff);" "bot manager driven by the world script")
+
+# The invitee's queued SMSG_GROUP_INVITE event later runs "accept invitation" with no pending invite: the accept
+# cleared it (Group::RemoveInvite -> SetGroupInvite(nullptr)), and the action returns before any side effect.
+require_text("${group_cpp}" "player->SetGroupInvite(nullptr);" "accept clears the pending invite")
+require_text("${accept}" "            Group* grp = bot->GetGroupInvite();
+            if (!grp)
+                return false;" "accept without an invite is a no-op")
+
+# Registry stays bounded: entries of groups that are gone are forgotten every pass.
+require_text("${manager}" "Groups().ForgetGone([](std::uint32_t groupId) { return sObjectMgr.GetGroupById(groupId) != nullptr; });" "registry cleanup")
 
 # Key, default off, documented.
 require_text("${config_header}" "bool botGroupsAdhocWorldThread = false;" "member default off")

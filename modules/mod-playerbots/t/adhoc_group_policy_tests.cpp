@@ -106,6 +106,14 @@ int main()
     registry.Forget(55);
     Require(!registry.Find(55, entry), "a forgotten group is ordinary again");
 
+    // #628: entries of groups that no longer exist go, the others stay.
+    registry.Register(60, key, 100);
+    registry.Register(61, key, 100);
+    registry.Register(62, key, 100);
+    Require(registry.ForgetGone([](std::uint32_t id) { return id != 61; }) == 1, "one gone group forgotten");
+    Require(registry.Find(60, entry) && !registry.Find(61, entry) && registry.Find(62, entry), "only the gone group left the registry");
+    Require(registry.ForgetGone([](std::uint32_t) { return true; }) == 0, "nothing gone, nothing forgotten");
+
     std::cout << "adhoc_group_policy_tests passed\n";
     return 0;
 }

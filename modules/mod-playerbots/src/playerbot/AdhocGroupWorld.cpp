@@ -263,9 +263,11 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     FlushMinute(now);  // a finished minute is logged before this pass counts
     auto const passStart = std::chrono::steady_clock::now();
 
-    // Bots that logged out since the last pass take their leave tracking with them.
+    // Bots that logged out since the last pass take their leave tracking with them,
+    // and registry entries of groups disbanded elsewhere go (bounded registry).
     for (auto it = tracks.begin(); it != tracks.end();)
         it = bots.count(it->first) ? std::next(it) : tracks.erase(it);
+    Groups().ForgetGone([](std::uint32_t groupId) { return sObjectMgr.GetGroupById(groupId) != nullptr; });
 
     // 1. Leave rules for every bot in an ad-hoc group.
     std::vector<Player*> eligible;

@@ -198,6 +198,18 @@ public:
         groups.erase(groupId);
     }
 
+    // twow-repo#628: drop the entries whose group is gone (disbanded outside the
+    // leave rules: logout, core disband). Returns how many went.
+    template <typename Exists>
+    std::size_t ForgetGone(Exists exists)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        std::size_t const before = groups.size();
+        for (auto it = groups.begin(); it != groups.end();)
+            it = exists(it->first) ? std::next(it) : groups.erase(it);
+        return before - groups.size();
+    }
+
 private:
     mutable std::mutex mutex;
     std::unordered_map<std::uint32_t, Entry> groups;

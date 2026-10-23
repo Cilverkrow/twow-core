@@ -1613,6 +1613,7 @@ add_test(NAME adhoc_group_source_contract
 add_test(NAME adhoc_group_world_thread_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
     -P "${PB_MODULE_DIR}/t/adhoc_group_world_thread_source_contract_tests.cmake")
 
 # #391: roster login waves after an L1 reset.
