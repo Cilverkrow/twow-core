@@ -306,6 +306,12 @@ bool IsFollower(PlayerbotAI* ai)
     return ai && ai->questGroupRole.load() == 1;
 }
 
+void NoteLeaderStuck(PlayerbotAI* ai)
+{
+    if (ai && ai->questGroupRole.load() == 2)
+        ai->questGroupLeaderStuck.store(true);
+}
+
 QueueStore& Queue()
 {
     static QueueStore store;
@@ -331,6 +337,7 @@ void WorldThreadManager::Release(Player* bot, Member const& m, bool leaveGroup)
     if (leaveGroup)
         LeaveCore(bot);
     ai->questGroupRole.store(0);
+    ai->questGroupLeaderStuck.store(false);
     // LeaveGroupAction::Leave does not reset a free bot with a bot master; the S7 strategy set must go in any case.
     ai->SetMaster(nullptr);
     ai->ResetStrategies();
@@ -428,7 +435,8 @@ void WorldThreadManager::Tend(std::map<std::uint32_t, Player*> const& bots, Help
     f.members = std::uint32_t(present.size());
     f.realPlayer = realPlayer;
     f.leaderLost = leaderLost || !leader;
-    f.leaderStuck = leader && leader->GetMapId() != g.mapId;
+    // PosStuck flagged the leader (CLI-Deep hook; PosStuck never changes the map), or the leader left the map.
+    f.leaderStuck = leader && (Ai(leader)->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);
     f.abandoned = abandoned;
     f.allComplete = !present.empty();
     f.allTurnedIn = !present.empty();
@@ -567,6 +575,7 @@ bool WorldThreadManager::FormOne(std::map<std::uint32_t, Player*> const& bots, s
 
     g.members.push_back(lm);
     Ai(leader)->questGroupRole.store(2);
+    Ai(leader)->questGroupLeaderStuck.store(false);
     memberOf[g.leader] = g.groupId;
     for (Member& m : joined)
     {

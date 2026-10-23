@@ -102,3 +102,9 @@ require_text("${share}" "return bot->GetGroup() && !ai->HasActivePlayerMaster() 
 require_text("${world}" "[QuestGroup] state=formed group=%u quest=%u size=%u leader=%u levels=%u-%u objective=%d cohort=%c mixed=%u" "formed line")
 require_text("${world}" "[QuestGroup] state=dissolved group=%u quest=%u size=%u reason=%s minutes=%u phase=%s turned_in=%u cohort=%c mixed=%u" "dissolved line")
 require_text("${world}" "[QuestGroup] minute candidates=%u quests=%u formed=%u active=%u dissolved=%u queued=%u scan_us_max=%u passes=%u mode=%u" "minute line")
+
+# Leader stuck: PosStuck never changes the map, so the CLI-Deep hook flags the leader lock-free and the manager takes it.
+require_text("${ai_h}" "std::atomic<bool> questGroupLeaderStuck{ false };" "leader-stuck atomic")
+require_text("${world}" "if (ai && ai->questGroupRole.load() == 2)
+        ai->questGroupLeaderStuck.store(true);" "only a leader is flagged")
+require_text("${world}" "f.leaderStuck = leader && (Ai(leader)->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);" "manager takes the flag")
