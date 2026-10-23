@@ -115,6 +115,17 @@ int main()
     q.ForgetStale(5000, 600);
     Require(q.Size() == 0, "stale entries go");
 
+    // The leader's approach (PosStuck does not see forced targets): 5 yd closer resets, 10 min without = stuck.
+    ApproachWatch w;
+    Require(!w.Observe(1, 500.0f, true, 1000), "first look starts the window");
+    Require(!w.Observe(1, 497.0f, true, 1300), "3 yd closer: no reset, not yet stuck");
+    Require(w.Observe(1, 497.0f, true, 1600), "10 min without 5 yd: stuck");
+    Require(!w.Observe(1, 490.0f, true, 1700), "5 yd closer again: fresh window");
+    Require(!w.Observe(1, 490.0f, true, 2299), "within the new window");
+    Require(!w.Observe(1, 490.0f, false, 2400), "arrived (not travelling): fresh window");
+    Require(!w.Observe(2, 900.0f, true, 2500) && !w.Observe(2, 900.0f, true, 3099), "new target: fresh window");
+    Require(w.Observe(2, 899.0f, true, 3100), "new target stalls too");
+
     std::cout << "quest_group_policy_tests passed\n";
     return 0;
 }

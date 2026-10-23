@@ -32,6 +32,7 @@ enum class Kind : std::uint8_t
     Idle,       // alive, not in combat, no active travel target, not flying
     Dead,       // dead or ghost
     Parked,     // parked roster bot (rndbot park, sleeping at an inn)
+    Group,      // twow-repo#627: follower in an S7 help group (no own travel target, follows its leader)
     Count
 };
 
@@ -71,6 +72,7 @@ inline char const* KindName(Kind kind)
         case Kind::Idle: return "idle";
         case Kind::Dead: return "dead";
         case Kind::Parked: return "parked";
+        case Kind::Group: return "group";
         default: return "none";
     }
 }
@@ -91,6 +93,7 @@ struct State
     bool inCombat = false;
     bool combatSinceSample = false;
     bool taxiFlying = false;
+    bool helpFollower = false;   // twow-repo#627: follower in an S7 help group
     std::uint8_t status = 0;   // TravelTarget status, 0 without a target
     Dest dest = Dest::None;
     float moved = 1e9f;
@@ -104,6 +107,8 @@ inline Kind Classify(State const& s)
         return Kind::Dead;
     if (s.inCombat)
         return Kind::Combat;
+    if (s.helpFollower)
+        return Kind::Group;   // twow-repo#627: no own target, so neither idle nor stuck
     if (TravelActive(s.status) && s.dest != Dest::None)
     {
         if (s.status == StatusTravel && !s.taxiFlying && s.moved < StuckYards)
@@ -188,7 +193,7 @@ struct Clock
 };
 
 // "[BotActivity] bot=12 level=14 zone=40 hour=493512 quest=1800 grind=300 grind_idle=0 stuck=60 combat=840 other=120
-// idle=420 dead=0 parked=0 gap=0" - seconds of the clock hour `hour` (unix time / 3600).
+// idle=420 dead=0 parked=0 group=0 gap=0" - seconds of the clock hour `hour` (unix time / 3600).
 inline std::string FormatLine(std::uint32_t bot, std::uint32_t level, std::uint32_t zone, Clock const& c)
 {
     std::string line = "[BotActivity] bot=" + std::to_string(bot) + " level=" + std::to_string(level) + " zone=" +
@@ -240,7 +245,7 @@ inline Counters& Global()
     return counters;
 }
 
-// "[BotActivityMin] L10-14=n/quest/grind/grind_idle/stuck/combat/other/idle/dead/parked L15-19=..." - per band with
+// "[BotActivityMin] L10-14=n/quest/grind/grind_idle/stuck/combat/other/idle/dead/parked/group L15-19=..." - per band with
 // samples this minute: the sample count and the credited seconds per kind. One line a minute; empty bands are left out.
 inline std::string FormatMinuteLine(Snapshot const& s)
 {

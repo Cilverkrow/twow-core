@@ -557,6 +557,7 @@ void PlayerbotAI::SampleActivity(uint32 now)
     state.inCombat = bot->IsInCombat();
     state.combatSinceSample = activityClock.TakeCombat();
     state.taxiFlying = bot->IsTaxiFlying();
+    state.helpFollower = questGroupRole.load() == 1;   // twow-repo#627 S7 follower: no own target
     state.moved = activityClock.Move(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
     ai::bot_activity::Kind const kind = ai::bot_activity::Classify(state);
 

@@ -267,6 +267,38 @@ inline Step Decide(GroupFacts const& f, Timers const& t)
     return s;
 }
 
+// --- the leader's approach to its forced target -------------------------------------------------------------------------------
+// PosStuck and S3c skip forced targets (TravelMgr returns at IsForced()), so the manager watches the leader itself with the
+// PosStuck rule: travelling, and not ApproachYards closer to the same target for StallSeconds = stuck (an island, no line
+// of sight). Arriving (not travelling) or a new target starts the window again.
+constexpr float ApproachYards = 5.0f;
+constexpr std::uint32_t LeaderStallSeconds = 600;
+
+struct ApproachWatch
+{
+    std::uintptr_t dest = 0;
+    float best = 0.0f;
+    std::uint32_t since = 0;
+
+    bool Observe(std::uintptr_t target, float dist, bool travelling, std::uint32_t now)
+    {
+        if (target != dest || !travelling || !since)
+        {
+            dest = target;
+            best = dist;
+            since = now;
+            return false;
+        }
+        if (dist + ApproachYards <= best)
+        {
+            best = dist;
+            since = now;
+            return false;
+        }
+        return now - since >= LeaderStallSeconds;
+    }
+};
+
 // --- per (bot, quest): queue age and attempts ---------------------------------------------------------------------------------
 // The manager is the only writer (world thread); CLI-Deep's hooks (S5a trigger, QFO) read the queue age from map threads,
 // so the store is mutex-protected and read rarely (not per tick). Bounded: a full store drops its oldest half.

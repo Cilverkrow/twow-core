@@ -76,6 +76,7 @@ private:
         std::uint32_t forces = 0;
         char cohort = 'A';
         bool mixed = false;
+        ApproachWatch leaderWatch;   // the leader's approach to its forced target (PosStuck does not see forced targets)
     };
 
     struct Minute
