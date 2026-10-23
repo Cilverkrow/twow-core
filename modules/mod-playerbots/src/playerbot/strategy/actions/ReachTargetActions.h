@@ -9,6 +9,7 @@
 #include "playerbot/strategy/values/MoveStyleValue.h"
 #include "GenericSpellActions.h"
 #include "playerbot/PlayerbotFactory.h"
+#include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose)
 
 namespace ai
 {
@@ -65,7 +66,10 @@ namespace ai
                     // they cast. The 0.75 factor keeps a buffer for target movement
                     // while still being well within casting distance.
                     const float preferredDist = range * 0.75f;
-                    chaseDist = inLos ? preferredDist : (isFriend ? std::min(distanceToTarget * 0.9f, preferredDist) : preferredDist);
+                    // twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose): a hostile target out of sight is chased closer too
+                    // (ReachLosPolicy.h); off: as before (75 % of the range, so a bot already closer never moved).
+                    chaseDist = ai::reach_los::ChaseDistance(inLos, isFriend, sPlayerbotAIConfig.rotationReachLosClose, distanceToTarget,
+                        preferredDist);
                     chaseDist = std::max(chaseDist - sPlayerbotAIConfig.contactDistance, 0.0f);
                 }
 
