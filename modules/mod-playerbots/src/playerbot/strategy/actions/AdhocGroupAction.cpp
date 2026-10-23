@@ -1,5 +1,6 @@
 #include "playerbot/playerbot.h"
 #include "AdhocGroupAction.h"
+#include "playerbot/AdhocGroupWorld.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
@@ -8,94 +9,20 @@
 #include <algorithm>
 
 using namespace ai;
-
-namespace
-{
-uint32 ObjectiveCounter(Player* player, adhoc_group::ObjectiveKey const& key)
-{
-    QuestStatusMap& statusMap = player->getQuestStatusMap();
-    auto const it = statusMap.find(key.questId);
-    if (it == statusMap.end() || key.objective >= QUEST_OBJECTIVES_COUNT)
-        return 0;
-    return it->second.m_itemcount[key.objective] + it->second.m_creatureOrGOcount[key.objective];
-}
-
-bool ObjectiveDone(Player* player, adhoc_group::ObjectiveKey const& key)
-{
-    Quest const* quest = sObjectMgr.GetQuestTemplate(key.questId);
-    QuestStatusMap& statusMap = player->getQuestStatusMap();
-    auto const it = statusMap.find(key.questId);
-    if (!quest || it == statusMap.end() || key.objective >= QUEST_OBJECTIVES_COUNT)
-        return true;
-    if (it->second.m_status == QUEST_STATUS_COMPLETE)
-        return true;
-    return it->second.m_itemcount[key.objective] >= quest->ReqItemCount[key.objective] &&
-        it->second.m_creatureOrGOcount[key.objective] >= quest->ReqCreatureOrGOCount[key.objective];
-}
-
-void GroupLevels(Group* group, uint32& minLevel, uint32& maxLevel)
-{
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-        if (Player* member = ref->getSource())
-        {
-            minLevel = std::min(minLevel, member->GetLevel());
-            maxLevel = std::max(maxLevel, member->GetLevel());
-        }
-}
-
-bool AllRosterBots(Group* group)
-{
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->getSource();
-        PlayerbotAI* memberAi = member ? GetBotAI(member) : nullptr;
-        if (!member || !memberAi || memberAi->IsRealPlayer() || !sRandomPlayerbotMgr.IsPersistentRosterMember(member->GetGUIDLow()))
-            return false;
-    }
-    return true;
-}
-}
+using ai::adhoc_group::AllRosterBots;
+using ai::adhoc_group::CurrentObjective;
+using ai::adhoc_group::GroupLevels;
+using ai::adhoc_group::IsCandidateBot;
+using ai::adhoc_group::ObjectiveCounter;
+using ai::adhoc_group::ObjectiveDone;
 
 bool AdhocGroupAction::isUseful()
 {
-    return sPlayerbotAIConfig.botGroupsEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+    // twow-repo#628: with AdHoc.WorldThread = 1 the world-thread manager forms and
+    // leaves the ad-hoc groups; this map-thread action then does nothing.
+    return sPlayerbotAIConfig.botGroupsEnabled && !sPlayerbotAIConfig.botGroupsAdhocWorldThread &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
         !ai->HasRealPlayerMaster() && !bot->InBattleGround() && !bot->InBattleGroundQueue();
-}
-
-adhoc_group::ObjectiveKey AdhocGroupAction::CurrentObjective(Player* player) const
-{
-    adhoc_group::ObjectiveKey key;
-    PlayerbotAI* playerAi = GetBotAI(player);
-    if (!playerAi)
-        return key;
-
-    TravelTarget* target = playerAi->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
-    if (!target || !target->IsActiveForDeathAttribution())
-        return key;
-
-    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(target->GetDestination());
-    if (!objective || player->GetQuestStatus(objective->GetQuestId()) != QUEST_STATUS_INCOMPLETE)
-        return key;
-
-    key.questId = objective->GetQuestId();
-    key.objective = objective->GetObjective();
-    return key;
-}
-
-bool AdhocGroupAction::IsCandidateBot(Player* player) const
-{
-    // Roster bot, no real player in charge, not in an instance, battleground or raid.
-    PlayerbotAI* playerAi = GetBotAI(player);
-    if (!playerAi || playerAi->IsRealPlayer() || playerAi->HasRealPlayerMaster())
-        return false;
-    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()))
-        return false;
-    if (player->InBattleGround() || player->GetMap()->IsDungeon())
-        return false;
-    if (Group* group = player->GetGroup())
-        if (group->IsRaidGroup() || group->isBGGroup())
-            return false;
-    return true;
 }
 
 void AdhocGroupAction::SendInvite(Player* inviter, Player* invitee) const

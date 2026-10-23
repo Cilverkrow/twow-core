@@ -1609,6 +1609,12 @@ add_test(NAME adhoc_group_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/adhoc_group_source_contract_tests.cmake")
 
+# #628: ad-hoc groups form and leave on the world thread (AdHoc.WorldThread).
+add_test(NAME adhoc_group_world_thread_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/adhoc_group_world_thread_source_contract_tests.cmake")
+
 # #391: roster login waves after an L1 reset.
 add_executable(login_wave_policy_tests
   "${PB_MODULE_DIR}/t/login_wave_policy_tests.cpp")

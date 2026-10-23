@@ -130,7 +130,9 @@ set(entries
   "EnableActionLog|enableActionLog"
   "LogInGroupOnly|logInGroupOnly"
   "Grind.GreyByLevel|grindGreyByLevel"
-  "Grind.QuestFirstOrder|grindQuestFirstOrder")
+  "Grind.QuestFirstOrder|grindQuestFirstOrder"
+  "BotGroups.Enabled|botGroupsEnabled"
+  "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread")
 foreach(entry IN LISTS entries)
   string(REPLACE "|" ";" parts "${entry}")
   list(GET parts 0 key)
