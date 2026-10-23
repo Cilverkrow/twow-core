@@ -6,6 +6,7 @@
 #include "DestinationDeathPolicy.h"
 #include "QuestLoopPolicy.h"
 #include "AreaLevelPolicy.h"
+#include "PosStuckPolicy.h"
 #include <mutex>
 
 #include "strategy/AiObject.h"
@@ -488,6 +489,9 @@ namespace ai
         // #307 zone escape: the destination that led into a zone clearly above
         // the bot's level is skipped like a death-suppressed one.
         void SuppressCurrentDestination(uint32 durationMs);
+        // twow-repo#594 (AiPlayerbot.Path.PosStuck): the travel move just failed through PartialNoop (MoveToTravelTargetAction) -
+        // that rule owns the case, the position guard restarts its window.
+        void NotePartialNoopHit() { posStuck.Reset(); }
 	private:
         // #329: one visible [QuestCommit] line per commitment change of a
         // roster bot's quest target, throttled per event, reason and target.
@@ -540,6 +544,12 @@ namespace ai
         void OnNearTurnInStall(uint32 questId);
         // S3c: switch on, a finished quest's turn-in, the bot inside TurnInNearRadius of the taker on its map.
         bool IsNearTurnInStall();
+        // twow-repo#594 (AiPlayerbot.Path.PosStuck): the position guard's window for the current travel target and the bot's
+        // episode series (in memory only, one each per bot).
+        pos_stuck::State posStuck;
+        pos_stuck::Episodes posStuckEpisodes;
+        // Observes the travel target in TRAVEL; true when an episode ended it (the caller returns).
+        bool ObservePosStuck();
 	};
 
 	//General container for all travel destinations.

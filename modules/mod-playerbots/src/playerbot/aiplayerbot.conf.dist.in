@@ -1388,6 +1388,25 @@ AiPlayerbot.Path.StartZoneExactBounds = 0
 # target snapped onto the navmesh (5 yd), at any distance; a far target whose point cannot be snapped keeps the
 # raw point. 0 = the raw point (snapped only as a check below sight distance), default.
 AiPlayerbot.Path.RpgTargetSnap = 0
+# twow-repo#594 (OB-00 23.10.2026, BEHAVIOUR CHANGE, "nach Abnahme an"): the position guard. QFO-clean: a bot stood 2 h at
+# one spot in the Echo Ridge Mine with a validated route to its taker; fights restarted the turn-in stall window, S3c only
+# looks near the taker, the kills counted as progress for the rescue. 1 = for a roster bot on its own (alive, not on a
+# taxi or transport, no battleground or instance, not resting) a travel target in TRAVEL on the bot's map that it has not
+# got Progress yards closer to within Minutes (fights count into the window; it never fires during a fight, only right
+# after it) ends: [PosStuck] state=detect, then the target is parked (a finished quest's turn-in: #485 park reason=
+# structural_pos_stuck; an objective: a quest loop failure; every target: suppressed for TurnInParkSeconds) and left.
+# The 2nd episode within EpisodeMinutes of the previous one also moves the bot back to the last point where it got
+# closer to a target (5..300 yd away, same map; else the home bind), the 3rd and later the home bind; at most one move
+# per bot in RateMinutes (else park only). A move only if the bot itself stood (net displacement over the window below
+# 20 yd; a long detour is parked only), and the home bind only when it lies on the bot's map and zone (after a #587
+# rebind it may not: [PosStuck] state=teleport_skipped reason=bind_far). Never the start-zone rescue (#587). A travel target that PartialNoop failed
+# (Path.PartialNoop) restarts the window. [PosStuck] summary detect= unstuck= teleport= logged= once a minute, 30 lines
+# a minute. Minutes 2..120 (10), Progress 1..50 yd (5), EpisodeMinutes 5..240 (30), RateMinutes 5..240 (30). 0 = off.
+AiPlayerbot.Path.PosStuck = 0
+AiPlayerbot.Path.PosStuck.Minutes = 10
+AiPlayerbot.Path.PosStuck.Progress = 5
+AiPlayerbot.Path.PosStuck.EpisodeMinutes = 30
+AiPlayerbot.Path.PosStuck.RateMinutes = 30
 # twow-repo#575 (PATH-01 b, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach Abnahme
 # an): 1 = every bot flight attempt (UseTaxi) is counted by result - ok, noPath (stored TaxiPath id unknown), noNpc (no
 # flight master in reach), tooFar (more than 31.6 yd from the start node of the stored path), failed - and every wait at a
