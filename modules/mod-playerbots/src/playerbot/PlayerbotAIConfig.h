@@ -851,6 +851,13 @@ public:
     uint32 questFirstProgressionBandLadder = 0;
     // Path of hub-ladder.tsv; "" = ladder off. Read once at boot behind the switch, fail closed (QuestBand.cpp).
     std::string questFirstProgressionBandLadderFile;
+    // twow-repo#601 S5a F1 (OB-00 23.10.2026, candidate v46.6 root cause): the band step is also due after this many quest
+    // searches in a row without a route, whatever their class; only a found route or a band step resets the streak, a park
+    // never does. 0 = off (default: only the EmptyOffer rule), 1..10; other values act like 0.
+    uint32 questFirstProgressionBandStepAfterEmptySearches = 0;
+    // twow-repo#601 S5a F2: when every rung of the bot's band lies in the zone it stands in, the next band is a candidate
+    // from this many levels below its min on (instead of 2). 0 = off (default), 1..10; other values act like 0.
+    uint32 questFirstProgressionBandLadderSameZoneNext = 0;
     // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
     // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
     bool questFeasibilityEnable = false;

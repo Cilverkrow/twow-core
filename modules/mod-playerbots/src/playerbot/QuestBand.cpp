@@ -510,6 +510,10 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     facts.priorFailures = AI_VALUE2(int, "manual int", "quest route failures");
     facts.freeSlots = AI_VALUE(uint8, "free quest log slots");
     facts.slotGate = AI_VALUE(bool, "can fight equal") ? 5 : 10;
+    // F1 (BandStepAfterEmptySearches): the failed searches in a row, this one included (counted by the caller, reset only
+    // by a found route or a band step).
+    facts.emptyStreak = uint32(std::max(0, AI_VALUE2(int, "manual int", qb::BandEmptyStreakValue)));
+    facts.streakSteps = sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches;
 
     qb::StepVerdict const verdict = qb::BandStepDue(facts);
     if (verdict == qb::StepVerdict::NotDue)
@@ -544,6 +548,7 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     rungFacts.x = bot->GetPositionX();
     rungFacts.y = bot->GetPositionY();
     rungFacts.searchedRadius = ai::quest_search::GiverRadius(level, searchedStage);
+    rungFacts.sameZoneLead = sPlayerbotAIConfig.questFirstProgressionBandLadderSameZoneNext;
     std::vector<qb::Candidate> candidates = qb::NextRung(ladder, rungFacts);
     int32 chosen = -1;
     for (qb::Candidate& candidate : candidates)
@@ -594,7 +599,8 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     ai->RequestQuestRouteReset(ai::quest_failure_class::ResetBandStep);
     PlayerbotAI::NoteBand(uint8(qb::EvStep), cohortB);
     head.toHub = rung.hubId;
-    sLog.outBasic("%s", qb::FormatStep(head, rung, dist, tripSeconds, rungFacts.searchedRadius, facts.priorFailures).c_str());
+    sLog.outBasic("%s trigger=%s streak=%u", qb::FormatStep(head, rung, dist, tripSeconds, rungFacts.searchedRadius,
+        facts.priorFailures).c_str(), qb::StepTrigger(facts), facts.emptyStreak);
     return true;
 }
 
