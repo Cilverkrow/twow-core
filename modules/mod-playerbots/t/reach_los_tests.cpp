@@ -43,12 +43,15 @@ int main()
     Require(Near(ChaseDistance(false, false, true, 100.0f, preferred, tooClose).distance, preferred), "on, far: capped at preferred");
     // The floor: a caster without min range never closer than tooCloseDistance; a hunter never inside its dead zone.
     Chase const nearCaster = ChaseDistance(false, false, true, 6.0f, preferred, Floor(0.0f, tooClose));
-    Require(Near(nearCaster.distance, 5.0f) && nearCaster.kind == Kind::Floored, "caster at 6 yd: floored at 5 (not 3)");
+    Require(Near(nearCaster.distance, 5.0f) && nearCaster.kind == Kind::Floored, "caster at 6 yd: walks in to 5 (not 3)");
+    Chase const insideCaster = ChaseDistance(false, false, true, 4.0f, preferred, Floor(0.0f, tooClose));
+    Require(Near(insideCaster.distance, 5.0f) && insideCaster.kind == Kind::Stood, "caster at 4 yd: already inside the floor, stood");
     Chase const hunter = ChaseDistance(false, false, true, 12.0f, preferred, Floor(8.0f, tooClose));
-    Require(Near(hunter.distance, 8.0f) && hunter.kind == Kind::Floored, "hunter at 12 yd: floored at its 8 yd min range");
+    Require(Near(hunter.distance, 8.0f) && hunter.kind == Kind::Floored, "hunter at 12 yd: walks in to its 8 yd min range");
+    Require(ChaseDistance(false, false, true, 8.0f, preferred, Floor(8.0f, tooClose)).kind == Kind::Stood, "hunter at its min range: stood");
     // d near 0 (CLI-ROT gap): the floor holds, no negative or zero chase.
     Chase const zero = ChaseDistance(false, false, true, 0.0f, preferred, Floor(0.0f, tooClose));
-    Require(Near(zero.distance, 5.0f) && zero.kind == Kind::Floored, "d = 0: floored");
+    Require(Near(zero.distance, 5.0f) && zero.kind == Kind::Stood, "d = 0: stood (never closer than the floor)");
     // A floor above preferred (tiny-range spell) never pushes the bot out beyond preferred.
     Require(Near(ChaseDistance(false, false, true, 3.0f, 4.0f, 8.0f).distance, 4.0f), "floor capped at preferred");
     Require(Near(Floor(8.0f, tooClose), 8.0f) && Near(Floor(0.0f, tooClose), 5.0f), "floor source");
@@ -59,7 +62,8 @@ int main()
     Require(Applies(2, 5) && !Applies(2, 4), "mode 2: odd guid only");
     Require(!Applies(7, 5), "unknown mode: off");
 
-    Require(FormatMinuteLine(2, 0, 12, 3, 4) == "[ReachLos] minute mode=2 closed_A=0 closed_B=12 floored=3 in_los_after=4", "minute line");
+    Require(FormatMinuteLine(2, 0, 12, 3, 1, 5, 4) ==
+        "[ReachLos] minute mode=2 closed_A=0 closed_B=12 floored=3 stood=1 episodes=5 in_los_after=4", "minute line");
 
     std::cout << "reach_los_tests passed\n";
     return 0;

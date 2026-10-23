@@ -51,19 +51,8 @@ namespace ai
                 const bool inLos = bot->IsWithinLOSInMap(target, true);
                 const bool isFriend = sServerFacade.IsFriendlyTo(bot, target);
 
-                // twow-repo#594 (ReachLosClose, CLI-ROT): a "closed" evaluation whose target came into sight within
-                // InLosAfterSeconds counts once as in_los_after (per evaluation, not per bot). Only written with the mode on.
-                if (losClosedAt)
-                {
-                    uint32 const nowSec = uint32(time(nullptr));
-                    if (nowSec - losClosedAt > ai::reach_los::InLosAfterSeconds)
-                        losClosedAt = 0;
-                    else if (inLos && target->GetObjectGuid() == losClosedTarget)
-                    {
-                        ai::reach_los::inLosAfter.fetch_add(1, std::memory_order_relaxed);
-                        losClosedAt = 0;
-                    }
-                }
+                // twow-repo#594 (ReachLosClose, CLI-ROT): the episode's in_los_after (also from isUseful, see NoteLos).
+                NoteLos(target, inLos);
 
                 // Hotfix 8.2: a hostile target the bot does not get closer to is dropped
                 // and ignored for five minutes (endless "reach melee - OK" loops).
@@ -88,21 +77,29 @@ namespace ai
                     // range, so a bot already closer never moved).
                     uint32 const losMode = sPlayerbotAIConfig.rotationReachLosClose;
                     bool const closeHostile = losMode && ai::reach_los::Applies(losMode, bot->GetGUIDLow());
-                    float const floorDist = ai::reach_los::Floor(minSpellRange, sPlayerbotAIConfig.tooCloseDistance);
+                    float const floorDist = ai::reach_los::Floor(closeHostile ? FloorSpellMinRange() : 0.0f, sPlayerbotAIConfig.tooCloseDistance);
                     ai::reach_los::Chase const chase = ai::reach_los::ChaseDistance(inLos, isFriend, closeHostile, distanceToTarget,
                         preferredDist, floorDist);
                     chaseDist = std::max(chase.distance - sPlayerbotAIConfig.contactDistance, 0.0f);
                     if (chase.kind != ai::reach_los::Kind::Unchanged)
                     {
                         chaseDist = std::max(chaseDist, std::min(preferredDist, floorDist));
-                        if (chase.kind == ai::reach_los::Kind::Floored)
-                            ai::reach_los::floored.fetch_add(1, std::memory_order_relaxed);
-                        else if (ai::cohort::InB(bot->GetGUIDLow()))
-                            ai::reach_los::closedB.fetch_add(1, std::memory_order_relaxed);
+                        if (chase.kind == ai::reach_los::Kind::Stood)
+                            ai::reach_los::stood.fetch_add(1, std::memory_order_relaxed);   // no move, no episode (8.2 ends it)
                         else
-                            ai::reach_los::closedA.fetch_add(1, std::memory_order_relaxed);
-                        losClosedAt = uint32(time(nullptr));
-                        losClosedTarget = target->GetObjectGuid();
+                        {
+                            if (chase.kind == ai::reach_los::Kind::Floored)
+                                ai::reach_los::floored.fetch_add(1, std::memory_order_relaxed);
+                            else if (ai::cohort::InB(bot->GetGUIDLow()))
+                                ai::reach_los::closedB.fetch_add(1, std::memory_order_relaxed);
+                            else
+                                ai::reach_los::closedA.fetch_add(1, std::memory_order_relaxed);
+                            // CLI-ROT re-review: closed_* count per evaluation, episodes once per episode (in_los_after's base).
+                            if (!losClosedAt || target->GetObjectGuid() != losClosedTarget)
+                                ai::reach_los::episodes.fetch_add(1, std::memory_order_relaxed);
+                            losClosedAt = uint32(time(nullptr));
+                            losClosedTarget = target->GetObjectGuid();
+                        }
                     }
                 }
 
@@ -172,6 +169,9 @@ namespace ai
                         // Force move if not in los
                         if (bot->IsWithinLOSInMap(target, true))
                         {
+                            // twow-repo#594 (ReachLosClose, CLI-ROT re-review): back in sight - Execute does not run again when
+                            // the bot is already in range, so the episode's in_los_after is noted here as well.
+                            NoteLos(target, true);
                             // Check if the bot is already on the range required
                             return bot->GetDistance(target, true, DIST_CALC_COMBAT_REACH) > range;
                         }
@@ -213,6 +213,41 @@ namespace ai
         float minSpellRange = 0.0f;        // twow-repo#594 (ReachLosClose floor): the qualified spell's minimum range, 0 = none
         uint32 losClosedAt = 0;            // ReachLosClose: time of the last "closed" evaluation (in_los_after), 0 = none
         ObjectGuid losClosedTarget;        // ReachLosClose: its target
+        float hunterMinRange = -1.0f;      // ReachLosClose: Auto Shot's minimum range for an unqualified reach (-1 = not read yet)
+
+        // twow-repo#594 (ReachLosClose, CLI-ROT re-review): one place for the episode's in_los_after, called from Execute and from
+        // isUseful's in-sight branch (back in sight in range, Execute does not run again). Nothing without an open episode.
+        void NoteLos(Unit* target, bool inLos)
+        {
+            if (!losClosedAt)
+                return;
+            if (uint32(time(nullptr)) - losClosedAt > ai::reach_los::InLosAfterSeconds)
+            {
+                losClosedAt = 0;
+                return;
+            }
+            if (inLos && target->GetObjectGuid() == losClosedTarget)
+            {
+                ai::reach_los::inLosAfter.fetch_add(1, std::memory_order_relaxed);
+                losClosedAt = 0;
+            }
+        }
+
+        // ReachLosClose floor source: the qualified spell's minimum range; for an unqualified reach of a hunter Auto Shot's (its
+        // dead zone, CLI-ROT re-review), read once; otherwise 0 (then TooCloseDistance).
+        float FloorSpellMinRange()
+        {
+            if (minSpellRange > 0.0f)
+                return minSpellRange;
+            if (bot->getClass() != CLASS_HUNTER)
+                return 0.0f;
+            if (hunterMinRange < 0.0f)
+            {
+                float maxRange = 0.0f, minRange = 0.0f;
+                hunterMinRange = ai->GetSpellRange("auto shot", &maxRange, &minRange) ? minRange : 0.0f;
+            }
+            return hunterMinRange;
+        }
     };
 
     class CastReachTargetSpellAction : public CastSpellAction
