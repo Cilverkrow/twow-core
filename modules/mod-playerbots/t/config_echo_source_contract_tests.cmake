@@ -112,6 +112,8 @@ set(entries
   "Path.TransportEdgeTrace|pathTransportEdgeTrace"
   "Path.TransportDeckProbe|pathTransportDeckProbe"
   "Path.TransportWaitTimeoutMin|pathTransportWaitTimeoutMin"
+  "Path.PosStuck|pathPosStuck"
+  "Path.PosStuck.Minutes|pathPosStuckMinutes"
   "Rotation.EmergencyLadder|rotationEmergencyLadder"
   "Rotation.SpecFromPath|rotationSpecFromPath"
   "Rotation.RestGate|rotationRestGate"

@@ -2,6 +2,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/PosStuckPolicy.h"
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
@@ -791,6 +792,11 @@ bool PlayerbotAIConfig::Initialize()
     pathPartialNoopGap = std::min(100.0f, std::max(1.0f, config.GetFloatDefault("AiPlayerbot.Path.PartialNoop.Gap", ai::path_fail::PartialNoopDefaultGap)));
     pathStartZoneExactBounds = config.GetBoolDefault("AiPlayerbot.Path.StartZoneExactBounds", false);
     pathRpgTargetSnap = config.GetBoolDefault("AiPlayerbot.Path.RpgTargetSnap", false);
+    pathPosStuck = config.GetBoolDefault("AiPlayerbot.Path.PosStuck", false);
+    pathPosStuckMinutes = uint32(std::min(120, std::max(2, config.GetIntDefault("AiPlayerbot.Path.PosStuck.Minutes", int(ai::pos_stuck::DefaultMinutes)))));
+    pathPosStuckProgress = std::min(50.0f, std::max(1.0f, config.GetFloatDefault("AiPlayerbot.Path.PosStuck.Progress", ai::pos_stuck::DefaultProgress)));
+    pathPosStuckEpisodeMinutes = uint32(std::min(240, std::max(5, config.GetIntDefault("AiPlayerbot.Path.PosStuck.EpisodeMinutes", int(ai::pos_stuck::DefaultEpisodeMinutes)))));
+    pathPosStuckRateMinutes = uint32(std::min(240, std::max(5, config.GetIntDefault("AiPlayerbot.Path.PosStuck.RateMinutes", int(ai::pos_stuck::DefaultRateMinutes)))));
     pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
     pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
@@ -1533,6 +1539,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Path.TransportEdgeTrace", Value(pathTransportEdgeTrace)},
             {"Path.TransportDeckProbe", Value(pathTransportDeckProbe)},
             {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
+            {"Path.PosStuck", Value(pathPosStuck)},
+            {"Path.PosStuck.Minutes", Value(pathPosStuckMinutes)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.RestGate", Value(rotationRestGate)},
