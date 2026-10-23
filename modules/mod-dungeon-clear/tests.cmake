@@ -172,6 +172,7 @@ set(DC_TEST_FAST_SOURCES
     "${DC_MOD_PATH}/t/TestStrandedRecovery.cpp"
     "${DC_MOD_PATH}/t/TestStrategyGate.cpp"
     "${DC_MOD_PATH}/t/TestTestComp.cpp"
+    "${DC_MOD_PATH}/t/TestTestPoolPolicy.cpp"
     "${DC_MOD_PATH}/t/TestTestPlanSchedule.cpp"
     "${DC_MOD_PATH}/t/TestTestRoster.cpp"
     "${DC_MOD_PATH}/t/TestTestRunSelect.cpp"
