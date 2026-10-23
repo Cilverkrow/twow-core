@@ -61,6 +61,7 @@
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/MeleeFleeBreakPolicy.h"
+#include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1225,6 +1226,20 @@ void ReportCastWait()
         (unsigned long long)ai::cast_wait::savedTicks.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose, CLI-ROT review): one [ReachLos] minute line - hostile reach targets out of
+// sight chased closer per cohort (closed_A must stay 0 with mode 2), floored ones and those in sight within 5 s. Nothing with 0.
+void ReportReachLos()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationReachLosClose || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("%s", ai::reach_los::FormatMinuteLine(sPlayerbotAIConfig.rotationReachLosClose,
+        ai::reach_los::closedA.exchange(0, std::memory_order_relaxed), ai::reach_los::closedB.exchange(0, std::memory_order_relaxed),
+        ai::reach_los::floored.exchange(0, std::memory_order_relaxed), ai::reach_los::inLosAfter.exchange(0, std::memory_order_relaxed)).c_str());
+}
+
 // twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak): one [MeleeFleeBreak] line per minute - "outnumbered" evaluations
 // held for melee bots in a flee loop (held), hold windows started (breaks), and evaluations that still sent such a bot
 // to flee (allowed); with MeleeFleeBreak.Ranged the ranged part of held (held_ranged). Nothing is written when off.
@@ -1754,6 +1769,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
+    ReportReachLos();       // twow-repo#594: [ReachLos] once per minute (AiPlayerbot.Rotation.ReachLosClose)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
     ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)

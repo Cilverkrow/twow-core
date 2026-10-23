@@ -28,9 +28,12 @@ namespace ai
                 spellName = Qualified::getMultiQualifierStr(qualifier, 0, "::");
 
                 float maxSpellRange;
-                if (ai->GetSpellRange(spellName, &maxSpellRange))
+                float minSpellRangeOut = 0.0f;
+                // twow-repo#594 (ReachLosClose floor): the spell's minimum range as well (hunter dead zone).
+                if (ai->GetSpellRange(spellName, &maxSpellRange, &minSpellRangeOut))
                 {
                     range = maxSpellRange;
+                    minSpellRange = minSpellRangeOut;
                 }
             }
         }
@@ -47,6 +50,20 @@ namespace ai
                 float chaseDist = range;
                 const bool inLos = bot->IsWithinLOSInMap(target, true);
                 const bool isFriend = sServerFacade.IsFriendlyTo(bot, target);
+
+                // twow-repo#594 (ReachLosClose, CLI-ROT): a "closed" evaluation whose target came into sight within
+                // InLosAfterSeconds counts once as in_los_after (per evaluation, not per bot). Only written with the mode on.
+                if (losClosedAt)
+                {
+                    uint32 const nowSec = uint32(time(nullptr));
+                    if (nowSec - losClosedAt > ai::reach_los::InLosAfterSeconds)
+                        losClosedAt = 0;
+                    else if (inLos && target->GetObjectGuid() == losClosedTarget)
+                    {
+                        ai::reach_los::inLosAfter.fetch_add(1, std::memory_order_relaxed);
+                        losClosedAt = 0;
+                    }
+                }
 
                 // Hotfix 8.2: a hostile target the bot does not get closer to is dropped
                 // and ignored for five minutes (endless "reach melee - OK" loops).
@@ -66,11 +83,27 @@ namespace ai
                     // they cast. The 0.75 factor keeps a buffer for target movement
                     // while still being well within casting distance.
                     const float preferredDist = range * 0.75f;
-                    // twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose): a hostile target out of sight is chased closer too
-                    // (ReachLosPolicy.h); off: as before (75 % of the range, so a bot already closer never moved).
-                    chaseDist = ai::reach_los::ChaseDistance(inLos, isFriend, sPlayerbotAIConfig.rotationReachLosClose, distanceToTarget,
-                        preferredDist);
-                    chaseDist = std::max(chaseDist - sPlayerbotAIConfig.contactDistance, 0.0f);
+                    // twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose, mode 0/1/2): a hostile target out of sight is chased
+                    // closer too, never inside the floor (ReachLosPolicy.h); off or outside the cohort: as before (75 % of the
+                    // range, so a bot already closer never moved).
+                    uint32 const losMode = sPlayerbotAIConfig.rotationReachLosClose;
+                    bool const closeHostile = losMode && ai::reach_los::Applies(losMode, bot->GetGUIDLow());
+                    float const floorDist = ai::reach_los::Floor(minSpellRange, sPlayerbotAIConfig.tooCloseDistance);
+                    ai::reach_los::Chase const chase = ai::reach_los::ChaseDistance(inLos, isFriend, closeHostile, distanceToTarget,
+                        preferredDist, floorDist);
+                    chaseDist = std::max(chase.distance - sPlayerbotAIConfig.contactDistance, 0.0f);
+                    if (chase.kind != ai::reach_los::Kind::Unchanged)
+                    {
+                        chaseDist = std::max(chaseDist, std::min(preferredDist, floorDist));
+                        if (chase.kind == ai::reach_los::Kind::Floored)
+                            ai::reach_los::floored.fetch_add(1, std::memory_order_relaxed);
+                        else if (ai::cohort::InB(bot->GetGUIDLow()))
+                            ai::reach_los::closedB.fetch_add(1, std::memory_order_relaxed);
+                        else
+                            ai::reach_los::closedA.fetch_add(1, std::memory_order_relaxed);
+                        losClosedAt = uint32(time(nullptr));
+                        losClosedTarget = target->GetObjectGuid();
+                    }
                 }
 
                 if (MoveStyleValue::WaitForEnemy(ai) && target->m_movementInfo.HasMovementFlag(movementFlagsMask) &&
@@ -177,6 +210,9 @@ namespace ai
     protected:
         float range;
         std::string spellName;
+        float minSpellRange = 0.0f;        // twow-repo#594 (ReachLosClose floor): the qualified spell's minimum range, 0 = none
+        uint32 losClosedAt = 0;            // ReachLosClose: time of the last "closed" evaluation (in_los_after), 0 = none
+        ObjectGuid losClosedTarget;        // ReachLosClose: its target
     };
 
     class CastReachTargetSpellAction : public CastSpellAction

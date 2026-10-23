@@ -2793,7 +2793,11 @@ AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
 # than that walks around the corner until it sees the target (each tick halves the distance again). Without it a priest 20 yd
 # from a kobold in a mine never moved, the reach progress check marked the target unreachable and the next one took its place,
 # for 2 h. Friendly targets keep their min(distance x 0.9, ...); no line of sight at all still ends as unreachable (hotfix 8.2).
-# 0 = as before (default).
+# Never closer than the floor: the spell's minimum range (hunter dead zone) or, without one, TooCloseDistance; a bot already
+# inside the floor stands (floored=) and the progress check ends it as before. Known: once in sight the bot keeps the shorter
+# distance (no back-off), as for friendly targets. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot,
+# 2 = only cohort B (odd low guid). Any other value acts like 0. "[ReachLos] minute mode= closed_A= closed_B= floored=
+# in_los_after=" once a minute with the mode on (closed_A stays 0 with mode 2; in_los_after = in sight within 5 s).
 AiPlayerbot.Rotation.ReachLosClose = 0
 # twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
 # request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
