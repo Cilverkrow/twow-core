@@ -360,14 +360,36 @@ struct StepFacts
     std::int32_t priorFailures = 0; // "quest route failures" before this search's count
     std::uint32_t freeSlots = 0;
     std::uint32_t slotGate = 0;     // 5 or 10 (TravelMgr quest-possible gate)
+    std::uint32_t emptyStreak = 0;  // "band empty streak": quest searches in a row without a route, this one included
+    std::uint32_t streakSteps = 0;  // AiPlayerbot.QuestFirstProgression.BandStepAfterEmptySearches (0 = off)
 };
 
 enum class StepVerdict : std::uint8_t { NotDue, SkipLogFull, Due };
 
-// The zone is done: no acceptable quest, no open turn-in, nothing dangerous, the second empty search in a row.
+// F1 (OB-00 23.10.2026, candidate v46.6): 71 % of cohort B's failed searches were transient (death_suppressed,
+// quest_loop_suppressed), so EmptyOffer never held, and every structural park reset "quest route failures" - the band
+// step fired for 5 of 88 bots while QFO left the backoff empty (idle + stuck 54 %). The streak counts every failed
+// search, whatever its class; only a found route or a band step resets it.
+constexpr char const* BandEmptyStreakValue = "band empty streak";     // "manual int" of the bot's AI
+constexpr std::uint32_t MaxStreakSteps = 10;                            // config range of BandStepAfterEmptySearches
+
+inline bool StreakDue(StepFacts const& f)
+{
+    return f.streakSteps && f.emptyStreak >= f.streakSteps;
+}
+
+// The step line's trigger=: the EmptyOffer rule wins when both hold (today's step stays today's step).
+inline char const* StepTrigger(StepFacts const& f)
+{
+    return f.emptyOffer && f.priorFailures >= 1 ? "empty_offer" : "streak";
+}
+
+// The zone is done: no open turn-in, nothing dangerous, and either no acceptable quest (the second empty search in a row)
+// or N failed searches in a row (F1).
 inline StepVerdict BandStepDue(StepFacts const& f)
 {
-    if (!f.emptyOffer || f.dangerMap || f.offered || f.openTurnIns || f.priorFailures < 1)
+    bool const emptyDue = f.emptyOffer && f.priorFailures >= 1;
+    if (!(emptyDue || StreakDue(f)) || f.dangerMap || f.offered || f.openTurnIns)
         return StepVerdict::NotDue;
     if (f.freeSlots < f.slotGate)
         return StepVerdict::SkipLogFull;
@@ -424,12 +446,14 @@ struct RungFacts
     std::uint32_t leftBandMin = 0;                      // band (min level) the bot was in when it left them
     float x = 0.f, y = 0.f;
     float searchedRadius = 0.f;                         // GiverRadius(level, stage of the failed search)
+    std::uint32_t sameZoneLead = 0;                     // AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext (0 = off)
 };
 
 struct Candidate
 {
     std::int32_t index = -1;                            // into Ladder::rungs
     Reject reject = Reject::None;
+    bool sameZoneLead = false;                          // F2: a next-band rung only the same-zone lead made a candidate
 };
 
 inline float Dist2D(float ax, float ay, float bx, float by)
@@ -472,21 +496,22 @@ inline std::vector<Candidate> NextRung(Ladder const& ladder, RungFacts const& f)
         else
             break;
     }
+    std::uint32_t const nextMinAny = nextMin;
     if (nextMin && f.level + LeadLevels < nextMin)
         nextMin = 0;
-    struct Band { std::uint32_t key, min; } const bands[2] = { { key, curMin }, { nextKey, nextMin } };
-    for (Band const& b : bands)
+    auto addBand = [&](std::uint32_t bandKey, std::uint32_t bandMin, bool viaSameZoneLead)
     {
-        if (!b.min)
-            continue;
+        if (!bandMin)
+            return;
         for (std::uint32_t rank = 1; rank <= 2 && out.size() < MaxCandidates; ++rank)
             for (std::size_t i = 0; i < ladder.rungs.size(); ++i)
             {
                 Rung const& r = ladder.rungs[i];
-                if (r.keyIndex != b.key || r.minLevel != b.min || r.rank != rank)
+                if (r.keyIndex != bandKey || r.minLevel != bandMin || r.rank != rank)
                     continue;
                 Candidate c;
                 c.index = std::int32_t(i);
+                c.sameZoneLead = viaSameZoneLead;
                 bool leftZone = false;
                 for (std::uint32_t z : f.leftZones)
                     leftZone = leftZone || (z && z == r.zoneId);
@@ -503,8 +528,25 @@ inline std::vector<Candidate> NextRung(Ladder const& ladder, RungFacts const& f)
                 out.push_back(c);
                 break;
             }
-    }
+    };
+    addBand(key, curMin, false);
+    // F2 (BandLadderSameZoneNext, OB-00 23.10.2026): every rung of the current band lies in the zone the bot has just found
+    // done (candidate v46.6: same_zone 391 of 600 no_rung skips) - the next band is a candidate from sameZoneLead levels below
+    // its min instead of LeadLevels. The game-side veto on a hub clearly above the bot (QuestBand.cpp HubAbove) still applies.
+    bool allSameZone = !out.empty();
+    for (Candidate const& c : out)
+        allSameZone = allSameZone && c.reject == Reject::SameZone;
+    bool const viaSameZoneLead = !nextMin && nextMinAny && f.sameZoneLead && allSameZone && f.level + f.sameZoneLead >= nextMinAny;
+    if (viaSameZoneLead)
+        nextMin = nextMinAny;
+    addBand(nextKey, nextMin, viaSameZoneLead);
     return out;
+}
+
+// The step line's lead= (OB-10 review 23.10.2026: F2 steps separable from normal ones for the deaths-after-step guard).
+inline char const* LeadName(Candidate const& c)
+{
+    return c.sameZoneLead ? "samezone" : "normal";
 }
 
 // The first reject among the candidates, for skip reason=no_rung detail= (no_band when there was no candidate).
