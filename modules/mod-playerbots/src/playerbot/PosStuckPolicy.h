@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 
 class Player;
@@ -24,6 +25,9 @@ constexpr std::uint32_t DefaultRateMinutes = 30;
 // farther than AnchorMaxDistance (farther: not local any more); otherwise the step goes to the home bind.
 constexpr float AnchorMinDistance = 5.0f;
 constexpr float AnchorMaxDistance = 300.0f;
+// OB-10 review (23.10.2026): a move only if the bot itself stood - its net displacement over the window below this. A long
+// detour (around a mountain or a lake) gets no closer either; it is parked, never moved.
+constexpr float StillDisplacement = 20.0f;
 constexpr std::uint32_t DefaultLinesPerMinute = 30;
 
 struct Observation
@@ -49,6 +53,9 @@ struct State
     std::uint32_t mapId = 0;
     std::uint32_t windowStart = 0;
     float refDistance = 0.0f;   // distance at the window start; progress = refDistance - distance >= progress yards
+    float windowX = 0.0f;       // the bot's position at the window start (2D)
+    float windowY = 0.0f;
+    float detectDisplacement = 0.0f;   // the bot's net displacement over the window of the last detect (yards, 2D)
     // The last point where the bot got progress yards closer to a target (kept across targets, cleared by a map change).
     bool hasAnchor = false;
     std::uint32_t anchorMapId = 0;
@@ -88,6 +95,8 @@ inline Verdict Observe(State& state, Observation const& current, std::uint32_t w
         state.mapId = current.mapId;
         state.windowStart = current.now;
         state.refDistance = current.distance;
+        state.windowX = current.x;
+        state.windowY = current.y;
         return Verdict::None;
     }
 
@@ -95,6 +104,8 @@ inline Verdict Observe(State& state, Observation const& current, std::uint32_t w
     {
         state.windowStart = current.now;
         state.refDistance = current.distance;
+        state.windowX = current.x;
+        state.windowY = current.y;
         state.hasAnchor = true;
         state.anchorMapId = current.mapId;
         state.anchorX = current.x;
@@ -110,9 +121,20 @@ inline Verdict Observe(State& state, Observation const& current, std::uint32_t w
     if (current.combat)
         return Verdict::None;
 
+    float const dx = current.x - state.windowX, dy = current.y - state.windowY;
+    state.detectDisplacement = std::sqrt(dx * dx + dy * dy);
     state.windowStart = current.now;
     state.refDistance = current.distance;
+    state.windowX = current.x;
+    state.windowY = current.y;
     return Verdict::Detect;
+}
+
+// OB-10 review: the last detect came from a bot that stood (net displacement over its window below StillDisplacement) - only
+// then may the episode move it.
+inline bool StoodStill(State const& state)
+{
+    return state.detectDisplacement < StillDisplacement;
 }
 
 // Usable for a local unstuck: on the bot's map, between AnchorMinDistance and AnchorMaxDistance away (2D).
@@ -134,7 +156,8 @@ enum class Step : std::uint8_t
 
 // The episodes of one bot. An episode within episodeMs of the previous one continues the series, a later one starts a new
 // series. The 1st episode of a series parks, the 2nd adds a local unstuck, every later one the home bind - but a move only
-// if the last move is rateMs ago (else the episode parks only and the series stays where it is).
+// if the bot stood (mayMove, StoodStill) and the last move is rateMs ago (else the episode parks only and the series stays
+// where it is).
 struct Episodes
 {
     std::uint32_t lastAt = 0;
@@ -143,7 +166,7 @@ struct Episodes
     bool moved = false;
 };
 
-inline Step Escalate(Episodes& episodes, std::uint32_t now, std::uint32_t episodeMs, std::uint32_t rateMs)
+inline Step Escalate(Episodes& episodes, std::uint32_t now, std::uint32_t episodeMs, std::uint32_t rateMs, bool mayMove)
 {
     if (episodes.count == 0 || now - episodes.lastAt > episodeMs)
         episodes.count = 0;
@@ -154,6 +177,9 @@ inline Step Escalate(Episodes& episodes, std::uint32_t now, std::uint32_t episod
         episodes.count = 1;
         return Step::Park;
     }
+
+    if (!mayMove)
+        return Step::Park;
 
     if (episodes.moved && now - episodes.lastMoveAt < rateMs)
         return Step::Park;
@@ -169,6 +195,20 @@ inline char const* StepName(Step step)
 {
     return step == Step::Unstuck ? "unstuck" : step == Step::Teleport ? "teleport" : "park";
 }
+
+// OB-10 review: after a #587 rebind the home bind can lie in another race's start area (QFO14: 4 rebinds to area 132), so a
+// home bind counts only on the bot's own map and zone; anything else is skipped (zone 0 = unknown, skipped too).
+inline bool BindNear(std::uint32_t bindMapId, std::uint32_t bindZoneId, std::uint32_t mapId, std::uint32_t zoneId)
+{
+    return bindZoneId != 0 && bindMapId == mapId && bindZoneId == zoneId;
+}
+
+enum class MoveResult : std::uint8_t
+{
+    None,      // Park: nothing to move
+    Moved,
+    BindFar    // Teleport skipped: the home bind is not on the bot's map and zone
+};
 
 // [PosStuck] minute summary and line budget, shared by all bots (lock-free).
 struct Counters
@@ -207,7 +247,7 @@ struct Counters
 
 inline Counters& SharedCounters() { static Counters counters; return counters; }
 
-// The move of an Unstuck (to x, y, z on the bot's map) or a Teleport (home bind) step; Park moves nothing. Defined in
-// PosStuckMove.cpp, the only file where the guard moves a bot (TravelMgr.cpp stays free of teleports).
-void ApplyMove(Player* bot, Step step, float x, float y, float z);
+// The move of an Unstuck (to x, y, z on the bot's map) or a Teleport (home bind, only when BindNear) step; Park moves nothing.
+// Defined in PosStuckMove.cpp, the only file where the guard moves a bot (TravelMgr.cpp stays free of teleports).
+MoveResult ApplyMove(Player* bot, Step step, float x, float y, float z);
 }

@@ -1692,9 +1692,11 @@ bool TravelTarget::ObservePosStuck()
             sPlayerbotAIConfig.pathPosStuckProgress) != pos_stuck::Verdict::Detect)
         return false;
 
-    // An episode: the series decides park / local unstuck / home bind; a local unstuck needs a usable progress anchor.
+    // An episode: the series decides park / local unstuck / home bind - a move only if the bot itself stood (OB-10 review: a
+    // long detour gets no closer either, it is parked only); a local unstuck needs a usable progress anchor.
     pos_stuck::Step step = pos_stuck::Escalate(posStuckEpisodes, observation.now,
-        sPlayerbotAIConfig.pathPosStuckEpisodeMinutes * 60 * IN_MILLISECONDS, sPlayerbotAIConfig.pathPosStuckRateMinutes * 60 * IN_MILLISECONDS);
+        sPlayerbotAIConfig.pathPosStuckEpisodeMinutes * 60 * IN_MILLISECONDS, sPlayerbotAIConfig.pathPosStuckRateMinutes * 60 * IN_MILLISECONDS,
+        pos_stuck::StoodStill(posStuck));
     if (step == pos_stuck::Step::Unstuck && !pos_stuck::AnchorUsable(posStuck, observation.mapId, observation.x, observation.y))
         step = pos_stuck::Step::Teleport;
 
@@ -1705,10 +1707,10 @@ bool TravelTarget::ObservePosStuck()
     bool const lines = counters.Take(pos_stuck::DefaultLinesPerMinute);
     uint32 const purpose = uint32(tDestination->GetPurpose());
     if (lines)
-        sLog.outBasic("[PosStuck] state=detect bot=%u level=%u quest=%u target_entry=%d purpose=%u dist=%.1f minutes=%u map=%u zone=%u x=%.1f y=%.1f z=%.1f episode=%u step=%s",
+        sLog.outBasic("[PosStuck] state=detect bot=%u level=%u quest=%u target_entry=%d purpose=%u dist=%.1f minutes=%u map=%u zone=%u x=%.1f y=%.1f z=%.1f displacement=%.1f episode=%u step=%s",
             bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), purpose, observation.distance,
             sPlayerbotAIConfig.pathPosStuckMinutes, observation.mapId, bot->GetZoneId(), observation.x, observation.y, observation.z,
-            uint32(posStuckEpisodes.count), pos_stuck::StepName(step));
+            posStuck.detectDisplacement, uint32(posStuckEpisodes.count), pos_stuck::StepName(step));
 
     // Park, every episode: a finished quest's turn-in gets the #485 park (S1 structural, not abandonable), an objective one
     // quest loop failure (QL-1); every target is suppressed for this bot for TurnInParkSeconds (an hour when 0).
@@ -1727,9 +1729,10 @@ bool TravelTarget::ObservePosStuck()
             bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), purpose, observation.distance,
             sPlayerbotAIConfig.pathPosStuckMinutes, observation.x, observation.y, parked ? 1u : 0u, parkSeconds);
 
-    // The move (2nd episode of a series: back to the progress anchor; later: the bot's home bind - never the start-zone
-    // rescue of #587). Fired only out of combat (Observe), rate-limited per bot (Escalate); executed by ApplyMove
-    // (PosStuckMove.cpp), so this file stays free of teleports.
+    // The move (2nd episode of a series: back to the progress anchor; later: the bot's home bind, only on its own map and zone -
+    // never the start-zone rescue of #587). Fired only out of combat (Observe), only for a bot that stood, rate-limited per bot
+    // (Escalate); executed by ApplyMove (PosStuckMove.cpp), so this file stays free of teleports.
+    pos_stuck::MoveResult const moved = pos_stuck::ApplyMove(bot, step, posStuck.anchorX, posStuck.anchorY, posStuck.anchorZ);
     if (step == pos_stuck::Step::Unstuck)
     {
         counters.unstuck.fetch_add(1, std::memory_order_relaxed);
@@ -1738,7 +1741,7 @@ bool TravelTarget::ObservePosStuck()
                 bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), observation.distance, sPlayerbotAIConfig.pathPosStuckMinutes,
                 observation.x, observation.y, posStuck.anchorX, posStuck.anchorY, posStuck.anchorZ);
     }
-    else if (step == pos_stuck::Step::Teleport)
+    else if (step == pos_stuck::Step::Teleport && moved == pos_stuck::MoveResult::Moved)
     {
         counters.teleport.fetch_add(1, std::memory_order_relaxed);
         if (lines)
@@ -1746,7 +1749,13 @@ bool TravelTarget::ObservePosStuck()
                 bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), observation.distance, sPlayerbotAIConfig.pathPosStuckMinutes,
                 observation.x, observation.y);
     }
-    pos_stuck::ApplyMove(bot, step, posStuck.anchorX, posStuck.anchorY, posStuck.anchorZ);
+    else if (step == pos_stuck::Step::Teleport)
+    {
+        if (lines)
+            sLog.outBasic("[PosStuck] state=teleport_skipped bot=%u level=%u quest=%u target_entry=%d dist=%.1f minutes=%u x=%.1f y=%.1f reason=bind_far",
+                bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), observation.distance, sPlayerbotAIConfig.pathPosStuckMinutes,
+                observation.x, observation.y);
+    }
 
     TraceQuestCommit(tDestination, "abandon", "pos_stuck");
     posStuck.Reset();

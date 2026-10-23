@@ -125,14 +125,40 @@ int main()
     {
         constexpr std::uint32_t Episode = 30 * Minute, Rate = 30 * Minute;
         Episodes e;
-        Require(Escalate(e, 1000, Episode, Rate) == Step::Park, "1st episode: park");
-        Require(Escalate(e, 1000 + 12 * Minute, Episode, Rate) == Step::Unstuck, "2nd within 30 min: unstuck");
-        Require(Escalate(e, 1000 + 24 * Minute, Episode, Rate) == Step::Park, "3rd, last move 12 min ago: park only (rate)");
-        Require(Escalate(e, 1000 + 44 * Minute, Episode, Rate) == Step::Teleport, "4th, last move 44 min ago: home bind");
-        Require(Escalate(e, 1000 + 120 * Minute, Episode, Rate) == Step::Park, "76 min after the last: new series, park");
-        Require(Escalate(e, 1000 + 125 * Minute, Episode, Rate) == Step::Unstuck, "new series 2nd, last move 81 min ago: unstuck");
-        Require(Escalate(e, 1000 + 130 * Minute, Episode, Rate) == Step::Park, "rate holds across series");
+        Require(Escalate(e, 1000, Episode, Rate, true) == Step::Park, "1st episode: park");
+        Require(Escalate(e, 1000 + 12 * Minute, Episode, Rate, true) == Step::Unstuck, "2nd within 30 min: unstuck");
+        Require(Escalate(e, 1000 + 24 * Minute, Episode, Rate, true) == Step::Park, "3rd, last move 12 min ago: park only (rate)");
+        Require(Escalate(e, 1000 + 44 * Minute, Episode, Rate, true) == Step::Teleport, "4th, last move 44 min ago: home bind");
+        Require(Escalate(e, 1000 + 120 * Minute, Episode, Rate, true) == Step::Park, "76 min after the last: new series, park");
+        Require(Escalate(e, 1000 + 125 * Minute, Episode, Rate, true) == Step::Unstuck, "new series 2nd, last move 81 min ago: unstuck");
+        Require(Escalate(e, 1000 + 130 * Minute, Episode, Rate, true) == Step::Park, "rate holds across series");
     }
+
+    // OB-10 review: a move only for a bot that stood - a long detour (no closer, but the bot moved) is parked only, the series
+    // and the rate stay untouched.
+    {
+        constexpr std::uint32_t Episode = 30 * Minute, Rate = 30 * Minute;
+        Episodes e;
+        Require(Escalate(e, 1000, Episode, Rate, false) == Step::Park, "1st episode of a detour: park (as always)");
+        Require(Escalate(e, 1000 + 12 * Minute, Episode, Rate, false) == Step::Park, "2nd, but the bot moved: park only");
+        Require(!e.moved, "no move consumed");
+        Require(Escalate(e, 1000 + 20 * Minute, Episode, Rate, true) == Step::Unstuck, "then a real stand: unstuck");
+    }
+    {
+        State state;
+        Observe(state, At(0, 335.0f, false, 7, 100.0f), Window, Progress);
+        Require(Observe(state, At(Window, 333.0f, false, 7, 105.0f), Window, Progress) == Verdict::Detect, "stood (5 yd drift): detect");
+        Require(StoodStill(state) && state.detectDisplacement < 6.0f, "5 yd net displacement: stood");
+        Observe(state, At(Window + Minute, 333.0f, false, 7, 105.0f), Window, Progress);
+        Require(Observe(state, At(2 * Window, 332.0f, false, 7, 400.0f), Window, Progress) == Verdict::Detect, "detour: no closer, detect");
+        Require(!StoodStill(state) && state.detectDisplacement > 290.0f, "295 yd net displacement: no move");
+    }
+
+    // OB-10 review: a home bind only on the bot's own map and zone (a #587 rebind lies in another start area).
+    Require(BindNear(0, 12, 0, 12), "bind in Elwynn, bot in Elwynn: near");
+    Require(!BindNear(0, 1, 0, 12), "bind in Dun Morogh, bot in Elwynn: far");
+    Require(!BindNear(1, 12, 0, 12), "other map: far");
+    Require(!BindNear(0, 0, 0, 0), "unknown zone: far");
 
     // Keys: entry and quest; a gameobject entry (negative) is a distinct key.
     Require(KeyOf(197, 21) != KeyOf(197, 22) && KeyOf(197, 21) != KeyOf(198, 21), "entry and quest make the key");
