@@ -1368,6 +1368,17 @@ AiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 30
 # counting down). 1 = an empty route makes the move fail: travel targets count the retry and cool down, rpg
 # targets are dropped. A path that collapses with a route keeps the old answer. 0 = old behaviour (default).
 AiPlayerbot.Path.HonestRouteFail = 0
+# twow-repo#575 (QFO 41747, BEHAVIOUR CHANGE, "nach Abnahme an"): a target on a navmesh island (Tower of Azora turn-in,
+# QFO14 22.10.2026) gets a partial path that ends short of it. Once the bot stood at that end, every MoveTo built the
+# same path, moved nowhere and reported success: no travel retry, no cooldown, no failed turn-in, up to 100 min idle.
+# 1 = such a move fails when the bot is within Reach yards of the path's end and that end is more than Gap yards from
+# the target (same map, not on a transport, not in a battleground; only the travel and rpg target moves, every other
+# MoveTo keeps "stand at the nearest point"): travel targets count the retry and cool down (a turn-in counts as failed,
+# #485 park), rpg targets are dropped. [MoveTo] state=partial_noop line (30 a minute) and [MoveTo] summary partial_noop=
+# logged= once a minute. Reach 0.5..10 (default 2), Gap 1..100 (default 5). 0 = old behaviour (default).
+AiPlayerbot.Path.PartialNoop = 0
+AiPlayerbot.Path.PartialNoop.Reach = 2
+AiPlayerbot.Path.PartialNoop.Gap = 5
 # twow-repo#575 (PATH-01 #4, BEHAVIOUR CHANGE, "nach Abnahme an"): Blackstone Island (5536) and Thalassian
 # Highlands / Alah'Thalas (5225 / 2040) are no quest / grind / rpg travel targets. 1 = zone boxes from the map
 # files (all island spawns, no Plaguelands spawn); 0 = the old smaller boxes, which leave 8 + 10 quest givers as

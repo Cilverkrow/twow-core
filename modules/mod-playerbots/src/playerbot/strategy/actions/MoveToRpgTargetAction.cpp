@@ -196,10 +196,12 @@ bool MoveToRpgTargetAction::Execute(Event& event)
                 creature->GetMotionMaster()->PauseWaypoints(pauseTimer);
     }
     // twow-repo#575 (PATH-01 #5): on, the move goes to the snapped point (near ones were snapped only as a check).
+    partialNoopScope = true;   // twow-repo#575 AiPlayerbot.Path.PartialNoop applies to this move
     if (sPlayerbotAIConfig.pathRpgTargetSnap && snapped)
         couldMove = MoveTo(mapId, movePos.getX(), movePos.getY(), movePos.getZ(), false, false);
     else
         couldMove = MoveTo(mapId, x, y, z, false, false);
+    partialNoopScope = false;
 
     if (!couldMove && movePos.distance(bot) > INTERACTION_DISTANCE)
     {
