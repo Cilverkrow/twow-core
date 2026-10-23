@@ -445,7 +445,9 @@ void WorldThreadManager::Tend(std::map<std::uint32_t, Player*> const& bots, Help
         TravelDestination* d = lt->IsForced() ? lt->GetDestination() : nullptr;
         WorldPosition const leaderPos(leader);
         bool const travelling = d && lt->GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL && d->OnMap(leaderPos);
-        approachStuck = g.leaderWatch.Observe(std::uintptr_t(d), travelling ? d->DistanceTo(leaderPos) : 0.0f, travelling, now);
+        // The fight counts into the window, but a group never dissolves in the middle of an (elite) fight (OB-10, as PosStuck).
+        approachStuck = g.leaderWatch.Observe(std::uintptr_t(d), travelling ? d->DistanceTo(leaderPos) : 0.0f, travelling, now) &&
+            !leader->IsInCombat();
     }
     f.leaderStuck = leaderAi && (approachStuck || leaderAi->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);
     f.abandoned = abandoned;
