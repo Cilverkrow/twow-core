@@ -18,6 +18,7 @@
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
+#include "playerbot/QuestBandPolicy.h"         // twow-repo#601 S5a F1: the band empty streak value
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
@@ -799,9 +800,18 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
             // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the zone is done - step to the next hub. Decided
             // before the 8.1 failure count and backoff (a step counts nothing); a Z1b rescue and P3-a fresh bots win.
+            // F1 (BandStepAfterEmptySearches): every failed search counts into the band streak, whatever its class; no park
+            // resets it - only a found route (below) or the band step itself.
+            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches)
+                SET_AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue,
+                    std::min(int(ai::quest_band::MaxStreakSteps), std::max(0, AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue)) + 1));
             if (sPlayerbotAIConfig.questFirstProgressionBandLadder &&
                 TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested))
+            {
+                if (sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches)
+                    SET_AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue, 0);   // F1: a step ends the streak
                 return true;
+            }
 
             // Hotfix 8.1: wait before the next quest route request (2, 4, 8, then 10 min).
             if (UsesQuestFirstProgression(bot))
@@ -924,6 +934,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // Hotfix 8.1: a route was found - no more backoff.
         SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
         SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
+        // twow-repo#601 S5a F1: a route was found - the band streak ends.
+        if (sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches)
+            SET_AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue, 0);
         // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.
         if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()))
             SET_AI_VALUE2(int, "manual int", ai::quest_failure_class::TransientStreakValue, 0);
