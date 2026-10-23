@@ -591,7 +591,9 @@ bool PlayerbotAIConfig::Initialize()
     if (rotationMeleeFleeBreak > 2)
         rotationMeleeFleeBreak = 0;   // twow-repo#602: an unknown mode is off
     rotationMeleeFleeBreakRanged = config.GetBoolDefault("AiPlayerbot.Rotation.MeleeFleeBreak.Ranged", false);
-    rotationReachLosClose = config.GetBoolDefault("AiPlayerbot.Rotation.ReachLosClose", false);   // twow-repo#594
+    rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
+    if (rotationReachLosClose > 2)
+        rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
     perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
