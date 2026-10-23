@@ -29,6 +29,7 @@
 #include "playerbot/RouteTimePolicy.h"   // twow-repo#592 (PATH-02): Perf.RouteTimeTrace
 #include "playerbot/TransportEdgePolicy.h"   // twow-repo#342 (S1): Path.TransportEdgeTrace
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 (S3b-0): Path.TransportDeckProbe / TransportWaitTimeoutMin
+#include "playerbot/MeleeFleeBreakPolicy.h"   // twow-repo#602 (MFB-W): the break's flee dispatch record
 
 using namespace ai;
 
@@ -3681,6 +3682,22 @@ void MovementAction::WaitForReach(const Movement::PointsArray& path)
     WaitForReach(distance);
 }
 
+namespace
+{
+// twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak, MFB-W 23.10.): one flee dispatch for the break's loop test, in both
+// Flee() branches; nothing when the switch is off or does not apply to the bot (cohort A, ranged without .Ranged).
+void RecordFleeBreakDispatch(PlayerbotAI* botAi, Player* bot, LastMovement& lm, time_t now)
+{
+    namespace mfb = ai::melee_flee_break;
+    if (!sPlayerbotAIConfig.rotationMeleeFleeBreak || !mfb::Applies(sPlayerbotAIConfig.rotationMeleeFleeBreak, bot->GetGUIDLow(),
+            botAi->IsRanged(bot), sPlayerbotAIConfig.rotationMeleeFleeBreakRanged))
+        return;
+    lm.fleeBreakCount = mfb::NextCount(int64(now), int64(lm.fleeBreakAttempt), lm.fleeBreakCount,
+        int64(sPlayerbotAIConfig.returnDelay / 1000));
+    lm.fleeBreakAttempt = now;
+}
+}
+
 bool MovementAction::Flee(Unit *target)
 {
     Player* master = GetMaster();
@@ -3846,10 +3863,14 @@ bool MovementAction::Flee(Unit *target)
         {
             // Penqle's ChaseMovementGenerator is templated; ServerFacade returns safe defaults.
             if (sServerFacade.GetChaseTarget(bot) == target && sServerFacade.GetChaseOffset(bot) == distance)
+            {
+                RecordFleeBreakDispatch(ai, bot, AI_VALUE(LastMovement&, "last movement"), now);   // twow-repo#602 MFB-W
                 return true;
+            }
         }
 
         mm->MoveChase(target, distance, WorldPosition(bot).getAngleTo(target));
+        RecordFleeBreakDispatch(ai, bot, AI_VALUE(LastMovement&, "last movement"), now);   // twow-repo#602 MFB-W
         return true;
     }
 
@@ -3912,6 +3933,7 @@ bool MovementAction::Flee(Unit *target)
             else
                 lm.fleeCount = 1;
             lm.lastFleeAttempt = now;
+            RecordFleeBreakDispatch(ai, bot, lm, now);   // twow-repo#602 MFB-W
             lm.lastFlee = time(0);
             succeeded = true;
         }
