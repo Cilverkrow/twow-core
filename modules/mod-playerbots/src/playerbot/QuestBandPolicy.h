@@ -453,6 +453,7 @@ struct Candidate
 {
     std::int32_t index = -1;                            // into Ladder::rungs
     Reject reject = Reject::None;
+    bool sameZoneLead = false;                          // F2: a next-band rung only the same-zone lead made a candidate
 };
 
 inline float Dist2D(float ax, float ay, float bx, float by)
@@ -498,7 +499,7 @@ inline std::vector<Candidate> NextRung(Ladder const& ladder, RungFacts const& f)
     std::uint32_t const nextMinAny = nextMin;
     if (nextMin && f.level + LeadLevels < nextMin)
         nextMin = 0;
-    auto addBand = [&](std::uint32_t bandKey, std::uint32_t bandMin)
+    auto addBand = [&](std::uint32_t bandKey, std::uint32_t bandMin, bool viaSameZoneLead)
     {
         if (!bandMin)
             return;
@@ -510,6 +511,7 @@ inline std::vector<Candidate> NextRung(Ladder const& ladder, RungFacts const& f)
                     continue;
                 Candidate c;
                 c.index = std::int32_t(i);
+                c.sameZoneLead = viaSameZoneLead;
                 bool leftZone = false;
                 for (std::uint32_t z : f.leftZones)
                     leftZone = leftZone || (z && z == r.zoneId);
@@ -527,17 +529,24 @@ inline std::vector<Candidate> NextRung(Ladder const& ladder, RungFacts const& f)
                 break;
             }
     };
-    addBand(key, curMin);
+    addBand(key, curMin, false);
     // F2 (BandLadderSameZoneNext, OB-00 23.10.2026): every rung of the current band lies in the zone the bot has just found
     // done (candidate v46.6: same_zone 391 of 600 no_rung skips) - the next band is a candidate from sameZoneLead levels below
     // its min instead of LeadLevels. The game-side veto on a hub clearly above the bot (QuestBand.cpp HubAbove) still applies.
     bool allSameZone = !out.empty();
     for (Candidate const& c : out)
         allSameZone = allSameZone && c.reject == Reject::SameZone;
-    if (!nextMin && nextMinAny && f.sameZoneLead && allSameZone && f.level + f.sameZoneLead >= nextMinAny)
+    bool const viaSameZoneLead = !nextMin && nextMinAny && f.sameZoneLead && allSameZone && f.level + f.sameZoneLead >= nextMinAny;
+    if (viaSameZoneLead)
         nextMin = nextMinAny;
-    addBand(nextKey, nextMin);
+    addBand(nextKey, nextMin, viaSameZoneLead);
     return out;
+}
+
+// The step line's lead= (OB-10 review 23.10.2026: F2 steps separable from normal ones for the deaths-after-step guard).
+inline char const* LeadName(Candidate const& c)
+{
+    return c.sameZoneLead ? "samezone" : "normal";
 }
 
 // The first reject among the candidates, for skip reason=no_rung detail= (no_band when there was no candidate).

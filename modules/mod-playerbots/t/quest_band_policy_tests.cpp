@@ -316,6 +316,8 @@ int main()
         Require(c.size() == 3 && c[0].reject == Reject::SameZone && c[1].reject == Reject::SameZone &&
             c[2].reject == Reject::None && ladder.rungs[std::size_t(c[2].index)].hubId == 1531,
             "lead 4: the next band 10-12, Razor Hill again same zone, Crossroads chosen");
+        Require(!c[0].sameZoneLead && c[1].sameZoneLead && c[2].sameZoneLead && LeadName(c[2]) == std::string("samezone") &&
+            LeadName(c[0]) == std::string("normal"), "F2 candidates are marked lead=samezone, the current band's are not");
         // a current-band rung outside the zone (only in the searched radius) keeps the lead at 2: no relaxation
         RungFacts g = facts(2, 'H', 1, 10, 14, 340.f, -4686.f, 6000.f);
         g.sameZoneLead = 10;
@@ -326,7 +328,12 @@ int main()
         RungFacts h2 = facts(2, 'H', 1, 11, 14, 340.f, -4686.f, 2000.f);
         std::size_t const before = NextRung(ladder, h2).size();
         h2.sameZoneLead = 10;
-        Require(NextRung(ladder, h2).size() == before, "lead changes nothing when the next band is in reach");
+        c = NextRung(ladder, h2);
+        Require(c.size() == before, "lead changes nothing when the next band is in reach");
+        bool anyMarked = false;
+        for (Candidate const& x : c)
+            anyMarked = anyMarked || x.sameZoneLead;
+        Require(!anyMarked, "a next band within the normal lead is lead=normal");
     }
 
     // ---- trip clock -----------------------------------------------------------------------------------------------
