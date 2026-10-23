@@ -120,6 +120,7 @@ set(entries
   "CastWait.Preparing|castWaitPreparing"
   "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
+  "Rotation.ReachLosClose|rotationReachLosClose"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
   "Perf.RouteTimeTrace|perfRouteTimeTrace"
