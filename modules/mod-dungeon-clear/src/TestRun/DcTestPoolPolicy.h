@@ -12,6 +12,7 @@
 
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace DcTestPool
@@ -76,5 +77,26 @@ namespace DcTestPool
         return tablesFound == 0 ? RosterTables::None
              : tablesFound >= 2 ? RosterTables::Both
              : RosterTables::Partial;
+    }
+
+    // A failed query and an empty result look the same (no result set), so the
+    // members are counted first (COUNT(*) always yields one row) and the guid read
+    // must then deliver at least that many rows. Anything else refuses the run.
+    enum class RosterRead
+    {
+        Empty,   // the count read 0: nothing to exclude
+        Ok,      // every counted member was read
+        Refuse,  // count failed, guid read failed or came back short
+    };
+
+    inline RosterRead ClassifyRosterRead(bool countOk, std::uint64_t counted, bool guidsOk, std::uint64_t read)
+    {
+        if (!countOk)
+            return RosterRead::Refuse;
+        if (counted == 0)
+            return RosterRead::Empty;
+        if (!guidsOk || read < counted)
+            return RosterRead::Refuse;
+        return RosterRead::Ok;
     }
 }
