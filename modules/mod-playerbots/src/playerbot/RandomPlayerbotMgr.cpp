@@ -1227,7 +1227,8 @@ void ReportCastWait()
 }
 
 // twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose, CLI-ROT review): one [ReachLos] minute line - hostile reach targets out of
-// sight chased closer per cohort (closed_A must stay 0 with mode 2), floored ones and those in sight within 5 s. Nothing with 0.
+// sight chased closer per cohort (evaluations), floored (walk-in) / stood (already inside the floor), episodes and those back in
+// sight within 5 s (per episode). Nothing with 0.
 void ReportReachLos()
 {
     static uint32 lastReport = 0;
@@ -1237,7 +1238,8 @@ void ReportReachLos()
     lastReport = now;
     sLog.outBasic("%s", ai::reach_los::FormatMinuteLine(sPlayerbotAIConfig.rotationReachLosClose,
         ai::reach_los::closedA.exchange(0, std::memory_order_relaxed), ai::reach_los::closedB.exchange(0, std::memory_order_relaxed),
-        ai::reach_los::floored.exchange(0, std::memory_order_relaxed), ai::reach_los::inLosAfter.exchange(0, std::memory_order_relaxed)).c_str());
+        ai::reach_los::floored.exchange(0, std::memory_order_relaxed), ai::reach_los::stood.exchange(0, std::memory_order_relaxed),
+        ai::reach_los::episodes.exchange(0, std::memory_order_relaxed), ai::reach_los::inLosAfter.exchange(0, std::memory_order_relaxed)).c_str());
 }
 
 // twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak): one [MeleeFleeBreak] line per minute - "outnumbered" evaluations

@@ -31,7 +31,8 @@ enum class Kind : std::uint8_t
 {
     Unchanged,   // in sight, friendly, or the mode does not apply: the old rule
     Closed,      // hostile out of sight: chased closer than preferred
-    Floored      // hostile out of sight, but the floor is above distance x HostileFactor
+    Floored,     // hostile out of sight, the floor is above distance x HostileFactor: the bot walks in to the floor
+    Stood        // hostile out of sight and the bot already stands at or inside the floor: it does not move (8.2 ends it)
 };
 
 struct Chase
@@ -51,6 +52,8 @@ inline Chase ChaseDistance(bool inLos, bool isFriend, bool closeHostile, float d
 
     float const floor = std::min(preferredDist, floorDist);
     float const closer = distanceToTarget * HostileFactor;
+    if (distanceToTarget <= floor)
+        return { floor, Kind::Stood };
     if (closer < floor)
         return { floor, Kind::Floored };
     return { std::min(closer, preferredDist), Kind::Closed };
@@ -68,16 +71,21 @@ inline float Floor(float spellMinRange, float tooCloseDistance)
     return spellMinRange > 0.0f ? spellMinRange : tooCloseDistance;
 }
 
-// [ReachLos] minute counters (CLI-ROT: mechanism proof per cohort; closed_A must stay 0 with mode 2 = leak check). Map threads
+// [ReachLos] minute counters (CLI-ROT: mechanism proof per cohort; closed_A stays 0 with mode 2 by construction - a consistency
+// check, not a leak proof; closed_* count per evaluation, episodes / in_los_after per episode). Map threads
 // add, the world thread takes them once per minute.
 inline std::atomic<std::uint32_t> closedA{ 0 };
 inline std::atomic<std::uint32_t> closedB{ 0 };
-inline std::atomic<std::uint32_t> floored{ 0 };
-inline std::atomic<std::uint32_t> inLosAfter{ 0 };
+inline std::atomic<std::uint32_t> floored{ 0 };     // walk-in to the floor
+inline std::atomic<std::uint32_t> stood{ 0 };       // already at or inside the floor (CLI-ROT re-review)
+inline std::atomic<std::uint32_t> episodes{ 0 };    // closed evaluations that started an episode (losClosedAt was 0): the in_los_after denominator
+inline std::atomic<std::uint32_t> inLosAfter{ 0 };  // episodes whose target came into sight within InLosAfterSeconds (Execute or isUseful)
 
-inline std::string FormatMinuteLine(std::uint32_t mode, std::uint32_t a, std::uint32_t b, std::uint32_t f, std::uint32_t l)
+inline std::string FormatMinuteLine(std::uint32_t mode, std::uint32_t a, std::uint32_t b, std::uint32_t f, std::uint32_t s,
+    std::uint32_t e, std::uint32_t l)
 {
     return "[ReachLos] minute mode=" + std::to_string(mode) + " closed_A=" + std::to_string(a) + " closed_B=" + std::to_string(b) +
-        " floored=" + std::to_string(f) + " in_los_after=" + std::to_string(l);
+        " floored=" + std::to_string(f) + " stood=" + std::to_string(s) + " episodes=" + std::to_string(e) + " in_los_after=" +
+        std::to_string(l);
 }
 }
