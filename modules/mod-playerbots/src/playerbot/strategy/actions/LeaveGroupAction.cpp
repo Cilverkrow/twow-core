@@ -4,6 +4,7 @@
 #include "playerbot/SingletonGroupPolicy.h"
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/AdhocGroupPolicy.h"
+#include "playerbot/QuestGroupWorld.h"
 
 namespace ai
 {
@@ -97,6 +98,10 @@ namespace ai
 
     bool LeaveFarAwayAction::isUseful()
     {
+        // twow-repo#627 S7: a help group is left by its own rules in the world-thread manager (QuestGroupWorld.cpp).
+        if (quest_groups::IsMember(ai))
+            return false;
+
         if (bot->InBattleGround())
             return false;
 

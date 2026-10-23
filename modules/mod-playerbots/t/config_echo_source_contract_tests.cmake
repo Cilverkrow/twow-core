@@ -133,7 +133,8 @@ set(entries
   "Grind.GreyByLevel|grindGreyByLevel"
   "Grind.QuestFirstOrder|grindQuestFirstOrder"
   "BotGroups.Enabled|botGroupsEnabled"
-  "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread")
+  "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
+  "QuestGroups.Enable|questGroupsEnable")
 foreach(entry IN LISTS entries)
   string(REPLACE "|" ";" parts "${entry}")
   list(GET parts 0 key)

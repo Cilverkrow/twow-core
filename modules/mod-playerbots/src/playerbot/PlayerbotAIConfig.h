@@ -802,6 +802,20 @@ public:
     uint32 botGroupsAdhocPairCooldownSeconds = 600;
     // twow-repo#628: ad-hoc groups form and leave in the world-thread manager (AdhocGroupWorld.h).
     bool botGroupsAdhocWorldThread = false;
+    // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
+    uint32 questGroupsEnable = 0;
+    uint32 questGroupsScanSeconds = 60;
+    uint32 questGroupsMaxSize = 5;
+    uint32 questGroupsMaxSizeDrop = 3;
+    uint32 questGroupsLevelWindow = 3;
+    float questGroupsRecruitRadius = 800.0f;
+    uint32 questGroupsRendezvousMinutes = 10;
+    uint32 questGroupsNoProgressMinutes = 15;
+    uint32 questGroupsTurnInWaitMinutes = 5;
+    uint32 questGroupsMaxQuestMinutes = 60;
+    uint32 questGroupsMaxAttempts = 3;
+    uint32 questGroupsRetryCooldownMinutes = 30;
+    bool questGroupsSuggestedPlayers = true;
     // #303 part 2: a bot does not walk more than this far to a real-player
     // master (0 = no limit); beyond it the bot waits and asks to be summoned.
     float farFollowMaxWalkDistance = 400.0f;
