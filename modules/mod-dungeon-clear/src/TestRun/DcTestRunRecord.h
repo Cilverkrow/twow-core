@@ -127,7 +127,10 @@ namespace DcTestRunRecord
         //     holder list: pre-10 records have neither, and treating an absent
         //     list as an empty one reports "nothing was holding them" about the
         //     freezes this was added to explain.
-        std::uint32_t schema = 10;
+        // 11: added the claim pool (twow-repo#629 DUN-03): faction, accountPrefix,
+        //     synthetic (claimed from a TestRun.AccountPrefix pool) and
+        //     rosterExcluded (roster guids the claim skipped).
+        std::uint32_t schema = 11;
         std::string runId;
         std::string planId;       // owning `.dc test plan`, "" for ad-hoc runs
         std::string dungeon;      // registry token
@@ -149,6 +152,14 @@ namespace DcTestRunRecord
         // seeded draw from the addclass pool. compSeed is 0 on these runs: the
         // roster IS the comp, so there is nothing to replay from a seed.
         bool roster = false;
+        // #629: "alliance"/"horde" (the driver's team, which the pool claim
+        // filters on); the TestRun.AccountPrefix in force ("" = any bot account);
+        // synthetic = claimed from that prefix pool; rosterExcluded = how many
+        // persistent roster guids the claim skipped (0 without a roster).
+        std::string faction;
+        std::string accountPrefix;
+        bool synthetic = false;
+        std::uint32_t rosterExcluded = 0;
         std::vector<CompEntry> comp;
         std::uint64_t startedAtMs = 0;  // unix ms
         std::uint64_t endedAtMs = 0;

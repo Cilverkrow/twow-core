@@ -205,6 +205,11 @@ AC_ADD_CONFIG_FILE("${CMAKE_CURRENT_LIST_DIR}/conf/mod_dungeon_clear.conf.dist")
 # TestRun/DcTestRunJob.{h,cpp}
 #   (per-run FSM extracted verbatim from the old singleton DcTestRunManager so N
 #    runs can execute at once; DcTestRunManager is now a run registry.)
+# TestRun/DcTestPoolPolicy.h, TestRun/DcTestPool.{h,cpp}
+#   (twow-repo#629 DUN-03: claim() never takes a persistent roster bot - the
+#    roster guids come straight from ai_playerbot_roster_member/_current - and
+#    TestRun.AccountPrefix narrows the pool to dedicated test accounts. Pure
+#    rules pinned by t/TestTestPoolPolicy.)
 # Util/DcFormGate.h
 #   (header-only shapeshift gate for the item-use casts: a feral-form druid tank
 #    fails Spell::CheckCast's CheckShapeshift, so every quest-item interaction

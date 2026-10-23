@@ -4,6 +4,7 @@
  */
 
 #include "TestRun/DcTestRunJob.h"
+#include "TestRun/DcTestPool.h"   // twow-repo#629 DUN-03 claim pool
 #include "Ai/Dungeon/DungeonClear/Util/NavmeshSnap.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcEncounterMask.h"
 
@@ -307,6 +308,8 @@ void DcTestRunJob::InitIdentity(Player* gm, DcTestDungeonRegistry::Row const& ro
     _record = DcTestRunRecord::Record{};
     _record.runId = MakeRunId();
     _record.planId = planId;
+    // #629: the run's faction is the driver's (the pool claim filters on it).
+    _record.faction = gm->GetTeamId() == TEAM_ALLIANCE ? "alliance" : "horde";
     _record.dungeon = row.token;
     _record.dungeonName = row.name;
     _record.wing = row.wing;
@@ -370,6 +373,32 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
     for (uint32 lowGuid : sRandomPlayerbotMgr.GetActiveRotationBots())
         rotationGuids.insert(lowGuid);
 
+    // twow-repo#629 (DUN-03): a claimed character is rebuilt below, so a persistent
+    // roster bot must never be claimed. The roster comes straight from its tables,
+    // whatever PersistentActiveRoster.Enabled says (a test stack runs with it off,
+    // and then IsPersistentRosterMember is false for every roster bot); a roster that
+    // exists but cannot be read refuses the run. TestRun.AccountPrefix ("" = off)
+    // narrows the pool to dedicated test accounts (stack B: RNDBOTSYN).
+    std::unordered_set<uint32> rosterGuids;
+    std::string poolErr;
+    if (!DcTestPool::LoadRosterGuids(rosterGuids, poolErr))
+    {
+        if (err)
+            *err = "roster exclusion unavailable: " + poolErr;
+        return nullptr;
+    }
+    std::string const accountPrefix = DcTestPool::ConfAccountPrefix();
+    std::unordered_set<uint32> poolAccounts;
+    if (!accountPrefix.empty() && !DcTestPool::LoadPoolAccounts(accountPrefix, poolAccounts, poolErr))
+    {
+        if (err)
+            *err = poolErr;
+        return nullptr;
+    }
+    job->_record.accountPrefix = accountPrefix;
+    job->_record.synthetic = !accountPrefix.empty();
+    job->_record.rosterExcluded = uint32(rosterGuids.size());
+
     // Claim one offline bot-account character of `classId`, or Empty if none
     // is free. No addclass pool on this tree - the random-bot accounts are the
     // equivalent supply: every character on them is bot stock, whether or not
@@ -383,7 +412,12 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
             PlayerCacheData const* data = cacheEntry.second;
             if (!data || data->uiClass != classId)
                 continue;
-            if (!sPlayerbotAIConfig.IsInRandomAccountList(data->uiAccount))
+            // #629: roster bots never, then bot accounts only, then the test pool.
+            bool const rosterMember = rosterGuids.count(cacheEntry.first) ||
+                                      sRandomPlayerbotMgr.IsPersistentRosterMember(cacheEntry.first);
+            if (DcTestPool::Decide(sPlayerbotAIConfig.IsInRandomAccountList(data->uiAccount),
+                                   !accountPrefix.empty(), poolAccounts.count(data->uiAccount) != 0,
+                                   rosterMember) != DcTestPool::Skip::None)
                 continue;
             // NOT a character of the ACTIVE rotation set: the rotation logs
             // its currentBots in and out on its own schedule and yanked a
