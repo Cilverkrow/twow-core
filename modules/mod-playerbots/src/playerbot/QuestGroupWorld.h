@@ -27,6 +27,9 @@ namespace quest_groups
 // Role of the bot in a help group: 0 = none, 1 = follower, 2 = leader. An atomic in PlayerbotAI, no lock.
 bool IsMember(PlayerbotAI* ai);
 bool IsFollower(PlayerbotAI* ai);
+// PosStuck (CLI-Deep) calls this on every detect of a leader (park, unstuck, teleport): the leader made no progress for its
+// window, so the manager dissolves the group with reason=leader_stuck on its next pass. Lock-free, any thread.
+void NoteLeaderStuck(PlayerbotAI* ai);
 // Seconds the bot has waited for help on the quest / on its oldest waiting quest (0 = not waiting). Short mutex, rare calls.
 std::uint32_t QueuedAge(std::uint32_t guid, std::uint32_t questId);
 std::uint32_t OldestQueuedAge(std::uint32_t guid);

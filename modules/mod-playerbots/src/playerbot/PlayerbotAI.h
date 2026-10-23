@@ -1004,6 +1004,8 @@ protected:
     // twow-repo#627 S7 (AiPlayerbot.QuestGroups.Enable): the bot's role in a help group (0 none, 1 follower, 2 leader), set by the
     // world-thread manager (quest_groups::WorldThreadManager), read on the bot's map thread (LeaveFarAway, AutoShare, CLI-Deep hooks).
     std::atomic<uint8> questGroupRole{ 0 };
+    // twow-repo#627: set by PosStuck (CLI-Deep hook, bot thread) when it detects this bot as a help-group leader, taken by the manager.
+    std::atomic<bool> questGroupLeaderStuck{ false };
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
