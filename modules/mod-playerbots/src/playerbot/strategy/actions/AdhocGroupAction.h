@@ -17,8 +17,6 @@ namespace ai
         bool isUseful() override;
 
     private:
-        adhoc_group::ObjectiveKey CurrentObjective(Player* player) const;
-        bool IsCandidateBot(Player* player) const;
         void Scan(uint32 now);
         void RegisterPending(Group* group, uint32 now);
         bool CheckLeave(Group* group, uint32 now);

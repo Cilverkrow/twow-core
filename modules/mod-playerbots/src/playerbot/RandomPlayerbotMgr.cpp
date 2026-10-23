@@ -24,6 +24,7 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): band rescue targets, [QuestBand] minute line
+#include "playerbot/AdhocGroupWorld.h"   // twow-repo#628 ad-hoc groups on the world thread
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -1867,6 +1868,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         // MaxConcurrent): Announce alone with IntervalMinutes or MaxConcurrent 0 does no work at all (C1).
         if (sPlayerbotAIConfig.bgEnable && (sPlayerbotAIConfig.bgPlayerFill || sPlayerbotAIConfig.bgSlotRelease || BgOwnEnabled()))
             CheckBgFill();
+        // twow-repo#628: ad-hoc quest groups (#365) form and leave here, on the world thread like CheckBgFill (the core
+        // handles group opcodes on the world thread; Group::Create/Disband write the group map without a lock).
+        if (sPlayerbotAIConfig.botGroupsEnabled && sPlayerbotAIConfig.botGroupsAdhocWorldThread)
+            ai::adhoc_group::WorldManager().Update(GetAllBots(), uint32(time(nullptr)));
         PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
         if (sPlayerbotAIConfig.worldBotsTrace)
             TraceWorldBots(desiredBots.size(), usSince(sessionsStart, sessionsEnd), usSince(processStart, processEnd),

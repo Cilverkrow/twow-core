@@ -1101,6 +1101,15 @@ AiPlayerbot.BotGroups.Diagnostics = 0
 AiPlayerbot.BotGroups.AdHoc.ScanIntervalSeconds = 10
 AiPlayerbot.BotGroups.AdHoc.Radius = 50
 AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds = 600
+# #628: 1 = the ad-hoc groups form and leave in the roster manager on the world
+# thread (end of World::Update, maps idle), not in each bot's map-thread action.
+# The core handles group opcodes on the world thread only, and group creation
+# writes the global group map without a lock. Same rules, same [BotGroup] lines
+# (with thread=world), plus a minute line (passes, candidates, invites, joins,
+# leaves, tracked, pass_us_max). A leave really leaves: the action path kept a
+# free bot in its group. "leave far away" no longer drops a member of an ad-hoc
+# group; the ad-hoc leave rules decide. 0 = the old action path.
+AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
 # #303: a bot of a real player does not walk more than this many yards to its
 # master; beyond it the bot keeps its own activity and asks to be summoned
 # ("far_follow_hold"). 0 = no limit (old behaviour: walk any distance).
