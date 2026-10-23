@@ -81,6 +81,12 @@ namespace DcTestRunRecord
           << ",\"gearIlvl\":" << rec.gearIlvl
           << ",\"gearQuality\":" << rec.gearQuality
           << ",\"roster\":" << (rec.roster ? "true" : "false")
+          << ",\"faction\":";
+        AppendEscaped(s, rec.faction);
+        s << ",\"accountPrefix\":";
+        AppendEscaped(s, rec.accountPrefix);
+        s << ",\"synthetic\":" << (rec.synthetic ? "true" : "false")
+          << ",\"rosterExcluded\":" << rec.rosterExcluded
           << ",\"comp\":[";
         for (std::size_t i = 0; i < rec.comp.size(); ++i)
         {

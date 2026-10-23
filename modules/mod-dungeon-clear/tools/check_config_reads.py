@@ -45,6 +45,7 @@ ACCESSOR = "Settings/DcSettings.cpp"
 ALLOWLIST = {
     "DungeonClear.TestRun.DriverCharacter",
     "DungeonClear.TestRun.DriverAccount",
+    "DungeonClear.TestRun.AccountPrefix",  # twow-repo#629: claim pool prefix, read once per run setup
 }
 
 CALL = re.compile(r"sConfigMgr->Get\w*\s*(?:<[^>;]*>)?\s*\(")

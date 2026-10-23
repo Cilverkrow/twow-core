@@ -1592,3 +1592,22 @@ DungeonClear.TestRun.DriverCharacter = "Dcdriver"
 #
 
 DungeonClear.TestRun.DriverAccount = "dcdriver"
+
+#
+#    DungeonClear.TestRun.AccountPrefix
+#        twow-repo#629 (DUN-03). A pool run claims and REBUILDS offline
+#        characters on the random-bot accounts (level, gear, talents). With a
+#        prefix set, it only claims characters on accounts whose name starts
+#        with it (case-insensitive; letters and digits only), e.g. "RNDBOTSYN"
+#        for the synthetic test pool on a disposable test stack. Records then
+#        carry synthetic=true and accountPrefix.
+#
+#        Independent of this key, a run never claims a persistent roster bot:
+#        the roster guids are read straight from ai_playerbot_roster_member /
+#        ai_playerbot_roster_current (also with PersistentActiveRoster.Enabled
+#        = 0), and a roster that exists but cannot be read refuses the run.
+#
+#        Default: "" (any random-bot account outside the roster)
+#
+
+DungeonClear.TestRun.AccountPrefix = ""
