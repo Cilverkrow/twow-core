@@ -42,18 +42,41 @@ namespace DcTestPool
                 break;
         }
 
-        // No current version (NULL) or an empty roster: no rows, nothing to exclude.
-        std::unique_ptr<QueryResult> members(CharacterDatabase.Query(
-            "SELECT m.character_guid FROM ai_playerbot_roster_member m "
+        // A failed query and an empty roster both return no result set, so count first (one row always,
+        // 0 with no current version or an empty roster) and hold the guid read against that count.
+        std::unique_ptr<QueryResult> count(CharacterDatabase.Query(
+            "SELECT COUNT(*) FROM ai_playerbot_roster_member m "
             "JOIN ai_playerbot_roster_current c ON c.version_id = m.version_id "
             "WHERE c.singleton_id = 1"));
-        if (!members)
-            return true;
-        do
+        std::uint64_t const counted = count ? count->Fetch()[0].GetUInt64() : 0;
+        std::unique_ptr<QueryResult> members;
+        if (count && counted)
         {
-            guids.insert(members->Fetch()[0].GetUInt32());
-        } while (members->NextRow());
-        return true;
+            members.reset(CharacterDatabase.Query(
+                "SELECT m.character_guid FROM ai_playerbot_roster_member m "
+                "JOIN ai_playerbot_roster_current c ON c.version_id = m.version_id "
+                "WHERE c.singleton_id = 1"));
+            if (members)
+            {
+                do
+                {
+                    guids.insert(members->Fetch()[0].GetUInt32());
+                } while (members->NextRow());
+            }
+        }
+        switch (ClassifyRosterRead(count != nullptr, counted, members != nullptr, guids.size()))
+        {
+            case RosterRead::Empty:
+            case RosterRead::Ok:
+                return true;
+            case RosterRead::Refuse:
+                break;
+        }
+        err = count ? "roster member read failed or short (" + std::to_string(guids.size()) + " of " +
+                          std::to_string(counted) + ")"
+                    : "roster member count failed";
+        guids.clear();
+        return false;
     }
 
     bool LoadPoolAccounts(std::string const& prefix, std::unordered_set<std::uint32_t>& accounts, std::string& err)

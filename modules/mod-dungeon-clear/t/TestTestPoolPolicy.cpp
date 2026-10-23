@@ -50,6 +50,19 @@ TEST(DcTestPoolPolicy, PrefixIsSafeForLike)
     EXPECT_FALSE(DcTestPool::PrefixIsSafe(std::string(33, 'A')));
 }
 
+TEST(DcTestPoolPolicy, RosterReadFailsClosed)
+{
+    using DcTestPool::ClassifyRosterRead;
+    using DcTestPool::RosterRead;
+    // A failed count can never read as an empty roster.
+    EXPECT_EQ(ClassifyRosterRead(false, 0, false, 0), RosterRead::Refuse);
+    EXPECT_EQ(ClassifyRosterRead(true, 0, false, 0), RosterRead::Empty);
+    EXPECT_EQ(ClassifyRosterRead(true, 540, true, 540), RosterRead::Ok);
+    // Members counted but the guid read failed or came back short.
+    EXPECT_EQ(ClassifyRosterRead(true, 540, false, 0), RosterRead::Refuse);
+    EXPECT_EQ(ClassifyRosterRead(true, 540, true, 539), RosterRead::Refuse);
+}
+
 TEST(DcTestPoolPolicy, RosterTablesFailClosed)
 {
     EXPECT_EQ(DcTestPool::ClassifyRosterTables(0), DcTestPool::RosterTables::None);
