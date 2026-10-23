@@ -153,6 +153,15 @@ namespace ai
         // twow-repo#592 (PATH-02 diag): the reason of a dispatch in [RouteTime] (AiPlayerbot.Perf.RouteTimeTrace).
         void CountDispatchReason(WorldPosition const& startPos, WorldPosition const& endPos, LastMovement& lastMove);
         bool inFollow = false;   // set by Follow(target, distance, angle) for its scope: its dispatches count as follow
+    protected:
+        // twow-repo#575 (QFO 41747, AiPlayerbot.Path.PartialNoop): the last MoveTo2 failed as a partial no-op and the path end, for
+        // the caller's [PathIsland] line. Reset at the start of every MoveTo2.
+        bool partialNoopHit = false;
+        WorldPosition partialNoopEnd;
+        // Scope of the PartialNoop check: set only by MoveToTravelTargetAction and MoveToRpgTargetAction around their MoveTo
+        // (OB-10 review 23.10.2026). Every other MoveTo caller (battleground tactics, corpse run, positions, follow) keeps
+        // "stand at the nearest point" as a valid result.
+        bool partialNoopScope = false;
     };
 
     class FleeAction : public MovementAction

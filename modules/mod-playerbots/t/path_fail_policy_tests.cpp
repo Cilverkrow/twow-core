@@ -97,6 +97,38 @@ int main()
     Require(!InCustomStartZone(0, -8949.95f, -132.5f, true), "Northshire stays a target");
     Require(!InCustomStartZone(530, -100.0f, -7500.0f, true), "other maps: never");
 
+    // twow-repo#575 (QFO 41747, AiPlayerbot.Path.PartialNoop): Tower of Azora probe values (22.10.2026) - the bot stands at the
+    // partial end (-9549.6,-700.3), 18.4 yd from the turn-in NPC.
+    {
+        float const reach = PartialNoopDefaultReach, gap = PartialNoopDefaultGap;
+        Require(IsPartialNoop(true, 0.0f, 18.4f, reach, gap), "Azora: at the partial end, 18.4 yd short = no-op");
+        Require(IsPartialNoop(true, 2.0f, 18.4f, reach, gap), "reach is inclusive");
+        Require(!IsPartialNoop(true, 2.1f, 18.4f, reach, gap), "still walking towards the partial end: a real move");
+        Require(!IsPartialNoop(true, 30.0f, 18.4f, reach, gap), "far from the partial end: a real move");
+        Require(!IsPartialNoop(true, 0.0f, 5.0f, reach, gap), "gap is exclusive: a path ending 5 yd short counts as arrived");
+        Require(!IsPartialNoop(true, 0.0f, 0.0f, reach, gap), "complete path, bot at the target: no no-op");
+        Require(!IsPartialNoop(true, 1.0f, 0.4f, reach, gap), "complete path (end gap 0.4 like the fixed tile): no no-op");
+        Require(!IsPartialNoop(false, 0.0f, 18.4f, reach, gap), "other map: never");
+        Require(IsPartialNoop(true, 9.0f, 18.4f, 10.0f, gap) && !IsPartialNoop(true, 0.0f, 18.4f, reach, 20.0f), "tuning applies");
+    }
+
+    // [PathIsland]: one line per bot and target; the per-bot book is bounded.
+    {
+        Require(IslandKey(2590700, 62634, -9556.95f, -717.49f) == 2590700, "spawn guid is the key");
+        Require(IslandKey(0, 62634, -9556.95f, -717.49f) == IslandKey(0, 62634, -9556.2f, -717.1f), "no guid: entry + whole-yard position");
+        Require(IslandKey(0, 62634, -9556.95f, -717.49f) != IslandKey(0, 62634, -9500.0f, -717.49f), "no guid: another spot is another key");
+        Require(IslandKey(0, 62634, 10.0f, 20.0f) != IslandKey(0, 313, 10.0f, 20.0f), "no guid: another entry is another key");
+
+        IslandBook book;
+        Require(book.FirstTime(2590700), "first time: line due");
+        Require(!book.FirstTime(2590700), "same bot and target: no second line");
+        Require(book.FirstTime(80934), "another target: line due");
+        for (std::uint64_t key = 1; key <= IslandBookMax; ++key)
+            book.FirstTime(1000 + key);
+        Require(book.keys.size() == IslandBookMax, "book bounded");
+        Require(book.FirstTime(2590700), "the oldest key left the book: reported again");
+    }
+
     std::cout << "path_fail_policy_tests passed\n";
     return 0;
 }

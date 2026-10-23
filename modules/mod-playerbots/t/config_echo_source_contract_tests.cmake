@@ -108,6 +108,7 @@ set(entries
   "DirectTargets.FreshBackoffSeconds|directTargetsFreshBackoffSeconds"
   "DirectTargets.FreshGrindFailures|directTargetsFreshGrindFailures"
   "Path.TaxiCancelForm|pathTaxiCancelForm"
+  "Path.PartialNoop|pathPartialNoop"
   "Path.TransportEdgeTrace|pathTransportEdgeTrace"
   "Path.TransportDeckProbe|pathTransportDeckProbe"
   "Path.TransportWaitTimeoutMin|pathTransportWaitTimeoutMin"

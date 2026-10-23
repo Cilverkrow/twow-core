@@ -786,6 +786,9 @@ bool PlayerbotAIConfig::Initialize()
     pathRouteFailDetail = config.GetBoolDefault("AiPlayerbot.Path.RouteFailDetail", false);
     pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault("AiPlayerbot.Path.RouteFailDetail.LinesPerMinute", 30));
     pathHonestRouteFail = config.GetBoolDefault("AiPlayerbot.Path.HonestRouteFail", false);
+    pathPartialNoop = config.GetBoolDefault("AiPlayerbot.Path.PartialNoop", false);
+    pathPartialNoopReach = std::min(10.0f, std::max(0.5f, config.GetFloatDefault("AiPlayerbot.Path.PartialNoop.Reach", ai::path_fail::PartialNoopDefaultReach)));
+    pathPartialNoopGap = std::min(100.0f, std::max(1.0f, config.GetFloatDefault("AiPlayerbot.Path.PartialNoop.Gap", ai::path_fail::PartialNoopDefaultGap)));
     pathStartZoneExactBounds = config.GetBoolDefault("AiPlayerbot.Path.StartZoneExactBounds", false);
     pathRpgTargetSnap = config.GetBoolDefault("AiPlayerbot.Path.RpgTargetSnap", false);
     pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
@@ -1526,6 +1529,7 @@ bool PlayerbotAIConfig::Initialize()
             {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
             {"DirectTargets.FreshGrindFailures", Value(directTargetsFreshGrindFailures)},
             {"Path.TaxiCancelForm", Value(pathTaxiCancelForm)},
+            {"Path.PartialNoop", Value(pathPartialNoop)},
             {"Path.TransportEdgeTrace", Value(pathTransportEdgeTrace)},
             {"Path.TransportDeckProbe", Value(pathTransportDeckProbe)},
             {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},

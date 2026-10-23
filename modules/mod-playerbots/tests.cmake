@@ -3023,6 +3023,12 @@ add_test(NAME path_fail_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/path_fail_source_contract_tests.cmake")
 
+# twow-repo#575 (QFO 41747): a partial path whose end the bot already stands at fails (AiPlayerbot.Path.PartialNoop).
+add_test(NAME path_partial_noop_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/path_partial_noop_source_contract_tests.cmake")
+
 # twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
 add_test(NAME budget_start_source_contract
   COMMAND "${CMAKE_COMMAND}"
