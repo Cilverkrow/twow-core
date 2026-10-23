@@ -1001,6 +1001,9 @@ protected:
     // bot's battleground queue entry and, after its accept, until the bot is back from that battleground
     // (RandomPlayerbotMgr::CheckBgFill); read by BGStatusAction on the bot's map thread.
     std::atomic<bool> bgFillPending{ false };
+    // twow-repo#627 S7 (AiPlayerbot.QuestGroups.Enable): the bot's role in a help group (0 none, 1 follower, 2 leader), set by the
+    // world-thread manager (quest_groups::WorldThreadManager), read on the bot's map thread (LeaveFarAway, AutoShare, CLI-Deep hooks).
+    std::atomic<uint8> questGroupRole{ 0 };
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };

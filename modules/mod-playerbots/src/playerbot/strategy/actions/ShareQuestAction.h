@@ -18,7 +18,7 @@ namespace ai
         virtual bool Execute(Event& event) override;
         virtual bool isUsefulWhenStunned() override { return true; }
 
-        virtual bool isUseful() override { return bot->GetGroup() && !ai->HasActivePlayerMaster(); }
+        virtual bool isUseful() override;   // twow-repo#627: not in an S7 help group (ShareQuestAction.cpp)
     };
 
     // #340/core#102: one admission for a roster bot catching up on its

@@ -25,6 +25,7 @@
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): band rescue targets, [QuestBand] minute line
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#628 ad-hoc groups on the world thread
+#include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 help groups on the world thread
 #include "playerbot/PerformanceMonitor.h"
 #include "strategy/values/LastMovementValue.h"
 #include "AccountMgr.h"
@@ -1858,6 +1859,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         WorldBotsClock::time_point const processEnd = WorldBotsClock::now();
         SetAIInternalUpdateDelay(sPlayerbotAIConfig.randomBotUpdateInterval);
         LoginFreeBots();
+        // twow-repo#627 S7: help groups for elite and group quests, formed, tended and dissolved on the world thread (maps idle,
+        // the #517 pattern below). Running groups are still tended after a config reload switched Enable off.
+        if (sPlayerbotAIConfig.questGroupsEnable || ai::quest_groups::WorldManager().HasGroups())
+            ai::quest_groups::WorldManager().Update(GetAllBots(), uint32(time(nullptr)));
         // twow-repo#517 stage a: roster bots fill a battleground a real player queues for, chosen and queued by this
         // manager. The legacy BG queue count stays off on this path, so BgPlayers and NeedBots stay 0 and BGJoinAction
         // never queues a roster bot on its own (no overshoot). BgBots can wrap below 0 when a fill bot gets TIME_REMOVE

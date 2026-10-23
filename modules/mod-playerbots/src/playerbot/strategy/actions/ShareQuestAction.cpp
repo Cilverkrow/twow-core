@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "ShareQuestAction.h"
+#include "playerbot/QuestGroupWorld.h"
 
 using namespace ai;
 
@@ -191,4 +192,11 @@ bool AutoShareQuestAction::Execute(Event& event)
     }
 
     return shared;
+}
+
+// twow-repo#627 S7: a help group shares nothing - its members already hold the quest, and a push could put a stranger's quest
+// into a member's log.
+bool AutoShareQuestAction::isUseful()
+{
+    return bot->GetGroup() && !ai->HasActivePlayerMaster() && !quest_groups::IsMember(ai);
 }
