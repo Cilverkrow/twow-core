@@ -3726,3 +3726,22 @@ set_target_properties(quest_first_order_tests PROPERTIES
 add_test(NAME quest_first_order
   COMMAND quest_first_order_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose): a hostile reach target out of sight is chased closer.
+add_test(NAME reach_los_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/reach_los_source_contract_tests.cmake")
+
+add_executable(reach_los_tests
+  "${PB_MODULE_DIR}/t/reach_los_tests.cpp")
+
+target_include_directories(reach_los_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(reach_los_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME reach_los
+  COMMAND reach_los_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
