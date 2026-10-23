@@ -40,6 +40,8 @@ namespace ai
             farMoveArrivedAt = other.farMoveArrivedAt;
             fleeCount = other.fleeCount;
             lastFleeAttempt = other.lastFleeAttempt;
+            fleeBreakAttempt = other.fleeBreakAttempt;
+            fleeBreakCount = other.fleeBreakCount;
             pathReuseStamped = other.pathReuseStamped;
             pathReuseDest = other.pathReuseDest;
             pathReuseBack = other.pathReuseBack;
@@ -107,6 +109,11 @@ namespace ai
         // Wall-clock of the last dispatched flee, used to decide whether the next flee is
         // "subsequent" (close in time) or a fresh flee (window lapsed -> count resets).
         time_t lastFleeAttempt;
+        // twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak, MFB-W 23.10.): the flee dispatches the break counts - written
+        // in both Flee() branches (the random-bot chase branch never sets lastFleeAttempt), only for bots the switch applies
+        // to, so FleeMultiplier's own fields stay as they were. clear() leaves them alone: the window lapses by itself.
+        time_t fleeBreakAttempt = 0;
+        uint32 fleeBreakCount = 0;
         TravelPath lastPath;
         WorldPosition lastMoveShort;
         time_t nextTeleport;

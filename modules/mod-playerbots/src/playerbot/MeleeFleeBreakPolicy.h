@@ -34,6 +34,14 @@ inline bool Holds(std::int64_t now, std::int64_t lastFleeAttempt, std::uint32_t 
     return lastFleeAttempt != 0 && now - lastFleeAttempt <= windowSeconds && fleeCount >= 2;
 }
 
+// The count after a flee dispatch at `now`, as Flee() counts for FleeMultiplier: within the window of the last one it is
+// subsequent (+1), else a fresh episode (1). MFB-W 23.10.: random bots flee through Flee()'s chase branch, which returned
+// before that count - the break never held (C 22./23.10.: held=0 in every minute), so both branches record through this.
+inline std::uint32_t NextCount(std::int64_t now, std::int64_t lastFleeAttempt, std::uint32_t fleeCount, std::int64_t windowSeconds)
+{
+    return (lastFleeAttempt != 0 && now - lastFleeAttempt <= windowSeconds) ? fleeCount + 1 : 1;
+}
+
 // [MeleeFleeBreak] counters. Map threads add, the world thread takes them once per minute.
 inline std::atomic<std::uint64_t> held{ 0 };      // trigger evaluations that would have fired but were held
 inline std::atomic<std::uint64_t> breaks{ 0 };    // hold windows started (first held evaluation after a fired or quiet one)

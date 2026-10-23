@@ -284,7 +284,9 @@ bool OutNumberedTrigger::MeleeFleeBreak(bool active)
         return active;
     }
     LastMovement& lastMovement = AI_VALUE(LastMovement&, "last movement");
-    if (mfb::Holds(int64(time(nullptr)), int64(lastMovement.lastFleeAttempt), lastMovement.fleeCount,
+    // MFB-W 23.10.: the break's own dispatch record (both Flee() branches), not FleeMultiplier's lastFleeAttempt/fleeCount -
+    // random bots flee through the chase branch, which never set those, so the break held nothing (C: held=0).
+    if (mfb::Holds(int64(time(nullptr)), int64(lastMovement.fleeBreakAttempt), lastMovement.fleeBreakCount,
             int64(sPlayerbotAIConfig.returnDelay / 1000)))
     {
         if (!fleeBreakHeld)
