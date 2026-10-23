@@ -1664,6 +1664,105 @@ bool TravelTarget::IsNearTurnInStall()
         turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius);
 }
 
+bool TravelTarget::ObservePosStuck()
+{
+    // twow-repo#594 (AiPlayerbot.Path.PosStuck, OB-00 / OB-10 23.10.2026): the position guard (PosStuckPolicy.h). The population of
+    // QFO / PartialNoop: roster bots on their own, alive, not on a taxi or transport, no battleground or instance, not resting,
+    // the target on the bot's map. Outside it the window does not run.
+    if (!tDestination || !wPosition || dynamic_cast<NullTravelDestination const*>(tDestination))
+        return false;
+
+    QuestTravelDestination const* quest = dynamic_cast<QuestTravelDestination const*>(tDestination);
+    uint32 const questId = quest ? quest->GetQuestId() : 0;
+    Map const* map = bot->GetMap();
+    pos_stuck::Observation observation;
+    observation.now = WorldTimer::getMSTime();
+    observation.key = pos_stuck::KeyOf(tDestination->GetEntry(), questId);
+    observation.mapId = bot->GetMapId();
+    observation.x = bot->GetPositionX();
+    observation.y = bot->GetPositionY();
+    observation.z = bot->GetPositionZ();
+    observation.combat = bot->IsInCombat();
+    observation.excluded = !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster() ||
+        !bot->IsAlive() || bot->IsTaxiFlying() || bot->GetTransport() || !map || map->Instanceable() ||
+        wPosition->getMapId() != bot->GetMapId() || RestGateValue::Resting(ai);
+    observation.distance = observation.excluded ? 0.0f : Distance(bot);
+
+    if (pos_stuck::Observe(posStuck, observation, sPlayerbotAIConfig.pathPosStuckMinutes * 60 * IN_MILLISECONDS,
+            sPlayerbotAIConfig.pathPosStuckProgress) != pos_stuck::Verdict::Detect)
+        return false;
+
+    // An episode: the series decides park / local unstuck / home bind - a move only if the bot itself stood (OB-10 review: a
+    // long detour gets no closer either, it is parked only); a local unstuck needs a usable progress anchor.
+    pos_stuck::Step step = pos_stuck::Escalate(posStuckEpisodes, observation.now,
+        sPlayerbotAIConfig.pathPosStuckEpisodeMinutes * 60 * IN_MILLISECONDS, sPlayerbotAIConfig.pathPosStuckRateMinutes * 60 * IN_MILLISECONDS,
+        pos_stuck::StoodStill(posStuck));
+    if (step == pos_stuck::Step::Unstuck && !pos_stuck::AnchorUsable(posStuck, observation.mapId, observation.x, observation.y))
+        step = pos_stuck::Step::Teleport;
+
+    pos_stuck::Counters& counters = pos_stuck::SharedCounters();
+    uint32 detects = 0, unstucks = 0, teleports = 0, logged = 0;
+    if (counters.Roll(uint64(time(nullptr)), detects, unstucks, teleports, logged))
+        sLog.outBasic("[PosStuck] summary detect=%u unstuck=%u teleport=%u logged=%u", detects, unstucks, teleports, logged);
+    bool const lines = counters.Take(pos_stuck::DefaultLinesPerMinute);
+    uint32 const purpose = uint32(tDestination->GetPurpose());
+    if (lines)
+        sLog.outBasic("[PosStuck] state=detect bot=%u level=%u quest=%u target_entry=%d purpose=%u dist=%.1f minutes=%u map=%u zone=%u x=%.1f y=%.1f z=%.1f displacement=%.1f episode=%u step=%s",
+            bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), purpose, observation.distance,
+            sPlayerbotAIConfig.pathPosStuckMinutes, observation.mapId, bot->GetZoneId(), observation.x, observation.y, observation.z,
+            posStuck.detectDisplacement, uint32(posStuckEpisodes.count), pos_stuck::StepName(step));
+
+    // Park, every episode: a finished quest's turn-in gets the #485 park (S1 structural, not abandonable), an objective one
+    // quest loop failure (QL-1); every target is suppressed for this bot for TurnInParkSeconds (an hour when 0).
+    bool parked = false;
+    if (IsProgressAwareTurnIn())
+    {
+        bool abandonDue = false;
+        parked = ParkTurnInNow(questId, "structural_pos_stuck", false, abandonDue);
+    }
+    else if (dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
+        NoteQuestObjectiveFailure();
+    uint32 const parkSeconds = sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds ? sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds : 3600;
+    SuppressCurrentDestination(parkSeconds * IN_MILLISECONDS);
+    if (lines)
+        sLog.outBasic("[PosStuck] state=park bot=%u level=%u quest=%u target_entry=%d purpose=%u dist=%.1f minutes=%u x=%.1f y=%.1f parked=%u suppress_seconds=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), purpose, observation.distance,
+            sPlayerbotAIConfig.pathPosStuckMinutes, observation.x, observation.y, parked ? 1u : 0u, parkSeconds);
+
+    // The move (2nd episode of a series: back to the progress anchor; later: the bot's home bind, only on its own map and zone -
+    // never the start-zone rescue of #587). Fired only out of combat (Observe), only for a bot that stood, rate-limited per bot
+    // (Escalate); executed by ApplyMove (PosStuckMove.cpp), so this file stays free of teleports.
+    pos_stuck::MoveResult const moved = pos_stuck::ApplyMove(bot, step, posStuck.anchorX, posStuck.anchorY, posStuck.anchorZ);
+    if (step == pos_stuck::Step::Unstuck)
+    {
+        counters.unstuck.fetch_add(1, std::memory_order_relaxed);
+        if (lines)
+            sLog.outBasic("[PosStuck] state=unstuck bot=%u level=%u quest=%u target_entry=%d dist=%.1f minutes=%u x=%.1f y=%.1f to_x=%.1f to_y=%.1f to_z=%.1f",
+                bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), observation.distance, sPlayerbotAIConfig.pathPosStuckMinutes,
+                observation.x, observation.y, posStuck.anchorX, posStuck.anchorY, posStuck.anchorZ);
+    }
+    else if (step == pos_stuck::Step::Teleport && moved == pos_stuck::MoveResult::Moved)
+    {
+        counters.teleport.fetch_add(1, std::memory_order_relaxed);
+        if (lines)
+            sLog.outBasic("[PosStuck] state=teleport bot=%u level=%u quest=%u target_entry=%d dist=%.1f minutes=%u x=%.1f y=%.1f to=homebind",
+                bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), observation.distance, sPlayerbotAIConfig.pathPosStuckMinutes,
+                observation.x, observation.y);
+    }
+    else if (step == pos_stuck::Step::Teleport)
+    {
+        if (lines)
+            sLog.outBasic("[PosStuck] state=teleport_skipped bot=%u level=%u quest=%u target_entry=%d dist=%.1f minutes=%u x=%.1f y=%.1f reason=bind_far",
+                bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), observation.distance, sPlayerbotAIConfig.pathPosStuckMinutes,
+                observation.x, observation.y);
+    }
+
+    TraceQuestCommit(tDestination, "abandon", "pos_stuck");
+    posStuck.Reset();
+    SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+    return true;
+}
+
 void TravelTarget::CheckStatus()
 {
     if (!IsActive())
@@ -1769,6 +1868,11 @@ void TravelTarget::CheckStatus()
             return;
         }
         else if(IsForced()) return; //While traveling do not go into cooldown
+
+        // twow-repo#594 (AiPlayerbot.Path.PosStuck, OB-00 23.10.2026): the position guard, switch first. An episode parks the
+        // target and leaves it (and may move the bot); the turn-in recovery below does not run for it any more.
+        if (sPlayerbotAIConfig.pathPosStuck && ObservePosStuck())
+            return;
 
         if (IsProgressAwareQuestTravel())
         {

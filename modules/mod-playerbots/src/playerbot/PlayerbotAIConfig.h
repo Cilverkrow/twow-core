@@ -884,6 +884,11 @@ public:
     float pathPartialNoopGap = 5.0f;  // yards path end -> target above which the path counts as partial, clamped 1..100
     bool pathStartZoneExactBounds = false;  // twow-repo#575 (PATH-01 #4): Blackstone / Thalassian exclusion uses the zone boxes, 0 = old boxes
     bool pathRpgTargetSnap = false;  // twow-repo#575 (PATH-01 #5): rpg moves go to the navmesh-snapped point around the target, 0 = off
+    bool pathPosStuck = false;  // twow-repo#594 (OB-00 23.10.): position guard - a travel target the bot gets no closer to parks, then local unstuck, then home bind, 0 = off
+    uint32 pathPosStuckMinutes = 10;  // minutes without net progress to the travel target (fights count in), clamped 2..120
+    float pathPosStuckProgress = 5.0f;  // yards closer that count as progress and restart the window, clamped 1..50
+    uint32 pathPosStuckEpisodeMinutes = 30;  // an episode within this many minutes of the previous one escalates the series, clamped 5..240
+    uint32 pathPosStuckRateMinutes = 30;  // at most one unstuck / home bind per bot in this many minutes, clamped 5..240
     bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b): [TaxiUse] / [TransportWait] lines and a minute summary of bot flights and ship waits, 0 = off
     bool pathTransportEdgeTrace = false;  // twow-repo#342 (S1): [TransportWait] state= lines per transport edge episode (attempt / board / arrive / fail) + summary, 0 = off
     bool pathTransportDeckProbe = false;  // twow-repo#342 (S3b-0): once per dock wait 8 fixed vessel deck probes, one [TransportDeck] line (30/min) + [TransportBoard] summary, 0 = off
