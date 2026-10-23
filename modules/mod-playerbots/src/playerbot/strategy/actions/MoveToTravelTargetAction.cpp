@@ -216,6 +216,11 @@ bool MoveToTravelTargetAction::Execute(Event& event)
     else
         target->DecRetry(true);
 
+    // twow-repo#594 (AiPlayerbot.Path.PosStuck): a PartialNoop failure is that rule's case (retry, cooldown, #485 park) - the
+    // position guard restarts its window, so the two never act on the same stand.
+    if (sPlayerbotAIConfig.pathPosStuck && partialNoopHit)
+        target->NotePartialNoopHit();
+
     if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
     {
         WorldPosition* pos = target->GetPosition();
