@@ -551,6 +551,7 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     rungFacts.sameZoneLead = sPlayerbotAIConfig.questFirstProgressionBandLadderSameZoneNext;
     std::vector<qb::Candidate> candidates = qb::NextRung(ladder, rungFacts);
     int32 chosen = -1;
+    char const* lead = "normal";
     for (qb::Candidate& candidate : candidates)
     {
         if (candidate.reject == qb::Reject::None)
@@ -566,6 +567,7 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
         if (candidate.reject == qb::Reject::None)
         {
             chosen = candidate.index;
+            lead = qb::LeadName(candidate);
             break;
         }
     }
@@ -599,8 +601,8 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     ai->RequestQuestRouteReset(ai::quest_failure_class::ResetBandStep);
     PlayerbotAI::NoteBand(uint8(qb::EvStep), cohortB);
     head.toHub = rung.hubId;
-    sLog.outBasic("%s trigger=%s streak=%u", qb::FormatStep(head, rung, dist, tripSeconds, rungFacts.searchedRadius,
-        facts.priorFailures).c_str(), qb::StepTrigger(facts), facts.emptyStreak);
+    sLog.outBasic("%s trigger=%s streak=%u lead=%s", qb::FormatStep(head, rung, dist, tripSeconds, rungFacts.searchedRadius,
+        facts.priorFailures).c_str(), qb::StepTrigger(facts), facts.emptyStreak, lead);
     return true;
 }
 

@@ -1261,8 +1261,9 @@ AiPlayerbot.QuestFirstProgression.BandLadderFile = ""
 #   0 = off (default: only the EmptyOffer rule), 1..10; other values act like 0 (one error line).
 AiPlayerbot.QuestFirstProgression.BandStepAfterEmptySearches = 0
 # twow-repo#601 S5a F2: when every rung of the bot's band lies in the zone it stands in (no_rung detail=same_zone), the
-# next band is a candidate from this many levels below its min on, instead of 2. A hub in an area clearly above the bot
-# is still vetoed (hub_above).
+# next band is a candidate from this many levels below its min on, instead of 2 (so 1 and 2 change nothing). A hub in an
+# area clearly above the bot is still vetoed (hub_above). A step to such a rung carries lead=samezone, every other
+# lead=normal.
 #   0 = off (default), 1..10; other values act like 0 (one error line).
 AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
 # twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
