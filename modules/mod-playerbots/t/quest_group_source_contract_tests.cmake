@@ -107,4 +107,5 @@ require_text("${world}" "[QuestGroup] minute candidates=%u quests=%u formed=%u a
 require_text("${ai_h}" "std::atomic<bool> questGroupLeaderStuck{ false };" "leader-stuck atomic")
 require_text("${world}" "if (ai && ai->questGroupRole.load() == 2)
         ai->questGroupLeaderStuck.store(true);" "only a leader is flagged")
-require_text("${world}" "f.leaderStuck = leader && (Ai(leader)->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);" "manager takes the flag")
+require_text("${world}" "f.leaderStuck = leaderAi && (approachStuck || leaderAi->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);" "manager takes the flag and its own approach watch")
+require_text("${world}" "approachStuck = g.leaderWatch.Observe(" "the manager watches the forced leader itself (PosStuck skips forced targets, OB-10)")

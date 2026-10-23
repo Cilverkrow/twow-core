@@ -435,8 +435,19 @@ void WorldThreadManager::Tend(std::map<std::uint32_t, Player*> const& bots, Help
     f.members = std::uint32_t(present.size());
     f.realPlayer = realPlayer;
     f.leaderLost = leaderLost || !leader;
-    // PosStuck flagged the leader (CLI-Deep hook; PosStuck never changes the map), or the leader left the map.
-    f.leaderStuck = leader && (Ai(leader)->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);
+    // The leader is stuck when it gets no ApproachYards closer to its forced target for LeaderStallSeconds (PosStuck and S3c
+    // skip forced targets), when a hook flagged it (NoteLeaderStuck), or when it left the map.
+    bool approachStuck = false;
+    PlayerbotAI* leaderAi = Ai(leader);
+    if (leaderAi && g.phase != Phase::TurnIn)
+    {
+        TravelTarget* lt = Target(leaderAi);
+        TravelDestination* d = lt->IsForced() ? lt->GetDestination() : nullptr;
+        WorldPosition const leaderPos(leader);
+        bool const travelling = d && lt->GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL && d->OnMap(leaderPos);
+        approachStuck = g.leaderWatch.Observe(std::uintptr_t(d), travelling ? d->DistanceTo(leaderPos) : 0.0f, travelling, now);
+    }
+    f.leaderStuck = leaderAi && (approachStuck || leaderAi->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);
     f.abandoned = abandoned;
     f.allComplete = !present.empty();
     f.allTurnedIn = !present.empty();

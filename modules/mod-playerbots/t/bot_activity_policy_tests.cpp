@@ -52,6 +52,11 @@ int main()
         Require(Classify(s) == Kind::Dead, "dead before combat");
         s.alive = true;
         Require(Classify(s) == Kind::Combat, "combat before the target");
+        s.inCombat = false;
+        s.helpFollower = true;
+        Require(Classify(s) == Kind::Group, "a help-group follower is group, not quest or stuck (#627)");
+        s.inCombat = true;
+        Require(Classify(s) == Kind::Combat, "combat before group");
     }
     Require(Classify(make(StatusTravel, Dest::Quest)) == Kind::Quest, "travelling to a quest target");
     Require(Classify(make(StatusWork, Dest::Quest, 0.0f)) == Kind::Quest, "standing at a quest target in WORK is quest");
@@ -115,7 +120,7 @@ int main()
         Require(c.Add(Kind::Grind, t1) == 0 && c.HourDone(t1), "long gap into the next hour, hour done");
         std::string const line = FormatLine(12, 14, 40, c);
         Require(line == "[BotActivity] bot=12 level=14 zone=40 hour=500000 quest=60 grind=0 grind_idle=0 stuck=0 combat=90 other=0 "
-            "idle=120 dead=0 parked=0 gap=3240", "hour line");
+            "idle=120 dead=0 parked=0 group=0 gap=3240", "hour line");
         c.StartHour(t1);
         Require(c.hour == 500001u && c.gap == 0 && c.seconds[std::size_t(Kind::Quest)] == 0, "fresh hour");
         Require(c.Add(Kind::Grind, t1 + 60) == 60 && !c.HourDone(t1 + 60), "credit in the new hour");
@@ -132,7 +137,7 @@ int main()
         Snapshot const s = counters.Take();
         Require(s.samples[2] == 2 && s.seconds[2][std::size_t(Kind::Quest)] == 60 && s.seconds[2][std::size_t(Kind::Idle)] == 60,
             "band 10-14 counted");
-        Require(FormatMinuteLine(s) == "[BotActivityMin] L10-14=2/60/0/0/0/0/0/60/0/0 L60+=1/0/0/0/0/0/0/0/30/0", "minute line");
+        Require(FormatMinuteLine(s) == "[BotActivityMin] L10-14=2/60/0/0/0/0/0/60/0/0/0 L60+=1/0/0/0/0/0/0/0/30/0/0", "minute line");
         Require(FormatMinuteLine(counters.Take()) == "[BotActivityMin]", "Take resets");
     }
 

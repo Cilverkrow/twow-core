@@ -144,3 +144,4 @@ count_text("${config_cpp}" "\"AiPlayerbot.ActivityTrace\"" 1 "key read once")
 require_text("${conf_dist}" "\nAiPlayerbot.ActivityTrace = 0\n" "documented, 0 by default")
 
 message(STATUS "bot_activity source contract passed")
+require_text("${policy}" "    if (s.helpFollower)\n        return Kind::Group;" "help-group follower is group (#627)")
