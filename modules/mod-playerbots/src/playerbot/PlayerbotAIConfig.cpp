@@ -725,6 +725,7 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsAdhocScanIntervalSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanIntervalSeconds", 10));
     botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
+    botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
     formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
     formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);
@@ -1559,6 +1560,8 @@ bool PlayerbotAIConfig::Initialize()
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
+            {"BotGroups.Enabled", Value(botGroupsEnabled)},
+            {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
         }).c_str());
     }
 

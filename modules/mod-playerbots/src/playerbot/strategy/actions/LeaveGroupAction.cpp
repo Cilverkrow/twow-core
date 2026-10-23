@@ -3,6 +3,7 @@
 #include "LeaveGroupAction.h"
 #include "playerbot/SingletonGroupPolicy.h"
 #include "playerbot/BotGroupDiagnostics.h"
+#include "playerbot/AdhocGroupPolicy.h"
 
 namespace ai
 {
@@ -103,7 +104,13 @@ namespace ai
             return false;
 
         if (!bot->GetGroup())
-            return false;      
+            return false;
+
+        // twow-repo#628: an ad-hoc quest group (#365) is left by its own rules in the world-thread manager. With
+        // RandomBotGroupNearby = 0 this action dropped every non-leader member at the next "seldom".
+        adhoc_group::Registry::Entry adhocEntry;
+        if (sPlayerbotAIConfig.botGroupsAdhocWorldThread && adhoc_group::Groups().Find(bot->GetGroup()->GetId(), adhocEntry))
+            return false;
 
         Player* groupMaster = ai->GetGroupMaster();
 
