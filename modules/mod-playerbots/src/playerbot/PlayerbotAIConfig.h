@@ -800,6 +800,8 @@ public:
     uint32 botGroupsAdhocScanIntervalSeconds = 10;
     float botGroupsAdhocRadius = 50.0f;
     uint32 botGroupsAdhocPairCooldownSeconds = 600;
+    // twow-repo#628: ad-hoc groups form and leave in the world-thread manager (AdhocGroupWorld.h).
+    bool botGroupsAdhocWorldThread = false;
     // #303 part 2: a bot does not walk more than this far to a real-player
     // master (0 = no limit); beyond it the bot waits and asks to be summoned.
     float farFollowMaxWalkDistance = 400.0f;
