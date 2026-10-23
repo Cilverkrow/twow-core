@@ -56,7 +56,7 @@ require_text("${policy}" "if (f.realPlayer)            { s.dissolve = Dissolve::
 # World thread only: called from the roster branch before CheckBgFill, nowhere else.
 require_text("${mgr}" "        if (sPlayerbotAIConfig.questGroupsEnable || ai::quest_groups::WorldManager().HasGroups())
             ai::quest_groups::WorldManager().Update(GetAllBots(), uint32(time(nullptr)));" "roster-branch hook")
-string(REGEX MATCHALL "WorldManager\\(\\)\\.Update\\(" calls "${mgr}")
+string(REGEX MATCHALL "quest_groups::WorldManager\\(\\)\\.Update\\(" calls "${mgr}")
 list(LENGTH calls n_calls)
 if(NOT n_calls EQUAL 1)
   message(FATAL_ERROR "#627 S7: the manager must be updated from exactly one place, found ${n_calls}")
