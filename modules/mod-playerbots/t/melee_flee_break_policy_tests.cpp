@@ -45,7 +45,7 @@ int main()
     //    window as subsequent, else it starts again at 1).
     std::int64_t last = 0;
     std::uint32_t count = 0;
-    auto dispatch = [&](std::int64_t now) { count = (last && now - last <= window) ? count + 1 : 1; last = now; };
+    auto dispatch = [&](std::int64_t now) { count = NextCount(now, last, count, window); last = now; };
     Require(!Holds(100, last, count, window), "fight turns: flee allowed");
     dispatch(100);
     Require(!Holds(100, last, count, window), "after one step: second step allowed");
@@ -54,6 +54,16 @@ int main()
     Require(!Holds(108, last, count, window), "window over: one new attempt");
     dispatch(108);
     Require(count == 1 && !Holds(108, last, count, window), "the new attempt starts a new count");
+
+    // 4. NextCount (MFB-W 23.10.): the same count as Flee() keeps for FleeMultiplier; the random-bot chase branch, which
+    //    re-dispatches on every AI tick, reaches the hold after its second dispatch.
+    Require(NextCount(100, 0, 0, window) == 1 && NextCount(100, 0, 7, window) == 1, "first dispatch: 1");
+    Require(NextCount(107, 100, 1, window) == 2 && NextCount(108, 100, 5, window) == 1, "window edge: subsequent / fresh");
+    last = 0;
+    count = 0;
+    dispatch(200);
+    dispatch(200);   // chase branch: the next tick in the same second
+    Require(Holds(200, last, count, window) && !Holds(208, last, count, window), "chase loop holds after two ticks, until the window passes");
 
     std::cout << "melee_flee_break_policy_tests passed\n";
     return 0;
