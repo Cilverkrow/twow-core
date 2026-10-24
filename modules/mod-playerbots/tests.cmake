@@ -3773,3 +3773,9 @@ add_test(NAME quest_group_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_group_source_contract_tests.cmake")
+
+# twow-repo#628 fix: the world-thread group managers post the AI part of a group change to the bot (GroupAiRefresh.h).
+add_test(NAME group_ai_refresh_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/group_ai_refresh_source_contract_tests.cmake")
