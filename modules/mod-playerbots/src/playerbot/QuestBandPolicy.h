@@ -396,6 +396,31 @@ inline StepVerdict BandStepDue(StepFacts const& f)
     return StepVerdict::Due;
 }
 
+// F4 (BandWalkAfterEmptySearches, OB-00 24.10.2026; owner D1 "rumstehen ist keine Option"): a failed search that does not
+// step leaves the bot standing through the route backoff (2 / 4 / 8 / 10 min). From the N-th failed search in a row on, the
+// bot walks toward the rung the step would take until the backoff ends - same exclusions as the step (no open or offered
+// turn-in, no danger map, room in the log). The walk is a band trip without an episode: its end is the backoff end, it counts
+// no expiry and asks for no rescue; an arrival at the hub starts the next search at once.
+constexpr std::uint32_t MinWalkSeconds = 30;    // a backoff with less left is not walked
+
+struct WalkPlan
+{
+    std::int32_t rung = -1;                     // into Ladder::rungs; -1 = no walk
+    std::uint32_t fromZone = 0;
+    std::uint32_t streak = 0;
+    char const* lead = "normal";
+};
+
+inline bool WalkDue(StepFacts const& f, std::uint32_t walkAfter)
+{
+    return walkAfter && f.emptyStreak >= walkAfter && !f.dangerMap && !f.offered && !f.openTurnIns && f.freeSlots >= f.slotGate;
+}
+
+inline bool WalkLongEnough(std::uint32_t walkEnd, std::uint32_t now)
+{
+    return walkEnd > now && walkEnd - now >= MinWalkSeconds;
+}
+
 // Travel adopts the accept rule (QuestAcceptPolicy.h) for quest givers: no grey and no red quest; class quests stay.
 inline bool GreyGiverSkip(std::uint32_t level, std::uint32_t questLevel, std::uint32_t grayLevel, bool classQuest)
 {
@@ -658,13 +683,14 @@ inline std::uint32_t UnpackRescue(std::uint64_t packed, std::uint32_t now, bool&
 
 // ---- log lines ------------------------------------------------------------------------------------------------------
 enum Event { EvStep, EvArrived, EvExpired, EvExpiredCooldown, EvRescueRequested, EvRescueLimit, EvRescueBlocked,
-    EvRescue, EvSkipNoRung, EvSkipLogFull, EvScopeLost, EvReplaced, EvPark, EvOrphan, EvGiverDone, EvClockShortened, EventCount };
+    EvRescue, EvSkipNoRung, EvSkipLogFull, EvScopeLost, EvReplaced, EvPark, EvOrphan, EvGiverDone, EvClockShortened,
+    EvWalk, EvWalkArrived, EvWalkEnded, EvWalkReplaced, EvWalkNoRung, EventCount };
 
 inline std::string FormatMinute(char cohort, std::uint32_t const (&c)[EventCount])
 {
     static char const* const names[EventCount] = { "steps", "arrived", "expired", "expired_cooldown", "rescue_req",
         "rescue_limit", "rescue_blocked", "rescues", "skip_no_rung", "skip_log_full", "scope_lost", "replaced", "park",
-        "orphan", "giver_done", "clock_shortened" };
+        "orphan", "giver_done", "clock_shortened", "walks", "walk_arrived", "walk_ended", "walk_replaced", "walk_no_rung" };
     std::uint32_t sum = 0;
     for (std::uint32_t v : c)
         sum += v;
@@ -702,6 +728,48 @@ inline std::string FormatStep(LineHead const& h, Rung const& r, float dist, std:
     std::snprintf(buf, sizeof(buf), " to_zone=%u key=%s band=%u-%u rank=%u route=%s dist=%.0f trip_s=%u searched_r=%.0f failures=%d",
         r.zoneId, r.key.c_str(), r.minLevel, r.maxLevel, r.rank, RouteName(r.route), dist, tripSeconds, searchedR, failures);
     return Head("step", h) + buf;
+}
+
+// F4: the walk line (to_zone .. rank like the step; walk_s = the backoff left) and its end. how= arrived | end | cooldown |
+// clock_shortened | scope_lost | orphan | replaced | park; dist_left=0 on an arrival.
+inline std::string FormatWalk(LineHead const& h, Rung const& r, float dist, std::uint32_t walkSeconds, std::uint32_t streak,
+    char const* lead)
+{
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), " to_zone=%u key=%s band=%u-%u rank=%u route=%s dist=%.0f walk_s=%u streak=%u lead=%s",
+        r.zoneId, r.key.c_str(), r.minLevel, r.maxLevel, r.rank, RouteName(r.route), dist, walkSeconds, streak, lead);
+    return Head("walk", h) + buf;
+}
+
+inline char const* WalkEndName(bool arrived, TripVerdict v)
+{
+    if (arrived)
+        return "arrived";
+    switch (v)
+    {
+        case TripVerdict::ExpiredEnd: return "end";
+        case TripVerdict::ExpiredCooldown: return "cooldown";
+        case TripVerdict::ClockShortened: return "clock_shortened";
+        case TripVerdict::ScopeLost: return "scope_lost";
+        case TripVerdict::Orphan:
+        case TripVerdict::Running: break;
+    }
+    return "orphan";
+}
+
+// The walk's own ends (end, cooldown) count as walk_ended, the arrival as walk_arrived, every other end as walk_replaced.
+inline Event WalkEndEvent(bool arrived, TripVerdict v)
+{
+    if (arrived)
+        return EvWalkArrived;
+    return v == TripVerdict::ExpiredEnd || v == TripVerdict::ExpiredCooldown ? EvWalkEnded : EvWalkReplaced;
+}
+
+inline std::string FormatWalkEnd(LineHead const& h, char const* how, std::uint32_t tookSeconds, float distLeft)
+{
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), " how=%s took_s=%u dist_left=%.0f", how, tookSeconds, distLeft);
+    return Head("walk_end", h) + buf;
 }
 
 inline std::string FormatArrived(LineHead const& h, std::uint32_t tookSeconds)

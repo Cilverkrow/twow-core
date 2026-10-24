@@ -783,6 +783,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestBand] config key=BandLadderSameZoneNext value=%u result=off (0 off, 1..10)", questFirstProgressionBandLadderSameZoneNext);
         questFirstProgressionBandLadderSameZoneNext = 0;
     }
+    // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
+    questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
+    if (questFirstProgressionBandWalkAfterEmptySearches > 10)
+    {
+        sLog.outError("[QuestBand] config key=BandWalkAfterEmptySearches value=%u result=off (0 off, 1..10)", questFirstProgressionBandWalkAfterEmptySearches);
+        questFirstProgressionBandWalkAfterEmptySearches = 0;
+    }
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
     questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
@@ -1551,6 +1558,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.BandLadder", Value(questFirstProgressionBandLadder)},
             {"QuestFirstProgression.BandStepAfterEmptySearches", Value(questFirstProgressionBandStepAfterEmptySearches)},
             {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
+            {"QuestFirstProgression.BandWalkAfterEmptySearches", Value(questFirstProgressionBandWalkAfterEmptySearches)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},

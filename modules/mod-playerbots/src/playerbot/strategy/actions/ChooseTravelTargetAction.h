@@ -7,6 +7,8 @@
 #include "playerbot/TravelChoosePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
 
+namespace ai::quest_band { struct WalkPlan; }   // twow-repo#601 S5a F4 (QuestBandPolicy.h)
+
 namespace ai
 {
     const std::vector<uint32> travelPartitions = { 100, 250, 500, 1000, 2000, 3000, 4000, 5000, 6000, 10000, 50000, 100000, 500000 };
@@ -33,8 +35,12 @@ namespace ai
         // #421 B: no quest target - widen the quest search.
         void WidenQuestSearch(uint32 ranges);
         // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the band step from the empty quest search
-        // (QuestBand.cpp). True = a band trip started.
-        bool TryBandStep(Player* requester, TravelTarget* travelTarget, uint32 searchedStage, bool freshBot, bool rescueRequested);
+        // (QuestBand.cpp). True = a band trip started. F4: a non-null walkPlan gets the rung of a due backoff walk (no step).
+        bool TryBandStep(Player* requester, TravelTarget* travelTarget, uint32 searchedStage, bool freshBot, bool rescueRequested,
+            ai::quest_band::WalkPlan* walkPlan);
+        // twow-repo#601 S5a F4 (BandWalkAfterEmptySearches): the backoff walk to the planned rung, ending at walkEnd (QuestBand.cpp).
+        // True = the walk started.
+        bool StartBandWalk(Player* requester, TravelTarget* travelTarget, ai::quest_band::WalkPlan const& plan, uint32 walkEnd);
     public:
         static DestinationList FindDestination(PlayerTravelInfo info, std::string name, bool zones = true, bool npcs = true, bool quests = true, bool mobs = true, bool bosses = true, bool gather = true);
     private:
