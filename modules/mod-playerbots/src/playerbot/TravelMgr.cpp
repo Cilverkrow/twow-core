@@ -1706,6 +1706,16 @@ bool TravelTarget::ObservePosStuck()
             sPlayerbotAIConfig.pathPosStuckProgress) != pos_stuck::Verdict::Detect)
         return false;
 
+    // twow-repo#627 S7 hook (CLI-GRP 24.10.): a help-group leader without a forced target (MaxForces reached, a failed force) is
+    // the group's problem - the manager dissolves it with leader_stuck on its next pass (<= 60 s), then role 0 and a fresh
+    // window. No park, unstuck or home bind here: a park would hit the leader's quest behind the manager's back.
+    if (quest_groups::IsMember(ai) && !quest_groups::IsFollower(ai))
+    {
+        quest_groups::NoteLeaderStuck(ai);
+        posStuck.Reset();
+        return false;
+    }
+
     // An episode: the series decides park / local unstuck / home bind - a move only if the bot itself stood (OB-10 review: a
     // long detour gets no closer either, it is parked only); a local unstuck needs a usable progress anchor.
     pos_stuck::Step step = pos_stuck::Escalate(posStuckEpisodes, observation.now,

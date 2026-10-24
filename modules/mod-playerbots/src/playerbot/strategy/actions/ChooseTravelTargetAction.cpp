@@ -19,6 +19,7 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/QuestBandPolicy.h"         // twow-repo#601 S5a F1: the band empty streak value
+#include "playerbot/QuestGroupWorld.h"         // twow-repo#627 S7 hook: the queue age for FailureClasses.GroupNeeded
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
@@ -788,6 +789,27 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 takerlessTurnIns = TakerlessTurnIns(destinationList, offeredTurnIns);
                 failureDecision = ai::quest_failure_class::Classify(true, lastRejects, uint32(offeredTurnIns.size()),
                     uint32(takerlessTurnIns.size()));
+                // twow-repo#627 S7 hook (FailureClasses.GroupNeeded): an empty offer while every open quest waits for S7 help is
+                // group_needed (no grind-fallback count, no park); one queue lookup per open group quest, only with the key.
+                if (sPlayerbotAIConfig.questFirstProgressionFailureClassesGroupNeeded &&
+                    failureDecision.failureClass == ai::quest_failure_class::FailureClass::EmptyOffer)
+                {
+                    uint32 queuedGroupQuests = 0, otherOpenQuests = 0;
+                    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                    {
+                        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+                        if (!questId || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
+                            continue;
+                        Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+                        if (quest && ai::quest_groups::IsGroupHelpQuest(quest->GetType(), quest->GetSuggestedPlayers(),
+                                sPlayerbotAIConfig.questGroupsSuggestedPlayers) && ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId))
+                            ++queuedGroupQuests;
+                        else
+                            ++otherOpenQuests;
+                    }
+                    failureDecision.failureClass = ai::quest_failure_class::WithGroupNeeded(failureDecision.failureClass, true,
+                        queuedGroupQuests, otherOpenQuests);
+                }
                 // The counter before this rejection (the class line logs whether it really grew) and the transient
                 // rejections in a row (TransientCountsAfter: 0 = never counted; the N-th in a row counts once).
                 failuresBefore = std::max(0, AI_VALUE2(int, "manual int", "quest route failures"));

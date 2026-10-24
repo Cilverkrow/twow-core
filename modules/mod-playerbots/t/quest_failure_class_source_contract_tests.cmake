@@ -129,7 +129,7 @@ require_text("${branch}" "failuresAfter == failuresBefore + 1 ? 1u : 0u, transie
 require_order("${branch}" "if (NoteNoRouteTurnIns(context, travelTarget," "int const failuresAfter = AI_VALUE2(int, \"manual int\", \"quest route failures\");" "counter read for the class line after the #485 park")
 
 # ---- 2. Transient: the backoff only, no grind count ------------------------------------------------
-require_text("${policy}" "inline bool CountsTowardGrind(FailureClass failureClass)\n{\n    return failureClass != FailureClass::Transient;\n}" "only a transient rejection is not counted")
+require_text("${policy}" "inline bool CountsTowardGrind(FailureClass failureClass)\n{\n    return failureClass != FailureClass::Transient && failureClass != FailureClass::GroupNeeded;\n}" "only a transient (or S7 group_needed) rejection is not counted")
 require_text("${branch}" "if (ai::quest_failure_class::CountsTowardGrind(failureDecision.failureClass) || transientCounts)\n                    SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", int(failures));" "counter grows only for a counted class (or the N-th transient in a row)")
 # Review fix (finding 'transient rejections can last indefinitely'; the value is OB-10's decision): TransientCountsAfter,
 # default 0 = OB-10's rule (a transient rejection never counts). Streak kept only with FailureClasses (inside the classify
@@ -326,5 +326,23 @@ foreach(member "near" "far")
   forbid_text("${policy}" " ${member};" "member named ${member} (windows.h macro)")
   forbid_text("${policy}" " ${member} =" "member named ${member} (windows.h macro)")
 endforeach()
+
+# twow-repo#627 S7 hook (AiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded, OB-10 24.10.2026, own key because
+# FailureClasses = 1 is in the v46.6 bundle): only an empty offer becomes group_needed, only with the key, only when every
+# open quest waits in the S7 queue; no count toward the grind fallback, no park (parkTakerless / parkAllOffered stay false
+# for an empty offer). One queue lookup per open group quest, inside the S1 classification block.
+require_text("${config_h}" "bool questFirstProgressionFailureClassesGroupNeeded = false;" "S7 hook: member default off")
+require_text("${config_cpp}" "questFirstProgressionFailureClassesGroupNeeded = config.GetBoolDefault(\"AiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded\", false);" "S7 hook: parsed, default off")
+require_text("${config_cpp}" "{\"QuestFirstProgression.FailureClasses.GroupNeeded\", Value(questFirstProgressionFailureClassesGroupNeeded)}," "S7 hook: ConfigEcho entry")
+require_text("${conf}" "\nAiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded = 0\n" "S7 hook: ships 0")
+forbid_text("${conf}" "AiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded = 1\n" "S7 hook: shipped on")
+require_text("${policy}" "    return enabled && failureClass == FailureClass::EmptyOffer && queuedGroupQuests && !otherOpenQuests ?\n        FailureClass::GroupNeeded : failureClass;" "S7 hook: only an empty offer, only when every open quest waits")
+require_text("${policy}" "        case FailureClass::GroupNeeded: return \"group_needed\";" "S7 hook: the class name")
+require_text("${classify_block}" "                if (sPlayerbotAIConfig.questFirstProgressionFailureClassesGroupNeeded &&\n                    failureDecision.failureClass == ai::quest_failure_class::FailureClass::EmptyOffer)" "S7 hook: key first, empty offers only")
+require_order("${classify_block}" "failureDecision = ai::quest_failure_class::Classify(" "ai::quest_failure_class::WithGroupNeeded(failureDecision.failureClass, true," "S7 hook: after the classification")
+require_order("${classify_block}" "ai::quest_failure_class::WithGroupNeeded(failureDecision.failureClass, true," "transientStreak = uint32(" "S7 hook: before the transient streak reads the class")
+require_text("${classify_block}" "sPlayerbotAIConfig.questGroupsSuggestedPlayers) && ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId))" "S7 hook: one QueuedAge per open group quest")
+forbid_text("${choose}" "OldestQueuedAge" "S7 hook: no full-queue scan in the choose action")
+count_text("${choose}" "WithGroupNeeded(" 1 "S7 hook: one class override")
 
 message(STATUS "QUEST_FAILURE_CLASS_SOURCE_CONTRACT=PASS")

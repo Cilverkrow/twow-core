@@ -7,6 +7,7 @@
 #include "playerbot/HomeBindPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/QuestGroupWorld.h"     // twow-repo#627 S7 hook: the queue age for the band log gate
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/strategy/actions/ChooseTravelTargetAction.h"
 #include "Database/DBCStores.h"
@@ -514,6 +515,10 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
             ++offered;
     bool const turnInParking = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures > 0;
     uint32 openTurnIns = 0, groupQuests = 0, eliteQuests = 0;
+    // twow-repo#627 S7 hook (BandQueuedFreeMinutes): group quests waiting for help long enough count as free slots for the gate
+    // (one queue lookup per held group quest, only with the key; 0 = no lookup).
+    uint32 const queuedFreeMinutes = sPlayerbotAIConfig.questFirstProgressionBandQueuedFreeMinutes;
+    uint32 queuedFree = 0;
     for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 const questId = bot->GetQuestSlotQuestId(slot);
@@ -527,6 +532,10 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
                 ++groupQuests;
             if (quest->GetType() == QUEST_TYPE_ELITE)
                 ++eliteQuests;
+            if (queuedFreeMinutes && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE &&
+                ai::quest_groups::IsGroupHelpQuest(quest->GetType(), quest->GetSuggestedPlayers(), sPlayerbotAIConfig.questGroupsSuggestedPlayers) &&
+                qb::QueuedFree(ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId), queuedFreeMinutes))
+                ++queuedFree;
         }
     }
 
@@ -539,6 +548,7 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     facts.priorFailures = AI_VALUE2(int, "manual int", "quest route failures");
     facts.freeSlots = AI_VALUE(uint8, "free quest log slots");
     facts.slotGate = AI_VALUE(bool, "can fight equal") ? 5 : 10;
+    facts.queuedFree = queuedFree;
     // F1 (BandStepAfterEmptySearches): the failed searches in a row, this one included (counted by the caller, reset only
     // by a found route or a band step).
     facts.emptyStreak = uint32(std::max(0, AI_VALUE2(int, "manual int", qb::BandEmptyStreakValue)));
@@ -562,7 +572,7 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
         // OB-10 Q3 19.10.2026: skipped and counted, nothing is dropped; the line shows the held group / elite quests.
         PlayerbotAI::NoteBand(uint8(qb::EvSkipLogFull), cohortB);
         if (SkipLogDue(episode, now))
-            sLog.outBasic("%s", qb::FormatSkipLogFull(head, facts.freeSlots, groupQuests, eliteQuests).c_str());
+            sLog.outBasic("%s", qb::FormatSkipLogFull(head, facts.freeSlots, groupQuests, eliteQuests, facts.queuedFree).c_str());
         return false;
     }
 
@@ -648,8 +658,8 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     ai->RequestQuestRouteReset(ai::quest_failure_class::ResetBandStep);
     PlayerbotAI::NoteBand(uint8(qb::EvStep), cohortB);
     head.toHub = rung.hubId;
-    sLog.outBasic("%s trigger=%s streak=%u lead=%s", qb::FormatStep(head, rung, dist, tripSeconds, rungFacts.searchedRadius,
-        facts.priorFailures).c_str(), qb::StepTrigger(facts), facts.emptyStreak, lead);
+    sLog.outBasic("%s trigger=%s streak=%u lead=%s queued_free=%u free_slots=%u", qb::FormatStep(head, rung, dist, tripSeconds,
+        rungFacts.searchedRadius, facts.priorFailures).c_str(), qb::StepTrigger(facts), facts.emptyStreak, lead, facts.queuedFree, facts.freeSlots);
     return true;
 }
 
