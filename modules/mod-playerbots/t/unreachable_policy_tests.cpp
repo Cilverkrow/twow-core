@@ -52,6 +52,17 @@ int main()
     Require(list.until.size() <= MaxIgnored, "bounded");
     Require(!list.Ignored(10, 2100) && list.Ignored(10 + MaxIgnored + 4, 2100), "oldest dropped first");
 
+    // twow-repo#630 GRP-REACH-01: with a real player as master only under the mode, and a short ignore.
+    Require(Checks(false, false) && Checks(false, true), "without a player master the check always runs");
+    Require(!Checks(true, false), "player master, mode off: as before, no check");
+    Require(Checks(true, true), "player master, mode on: checked");
+    Require(IgnoreFor(false) == IgnoreSeconds && IgnoreFor(true) == PlayerMasterIgnoreSeconds, "ignore length by master");
+    Require(PlayerMasterIgnoreSeconds < IgnoreSeconds, "the player-master ignore is shorter");
+    IgnoreList shortList;
+    shortList.Add(5, 3000, IgnoreFor(true));
+    Require(shortList.Ignored(5, 3000 + PlayerMasterIgnoreSeconds - 1) && !shortList.Ignored(5, 3000 + PlayerMasterIgnoreSeconds),
+        "player master: ignored for 30 s only");
+
     std::cout << "unreachable_policy_tests passed\n";
     return 0;
 }

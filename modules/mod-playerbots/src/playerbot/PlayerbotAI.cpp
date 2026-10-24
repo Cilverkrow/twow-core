@@ -484,21 +484,29 @@ void PlayerbotAI::ReportSlowUpdate(uint32 elapsedMs)
 
 bool PlayerbotAI::CheckReachProgress(Unit* target, float distance)
 {
-    if (!target || HasRealPlayerMaster())
+    if (!target)
+        return false;
+
+    // twow-repo#630 (AiPlayerbot.Rotation.ReachPlayerMaster): with a real player as master the check never ran (mode 0 keeps
+    // that); with the mode on the bot drops only its own target (the caller), the player's group and target stay as they are.
+    bool const playerMaster = HasRealPlayerMaster();
+    if (!ai::unreachable::Checks(playerMaster, ai::cohort::Applies(sPlayerbotAIConfig.rotationReachPlayerMaster, bot->GetGUIDLow())))
         return false;
 
     uint32 const now = uint32(time(nullptr));
     if (!reachApproach.Update(target->GetObjectGuid().GetRawValue(), distance, now))
         return false;
 
-    unreachableTargets.Add(target->GetObjectGuid().GetRawValue(), now);
+    uint32 const ignoreSeconds = ai::unreachable::IgnoreFor(playerMaster);
+    unreachableTargets.Add(target->GetObjectGuid().GetRawValue(), now, ignoreSeconds);
     reachApproach.Reset();
     if (!lastUnreachableLog || now - lastUnreachableLog >= ai::unreachable::LogSeconds)
     {
         lastUnreachableLog = now;
-        sLog.outBasic("[Unreachable] bot=%u level=%u target_entry=%u distance=%.1f seconds=%u map=%u zone=%u",
+        sLog.outBasic("[Unreachable] bot=%u level=%u target_entry=%u distance=%.1f seconds=%u map=%u zone=%u master=%s ignore_s=%u"
+            " cohort=%c",
             bot->GetGUIDLow(), bot->GetLevel(), target->GetEntry(), distance, ai::unreachable::WindowSeconds,
-            bot->GetMapId(), bot->GetZoneId());
+            bot->GetMapId(), bot->GetZoneId(), playerMaster ? "player" : "bot", ignoreSeconds, ai::cohort::Letter(bot->GetGUIDLow()));
     }
     return true;
 }
