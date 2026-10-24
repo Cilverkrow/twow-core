@@ -1076,6 +1076,9 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
     gapWindowEnd = target->gapWindowEnd;
     // twow-repo#601 S5a (BandLadder): the band step's trip end (0 for every other choice; a group copy builds a new target).
     bandTripEnd = target->bandTripEnd;
+    // F4: a backoff walk stays a walk (0 for every other choice).
+    bandWalkAt = target->bandWalkAt;
+    bandWalkFromZone = target->bandWalkFromZone;
     groupMember = target->groupMember;
     forced = target->forced;
     relevance = target->relevance;

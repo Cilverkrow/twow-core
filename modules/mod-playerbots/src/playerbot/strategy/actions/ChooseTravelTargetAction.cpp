@@ -801,14 +801,17 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the zone is done - step to the next hub. Decided
             // before the 8.1 failure count and backoff (a step counts nothing); a Z1b rescue and P3-a fresh bots win.
             // F1 (BandStepAfterEmptySearches): every failed search counts into the band streak, whatever its class; no park
-            // resets it - only a found route (below) or the band step itself.
-            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches)
+            // resets it - only a found route (below) or the band step itself. F4 (BandWalkAfterEmptySearches) reads the same streak.
+            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.BandStreakOn())
                 SET_AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue,
                     std::min(int(ai::quest_band::MaxStreakSteps), std::max(0, AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue)) + 1));
+            // F4: a due walk's rung (no step); started at the end of this branch, once the backoff and the parks are settled.
+            ai::quest_band::WalkPlan bandWalk;
             if (sPlayerbotAIConfig.questFirstProgressionBandLadder &&
-                TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested))
+                TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested,
+                    sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches ? &bandWalk : nullptr))
             {
-                if (sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches)
+                if (sPlayerbotAIConfig.BandStreakOn())
                     SET_AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue, 0);   // F1: a step ends the streak
                 return true;
             }
@@ -900,6 +903,13 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             if (sPlayerbotAIConfig.directTargetsTraceInactive)
                 for (uint32 reason = 0; reason < ai::quest_search::RejectCounts::InactiveReasons; ++reason)
                     directTargets.inactive[reason].fetch_add(lastRejects.notActiveReason[reason], std::memory_order_relaxed);
+
+            // twow-repo#601 S5a F4 (BandWalkAfterEmptySearches, owner D1 "rumstehen ist keine Option"): no step, but the backoff
+            // stands - the bot walks toward the rung the step would take until the backoff ends. A park above ended the backoff:
+            // no walk, the next search comes at once.
+            if (bandWalk.rung >= 0 &&
+                StartBandWalk(requester, travelTarget, bandWalk, uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")))))
+                return true;
         }
         // twow-repo#601 S1 (OB-10 answer 5): the grind search of a quest-first bot found nothing - it asks for a quest
         // route again once its backoff ends (the L6-8 escape). A pure log line: FailureClasses or TraceTravelDecisions.
@@ -934,8 +944,8 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // Hotfix 8.1: a route was found - no more backoff.
         SET_AI_VALUE2(int, "manual int", "quest route failures", 0);
         SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
-        // twow-repo#601 S5a F1: a route was found - the band streak ends.
-        if (sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches)
+        // twow-repo#601 S5a F1 / F4: a route was found - the band streak ends.
+        if (sPlayerbotAIConfig.BandStreakOn())
             SET_AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue, 0);
         // twow-repo#601 S1 (FailureClasses): a route was found - the transient streak ends.
         if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()))
