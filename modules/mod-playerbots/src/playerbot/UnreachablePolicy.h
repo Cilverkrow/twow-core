@@ -19,6 +19,23 @@ constexpr uint32_t IgnoreSeconds = 300;
 constexpr uint32_t LogSeconds = 300;
 constexpr size_t MaxIgnored = 16;
 
+// twow-repo#630 GRP-REACH-01 (AiPlayerbot.Rotation.ReachPlayerMaster): a bot with a real player as master had no end for an
+// unreachable hostile target - the check returned at once, and "reach melee/spell" ran forever. With the mode on it gives up
+// its own target after the same window; the ignore is short, so a player command on that target is followed again soon.
+constexpr uint32_t PlayerMasterIgnoreSeconds = 30;
+
+// The check runs for this bot: always without a real player master, with one only when the mode applies to it.
+inline bool Checks(bool playerMaster, bool modeApplies)
+{
+    return !playerMaster || modeApplies;
+}
+
+// How long a target the bot gave up stays ignored.
+inline uint32_t IgnoreFor(bool playerMaster)
+{
+    return playerMaster ? PlayerMasterIgnoreSeconds : IgnoreSeconds;
+}
+
 struct Approach
 {
     uint64_t target = 0;
@@ -54,7 +71,7 @@ struct IgnoreList
 {
     std::map<uint64_t, uint32_t> until;
 
-    void Add(uint64_t guid, uint32_t now)
+    void Add(uint64_t guid, uint32_t now, uint32_t seconds = IgnoreSeconds)
     {
         for (auto it = until.begin(); it != until.end();)
             it = it->second <= now ? until.erase(it) : std::next(it);
@@ -66,7 +83,7 @@ struct IgnoreList
                     oldest = it;
             until.erase(oldest);
         }
-        until[guid] = now + IgnoreSeconds;
+        until[guid] = now + seconds;
     }
 
     bool Ignored(uint64_t guid, uint32_t now) const

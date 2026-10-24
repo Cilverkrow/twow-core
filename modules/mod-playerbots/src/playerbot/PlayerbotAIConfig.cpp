@@ -594,6 +594,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
     if (rotationReachLosClose > 2)
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 0);   // twow-repo#630
+    if (rotationReachPlayerMaster > 2)
+        rotationReachPlayerMaster = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
     perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
@@ -1598,6 +1601,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
+            {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},

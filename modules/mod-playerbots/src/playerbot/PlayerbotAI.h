@@ -1048,7 +1048,7 @@ public:
     uint32 GetCreatedObjectCount() const { return createdObjectCount.load(); }
     uint32 GetLastUpdateTime() const { return lastUpdateTime.load(); }
     // Hotfix 8.2: one reach attempt at this distance; true when the target is now
-    // ignored as unreachable (bots without a real player only).
+    // ignored as unreachable (bots without a real player; with one only under Rotation.ReachPlayerMaster, twow-repo#630).
     bool CheckReachProgress(Unit* target, float distance);
     bool IsUnreachableTarget(ObjectGuid guid) const { return unreachableTargets.Ignored(guid.GetRawValue(), uint32(time(nullptr))); }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
