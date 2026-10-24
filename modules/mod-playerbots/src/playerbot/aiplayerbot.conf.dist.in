@@ -1199,6 +1199,14 @@ AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes = 0
 # TraceTravelDecisions = 1). The parks need TurnInParkFailures > 0 (parking on); with 0 nothing is parked and a
 # structural failure counts as before.
 AiPlayerbot.QuestFirstProgression.FailureClasses = 0
+# FailureClasses.GroupNeeded (acts only with FailureClasses = 1; twow-repo#627 S7 hook, OB-10 24.10.2026, its own key
+# because FailureClasses = 1 is in the v46.6 bundle): an empty offer while the bot holds open quests and every one of
+# them is a group quest waiting for help in the S7 queue (QuestGroups.Enable) is the class group_needed - it does not
+# count toward the grind fallback (like transient) and parks nothing. The backoff and the band streak run as before,
+# so with BandStepAfterEmptySearches the bot steps on after N searches and takes the quests along
+# (BandQueuedFreeMinutes). [QuestFailureClass] class=group_needed. Without S7 no quest is queued: nothing changes.
+#   0 = off (default), 1 = on.
+AiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded = 0
 # TransientCountsAfter (acts only with FailureClasses = 1; S1 review, the value is OB-10's decision): 0 = a transient
 # rejection never counts toward GrindFallbackFailures (OB-10 17.10.2026). N > 0: the N-th transient rejection in a row
 # (no other class and no route found in between) counts once and the streak starts anew, so a transient cause that
@@ -1306,6 +1314,14 @@ AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
 # the step (e.g. F1 = 3 with F4 = 1: two walks, then the step).
 #   0 = off (default), 1..10; other values act like 0 (one error line).
 AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches = 0
+# twow-repo#627 S7 hook (OB-10 24.10.2026): the band step skips a bot whose quest log is too full (reason=log_full). With
+# BandLadder and S7 (QuestGroups.Enable) on, an open group quest the bot has waited on for help this many minutes (S7
+# queue age, counted from its first wait, also across failed groups) counts as a free slot for that gate. The quest
+# stays in the log and goes along to the next hub, where S7 matches by quest log again. Without S7, or for a bot outside
+# its cohort, no quest is ever queued, so nothing changes. The step line carries queued_free= free_slots=, the log_full
+# skip line queued_free=.
+#   0 = off (default), 1..240; other values act like 0 (one error line).
+AiPlayerbot.QuestFirstProgression.BandQueuedFreeMinutes = 0
 # twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
 # Enable = 1: a persistent roster bot on its own (no real player leads it) does not take quests it cannot finish - not
 # from a quest giver (accept all, accept packet, quest details dialog), not from a quest item in its bags - and does not

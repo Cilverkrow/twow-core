@@ -306,6 +306,19 @@ int main()
             "the ring goes on in order (the next oldest gives way, not the newest)");
     }
 
+    // twow-repo#627 S7 hook (FailureClasses.GroupNeeded): only an empty offer, only with the key, only when every open quest waits.
+    {
+        Require(WithGroupNeeded(FailureClass::EmptyOffer, true, 2, 0) == FailureClass::GroupNeeded, "every open quest queued: group_needed");
+        Require(WithGroupNeeded(FailureClass::EmptyOffer, false, 2, 0) == FailureClass::EmptyOffer, "key off: as Classify said");
+        Require(WithGroupNeeded(FailureClass::EmptyOffer, true, 2, 1) == FailureClass::EmptyOffer, "another open quest: empty offer");
+        Require(WithGroupNeeded(FailureClass::EmptyOffer, true, 0, 0) == FailureClass::EmptyOffer, "nothing queued: empty offer");
+        Require(WithGroupNeeded(FailureClass::Transient, true, 2, 0) == FailureClass::Transient, "transient stays transient");
+        Require(WithGroupNeeded(FailureClass::Structural, true, 2, 0) == FailureClass::Structural, "structural stays (its park)");
+        Require(WithGroupNeeded(FailureClass::None, true, 2, 0) == FailureClass::None, "no class stays none");
+        Require(!CountsTowardGrind(FailureClass::GroupNeeded) && CountsTowardGrind(FailureClass::EmptyOffer), "group_needed does not count");
+        Require(std::strcmp(ClassName(FailureClass::GroupNeeded), "group_needed") == 0, "name");
+    }
+
     std::cout << "quest_failure_class_policy_tests passed\n";
     return 0;
 }
