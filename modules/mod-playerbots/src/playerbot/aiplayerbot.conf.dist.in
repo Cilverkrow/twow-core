@@ -2879,6 +2879,14 @@ AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
 # the floor) per evaluation, stood= per evaluation, episodes= / in_los_after= (back in sight within 5 s) per episode
 # (closed_A stays 0 with mode 2 by construction).
 AiPlayerbot.Rotation.ReachLosClose = 0
+# twow-repo#630 GRP-REACH-01 (BUG FIX, enable after the test-realm repro + owner go): the reach progress check of hotfix 8.2 (no
+# yard closer for 20 s = unreachable) also for a bot with a real player as master. Before, such a bot returned from the check at
+# once, so "reach melee/spell" on a hostile target it could never get to ran forever (with or without Rotation.ReachLosClose).
+# With the mode on the bot drops only its own current target and ignores it for 30 s instead of 5 min, so it follows a player
+# command on that target again soon; the player's group, master and target stay untouched. "[Unreachable] ... master=player
+# ignore_s=30 cohort=" (one line per bot per 5 min, as before; bots without a player master log master=bot ignore_s=300).
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.ReachPlayerMaster = 0
 # twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
 # request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
 # their condition while the bot's travel target is being prepared or is active. The request actions are rejected
