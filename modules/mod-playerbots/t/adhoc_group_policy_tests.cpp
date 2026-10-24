@@ -1,4 +1,5 @@
 #include "AdhocGroupPolicy.h"
+#include "GroupAiRefresh.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -113,6 +114,32 @@ int main()
     Require(registry.ForgetGone([](std::uint32_t id) { return id != 61; }) == 1, "one gone group forgotten");
     Require(registry.Find(60, entry) && !registry.Find(61, entry) && registry.Find(62, entry), "only the gone group left the registry");
     Require(registry.ForgetGone([](std::uint32_t) { return true; }) == 0, "nothing gone, nothing forgotten");
+
+    // twow-repo#628 fix (GroupAiRefresh.h): the AI part of a world-thread group change, posted to the bot.
+    {
+        using namespace ai::group_ai_refresh;
+        Require(IsWorldManagerSource("adhoc group") && IsWorldManagerSource("quest group"), "the two managers' accept sources");
+        Require(!IsWorldManagerSource("group invite") && !IsWorldManagerSource(""), "any other accept runs inline");
+
+        Require(Merge(0, JoinReset) == JoinReset, "a join alone");
+        Require(Merge(JoinReset, Follower) == (JoinReset | Follower), "S7: join, then the follower set");
+        Require(Merge(JoinReset | Follower, LeaveReset) == LeaveReset, "a leave drops the pending join and the set");
+        Require(Merge(LeaveReset, JoinReset) == JoinReset, "a join drops the pending leave");
+        Require(Merge(JoinReset | Follower, TurnIn) == (JoinReset | TurnIn), "turn-in replaces the follower set");
+        Require(Merge(TurnIn, Follower) == Follower, "the sets exclude each other");
+        Require(Merge(Follower, Follower) == Follower, "posting again changes nothing");
+
+        Plan p = PlanFor(JoinReset | Follower);
+        Require(p.reset && p.joinStrategies && p.follower && !p.turnIn, "join plan: reset with the accept strategies, then follower");
+        p = PlanFor(LeaveReset);
+        Require(p.reset && !p.joinStrategies && !p.follower && !p.turnIn, "leave plan: reset only");
+        p = PlanFor(TurnIn);
+        Require(!p.reset && p.turnIn && !p.follower, "turn-in plan: the set only");
+        p = PlanFor(Follower | TurnIn);
+        Require(p.turnIn && !p.follower, "never both sets");
+        p = PlanFor(0);
+        Require(!p.reset && !p.follower && !p.turnIn, "nothing posted, nothing done");
+    }
 
     std::cout << "adhoc_group_policy_tests passed\n";
     return 0;

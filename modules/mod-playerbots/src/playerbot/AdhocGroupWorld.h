@@ -58,6 +58,11 @@ private:
         std::uint32_t joins = 0;
         std::uint32_t leaves = 0;
         std::uint32_t passUsMax = 0;
+        // twow-repo#628 fix: the slowest single join and leave (the group change on the world thread).
+        std::uint32_t joinUsMax = 0;
+        std::uint32_t leaveUsMax = 0;
+        std::uint32_t scanUsMax = 0;   // leave rules and candidates of all bots, without the leaves
+        std::uint32_t bots = 0;
     };
 
     bool CheckLeave(Player* bot, Group* group, std::uint32_t now);
@@ -67,6 +72,7 @@ private:
 
     std::unordered_map<std::uint32_t, Track> tracks;  // world thread only
     std::uint32_t lastPass = 0;
+    std::uint32_t passLeaveUs = 0;   // time in LeaveGroup during the running pass
     Minute minute;
 };
 
