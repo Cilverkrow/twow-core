@@ -401,7 +401,23 @@ void TravelTarget::EndBandTrip(uint8 how)
     bool const cohortB = cohort::InB(bot->GetGUIDLow());
     qb::LineHead const head = qb::HeadFor(bot, ai->GetBandTripFromZone(), rung, hub != nullptr);
 
-    if (how == qb::EndArrived)
+    if (bandWalkAt)
+    {
+        // F4: a backoff walk ends - no episode, no expiry, no rescue count. At the hub the backoff ends with it, so the next
+        // search runs there at once; any other end leaves the backoff as it is.
+        bool const arrived = how == qb::EndArrived;
+        qb::TripVerdict const verdict = arrived ? qb::TripVerdict::Running : qb::TripVerdict(how);
+        float const distLeft = !arrived && wPosition && wPosition->getMapId() == bot->GetMapId() ?
+            std::sqrt(wPosition->sqDistance2d(WorldPosition(bot))) : 0.0f;
+        PlayerbotAI::NoteBand(uint8(qb::WalkEndEvent(arrived, verdict)), cohortB);
+        sLog.outBasic("%s", qb::FormatWalkEnd(qb::HeadFor(bot, bandWalkFromZone, rung, hub != nullptr), qb::WalkEndName(arrived, verdict),
+            now >= bandWalkAt ? now - bandWalkAt : 0, distLeft).c_str());
+        if (arrived)
+            ai->RequestQuestRouteReset(ai::quest_failure_class::ResetBandStep);
+        bandWalkAt = 0;
+        bandWalkFromZone = 0;
+    }
+    else if (how == qb::EndArrived)
     {
         PlayerbotAI::NoteBand(uint8(qb::EvArrived), cohortB);
         sLog.outBasic("%s", qb::FormatArrived(head, episode.stepAt && now >= episode.stepAt ? now - episode.stepAt : 0).c_str());
@@ -449,16 +465,29 @@ void TravelTarget::NoteBandTripReplaced()
     namespace qb = ai::quest_band;
     HubTravelDestination const* hub = dynamic_cast<HubTravelDestination const*>(tDestination);
     bool const park = ai->IsParked();
-    PlayerbotAI::NoteBand(uint8(park ? qb::EvPark : qb::EvReplaced), cohort::InB(bot->GetGUIDLow()));
-    sLog.outBasic("%s", qb::FormatSkip(qb::HeadFor(bot, ai->GetBandTripFromZone(), hub ? hub->GetRungIndex() : 0, hub != nullptr),
-        park ? "park" : "replaced", StatusName(m_status)).c_str());
+    if (bandWalkAt)
+    {
+        // F4: a replaced backoff walk - its own end line and counter (walk_replaced), nothing else.
+        uint32 const now = uint32(time(nullptr));
+        PlayerbotAI::NoteBand(uint8(qb::EvWalkReplaced), cohort::InB(bot->GetGUIDLow()));
+        sLog.outBasic("%s", qb::FormatWalkEnd(qb::HeadFor(bot, bandWalkFromZone, hub ? hub->GetRungIndex() : 0, hub != nullptr),
+            park ? "park" : "replaced", now >= bandWalkAt ? now - bandWalkAt : 0, 0.0f).c_str());
+        bandWalkAt = 0;
+        bandWalkFromZone = 0;
+    }
+    else
+    {
+        PlayerbotAI::NoteBand(uint8(park ? qb::EvPark : qb::EvReplaced), cohort::InB(bot->GetGUIDLow()));
+        sLog.outBasic("%s", qb::FormatSkip(qb::HeadFor(bot, ai->GetBandTripFromZone(), hub ? hub->GetRungIndex() : 0, hub != nullptr),
+            park ? "park" : "replaced", StatusName(m_status)).c_str());
+    }
     bandTripEnd = 0;
 }
 
 // ---- the step (ChooseTravelTargetAction) ---------------------------------------------------------------------------
 
 bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* travelTarget, uint32 searchedStage, bool freshBot,
-    bool rescueRequested)
+    bool rescueRequested, ai::quest_band::WalkPlan* walkPlan)
 {
     if (!sPlayerbotAIConfig.questFirstProgressionBandLadder || !ai::quest_band::Built())
         return false;
@@ -516,7 +545,12 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     facts.streakSteps = sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches;
 
     qb::StepVerdict const verdict = qb::BandStepDue(facts);
-    if (verdict == qb::StepVerdict::NotDue)
+    // F4 (BandWalkAfterEmptySearches): no step yet, but a walk is due - the same rung choice below, no step; the caller starts
+    // the walk once the backoff is set (StartBandWalk).
+    // GrindMode 1 fills the backoff with its gap grind trip: no walk there.
+    bool const walk = walkPlan && verdict == qb::StepVerdict::NotDue && !ai->IsQuestGapGrind() &&
+        qb::WalkDue(facts, sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches);
+    if (verdict == qb::StepVerdict::NotDue && !walk)
         return false;
 
     bool const cohortB = ai::cohort::InB(bot->GetGUIDLow());
@@ -571,6 +605,19 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
             break;
         }
     }
+    if (chosen < 0 && walk)
+    {
+        PlayerbotAI::NoteBand(uint8(qb::EvWalkNoRung), cohortB);   // F4: counted only, the step's skip line stays the step's
+        return false;
+    }
+    if (walk)
+    {
+        walkPlan->rung = chosen;
+        walkPlan->fromZone = zoneId;
+        walkPlan->streak = facts.emptyStreak;
+        walkPlan->lead = lead;
+        return false;
+    }
     if (chosen < 0)
     {
         // A gap of the ladder (or every hub covered, left, vetoed): today's path runs on (backoff, latch), counted and logged.
@@ -603,6 +650,36 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     head.toHub = rung.hubId;
     sLog.outBasic("%s trigger=%s streak=%u lead=%s", qb::FormatStep(head, rung, dist, tripSeconds, rungFacts.searchedRadius,
         facts.priorFailures).c_str(), qb::StepTrigger(facts), facts.emptyStreak, lead);
+    return true;
+}
+
+// F4 (BandWalkAfterEmptySearches): the backoff walk toward the rung TryBandStep chose - a band trip that ends with the backoff
+// (walkEnd, read by the caller after the backoff and the parks), never forced, without an episode: no OnBandStep, no reset of
+// the backoff, so the next search comes when it would have come.
+bool ChooseTravelTargetAction::StartBandWalk(Player* requester, TravelTarget* travelTarget, ai::quest_band::WalkPlan const& plan,
+    uint32 walkEnd)
+{
+    namespace qb = ai::quest_band;
+    uint32 const now = uint32(time(nullptr));
+    HubTravelDestination* hub = plan.rung >= 0 ? qb::GetHub(uint32(plan.rung)) : nullptr;
+    if (!hub || !qb::WalkLongEnough(walkEnd, now))
+        return false;
+
+    qb::Rung const& rung = qb::GetLadder().rungs[std::size_t(plan.rung)];
+    float const dist = qb::Dist2D(bot->GetPositionX(), bot->GetPositionY(), rung.x, rung.y);
+    TravelTarget walk(ai);
+    walk.SetTarget(hub, hub->GetHubPoint());
+    walk.SetRelevance(uint32(std::max(0, AI_VALUE2(int, "manual int", "future travel relevance"))));
+    walk.SetBandTripEnd(walkEnd);
+    walk.SetBandWalk(now, plan.fromZone);
+    setNewTarget(requester, &walk, travelTarget);
+    travelTarget->SetConditions({});
+    if (travelTarget->GetDestination() != hub || !travelTarget->GetBandTripEnd() || !travelTarget->GetBandWalkAt())
+        return false;   // the choice was refused: the bot waits out the backoff as before (fail closed)
+
+    qb::LineHead const head = qb::HeadFor(bot, plan.fromZone, uint32(plan.rung), true);
+    PlayerbotAI::NoteBand(uint8(qb::EvWalk), ai::cohort::InB(bot->GetGUIDLow()));
+    sLog.outBasic("%s", qb::FormatWalk(head, rung, dist, walkEnd - now, plan.streak, plan.lead).c_str());
     return true;
 }
 

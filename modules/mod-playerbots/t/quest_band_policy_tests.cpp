@@ -250,6 +250,37 @@ int main()
         g = f; g.emptyOffer = true; g.priorFailures = 1; Require(StepTrigger(g) == std::string("empty_offer"), "both: empty_offer wins");
         Require(BandEmptyStreakValue == std::string("band empty streak") && MaxStreakSteps == 10, "value name and config range");
     }
+    // F4 (BandWalkAfterEmptySearches, OB-00 24.10.2026): the backoff walk - the streak against its own threshold, the step's
+    // exclusions, the log gate; independent of F1 (a walk never makes the step due).
+    {
+        StepFacts f;
+        f.emptyOffer = false;
+        f.priorFailures = 0;
+        f.freeSlots = 12;
+        f.slotGate = 5;
+        f.emptyStreak = 1;
+        Require(!WalkDue(f, 0), "F4 off (0): no walk");
+        Require(WalkDue(f, 1), "F4 = 1: the first failed search walks");
+        Require(!WalkDue(f, 2), "one failed search of two: no walk");
+        f.emptyStreak = 2;
+        Require(WalkDue(f, 2) && WalkDue(f, 1), "at and above N: walk");
+        Require(BandStepDue(f) == StepVerdict::NotDue, "a due walk does not make the step due (F1 off)");
+        f.streakSteps = 3;
+        Require(BandStepDue(f) == StepVerdict::NotDue && WalkDue(f, 1), "F1 = 3, F4 = 1: the second search walks, no step");
+        f.emptyStreak = 3;
+        Require(BandStepDue(f) == StepVerdict::Due, "the third steps (the caller asks for no walk then)");
+        StepFacts g = f; g.openTurnIns = 1; Require(!WalkDue(g, 1), "an open turn-in: no walk");
+        g = f; g.offered = 1; Require(!WalkDue(g, 1), "an offered turn-in: no walk");
+        g = f; g.dangerMap = 1; Require(!WalkDue(g, 1), "a danger map: no walk");
+        g = f; g.freeSlots = 4; Require(!WalkDue(g, 1), "a full log: no walk");
+        g = f; g.freeSlots = 5; Require(WalkDue(g, 1), "the gate itself: walk");
+        Require(!WalkLongEnough(0, 1000) && !WalkLongEnough(900, 1000) && !WalkLongEnough(1000, 1000), "no backoff, a past one");
+        Require(!WalkLongEnough(1000 + MinWalkSeconds - 1, 1000) && WalkLongEnough(1000 + MinWalkSeconds, 1000) &&
+            WalkLongEnough(1600, 1000), "at least MinWalkSeconds left");
+        Require(MinWalkSeconds == 30, "30 s");
+        WalkPlan plan;
+        Require(plan.rung == -1 && plan.lead == std::string("normal"), "no walk planned by default");
+    }
     // giver filter = the accept rule; giver_done
     Require(GreyGiverSkip(20, 12, 13, false) && !GreyGiverSkip(20, 14, 13, false), "grey quest giver skipped, green kept");
     Require(GreyGiverSkip(20, 25, 13, false) && !GreyGiverSkip(20, 12, 13, true), "red skipped, class quest kept");
@@ -409,7 +440,29 @@ int main()
         counts[EvStep] = 3; counts[EvGiverDone] = 9;
         Require(FormatMinute('A', counts) == "[QuestBand] state=minute cohort=A steps=3 arrived=0 expired=0 expired_cooldown=0 "
             "rescue_req=0 rescue_limit=0 rescue_blocked=0 rescues=0 skip_no_rung=0 skip_log_full=0 scope_lost=0 replaced=0 "
-            "park=0 orphan=0 giver_done=9 clock_shortened=0", "minute line");
+            "park=0 orphan=0 giver_done=9 clock_shortened=0 walks=0 walk_arrived=0 walk_ended=0 walk_replaced=0 walk_no_rung=0",
+            "minute line");
+        counts[EvStep] = 0; counts[EvGiverDone] = 0; counts[EvWalk] = 4; counts[EvWalkNoRung] = 1;
+        Require(FormatMinute('B', counts).find(" clock_shortened=0 walks=4 walk_arrived=0 walk_ended=0 walk_replaced=0 walk_no_rung=1") !=
+            std::string::npos, "F4: the walk counts alone make a minute line");
+        // F4 lines
+        lh.toHub = 300;
+        Require(FormatWalk(lh, men, 1834.6f, 240, 2, "samezone") ==
+            "[QuestBand] state=walk bot=4711 level=26 cohort=B from_zone=44 to_hub=300 to_zone=11 key=A0 band=25-29 rank=2 "
+            "route=walk dist=1835 walk_s=240 streak=2 lead=samezone", "walk line");
+        Require(FormatWalkEnd(lh, WalkEndName(true, TripVerdict::Running), 95, 0.f) ==
+            "[QuestBand] state=walk_end bot=4711 level=26 cohort=B from_zone=44 to_hub=300 how=arrived took_s=95 dist_left=0",
+            "walk end line");
+        Require(WalkEndName(false, TripVerdict::ExpiredEnd) == std::string("end") &&
+            WalkEndName(false, TripVerdict::ExpiredCooldown) == std::string("cooldown") &&
+            WalkEndName(false, TripVerdict::ClockShortened) == std::string("clock_shortened") &&
+            WalkEndName(false, TripVerdict::ScopeLost) == std::string("scope_lost") &&
+            WalkEndName(false, TripVerdict::Orphan) == std::string("orphan") &&
+            WalkEndName(false, TripVerdict::Running) == std::string("orphan"), "walk end names (fail closed: orphan)");
+        Require(WalkEndEvent(true, TripVerdict::Running) == EvWalkArrived && WalkEndEvent(false, TripVerdict::ExpiredEnd) == EvWalkEnded &&
+            WalkEndEvent(false, TripVerdict::ExpiredCooldown) == EvWalkEnded && WalkEndEvent(false, TripVerdict::ScopeLost) == EvWalkReplaced &&
+            WalkEndEvent(false, TripVerdict::ClockShortened) == EvWalkReplaced && WalkEndEvent(false, TripVerdict::Orphan) == EvWalkReplaced,
+            "walk end counters: own ends, arrival, the rest replaced");
         Require(FormatLadderOff("no_file", "") == "[HubLadder] state=off reason=no_file path=", "off line");
         Require(FormatRowSkipped(false, 17, men, "no_node") ==
             "[HubLadder] state=row_skipped line=17 key=A0 wave0=0 band=25-29 rank=2 hub=300 reason=no_node", "row line");

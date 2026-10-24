@@ -1295,6 +1295,17 @@ AiPlayerbot.QuestFirstProgression.BandStepAfterEmptySearches = 0
 # lead=normal.
 #   0 = off (default), 1..10; other values act like 0 (one error line).
 AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
+# twow-repo#601 S5a F4 (OB-00 24.10.2026; owner D1 "rumstehen ist keine Option"): a failed quest search that does not step
+# leaves the bot standing through the route backoff (2, 4, 8, then 10 min). With BandLadder on, from this many failed
+# searches in a row on (the streak F1 counts), such a search sends the bot toward the hub the step would take until the
+# backoff ends - same exclusions as the step (no open or offered turn-in, no danger map, room in the log); a backoff with
+# less than 30 s left is not walked, and a GrindMode 1 bot keeps its gap grind. The walk counts no expiry and asks for no
+# rescue; an arrival at the hub starts the next search at once. [QuestBand] state=walk ... walk_s= streak= lead= and
+# state=walk_end ... how=arrived|end|cooldown|clock_shortened|scope_lost|orphan|replaced|park; the minute line counts
+# walks= walk_arrived= walk_ended= walk_replaced= walk_no_rung=. Below the F1 value the walks fill the backoffs before
+# the step (e.g. F1 = 3 with F4 = 1: two walks, then the step).
+#   0 = off (default), 1..10; other values act like 0 (one error line).
+AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches = 0
 # twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026). Restart-only, all off by default.
 # Enable = 1: a persistent roster bot on its own (no real player leads it) does not take quests it cannot finish - not
 # from a quest giver (accept all, accept packet, quest details dialog), not from a quest item in its bags - and does not
