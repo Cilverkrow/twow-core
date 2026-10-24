@@ -298,18 +298,18 @@ Player* Find(std::map<std::uint32_t, Player*> const& bots, std::uint32_t guid)
 // --- queries -------------------------------------------------------------------------------------------------------------------
 bool IsMember(PlayerbotAI* ai)
 {
-    return ai && ai->questGroupRole.load() != 0;
+    return ai && ai->GetQuestGroupRole() != 0;
 }
 
 bool IsFollower(PlayerbotAI* ai)
 {
-    return ai && ai->questGroupRole.load() == 1;
+    return ai && ai->GetQuestGroupRole() == 1;
 }
 
 void NoteLeaderStuck(PlayerbotAI* ai)
 {
-    if (ai && ai->questGroupRole.load() == 2)
-        ai->questGroupLeaderStuck.store(true);
+    if (ai && ai->GetQuestGroupRole() == 2)
+        ai->SetQuestGroupLeaderStuck(true);
 }
 
 QueueStore& Queue()
@@ -336,8 +336,8 @@ void WorldThreadManager::Release(Player* bot, Member const& m, bool leaveGroup)
         return;
     if (leaveGroup)
         LeaveCore(bot);
-    ai->questGroupRole.store(0);
-    ai->questGroupLeaderStuck.store(false);
+    ai->SetQuestGroupRole(0);
+    ai->SetQuestGroupLeaderStuck(false);
     // LeaveGroupAction::Leave does not reset a free bot with a bot master; the S7 strategy set must go in any case.
     ai->SetMaster(nullptr);
     ai->ResetStrategies();
@@ -444,12 +444,12 @@ void WorldThreadManager::Tend(std::map<std::uint32_t, Player*> const& bots, Help
         TravelTarget* lt = Target(leaderAi);
         TravelDestination* d = lt->IsForced() ? lt->GetDestination() : nullptr;
         WorldPosition const leaderPos(leader);
-        bool const travelling = d && lt->GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL && d->OnMap(leaderPos);
+        bool const travelling = d && lt->GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL && d->HasPointsOnMap(leaderPos);
         // The fight counts into the window, but a group never dissolves in the middle of an (elite) fight (OB-10, as PosStuck).
         approachStuck = g.leaderWatch.Observe(std::uintptr_t(d), travelling ? d->DistanceTo(leaderPos) : 0.0f, travelling, now) &&
             !leader->IsInCombat();
     }
-    f.leaderStuck = leaderAi && (approachStuck || leaderAi->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);
+    f.leaderStuck = leaderAi && (approachStuck || leaderAi->TakeQuestGroupLeaderStuck() || leader->GetMapId() != g.mapId);
     f.abandoned = abandoned;
     f.allComplete = !present.empty();
     f.allTurnedIn = !present.empty();
@@ -509,10 +509,10 @@ void WorldThreadManager::Tend(std::map<std::uint32_t, Player*> const& bots, Help
             PlayerbotAI* ai = Ai(bot);
             if (bot == leader)
             {
-                ai->questGroupRole.store(2);
+                ai->SetQuestGroupRole(2);
                 continue;
             }
-            ai->questGroupRole.store(1);
+            ai->SetQuestGroupRole(1);
             if (!FollowerIntact(ai, leader))
                 MakeFollower(ai, leader);
         }
@@ -587,13 +587,13 @@ bool WorldThreadManager::FormOne(std::map<std::uint32_t, Player*> const& bots, s
     group->SendUpdate();
 
     g.members.push_back(lm);
-    Ai(leader)->questGroupRole.store(2);
-    Ai(leader)->questGroupLeaderStuck.store(false);
+    Ai(leader)->SetQuestGroupRole(2);
+    Ai(leader)->SetQuestGroupLeaderStuck(false);
     memberOf[g.leader] = g.groupId;
     for (Member& m : joined)
     {
         Player* bot = Find(bots, m.guid);
-        Ai(bot)->questGroupRole.store(1);
+        Ai(bot)->SetQuestGroupRole(1);
         MakeFollower(Ai(bot), leader);
         m.lastCounter = Counter(bot, questId);
         memberOf[m.guid] = g.groupId;

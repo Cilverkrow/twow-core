@@ -91,7 +91,7 @@ require_text("${world}" "if (t->GetBandTripEnd())
 # CLI-Deep queries: lock-free role atomic, queue age.
 require_text("${ai_h}" "std::atomic<uint8> questGroupRole{ 0 };" "role atomic")
 require_text("${world_h}" "std::uint32_t OldestQueuedAge(std::uint32_t guid);" "oldest queue age query")
-require_text("${world}" "return ai && ai->questGroupRole.load() != 0;" "lock-free member query")
+require_text("${world}" "return ai && ai->GetQuestGroupRole() != 0;" "lock-free member query")
 
 # Members are not dropped by "leave far away" and get no auto-shared quests.
 require_text("${leave}" "        if (quest_groups::IsMember(ai))
@@ -105,7 +105,7 @@ require_text("${world}" "[QuestGroup] minute candidates=%u quests=%u formed=%u a
 
 # Leader stuck: PosStuck never changes the map, so the CLI-Deep hook flags the leader lock-free and the manager takes it.
 require_text("${ai_h}" "std::atomic<bool> questGroupLeaderStuck{ false };" "leader-stuck atomic")
-require_text("${world}" "if (ai && ai->questGroupRole.load() == 2)
-        ai->questGroupLeaderStuck.store(true);" "only a leader is flagged")
-require_text("${world}" "f.leaderStuck = leaderAi && (approachStuck || leaderAi->questGroupLeaderStuck.exchange(false) || leader->GetMapId() != g.mapId);" "manager takes the flag and its own approach watch")
+require_text("${world}" "if (ai && ai->GetQuestGroupRole() == 2)
+        ai->SetQuestGroupLeaderStuck(true);" "only a leader is flagged")
+require_text("${world}" "f.leaderStuck = leaderAi && (approachStuck || leaderAi->TakeQuestGroupLeaderStuck() || leader->GetMapId() != g.mapId);" "manager takes the flag and its own approach watch")
 require_text("${world}" "approachStuck = g.leaderWatch.Observe(" "the manager watches the forced leader itself (PosStuck skips forced targets, OB-10)")
