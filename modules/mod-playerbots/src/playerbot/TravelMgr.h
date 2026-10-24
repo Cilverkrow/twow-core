@@ -143,6 +143,8 @@ namespace ai
 
 		virtual bool IsIn(const WorldPosition& pos, float radius = 0) const { return OnMap(pos) && DistanceTo(pos) <= (radius ? radius : radiusMin); }
 		float DistanceTo(const WorldPosition& pos) const { return sqrt(sqDistance(pos)); }
+		// twow-repo#627 S7: the destination has points on the map of pos (OnMap is protected in WorldWpSquare).
+		bool HasPointsOnMap(const WorldPosition& pos) const { return OnMap(pos); }
 
 		float GetRadiusMin() { return radiusMin; }
 
