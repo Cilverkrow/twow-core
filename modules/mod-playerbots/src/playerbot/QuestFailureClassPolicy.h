@@ -27,6 +27,7 @@ namespace ai::quest_failure_class
 //                 local quest hub filter, a random range skip, a stale or resumed list. Backoff only, no count.
 //   EmptyOffer  - everything else (no giver mark, nothing active, enemy zone, danger map, battleground quest, mixed
 //                 structural and other reasons): today's behaviour - it counts - until S5 (band step).
+//   GroupNeeded - (twow-repo#627 S7 hook, own key) an empty offer while every open quest waits for S7 help: no count, no park.
 // 0 = no class (None): the rejection counts exactly as before.
 enum class FailureClass : std::uint8_t
 {
@@ -34,6 +35,7 @@ enum class FailureClass : std::uint8_t
     Structural,
     Transient,
     EmptyOffer,
+    GroupNeeded,    // twow-repo#627 S7 hook (FailureClasses.GroupNeeded): an empty offer while every open quest waits for help
 };
 
 inline char const* ClassName(FailureClass failureClass)
@@ -43,6 +45,7 @@ inline char const* ClassName(FailureClass failureClass)
         case FailureClass::Structural: return "structural";
         case FailureClass::Transient: return "transient";
         case FailureClass::EmptyOffer: return "empty_offer";
+        case FailureClass::GroupNeeded: return "group_needed";
         case FailureClass::None: break;
     }
     return "none";
@@ -117,7 +120,19 @@ inline Decision Classify(bool enabled, quest_search::RejectCounts const& rejects
 // parked (parking off, the quest no longer finished) it stays counted: fail closed to today's behaviour.
 inline bool CountsTowardGrind(FailureClass failureClass)
 {
-    return failureClass != FailureClass::Transient;
+    return failureClass != FailureClass::Transient && failureClass != FailureClass::GroupNeeded;
+}
+
+// twow-repo#627 S7 hook (AiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded, OB-10 24.10.2026): an empty offer
+// while the bot holds open quests and every one of them is a group quest waiting for help in the S7 queue (queue age > 0)
+// is group_needed - not the bot's failure: it does not count toward the grind fallback (like transient) and parks nothing
+// (it was no structural class). The backoff and the band streak (F1 / F4, any class) run as before, so the bot steps on
+// after N searches and takes the quests along (BandQueuedFreeMinutes). Off: the class stays as Classify said.
+inline FailureClass WithGroupNeeded(FailureClass failureClass, bool enabled, std::uint32_t queuedGroupQuests,
+    std::uint32_t otherOpenQuests)
+{
+    return enabled && failureClass == FailureClass::EmptyOffer && queuedGroupQuests && !otherOpenQuests ?
+        FailureClass::GroupNeeded : failureClass;
 }
 
 // AiPlayerbot.QuestFirstProgression.TransientCountsAfter (S1 review; the value is OB-10's decision): 0 = a transient

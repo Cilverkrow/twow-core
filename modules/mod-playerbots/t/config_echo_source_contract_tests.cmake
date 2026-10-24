@@ -86,6 +86,7 @@ require_text("${config_cpp}" "sLog.outString(\"%s\", ai::config_echo::FormatLine
 set(entries
   "QuestFirstProgression.Enabled|questFirstProgressionEnabled"
   "QuestFirstProgression.FailureClasses|questFirstProgressionFailureClasses"
+  "QuestFirstProgression.FailureClasses.GroupNeeded|questFirstProgressionFailureClassesGroupNeeded"
   "QuestFirstProgression.ResetOnProgressEvents|questFirstProgressionResetOnProgressEvents"
   "QuestFirstProgression.AbandonStructuralParked|questFirstProgressionAbandonStructuralParked"
   "QuestFirstProgression.TransientCountsAfter|questFirstProgressionTransientCountsAfter"
@@ -97,6 +98,7 @@ set(entries
   "QuestFirstProgression.BandStepAfterEmptySearches|questFirstProgressionBandStepAfterEmptySearches"
   "QuestFirstProgression.BandLadderSameZoneNext|questFirstProgressionBandLadderSameZoneNext"
   "QuestFirstProgression.BandWalkAfterEmptySearches|questFirstProgressionBandWalkAfterEmptySearches"
+  "QuestFirstProgression.BandQueuedFreeMinutes|questFirstProgressionBandQueuedFreeMinutes"
   "QuestFirstProgression.TurnInParkFailures|questFirstProgressionTurnInParkFailures"
   "QuestFirstProgression.MinLevelForCrossMapQuestRoute|questFirstProgressionMinLevelForCrossMapQuestRoute"
   "QuestRescue.KeepRequestWhenFull|questRescueKeepRequestWhenFull"
