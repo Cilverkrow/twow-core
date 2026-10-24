@@ -2497,7 +2497,7 @@ static void LogShimBounds(EntryGuidps const& guidpMap)
         uint32 capOnlyQuests = 0, capOnlyMinLevelLe29 = 0, capOnlyResolved = 0, capOnlyItems = 0;
         for (auto const& [questId, questPtr] : sObjectMgr.GetQuestTemplates())
         {
-            bool capOnly = false;
+            uint32 questItems = 0, firstItem = 0;
             bool resolved = true;
             for (uint32 objective = 0; objective < QUEST_ITEM_OBJECTIVES_COUNT; ++objective)
             {
@@ -2507,7 +2507,8 @@ static void LogShimBounds(EntryGuidps const& guidpMap)
                 auto const it = sources.find(itemId);
                 if (it == sources.end() || it->second.first || !it->second.second)
                     continue;
-                capOnly = true;
+                if (!questItems++)
+                    firstItem = itemId;
                 ++capOnlyItems;
                 bool found = false;
                 if (dropMap)
@@ -2519,13 +2520,16 @@ static void LogShimBounds(EntryGuidps const& guidpMap)
                 if (!found)
                     resolved = false;
             }
-            if (!capOnly)
+            if (!questItems)
                 continue;
             ++capOnlyQuests;
             if (questPtr->GetMinLevel() <= 29)
                 ++capOnlyMinLevelLe29;
             if (resolved)
                 ++capOnlyResolved;
+            // one line per quest (about 200, once per boot) for the cross-check against a world DB dump
+            sLog.outString("[ShimBounds] mode=%u type=cap_only quest=%u min_level=%u item=%u items=%u resolved=%u",
+                mode, questId, questPtr->GetMinLevel(), firstItem, questItems, resolved ? 1 : 0);
         }
         sLog.outString("[ShimBounds] mode=%u type=quest_loot cap_only_quests=%u cap_only_min_level_le29=%u cap_only_items=%u cap_only_resolved=%u cost_ms=%u",
             mode, capOnlyQuests, capOnlyMinLevelLe29, capOnlyItems, capOnlyResolved, WorldTimer::getMSTimeDiffToNow(started));

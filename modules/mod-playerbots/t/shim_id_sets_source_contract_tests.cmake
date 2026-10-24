@@ -89,6 +89,9 @@ require_text("${item}" "uint32 GetMaxEntry() const { return cmangos_shim::kLegac
 require_text("${faction}" "uint32 GetNumRows() const { return cmangos_shim::kLegacyFactionCap; }" "faction cap unchanged (A2 off path)")
 require_text("${shim}" "T const* LookupEntry(uint32 id) const { return sObjectMgr.GetFactionTemplateEntry(id); }\n    uint32 GetNumRows() const { return 1500; }" "FactionTemplate stub out of scope")
 require_text("${shim}" "uint32 GetNumRows() const { return 10000; } // upper bound stub" "AreaTrigger stub out of scope")
+# A2 (OB-10 review): the faction lookup itself has no cap - only the count of the off path stops at 100.
+require_text("${faction}" "T const* LookupEntry(uint32 id) const { return sObjectMgr.GetFactionEntry(id); }" "faction lookup without a cap")
+forbid_text("${faction}" "kLegacyFactionCap ?" "capped faction lookup")
 
 # 2. WarmIdSets: the mode is set once; off builds no set.
 string(FIND "${shim}" "inline void WarmIdSets(bool on)" warm_at)
@@ -153,6 +156,8 @@ read_source("strategy/actions/FactionAction.cpp" faction_action)
 foreach(name triggers faction_action)
   require_text("${${name}}" "#ifndef MANGOSBOT_ONE\n    // twow-repo#510 A2: AiPlayerbot.Shim.FactionIdSet = 1 walks the reputation list (factions >= 100 too); 0 = ids below GetNumRows() as before.\n    for (uint32 id : cmangos_shim::FactionIds(mgr.GetStateList(), sPlayerbotAIConfig.shimFactionIdSet))\n#else\n    for (uint32 id = 0; id < sFactionStore.GetMaxEntry(); ++id)\n#endif" "${name}: faction loop behind the switch")
   forbid_text("${${name}}" "for (uint32 id = 0; id < sFactionStore.GetNumRows(); ++id)" "${name}: the old faction loop without the switch is left")
+  # OB-10 review: the body resolves the faction through the uncapped lookup, so ids >= the cap stay in (see section 1).
+  require_text("${${name}}" "#endif\n    {\n#ifndef MANGOSBOT_ONE\n        const FactionEntry* factionEntry = sFactionStore.LookupEntry(id);" "${name}: faction entry from sFactionStore.LookupEntry")
 endforeach()
 
 # 8. [ShimBounds] once at the end of LoadQuestTravelTable, the same in both modes.
@@ -165,5 +170,6 @@ foreach(type creature go faction quest_loot)
   require_text("${travel_mgr}" "\"[ShimBounds] mode=%u type=${type} " "[ShimBounds] type=${type}")
 endforeach()
 require_text("${travel_mgr}" "cap_only_quests=%u cap_only_min_level_le29=%u cap_only_items=%u cap_only_resolved=%u" "quest_loot acceptance fields")
+require_text("${travel_mgr}" "\"[ShimBounds] mode=%u type=cap_only quest=%u min_level=%u item=%u items=%u resolved=%u\"" "per-quest list for the dump cross-check")
 
 message(STATUS "shim_id_sets source contract passed")
