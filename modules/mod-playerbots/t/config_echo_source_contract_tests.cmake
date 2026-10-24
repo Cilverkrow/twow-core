@@ -126,6 +126,7 @@ set(entries
   "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
   "Rotation.ReachLosClose|rotationReachLosClose"
+  "Rotation.ReachPlayerMaster|rotationReachPlayerMaster"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
   "Perf.RouteTimeTrace|perfRouteTimeTrace"
