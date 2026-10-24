@@ -1,6 +1,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/AdhocGroupWorld.h"
 #include "playerbot/BotGroupDiagnostics.h"
+#include "playerbot/GroupAiRefresh.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
@@ -96,6 +97,11 @@ bool AllRosterBots(Group* group)
 
 namespace
 {
+std::uint32_t UsSince(std::chrono::steady_clock::time_point start)
+{
+    return std::uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+}
+
 // The bot takes part at all (AdhocGroupAction::isUseful), and its objects are safe to touch.
 bool Eligible(Player* bot)
 {
@@ -175,7 +181,11 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
         Groups().Forget(group->GetId());
 
     tracks.erase(bot->GetGUIDLow());
+    auto const leaveStart = std::chrono::steady_clock::now();
     LeaveGroup(bot, group);
+    std::uint32_t const leaveUs = UsSince(leaveStart);
+    minute.leaveUsMax = std::max(minute.leaveUsMax, leaveUs);
+    passLeaveUs += leaveUs;
     ++minute.leaves;
     return true;
 }
@@ -195,8 +205,8 @@ void WorldThreadManager::LeaveGroup(Player* bot, Group* group)
 
     if (sRandomPlayerbotMgr.IsFreeBot(bot))
         ai->SetMaster(nullptr);
-    ai->ResetStrategies();
-    ai->Reset();
+    // twow-repo#628 fix: the strategy rebuild and the reset (~10 ms on the world thread in the C short test) on the bot's own thread.
+    ai->RequestGroupAi(group_ai_refresh::LeaveReset);
 }
 
 bool WorldThreadManager::Join(Player* inviter, Player* invitee, ObjectiveKey const& key, std::uint32_t now)
@@ -249,8 +259,9 @@ void WorldThreadManager::FlushMinute(std::uint32_t now)
         return;
 
     if (sPlayerbotAIConfig.botGroupsDiagnostics && minute.passes)
-        sLog.outBasic("[BotGroup] kind=adhoc event=minute passes=%u candidates=%u invites=%u joins=%u leaves=%u tracked=%u pass_us_max=%u",
-            minute.passes, minute.candidates, minute.invites, minute.joins, minute.leaves, uint32(tracks.size()), minute.passUsMax);
+        sLog.outBasic("[BotGroup] kind=adhoc event=minute passes=%u candidates=%u invites=%u joins=%u leaves=%u tracked=%u pass_us_max=%u join_us_max=%u leave_us_max=%u scan_us_max=%u bots=%u",
+            minute.passes, minute.candidates, minute.invites, minute.joins, minute.leaves, uint32(tracks.size()), minute.passUsMax,
+            minute.joinUsMax, minute.leaveUsMax, minute.scanUsMax, minute.bots);
     minute = Minute();
     minute.start = now;
 }
@@ -262,6 +273,7 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     lastPass = now;
     FlushMinute(now);  // a finished minute is logged before this pass counts
     auto const passStart = std::chrono::steady_clock::now();
+    passLeaveUs = 0;
 
     // Bots that logged out since the last pass take their leave tracking with them,
     // and registry entries of groups disbanded elsewhere go (bounded registry).
@@ -315,6 +327,11 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
         ++minute.candidates;
     }
 
+    // The scan alone: leave rules and candidates for every bot, without the leaves themselves.
+    std::uint32_t const scanUs = UsSince(passStart);
+    minute.scanUsMax = std::max(minute.scanUsMax, scanUs > passLeaveUs ? scanUs - passLeaveUs : 0u);
+    minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
+
     // 3. Pairs inside a bucket: radius, pair cooldown, level window, who invites.
     std::uint32_t const cooldown = sPlayerbotAIConfig.botGroupsAdhocPairCooldownSeconds;
     float const radius = sPlayerbotAIConfig.botGroupsAdhocRadius;
@@ -367,17 +384,17 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
                     sLog.outBasic("[BotGroup] kind=adhoc event=invite inviter=%u invitee=%u quest=%u objective=%u joining_group=%u thread=world",
                         inviter->GetGUIDLow(), invitee->GetGUIDLow(), a.key.questId, uint32(a.key.objective),
                         joining ? joining->GetId() : 0u);
+                auto const joinStart = std::chrono::steady_clock::now();
                 if (Join(inviter, invitee, a.key, now))
                     ++minute.joins;
+                minute.joinUsMax = std::max(minute.joinUsMax, UsSince(joinStart));
                 break;  // at most one invite per bot and pass
             }
         }
     }
 
     ++minute.passes;
-    std::uint32_t const passUs = std::uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - passStart).count());
-    minute.passUsMax = std::max(minute.passUsMax, passUs);
+    minute.passUsMax = std::max(minute.passUsMax, UsSince(passStart));
 }
 
 WorldThreadManager& WorldManager()

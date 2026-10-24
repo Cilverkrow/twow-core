@@ -1,6 +1,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/BotGroupDiagnostics.h"
+#include "playerbot/GroupAiRefresh.h"
 #include "playerbot/GuidPosition.h"
 #include "playerbot/BotSlots.h"
 #include "playerbot/PlayerbotAI.h"
@@ -24,6 +25,11 @@ namespace
 {
 constexpr float GatherRadius = 30.0f;
 constexpr std::uint32_t MaxForces = 20;   // re-forcing the leader's target (moves failed, condition flipped)
+
+std::uint32_t UsSince(std::chrono::steady_clock::time_point start)
+{
+    return std::uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+}
 
 PlayerbotAI* Ai(Player* bot)
 {
@@ -224,28 +230,30 @@ void RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)
 
 // A plain follower of the leader while the group works: no own travel, rpg, grind or group leaving.
 // AcceptInvitation's ResetStrategies runs before this; ResetStrategies elsewhere can undo it, so every pass re-checks.
+// twow-repo#628 fix: the sets are posted (group_ai_refresh::Follower / TurnIn) and run on the bot's own thread (ApplyRoleSet).
 std::string const FollowerSet = "-wander,+follow,-travel,-tfish,-rpg,-grind,-attack tagged,-group,-adhoc group,-lfg,-bg,"
                                 "-guild,-start duel,-duel,-gather";
+// Turn-in phase: every member goes to the taker on its own forced target (a follower does not turn in on its own).
+std::string const TurnInSet = "-follow,+travel,-group,-adhoc group";
 
 void MakeFollower(PlayerbotAI* ai, Player* leader)
 {
     if (ai->GetMaster() != leader)
         ai->SetMaster(leader);
-    ai->ChangeStrategy(FollowerSet, BotState::BOT_STATE_NON_COMBAT);
-    ai->ChangeStrategy("-group", BotState::BOT_STATE_DEAD);
+    ai->RequestGroupAi(group_ai_refresh::Follower);
 }
 
 bool FollowerIntact(PlayerbotAI* ai, Player* leader)
 {
-    return ai->GetMaster() == leader && ai->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) &&
-        !ai->HasStrategy("travel", BotState::BOT_STATE_NON_COMBAT) && !ai->HasStrategy("group", BotState::BOT_STATE_NON_COMBAT);
+    return ai->GetMaster() == leader && ((ai->PendingGroupAiRequests() & group_ai_refresh::Follower) ||
+        (ai->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) &&
+        !ai->HasStrategy("travel", BotState::BOT_STATE_NON_COMBAT) && !ai->HasStrategy("group", BotState::BOT_STATE_NON_COMBAT)));
 }
 
-// Turn-in phase: every member goes to the taker on its own forced target (a follower does not turn in on its own).
+// Turn-in phase: the turn-in set (TurnInSet), posted to the bot.
 void MakeTurnIn(PlayerbotAI* ai)
 {
-    ai->ChangeStrategy("-follow,+travel,-group,-adhoc group", BotState::BOT_STATE_NON_COMBAT);
-    ai->ChangeStrategy("-group", BotState::BOT_STATE_DEAD);
+    ai->RequestGroupAi(group_ai_refresh::TurnIn);
 }
 
 // The invite path of the core with the leader as inviter (the inviter becomes leader and master of the invitee), then
@@ -328,6 +336,16 @@ std::uint32_t OldestQueuedAge(std::uint32_t guid)
     return Queue().OldestQueuedAge(guid, std::uint32_t(time(nullptr)));
 }
 
+// twow-repo#628 fix: the role set on the bot's own thread (PlayerbotAI::ApplyGroupAiRequests, after a reset of the same requests);
+// a bot released meanwhile keeps its own strategies.
+void ApplyRoleSet(PlayerbotAI* ai, bool turnIn)
+{
+    if (!ai || ai->GetQuestGroupRole() == 0)
+        return;
+    ai->ChangeStrategy(turnIn ? TurnInSet : FollowerSet, BotState::BOT_STATE_NON_COMBAT);
+    ai->ChangeStrategy("-group", BotState::BOT_STATE_DEAD);
+}
+
 // --- manager ---------------------------------------------------------------------------------------------------------------------
 void WorldThreadManager::Release(Player* bot, Member const& m, bool leaveGroup)
 {
@@ -340,8 +358,8 @@ void WorldThreadManager::Release(Player* bot, Member const& m, bool leaveGroup)
     ai->SetQuestGroupLeaderStuck(false);
     // LeaveGroupAction::Leave does not reset a free bot with a bot master; the S7 strategy set must go in any case.
     ai->SetMaster(nullptr);
-    ai->ResetStrategies();
-    ai->Reset();
+    // twow-repo#628 fix: the strategy rebuild and the reset on the bot's own thread (it also drops a pending S7 set).
+    ai->RequestGroupAi(group_ai_refresh::LeaveReset);
     RestoreTravel(ai, m.travel);
 }
 
@@ -681,7 +699,11 @@ void WorldThreadManager::Scan(std::map<std::uint32_t, Player*> const& bots, std:
                 taken = taken || memberOf.count(c.guid);
             if (taken)
                 continue;
+            auto const formStart = std::chrono::steady_clock::now();
             FormOne(bots, members, questId, now);
+            std::uint32_t const formUs = UsSince(formStart);
+            minute.formUsMax = std::max(minute.formUsMax, formUs);
+            passFormUs += formUs;
         }
     }
     Queue().ForgetStale(now, 6 * 3600);
@@ -693,9 +715,10 @@ void WorldThreadManager::FlushMinute(std::uint32_t now)
         minute.start = now;
     if (now - minute.start < 60)
         return;
-    sLog.outBasic("[QuestGroup] minute candidates=%u quests=%u formed=%u active=%u dissolved=%u queued=%u scan_us_max=%u passes=%u mode=%u",
+    sLog.outBasic("[QuestGroup] minute candidates=%u quests=%u formed=%u active=%u dissolved=%u queued=%u scan_us_max=%u passes=%u mode=%u form_us_max=%u dissolve_us_max=%u scan_only_us_max=%u bots=%u",
         minute.candidates, minute.quests, minute.formed, uint32(groups.size()), minute.dissolved, uint32(Queue().Size()),
-        minute.scanUsMax, minute.passes, sPlayerbotAIConfig.questGroupsEnable);
+        minute.scanUsMax, minute.passes, sPlayerbotAIConfig.questGroupsEnable, minute.formUsMax, minute.dissolveUsMax, minute.scanOnlyUsMax,
+        minute.bots);
     minute = Minute();
     minute.start = now;
 }
@@ -720,7 +743,9 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
         auto const it = groups.find(id);
         if (it == groups.end())
             continue;
+        auto const dissolveStart = std::chrono::steady_clock::now();
         DissolveGroup(bots, it->second, d, now);
+        minute.dissolveUsMax = std::max(minute.dissolveUsMax, UsSince(dissolveStart));
         groups.erase(it);
     }
 
@@ -728,11 +753,15 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     if (enabled && now - lastScan >= sPlayerbotAIConfig.questGroupsScanSeconds)
     {
         lastScan = now;
+        passFormUs = 0;
+        auto const scanStart = std::chrono::steady_clock::now();
         Scan(bots, now);
+        std::uint32_t const scanUs = UsSince(scanStart);
+        minute.scanOnlyUsMax = std::max(minute.scanOnlyUsMax, scanUs > passFormUs ? scanUs - passFormUs : 0u);
+        minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
         ++minute.passes;
     }
-    minute.scanUsMax = std::max<std::uint32_t>(minute.scanUsMax, std::uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - start).count()));
+    minute.scanUsMax = std::max(minute.scanUsMax, UsSince(start));
 }
 
 WorldThreadManager& WorldManager()

@@ -85,6 +85,8 @@
 #endif
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 #include "strategy/values/GuildValues.h"
+#include "playerbot/GroupAiRefresh.h"   // twow-repo#628 / #627: the AI part of the world-thread group changes
+#include "playerbot/QuestGroupWorld.h"
 
 using namespace ai;
 
@@ -1081,6 +1083,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
     // Hotfix 8.1: [MemStores] stale_bots - UpdateAI ran for this bot.
     lastUpdateTime = uint32(time(nullptr));
+
+    // twow-repo#628 / #627: what the world-thread group managers posted (strategy rebuild, reset, S7 role set), before this
+    // update's AI runs.
+    ApplyGroupAiRequests();
 
     // #420: close a finished [GroupBuff] window.
     if (groupBuffWindow.casts)
@@ -10729,4 +10735,32 @@ std::vector<Player*> PlayerbotAI::GetRealPlayersInGroup()
             out.push_back(member);
     }
     return out;
+}
+
+// twow-repo#628 / #627 (GroupAiRefresh.h): the world-thread managers change the group, the bot rebuilds its AI itself.
+void PlayerbotAI::RequestGroupAi(uint32 request)
+{
+    uint32 pending = groupAiRequests.load();
+    while (!groupAiRequests.compare_exchange_weak(pending, ai::group_ai_refresh::Merge(pending, request)))
+        ;
+}
+
+void PlayerbotAI::ApplyGroupAiRequests()
+{
+    uint32 const requests = groupAiRequests.exchange(0);
+    if (!requests)
+        return;
+    ai::group_ai_refresh::Plan const plan = ai::group_ai_refresh::PlanFor(requests);
+    if (plan.reset)
+    {
+        // AcceptInvitationAction's / LeaveGroupAction's own sequence; the master was already set on the world thread.
+        if (plan.joinStrategies && sRandomPlayerbotMgr.IsFreeBot(bot))
+            ChangeStrategy("+" + GetDefaultMovementStrategy(), BotState::BOT_STATE_NON_COMBAT);
+        ResetStrategies();
+        if (plan.joinStrategies)
+            ChangeStrategy("-lfg,-bg", BotState::BOT_STATE_NON_COMBAT);
+        Reset();
+    }
+    if (plan.follower || plan.turnIn)
+        ai::quest_groups::ApplyRoleSet(this, plan.turnIn);
 }

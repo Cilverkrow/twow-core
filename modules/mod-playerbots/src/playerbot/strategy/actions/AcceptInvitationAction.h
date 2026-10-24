@@ -4,6 +4,7 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/BotGroupDiagnostics.h"
+#include "playerbot/GroupAiRefresh.h"
 namespace ai
 {
     class AcceptInvitationAction : public Action 
@@ -41,18 +42,31 @@ namespace ai
             if (!bot->GetGroup() || !bot->GetGroup()->IsMember(inviter->GetObjectGuid()))
                 return false;
 
+            // twow-repo#628 / #627: a world-thread manager (ad-hoc AdhocGroupWorld, S7 QuestGroupWorld) runs this accept. The strategy
+            // rebuild and the reset below are the expensive part (a join or leave cost ~10 ms of the world tick in the C short test, 24.10.2026);
+            // they run in the bot's next update on its own thread instead (PlayerbotAI::ApplyGroupAiRequests, same sequence).
+            bool const worldManager = group_ai_refresh::IsWorldManagerSource(event.getSource());
+
             if (sRandomPlayerbotMgr.IsFreeBot(bot))
             {
                 ai->SetMaster(inviter);
 
-                std::string defaultMovementStrategy = ai->GetDefaultMovementStrategy();
-                ai->ChangeStrategy("+" + defaultMovementStrategy, BotState::BOT_STATE_NON_COMBAT);
+                if (!worldManager)
+                {
+                    std::string defaultMovementStrategy = ai->GetDefaultMovementStrategy();
+                    ai->ChangeStrategy("+" + defaultMovementStrategy, BotState::BOT_STATE_NON_COMBAT);
+                }
             }
 
-            ai->ResetStrategies();
-            
-            ai->ChangeStrategy("-lfg,-bg", BotState::BOT_STATE_NON_COMBAT);
-            ai->Reset();
+            if (worldManager)
+                ai->RequestGroupAi(group_ai_refresh::JoinReset);
+            else
+            {
+                ai->ResetStrategies();
+
+                ai->ChangeStrategy("-lfg,-bg", BotState::BOT_STATE_NON_COMBAT);
+                ai->Reset();
+            }
 
             sPlayerbotAIConfig.logEvent(ai, "AcceptInvitationAction", grp->GetLeaderName(), std::to_string(grp->GetMembersCount()));
             bot_group::LogMembership(bot, bot->GetGroup(), "join");
