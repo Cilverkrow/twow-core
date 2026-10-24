@@ -64,6 +64,7 @@
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c) (Rotation.FleeAway): [FleeAway] minute line
+#include "playerbot/DarkRuneGatePolicy.h"   // twow-repo#602 ROT-01 3c (Rotation.DarkRuneGate): [DarkRuneGate] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
 #include "playerbot/CastLosGatePolicy.h"   // twow-repo#602 (Rotation.CastLosGate): [CastLosGate] minute line
 #include "playerbot/PathReusePolicy.h"
@@ -1303,6 +1304,24 @@ void ReportFleeAway()
     }
 }
 
+// twow-repo#602 ROT-01 3c (AiPlayerbot.Rotation.DarkRuneGate): one [DarkRuneGate] line per minute - low mana checks of the
+// rune and the potion (checks), usable (passed), not usable so the wait started (blocked), evaluations inside the wait
+// (waited). Nothing is written when off.
+void ReportDarkRuneGate()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationDarkRuneGate || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[DarkRuneGate] mode=%u checks=%llu passed=%llu blocked=%llu waited=%llu",
+        sPlayerbotAIConfig.rotationDarkRuneGate,
+        (unsigned long long)ai::dark_rune_gate::checks.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::dark_rune_gate::passed.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::dark_rune_gate::blocked.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::dark_rune_gate::waited.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): one [LazyEngineInit] line per minute. deferred = engine
 // rebuilds put off because the engine was not running, caught = rebuilds run later at the start of Engine::DoNextAction
 // (Reset(false) path, mid-walk engine change), saved = deferred - caught (a window can catch rebuilds deferred in an
@@ -1817,6 +1836,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
     ReportReachLos();       // twow-repo#594: [ReachLos] once per minute (AiPlayerbot.Rotation.ReachLosClose)
+    ReportDarkRuneGate();   // twow-repo#602 ROT-01 3c: [DarkRuneGate] once per minute (AiPlayerbot.Rotation.DarkRuneGate)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
     ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)

@@ -2939,6 +2939,18 @@ AiPlayerbot.Rotation.ReachLosClose = 0
 # ignore_s=30 cohort=" (one line per bot per 5 min, as before; bots without a player master log master=bot ignore_s=300).
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.ReachPlayerMaster = 0
+
+# twow-repo#602 ROT-01 3c (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): "low mana"
+# pushes "dark rune" (alternative "mana potion") on every evaluation, in the combat and the reaction engine. Without a rune in
+# the bags the action is impossible and dropped, so an out-of-mana priest pushed it 2-3 times per AI tick for hours (x1b
+# 23.10.: 16:49-22:12Z). With the switch "dark rune" is pushed only while the rune or the potion is usable (in the bags or the
+# item cheat without RosterConsumables.UseReal, no item cooldown, the rune's required level - the item cheat ignored it; 0 in
+# tw_world today - not a mage, not in an arena; the potion with RosterConsumables.ManaPotionPct). A failed check waits
+# RecheckSeconds.
+# "[DarkRuneGate] mode= checks= passed= blocked= waited=" once a minute with the mode on.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.DarkRuneGate = 0
+AiPlayerbot.Rotation.DarkRuneGate.RecheckSeconds = 10
 # twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
 # request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
 # their condition while the bot's travel target is being prepared or is active. The request actions are rejected
