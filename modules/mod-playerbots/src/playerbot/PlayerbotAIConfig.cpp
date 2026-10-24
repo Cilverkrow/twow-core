@@ -753,6 +753,7 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
     questFirstProgressionGrindFallbackMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes", 0)));
     questFirstProgressionFailureClasses = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses", false);
+    questFirstProgressionFailureClassesGroupNeeded = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded", false);   // twow-repo#627 S7 hook
     questFirstProgressionResetOnProgressEvents = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents", false);
     questFirstProgressionAbandonStructuralParked = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.AbandonStructuralParked", false);
     questFirstProgressionTransientCountsAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TransientCountsAfter", 0)));
@@ -789,6 +790,13 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[QuestBand] config key=BandWalkAfterEmptySearches value=%u result=off (0 off, 1..10)", questFirstProgressionBandWalkAfterEmptySearches);
         questFirstProgressionBandWalkAfterEmptySearches = 0;
+    }
+    // twow-repo#627 S7 hook: queued group quests count as free slots for the band log gate, 0 = off, 1..240 minutes.
+    questFirstProgressionBandQueuedFreeMinutes = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandQueuedFreeMinutes", 0);
+    if (questFirstProgressionBandQueuedFreeMinutes > 240)
+    {
+        sLog.outError("[QuestBand] config key=BandQueuedFreeMinutes value=%u result=off (0 off, 1..240)", questFirstProgressionBandQueuedFreeMinutes);
+        questFirstProgressionBandQueuedFreeMinutes = 0;
     }
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
@@ -1548,6 +1556,7 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outString("%s", ai::config_echo::FormatLine({
             {"QuestFirstProgression.Enabled", Value(questFirstProgressionEnabled)},
             {"QuestFirstProgression.FailureClasses", Value(questFirstProgressionFailureClasses)},
+            {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
             {"QuestFirstProgression.ResetOnProgressEvents", Value(questFirstProgressionResetOnProgressEvents)},
             {"QuestFirstProgression.AbandonStructuralParked", Value(questFirstProgressionAbandonStructuralParked)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
@@ -1559,6 +1568,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.BandStepAfterEmptySearches", Value(questFirstProgressionBandStepAfterEmptySearches)},
             {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
             {"QuestFirstProgression.BandWalkAfterEmptySearches", Value(questFirstProgressionBandWalkAfterEmptySearches)},
+            {"QuestFirstProgression.BandQueuedFreeMinutes", Value(questFirstProgressionBandQueuedFreeMinutes)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},

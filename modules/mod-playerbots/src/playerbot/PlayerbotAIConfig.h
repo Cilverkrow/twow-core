@@ -836,6 +836,9 @@ public:
     // twow-repo#601 S1 "latch semantics" (OB-10 17.10.2026), all false = today's behaviour, restart-only
     // (aiplayerbot.conf.dist.in): failure classes + taker pre-validation + grind yield + pre-loop filters.
     bool questFirstProgressionFailureClasses = false;
+    // twow-repo#627 S7 hook (OB-10 24.10.2026, own key: FailureClasses = 1 is in the v46.6 bundle): with FailureClasses, an empty
+    // offer while every open quest waits for S7 help is group_needed - no grind-fallback count, no park. Default off.
+    bool questFirstProgressionFailureClassesGroupNeeded = false;
     // reset of the grind-fallback counter, the route backoff and the search stage on rescue teleport, level-up,
     // login and battleground return; XP alone no longer resets the stage.
     bool questFirstProgressionResetOnProgressEvents = false;
@@ -878,6 +881,9 @@ public:
     uint32 questFirstProgressionBandWalkAfterEmptySearches = 0;
     // The band streak is counted when F1 or F4 reads it.
     bool BandStreakOn() const { return questFirstProgressionBandStepAfterEmptySearches || questFirstProgressionBandWalkAfterEmptySearches; }
+    // twow-repo#627 S7 hook (OB-10 24.10.2026): a held group quest the bot has waited on for help this many minutes (S7 queue age)
+    // counts as a free slot for the band step's log gate; the quest stays in the log. 0 = off (default), 1..240.
+    uint32 questFirstProgressionBandQueuedFreeMinutes = 0;
     // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
     // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
     bool questFeasibilityEnable = false;

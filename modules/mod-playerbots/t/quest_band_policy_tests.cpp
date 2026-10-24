@@ -278,6 +278,13 @@ int main()
         Require(!WalkLongEnough(1000 + MinWalkSeconds - 1, 1000) && WalkLongEnough(1000 + MinWalkSeconds, 1000) &&
             WalkLongEnough(1600, 1000), "at least MinWalkSeconds left");
         Require(MinWalkSeconds == 30, "30 s");
+        // twow-repo#627 S7 hook (BandQueuedFreeMinutes): queued group quests count as free slots for the gate (step and walk)
+        g = f; g.freeSlots = 3; Require(!WalkDue(g, 1) && BandStepDue(g) == StepVerdict::SkipLogFull, "3 free of 5: log full");
+        g.queuedFree = 1; Require(!WalkDue(g, 1) && BandStepDue(g) == StepVerdict::SkipLogFull, "3 + 1 queued: still full");
+        g.queuedFree = 2; Require(WalkDue(g, 1) && BandStepDue(g) == StepVerdict::Due && GateSlots(g) == 5, "3 + 2 queued: the gate opens");
+        Require(!QueuedFree(3600, 0) && !QueuedFree(899, 15) && QueuedFree(900, 15) && QueuedFree(901, 15) && !QueuedFree(0, 15),
+            "0 = off; at least N min queued; not queued (age 0) never counts");
+        Require(MaxQueuedFreeMinutes == 240 && QueuedFree(240u * 60u, MaxQueuedFreeMinutes), "the config range");
         WalkPlan plan;
         Require(plan.rung == -1 && plan.lead == std::string("normal"), "no walk planned by default");
     }
@@ -432,8 +439,8 @@ int main()
         lh.toHub = 0;
         Require(FormatSkip(lh, "no_rung", RejectName(Reject::InRadius)) ==
             "[QuestBand] state=skip bot=4711 level=26 cohort=B from_zone=44 to_hub=0 reason=no_rung detail=in_radius", "skip line");
-        Require(FormatSkipLogFull(lh, 3, 2, 1) ==
-            "[QuestBand] state=skip bot=4711 level=26 cohort=B from_zone=44 to_hub=0 reason=log_full detail=free_slots:3 group=2 elite=1",
+        Require(FormatSkipLogFull(lh, 3, 2, 1, 1) ==
+            "[QuestBand] state=skip bot=4711 level=26 cohort=B from_zone=44 to_hub=0 reason=log_full detail=free_slots:3 group=2 elite=1 queued_free=1",
             "log_full line with group / elite counts");
         std::uint32_t counts[EventCount] = {};
         Require(FormatMinute('A', counts).empty(), "no minute line without events");

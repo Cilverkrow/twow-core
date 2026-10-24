@@ -362,9 +362,26 @@ struct StepFacts
     std::uint32_t slotGate = 0;     // 5 or 10 (TravelMgr quest-possible gate)
     std::uint32_t emptyStreak = 0;  // "band empty streak": quest searches in a row without a route, this one included
     std::uint32_t streakSteps = 0;  // AiPlayerbot.QuestFirstProgression.BandStepAfterEmptySearches (0 = off)
+    std::uint32_t queuedFree = 0;   // S7 hook: held group quests waiting for help >= BandQueuedFreeMinutes (count as free slots)
 };
 
 enum class StepVerdict : std::uint8_t { NotDue, SkipLogFull, Due };
+
+// twow-repo#627 S7 hook (AiPlayerbot.QuestFirstProgression.BandQueuedFreeMinutes, OB-10 24.10.2026): a group quest the bot has
+// waited on for help this long (S7 queue age, first wait on) counts as a free slot for the band's log gate - the quest stays
+// in the log and goes along to the next hub, where S7 matches by quest log again. 0 = off: no quest counts.
+constexpr std::uint32_t MaxQueuedFreeMinutes = 240;
+
+inline bool QueuedFree(std::uint32_t queuedSeconds, std::uint32_t minutes)
+{
+    return minutes && queuedSeconds >= minutes * 60;
+}
+
+// The slots the log gate sees: the free ones plus the queued group quests that count as free.
+inline std::uint32_t GateSlots(StepFacts const& f)
+{
+    return f.freeSlots + f.queuedFree;
+}
 
 // F1 (OB-00 23.10.2026, candidate v46.6): 71 % of cohort B's failed searches were transient (death_suppressed,
 // quest_loop_suppressed), so EmptyOffer never held, and every structural park reset "quest route failures" - the band
@@ -391,7 +408,7 @@ inline StepVerdict BandStepDue(StepFacts const& f)
     bool const emptyDue = f.emptyOffer && f.priorFailures >= 1;
     if (!(emptyDue || StreakDue(f)) || f.dangerMap || f.offered || f.openTurnIns)
         return StepVerdict::NotDue;
-    if (f.freeSlots < f.slotGate)
+    if (GateSlots(f) < f.slotGate)
         return StepVerdict::SkipLogFull;
     return StepVerdict::Due;
 }
@@ -413,7 +430,7 @@ struct WalkPlan
 
 inline bool WalkDue(StepFacts const& f, std::uint32_t walkAfter)
 {
-    return walkAfter && f.emptyStreak >= walkAfter && !f.dangerMap && !f.offered && !f.openTurnIns && f.freeSlots >= f.slotGate;
+    return walkAfter && f.emptyStreak >= walkAfter && !f.dangerMap && !f.offered && !f.openTurnIns && GateSlots(f) >= f.slotGate;
 }
 
 inline bool WalkLongEnough(std::uint32_t walkEnd, std::uint32_t now)
@@ -795,11 +812,12 @@ inline std::string FormatSkip(LineHead const& h, char const* reason, char const*
 }
 
 // OB-10 Q3 19.10.2026: a log full of quests is skipped and counted, never cleared before S7 (group/elite quests together);
-// the line shows how many of the held quests are group or elite quests.
-inline std::string FormatSkipLogFull(LineHead const& h, std::uint32_t freeSlots, std::uint32_t group, std::uint32_t elite)
+// the line shows how many of the held quests are group or elite quests; queued_free= how many counted as free (S7 hook).
+inline std::string FormatSkipLogFull(LineHead const& h, std::uint32_t freeSlots, std::uint32_t group, std::uint32_t elite,
+    std::uint32_t queuedFree)
 {
     return Head("skip", h) + " reason=log_full detail=free_slots:" + std::to_string(freeSlots) + " group=" +
-        std::to_string(group) + " elite=" + std::to_string(elite);
+        std::to_string(group) + " elite=" + std::to_string(elite) + " queued_free=" + std::to_string(queuedFree);
 }
 
 // Loader lines (boot only).
