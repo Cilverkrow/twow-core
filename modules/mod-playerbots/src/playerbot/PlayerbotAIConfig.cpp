@@ -518,6 +518,9 @@ bool PlayerbotAIConfig::Initialize()
     aiDelayJitterPct = std::min<uint32>(config.GetIntDefault("AiPlayerbot.AiDelayJitterPct", 0), 50);
     checkValuesSkipSearches = config.GetBoolDefault("AiPlayerbot.CheckValues.SkipSearches", false);
     initPetCache = config.GetBoolDefault("AiPlayerbot.InitPet.Cache", false);
+    // twow-repo#510: the id-set mode is fixed at boot by cmangos_shim::WarmIdSets below; a reload changes the member only.
+    shimIdSets = config.GetBoolDefault("AiPlayerbot.Shim.IdSets", false);
+    shimFactionIdSet = config.GetBoolDefault("AiPlayerbot.Shim.FactionIdSet", false);
     // twow-repo#563 (X3a/X3c): per-context lock on the value maps; cross-bot value writes via the inbox.
     ai::context_lock::Enabled().store(config.GetBoolDefault("AiPlayerbot.X3a.ContextLock", false), std::memory_order_relaxed);
     x3cInboxWrites = config.GetBoolDefault("AiPlayerbot.X3c.InboxWrites", false);
@@ -1527,6 +1530,7 @@ bool PlayerbotAIConfig::Initialize()
     ItemUsageValue::PopulateSoldByVendorItemIds();
     ItemUsageValue::PopulateReagentItemIdsForCraftableItemIds();
 
+    cmangos_shim::WarmIdSets(shimIdSets);  // twow-repo#510: before the first creature/GO scan (PlayerbotFactory, RandomItemMgr)
     PlayerbotFactory::Init();
     sRandomItemMgr.Init();
     sPlayerbotTextMgr.LoadBotTexts();
