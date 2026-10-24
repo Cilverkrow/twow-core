@@ -10,7 +10,7 @@
 -- Change: backup + delete the two through-floor links and their 4 path points; insert the walk links 1312<->1314
 -- (distance 8.894, 2 path points each, calculated = 1 so no generator run is triggered). Nodes are untouched.
 -- After: in = ... -> 1312 -walk-> 1314 -portal 704-> 1313 (room, 1315 / 1483 by walk); out = 1315 -portal 702-> 1312.
--- Guard: the four nodes at their known positions (0.5 yd) with the name 'Stormwind City portal'. Fresh bootstrap: no-op
+-- Guard (all table reads inside prepared statements, so an empty bootstrap without the playerbot tables is a no-op): the four nodes at their known positions (0.5 yd) with the name 'Stormwind City portal'. Fresh bootstrap: no-op
 -- (tables created later); the same PR carries the end state in
 -- modules/mod-playerbots/sql/world/classic/ai_playerbot_travel_nodes.sql. Apply while mangosd is stopped.
 -- Replay-safe: backup via INSERT IGNORE, deletes only backed-up rows, INSERT IGNORE of the new rows, end-state CHECK.
@@ -24,11 +24,12 @@
 
 SET @ps_tables := (SELECT COUNT(DISTINCT `TABLE_NAME`) FROM `information_schema`.`TABLES` WHERE `TABLE_SCHEMA` = DATABASE()
   AND `TABLE_NAME` IN ('ai_playerbot_travelnode', 'ai_playerbot_travelnode_link', 'ai_playerbot_travelnode_path'));
-SET @ps_nodes := IF(@ps_tables = 3, (SELECT COUNT(*) FROM `ai_playerbot_travelnode` WHERE `name` = 'Stormwind City portal' AND `map_id` = 0 AND (
+SET @ps_sql := IF(@ps_tables = 3, 'SELECT COUNT(*) INTO @ps_nodes FROM `ai_playerbot_travelnode` WHERE `name` = ''Stormwind City portal'' AND `map_id` = 0 AND (
      (`id` = 1312 AND ABS(`x` + 9014.94) < 0.5 AND ABS(`y` - 873.326) < 0.5 AND ABS(`z` - 148.616) < 0.5)
   OR (`id` = 1313 AND ABS(`x` + 9017.46) < 0.5 AND ABS(`y` - 885.901) < 0.5 AND ABS(`z` - 29.6207) < 0.5)
   OR (`id` = 1314 AND ABS(`x` + 9020.09) < 0.5 AND ABS(`y` - 880.502) < 0.5 AND ABS(`z` - 147.576) < 0.5)
-  OR (`id` = 1315 AND ABS(`x` + 9023.26) < 0.5 AND ABS(`y` - 892.398) < 0.5 AND ABS(`z` - 29.5096) < 0.5))), 0);
+  OR (`id` = 1315 AND ABS(`x` + 9023.26) < 0.5 AND ABS(`y` - 892.398) < 0.5 AND ABS(`z` - 29.5096) < 0.5))', 'SET @ps_nodes := 0');
+PREPARE ps_stmt FROM @ps_sql; EXECUTE ps_stmt; DEALLOCATE PREPARE ps_stmt;
 SET @ps_do := (@ps_tables = 3 AND @ps_nodes = 4);
 
 SET @ps_sql := IF(@ps_do, 'CREATE TABLE IF NOT EXISTS `ai_playerbot_travelnode_link_bak_575s` LIKE `ai_playerbot_travelnode_link`', 'DO 0');
