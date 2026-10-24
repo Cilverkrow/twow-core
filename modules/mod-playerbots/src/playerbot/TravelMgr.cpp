@@ -10,6 +10,7 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
 #include <algorithm>
 #include <vector>
 #include <iomanip>
@@ -1184,6 +1185,14 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
     if (!destination || !wPosition)
         return turnin_recovery::RecoveryAction::None;
 
+    // twow-repo#627 S7 hook (CLI-Deep): a help-group member is excluded, not paused - the group ends a stalled goal itself
+    // (no_progress, turnin_wait, leader_stuck), so no stage, suppression or park here, and no stale window after the group.
+    if (quest_groups::IsMember(ai))
+    {
+        turnInRecovery.ResetProgress();
+        return turnin_recovery::RecoveryAction::None;
+    }
+
     // These states are legitimate travel interruptions. They consume neither
     // a recovery stage nor a fixed overall duration.
     // twow-repo#602 X1 (AiPlayerbot.Rotation.RestGate): a resting bot stands still on purpose. Nothing observes while it rests (the move
@@ -1321,7 +1330,8 @@ void TravelTarget::OnWorkTimeout()
         // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall, OB-10 rev. 2 Q-B4): the second work timeout of the
         // same turn-in parks it at once (soak: bot 216 at the Azora taker, no line of sight through the door). Not
         // abandonable: a finished quest is never dropped for it (the series of abandonable parks ends here, S1).
-        if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()))
+        // twow-repo#627 S7 hook: not for a help-group member (the group's turnin_wait ends a stalled turn-in phase).
+        if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && !quest_groups::IsMember(ai))
         {
             uint32 const questId = static_cast<QuestTravelDestination*>(tDestination)->GetQuestId();
             if (turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId))
@@ -1685,7 +1695,8 @@ bool TravelTarget::ObservePosStuck()
     observation.combat = bot->IsInCombat();
     observation.excluded = !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster() ||
         !bot->IsAlive() || bot->IsTaxiFlying() || bot->GetTransport() || !map || map->Instanceable() ||
-        wPosition->getMapId() != bot->GetMapId() || RestGateValue::Resting(ai);
+        wPosition->getMapId() != bot->GetMapId() || RestGateValue::Resting(ai) ||
+        quest_groups::IsFollower(ai);   // twow-repo#627 S7: a follower goes where its leader goes (the leader stays watched)
     observation.distance = observation.excluded ? 0.0f : Distance(bot);
 
     if (pos_stuck::Observe(posStuck, observation, sPlayerbotAIConfig.pathPosStuckMinutes * 60 * IN_MILLISECONDS,
