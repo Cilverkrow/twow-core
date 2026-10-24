@@ -2,6 +2,7 @@
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/GroupAiRefresh.h"
+#include "playerbot/ScanSlicePolicy.h"
 #include "playerbot/GuidPosition.h"
 #include "playerbot/BotSlots.h"
 #include "playerbot/PlayerbotAI.h"
@@ -633,14 +634,15 @@ bool WorldThreadManager::FormOne(std::map<std::uint32_t, Player*> const& bots, s
     return true;
 }
 
-void WorldThreadManager::Scan(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
+// The quest logs of the bots round.guids[round.next, end) - with one slice all bots of the scan, in map order.
+void WorldThreadManager::ScanBots(std::map<std::uint32_t, Player*> const& bots, std::size_t end, std::uint32_t now)
 {
     std::uint32_t const mode = sPlayerbotAIConfig.questGroupsEnable;
-    std::unordered_map<std::uint64_t, std::vector<Candidate>> buckets;
-    std::unordered_map<std::uint64_t, bool> dropOnly;
-    for (auto const& [guid, bot] : bots)
+    for (; round.next < end; ++round.next)
     {
-        if (!Applies(mode, guid) || memberOf.count(guid) || !Eligible(bot) || bot->GetGroup())
+        std::uint32_t const guid = round.guids[round.next];
+        Player* bot = Find(bots, guid);
+        if (!bot || !Applies(mode, guid) || memberOf.count(guid) || !Eligible(bot) || bot->GetGroup())
             continue;
         PlayerbotAI* ai = Ai(bot);
         TravelTarget* t = Target(ai);
@@ -674,22 +676,26 @@ void WorldThreadManager::Scan(std::map<std::uint32_t, Player*> const& bots, std:
             c.x = bot->GetPositionX();
             c.y = bot->GetPositionY();
             std::uint64_t const key = (std::uint64_t(bot->GetMapId()) << 40) ^ (std::uint64_t(bot->GetTeam() == ALLIANCE ? 1 : 0) << 39) ^ questId;
-            buckets[key].push_back(c);
+            round.buckets[key].push_back(c);
             if (drop)
-                dropOnly[key] = true;
+                round.dropOnly[key] = true;
             ++minute.candidates;
         }
     }
+}
 
+// The formations of a finished scan (FormOne checks each bot again: a slice may be up to ScanSlices updates old).
+void WorldThreadManager::FormRound(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
+{
     FormLimits lim;
     lim.levelWindow = sPlayerbotAIConfig.questGroupsLevelWindow;
     lim.recruitRadius = sPlayerbotAIConfig.questGroupsRecruitRadius;
-    for (auto& [key, pool] : buckets)
+    for (auto& [key, pool] : round.buckets)
     {
         if (pool.size() < 2)
             continue;
         ++minute.quests;
-        lim.maxSize = dropOnly.count(key) ? sPlayerbotAIConfig.questGroupsMaxSizeDrop : sPlayerbotAIConfig.questGroupsMaxSize;
+        lim.maxSize = round.dropOnly.count(key) ? sPlayerbotAIConfig.questGroupsMaxSizeDrop : sPlayerbotAIConfig.questGroupsMaxSize;
         std::uint32_t const questId = std::uint32_t(key & 0xFFFFFFFFu);
         for (std::vector<Candidate> const& members : Form(pool, lim))
         {
@@ -715,10 +721,10 @@ void WorldThreadManager::FlushMinute(std::uint32_t now)
         minute.start = now;
     if (now - minute.start < 60)
         return;
-    sLog.outBasic("[QuestGroup] minute candidates=%u quests=%u formed=%u active=%u dissolved=%u queued=%u scan_us_max=%u passes=%u mode=%u form_us_max=%u dissolve_us_max=%u scan_only_us_max=%u bots=%u",
+    sLog.outBasic("[QuestGroup] minute candidates=%u quests=%u formed=%u active=%u dissolved=%u queued=%u scan_us_max=%u passes=%u mode=%u form_us_max=%u dissolve_us_max=%u scan_only_us_max=%u bots=%u slices=%u",
         minute.candidates, minute.quests, minute.formed, uint32(groups.size()), minute.dissolved, uint32(Queue().Size()),
         minute.scanUsMax, minute.passes, sPlayerbotAIConfig.questGroupsEnable, minute.formUsMax, minute.dissolveUsMax, minute.scanOnlyUsMax,
-        minute.bots);
+        minute.bots, minute.slices);
     minute = Minute();
     minute.start = now;
 }
@@ -749,17 +755,34 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
         groups.erase(it);
     }
 
-    // Every ScanSeconds: the quest-log index and new groups.
-    if (enabled && now - lastScan >= sPlayerbotAIConfig.questGroupsScanSeconds)
+    // Every ScanSeconds: the quest-log index and new groups (twow-repo#628 ScanSlices: spread over several updates).
+    if (!enabled)
+        round = ScanRound();
+    else if (!round.active && now - lastScan >= sPlayerbotAIConfig.questGroupsScanSeconds)
     {
         lastScan = now;
+        round = ScanRound();
+        round.active = true;
+        round.guids.reserve(bots.size());
+        for (auto const& [guid, bot] : bots)
+            round.guids.push_back(guid);
+        minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
+    }
+    if (round.active)
+    {
         passFormUs = 0;
         auto const scanStart = std::chrono::steady_clock::now();
-        Scan(bots, now);
+        ScanBots(bots, scan_slice::SliceEnd(round.guids.size(), round.next, sPlayerbotAIConfig.questGroupsScanSlices), now);
+        ++round.updates;
+        if (round.next >= round.guids.size())
+        {
+            FormRound(bots, now);
+            ++minute.passes;
+            minute.slices = round.updates;
+            round = ScanRound();
+        }
         std::uint32_t const scanUs = UsSince(scanStart);
         minute.scanOnlyUsMax = std::max(minute.scanOnlyUsMax, scanUs > passFormUs ? scanUs - passFormUs : 0u);
-        minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
-        ++minute.passes;
     }
     minute.scanUsMax = std::max(minute.scanUsMax, UsSince(start));
 }

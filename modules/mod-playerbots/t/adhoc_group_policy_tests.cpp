@@ -1,5 +1,6 @@
 #include "AdhocGroupPolicy.h"
 #include "GroupAiRefresh.h"
+#include "ScanSlicePolicy.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -139,6 +140,24 @@ int main()
         Require(p.turnIn && !p.follower, "never both sets");
         p = PlanFor(0);
         Require(!p.reset && !p.follower && !p.turnIn, "nothing posted, nothing done");
+    }
+
+    // twow-repo#628 ScanSlices (ScanSlicePolicy.h): a pass over all bots spread over several manager updates.
+    {
+        using ai::scan_slice::SliceEnd;
+        Require(SliceEnd(540, 0, 0) == 540 && SliceEnd(540, 0, 1) == 540, "0 or 1 slices: all bots in one update");
+        Require(SliceEnd(540, 0, 10) == 54 && SliceEnd(540, 486, 10) == 540, "10 slices of 540: 54 per update, the last ends at 540");
+        std::size_t next = 0;
+        std::uint32_t updates = 0;
+        while (next < 541)
+        {
+            next = SliceEnd(541, next, 10);
+            ++updates;
+        }
+        Require(updates == 10, "541 bots in 10 slices: still 10 updates (ceil)");
+        Require(SliceEnd(3, 0, 10) == 1 && SliceEnd(3, 2, 10) == 3, "more slices than bots: one bot per update");
+        Require(SliceEnd(0, 0, 10) == 0, "no bots: nothing to do, the pass ends at once");
+        Require(SliceEnd(540, 540, 10) == 540, "a finished pass stays at its end");
     }
 
     std::cout << "adhoc_group_policy_tests passed\n";

@@ -139,7 +139,9 @@ set(entries
   "Grind.QuestFirstOrder|grindQuestFirstOrder"
   "BotGroups.Enabled|botGroupsEnabled"
   "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
-  "QuestGroups.Enable|questGroupsEnable")
+  "BotGroups.AdHoc.ScanSlices|botGroupsAdhocScanSlices"
+  "QuestGroups.Enable|questGroupsEnable"
+  "QuestGroups.ScanSlices|questGroupsScanSlices")
 foreach(entry IN LISTS entries)
   string(REPLACE "|" ";" parts "${entry}")
   list(GET parts 0 key)

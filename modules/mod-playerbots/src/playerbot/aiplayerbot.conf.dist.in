@@ -1110,6 +1110,11 @@ AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds = 600
 # free bot in its group. "leave far away" no longer drops a member of an ad-hoc
 # group; the ad-hoc leave rules decide. 0 = the old action path.
 AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
+# #628 (with WorldThread = 1): the manager pass - leave rules and candidates of all bots -
+# spread over this many manager updates (one every RandomBotUpdateInterval, ~0.4 s); the
+# pairs are formed once all slices are done. 0 or 1 = the whole pass in one update.
+# Only if the pass itself costs the world tick too much (minute line scan_us_max).
+AiPlayerbot.BotGroups.AdHoc.ScanSlices = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -1128,6 +1133,9 @@ AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
 # (even guid); candidates and partners both pass it (cohort-pure groups).
 AiPlayerbot.QuestGroups.Enable = 0
 AiPlayerbot.QuestGroups.ScanSeconds = 60
+# #628: the S7 scan (quest logs of all bots) spread over this many manager updates
+# (~0.4 s each); groups form once all slices are done. 0 or 1 = the whole scan at once.
+AiPlayerbot.QuestGroups.ScanSlices = 0
 AiPlayerbot.QuestGroups.MaxSize = 5
 AiPlayerbot.QuestGroups.MaxSizeDrop = 3
 AiPlayerbot.QuestGroups.LevelWindow = 3
