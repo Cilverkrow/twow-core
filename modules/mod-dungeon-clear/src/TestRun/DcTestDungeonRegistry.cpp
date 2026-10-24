@@ -40,17 +40,20 @@ namespace DcTestDungeonRegistry
             // all. See the RoomAggroRegistry row for map 36.
             { "deadmines",       "The Deadmines",                  36,   -16.40f,  -383.07f,   61.78f, 1.860f, 20, "" },
             { "sfk",             "Shadowfang Keep",                33,  -229.13f,  2109.18f,   76.89f, 1.267f, 20, "" },
-            // Turtle custom (map 816, gate level 25). Entrance from the same
-            // migration as Frostmane Hollow.
-            { "dragonmaw",       "Dragonmaw Retreat",             816, -6105.44f, -3629.89f,  242.48f, 3.235f, 30, "" },
             { "stockade",        "The Stockade",                   34,    54.23f,     0.28f,  -18.34f, 6.260f, 24, "" },
             { "bfd",             "Blackfathom Deeps",              48,  -151.89f,   106.96f,  -39.87f, 4.530f, 24, "" },
             // Turtle custom (map 820). Entrance from areatrigger_teleport 5611,
             // "Windhorn Canyon - Entrance". Level 29 is the strongest enemy in
             // the instance: Chieftain Shalk Blackwind, and the Deathtotem trash
             // elites that share his level. The map has 10 mmap tiles, the same
-            // coverage as Dragonmaw Retreat, which clears.
+            // coverage as Dragonmaw Retreat.
             { "windhorn",        "Windhorn Canyon",               820, -8025.66f, -3510.34f,  158.10f, 0.484f, 29, "" },
+            // Turtle custom (map 816, gate level 25). Entrance from the same
+            // migration as Frostmane Hollow. Not a known clear: the CLI-PATH P5
+            // probe (twow-repo#629 G1 catalogue) reached none of its 16 targets
+            // (navmesh islands), and key 41876 gates the back part - G1 keeps it
+            // as a unit, a 0 % there is a valid result.
+            { "dragonmaw",       "Dragonmaw Retreat",             816, -6105.44f, -3629.89f,  242.48f, 3.235f, 30, "" },
             { "rfk",             "Razorfen Kraul",                 47,  1943.00f,  1544.63f,   82.00f, 1.380f, 30, "" },
             { "sm-gy",           "Scarlet Monastery: Graveyard",  189,  1688.99f,  1053.48f,   18.68f, 0.001f, 30, "Graveyard" },
             { "gnomer",          "Gnomeregan",                     90,  -332.22f,    -2.28f, -150.86f, 2.770f, 32, "" },
