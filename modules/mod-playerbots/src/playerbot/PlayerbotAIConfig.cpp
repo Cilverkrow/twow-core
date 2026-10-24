@@ -729,8 +729,10 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
+    botGroupsAdhocScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanSlices", 0));
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
+    questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
     questGroupsMaxSize = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSize", 5)));
     questGroupsMaxSizeDrop = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSizeDrop", 3)));
     questGroupsLevelWindow = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.LevelWindow", 3);
@@ -1612,7 +1614,9 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
+            {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
+            {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
         }).c_str());
     }
 

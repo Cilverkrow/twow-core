@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <unordered_map>
+#include <vector>
 
 class Player;
 class Group;
@@ -63,16 +64,40 @@ private:
         std::uint32_t leaveUsMax = 0;
         std::uint32_t scanUsMax = 0;   // leave rules and candidates of all bots, without the leaves
         std::uint32_t bots = 0;
+        std::uint32_t slices = 0;      // updates of the last finished pass
+    };
+
+    // A candidate by id, not by pointer: with ScanSlices a pass spans several updates, and the pairs resolve the bot and its
+    // group again when all slices are done.
+    struct Candidate
+    {
+        std::uint32_t guid = 0;
+        std::uint32_t groupId = 0;  // its ad-hoc group (led by it) or 0
+        ObjectiveKey key;
+    };
+
+    // twow-repo#628 (AiPlayerbot.BotGroups.AdHoc.ScanSlices, default 0): one pass - stage 1 (leave rules) and stage 2
+    // (candidates) for a slice of the bots per update, stage 3 (pairs) once the last slice is done.
+    struct Pass
+    {
+        bool active = false;
+        std::vector<std::uint32_t> guids;  // the bots at the pass start, in map order
+        std::size_t next = 0;
+        std::uint32_t updates = 0;  // manager updates the pass took so far
+        std::unordered_map<std::uint64_t, std::vector<Candidate>> buckets;
     };
 
     bool CheckLeave(Player* bot, Group* group, std::uint32_t now);
     void LeaveGroup(Player* bot, Group* group);
     bool Join(Player* inviter, Player* invitee, ObjectiveKey const& key, std::uint32_t now);
     void FlushMinute(std::uint32_t now);
+    void ScanSlice(std::map<std::uint32_t, Player*> const& bots, std::size_t end, std::uint32_t now);
+    void Pairs(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
 
     std::unordered_map<std::uint32_t, Track> tracks;  // world thread only
     std::uint32_t lastPass = 0;
-    std::uint32_t passLeaveUs = 0;   // time in LeaveGroup during the running pass
+    std::uint32_t passLeaveUs = 0;   // time in LeaveGroup during the running update
+    Pass pass;
     Minute minute;
 };
 

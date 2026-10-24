@@ -802,9 +802,13 @@ public:
     uint32 botGroupsAdhocPairCooldownSeconds = 600;
     // twow-repo#628: ad-hoc groups form and leave in the world-thread manager (AdhocGroupWorld.h).
     bool botGroupsAdhocWorldThread = false;
+    // twow-repo#628: the manager pass spread over this many updates (0/1 = the whole pass in one update).
+    uint32 botGroupsAdhocScanSlices = 0;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
+    // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
+    uint32 questGroupsScanSlices = 0;
     uint32 questGroupsMaxSize = 5;
     uint32 questGroupsMaxSizeDrop = 3;
     uint32 questGroupsLevelWindow = 3;

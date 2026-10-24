@@ -97,10 +97,24 @@ private:
         std::uint32_t dissolveUsMax = 0;
         std::uint32_t scanOnlyUsMax = 0;   // the quest-log index pass of all bots, without the formations
         std::uint32_t bots = 0;
+        std::uint32_t slices = 0;   // updates of the last finished scan
+    };
+
+    // twow-repo#628 (AiPlayerbot.QuestGroups.ScanSlices, default 0): one scan - the quest logs of a slice of the bots per
+    // update, the formations once the last slice is done.
+    struct ScanRound
+    {
+        bool active = false;
+        std::vector<std::uint32_t> guids;   // the bots at the scan start, in map order
+        std::size_t next = 0;
+        std::uint32_t updates = 0;
+        std::unordered_map<std::uint64_t, std::vector<Candidate>> buckets;
+        std::unordered_map<std::uint64_t, bool> dropOnly;
     };
 
     void Tend(std::map<std::uint32_t, Player*> const& bots, HelpGroup& g, std::uint32_t now, Dissolve& out);
-    void Scan(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
+    void ScanBots(std::map<std::uint32_t, Player*> const& bots, std::size_t end, std::uint32_t now);
+    void FormRound(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
     bool FormOne(std::map<std::uint32_t, Player*> const& bots, std::vector<Candidate> const& members, std::uint32_t questId,
         std::uint32_t now);
     void DissolveGroup(std::map<std::uint32_t, Player*> const& bots, HelpGroup& g, Dissolve reason, std::uint32_t now);
@@ -111,6 +125,7 @@ private:
     std::unordered_map<std::uint32_t, std::uint32_t> memberOf;  // bot guid -> core group id
     std::uint32_t lastScan = 0;
     std::uint32_t passFormUs = 0;   // time in FormOne during the running scan
+    ScanRound round;
     Minute minute;
 };
 
