@@ -96,6 +96,7 @@ set(entries
   "QuestFirstProgression.BandLadder|questFirstProgressionBandLadder"
   "QuestFirstProgression.BandStepAfterEmptySearches|questFirstProgressionBandStepAfterEmptySearches"
   "QuestFirstProgression.BandLadderSameZoneNext|questFirstProgressionBandLadderSameZoneNext"
+  "QuestFirstProgression.BandWalkAfterEmptySearches|questFirstProgressionBandWalkAfterEmptySearches"
   "QuestFirstProgression.TurnInParkFailures|questFirstProgressionTurnInParkFailures"
   "QuestFirstProgression.MinLevelForCrossMapQuestRoute|questFirstProgressionMinLevelForCrossMapQuestRoute"
   "QuestRescue.KeepRequestWhenFull|questRescueKeepRequestWhenFull"

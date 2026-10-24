@@ -872,6 +872,12 @@ public:
     // twow-repo#601 S5a F2: when every rung of the bot's band lies in the zone it stands in, the next band is a candidate
     // from this many levels below its min on (instead of 2). 0 = off (default), 1..10; other values act like 0.
     uint32 questFirstProgressionBandLadderSameZoneNext = 0;
+    // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
+    // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
+    // route backoff ends. 0 = off (default), 1..10; other values act like 0.
+    uint32 questFirstProgressionBandWalkAfterEmptySearches = 0;
+    // The band streak is counted when F1 or F4 reads it.
+    bool BandStreakOn() const { return questFirstProgressionBandStepAfterEmptySearches || questFirstProgressionBandWalkAfterEmptySearches; }
     // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
     // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
     bool questFeasibilityEnable = false;

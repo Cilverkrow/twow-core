@@ -440,6 +440,10 @@ namespace ai
 		void EndBandTrip(uint8 how);            // a TripVerdict as uint8 or ai::quest_band::EndArrived (QuestBand.cpp)
 		void NoteBandTripReplaced();            // SetTarget to another destination while the trip ran (QuestBand.cpp)
 		uint8 CheckBandTrip() const;            // ai::quest_band::TripVerdict as uint8 (QuestBand.cpp)
+		// twow-repo#601 S5a F4 (BandWalkAfterEmptySearches): a band trip that is a backoff walk - its start (0 = a step trip or
+		// no band trip) and the zone it started in; set with the trip end by the walk, cleared with it.
+		void SetBandWalk(uint32 startedAt, uint32 fromZone) { bandWalkAt = startedAt; bandWalkFromZone = fromZone; }
+		uint32 GetBandWalkAt() const { return bandWalkAt; }
 		// twow-repo#601 S2 R3 (GrindMode 1, review C-F2): this choice is the gap grind choice (set by ChooseTravelTargetAction on the
 		// new target only, never copied) - the R3 window snapshot and the own-map skip apply to it, not to a quest choice.
 		void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }
@@ -508,6 +512,8 @@ namespace ai
 		uint32 statusTime = 0;
 		uint32 gapWindowEnd = 0;   // twow-repo#601 S2 / S4 R2: 0 for every target but a GrindMode 1 gap grind trip
 		uint32 bandTripEnd = 0;    // twow-repo#601 S5a: 0 for every target but a running band trip
+		uint32 bandWalkAt = 0;     // twow-repo#601 S5a F4: 0 for every target but a running backoff walk
+		uint32 bandWalkFromZone = 0;
 		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
 		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
 
