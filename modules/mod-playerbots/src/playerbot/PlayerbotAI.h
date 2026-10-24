@@ -1006,6 +1006,9 @@ protected:
     std::atomic<uint8> questGroupRole{ 0 };
     // twow-repo#627: set by PosStuck (CLI-Deep hook, bot thread) when it detects this bot as a help-group leader, taken by the manager.
     std::atomic<bool> questGroupLeaderStuck{ false };
+    // twow-repo#628 / #627: the AI part of a group change the world-thread managers posted (ai::group_ai_refresh::Request bits),
+    // taken in the bot's next UpdateAI on its own map thread (ApplyGroupAiRequests).
+    std::atomic<uint32> groupAiRequests{ 0 };
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
@@ -1076,6 +1079,11 @@ public:
     void SetQuestGroupRole(uint8 role) { questGroupRole.store(role); }
     void SetQuestGroupLeaderStuck(bool value) { questGroupLeaderStuck.store(value); }
     bool TakeQuestGroupLeaderStuck() { return questGroupLeaderStuck.exchange(false); }
+    // twow-repo#628 / #627 (world thread): post the AI part of a group change (ai::group_ai_refresh::Merge: the last change wins).
+    void RequestGroupAi(uint32 request);
+    uint32 PendingGroupAiRequests() const { return groupAiRequests.load(); }
+    // Bot thread (UpdateAI): run the posted requests - strategy rebuild and reset first, then an S7 role set.
+    void ApplyGroupAiRequests();
     // twow-repo#517 stage a (OB-10): a fill bot is out of its battleground again. Quest search stage 0 and
     // questProgress.lastChange = now, as the questRescueDone path in UpdateAI - but without OnQuestRescued(): that sets
     // lastQuestRescue, and the per-bot rescue limit would then block a later real rescue.

@@ -21,7 +21,8 @@ namespace quest_groups
 {
 // twow-repo#627 S7 (AiPlayerbot.QuestGroups.Enable): the world-thread manager of the help groups, run from the roster branch
 // of RandomPlayerbotMgr::UpdateAIInternal next to CheckBgFill (end of World::Update, all maps idle, the #517 pattern).
-// Group APIs (invite, accept, leave), strategy changes and forced travel targets of the members happen only there.
+// Group APIs (invite, accept, leave) and forced travel targets of the members happen only there; strategy changes and AI
+// resets are posted to the bot and run on its own thread (twow-repo#628 fix, GroupAiRefresh.h).
 
 // --- queries for the bots' own threads (CLI-Deep hooks: PosStuck, S3c, turn-in recovery, QFO, S5a) ------------------------
 // Role of the bot in a help group: 0 = none, 1 = follower, 2 = leader. An atomic in PlayerbotAI, no lock.
@@ -34,6 +35,8 @@ void NoteLeaderStuck(PlayerbotAI* ai);
 // Seconds the bot has waited for help on the quest / on its oldest waiting quest (0 = not waiting). Short mutex, rare calls.
 std::uint32_t QueuedAge(std::uint32_t guid, std::uint32_t questId);
 std::uint32_t OldestQueuedAge(std::uint32_t guid);
+// twow-repo#628 fix, bot thread only (PlayerbotAI::ApplyGroupAiRequests): the follower or turn-in strategy set the manager posted.
+void ApplyRoleSet(PlayerbotAI* ai, bool turnIn);
 
 // A member's own travel target before the group, restored after it (no second TravelTarget: its constructor and SetTarget
 // have side effects). Not kept: temporary, group-copy, gap-window and band-trip targets.
@@ -89,6 +92,11 @@ private:
         std::uint32_t formed = 0;
         std::uint32_t dissolved = 0;
         std::uint32_t scanUsMax = 0;
+        // twow-repo#628 fix: the slowest single formation and dissolution (the group change on the world thread).
+        std::uint32_t formUsMax = 0;
+        std::uint32_t dissolveUsMax = 0;
+        std::uint32_t scanOnlyUsMax = 0;   // the quest-log index pass of all bots, without the formations
+        std::uint32_t bots = 0;
     };
 
     void Tend(std::map<std::uint32_t, Player*> const& bots, HelpGroup& g, std::uint32_t now, Dissolve& out);
@@ -102,6 +110,7 @@ private:
     std::unordered_map<std::uint32_t, HelpGroup> groups;        // by core group id; world thread only
     std::unordered_map<std::uint32_t, std::uint32_t> memberOf;  // bot guid -> core group id
     std::uint32_t lastScan = 0;
+    std::uint32_t passFormUs = 0;   // time in FormOne during the running scan
     Minute minute;
 };
 
