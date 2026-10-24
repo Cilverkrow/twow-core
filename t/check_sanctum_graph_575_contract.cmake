@@ -9,7 +9,8 @@ endif()
 # db-init re-creates the playerbot tables from the module base dump after the migrations, so the dump must carry the
 # same end state.
 # 1. Migration: LF, issue, Rollback, table guard by DISTINCT table names, node position guard, backup before the
-#    deletes, deletes only backed-up rows, INSERT IGNORE of the new rows, end-state CHECK, nothing forbidden.
+#    deletes, deletes only backed-up rows, INSERT IGNORE of the new rows, end-state CHECK, nothing forbidden; the
+#    playerbot tables are only named inside prepared statements (fresh bootstrap, twow-repo#634).
 # 2. Base dump = migrated end state.
 set(mig "${TW_CORE_ROOT}/sql/database_updates/20261023000000_world.sql")
 set(dump "${TW_CORE_ROOT}/modules/mod-playerbots/sql/world/classic/ai_playerbot_travel_nodes.sql")
@@ -67,6 +68,12 @@ list(LENGTH deletes n_deletes)
 if (NOT n_deletes EQUAL 2)
   message(FATAL_ERROR "#575 sanctum: expected exactly 2 DELETE statements, found ${n_deletes}")
 endif()
+# 1b. Fresh bootstrap (twow-repo#634): db-init applies the migration before the playerbot tables exist, and MariaDB
+#     resolves every table a plain statement names, even in an IF() branch that is not taken. So a playerbot table may
+#     only be named inside a quoted string (prepared statement or the information_schema guard).
+string(REGEX REPLACE "'([^']|'')*'" "''" unquoted "${body}")
+forbid_text("${unquoted}" "`ai_playerbot_travelnode" "playerbot table outside a prepared statement")
+require_text("${body}" "SET @ps_sql := IF(@ps_tables = 3, 'SELECT COUNT(*) INTO @ps_nodes FROM `ai_playerbot_travelnode`" "node guard as prepared statement")
 
 # 2. Base dump
 file(READ "${dump}" d)
