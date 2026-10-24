@@ -23,6 +23,7 @@
 #include <G3D/Matrix3.h>
 #include <map>
 #include <set>
+#include <vector>
 
 #include "ModelInstance.h"
 #include "WorldModel.h"
@@ -54,10 +55,15 @@ namespace VMAP
     typedef std::map<uint32, ModelSpawn> UniqueEntryMap;
     typedef std::multimap<uint32, uint32> TileMap;
 
+    // twow-repo#575: first id handed to a further distinct spawn that reuses an id already taken on its map
+    static uint32 const UNIQUE_SPAWN_ID_BASE = 0x40000000;
+
     struct MapSpawns
     {
         UniqueEntryMap UniqueEntries;
         TileMap TileEntries;
+        std::map<uint32, std::vector<ModelSpawn>> RemappedSpawns;   // original id -> the distinct spawns that got a new id
+        uint32 NextUniqueId = UNIQUE_SPAWN_ID_BASE;
     };
 
     typedef std::map<uint32, MapSpawns*> MapData;
@@ -95,10 +101,17 @@ namespace VMAP
             std::string iSrcDir;
             MapData mapData;
             std::set<std::string> spawnedModelFiles;
+            bool iLegacySpawnIds = false;
+            uint32 iRemappedSpawns = 0;
+
+            uint32 uniqueSpawnId(MapSpawns& map, ModelSpawn const& spawn);
 
         public:
             TileAssembler(std::string const& pSrcDirName, std::string const& pDestDirName);
             virtual ~TileAssembler();
+
+            // true = the old behaviour: one spawn per id, every further spawn with that id is lost (for control runs only)
+            void setLegacySpawnIds(bool legacy) { iLegacySpawnIds = legacy; }
 
             bool convertWorld2();
             bool readMapSpawns();

@@ -1131,6 +1131,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_sanctum_graph_575_contract.cmake")
+  # twow-repo#575: vmap_assembler gives spawns that reuse an id a unique id (map data repair, owner 25.10.2026).
+  add_test(NAME vmap_unique_spawn_ids_575_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_vmap_unique_spawn_ids_575_contract.cmake")
   # twow-repo#323: fixed loot unit rules (weights, diminishing, BoE shortfall, level window).
   add_executable(loot_units_policy_test
     "${TW_CORE_ROOT}/t/loot_units_policy_test.cpp")
