@@ -955,7 +955,7 @@ void RandomItemMgr::BuildItemInfoCache()
 
     int32 sEntry;
 
-    for (uint32 entry = 0; entry < sCreatureStorage.GetMaxEntry(); entry++)
+    for (uint32 entry : sCreatureStorage.Ids())
     {
         sEntry = entry;
 
@@ -966,7 +966,7 @@ void RandomItemMgr::BuildItemInfoCache()
                 dropMap->insert(std::make_pair(lItem.itemid, sEntry));
     }
 
-    for (uint32 entry = 0; entry < sGOStorage.GetMaxEntry(); entry++)
+    for (uint32 entry : sGOStorage.Ids())
     {
         sEntry = entry;
 

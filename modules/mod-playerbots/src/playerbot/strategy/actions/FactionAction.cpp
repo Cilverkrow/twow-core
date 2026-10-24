@@ -37,7 +37,8 @@ bool FactionAction::Execute(Event& event)
     bool factionFound = false;
     std::map<std::string, std::string> args;
 #ifndef MANGOSBOT_ONE
-    for (uint32 id = 0; id < sFactionStore.GetNumRows(); ++id)
+    // twow-repo#510 A2: AiPlayerbot.Shim.FactionIdSet = 1 walks the reputation list (factions >= 100 too); 0 = ids below GetNumRows() as before.
+    for (uint32 id : cmangos_shim::FactionIds(mgr.GetStateList(), sPlayerbotAIConfig.shimFactionIdSet))
 #else
     for (uint32 id = 0; id < sFactionStore.GetMaxEntry(); ++id)
 #endif

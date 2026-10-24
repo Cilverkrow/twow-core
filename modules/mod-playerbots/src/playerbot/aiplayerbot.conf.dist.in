@@ -2580,6 +2580,15 @@ AiPlayerbot.CheckValues.SkipSearches = 0
 # and waits 60 s after a try that left the hunter without a pet. Same pets. 0 = as before (default).
 AiPlayerbot.InitPet.Cache = 0
 
+# twow-repo#510: 1 = iterate real template id sets, 0 = fixed caps as before (default). The creature/GO scans
+# (travel targets, drop map, vendor, trainer, transport lists) ran to entry 100000 / 200000 and missed the
+# Turtle templates above (herbs, ores, chests, quest drops). With 1 they walk the sorted ids of the loaded
+# templates (about 34k ids, built once at boot). Read at boot only; a reload does not change the mode.
+AiPlayerbot.Shim.IdSets = 0
+# twow-repo#510 A2: 1 = the faction loops ("at war" trigger, faction command) walk the bot's reputation
+# list, so factions with ids >= 100 count too; 0 = only faction ids below 100 as before (default).
+AiPlayerbot.Shim.FactionIdSet = 0
+
 # twow-repo#563 (X3a): 1 = every bot's value map is guarded by its own lock (shared to look up, unique to
 # insert or erase), because other bots read and create values in it from their region threads. The lock
 # is held only for the map access, never while a value is computed. 0 = no lock (default).

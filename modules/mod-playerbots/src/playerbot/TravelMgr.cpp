@@ -2378,6 +2378,164 @@ static bool SkipStartZonePoint(Point const& guidP, ai::start_zone::StartTeam uni
     return !ai::start_zone::KeepStartZonePoint(true, ai::start_zone::TeamOfPoint(guidP.getMapId(), guidP.getX(), guidP.getY()), uniform);
 }
 
+// twow-repo#510: [ShimBounds] exposure lines, once per boot at the end of LoadQuestTravelTable and the same in
+// both modes. They read the template maps, the spawn map and the drop map and change nothing. quest_loot counts
+// the quests whose required item drops only from spawned templates above the caps (from the full template maps,
+// so independent of the mode) and how many of those the bot drop map resolves to such a template.
+static void LogShimBounds(EntryGuidps const& guidpMap)
+{
+    uint32 const mode = cmangos_shim::g_idSets.load(std::memory_order_relaxed) ? 1 : 0;
+    uint32 const creatureCap = cmangos_shim::kLegacyCreatureCap;
+    uint32 const goCap = cmangos_shim::kLegacyGOCap;
+    auto spawned = [&guidpMap](int32 entry)
+    {
+        auto const it = guidpMap.find(entry);
+        return it != guidpMap.end() && !it->second.empty();
+    };
+
+    {
+        uint32 maxId = 0, aboveCap = 0, aboveCapSpawned = 0, iterated = 0, iteratedAboveCap = 0;
+        for (auto const& kv : sObjectMgr.GetCreatureInfoMap())
+        {
+            maxId = std::max(maxId, kv.first);
+            if (kv.first >= creatureCap)
+            {
+                ++aboveCap;
+                if (spawned(int32(kv.first)))
+                    ++aboveCapSpawned;
+            }
+        }
+        uint32 const started = WorldTimer::getMSTime();
+        for (uint32 entry : sCreatureStorage.Ids())
+            if (sCreatureStorage.LookupEntry<CreatureInfo>(entry))
+            {
+                ++iterated;
+                if (entry >= creatureCap)
+                    ++iteratedAboveCap;
+            }
+        sLog.outString("[ShimBounds] mode=%u type=creature cap=%u max=%u total=%u above_cap=%u above_cap_spawned=%u iterated=%u iterated_above_cap=%u cost_ms=%u",
+            mode, creatureCap, maxId, uint32(sObjectMgr.GetCreatureInfoMap().size()), aboveCap, aboveCapSpawned, iterated, iteratedAboveCap, WorldTimer::getMSTimeDiffToNow(started));
+    }
+
+    {
+        uint32 maxId = 0, aboveCap = 0, aboveCapSpawned = 0, iterated = 0, iteratedAboveCap = 0;
+        for (auto const& kv : sObjectMgr.GetGameObjectInfoMap())
+        {
+            maxId = std::max(maxId, kv.first);
+            if (kv.first >= goCap)
+            {
+                ++aboveCap;
+                if (spawned(-int32(kv.first)))
+                    ++aboveCapSpawned;
+            }
+        }
+        uint32 const started = WorldTimer::getMSTime();
+        for (uint32 entry : sGOStorage.Ids())
+            if (sGOStorage.LookupEntry<GameObjectInfo>(entry))
+            {
+                ++iterated;
+                if (entry >= goCap)
+                    ++iteratedAboveCap;
+            }
+        sLog.outString("[ShimBounds] mode=%u type=go cap=%u max=%u total=%u above_cap=%u above_cap_spawned=%u iterated=%u iterated_above_cap=%u cost_ms=%u",
+            mode, goCap, maxId, uint32(sObjectMgr.GetGameObjectInfoMap().size()), aboveCap, aboveCapSpawned, iterated, iteratedAboveCap, WorldTimer::getMSTimeDiffToNow(started));
+    }
+
+    {
+        // A2 reads its switch live (no prebuilt set); with 1 the loops reach every reputation faction.
+        uint32 const factionMode = sPlayerbotAIConfig.shimFactionIdSet ? 1 : 0;
+        uint32 maxId = 0, aboveCap = 0, repTotal = 0, aboveCapRep = 0;
+        for (auto const& kv : sObjectMgr.GetFactionMap())
+        {
+            maxId = std::max(maxId, kv.first);
+            bool const rep = kv.second.CanHaveReputation();
+            if (rep)
+                ++repTotal;
+            if (kv.first >= cmangos_shim::kLegacyFactionCap)
+            {
+                ++aboveCap;
+                if (rep)
+                    ++aboveCapRep;
+            }
+        }
+        sLog.outString("[ShimBounds] mode=%u type=faction cap=%u max=%u total=%u above_cap=%u rep_total=%u above_cap_rep=%u iterated_above_cap=%u",
+            factionMode, cmangos_shim::kLegacyFactionCap, maxId, uint32(sObjectMgr.GetFactionMap().size()), aboveCap, repTotal, aboveCapRep, factionMode ? aboveCapRep : 0);
+    }
+
+    {
+        uint32 const started = WorldTimer::getMSTime();
+        // item -> number of spawned loot sources below / above the caps
+        std::unordered_map<uint32, std::pair<uint32, uint32>> sources;
+        auto addLoot = [&sources](ObjectGuid guid, bool above)
+        {
+            LootTemplateAccess const* lTemplateA = DropMapValue::GetLootTemplate(guid, LOOT_CORPSE);
+            if (!lTemplateA)
+                return;
+            auto add = [&sources, above](LootStoreItem const& lItem)
+            {
+                auto& counts = sources[lItem.itemid];
+                ++(above ? counts.second : counts.first);
+            };
+            for (LootStoreItem const& lItem : lTemplateA->Entries)
+                add(lItem);
+            for (LootLootGroupAccess const& group : lTemplateA->Groups)
+            {
+                for (LootStoreItem const& lItem : group.ExplicitlyChanced)
+                    add(lItem);
+                for (LootStoreItem const& lItem : group.EqualChanced)
+                    add(lItem);
+            }
+        };
+        for (auto const& kv : sObjectMgr.GetCreatureInfoMap())
+            if (spawned(int32(kv.first)))
+                addLoot(ObjectGuid(HIGHGUID_UNIT, kv.first, uint32(1)), kv.first >= creatureCap);
+        for (auto const& kv : sObjectMgr.GetGameObjectInfoMap())
+            if (spawned(-int32(kv.first)))
+                addLoot(ObjectGuid(HIGHGUID_GAMEOBJECT, kv.first, uint32(1)), kv.first >= goCap);
+
+        DropMap* dropMap = GAI_VALUE(DropMap*, "drop map");
+        uint32 capOnlyQuests = 0, capOnlyMinLevelLe29 = 0, capOnlyResolved = 0, capOnlyItems = 0;
+        for (auto const& [questId, questPtr] : sObjectMgr.GetQuestTemplates())
+        {
+            uint32 questItems = 0, firstItem = 0;
+            bool resolved = true;
+            for (uint32 objective = 0; objective < QUEST_ITEM_OBJECTIVES_COUNT; ++objective)
+            {
+                uint32 const itemId = questPtr->ReqItemId[objective];
+                if (!itemId)
+                    continue;
+                auto const it = sources.find(itemId);
+                if (it == sources.end() || it->second.first || !it->second.second)
+                    continue;
+                if (!questItems++)
+                    firstItem = itemId;
+                ++capOnlyItems;
+                bool found = false;
+                if (dropMap)
+                {
+                    auto const range = dropMap->equal_range(itemId);
+                    for (auto r = range.first; r != range.second && !found; ++r)
+                        found = r->second >= int32(creatureCap) || r->second <= -int32(goCap);
+                }
+                if (!found)
+                    resolved = false;
+            }
+            if (!questItems)
+                continue;
+            ++capOnlyQuests;
+            if (questPtr->GetMinLevel() <= 29)
+                ++capOnlyMinLevelLe29;
+            if (resolved)
+                ++capOnlyResolved;
+            // one line per quest (about 200, once per boot) for the cross-check against a world DB dump
+            sLog.outString("[ShimBounds] mode=%u type=cap_only quest=%u min_level=%u item=%u items=%u resolved=%u",
+                mode, questId, questPtr->GetMinLevel(), firstItem, questItems, resolved ? 1 : 0);
+        }
+        sLog.outString("[ShimBounds] mode=%u type=quest_loot cap_only_quests=%u cap_only_min_level_le29=%u cap_only_items=%u cap_only_resolved=%u cost_ms=%u",
+            mode, capOnlyQuests, capOnlyMinLevelLe29, capOnlyItems, capOnlyResolved, WorldTimer::getMSTimeDiffToNow(started));
+    }
+}
+
 void TravelMgr::LoadQuestTravelTable()
 {
     if (!sTravelMgr.destinationMap.empty())
@@ -3353,6 +3511,8 @@ void TravelMgr::LoadQuestTravelTable()
             }
         }
     }
+
+    LogShimBounds(guidpMap);  // twow-repo#510
 
 #ifndef MANGOSBOT_TWO    
     sTerrainMgr.Update(60 * 60 * 24);

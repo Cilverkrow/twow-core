@@ -601,6 +601,8 @@ public:
     uint32 aiDelayJitterPct = 0;  // twow-repo#541: +-pct spread of the AI delays out of combat, start offset, parked spread (0 = off)
     bool checkValuesSkipSearches = false;  // twow-repo#541: "check values" without its six forced value searches
     bool initPetCache = false;  // twow-repo#541: "initialize pet" with a static tameable list, cached pet DB answer, cooldown
+    bool shimIdSets = false;  // twow-repo#510: creature/GO scans walk the template id sets instead of the fixed caps (boot-time mode)
+    bool shimFactionIdSet = false;  // twow-repo#510 A2: the two faction loops walk the reputation list instead of ids below 100
     bool x3cInboxWrites = false;  // twow-repo#563 (X3c): value writes into other bots go through their inbox
     bool perfSkipBotUpdatePackets = false;  // twow-repo#541 (owner 11.10.): core builds no SMSG_UPDATE_OBJECT/DESTROY for bot sessions
     bool warnUnknownNames = false;  // twow-repo#568 (c): once-per-name [UnknownName] line for trigger/action/strategy names without a creator

@@ -42,7 +42,7 @@ ClassLearnCache const& LearnCacheFor(uint8 cls)
     {
         uint32 const started = WorldTimer::getMSTime();
         ClassLearnCache& cache = caches[cls];
-        for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
+        for (uint32 id : sCreatureStorage.Ids())
         {
             CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id);
             if (!co)

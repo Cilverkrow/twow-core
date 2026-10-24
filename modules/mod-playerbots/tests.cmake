@@ -3778,3 +3778,24 @@ add_test(NAME group_ai_refresh_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/group_ai_refresh_source_contract_tests.cmake")
+
+# twow-repo#510 (part A + A2): AiPlayerbot.Shim.IdSets / Shim.FactionIdSet - creature/GO scans over the template id sets,
+# faction loops over the reputation list (both default 0 = the old caps).
+add_executable(shim_id_range_tests
+  "${PB_MODULE_DIR}/t/shim_id_range_tests.cpp")
+
+target_include_directories(shim_id_range_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(shim_id_range_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME shim_id_range
+  COMMAND shim_id_range_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME shim_id_sets_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+    -P "${PB_MODULE_DIR}/t/shim_id_sets_source_contract_tests.cmake")

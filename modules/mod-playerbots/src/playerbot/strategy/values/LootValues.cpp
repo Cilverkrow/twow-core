@@ -212,7 +212,7 @@ DropMap* DropMapValue::Calculate()
 
 	int32 sEntry;
 
-	for (uint32 entry = 0; entry < sCreatureStorage.GetMaxEntry(); entry++)
+	for (uint32 entry : sCreatureStorage.Ids())
 	{
 		sEntry = entry;
 
@@ -234,7 +234,7 @@ DropMap* DropMapValue::Calculate()
 		}
 	}
 
-	for (uint32 entry = 0; entry < sGOStorage.GetMaxEntry(); entry++)
+	for (uint32 entry : sGOStorage.Ids())
 	{
 		sEntry = entry;
 
