@@ -861,6 +861,7 @@ bool PlayerbotAIConfig::Initialize()
     zoneExitTurnInTravelStall = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInTravelStall", false);
     zoneExitTurnInNearRadius = config.GetFloatDefault("AiPlayerbot.ZoneExit.TurnInNearRadius", 60.0f);
     zoneExitTurnInNearRadius = std::min(500.0f, std::max(0.0f, zoneExitTurnInNearRadius));
+    zoneExitTurnInTravelStallCountsCombat = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat", false);
     zoneExitRescueHomeContinent = config.GetBoolDefault("AiPlayerbot.ZoneExit.RescueHomeContinent", false);
     zoneExitStrandedRescueAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ZoneExit.StrandedRescueAfter", 0)));
     zoneExitSkipBattlegroundQuests = config.GetBoolDefault("AiPlayerbot.ZoneExit.SkipBattlegroundQuests", false);
@@ -1579,6 +1580,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
             {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
+            {"ZoneExit.TurnInTravelStallCountsCombat", Value(zoneExitTurnInTravelStallCountsCombat)},
             {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
             {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
             {"DirectTargets.Enable", Value(directTargetsEnabled)},
