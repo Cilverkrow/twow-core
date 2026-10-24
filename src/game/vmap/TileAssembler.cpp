@@ -243,13 +243,44 @@ bool TileAssembler::readMapSpawns()
         else
             current = (*map_iter).second;
 
+        spawn.ID = uniqueSpawnId(*current, spawn);
         current->UniqueEntries.insert(pair<uint32, ModelSpawn>(spawn.ID, spawn));
         current->TileEntries.insert(pair<uint32, uint32>(StaticMapTree::packTileID(tileX, tileY), spawn.ID));
     }
 
     bool success = (ferror(dirf) == 0);
     fclose(dirf);
+    if (!iLegacySpawnIds)
+        printf("Spawns with a reused id that got a unique id: %u\n", iRemappedSpawns);
     return success;
+}
+
+// twow-repo#575 (map data repair, owner 25.10.2026): Turtle content reuses spawn ids across WMO and M2 spawns. A plain insert keeps
+// the first spawn per id and writes it into the tiles of every other spawn with that id, so those spawns vanish from collision, LoS
+// and the navmesh (9,763 on maps 0/1 in the data of 25.08.2026, among them 211 buildings). A further distinct spawn (another model,
+// or the same model at least 0.5 yd away) gets a fresh id from UNIQUE_SPAWN_ID_BASE, per map and in dir_bin order; repeated records
+// of one spawn (a WMO referenced by several ADTs) keep one id. The runtime keys loaded spawns by id as well, so the ids must be unique.
+uint32 TileAssembler::uniqueSpawnId(MapSpawns& map, ModelSpawn const& spawn)
+{
+    auto sameSpawn = [&spawn](ModelSpawn const& other)
+    {
+        return other.name == spawn.name && (other.iPos - spawn.iPos).squaredLength() < 0.25f;
+    };
+
+    UniqueEntryMap::const_iterator first = map.UniqueEntries.find(spawn.ID);
+    if (iLegacySpawnIds || first == map.UniqueEntries.end() || sameSpawn(first->second))
+        return spawn.ID;
+
+    std::vector<ModelSpawn>& remapped = map.RemappedSpawns[spawn.ID];
+    for (ModelSpawn const& other : remapped)
+        if (sameSpawn(other))
+            return other.ID;
+
+    ModelSpawn copy = spawn;
+    copy.ID = map.NextUniqueId++;
+    remapped.push_back(copy);
+    ++iRemappedSpawns;
+    return copy.ID;
 }
 
 bool TileAssembler::calculateTransformedBound(ModelSpawn& spawn)
