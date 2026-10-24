@@ -599,6 +599,20 @@ namespace ai
 		virtual bool IsActive() override;
 	};
 
+	// twow-repo#602 ROT-01 3c (AiPlayerbot.Rotation.DarkRuneGate): low mana and the "dark rune" action or its alternative
+	// "mana potion" is usable now; a failed check waits RecheckSeconds (DarkRuneGatePolicy.h). UsePotionsStrategy uses it
+	// only with the switch on.
+	class LowManaConsumableTrigger : public Trigger
+	{
+	public:
+		LowManaConsumableTrigger(PlayerbotAI* ai) : Trigger(ai, "low mana consumable") {}
+
+		virtual bool IsActive() override;
+
+	private:
+		int64 nextCheck = 0;   // no check before this time (seconds) after a failed one
+	};
+
 	class MediumManaTrigger : public Trigger
 	{
 	public:

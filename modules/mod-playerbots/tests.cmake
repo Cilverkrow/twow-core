@@ -3793,6 +3793,26 @@ add_test(NAME reach_los
   COMMAND reach_los_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 3c (AiPlayerbot.Rotation.DarkRuneGate, default 0, behaviour change): "dark rune" is pushed only while the
+# rune or its alternative "mana potion" is usable; a failed check waits RecheckSeconds.
+add_test(NAME dark_rune_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/dark_rune_gate_source_contract_tests.cmake")
+
+add_executable(dark_rune_gate_policy_tests
+  "${PB_MODULE_DIR}/t/dark_rune_gate_policy_tests.cpp")
+
+target_include_directories(dark_rune_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(dark_rune_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME dark_rune_gate_policy
+  COMMAND dark_rune_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #627 S7: help groups for elite and group quests (QuestGroups.Enable).
 add_executable(quest_group_policy_tests
   "${PB_MODULE_DIR}/t/quest_group_policy_tests.cpp")
