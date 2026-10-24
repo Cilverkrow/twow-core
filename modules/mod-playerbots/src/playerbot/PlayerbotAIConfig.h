@@ -952,6 +952,7 @@ public:
     // timeout of the same turn-in does too (OB-10 rev. 2). The radius only acts with the switch; 0 = no near zone.
     bool zoneExitTurnInTravelStall = false;
     float zoneExitTurnInNearRadius = 60.0f;
+    bool zoneExitTurnInTravelStallCountsCombat = false;  // twow-repo#601 3a: with TurnInTravelStall a fight no longer restarts the turn-in stall window
     // twow-repo#587 (ZONE-01): quest rescue on the right continent, stranded bots ask for it, no BG quests as targets.
     bool zoneExitRescueHomeContinent = false;
     uint32 zoneExitStrandedRescueAfter = 0;
