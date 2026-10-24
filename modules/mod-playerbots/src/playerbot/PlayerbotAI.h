@@ -1001,6 +1001,11 @@ protected:
     // bot's battleground queue entry and, after its accept, until the bot is back from that battleground
     // (RandomPlayerbotMgr::CheckBgFill); read by BGStatusAction on the bot's map thread.
     std::atomic<bool> bgFillPending{ false };
+    // twow-repo#627 S7 (AiPlayerbot.QuestGroups.Enable): the bot's role in a help group (0 none, 1 follower, 2 leader), set by the
+    // world-thread manager (quest_groups::WorldThreadManager), read on the bot's map thread (LeaveFarAway, AutoShare, CLI-Deep hooks).
+    std::atomic<uint8> questGroupRole{ 0 };
+    // twow-repo#627: set by PosStuck (CLI-Deep hook, bot thread) when it detects this bot as a help-group leader, taken by the manager.
+    std::atomic<bool> questGroupLeaderStuck{ false };
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
@@ -1065,6 +1070,12 @@ public:
     // until the bot is back from the battleground).
     void SetBgFillPending(bool value) { bgFillPending = value; }
     bool IsBgFillPending() const { return bgFillPending; }
+    // twow-repo#627 S7: the help-group role (0 none, 1 follower, 2 leader) and the leader-stuck note (members above); the role is
+    // written by the world-thread manager, the note by PosStuck on the bot thread and taken by the manager.
+    uint8 GetQuestGroupRole() const { return questGroupRole.load(); }
+    void SetQuestGroupRole(uint8 role) { questGroupRole.store(role); }
+    void SetQuestGroupLeaderStuck(bool value) { questGroupLeaderStuck.store(value); }
+    bool TakeQuestGroupLeaderStuck() { return questGroupLeaderStuck.exchange(false); }
     // twow-repo#517 stage a (OB-10): a fill bot is out of its battleground again. Quest search stage 0 and
     // questProgress.lastChange = now, as the questRescueDone path in UpdateAI - but without OnQuestRescued(): that sets
     // lastQuestRescue, and the per-bot rescue limit would then block a later real rescue.

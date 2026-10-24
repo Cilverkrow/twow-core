@@ -1110,6 +1110,35 @@ AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds = 600
 # free bot in its group. "leave far away" no longer drops a member of an ad-hoc
 # group; the ad-hoc leave rules decide. 0 = the old action path.
 AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
+
+# #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
+# quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
+# dungeon/raid/pvp) that they cannot do alone form a group of 2..MaxSize bots of
+# that quest (MaxSizeDrop when an objective is an item drop), within
+# RecruitRadius yards on the same map and LevelWindow levels, guild mates first.
+# Leader = the member with the most open objectives; it travels to the
+# objective, the others follow and assist; when every member is complete they
+# turn in, then each bot goes back to its own travel. Ends: rendezvous not
+# reached in RendezvousMinutes, no objective progress or kill credit for
+# NoProgressMinutes (combat never resets it), MaxQuestMinutes, turn-in phase
+# over TurnInWaitMinutes, a real player as master, < 2 members. A quest gets at
+# most MaxAttempts failed groups, RetryCooldownMinutes apart. Formed in the roster
+# manager on the world thread every ScanSeconds. Lines: [QuestGroup] state=...
+# and a minute line. Enable: 0 off, 1 all, 2 cohort B (odd guid), 3 cohort A
+# (even guid); candidates and partners both pass it (cohort-pure groups).
+AiPlayerbot.QuestGroups.Enable = 0
+AiPlayerbot.QuestGroups.ScanSeconds = 60
+AiPlayerbot.QuestGroups.MaxSize = 5
+AiPlayerbot.QuestGroups.MaxSizeDrop = 3
+AiPlayerbot.QuestGroups.LevelWindow = 3
+AiPlayerbot.QuestGroups.RecruitRadius = 800
+AiPlayerbot.QuestGroups.RendezvousMinutes = 10
+AiPlayerbot.QuestGroups.NoProgressMinutes = 15
+AiPlayerbot.QuestGroups.TurnInWaitMinutes = 5
+AiPlayerbot.QuestGroups.MaxQuestMinutes = 60
+AiPlayerbot.QuestGroups.MaxAttempts = 3
+AiPlayerbot.QuestGroups.RetryCooldownMinutes = 30
+AiPlayerbot.QuestGroups.SuggestedPlayers = 1
 # #303: a bot of a real player does not walk more than this many yards to its
 # master; beyond it the bot keeps its own activity and asks to be summoned
 # ("far_follow_hold"). 0 = no limit (old behaviour: walk any distance).

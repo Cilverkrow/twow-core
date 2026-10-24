@@ -729,6 +729,19 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
+    questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
+    questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
+    questGroupsMaxSize = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSize", 5)));
+    questGroupsMaxSizeDrop = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSizeDrop", 3)));
+    questGroupsLevelWindow = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.LevelWindow", 3);
+    questGroupsRecruitRadius = std::max(20.0f, config.GetFloatDefault("AiPlayerbot.QuestGroups.RecruitRadius", 800.0f));
+    questGroupsRendezvousMinutes = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestGroups.RendezvousMinutes", 10));
+    questGroupsNoProgressMinutes = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestGroups.NoProgressMinutes", 15));
+    questGroupsTurnInWaitMinutes = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestGroups.TurnInWaitMinutes", 5));
+    questGroupsMaxQuestMinutes = std::max<uint32>(5, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxQuestMinutes", 60));
+    questGroupsMaxAttempts = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxAttempts", 3));
+    questGroupsRetryCooldownMinutes = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.RetryCooldownMinutes", 30);
+    questGroupsSuggestedPlayers = config.GetBoolDefault("AiPlayerbot.QuestGroups.SuggestedPlayers", true);
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
     formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
     formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);
@@ -1581,6 +1594,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
+            {"QuestGroups.Enable", Value(questGroupsEnable)},
         }).c_str());
     }
 
