@@ -44,7 +44,7 @@ bool TradeSkill::ContainsInternal(ItemPrototype const* proto)
             return true;
     }
 
-    for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
+    for (uint32 id : sCreatureStorage.Ids())
     {
         CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id);
         if (!co || co->TrainerType != TRAINER_TYPE_TRADESKILLS)

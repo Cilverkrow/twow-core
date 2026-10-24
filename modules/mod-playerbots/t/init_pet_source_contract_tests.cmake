@@ -40,7 +40,7 @@ string(FIND "${factory}" "void PlayerbotFactory::InitPet()" init_at)
 string(SUBSTRING "${factory}" ${init_at} 3500 init_body)
 require_order("${init_body}" "if (sPlayerbotAIConfig.initPetCache)" "static ai::init_pet::TameList const tameList = []()" "switch, then the static list")
 require_text("${init_body}" "ai::init_pet::CandidatesFor(tameList, bot->GetLevel())" "prefix for the level")
-require_order("${init_body}" "else\n#endif\n        for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)" "if (ids.empty())" "old scan as the off path")
+require_order("${init_body}" "else\n#endif\n        for (uint32 id : sCreatureStorage.Ids())" "if (ids.empty())" "old scan as the off path")
 
 # 2./3. isUseful: cooldown and cache only with the switch, before the query; Execute sets the cooldown.
 string(FIND "${actions}" "bool InitializePetAction::isUseful()" useful_at)

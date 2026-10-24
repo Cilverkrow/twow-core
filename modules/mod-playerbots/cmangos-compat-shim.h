@@ -26,6 +26,7 @@
 #include <chrono>
 #include <random>
 #include <cstdio>
+#include <atomic>
 
 // === Type renames ===
 // cmangos's Transport class is called GenericTransport in WotLK builds and
@@ -145,20 +146,38 @@ struct CmangosSpellTemplateProxy
 };
 inline CmangosSpellTemplateProxy sSpellTemplate;
 
+// === twow-repo#510: template id sets instead of fixed iteration caps ===
+// cmangos's stores expose GetMaxEntry/GetNumRows; Penqle's don't have a tight maximum, so the
+// creature/GO scans ran to fixed caps (100000 / 200000). Turtle templates sit above them (creatures
+// up to 2509000, GOs up to 7000035) and were invisible to travel targets, the drop map, vendor and
+// trainer lists and transports. Scanning to the real maximum costs x25 / x35 in lookups, so with
+// AiPlayerbot.Shim.IdSets = 1 the scans walk the sorted id set of the loaded templates instead.
+// With 0 (default) Ids() counts [lo, hi) exactly like the old loop and no set is built.
+#include "playerbot/ShimIdRange.h"
+namespace cmangos_shim
+{
+constexpr uint32 kLegacyItemCap = 100000;
+constexpr uint32 kLegacyCreatureCap = 100000;
+constexpr uint32 kLegacyGOCap = 200000;
+constexpr uint32 kLegacyFactionCap = 100;
+
+// Set once by WarmIdSets at bot config init (world thread, after the templates loaded); a config
+// reload does not change it. The sets are immutable afterwards and read without a lock.
+inline std::atomic<bool> g_idSets{false};
+}
+
 // Singleton-like wrapper for cmangos's sItemStorage. Forwards to sObjectMgr.GetItemPrototype().
-// Iteration-upper-bound stubs (this proxy + CmangosCreatureStorageProxy,
-// CmangosGOStorageProxy, CmangosFactionStoreProxy, CmangosAreaTriggerStoreProxy
-// below): cmangos's stores expose GetMaxEntry/GetNumRows; Penqle's don't have
-// a tight maximum. The bot module only uses these as upper bounds for
-// `for (i=0; i<max; ++i) LookupEntry(i)` scans where LookupEntry returns
-// nullptr for unknown ids — so a generous overestimate is safe (a few thousand
-// wasted lookups during one-shot init). Bump if a future caller actually
-// depends on a tight bound.
+// Iteration-upper-bound stubs (this proxy, CmangosFactionStoreProxy and
+// CmangosAreaTriggerStoreProxy below): the bot module uses them as upper bounds for
+// `for (i=0; i<max; ++i) LookupEntry(i)` scans where LookupEntry returns nullptr for unknown
+// ids. The item cap stays fixed (twow-repo#510: every item template is below it; GetItemPrototype
+// also answers transmog templates, which the prototype map does not hold). Creatures and GOs
+// iterate Ids() (twow-repo#510, see cmangos_shim above).
 struct CmangosItemStorageProxy
 {
     template<typename T = ItemPrototype>
     T const* LookupEntry(uint32 id) const { return sObjectMgr.GetItemPrototype(id); }
-    uint32 GetMaxEntry() const { return 100000; }
+    uint32 GetMaxEntry() const { return cmangos_shim::kLegacyItemCap; }
 };
 inline CmangosItemStorageProxy sItemStorage;
 
@@ -298,7 +317,9 @@ struct CmangosFactionStoreProxy
 {
     template<typename T = FactionEntry>
     T const* LookupEntry(uint32 id) const { return sObjectMgr.GetFactionEntry(id); }
-    uint32 GetNumRows() const { return 100; } // stub upper-bound
+    // Stub upper bound; the AiPlayerbot.Shim.FactionIdSet = 0 path (twow-repo#510 A2: with 1 the
+    // two faction loops walk the bot's reputation list instead, see cmangos_shim::FactionIds).
+    uint32 GetNumRows() const { return cmangos_shim::kLegacyFactionCap; }
 };
 inline CmangosFactionStoreProxy sFactionStore;
 
@@ -307,7 +328,16 @@ struct CmangosCreatureStorageProxy
 {
     template<typename T = CreatureInfo>
     T const* LookupEntry(uint32 id) const { return sObjectMgr.GetCreatureTemplate(id); }
-    uint32 GetMaxEntry() const { return 100000; }
+    // twow-repo#510: no GetMaxEntry - callers iterate Ids(), so a new cap loop fails to compile.
+    static std::vector<uint32> const& AllIds()
+    {
+        static std::vector<uint32> const ids = cmangos_shim::SortedKeys(sObjectMgr.GetCreatureInfoMap());
+        return ids;
+    }
+    cmangos_shim::IdRange Ids(uint32 lo = 0, uint32 hi = cmangos_shim::kLegacyCreatureCap) const
+    {
+        return cmangos_shim::g_idSets.load(std::memory_order_relaxed) ? cmangos_shim::IdRange::Set(AllIds(), lo) : cmangos_shim::IdRange::Count(lo, hi);
+    }
 };
 inline CmangosCreatureStorageProxy sCreatureStorage;
 
@@ -717,9 +747,46 @@ struct CmangosGOStorageProxy
 {
     template<typename T = GameObjectInfo>
     T const* LookupEntry(uint32 id) const { return sObjectMgr.GetGameObjectInfo(id); }
-    uint32 GetMaxEntry() const { return 200000; }
+    // twow-repo#510: no GetMaxEntry, see CmangosCreatureStorageProxy.
+    static std::vector<uint32> const& AllIds()
+    {
+        static std::vector<uint32> const ids = cmangos_shim::SortedKeys(sObjectMgr.GetGameObjectInfoMap());
+        return ids;
+    }
+    cmangos_shim::IdRange Ids(uint32 lo = 0, uint32 hi = cmangos_shim::kLegacyGOCap) const
+    {
+        return cmangos_shim::g_idSets.load(std::memory_order_relaxed) ? cmangos_shim::IdRange::Set(AllIds(), lo) : cmangos_shim::IdRange::Count(lo, hi);
+    }
 };
 inline CmangosGOStorageProxy sGOStorage;
+
+namespace cmangos_shim
+{
+// twow-repo#510: sets the id-set mode once (later calls keep the first mode) and, when on, builds the
+// creature and GO sets. Off builds nothing, so memory and lookups stay as before.
+inline void WarmIdSets(bool on)
+{
+    static std::atomic<bool> warmed{false};
+    if (warmed.exchange(true))
+        return;
+    if (!on)
+    {
+        sLog.outString("[ShimBounds] warm mode=0");
+        return;
+    }
+    uint32 const started = WorldTimer::getMSTime();
+    std::size_t const creatures = CmangosCreatureStorageProxy::AllIds().size();
+    std::size_t const gos = CmangosGOStorageProxy::AllIds().size();
+    g_idSets.store(true, std::memory_order_relaxed);
+    sLog.outString("[ShimBounds] warm mode=1 creature_ids=%zu go_ids=%zu build_ms=%u", creatures, gos, WorldTimer::getMSTimeDiffToNow(started));
+}
+
+// twow-repo#510 A2: the faction ids a faction loop visits. Off: 0 .. sFactionStore.GetNumRows() (the old
+// loop, 100). On: the factions of the bot's reputation list (variant a). The loops skip every faction
+// without a reputation state anyway, so this is the same set without the cap, in reputation list order.
+template <class StateList>
+FactionIdRange<StateList> FactionIds(StateList const& list, bool on) { return FactionIdRange<StateList>(list, on, sFactionStore.GetNumRows()); }
+}
 
 // === sTaxiNodesStore (cmangos) → sObjectMgr.GetTaxiNodeEntry ===
 struct TaxiNodesEntry;
