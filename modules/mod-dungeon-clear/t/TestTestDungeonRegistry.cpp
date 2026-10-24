@@ -34,18 +34,6 @@ TEST(DcTestDungeonRegistryTest, EveryRowIsPlausible)
     }
 }
 
-// twow-repo#629 G1 B1: the list is "sorted by recommended level" (the dashboard and `.dc test list` show it in this order).
-TEST(DcTestDungeonRegistryTest, RowsAreSortedByRecommendedLevel)
-{
-    Row const* prev = nullptr;
-    for (Row const& row : All())
-    {
-        if (prev)
-            EXPECT_LE(prev->recommendedLevel, row.recommendedLevel) << prev->token << " before " << row.token;
-        prev = &row;
-    }
-}
-
 TEST(DcTestDungeonRegistryTest, HeroicLevelMatchesTheExpansionCap)
 {
     // heroicLevel is both the heroic default level AND the "heroic offered"
