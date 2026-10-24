@@ -114,6 +114,14 @@ require_text("${arrived}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && s
 between("${travel}" "turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()" "\n}\n" observe)
 require_text("${observe}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn())\n        observation.nearRadius = sPlayerbotAIConfig.zoneExitTurnInNearRadius;" "radius behind the switch, turn-ins only")
 require_order("${observe}" "observation.nearRadius = " "return turnin_recovery::Observe(turnInRecovery, observation," "radius set before the observation")
+# twow-repo#627 S7 hooks (CLI-Deep, agreed with CLI-GRP 23.10.2026): a help-group member is excluded from the turn-in recovery
+# and S3c, not paused - the group ends a stalled goal itself (no_progress counts objective progress only, turnin_wait,
+# leader_stuck). The member check comes before any observation, resets the window, and the S3c work-timeout park skips members.
+set(member_block "    if (quest_groups::IsMember(ai))\n    {\n        turnInRecovery.ResetProgress();\n        return turnin_recovery::RecoveryAction::None;\n    }")
+require_text("${observe}" "${member_block}" "S7 hook: members excluded from the turn-in recovery, window reset")
+require_order("${observe}" "${member_block}" "    bool const restPause = restPausePending;" "S7 hook: before the pause flags (excluded, not paused)")
+require_order("${observe}" "${member_block}" "return turnin_recovery::Observe(turnInRecovery, observation," "S7 hook: before the observation")
+require_text("${travel}" "#include \"playerbot/QuestGroupWorld.h\"" "S7 hook: the help-group queries")
 
 # Stage 1 inside the near zone, switch tested first: the near-stall handler, then return (no READY on that path).
 require_order("${stage1}" "if (IsProgressAwareTurnIn())" "if (IsNearTurnInStall())" "near stall for turn-ins only")
@@ -149,8 +157,8 @@ forbid_text("${near_stall}" "ParkStructuralTurnIn(" "S1 abandon helper (count pi
 require_text("${travel_h}" "turnin_recovery::WorkTimeoutRing workTimeoutTurnIns;" "per-bot work timeout ring")
 require_text("${recovery}" "constexpr std::uint32_t WorkTimeoutRingSize = 8;" "ring of 8 quests")
 between("${travel}" "void TravelTarget::OnWorkTimeout()" "\n}\n" work_timeout)
-require_order("${work_timeout}" "if (IsProgressAwareTurnIn())" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()))" "turn-ins only")
-require_order("${work_timeout}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()))" "turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId)" "switch before the ring")
+require_order("${work_timeout}" "if (IsProgressAwareTurnIn())" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && !quest_groups::IsMember(ai))" "turn-ins only")
+require_order("${work_timeout}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && !quest_groups::IsMember(ai))" "turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId)" "switch before the ring")
 require_order("${work_timeout}" "ParkTurnInNow(questId, \"structural_work_timeout\", false, abandonDue);" "NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), \"work_timeout\");" "park before the kept #485 count")
 
 # A rescue reset (S1 ResetOnProgressEvents) resets the search, never the park book: the bot is not sent back 3.5 km.
