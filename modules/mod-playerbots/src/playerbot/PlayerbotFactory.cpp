@@ -622,7 +622,7 @@ void PlayerbotFactory::InitPet()
             static ai::init_pet::TameList const tameList = []()
             {
                 ai::init_pet::TameList list;
-                for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
+                for (uint32 id : sCreatureStorage.Ids())
                     if (CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id))
                         if (co->isTameable())
                             list.emplace_back(co->MinLevel, id);
@@ -636,7 +636,7 @@ void PlayerbotFactory::InitPet()
         }
         else
 #endif
-        for (uint32 id = 0; id < sCreatureStorage.GetMaxEntry(); ++id)
+        for (uint32 id : sCreatureStorage.Ids())
         {
             CreatureInfo const* co = sCreatureStorage.LookupEntry<CreatureInfo>(id);
 			if (!co)

@@ -150,7 +150,7 @@ EntryTravelPurposeMap EntryTravelPurposeMapValue::Calculate()
         { UNIT_NPC_FLAG_AUCTIONEER, TravelDestinationPurpose::AH }
     };
 
-    for (uint32 entry = 0; entry < sCreatureStorage.GetMaxEntry(); ++entry)
+    for (uint32 entry : sCreatureStorage.Ids())
     {
         CreatureInfo const* cInfo = sCreatureStorage.LookupEntry<CreatureInfo>(entry);
 
@@ -241,7 +241,7 @@ EntryTravelPurposeMap EntryTravelPurposeMapValue::Calculate()
             entryPurposeMap[entry] = purpose;
     }
 
-    for (uint32 entry = 0; entry < sGOStorage.GetMaxEntry(); ++entry)
+    for (uint32 entry : sGOStorage.Ids())
     {
         GameObjectInfo const* gInfo = sObjectMgr.GetGameObjectInfo(entry);
 

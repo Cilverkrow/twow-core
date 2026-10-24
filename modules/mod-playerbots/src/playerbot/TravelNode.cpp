@@ -2997,7 +2997,7 @@ void TravelNodeMap::makeDockNode(TravelNode* node, WorldPosition pos, std::strin
 
 void TravelNodeMap::generateTransportNodes()
 {
-    for (uint32 entry = 1; entry <= sGOStorage.GetMaxEntry(); ++entry)
+    for (uint32 entry : sGOStorage.Ids(1, 200001))
     {        
         auto data = sGOStorage.LookupEntry<GameObjectInfo>(entry);
 
