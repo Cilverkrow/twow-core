@@ -125,6 +125,7 @@ set(entries
   "Rotation.RestGate|rotationRestGate"
   "Rotation.CastLosGate|rotationCastLosGate"
   "CastWait.Preparing|castWaitPreparing"
+  "Rotation.HunterMeleeStart|rotationHunterMeleeStart"
   "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
   "Rotation.FleeAway|rotationFleeAway"
