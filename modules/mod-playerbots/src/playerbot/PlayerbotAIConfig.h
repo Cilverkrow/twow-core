@@ -650,6 +650,7 @@ public:
     uint32 rotationCastLosGate = 0;  // twow-repo#602 (hunter LoS 25.10.): a LINE_OF_SIGHT verdict of CheckCast makes the cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped (CastLosGatePolicy.h); with Rotation.ReachLosClose; 0 off, 1 all, 2 cohort B
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
     uint32 castWaitPreparing = 0;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
+    uint32 rotationHunterMeleeStart = 0;  // twow-repo#602 (hunter deaths 25.10.): the hunter's switch to melee/ranged really starts/stops the swing (Player::MeleeAttackStart is a stub), close mode attacks in melee (HunterMeleeStartPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationMeleeFleeBreak = 0;  // twow-repo#602 (death analysis 21.10.): "outnumbered" stays quiet for a melee bot while its flee loop holds; 0 off, 1 all, 2 cohort B
     bool rotationMeleeFleeBreakRanged = false;  // twow-repo#602 (step 2, 21.10.): the same hold for ranged bots (cohort from Rotation.MeleeFleeBreak); kite triggers untouched
     uint32 rotationFleeAway = 0;  // twow-repo#602 (c) (hunter + adds analysis 25.10.): flee chase angle relative to the enemy's facing, a kept chase (1 s), hunter flee only in the dead zone while the pet holds the enemy (FleeAwayPolicy.h); 0 off, 1 all, 2 cohort B
@@ -814,9 +815,14 @@ public:
     uint32 botGroupsAdhocPairCooldownSeconds = 600;
     // twow-repo#628: ad-hoc groups form and leave in the world-thread manager (AdhocGroupWorld.h).
     bool botGroupsAdhocWorldThread = false;
+    // twow-repo#628: the manager pass spread over this many updates (0/1 = the whole pass in one update).
+    uint32 botGroupsAdhocScanSlices = 0;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
+    // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
+    uint32 questGroupsScanSlices = 0;
+    bool questGroupsStagedOps = false;  // twow-repo#627 S7 (S7-A 25.10.): at most one group operation per manager update, forced travel on the bot thread
     uint32 questGroupsMaxSize = 5;
     uint32 questGroupsMaxSizeDrop = 3;
     uint32 questGroupsLevelWindow = 3;
@@ -964,6 +970,7 @@ public:
     // timeout of the same turn-in does too (OB-10 rev. 2). The radius only acts with the switch; 0 = no near zone.
     bool zoneExitTurnInTravelStall = false;
     float zoneExitTurnInNearRadius = 60.0f;
+    bool zoneExitTurnInTravelStallCountsCombat = false;  // twow-repo#601 3a: with TurnInTravelStall a fight no longer restarts the turn-in stall window
     // twow-repo#587 (ZONE-01): quest rescue on the right continent, stranded bots ask for it, no BG quests as targets.
     bool zoneExitRescueHomeContinent = false;
     uint32 zoneExitStrandedRescueAfter = 0;

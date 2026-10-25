@@ -1119,6 +1119,11 @@ AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds = 600
 # free bot in its group. "leave far away" no longer drops a member of an ad-hoc
 # group; the ad-hoc leave rules decide. 0 = the old action path.
 AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
+# #628 (with WorldThread = 1): the manager pass - leave rules and candidates of all bots -
+# spread over this many manager updates (one every RandomBotUpdateInterval, ~0.4 s); the
+# pairs are formed once all slices are done. 0 or 1 = the whole pass in one update.
+# Only if the pass itself costs the world tick too much (minute line scan_us_max).
+AiPlayerbot.BotGroups.AdHoc.ScanSlices = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -1137,6 +1142,15 @@ AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
 # (even guid); candidates and partners both pass it (cohort-pure groups).
 AiPlayerbot.QuestGroups.Enable = 0
 AiPlayerbot.QuestGroups.ScanSeconds = 60
+# #628: the S7 scan (quest logs of all bots) spread over this many manager updates
+# (~0.4 s each); groups form once all slices are done. 0 or 1 = the whole scan at once.
+AiPlayerbot.QuestGroups.ScanSlices = 0
+# #627 (S7-A 25.10.2026: a formation of two bots cost 2.9-4.3 ms of the world tick, a dissolution up to 4.5 ms): 1 = at most
+# one group operation per manager update (~0.4 s) - one member's invite and accept, the setup of a formed group, or one
+# member's release, releases first - and the forced quest travel (destination search) on the bot's own thread. A group of
+# five then forms in ~2.5 s. Minute line: staged= invite_us_max= accept_us_max= setup_us_max= release_us_max= ops=
+# ops_queued_max=. 0 = everything in one update, as before (default).
+AiPlayerbot.QuestGroups.StagedOps = 0
 AiPlayerbot.QuestGroups.MaxSize = 5
 AiPlayerbot.QuestGroups.MaxSizeDrop = 3
 AiPlayerbot.QuestGroups.LevelWindow = 3
@@ -1602,6 +1616,12 @@ AiPlayerbot.ZoneExit.TurnInStallCounts = 0
 # (0 = no near zone, at most 500). 0 = as before.
 AiPlayerbot.ZoneExit.TurnInTravelStall = 0
 AiPlayerbot.ZoneExit.TurnInNearRadius = 60
+# twow-repo#601 3a (OB-00 24.10.2026): TurnInTravelStallCountsCombat = 1 (only with TurnInTravelStall = 1, S3 bots): on the
+# way to a finished quest's taker a fight still pauses the stall recovery but no longer restarts the stall window, so the
+# time of the fight counts toward TurnInStallSeconds. A bot that keeps pulling mobs near its route and never gets closer
+# reaches the recovery (and the near-zone park) instead of a fresh window after every fight. Death, flights, transports,
+# a real master and rest keep restarting the window. Objectives are not affected. 0 = every fight restarts it, as before.
+AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat = 0
 
 # twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
 # RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
@@ -2900,6 +2920,15 @@ AiPlayerbot.Perf.CombatIdleYield = 0
 # CAST_WAIT lines in the action log of sampled bots.
 # 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
 AiPlayerbot.CastWait.Preparing = 0
+
+# twow-repo#602 ROT-01 hunter deaths (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): hunters
+# die about twice as often as the other classes, mostly alone against one weaker mob. One cause: "switch to melee" called
+# Player::MeleeAttackStart, an empty stub in this core, and an attack in "close" mode started melee only under 5 yd - so a hunter
+# that went to melee from further away never swung (Raptor Strike stayed IMPOSSIBLE) and stood until it died. With the switch
+# "switch to melee" starts the swing (Unit::Attack), "switch to ranged" stops it, and an attack in close mode starts melee. Only
+# hunters use these actions. "[HunterMelee] mode= started= stopped= close_attacks=" once a minute with the mode on.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.HunterMeleeStart = 0
 # twow-repo#602 ROT-01 (death analysis 21.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): below
 # MediumHealth the "outnumbered" trigger sends a bot to flee as soon as the mobs fighting it outweigh it. Ranged bots
 # leave a flee loop after two flee steps (FleeMultiplier); melee bots had no such break, could not outrun the mobs and
