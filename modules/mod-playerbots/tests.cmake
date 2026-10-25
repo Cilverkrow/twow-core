@@ -3673,6 +3673,27 @@ add_test(NAME cast_wait_policy
   COMMAND cast_wait_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 hunter deaths (AiPlayerbot.Rotation.HunterMeleeStart, default 0, behaviour change): the hunter's switch to
+# melee really starts the swing (Player::MeleeAttackStart is a no-op stub), an attack in close mode starts melee.
+add_test(NAME hunter_melee_start_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/hunter_melee_start_source_contract_tests.cmake")
+
+add_executable(hunter_melee_start_policy_tests
+  "${PB_MODULE_DIR}/t/hunter_melee_start_policy_tests.cpp")
+
+target_include_directories(hunter_melee_start_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(hunter_melee_start_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME hunter_melee_start_policy
+  COMMAND hunter_melee_start_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 (death analysis 21.10.2026, AiPlayerbot.Rotation.MeleeFleeBreak, default 0, behaviour change): "outnumbered"
 # stays quiet for a melee bot while its flee loop holds (FleeMultiplier's loop test), so it fights; ranged and panic unchanged.
 add_test(NAME melee_flee_break_source_contract

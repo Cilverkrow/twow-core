@@ -62,6 +62,7 @@
 #include "playerbot/BotActivityPolicy.h"   // twow-repo#601 R01 L1: [BotActivityMin] minute line
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/CastWaitPolicy.h"
+#include "playerbot/HunterMeleeStartPolicy.h"   // twow-repo#602 (Rotation.HunterMeleeStart): [HunterMelee] minute line
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c) (Rotation.FleeAway): [FleeAway] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
@@ -1211,6 +1212,23 @@ void ReportCombatIdle()
         (unsigned long long)ai::combat_idle::woken.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.HunterMeleeStart): one [HunterMelee] line per minute - "switch to melee" that started the
+// swing (started), "switch to ranged" that stopped it (stopped), close-mode attacks that start melee only because of the switch
+// (close_attacks). Nothing is written when off.
+void ReportHunterMelee()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationHunterMeleeStart || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[HunterMelee] mode=%u started=%llu stopped=%llu close_attacks=%llu",
+        sPlayerbotAIConfig.rotationHunterMeleeStart,
+        (unsigned long long)ai::hunter_melee_start::started.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::hunter_melee_start::stopped.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::hunter_melee_start::closeAttacks.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 (AiPlayerbot.CastWait.Preparing): one [CastWait] line per minute - casts held to their real end (waits =
 // spells, wait_ms = granted delay), waits the per-spell deadline cut (capped), waits released early because the spell
 // stopped PREPARING (released), and the AI passes the waits saved (est.: wait / ReactDelay). Nothing is written when off.
@@ -1813,6 +1831,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCastLosGate();  // twow-repo#602: [CastLosGate] once per minute (AiPlayerbot.Rotation.CastLosGate)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
+    ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
