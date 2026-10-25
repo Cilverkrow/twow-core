@@ -53,7 +53,7 @@ inline std::uint32_t ClampLinesPerMinute(std::int32_t lines)
 // minute is a line with zeros instead of no line.
 inline std::uint32_t WindowMinutes(std::uint64_t seen, std::uint64_t now)
 {
-    std::uint64_t const w = now > seen ? now - seen : 1;
+    std::uint64_t const w = seen != 0 && now > seen ? now - seen : 1;   // the very first roll (seen == 0) has no earlier window
     return w > 1440 ? 1440 : std::uint32_t(w);
 }
 
