@@ -3982,3 +3982,31 @@ add_test(NAME scan_slices_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/scan_slices_source_contract_tests.cmake")
+
+# --------------------------------------------------------------------------
+# t/contracts.d -- source contracts that register themselves (OB-00 25.10.2026).
+#
+# Every PR used to append its add_test() at the end of this file, so each merge
+# broke the next PR at the same anchor. A new source contract (a cmake -P
+# script) goes into t/contracts.d/ as its own file instead: <name>_tests.cmake
+# becomes the ctest test <name> and runs with the variables the blocks above
+# pass, so this file does not change for it. A suite that needs a compiled
+# target still gets its own block above. The blocks above stay where they are.
+#
+# Sorted, so the registration order does not depend on the filesystem.
+# CONFIGURE_DEPENDS re-runs the glob on a rebuild of an existing build tree,
+# so a new file needs no manual re-configure. A name that is already taken
+# stops the configure (add_test refuses a duplicate NAME).
+# --------------------------------------------------------------------------
+file(GLOB pb_contracts_d CONFIGURE_DEPENDS "${PB_MODULE_DIR}/t/contracts.d/*.cmake")
+list(SORT pb_contracts_d)
+foreach(pb_contract IN LISTS pb_contracts_d)
+  get_filename_component(pb_contract_name "${pb_contract}" NAME)
+  string(REGEX REPLACE "(_tests)?\\.cmake$" "" pb_contract_name "${pb_contract_name}")
+  add_test(NAME "${pb_contract_name}"
+    COMMAND "${CMAKE_COMMAND}"
+      "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+      "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+      "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+      -P "${pb_contract}")
+endforeach()
