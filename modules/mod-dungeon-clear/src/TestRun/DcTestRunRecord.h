@@ -30,6 +30,11 @@ namespace DcTestRunRecord
         std::string role;        // "tank" | "heal" | "dps" — as MARKED
         std::uint64_t guid = 0;
         std::uint32_t level = 0; // actual post-factory level (may be clamped)
+        // Schema 12: the gear it actually wears at the run start (gearIlvl is the
+        // factory's ceiling only) - mean item level over the filled equipment
+        // slots without shirt and tabard, and how many such slots are filled.
+        float avgIlvl = 0.0f;
+        std::uint32_t gearSlots = 0;
 
         // Roster runs only. A hand-picked party is never respecced, so the human
         // can mark a fury warrior as the tank; the run proceeds (that is the
@@ -130,7 +135,10 @@ namespace DcTestRunRecord
         // 11: added the claim pool (twow-repo#629 DUN-03): faction, accountPrefix,
         //     synthetic (claimed from a TestRun.AccountPrefix pool) and
         //     rosterExcluded (roster guids the claim skipped).
-        std::uint32_t schema = 11;
+        // 12: added the realised gear per member (comp[].avgIlvl, comp[].gearSlots;
+        //     G1 dry-r3 25.10.2026). Pre-12 records have neither: absent is unknown,
+        //     not 0.
+        std::uint32_t schema = 12;
         std::string runId;
         std::string planId;       // owning `.dc test plan`, "" for ad-hoc runs
         std::string dungeon;      // registry token
