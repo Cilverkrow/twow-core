@@ -735,6 +735,13 @@ public:
     // for this bot for the cooldown (0 = off).
     uint32 destinationDeathsMax = 2;
     uint32 destinationDeathsCooldownSeconds = 3600;
+    // Re-deaths at camps (CLI-ROT adds analysis 25.10.2026, CampBlockPolicy.h): a roster bot remembers its last deaths with at least
+    // MinAttackers living attackers (adds + target) and skips destinations within Radius of one for Seconds; quest destinations only
+    // rank lower (taken when nothing else is chosen). Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 destinationDeathsCampBlock = 0;
+    uint32 destinationDeathsCampBlockSeconds = 1800;
+    float destinationDeathsCampBlockRadius = 60.0f;
+    uint32 destinationDeathsCampBlockMinAttackers = 2;
     // #405: quest objectives whose work phase ran out Max times are skipped.
     uint32 questWorkTimeoutsMax = 0;
     uint32 questWorkTimeoutsCooldownSeconds = 3600;
@@ -774,6 +781,10 @@ public:
     uint32 dangerMapLevelMargin = 3;
     uint32 dangerMapLineSamples = 20;
     bool dangerMapCountEnvironmentDeaths = false;  // hotfix 8.35 (#544)
+    // Re-deaths at camps: for the querying bot a death with >= AddDeathMinAttackers living attackers counts whatever the killer's
+    // level. Mode 0 off (default), 1 all, 2 cohort B (the map is shared, the cohort is applied per query).
+    uint32 dangerMapCountAddDeaths = 0;
+    uint32 dangerMapAddDeathMinAttackers = 3;
     // #307: grind cap for low-level roster bots and per-bot avoidance of killers.
     uint32 grindCapLowLevelBelow = 0;     // 0 = off
     int32 grindCapLowLevelMargin = 2;

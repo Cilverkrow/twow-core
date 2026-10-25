@@ -3800,3 +3800,23 @@ add_test(NAME shim_id_sets_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
     -P "${PB_MODULE_DIR}/t/shim_id_sets_source_contract_tests.cmake")
+
+# Re-deaths at camps (AiPlayerbot.DestinationDeaths.CampBlock, AiPlayerbot.DangerMap.CountAddDeaths, both default 0): the death
+# position of a roster bot blocks nearby destinations for a while; add deaths count in the shared danger map for the bot's cohort.
+add_executable(camp_block_policy_tests
+  "${PB_MODULE_DIR}/t/camp_block_policy_tests.cpp")
+
+target_include_directories(camp_block_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(camp_block_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME camp_block_policy
+  COMMAND camp_block_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME camp_block_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/camp_block_source_contract_tests.cmake")

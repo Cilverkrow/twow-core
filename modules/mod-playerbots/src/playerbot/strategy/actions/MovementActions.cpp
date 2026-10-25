@@ -22,6 +22,7 @@
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapPolicy.h"
+#include "playerbot/CohortPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
@@ -68,6 +69,9 @@ bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition c
         params.minDeaths = sPlayerbotAIConfig.dangerMapMinDeaths;
         params.levelMargin = sPlayerbotAIConfig.dangerMapLevelMargin;
         params.lineSamples = sPlayerbotAIConfig.dangerMapLineSamples;
+        // re-deaths at camps (DangerMap.CountAddDeaths): the add-death rule only for bots the switch applies to
+        if (ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()))
+            params.addDeathMinAttackers = sPlayerbotAIConfig.dangerMapAddDeathMinAttackers;
         if (danger_map::Instance().Query(point.getMapId(), point.getX(), point.getY(), point.getX(), point.getY(), bot->GetLevel(),
                 uint32(time(nullptr)), params).cells)
             return false;

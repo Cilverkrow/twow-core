@@ -132,7 +132,7 @@ void RecordGrindDeath(PlayerbotAI* ai, Player* bot, Unit* killer)
         bot->GetGUIDLow(), bot->GetLevel(), killer->GetEntry(), killer->GetLevel(), sPlayerbotAIConfig.grindAvoidSeconds);
 }
 
-void RecordDangerMapDeath(Player* bot, Unit* killer)
+void RecordDangerMapDeath(Player* bot, Unit* killer, uint32 attackers)
 {
     // Hotfix 8.35 (twow-repo#544): a death without a target and without attackers (fall, drowning,
     // lava, fatigue) counts as a killer above every bot when CountEnvironmentDeaths is on.
@@ -152,6 +152,7 @@ void RecordDangerMapDeath(Player* bot, Unit* killer)
             bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
             bot->GetPositionZ());
     death.victimLevel = uint8(std::min<uint32>(255, bot->GetLevel()));
+    death.attackers = uint8(std::min<uint32>(255, attackers));   // read only by bots with DangerMap.CountAddDeaths
     danger_map::Instance().Record(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), death, params);
 
     // Always visible (BASIC), at most every ten minutes: size of the map.
@@ -2469,10 +2470,30 @@ void PlayerbotAI::OnDeath()
                 sPlayerbotAIConfig.log("deaths.csv", out.str().c_str());
             }
 
+            // Re-deaths at camps (CLI-ROT adds analysis 25.10.2026; DestinationDeaths.CampBlock, DangerMap.CountAddDeaths): the living
+            // attackers at the death = the living adds of the fight snapshot (as in deaths.csv) + the target if it lives. Read only when
+            // one of the two switches is on; one "all targets" read per death.
+            uint32 deathAttackers = 0;
+            if (sPlayerbotAIConfig.destinationDeathsCampBlock || sPlayerbotAIConfig.dangerMapCountAddDeaths)
+            {
+                Unit* const deathTarget = AI_VALUE(Unit*, "current target");
+                std::list<ObjectGuid> const deathTargets = AI_VALUE_LAZY(std::list<ObjectGuid>, "all targets");
+                std::vector<uint64> live;
+                for (ObjectGuid const& guid : deathTargets)
+                    if (Unit* unit = guid.IsCreature() ? GetUnit(guid) : nullptr; unit && unit->GetVictim() == bot)
+                        live.push_back(guid.GetRawValue());
+                for (uint64 const guid : ai::death_adds::MergeAdds(live, deathAdds, ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime()),
+                         deathTarget ? deathTarget->GetObjectGuid().GetRawValue() : 0))
+                    if (Unit* unit = GetUnit(ObjectGuid(guid)); unit && unit->IsAlive())
+                        ++deathAttackers;
+                if (deathTarget && deathTarget->IsAlive())
+                    ++deathAttackers;
+            }
+
             // #307: shared danger map. Every bot death to a mob in the open
             // world is pooled (roster or not); real players never feed it.
             if (sPlayerbotAIConfig.dangerMapEnabled && !IsRealPlayer() && !bot->GetMap()->IsDungeon())
-                RecordDangerMapDeath(bot, AI_VALUE(Unit*, "current target"));
+                RecordDangerMapDeath(bot, AI_VALUE(Unit*, "current target"), deathAttackers);
 
             if (sPlayerbotAIConfig.grindAvoidMaxDeaths && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
                 RecordGrindDeath(this, bot, AI_VALUE(Unit*, "current target"));
@@ -2493,6 +2514,8 @@ void PlayerbotAI::OnDeath()
                 travelTarget->OnDeathOnTurnInRoute();
                 // #307: and every other destination (fishing, gathering, grind, ...).
                 travelTarget->OnDeathAtDestination();
+                // Re-deaths at camps (DestinationDeaths.CampBlock): the death position, whatever the travel target.
+                travelTarget->OnCampDeath(deathAttackers);
             }
         }
 
