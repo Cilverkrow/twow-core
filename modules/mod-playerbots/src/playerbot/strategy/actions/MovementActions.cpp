@@ -227,6 +227,12 @@ static void RollTransportEdgeSummary()
 // One step of the episode: the summary of the previous window first (rolled like LogTaxiSummary), every transition
 // counted, the lines within the trace's own budget (dropped ones counted for the summary). at_map / at_x / at_y = the bot
 // now, unless the caller recorded the position before the exit (arrive / exit_origin).
+void LogTransportEdge(Player* bot, transport_edge::Step const& step, transport_edge::Key const& key, transport_edge::Extra const& extra,
+    WorldPosition const* at = nullptr)
+{
+    if (!step.Any())
+        return;
+    transport_edge::Counters& counters = transport_edge::SharedCounters();
     RollTransportEdgeSummary();
     counters.Account(step);
     transport_edge::BotInfo info;
