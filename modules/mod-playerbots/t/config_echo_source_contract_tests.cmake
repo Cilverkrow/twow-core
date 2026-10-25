@@ -107,6 +107,7 @@ set(entries
   "ZoneExit.TurnInStallCounts|zoneExitTurnInStallCounts"
   "ZoneExit.TurnInTravelStall|zoneExitTurnInTravelStall"
   "ZoneExit.TurnInNearRadius|zoneExitTurnInNearRadius"
+  "ZoneExit.TurnInTravelStallCountsCombat|zoneExitTurnInTravelStallCountsCombat"
   "QuestFirstProgression.S1Cohort|questFirstProgressionS1Cohort"
   "QuestFirstProgression.S3Cohort|questFirstProgressionS3Cohort"
   "DirectTargets.Enable|directTargetsEnabled"
