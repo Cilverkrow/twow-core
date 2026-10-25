@@ -98,6 +98,8 @@ int main()
         Require(ClassifyTripTarget(true, true) == TripTarget::Hostile, "hostile: dropped");
         Require(ClassifyTripTarget(true, false) == TripTarget::Hostile, "hostile counts first");
         Require(ClassifyTripTarget(false, false) == TripTarget::Unreachable, "no reachable spawn: dropped");
+        Require(ReachCacheScope(true) == ReachCache::EveryAsker, "the node verdict on its destinations holds for every asker");
+        Require(ReachCacheScope(false) == ReachCache::AskerMap, "no destination in this call: only for the asker's map");
     }
 
     std::cout << "profession_travel_policy_tests: OK\n";
