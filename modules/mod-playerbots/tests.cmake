@@ -3880,3 +3880,9 @@ add_test(NAME profession_travel_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/profession_travel_source_contract_tests.cmake")
+
+# twow-repo#628 ScanSlices: the managers' pass over all bots spread over several updates (default 0 = one update).
+add_test(NAME scan_slices_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/scan_slices_source_contract_tests.cmake")
