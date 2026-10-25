@@ -3902,6 +3902,13 @@ add_test(NAME profession_travel_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/profession_travel_source_contract_tests.cmake")
 
+# twow-repo#601 (AiPlayerbot.QuestLoop.InactiveAfterProgress, default 0): an inactive objective or an objective work timeout after
+# new credit is progress, not an emptied camp (the policy cases are in quest_loop_policy_tests).
+add_test(NAME inactive_after_progress_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/inactive_after_progress_source_contract_tests.cmake")
+
 # twow-repo#628 ScanSlices: the managers' pass over all bots spread over several updates (default 0 = one update).
 add_test(NAME scan_slices_source_contract
   COMMAND "${CMAKE_COMMAND}"

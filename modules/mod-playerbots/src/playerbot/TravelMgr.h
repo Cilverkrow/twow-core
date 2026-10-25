@@ -537,6 +537,8 @@ namespace ai
         struct CommitTrace { uint32 nextAt = 0; uint32 repeats = 0; };
         std::map<std::string, CommitTrace> commitTrace;
         std::map<TravelDestination const*, destination_death::Record> destinationDeaths;
+        // twow-repo#601 (QuestLoop.InactiveAfterProgress): the objective's count when the target was set, -1 = none.
+        int32 objectiveCountAtStart = -1;
         // #405: quest objectives whose work phase ran out without progress
         // (same counting rule as the destination deaths, own map).
         std::map<TravelDestination const*, destination_death::Record> workTimeouts;

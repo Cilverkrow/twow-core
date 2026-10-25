@@ -974,6 +974,15 @@ AiPlayerbot.QuestLoop.MaxFailures = 0
 AiPlayerbot.QuestLoop.WindowSeconds = 1800
 AiPlayerbot.QuestLoop.CooldownSeconds = 1800
 AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
+# twow-repo#601 (CLI-Deep 25.10.2026, root cause of the cand-v466r standing): an objective goes inactive as soon as no living
+# target of its entry is in sight - also right after the bot killed the visible ones. QL-1/QL-2 booked that normal progress as
+# an emptied camp (a failure + InactiveCooldownSeconds of standing; cohort B spent 32 % of its time between an inactive objective
+# and its next quest target). With InactiveAfterProgress an inactive objective whose count (kill / use credit, or quest items)
+# grew since the target was set counts as progress: no QL-1 failure, no QL-2 cooldown, a 1 s cooldown so the next search takes
+# the next spawn point at once; the count is taken again, so a second inactive drop without new credit is an emptied camp.
+# [QuestLoop] state=inactive_after_progress bot= quest= target_entry= count_from= count_to=.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.InactiveAfterProgress = 0
 
 # twow-repo#485: with 1, quest givers and takers that are game objects spawned
 # only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
