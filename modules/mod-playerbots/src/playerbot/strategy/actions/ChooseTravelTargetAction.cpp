@@ -2617,13 +2617,22 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         uint32 const now = uint32(time(nullptr));
         uint32 const backoffUntil = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
         uint32 const holdUntil = ai::profession_travel::HoldUntil(now, backoffUntil);
-        // A trip of this kind still open (its target expired without the hold being evaluated again) ends here.
+        // A trip of this kind still open (its target expired without the hold being evaluated again) ends here. P1-b3
+        // (CLI-Deep R-f): trip_s and hold_over_s count to its last hold check that held, not to this request;
+        // seen_after_s is the delay of this line.
         if (AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
-            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u",
+        {
+            uint32 const startedAt = std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key))));
+            uint32 const endedAt = std::min(now, ai::profession_travel::LostEndAt(startedAt,
+                uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix)))));
+            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u seen_after_s=%u",
                 trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
-                now - std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key)))),
-                ai::profession_travel::HoldOverSeconds(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))));
+                endedAt - startedAt,
+                ai::profession_travel::HoldOverSeconds(endedAt, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))),
+                now - endedAt);
+        }
         SET_AI_VALUE2(int, "manual int", key, int(now));
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix, 0);
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix, int(holdUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix, int(backoffUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, entries.empty() ? 0 : 1);

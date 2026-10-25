@@ -1709,7 +1709,9 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # 500 yd (2D) counts (P1-b2, CLI-PATH 25.10.: no trip to Blackstone Island, Alah'Thalas, an instance map ...). "[ProfTravel]
 # state=request kind=trainer ... entries= dropped_hostile= dropped_unreachable= hold_s=" per request (entries=0: no
 # trainer found) and "[ProfTravel] state=end kind=trainer ... reason=done|turn_in|cap|lost trip_s= hold_over_s=" when
-# the trip stops holding (hold_over_s = seconds after the backoff end). Mode (in-realm A/B, cohort parity): 0 = as before (default),
+# the trip stops holding (hold_over_s = seconds after the backoff end). reason=lost (another target took over) is written
+# at the next request of the kind, with trip_s / hold_over_s up to the last hold check that held and seen_after_s = the
+# delay of the line (P1-b3). Mode (in-realm A/B, cohort parity): 0 = as before (default),
 # 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionTraining.Travel = 0
 # Profession use (#333), persistent roster bots without a real-player master.
