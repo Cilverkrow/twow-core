@@ -143,6 +143,7 @@ set(entries
   "LogInGroupOnly|logInGroupOnly"
   "Grind.GreyByLevel|grindGreyByLevel"
   "Grind.QuestFirstOrder|grindQuestFirstOrder"
+  "Grind.NeighbourAware|grindNeighbourAware"
   "BotGroups.Enabled|botGroupsEnabled"
   "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
   "QuestGroups.Enable|questGroupsEnable")

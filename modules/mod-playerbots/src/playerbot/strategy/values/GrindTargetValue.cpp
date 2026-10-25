@@ -12,6 +12,11 @@
 #include "playerbot/GrindCapPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
+#include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware)
+#include "CreatureGroups.h"
+#include "World.h"
+
+#include <chrono>
 
 using namespace ai;
 
@@ -171,6 +176,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     uint32 const gapLow = gapGrind ? ai::quest_grind_mode::GapWindowLowLevel(bot->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel())) : 0;
     uint32 const gapHigh = gapGrind ? ai::quest_grind_mode::GapWindowHighLevel(bot->GetLevel()) : 0;
     uint32 gapSkipped = 0;
+    // twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware, adds analysis 25.10.): the candidates of the solo replace decision below, kept
+    // for the neighbour score after the loop (GrindNeighbourPolicy.h). Solo free bots out of a battleground without a real master, round
+    // 0 only (a grouped bot overwrites newdistance with each member's distance). Off: nothing is built.
+    uint32 const neighbourMode = sPlayerbotAIConfig.grindNeighbourAware;
+    bool const neighbourScored = ai::grind_neighbour::Computes(neighbourMode) && !assistCount && !group && !bot->InBattleGround() &&
+        !ai->HasRealPlayerMaster() && sRandomPlayerbotMgr.IsFreeBot(bot);
+    std::vector<NeighbourCandidate> neighbourCandidates;
 
     for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)
     {
@@ -414,6 +426,9 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         }
         else
         {
+            // twow-repo#602 #2: every candidate that reaches the solo replace decision, with its score distance (quest +20 included).
+            if (neighbourScored)
+                neighbourCandidates.push_back({ unit, newdistance, sServerFacade.GetDistance2d(bot, unit) });
             if (!result || (newdistance < distance && urand(0, abs(distance - newdistance)) > sPlayerbotAIConfig.sightDistance * 0.1))
             {
                 distance = newdistance;
@@ -421,6 +436,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             }
         }
     }
+
+    // twow-repo#602 #2: the distance pick above is final unless the neighbour rule finds a candidate with fewer neighbours and a lower
+    // score (applied: replaced; shadow: only counted). Demote only - a pass with a pick keeps a pick.
+    if (neighbourScored)
+        result = NeighbourPick(result, neighbourCandidates, targets, ai::grind_neighbour::Applies(neighbourMode, bot->GetGUIDLow()));
 
     if (result)
     {
@@ -494,4 +514,187 @@ int GrindTargetValue::GetTargetingPlayerCount( Unit* unit )
     }
 
     return count;
+}
+// twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware): W of every candidate = the weighted creatures of this pass's "possible targets"
+// list (the list stage 2 already holds - no new grid search, no raycast) that would join a fight with it: same-template assist,
+// on sight, an AGGRO_TOGETHER group, or the call for help along its run to a ranged bot (GrindNeighbourPolicy.h). The distance pick
+// is replaced by the candidate with the lowest score among those with a strictly lower W and a strictly lower score, outside the
+// snapshot edge and inside the level guard; applies = false only counts it (shadow). Every other case returns the distance pick.
+Unit* GrindTargetValue::NeighbourPick(Unit* pick, std::vector<NeighbourCandidate> const& candidates, std::list<ObjectGuid> const& targets, bool applies)
+{
+    using namespace ai::grind_neighbour;
+    if (!pick || candidates.empty())
+        return pick;
+
+    auto const started = std::chrono::steady_clock::now();
+    uint32 const cohort = ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0;
+    uint32 const cls = bot->getClass() < MaxClass ? bot->getClass() : 0;
+    Counters& count = counters[cohort];
+    count.passes.fetch_add(1, std::memory_order_relaxed);
+    count.candidates.fetch_add(candidates.size(), std::memory_order_relaxed);
+
+    struct Entry
+    {
+        Creature* creature;
+        uint32 faction;
+        CreatureGroup* group;    // only an AGGRO_TOGETHER group
+        float attackDistance;    // 0 = does not attack on sight
+        bool assists;            // may answer CallAssistance / CallForHelp against the bot
+        uint32 halfW;
+    };
+    std::vector<Entry> entries;
+    entries.reserve(std::min<size_t>(targets.size(), MaxEntries));
+    uint32 const botLevel = bot->GetLevel();
+    uint32 const grayLevel = MaNGOS::XP::GetGrayLevel(botLevel);
+    for (ObjectGuid const& guid : targets)
+    {
+        if (entries.size() >= MaxEntries)
+        {
+            count.capped.fetch_add(1, std::memory_order_relaxed);
+            break;
+        }
+        Creature* creature = ai->GetCreature(guid);
+        // CanAssistTo / AggressorAI ignore a creature already in combat; owned, critter, totem and evading ones never join.
+        if (!creature || !sServerFacade.IsAlive(creature) || creature->IsInCombat() || creature->GetCharmerOrOwnerGuid() ||
+            creature->IsPet() || creature->IsTotem() || creature->IsCritter() || creature->IsInEvadeMode())
+            continue;
+        CreatureGroup* group = creature->GetCreatureGroup();
+        Entry entry;
+        entry.creature = creature;
+        entry.faction = creature->GetFactionTemplateId();
+        entry.group = group && group->HasGroupFlag(OPTION_AGGRO_TOGETHER) ? group : nullptr;
+        entry.attackDistance = creature->CanAttackOnSight(bot) && creature->CanInitiateAttack() ? creature->GetAttackDistance(bot) : 0.0f;
+        entry.assists = creature->IsHostileTo(bot) && !creature->HasExtraFlag(CREATURE_FLAG_EXTRA_NO_ASSIST) &&
+            !creature->HasExtraFlag(CREATURE_FLAG_EXTRA_NO_AGGRO);
+        CreatureInfo const* info = creature->GetCreatureInfo();
+        entry.halfW = HalfWeight(creature->GetLevel() <= grayLevel,
+            (info && info->Rank > CREATURE_ELITE_NORMAL) || creature->GetLevel() >= botLevel + 3);
+        if (!entry.group && entry.attackDistance <= 0.0f && !entry.assists)
+            continue;
+        entries.push_back(entry);
+    }
+
+    float const assistRadius = sWorld.getConfig(CONFIG_FLOAT_CREATURE_FAMILY_ASSISTANCE_RADIUS);
+    float const pullRange = ai->IsRanged(bot) ? sPlayerbotAIConfig.spellDistance : 0.0f;
+    std::vector<uint32> halfWs(candidates.size(), 0);
+    for (size_t i = 0; i < candidates.size(); ++i)
+    {
+        Creature* x = dynamic_cast<Creature*>(candidates[i].unit);
+        if (!x)
+            continue;   // a player candidate: no camp
+        CreatureGroup* xGroup = x->GetCreatureGroup();
+        if (xGroup && !xGroup->HasGroupFlag(OPTION_AGGRO_TOGETHER))
+            xGroup = nullptr;
+        CreatureInfo const* xInfo = x->GetCreatureInfo();
+        float const callForHelp = xInfo ? xInfo->call_for_help_range : 0.0f;
+        float const botDistance = candidates[i].botDistance;
+        float ux = 0.0f, uy = 0.0f;
+        if (botDistance > 0.1f)
+        {
+            ux = (bot->GetPositionX() - x->GetPositionX()) / botDistance;
+            uy = (bot->GetPositionY() - x->GetPositionY()) / botDistance;
+        }
+        uint32 w = 0;
+        for (Entry const& e : entries)
+        {
+            if (e.creature == x)
+                continue;
+            float const dx = e.creature->GetPositionX() - x->GetPositionX();
+            float const dy = e.creature->GetPositionY() - x->GetPositionY();
+            float const dz = e.creature->GetPositionZ() - x->GetPositionZ();
+            float const distSq = dx * dx + dy * dy + dz * dz;
+            std::atomic<std::uint64_t>* kind = nullptr;
+            if (xGroup && e.group == xGroup)
+                kind = &count.nbGroup;
+            else if (e.assists && e.faction == x->GetFactionTemplateId() && Within(distSq, assistRadius + AssistPad))
+                kind = &count.nbAssist;
+            else if (e.attackDistance > 0.0f && Within(distSq, e.attackDistance + SightPad))
+                kind = &count.nbSight;
+            else if (e.assists && callForHelp > 0.0f && e.creature->IsFriendlyTo(x))
+            {
+                float const chaseSq = ChaseDistSq(dx, dy, ux, uy, botDistance, pullRange);
+                if (chaseSq >= 0.0f && Within(chaseSq, callForHelp + CallForHelpPad))
+                    kind = &count.nbCallForHelp;
+            }
+            if (!kind)
+                continue;
+            kind->fetch_add(1, std::memory_order_relaxed);
+            w += e.halfW;
+        }
+        halfWs[i] = std::min(w, HalfCap);
+    }
+
+    // The distance pick is one of the candidates (the solo replace decision only takes recorded ones).
+    size_t p = candidates.size();
+    for (size_t i = 0; i < candidates.size(); ++i)
+        if (candidates[i].unit == pick)
+            p = i;
+    Unit* best = nullptr;
+    if (p < candidates.size())
+    {
+        count.picks.fetch_add(1, std::memory_order_relaxed);
+        classPicks[cohort][cls].fetch_add(1, std::memory_order_relaxed);
+        count.pickHalfW.fetch_add(halfWs[p], std::memory_order_relaxed);
+        float const sight = sPlayerbotAIConfig.sightDistance;
+        if (Edge(candidates[p].botDistance, sight))
+            count.edgePick.fetch_add(1, std::memory_order_relaxed);
+        else
+        {
+            Creature* pickCreature = dynamic_cast<Creature*>(pick);
+            bool const pickElite = pickCreature && pickCreature->GetCreatureInfo() &&
+                pickCreature->GetCreatureInfo()->Rank > CREATURE_ELITE_NORMAL;
+            size_t b = candidates.size();
+            bool guarded = false;
+            for (size_t i = 0; i < candidates.size(); ++i)
+            {
+                if (i == p || !Replaces(candidates[i].distance, halfWs[i], candidates[p].distance, halfWs[p]))
+                    continue;
+                if (Edge(candidates[i].botDistance, sight))
+                {
+                    count.edgeSkipped.fetch_add(1, std::memory_order_relaxed);
+                    continue;
+                }
+                Creature* c = dynamic_cast<Creature*>(candidates[i].unit);
+                bool const elite = c && c->GetCreatureInfo() && c->GetCreatureInfo()->Rank > CREATURE_ELITE_NORMAL;
+                if (!GuardOk(int32(candidates[i].unit->GetLevel()), elite, int32(pick->GetLevel()), pickElite))
+                {
+                    guarded = true;
+                    continue;
+                }
+                if (b == candidates.size() ||
+                    candidates[i].distance + Penalty(halfWs[i]) < candidates[b].distance + Penalty(halfWs[b]))
+                    b = i;
+            }
+            if (guarded)
+                count.guarded.fetch_add(1, std::memory_order_relaxed);
+            if (b < candidates.size())
+            {
+                best = candidates[b].unit;
+                count.newHalfW.fetch_add(halfWs[b], std::memory_order_relaxed);
+                count.extraYd.fetch_add(uint64(std::max(0.0f, candidates[b].botDistance - candidates[p].botDistance) + 0.5f),
+                    std::memory_order_relaxed);
+                (applies ? count.changed : count.wouldChange).fetch_add(1, std::memory_order_relaxed);
+                (applies ? classChanged : classWould)[cohort][cls].fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    }
+
+    // Churn: the pick changes between passes while the last one is still a candidate (the value is recomputed every 2 s until
+    // engaged); the distance pick's own churn is the baseline.
+    Unit* const rulePick = best ? best : pick;
+    auto isCandidate = [&](ObjectGuid const& guid)
+    {
+        return !guid.IsEmpty() && std::any_of(candidates.begin(), candidates.end(),
+            [&](NeighbourCandidate const& c) { return c.unit->GetObjectGuid() == guid; });
+    };
+    if (pick->GetObjectGuid() != lastDistancePick && isCandidate(lastDistancePick))
+        count.churnDistance.fetch_add(1, std::memory_order_relaxed);
+    if (rulePick->GetObjectGuid() != lastNeighbourPick && isCandidate(lastNeighbourPick))
+        count.churn.fetch_add(1, std::memory_order_relaxed);
+    lastDistancePick = pick->GetObjectGuid();
+    lastNeighbourPick = rulePick->GetObjectGuid();
+
+    count.micros.fetch_add(uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count()),
+        std::memory_order_relaxed);
+    return applies && best ? best : pick;
 }

@@ -62,6 +62,7 @@
 #include "playerbot/BotActivityPolicy.h"   // twow-repo#601 R01 L1: [BotActivityMin] minute line
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/CastWaitPolicy.h"
+#include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware): [GrindNeighbour] minute line
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c) (Rotation.FleeAway): [FleeAway] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
@@ -1246,6 +1247,52 @@ void ReportCastLosGate()
         (unsigned long long)ai::cast_los_gate::skipped.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware): one [GrindNeighbour] line per minute and cohort with scored passes - the
+// counters of GrindNeighbourPolicy.h as increments, then cls=<class>:<picks>/<would_change>/<changed> for the stratified readout.
+// Nothing is written when off or for a cohort without passes.
+void ReportGrindNeighbour()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.grindNeighbourAware || now < lastReport + 60)
+        return;
+    lastReport = now;
+    using namespace ai::grind_neighbour;
+    auto take = [](std::atomic<std::uint64_t>& counter) { return (unsigned long long)counter.exchange(0, std::memory_order_relaxed); };
+    for (uint32 cohort = 0; cohort < 2; ++cohort)
+    {
+        Counters& c = counters[cohort];
+        unsigned long long const passes = take(c.passes);
+        std::string classes;
+        for (uint32 cls = 0; cls < MaxClass; ++cls)
+        {
+            unsigned long long const picks = take(classPicks[cohort][cls]);
+            unsigned long long const would = take(classWould[cohort][cls]);
+            unsigned long long const changed = take(classChanged[cohort][cls]);
+            if (!picks && !would && !changed)
+                continue;
+            if (!classes.empty())
+                classes += ',';
+            classes += std::to_string(cls) + ':' + std::to_string(picks) + '/' + std::to_string(would) + '/' + std::to_string(changed);
+        }
+        if (!passes)
+        {
+            for (std::atomic<std::uint64_t>* counter : { &c.candidates, &c.picks, &c.changed, &c.wouldChange, &c.edgePick, &c.edgeSkipped,
+                    &c.guarded, &c.churn, &c.churnDistance, &c.capped, &c.pickHalfW, &c.newHalfW, &c.extraYd, &c.nbAssist, &c.nbSight,
+                    &c.nbGroup, &c.nbCallForHelp, &c.micros })
+                counter->store(0, std::memory_order_relaxed);
+            continue;
+        }
+        sLog.outBasic("[GrindNeighbour] mode=%u cohort=%c passes=%llu candidates=%llu picks=%llu changed=%llu would_change=%llu "
+            "edge_pick=%llu edge_skipped=%llu guarded=%llu churn=%llu churn_distance=%llu capped=%llu pick_w=%llu new_w=%llu "
+            "extra_yd=%llu nb_assist=%llu nb_sight=%llu nb_group=%llu nb_cfh=%llu us=%llu cls=%s",
+            sPlayerbotAIConfig.grindNeighbourAware, cohort ? 'B' : 'A', passes, take(c.candidates), take(c.picks), take(c.changed),
+            take(c.wouldChange), take(c.edgePick), take(c.edgeSkipped), take(c.guarded), take(c.churn), take(c.churnDistance),
+            take(c.capped), take(c.pickHalfW), take(c.newHalfW), take(c.extraYd), take(c.nbAssist), take(c.nbSight), take(c.nbGroup),
+            take(c.nbCallForHelp), take(c.micros), classes.empty() ? "-" : classes.c_str());
+    }
+}
+
 // twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose, CLI-ROT review): one [ReachLos] minute line - hostile reach targets out of
 // sight chased closer per cohort (evaluations), floored (walk-in) / stood (already inside the floor), episodes and those back in
 // sight within 5 s (per episode). Nothing with 0.
@@ -1814,6 +1861,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
+    ReportGrindNeighbour();   // twow-repo#602 #2: [GrindNeighbour] once per minute (AiPlayerbot.Grind.NeighbourAware)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
     ReportReachLos();       // twow-repo#594: [ReachLos] once per minute (AiPlayerbot.Rotation.ReachLosClose)
