@@ -889,6 +889,9 @@ bool PlayerbotAIConfig::Initialize()
     pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
     pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", 15));
+    pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", false);
+    if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)
+        sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
     pathRescueSkipCustomStarts = config.GetBoolDefault("AiPlayerbot.Path.RescueSkipCustomStarts", false);
     customRaceStartZones = config.GetBoolDefault("AiPlayerbot.CustomRaceStartZones", false);
@@ -1649,6 +1652,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
             {"Path.PosStuck", Value(pathPosStuck)},
             {"Path.PosStuck.Minutes", Value(pathPosStuckMinutes)},
+            {"Path.TransportBoardFix", Value(pathTransportBoardFix)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.RestGate", Value(rotationRestGate)},

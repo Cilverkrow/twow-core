@@ -28,6 +28,7 @@ namespace ai
             lastTransportEntry = other.lastTransportEntry;
             transportEdge = other.transportEdge;
             transportDeck = other.transportDeck;
+            transportBoard = other.transportBoard;
             lastPath = other.lastPath;
             lastMoveShort = other.lastMoveShort;
             nextTeleport = other.nextTeleport;
@@ -104,6 +105,11 @@ namespace ai
         // wait); written only with the probe on, by UseTransport (bot thread). clear() leaves it alone: the wait record
         // lapses by itself (S1's gap / same-point rule).
         transport_board::DeckWait transportDeck;
+        // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): the ride record (boarded by the fix: vessel, boarding point,
+        // arrival dock, exit), the board try throttle and the shared stop test answer; written only with the fix on (the stop
+        // test answer also with the deck probe on), by the movement code (bot thread). clear() leaves it alone: a re-planned
+        // or cleared path aboard is rebuilt from the record (KeepRideTail), and the exit or the lost-ride recovery clears it.
+        transport_board::BotState transportBoard;
         time_t lastFlee;
         // Number of flee actions dispatched in quick succession (within returnDelay of each
         // other). Used to detect a "subsequent" flee loop so spellcasting can take priority.
