@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class Player;
@@ -39,6 +40,10 @@ class WorldThreadManager
 {
 public:
     void Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
+    // twow-repo#365 HelpUntilDone (OB-10 review #660 B1): helpers are released even after Enabled or WorldThread went to 0 by
+    // a config reload (no pass runs then).
+    bool HasHelpers() const { return !helpers.empty(); }
+    void ReleaseHelpers(std::map<std::uint32_t, Player*> const& bots);
 
 private:
     struct Track
@@ -93,8 +98,13 @@ private:
     void FlushMinute(std::uint32_t now);
     void ScanSlice(std::map<std::uint32_t, Player*> const& bots, std::size_t end, std::uint32_t now);
     void Pairs(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
+    void SweepHelpers(std::map<std::uint32_t, Player*> const& bots);
 
     std::unordered_map<std::uint32_t, Track> tracks;  // world thread only
+    // twow-repo#365 HelpUntilDone: the manager's own helpers (bot guid -> the ad-hoc group it helps), never found by role ==
+    // 1 (S7 followers carry the same role), and the ones seen helping in the running pass. World thread only.
+    std::unordered_map<std::uint32_t, std::uint32_t> helpers;
+    std::unordered_set<std::uint32_t> helpingPass;
     std::uint32_t lastPass = 0;
     std::uint32_t passLeaveUs = 0;   // time in LeaveGroup during the running update
     Pass pass;

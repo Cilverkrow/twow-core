@@ -90,6 +90,51 @@ inline bool HelpsGroup(LeaveFacts const& f)
     return f.helpUntilDone && f.objectiveDone && f.groupOpen;
 }
 
+// twow-repo#365 HelpUntilDone, OB-10 review #660 B1: the manager keeps its own set of helpers (never "role == 1": S7 members
+// carry the same role) and checks every helper it did not see helping in a pass - logged out, the S7 manager owns it now, its
+// group ended or is no ad-hoc group any more, it is no candidate any more, it is in another group, or it stopped helping
+// (its objective open again). A helper left behind as a follower without travel would be lost: PosStuck spares followers.
+enum class HelperExit
+{
+    Keep,      // still helping, or briefly unsafe to touch (teleport, not in world): decided again on a later pass
+    Forget,    // logged out (its AI is gone) or the S7 manager owns it (the role is S7's now): the role stays untouched
+    RoleOnly,  // in another group or under a real player: that accept set the master and rebuilt the strategies
+    Release,   // role 0, master back (the group leader in its group, none without a group), the leave reset posted
+};
+
+struct HelperFacts
+{
+    bool loggedOut = false;
+    bool s7Owns = false;
+    bool transient = false;
+    bool helping = false;      // seen helping in this pass (its ad-hoc group, HelpsGroup)
+    bool otherGroup = false;   // in a group other than the one it helped
+    bool realMaster = false;
+};
+
+inline HelperExit DecideHelperExit(HelperFacts const& f)
+{
+    if (f.loggedOut || f.s7Owns)
+        return HelperExit::Forget;
+    if (f.transient || f.helping)
+        return HelperExit::Keep;
+    if (f.otherGroup || f.realMaster)
+        return HelperExit::RoleOnly;
+    return HelperExit::Release;
+}
+
+inline char const* HelperExitName(HelperExit exit)
+{
+    switch (exit)
+    {
+        case HelperExit::Keep:     return "keep";
+        case HelperExit::Forget:   return "forget";
+        case HelperExit::RoleOnly: return "role_only";
+        case HelperExit::Release:  return "release";
+    }
+    return "unknown";
+}
+
 inline Leave DecideLeave(LeaveFacts const& f)
 {
     if (!f.questInProgress)
