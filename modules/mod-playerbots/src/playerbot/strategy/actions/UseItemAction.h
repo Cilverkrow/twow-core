@@ -3,6 +3,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/RandomItemMgr.h"
 #include "playerbot/RestGatePolicy.h"
+#include "playerbot/DarkRuneGatePolicy.h"
 #include "playerbot/strategy/values/RestGateValue.h"
 
 namespace ai
@@ -620,6 +621,15 @@ namespace ai
 
             if (bot->getClass() == CLASS_MAGE) // mage should use mana gem, shares cd with dark rune
                 return false;
+
+            // twow-repo#602 ROT-01 3c (AiPlayerbot.Rotation.DarkRuneGate): the rune's required level (DarkRuneGatePolicy.h);
+            // under the item cheat a bot below it used the rune.
+            if (ai::dark_rune_gate::Applies(sPlayerbotAIConfig.rotationDarkRuneGate, bot->GetGUIDLow()))
+            {
+                ItemPrototype const* proto = sObjectMgr.GetItemPrototype(GetItemId());
+                if (!proto || !ai::dark_rune_gate::LevelOk(bot->GetLevel(), proto->RequiredLevel))
+                    return false;
+            }
 
             return bot->GetHealth() > 1000;
         }
