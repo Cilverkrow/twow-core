@@ -402,6 +402,8 @@ private:
     bool AllowDelayJitter() const override;
     // twow-repo#541 (audit A17): idle auto-attack combat pass -> longer wait (AiPlayerbot.Perf.CombatIdleYield).
     void StretchCombatIdle();
+    // twow-repo#602 ROT-01 3c-B: idle out-of-mana combat pass -> wait DelayMs (AiPlayerbot.Rotation.OomBackoff).
+    void BackoffOutOfMana(bool yieldSetDelay, bool minimal);
 public:    
     static std::string BotStateToString(BotState state);
     std::string GetDefaultMovementStrategy();
@@ -1254,6 +1256,7 @@ protected:
     uint32 faceTargetUpdateDelay;
     bool combatIdleTick = false;   // twow-repo#541 (audit A17): last DoNextAction ran the combat engine and executed nothing
     ObjectGuid combatIdleVictim;   // twow-repo#541 (audit A17): victim of a pending stretched wait (empty = none)
+    bool oomBackoffPending = false;   // twow-repo#602 ROT-01 3c-B: an out-of-mana backoff wait is running
     ai::cast_wait::Watch castWait;   // twow-repo#602 (AiPlayerbot.CastWait.Preparing): pending wait for the bot's own PREPARING cast
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
