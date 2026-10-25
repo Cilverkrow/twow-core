@@ -1,5 +1,7 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "RogueMultipliers.h"
 #include "RogueStrategy.h"
 
@@ -407,9 +409,12 @@ void RogueStealthStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& trigge
         "no stealth",
         NextAction::array(0, new NextAction("check stealth", ACTION_HIGH), NULL)));
 
+    // twow-repo#630 follow-up (Rotation.FollowUnstealth): above follow (ACTION_HIGH), which otherwise wins every update of
+    // the chase after the master; read when the strategies are built (a reload takes effect with the next strategy reset).
+    bool const dropStealth = ai::cohort::Applies(sPlayerbotAIConfig.rotationFollowUnstealth, ai->GetBot()->GetGUIDLow());
     triggers.push_back(new TriggerNode(
         "unstealth",
-        NextAction::array(0, new NextAction("unstealth", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction("unstealth", dropStealth ? ACTION_HIGH + 1 : ACTION_NORMAL), NULL)));
 }
 
 void RogueStealthPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -845,9 +850,12 @@ void RogueStealthStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& trigge
         "no stealth",
         NextAction::array(0, new NextAction("check stealth", ACTION_HIGH), NULL)));
 
+    // twow-repo#630 follow-up (Rotation.FollowUnstealth): above follow (ACTION_HIGH), which otherwise wins every update of
+    // the chase after the master; read when the strategies are built (a reload takes effect with the next strategy reset).
+    bool const dropStealth = ai::cohort::Applies(sPlayerbotAIConfig.rotationFollowUnstealth, ai->GetBot()->GetGUIDLow());
     triggers.push_back(new TriggerNode(
         "unstealth",
-        NextAction::array(0, new NextAction("unstealth", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction("unstealth", dropStealth ? ACTION_HIGH + 1 : ACTION_NORMAL), NULL)));
 }
 
 void RogueStealthPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1285,9 +1293,12 @@ void RogueStealthStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& trigge
         "no stealth",
         NextAction::array(0, new NextAction("check stealth", ACTION_HIGH), NULL)));
 
+    // twow-repo#630 follow-up (Rotation.FollowUnstealth): above follow (ACTION_HIGH), which otherwise wins every update of
+    // the chase after the master; read when the strategies are built (a reload takes effect with the next strategy reset).
+    bool const dropStealth = ai::cohort::Applies(sPlayerbotAIConfig.rotationFollowUnstealth, ai->GetBot()->GetGUIDLow());
     triggers.push_back(new TriggerNode(
         "unstealth",
-        NextAction::array(0, new NextAction("unstealth", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction("unstealth", dropStealth ? ACTION_HIGH + 1 : ACTION_NORMAL), NULL)));
 }
 
 void RogueStealthPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
