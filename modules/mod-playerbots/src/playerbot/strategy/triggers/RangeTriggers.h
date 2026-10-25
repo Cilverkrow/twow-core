@@ -5,6 +5,7 @@
 #include "playerbot/strategy/generic/CombatStrategy.h"
 #include "playerbot/strategy/values/PossibleAttackTargetsValue.h"
 #include "playerbot/strategy/values/Formations.h"
+#include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c): Rotation.FleeAway (hunter dead zone)
 
 namespace ai
 {
@@ -57,6 +58,17 @@ namespace ai
 
                 if (bot->GetMap()->IsRaid())
                     isRaid = true;
+
+                // twow-repo#602 (c) (AiPlayerbot.Rotation.FleeAway): a hunter whose pet holds the enemy flees only inside the dead
+                // zone (Auto Shot's 8 yd + 1), not at 40 % of the spell range - it can shoot from there.
+                if (sPlayerbotAIConfig.rotationFleeAway && bot->getClass() == CLASS_HUNTER && !isVictim && bot->GetPet() &&
+                    target->GetVictim() == bot->GetPet() && ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow()))
+                {
+                    bool const flee = ai::flee_away::InDeadZone(targetDistance, combatReach);
+                    ai::flee_away::Counters& count = ai::flee_away::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0];
+                    (flee ? count.deadZoneFlee : count.deadZoneQuiet).fetch_add(1, std::memory_order_relaxed);
+                    return flee;
+                }
 
                 // Casters have no minimum range — only flee if the mob is actually targeting/attacking this bot.
                 // Hunters are excluded: their ranged weapons have a ~8 yd minimum range so they must

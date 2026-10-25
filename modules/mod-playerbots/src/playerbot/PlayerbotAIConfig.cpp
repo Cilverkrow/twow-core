@@ -594,6 +594,9 @@ bool PlayerbotAIConfig::Initialize()
     if (rotationMeleeFleeBreak > 2)
         rotationMeleeFleeBreak = 0;   // twow-repo#602: an unknown mode is off
     rotationMeleeFleeBreakRanged = config.GetBoolDefault("AiPlayerbot.Rotation.MeleeFleeBreak.Ranged", false);
+    rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
+    if (rotationFleeAway > 2)
+        rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
     if (rotationReachLosClose > 2)
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -1611,6 +1614,7 @@ bool PlayerbotAIConfig::Initialize()
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
+            {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},

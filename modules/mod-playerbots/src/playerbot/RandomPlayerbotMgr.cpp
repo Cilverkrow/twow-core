@@ -63,6 +63,7 @@
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/MeleeFleeBreakPolicy.h"
+#include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c) (Rotation.FleeAway): [FleeAway] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
@@ -1262,6 +1263,29 @@ void ReportMeleeFleeBreak()
         (unsigned long long)ai::melee_flee_break::heldRanged.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (c) (AiPlayerbot.Rotation.FleeAway): one [FleeAway] line per minute and cohort with activity - flee chases issued
+// with the relative angle, passes that kept the running chase, re-aims of the same enemy after ReissueMs, and the hunter dead-zone
+// evaluations (flee inside / quiet outside) while the pet holds the enemy. Nothing is written when off.
+void ReportFleeAway()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationFleeAway || now < lastReport + 60)
+        return;
+    lastReport = now;
+    auto take = [](std::atomic<std::uint64_t>& counter) { return (unsigned long long)counter.exchange(0, std::memory_order_relaxed); };
+    for (uint32 cohort = 0; cohort < 2; ++cohort)
+    {
+        ai::flee_away::Counters& c = ai::flee_away::counters[cohort];
+        unsigned long long const issued = take(c.issued), kept = take(c.kept), reaimed = take(c.reaimed),
+            deadZoneFlee = take(c.deadZoneFlee), deadZoneQuiet = take(c.deadZoneQuiet);
+        if (!issued && !kept && !reaimed && !deadZoneFlee && !deadZoneQuiet)
+            continue;
+        sLog.outBasic("[FleeAway] mode=%u cohort=%c issued=%llu kept=%llu reaimed=%llu dead_zone_flee=%llu dead_zone_quiet=%llu",
+            sPlayerbotAIConfig.rotationFleeAway, cohort ? 'B' : 'A', issued, kept, reaimed, deadZoneFlee, deadZoneQuiet);
+    }
+}
+
 // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): one [LazyEngineInit] line per minute. deferred = engine
 // rebuilds put off because the engine was not running, caught = rebuilds run later at the start of Engine::DoNextAction
 // (Reset(false) path, mid-walk engine change), saved = deferred - caught (a window can catch rebuilds deferred in an
@@ -1773,6 +1797,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
+    ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
     ReportReachLos();       // twow-repo#594: [ReachLos] once per minute (AiPlayerbot.Rotation.ReachLosClose)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
     ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
