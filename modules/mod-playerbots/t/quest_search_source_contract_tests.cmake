@@ -11,7 +11,7 @@ file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_cpp)
 file(READ "${PB_SOURCE_DIR}/RandomPlayerbotMgr.cpp" mgr)
 
 # #421 A: rejection reasons; B: widening search; C: rescue teleport; grey targets.
-require_text("${choose}" "\"no_active_route_candidate\", lastRejects.Format());" "rejection reasons logged")
+require_text("${choose}" "\"no_active_route_candidate\", lastRejects.Format() + ai::contested_objective::FormatSources(lastSuppressSources));" "rejection reasons logged (F5: + suppression sources)")
 require_text("${choose}" "ai::quest_search::GiverRadius(bot->GetLevel(), searchStage)" "widening giver radius")
 require_text("${choose}" "SortQuestHubsFirst(list);" "hubs first, in the destination job")
 require_text("${grind}" "ai::quest_search::SkipGreyTarget(rosterOnItsOwn, true, false, creature->GetVictim() == bot)" "grey targets skipped")
