@@ -1632,9 +1632,11 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # profession pair and the cost rule are the ones above; recipes alone are no reason to travel). Only as a filler of the
 # quest-first gap: while the quest route backoff runs, no open turn-in waits and no band walk runs ("request named travel
 # target::trainer profession" at 6.296, below the quest request 6.3, above Explore 6.29; with QuestFirstProgression.
-# GrindMode 1 the gap grind at 6.35 fills the gap first). A started trip holds up to 30 min while the rank is still to
-# learn, but ends at once when a turn-in opens; at most one trip per bot and hour. One "[ProfTravel] state=request
-# kind=trainer ... entries=" line per request (entries=0: no trainer found). Mode (in-realm A/B, cohort parity): 0 = as before (default),
+# GrindMode 1 the gap grind at 6.35 fills the gap first). A started trip holds while the rank is still to learn, until
+# the backoff of its start ended plus 10 min (never more than 30 min), and ends at once when a turn-in opens; at most one
+# trip per bot and hour. "[ProfTravel] state=request kind=trainer ... entries= hold_s=" per request (entries=0: no
+# trainer found) and "[ProfTravel] state=end kind=trainer ... reason=done|turn_in|cap|lost trip_s= hold_over_s=" when
+# the trip stops holding (hold_over_s = seconds after the backoff end). Mode (in-realm A/B, cohort parity): 0 = as before (default),
 # 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionTraining.Travel = 0
 # Profession use (#333), persistent roster bots without a real-player master.
