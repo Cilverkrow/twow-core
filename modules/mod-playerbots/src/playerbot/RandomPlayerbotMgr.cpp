@@ -61,6 +61,7 @@
 #include "playerbot/GrindPickPolicy.h"   // twow-repo#601 S2 diagnostic: [GrindPick] minute line
 #include "playerbot/BotActivityPolicy.h"   // twow-repo#601 R01 L1: [BotActivityMin] minute line
 #include "playerbot/CombatIdlePolicy.h"
+#include "playerbot/OomBackoffPolicy.h"   // twow-repo#602 ROT-01 3c-B (Rotation.OomBackoff)
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/HunterMeleeStartPolicy.h"   // twow-repo#602 (Rotation.HunterMeleeStart): [HunterMelee] minute line
 #include "playerbot/MeleeFleeBreakPolicy.h"
@@ -1281,6 +1282,24 @@ void ReportReachLos()
         ai::reach_los::episodes.exchange(0, std::memory_order_relaxed), ai::reach_los::inLosAfter.exchange(0, std::memory_order_relaxed)).c_str());
 }
 
+// twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff): one [OomBackoff] line per minute - melee fallback evaluations
+// that fired (fallback), "enemy too close for spell" kept quiet for such a bot (stayed), idle out-of-mana combat passes
+// followed by the wait (backoffs), waits ended early (woken). Nothing is written when off.
+void ReportOomBackoff()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationOomBackoff || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[OomBackoff] mode=%u fallback=%llu stayed=%llu backoffs=%llu woken=%llu",
+        sPlayerbotAIConfig.rotationOomBackoff,
+        (unsigned long long)ai::oom_backoff::fallback.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::stayed.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::backoffs.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::woken.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak): one [MeleeFleeBreak] line per minute - "outnumbered" evaluations
 // held for melee bots in a flee loop (held), hold windows started (breaks), and evaluations that still sent such a bot
 // to flee (allowed); with MeleeFleeBreak.Ranged the ranged part of held (held_ranged). Nothing is written when off.
@@ -1852,6 +1871,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
+    ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
     ReportReachLos();       // twow-repo#594: [ReachLos] once per minute (AiPlayerbot.Rotation.ReachLosClose)

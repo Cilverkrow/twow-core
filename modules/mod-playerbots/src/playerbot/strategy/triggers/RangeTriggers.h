@@ -6,15 +6,59 @@
 #include "playerbot/strategy/values/PossibleAttackTargetsValue.h"
 #include "playerbot/strategy/values/Formations.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c): Rotation.FleeAway (hunter dead zone)
+#include "playerbot/OomBackoffPolicy.h"
 
 namespace ai
 {
+    // twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff, OomBackoffPolicy.h): a priest, mage or warlock below the
+    // "no mana" mark without a wand in the ranged slot fights in melee instead of standing still.
+    inline bool OomMeleeFallback(PlayerbotAI* ai, AiObjectContext* context)
+    {
+        Player* const bot = ai->GetBot();
+        if (!ai::oom_backoff::Applies(sPlayerbotAIConfig.rotationOomBackoff, bot->GetGUIDLow()))
+            return false;
+        Item const* const ranged = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
+        bool const hasWand = ranged && ranged->GetProto()->Class == ITEM_CLASS_WEAPON && ranged->GetProto()->SubClass == ITEM_SUBCLASS_WEAPON_WAND;
+        return ai::oom_backoff::MeleeFallback(true, bot->getClass(), AI_VALUE2(bool, "has mana", "self target"),
+            AI_VALUE2(uint8, "mana", "self target"), hasWand);
+    }
+
+    class OomMeleeFallbackTrigger : public Trigger
+    {
+    public:
+        OomMeleeFallbackTrigger(PlayerbotAI* ai) : Trigger(ai, "oom melee fallback") {}
+
+        virtual bool IsActive() override
+        {
+            if (!AI_VALUE(Unit*, "current target") || !OomMeleeFallback(ai, context))
+                return false;
+            ai::oom_backoff::fallback.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+    };
+
     class EnemyTooCloseForSpellTrigger : public Trigger 
     {
     public:
         EnemyTooCloseForSpellTrigger(PlayerbotAI* ai) : Trigger(ai, "enemy too close for spell") {}
         
         virtual bool IsActive() override
+        {
+            // twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff): an out-of-mana caster in its melee fallback stays in
+            // melee. With the switch off only this test is added.
+            if (!sPlayerbotAIConfig.rotationOomBackoff)
+                return TooClose();
+            bool const tooClose = TooClose();
+            if (tooClose && OomMeleeFallback(ai, context))
+            {
+                ai::oom_backoff::stayed.fetch_add(1, std::memory_order_relaxed);
+                return false;
+            }
+            return tooClose;
+        }
+
+    protected:
+        bool TooClose()
         {
             Unit* target = AI_VALUE(Unit*, "current target");
             if (target)

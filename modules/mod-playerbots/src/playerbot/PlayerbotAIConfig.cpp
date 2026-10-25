@@ -603,6 +603,10 @@ bool PlayerbotAIConfig::Initialize()
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationOomBackoff = config.GetIntDefault("AiPlayerbot.Rotation.OomBackoff", 0);   // twow-repo#602 ROT-01 3c-B
+    if (rotationOomBackoff > 2)
+        rotationOomBackoff = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationOomBackoffDelayMs = config.GetIntDefault("AiPlayerbot.Rotation.OomBackoff.DelayMs", 1000);
     rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
     if (rotationReachLosClose > 2)
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -1649,6 +1653,7 @@ bool PlayerbotAIConfig::Initialize()
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
+            {"Rotation.OomBackoff", Value(rotationOomBackoff)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
             {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
