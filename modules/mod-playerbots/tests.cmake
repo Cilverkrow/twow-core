@@ -3799,3 +3799,10 @@ add_test(NAME shim_id_sets_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
     -P "${PB_MODULE_DIR}/t/shim_id_sets_source_contract_tests.cmake")
+
+# twow-repo#594 R1 (AiPlayerbot.Path.PosStuck.LongStuckGridOnly, default 0): with PosStuck the upstream "move long stuck" keeps only its
+# invalid / unloaded grid cases.
+add_test(NAME pos_stuck_long_stuck_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/pos_stuck_long_stuck_source_contract_tests.cmake")
