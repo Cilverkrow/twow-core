@@ -236,6 +236,12 @@ set_target_properties(dungeon_clear_tests_fast PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 
+# G1 dry-r3 25.10.2026: the record's realised gear per member, schema 12 (source contract; TestTestRunRecord is core-coupled).
+add_test(NAME dungeon_clear_test_run_record_ilvl_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_run_record_ilvl_contract.cmake")
+
 add_test(NAME dungeon_clear_fast
          COMMAND dungeon_clear_tests_fast
          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")

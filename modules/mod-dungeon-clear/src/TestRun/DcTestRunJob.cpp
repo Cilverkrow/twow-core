@@ -143,6 +143,28 @@ namespace
         return "unknown";
     }
 
+    // G1 dry-r3 25.10.2026 (owner: "is it the gear?"): gearIlvl is only the
+    // ceiling the factory was given. This is what the member actually wears:
+    // the mean item level over its filled equipment slots (shirt and tabard
+    // left out - no stats) and how many such slots are filled.
+    void EquippedIlvl(Player* bot, float& mean, std::uint32_t& slots)
+    {
+        std::uint32_t sum = 0;
+        slots = 0;
+        for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        {
+            if (slot == EQUIPMENT_SLOT_BODY || slot == EQUIPMENT_SLOT_TABARD)
+                continue;
+            Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+            ItemPrototype const* proto = item ? item->GetProto() : nullptr;
+            if (!proto)
+                continue;
+            sum += proto->ItemLevel;
+            ++slots;
+        }
+        mean = slots ? float(sum) / float(slots) : 0.0f;
+    }
+
     // Premade-spec template index for the wanted spec name — exact match
     // first, then substring fallback ("prot" catches a renamed "prot pve").
     // -1 when the class has no matching template.
@@ -1056,6 +1078,7 @@ void DcTestRunJob::TickProvisioning(bool& provisionBudget)
     entry.role = slot.role;
     entry.guid = slot.guid.GetRawValue();
     entry.level = bot->GetLevel();
+    EquippedIlvl(bot, entry.avgIlvl, entry.gearSlots);   // after the gear, ammo and food above
     _record.comp.push_back(entry);
 
     LOG_INFO("playerbots.dungeonclear",
@@ -1166,6 +1189,7 @@ void DcTestRunJob::TickProvisioningRoster()
         entry.roleMismatch = slot.role != std::string(detected);
         entry.guid = slot.guid.GetRawValue();
         entry.level = bot->GetLevel();
+        EquippedIlvl(bot, entry.avgIlvl, entry.gearSlots);   // a roster member wears its own gear
         entry.fromMap = bot->GetMapId();
         entry.fromX = bot->GetPositionX();
         entry.fromY = bot->GetPositionY();
