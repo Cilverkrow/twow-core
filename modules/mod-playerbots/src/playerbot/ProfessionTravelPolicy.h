@@ -26,8 +26,11 @@ constexpr std::uint32_t kSkinningKnife = 7005;
 
 // Apprentice ranks are taught from level 5 (RECHERCHE OB-50 2.).
 constexpr std::uint32_t kMinLevel = 5;
-// A started trip holds its travel condition this long (the trip itself, the gap may end on the way).
+// A started trip holds its travel condition until the backoff of its start ends plus kHoldAfterBackoffSeconds, never
+// longer than kTripHoldSeconds (CLI-Deep 25.10.: the backoff is 2-10 min; a longer hold keeps the bot out of the quest
+// flow - TravelActionMultiplier holds the quest request back while the trip runs).
 constexpr std::uint32_t kTripHoldSeconds = 1800;
+constexpr std::uint32_t kHoldAfterBackoffSeconds = 600;
 // One trip of a kind per bot and hour: a visit that taught nothing is not repeated at once.
 constexpr std::uint32_t kTripCooldownSeconds = 3600;
 
@@ -44,11 +47,43 @@ inline bool InQuestGap(std::uint32_t now, std::uint32_t backoffUntil, bool turnI
     return now < backoffUntil && !turnInWaiting && bandTripEnd == 0;
 }
 
-// startedAt = the last request of this kind (0 = never).
-inline bool TripHolds(std::uint32_t now, std::uint32_t startedAt)
+// The hold end of a trip requested at `now` while the backoff runs until `backoffUntil`.
+inline std::uint32_t HoldUntil(std::uint32_t now, std::uint32_t backoffUntil)
 {
-    return startedAt != 0 && now < startedAt + kTripHoldSeconds;
+    std::uint32_t const cap = now + kTripHoldSeconds;
+    std::uint32_t const afterBackoff = backoffUntil + kHoldAfterBackoffSeconds;
+    return afterBackoff < cap ? afterBackoff : cap;
 }
+
+// holdUntil = HoldUntil() of the last request of this kind (0 = never).
+inline bool TripHolds(std::uint32_t now, std::uint32_t holdUntil)
+{
+    return holdUntil != 0 && now < holdUntil;
+}
+
+// The seconds a trip ran on after the backoff of its start ended: its quest-time cost (CLI-Deep's hold_over_s).
+inline std::uint32_t HoldOverSeconds(std::uint32_t now, std::uint32_t backoffUntil)
+{
+    return now > backoffUntil ? now - backoffUntil : 0;
+}
+
+// Why a started trip stops holding (the [ProfTravel] state=end reason): its reason is gone (rank learned / tool in
+// the bags), a turn-in opened, or the hold ran out.
+inline char const* EndReason(bool reasonLasts, bool turnInWaiting, bool holds)
+{
+    if (!reasonLasts)
+        return "done";
+    if (turnInWaiting)
+        return "turn_in";
+    if (!holds)
+        return "cap";
+    return nullptr;
+}
+
+// "manual int" suffixes of a trip kind, appended to kTrainerTripValue / kToolTripValue.
+constexpr char const* kHoldUntilSuffix = " hold until";
+constexpr char const* kBackoffEndSuffix = " backoff end";
+constexpr char const* kOpenSuffix = " open";
 
 inline bool CooldownOver(std::uint32_t now, std::uint32_t startedAt)
 {

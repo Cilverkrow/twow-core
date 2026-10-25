@@ -74,7 +74,11 @@ require_text("${values_cpp}" "bool const applies = ai::cohort::Applies(mode, bot
 require_text("${values_cpp}" "AI_VALUE2(int, \"manual int\", \"quest route backoff until\")" "the backoff is read")
 forbid_text("${values_cpp}" "SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\"" "the backoff is never written here")
 require_text("${values_cpp}" "return ai::profession_travel::InQuestGap(now, backoffUntil, ProfessionTripTurnInWaiting(bot, travelTarget),\n        travelTarget->GetBandTripEnd());" "an open turn-in and a band walk come first")
-require_text("${values_cpp}" "    return !ProfessionTripTurnInWaiting(bot, AI_VALUE(TravelTarget*, \"travel target\"));" "a started trip ends when a turn-in opens")
+require_text("${values_cpp}" "reasonLasts && ProfessionTripTurnInWaiting(bot, AI_VALUE(TravelTarget*, \"travel target\"))," "a started trip ends when a turn-in opens")
+require_text("${values_cpp}" "ai::profession_travel::TripHolds(now, holdUntil));" "the hold ends at its hold-until time")
+require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=%s trip_s=%u hold_over_s=%u\"," "one end line per trip with hold_over_s")
+require_text("${policy}" "return afterBackoff < cap ? afterBackoff : cap;" "hold = backoff end + 10 min, at most 30 min")
+require_text("${policy}" "constexpr std::uint32_t kHoldAfterBackoffSeconds = 600;" "10 min after the backoff (CLI-Deep)")
 require_text("${values_cpp}" "if (!sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell))" "ranks only, no recipe trips")
 forbid_text("${conf_dist}" "[ProfTravel] state=start" "the documented line is state=request")
 require_order("${values_cpp}" "else if (name == \"trainer profession\" || name == \"trainer profession hold\")" "else if (name.find(\"trainer\") == 0)" "the profession trip before the generic trainer branch")
@@ -88,8 +92,8 @@ require_order("${values_cpp}" "!ai::profession_travel::HasGatherTool(gatheringSk
 
 # Request: before the generic trainer branch, request time set before the empty check, one line, hold conditions, allowed.
 require_order("${choose_cpp}" "else if (travelName == \"trainer profession\" || travelName == \"tool vendor\")" "else if (travelName.find(\"trainer\") == 0)" "the profession request before the generic trainer branch")
-require_order("${choose_cpp}" "trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue," "        if (entries.empty())\n            return false;\n\n        TravelDestinationPurpose const purpose" "the request time counts an empty request too")
-require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u\"," "one line per request")
+require_order("${choose_cpp}" "SET_AI_VALUE2(int, \"manual int\", key, int(now));" "        if (entries.empty())\n            return false;\n\n        TravelDestinationPurpose const purpose" "the request time counts an empty request too")
+require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u hold_s=%u\"," "one line per request")
 require_text("${choose_cpp}" "travelName == \"trainer profession\" ? \"should travel named::trainer profession hold\" :" "trainer trip hold condition")
 require_text("${choose_cpp}" "travelName == \"tool vendor\" ? \"should travel named::tool vendor hold\" :" "tool trip hold condition")
 require_text("${choose_cpp}" "else if (name == \"trainer profession\" || name == \"tool vendor\")   // twow-repo#333 Berufe P1-a / P1-b\n        return true;" "isAllowed")

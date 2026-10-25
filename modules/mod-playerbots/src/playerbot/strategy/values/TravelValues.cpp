@@ -133,17 +133,33 @@ bool ProfessionTripStartable(PlayerbotAI* ai, uint32 mode, char const* tripValue
         travelTarget->GetBandTripEnd());
 }
 
-// A started trip keeps its travel condition while the reason lasts (the backoff may end on the way: the trip is not
-// cut short for a quest search), but never past an open turn-in - the trip ends and the turn-in request runs.
-bool ProfessionTripHolds(PlayerbotAI* ai, uint32 mode, char const* tripValue)
+// A started trip keeps its travel condition while its reason lasts, until the backoff of its start ended plus 10 min
+// (at most 30 min, ProfessionTravelPolicy.h HoldUntil), and never past an open turn-in - the trip ends and the turn-in
+// request runs. The first evaluation that ends an open trip writes one "[ProfTravel] state=end" line with the reason and
+// hold_over_s (the seconds after the backoff end: the quest-time cost, CLI-Deep 25.10.).
+bool ProfessionTripHolds(PlayerbotAI* ai, char const* tripValue, char const* kind, bool reasonLasts)
 {
     AiObjectContext* context = ai->GetAiObjectContext();
     Player* bot = ai->GetBot();
-    if (!ai::cohort::Applies(mode, bot->GetGUIDLow()))
-        return false;
-    if (!ai::profession_travel::TripHolds(uint32(time(nullptr)), uint32(std::max(0, AI_VALUE2(int, "manual int", tripValue)))))
-        return false;
-    return !ProfessionTripTurnInWaiting(bot, AI_VALUE(TravelTarget*, "travel target"));
+    std::string const key(tripValue);
+    uint32 const now = uint32(time(nullptr));
+    uint32 const holdUntil = uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix)));
+    char const* const end = ai::profession_travel::EndReason(reasonLasts,
+        reasonLasts && ProfessionTripTurnInWaiting(bot, AI_VALUE(TravelTarget*, "travel target")),
+        ai::profession_travel::TripHolds(now, holdUntil));
+    if (!end)
+        return true;
+
+    if (AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
+    {
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, 0);
+        uint32 const startedAt = uint32(std::max(0, AI_VALUE2(int, "manual int", key)));
+        sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=%s trip_s=%u hold_over_s=%u",
+            kind, bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), end,
+            now > startedAt ? now - startedAt : 0, ai::profession_travel::HoldOverSeconds(now,
+                uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))));
+    }
+    return false;
 }
 }
 
@@ -749,31 +765,33 @@ bool ShouldTravelNamedValue::Calculate()
     else if (name == "trainer profession" || name == "trainer profession hold")
     {
         uint32 const mode = sPlayerbotAIConfig.professionTrainingTravel;
-        bool const hold = name == "trainer profession hold";
-        if (hold ? !ProfessionTripHolds(ai, mode, ai::profession_travel::kTrainerTripValue) :
-                !ProfessionTripStartable(ai, mode, ai::profession_travel::kTrainerTripValue))
+        if (name == "trainer profession hold")
+            return ai::cohort::Applies(mode, bot->GetGUIDLow()) &&
+                ProfessionTripHolds(ai, ai::profession_travel::kTrainerTripValue, "trainer", !PhaseOneProfessionTrainers(ai).empty());
+
+        if (!ProfessionTripStartable(ai, mode, ai::profession_travel::kTrainerTripValue))
             return false;
 
         if (PhaseOneProfessionTrainers(ai).empty())
             return false;
 
-        return hold || UsesFreePersistentRosterProfessionTraining(bot) ||
+        return UsesFreePersistentRosterProfessionTraining(bot) ||
             AI_VALUE2(bool, "has all money for", (uint32)NeedMoneyFor::skilltraining);
     }
     // twow-repo#333 Berufe P1-b (AiPlayerbot.ProfessionUse.ToolBuy): a gap trip to a vendor of the missing pick or knife.
     else if (name == "tool vendor" || name == "tool vendor hold")
     {
         uint32 const mode = sPlayerbotAIConfig.professionUseToolBuy;
-        bool const hold = name == "tool vendor hold";
-        if (hold ? !ProfessionTripHolds(ai, mode, ai::profession_travel::kToolTripValue) :
-                !ProfessionTripStartable(ai, mode, ai::profession_travel::kToolTripValue))
+        if (name == "tool vendor hold")
+            return ai::cohort::Applies(mode, bot->GetGUIDLow()) &&
+                ProfessionTripHolds(ai, ai::profession_travel::kToolTripValue, "tool", MissingGatherTool(ai) != 0);
+
+        if (!ProfessionTripStartable(ai, mode, ai::profession_travel::kToolTripValue))
             return false;
 
         uint32 const tool = MissingGatherTool(ai);
         if (!tool)
             return false;
-        if (hold)
-            return true;
 
         ItemPrototype const* proto = sObjectMgr.GetItemPrototype(tool);
         return proto && AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::tradeskill) >= proto->BuyPrice;

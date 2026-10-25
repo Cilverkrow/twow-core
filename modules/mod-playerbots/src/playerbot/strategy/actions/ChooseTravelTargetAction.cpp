@@ -2609,11 +2609,23 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
             for (int32 const entry : GAI_VALUE2(std::list<int32>, "item vendor list", tool))
                 entries.push_back(entry);
 
-        SET_AI_VALUE2(int, "manual int", trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue,
-            int(uint32(time(nullptr))));
-        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u",
+        std::string const key = trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
+        uint32 const now = uint32(time(nullptr));
+        uint32 const backoffUntil = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
+        uint32 const holdUntil = ai::profession_travel::HoldUntil(now, backoffUntil);
+        // A trip of this kind still open (its target expired without the hold being evaluated again) ends here.
+        if (AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
+            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u",
+                trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
+                now - std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key)))),
+                ai::profession_travel::HoldOverSeconds(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))));
+        SET_AI_VALUE2(int, "manual int", key, int(now));
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix, int(holdUntil));
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix, int(backoffUntil));
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, entries.empty() ? 0 : 1);
+        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u hold_s=%u",
             trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), tool,
-            uint32(entries.size()));
+            uint32(entries.size()), holdUntil - now);
 
         if (entries.empty())
             return false;

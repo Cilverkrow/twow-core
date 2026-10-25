@@ -43,11 +43,19 @@ int main()
         Require(!InQuestGap(100, 200, false, 150), "a band walk / band trip comes first");
     }
 
-    // 3) Hold and hourly limit from the request time.
+    // 3) Hold (backoff end + 10 min, at most 30 min), quest-time cost, end reasons, hourly limit.
     {
+        Require(HoldUntil(1000, 1240) == 1240 + kHoldAfterBackoffSeconds, "a 4-minute backoff: hold to its end + 10 min");
+        Require(HoldUntil(1000, 1000 + 3600) == 1000 + kTripHoldSeconds, "never longer than 30 min");
+        Require(kHoldAfterBackoffSeconds == 600 && kTripHoldSeconds == 1800, "CLI-Deep's 10 min, hard cap 30");
         Require(!TripHolds(1000, 0), "never requested: no hold");
-        Require(TripHolds(1000, 1000) && TripHolds(1000 + kTripHoldSeconds - 1, 1000), "the trip holds 30 min");
-        Require(!TripHolds(1000 + kTripHoldSeconds, 1000), "the hold ends");
+        Require(TripHolds(1000, 1840) && TripHolds(1839, 1840), "holds before its end");
+        Require(!TripHolds(1840, 1840), "the hold ends");
+        Require(HoldOverSeconds(1200, 1240) == 0 && HoldOverSeconds(1300, 1240) == 60, "seconds after the backoff end");
+        Require(std::strcmp(EndReason(false, true, true), "done") == 0, "reason gone comes first");
+        Require(std::strcmp(EndReason(true, true, true), "turn_in") == 0, "an open turn-in ends the trip");
+        Require(std::strcmp(EndReason(true, false, false), "cap") == 0, "the hold ran out");
+        Require(EndReason(true, false, true) == nullptr, "still holding");
         Require(CooldownOver(5, 0), "never requested: may start");
         Require(!CooldownOver(1000 + kTripCooldownSeconds - 1, 1000), "one trip per hour");
         Require(CooldownOver(1000 + kTripCooldownSeconds, 1000), "the next hour may start again");
