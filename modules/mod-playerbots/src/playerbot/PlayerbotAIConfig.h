@@ -660,6 +660,8 @@ public:
     uint32 rotationDarkRuneGateRecheckSeconds = 10;  // ... the wait after a failed check
     uint32 rotationReachLosClose = 0;  // twow-repo#594 (Linalella, 23.10.): a hostile reach target out of sight is chased to half the distance until in sight, never inside the floor (ReachLosPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
     uint32 rotationReachPlayerMaster = 0;  // twow-repo#630 GRP-REACH-01: the reach progress check (hotfix 8.2) also for a bot with a real player as master, own target only, 30 s ignore; 0 off, 1 all, 2 cohort B (odd guid)
+    uint32 rotationReachDropEngagement = 0;  // twow-repo#630 follow-up (owner repro 25.10.): that drop also clears attack/pull/old target, selection and swing (combat ends, follow resumes; ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationFollowUnstealth = 0;  // twow-repo#630 follow-up: a rogue following a real player out of combat, dungeons and BGs drops stealth while the master moves or it catches up, above follow (ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
     bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
     bool perfPartyBuffKnownSpellGate = false;  // twow-repo#541 (audit A22): five party buff/cure triggers skip their party scan while the bot knows no rank of the action's spell (0 = off)
     bool perfLazyEngineInit = false;  // twow-repo#541 (audit A21): a strategy change rebuilds an engine that is not running (idle combat/non-combat, dead) only when it is activated (0 = off)
