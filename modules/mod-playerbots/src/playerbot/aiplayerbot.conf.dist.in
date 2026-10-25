@@ -1328,6 +1328,20 @@ AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
 # the step (e.g. F1 = 3 with F4 = 1: two walks, then the step).
 #   0 = off (default), 1..10; other values act like 0 (one error line).
 AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches = 0
+# twow-repo#601 F5b (CLI-Deep 25.10.2026): ContestedObjectiveWait - in the QFO candidate most quest-objective work timeouts and quest-loop
+# failures fell on objectives that several bots worked at once (few spawns, long respawn); after QuestWorkTimeouts.Max timeouts the
+# objective was blocked for an hour and the bot stood in the quest backoff. With the switch a work timeout at a contested objective
+# (>= MinBots other roster bots within 40 yd of the bot) counts neither toward QuestWorkTimeouts nor toward QuestLoop: the objective
+# is held back for Seconds only (about a respawn), so the next search takes another objective or quest, and it comes back soon.
+# One line per case: [ContestedObjective] bot= quest= target_entry= kind=go|kill bots_near= min_bots= hold_seconds=.
+# Game-object objectives (loot per looter) by default; Kill = 1 adds creature objectives, but never for a bot in a group of roster
+# bots only (the ad-hoc / S7 group managers share the kill credit there).
+#   ContestedObjectiveWait: 0 = off (default), 1 = every quest-first roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+#   MinBots 1..20 (default 2), Seconds 30..1800 (default 300).
+AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait = 0
+AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.Kill = 0
+AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.MinBots = 2
+AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.Seconds = 300
 # twow-repo#627 S7 hook (OB-10 24.10.2026): the band step skips a bot whose quest log is too full (reason=log_full). With
 # BandLadder and S7 (QuestGroups.Enable) on, an open group quest the bot has waited on for help this many minutes (S7
 # queue age, counted from its first wait, also across failed groups) counts as a free slot for that gate. The quest

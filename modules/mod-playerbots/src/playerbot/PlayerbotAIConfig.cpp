@@ -809,6 +809,16 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestBand] config key=BandWalkAfterEmptySearches value=%u result=off (0 off, 1..10)", questFirstProgressionBandWalkAfterEmptySearches);
         questFirstProgressionBandWalkAfterEmptySearches = 0;
     }
+    // twow-repo#601 F5b (ContestedObjectiveWait): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questFirstProgressionContestedObjectiveWait = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait", 0);
+    if (questFirstProgressionContestedObjectiveWait > 2)
+    {
+        sLog.outError("[ContestedObjective] config key=ContestedObjectiveWait value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionContestedObjectiveWait);
+        questFirstProgressionContestedObjectiveWait = 0;
+    }
+    questFirstProgressionContestedObjectiveWaitKill = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.Kill", false);
+    questFirstProgressionContestedObjectiveWaitMinBots = std::min<uint32>(20, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.MinBots", 2)));
+    questFirstProgressionContestedObjectiveWaitSeconds = std::min<uint32>(1800, std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.Seconds", 300)));
     // twow-repo#627 S7 hook: queued group quests count as free slots for the band log gate, 0 = off, 1..240 minutes.
     questFirstProgressionBandQueuedFreeMinutes = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandQueuedFreeMinutes", 0);
     if (questFirstProgressionBandQueuedFreeMinutes > 240)
@@ -1595,6 +1605,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.BandStepAfterEmptySearches", Value(questFirstProgressionBandStepAfterEmptySearches)},
             {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
             {"QuestFirstProgression.BandWalkAfterEmptySearches", Value(questFirstProgressionBandWalkAfterEmptySearches)},
+            {"QuestFirstProgression.ContestedObjectiveWait", Value(questFirstProgressionContestedObjectiveWait)},
+            {"QuestFirstProgression.ContestedObjectiveWait.Kill", Value(questFirstProgressionContestedObjectiveWaitKill)},
             {"QuestFirstProgression.BandQueuedFreeMinutes", Value(questFirstProgressionBandQueuedFreeMinutes)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
