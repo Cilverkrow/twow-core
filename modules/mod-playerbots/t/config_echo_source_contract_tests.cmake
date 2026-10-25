@@ -98,6 +98,8 @@ set(entries
   "QuestFirstProgression.BandStepAfterEmptySearches|questFirstProgressionBandStepAfterEmptySearches"
   "QuestFirstProgression.BandLadderSameZoneNext|questFirstProgressionBandLadderSameZoneNext"
   "QuestFirstProgression.BandWalkAfterEmptySearches|questFirstProgressionBandWalkAfterEmptySearches"
+  "QuestFirstProgression.ContestedObjectiveWait|questFirstProgressionContestedObjectiveWait"
+  "QuestFirstProgression.ContestedObjectiveWait.Kill|questFirstProgressionContestedObjectiveWaitKill"
   "QuestFirstProgression.BandQueuedFreeMinutes|questFirstProgressionBandQueuedFreeMinutes"
   "QuestFirstProgression.TurnInParkFailures|questFirstProgressionTurnInParkFailures"
   "QuestFirstProgression.MinLevelForCrossMapQuestRoute|questFirstProgressionMinLevelForCrossMapQuestRoute"
@@ -125,11 +127,14 @@ set(entries
   "Rotation.RestGate|rotationRestGate"
   "Rotation.CastLosGate|rotationCastLosGate"
   "CastWait.Preparing|castWaitPreparing"
+  "Rotation.HunterMeleeStart|rotationHunterMeleeStart"
   "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
+  "Rotation.OomBackoff|rotationOomBackoff"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
   "Rotation.FleeAway|rotationFleeAway"
   "Rotation.ReachLosClose|rotationReachLosClose"
   "Rotation.ReachPlayerMaster|rotationReachPlayerMaster"
+  "Rotation.DarkRuneGate|rotationDarkRuneGate"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "ProfessionTraining.Travel|professionTrainingTravel"
   "ProfessionUse.ToolBuy|professionUseToolBuy"
@@ -144,9 +149,13 @@ set(entries
   "Grind.GreyByLevel|grindGreyByLevel"
   "Grind.QuestFirstOrder|grindQuestFirstOrder"
   "Grind.NeighbourAware|grindNeighbourAware"
+  "QuestLoop.InactiveAfterProgress|questLoopInactiveAfterProgress"
   "BotGroups.Enabled|botGroupsEnabled"
   "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
-  "QuestGroups.Enable|questGroupsEnable")
+  "BotGroups.AdHoc.ScanSlices|botGroupsAdhocScanSlices"
+  "QuestGroups.Enable|questGroupsEnable"
+  "QuestGroups.ScanSlices|questGroupsScanSlices"
+  "QuestGroups.StagedOps|questGroupsStagedOps")
 foreach(entry IN LISTS entries)
   string(REPLACE "|" ";" parts "${entry}")
   list(GET parts 0 key)

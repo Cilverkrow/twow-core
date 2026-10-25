@@ -61,10 +61,13 @@
 #include "playerbot/GrindPickPolicy.h"   // twow-repo#601 S2 diagnostic: [GrindPick] minute line
 #include "playerbot/BotActivityPolicy.h"   // twow-repo#601 R01 L1: [BotActivityMin] minute line
 #include "playerbot/CombatIdlePolicy.h"
+#include "playerbot/OomBackoffPolicy.h"   // twow-repo#602 ROT-01 3c-B (Rotation.OomBackoff)
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware): [GrindNeighbour] minute line
+#include "playerbot/HunterMeleeStartPolicy.h"   // twow-repo#602 (Rotation.HunterMeleeStart): [HunterMelee] minute line
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c) (Rotation.FleeAway): [FleeAway] minute line
+#include "playerbot/DarkRuneGatePolicy.h"   // twow-repo#602 ROT-01 3c (Rotation.DarkRuneGate): [DarkRuneGate] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
 #include "playerbot/CastLosGatePolicy.h"   // twow-repo#602 (Rotation.CastLosGate): [CastLosGate] minute line
 #include "playerbot/PathReusePolicy.h"
@@ -1212,6 +1215,23 @@ void ReportCombatIdle()
         (unsigned long long)ai::combat_idle::woken.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.HunterMeleeStart): one [HunterMelee] line per minute - "switch to melee" that started the
+// swing (started), "switch to ranged" that stopped it (stopped), close-mode attacks that start melee only because of the switch
+// (close_attacks). Nothing is written when off.
+void ReportHunterMelee()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationHunterMeleeStart || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[HunterMelee] mode=%u started=%llu stopped=%llu close_attacks=%llu",
+        sPlayerbotAIConfig.rotationHunterMeleeStart,
+        (unsigned long long)ai::hunter_melee_start::started.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::hunter_melee_start::stopped.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::hunter_melee_start::closeAttacks.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 (AiPlayerbot.CastWait.Preparing): one [CastWait] line per minute - casts held to their real end (waits =
 // spells, wait_ms = granted delay), waits the per-spell deadline cut (capped), waits released early because the spell
 // stopped PREPARING (released), and the AI passes the waits saved (est.: wait / ReactDelay). Nothing is written when off.
@@ -1309,6 +1329,24 @@ void ReportReachLos()
         ai::reach_los::episodes.exchange(0, std::memory_order_relaxed), ai::reach_los::inLosAfter.exchange(0, std::memory_order_relaxed)).c_str());
 }
 
+// twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff): one [OomBackoff] line per minute - melee fallback evaluations
+// that fired (fallback), "enemy too close for spell" kept quiet for such a bot (stayed), idle out-of-mana combat passes
+// followed by the wait (backoffs), waits ended early (woken). Nothing is written when off.
+void ReportOomBackoff()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationOomBackoff || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[OomBackoff] mode=%u fallback=%llu stayed=%llu backoffs=%llu woken=%llu",
+        sPlayerbotAIConfig.rotationOomBackoff,
+        (unsigned long long)ai::oom_backoff::fallback.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::stayed.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::backoffs.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::woken.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak): one [MeleeFleeBreak] line per minute - "outnumbered" evaluations
 // held for melee bots in a flee loop (held), hold windows started (breaks), and evaluations that still sent such a bot
 // to flee (allowed); with MeleeFleeBreak.Ranged the ranged part of held (held_ranged). Nothing is written when off.
@@ -1348,6 +1386,24 @@ void ReportFleeAway()
         sLog.outBasic("[FleeAway] mode=%u cohort=%c issued=%llu kept=%llu reaimed=%llu dead_zone_flee=%llu dead_zone_quiet=%llu",
             sPlayerbotAIConfig.rotationFleeAway, cohort ? 'B' : 'A', issued, kept, reaimed, deadZoneFlee, deadZoneQuiet);
     }
+}
+
+// twow-repo#602 ROT-01 3c (AiPlayerbot.Rotation.DarkRuneGate): one [DarkRuneGate] line per minute - low mana checks of the
+// rune and the potion (checks), usable (passed), not usable so the wait started (blocked), evaluations inside the wait
+// (waited). Nothing is written when off.
+void ReportDarkRuneGate()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationDarkRuneGate || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[DarkRuneGate] mode=%u checks=%llu passed=%llu blocked=%llu waited=%llu",
+        sPlayerbotAIConfig.rotationDarkRuneGate,
+        (unsigned long long)ai::dark_rune_gate::checks.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::dark_rune_gate::passed.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::dark_rune_gate::blocked.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::dark_rune_gate::waited.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#541 (audit A21, AiPlayerbot.Perf.LazyEngineInit): one [LazyEngineInit] line per minute. deferred = engine
@@ -1860,11 +1916,14 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCastLosGate();  // twow-repo#602: [CastLosGate] once per minute (AiPlayerbot.Rotation.CastLosGate)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
+    ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
     ReportGrindNeighbour();   // twow-repo#602 #2: [GrindNeighbour] once per minute (AiPlayerbot.Grind.NeighbourAware)
+    ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
     ReportReachLos();       // twow-repo#594: [ReachLos] once per minute (AiPlayerbot.Rotation.ReachLosClose)
+    ReportDarkRuneGate();   // twow-repo#602 ROT-01 3c: [DarkRuneGate] once per minute (AiPlayerbot.Rotation.DarkRuneGate)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
     ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)

@@ -6,6 +6,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/TravelChoosePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/ContestedObjectivePolicy.h"   // twow-repo#601 F5 (diagnostic): death_suppressed by source
 
 namespace ai::quest_band { struct WalkPlan; }   // twow-repo#601 S5a F4 (QuestBandPolicy.h)
 
@@ -32,6 +33,8 @@ namespace ai
         uint32 lastChooseBudgetLog = 0;
         // #421: why the last choice found nothing, per reason.
         ai::quest_search::RejectCounts lastRejects;
+        // twow-repo#601 F5 (diagnostic): its death_suppressed skips by suppression source.
+        ai::contested_objective::SourceCounts lastSuppressSources{};
         // #421 B: no quest target - widen the quest search.
         void WidenQuestSearch(uint32 ranges);
         // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the band step from the empty quest search
