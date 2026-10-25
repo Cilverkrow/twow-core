@@ -3673,6 +3673,26 @@ add_test(NAME melee_flee_break_policy
   COMMAND melee_flee_break_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 (c) (AiPlayerbot.Rotation.FleeAway, default 0, behaviour change): the flee chase angle relative to the enemy's
+# facing, a kept chase (ReissueMs), the hunter dead zone while the pet holds the enemy.
+add_executable(flee_away_policy_tests
+  "${PB_MODULE_DIR}/t/flee_away_policy_tests.cpp")
+
+target_include_directories(flee_away_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(flee_away_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME flee_away_policy
+  COMMAND flee_away_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME flee_away_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/flee_away_source_contract_tests.cmake")
+
 # twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
 # end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process; no key, no state.
 add_executable(config_echo_policy_tests
