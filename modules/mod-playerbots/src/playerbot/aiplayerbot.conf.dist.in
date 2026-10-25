@@ -2582,6 +2582,13 @@ AiPlayerbot.BotUpdateTraceTriggers = 0
 # (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
 # could choose every fishing zone. 0 = as before (default).
 AiPlayerbot.Gather.FishingSkillCheck = 0
+# twow-repo#333 Berufe P1-f (owner 25.10.2026): the quest plants (Serpentbloom, Bloodpetal Sprout, Gloom Weed, Doom Weed,
+# Incendia Agave, Plant Bundle, Violet Tragan, Hyjalroot ...: lock 259, a herbalism slot next to "open kneeling", the loot
+# is a quest item) are picked only while one of the bot's quests wants them. Before, a herbalist without the quest picked
+# them on the way (passive gathering). The gather travel targets have left them out since #414. Real herbs (Peacebloom,
+# Silverleaf ...) stay as they are. No log line (the check runs on every loot scan).
+# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Gather.QuestHerbFilter = 0
 # twow-repo#596 D: 1 = the zone-escape trigger and the hearthstone check take the home bind's area from the area the core
 # stored at bind time, instead of a terrain lookup at the bind position (which loaded that far grid from disk again and
 # again: 126 ms per check for a bot whose bind spot nobody is near). Same area and level. 0 = terrain lookup (default).
