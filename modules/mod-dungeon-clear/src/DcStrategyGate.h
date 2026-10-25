@@ -141,6 +141,22 @@ namespace DcStrategyGate
     // throttled cadence from the world tick. This is the correctness net for the
     // reset-while-in-dungeon case described above.
     void ReconcileAllBots();
+
+    // DungeonClear.Gate.ActiveRunOnly (CLI-GRP 25.10.2026, default 0 = the invariant above unchanged).
+    // The gate swaps the stock drivers out (-follow,-loot,-travel,..., area-trigger relay off) for EVERY bot on
+    // a dungeon map, and the DC strategy only follows the tank while a run is on - so in a player-led group
+    // without `dc on` the bots stopped following, looting and taking the exit with their player. With 1 the
+    // DC strategies are only installed while a run is active for the bot (its own run, or a groupmate's on
+    // the same map) or the bot is driven by `.dc test` (externally managed); when the run ends the bot gets
+    // its own defaults back (ResetStrategies, which honours a real master) instead of the fixed restore list,
+    // which would hand a player's bot grind/travel/rpg it never had.
+    constexpr bool GateWanted(bool inDungeon, bool activeRunOnly, bool runActive, bool externallyManaged)
+    {
+        return inDungeon && (!activeRunOnly || runActive || externallyManaged);
+    }
+
+    void SetActiveRunOnly(bool on);   // from OnAfterConfigLoad
+    bool ActiveRunOnly();
 }
 
 #endif  // _DC_STRATEGY_GATE_H
