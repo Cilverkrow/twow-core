@@ -652,6 +652,8 @@ public:
     uint32 castWaitPreparing = 0;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
     uint32 rotationHunterMeleeStart = 0;  // twow-repo#602 (hunter deaths 25.10.): the hunter's switch to melee/ranged really starts/stops the swing (Player::MeleeAttackStart is a stub), close mode attacks in melee (HunterMeleeStartPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationMeleeFleeBreak = 0;  // twow-repo#602 (death analysis 21.10.): "outnumbered" stays quiet for a melee bot while its flee loop holds; 0 off, 1 all, 2 cohort B
+    uint32 rotationOomBackoff = 0;  // twow-repo#602 ROT-01 3c-B (priest Farathil loop, 24.10.): an out-of-mana priest/mage/warlock without a wand fights in melee, an idle out-of-mana combat pass waits DelayMs (OomBackoffPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationOomBackoffDelayMs = 1000;  // ... the wait after such a pass (ends early when the mana is back or the health low)
     bool rotationMeleeFleeBreakRanged = false;  // twow-repo#602 (step 2, 21.10.): the same hold for ranged bots (cohort from Rotation.MeleeFleeBreak); kite triggers untouched
     uint32 rotationFleeAway = 0;  // twow-repo#602 (c) (hunter + adds analysis 25.10.): flee chase angle relative to the enemy's facing, a kept chase (1 s), hunter flee only in the dead zone while the pet holds the enemy (FleeAwayPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationDarkRuneGate = 0;  // twow-repo#602 ROT-01 3c (priest Farathil loop, 24.10.): "dark rune" is pushed only while it or "mana potion" is usable, a failed check waits (DarkRuneGatePolicy.h); 0 off, 1 all, 2 cohort B

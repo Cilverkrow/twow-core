@@ -2970,6 +2970,19 @@ AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
 # 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
 AiPlayerbot.Rotation.FleeAway = 0
 
+# twow-repo#602 ROT-01 3c-B (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): an
+# out-of-mana caster without a wand stood in combat for hours - every AI tick (~7/s) pushed its whole rotation, each spell and
+# "shoot" ended IMPOSSIBLE, nothing ran (x1b 23.10.: 16:49-22:12Z, ~100 MB/h action log). With the switch:
+# - a priest, mage or warlock below the "no mana" mark (5 %) without a wand walks into melee and attacks, and "enemy too close
+#   for spell" does not send it away from that melee (panic and "outnumbered" are unchanged);
+# - a combat pass that executed nothing while the bot is below the mark waits DelayMs instead of ReactDelay; the wait ends
+#   early once the mana is back at the mark or the health drops below LowHealth (no wait at all below LowHealth).
+# Out of combat the drink/rest decision is Rotation.RestGate (X1). "[OomBackoff] mode= fallback= stayed= backoffs= woken="
+# once a minute with the mode on. 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value
+# acts like 0.
+AiPlayerbot.Rotation.OomBackoff = 0
+AiPlayerbot.Rotation.OomBackoff.DelayMs = 1000
+
 # twow-repo#594 (Linalella, QFO-clean 23.10.2026, BUG FIX, profile 1 after the A/B): 1 = a hostile reach target the bot cannot see
 # (line of sight) is chased to min(distance x 0.5, 75 % of the range) instead of 75 % of the range, so a caster standing closer
 # than that walks around the corner until it sees the target (each tick halves the distance again). Without it a priest 20 yd
