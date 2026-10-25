@@ -124,3 +124,18 @@ require_text("${manager}" "[BotGroup] kind=adhoc event=minute passes=%u candidat
 
 # Manager state is world-thread only (no per-tick lock).
 require_text("${manager_header}" "std::unordered_map<std::uint32_t, Track> tracks;  // world thread only" "world-thread state")
+
+# twow-repo#365 HelpUntilDone (owner 25.10.2026, default 0): whoever is done follows an open member until the group is done.
+read_source("aiplayerbot.conf.dist.in" config_template)
+require_text("${config_source}" "botGroupsAdhocHelpUntilDone = config.GetBoolDefault(\"AiPlayerbot.BotGroups.AdHoc.HelpUntilDone\", false);" "HelpUntilDone key, default 0")
+require_text("${config_template}" "AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0" "HelpUntilDone documented")
+require_text("${manager}" "facts.helpUntilDone = sPlayerbotAIConfig.botGroupsAdhocHelpUntilDone;" "the switch reaches the leave facts")
+require_text("${manager}" "if (HelpsGroup(facts) && helped)" "helper only with an open member to follow")
+require_text("${manager}" "            if (first)
+                ai->RequestGroupAi(group_ai_refresh::Follower);" "the follower set on the bot's own thread, once")
+require_text("${manager}" "    if (ai->GetQuestGroupRole() != 0)
+    {
+        ai->SetQuestGroupRole(0);
+        ai->SetMaster(nullptr);
+    }" "a leave drops the helper role")
+require_text("${manager}" "[BotGroup] kind=adhoc event=help bot=%u group=%u quest=%u objective=%u follows=%u first=%u thread=world" "help line")

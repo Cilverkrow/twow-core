@@ -168,6 +168,50 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
     facts.levelWindowSince = track.levelWindowSince;
     facts.lastProgress = track.lastProgress;
 
+    // twow-repo#365 HelpUntilDone (owner 25.10.2026): whoever is done stays and follows a member that still works on the
+    // objective, until no member does (Leave::GroupDone). The helper's idle clock is the group's freshest progress.
+    facts.helpUntilDone = sPlayerbotAIConfig.botGroupsAdhocHelpUntilDone;
+    Player* helped = nullptr;
+    if (facts.helpUntilDone && facts.objectiveDone && facts.questInProgress)
+    {
+        float best = 0.0f;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->getSource();
+            if (!member || member == bot || !GetBotAI(member) || member->GetMapId() != bot->GetMapId())
+                continue;
+            auto const mt = tracks.find(member->GetGUIDLow());
+            if (mt != tracks.end() && mt->second.group == group->GetId())
+                facts.lastProgress = std::max(facts.lastProgress, mt->second.lastProgress);
+            if (ObjectiveDone(member, entry.key))
+                continue;
+            facts.groupOpen = true;
+            float const d = sServerFacade.GetDistance2d(bot, member);
+            if (!helped || d < best)
+            {
+                helped = member;
+                best = d;
+            }
+        }
+    }
+    if (HelpsGroup(facts) && helped)
+    {
+        PlayerbotAI* ai = GetBotAI(bot);
+        if (ai->GetQuestGroupRole() == 0 || ai->GetMaster() != helped)
+        {
+            bool const first = ai->GetQuestGroupRole() == 0;
+            // Role 1 = a follower (no LeaveFarAway, the stuck triggers and PosStuck spare it); the set on the bot's own thread.
+            ai->SetQuestGroupRole(1);
+            ai->SetMaster(helped);
+            if (first)
+                ai->RequestGroupAi(group_ai_refresh::Follower);
+            if (sPlayerbotAIConfig.botGroupsDiagnostics)
+                sLog.outBasic("[BotGroup] kind=adhoc event=help bot=%u group=%u quest=%u objective=%u follows=%u first=%u thread=world",
+                    bot->GetGUIDLow(), group->GetId(), entry.key.questId, uint32(entry.key.objective), helped->GetGUIDLow(),
+                    first ? 1u : 0u);
+        }
+    }
+
     Leave const reason = DecideLeave(facts);
     if (reason == Leave::None)
         return false;
@@ -206,6 +250,12 @@ void WorldThreadManager::LeaveGroup(Player* bot, Group* group)
 
     if (sRandomPlayerbotMgr.IsFreeBot(bot))
         ai->SetMaster(nullptr);
+    // twow-repo#365 HelpUntilDone: a helper leaves its follower role behind (the reset below brings its own strategies back).
+    if (ai->GetQuestGroupRole() != 0)
+    {
+        ai->SetQuestGroupRole(0);
+        ai->SetMaster(nullptr);
+    }
     // twow-repo#628 fix: the strategy rebuild and the reset (~10 ms on the world thread in the C short test) on the bot's own thread.
     ai->RequestGroupAi(group_ai_refresh::LeaveReset);
 }

@@ -69,6 +69,26 @@ int main()
 
     Require(std::string(LeaveName(Leave::ObjectiveDone)) == "objective_done", "reason names for the log");
 
+    // twow-repo#365 HelpUntilDone (owner 25.10.2026): whoever is done helps until the group is done.
+    LeaveFacts help = done;
+    help.helpUntilDone = true;
+    help.groupOpen = true;
+    Require(HelpsGroup(help) && DecideLeave(help) == Leave::None, "done, a member still open: stay and help");
+    help.groupOpen = false;
+    Require(!HelpsGroup(help) && DecideLeave(help) == Leave::GroupDone, "done and nobody open: leave, group_done");
+    Require(std::string(LeaveName(Leave::GroupDone)) == "group_done", "group_done in the log");
+    LeaveFacts off = done;
+    off.groupOpen = true;
+    Require(!HelpsGroup(off) && DecideLeave(off) == Leave::ObjectiveDone, "switch off: leave at objective_done as before");
+    LeaveFacts helperIdle = help;
+    helperIdle.groupOpen = true;
+    helperIdle.lastProgress = 1000 - IdleSeconds;
+    Require(DecideLeave(helperIdle) == Leave::Idle, "a helper still leaves when the group made no progress for 10 min");
+    LeaveFacts helperTurnedIn = help;
+    helperTurnedIn.groupOpen = true;
+    helperTurnedIn.questInProgress = false;
+    Require(DecideLeave(helperTurnedIn) == Leave::QuestTurnedIn, "turned in: leave (no helper without the quest)");
+
     // Pair cooldown: symmetric, time bound, bounded size.
     PairCooldownStore store;
     store.Block(7, 3, 700, 100);
