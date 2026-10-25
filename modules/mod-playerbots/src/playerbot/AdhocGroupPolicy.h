@@ -63,6 +63,7 @@ enum class Leave
     OutOfRange,     // more than 2 x Radius from the leader for OutOfRangeSeconds
     LevelWindow,    // the spread left the window for LevelWindowSeconds
     Idle,           // no objective progress for IdleSeconds
+    GroupDone,      // HelpUntilDone: the own objective done and no member left with an open one
 };
 
 constexpr std::uint32_t OutOfRangeSeconds = 60;
@@ -77,15 +78,24 @@ struct LeaveFacts
     std::uint32_t now = 0;
     std::uint32_t outOfRangeSince = 0;   // 0 = in range
     std::uint32_t levelWindowSince = 0;  // 0 = within the window
-    std::uint32_t lastProgress = 0;      // last objective progress (or joining)
+    std::uint32_t lastProgress = 0;      // last objective progress (or joining); a helper: the group's freshest
+    // twow-repo#365 (AiPlayerbot.BotGroups.AdHoc.HelpUntilDone, owner 25.10.2026): whoever is done helps until the group is.
+    bool helpUntilDone = false;
+    bool groupOpen = false;              // another member still has the objective open
 };
+
+// The bot stays as a helper: its own objective is done, the switch is on and a member still works on it.
+inline bool HelpsGroup(LeaveFacts const& f)
+{
+    return f.helpUntilDone && f.objectiveDone && f.groupOpen;
+}
 
 inline Leave DecideLeave(LeaveFacts const& f)
 {
     if (!f.questInProgress)
         return Leave::QuestTurnedIn;
-    if (f.objectiveDone)
-        return Leave::ObjectiveDone;
+    if (f.objectiveDone && !HelpsGroup(f))
+        return f.helpUntilDone ? Leave::GroupDone : Leave::ObjectiveDone;
     if (f.inInstance)
         return Leave::Instance;
     if (f.outOfRangeSince && f.now - f.outOfRangeSince >= OutOfRangeSeconds)
@@ -108,6 +118,7 @@ inline char const* LeaveName(Leave reason)
         case Leave::OutOfRange:    return "out_of_range";
         case Leave::LevelWindow:   return "level_window";
         case Leave::Idle:          return "idle";
+        case Leave::GroupDone:     return "group_done";
     }
     return "unknown";
 }
