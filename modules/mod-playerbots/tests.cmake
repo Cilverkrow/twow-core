@@ -3712,6 +3712,26 @@ add_test(NAME flee_away_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/flee_away_source_contract_tests.cmake")
 
+# twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff, default 0, behaviour change): an out-of-mana priest/mage/warlock
+# without a wand fights in melee; an idle out-of-mana combat pass waits DelayMs.
+add_test(NAME oom_backoff_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/oom_backoff_source_contract_tests.cmake")
+
+add_executable(oom_backoff_policy_tests
+  "${PB_MODULE_DIR}/t/oom_backoff_policy_tests.cpp")
+
+target_include_directories(oom_backoff_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(oom_backoff_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME oom_backoff_policy
+  COMMAND oom_backoff_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
 # end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process; no key, no state.
 add_executable(config_echo_policy_tests
