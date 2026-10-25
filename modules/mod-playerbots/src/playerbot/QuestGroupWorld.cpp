@@ -99,6 +99,8 @@ bool TurnedIn(Player* bot, std::uint32_t questId)
     return st && st->m_rewarded;
 }
 
+}   // namespace - StagedOps: FindQuestDest/ForceQuestTravel have external linkage (declared in QuestGroupWorld.h, run on the bot thread)
+
 // The nearest destination of the quest for one objective (objIdx 0..3) or its taker (-1). GetDestinations, not
 // GetPartitions (that one waits for a worker thread). onlyPossible = false: an elite objective is the whole point.
 TravelDestination* FindQuestDest(Player* bot, std::uint32_t questId, int objIdx, WorldPosition*& point)
@@ -161,6 +163,9 @@ bool ForceQuestTravel(Player* bot, std::uint32_t questId, int objIdx)
     ResetTravelValues(ai);
     return true;
 }
+
+namespace
+{
 
 // The leader's forced target is on this quest (objective or taker).
 bool LeaderOnQuest(Player* leader, std::uint32_t questId)
