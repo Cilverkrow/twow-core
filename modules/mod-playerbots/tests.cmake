@@ -2198,6 +2198,26 @@ add_test(NAME grind_pick_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_pick_source_contract_tests.cmake")
 
+# twow-repo#602 ROT-01 #2 (AiPlayerbot.Grind.NeighbourAware, default 0; 3 = shadow only): the stage-2 grind pick of solo free bots
+# prefers a candidate with fewer neighbours that would join the fight (assist, on sight, AGGRO_TOGETHER group, call for help).
+add_executable(grind_neighbour_policy_tests
+  "${PB_MODULE_DIR}/t/grind_neighbour_policy_tests.cpp")
+
+target_include_directories(grind_neighbour_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(grind_neighbour_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_neighbour_policy
+  COMMAND grind_neighbour_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_neighbour_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_neighbour_source_contract_tests.cmake")
+
 # twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): [BotActivity] / [BotActivityMin].
 add_executable(bot_activity_policy_tests
   "${PB_MODULE_DIR}/t/bot_activity_policy_tests.cpp")

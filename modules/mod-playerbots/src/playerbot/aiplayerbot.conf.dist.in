@@ -744,6 +744,25 @@ AiPlayerbot.Grind.GreyByLevel = 0
 # bot, 2 = only cohort B (odd low guid; cohort A stays as before). Any other value acts like 0.
 AiPlayerbot.Grind.QuestFirstOrder = 0
 
+# twow-repo#602 ROT-01 #2 (adds analysis 25.10.2026, OB-00): 75 % of the bot deaths in X3a had adds, 61 % of them from the
+# target's own camp; the grind pick ("attack anything", stage 2 of the grind target) chooses by distance only. With the switch
+# every stage-2 candidate of a solo free bot gets W = the weighted creatures of the bot's "possible targets" list that would join
+# a fight with it: same faction template within CreatureFamilyAssistanceRadius + 2 yd (assist on aggro), hostile within its own
+# aggro distance + 5 yd (on sight), the same AGGRO_TOGETHER creature group, and - for a ranged bot - friendly creatures within the
+# candidate's call_for_help_range + 2 yd of its run towards the bot (more than 10 yd from its spot). Weights in half points: grey
+# 1, normal 2, elite or bot level + 3 and above 4; W capped at 12, 5 yd per half point (at most 60 yd). The distance pick is
+# replaced by the candidate with the lowest distance + penalty among those with a strictly lower W and a strictly lower score.
+# Demote only: nothing is skipped and a pass with a pick keeps a pick; an equal W keeps the old pick. Never replaced or replacing:
+# candidates beyond SightDistance - 30 yd (their neighbours are partly outside the list); a replacement may be at most 1 level
+# above the distance pick and elite only if that one is. Attackers (stage 1), grouped bots, battlegrounds and bots with a real
+# master are not touched. No new grid search, no raycast, at most 64 list entries per pass.
+# "[GrindNeighbour] mode= cohort= passes= candidates= picks= changed= would_change= edge_pick= edge_skipped= guarded= churn=
+# churn_distance= capped= pick_w= new_w= extra_yd= nb_assist= nb_sight= nb_group= nb_cfh= us= cls=<class>:<picks>/<would>/<changed>,.."
+# once a minute per cohort with passes (increments; W sums in half points). Mode (in-realm A/B, cohort parity): 0 = as before
+# (default), 1 = every bot, 2 = only cohort B (odd low guid; cohort A computes the same in shadow), 3 = shadow only (every bot
+# computes and is counted, nobody's pick changes - the log-only run). Any other value acts like 0.
+AiPlayerbot.Grind.NeighbourAware = 0
+
 # Redirect all bot subsystem log output to a dedicated file so the main
 # server.log stays clean. Path is relative to the server's LogsDir setting.
 #

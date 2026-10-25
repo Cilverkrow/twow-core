@@ -1178,6 +1178,9 @@ bool PlayerbotAIConfig::Initialize()
     grindQuestFirstOrder = config.GetIntDefault("AiPlayerbot.Grind.QuestFirstOrder", 0);   // twow-repo#601 decision order
     if (grindQuestFirstOrder > 2)
         grindQuestFirstOrder = 0;   // an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    grindNeighbourAware = config.GetIntDefault("AiPlayerbot.Grind.NeighbourAware", 0);   // twow-repo#602 #2
+    if (grindNeighbourAware > 3)
+        grindNeighbourAware = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 shadow only)
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");
@@ -1673,6 +1676,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
+            {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
