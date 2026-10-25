@@ -128,6 +128,8 @@ set(entries
   "Rotation.ReachLosClose|rotationReachLosClose"
   "Rotation.ReachPlayerMaster|rotationReachPlayerMaster"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
+  "ProfessionTraining.Travel|professionTrainingTravel"
+  "ProfessionUse.ToolBuy|professionUseToolBuy"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
   "Perf.RouteTimeTrace|perfRouteTimeTrace"
   "Perf.DispatchPrecomputedPath|perfDispatchPrecomputedPath"

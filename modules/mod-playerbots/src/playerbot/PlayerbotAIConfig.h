@@ -525,6 +525,10 @@ public:
     float professionTrainingLocalTrainerRadius = 120.0f;
     bool professionTrainingTrace = false;
     uint32 professionTrainingTraceCooldownSeconds = 300;
+    // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): gap-filler trips of a roster bot to the trainer of
+    // a phase-one profession and to the vendor of its missing gathering tool; 0 off, 1 all, 2 cohort B (odd guid).
+    uint32 professionTrainingTravel = 0;
+    uint32 professionUseToolBuy = 0;
     // #333: roster bots use their professions while levelling.
     float professionUseGatherDistance = 0.0f;     // 0 = GatheringDistance
     bool professionUseCraft = false;
