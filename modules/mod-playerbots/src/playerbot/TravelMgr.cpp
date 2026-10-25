@@ -11,6 +11,9 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
+#include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/ContestedObjectivePolicy.h"
 #include <algorithm>
 #include <vector>
 #include <iomanip>
@@ -1397,6 +1400,11 @@ void TravelTarget::OnWorkTimeout()
             return;
     }
 
+    // twow-repo#601 F5b (AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait): a contested objective is held back briefly and counts
+    // neither for QL-1 nor for #405 below. Switch off: as before.
+    if (sPlayerbotAIConfig.questFirstProgressionContestedObjectiveWait && OnContestedObjectiveTimeout())
+        return;
+
     // twow-repo#581 (QL-1): a work timeout of an objective also counts against its quest.
     if (dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
         NoteQuestObjectiveFailure();
@@ -1424,6 +1432,7 @@ void TravelTarget::OnWorkTimeout()
 
     TraceQuestCommit(tDestination, "abandon", "work_suppressed");
     SuppressCurrentDestination(cooldownMs);
+    TagCurrentSuppression(destination_death::SourceWork);   // twow-repo#601 F5 (diagnostic)
 }
 
 void TravelTarget::SuppressCurrentDestination(uint32 durationMs)
@@ -1438,6 +1447,58 @@ void TravelTarget::SuppressCurrentDestination(uint32 durationMs)
     destination_death::Record& record = destinationDeaths[tDestination];
     record.deaths = 0;
     record.suppressUntil = WorldTimer::getMSTime() + durationMs;
+}
+
+void TravelTarget::TagCurrentSuppression(uint8 source)
+{
+    auto const it = destinationDeaths.find(tDestination);
+    if (it != destinationDeaths.end())
+        it->second.source = source;
+}
+
+uint8 TravelTarget::DestinationSuppressSource(TravelDestination const* destination) const
+{
+    auto const it = destinationDeaths.find(destination);
+    return it != destinationDeaths.end() ? it->second.source : uint8(destination_death::SourceDeath);
+}
+
+bool TravelTarget::OnContestedObjectiveTimeout()
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    if (!objective || !bot || ai->HasRealPlayerMaster() || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return false;
+
+    contested_objective::Facts facts;
+    facts.on = ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionContestedObjectiveWait, bot->GetGUIDLow());
+    facts.objective = true;
+    facts.goObjective = objective->GetEntry() < 0;
+    facts.killToo = sPlayerbotAIConfig.questFirstProgressionContestedObjectiveWaitKill;
+    Group* const group = bot->GetGroup();
+    facts.inBotOnlyGroup = group && ai::adhoc_group::AllRosterBots(group);
+    facts.minBots = sPlayerbotAIConfig.questFirstProgressionContestedObjectiveWaitMinBots;
+    if (!facts.on || (!facts.goObjective && (!facts.killToo || facts.inBotOnlyGroup)))
+        return false;   // the count below cannot change the answer
+
+    // Other roster bots around the objective (the bot stands at it): bounded by the sight list, positions only, no other bot's state.
+    for (ObjectGuid const& guid : AI_VALUE(std::list<ObjectGuid>, "nearest friendly players"))
+    {
+        Player* const other = sObjectMgr.GetPlayer(guid);
+        if (!other || other == bot || other->GetMapId() != bot->GetMapId() || !sRandomPlayerbotMgr.IsPersistentRosterMember(other->GetGUIDLow()))
+            continue;
+        if (bot->GetDistance2d(other) <= contested_objective::Radius)
+            ++facts.otherBotsNear;
+    }
+    if (!contested_objective::Contested(facts))
+        return false;
+
+    uint32 const holdSeconds = sPlayerbotAIConfig.questFirstProgressionContestedObjectiveWaitSeconds;
+    SuppressCurrentDestination(holdSeconds * IN_MILLISECONDS);
+    TagCurrentSuppression(destination_death::SourceContested);
+    sLog.outBasic("[ContestedObjective] bot=%u level=%u quest=%u target_entry=%d kind=%s bots_near=%u min_bots=%u hold_seconds=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), facts.goObjective ? "go" : "kill",
+        facts.otherBotsNear, facts.minBots, holdSeconds);
+    TraceQuestCommit(tDestination, "abandon", "contested_wait");
+    return true;
 }
 
 void TravelTarget::NoteQuestObjectiveFailure()
@@ -1798,6 +1859,7 @@ bool TravelTarget::ObservePosStuck()
         NoteQuestObjectiveFailure();
     uint32 const parkSeconds = sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds ? sPlayerbotAIConfig.questFirstProgressionTurnInParkSeconds : 3600;
     SuppressCurrentDestination(parkSeconds * IN_MILLISECONDS);
+    TagCurrentSuppression(destination_death::SourcePark);   // twow-repo#601 F5 (diagnostic)
     if (lines)
         sLog.outBasic("[PosStuck] state=park bot=%u level=%u quest=%u target_entry=%d purpose=%u dist=%.1f minutes=%u x=%.1f y=%.1f parked=%u suppress_seconds=%u",
             bot->GetGUIDLow(), bot->GetLevel(), questId, tDestination->GetEntry(), purpose, observation.distance,
