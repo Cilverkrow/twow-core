@@ -2838,6 +2838,17 @@ AiPlayerbot.Rotation.RestGate.StartMana = 40
 AiPlayerbot.Rotation.RestGate.TargetHp = 90
 AiPlayerbot.Rotation.RestGate.TargetMana = 85
 AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
+
+# twow-repo#602 ROT-01 hunter LoS (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): sampled
+# hunters failed 91-96 % of Auto Shot / Hunter's Mark / Serpent Sting casts with "line of sight", about 19 core rejections per
+# second for minutes (wand Shoot 0 %: it has its own sight check). The bot's spell check sees the core's LINE_OF_SIGHT but
+# counted it as castable, expecting the reach to fix sight; the reach could not, and after 20 s the hotfix 8.2 progress check
+# marked the target unreachable while the bot kept it. With the switch a LINE_OF_SIGHT verdict makes the cast IMPOSSIBLE (no
+# retry loop, no stop of the walk), a current target that 8.2 marked unreachable is dropped, and target selection skips such
+# units while another candidate exists. Use it together with Rotation.ReachLosClose = 2 (the walk into sight).
+# "[CastLosGate] mode= gated= dropped= skipped=" once a minute with the mode on.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.CastLosGate = 0
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,

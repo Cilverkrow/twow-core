@@ -3501,6 +3501,26 @@ add_test(NAME rest_gate_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/rest_gate_source_contract_tests.cmake")
 
+# twow-repo#602 ROT-01 hunter LoS (AiPlayerbot.Rotation.CastLosGate, default 0, behaviour change): a LINE_OF_SIGHT verdict makes the
+# cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped by target selection.
+add_test(NAME cast_los_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/cast_los_gate_source_contract_tests.cmake")
+
+add_executable(cast_los_gate_policy_tests
+  "${PB_MODULE_DIR}/t/cast_los_gate_policy_tests.cpp")
+
+target_include_directories(cast_los_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(cast_los_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cast_los_gate_policy
+  COMMAND cast_los_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder, cohort mode, default 0): fight on / class escape / flee for solo free bots
 # below critical health, solo CC on an add; FightTargetHp and SoloCcSpells configurable (OB-00 18.10.2026).
 add_executable(emergency_ladder_policy_tests

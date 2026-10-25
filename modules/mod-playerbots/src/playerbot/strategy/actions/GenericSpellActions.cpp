@@ -4,6 +4,8 @@
 #include "UseItemAction.h"
 #include "playerbot/SpellStampPolicy.h"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/CastLosGatePolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"
 
@@ -157,6 +159,26 @@ bool CastSpellAction::isPossible()
     }
 
     // Check if the spell can be casted
+    // twow-repo#602 (AiPlayerbot.Rotation.CastLosGate, CastLosGatePolicy.h): CanCastSpell tolerates the core's LINE_OF_SIGHT verdict
+    // under ignoreRange; with the switch the cast is IMPOSSIBLE instead, and a current target that hotfix 8.2 already marked
+    // unreachable is dropped (its reach is USELESS from then on). Off = the paths below, unchanged.
+    if (ai::cast_los_gate::Applies(sPlayerbotAIConfig.rotationCastLosGate, bot->GetGUIDLow()))
+    {
+        SpellCastResult losResult = SPELL_CAST_OK;
+        bool losPossible = ai->CanCastSpell(spellName, spellTarget, 0, nullptr, true, false, false, &losResult);
+        if (losPossible && losResult == SPELL_FAILED_LINE_OF_SIGHT)
+        {
+            losPossible = false;
+            ai::cast_los_gate::gated.fetch_add(1, std::memory_order_relaxed);
+            if (ai->IsUnreachableTarget(spellTarget->GetObjectGuid()) && AI_VALUE(Unit*, "current target") == spellTarget)
+            {
+                SET_AI_VALUE(Unit*, "current target", nullptr);
+                ai::cast_los_gate::dropped.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+        return sPlayerbotAIConfig.rotationCastTrace ? RotEval(losPossible, ai::rot_cast::EvalCode(losPossible, uint8(losResult))) : losPossible;
+    }
+
     if (!sPlayerbotAIConfig.rotationCastTrace)
 	    return ai->CanCastSpell(spellName, spellTarget, 0, nullptr, true);
 
