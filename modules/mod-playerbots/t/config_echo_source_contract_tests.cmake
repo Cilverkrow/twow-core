@@ -107,6 +107,7 @@ set(entries
   "ZoneExit.TurnInStallCounts|zoneExitTurnInStallCounts"
   "ZoneExit.TurnInTravelStall|zoneExitTurnInTravelStall"
   "ZoneExit.TurnInNearRadius|zoneExitTurnInNearRadius"
+  "ZoneExit.TurnInTravelStallCountsCombat|zoneExitTurnInTravelStallCountsCombat"
   "QuestFirstProgression.S1Cohort|questFirstProgressionS1Cohort"
   "QuestFirstProgression.S3Cohort|questFirstProgressionS3Cohort"
   "DirectTargets.Enable|directTargetsEnabled"
@@ -124,6 +125,7 @@ set(entries
   "Rotation.RestGate|rotationRestGate"
   "Rotation.CastLosGate|rotationCastLosGate"
   "CastWait.Preparing|castWaitPreparing"
+  "Rotation.HunterMeleeStart|rotationHunterMeleeStart"
   "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
   "Rotation.FleeAway|rotationFleeAway"
@@ -145,7 +147,10 @@ set(entries
   "QuestLoop.InactiveAfterProgress|questLoopInactiveAfterProgress"
   "BotGroups.Enabled|botGroupsEnabled"
   "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
-  "QuestGroups.Enable|questGroupsEnable")
+  "BotGroups.AdHoc.ScanSlices|botGroupsAdhocScanSlices"
+  "QuestGroups.Enable|questGroupsEnable"
+  "QuestGroups.ScanSlices|questGroupsScanSlices"
+  "QuestGroups.StagedOps|questGroupsStagedOps")
 foreach(entry IN LISTS entries)
   string(REPLACE "|" ";" parts "${entry}")
   list(GET parts 0 key)

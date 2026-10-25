@@ -593,6 +593,9 @@ bool PlayerbotAIConfig::Initialize()
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
         castWaitPreparing = 0;   // twow-repo#602: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    rotationHunterMeleeStart = config.GetIntDefault("AiPlayerbot.Rotation.HunterMeleeStart", 0);   // twow-repo#602 hunter deaths
+    if (rotationHunterMeleeStart > 2)
+        rotationHunterMeleeStart = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationMeleeFleeBreak = config.GetIntDefault("AiPlayerbot.Rotation.MeleeFleeBreak", 0);
     if (rotationMeleeFleeBreak > 2)
         rotationMeleeFleeBreak = 0;   // twow-repo#602: an unknown mode is off
@@ -748,8 +751,11 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
+    botGroupsAdhocScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanSlices", 0));
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
+    questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
+    questGroupsStagedOps = config.GetBoolDefault("AiPlayerbot.QuestGroups.StagedOps", false);   // twow-repo#627
     questGroupsMaxSize = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSize", 5)));
     questGroupsMaxSizeDrop = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSizeDrop", 3)));
     questGroupsLevelWindow = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.LevelWindow", 3);
@@ -880,6 +886,7 @@ bool PlayerbotAIConfig::Initialize()
     zoneExitTurnInTravelStall = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInTravelStall", false);
     zoneExitTurnInNearRadius = config.GetFloatDefault("AiPlayerbot.ZoneExit.TurnInNearRadius", 60.0f);
     zoneExitTurnInNearRadius = std::min(500.0f, std::max(0.0f, zoneExitTurnInNearRadius));
+    zoneExitTurnInTravelStallCountsCombat = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat", false);
     zoneExitRescueHomeContinent = config.GetBoolDefault("AiPlayerbot.ZoneExit.RescueHomeContinent", false);
     zoneExitStrandedRescueAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ZoneExit.StrandedRescueAfter", 0)));
     zoneExitSkipBattlegroundQuests = config.GetBoolDefault("AiPlayerbot.ZoneExit.SkipBattlegroundQuests", false);
@@ -1606,6 +1613,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
             {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
+            {"ZoneExit.TurnInTravelStallCountsCombat", Value(zoneExitTurnInTravelStallCountsCombat)},
             {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
             {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
             {"DirectTargets.Enable", Value(directTargetsEnabled)},
@@ -1623,6 +1631,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
+            {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
             {"Rotation.FleeAway", Value(rotationFleeAway)},
@@ -1645,7 +1654,10 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
+            {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
+            {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
+            {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
         }).c_str());
     }
 

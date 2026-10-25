@@ -6,6 +6,8 @@
 #include "playerbot/LootObjectStack.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/BotDiagnostics.h" // SC_LOG for attack-command diagnostic trace
+#include "playerbot/HunterMeleeStartPolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/strategy/generic/CombatStrategy.h"
 
 using namespace ai;
@@ -182,7 +184,17 @@ bool AttackAction::Attack(Player* requester, Unit* target)
         if (!ai->HasStrategy("stealthed", BotState::BOT_STATE_COMBAT) && !isWaitingForAttack)
         {
             ai->PlayAttackEmote(1);
-            result = bot->Attack(target, !ai->IsRanged(bot) || (sServerFacade.GetDistance2d(bot, target) < 5.0f));
+            // twow-repo#602 (AiPlayerbot.Rotation.HunterMeleeStart, HunterMeleeStartPolicy.h): a hunter in "close" mode still counts
+            // as ranged here, so from 5 yd or more it never started its swing; with the switch it does. Off = the old rule.
+            bool const ranged = ai->IsRanged(bot);
+            float const distance2d = ranged ? sServerFacade.GetDistance2d(bot, target) : 0.0f;
+            bool const hunterSwitch = bot->getClass() == CLASS_HUNTER &&
+                ai::hunter_melee_start::Applies(sPlayerbotAIConfig.rotationHunterMeleeStart, bot->GetGUIDLow());
+            bool const melee = ai::hunter_melee_start::AttackWithMelee(ranged, distance2d, hunterSwitch,
+                hunterSwitch && ai->HasStrategy("close", BotState::BOT_STATE_COMBAT));
+            if (melee && ranged && distance2d >= 5.0f)
+                ai::hunter_melee_start::closeAttacks.fetch_add(1, std::memory_order_relaxed);
+            result = bot->Attack(target, melee);
             SC_LOG("attack-cmd bot->Attack bot=%s tgt=%s result=%d",
                    bot ? bot->GetName() : "(null)",
                    target ? target->GetName() : "(null)",

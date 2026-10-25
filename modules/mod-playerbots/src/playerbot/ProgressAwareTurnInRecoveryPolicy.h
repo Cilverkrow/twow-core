@@ -34,6 +34,10 @@ struct Observation
     // twow-repo#601 S3c (AiPlayerbot.ZoneExit.TurnInTravelStall + TurnInNearRadius): the near zone around the
     // taker, in yards. 0 = off: Observe judges progress as before.
     float nearRadius = 0.0f;
+    // twow-repo#601 3a (AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat): the pause is a fight on the way to a
+    // finished quest's taker. It still pauses the recovery but no longer restarts the stall window, so the time of
+    // the fight counts. false = every pause restarts the window, as before.
+    bool pauseKeepsWindow = false;
 };
 
 // twow-repo#601 S3c (OB-10 rev. 2, Q-B3): inside the near zone only getting this much closer than the best
@@ -156,9 +160,11 @@ inline RecoveryAction Observe(State& state, Observation const& current, std::uin
     // A real master, combat, a transport transition, or a corpse/revive
     // transition is not a failed route. Give normal movement a fresh stall
     // window once it resumes instead of consuming a recovery stage.
+    // twow-repo#601 3a: a fight with pauseKeepsWindow pauses without the fresh window.
     if (current.paused)
     {
-        state.lastProgressAt = current.now;
+        if (!current.pauseKeepsWindow)
+            state.lastProgressAt = current.now;
         return RecoveryAction::None;
     }
 
