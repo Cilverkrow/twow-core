@@ -99,6 +99,11 @@ void WorldPacketHandlerStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &
         "item push result",
         NextAction::array(0, new NextAction("query item usage", relevance), new NextAction("equip upgrades", relevance), NULL)));
 
+    // twow-repo#341 (AiPlayerbot.Equip.AfterRollWon): a won roll comes without "item push result"; the action decides.
+    triggers.push_back(new TriggerNode(
+        "loot roll won",
+        NextAction::array(0, new NextAction("equip upgrades", relevance), NULL)));
+
     triggers.push_back(new TriggerNode(
         "ready check finished",
         NextAction::array(0, new NextAction("finish ready check", relevance), NULL)));
