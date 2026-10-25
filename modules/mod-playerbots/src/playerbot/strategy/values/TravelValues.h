@@ -243,4 +243,15 @@ namespace ai
     // (0 = none missing).
     std::vector<int32> PhaseOneProfessionTrainers(PlayerbotAI* ai);
     uint32 MissingGatherTool(PlayerbotAI* ai);
+
+    // P1-b2 (CLI-PATH 25.10.): the entries a profession trip may go to - not hostile to the bot, one spawn reachable
+    // (ProfessionTravelPolicy.h ClassifyTripTarget); the vendors of a tool. The dropped counts go to the [ProfTravel] line.
+    struct ProfessionTripDrops
+    {
+        uint32 hostile = 0;
+        uint32 unreachable = 0;
+    };
+    std::vector<int32> ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32> const& entries, TravelDestinationPurpose purpose,
+        ProfessionTripDrops* drops = nullptr);
+    std::vector<int32> GatherToolVendors(PlayerbotAI* ai, uint32 tool);
 }

@@ -15,7 +15,17 @@
 #include "playerbot/DirectTargetDestinations.h"
 #include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 Berufe P1-a / P1-b
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/TravelMgr.h"    // P1-b2: the destinations' spawn points
+#include "playerbot/TravelNode.h"   // P1-b2: the travel graph
 #include "TrainerValues.h"
+#include <algorithm>
+#include <cfloat>
+#include <chrono>
+#include <cmath>
+#include <map>
+#include <mutex>
+#include <shared_mutex>
+#include <tuple>
 
 using namespace ai;
 
@@ -214,6 +224,122 @@ uint32 ai::MissingGatherTool(PlayerbotAI* ai)
     return ai::profession_travel::MissingTool(
         ai->HasSkill(SKILL_MINING), bot->HasItemCount(ai::profession_travel::kMiningPick, 1),
         ai->HasSkill(SKILL_SKINNING), bot->HasItemCount(ai::profession_travel::kSkinningKnife, 1));
+}
+
+std::vector<int32> ai::GatherToolVendors(PlayerbotAI* ai, uint32 tool)
+{
+    std::vector<int32> vendors;
+    if (tool)
+        for (int32 const entry : GAI_VALUE2(std::list<int32>, "item vendor list", tool))
+            vendors.push_back(entry);
+    return vendors;
+}
+
+namespace
+{
+// P1-b2: the reachability of an entry, once per server run (its spawns and the travel graph stay). Keyed by entry, purpose
+// and side: GetDestinations drops the other side's start-zone destinations (CustomRaceStartZones), nothing else of the bot.
+// An entry without a destination (a template without spawns in "item vendor list" / the trainable spell map) is stored
+// unreachable too, so the start condition (every 5 s in the gap) never walks the destinations for it again.
+using ProfessionTripReachKey = std::tuple<int32, uint32, bool>;
+std::mutex professionTripReachMutex;
+std::map<ProfessionTripReachKey, bool> professionTripReach;
+
+// The 2D distance from a spawn to the nearest travel node on its map (CLI-PATH's nearest_node_yd), FLT_MAX without one.
+float NearestTravelNodeYards(WorldPosition const& point, std::vector<TravelNode*> const& nodes)
+{
+    float nearestSq = FLT_MAX;
+    for (TravelNode* node : nodes)
+    {
+        WorldPosition const* nodePos = node->getPosition();
+        if (nodePos->getMapId() == point.getMapId())
+            nearestSq = std::min(nearestSq, point.sqDistance2d(*nodePos));
+    }
+    return nearestSq == FLT_MAX ? FLT_MAX : std::sqrt(nearestSq);
+}
+
+// Is one spawn of this destination reachable (ProfessionTravelPolicy.h SpawnReachable)?
+bool ProfessionTripDestinationReachable(TravelDestination const* destination, std::vector<TravelNode*> const& nodes)
+{
+    for (WorldPosition const* point : destination->GetPoints())
+        if (point && ai::profession_travel::SpawnReachable(point->isOverworld(), NearestTravelNodeYards(*point, nodes)))
+            return true;
+    return false;
+}
+}
+
+std::vector<int32> ai::ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32> const& entries, TravelDestinationPurpose purpose,
+    ProfessionTripDrops* drops)
+{
+    Player* bot = ai->GetBot();
+    bool const alliance = bot->GetTeam() == ALLIANCE;
+    std::vector<int32> kept;
+    std::vector<int32> unknown;
+    std::unordered_map<int32, bool> reach;
+    {
+        std::lock_guard<std::mutex> lock(professionTripReachMutex);
+        for (int32 const entry : entries)
+        {
+            auto const found = professionTripReach.find(ProfessionTripReachKey(entry, uint32(purpose), alliance));
+            if (found != professionTripReach.end())
+                reach[entry] = found->second;
+            else
+                unknown.push_back(entry);
+        }
+    }
+
+    // The entries not asked yet: their destinations of this purpose (the same list GetPartitions builds from). An entry
+    // without one never comes back from GetPartitions either: unreachable. While the travel graph is busy or empty
+    // (startup) the unknown entries are kept and nothing is stored - asked again next time.
+    if (!unknown.empty())
+    {
+        // The destinations first, without the graph lock (their distance code may read the graph itself).
+        DestinationList const destinations = sTravelMgr.GetDestinations(PlayerTravelInfo(bot), uint32(purpose), unknown, false, 0.0f);
+
+        // Shared, never blocking for long; held only while the node positions are read (the graph writers take it exclusively).
+        std::shared_lock<std::shared_timed_mutex> graphLock(sTravelNodeMap.m_nMapMtx, std::defer_lock);
+        std::vector<TravelNode*> nodes;
+        if (graphLock.try_lock_for(std::chrono::milliseconds(50)))
+            nodes = sTravelNodeMap.getNodes();
+
+        if (nodes.empty())
+            for (int32 const entry : unknown)
+                reach[entry] = true;
+        else
+        {
+            for (TravelDestination* destination : destinations)
+            {
+                bool& entryReach = reach[destination->GetEntry()];
+                entryReach = entryReach || ProfessionTripDestinationReachable(destination, nodes);
+            }
+            graphLock.unlock();
+
+            std::lock_guard<std::mutex> lock(professionTripReachMutex);
+            for (int32 const entry : unknown)
+                professionTripReach[ProfessionTripReachKey(entry, uint32(purpose), alliance)] = reach[entry];
+        }
+    }
+
+    for (int32 const entry : entries)
+    {
+        auto const found = reach.find(entry);
+        bool const hostile = GuidPosition(HIGHGUID_UNIT, uint32(entry)).IsHostileTo(bot);   // as RpgTravelDestination::IsActive
+        switch (ai::profession_travel::ClassifyTripTarget(hostile, found != reach.end() && found->second))
+        {
+        case ai::profession_travel::TripTarget::Kept:
+            kept.push_back(entry);
+            break;
+        case ai::profession_travel::TripTarget::Hostile:
+            if (drops)
+                ++drops->hostile;
+            break;
+        case ai::profession_travel::TripTarget::Unreachable:
+            if (drops)
+                ++drops->unreachable;
+            break;
+        }
+    }
+    return kept;
 }
 
 EntryGuidps EntryGuidpsValue::Calculate()
@@ -772,11 +898,12 @@ bool ShouldTravelNamedValue::Calculate()
         if (!ProfessionTripStartable(ai, mode, ai::profession_travel::kTrainerTripValue))
             return false;
 
-        if (PhaseOneProfessionTrainers(ai).empty())
+        if (!UsesFreePersistentRosterProfessionTraining(bot) &&
+            !AI_VALUE2(bool, "has all money for", (uint32)NeedMoneyFor::skilltraining))
             return false;
 
-        return UsesFreePersistentRosterProfessionTraining(bot) ||
-            AI_VALUE2(bool, "has all money for", (uint32)NeedMoneyFor::skilltraining);
+        // P1-b2: only a trainer the bot can reach and that is not hostile starts a trip (no request, no hourly limit spent).
+        return !ProfessionTripTargets(ai, PhaseOneProfessionTrainers(ai), TravelDestinationPurpose::Trainer).empty();
     }
     // twow-repo#333 Berufe P1-b (AiPlayerbot.ProfessionUse.ToolBuy): a gap trip to a vendor of the missing pick or knife.
     else if (name == "tool vendor" || name == "tool vendor hold")
@@ -794,7 +921,11 @@ bool ShouldTravelNamedValue::Calculate()
             return false;
 
         ItemPrototype const* proto = sObjectMgr.GetItemPrototype(tool);
-        return proto && AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::tradeskill) >= proto->BuyPrice;
+        if (!proto || AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::tradeskill) < proto->BuyPrice)
+            return false;
+
+        // P1-b2: only a vendor the bot can reach and that is not hostile starts a trip.
+        return !ProfessionTripTargets(ai, GatherToolVendors(ai, tool), TravelDestinationPurpose::Vendor).empty();
     }
     else if (name == "mount")
     {

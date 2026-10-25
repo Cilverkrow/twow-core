@@ -1640,7 +1640,9 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # target::trainer profession" at 6.296, below the quest request 6.3, above Explore 6.29; with QuestFirstProgression.
 # GrindMode 1 the gap grind at 6.35 fills the gap first). A started trip holds while the rank is still to learn, until
 # the backoff of its start ended plus 10 min (never more than 30 min), and ends at once when a turn-in opens; at most one
-# trip per bot and hour. "[ProfTravel] state=request kind=trainer ... entries= hold_s=" per request (entries=0: no
+# trip per bot and hour. Only a trainer that is not hostile and has a spawn on an open-world map with a travel node within
+# 500 yd (2D) counts (P1-b2, CLI-PATH 25.10.: no trip to Blackstone Island, Alah'Thalas, an instance map ...). "[ProfTravel]
+# state=request kind=trainer ... entries= dropped_hostile= dropped_unreachable= hold_s=" per request (entries=0: no
 # trainer found) and "[ProfTravel] state=end kind=trainer ... reason=done|turn_in|cap|lost trip_s= hold_over_s=" when
 # the trip stops holding (hold_over_s = seconds after the backoff end). Mode (in-realm A/B, cohort parity): 0 = as before (default),
 # 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
@@ -1661,7 +1663,8 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # travel to a vendor that sells it; "rpg buy" buys it there from the tradeskill budget (ItemUsage SKILL, as before).
 # Same gap rule, hold and hourly limit as ProfessionTraining.Travel ("request named travel target::tool vendor" at
 # 6.297). With the mode on for the bot, a mining/skinning gather purpose also needs its tool, so a bot without a pick no
-# longer travels to an ore vein to fail there until the 15-minute no-skill-up end. "[ProfTravel] state=request kind=tool".
+# longer travels to an ore vein to fail there until the 15-minute no-skill-up end. The same target filter as for the
+# trainers (not hostile, a reachable spawn; P1-b2). "[ProfTravel] state=request kind=tool".
 # Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionUse.ToolBuy = 0
 # RealReagents (twow-repo#485): under the item cheat (RndBotCheats "item") every
