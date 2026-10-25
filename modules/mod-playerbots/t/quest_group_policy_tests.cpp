@@ -1,4 +1,5 @@
 #include "QuestGroupPolicy.h"
+#include "DungeonRunBridge.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -130,6 +131,23 @@ int main()
     Require(StuckTriggersExempt(1, true) && StuckTriggersExempt(2, true), "follower and leader in a group: exempt");
     Require(!StuckTriggersExempt(0, true), "no S7 role (any other group): triggers as before");
     Require(!StuckTriggersExempt(1, false), "a role without a group (defensive): triggers as before");
+
+    // twow-repo#629 B4/D2 (DungeonRunBridge.h): without dungeon clear's hooks a start is Off; run ends are kept per leader.
+    {
+        using namespace ai::dungeon_run;
+        std::string why;
+        Require(StartRun(nullptr, &why) == Start::Off, "no hook registered: Off (dungeon clear absent or AutoRun 0)");
+        StopRun(nullptr, "x");   // no hook: a no-op
+        EndedMailbox box;
+        box.Note(7, "All bosses cleared!", 100);
+        Ended e;
+        Require(box.Take(7, e) && e.reason == "All bosses cleared!" && e.at == 100, "a run end is taken once");
+        Require(!box.Take(7, e), "and only once");
+        for (std::uint32_t i = 0; i < MaxEnded + 10; ++i)
+            box.Note(1000 + i, "wipe", 200 + i);
+        Require(box.Size() <= MaxEnded, "the mailbox stays bounded");
+        Require(!box.Take(1000, e) && box.Take(1000 + MaxEnded + 9, e), "the oldest end goes first");
+    }
 
     std::cout << "quest_group_policy_tests passed\n";
     return 0;
