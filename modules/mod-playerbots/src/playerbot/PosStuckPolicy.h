@@ -232,7 +232,7 @@ struct Counters
         outUnstuck = unstuck.exchange(0, std::memory_order_relaxed);
         outTeleport = teleport.exchange(0, std::memory_order_relaxed);
         outLogged = logged.exchange(0, std::memory_order_relaxed);
-        windowMinutes.store(now > seen && now - seen < 1440 ? std::uint32_t(now - seen) : (now > seen ? 1440u : 1u), std::memory_order_relaxed);
+        windowMinutes.store(seen != 0 && now > seen ? (now - seen < 1440 ? std::uint32_t(now - seen) : 1440u) : 1u, std::memory_order_relaxed);
         return seen != 0;
     }
 
