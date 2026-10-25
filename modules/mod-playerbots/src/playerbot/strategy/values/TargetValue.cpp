@@ -7,17 +7,36 @@
 #include "Objects/Unit.h"
 #include "LastMovementValue.h"
 #include "playerbot/strategy/values/Formations.h"
+#include "playerbot/CastLosGatePolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
 
 using namespace ai;
 
 Unit* TargetValue::FindTarget(FindTargetStrategy* strategy)
 {
     std::list<ObjectGuid> attackers = ai->GetAiObjectContext()->GetValue<std::list<ObjectGuid>>("possible attack targets")->Get();
+    // twow-repo#602 (AiPlayerbot.Rotation.CastLosGate, CastLosGatePolicy.h): a unit hotfix 8.2 marked unreachable is skipped while
+    // another candidate exists, so the bot does not pick the target it just gave up on again. Off = as before.
+    bool const losGate = ai::cast_los_gate::Applies(sPlayerbotAIConfig.rotationCastLosGate, bot->GetGUIDLow());
+    bool reachable = false;
+    if (losGate)
+        for (ObjectGuid const& guid : attackers)
+            if (!ai->IsUnreachableTarget(guid) && ai->GetUnit(guid))
+            {
+                reachable = true;
+                break;
+            }
     for (std::list<ObjectGuid>::iterator i = attackers.begin(); i != attackers.end(); ++i)
     {
         Unit* unit = ai->GetUnit(*i);
         if (!unit)
             continue;
+
+        if (ai::cast_los_gate::SkipUnreachable(losGate, losGate && ai->IsUnreachableTarget(*i), reachable))
+        {
+            ai::cast_los_gate::skipped.fetch_add(1, std::memory_order_relaxed);
+            continue;
+        }
 
         ThreatManager &threatManager = sServerFacade.GetThreatManager(unit);
         strategy->CheckAttacker(unit, &threatManager);
