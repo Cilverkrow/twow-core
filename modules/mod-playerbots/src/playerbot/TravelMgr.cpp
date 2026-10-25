@@ -42,7 +42,7 @@ namespace
 int32 ObjectiveCountOf(Player* bot, TravelDestination const* destination)
 {
     QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination);
-    Quest const* quest = objective ? objective->GetQuestTemplate() : nullptr;
+    Quest const* quest = objective ? sObjectMgr.GetQuestTemplate(objective->GetQuestId()) : nullptr;
     if (!bot || !quest)
         return -1;
     auto const it = bot->getQuestStatusMap().find(objective->GetQuestId());
