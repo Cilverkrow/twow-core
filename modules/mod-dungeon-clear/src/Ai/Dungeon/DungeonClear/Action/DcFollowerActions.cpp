@@ -6,6 +6,8 @@
 #include "DungeonClearActions.h"
 #include <unordered_map>
 #include "Ai/Dungeon/DungeonClear/Util/DcLeaderSignal.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcCombatFlag.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // CLI-GRP G1 dry-r3 (loot yield)
 #include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 
 #include <algorithm>
@@ -247,37 +249,40 @@ bool DungeonClearFollowTankAction::Execute(Event& /*event*/)
     // items pending, bags full) otherwise wastes 15s here AND keeps the tank's
     // IsAnyPartyMemberLooting true, stalling the whole party on it.
     DcLootPolicy::MaybeGiveUpCampedLoot(botAI, DC_LOOT_CAMP_TIMEOUT_MS, DC_LOOT_GIVEUP_TTL_MS);
-    uint32& lootYieldStart =
-        context->GetValue<DcApproachState&>(DcKey::ApproachState)->Get().lootYieldStartMs;
+    DcApproachState& approach = context->GetValue<DcApproachState&>(DcKey::ApproachState)->Get();
     bool const lootYield =
         AI_VALUE(bool, DcKey::Stock::HasAvailableLoot) || AI_VALUE(bool, DcKey::Stock::CanLoot);
-    if (lootYield)
+    // CLI-GRP G1 dry-r3 (DcRunRobustPolicy.h): no yield while the party fights (LootYieldPartyCombatGate) and an anchor
+    // set before a fight set anew after it (LootYieldReanchorAfterFight); both 0 = the old rule. Not looting -> reset.
+    uint32 const now = getMSTime();
+    bool const combatGate = lootYield && DcSettings::GetBool(bot, "LootYieldPartyCombatGate");
+    bool const fought = lootYield && DcRunRobust::FoughtSince(DcSettings::GetBool(bot, "LootYieldReanchorAfterFight"),
+        approach.lootYieldAnchorSec, uint64(botAI->GetCombatStartTime()));
+    DcRunRobust::LootYieldStep const step = DcRunRobust::EvaluateLootYield(lootYield,
+        combatGate && DcCombatFlag::AnyPartyEngagement(bot), combatGate, approach.lootYieldStartMs, fought, now,
+        DC_LOOT_YIELD_TIMEOUT_MS);
+    approach.lootYieldStartMs = step.start;
+    if (step.anchored)
+        approach.lootYieldAnchorSec = uint32(time(nullptr));
+    if (step.yield)
     {
-        uint32 const now = getMSTime();
-        if (lootYieldStart == 0)
-            lootYieldStart = now;
-
-        if (now - lootYieldStart < DC_LOOT_YIELD_TIMEOUT_MS)
-        {
-            // Hand the tick to move-to-loot / open-loot. Don't issue a follow
-            // move that would drag the bot off the corpse.
-            LOG_DEBUG("playerbots.dungeonclear",
-                      "[DC:{}] follow-tank yielding: loot in progress ({}ms)",
-                      bot->GetName(), now - lootYieldStart);
-            return false;
-        }
+        // Hand the tick to move-to-loot / open-loot. Don't issue a follow
+        // move that would drag the bot off the corpse.
+        LOG_DEBUG("playerbots.dungeonclear",
+                  "[DC:{}] follow-tank yielding: loot in progress ({}ms)",
+                  bot->GetName(), now - step.start);
+        return false;
+    }
+    if (step.giveUp)
+    {
         // Waited long enough — give up on THIS corpse (blacklist it so the
         // flags drop next tick and we stop being yanked back to it), then resume
-        // following to rejoin the tank. Leave lootYieldStart expired so we keep
+        // following to rejoin the tank. Leave the anchor expired so we keep
         // following until the flags clear (which resets the timer).
         DcLootPolicy::GiveUpCurrentLoot(botAI, DC_LOOT_GIVEUP_TTL_MS);
         LOG_INFO("playerbots.dungeonclear",
                  "[DC:{}] follow-tank loot-yield timed out after {}ms -> giving up on corpse, following",
-                 bot->GetName(), now - lootYieldStart);
-    }
-    else
-    {
-        lootYieldStart = 0;  // not looting -> reset the commit timer
+                 bot->GetName(), now - step.start);
     }
 
     // In DYNAMIC pull mode, trail the tank at a lag distance while it scouts toward
@@ -740,32 +745,35 @@ bool DungeonClearCampHoldActionBase::Execute(Event& /*event*/)
         DcLootPolicy::MaybeSkipUnworthyLoot(botAI);
         DcLootPolicy::MaybeGiveUpCampedLoot(botAI, DC_LOOT_CAMP_TIMEOUT_MS,
                                                 DC_LOOT_GIVEUP_TTL_MS);
-        uint32& lootYieldStart =
-            context->GetValue<DcApproachState&>(DcKey::ApproachState)->Get().lootYieldStartMs;
+        DcApproachState& approach = context->GetValue<DcApproachState&>(DcKey::ApproachState)->Get();
         bool const lootYield =
             AI_VALUE(bool, DcKey::Stock::HasAvailableLoot) || AI_VALUE(bool, DcKey::Stock::CanLoot);
-        if (lootYield)
+        // CLI-GRP G1 dry-r3: the same rule as follow-tank (DcRunRobustPolicy.h).
+        uint32 const nowMs = getMSTime();
+        bool const combatGate = lootYield && DcSettings::GetBool(bot, "LootYieldPartyCombatGate");
+        bool const fought = lootYield && DcRunRobust::FoughtSince(DcSettings::GetBool(bot, "LootYieldReanchorAfterFight"),
+            approach.lootYieldAnchorSec, uint64(botAI->GetCombatStartTime()));
+        DcRunRobust::LootYieldStep const step = DcRunRobust::EvaluateLootYield(lootYield,
+            combatGate && DcCombatFlag::AnyPartyEngagement(bot), combatGate, approach.lootYieldStartMs, fought, nowMs,
+            DC_LOOT_YIELD_TIMEOUT_MS);
+        approach.lootYieldStartMs = step.start;
+        if (step.anchored)
+            approach.lootYieldAnchorSec = uint32(time(nullptr));
+        if (step.yield)
         {
-            uint32 const nowMs = getMSTime();
-            if (lootYieldStart == 0)
-                lootYieldStart = nowMs;
-            if (nowMs - lootYieldStart < DC_LOOT_YIELD_TIMEOUT_MS)
-            {
-                // Hand the tick to move-to-loot / open-loot; do NOT yank back to
-                // camp (that is the ping-pong).
-                DC_PULL_TRACE("[DC:{}] hold-at-camp yielding: loot in progress ({}ms)",
-                              bot->GetName(), nowMs - lootYieldStart);
-                return false;
-            }
+            // Hand the tick to move-to-loot / open-loot; do NOT yank back to
+            // camp (that is the ping-pong).
+            DC_PULL_TRACE("[DC:{}] hold-at-camp yielding: loot in progress ({}ms)",
+                          bot->GetName(), nowMs - step.start);
+            return false;
+        }
+        if (step.giveUp)
+        {
             // Waited long enough — blacklist THIS corpse so the flags drop and we
             // stop being drawn back to it, then resume holding at camp.
             DcLootPolicy::GiveUpCurrentLoot(botAI, DC_LOOT_GIVEUP_TTL_MS);
             DC_PULL_TRACE("[DC:{}] hold-at-camp loot-yield timed out -> giving up corpse",
                           bot->GetName());
-        }
-        else
-        {
-            lootYieldStart = 0;  // not looting -> reset the commit timer
         }
     }
 

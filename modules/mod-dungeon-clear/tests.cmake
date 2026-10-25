@@ -165,6 +165,7 @@ set(DC_TEST_FAST_SOURCES
     "${DC_MOD_PATH}/t/TestNeverTarget.cpp"
     "${DC_MOD_PATH}/t/TestPostCombatRez.cpp"
     "${DC_MOD_PATH}/t/TestRelevanceLadder.cpp"
+    "${DC_MOD_PATH}/t/TestRunRobustPolicy.cpp"
     "${DC_MOD_PATH}/t/TestScenarioDriver.cpp"
     "${DC_MOD_PATH}/t/TestSealedEncounter.cpp"
     "${DC_MOD_PATH}/t/TestSettingsRegistry.cpp"
@@ -196,6 +197,12 @@ target_include_directories(dungeon_clear_tests_fast PRIVATE
     "${DC_MOD_PATH}/src/Ai/Dungeon/DungeonClear/Util"
     "${DC_MOD_PATH}/t"
 )
+
+# CLI-GRP G1 dry-r3 25.10.2026: run robustness keys (rules: TestRunRobustPolicy; wiring: this source contract).
+add_test(NAME dungeon_clear_run_robust_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/run_robust_contract.cmake")
 
 # Force-include the test prelude, mirroring what the shipping module does with
 # AcCompat.h but with a fraction of its reach — see DcTestPrelude.h for why the
