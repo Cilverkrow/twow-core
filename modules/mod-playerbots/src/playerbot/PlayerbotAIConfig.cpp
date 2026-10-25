@@ -684,6 +684,13 @@ bool PlayerbotAIConfig::Initialize()
     questLoopWindowSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.WindowSeconds", 1800));
     questLoopCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.CooldownSeconds", 1800));
     questLoopInactiveCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveCooldownSeconds", 0)));
+    // twow-repo#601 InactiveAfterProgress: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopInactiveAfterProgress = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveAfterProgress", 0);
+    if (questLoopInactiveAfterProgress > 2)
+    {
+        sLog.outError("[QuestLoop] config key=InactiveAfterProgress value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopInactiveAfterProgress);
+        questLoopInactiveAfterProgress = 0;
+    }
     questFirstProgressionSkipScriptOnlyQuestTakers = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers", false);
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
     specAuraEnabled = config.GetBoolDefault("AiPlayerbot.SpecAura.Enabled", false);
@@ -1635,6 +1642,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
+            {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
