@@ -37,6 +37,7 @@ namespace ai
             creators["quest update failed timer"] = [](PlayerbotAI* ai) { return new WorldPacketTrigger(ai, "quest update failed timer"); };
             creators["quest update complete"] = [](PlayerbotAI* ai) { return new WorldPacketTrigger(ai, "quest update complete"); };
             creators["item push result"] = [](PlayerbotAI* ai) { return new WorldPacketTrigger(ai, "item push result"); };
+            creators["loot roll won"] = [](PlayerbotAI* ai) { return new WorldPacketTrigger(ai, "loot roll won"); };   // twow-repo#341
             creators["party command"] = [](PlayerbotAI* ai) { return new WorldPacketTrigger(ai, "party command"); };
             creators["taxi done"] = [](PlayerbotAI* ai) { return new WorldPacketTrigger(ai, "taxi done"); };
             creators["cast failed"] = [](PlayerbotAI* ai) { return new WorldPacketTrigger(ai, "cast failed"); };

@@ -7,6 +7,7 @@
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "UnequipAction.h"
 #include "playerbot/KeepWeaponsPolicy.h"
+#include "playerbot/EquipAfterRollPolicy.h"   // twow-repo#341 (Equip.AfterRollWon)
 
 using namespace ai;
 
@@ -372,6 +373,30 @@ bool EquipUpgradesAction::Execute(Event& event)
         {
             return false;
         }
+    }
+    // twow-repo#341 (AiPlayerbot.Equip.AfterRollWon, EquipAfterRollPolicy.h): the core stores a won roll item without
+    // SMSG_ITEM_PUSH_RESULT; SMSG_LOOT_ROLL_WON goes to every voter, so only this bot's own win of a gear item counts.
+    else if (event.getSource() == "loot roll won")
+    {
+        if (!sPlayerbotAIConfig.equipAfterRollWon)
+            return false;
+
+        WorldPacket& data = event.getPacket();
+        if (data.empty())
+            return false;
+        data.rpos(0);
+
+        // Group::SendLootRollWon: looted guid, loot slot, item id, random suffix, random property, winner, roll number, roll type.
+        ObjectGuid lootGuid, winner;
+        uint32 lootSlot, itemId, randomSuffix, randomPropertyId;
+        uint8 rollNumber, rollType;
+        data >> lootGuid >> lootSlot >> itemId >> randomSuffix >> randomPropertyId >> winner >> rollNumber >> rollType;
+
+        ItemPrototype const* itemProto = sObjectMgr.GetItemPrototype(itemId);
+        bool const gear = itemProto && (itemProto->Class == ItemClass::ITEM_CLASS_WEAPON ||
+            itemProto->Class == ItemClass::ITEM_CLASS_ARMOR || itemProto->Class == ItemClass::ITEM_CLASS_CONTAINER);
+        if (!ai::equip_after_roll::Equips(true, winner == bot->GetObjectGuid(), gear))
+            return false;
     }
 
     Item* oldMainhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
