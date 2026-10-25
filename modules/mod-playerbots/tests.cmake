@@ -3799,3 +3799,23 @@ add_test(NAME shim_id_sets_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
     -P "${PB_MODULE_DIR}/t/shim_id_sets_source_contract_tests.cmake")
+
+# twow-repo#333 Berufe P1-a / P1-b (AiPlayerbot.ProfessionTraining.Travel / ProfessionUse.ToolBuy, modes 0/1/2, default 0):
+# gap-filler trips of a roster bot to a phase-one profession trainer and to the vendor of its missing pick / knife.
+add_executable(profession_travel_policy_tests
+  "${PB_MODULE_DIR}/t/profession_travel_policy_tests.cpp")
+
+target_include_directories(profession_travel_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(profession_travel_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME profession_travel_policy
+  COMMAND profession_travel_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME profession_travel_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/profession_travel_source_contract_tests.cmake")
