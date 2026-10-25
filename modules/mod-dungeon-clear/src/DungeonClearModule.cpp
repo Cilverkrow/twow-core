@@ -68,6 +68,7 @@
 #include "AiObjectContextAccess.h"
 #include "DcStrategyGate.h"
 #include "DcAutoRun.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // CLI-GRP G1 dry-r3 (SuppressDeathLoopEvac)
 #include "Ai/Dungeon/DungeonClear/Data/DcRosterFile.h"
 
 // Per-class context registries — each owns its own shared static lists.
@@ -210,6 +211,17 @@ public:
         DcStrategyGate::Reconcile(player);
         if (DcRun::Of(ai).enabled)
             DcRouteRecorder::Sample(player);
+
+        // CLI-GRP G1 dry-r3 (DungeonClear.SuppressDeathLoopEvac, DcRunRobustPolicy.h): the playerbot death loop
+        // evacuated a run member (repop at its start point, out of the group) after 4 deaths between resurrections and
+        // ended or broke the run. Alive in the dungeon of an active run, it keeps no death-loop history. Here, on the bot's
+        // own update (the thread that records its deaths). Short-circuit (pre-review): only an alive bot in a dungeon reads
+        // the key, and only with the key on is the run looked up.
+        Map* map = player->FindMap();
+        bool const suppress = map && map->IsDungeon() && player->IsAlive() &&
+                              DcSettings::GetBool(player, "SuppressDeathLoopEvac");
+        if (suppress && DcRunRobust::ClearDeathLoop(true, true, true, DcStrategyGate::RunActive(player)))
+            ai->ClearDeathLoop();
     }
 };
 

@@ -106,6 +106,13 @@ namespace DcStrategyGate
     void SetActiveRunOnly(bool on) { g_activeRunOnly.store(on); }
     bool ActiveRunOnly() { return g_activeRunOnly.load(); }
 
+    bool RunActive(Player* bot)
+    {
+        PlayerbotAI* botAI = bot ? GET_PLAYERBOT_AI(bot) : nullptr;
+        Map* map = bot ? bot->FindMap() : nullptr;
+        return botAI && map && RunActiveFor(botAI, bot, map);
+    }
+
     void RequestAutoRun(ObjectGuid guid)
     {
         std::lock_guard<std::mutex> lock(g_autoRunMutex);
