@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PerformanceMonitor.h"
 #include "MovementActions.h"
+#include "playerbot/LazyRollReport.h"   // telemetry P0
 #include "Movement/MotionMaster.h"
 #include "Movement/MovementGenerator.h"
 #include "playerbot/FleeManager.h"
@@ -79,13 +80,21 @@ bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition c
 
 // twow-repo#575 (PATH-01 #1, AiPlayerbot.Path.RouteFailDetail): one line per failed node route search within the minute's
 // budget, plus a summary of the previous minute (all failures, logged lines, PATH-01 #3 honest fails).
-void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& from, WorldPosition const& to,
-    path_fail::RouteFailDetail const& d)
+// telemetry P0: the roll + summary line on its own, so the minute driver (ai::lazy_roll::ReportMinute) and the event path print the same line.
+static void RollRouteFailSummary()
 {
     path_fail::Counters& counters = path_fail::SharedCounters();
     uint32 failed = 0, logged = 0, honest = 0;
     if (counters.Roll(uint64(time(nullptr)), failed, logged, honest))
-        sLog.outBasic("[RouteFailDetail] summary failed=%u logged=%u honest=%u", failed, logged, honest);
+        sLog.outBasic("[RouteFailDetail] summary failed=%u logged=%u honest=%u window_s=%u", failed, logged, honest,
+            counters.windowMinutes.load(std::memory_order_relaxed) * 60);
+}
+
+void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& from, WorldPosition const& to,
+    path_fail::RouteFailDetail const& d)
+{
+    RollRouteFailSummary();
+    path_fail::Counters& counters = path_fail::SharedCounters();
     if (!counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute))
         return;
 
@@ -103,12 +112,19 @@ void LogRouteFail(Player* bot, std::string const& action, WorldPosition const& f
 
 // twow-repo#575 (QFO 41747, AiPlayerbot.Path.PartialNoop): one line per no-op partial move within the minute's budget, plus a
 // summary of the previous minute (all no-ops, logged lines).
-void LogPartialNoop(Player* bot, std::string const& action, WorldPosition const& from, WorldPosition const& to, WorldPosition const& pathEnd)
+static void RollPartialNoopSummary()
 {
     path_fail::Counters& counters = path_fail::PartialNoopCounters();
     uint32 noops = 0, logged = 0, unused = 0;
     if (counters.Roll(uint64(time(nullptr)), noops, logged, unused))
-        sLog.outBasic("[MoveTo] summary partial_noop=%u logged=%u", noops, logged);
+        sLog.outBasic("[MoveTo] summary partial_noop=%u logged=%u window_s=%u", noops, logged,
+            counters.windowMinutes.load(std::memory_order_relaxed) * 60);
+}
+
+void LogPartialNoop(Player* bot, std::string const& action, WorldPosition const& from, WorldPosition const& to, WorldPosition const& pathEnd)
+{
+    RollPartialNoopSummary();
+    path_fail::Counters& counters = path_fail::PartialNoopCounters();
     if (!counters.Take(path_fail::DefaultLinesPerMinute))
         return;
 
@@ -124,8 +140,8 @@ void LogTaxiSummary(path_fail::TaxiCounters& counters)
     uint32 results[5] = {};
     uint32 waits = 0, logged = 0;
     if (counters.Roll(uint64(time(nullptr)), results, waits, logged))
-        sLog.outBasic("[TaxiUse] summary ok=%u no_path=%u no_npc=%u too_far=%u failed=%u transport_waits=%u logged=%u",
-            results[0], results[1], results[2], results[3], results[4], waits, logged);
+        sLog.outBasic("[TaxiUse] summary ok=%u no_path=%u no_npc=%u too_far=%u failed=%u transport_waits=%u logged=%u window_s=%u",
+            results[0], results[1], results[2], results[3], results[4], waits, logged, counters.windowMinutes.load(std::memory_order_relaxed) * 60);
 }
 
 // Distance from the bot to the start node of the stored TaxiPath (-1 = other map / unknown node).
@@ -200,18 +216,18 @@ transport_edge::State& TransportEdgeState(PlayerbotAI* ai)
     return ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportEdge;
 }
 
+// telemetry P0: the roll + summary line on its own, for the event path and the minute driver (ai::lazy_roll::ReportMinute).
+static void RollTransportEdgeSummary()
+{
+    transport_edge::Snapshot snapshot;
+    if (transport_edge::SharedCounters().Roll(uint64(time(nullptr)), snapshot))
+        sLog.outBasic("%s", transport_edge::FormatSummary(snapshot).c_str());
+}
+
 // One step of the episode: the summary of the previous window first (rolled like LogTaxiSummary), every transition
 // counted, the lines within the trace's own budget (dropped ones counted for the summary). at_map / at_x / at_y = the bot
 // now, unless the caller recorded the position before the exit (arrive / exit_origin).
-void LogTransportEdge(Player* bot, transport_edge::Step const& step, transport_edge::Key const& key, transport_edge::Extra const& extra,
-    WorldPosition const* at = nullptr)
-{
-    if (!step.Any())
-        return;
-    transport_edge::Counters& counters = transport_edge::SharedCounters();
-    transport_edge::Snapshot snapshot;
-    if (counters.Roll(uint64(time(nullptr)), snapshot))
-        sLog.outBasic("%s", transport_edge::FormatSummary(snapshot).c_str());
+    RollTransportEdgeSummary();
     counters.Account(step);
     transport_edge::BotInfo info;
     info.guid = bot->GetGUIDLow();
@@ -844,12 +860,17 @@ static bool VesselAtStopNear(GenericTransport* transport, WorldPosition const& d
 
 // The summary of the previous window first (rolled like LogTransportEdge), then the probe counted in the new window, the
 // line within the probe's own budget (dropped ones counted for the summary).
+static void RollTransportBoardSummary()
+{
+    transport_board::Snapshot snapshot;
+    if (transport_board::SharedCounters().Roll(uint64(time(nullptr)), snapshot))
+        sLog.outBasic("%s", transport_board::FormatSummary(snapshot).c_str());
+}
+
 static void LogTransportBoardLine(std::string const& line)
 {
     transport_board::Counters& counters = transport_board::SharedCounters();
-    transport_board::Snapshot snapshot;
-    if (counters.Roll(uint64(time(nullptr)), snapshot))
-        sLog.outBasic("%s", transport_board::FormatSummary(snapshot).c_str());
+    RollTransportBoardSummary();
     counters.Account();
     if (counters.Take())
         sLog.outBasic("%s", line.c_str());
@@ -2371,7 +2392,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                         telePos = WorldPosition(at->target_mapId, at->target_X, at->target_Y, at->target_Z, at->target_Orientation);
 
                     std::ostringstream out;
-                    out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+                    out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
                     out << bot->GetName() << ",";
                     if (telePos && telePos != movePosition)
                         startPosition.printWKT({startPosition, movePosition, telePos}, out, 1);
@@ -2444,7 +2465,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                         telePos = movePosition;
 
                     std::ostringstream out;
-                    out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+                    out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
                     out << bot->GetName() << ",";
                     if (telePos && telePos != movePosition)
                         startPosition.printWKT({startPosition, movePosition, telePos}, out, 1);
@@ -2789,7 +2810,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
     if (sPlayerbotAIConfig.hasLog("bot_movement.csv") && lastMove.lastMoveShort != movePosition)
     {
         std::ostringstream out;
-        out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+        out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
         out << bot->GetName() << ",";
         startPosition.printWKT({startPosition, movePosition}, out, 1);
         out << std::to_string(bot->getRace()) << ",";
@@ -5438,4 +5459,22 @@ bool MovementAction::IsMovingAllowed()
         return false;
 
     return IsMovingAllowed(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+}
+
+// telemetry P0 (audit Q7): once a minute, from the roster manager's minute report. Rolls the counters of every enabled path trace,
+// so a quiet minute is a summary line with zeros (and the window it covers) instead of no line. Disabled traces stay silent.
+void ai::lazy_roll::ReportMinute()
+{
+    if (sPlayerbotAIConfig.pathRouteFailDetail)
+        RollRouteFailSummary();
+    if (sPlayerbotAIConfig.pathPartialNoop)
+        RollPartialNoopSummary();
+    if (sPlayerbotAIConfig.pathTaxiTrace)
+        LogTaxiSummary(path_fail::SharedTaxiCounters());
+    if (sPlayerbotAIConfig.pathTransportEdgeTrace)
+        RollTransportEdgeSummary();
+    if (sPlayerbotAIConfig.pathTransportDeckProbe)
+        RollTransportBoardSummary();
+    if (sPlayerbotAIConfig.pathPosStuck)
+        ai::lazy_roll::ReportPosStuckSummary();
 }

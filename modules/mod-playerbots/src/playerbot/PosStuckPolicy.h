@@ -218,6 +218,7 @@ struct Counters
     std::atomic<std::uint32_t> teleport{0};
     std::atomic<std::uint32_t> logged{0};
     std::atomic<std::uint64_t> minute{0};
+    std::atomic<std::uint32_t> windowMinutes{1};   // telemetry P0: minutes the last rolled window covered
 
     // Starts a new minute when due; true for exactly one caller, which then logs the previous minute's summary.
     bool Roll(std::uint64_t nowSeconds, std::uint32_t& outDetect, std::uint32_t& outUnstuck, std::uint32_t& outTeleport,
@@ -231,6 +232,7 @@ struct Counters
         outUnstuck = unstuck.exchange(0, std::memory_order_relaxed);
         outTeleport = teleport.exchange(0, std::memory_order_relaxed);
         outLogged = logged.exchange(0, std::memory_order_relaxed);
+        windowMinutes.store(now > seen && now - seen < 1440 ? std::uint32_t(now - seen) : (now > seen ? 1440u : 1u), std::memory_order_relaxed);
         return seen != 0;
     }
 

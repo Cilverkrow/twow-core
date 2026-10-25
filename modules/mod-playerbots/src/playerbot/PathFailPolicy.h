@@ -48,6 +48,15 @@ inline std::uint32_t ClampLinesPerMinute(std::int32_t lines)
     return std::uint32_t(lines);
 }
 
+// telemetry P0 (audit Q7): the window a rolled summary covers, in whole minutes (at least 1). A roll that happens at the next event
+// after a quiet gap spans the gap; the summary line says so with window_s=, and the minute driver rolls every minute so a quiet
+// minute is a line with zeros instead of no line.
+inline std::uint32_t WindowMinutes(std::uint64_t seen, std::uint64_t now)
+{
+    std::uint64_t const w = now > seen ? now - seen : 1;
+    return w > 1440 ? 1440 : std::uint32_t(w);
+}
+
 // Shared by all map threads: failures this minute, lines logged this minute, summary once a minute.
 struct Counters
 {
@@ -55,6 +64,7 @@ struct Counters
     std::atomic<std::uint32_t> logged{0};
     std::atomic<std::uint32_t> honest{0};      // PATH-01 #3: MoveTo2 returned false for an empty route
     std::atomic<std::uint64_t> minute{0};
+    std::atomic<std::uint32_t> windowMinutes{1};   // telemetry P0: minutes the last rolled window covered (a gap without events spans several)
 
     // Starts a new minute when due; returns true for exactly one caller, which then logs the summary of the
     // previous minute (outFailed / outLogged / outHonest).
@@ -67,6 +77,7 @@ struct Counters
         outFailed = failed.exchange(0, std::memory_order_relaxed);
         outLogged = logged.exchange(0, std::memory_order_relaxed);
         outHonest = honest.exchange(0, std::memory_order_relaxed);
+        windowMinutes.store(WindowMinutes(seen, now), std::memory_order_relaxed);
         return seen != 0;
     }
 
@@ -153,6 +164,7 @@ struct TaxiCounters
     std::atomic<std::uint32_t> transportWaits{0};
     std::atomic<std::uint32_t> logged{0};
     std::atomic<std::uint64_t> minute{0};
+    std::atomic<std::uint32_t> windowMinutes{1};   // telemetry P0, see Counters
 
     void Count(TaxiResult result) { results[std::size_t(result)].fetch_add(1, std::memory_order_relaxed); }
 
@@ -167,6 +179,7 @@ struct TaxiCounters
             outResults[i] = results[i].exchange(0, std::memory_order_relaxed);
         outWaits = transportWaits.exchange(0, std::memory_order_relaxed);
         outLogged = logged.exchange(0, std::memory_order_relaxed);
+        windowMinutes.store(WindowMinutes(seen, now), std::memory_order_relaxed);
         return seen != 0;
     }
 
