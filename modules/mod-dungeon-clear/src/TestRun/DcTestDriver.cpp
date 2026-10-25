@@ -42,6 +42,7 @@ namespace DcTestDriver
         std::string _provisionRefusal;  // replayed, so the retry keeps the real reason
         bool _awaitingFlush = false;
         uint32 _flushProbedAt = 0;  // getMSTime() of the last "is it there yet" probe
+        bool _accountPending = false;  // the last attempt's account INSERT was still queued
 
         std::string ConfName()
         {
@@ -75,6 +76,7 @@ namespace DcTestDriver
                 _provisionTried = false;
                 _provisionRefusal.clear();
                 _awaitingFlush = false;
+                _accountPending = false;
             }
             _guid = sCharacterCache->GetCharacterGuidByName(name);
             _resolvedName = name;
@@ -170,6 +172,7 @@ namespace DcTestDriver
                     // Un-latch instead of wedging provisioning for good - the
                     // next attempt finds the account and carries on.
                     _provisionTried = false;
+                    _accountPending = true;   // Ensure(): a login in flight, not a refusal
                     *why = "test driver account '" + account +
                            "' is still being written — run 'dc test start' "
                            "again in a moment";
@@ -275,6 +278,18 @@ namespace DcTestDriver
                 return Readiness::Unavailable;
             }
 
+            // A driver we just created is not in the name cache until its save
+            // landed (Tick refreshes the cache then): a login in flight, not a
+            // missing character. G1 dry 25.10.2026: the plan was refused as
+            // "not found" here and the next attempt found it.
+            if (_awaitingFlush)
+            {
+                if (why)
+                    *why = "test driver '" + name + "' was just created and is "
+                           "still being written to the database";
+                return Readiness::PendingLogin;
+            }
+
             // One attempt per conf name: a refusal is a standing condition, and
             // retrying it on every command would just repeat the message.
             if (_provisionTried)
@@ -290,15 +305,31 @@ namespace DcTestDriver
             if (!TryProvision(name, &provisionWhy))
             {
                 LOG_WARN("playerbots.dungeonclear", "TESTDRIVER {}", provisionWhy);
-                _provisionRefusal = provisionWhy;
                 if (why)
                     *why = provisionWhy;
+                // The account INSERT still queued (async DB) is provisioning in
+                // flight - the next attempt carries on - not a standing refusal.
+                if (_accountPending)
+                {
+                    _accountPending = false;
+                    return Readiness::PendingLogin;
+                }
+                _provisionRefusal = provisionWhy;
                 return Readiness::Unavailable;
             }
 
             // Resolve again so _guid picks up the cache entry we just added.
             if (!ResolveGuid())
             {
+                // The usual case on this core: the character's save is still
+                // queued, so the cache does not know the name yet (see Tick).
+                if (_awaitingFlush)
+                {
+                    if (why)
+                        *why = "created the test driver character '" + name +
+                               "' — it is still being written to the database";
+                    return Readiness::PendingLogin;
+                }
                 if (why)
                     *why = ManualSetup(name);
                 return Readiness::Unavailable;
