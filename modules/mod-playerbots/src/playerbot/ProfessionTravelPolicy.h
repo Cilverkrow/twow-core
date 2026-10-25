@@ -125,6 +125,8 @@ inline bool HasGatherTool(std::uint32_t skill, bool hasPick, bool hasKnife)
 // Blackstone Island, Alah'Thalas, Moonwhisper Coast, Tel'Abim ... - the nearest node 516-2,548 yd away; an instance or
 // battleground map 30 / 42 / 90) or that is hostile (RpgTravelDestination::IsActive drops it only after the choice), and held
 // for nothing. A spawn is reachable on an open-world map with a playerbot travel node within kMaxNodeYards (2D, CLI-PATH's rule).
+// Deliberately open world only: the two trainers CLI-PATH rates reachable through in-instance travel nodes (Annora 11073 in
+// Uldaman, map 70; Henry Stern 8696 in Razorfen Downs, map 129) are dropped - a dungeon walk is no quest-gap filler.
 constexpr float kMaxNodeYards = 500.0f;
 
 inline bool SpawnReachable(bool openWorldMap, float nearestNodeYards)
@@ -147,5 +149,19 @@ inline TripTarget ClassifyTripTarget(bool hostile, bool anySpawnReachable)
     if (!anySpawnReachable)
         return TripTarget::Unreachable;
     return TripTarget::Kept;
+}
+
+// Whom one lookup's verdict holds for (CLI-PATH review 25.10.): the node rule's verdict on an entry's destinations for
+// every asker; "no destination in this call" only for the asker's map - GetDestinations drops a destination by the asker's
+// distance (DistanceTo == FLT_MAX), so another map must ask again instead of inheriting a permanent drop.
+enum class ReachCache
+{
+    EveryAsker,
+    AskerMap
+};
+
+inline ReachCache ReachCacheScope(bool hadDestination)
+{
+    return hadDestination ? ReachCache::EveryAsker : ReachCache::AskerMap;
 }
 }

@@ -24,6 +24,7 @@
 #include <cmath>
 #include <map>
 #include <mutex>
+#include <set>
 #include <shared_mutex>
 #include <tuple>
 
@@ -237,11 +238,14 @@ std::vector<int32> ai::GatherToolVendors(PlayerbotAI* ai, uint32 tool)
 
 namespace
 {
-// P1-b2: the reachability of an entry, once per server run (its spawns and the travel graph stay). Keyed by entry, purpose
-// and side: GetDestinations drops the other side's start-zone destinations (CustomRaceStartZones), nothing else of the bot.
-// An entry without a destination (a template without spawns in "item vendor list" / the trainable spell map) is stored
-// unreachable too, so the start condition (every 5 s in the gap) never walks the destinations for it again.
-using ProfessionTripReachKey = std::tuple<int32, uint32, bool>;
+// P1-b2: the reachability of an entry, once per server run (its spawns and the travel graph stay). Keyed by entry, purpose,
+// side (GetDestinations drops the other side's start-zone destinations, CustomRaceStartZones) and map:
+// - the node rule's verdict, when the entry had destinations: for every asker (map key kAnyAskerMap);
+// - "no destination in this call" (a template without spawns in "item vendor list" / the trainable spell map, or one
+//   GetDestinations dropped by the asker's distance): only for the asker's map (ProfessionTravelPolicy.h ReachCacheScope),
+//   so the start condition (every 5 s in the gap) does not walk the destinations again and no other map inherits the drop.
+using ProfessionTripReachKey = std::tuple<int32, uint32, bool, uint32>;
+constexpr uint32 kAnyAskerMap = 0xFFFFFFFF;
 std::mutex professionTripReachMutex;
 std::map<ProfessionTripReachKey, bool> professionTripReach;
 
@@ -273,6 +277,7 @@ std::vector<int32> ai::ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32>
 {
     Player* bot = ai->GetBot();
     bool const alliance = bot->GetTeam() == ALLIANCE;
+    uint32 const askerMap = bot->GetMapId();
     std::vector<int32> kept;
     std::vector<int32> unknown;
     std::unordered_map<int32, bool> reach;
@@ -280,19 +285,22 @@ std::vector<int32> ai::ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32>
         std::lock_guard<std::mutex> lock(professionTripReachMutex);
         for (int32 const entry : entries)
         {
-            auto const found = professionTripReach.find(ProfessionTripReachKey(entry, uint32(purpose), alliance));
+            auto found = professionTripReach.find(ProfessionTripReachKey(entry, uint32(purpose), alliance, kAnyAskerMap));
+            if (found == professionTripReach.end())
+                found = professionTripReach.find(ProfessionTripReachKey(entry, uint32(purpose), alliance, askerMap));
             if (found != professionTripReach.end())
                 reach[entry] = found->second;
-            else
+            else if (std::find(unknown.begin(), unknown.end(), entry) == unknown.end())   // a vendor list may hold an entry twice
                 unknown.push_back(entry);
         }
     }
 
     // The entries not asked yet: their destinations of this purpose (the same list GetPartitions builds from). An entry
-    // without one never comes back from GetPartitions either: unreachable. While the travel graph is busy or empty
-    // (startup) the unknown entries are kept and nothing is stored - asked again next time.
+    // without one never comes back from GetPartitions either: unreachable for this asker. While the travel graph is busy
+    // or empty (startup) the unknown entries are kept and nothing is stored - asked again next time.
     if (!unknown.empty())
     {
+        auto const started = std::chrono::steady_clock::now();
         // The destinations first, without the graph lock (their distance code may read the graph itself).
         DestinationList const destinations = sTravelMgr.GetDestinations(PlayerTravelInfo(bot), uint32(purpose), unknown, false, 0.0f);
 
@@ -307,16 +315,34 @@ std::vector<int32> ai::ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32>
                 reach[entry] = true;
         else
         {
+            std::set<int32> withDestination;
             for (TravelDestination* destination : destinations)
             {
+                withDestination.insert(destination->GetEntry());
                 bool& entryReach = reach[destination->GetEntry()];
                 entryReach = entryReach || ProfessionTripDestinationReachable(destination, nodes);
             }
             graphLock.unlock();
 
-            std::lock_guard<std::mutex> lock(professionTripReachMutex);
-            for (int32 const entry : unknown)
-                professionTripReach[ProfessionTripReachKey(entry, uint32(purpose), alliance)] = reach[entry];
+            uint32 reachable = 0;
+            {
+                std::lock_guard<std::mutex> lock(professionTripReachMutex);
+                for (int32 const entry : unknown)
+                {
+                    bool const hadDestination = withDestination.count(entry) != 0;
+                    reachable += reach[entry] ? 1 : 0;
+                    uint32 const mapKey = ai::profession_travel::ReachCacheScope(hadDestination) ==
+                        ai::profession_travel::ReachCache::EveryAsker ? kAnyAskerMap : askerMap;
+                    professionTripReach[ProfessionTripReachKey(entry, uint32(purpose), alliance, mapKey)] = reach[entry];
+                }
+            }
+
+            // Once per newly asked set (the first request of a kind pays it, later ones hit the cache): the cost on the bot
+            // thread - destinations x spawn points x travel nodes.
+            sLog.outBasic("[ProfTravel] state=reach purpose=%u bot=%u map=%u asked=%u destinations=%u no_destination=%u reachable=%u nodes=%u us=%u",
+                uint32(purpose), bot->GetGUIDLow(), askerMap, uint32(unknown.size()), uint32(destinations.size()),
+                uint32(unknown.size() - withDestination.size()), reachable, uint32(nodes.size()),
+                uint32(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count()));
         }
     }
 
