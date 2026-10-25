@@ -67,6 +67,14 @@ inline std::uint32_t HoldOverSeconds(std::uint32_t now, std::uint32_t backoffUnt
     return now > backoffUntil ? now - backoffUntil : 0;
 }
 
+// P1-b3 (CLI-Deep R-f 25.10.2026): the end time of a trip whose target went away without a failed hold check (another
+// target took over). Its "reason=lost" line is only written at the next request of the kind, often an hour later, so it
+// counts to the last hold check that still held (heldAt), or to the start when none ran.
+inline std::uint32_t LostEndAt(std::uint32_t startedAt, std::uint32_t heldAt)
+{
+    return heldAt > startedAt ? heldAt : startedAt;
+}
+
 // Why a started trip stops holding (the [ProfTravel] state=end reason): its reason is gone (rank learned / tool in
 // the bags), a turn-in opened, or the hold ran out.
 inline char const* EndReason(bool reasonLasts, bool turnInWaiting, bool holds)
@@ -84,6 +92,7 @@ inline char const* EndReason(bool reasonLasts, bool turnInWaiting, bool holds)
 constexpr char const* kHoldUntilSuffix = " hold until";
 constexpr char const* kBackoffEndSuffix = " backoff end";
 constexpr char const* kOpenSuffix = " open";
+constexpr char const* kHeldAtSuffix = " held at";
 
 inline bool CooldownOver(std::uint32_t now, std::uint32_t startedAt)
 {
