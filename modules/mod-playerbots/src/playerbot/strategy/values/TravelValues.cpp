@@ -13,6 +13,9 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
+#include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 Berufe P1-a / P1-b
+#include "playerbot/CohortPolicy.h"
+#include "TrainerValues.h"
 
 using namespace ai;
 
@@ -90,6 +93,111 @@ bool UsesFreePersistentRosterProfessionTraining(Player const* bot)
         bot->GetLevel(), sPlayerbotAIConfig.professionTrainingStartLevel,
         static_cast<profession::Pair>(pair));
 }
+
+// twow-repo#333 Berufe P1-a / P1-b: an open turn-in (the 8.5 rule of the gather purposes; with turn-in parking only an
+// open, not parked one).
+bool ProfessionTripTurnInWaiting(Player* bot, TravelTarget const* travelTarget)
+{
+    TravelTarget const* turnIns = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures ? travelTarget : nullptr;
+    uint32 finished = 0;
+    for (auto const& [questId, status] : bot->getQuestStatusMap())
+        if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && (!turnIns || turnIns->IsTurnInOpen(questId)))
+            ++finished;
+    return ai::quest_search::GatherYieldsToTurnIn(true, finished);
+}
+
+// twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): may this bot start a profession trip of this kind now?
+// The cheap gate first (mode, roster bot on its own, level, hourly limit), then the quest-first gap (CLI-Deep 25.10.):
+// the 8.1 quest route backoff runs, no open turn-in waits (the 8.5 rule of the gather purposes), no band walk runs.
+// The gap values are only read, never written.
+bool ProfessionTripStartable(PlayerbotAI* ai, uint32 mode, char const* tripValue)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    Player* bot = ai->GetBot();
+    uint32 const now = uint32(time(nullptr));
+
+    bool const applies = ai::cohort::Applies(mode, bot->GetGUIDLow());
+    bool const rosterOnItsOwn = applies && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+        !ai->HasRealPlayerMaster();
+    uint32 const startedAt = applies ? uint32(std::max(0, AI_VALUE2(int, "manual int", tripValue))) : 0;
+    if (!ai::profession_travel::MayStartTrip(applies, rosterOnItsOwn, bot->GetLevel(),
+            ai::profession_travel::CooldownOver(now, startedAt)))
+        return false;
+
+    uint32 const backoffUntil = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
+    if (now >= backoffUntil)
+        return false;
+
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    return ai::profession_travel::InQuestGap(now, backoffUntil, ProfessionTripTurnInWaiting(bot, travelTarget),
+        travelTarget->GetBandTripEnd());
+}
+
+// A started trip keeps its travel condition while the reason lasts (the backoff may end on the way: the trip is not
+// cut short for a quest search), but never past an open turn-in - the trip ends and the turn-in request runs.
+bool ProfessionTripHolds(PlayerbotAI* ai, uint32 mode, char const* tripValue)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    Player* bot = ai->GetBot();
+    if (!ai::cohort::Applies(mode, bot->GetGUIDLow()))
+        return false;
+    if (!ai::profession_travel::TripHolds(uint32(time(nullptr)), uint32(std::max(0, AI_VALUE2(int, "manual int", tripValue)))))
+        return false;
+    return !ProfessionTripTurnInWaiting(bot, AI_VALUE(TravelTarget*, "travel target"));
+}
+}
+
+std::vector<int32> ai::PhaseOneProfessionTrainers(PlayerbotAI* ai)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    std::vector<int32> trainers;
+
+    // The roster filter of "trainable spells" keeps only the planned pair and the secondary skills; GREEN is the core's.
+    std::vector<TrainerSpell const*> const trainable = AI_VALUE2(std::vector<TrainerSpell const*>, "trainable spells",
+        int32(TRAINER_TYPE_TRADESKILLS));
+    if (trainable.empty())
+        return trainers;
+
+    trainableSpellMap* spellMap = GAI_VALUE(trainableSpellMap*, "trainable spell map");
+    auto const tradeskills = spellMap->find(TRAINER_TYPE_TRADESKILLS);
+    if (tradeskills == spellMap->end())
+        return trainers;
+
+    // For tradeskill trainers the key is the skill line (TrainableSpellMapValue).
+    for (auto const& [skill, spellTrainers] : tradeskills->second)
+    {
+        if (!ai::profession_travel::IsPhaseOneSkill(skill))
+            continue;
+
+        for (auto const& [trainerSpell, entries] : spellTrainers)
+        {
+            // Ranks only (the spell teaches the skill, as GetTrainerSpellState's profession check): the bucket of a skill
+            // also holds its recipes (Smelt Tin at mining 65, Heavy Linen Bandage at first aid 40), not worth a trip.
+#ifdef MANGOSBOT_ZERO
+            if (!sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell))
+#else
+            if (!sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell[0]))
+#endif
+                continue;
+
+            if (std::find(trainable.begin(), trainable.end(), trainerSpell) == trainable.end())
+                continue;
+
+            for (int32 const entry : entries)
+                if (std::find(trainers.begin(), trainers.end(), entry) == trainers.end())
+                    trainers.push_back(entry);
+        }
+    }
+
+    return trainers;
+}
+
+uint32 ai::MissingGatherTool(PlayerbotAI* ai)
+{
+    Player* bot = ai->GetBot();
+    return ai::profession_travel::MissingTool(
+        ai->HasSkill(SKILL_MINING), bot->HasItemCount(ai::profession_travel::kMiningPick, 1),
+        ai->HasSkill(SKILL_SKINNING), bot->HasItemCount(ai::profession_travel::kSkinningKnife, 1));
 }
 
 EntryGuidps EntryGuidpsValue::Calculate()
@@ -389,6 +497,14 @@ bool NeedTravelPurposeValue::Calculate()
         if (ai::quest_search::GatherYieldsToTurnIn(rosterOnItsOwn, finished))
             return false;
 
+        // twow-repo#333 Berufe P1-b (AiPlayerbot.ProfessionUse.ToolBuy): no mining or skinning trip without the tool -
+        // the loot check refuses the node anyway (LootObjectStack.cpp), so the bot only stood there until the 15-minute
+        // no-skill-up end and then blocked the skill for an hour. Before Decide, so no purpose is declared. Off: as before.
+        if (ai::cohort::Applies(sPlayerbotAIConfig.professionUseToolBuy, bot->GetGUIDLow()) &&
+            !ai::profession_travel::HasGatherTool(gatheringSkills.at(purpose),
+                bot->HasItemCount(ai::profession_travel::kMiningPick, 1), bot->HasItemCount(ai::profession_travel::kSkinningKnife, 1)))
+            return false;
+
         // Hotfix 8.5 (owner decision): a roster bot on its own gathers only under a
         // declared purpose with a skill target and a budget.
         skill = gatheringSkills.at(purpose);
@@ -626,6 +742,41 @@ bool ShouldTravelNamedValue::Calculate()
     else if (name == "reagent vendor")
     {
         return AI_VALUE(bool, "needs profession reagents");
+    }
+    // twow-repo#333 Berufe P1-a (AiPlayerbot.ProfessionTraining.Travel): a gap trip to a trainer of a phase-one profession
+    // with a GREEN rank for the bot now. Before the generic "trainer" branch, whose "trainer trade" stays refused for roster
+    // bots (#306). The "hold" name is the condition of a started trip.
+    else if (name == "trainer profession" || name == "trainer profession hold")
+    {
+        uint32 const mode = sPlayerbotAIConfig.professionTrainingTravel;
+        bool const hold = name == "trainer profession hold";
+        if (hold ? !ProfessionTripHolds(ai, mode, ai::profession_travel::kTrainerTripValue) :
+                !ProfessionTripStartable(ai, mode, ai::profession_travel::kTrainerTripValue))
+            return false;
+
+        if (PhaseOneProfessionTrainers(ai).empty())
+            return false;
+
+        return hold || UsesFreePersistentRosterProfessionTraining(bot) ||
+            AI_VALUE2(bool, "has all money for", (uint32)NeedMoneyFor::skilltraining);
+    }
+    // twow-repo#333 Berufe P1-b (AiPlayerbot.ProfessionUse.ToolBuy): a gap trip to a vendor of the missing pick or knife.
+    else if (name == "tool vendor" || name == "tool vendor hold")
+    {
+        uint32 const mode = sPlayerbotAIConfig.professionUseToolBuy;
+        bool const hold = name == "tool vendor hold";
+        if (hold ? !ProfessionTripHolds(ai, mode, ai::profession_travel::kToolTripValue) :
+                !ProfessionTripStartable(ai, mode, ai::profession_travel::kToolTripValue))
+            return false;
+
+        uint32 const tool = MissingGatherTool(ai);
+        if (!tool)
+            return false;
+        if (hold)
+            return true;
+
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(tool);
+        return proto && AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::tradeskill) >= proto->BuyPrice;
     }
     else if (name == "mount")
     {
