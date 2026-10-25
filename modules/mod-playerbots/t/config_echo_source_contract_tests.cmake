@@ -125,6 +125,7 @@ set(entries
   "CastWait.Preparing|castWaitPreparing"
   "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
+  "Rotation.FleeAway|rotationFleeAway"
   "Rotation.ReachLosClose|rotationReachLosClose"
   "Rotation.ReachPlayerMaster|rotationReachPlayerMaster"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
