@@ -64,6 +64,7 @@
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
+#include "playerbot/CastLosGatePolicy.h"   // twow-repo#602 (Rotation.CastLosGate): [CastLosGate] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1228,6 +1229,22 @@ void ReportCastWait()
         (unsigned long long)ai::cast_wait::savedTicks.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.CastLosGate): one [CastLosGate] line per minute - casts made IMPOSSIBLE by a LINE_OF_SIGHT
+// verdict (gated), current targets dropped because 8.2 marked them unreachable (dropped), unreachable units skipped by target
+// selection (skipped). Nothing is written when off.
+void ReportCastLosGate()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationCastLosGate || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[CastLosGate] mode=%u gated=%llu dropped=%llu skipped=%llu", sPlayerbotAIConfig.rotationCastLosGate,
+        (unsigned long long)ai::cast_los_gate::gated.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::cast_los_gate::dropped.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::cast_los_gate::skipped.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose, CLI-ROT review): one [ReachLos] minute line - hostile reach targets out of
 // sight chased closer per cohort (evaluations), floored (walk-in) / stood (already inside the floor), episodes and those back in
 // sight within 5 s (per episode). Nothing with 0.
@@ -1769,6 +1786,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportBotInbox();     // twow-repo#563: [BotInbox] once per minute
     ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)
     ReportBotActivity();  // twow-repo#601 R01 L1: [BotActivityMin] once per minute (AiPlayerbot.ActivityTrace)
+    ReportCastLosGate();  // twow-repo#602: [CastLosGate] once per minute (AiPlayerbot.Rotation.CastLosGate)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)

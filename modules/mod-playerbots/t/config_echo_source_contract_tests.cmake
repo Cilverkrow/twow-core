@@ -122,6 +122,7 @@ set(entries
   "Rotation.EmergencyLadder|rotationEmergencyLadder"
   "Rotation.SpecFromPath|rotationSpecFromPath"
   "Rotation.RestGate|rotationRestGate"
+  "Rotation.CastLosGate|rotationCastLosGate"
   "CastWait.Preparing|castWaitPreparing"
   "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
