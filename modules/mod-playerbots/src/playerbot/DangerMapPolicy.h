@@ -28,6 +28,7 @@ struct Death
     std::uint32_t victim = 0;       // bot guid (low)
     std::uint8_t killerLevel = 0;
     std::uint8_t victimLevel = 0;
+    std::uint8_t attackers = 0;     // living attackers at the death (adds + the target), recorded always, read only with addDeathMinAttackers
 };
 
 struct Params
@@ -37,7 +38,18 @@ struct Params
     std::uint32_t minDeaths = 3;
     std::uint32_t levelMargin = 3;
     std::uint32_t lineSamples = 20;
+    // Re-deaths at camps (CLI-ROT adds analysis 25.10.2026, AiPlayerbot.DangerMap.CountAddDeaths): a death with at least this many
+    // living attackers counts whatever the killer's level - add deaths came from mobs ~2.5 levels below the bot, so the level rule
+    // never saw the camps. 0 = off (the querying bot's cohort decides, the map itself is shared).
+    std::uint32_t addDeathMinAttackers = 0;
 };
+
+// A death that marks its cell for botLevel: a killer LevelMargin above the bot, or (with addDeathMinAttackers) a crowd.
+inline bool CountsAsDanger(Death const& death, std::uint32_t botLevel, Params const& params)
+{
+    return death.killerLevel >= botLevel + params.levelMargin ||
+        (params.addDeathMinAttackers && death.attackers >= params.addDeathMinAttackers);
+}
 
 struct Cell
 {
@@ -78,12 +90,13 @@ inline std::uint32_t DangerousKillerLevel(std::vector<Death> const& deaths, std:
     std::uint32_t worst = 0;
     for (Death const& death : deaths)
     {
-        if (IsExpired(death, now, params.windowSeconds) || death.killerLevel < botLevel + params.levelMargin)
+        if (IsExpired(death, now, params.windowSeconds) || !CountsAsDanger(death, botLevel, params))
             continue;
 
         if (std::find(victims.begin(), victims.end(), death.victim) == victims.end())
             victims.push_back(death.victim);
-        worst = std::max<std::uint32_t>(worst, death.killerLevel);
+        // never 0 for a counted death (0 = not dangerous); a crowd of low mobs reports its own killer level
+        worst = std::max<std::uint32_t>(worst, std::max<std::uint32_t>(1, death.killerLevel));
     }
 
     return victims.size() >= params.minDeaths ? worst : 0;

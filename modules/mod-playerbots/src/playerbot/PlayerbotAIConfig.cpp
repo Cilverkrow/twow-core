@@ -672,6 +672,16 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionQuestAreaLevelMargin = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin", 5);
     destinationDeathsMax = config.GetIntDefault("AiPlayerbot.DestinationDeaths.Max", 2);
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
+    // Re-deaths at camps (CampBlock): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    destinationDeathsCampBlock = config.GetIntDefault("AiPlayerbot.DestinationDeaths.CampBlock", 0);
+    if (destinationDeathsCampBlock > 2)
+    {
+        sLog.outError("[CampBlock] config key=CampBlock value=%u result=off (0 off, 1 all, 2 cohort B)", destinationDeathsCampBlock);
+        destinationDeathsCampBlock = 0;
+    }
+    destinationDeathsCampBlockSeconds = std::min<uint32>(7200, std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CampBlock.Seconds", 1800)));
+    destinationDeathsCampBlockRadius = std::min(300.0f, std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DestinationDeaths.CampBlock.Radius", 60.0f)));
+    destinationDeathsCampBlockMinAttackers = std::min<uint32>(16, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CampBlock.MinAttackers", 2)));
     questWorkTimeoutsMax = (uint32)config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.Max", 0);
     questWorkTimeoutsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.CooldownSeconds", 3600));
     questLoopMaxFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.MaxFailures", 0)));
@@ -717,6 +727,14 @@ bool PlayerbotAIConfig::Initialize()
     dangerMapLevelMargin = config.GetIntDefault("AiPlayerbot.DangerMap.LevelMargin", 3);
     dangerMapLineSamples = std::min<uint32>(100, config.GetIntDefault("AiPlayerbot.DangerMap.LineSamples", 20));
     dangerMapCountEnvironmentDeaths = config.GetBoolDefault("AiPlayerbot.DangerMap.CountEnvironmentDeaths", false);
+    // Re-deaths at camps (CountAddDeaths): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    dangerMapCountAddDeaths = config.GetIntDefault("AiPlayerbot.DangerMap.CountAddDeaths", 0);
+    if (dangerMapCountAddDeaths > 2)
+    {
+        sLog.outError("[DangerMap] config key=CountAddDeaths value=%u result=off (0 off, 1 all, 2 cohort B)", dangerMapCountAddDeaths);
+        dangerMapCountAddDeaths = 0;
+    }
+    dangerMapAddDeathMinAttackers = std::min<uint32>(16, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.DangerMap.AddDeathMinAttackers", 3)));
     grindCapLowLevelBelow = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelBelow", 0);
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
@@ -1618,6 +1636,8 @@ bool PlayerbotAIConfig::Initialize()
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
+            {"DestinationDeaths.CampBlock", Value(destinationDeathsCampBlock)},
+            {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},

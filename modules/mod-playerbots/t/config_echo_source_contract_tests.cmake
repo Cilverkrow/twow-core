@@ -138,6 +138,8 @@ set(entries
   "LogInGroupOnly|logInGroupOnly"
   "Grind.GreyByLevel|grindGreyByLevel"
   "Grind.QuestFirstOrder|grindQuestFirstOrder"
+  "DestinationDeaths.CampBlock|destinationDeathsCampBlock"
+  "DangerMap.CountAddDeaths|dangerMapCountAddDeaths"
   "BotGroups.Enabled|botGroupsEnabled"
   "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
   "QuestGroups.Enable|questGroupsEnable")

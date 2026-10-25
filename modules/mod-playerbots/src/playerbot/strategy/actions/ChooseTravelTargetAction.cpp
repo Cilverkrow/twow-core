@@ -14,6 +14,8 @@
 #include "playerbot/RouteDangerPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapPolicy.h"
+#include "playerbot/CampBlockPolicy.h"         // re-deaths at camps (DestinationDeaths.CampBlock)
+#include "playerbot/CohortPolicy.h"            // re-deaths at camps (DangerMap.CountAddDeaths mode 2)
 #include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
@@ -44,6 +46,16 @@ danger_map::Params DangerMapParams()
     params.minDeaths = sPlayerbotAIConfig.dangerMapMinDeaths;
     params.levelMargin = sPlayerbotAIConfig.dangerMapLevelMargin;
     params.lineSamples = sPlayerbotAIConfig.dangerMapLineSamples;
+    return params;
+}
+
+// Re-deaths at camps (AiPlayerbot.DangerMap.CountAddDeaths): the shared map is read with the add-death rule only for bots the
+// switch applies to (mode 2 = cohort B); everything else as above.
+danger_map::Params DangerMapParams(Player const* bot)
+{
+    danger_map::Params params = DangerMapParams();
+    if (bot && ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()))
+        params.addDeathMinAttackers = sPlayerbotAIConfig.dangerMapAddDeathMinAttackers;
     return params;
 }
 
@@ -449,7 +461,7 @@ PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarg
     {
         dangerHit = danger_map::Instance().Query(bot->GetMapId(),
             bot->GetPositionX(), bot->GetPositionY(), position->getX(), position->getY(),
-            bot->GetLevel(), uint32(time(nullptr)), DangerMapParams());
+            bot->GetLevel(), uint32(time(nullptr)), DangerMapParams(bot));
         if (dangerHit.cells)
             return PostActiveDeferral::DangerMap;
     }
@@ -579,7 +591,7 @@ std::set<uint32> PreValidateTurnIns(PlayerbotAI* ai, Player* bot, TravelTarget* 
                 // #307 danger map (the main loop's last deferral, same query): a death cluster on the way ages out.
                 if (sPlayerbotAIConfig.dangerMapEnabled && point->getMapId() == bot->GetMapId() &&
                     danger_map::Instance().Query(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), point->getX(),
-                        point->getY(), bot->GetLevel(), uint32(time(nullptr)), DangerMapParams()).cells)
+                        point->getY(), bot->GetLevel(), uint32(time(nullptr)), DangerMapParams(bot)).cells)
                 {
                     notNowPoint = true;
                     continue;
@@ -1379,6 +1391,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     lastRejects = ai::quest_search::RejectCounts();
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
+    // Re-deaths at camps (DestinationDeaths.CampBlock): skipped candidates, quest destinations ranked lower and the kept fallback.
+    uint32 campSkipped = 0, campRankedLower = 0;
+    TravelDestination* campFallbackDestination = nullptr;
+    WorldPosition* campFallbackPosition = nullptr;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
         AI_VALUE2(std::string, "manual string", "future travel purpose") == "quest";
     bool hasActiveLocalQuestHub = false;
@@ -1484,6 +1500,19 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     continue;
                 case CandidateSkip::None:
                     break;
+            }
+
+            // Re-deaths at camps (DestinationDeaths.CampBlock, CampBlockPolicy.h): a point near a recent own camp death is skipped,
+            // a quest destination there only ranks lower (fallback below). A forced target (guild order) is never judged; with the
+            // switch off or another cohort the bot's ring is empty and nothing is blocked.
+            bool const campBlocked = !target->IsForced() && persistentTarget && persistentTarget->IsCampBlocked(position);
+            camp_block::Verdict const campVerdict = campBlocked ?
+                camp_block::Judge(true, dynamic_cast<QuestTravelDestination const*>(destination) != nullptr) : camp_block::Verdict::Free;
+            if (campVerdict == camp_block::Verdict::Skip)
+            {
+                ai->TellDebug(requester, "Skipping destination near a recent camp death.", "debug travel");
+                ++campSkipped;
+                continue;
             }
 
             // twow-repo#601 GrindMode 2 (review): no forced kill trip to a creature that no active quest needs.
@@ -1599,6 +1628,19 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 }
 #endif
 
+                // Re-deaths at camps: the first quest destination near a recent camp death that passed every check above is kept
+                // and taken only when this choice selects nothing else (never a veto).
+                if (campVerdict == camp_block::Verdict::Fallback)
+                {
+                    ++campRankedLower;
+                    if (!campFallbackDestination)
+                    {
+                        campFallbackDestination = destination;
+                        campFallbackPosition = position;
+                    }
+                    continue;
+                }
+
                 target->SetTarget(destination, position);
                 hasTarget = true;
                 break;
@@ -1618,8 +1660,21 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
         if (hasTarget || chooseBudgetExceeded)
             break;
-    }         
-     
+    }
+
+    // Re-deaths at camps: nothing else selected - the kept quest destination after all. Not on a budget-aborted slice (the next
+    // slice resumes the search). One line per choice the rule touched.
+    bool campFallbackTaken = false;
+    if (!hasTarget && !chooseBudgetExceeded && campFallbackDestination)
+    {
+        target->SetTarget(campFallbackDestination, campFallbackPosition);
+        hasTarget = campFallbackTaken = true;
+    }
+    if (campSkipped || campRankedLower)
+        sLog.outBasic("[QuestFirstRoute] state=deferred bot=%u level=%u reason=camp_block skipped=%u ranked_lower=%u fallback_taken=%u selected_other=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), campSkipped, campRankedLower, campFallbackTaken ? 1u : 0u,
+            hasTarget && !campFallbackTaken ? 1u : 0u);
+
     if(hasTarget)
         ai->TellDebug(requester, "Point at " + std::to_string(uint32(target->Distance(bot))) + "y selected.", "debug travel");
 
