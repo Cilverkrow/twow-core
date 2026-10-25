@@ -23,6 +23,7 @@ bool ZoneEscapeAction::Execute(Event& event)
         // Train 6: and the target that led here is not picked again right
         // after the hearthstone (Durotar -> Grull Hawkwind through the Barrens).
         target->SuppressCurrentDestination(sPlayerbotAIConfig.destinationDeathsCooldownSeconds * IN_MILLISECONDS);
+        target->TagCurrentSuppression(destination_death::SourceEscape);   // twow-repo#601 F5 (diagnostic)
         target->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
     }
 
