@@ -2606,12 +2606,12 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
     {
         bool const trainerTrip = travelName == "trainer profession";
         uint32 const tool = trainerTrip ? 0 : MissingGatherTool(ai);
-        std::vector<int32> entries;
-        if (trainerTrip)
-            entries = PhaseOneProfessionTrainers(ai);
-        else if (tool)
-            for (int32 const entry : GAI_VALUE2(std::list<int32>, "item vendor list", tool))
-                entries.push_back(entry);
+        TravelDestinationPurpose const purpose = trainerTrip ? TravelDestinationPurpose::Trainer : TravelDestinationPurpose::Vendor;
+        // P1-b2 (CLI-PATH 25.10.): GetPartitions checks neither the travel graph nor the faction - the hostile and the
+        // unreachable entries go first (ProfessionTripTargets, ProfessionTravelPolicy.h ClassifyTripTarget).
+        ProfessionTripDrops drops;
+        std::vector<int32> const entries = ProfessionTripTargets(ai,
+            trainerTrip ? PhaseOneProfessionTrainers(ai) : GatherToolVendors(ai, tool), purpose, &drops);
 
         std::string const key = trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
         uint32 const now = uint32(time(nullptr));
@@ -2627,14 +2627,13 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix, int(holdUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix, int(backoffUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, entries.empty() ? 0 : 1);
-        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u hold_s=%u",
+        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u",
             trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), tool,
-            uint32(entries.size()), holdUntil - now);
+            uint32(entries.size()), drops.hostile, drops.unreachable, holdUntil - now);
 
         if (entries.empty())
             return false;
 
-        TravelDestinationPurpose const purpose = trainerTrip ? TravelDestinationPurpose::Trainer : TravelDestinationPurpose::Vendor;
         *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [entries, purpose, partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center]()
             {
                 return sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);

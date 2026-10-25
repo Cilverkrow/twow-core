@@ -92,8 +92,8 @@ require_order("${values_cpp}" "!ai::profession_travel::HasGatherTool(gatheringSk
 
 # Request: before the generic trainer branch, request time set before the empty check, one line, hold conditions, allowed.
 require_order("${choose_cpp}" "else if (travelName == \"trainer profession\" || travelName == \"tool vendor\")" "else if (travelName.find(\"trainer\") == 0)" "the profession request before the generic trainer branch")
-require_order("${choose_cpp}" "SET_AI_VALUE2(int, \"manual int\", key, int(now));" "        if (entries.empty())\n            return false;\n\n        TravelDestinationPurpose const purpose" "the request time counts an empty request too")
-require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u hold_s=%u\"," "one line per request")
+require_order("${choose_cpp}" "SET_AI_VALUE2(int, \"manual int\", key, int(now));" "        if (entries.empty())\n            return false;\n\n        *AI_VALUE(FutureDestinations*, \"future travel destinations\")" "the request time counts an empty request too")
+require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u\"," "one line per request with the dropped counts (P1-b2)")
 require_text("${choose_cpp}" "travelName == \"trainer profession\" ? \"should travel named::trainer profession hold\" :" "trainer trip hold condition")
 require_text("${choose_cpp}" "travelName == \"tool vendor\" ? \"should travel named::tool vendor hold\" :" "tool trip hold condition")
 require_text("${choose_cpp}" "else if (name == \"trainer profession\" || name == \"tool vendor\")   // twow-repo#333 Berufe P1-a / P1-b\n        return true;" "isAllowed")
@@ -103,3 +103,22 @@ require_text("${strategy_cpp}" "if (sPlayerbotAIConfig.professionUseToolBuy)\n  
 require_text("${strategy_cpp}" "if (sPlayerbotAIConfig.professionTrainingTravel)\n        triggers.push_back(new TriggerNode(\n            travel_request::TriggerName(\"val::should travel named::trainer profession\", gateRequests),\n            NextAction::array(0, new NextAction(\"request named travel target::trainer profession\", 6.296f), NULL)));" "trainer row")
 require_text("${strategy_cpp}" "{\"val::has strategy::rpg quest\", \"request quest travel target\", 6.3f}" "quest request stays at 6.3")
 require_text("${strategy_cpp}" "{\"\",TravelDestinationPurpose::Explore, 6.29f}," "Explore stays at 6.29")
+
+# P1-b2 (CLI-PATH 25.10.2026): no trip to a hostile or an unreachable trainer / vendor. GetPartitions checks neither the
+# travel graph nor the faction; the entries are filtered before it, in the start condition (no request, no hourly limit
+# spent) and in the request. Reachable = a spawn on an open-world map with a travel node within 500 yd; hostile first.
+require_text("${policy}" "constexpr float kMaxNodeYards = 500.0f;" "CLI-PATH's 500 yd rule")
+require_text("${policy}" "return openWorldMap && nearestNodeYards <= kMaxNodeYards;" "open-world map and a travel node near")
+require_order("${policy}" "return TripTarget::Hostile;" "return TripTarget::Unreachable;" "hostile counts first")
+require_text("${values_h}" "std::vector<int32> ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32> const& entries, TravelDestinationPurpose purpose," "shared target filter")
+require_text("${values_cpp}" "bool const hostile = GuidPosition(HIGHGUID_UNIT, uint32(entry)).IsHostileTo(bot);" "the hostile check of RpgTravelDestination::IsActive")
+require_text("${values_cpp}" "if (graphLock.try_lock_for(std::chrono::milliseconds(50)))" "the travel graph read never blocks for long, an empty or busy graph keeps the entries")
+require_text("${values_cpp}" "nearestSq = std::min(nearestSq, point.sqDistance2d(*nodePos));" "the nearest travel node of each spawn in 2D (CLI-PATH nearest_node_yd)")
+require_text("${values_cpp}" "professionTripReach[ProfessionTripReachKey(entry, uint32(purpose), alliance, mapKey)] = reach[entry];" "every asked entry is stored (no walk every 5 s)")
+require_text("${values_cpp}" "uint32 const mapKey = ai::profession_travel::ReachCacheScope(hadDestination) ==\n                        ai::profession_travel::ReachCache::EveryAsker ? kAnyAskerMap : askerMap;" "no destination in this call: stored for the asker's map only (CLI-PATH review)")
+require_text("${policy}" "return hadDestination ? ReachCache::EveryAsker : ReachCache::AskerMap;" "cache scope rule")
+require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=reach purpose=%u bot=%u map=%u asked=%u destinations=%u no_destination=%u reachable=%u nodes=%u us=%u\"," "one cost line per newly asked set")
+require_text("${values_cpp}" "return !ProfessionTripTargets(ai, PhaseOneProfessionTrainers(ai), TravelDestinationPurpose::Trainer).empty();" "trainer start condition filtered")
+require_text("${values_cpp}" "return !ProfessionTripTargets(ai, GatherToolVendors(ai, tool), TravelDestinationPurpose::Vendor).empty();" "tool vendor start condition filtered")
+require_order("${choose_cpp}" "std::vector<int32> const entries = ProfessionTripTargets(ai," "return sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);" "the request filters before GetPartitions")
+forbid_text("${choose_cpp}" "for (int32 const entry : GAI_VALUE2(std::list<int32>, \"item vendor list\", tool))" "an unfiltered vendor list in the request")
