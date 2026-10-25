@@ -40,7 +40,8 @@ require_text("${config_h}" "bool equipAfterRollWon = false;" "member default 0")
 require_text("${config_template}" "AiPlayerbot.Equip.AfterRollWon = 0" "key documented")
 
 # Packet -> trigger -> "equip upgrades".
-require_text("${ai_cpp}" "botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_ROLL_WON, \"loot roll won\", true);" "packet handler")
+require_text("${ai_cpp}" "    if (sPlayerbotAIConfig.equipAfterRollWon)
+        botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_ROLL_WON, \"loot roll won\", true);" "packet handler, registered only with the switch (0 = every roll as before)")
 require_text("${triggers}" "creators[\"loot roll won\"] = [](PlayerbotAI* ai) { return new WorldPacketTrigger(ai, \"loot roll won\"); };" "packet trigger")
 require_text("${strategy}" "        \"loot roll won\",
         NextAction::array(0, new NextAction(\"equip upgrades\", relevance), NULL)));" "trigger node runs equip upgrades")
