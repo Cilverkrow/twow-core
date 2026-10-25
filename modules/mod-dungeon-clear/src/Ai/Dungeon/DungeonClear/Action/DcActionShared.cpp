@@ -6,6 +6,7 @@
 #include "DungeonClearActions.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
 #include "TestRun/DcTestRunManager.h"
+#include "DcAutoRun.h"
 
 #include <algorithm>
 #include <cmath>
@@ -333,6 +334,8 @@ namespace DcActionShared
         // Run-end observer for the `.dc test` harness — cheap GUID compare,
         // no-op unless this leader is the monitored test run's tank.
         DcTestRunManager::Instance().OnRunDisabled(bot, reason);
+        // ...and for a playerbots manager group (DungeonClear.AutoRun): the bridge mailbox, gate marks cleared.
+        DcAutoRun::OnRunEnded(botAI, bot, reason.c_str());
     }
 
 
