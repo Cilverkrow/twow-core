@@ -1485,6 +1485,12 @@ AiPlayerbot.Path.PosStuck.Minutes = 10
 AiPlayerbot.Path.PosStuck.Progress = 5
 AiPlayerbot.Path.PosStuck.EpisodeMinutes = 30
 AiPlayerbot.Path.PosStuck.RateMinutes = 30
+# twow-repo#594 R1 (OB-10 anti-stall map, OB-00 25.10.2026): PosStuck (10 min / 5 yd) and the upstream "move long stuck" trigger (10 min
+# without a position change, or < 50 yd in 15 min without XP -> hearthstone / repop) fire on the same bot at the same time; the
+# hearthstone undercuts the PosStuck chain (park -> local unstuck -> home bind). LongStuckGridOnly = 1 (only with Path.PosStuck = 1):
+# "move long stuck" keeps only its invalid / unloaded grid cases; a bot that does not move belongs to PosStuck. A must before
+# PosStuck goes into a profile. 0 = as before (default).
+AiPlayerbot.Path.PosStuck.LongStuckGridOnly = 0
 # twow-repo#575 (PATH-01 b, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach Abnahme
 # an): 1 = every bot flight attempt (UseTaxi) is counted by result - ok, noPath (stored TaxiPath id unknown), noNpc (no
 # flight master in reach), tooFar (more than 31.6 yd from the start node of the stored path), failed - and every wait at a

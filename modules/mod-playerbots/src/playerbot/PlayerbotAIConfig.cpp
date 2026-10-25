@@ -848,6 +848,7 @@ bool PlayerbotAIConfig::Initialize()
     pathPosStuckProgress = std::min(50.0f, std::max(1.0f, config.GetFloatDefault("AiPlayerbot.Path.PosStuck.Progress", ai::pos_stuck::DefaultProgress)));
     pathPosStuckEpisodeMinutes = uint32(std::min(240, std::max(5, config.GetIntDefault("AiPlayerbot.Path.PosStuck.EpisodeMinutes", int(ai::pos_stuck::DefaultEpisodeMinutes)))));
     pathPosStuckRateMinutes = uint32(std::min(240, std::max(5, config.GetIntDefault("AiPlayerbot.Path.PosStuck.RateMinutes", int(ai::pos_stuck::DefaultRateMinutes)))));
+    pathPosStuckLongStuckGridOnly = config.GetBoolDefault("AiPlayerbot.Path.PosStuck.LongStuckGridOnly", false);
     pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
     pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
@@ -1598,6 +1599,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
             {"Path.PosStuck", Value(pathPosStuck)},
             {"Path.PosStuck.Minutes", Value(pathPosStuckMinutes)},
+            {"Path.PosStuck.LongStuckGridOnly", Value(pathPosStuckLongStuckGridOnly)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.RestGate", Value(rotationRestGate)},

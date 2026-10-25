@@ -119,6 +119,12 @@ namespace ai
             }
 #endif
 
+            // twow-repo#594 R1 (AiPlayerbot.Path.PosStuck.LongStuckGridOnly, with Path.PosStuck): a bot that does not move belongs to the
+            // position guard (park, local unstuck, home bind); the hearthstone / repop of the checks below would undercut it. Only the
+            // invalid / unloaded grid cases above stay. Off: as before.
+            if (sPlayerbotAIConfig.pathPosStuck && sPlayerbotAIConfig.pathPosStuckLongStuckGridOnly)
+                return false;
+
             uint32 timeSinceLastMove = AI_VALUE2(uint32, "time since last change", "current position");
 
             if (timeSinceLastMove > 10 * MINUTE)
