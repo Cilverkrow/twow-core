@@ -139,7 +139,20 @@ int main()
         p = PlanFor(Follower | TurnIn);
         Require(p.turnIn && !p.follower, "never both sets");
         p = PlanFor(0);
-        Require(!p.reset && !p.follower && !p.turnIn, "nothing posted, nothing done");
+        Require(!p.reset && !p.follower && !p.turnIn && !p.forceTravel, "nothing posted, nothing done");
+
+        // S7 StagedOps: the forced quest travel on the bot thread, after the set; a group change drops it.
+        Require(Merge(TurnIn, ForceTravel) == (TurnIn | ForceTravel), "turn-in set, then the forced travel to the taker");
+        Require(Merge(ForceTravel, LeaveReset) == LeaveReset, "a leave drops a pending forced travel");
+        Require(Merge(ForceTravel, JoinReset) == JoinReset, "a new join drops it too (the new group forces again)");
+        p = PlanFor(TurnIn | ForceTravel);
+        Require(p.turnIn && p.forceTravel && !p.reset, "set and travel, no reset");
+        std::uint32_t q = 0;
+        int obj = 0;
+        UnpackForce(PackForce(4402, 2), q, obj);
+        Require(q == 4402 && obj == 2, "objective force packed and unpacked");
+        UnpackForce(PackForce(60133, -1), q, obj);
+        Require(q == 60133 && obj == -1, "taker force (-1) packed and unpacked");
     }
 
     // twow-repo#628 ScanSlices (ScanSlicePolicy.h): a pass over all bots spread over several manager updates.

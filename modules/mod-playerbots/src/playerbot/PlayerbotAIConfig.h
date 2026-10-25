@@ -818,6 +818,7 @@ public:
     uint32 questGroupsScanSeconds = 60;
     // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
     uint32 questGroupsScanSlices = 0;
+    bool questGroupsStagedOps = false;  // twow-repo#627 S7 (S7-A 25.10.): at most one group operation per manager update, forced travel on the bot thread
     uint32 questGroupsMaxSize = 5;
     uint32 questGroupsMaxSizeDrop = 3;
     uint32 questGroupsLevelWindow = 3;

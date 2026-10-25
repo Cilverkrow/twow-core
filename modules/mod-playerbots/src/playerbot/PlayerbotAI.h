@@ -34,6 +34,7 @@
 #include "playerbot/DeathSeriesPolicy.h"
 #include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/UnreachablePolicy.h"
+#include "playerbot/GroupAiRefresh.h"   // twow-repo#627 S7 StagedOps: RequestQuestForce
 #include "playerbot/GroupBuffPolicy.h"
 class Player;
 class PlayerbotMgr;
@@ -1009,6 +1010,7 @@ protected:
     // twow-repo#628 / #627: the AI part of a group change the world-thread managers posted (ai::group_ai_refresh::Request bits),
     // taken in the bot's next UpdateAI on its own map thread (ApplyGroupAiRequests).
     std::atomic<uint32> groupAiRequests{ 0 };
+    std::atomic<uint32> questGroupForce{ 0 };   // S7 StagedOps: the ForceTravel request's quest/objective (PackForce)
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
@@ -1082,6 +1084,8 @@ public:
     // twow-repo#628 / #627 (world thread): post the AI part of a group change (ai::group_ai_refresh::Merge: the last change wins).
     void RequestGroupAi(uint32 request);
     uint32 PendingGroupAiRequests() const { return groupAiRequests.load(); }
+    // S7 QuestGroups.StagedOps: the forced quest travel on the bot's own thread (the parameters before the request bit).
+    void RequestQuestForce(uint32 packedForce) { questGroupForce.store(packedForce); RequestGroupAi(ai::group_ai_refresh::ForceTravel); }
     // Bot thread (UpdateAI): run the posted requests - strategy rebuild and reset first, then an S7 role set.
     void ApplyGroupAiRequests();
     // twow-repo#517 stage a (OB-10): a fill bot is out of its battleground again. Quest search stage 0 and

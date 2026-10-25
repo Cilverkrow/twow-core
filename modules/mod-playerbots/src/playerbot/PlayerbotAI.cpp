@@ -10771,4 +10771,13 @@ void PlayerbotAI::ApplyGroupAiRequests()
     }
     if (plan.follower || plan.turnIn)
         ai::quest_groups::ApplyRoleSet(this, plan.turnIn);
+    // S7 StagedOps: the destination search off the world thread; a released bot (role 0) is not forced any more.
+    if (plan.forceTravel && GetQuestGroupRole() != 0)
+    {
+        std::uint32_t questId = 0;
+        int objIdx = -1;
+        ai::group_ai_refresh::UnpackForce(questGroupForce.load(), questId, objIdx);
+        if (questId)
+            ai::quest_groups::ForceQuestTravel(bot, questId, objIdx);
+    }
 }

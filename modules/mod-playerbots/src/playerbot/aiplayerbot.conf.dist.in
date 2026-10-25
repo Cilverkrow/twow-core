@@ -1136,6 +1136,12 @@ AiPlayerbot.QuestGroups.ScanSeconds = 60
 # #628: the S7 scan (quest logs of all bots) spread over this many manager updates
 # (~0.4 s each); groups form once all slices are done. 0 or 1 = the whole scan at once.
 AiPlayerbot.QuestGroups.ScanSlices = 0
+# #627 (S7-A 25.10.2026: a formation of two bots cost 2.9-4.3 ms of the world tick, a dissolution up to 4.5 ms): 1 = at most
+# one group operation per manager update (~0.4 s) - one member's invite and accept, the setup of a formed group, or one
+# member's release, releases first - and the forced quest travel (destination search) on the bot's own thread. A group of
+# five then forms in ~2.5 s. Minute line: staged= invite_us_max= accept_us_max= setup_us_max= release_us_max= ops=
+# ops_queued_max=. 0 = everything in one update, as before (default).
+AiPlayerbot.QuestGroups.StagedOps = 0
 AiPlayerbot.QuestGroups.MaxSize = 5
 AiPlayerbot.QuestGroups.MaxSizeDrop = 3
 AiPlayerbot.QuestGroups.LevelWindow = 3

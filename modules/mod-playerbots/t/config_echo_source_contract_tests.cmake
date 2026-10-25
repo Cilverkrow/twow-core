@@ -147,7 +147,8 @@ set(entries
   "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
   "BotGroups.AdHoc.ScanSlices|botGroupsAdhocScanSlices"
   "QuestGroups.Enable|questGroupsEnable"
-  "QuestGroups.ScanSlices|questGroupsScanSlices")
+  "QuestGroups.ScanSlices|questGroupsScanSlices"
+  "QuestGroups.StagedOps|questGroupsStagedOps")
 foreach(entry IN LISTS entries)
   string(REPLACE "|" ";" parts "${entry}")
   list(GET parts 0 key)

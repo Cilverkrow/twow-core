@@ -745,6 +745,7 @@ bool PlayerbotAIConfig::Initialize()
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
+    questGroupsStagedOps = config.GetBoolDefault("AiPlayerbot.QuestGroups.StagedOps", false);   // twow-repo#627
     questGroupsMaxSize = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSize", 5)));
     questGroupsMaxSizeDrop = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSizeDrop", 3)));
     questGroupsLevelWindow = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.LevelWindow", 3);
@@ -1644,6 +1645,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
+            {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
         }).c_str());
     }
 
