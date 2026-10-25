@@ -126,6 +126,11 @@ int main()
     Require(!w.Observe(2, 900.0f, true, 2500) && !w.Observe(2, 900.0f, true, 3099), "new target: fresh window");
     Require(w.Observe(2, 899.0f, true, 3100), "new target stalls too");
 
+    // OB-10 anti-stillstand card R2: the upstream stuck triggers spare S7 members in a group.
+    Require(StuckTriggersExempt(1, true) && StuckTriggersExempt(2, true), "follower and leader in a group: exempt");
+    Require(!StuckTriggersExempt(0, true), "no S7 role (any other group): triggers as before");
+    Require(!StuckTriggersExempt(1, false), "a role without a group (defensive): triggers as before");
+
     std::cout << "quest_group_policy_tests passed\n";
     return 0;
 }

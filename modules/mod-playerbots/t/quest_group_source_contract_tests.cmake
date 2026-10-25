@@ -26,6 +26,14 @@ function(forbid_text text needle description)
   endif()
 endfunction()
 
+function(require_order text first second description)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if(a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "#627 S7: ${description}: '${first}' before '${second}'")
+  endif()
+endfunction()
+
 read_source("QuestGroupPolicy.h" policy)
 read_source("QuestGroupWorld.cpp" world)
 read_source("QuestGroupWorld.h" world_h)
@@ -109,3 +117,31 @@ require_text("${world}" "if (ai && ai->GetQuestGroupRole() == 2)
         ai->SetQuestGroupLeaderStuck(true);" "only a leader is flagged")
 require_text("${world}" "f.leaderStuck = leaderAi && (approachStuck || leaderAi->TakeQuestGroupLeaderStuck() || leader->GetMapId() != g.mapId);" "manager takes the flag and its own approach watch")
 require_text("${world}" "approachStuck = g.leaderWatch.Observe(" "the manager watches the forced leader itself (PosStuck skips forced targets, OB-10)")
+
+# OB-10 anti-stillstand card R2: the upstream stuck triggers spare S7 members (the manager ends a stalled group); the move
+# triggers restart their timer, move long stuck still fires for an invalid/unloaded grid (checked before the exemption).
+read_source("strategy/triggers/StuckTriggers.h" stuck)
+require_text("${policy}" "inline bool StuckTriggersExempt(std::uint8_t role, bool inGroup)
+{
+    return role != 0 && inGroup;
+}" "R2 exemption: role and a real group")
+require_text("${stuck}" "return quest_groups::StuckTriggersExempt(ai->GetQuestGroupRole(), bot->GetGroup() != nullptr);" "R2 helper")
+set(r2_count 0)
+set(r2_rest "${stuck}")
+while(TRUE)
+  string(FIND "${r2_rest}" "if (S7GroupMember(ai, bot))" r2_at)
+  if(r2_at EQUAL -1)
+    break()
+  endif()
+  math(EXPR r2_count "${r2_count} + 1")
+  math(EXPR r2_at "${r2_at} + 10")
+  string(SUBSTRING "${r2_rest}" ${r2_at} -1 r2_rest)
+endwhile()
+if(NOT r2_count EQUAL 4)
+  message(FATAL_ERROR "quest group contract: R2 exemption in ${r2_count} stuck triggers, want 4 (move, move long, combat, combat long)")
+endif()
+require_order("${stuck}" "Stuck: In invalid grid" "RESET_AI_VALUE(uint32, \"experience\");
+                return false;
+            }
+
+            uint32 timeSinceLastMove" "move long stuck: invalid grid before the R2 exemption")
