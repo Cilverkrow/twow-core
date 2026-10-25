@@ -30,6 +30,9 @@ If the two contradict each other, the stricter rule applies and the contradictio
   Live application happens individually with a ledger entry in the `migrations` table, never through auto-update.
 - **Tests:** contract/policy tests under `t/` and in the module, registered in `tests.cmake`.
   Several PRs insert at the same anchor, so rebase before merging.
+  **A new mod-playerbots source contract goes into `modules/mod-playerbots/t/contracts.d/` as its own file**
+  `<name>_tests.cmake`: it is registered automatically as the ctest test `<name>` (with `PB_SOURCE_DIR`, `PB_MODULE_DIR`,
+  `CORE_SOURCE_DIR`), so `tests.cmake` does not change; start the file with `cmake_policy(VERSION 3.16)`.
 - **Config keys:** new keys go into `mangosd.conf.dist.in` / `aiplayerbot.conf.dist.in` with a **neutral default**
   (off/legacy behaviour). They are switched on in the twow-repo profile `config/canonical/profiles/funserver-test/`.
 - **Diagnostics:** new behaviour logs a greppable line with a `[Prefix]` (for example `[ZoneEscape]`, `[ClassGrant]`).
