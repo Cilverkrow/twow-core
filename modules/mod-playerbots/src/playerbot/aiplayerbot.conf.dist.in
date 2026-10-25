@@ -2873,6 +2873,18 @@ AiPlayerbot.Rotation.MeleeFleeBreak = 0
 # by "outnumbered" ended in death, against 3-11 % of their kite episodes; FleeMultiplier's 0.01 did not stop that loop. Only
 # "outnumbered" is held, the kite triggers are untouched. held_ranged in the [MeleeFleeBreak] line. 0 = off (default).
 AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
+# twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): the flee of a
+# bot without a real master is a chase of the enemy at the flee distance. Its angle was the bot's world angle to the enemy, but the
+# core adds the chase angle to the ENEMY's facing, so the flee point lay on an effectively random side of the mob (often across it
+# or into its camp), and because the "already chasing" test never matched (the chase offset reads 0) the chase was re-issued with
+# a new angle on every AI pass: the bot circled without gaining distance (a hunter: 560 flee dispatches, 5.7 yd from the engage
+# point after 38 s) and picked up adds on the way. With the switch: (a) the angle is relative to the enemy's facing, so the point
+# lies straight away from it on the bot's side; (b) a running flee chase of the same enemy is kept for 1 s, then re-aimed; (c) a
+# hunter whose pet holds the enemy flees ("enemy too close for spell") only inside the 8 yd dead zone + 1 yd, not at 40 % of its
+# spell range - it can shoot from there. Bots with a real master (FleeManager / MoveNear) are unchanged. One [FleeAway] line per
+# minute and cohort (issued, kept, reaimed, dead_zone_flee, dead_zone_quiet).
+# 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
+AiPlayerbot.Rotation.FleeAway = 0
 
 # twow-repo#594 (Linalella, QFO-clean 23.10.2026, BUG FIX, profile 1 after the A/B): 1 = a hostile reach target the bot cannot see
 # (line of sight) is chased to min(distance x 0.5, 75 % of the range) instead of 75 % of the range, so a caster standing closer
