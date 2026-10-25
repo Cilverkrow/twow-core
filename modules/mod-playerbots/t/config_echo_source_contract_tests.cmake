@@ -133,6 +133,7 @@ set(entries
   "Rotation.FleeAway|rotationFleeAway"
   "Rotation.ReachLosClose|rotationReachLosClose"
   "Rotation.ReachPlayerMaster|rotationReachPlayerMaster"
+  "Rotation.DarkRuneGate|rotationDarkRuneGate"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "ProfessionTraining.Travel|professionTrainingTravel"
   "ProfessionUse.ToolBuy|professionUseToolBuy"
