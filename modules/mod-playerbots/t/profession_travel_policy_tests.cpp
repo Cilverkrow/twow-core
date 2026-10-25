@@ -88,6 +88,18 @@ int main()
         Require(std::strcmp(kTrainerTripValue, kToolTripValue) != 0, "separate trip values");
     }
 
+    // 7) P1-b2 (CLI-PATH 25.10.): a spawn on an open-world map with a travel node within 500 yd; hostile entries first.
+    {
+        Require(SpawnReachable(true, 0.0f) && SpawnReachable(true, kMaxNodeYards), "a node within 500 yd: reachable");
+        Require(!SpawnReachable(true, kMaxNodeYards + 16.0f), "Moonwhisper Coast (nearest node 516 yd): unreachable");
+        Require(!SpawnReachable(false, 0.0f), "an instance / battleground map (30, 42, 90): never");
+        Require(kMaxNodeYards == 500.0f, "CLI-PATH's rule");
+        Require(ClassifyTripTarget(false, true) == TripTarget::Kept, "friendly and reachable: kept");
+        Require(ClassifyTripTarget(true, true) == TripTarget::Hostile, "hostile: dropped");
+        Require(ClassifyTripTarget(true, false) == TripTarget::Hostile, "hostile counts first");
+        Require(ClassifyTripTarget(false, false) == TripTarget::Unreachable, "no reachable spawn: dropped");
+    }
+
     std::cout << "profession_travel_policy_tests: OK\n";
     return 0;
 }
