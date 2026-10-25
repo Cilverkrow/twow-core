@@ -3,8 +3,15 @@
 #include <Maps/MoveMap.h>
 
 #include "playerbot/BotSlots.h"
+#include "playerbot/QuestGroupPolicy.h"   // OB-10 card R2: S7 group roles
 namespace ai
 {
+    // OB-10 anti-stillstand card R2 (twow-repo#627 S7): a quest group member is left to the S7 manager (QuestGroupPolicy.h).
+    inline bool S7GroupMember(PlayerbotAI* ai, Player* bot)
+    {
+        return quest_groups::StuckTriggersExempt(ai->GetQuestGroupRole(), bot->GetGroup() != nullptr);
+    }
+
     template< typename... Args >
     std::string string_sprintf(const char* format, Args... args) {
         int length = std::snprintf(nullptr, 0, format, args...);
@@ -30,6 +37,13 @@ namespace ai
 
             if (ai->GetGroupMaster() && !GetBotAI(ai->GetGroupMaster()))
                 return false;
+
+            // OB-10 card R2: an S7 member waits for its group; the timer restarts, so a release does not fire at once
+            if (S7GroupMember(ai, bot))
+            {
+                RESET_AI_VALUE(WorldPosition, "current position");
+                return false;
+            }
 
             if (!ai->AllowActivity(ALL_ACTIVITY))
             {
@@ -119,6 +133,14 @@ namespace ai
             }
 #endif
 
+            // OB-10 card R2: no hearthstone for an S7 member waiting for its group (an invalid/unloaded grid above still counts)
+            if (S7GroupMember(ai, bot))
+            {
+                RESET_AI_VALUE(WorldPosition, "current position");
+                RESET_AI_VALUE(uint32, "experience");
+                return false;
+            }
+
             uint32 timeSinceLastMove = AI_VALUE2(uint32, "time since last change", "current position");
 
             if (timeSinceLastMove > 10 * MINUTE)
@@ -162,13 +184,16 @@ namespace ai
             if (ai->GetGroupMaster() && !GetBotAI(ai->GetGroupMaster()))
                 return false;
 
+            if (S7GroupMember(ai, bot))   // OB-10 card R2: a long group fight (elite) is no stuck combat
+                return false;
+
             if (!ai->AllowActivity(ALL_ACTIVITY))
                 return false;
 
             WorldPosition botPos(bot);
 
             uint32 timeSinceCombatChange = AI_VALUE2(uint32, "time since last change", "combat::self target");
-           
+
             if (timeSinceCombatChange > 5 * MINUTE)
             {
                 ai->TellDebug(ai->GetMaster(), "Stuck: Combat did not change for " + std::to_string(timeSinceCombatChange) + " seconds.", "debug stuck");
@@ -201,6 +226,9 @@ namespace ai
                 return false;
 
             if (ai->GetGroupMaster() && !GetBotAI(ai->GetGroupMaster()))
+                return false;
+
+            if (S7GroupMember(ai, bot))   // OB-10 card R2
                 return false;
 
             if (!ai->AllowActivity(ALL_ACTIVITY))
