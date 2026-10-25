@@ -42,6 +42,8 @@ namespace ai
             lastFleeAttempt = other.lastFleeAttempt;
             fleeBreakAttempt = other.fleeBreakAttempt;
             fleeBreakCount = other.fleeBreakCount;
+            fleeChaseTarget = other.fleeChaseTarget;
+            fleeChaseMs = other.fleeChaseMs;
             pathReuseStamped = other.pathReuseStamped;
             pathReuseDest = other.pathReuseDest;
             pathReuseBack = other.pathReuseBack;
@@ -114,6 +116,10 @@ namespace ai
         // to, so FleeMultiplier's own fields stay as they were. clear() leaves them alone: the window lapses by itself.
         time_t fleeBreakAttempt = 0;
         uint32 fleeBreakCount = 0;
+        // twow-repo#602 (c) (AiPlayerbot.Rotation.FleeAway): the enemy and the time (getMSTime) of the last flee chase the switch issued -
+        // the real re-issue guard (the old one compares GetChaseOffset, which reads 0). Written only for bots the switch applies to.
+        ObjectGuid fleeChaseTarget;
+        uint32 fleeChaseMs = 0;
         TravelPath lastPath;
         WorldPosition lastMoveShort;
         time_t nextTeleport;

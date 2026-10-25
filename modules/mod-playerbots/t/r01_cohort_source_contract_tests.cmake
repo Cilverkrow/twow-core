@@ -116,8 +116,9 @@ count_text("${ai_cpp}" "S3For(" 1 "S3 reads in PlayerbotAI.cpp")
 #    HubPreloopSameFilters
 require_text("${choose_cpp}" "    bool const hubPreloopSameFilters = failureClasses && sPlayerbotAIConfig.questFirstProgressionHubPreloopSameFilters &&\n        sPlayerbotAIConfig.S3For(bot->GetGUIDLow());" "hub pre-loop per bot")
 #    ZoneExit.TurnInTravelStall (with TurnInNearRadius): every behaviour read; the [QuestTurnInStall] field stays on the key.
-count_text("${travel_cpp}" "sPlayerbotAIConfig.zoneExitTurnInTravelStall &&" 4 "every '&&' read of TurnInTravelStall")
-count_text("${travel_cpp}" "sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow())" 4 "each of them per bot")
+#    3a (TurnInTravelStallCountsCombat) adds the fifth read, per bot like the others.
+count_text("${travel_cpp}" "sPlayerbotAIConfig.zoneExitTurnInTravelStall &&" 5 "every '&&' read of TurnInTravelStall")
+count_text("${travel_cpp}" "sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow())" 5 "each of them per bot")
 count_text("${travel_cpp}" "if (sPlayerbotAIConfig.zoneExitTurnInTravelStall)" 0 "no bare TurnInTravelStall branch")
 
 message(STATUS "r01_cohort source contract passed")
