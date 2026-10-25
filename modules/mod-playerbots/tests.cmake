@@ -3860,3 +3860,10 @@ add_test(NAME profession_travel_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/profession_travel_source_contract_tests.cmake")
+
+# twow-repo#333 Berufe P1-f (AiPlayerbot.Gather.QuestHerbFilter, modes 0/1/2, default 0): a quest herb (lock 259) is picked only
+# while one of the bot's quests wants it. The pure rule is in gather_node_policy_tests.
+add_test(NAME quest_herb_filter_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/quest_herb_filter_source_contract_tests.cmake")

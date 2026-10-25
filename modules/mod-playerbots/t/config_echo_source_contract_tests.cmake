@@ -132,6 +132,7 @@ set(entries
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "ProfessionTraining.Travel|professionTrainingTravel"
   "ProfessionUse.ToolBuy|professionUseToolBuy"
+  "Gather.QuestHerbFilter|gatherQuestHerbFilter"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
   "Perf.RouteTimeTrace|perfRouteTimeTrace"
   "Perf.DispatchPrecomputedPath|perfDispatchPrecomputedPath"
