@@ -2859,6 +2859,15 @@ AiPlayerbot.Perf.CombatIdleYield = 0
 # CAST_WAIT lines in the action log of sampled bots.
 # 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
 AiPlayerbot.CastWait.Preparing = 0
+
+# twow-repo#602 ROT-01 hunter deaths (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): hunters
+# die about twice as often as the other classes, mostly alone against one weaker mob. One cause: "switch to melee" called
+# Player::MeleeAttackStart, an empty stub in this core, and an attack in "close" mode started melee only under 5 yd - so a hunter
+# that went to melee from further away never swung (Raptor Strike stayed IMPOSSIBLE) and stood until it died. With the switch
+# "switch to melee" starts the swing (Unit::Attack), "switch to ranged" stops it, and an attack in close mode starts melee. Only
+# hunters use these actions. "[HunterMelee] mode= started= stopped= close_attacks=" once a minute with the mode on.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.HunterMeleeStart = 0
 # twow-repo#602 ROT-01 (death analysis 21.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): below
 # MediumHealth the "outnumbered" trigger sends a bot to flee as soon as the mobs fighting it outweigh it. Ranged bots
 # leave a flee loop after two flee steps (FleeMultiplier); melee bots had no such break, could not outrun the mobs and

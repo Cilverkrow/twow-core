@@ -123,6 +123,7 @@ set(entries
   "Rotation.SpecFromPath|rotationSpecFromPath"
   "Rotation.RestGate|rotationRestGate"
   "CastWait.Preparing|castWaitPreparing"
+  "Rotation.HunterMeleeStart|rotationHunterMeleeStart"
   "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
   "Rotation.ReachLosClose|rotationReachLosClose"
