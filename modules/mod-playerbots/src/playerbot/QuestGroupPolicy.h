@@ -32,6 +32,16 @@ inline char Cohort(std::uint32_t guidLow)
     return (guidLow & 1u) ? 'B' : 'A';
 }
 
+// OB-10 anti-stillstand card R2: the upstream stuck triggers (move stuck 5 min -> reset, move long stuck 10 min -> hearthstone,
+// combat stuck) only spare bots with a real player master; an S7 group has a bot master, so a member waiting at the rendezvous
+// (10 min) or behind a stuck leader was reset or sent home and left its group in fact. The S7 manager ends such a group itself
+// (ApproachWatch, PosStuck leader detection, NoProgressMinutes). A role is only set by the manager (QuestGroups.Enable != 0)
+// and cleared at every release; a role without a group (defensive) is not exempt.
+inline bool StuckTriggersExempt(std::uint8_t role, bool inGroup)
+{
+    return role != 0 && inGroup;
+}
+
 // --- which quests: elite or group, not dungeon/raid/pvp (OB-20 #601) ----------------------------------------------------------
 constexpr std::uint32_t QuestTypeElite = 1;
 constexpr std::uint32_t QuestTypePvp = 41;

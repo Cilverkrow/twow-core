@@ -56,6 +56,40 @@
 DungeonClear.PreventBotRelease = 1
 
 #
+#    DungeonClear.Gate.ActiveRunOnly
+#        BUG FIX (CLI-GRP 25.10.2026, enable after the test-realm repro + owner go). The strategy gate gives every bot
+#        on a dungeon/raid map the DC strategies and strips its stock drivers (-follow,-loot,-gather,-travel,-grind,
+#        -rpg,-wander,-lfg,-bg) and its area-trigger relay - also in a player-led group that never typed `dc on`.
+#        DC itself only follows the tank while a run is on, so such bots stopped following their player, looting
+#        and taking the exit with him.
+#        1 = the DC strategies only while a run is active for the bot (its own, or a groupmate's on the same map),
+#        or the bot belongs to a `.dc test` run; without a run the bot keeps its stock strategies. When the run ends
+#        the bot gets its own defaults back (strategy reset, aware of a real master) instead of the fixed restore
+#        list, which also handed a player's bot grind/travel/rpg. `dc on` works as before: the leader installs
+#        the strategies itself, the followers get them on the next sweep.
+#        0 = as before (every bot in a dungeon is gated).
+#        Honoured live on `.reload config`.
+#
+#        Default: 0
+#
+
+DungeonClear.Gate.ActiveRunOnly = 0
+
+#
+#    DungeonClear.AutoRun
+#        twow-repo#629 B4 (CLI-GRP 25.10.2026, enable only with the playerbots dungeon-group manager and an owner go).
+#        1 = a group of bots only (no human, GM or self-bot member who could type `dc on`) may be run by a playerbots
+#        manager: it asks through playerbot/DungeonRunBridge.h, the members get the DC strategies through the strategy
+#        gate on their own map threads, then `dc on` (event source "dc auto") on the leader tank; every run end (all
+#        cleared, a wipe, dc off) is posted back to the manager. "dc auto" commands are refused outside a bot-only
+#        group. 0 = no hooks, "dc auto" refused, no behaviour change.
+#
+#        Default: 0
+#
+
+DungeonClear.AutoRun = 0
+
+#
 #    DungeonClear.RecordDecisions
 #        Diagnostics. 0 (default): off. 1: append every boss-approach decision
 #        (the pure DecideApproach observation + the verdict the tank acted on) as

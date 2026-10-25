@@ -5,6 +5,7 @@
 
 #include "DungeonClearChatActions.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
+#include "DcAutoRun.h"
 
 #include <map>
 #include <optional>
@@ -61,6 +62,10 @@ namespace
 
     bool IsAuthorized(Player* bot, Event const& event)
     {
+        // twow-repo#629 B4/D2 (DungeonClear.AutoRun): a playerbots manager group has no owner who could type the
+        // command; its "dc auto" event counts only in a bot-only group and only with the switch on.
+        if (DcAutoRun::Enabled() && const_cast<Event&>(event).getSource() == DcAutoRun::Source)
+            return DcAutoRun::BotOnlyGroup(bot);
         Player* owner = const_cast<Event&>(event).getOwner();
         if (!owner)
             return false;

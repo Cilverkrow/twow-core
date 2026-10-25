@@ -586,14 +586,23 @@ bool PlayerbotAIConfig::Initialize()
         rotationRestGateTargetMana = t.targetMana;
         rotationRestGateMaxRestSeconds = t.maxRestSeconds;
     }
+    rotationCastLosGate = config.GetIntDefault("AiPlayerbot.Rotation.CastLosGate", 0);   // twow-repo#602 hunter LoS
+    if (rotationCastLosGate > 2)
+        rotationCastLosGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
         castWaitPreparing = 0;   // twow-repo#602: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    rotationHunterMeleeStart = config.GetIntDefault("AiPlayerbot.Rotation.HunterMeleeStart", 0);   // twow-repo#602 hunter deaths
+    if (rotationHunterMeleeStart > 2)
+        rotationHunterMeleeStart = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationMeleeFleeBreak = config.GetIntDefault("AiPlayerbot.Rotation.MeleeFleeBreak", 0);
     if (rotationMeleeFleeBreak > 2)
         rotationMeleeFleeBreak = 0;   // twow-repo#602: an unknown mode is off
     rotationMeleeFleeBreakRanged = config.GetBoolDefault("AiPlayerbot.Rotation.MeleeFleeBreak.Ranged", false);
+    rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
+    if (rotationFleeAway > 2)
+        rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
     if (rotationReachLosClose > 2)
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -877,6 +886,7 @@ bool PlayerbotAIConfig::Initialize()
     zoneExitTurnInTravelStall = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInTravelStall", false);
     zoneExitTurnInNearRadius = config.GetFloatDefault("AiPlayerbot.ZoneExit.TurnInNearRadius", 60.0f);
     zoneExitTurnInNearRadius = std::min(500.0f, std::max(0.0f, zoneExitTurnInNearRadius));
+    zoneExitTurnInTravelStallCountsCombat = config.GetBoolDefault("AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat", false);
     zoneExitRescueHomeContinent = config.GetBoolDefault("AiPlayerbot.ZoneExit.RescueHomeContinent", false);
     zoneExitStrandedRescueAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ZoneExit.StrandedRescueAfter", 0)));
     zoneExitSkipBattlegroundQuests = config.GetBoolDefault("AiPlayerbot.ZoneExit.SkipBattlegroundQuests", false);
@@ -1328,6 +1338,13 @@ bool PlayerbotAIConfig::Initialize()
     professionTrainingLocalTrainerRadius = std::max<float>(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionTraining.LocalTrainerRadius", 120.0f));
     professionTrainingTrace = config.GetBoolDefault("AiPlayerbot.ProfessionTraining.Trace", false);
     professionTrainingTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionTraining.TraceCooldownSeconds", 300));
+    // twow-repo#333 Berufe P1-a / P1-b: an unknown mode is off (0 off, 1 all, 2 cohort B).
+    professionTrainingTravel = config.GetIntDefault("AiPlayerbot.ProfessionTraining.Travel", 0);
+    if (professionTrainingTravel > 2)
+        professionTrainingTravel = 0;
+    professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
+    if (professionUseToolBuy > 2)
+        professionUseToolBuy = 0;
     professionUseGatherDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionUse.GatherDistance", 0.0f));
     professionUseCraft = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Craft", false);
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
@@ -1598,6 +1615,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
             {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
+            {"ZoneExit.TurnInTravelStallCountsCombat", Value(zoneExitTurnInTravelStallCountsCombat)},
             {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
             {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
             {"DirectTargets.Enable", Value(directTargetsEnabled)},
@@ -1613,12 +1631,17 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.RestGate", Value(rotationRestGate)},
+            {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
+            {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
+            {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
+            {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},

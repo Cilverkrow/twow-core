@@ -1607,6 +1607,12 @@ AiPlayerbot.ZoneExit.TurnInStallCounts = 0
 # (0 = no near zone, at most 500). 0 = as before.
 AiPlayerbot.ZoneExit.TurnInTravelStall = 0
 AiPlayerbot.ZoneExit.TurnInNearRadius = 60
+# twow-repo#601 3a (OB-00 24.10.2026): TurnInTravelStallCountsCombat = 1 (only with TurnInTravelStall = 1, S3 bots): on the
+# way to a finished quest's taker a fight still pauses the stall recovery but no longer restarts the stall window, so the
+# time of the fight counts toward TurnInStallSeconds. A bot that keeps pulling mobs near its route and never gets closer
+# reaches the recovery (and the near-zone park) instead of a fresh window after every fight. Death, flights, transports,
+# a real master and rest keep restarting the window. Objectives are not affected. 0 = every fight restarts it, as before.
+AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat = 0
 
 # twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
 # RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
@@ -1640,6 +1646,19 @@ AiPlayerbot.ProfessionTraining.LocalTrainerRadius = 120
 # at BASIC level, visible with LogLevel 1. Never enable per-tick logging.
 AiPlayerbot.ProfessionTraining.Trace = 0
 AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
+# twow-repo#333 Berufe P1-a (CLI-BERUFE PLAN-B1, OB-00 go 25.10.2026; profile 1 after the A/B + owner go): a persistent
+# roster bot on its own (level 5+) may travel to a trainer that teaches it a GREEN rank of herbalism, mining, skinning or
+# first aid now - the first rank of its planned profession or the next rank at the skill cap (the core decides GREEN, the
+# profession pair and the cost rule are the ones above; recipes alone are no reason to travel). Only as a filler of the
+# quest-first gap: while the quest route backoff runs, no open turn-in waits and no band walk runs ("request named travel
+# target::trainer profession" at 6.296, below the quest request 6.3, above Explore 6.29; with QuestFirstProgression.
+# GrindMode 1 the gap grind at 6.35 fills the gap first). A started trip holds while the rank is still to learn, until
+# the backoff of its start ended plus 10 min (never more than 30 min), and ends at once when a turn-in opens; at most one
+# trip per bot and hour. "[ProfTravel] state=request kind=trainer ... entries= hold_s=" per request (entries=0: no
+# trainer found) and "[ProfTravel] state=end kind=trainer ... reason=done|turn_in|cap|lost trip_s= hold_over_s=" when
+# the trip stops holding (hold_over_s = seconds after the backoff end). Mode (in-realm A/B, cohort parity): 0 = as before (default),
+# 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.ProfessionTraining.Travel = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
@@ -1651,6 +1670,14 @@ AiPlayerbot.ProfessionUse.Craft = 0
 AiPlayerbot.ProfessionUse.CraftIntervalSeconds = 300
 AiPlayerbot.ProfessionUse.Trace = 0
 AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
+# twow-repo#333 Berufe P1-b (CLI-BERUFE PLAN-B1, OB-00 go 25.10.2026; profile 1 after the A/B + owner go): a persistent
+# roster bot on its own (level 5+) with mining but no Mining Pick (2901), or skinning but no Skinning Knife (7005), may
+# travel to a vendor that sells it; "rpg buy" buys it there from the tradeskill budget (ItemUsage SKILL, as before).
+# Same gap rule, hold and hourly limit as ProfessionTraining.Travel ("request named travel target::tool vendor" at
+# 6.297). With the mode on for the bot, a mining/skinning gather purpose also needs its tool, so a bot without a pick no
+# longer travels to an ore vein to fail there until the 15-minute no-skill-up end. "[ProfTravel] state=request kind=tool".
+# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.ProfessionUse.ToolBuy = 0
 # RealReagents (twow-repo#485): under the item cheat (RndBotCheats "item") every
 # recipe counts as having its reagents, a random one is queued and the core
 # fails the cast silently. 1 = check reagents and tools in the bags and cast
@@ -2852,6 +2879,17 @@ AiPlayerbot.Rotation.RestGate.StartMana = 40
 AiPlayerbot.Rotation.RestGate.TargetHp = 90
 AiPlayerbot.Rotation.RestGate.TargetMana = 85
 AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
+
+# twow-repo#602 ROT-01 hunter LoS (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): sampled
+# hunters failed 91-96 % of Auto Shot / Hunter's Mark / Serpent Sting casts with "line of sight", about 19 core rejections per
+# second for minutes (wand Shoot 0 %: it has its own sight check). The bot's spell check sees the core's LINE_OF_SIGHT but
+# counted it as castable, expecting the reach to fix sight; the reach could not, and after 20 s the hotfix 8.2 progress check
+# marked the target unreachable while the bot kept it. With the switch a LINE_OF_SIGHT verdict makes the cast IMPOSSIBLE (no
+# retry loop, no stop of the walk), a current target that 8.2 marked unreachable is dropped, and target selection skips such
+# units while another candidate exists. Use it together with Rotation.ReachLosClose = 2 (the walk into sight).
+# "[CastLosGate] mode= gated= dropped= skipped=" once a minute with the mode on.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.CastLosGate = 0
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,
@@ -2873,6 +2911,15 @@ AiPlayerbot.Perf.CombatIdleYield = 0
 # CAST_WAIT lines in the action log of sampled bots.
 # 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
 AiPlayerbot.CastWait.Preparing = 0
+
+# twow-repo#602 ROT-01 hunter deaths (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): hunters
+# die about twice as often as the other classes, mostly alone against one weaker mob. One cause: "switch to melee" called
+# Player::MeleeAttackStart, an empty stub in this core, and an attack in "close" mode started melee only under 5 yd - so a hunter
+# that went to melee from further away never swung (Raptor Strike stayed IMPOSSIBLE) and stood until it died. With the switch
+# "switch to melee" starts the swing (Unit::Attack), "switch to ranged" stops it, and an attack in close mode starts melee. Only
+# hunters use these actions. "[HunterMelee] mode= started= stopped= close_attacks=" once a minute with the mode on.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.HunterMeleeStart = 0
 # twow-repo#602 ROT-01 (death analysis 21.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): below
 # MediumHealth the "outnumbered" trigger sends a bot to flee as soon as the mobs fighting it outweigh it. Ranged bots
 # leave a flee loop after two flee steps (FleeMultiplier); melee bots had no such break, could not outrun the mobs and
@@ -2887,6 +2934,18 @@ AiPlayerbot.Rotation.MeleeFleeBreak = 0
 # by "outnumbered" ended in death, against 3-11 % of their kite episodes; FleeMultiplier's 0.01 did not stop that loop. Only
 # "outnumbered" is held, the kite triggers are untouched. held_ranged in the [MeleeFleeBreak] line. 0 = off (default).
 AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
+# twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): the flee of a
+# bot without a real master is a chase of the enemy at the flee distance. Its angle was the bot's world angle to the enemy, but the
+# core adds the chase angle to the ENEMY's facing, so the flee point lay on an effectively random side of the mob (often across it
+# or into its camp), and because the "already chasing" test never matched (the chase offset reads 0) the chase was re-issued with
+# a new angle on every AI pass: the bot circled without gaining distance (a hunter: 560 flee dispatches, 5.7 yd from the engage
+# point after 38 s) and picked up adds on the way. With the switch: (a) the angle is relative to the enemy's facing, so the point
+# lies straight away from it on the bot's side; (b) a running flee chase of the same enemy is kept for 1 s, then re-aimed; (c) a
+# hunter whose pet holds the enemy flees ("enemy too close for spell") only inside the 8 yd dead zone + 1 yd, not at 40 % of its
+# spell range - it can shoot from there. Bots with a real master (FleeManager / MoveNear) are unchanged. One [FleeAway] line per
+# minute and cohort (issued, kept, reaimed, dead_zone_flee, dead_zone_quiet).
+# 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
+AiPlayerbot.Rotation.FleeAway = 0
 
 # twow-repo#594 (Linalella, QFO-clean 23.10.2026, BUG FIX, profile 1 after the A/B): 1 = a hostile reach target the bot cannot see
 # (line of sight) is chased to min(distance x 0.5, 75 % of the range) instead of 75 % of the range, so a caster standing closer

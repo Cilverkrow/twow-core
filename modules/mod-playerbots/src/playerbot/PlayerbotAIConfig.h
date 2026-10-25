@@ -525,6 +525,10 @@ public:
     float professionTrainingLocalTrainerRadius = 120.0f;
     bool professionTrainingTrace = false;
     uint32 professionTrainingTraceCooldownSeconds = 300;
+    // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): gap-filler trips of a roster bot to the trainer of
+    // a phase-one profession and to the vendor of its missing gathering tool; 0 off, 1 all, 2 cohort B (odd guid).
+    uint32 professionTrainingTravel = 0;
+    uint32 professionUseToolBuy = 0;
     // #333: roster bots use their professions while levelling.
     float professionUseGatherDistance = 0.0f;     // 0 = GatheringDistance
     bool professionUseCraft = false;
@@ -643,10 +647,13 @@ public:
     uint32 rotationRestGateTargetHp = 90;  // ... and ends at or above this HP %
     uint32 rotationRestGateTargetMana = 85;  // ... and this mana %
     uint32 rotationRestGateMaxRestSeconds = 120;  // ... or after this many seconds (then no new episode for a minute)
+    uint32 rotationCastLosGate = 0;  // twow-repo#602 (hunter LoS 25.10.): a LINE_OF_SIGHT verdict of CheckCast makes the cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped (CastLosGatePolicy.h); with Rotation.ReachLosClose; 0 off, 1 all, 2 cohort B
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
     uint32 castWaitPreparing = 0;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
+    uint32 rotationHunterMeleeStart = 0;  // twow-repo#602 (hunter deaths 25.10.): the hunter's switch to melee/ranged really starts/stops the swing (Player::MeleeAttackStart is a stub), close mode attacks in melee (HunterMeleeStartPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationMeleeFleeBreak = 0;  // twow-repo#602 (death analysis 21.10.): "outnumbered" stays quiet for a melee bot while its flee loop holds; 0 off, 1 all, 2 cohort B
     bool rotationMeleeFleeBreakRanged = false;  // twow-repo#602 (step 2, 21.10.): the same hold for ranged bots (cohort from Rotation.MeleeFleeBreak); kite triggers untouched
+    uint32 rotationFleeAway = 0;  // twow-repo#602 (c) (hunter + adds analysis 25.10.): flee chase angle relative to the enemy's facing, a kept chase (1 s), hunter flee only in the dead zone while the pet holds the enemy (FleeAwayPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationReachLosClose = 0;  // twow-repo#594 (Linalella, 23.10.): a hostile reach target out of sight is chased to half the distance until in sight, never inside the floor (ReachLosPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
     uint32 rotationReachPlayerMaster = 0;  // twow-repo#630 GRP-REACH-01: the reach progress check (hotfix 8.2) also for a bot with a real player as master, own target only, 30 s ignore; 0 off, 1 all, 2 cohort B (odd guid)
     bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
@@ -962,6 +969,7 @@ public:
     // timeout of the same turn-in does too (OB-10 rev. 2). The radius only acts with the switch; 0 = no near zone.
     bool zoneExitTurnInTravelStall = false;
     float zoneExitTurnInNearRadius = 60.0f;
+    bool zoneExitTurnInTravelStallCountsCombat = false;  // twow-repo#601 3a: with TurnInTravelStall a fight no longer restarts the turn-in stall window
     // twow-repo#587 (ZONE-01): quest rescue on the right continent, stranded bots ask for it, no BG quests as targets.
     bool zoneExitRescueHomeContinent = false;
     uint32 zoneExitStrandedRescueAfter = 0;

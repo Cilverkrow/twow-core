@@ -237,4 +237,10 @@ namespace ai
 
         virtual bool Calculate() override;
     };
+
+    // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h), shared by "should travel named" and the request:
+    // the trainers that teach this bot a GREEN rank of a phase-one profession now, and the gathering tool it lacks
+    // (0 = none missing).
+    std::vector<int32> PhaseOneProfessionTrainers(PlayerbotAI* ai);
+    uint32 MissingGatherTool(PlayerbotAI* ai);
 }
