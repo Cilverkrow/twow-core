@@ -16,6 +16,9 @@ enum Request : std::uint32_t
     LeaveReset = 1u << 1,   // LeaveGroupAction's AI part: default strategies, reset
     Follower   = 1u << 2,   // S7: the follower set (after a reset of the same request)
     TurnIn     = 1u << 3,   // S7: the turn-in set
+    // S7 QuestGroups.StagedOps (S7-A 25.10.: a formation of 2 cost 2.9-4.3 ms of the world tick): the forced quest travel
+    // (FindQuestDest + SetTarget) on the bot's own thread, after the set; quest and objective in the bot's questGroupForce.
+    ForceTravel = 1u << 4,
 };
 
 // The event source of the managers' "accept invitation" (AdhocGroupWorld Join, QuestGroupWorld InviteAccept).
@@ -30,9 +33,9 @@ inline bool IsWorldManagerSource(std::string const& source)
 inline std::uint32_t Merge(std::uint32_t pending, std::uint32_t add)
 {
     if (add & JoinReset)
-        pending &= ~std::uint32_t(LeaveReset | Follower | TurnIn);
+        pending &= ~std::uint32_t(LeaveReset | Follower | TurnIn | ForceTravel);
     if (add & LeaveReset)
-        pending &= ~std::uint32_t(JoinReset | Follower | TurnIn);
+        pending &= ~std::uint32_t(JoinReset | Follower | TurnIn | ForceTravel);
     if (add & Follower)
         pending &= ~std::uint32_t(TurnIn);
     if (add & TurnIn)
@@ -47,6 +50,7 @@ struct Plan
     bool joinStrategies = false;   // the accept part: movement strategy before, -lfg,-bg after the default strategies
     bool follower = false;
     bool turnIn = false;
+    bool forceTravel = false;   // last: after the reset and the set
 };
 
 inline Plan PlanFor(std::uint32_t requests)
@@ -56,6 +60,19 @@ inline Plan PlanFor(std::uint32_t requests)
     p.reset = p.joinStrategies || (requests & LeaveReset) != 0;
     p.turnIn = (requests & TurnIn) != 0;
     p.follower = !p.turnIn && (requests & Follower) != 0;
+    p.forceTravel = (requests & ForceTravel) != 0;
     return p;
+}
+
+// The forced quest travel's parameters in one word (PlayerbotAI::questGroupForce): quest id and objective index -1..6.
+inline std::uint32_t PackForce(std::uint32_t questId, int objIdx)
+{
+    return (questId << 3) | std::uint32_t(objIdx + 1);
+}
+
+inline void UnpackForce(std::uint32_t packed, std::uint32_t& questId, int& objIdx)
+{
+    questId = packed >> 3;
+    objIdx = int(packed & 7u) - 1;
 }
 }

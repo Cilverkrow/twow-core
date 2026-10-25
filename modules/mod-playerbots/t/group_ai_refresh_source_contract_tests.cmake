@@ -104,5 +104,5 @@ require_order("${ai_cpp}" "        ResetStrategies();
         Reset();" "ai::quest_groups::ApplyRoleSet(this, plan.turnIn);" "the reset before the role set")
 
 # Measurement (the retest attributes the pass time): sub-times in both minute lines.
-require_text("${adhoc}" "pass_us_max=%u join_us_max=%u leave_us_max=%u scan_us_max=%u bots=%u\"" "ad-hoc minute sub-times")
-require_text("${s7}" "scan_us_max=%u passes=%u mode=%u form_us_max=%u dissolve_us_max=%u scan_only_us_max=%u bots=%u\"" "S7 minute sub-times")
+require_text("${adhoc}" "pass_us_max=%u join_us_max=%u leave_us_max=%u scan_us_max=%u bots=%u" "ad-hoc minute sub-times")
+require_text("${s7}" "scan_us_max=%u passes=%u mode=%u form_us_max=%u dissolve_us_max=%u scan_only_us_max=%u bots=%u" "S7 minute sub-times")

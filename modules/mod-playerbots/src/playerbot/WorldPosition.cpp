@@ -618,7 +618,7 @@ void WorldPosition::CalculatePassengerOffset(GenericTransport* transport)
     transport->CalculatePassengerOffset(coord_x, coord_y, coord_z, &orientation);
 }
 
-bool WorldPosition::isOnTransport(GenericTransport* transport)
+bool WorldPosition::isOnTransport(GenericTransport* transport, bool deckHit)
 {
     if (!transport)
         return false;
@@ -636,6 +636,11 @@ bool WorldPosition::isOnTransport(GenericTransport* transport)
 
     if (result0)
         return false;
+
+    // twow-repo#342 (S3b-1, deckHit): the deck is this vessel's dynamic model; Map::GetLosHitPosition answers static hits only
+    // (Map.cpp:3414), so without this every point counted as off the vessel. Off (deckHit false): as before.
+    if (deckHit && HitsVesselDeck(transport, coord_x, coord_y, coord_z + 0.5f, below.getZ(), nullptr))
+        return true;
 
     return GetHitPosition(below);
 }
@@ -686,7 +691,18 @@ bool WorldPosition::SetOnTransport(GenericTransport* transport, int32 startHeigh
     if (result)
         return false;
 
+    float const bottomZ = below.getZ();   // twow-repo#342 (S3b-1): read before GetHitPosition moves it on a dynamic hit
     bool gotHit = start.GetHitPosition(below);
+
+    // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): the nearest hit on this vessel's deck model between start
+    // and below counts; the point takes the deck height. Off: the static answer as before.
+    float deckZ = 0.0f;
+    if (!gotHit && sPlayerbotAIConfig.pathTransportBoardFix &&
+        HitsVesselDeck(transport, start.getX(), start.getY(), start.getZ(), bottomZ, &deckZ))
+    {
+        below.setZ(deckZ);
+        gotHit = true;
+    }
 
     if (gotHit)
         set(below);
@@ -778,7 +794,7 @@ WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uin
     {
         WorldPosition pos = transPos + WorldPosition(0, irand(-radius, radius), irand(-radius, radius));
 
-        pos.SetOnTransport(transport, 1, -1);
+        bool const onDeck = pos.SetOnTransport(transport, 1, -1);   // twow-repo#342 (S3b-1): read only with the fix
 
         tries++;
 
@@ -799,7 +815,9 @@ WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uin
 
         pos += WorldPosition(0, 0, 0, 0.1f);
 
-        if (!pos.isOnTransport(transport))
+        // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): the deck model hit counts, and only a point SetOnTransport
+        // put on this vessel (snapped z) does. Off: the static test alone, as before.
+        if (!pos.isOnTransport(transport, sPlayerbotAIConfig.pathTransportBoardFix) || (sPlayerbotAIConfig.pathTransportBoardFix && !onDeck))
         {
             if (rejects)
                 ++rejects->on;
@@ -807,6 +825,11 @@ WorldPosition WorldPosition::RandomPointOnTrans(GenericTransport* transport, uin
         }
 
         bestPos = pos;
+
+        // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): teleport mode needs no walk path, so the first accepted deck
+        // point is used (the loop ran all 100 tries before).
+        if (!botForPath && sPlayerbotAIConfig.pathTransportBoardFix)
+            break;
 
         if (botForPath)
         {

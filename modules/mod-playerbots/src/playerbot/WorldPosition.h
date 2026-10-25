@@ -269,7 +269,9 @@ namespace ai
 
         static float GetTransporFloorOffset(uint32 entry);
         void SetTranpotHeightToFloor(uint32 entry) { coord_z += GetTransporFloorOffset(entry); }
-        bool isOnTransport(GenericTransport* transport);
+        // twow-repo#342 (S3b-1): deckHit (default false) also counts a hit on this vessel's own deck model (HitsVesselDeck);
+        // RandomPointOnTrans passes AiPlayerbot.Path.TransportBoardFix, the fell-off check only for a bot with a ride record.
+        bool isOnTransport(GenericTransport* transport, bool deckHit = false);
         bool SetOnTransport(GenericTransport* transport, int32 startHeight = 10, int32 endHeight = -1);
         // twow-repo#342 (S1): rejects (optional, filled only when passed) counts the z / isOnTransport / walk-path rejects.
         WorldPosition RandomPointOnTrans(GenericTransport* transport, uint32 radius, Player* botForPath, std::vector<WorldPosition>& path, transport_edge::PointRejects* rejects = nullptr);

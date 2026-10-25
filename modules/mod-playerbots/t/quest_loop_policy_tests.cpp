@@ -61,6 +61,15 @@ int main()
     Require(InactiveCooldownMs(300000, 180) == 300000, "a longer destination cooldown stays");
     Require(InactiveCooldownMs(60000, 0) == 60000, "0 = as before");
 
+    // InactiveAfterProgress (twow-repo#601): only a grown count is progress; no count never is.
+    Require(InactiveAfterProgress(0, 1), "0 -> 1 kill: progress");
+    Require(InactiveAfterProgress(4, 7), "4 -> 7 items: progress");
+    Require(!InactiveAfterProgress(3, 3), "no new credit: an emptied camp as before");
+    Require(!InactiveAfterProgress(5, 2), "a smaller count (items handed in or destroyed): no progress");
+    Require(!InactiveAfterProgress(-1, 4), "no count at the start: rule as before");
+    Require(!InactiveAfterProgress(2, -1), "quest gone from the log: rule as before");
+    Require(ProgressCooldownMs < InactiveCooldownMs(60000, 0), "the progress cooldown is shorter than the destination's");
+
     std::cout << "quest_loop_policy_tests passed\n";
     return 0;
 }

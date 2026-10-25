@@ -2,6 +2,7 @@
 #include "playerbot/AdhocGroupWorld.h"
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/GroupAiRefresh.h"
+#include "playerbot/ScanSlicePolicy.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
@@ -259,33 +260,68 @@ void WorldThreadManager::FlushMinute(std::uint32_t now)
         return;
 
     if (sPlayerbotAIConfig.botGroupsDiagnostics && minute.passes)
-        sLog.outBasic("[BotGroup] kind=adhoc event=minute passes=%u candidates=%u invites=%u joins=%u leaves=%u tracked=%u pass_us_max=%u join_us_max=%u leave_us_max=%u scan_us_max=%u bots=%u",
+        sLog.outBasic("[BotGroup] kind=adhoc event=minute passes=%u candidates=%u invites=%u joins=%u leaves=%u tracked=%u pass_us_max=%u join_us_max=%u leave_us_max=%u scan_us_max=%u bots=%u slices=%u",
             minute.passes, minute.candidates, minute.invites, minute.joins, minute.leaves, uint32(tracks.size()), minute.passUsMax,
-            minute.joinUsMax, minute.leaveUsMax, minute.scanUsMax, minute.bots);
+            minute.joinUsMax, minute.leaveUsMax, minute.scanUsMax, minute.bots, minute.slices);
     minute = Minute();
     minute.start = now;
 }
 
 void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
 {
-    if (now - lastPass < sPlayerbotAIConfig.botGroupsAdhocScanIntervalSeconds)
-        return;
-    lastPass = now;
-    FlushMinute(now);  // a finished minute is logged before this pass counts
+    if (!pass.active)
+    {
+        if (now - lastPass < sPlayerbotAIConfig.botGroupsAdhocScanIntervalSeconds)
+            return;
+        lastPass = now;
+        FlushMinute(now);  // a finished minute is logged before this pass counts
+
+        // Bots that logged out since the last pass take their leave tracking with them,
+        // and registry entries of groups disbanded elsewhere go (bounded registry).
+        for (auto it = tracks.begin(); it != tracks.end();)
+            it = bots.count(it->first) ? std::next(it) : tracks.erase(it);
+        Groups().ForgetGone([](std::uint32_t groupId) { return sObjectMgr.GetGroupById(groupId) != nullptr; });
+
+        pass = Pass();
+        pass.active = true;
+        pass.guids.reserve(bots.size());
+        for (auto const& [guid, bot] : bots)
+            pass.guids.push_back(guid);
+        minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
+    }
     auto const passStart = std::chrono::steady_clock::now();
     passLeaveUs = 0;
 
-    // Bots that logged out since the last pass take their leave tracking with them,
-    // and registry entries of groups disbanded elsewhere go (bounded registry).
-    for (auto it = tracks.begin(); it != tracks.end();)
-        it = bots.count(it->first) ? std::next(it) : tracks.erase(it);
-    Groups().ForgetGone([](std::uint32_t groupId) { return sObjectMgr.GetGroupById(groupId) != nullptr; });
+    // twow-repo#628 (ScanSlices): this update's share of the bots; 0 or 1 = all of them at once.
+    ScanSlice(bots, scan_slice::SliceEnd(pass.guids.size(), pass.next, sPlayerbotAIConfig.botGroupsAdhocScanSlices), now);
+    ++pass.updates;
 
+    // The scan alone: leave rules and candidates of this update's bots, without the leaves themselves.
+    std::uint32_t const scanUs = UsSince(passStart);
+    minute.scanUsMax = std::max(minute.scanUsMax, scanUs > passLeaveUs ? scanUs - passLeaveUs : 0u);
+
+    if (pass.next >= pass.guids.size())
+    {
+        Pairs(bots, now);
+        ++minute.passes;
+        minute.slices = pass.updates;
+        pass = Pass();
+    }
+    minute.passUsMax = std::max(minute.passUsMax, UsSince(passStart));
+}
+
+// Stages 1 and 2 for the bots pass.guids[pass.next, end): first the leave rules of all of them, then their candidates - with
+// one slice exactly the order of the whole pass.
+void WorldThreadManager::ScanSlice(std::map<std::uint32_t, Player*> const& bots, std::size_t end, std::uint32_t now)
+{
     // 1. Leave rules for every bot in an ad-hoc group.
     std::vector<Player*> eligible;
-    eligible.reserve(bots.size());
-    for (auto const& [guid, bot] : bots)
+    eligible.reserve(end > pass.next ? end - pass.next : 0);
+    for (; pass.next < end; ++pass.next)
     {
+        std::uint32_t const guid = pass.guids[pass.next];
+        auto const it = bots.find(guid);
+        Player* bot = it == bots.end() ? nullptr : it->second;
         if (!Eligible(bot))
         {
             tracks.erase(guid);
@@ -303,13 +339,6 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
 
     // 2. Candidates by objective: ungrouped bots and ad-hoc leaders with room. No
     // value per neighbour, no world scan (#351): one key per bot and pass.
-    struct Candidate
-    {
-        Player* bot;
-        Group* group;  // its ad-hoc group (led by it) or null
-        ObjectiveKey key;
-    };
-    std::unordered_map<std::uint64_t, std::vector<Candidate>> buckets;
     for (Player* bot : eligible)
     {
         Group* group = bot->GetGroup();
@@ -323,31 +352,51 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
         ObjectiveKey const key = inAdhoc ? entry.key : CurrentObjective(bot);
         if (!key.IsValid() || !IsCandidateBot(bot))
             continue;
-        buckets[BucketKey(bot, key)].push_back({ bot, inAdhoc ? group : nullptr, key });
+        pass.buckets[BucketKey(bot, key)].push_back({ bot->GetGUIDLow(), inAdhoc ? group->GetId() : 0u, key });
         ++minute.candidates;
     }
+}
 
-    // The scan alone: leave rules and candidates for every bot, without the leaves themselves.
-    std::uint32_t const scanUs = UsSince(passStart);
-    minute.scanUsMax = std::max(minute.scanUsMax, scanUs > passLeaveUs ? scanUs - passLeaveUs : 0u);
-    minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
-
-    // 3. Pairs inside a bucket: radius, pair cooldown, level window, who invites.
+// 3. Pairs inside a bucket: radius, pair cooldown, level window, who invites. Each candidate is resolved again first; one whose
+// bot or group changed since its slice (gone, grouped, ungrouped, no longer leader, group full) is left out. With one slice
+// nothing changes in between, so the pairs are those of the whole pass.
+void WorldThreadManager::Pairs(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
+{
+    struct Live
+    {
+        Player* bot;
+        Group* group;  // its ad-hoc group (led by it) or null
+        ObjectiveKey key;
+    };
     std::uint32_t const cooldown = sPlayerbotAIConfig.botGroupsAdhocPairCooldownSeconds;
     float const radius = sPlayerbotAIConfig.botGroupsAdhocRadius;
     std::unordered_set<std::uint32_t> done;  // one invite per bot and pass
-    for (auto& [bucket, candidates] : buckets)
+    for (auto& [bucket, list] : pass.buckets)
     {
-        if (candidates.size() < 2)
+        if (list.size() < 2)
             continue;
+        std::vector<Live> candidates;
+        candidates.reserve(list.size());
+        for (Candidate const& c : list)
+        {
+            auto const it = bots.find(c.guid);
+            Player* bot = it == bots.end() ? nullptr : it->second;
+            if (!Eligible(bot))
+                continue;
+            Group* group = bot->GetGroup();
+            if (c.groupId ? (!group || group->GetId() != c.groupId || !group->IsLeader(bot->GetObjectGuid()) ||
+                    group->GetMembersCount() >= sPlayerbotAIConfig.botGroupsMaxBots) : group != nullptr)
+                continue;
+            candidates.push_back({ bot, c.groupId ? group : nullptr, c.key });
+        }
         for (std::size_t i = 0; i < candidates.size(); ++i)
         {
-            Candidate const& a = candidates[i];
+            Live const& a = candidates[i];
             if (done.count(a.bot->GetGUIDLow()))
                 continue;
             for (std::size_t j = i + 1; j < candidates.size(); ++j)
             {
-                Candidate const& b = candidates[j];
+                Live const& b = candidates[j];
                 if (done.count(b.bot->GetGUIDLow()) || a.key != b.key)
                     continue;  // a bucket collision of two objectives
                 if (a.group && b.group)
@@ -392,9 +441,6 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
             }
         }
     }
-
-    ++minute.passes;
-    minute.passUsMax = std::max(minute.passUsMax, UsSince(passStart));
 }
 
 WorldThreadManager& WorldManager()
