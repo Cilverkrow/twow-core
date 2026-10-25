@@ -2198,6 +2198,26 @@ add_test(NAME grind_pick_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_pick_source_contract_tests.cmake")
 
+# twow-repo#602 ROT-01 #2 (AiPlayerbot.Grind.NeighbourAware, default 0; 3 = shadow only): the stage-2 grind pick of solo free bots
+# prefers a candidate with fewer neighbours that would join the fight (assist, on sight, AGGRO_TOGETHER group, call for help).
+add_executable(grind_neighbour_policy_tests
+  "${PB_MODULE_DIR}/t/grind_neighbour_policy_tests.cpp")
+
+target_include_directories(grind_neighbour_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(grind_neighbour_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_neighbour_policy
+  COMMAND grind_neighbour_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_neighbour_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_neighbour_source_contract_tests.cmake")
+
 # twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): [BotActivity] / [BotActivityMin].
 add_executable(bot_activity_policy_tests
   "${PB_MODULE_DIR}/t/bot_activity_policy_tests.cpp")
@@ -3611,6 +3631,15 @@ add_test(NAME transport_board_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/transport_board_source_contract_tests.cmake")
 
+# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE behind AiPlayerbot.Path.TransportBoardFix, default 0): bots board ships and
+# zeppelins (deck hit, paced stop gate, dock-hop entry inside the route, ride record, exit only at the stored arrival dock,
+# OB-10 #1 lost-ride recovery only with a ride record). The unit cases live in transport_board_policy_tests; this contract
+# pins that every behaviour sits behind the switch and that the legacy flow stays textually unchanged.
+add_test(NAME transport_board_fix_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/transport_board_fix_source_contract_tests.cmake")
+
 # twow-repo#601 / #614 (AiPlayerbot.ActionLog.Guids, owner 18.10.2026): EnableActionLog for a fixed sample of bots; empty = every bot.
 add_test(NAME action_log_sample_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -3672,6 +3701,27 @@ add_test(NAME cast_wait_policy
   COMMAND cast_wait_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 hunter deaths (AiPlayerbot.Rotation.HunterMeleeStart, default 0, behaviour change): the hunter's switch to
+# melee really starts the swing (Player::MeleeAttackStart is a no-op stub), an attack in close mode starts melee.
+add_test(NAME hunter_melee_start_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/hunter_melee_start_source_contract_tests.cmake")
+
+add_executable(hunter_melee_start_policy_tests
+  "${PB_MODULE_DIR}/t/hunter_melee_start_policy_tests.cpp")
+
+target_include_directories(hunter_melee_start_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(hunter_melee_start_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME hunter_melee_start_policy
+  COMMAND hunter_melee_start_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 (death analysis 21.10.2026, AiPlayerbot.Rotation.MeleeFleeBreak, default 0, behaviour change): "outnumbered"
 # stays quiet for a melee bot while its flee loop holds (FleeMultiplier's loop test), so it fights; ranged and panic unchanged.
 add_test(NAME melee_flee_break_source_contract
@@ -3711,6 +3761,26 @@ add_test(NAME flee_away_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/flee_away_source_contract_tests.cmake")
+
+# twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff, default 0, behaviour change): an out-of-mana priest/mage/warlock
+# without a wand fights in melee; an idle out-of-mana combat pass waits DelayMs.
+add_test(NAME oom_backoff_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/oom_backoff_source_contract_tests.cmake")
+
+add_executable(oom_backoff_policy_tests
+  "${PB_MODULE_DIR}/t/oom_backoff_policy_tests.cpp")
+
+target_include_directories(oom_backoff_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(oom_backoff_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME oom_backoff_policy
+  COMMAND oom_backoff_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
 # end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process; no key, no state.
@@ -3792,6 +3862,26 @@ add_test(NAME reach_los
   COMMAND reach_los_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 3c (AiPlayerbot.Rotation.DarkRuneGate, default 0, behaviour change): "dark rune" is pushed only while the
+# rune or its alternative "mana potion" is usable; a failed check waits RecheckSeconds.
+add_test(NAME dark_rune_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/dark_rune_gate_source_contract_tests.cmake")
+
+add_executable(dark_rune_gate_policy_tests
+  "${PB_MODULE_DIR}/t/dark_rune_gate_policy_tests.cpp")
+
+target_include_directories(dark_rune_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(dark_rune_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME dark_rune_gate_policy
+  COMMAND dark_rune_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #627 S7: help groups for elite and group quests (QuestGroups.Enable).
 add_executable(quest_group_policy_tests
   "${PB_MODULE_DIR}/t/quest_group_policy_tests.cpp")
@@ -3840,6 +3930,26 @@ add_test(NAME shim_id_sets_source_contract
     "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
     -P "${PB_MODULE_DIR}/t/shim_id_sets_source_contract_tests.cmake")
 
+# twow-repo#601 F5 (AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait, default 0): contested objective timeouts held back
+# briefly; the death_suppressed skips of the rejected line split by suppression source (diagnostic).
+add_executable(contested_objective_policy_tests
+  "${PB_MODULE_DIR}/t/contested_objective_policy_tests.cpp")
+
+target_include_directories(contested_objective_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(contested_objective_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME contested_objective_policy
+  COMMAND contested_objective_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME contested_objective_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/contested_objective_source_contract_tests.cmake")
+
 # twow-repo#333 Berufe P1-a / P1-b (AiPlayerbot.ProfessionTraining.Travel / ProfessionUse.ToolBuy, modes 0/1/2, default 0):
 # gap-filler trips of a roster bot to a phase-one profession trainer and to the vendor of its missing pick / knife.
 add_executable(profession_travel_policy_tests
@@ -3860,9 +3970,43 @@ add_test(NAME profession_travel_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/profession_travel_source_contract_tests.cmake")
 
-# twow-repo#333 Berufe P1-f (AiPlayerbot.Gather.QuestHerbFilter, modes 0/1/2, default 0): a quest herb (lock 259) is picked only
-# while one of the bot's quests wants it. The pure rule is in gather_node_policy_tests.
-add_test(NAME quest_herb_filter_source_contract
+# twow-repo#601 (AiPlayerbot.QuestLoop.InactiveAfterProgress, default 0): an inactive objective or an objective work timeout after
+# new credit is progress, not an emptied camp (the policy cases are in quest_loop_policy_tests).
+add_test(NAME inactive_after_progress_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/quest_herb_filter_source_contract_tests.cmake")
+    -P "${PB_MODULE_DIR}/t/inactive_after_progress_source_contract_tests.cmake")
+
+# twow-repo#628 ScanSlices: the managers' pass over all bots spread over several updates (default 0 = one update).
+add_test(NAME scan_slices_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/scan_slices_source_contract_tests.cmake")
+
+# --------------------------------------------------------------------------
+# t/contracts.d -- source contracts that register themselves (OB-00 25.10.2026).
+#
+# Every PR used to append its add_test() at the end of this file, so each merge
+# broke the next PR at the same anchor. A new source contract (a cmake -P
+# script) goes into t/contracts.d/ as its own file instead: <name>_tests.cmake
+# becomes the ctest test <name> and runs with the variables the blocks above
+# pass, so this file does not change for it. A suite that needs a compiled
+# target still gets its own block above. The blocks above stay where they are.
+#
+# Sorted, so the registration order does not depend on the filesystem.
+# CONFIGURE_DEPENDS re-runs the glob on a rebuild of an existing build tree,
+# so a new file needs no manual re-configure. A name that is already taken
+# stops the configure (add_test refuses a duplicate NAME).
+# --------------------------------------------------------------------------
+file(GLOB pb_contracts_d CONFIGURE_DEPENDS "${PB_MODULE_DIR}/t/contracts.d/*.cmake")
+list(SORT pb_contracts_d)
+foreach(pb_contract IN LISTS pb_contracts_d)
+  get_filename_component(pb_contract_name "${pb_contract}" NAME)
+  string(REGEX REPLACE "(_tests)?\\.cmake$" "" pb_contract_name "${pb_contract_name}")
+  add_test(NAME "${pb_contract_name}"
+    COMMAND "${CMAKE_COMMAND}"
+      "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+      "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
+      "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+      -P "${pb_contract}")
+endforeach()

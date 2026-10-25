@@ -47,6 +47,19 @@ namespace ai::quest_loop
         return true;
     }
 
+    // twow-repo#601 root cause of the cand-v466r standing (CLI-Deep 25.10.2026, AiPlayerbot.QuestLoop.InactiveAfterProgress): the
+    // objective goes inactive as soon as no living target of its entry is in sight, also right after the bot killed the visible
+    // ones - normal progress was booked as an emptied camp (QL-1 failure + QL-2 180 s cooldown; cohort B: 32 % of its time between
+    // an inactive objective and the next quest target). With the switch an inactive objective whose count (kill / use credit or
+    // quest items) grew since the count was taken is progress: no QL-1, no QL-2, a short cooldown. -1 = no count (not an
+    // objective, quest not in the log): never progress, the rule stays as before.
+    constexpr std::uint32_t ProgressCooldownMs = 1000;
+
+    inline bool InactiveAfterProgress(std::int32_t countAtStart, std::int32_t countNow)
+    {
+        return countAtStart >= 0 && countNow > countAtStart;
+    }
+
     // QL-2: the cooldown after an inactive objective, never shorter than the destination's own.
     inline std::uint32_t InactiveCooldownMs(std::uint32_t destinationCooldownMs, std::uint32_t minSeconds)
     {

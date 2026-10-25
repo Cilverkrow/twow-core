@@ -76,6 +76,8 @@ namespace
 namespace
 {
     std::atomic<bool> g_activeRunOnly{ false };   // DungeonClear.Gate.ActiveRunOnly
+    std::mutex g_autoRunMutex;
+    std::set<ObjectGuid> g_autoRunWanted;          // DcAutoRun: members of a manager group that asked for a run
 
     // A DC run is on for this bot: its own, or a groupmate's on the same map (same map thread, so reading the
     // groupmate's AI context is safe here; a member elsewhere cannot lead this bot's run anyway).
@@ -103,6 +105,24 @@ namespace DcStrategyGate
 {
     void SetActiveRunOnly(bool on) { g_activeRunOnly.store(on); }
     bool ActiveRunOnly() { return g_activeRunOnly.load(); }
+
+    void RequestAutoRun(ObjectGuid guid)
+    {
+        std::lock_guard<std::mutex> lock(g_autoRunMutex);
+        g_autoRunWanted.insert(guid);
+    }
+
+    void ClearAutoRun(ObjectGuid guid)
+    {
+        std::lock_guard<std::mutex> lock(g_autoRunMutex);
+        g_autoRunWanted.erase(guid);
+    }
+
+    bool IsAutoRequested(ObjectGuid guid)
+    {
+        std::lock_guard<std::mutex> lock(g_autoRunMutex);
+        return g_autoRunWanted.count(guid) != 0;
+    }
 
     void RequestFollowStrip(ObjectGuid guid)
     {
@@ -194,7 +214,8 @@ namespace DcStrategyGate
         bool const activeRunOnly = ActiveRunOnly();
         bool const inDungeon = map->IsDungeon() &&
             GateWanted(true, activeRunOnly, activeRunOnly && RunActiveFor(botAI, bot, map),
-                       activeRunOnly && sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow()));
+                       activeRunOnly && (sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow()) ||
+                                         IsAutoRequested(bot->GetObjectGuid())));   // DcAutoRun asked
 
         bool const hasNon = botAI->HasStrategy(kNonCombat, BOT_STATE_NON_COMBAT);
         bool const hasCmb = botAI->HasStrategy(kCombat, BOT_STATE_COMBAT);

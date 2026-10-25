@@ -67,6 +67,7 @@
 
 #include "AiObjectContextAccess.h"
 #include "DcStrategyGate.h"
+#include "DcAutoRun.h"
 #include "Ai/Dungeon/DungeonClear/Data/DcRosterFile.h"
 
 // Per-class context registries — each owns its own shared static lists.
@@ -275,6 +276,8 @@ public:
         DcSettings::InvalidateConfCache();
         // CLI-GRP 25.10.2026: the gate only for active runs (player-led groups keep follow/loot), default 0.
         DcStrategyGate::SetActiveRunOnly(DcSettings::GetBool(ObjectGuid::Empty, "Gate.ActiveRunOnly"));
+        // twow-repo#629 B4/D2: dungeon clear for playerbots manager groups (bridge hooks registered only when on).
+        DcAutoRun::SetEnabled(DcSettings::GetBool(ObjectGuid::Empty, "AutoRun"));
         if (!reload)
             return;
 
