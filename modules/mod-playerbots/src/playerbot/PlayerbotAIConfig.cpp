@@ -586,6 +586,9 @@ bool PlayerbotAIConfig::Initialize()
         rotationRestGateTargetMana = t.targetMana;
         rotationRestGateMaxRestSeconds = t.maxRestSeconds;
     }
+    rotationCastLosGate = config.GetIntDefault("AiPlayerbot.Rotation.CastLosGate", 0);   // twow-repo#602 hunter LoS
+    if (rotationCastLosGate > 2)
+        rotationCastLosGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
@@ -1611,6 +1614,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.RestGate", Value(rotationRestGate)},
+            {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
