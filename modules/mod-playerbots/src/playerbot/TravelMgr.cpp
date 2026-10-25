@@ -33,9 +33,28 @@
 #include "playerbot/strategy/values/RestGateValue.h"
 #include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 S5a: DialogStatusValue::getDialogStatus (band giver filter F)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): the band trip hooks, the ladder loader
+#include "playerbot/CohortPolicy.h"   // twow-repo#601 QuestLoop.InactiveAfterProgress mode 2 = cohort B
 
 using namespace ai;
 using namespace MaNGOS;
+
+namespace
+{
+// twow-repo#601 (QuestLoop.InactiveAfterProgress): the bot's count on a quest objective destination - quest items for a loot
+// objective, kill / use credit otherwise; -1 when the destination is no objective or the quest is not in the log.
+int32 ObjectiveCountOf(Player* bot, TravelDestination const* destination)
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination);
+    Quest const* quest = objective ? sObjectMgr.GetQuestTemplate(objective->GetQuestId()) : nullptr;
+    if (!bot || !quest)
+        return -1;
+    auto const it = bot->getQuestStatusMap().find(objective->GetQuestId());
+    if (it == bot->getQuestStatusMap().end())
+        return -1;
+    uint8 const index = objective->GetObjective();
+    return quest->ReqItemCount[index] > 0 ? int32(it->second.m_itemcount[index]) : int32(it->second.m_creatureOrGOcount[index]);
+}
+}
 
 // Penqle's Singleton<> requires an explicit instantiation in a .cpp file.
 INSTANTIATE_SINGLETON_1(ai::TravelMgr);
@@ -998,6 +1017,11 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
     if (tDestination1 != tDestination && bandTripEnd)
         NoteBandTripReplaced();
 
+    // twow-repo#601 (QuestLoop.InactiveAfterProgress): a new destination takes the objective's count; a refresh of the same one
+    // keeps it (progress since the target was first set). Off: never read.
+    if (sPlayerbotAIConfig.questLoopInactiveAfterProgress && tDestination1 != tDestination)
+        objectiveCountAtStart = ObjectiveCountOf(bot, tDestination1);
+
     wPosition = wPosition1;
     tDestination = tDestination1;
 
@@ -1357,6 +1381,23 @@ void TravelTarget::OnWorkTimeout()
         }
         NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "work_timeout");
         return;
+    }
+
+    // twow-repo#601 (QuestLoop.InactiveAfterProgress): an objective work phase that ran out after the bot got credit on the
+    // objective is no failure either - neither QL-1 nor #405 counts it; the count is taken again. Off or another cohort: as before.
+    if (dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination) &&
+        ai::cohort::Applies(sPlayerbotAIConfig.questLoopInactiveAfterProgress, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())
+    {
+        int32 const countNow = ObjectiveCountOf(bot, tDestination);
+        bool const progressed = quest_loop::InactiveAfterProgress(objectiveCountAtStart, countNow);
+        if (progressed)
+            sLog.outBasic("[QuestLoop] state=work_after_progress bot=%u level=%u quest=%u target_entry=%d count_from=%d count_to=%d",
+                bot->GetGUIDLow(), bot->GetLevel(), static_cast<QuestObjectiveTravelDestination const*>(tDestination)->GetQuestId(),
+                tDestination->GetEntry(), objectiveCountAtStart, countNow);
+        objectiveCountAtStart = countNow;
+        if (progressed)
+            return;
     }
 
     // twow-repo#601 F5b (AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait): a contested objective is held back briefly and counts
@@ -2072,13 +2113,30 @@ void TravelTarget::CheckStatus()
             TraceQuestCommit(tDestination, "drop", destinationInactive ? "destination_inactive" : "conditions_inactive");
             forced = false;
             SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+            // twow-repo#601 (QuestLoop.InactiveAfterProgress): no living target in sight after the bot got credit on this objective is
+            // progress, not an emptied camp - a short cooldown, no QL-2, no QL-1; the count is taken again, so the next inactive
+            // drop without new credit is an emptied camp. A roster bot on its own only; off or another cohort: as before.
+            bool const progressRule = destinationInactive && dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination) &&
+                ai::cohort::Applies(sPlayerbotAIConfig.questLoopInactiveAfterProgress, bot->GetGUIDLow()) &&
+                sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+            int32 const objectiveCountNow = progressRule ? ObjectiveCountOf(bot, tDestination) : -1;
+            if (progressRule && quest_loop::InactiveAfterProgress(objectiveCountAtStart, objectiveCountNow))
+            {
+                QuestObjectiveTravelDestination const* objective = static_cast<QuestObjectiveTravelDestination const*>(tDestination);
+                sLog.outBasic("[QuestLoop] state=inactive_after_progress bot=%u level=%u quest=%u target_entry=%d count_from=%d count_to=%d cooldown_ms=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), objectiveCountAtStart, objectiveCountNow,
+                    quest_loop::ProgressCooldownMs);
+                SetExpireIn(quest_loop::ProgressCooldownMs);
+            }
             // twow-repo#581: an emptied quest camp - QL-2 longer cooldown, QL-1 counted against the quest.
-            if (destinationInactive && dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
+            else if (destinationInactive && dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
             {
                 if (sPlayerbotAIConfig.questLoopInactiveCooldownSeconds)
                     SetExpireIn(quest_loop::InactiveCooldownMs(tDestination->GetCooldownDelay(), sPlayerbotAIConfig.questLoopInactiveCooldownSeconds));
                 NoteQuestObjectiveFailure();
             }
+            if (progressRule)
+                objectiveCountAtStart = objectiveCountNow;
             return;
         }
     }
