@@ -26,11 +26,11 @@ enum class Source : std::uint8_t
 };
 
 constexpr std::size_t SourceCount = std::size_t(Source::Count);
-constexpr std::size_t Bands = 12;   // L1-5, L6-10, ..., L56-60 (above 60 in the last band)
+constexpr std::size_t Bands = 13;   // L0-4, L5-9, ..., L55-59, L60 (above 60 in the last band) - the same bands as [BotActivityMin] (telemetry P0)
 
 inline std::size_t BandOf(std::uint32_t level)
 {
-    std::size_t const band = level ? std::size_t((level - 1) / 5) : 0;
+    std::size_t const band = std::size_t(level / 5);
     return band < Bands ? band : Bands - 1;
 }
 
@@ -108,7 +108,7 @@ inline bool BandEmpty(Snapshot const& s, std::size_t band)
 // "[GrindPick] band=L15-19 attacker=12/3 victim=2/0 quest=40/9 grind=55/1" - picks/grey per source.
 inline std::string FormatLine(Snapshot const& s, std::size_t band)
 {
-    std::string line = "[GrindPick] band=L" + std::to_string(band * 5 + 1) + "-" + std::to_string(band * 5 + 5);
+    std::string line = "[GrindPick] band=L" + std::to_string(band * 5) + "-" + std::to_string(band * 5 + 4);
     for (std::size_t i = 1; i < SourceCount; ++i)
         line += std::string(" ") + SourceName(Source(i)) + "=" + std::to_string(s.picks[band][i]) + "/" +
             std::to_string(s.grey[band][i]);

@@ -22,10 +22,11 @@ int main()
 {
     using namespace ai::grind_pick;
 
-    // Bands: L1-5 .. L56-60, above 60 in the last one, 0 in the first.
-    Require(BandOf(1) == 0 && BandOf(5) == 0, "L1-5 in band 0");
-    Require(BandOf(6) == 1 && BandOf(10) == 1, "L6-10 in band 1");
-    Require(BandOf(15) == 2 && BandOf(19) == 3, "L15 band 2, L19 band 3");
+    // Bands like [BotActivityMin] (telemetry P0): L0-4 .. L55-59, L60 and above in the last one.
+    Require(BandOf(1) == 0 && BandOf(4) == 0, "L1-4 in band 0");
+    Require(BandOf(5) == 1 && BandOf(9) == 1, "L5-9 in band 1");
+    Require(BandOf(15) == 3 && BandOf(14) == 2, "L14 band 2, L15 band 3");
+    Require(Bands == 13, "13 bands as [BotActivityMin]");
     Require(BandOf(60) == Bands - 1 && BandOf(63) == Bands - 1, "L60 and above in the last band");
     Require(BandOf(0) == 0, "level 0 in band 0");
 
@@ -52,7 +53,7 @@ int main()
     Require(s.picks[b][std::size_t(Source::Victim)] == 1 && s.grey[b][std::size_t(Source::Victim)] == 1, "victim 1/1");
     Require(s.picks[b][std::size_t(Source::None)] == 0, "None never counted");
     Require(!BandEmpty(s, b) && BandEmpty(s, 0), "band with picks / empty band");
-    Require(FormatLine(s, b) == "[GrindPick] band=L16-20 attacker=2/1 victim=1/1 quest=1/1 grind=1/0", "line format");
+    Require(FormatLine(s, b) == "[GrindPick] band=L15-19 attacker=2/1 victim=1/1 quest=1/1 grind=1/0", "line format");
 
     Snapshot const empty = counters.Take();
     Require(BandEmpty(empty, b), "Take resets");

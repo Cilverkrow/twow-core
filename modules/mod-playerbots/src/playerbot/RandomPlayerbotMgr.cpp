@@ -60,6 +60,7 @@
 #include "playerbot/BotUpdateTrace.h"
 #include "playerbot/GrindPickPolicy.h"   // twow-repo#601 S2 diagnostic: [GrindPick] minute line
 #include "playerbot/BotActivityPolicy.h"   // twow-repo#601 R01 L1: [BotActivityMin] minute line
+#include "playerbot/LazyRollReport.h"   // telemetry P0: summaries of the path traces every minute, also with 0
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/MeleeFleeBreakPolicy.h"
@@ -623,7 +624,7 @@ void RandomPlayerbotMgr::LogPlayerLocation()
             {
                 ForEachPlayerbot([&](Player* bot) {
                     std::ostringstream out;
-                    out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+                    out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
                     out << "RND" << ",";
                     out << bot->GetName() << ",";
                     out << std::fixed << std::setprecision(2);
@@ -742,7 +743,7 @@ void RandomPlayerbotMgr::LogPlayerLocation()
                     continue;
 
                 std::ostringstream out;
-                out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+                out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
                 out << "PLR" << ",";
                 out << bot->GetName() << ",";
                 out << std::fixed << std::setprecision(2);
@@ -812,7 +813,7 @@ void RandomPlayerbotMgr::LogPlayerLocation()
             for (auto& transport : WorldPosition(map->GetId(), 1, 1).getTransports())
             {
                 std::ostringstream out;
-                out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+                out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
                 if (transport->GetName() == nullptr || transport->GetName()[0] == '\0')
                 {
                     GameObjectInfo const* data = sGOStorage.LookupEntry<GameObjectInfo>(transport->GetEntry());
@@ -973,6 +974,9 @@ void ReportBotInbox()
     sLog.outBasic("[BotInbox] dropped=%llu largest_batch=%llu capacity=%u drop_chat=%llu drop_spell=%llu drop_knockback=%llu drop_handler=%llu drop_write=%llu write_target_gone=%llu",
         (unsigned long long)dropped, (unsigned long long)largest, uint32(ai::BotPacketInboxCapacity),
         chat, spell, knockback, handler, write, writeGone);
+
+    // telemetry P0 (audit Q7): the lazy-roll summaries of the enabled path traces, every minute, with zeros and their window.
+    ai::lazy_roll::ReportMinute();
 
     // twow-repo#587 Z4 (always on): the most often unreachable turn-in targets, top 5 per 5 minutes and top 10 per hour -
     // "entry:map:x:y:quest:count:bots". OB-30's live monitor takes the hourly line into the #541 summary.

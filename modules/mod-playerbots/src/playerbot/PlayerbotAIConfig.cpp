@@ -1862,7 +1862,23 @@ std::string PlayerbotAIConfig::GetTimestampStr()
     return std::string(buf);
 }
 
-bool PlayerbotAIConfig::openLog(std::string fileName, char const* mode, bool haslog)
+// telemetry P0: GetTimestampStr() is local time, but the CSV lines add a fixed "+00". Real UTC, thread-safe.
+std::string PlayerbotAIConfig::GetTimestampUtcStr()
+{
+    time_t t = time(nullptr);
+    tm utc{};
+#ifdef _WIN32
+    gmtime_s(&utc, &t);
+#else
+    gmtime_r(&t, &utc);
+#endif
+    char buf[20];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &utc);
+
+    return std::string(buf);
+}
+
+bool PlayerbotAIConfig::openLog(std::string fileName, char const* mode, bool haslog, char const* header)
 {
     if (!haslog && !hasLog(fileName))
         return false;
@@ -1905,6 +1921,14 @@ bool PlayerbotAIConfig::openLog(std::string fileName, char const* mode, bool has
         logFileIt->second.second = false;
 
         return false;
+    }
+
+    // telemetry P0: an appended file keeps its content across restarts; the header goes in only when it is new or empty
+    if (header && mode && mode[0] == 'a' && fseek(file, 0, SEEK_END) == 0 && ftell(file) == 0)
+    {
+        fputs(header, file);
+        fputc('\n', file);
+        fflush(file);
     }
 
     logFileIt->second.first = file;
@@ -1967,7 +1991,7 @@ void PlayerbotAIConfig::logEvent(PlayerbotAI* ai, std::string eventName, std::st
         Player* bot = ai->GetBot();
 
         std::ostringstream out;
-        out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+        out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
         out << bot->GetName() << ",";
         out << eventName << ",";
         out << std::fixed << std::setprecision(2);

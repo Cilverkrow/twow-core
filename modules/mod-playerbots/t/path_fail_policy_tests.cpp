@@ -42,6 +42,26 @@ int main()
         Require(counters.Take(2), "budget starts again in the new minute");
     }
 
+    // telemetry P0 (audit Q7): the window a roll covers; a quiet minute rolled by the minute driver is a window of 1 with zeros; a roll
+    // after a gap says how long the gap was.
+    {
+        Counters counters;
+        std::uint32_t f = 0, l = 0, h = 0;
+        Require(!counters.Roll(600, f, l, h), "first roll seeds the minute, no summary");
+        Require(counters.windowMinutes.load() == 1, "window defaults to one minute");
+        Require(counters.Roll(660, f, l, h) && f == 0 && l == 0 && h == 0, "a quiet minute is a summary with zeros");
+        Require(counters.windowMinutes.load() == 1, "quiet minute = window of 1 minute");
+        counters.Take(5);
+        Require(counters.Roll(660 + 60 * 7, f, l, h) && f == 1, "roll after a gap carries the counts");
+        Require(counters.windowMinutes.load() == 7, "a gap of 7 minutes is a window of 7 minutes");
+        Require(counters.Roll(660 + 60 * 7 + 60 * 5000, f, l, h) && counters.windowMinutes.load() == 1440, "window is capped at one day");
+        Require(WindowMinutes(10, 10) == 1 && WindowMinutes(10, 9) == 1 && WindowMinutes(10, 13) == 3, "WindowMinutes: same minute and clock back = 1");
+        TaxiCounters taxi;
+        std::uint32_t r[5] = {}, w = 0, tl = 0;
+        Require(!taxi.Roll(600, r, w, tl), "taxi: first roll seeds");
+        Require(taxi.Roll(900, r, w, tl) && taxi.windowMinutes.load() == 5, "taxi: a 5-minute gap is a window of 5");
+    }
+
     // Shared by map threads: one summary per minute, the budget holds under concurrency.
     {
         Counters counters;

@@ -175,6 +175,8 @@ int main()
         counters.unstuck.fetch_add(1);
         Require(counters.Roll(660, d, u, t, l), "next minute: summary");
         Require(d == 2 && u == 1 && t == 0 && l == 1, "every episode counted, one logged");
+        Require(counters.windowMinutes.load() == 1, "telemetry P0: window of the rolled minute");
+        Require(counters.Roll(660 + 60 * 4, d, u, t, l) && d == 0 && counters.windowMinutes.load() == 4, "a quiet gap is a summary with zeros and its window");
     }
 
     std::cout << "pos_stuck_policy_tests passed\n";

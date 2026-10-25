@@ -2198,6 +2198,13 @@ add_test(NAME grind_pick_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_pick_source_contract_tests.cmake")
 
+# twow-repo#640 (TELE-01, telemetry P0): ts= at the end of a [Tag] line, CSVs appended with a header, window_s= and the minute driver for the
+# lazy-roll summaries. Formats and sinks only, no behaviour change.
+add_test(NAME telemetry_p0_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/telemetry_p0_source_contract_tests.cmake")
+
 # twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): [BotActivity] / [BotActivityMin].
 add_executable(bot_activity_policy_tests
   "${PB_MODULE_DIR}/t/bot_activity_policy_tests.cpp")
