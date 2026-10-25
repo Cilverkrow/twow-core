@@ -299,6 +299,40 @@ int main()
         assert(!ai::turnin_recovery::RecordWorkTimeout(evict, quest));
     assert(!ai::turnin_recovery::RecordWorkTimeout(evict, 41747));
 
+    // twow-repo#601 3a (ZoneExit.TurnInTravelStallCountsCombat): a fight with pauseKeepsWindow pauses the recovery but
+    // keeps the stall window, so the first observation after it without progress recovers on the old clock.
+    auto fight = [](std::uint32_t now, float x, float distance)
+    {
+        Observation observation = At(now, x, distance, true);
+        observation.pauseKeepsWindow = true;
+        return observation;
+    };
+    State combatOff;
+    assert(ai::turnin_recovery::Observe(combatOff, At(0, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(combatOff, At(200, 0.0f, 900.0f, true), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(combatOff, At(300, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(combatOff, At(499, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(combatOff, At(500, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    State combatOn;
+    assert(ai::turnin_recovery::Observe(combatOn, At(0, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(combatOn, fight(200, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(combatOn, At(299, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(combatOn, At(300, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    // A fight never triggers a stage itself, however long it lasts; the stage is not reset by it either.
+    State longFight;
+    assert(ai::turnin_recovery::Observe(longFight, At(0, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(longFight, At(300, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    assert(ai::turnin_recovery::Observe(longFight, fight(1000, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(longFight.recoveryStage == 1);
+    assert(ai::turnin_recovery::Observe(longFight, At(1001, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::SuppressRouteAndCooldown);
+    // Real progress after the fight still counts: 30 yd moved restarts the window as before.
+    State fightThenMove;
+    assert(ai::turnin_recovery::Observe(fightThenMove, At(0, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(fightThenMove, fight(290, 0.0f, 900.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(fightThenMove, At(310, 30.0f, 870.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(fightThenMove, At(609, 30.0f, 870.0f), stall, cooldown) == RecoveryAction::None);
+
     std::cout << "near_zone_jitter_stall=PASS near_zone_off_unchanged=PASS near_zone_closer_3yd=PASS "
-        "near_zone_wander_back=PASS near_zone_approach_cross_map=PASS near_zone_stale_leg=PASS work_timeout_ring=PASS\n";
+        "near_zone_wander_back=PASS near_zone_approach_cross_map=PASS near_zone_stale_leg=PASS work_timeout_ring=PASS "
+        "combat_keeps_window=PASS\n";
 }

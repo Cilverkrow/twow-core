@@ -3506,6 +3506,26 @@ add_test(NAME rest_gate_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/rest_gate_source_contract_tests.cmake")
 
+# twow-repo#602 ROT-01 hunter LoS (AiPlayerbot.Rotation.CastLosGate, default 0, behaviour change): a LINE_OF_SIGHT verdict makes the
+# cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped by target selection.
+add_test(NAME cast_los_gate_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/cast_los_gate_source_contract_tests.cmake")
+
+add_executable(cast_los_gate_policy_tests
+  "${PB_MODULE_DIR}/t/cast_los_gate_policy_tests.cpp")
+
+target_include_directories(cast_los_gate_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(cast_los_gate_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cast_los_gate_policy
+  COMMAND cast_los_gate_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder, cohort mode, default 0): fight on / class escape / flee for solo free bots
 # below critical health, solo CC on an add; FightTargetHp and SoloCcSpells configurable (OB-00 18.10.2026).
 add_executable(emergency_ladder_policy_tests
@@ -3652,6 +3672,27 @@ add_test(NAME cast_wait_policy
   COMMAND cast_wait_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 hunter deaths (AiPlayerbot.Rotation.HunterMeleeStart, default 0, behaviour change): the hunter's switch to
+# melee really starts the swing (Player::MeleeAttackStart is a no-op stub), an attack in close mode starts melee.
+add_test(NAME hunter_melee_start_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
+    -P "${PB_MODULE_DIR}/t/hunter_melee_start_source_contract_tests.cmake")
+
+add_executable(hunter_melee_start_policy_tests
+  "${PB_MODULE_DIR}/t/hunter_melee_start_policy_tests.cpp")
+
+target_include_directories(hunter_melee_start_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(hunter_melee_start_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME hunter_melee_start_policy
+  COMMAND hunter_melee_start_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 (death analysis 21.10.2026, AiPlayerbot.Rotation.MeleeFleeBreak, default 0, behaviour change): "outnumbered"
 # stays quiet for a melee bot while its flee loop holds (FleeMultiplier's loop test), so it fights; ranged and panic unchanged.
 add_test(NAME melee_flee_break_source_contract
@@ -3671,6 +3712,26 @@ set_target_properties(melee_flee_break_policy_tests PROPERTIES
 add_test(NAME melee_flee_break_policy
   COMMAND melee_flee_break_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 ROT-01 (c) (AiPlayerbot.Rotation.FleeAway, default 0, behaviour change): the flee chase angle relative to the enemy's
+# facing, a kept chase (ReissueMs), the hunter dead zone while the pet holds the enemy.
+add_executable(flee_away_policy_tests
+  "${PB_MODULE_DIR}/t/flee_away_policy_tests.cpp")
+
+target_include_directories(flee_away_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(flee_away_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME flee_away_policy
+  COMMAND flee_away_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME flee_away_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/flee_away_source_contract_tests.cmake")
 
 # twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
 # end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process; no key, no state.
@@ -3819,3 +3880,23 @@ add_test(NAME camp_block_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/camp_block_source_contract_tests.cmake")
+
+# twow-repo#333 Berufe P1-a / P1-b (AiPlayerbot.ProfessionTraining.Travel / ProfessionUse.ToolBuy, modes 0/1/2, default 0):
+# gap-filler trips of a roster bot to a phase-one profession trainer and to the vendor of its missing pick / knife.
+add_executable(profession_travel_policy_tests
+  "${PB_MODULE_DIR}/t/profession_travel_policy_tests.cpp")
+
+target_include_directories(profession_travel_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(profession_travel_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME profession_travel_policy
+  COMMAND profession_travel_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME profession_travel_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/profession_travel_source_contract_tests.cmake")

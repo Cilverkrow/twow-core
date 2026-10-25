@@ -157,6 +157,12 @@ namespace DcStrategyGate
 
     void SetActiveRunOnly(bool on);   // from OnAfterConfigLoad
     bool ActiveRunOnly();
+
+    // twow-repo#629 B4/D2 (DcAutoRun): a manager-formed group asked for a run. Counts like an externally managed bot in
+    // GateWanted, so the gate installs the DC strategies on the bot's own map thread before `dc on`. Any thread.
+    void RequestAutoRun(ObjectGuid guid);
+    void ClearAutoRun(ObjectGuid guid);
+    bool IsAutoRequested(ObjectGuid guid);
 }
 
 #endif  // _DC_STRATEGY_GATE_H

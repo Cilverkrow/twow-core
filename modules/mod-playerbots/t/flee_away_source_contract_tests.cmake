@@ -1,0 +1,159 @@
+# twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, OB-00): AiPlayerbot.Rotation.FleeAway (default 0, behaviour change):
+# the flee chase of bots without a real master gets an angle relative to the enemy's facing (the core adds it to the facing), a
+# chase of the same enemy is kept for ReissueMs, and a hunter whose pet holds the enemy flees only inside the dead zone.
+# Pins: switch default 0, > 2 = off, parsed mode in [ConfigEcho]; pure policy; the new block in front of the unchanged old chase
+# branch (also pinned by the MFB contract), only with the switch; the MFB-W record in both new paths; FleeMultiplier's record
+# untouched; the dead-zone rule only for hunters whose pet is the enemy's victim, before the caster exemption; report only when on.
+# Every check runs once on the real sources and once per negative probe (a mutated copy that must fail).
+
+# cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
+cmake_policy(VERSION 3.16)
+
+function(read_file path out_var)
+  file(READ "${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+read_file("${PB_SOURCE_DIR}/FleeAwayPolicy.h" policy)
+read_file("${PB_SOURCE_DIR}/strategy/actions/MovementActions.cpp" move_cpp)
+read_file("${PB_SOURCE_DIR}/strategy/triggers/RangeTriggers.h" range_h)
+read_file("${PB_SOURCE_DIR}/strategy/values/LastMovementValue.h" lastmove_h)
+read_file("${PB_SOURCE_DIR}/PlayerbotAIConfig.h" config_h)
+read_file("${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
+read_file("${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" dist)
+read_file("${PB_SOURCE_DIR}/RandomPlayerbotMgr.cpp" mgr_cpp)
+
+# text from `start` up to (not including) `stop`, empty when either is missing
+function(between text start stop out_var)
+  string(FIND "${text}" "${start}" a)
+  if(a EQUAL -1)
+    set(${out_var} "" PARENT_SCOPE)
+    return()
+  endif()
+  string(SUBSTRING "${text}" ${a} -1 rest)
+  string(FIND "${rest}" "${stop}" b)
+  if(b EQUAL -1)
+    set(${out_var} "" PARENT_SCOPE)
+    return()
+  endif()
+  string(SUBSTRING "${rest}" 0 ${b} part)
+  set(${out_var} "${part}" PARENT_SCOPE)
+endfunction()
+
+# append to `errors` of the calling function instead of failing (functions, not macros: macro arguments would
+# re-evaluate the backslashes of the source text)
+function(need text needle what)
+  string(FIND "${text}" "${needle}" at)
+  if(at EQUAL -1)
+    set(errors "${errors};missing ${what}: ${needle}" PARENT_SCOPE)
+  endif()
+endfunction()
+function(ban text needle what)
+  string(FIND "${text}" "${needle}" at)
+  if(NOT at EQUAL -1)
+    set(errors "${errors};forbidden ${what}: ${needle}" PARENT_SCOPE)
+  endif()
+endfunction()
+function(before text first second what)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if(a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    set(errors "${errors};order ${what}: ${first} before ${second}" PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(check policy move_cpp range_h lastmove_h config_h config_cpp dist mgr_cpp out_var)
+  set(errors "")
+
+  # 1. Switch: default 0 in the dist, the member and the read; unknown modes are off; parsed mode in [ConfigEcho].
+  need("${dist}" "\nAiPlayerbot.Rotation.FleeAway = 0\n" "dist key, default 0")
+  need("${config_h}" "uint32 rotationFleeAway = 0;" "config member, default 0")
+  need("${config_cpp}" "rotationFleeAway = config.GetIntDefault(\"AiPlayerbot.Rotation.FleeAway\", 0);   // twow-repo#602 (c)\n    if (rotationFleeAway > 2)\n        rotationFleeAway = 0;" "config read, > 2 = off")
+  need("${config_cpp}" "{\"Rotation.FleeAway\", Value(rotationFleeAway)}," "parsed mode in [ConfigEcho] (owner rule #615)")
+
+  # 2. Pure policy (std + the cohort rule only) and its rules.
+  string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
+  foreach(inc ${incs})
+    if(NOT inc STREQUAL "#include <atomic>" AND NOT inc STREQUAL "#include <cstdint>" AND NOT inc STREQUAL "#include \"CohortPolicy.h\"")
+      list(APPEND errors "FleeAwayPolicy.h is not pure: ${inc}")
+    endif()
+  endforeach()
+  ban("${policy}" "sLog" "logging in the policy")
+  need("${policy}" "return ai::cohort::Applies(mode, guidLow);" "cohort rule")
+  need("${policy}" "float a = enemyToBot - enemyFacing;" "angle relative to the enemy's facing")
+  need("${policy}" "return chasing && sameEnemy && sinceIssueMs < ReissueMs;" "keep only the same enemy's running chase inside ReissueMs")
+  need("${policy}" "return targetDistance <= DeadZone + DeadZoneMargin + combatReach;" "dead zone")
+
+  # 3. Flee(): the new block in the chase branch of bots without a real master, in front of the unchanged old one.
+  between("${move_cpp}" "    if (!ai->HasRealPlayerMaster() && !ai->IsRealPlayer(target))" "    // Generate a position to flee" chase)
+  if(chase STREQUAL "")
+    list(APPEND errors "chase branch not found")
+  endif()
+  between("${chase}" "        if (ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow()))\n        {" "\n        }\n" block)
+  if(block STREQUAL "")
+    list(APPEND errors "FleeAway block (needs the switch) not found")
+  endif()
+  before("${chase}" "ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway" "        if (mm->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)\n        {\n            // Penqle" "the block before the old test")
+  need("${chase}" "            if (sServerFacade.GetChaseTarget(bot) == target && sServerFacade.GetChaseOffset(bot) == distance)\n            {\n                RecordFleeBreakDispatch(ai, bot, AI_VALUE(LastMovement&, \"last movement\"), now);" "old test unchanged (off path)")
+  need("${chase}" "        mm->MoveChase(target, distance, WorldPosition(bot).getAngleTo(target));\n        RecordFleeBreakDispatch(ai, bot, AI_VALUE(LastMovement&, \"last movement\"), now);" "old chase unchanged (off path)")
+  need("${block}" "if (ai::flee_away::KeepChase(chasing, sameEnemy, WorldTimer::getMSTimeDiff(lm.fleeChaseMs, nowMs)))\n            {\n                count.kept.fetch_add(1, std::memory_order_relaxed);\n                RecordFleeBreakDispatch(ai, bot, lm, now);   // twow-repo#602 MFB-W\n                return true;" "kept chase: recorded for MFB-W")
+  need("${block}" "bool const chasing = mm->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE;" "chasing from the motion master, not GetChaseTarget (the bot's victim)")
+  need("${block}" "bool const sameEnemy = lm.fleeChaseTarget == target->GetObjectGuid();" "the same enemy from the record")
+  need("${block}" "mm->MoveChase(target, distance, ai::flee_away::RelativeAngle(target->GetAngle(bot), target->GetOrientation()));\n            lm.fleeChaseTarget = target->GetObjectGuid();\n            lm.fleeChaseMs = nowMs;\n            RecordFleeBreakDispatch(ai, bot, lm, now);   // twow-repo#602 MFB-W\n            return true;" "new chase with the relative angle, recorded")
+  ban("${chase}" "lastFleeAttempt" "FleeMultiplier's record in the chase branch")
+  ban("${block}" "getAngleTo" "the world angle in the new block")
+  need("${lastmove_h}" "ObjectGuid fleeChaseTarget;\n        uint32 fleeChaseMs = 0;" "record fields")
+  need("${lastmove_h}" "fleeChaseTarget = other.fleeChaseTarget;\n            fleeChaseMs = other.fleeChaseMs;" "record copied")
+
+  # 4. The hunter dead zone: only with the switch, only a hunter whose pet is the enemy's victim, before the caster exemption.
+  between("${range_h}" "class EnemyTooCloseForSpellTrigger" "class EnemyTooCloseForShootTrigger" trig)
+  need("${trig}" "if (sPlayerbotAIConfig.rotationFleeAway && bot->getClass() == CLASS_HUNTER && !isVictim && bot->GetPet() &&\n                    target->GetVictim() == bot->GetPet() && ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow()))" "dead zone only for a hunter whose pet holds the enemy")
+  need("${trig}" "bool const flee = ai::flee_away::InDeadZone(targetDistance, combatReach);" "dead-zone test")
+  before("${trig}" "ai::flee_away::InDeadZone(" "// Casters have no minimum range" "dead zone before the caster exemption")
+  need("${trig}" "if (bot->getClass() != CLASS_HUNTER && !isVictim && target->GetTarget() != bot)\n                    return false;" "caster exemption unchanged")
+  need("${trig}" "return sServerFacade.IsDistanceLessOrEqualThan(targetDistance, minDistance * coeff);" "generic rule unchanged")
+
+  # 5. Report once per minute after [MeleeFleeBreak], nothing when off.
+  before("${mgr_cpp}" "    ReportMeleeFleeBreak();" "    ReportFleeAway();" "report after ReportMeleeFleeBreak")
+  need("${mgr_cpp}" "if (!sPlayerbotAIConfig.rotationFleeAway || now < lastReport + 60)" "report only when on")
+
+  set(${out_var} "${errors}" PARENT_SCOPE)
+endfunction()
+
+check("${policy}" "${move_cpp}" "${range_h}" "${lastmove_h}" "${config_h}" "${config_cpp}" "${dist}" "${mgr_cpp}" errs)
+if(errs)
+  string(REPLACE ";" "\n  " errs "${errs}")
+  message(FATAL_ERROR "#602 flee away contract failed:\n  ${errs}")
+endif()
+
+# Negative probes: each mutation must make the contract fail.
+set(probes 0)
+function(probe label var from to)
+  string(REPLACE "${from}" "${to}" mut "${${var}}")
+  if(mut STREQUAL "${${var}}")
+    message(FATAL_ERROR "#602 probe '${label}': mutation did not apply")
+  endif()
+  set(${var} "${mut}")
+  check("${policy}" "${move_cpp}" "${range_h}" "${lastmove_h}" "${config_h}" "${config_cpp}" "${dist}" "${mgr_cpp}" perrs)
+  if(NOT perrs)
+    message(FATAL_ERROR "#602 probe '${label}': the contract did not catch it")
+  endif()
+  math(EXPR probes "${probes} + 1")
+  set(probes "${probes}" PARENT_SCOPE)
+endfunction()
+probe("default on" dist "\nAiPlayerbot.Rotation.FleeAway = 0\n" "\nAiPlayerbot.Rotation.FleeAway = 1\n")
+probe("unknown mode kept" config_cpp "    if (rotationFleeAway > 2)\n        rotationFleeAway = 0;" "")
+probe("block without the switch" move_cpp "        if (ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow()))\n        {" "        if (true)\n        {")
+probe("world angle kept" move_cpp "ai::flee_away::RelativeAngle(target->GetAngle(bot), target->GetOrientation())" "WorldPosition(bot).getAngleTo(target)")
+probe("old chase changed" move_cpp "        mm->MoveChase(target, distance, WorldPosition(bot).getAngleTo(target));\n        RecordFleeBreakDispatch" "        mm->MoveChase(target, distance, 0.0f);\n        RecordFleeBreakDispatch")
+probe("kept chase not recorded" move_cpp "                count.kept.fetch_add(1, std::memory_order_relaxed);\n                RecordFleeBreakDispatch(ai, bot, lm, now);   // twow-repo#602 MFB-W\n" "                count.kept.fetch_add(1, std::memory_order_relaxed);\n")
+probe("chasing from the victim" move_cpp "bool const chasing = mm->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE;" "bool const chasing = sServerFacade.GetChaseTarget(bot) == target;")
+probe("keep forever" policy "return chasing && sameEnemy && sinceIssueMs < ReissueMs;" "return chasing && sameEnemy;")
+probe("dead zone for every hunter" range_h "!isVictim && bot->GetPet() &&\n                    target->GetVictim() == bot->GetPet() &&" "!isVictim && bot->GetPet() &&\n                    true &&")
+probe("dead zone without its test" range_h "bool const flee = ai::flee_away::InDeadZone(targetDistance, combatReach);" "bool const flee = true;")
+probe("caster exemption changed" range_h "if (bot->getClass() != CLASS_HUNTER && !isVictim && target->GetTarget() != bot)\n                    return false;" "if (!isVictim && target->GetTarget() != bot)\n                    return false;")
+probe("impure policy" policy "#include <cstdint>" "#include <cstdint>\n#include \"Entities/Player.h\"")
+probe("report always" mgr_cpp "if (!sPlayerbotAIConfig.rotationFleeAway || now < lastReport + 60)" "if (now < lastReport + 60)")
+
+message(STATUS "flee_away source contract passed (${probes} negative probes)")
