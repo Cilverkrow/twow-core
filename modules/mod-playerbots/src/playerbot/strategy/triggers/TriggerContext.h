@@ -61,6 +61,7 @@ namespace ai
 
             creators["no mana"] = [](PlayerbotAI* ai) { return new NoManaTrigger(ai); };
             creators["low mana"] = [](PlayerbotAI* ai) { return new LowManaTrigger(ai); };
+            creators["low mana consumable"] = [](PlayerbotAI* ai) { return new LowManaConsumableTrigger(ai); };   // twow-repo#602 ROT-01 3c
             creators["medium mana"] = [](PlayerbotAI* ai) { return new MediumManaTrigger(ai); };
             creators["high mana"] = [](PlayerbotAI* ai) { return new HighManaTrigger(ai); };
             creators["rest health"] = [](PlayerbotAI* ai) { return new RestHealthTrigger(ai); };   // twow-repo#602 ROT-01 X1

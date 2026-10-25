@@ -609,6 +609,10 @@ bool PlayerbotAIConfig::Initialize()
     rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 0);   // twow-repo#630
     if (rotationReachPlayerMaster > 2)
         rotationReachPlayerMaster = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationDarkRuneGate = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate", 0);   // twow-repo#602 ROT-01 3c
+    if (rotationDarkRuneGate > 2)
+        rotationDarkRuneGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationDarkRuneGateRecheckSeconds = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate.RecheckSeconds", 10);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
     perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
@@ -1649,6 +1653,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
+            {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
