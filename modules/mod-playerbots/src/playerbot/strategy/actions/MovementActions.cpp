@@ -30,6 +30,7 @@
 #include "playerbot/TransportEdgePolicy.h"   // twow-repo#342 (S1): Path.TransportEdgeTrace
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 (S3b-0): Path.TransportDeckProbe / TransportWaitTimeoutMin
 #include "playerbot/MeleeFleeBreakPolicy.h"   // twow-repo#602 (MFB-W): the break's flee dispatch record
+#include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c): Rotation.FleeAway
 
 using namespace ai;
 
@@ -3858,6 +3859,31 @@ bool MovementAction::Flee(Unit *target)
         float distance = fullDistance ? (ai->GetRange("flee") * 2) : ai->GetRange("flee");
 
         MotionMaster* mm = bot->GetMotionMaster();
+
+        // twow-repo#602 (c) (AiPlayerbot.Rotation.FleeAway): the core adds the chase angle to the enemy's facing, so the angle is
+        // relative to it (straight away from the enemy on the bot's side), and a flee chase of the same enemy is kept for
+        // ReissueMs instead of being re-issued with a new angle every pass (the old test below compares GetChaseOffset, which
+        // reads 0, and GetChaseTarget is the bot's victim). Its own block in front of the unchanged old one (off path).
+        if (ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow()))
+        {
+            LastMovement& lm = AI_VALUE(LastMovement&, "last movement");
+            ai::flee_away::Counters& count = ai::flee_away::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0];
+            uint32 const nowMs = WorldTimer::getMSTime();
+            bool const chasing = mm->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE;
+            bool const sameEnemy = lm.fleeChaseTarget == target->GetObjectGuid();
+            if (ai::flee_away::KeepChase(chasing, sameEnemy, WorldTimer::getMSTimeDiff(lm.fleeChaseMs, nowMs)))
+            {
+                count.kept.fetch_add(1, std::memory_order_relaxed);
+                RecordFleeBreakDispatch(ai, bot, lm, now);   // twow-repo#602 MFB-W
+                return true;
+            }
+            (chasing && sameEnemy ? count.reaimed : count.issued).fetch_add(1, std::memory_order_relaxed);
+            mm->MoveChase(target, distance, ai::flee_away::RelativeAngle(target->GetAngle(bot), target->GetOrientation()));
+            lm.fleeChaseTarget = target->GetObjectGuid();
+            lm.fleeChaseMs = nowMs;
+            RecordFleeBreakDispatch(ai, bot, lm, now);   // twow-repo#602 MFB-W
+            return true;
+        }
 
         if (mm->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
         {

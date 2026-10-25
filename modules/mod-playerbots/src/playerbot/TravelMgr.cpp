@@ -1225,6 +1225,15 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
     // progress (turnin_recovery::Observe). Objectives and the switch off: no near zone, as before.
     if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn())
         observation.nearRadius = sPlayerbotAIConfig.zoneExitTurnInNearRadius;
+    // twow-repo#601 3a (AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat, with TurnInTravelStall): a fight is the only
+    // pause on the way to a finished quest's taker - it no longer restarts the stall window, so a bot that keeps
+    // fighting near the route and never gets closer still reaches the recovery. Death, flights, transports, a real
+    // master and rest keep restarting it. Objectives and the switch off: as before.
+    if (paused && sPlayerbotAIConfig.zoneExitTurnInTravelStallCountsCombat &&
+        sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn() &&
+        bot->IsInCombat() && bot->IsAlive() && !bot->IsTaxiFlying() && !bot->GetTransport() && !ai->HasRealPlayerMaster() &&
+        !restPause && !RestGateValue::Resting(ai))
+        observation.pauseKeepsWindow = true;
 
     // Hotfix 8.13 (twow-repo#497): for a target on another map only a shorter distance counts.
     uint32 const targetMapId = observation.targetMapId;

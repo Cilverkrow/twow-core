@@ -17,7 +17,9 @@
  */
 
 #include <string>
+#include <cstring>
 #include <iostream>
+#include <vector>
 #ifdef WIN32
 #include "direct.h"
 #else
@@ -31,7 +33,17 @@ int main(int argc, char* argv[])
 {
     std::string src;
     std::string dest;
-    if (argc != 3)
+    // twow-repo#575: "--legacy-ids" keeps the old one-spawn-per-id behaviour (control runs only, see TileAssembler::uniqueSpawnId)
+    bool legacyIds = false;
+    std::vector<char*> args;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "--legacy-ids") == 0)
+            legacyIds = true;
+        else
+            args.push_back(argv[i]);
+    }
+    if (args.size() != 2)
     {
         //std::cout << "usage: " << argv[0] << " <raw data dir> <vmap dest dir>" << std::endl;
         //return 1;
@@ -47,13 +59,16 @@ int main(int argc, char* argv[])
     }
     else
     {
-        src = argv[1];
-        dest = argv[2];
+        src = args[0];
+        dest = args[1];
     }
 
     std::cout << "using " << src << " as source directory and writing output to " << dest << std::endl;
 
     VMAP::TileAssembler* ta = new VMAP::TileAssembler(src, dest);
+    ta->setLegacySpawnIds(legacyIds);
+    if (legacyIds)
+        std::cout << "legacy ids: spawns that reuse an id are dropped" << std::endl;
 
     if (!ta->convertWorld2())
     {

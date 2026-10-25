@@ -150,3 +150,24 @@ static_assert(!MakePlan(true, true, true, true, false).teardown,
               "removing a stray must not abort a live in-dungeon run");
 static_assert(!MakePlan(false, false, false, false, false).teardown,
               "a compliant out-of-dungeon bot plans nothing at all");
+
+// DungeonClear.Gate.ActiveRunOnly (CLI-GRP 25.10.2026): a player-led group in a dungeon without `dc on` keeps its
+// stock strategies; the gate only installs for an active run or a `.dc test` bot.
+using DcStrategyGate::GateWanted;
+
+TEST(DungeonClearStrategyGate, ActiveRunOnlyOffKeepsTheOldInvariant)
+{
+    EXPECT_TRUE(GateWanted(/*inDungeon*/ true, /*activeRunOnly*/ false, /*runActive*/ false, /*externallyManaged*/ false));
+    EXPECT_FALSE(GateWanted(false, false, true, true));
+}
+
+TEST(DungeonClearStrategyGate, ActiveRunOnlySparesAPlayersBotsWithoutARun)
+{
+    EXPECT_FALSE(GateWanted(true, true, false, false));   // player + bots in Deadmines, no `dc on`
+    EXPECT_TRUE(GateWanted(true, true, true, false));     // `dc on`: the run is active for the group
+    EXPECT_TRUE(GateWanted(true, true, false, true));     // `.dc test` bots before their run is enabled
+    EXPECT_FALSE(GateWanted(false, true, true, true));    // never outside a dungeon
+}
+
+static_assert(!GateWanted(true, true, false, false), "no run, no gate (ActiveRunOnly)");
+static_assert(GateWanted(true, false, false, false), "ActiveRunOnly off: every bot in a dungeon, as before");

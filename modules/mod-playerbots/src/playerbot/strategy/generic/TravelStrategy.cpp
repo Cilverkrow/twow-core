@@ -138,6 +138,19 @@ void TravelStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
             NextAction::array(0, new NextAction(action, relevance), NULL)));
     }
 
+    // twow-repo#333 Berufe P1-b / P1-a (AiPlayerbot.ProfessionUse.ToolBuy / ProfessionTraining.Travel, default 0): gap
+    // fillers of the quest-first backoff (CLI-Deep 25.10.2026) - below the quest request (6.3), which cannot act while the
+    // backoff runs, above Explore (6.29) and GenericRpg (6.28). The tool first: a learned skill without its tool gathers
+    // nothing. Rows only with the switch on; the value applies the cohort.
+    if (sPlayerbotAIConfig.professionUseToolBuy)
+        triggers.push_back(new TriggerNode(
+            travel_request::TriggerName("val::should travel named::tool vendor", gateRequests),
+            NextAction::array(0, new NextAction("request named travel target::tool vendor", 6.297f), NULL)));
+    if (sPlayerbotAIConfig.professionTrainingTravel)
+        triggers.push_back(new TriggerNode(
+            travel_request::TriggerName("val::should travel named::trainer profession", gateRequests),
+            NextAction::array(0, new NextAction("request named travel target::trainer profession", 6.296f), NULL)));
+
     triggers.push_back(new TriggerNode(
         "val::not::travel target active",
         NextAction::array(0, new NextAction("choose travel target", 6.98f), NULL)));

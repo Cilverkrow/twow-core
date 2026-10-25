@@ -176,4 +176,17 @@ forbid_text("${travel}" "turnInParks = " "park book replaced")
 forbid_text("${travel}" "turnInParks.entries.fill(" "park book cleared")
 forbid_text("${travel}" "turnInParks.entries = " "park book cleared")
 
+# twow-repo#601 3a (OB-00 24.10.2026): AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat (default 0, with TurnInTravelStall).
+# A fight that is the only pause on the way to a finished quest's taker pauses the recovery without a fresh stall window.
+require_text("${config_h}" "bool zoneExitTurnInTravelStallCountsCombat = false;" "3a member default off")
+require_text("${config_cpp}" "zoneExitTurnInTravelStallCountsCombat = config.GetBoolDefault(\"AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat\", false);" "3a config default 0")
+require_text("${conf_dist}" "\nAiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat = 0\n" "3a documented as 0")
+require_text("${recovery}" "    bool pauseKeepsWindow = false;" "3a observation flag default off")
+between("${recovery}" "    if (current.paused)" "return RecoveryAction::None;" paused_branch)
+require_text("${paused_branch}" "        if (!current.pauseKeepsWindow)\n            state.lastProgressAt = current.now;\n        " "3a: without the flag a pause restarts the window as before")
+forbid_text("${paused_branch}" "recoveryStage" "3a: a pause never consumes or resets a recovery stage")
+require_text("${observe}" "    if (paused && sPlayerbotAIConfig.zoneExitTurnInTravelStallCountsCombat &&\n        sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn() &&\n        bot->IsInCombat() && bot->IsAlive() && !bot->IsTaxiFlying() && !bot->GetTransport() && !ai->HasRealPlayerMaster() &&\n        !restPause && !RestGateValue::Resting(ai))\n        observation.pauseKeepsWindow = true;" "3a: switch first, S3 turn-ins only, a fight as the only pause")
+require_order("${observe}" "bool const paused = bot->IsInCombat() || !bot->IsAlive() || bot->IsTaxiFlying() ||" "observation.pauseKeepsWindow = true;" "3a: the pause flags unchanged, the window flag after them")
+require_order("${observe}" "observation.pauseKeepsWindow = true;" "return turnin_recovery::Observe(turnInRecovery, observation," "3a: flag set before the observation")
+
 message(STATUS "turnin_stall source contract passed")
