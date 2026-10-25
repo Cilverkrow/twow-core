@@ -4,6 +4,7 @@
  */
 
 #include "DcStrategyGate.h"
+#include <atomic>
 #include <utility>
 #include <string>
 #include <vector>
@@ -12,6 +13,7 @@
 #include <mutex>
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
 
+#include "Group.h"
 #include "Map.h"
 #include "ObjectAccessor.h"
 #include "ObjectGuid.h"
@@ -19,6 +21,7 @@
 
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
+#include "RandomPlayerbotMgr.h"
 
 #include "Ai/Dungeon/DungeonClear/Action/DcActionShared.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcFollowerLifecycle.h"
@@ -70,8 +73,37 @@ namespace
     std::map<ObjectGuid, std::vector<std::pair<std::string, uint8>>> g_strategyQueue;
 }
 
+namespace
+{
+    std::atomic<bool> g_activeRunOnly{ false };   // DungeonClear.Gate.ActiveRunOnly
+
+    // A DC run is on for this bot: its own, or a groupmate's on the same map (same map thread, so reading the
+    // groupmate's AI context is safe here; a member elsewhere cannot lead this bot's run anyway).
+    bool RunActiveFor(PlayerbotAI* botAI, Player* bot, Map* map)
+    {
+        if (DcRun::Of(botAI->GetAiObjectContext()).enabled)
+            return true;
+        Group* group = bot->GetGroup();
+        if (!group)
+            return false;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->getSource();
+            if (!member || member == bot || member->FindMap() != map)
+                continue;
+            if (PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member))
+                if (DcRun::Of(memberAI->GetAiObjectContext()).enabled)
+                    return true;
+        }
+        return false;
+    }
+}
+
 namespace DcStrategyGate
 {
+    void SetActiveRunOnly(bool on) { g_activeRunOnly.store(on); }
+    bool ActiveRunOnly() { return g_activeRunOnly.load(); }
+
     void RequestFollowStrip(ObjectGuid guid)
     {
         if (guid.IsEmpty())
@@ -157,7 +189,12 @@ namespace DcStrategyGate
         Map* map = bot->FindMap();
         if (!map)
             return;
-        bool const inDungeon = map->IsDungeon();
+        // DungeonClear.Gate.ActiveRunOnly: a dungeon map without a run for this bot counts as outside (stock
+        // drivers stay, a player's bots follow and loot); see GateWanted.
+        bool const activeRunOnly = ActiveRunOnly();
+        bool const inDungeon = map->IsDungeon() &&
+            GateWanted(true, activeRunOnly, activeRunOnly && RunActiveFor(botAI, bot, map),
+                       activeRunOnly && sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow()));
 
         bool const hasNon = botAI->HasStrategy(kNonCombat, BOT_STATE_NON_COMBAT);
         bool const hasCmb = botAI->HasStrategy(kCombat, BOT_STATE_COMBAT);
@@ -231,8 +268,14 @@ namespace DcStrategyGate
                          botAI->HasStrategy("grind", BOT_STATE_NON_COMBAT) ? 1 : 0);
                 break;
             case Action::Strip:
-                botAI->ChangeStrategy("-dungeon clear,+grind,+travel,+rpg,+rpg jump,+follow,+bg,+battleground,+lfg,+loot,+gather",
-                                      BOT_STATE_NON_COMBAT);
+                // ActiveRunOnly: the bot's own defaults (AiFactory, real-master aware) - this strip also runs inside
+                // a dungeon when a player's run ends, and the fixed list below would add grind/travel/rpg to a
+                // player's bot. The reset rebuilds both engines, so the combat strip below finds nothing left.
+                if (activeRunOnly)
+                    botAI->ResetStrategies();
+                else
+                    botAI->ChangeStrategy("-dungeon clear,+grind,+travel,+rpg,+rpg jump,+follow,+bg,+battleground,+lfg,+loot,+gather",
+                                          BOT_STATE_NON_COMBAT);
                 break;
             case Action::None:
                 break;

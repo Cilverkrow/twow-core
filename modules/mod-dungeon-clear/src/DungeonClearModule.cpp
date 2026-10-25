@@ -273,6 +273,8 @@ public:
     void OnAfterConfigLoad(bool reload) override
     {
         DcSettings::InvalidateConfCache();
+        // CLI-GRP 25.10.2026: the gate only for active runs (player-led groups keep follow/loot), default 0.
+        DcStrategyGate::SetActiveRunOnly(DcSettings::GetBool(ObjectGuid::Empty, "Gate.ActiveRunOnly"));
         if (!reload)
             return;
 
