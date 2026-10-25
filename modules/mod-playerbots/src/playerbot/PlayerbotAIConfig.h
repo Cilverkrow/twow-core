@@ -894,6 +894,13 @@ public:
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.
     uint32 questFirstProgressionBandWalkAfterEmptySearches = 0;
+    // twow-repo#601 F5b: a work timeout at a contested quest objective (>= MinBots other roster bots within 40 yd) is held back for
+    // Seconds instead of counting toward QuestWorkTimeouts / QuestLoop. Mode 0 off (default), 1 all, 2 cohort B; GO objectives, kill
+    // objectives only with Kill and outside a bot-only group.
+    uint32 questFirstProgressionContestedObjectiveWait = 0;
+    bool questFirstProgressionContestedObjectiveWaitKill = false;
+    uint32 questFirstProgressionContestedObjectiveWaitMinBots = 2;
+    uint32 questFirstProgressionContestedObjectiveWaitSeconds = 300;
     // The band streak is counted when F1 or F4 reads it.
     bool BandStreakOn() const { return questFirstProgressionBandStepAfterEmptySearches || questFirstProgressionBandWalkAfterEmptySearches; }
     // twow-repo#627 S7 hook (OB-10 24.10.2026): a held group quest the bot has waited on for help this many minutes (S7 queue age)
