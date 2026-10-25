@@ -3799,3 +3799,23 @@ add_test(NAME shim_id_sets_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     "-DPB_MODULE_DIR=${PB_MODULE_DIR}"
     -P "${PB_MODULE_DIR}/t/shim_id_sets_source_contract_tests.cmake")
+
+# twow-repo#601 F5 (AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait, default 0): contested objective timeouts held back
+# briefly; the death_suppressed skips of the rejected line split by suppression source (diagnostic).
+add_executable(contested_objective_policy_tests
+  "${PB_MODULE_DIR}/t/contested_objective_policy_tests.cpp")
+
+target_include_directories(contested_objective_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(contested_objective_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME contested_objective_policy
+  COMMAND contested_objective_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME contested_objective_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/contested_objective_source_contract_tests.cmake")

@@ -739,7 +739,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         {
             // #421 A: which filters took every candidate.
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
-                uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format());
+                uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format() + ai::contested_objective::FormatSources(lastSuppressSources));
             // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
             uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
                 uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
@@ -1377,6 +1377,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     uint32 candidateIndex = 0, checked = 0;
     chooseBudgetExceeded = false;
     lastRejects = ai::quest_search::RejectCounts();
+    lastSuppressSources = ai::contested_objective::SourceCounts{};
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
@@ -1467,6 +1468,8 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 case CandidateSkip::DeathSuppressed:
                     ai->TellDebug(requester, "Skipping destination after repeated deaths there.", "debug travel");
                     ++lastRejects.deathSuppressed;
+                    if (persistentTarget)   // twow-repo#601 F5 (diagnostic): which rule set the suppression
+                        ++lastSuppressSources[std::min<std::size_t>(persistentTarget->DestinationSuppressSource(destination), ai::contested_objective::SourceGather - 1)];
                     continue;
                 case CandidateSkip::QuestLoopSuppressed:
                     ai->TellDebug(requester, "Skipping quest objective after repeated failures.", "debug travel");
@@ -1481,6 +1484,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     continue;
                 case CandidateSkip::GatherPurposeSuppressed:
                     ++lastRejects.deathSuppressed;
+                    ++lastSuppressSources[ai::contested_objective::SourceGather];
                     continue;
                 case CandidateSkip::None:
                     break;
