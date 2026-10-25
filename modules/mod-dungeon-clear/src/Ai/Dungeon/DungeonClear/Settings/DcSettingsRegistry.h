@@ -163,6 +163,10 @@ inline constexpr DcSettingDef kDcSettings[] =
     // (DcStrategyGate::SetActiveRunOnly). CLI-GRP 25.10.2026.
     { "Gate.ActiveRunOnly",    DcType::Bool,   0,   0,   1,  false },
 
+    // dc for playerbots manager groups through playerbot/DungeonRunBridge.h (DcAutoRun); server-only, read at config load.
+    // twow-repo#629 B4/D2, CLI-GRP 25.10.2026.
+    { "AutoRun",               DcType::Bool,   0,   0,   1,  false },
+
     // Diagnostics: record every boss-approach decision (the pure DecideApproach
     // observation + verdict) to a JSONL capture file for the offline replay
     // harness. OFF by default — turn it on only to freeze a live freeze/stutter
