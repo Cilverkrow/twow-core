@@ -1048,9 +1048,10 @@ public:
     void loadFreeAltBotAccounts();
 
     std::string GetTimestampStr();
+    std::string GetTimestampUtcStr();   // telemetry P0: real UTC "YYYY-MM-DD HH:MM:SS" for the CSV timestamps that carry a "+00" suffix
 
     bool hasLog(std::string fileName) { return std::find(allowedLogFiles.begin(), allowedLogFiles.end(), fileName) != allowedLogFiles.end(); };
-    bool openLog(std::string fileName, char const* mode = "a", bool haslog = false);
+    bool openLog(std::string fileName, char const* mode = "a", bool haslog = false, char const* header = nullptr);   // header: written once when an appended file is new or empty (telemetry P0)
     bool isLogOpen(std::string fileName) { auto it = logFiles.find(fileName); return it != logFiles.end() && it->second.second;}
     // Writes the line verbatim. Nearly every caller here hands over text it has
     // already assembled, and a percent sign anywhere in it - a bot name, a mob

@@ -1296,7 +1296,7 @@ void ChooseTravelTargetAction::ReportTravelTarget(Player* bot, Player* requester
         WorldPosition destPos = *newTarget->GetPosition();
 
         std::ostringstream out;
-        out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+        out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
         out << bot->GetName() << ",";
         out << std::fixed << std::setprecision(2);
 

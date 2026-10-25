@@ -2401,7 +2401,7 @@ void PlayerbotAI::OnDeath()
                 WorldPosition botPos(bot);
 
                 std::ostringstream out;
-                out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+                out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
                 out << bot->GetName() << ",";
                 out << std::fixed << std::setprecision(2);
 
@@ -5224,7 +5224,7 @@ bool PlayerbotAI::TellPlayerNoFacing(Player* player, std::string text, Playerbot
         if ((sPlayerbotAIConfig.hasLog("chat_log.csv") && HasStrategy("debug log", BotState::BOT_STATE_NON_COMBAT)) || HasStrategy("debug logname", BotState::BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
-            out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+            out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
             out << bot->GetName() << ",";
             out << std::fixed << std::setprecision(2);
 
