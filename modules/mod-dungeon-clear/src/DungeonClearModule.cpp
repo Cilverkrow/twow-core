@@ -274,7 +274,7 @@ public:
     {
         DcSettings::InvalidateConfCache();
         // CLI-GRP 25.10.2026: the gate only for active runs (player-led groups keep follow/loot), default 0.
-        DcStrategyGate::SetActiveRunOnly(sConfigMgr->GetOption<bool>("DungeonClear.Gate.ActiveRunOnly", false, false));
+        DcStrategyGate::SetActiveRunOnly(DcSettings::GetBool(ObjectGuid::Empty, "Gate.ActiveRunOnly"));
         if (!reload)
             return;
 

@@ -159,6 +159,10 @@ inline constexpr DcSettingDef kDcSettings[] =
 
     { "PreventBotRelease",     DcType::Bool,   1,   0,   1,  true  },
 
+    // Strategy gate only while a run is active (player-led groups keep follow/loot); server-only, read at config load
+    // (DcStrategyGate::SetActiveRunOnly). CLI-GRP 25.10.2026.
+    { "Gate.ActiveRunOnly",    DcType::Bool,   0,   0,   1,  false },
+
     // Diagnostics: record every boss-approach decision (the pure DecideApproach
     // observation + verdict) to a JSONL capture file for the offline replay
     // harness. OFF by default — turn it on only to freeze a live freeze/stutter
