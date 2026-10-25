@@ -23,6 +23,8 @@
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
+#include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 Berufe P1-a / P1-b
+#include "playerbot/CohortPolicy.h"
 #include "Guild/GuildMgr.h"
 #include "Formulas.h"
 #include <algorithm>
@@ -2593,6 +2595,35 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
 
         SET_AI_VALUE2(std::string, "manual string", "future travel detail", orderTarget);
     }
+    // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): the trainers of a GREEN phase-one rank, or the vendors
+    // of the missing pick / knife. Before the generic "trainer" branch. The request time starts the 30-minute hold and
+    // the hourly limit, also when no destination comes back (no request loop). One line per request.
+    else if (travelName == "trainer profession" || travelName == "tool vendor")
+    {
+        bool const trainerTrip = travelName == "trainer profession";
+        uint32 const tool = trainerTrip ? 0 : MissingGatherTool(ai);
+        std::vector<int32> entries;
+        if (trainerTrip)
+            entries = PhaseOneProfessionTrainers(ai);
+        else if (tool)
+            for (int32 const entry : GAI_VALUE2(std::list<int32>, "item vendor list", tool))
+                entries.push_back(entry);
+
+        SET_AI_VALUE2(int, "manual int", trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue,
+            int(uint32(time(nullptr))));
+        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u",
+            trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), tool,
+            uint32(entries.size()));
+
+        if (entries.empty())
+            return false;
+
+        TravelDestinationPurpose const purpose = trainerTrip ? TravelDestinationPurpose::Trainer : TravelDestinationPurpose::Vendor;
+        *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [entries, purpose, partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center]()
+            {
+                return sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);
+            });
+    }
     else if (travelName.find("trainer") == 0)
     {
         TrainerType type = TRAINER_TYPE_CLASS;
@@ -2695,6 +2726,9 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
     SET_AI_VALUE2(std::string, "manual string", "future travel condition",
         travelName == "guild meeting" ? "should travel named::guild meeting" :
         travelName == "guild order" ? "should travel named::guild order" :
+        // twow-repo#333 Berufe P1-a / P1-b: the trip holds while its reason lasts, not only while the start gap does.
+        travelName == "trainer profession" ? "should travel named::trainer profession hold" :
+        travelName == "tool vendor" ? "should travel named::tool vendor hold" :
         event.getSource());
     SET_AI_VALUE2(int, "manual int", "future travel relevance", relevance * 100);
 
@@ -2719,6 +2753,8 @@ bool RequestNamedTravelTargetAction::isAllowed() const
     else if (name == "guild meeting")
         return true;
     else if (name == "reagent vendor")
+        return true;
+    else if (name == "trainer profession" || name == "tool vendor")   // twow-repo#333 Berufe P1-a / P1-b
         return true;
     else if (name == "guild order")
         return true;

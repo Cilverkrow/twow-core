@@ -1318,6 +1318,13 @@ bool PlayerbotAIConfig::Initialize()
     professionTrainingLocalTrainerRadius = std::max<float>(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionTraining.LocalTrainerRadius", 120.0f));
     professionTrainingTrace = config.GetBoolDefault("AiPlayerbot.ProfessionTraining.Trace", false);
     professionTrainingTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionTraining.TraceCooldownSeconds", 300));
+    // twow-repo#333 Berufe P1-a / P1-b: an unknown mode is off (0 off, 1 all, 2 cohort B).
+    professionTrainingTravel = config.GetIntDefault("AiPlayerbot.ProfessionTraining.Travel", 0);
+    if (professionTrainingTravel > 2)
+        professionTrainingTravel = 0;
+    professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
+    if (professionUseToolBuy > 2)
+        professionUseToolBuy = 0;
     professionUseGatherDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionUse.GatherDistance", 0.0f));
     professionUseCraft = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Craft", false);
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
@@ -1607,6 +1614,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
+            {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},

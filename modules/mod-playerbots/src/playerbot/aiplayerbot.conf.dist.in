@@ -1626,6 +1626,17 @@ AiPlayerbot.ProfessionTraining.LocalTrainerRadius = 120
 # at BASIC level, visible with LogLevel 1. Never enable per-tick logging.
 AiPlayerbot.ProfessionTraining.Trace = 0
 AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
+# twow-repo#333 Berufe P1-a (CLI-BERUFE PLAN-B1, OB-00 go 25.10.2026; profile 1 after the A/B + owner go): a persistent
+# roster bot on its own (level 5+) may travel to a trainer that teaches it a GREEN rank of herbalism, mining, skinning or
+# first aid now - the first rank of its planned profession or the next rank at the skill cap (the core decides GREEN, the
+# profession pair and the cost rule are the ones above; recipes alone are no reason to travel). Only as a filler of the
+# quest-first gap: while the quest route backoff runs, no open turn-in waits and no band walk runs ("request named travel
+# target::trainer profession" at 6.296, below the quest request 6.3, above Explore 6.29; with QuestFirstProgression.
+# GrindMode 1 the gap grind at 6.35 fills the gap first). A started trip holds up to 30 min while the rank is still to
+# learn, but ends at once when a turn-in opens; at most one trip per bot and hour. One "[ProfTravel] state=request
+# kind=trainer ... entries=" line per request (entries=0: no trainer found). Mode (in-realm A/B, cohort parity): 0 = as before (default),
+# 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.ProfessionTraining.Travel = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
@@ -1637,6 +1648,14 @@ AiPlayerbot.ProfessionUse.Craft = 0
 AiPlayerbot.ProfessionUse.CraftIntervalSeconds = 300
 AiPlayerbot.ProfessionUse.Trace = 0
 AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
+# twow-repo#333 Berufe P1-b (CLI-BERUFE PLAN-B1, OB-00 go 25.10.2026; profile 1 after the A/B + owner go): a persistent
+# roster bot on its own (level 5+) with mining but no Mining Pick (2901), or skinning but no Skinning Knife (7005), may
+# travel to a vendor that sells it; "rpg buy" buys it there from the tradeskill budget (ItemUsage SKILL, as before).
+# Same gap rule, hold and hourly limit as ProfessionTraining.Travel ("request named travel target::tool vendor" at
+# 6.297). With the mode on for the bot, a mining/skinning gather purpose also needs its tool, so a bot without a pick no
+# longer travels to an ore vein to fail there until the 15-minute no-skill-up end. "[ProfTravel] state=request kind=tool".
+# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.ProfessionUse.ToolBuy = 0
 # RealReagents (twow-repo#485): under the item cheat (RndBotCheats "item") every
 # recipe counts as having its reagents, a random one is queued and the core
 # fails the cast silently. 1 = check reagents and tools in the bags and cast
