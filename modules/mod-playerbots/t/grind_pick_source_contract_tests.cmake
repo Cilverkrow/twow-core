@@ -4,7 +4,7 @@ cmake_policy(VERSION 3.16)
 # 5-level band, one line per band and minute in ReportBotUpdate. Behind AiPlayerbot.BotUpdateTrace, no own key.
 # Review 18.10.: counted per engagement, not per recalculation of the "grind target" value (recomputed every ~2 s by
 # many callers, flipping between candidates). Pins (OB-10's conditions):
-#  - the pure policy GrindPickPolicy.h (12 bands, 4 sources, exactly two relaxed fetch_adds, no lock, no string in Add),
+#  - the pure policy GrindPickPolicy.h (13 bands (level/5, like [BotActivityMin]), 4 sources, exactly two relaxed fetch_adds, no lock, no string in Add),
 #  - the count only behind the gate (off: nothing but the test - no list read, no quest value, no grey computation),
 #  - the target choice unchanged: GrindTargetValue carries no diagnostic code at all,
 #  - the minute line: drained on the switch-on edge with the other recorders, bands without a count left out.
@@ -82,8 +82,8 @@ read_source("RandomPlayerbotMgr.cpp" rnd_mgr)
 read_source("aiplayerbot.conf.dist.in" conf)
 
 
-# ---- 1. Pure policy: 12 bands, 4 sources, relaxed atomics, no lock, no game header ---------------------------------
-require_text("${policy}" "constexpr std::size_t Bands = 12;" "12 bands L1-5 .. L56-60")
+# ---- 1. Pure policy: 13 bands (level/5, like [BotActivityMin]), 4 sources, relaxed atomics, no lock, no game header ---------------------------------
+require_text("${policy}" "constexpr std::size_t Bands = 13;" "13 bands L0-4 .. L60 (level/5)")
 require_text("${policy}" "    Attacker,   // " "source attacker")
 require_text("${policy}" "    Victim,     // " "source victim (self-defence counted apart, OB-10)")
 require_text("${policy}" "    Quest,      // " "source quest")

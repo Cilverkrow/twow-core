@@ -53,6 +53,21 @@ void BotLog::Initialize(const char* logFile, const char* logsDir, bool debugEnab
     fflush(m_file);
 }
 
+// telemetry P0 (OB-00 25.10.2026): the line prefix stays "[HH:MM:SS]" (watchers and the harness parse it); the date goes in as an
+// extra field at the END of a tag line: " ts=2026-10-25T03:12:45Z" (UTC). Only lines that start with a [Tag] get it, and only in
+// file mode (the server log already dates its lines).
+static void BotLogUtcStamp(char (&buf)[32])
+{
+    std::time_t now = std::time(nullptr);
+    std::tm utc{};
+#ifdef _WIN32
+    gmtime_s(&utc, &now);
+#else
+    gmtime_r(&now, &utc);
+#endif
+    std::strftime(buf, sizeof(buf), " ts=%Y-%m-%dT%H:%M:%SZ", &utc);
+}
+
 // twow-repo#541 (deep dive L1): without a bot log file every call is routed to Log, which drops it
 // below its level - but only after the 4 KB vsnprintf and this class's global mutex, taken from all
 // map threads (SetAIInternalUpdateDelay alone logs outDebug several times per bot and second). A
@@ -77,7 +92,10 @@ void BotLog::Initialize(const char* logFile, const char* logsDir, bool debugEnab
         localtime_r(&_now, &_lt);                       \
         char _ts[16];                                   \
         std::strftime(_ts, sizeof(_ts), "%H:%M:%S", &_lt); \
-        fprintf(m_file, "[%s] %s%s\n", _ts, prefix, _msg); \
+        char _utc[32] = "";                             \
+        if (_msg[0] == '[')                             \
+            BotLogUtcStamp(_utc);                       \
+        fprintf(m_file, "[%s] %s%s%s\n", _ts, prefix, _msg, _utc); \
         fflush(m_file);                                 \
     } else {                                            \
         Log::Instance().slog_fn("%s", _msg);            \
@@ -99,7 +117,10 @@ void BotLog::Initialize(const char* logFile, const char* logsDir, bool debugEnab
         localtime_s(&_lt, &_now);                       \
         char _ts[16];                                   \
         std::strftime(_ts, sizeof(_ts), "%H:%M:%S", &_lt); \
-        fprintf(m_file, "[%s] %s%s\n", _ts, prefix, _msg); \
+        char _utc[32] = "";                             \
+        if (_msg[0] == '[')                             \
+            BotLogUtcStamp(_utc);                       \
+        fprintf(m_file, "[%s] %s%s%s\n", _ts, prefix, _msg, _utc); \
         fflush(m_file);                                 \
     } else {                                            \
         Log::Instance().slog_fn("%s", _msg);            \

@@ -1,6 +1,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/LazyRollReport.h"   // telemetry P0
 #include "playerbot/strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeStallAbandon
 #include "playerbot/PathUnitlessBotPolicy.h"
 #include "playerbot/UnreachableTargetPolicy.h"
@@ -1686,6 +1687,17 @@ bool TravelTarget::IsNearTurnInStall()
         turnin_recovery::InNearZone(Distance(bot), bot->GetMapId() == wPosition->getMapId(), sPlayerbotAIConfig.zoneExitTurnInNearRadius);
 }
 
+// telemetry P0 (audit Q7): roll + summary line of the position guard, for its event path and for the minute driver
+// (ai::lazy_roll::ReportMinute): a quiet minute is a line with zeros, window_s= says how long the window was.
+void ai::lazy_roll::ReportPosStuckSummary()
+{
+    pos_stuck::Counters& counters = pos_stuck::SharedCounters();
+    uint32 detects = 0, unstucks = 0, teleports = 0, logged = 0;
+    if (counters.Roll(uint64(time(nullptr)), detects, unstucks, teleports, logged))
+        sLog.outBasic("[PosStuck] summary detect=%u unstuck=%u teleport=%u logged=%u window_s=%u", detects, unstucks, teleports, logged,
+            counters.windowMinutes.load(std::memory_order_relaxed) * 60);
+}
+
 bool TravelTarget::ObservePosStuck()
 {
     // twow-repo#594 (AiPlayerbot.Path.PosStuck, OB-00 / OB-10 23.10.2026): the position guard (PosStuckPolicy.h). The population of
@@ -1733,10 +1745,8 @@ bool TravelTarget::ObservePosStuck()
     if (step == pos_stuck::Step::Unstuck && !pos_stuck::AnchorUsable(posStuck, observation.mapId, observation.x, observation.y))
         step = pos_stuck::Step::Teleport;
 
+    ai::lazy_roll::ReportPosStuckSummary();
     pos_stuck::Counters& counters = pos_stuck::SharedCounters();
-    uint32 detects = 0, unstucks = 0, teleports = 0, logged = 0;
-    if (counters.Roll(uint64(time(nullptr)), detects, unstucks, teleports, logged))
-        sLog.outBasic("[PosStuck] summary detect=%u unstuck=%u teleport=%u logged=%u", detects, unstucks, teleports, logged);
     bool const lines = counters.Take(pos_stuck::DefaultLinesPerMinute);
     uint32 const purpose = uint32(tDestination->GetPurpose());
     if (lines)
@@ -2763,11 +2773,13 @@ void TravelMgr::LoadQuestTravelTable()
 
     sPlayerbotAIConfig.openLog("unload_grid.csv", "w");
     sPlayerbotAIConfig.openLog("unload_obj.csv", "w");
-    sPlayerbotAIConfig.openLog("bot_events.csv", "w");
+    // telemetry P0: bot_events.csv and deaths.csv are appended, not cleared at start; the header only goes in when the file is new or empty
+    // (the harness moves the old file to the archive before each start).
+    sPlayerbotAIConfig.openLog("bot_events.csv", "a", false, "timestamp,bot,event,wkt,race,class,level,info1,info2");
     sPlayerbotAIConfig.openLog("travel_map.csv", "w");
     sPlayerbotAIConfig.openLog("quest_map.csv", "w");
     sPlayerbotAIConfig.openLog("activity_pid.csv", "w");
-    sPlayerbotAIConfig.openLog("deaths.csv", "w");
+    sPlayerbotAIConfig.openLog("deaths.csv", "a", false, "timestamp,bot,race,class,level,wkt,target,target_level,target_hp_pct,adds_list,adds,travel");
     sPlayerbotAIConfig.openLog("player_paths.csv", "w");
     sPlayerbotAIConfig.openLog("travel_destinations.csv", "w");
     sPlayerbotAIConfig.openLog("deadzone.csv", "w"); 

@@ -146,8 +146,13 @@ require_text("${resolve}" "            if (traceFail)\n                LogRouteF
 require_text("${resolve}" "    if (outNoRoute)\n        *outNoRoute = noRoute;" "no-route flag reported")
 require_text("${move_h}" "            LastMovement& lastMove,\n            bool* outNoRoute = nullptr);" "ResolveMovePath out-flag")
 region("${move_cpp}" "void LogRouteFail(Player* bot" "\n}\n" log)
-require_order("${log}" "counters.Roll(" "counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute)" "summary before the budget")
-require_text("${log}" "[RouteFailDetail] summary failed=%u logged=%u honest=%u" "summary line")
+require_order("${log}" "RollRouteFailSummary();" "counters.Take(sPlayerbotAIConfig.pathRouteFailDetailLinesPerMinute)" "summary before the budget")
+# telemetry P0: the roll + summary line live in RollRouteFailSummary (event path and the minute driver call the same function)
+region("${move_cpp}" "static void RollRouteFailSummary()" "
+}
+" roll_fn)
+require_text("${roll_fn}" "counters.Roll(uint64(time(nullptr)), failed, logged, honest)" "the roll")
+require_text("${roll_fn}" "[RouteFailDetail] summary failed=%u logged=%u honest=%u" "summary line")
 require_text("${log}" "[RouteFailDetail] bot=%u level=%u alive=%u action=%s map=%u" "detail line")
 
 # 3. #3 honest fail: only for an empty node route, only with the switch, inside the collapsed-path branch.
@@ -169,7 +174,7 @@ require_text("${conf_dist}" "
 AiPlayerbot.Path.TaxiTrace = 0
 " "TaxiTrace documented off")
 # twow-repo#575 (PATH-01 E7): plus the scripted-taxi result of the goblin flying machines.
-count_text("${move_cpp}" "sPlayerbotAIConfig.pathTaxiTrace" 6 "TaxiTrace gates (4 flight results, 2 dock waits)")
+count_text("${move_cpp}" "sPlayerbotAIConfig.pathTaxiTrace" 7 "TaxiTrace gates (4 flight results, 2 dock waits, the telemetry P0 minute driver)")
 count_text("${move_cpp}" "LogTaxiUse(bot, entry, " 4 "flight result logs")
 count_text("${move_cpp}" "LogTransportWait(bot, " 2 "dock wait logs")
 region("${move_cpp}" "bool MovementAction::UseTaxi(PlayerbotAI* ai, uint32 entry, bool needNpc)" "

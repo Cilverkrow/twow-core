@@ -94,13 +94,17 @@ require_text("${gate}" "            LogPartialNoop(bot, getName(), startPos, end
 require_order("${moveto2}" "TravelPath movePath = ResolveMovePath(startPos, endPos, mover, lastMove, &noRoute);" "if (sPlayerbotAIConfig.pathPartialNoop" "gate after the resolved path")
 require_order("${moveto2}" "    if (movePath.empty())\n        return false;" "if (sPlayerbotAIConfig.pathPartialNoop" "gate after the empty check")
 require_order("${moveto2}" "if (sPlayerbotAIConfig.pathPartialNoop" "movePath.makeShortCut(startPos, sPlayerbotAIConfig.reactDistance, bot);" "gate before the shortcut")
-count_text("${move_cpp}" "pathPartialNoop" 3 "switch and tuning uses (gate + reach + gap)")
+count_text("${move_cpp}" "pathPartialNoop" 4 "switch and tuning uses (gate + reach + gap + the telemetry P0 minute driver)")
 count_text("${move_cpp}" "LogPartialNoop(" 2 "log definition + one call")
 
 region("${move_cpp}" "void LogPartialNoop(Player* bot" "\n}\n" log)
 require_text("${log}" "path_fail::Counters& counters = path_fail::PartialNoopCounters();" "own counters in the log")
 require_text("${log}" "if (!counters.Take(path_fail::DefaultLinesPerMinute))\n        return;" "line budget")
-require_text("${log}" "[MoveTo] summary partial_noop=%u logged=%u" "summary line")
+region("${move_cpp}" "static void RollPartialNoopSummary()" "
+}
+" roll_fn)
+require_text("${roll_fn}" "[MoveTo] summary partial_noop=%u logged=%u" "summary line (telemetry P0: rolled by the event path and the minute driver)")
+require_text("${log}" "RollPartialNoopSummary();" "event path rolls the summary first")
 require_text("${log}" "[MoveTo] state=partial_noop bot=%u level=%u action=%s" "detail line")
 require_text("${log}" "end_gap=%.1f" "end gap field")
 

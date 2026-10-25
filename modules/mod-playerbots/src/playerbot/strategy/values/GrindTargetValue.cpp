@@ -84,7 +84,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         if (sPlayerbotAIConfig.hasLog("grind_target.csv"))
         {
             std::ostringstream out;
-            out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+            out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
             out << bot->GetName() << ",\"" << u->GetName() << "\"," << u->GetEntry() << ",";
             out << (int)sServerFacade.IsHostileTo(bot, u) << "," << (int)sServerFacade.IsFriendlyTo(bot, u) << ",";
             out << bot->GetDistance(u) << ",\"" << reason << "\"";
@@ -436,7 +436,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     else if (sPlayerbotAIConfig.hasLog("grind_target.csv"))
     {
         std::ostringstream out;
-        out << sPlayerbotAIConfig.GetTimestampStr() << "+00,";
+        out << sPlayerbotAIConfig.GetTimestampUtcStr() << "+00,";
         out << bot->GetName() << ",\"none\",0,0,0,0,\"no grind target found\"";
         sPlayerbotAIConfig.log("grind_target.csv", out.str().c_str());
     }
