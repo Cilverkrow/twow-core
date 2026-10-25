@@ -1593,6 +1593,12 @@ AiPlayerbot.ZoneExit.TurnInStallCounts = 0
 # (0 = no near zone, at most 500). 0 = as before.
 AiPlayerbot.ZoneExit.TurnInTravelStall = 0
 AiPlayerbot.ZoneExit.TurnInNearRadius = 60
+# twow-repo#601 3a (OB-00 24.10.2026): TurnInTravelStallCountsCombat = 1 (only with TurnInTravelStall = 1, S3 bots): on the
+# way to a finished quest's taker a fight still pauses the stall recovery but no longer restarts the stall window, so the
+# time of the fight counts toward TurnInStallSeconds. A bot that keeps pulling mobs near its route and never gets closer
+# reaches the recovery (and the near-zone park) instead of a fresh window after every fight. Death, flights, transports,
+# a real master and rest keep restarting the window. Objectives are not affected. 0 = every fight restarts it, as before.
+AiPlayerbot.ZoneExit.TurnInTravelStallCountsCombat = 0
 
 # twow-repo#587 (ZONE-01, owner 14.10.2026): bots move up into level-appropriate zones on their own.
 # RescueHomeContinent = 1: the quest rescue (#421) only picks targets on the bot's continent, and a bot off its home
