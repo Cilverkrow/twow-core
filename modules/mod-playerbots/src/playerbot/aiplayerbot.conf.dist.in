@@ -2662,6 +2662,13 @@ AiPlayerbot.Perf.BindAreaFromHomebind = 0
 # (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
 # could choose every fishing zone. 0 = as before (default).
 AiPlayerbot.Gather.FishingSkillCheck = 0
+# twow-repo#333 Berufe P1-f (owner 25.10.2026): the quest plants (Serpentbloom, Bloodpetal Sprout, Gloom Weed, Doom Weed,
+# Incendia Agave, Plant Bundle, Violet Tragan, Hyjalroot ...: lock 259, a herbalism slot next to "open kneeling", the loot
+# is a quest item) are picked only while one of the bot's quests wants them. Before, a herbalist without the quest picked
+# them on the way (passive gathering). The gather travel targets have left them out since #414. Real herbs (Peacebloom,
+# Silverleaf ...) stay as they are. No log line (the check runs on every loot scan).
+# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Gather.QuestHerbFilter = 0
 # twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
