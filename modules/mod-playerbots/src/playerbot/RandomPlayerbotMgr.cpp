@@ -7391,6 +7391,30 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     if (ai::quest_search::goblin_island::UsesGoblinStartRescue(bot->getRace(), level))
     {
         namespace gi = ai::quest_search::goblin_island;
+        namespace sz = ai::start_zone;
+        // twow-repo#575 (PATH-01 F2, AiPlayerbot.CustomRaceStartZones, option B): a goblin still on its island stays there -
+        // up to level 9 at an island hub, at level 10 at the flying machine (8.29 takes the flight). Off: Durotar as before.
+        PlayerbotAI* const botAI = GetBotAI(bot);
+        sz::IslandRescue const island = sz::IslandRescueOf(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), level,
+            sz::TeamOfPoint(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()) == sz::StartTeam::Horde,
+            bot->IsCurrentQuest(sz::QuestBadNews, 0), bot->IsCurrentQuest(sz::QuestSolutions, 0),
+            botAI && botAI->IslandHubRescueWithoutProgress(),
+            bot->GetDistance(sz::IslandMachineX, sz::IslandMachineY, sz::IslandMachineZ) <= sz::IslandRescueMinYards);
+        if (island == sz::IslandRescue::Hub)
+        {
+            for (WorldLocation const& hub : { WorldLocation(1, sz::IslandStartX, sz::IslandStartY, sz::IslandStartZ, 0.0f),
+                     WorldLocation(1, sz::IslandInnX, sz::IslandInnY, sz::IslandInnZ, 0.0f) })
+                if (botPos.distance(WorldPosition(hub)) > sz::IslandRescueMinYards)
+                    targets.push_back(hub);
+            if (botAI && !targets.empty())
+                botAI->MarkIslandHubRescue();
+            return targets;
+        }
+        if (island == sz::IslandRescue::Machine)
+        {
+            targets.push_back(WorldLocation(1, sz::IslandMachineX, sz::IslandMachineY, sz::IslandMachineZ, 0.0f));
+            return targets;
+        }
         targets.push_back(WorldLocation(1, gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ, 0.0f));
         targets.push_back(WorldLocation(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f));
         return targets;
@@ -7509,8 +7533,12 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         // next "long stuck" hearthstone (or the 8.14 home step) took the bot straight back to where
         // its route had failed. A rescued roster bot binds its hearthstone at the rescue target
         // (an inn or a level hub of its faction).
+        // twow-repo#575 (PATH-01 F2, AiPlayerbot.CustomRaceStartZones): not at a point of a custom start zone (an island
+        // hub, the machine) - the goblin keeps its island homebind until it has left the island (PlayerbotAI, RebindOffIsland).
         if (ai::quest_search::RebindAtRescue(IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster(),
-                bot->GetHomebindMapId(), target.mapid))
+                bot->GetHomebindMapId(), target.mapid) &&
+            !ai::start_zone::RescueKeepsHomebind(sPlayerbotAIConfig.customRaceStartZones,
+                ai::start_zone::TeamOfPoint(target.mapid, target.coord_x, target.coord_y)))
         {
             AreaTableEntry const* area = WorldPosition(target).GetArea();
             bot->SetHomebindToLocation(target, area ? area->ID : 0);

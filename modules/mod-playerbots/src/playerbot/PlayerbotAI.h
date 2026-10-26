@@ -734,6 +734,9 @@ public:
     void RecordDeathForSeries();
     // Hotfix 8.1: [TankPath] diagnostic for bots on a tank path (4.3 / 7.3).
     void UpdateTankPathDiag(uint32 now);
+    // twow-repo#575 (PATH-01 F4, AiPlayerbot.CustomRaceStartZones): the walk to the island machine along the travel graph;
+    // false = no graph walk (the caller walks straight as before).
+    bool WalkToMachineByGraph(float x, float y, float z, uint32 now);
     bool IsCautious() const { return deathSeries.Cautious(uint32(time(nullptr))); }
     // Hotfix 8.5: the declared profession purpose ([Purpose]).
     ai::gather_purpose::State& GetGatherPurpose() { return gatherPurpose; }
@@ -987,6 +990,12 @@ protected:
     // #421 C: progress watch for the quest rescue teleport.
     ai::quest_search::ProgressTracker questProgress;
     uint32 lastQuestProgressCheck = 0;
+    // twow-repo#575 (PATH-01 F4): until when the dispatched graph walk to the island machine runs (no re-plan while moving),
+    // and the next time a machine_walk_fallback line may be written.
+    uint32 machineWalkUntil = 0;
+    uint32 machineWalkFallbackLog = 0;
+    // twow-repo#575 (PATH-01 F2): set by an island hub rescue, cleared by the bot's next progress.
+    std::atomic<bool> islandHubRescuePending{ false };
     // Hotfix 8.12: combat without progress (bot 27 Nilenata).
     ai::stuck_combat::State stuckCombat;
     ai::gather_purpose::State gatherPurpose;
@@ -1076,6 +1085,10 @@ public:
             questRescueRequested = true;
     }
     void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
+    // twow-repo#575 (PATH-01 F2): an island hub rescue is pending until the bot makes progress (its own thread clears it);
+    // a second hub rescue while it is still pending finds the island empty for this bot (world thread, StartZonePolicy.h).
+    bool IslandHubRescueWithoutProgress() const { return islandHubRescuePending.load(); }
+    void MarkIslandHubRescue() { islandHubRescuePending = true; }
     // twow-repo#601 S1 (ResetOnProgressEvents): any thread asks the bot's own update to reset the grind-fallback
     // counter, the quest route backoff and the quest search stage (ai::quest_failure_class::Reset* bits).
     void RequestQuestRouteReset(uint32 events) { questRouteResetEvents.fetch_or(events); }
