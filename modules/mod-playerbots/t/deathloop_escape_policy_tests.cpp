@@ -33,6 +33,12 @@ int main()
     Require(!RepeatAfterEscape(1901, 1000, 900), "death after the window: a new loop, not a repeat");
     Require(!RepeatAfterEscape(900, 1000, 900), "clock before the escape: no repeat");
 
+    // twow-repo#629 G1: Wailing Caverns (Horde territory) for an Alliance bot.
+    Require(HostileAreaDeath(true, false, false) && HostileAreaDeath(true, true, false), "switch off: A39 as before, dungeon or not");
+    Require(HostileAreaDeath(true, false, true), "switch on: a death among the guards outside still counts");
+    Require(!HostileAreaDeath(true, true, true), "switch on: a death inside a dungeon is no hostile-area death");
+    Require(!HostileAreaDeath(false, false, true) && !HostileAreaDeath(false, true, false), "a friendly area never counts");
+
     for (int count = 0; count < EscapeCounts; ++count)
         Require(EscapeCounter(EscapeCount(count)).load() == 0, "counters start at 0");
     EscapeCounter(EscapeDetected).fetch_add(2);

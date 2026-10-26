@@ -1074,6 +1074,10 @@ AiPlayerbot.DeathLoop.Escape = 0
 # start (Goblin / High Elf: Durotar / Elwynn, the others: their race start) and the homebind is set there;
 # [DeathLoop] state=far_escape. 0 = off, 1 = all bots, 2 = cohort B (odd guids).
 AiPlayerbot.DeathLoop.FarEscape = 0
+# twow-repo#629 G1 (owner go 26.10.2026): 1 = with DeathLoop.Escape a death inside a dungeon or raid is no
+# hostile-area death (Wailing Caverns lies in Horde territory: every Alliance death there was a loop and the bot
+# was evacuated out of the instance). The window and short-life rules still apply. 0 = off (A39 as before).
+AiPlayerbot.DeathLoop.HostileAreaOutsideDungeons = 0
 
 # #357 O-12 (owner 2026-09-27, variant A): roster shamans on premade path 7.1
 # "enhancement" or 7.3 "shaman tank" get the reworked Enhancement talents as

@@ -56,7 +56,7 @@ require_text("${conf_dist}" "AiPlayerbot.DeathLoop.Escape = 0" "documented")
 
 # Detection: hostile-area death behind the switch, through the existing enemy-home-zone check.
 between("${ai_cpp}" "void PlayerbotAI::RecordDeathForLoop()" "void PlayerbotAI::RecordDeathForSeries()" record)
-require_order("${record}" "if (sPlayerbotAIConfig.deathLoopEscape)" "lastDeathHostileArea = WorldPosition(bot).isEnemyHomeZoneFor(bot->GetTeam());" "hostile death only with the switch")
+require_order("${record}" "if (sPlayerbotAIConfig.deathLoopEscape)" "lastDeathHostileArea = death_loop::HostileAreaDeath(WorldPosition(bot).isEnemyHomeZoneFor(bot->GetTeam())," "hostile death only with the switch")
 require_text("${record}" "death_loop::RepeatAfterEscape(death.atSeconds, lastDeathLoopEscapeAt, sPlayerbotAIConfig.deathLoopWindowSeconds)" "repeat after escape counted")
 between("${ai_cpp}" "bool PlayerbotAI::IsInDeathLoop() const" "\n}\n" in_loop)
 require_order("${in_loop}" "if (sPlayerbotAIConfig.deathLoopEscape && lastDeathHostileArea)\n        return true;" "return death_loop::IsLoop(recentDeaths" "hostile death before the old loop check")
