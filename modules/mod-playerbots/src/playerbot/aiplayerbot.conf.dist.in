@@ -1818,7 +1818,12 @@ AiPlayerbot.ProfessionTraining.Travel = 0
 # ProfessionTraining.Travel; the trip holds 10 min and its whole time counts as hold_over_s. "[ProfTravel] state=request
 # kind=trainer ... path=near"; with ProfessionTraining.Trace one "[ProfTravel] state=gate kind=trainer path=near ... result="
 # per bot and TraceCooldownSeconds (result=start or the first gate that refused: not_eligible, cooldown, turn_in, band,
-# money, no_trainer, not_near, unreachable). Yards, 0 = off (default), at most 1000.
+# money, no_trainer, not_near, unreachable, home_zone). Yards, 0 = off (default), at most 1000.
+# P1-u (owner 26.10.2026 via OB-00: no leaving the start area only for a profession): below level 10 every profession trip
+# (trainer near and gap, tool vendor) only goes to a trainer / vendor with a spawn in the zone the bot stands in - the zone,
+# not the sub-area (Elwynn Forest with Northshire and Goldshire, not Stormwind City); without one there is no trip and the
+# entry counts as dropped_home_zone= on the request and gate lines (zone= = the bot's zone). Fixed, no key. Each trip that
+# gets a destination writes "[ProfTravel] state=target kind=... entry= zone= target_zone= map= target_map= distance= path=".
 AiPlayerbot.ProfessionTraining.NearRadius = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,

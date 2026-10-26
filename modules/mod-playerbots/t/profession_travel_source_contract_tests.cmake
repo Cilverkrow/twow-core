@@ -105,8 +105,8 @@ require_order("${values_cpp}" "!ai::profession_travel::HasGatherTool(gatheringSk
 
 # Request: before the generic trainer branch, request time set before the empty check, one line, hold conditions, allowed.
 require_order("${choose_cpp}" "else if (travelName == \"trainer profession\" || travelName == \"trainer profession near\" || travelName == \"tool vendor\")" "else if (travelName.find(\"trainer\") == 0)" "the profession request before the generic trainer branch")
-require_order("${choose_cpp}" "SET_AI_VALUE2(int, \"manual int\", key, int(now));" "        if (entries.empty())\n            return false;\n\n        *AI_VALUE(FutureDestinations*, \"future travel destinations\")" "the request time counts an empty request too")
-require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u path=%s\"," "one line per request with the dropped counts (P1-b2) and the path (P1-n)")
+require_order("${choose_cpp}" "SET_AI_VALUE2(int, \"manual int\", key, int(now));" "        if (entries.empty())\n            return false;\n\n        // P1-u (ProfessionTravelPolicy.h HomeZoneOnly)" "the request time counts an empty request too")
+require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u path=%s dropped_home_zone=%u zone=%u\"," "one line per request with the dropped counts (P1-b2), the path (P1-n) and the home zone (P1-u)")
 require_text("${choose_cpp}" "travelName == \"trainer profession\" ? \"should travel named::trainer profession hold\" :" "trainer trip hold condition")
 require_text("${choose_cpp}" "travelName == \"tool vendor\" ? \"should travel named::tool vendor hold\" :" "tool trip hold condition")
 require_text("${choose_cpp}" "else if (name == \"trainer profession\" || name == \"tool vendor\")   // twow-repo#333 Berufe P1-a / P1-b\n        return true;" "isAllowed")
@@ -133,5 +133,5 @@ require_text("${policy}" "return hadDestination ? ReachCache::EveryAsker : Reach
 require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=reach purpose=%u bot=%u map=%u asked=%u destinations=%u no_destination=%u reachable=%u nodes=%u us=%u\"," "one cost line per newly asked set")
 require_text("${values_cpp}" "return !ProfessionTripTargets(ai, PhaseOneProfessionTrainers(ai), TravelDestinationPurpose::Trainer).empty();" "trainer start condition filtered")
 require_text("${values_cpp}" "return !ProfessionTripTargets(ai, GatherToolVendors(ai, tool), TravelDestinationPurpose::Vendor).empty();" "tool vendor start condition filtered")
-require_order("${choose_cpp}" "ProfessionTripTargets(ai, trainerTrip ? PhaseOneProfessionTrainers(ai) : GatherToolVendors(ai, tool), purpose, &drops);" "return sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);" "the request filters before GetPartitions")
+require_order("${choose_cpp}" "ProfessionTripTargets(ai, trainerTrip ? PhaseOneProfessionTrainers(ai) : GatherToolVendors(ai, tool), purpose, &drops);" "PartitionedTravelList list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);" "the request filters before GetPartitions")
 forbid_text("${choose_cpp}" "for (int32 const entry : GAI_VALUE2(std::list<int32>, \"item vendor list\", tool))" "an unfiltered vendor list in the request")
