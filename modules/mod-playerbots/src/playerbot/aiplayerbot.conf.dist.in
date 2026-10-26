@@ -992,6 +992,18 @@ AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin = 5
 # keep the TurnInMaxDeathsOnRoute rule. 0 = off.
 AiPlayerbot.DestinationDeaths.Max = 2
 AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
+# Re-deaths at camps (CLI-ROT adds analysis 25.10.2026): 19.6 % of the deaths with adds came <= 30 min and <= 60 yd after the same
+# bot's previous death (revive, back into the same camp, dead again); half of them had another travel entry than the death before
+# (mixed camps), 43 % no travel target. CampBlock keys on the death position instead: a roster bot on its own remembers its last
+# 4 open-world deaths with at least MinAttackers living attackers (adds + the target) and skips every travel destination within
+# Radius yards of one for Seconds. Quest destinations (objective, taker, giver) are never vetoed: a blocked one is taken only when
+# the same choice selects nothing else. [CampBlock] state=record per recorded death; the choice line reports camp_block skips.
+#   CampBlock: 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+#   Seconds 60..7200 (default 1800), Radius 10..300 (default 60), MinAttackers 1..16 (default 2).
+AiPlayerbot.DestinationDeaths.CampBlock = 0
+AiPlayerbot.DestinationDeaths.CampBlock.Seconds = 1800
+AiPlayerbot.DestinationDeaths.CampBlock.Radius = 60
+AiPlayerbot.DestinationDeaths.CampBlock.MinAttackers = 2
 
 # #405: a quest objective whose work phase (at the objective, e.g. a quest
 # chest) ran out QuestWorkTimeouts.Max times without the travel target
@@ -1127,6 +1139,15 @@ AiPlayerbot.DangerMap.LineSamples = 20
 # cell within WindowSeconds then keep routes and targets away from it. [DangerMap] state=environment.
 # v35: 34 % of all deaths had no killer and no attacker. 0 = off (default, creature deaths only).
 AiPlayerbot.DangerMap.CountEnvironmentDeaths = 0
+# Re-deaths at camps (CLI-ROT adds analysis 25.10.2026): add deaths came from mobs ~2.5 levels below the bot, so the LevelMargin rule
+# never marked those camps. With CountAddDeaths a death with at least AddDeathMinAttackers living attackers (adds + the target)
+# counts for the querying bot whatever the killer's level (MinDeaths different bots and the exclusion of the bot's own cell and
+# its neighbours stay; a bot revived next to the camp is CampBlock's case). Every death records its attacker count; the switch
+# only changes how a bot reads the shared map.
+#   CountAddDeaths: 0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid); other values act like 0.
+#   AddDeathMinAttackers 2..16 (default 3: >= 2 is 99 % of all add deaths, >= 3 is 63 %).
+AiPlayerbot.DangerMap.CountAddDeaths = 0
+AiPlayerbot.DangerMap.AddDeathMinAttackers = 3
 # Grinding of persistent roster bots without a real-player master (#307).
 # Below GrindCap.LowLevelBelow a bot attacks mobs at most LowLevelMargin levels
 # above itself (otherwise 4). 0 = off.

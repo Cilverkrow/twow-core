@@ -33,7 +33,7 @@
 #include "playerbot/strategy/values/RestGateValue.h"
 #include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 S5a: DialogStatusValue::getDialogStatus (band giver filter F)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): the band trip hooks, the ladder loader
-#include "playerbot/CohortPolicy.h"   // twow-repo#601 QuestLoop.InactiveAfterProgress mode 2 = cohort B
+#include "playerbot/CohortPolicy.h"   // mode 2 = cohort B: twow-repo#601 QuestLoop.InactiveAfterProgress, re-deaths at camps (DestinationDeaths.CampBlock)
 
 using namespace ai;
 using namespace MaNGOS;
@@ -1609,6 +1609,39 @@ bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destina
 {
     auto const it = destinationDeaths.find(destination);
     return it != destinationDeaths.end() && destination_death::IsSuppressed(it->second, WorldTimer::getMSTime());
+}
+
+// Re-deaths at camps (AiPlayerbot.DestinationDeaths.CampBlock, CLI-ROT adds analysis 25.10.2026): the position is the key, not the
+// destination - half of the re-deaths had another travel entry than the death before, 43 % none (corpse run, on the way).
+void TravelTarget::OnCampDeath(uint32 attackers)
+{
+    if (!bot || !ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()))
+        return;
+
+    // Roster bots on their own in the open world only; a real master decides for his bot.
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster() || bot->GetMap()->IsDungeon() ||
+        bot->InBattleGround())
+        return;
+
+    if (!camp_block::Counts(attackers, sPlayerbotAIConfig.destinationDeathsCampBlockMinAttackers))
+        return;
+
+    camp_block::Record(campDeaths, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), WorldTimer::getMSTime(),
+        sPlayerbotAIConfig.destinationDeathsCampBlockSeconds);
+
+    // Always visible (BASIC): one line per recorded death, the acceptance signal of the switch.
+    sLog.outBasic("[CampBlock] state=record bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f attackers=%u radius=%.0f seconds=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), attackers,
+        sPlayerbotAIConfig.destinationDeathsCampBlockRadius, sPlayerbotAIConfig.destinationDeathsCampBlockSeconds);
+}
+
+bool TravelTarget::IsCampBlocked(WorldPosition const* position) const
+{
+    // Off (or another cohort): the ring stays empty, so nothing is blocked; no position = no rule (fail closed).
+    if (!position || !sPlayerbotAIConfig.destinationDeathsCampBlock)
+        return false;
+    return camp_block::Blocked(campDeaths, position->getMapId(), position->getX(), position->getY(), WorldTimer::getMSTime(),
+        sPlayerbotAIConfig.destinationDeathsCampBlockRadius);
 }
 
 bool TravelTarget::NoteTurnInFailure(uint32 questId, char const* reason)
