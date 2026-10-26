@@ -27,6 +27,8 @@
 #include "playerbot/DirectTargetDestinations.h"
 #include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 Berufe P1-a / P1-b
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/RpgAreaLevelPolicy.h"   // twow-repo#333 P1-v (Travel.RpgAreaLevelFromSpawn)
+#include <mutex>
 #include "playerbot/QuestSkillLockPolicy.h"   // twow-repo#601 QuestFirstProgression.SkipSkillLockedObjectives
 #include "Guild/GuildMgr.h"
 #include "Formulas.h"
@@ -803,6 +805,18 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             return false;
         }
 
+        // twow-repo#333 P1-v (OB-00 26.10.2026): a profession trip without a target says why and ends now (M1r run 3: every
+        // trip ended an hour later as "lost", without a line). Not when the bot moved away while the list was built: that
+        // asks for a new list, the trip stays open (pre-review).
+        if ((futureTravelPurpose == "trainer profession" || futureTravelPurpose == "trainer profession near" || futureTravelPurpose == "tool vendor") &&
+            !lastRejects.movedAway)
+        {
+            uint32 points = 0;
+            for (auto const& [partition, travelPoints] : destinationList)
+                points += uint32(travelPoints.size());
+            ProfessionTripNoTarget(ai, futureTravelPurpose, uint32(destinationList.size()), points, lastRejects.Format());
+        }
+
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
 
@@ -1138,6 +1152,24 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 futureTravelPurpose == "tool vendor" ? "tool" : "trainer", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
                 newTarget.GetEntry(), bot->GetZoneId(), TerrainManager::GetZoneIdByAreaFlag(targetPos->getAreaFlag(), targetPos->getMapId()),
                 bot->GetMapId(), targetPos->getMapId(), newTarget.Distance(bot), futureTravelPurpose == "trainer profession near" ? "near" : "gap");
+
+    // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn, CLI-Deep 26.10.): with the switch set (any mode), one line per RPG
+    // trip - its purpose and arm (1 = the spawn rule applies to the bot), so a cand unit counts sell / repair / trainer trips per
+    // bot-h and cohort; once per server run the area level at the map origin the old rule read.
+    if (sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn)
+        if (RpgTravelDestination const* rpg = dynamic_cast<RpgTravelDestination const*>(newTarget.GetDestination()))
+        {
+            static std::once_flag originLogged;
+            std::call_once(originLogged, []()
+                {
+                    sLog.outBasic("[RpgAreaLevel] state=origin area_level=%d", GuidPosition(HIGHGUID_UNIT, 1).getAreaLevel());
+                });
+            WorldPosition const* targetPos = newTarget.GetPosition();
+            sLog.outBasic("[RpgAreaLevel] state=trip purpose=%s bot=%u level=%u cohort=%c arm=%u entry=%d zone=%u target_area_level=%d distance=%.0f",
+                ai::rpg_area_level::PurposeName(uint32(rpg->GetPurpose())), bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
+                ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, bot->GetGUIDLow()) ? 1u : 0u, newTarget.GetEntry(), bot->GetZoneId(),
+                targetPos ? targetPos->getAreaLevelOrParent() : 0, newTarget.Distance(bot));
+        }
 
     setNewTarget(requester, &newTarget, travelTarget);
     
@@ -2803,19 +2835,11 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
 
         // P1-u (ProfessionTravelPolicy.h HomeZoneOnly): below level 10 only the spawns in the bot's zone - an entry with spawns
         // in and out of it (a vendor in Goldshire and Stormwind) is never reached through the one outside (review 26.10.).
+        // P1-v (TravelValues.cpp ProfessionTripPartitions): the list without the fight gate of GetPartitions.
         uint32 const homeZone = ai::profession_travel::HomeZoneOnly(bot->GetLevel()) ? bot->GetZoneId() : 0;
         *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [entries, purpose, partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, homeZone]()
             {
-                PartitionedTravelList list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);
-                if (homeZone)
-                    for (auto& [partition, travelPoints] : list)
-                        travelPoints.erase(std::remove_if(travelPoints.begin(), travelPoints.end(), [homeZone](TravelPoint const& point)
-                            {
-                                WorldPosition const* position = std::get<1>(point);
-                                return !position || !ai::profession_travel::SpawnInHomeZone(homeZone,
-                                    { TerrainManager::GetZoneIdByAreaFlag(position->getAreaFlag(), position->getMapId()) });
-                            }), travelPoints.end());
-                return list;
+                return ProfessionTripPartitions(center, partitions, travelInfo, purpose, entries, homeZone);
             });
     }
     else if (travelName.find("trainer") == 0)

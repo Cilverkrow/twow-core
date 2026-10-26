@@ -1448,6 +1448,10 @@ bool PlayerbotAIConfig::Initialize()
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
+    // twow-repo#333 P1-v (OB-00 26.10.2026): the area level of an RPG target from its spawn, not from the map origin; an unknown mode is off.
+    travelRpgAreaLevelFromSpawn = config.GetIntDefault("AiPlayerbot.Travel.RpgAreaLevelFromSpawn", 0);
+    if (travelRpgAreaLevelFromSpawn > 2)
+        travelRpgAreaLevelFromSpawn = 0;
     gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 0);
     if (gatherQuestHerbFilter > 2)
         gatherQuestHerbFilter = 0;
@@ -1790,6 +1794,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
+            {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
             {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
