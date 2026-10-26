@@ -52,6 +52,10 @@ int main()
         Require(TripHolds(1000, 1840) && TripHolds(1839, 1840), "holds before its end");
         Require(!TripHolds(1840, 1840), "the hold ends");
         Require(HoldOverSeconds(1200, 1240) == 0 && HoldOverSeconds(1300, 1240) == 60, "seconds after the backoff end");
+        // P1-b3 (CLI-Deep R-f, cr2-C bot 3125): a trip held for 80 s, its lost line came two hours later.
+        Require(LostEndAt(1000, 1080) == 1080, "a lost trip ends at its last hold check that held");
+        Require(LostEndAt(1000, 0) == 1000 && LostEndAt(1000, 900) == 1000, "no hold check since this start: it ends at the start");
+        Require(HoldOverSeconds(LostEndAt(1000, 1080), 1035) == 45, "hold_over_s of a lost trip counts to its end, not to the line");
         Require(std::strcmp(EndReason(false, true, true), "done") == 0, "reason gone comes first");
         Require(std::strcmp(EndReason(true, true, true), "turn_in") == 0, "an open turn-in ends the trip");
         Require(std::strcmp(EndReason(true, false, false), "cap") == 0, "the hold ran out");

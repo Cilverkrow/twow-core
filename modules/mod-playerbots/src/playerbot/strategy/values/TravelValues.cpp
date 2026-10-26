@@ -147,7 +147,8 @@ bool ProfessionTripStartable(PlayerbotAI* ai, uint32 mode, char const* tripValue
 // A started trip keeps its travel condition while its reason lasts, until the backoff of its start ended plus 10 min
 // (at most 30 min, ProfessionTravelPolicy.h HoldUntil), and never past an open turn-in - the trip ends and the turn-in
 // request runs. The first evaluation that ends an open trip writes one "[ProfTravel] state=end" line with the reason and
-// hold_over_s (the seconds after the backoff end: the quest-time cost, CLI-Deep 25.10.).
+// hold_over_s (the seconds after the backoff end: the quest-time cost, CLI-Deep 25.10.). A check that still holds stores
+// its time for a later "reason=lost" end (P1-b3).
 bool ProfessionTripHolds(PlayerbotAI* ai, char const* tripValue, char const* kind, bool reasonLasts)
 {
     AiObjectContext* context = ai->GetAiObjectContext();
@@ -159,7 +160,10 @@ bool ProfessionTripHolds(PlayerbotAI* ai, char const* tripValue, char const* kin
         reasonLasts && ProfessionTripTurnInWaiting(bot, AI_VALUE(TravelTarget*, "travel target")),
         ai::profession_travel::TripHolds(now, holdUntil));
     if (!end)
+    {
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix, int(now));
         return true;
+    }
 
     if (AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
     {
