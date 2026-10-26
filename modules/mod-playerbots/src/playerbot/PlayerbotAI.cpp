@@ -1563,9 +1563,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
             // Any progress (level, XP, a gathering skill under a purpose) restarts the idle clock (questProgress.lastChange)
             // as before. With ResetOnProgressEvents only a level-up still resets the quest search stage - XP alone does not.
+            if (questProgress.snapshot != snapshot)
+                islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue
             if (questProgress.Update(snapshot, now))
             {
-                islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue
                 if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents &&
                         sPlayerbotAIConfig.S1For(bot->GetGUIDLow()), levelUp))
                     aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
