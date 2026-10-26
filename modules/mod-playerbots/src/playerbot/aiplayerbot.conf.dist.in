@@ -228,6 +228,15 @@ AiPlayerbot.Loot.FeralFixedSpec = 1
 # off only when a weapon, shield or held item in the bags is an equip candidate. 0 = on every run, as before (bots took
 # their weapons off and on after every loot). A re-equip of the old main or off hand is no EquipAction event either way.
 AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade = 0
+# twow-repo#341 (BUG FIX, owner repro 25.10.2026: bots never put on gear they won by roll): a won Need/Greed roll is stored by
+# the core (Group::CountTheRoll) without SMSG_ITEM_PUSH_RESULT, the packet whose "item push result" runs "equip upgrades" -
+# looted gear was equipped, rolled gear stayed in the bags. 1 = SMSG_LOOT_ROLL_WON runs "equip upgrades" when this bot won
+# the roll and the item is a weapon, armour piece or bag (the equip rules of looted gear: AutoEquipUpgradeLoot gate, item
+# usage; without the "query item usage" report). Only the winner's own item, so a group bot never takes anything from the
+# player. A roll that ends in combat runs it in combat too, like looted gear; with Equip.KeepWeaponsUnlessUpgrade = 1 the
+# hands then come off only for a weapon candidate. Equipping binds a BoE item, as for looted gear. Read when the bot logs in
+# (the packet handler is registered only with 1). 0 = as before.
+AiPlayerbot.Equip.AfterRollWon = 0
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
