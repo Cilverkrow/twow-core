@@ -54,6 +54,20 @@ int32 ObjectiveCountOf(Player* bot, TravelDestination const* destination)
     uint8 const index = objective->GetObjective();
     return quest->ReqItemCount[index] > 0 ? int32(it->second.m_itemcount[index]) : int32(it->second.m_creatureOrGOcount[index]);
 }
+
+// twow-repo#601 (QuestLoop.GiverTakerDone): a giver / taker destination whose quest this bot has taken (giver) or turned in (taker);
+// in the log = incomplete or complete and not rewarded. False for every other destination.
+bool GiverTakerTripDone(Player* bot, TravelDestination const* destination)
+{
+    QuestRelationTravelDestination const* relation = dynamic_cast<QuestRelationTravelDestination const*>(destination);
+    if (!bot || !relation)
+        return false;
+    uint32 const questId = relation->GetQuestId();
+    bool const rewarded = bot->GetQuestRewardStatus(questId);
+    QuestStatus const status = bot->GetQuestStatus(questId);
+    bool const inLog = !rewarded && (status == QUEST_STATUS_INCOMPLETE || status == QUEST_STATUS_COMPLETE);
+    return quest_loop::GiverTakerTripDone(relation->GetRelation(), inLog, rewarded);
+}
 }
 
 // Penqle's Singleton<> requires an explicit instantiation in a .cpp file.
@@ -2133,6 +2147,20 @@ void TravelTarget::CheckStatus()
             if (destinationInactive && ai::quest_band::GiverTripDoneFor(ai, bot, tDestination))
             {
                 ai->TellDebug(ai->GetMaster(), "The quest giver trip ends because its quest was taken.", "debug travel");
+                SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+                return;
+            }
+            // twow-repo#601 (QuestLoop.GiverTakerDone): a quest giver trip whose quest is now taken, or a taker trip whose quest is turned
+            // in, went inactive because it succeeded - it ends at once (EXPIRED, drop reason=relation_done): a success, no 60 s
+            // COOLDOWN, no failure. A roster bot on its own only (a group trip judges a member's quest log: as before); off, another
+            // cohort or no success: the COOLDOWN path below as before.
+            if (destinationInactive && ai::cohort::Applies(sPlayerbotAIConfig.questLoopGiverTakerDone, bot->GetGUIDLow()) &&
+                sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && !groupMember &&
+                GiverTakerTripDone(bot, tDestination))
+            {
+                ai->TellDebug(ai->GetMaster(), "The quest giver or taker trip ends because its quest was taken or turned in.", "debug travel");
+                TraceQuestCommit(tDestination, "drop", "relation_done");
                 SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
                 ai->GetAiObjectContext()->ClearValues("no active travel destinations");
                 return;

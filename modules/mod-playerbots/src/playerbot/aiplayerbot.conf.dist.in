@@ -993,6 +993,13 @@ AiPlayerbot.QuestLoop.MaxFailures = 0
 AiPlayerbot.QuestLoop.WindowSeconds = 1800
 AiPlayerbot.QuestLoop.CooldownSeconds = 1800
 AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
+# twow-repo#601 (CLI-Deep 26.10.2026, cr2-C gap analysis): a quest giver / taker destination goes inactive as soon as its job is done
+# (the quest taken / turned in), and that success sent the bot into the destination's 60 s COOLDOWN at the NPC (cohort B: 167 drops
+# at 4 yd, median 96 s to its next target). With GiverTakerDone such a trip ends at once: giver - the quest is in the log or
+# rewarded; taker - the quest is no longer in the log. [QuestCommit] event=drop reason=relation_done. No success (not taken, still in
+# the log): the COOLDOWN as before.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.GiverTakerDone = 0
 # twow-repo#601 (CLI-Deep 25.10.2026, root cause of the cand-v466r standing): an objective goes inactive as soon as no living
 # target of its entry is in sight - also right after the bot killed the visible ones. QL-1/QL-2 booked that normal progress as
 # an emptied camp (a failure + InactiveCooldownSeconds of standing; cohort B spent 32 % of its time between an inactive objective
