@@ -759,6 +759,7 @@ bool PlayerbotAIConfig::Initialize()
     deathLoopWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DeathLoop.WindowSeconds", 900));
     deathLoopRadius = std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DeathLoop.Radius", 150.0f));
     deathLoopEscape = config.GetBoolDefault("AiPlayerbot.DeathLoop.Escape", false);
+    deathLoopHostileAreaOutsideDungeons = config.GetBoolDefault("AiPlayerbot.DeathLoop.HostileAreaOutsideDungeons", false);
     // twow-repo#601/#602 G2: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     deathLoopFarEscape = config.GetIntDefault("AiPlayerbot.DeathLoop.FarEscape", 0);
     if (deathLoopFarEscape > 2)
@@ -1704,6 +1705,7 @@ bool PlayerbotAIConfig::Initialize()
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},
             {"DeathLoop.FarEscape", Value(deathLoopFarEscape)},
+            {"DeathLoop.HostileAreaOutsideDungeons", Value(deathLoopHostileAreaOutsideDungeons)},
             {"DeathLoop.MaxDeaths", Value(deathLoopMaxDeaths)},
             {"DeathLoop.Radius", Value(deathLoopRadius)},
             {"DeathLoop.WindowSeconds", Value(deathLoopWindowSeconds)},

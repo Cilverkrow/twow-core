@@ -89,3 +89,24 @@ TEST(DcRunRobust, NoYieldWhileThePartyFightsWithTheGate)
     s = EvaluateLootYield(true, false, true, 0, false, 7000, kTimeout);
     EXPECT_TRUE(s.yield);     // fight over: yield as usual
 }
+
+TEST(DcRunRobust, StayDeadOnlyInADungeonWithAnActiveRunOrATestParty)
+{
+    using DcRunRobust::StayDead;
+    EXPECT_TRUE(StayDead(true, true, true, false, true, 30, 600));     // a dead member of an active run
+    EXPECT_TRUE(StayDead(true, true, false, true, true, 30, 600));     // a .dc test party after the run flag was cleared
+    EXPECT_FALSE(StayDead(false, true, true, true, true, 30, 600));    // key off: the stock release as before
+    EXPECT_FALSE(StayDead(true, false, true, true, true, 30, 600));    // open world: stock
+    EXPECT_FALSE(StayDead(true, true, false, false, true, 30, 600));   // a dungeon without a run (a player's group): stock
+}
+
+TEST(DcRunRobust, StayDeadIsBoundedByALivingRezzerAndTheWaitCap)
+{
+    using DcRunRobust::StayDead;
+    // Pre-review 26.10.: a wipe nobody alive can disable must not leave the corpses vetoed with no end.
+    EXPECT_FALSE(StayDead(true, true, true, true, false, 30, 600));    // wipe / no living rez class: release
+    EXPECT_TRUE(StayDead(true, true, true, false, true, 0, 600));      // right at the death
+    EXPECT_TRUE(StayDead(true, true, true, false, true, 599, 600));    // last second of the wait
+    EXPECT_FALSE(StayDead(true, true, true, false, true, 600, 600));   // the cap: release
+    EXPECT_FALSE(StayDead(true, true, true, true, true, -1, 600));     // unknown death time (logged in dead): release
+}
