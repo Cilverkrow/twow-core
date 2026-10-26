@@ -702,6 +702,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestLoop] config key=InactiveAfterProgress value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopInactiveAfterProgress);
         questLoopInactiveAfterProgress = 0;
     }
+    // twow-repo#601 InactiveReselect: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopInactiveReselect = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveReselect", 0);
+    if (questLoopInactiveReselect > 2)
+    {
+        sLog.outError("[QuestLoop] config key=InactiveReselect value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopInactiveReselect);
+        questLoopInactiveReselect = 0;
+    }
     questFirstProgressionSkipScriptOnlyQuestTakers = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers", false);
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
     specAuraEnabled = config.GetBoolDefault("AiPlayerbot.SpecAura.Enabled", false);
@@ -1682,6 +1689,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
+            {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},

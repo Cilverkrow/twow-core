@@ -1002,6 +1002,16 @@ AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
 # [QuestLoop] state=inactive_after_progress bot= quest= target_entry= count_from= count_to=.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.QuestLoop.InactiveAfterProgress = 0
+# twow-repo#601 (CLI-Deep 25.10.2026, cr2-C gap analysis): an inactive objective WITHOUT new credit (an emptied camp) put the bot
+# into COOLDOWN for the whole QL-2 time (cohort B: 450 of 662 inactive drops, median 212 s standing); the quest search after it
+# found another target within 1 s, and a quarter of the bots went back to the same camp through the refresh. With
+# InactiveReselect the camp (quest, target entry) is remembered for that cooldown (InactiveCooldownSeconds, at least the
+# destination's own), the target ends and the next search runs at once - the search and the refresh skip the camp while it is
+# remembered (4 per bot). QL-1 counts the failure as before. If that search finds no quest target, the bot goes back to the camp
+# in COOLDOWN for the time left (as before). [QuestLoop] state=inactive_reselect bot= quest= target_entry= mark_ms=,
+# state=inactive_reselect_fallback ... cooldown_ms=; [QuestFirstRoute] state=rejected ... inactive_reselect=N.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.InactiveReselect = 0
 
 # twow-repo#485: with 1, quest givers and takers that are game objects spawned
 # only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of

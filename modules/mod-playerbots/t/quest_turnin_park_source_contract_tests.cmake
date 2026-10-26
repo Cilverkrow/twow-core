@@ -317,6 +317,6 @@ require_text("${park_now}" "sPlayerbotAIConfig.questFirstProgressionTurnInParkSe
 require_order("${park_now}" "[QuestFirstRoute] state=parked bot=%u level=%u quest=%u reason=%s park_seconds=%u parked=%u" "return true;" "same visible park line, true only for a park")
 require_text("${policy}" "inline ParkResult ParkNow(Book& book, std::uint32_t questId, std::uint32_t nowMs, std::uint32_t parkMs, bool abandonable)" "policy park at once")
 require_text("${policy}" "entry->structuralParks = 0;   // twow-repo#601 S1: a counted park breaks a structural series" "a counted park ends a structural series")
-require_text("${failure_policy}" "return rejects.turnInSuppressed + rejects.deathSuppressed + rejects.questLoopSuppressed + rejects.hubFilter +\n        rejects.rangeSkip + rejects.movedAway + rejects.resumeSkipped;" "transient sum (with the hub filter) lives in the policy")
+require_text("${failure_policy}" "return rejects.turnInSuppressed + rejects.deathSuppressed + rejects.questLoopSuppressed + rejects.hubFilter +\n        rejects.rangeSkip + rejects.movedAway + rejects.resumeSkipped + rejects.inactiveReselect;" "transient sum (with the hub filter) lives in the policy")
 
 message(STATUS "QUEST_TURNIN_PARK_CONTRACT=PASS")
