@@ -1705,6 +1705,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
+            {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},
             {"DeathLoop.FarEscape", Value(deathLoopFarEscape)},

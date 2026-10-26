@@ -56,6 +56,7 @@
 #include "strategy/values/PositionValue.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/TravelNode.h"   // twow-repo#575 (PATH-01 F4): WalkToMachineByGraph
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/GrindCapPolicy.h"
 #include "playerbot/SpellPowerGatePolicy.h"
@@ -1369,6 +1370,23 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             bool const freeToTravel = bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() &&
                 !bot->IsBeingTeleported();
 
+            // twow-repo#575 (PATH-01 F2, AiPlayerbot.CustomRaceStartZones, option B): the hearthstone leaves the island with
+            // the goblin - from level 10, once it stands outside the island (flown to Sparkwater), it binds at Razor Hill, as
+            // the rescue teleport did before (the 8.26 rule: a roster bot on its own). Off: nothing.
+            if (startZones && bot->getRace() == sz::GoblinRace && freeToTravel && !HasRealPlayerMaster() &&
+                sz::RebindOffIsland(true, bot->getRace(), bot->GetLevel(),
+                    sz::TeamOfPoint(bot->GetHomebindMapId(), bot->GetHomebindX(), bot->GetHomebindY()) == sz::StartTeam::Horde,
+                    sz::TeamOfPoint(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()) == sz::StartTeam::Horde,
+                    bot->IsCurrentQuest(sz::QuestSolutions, 0)) &&
+                sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+            {
+                WorldLocation const inn(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f);
+                AreaTableEntry const* area = WorldPosition(inn).GetArea();
+                bot->SetHomebindToLocation(inn, area ? area->ID : 0);
+                sLog.outBasic("[Travel] state=island_rebind bot=%u level=%u to_x=%.0f to_y=%.0f area=%u", bot->GetGUIDLow(),
+                    bot->GetLevel(), inn.coord_x, inn.coord_y, area ? area->ID : 0);
+            }
+
             // twow-repo#575 (PATH-01 Q1, AiPlayerbot.CustomRaceStartZones): the goblin chain is a round trip - 41169 is
             // handed in at Nert Blastentom in Sparkwater Port, 41170 back at Taxxlo Rustgate on the island. With one of
             // them in the log the goblin takes the machine of that direction (311 out, 322 back), whatever its level.
@@ -1390,14 +1408,18 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 // twow-repo#575 (wave-0 A/B 16.10.): the walk to the machine leads through the island scorpid field (L4-8) and
                 // the spirit healer stands inside it - goblins carrying 41169 died up to 20 times in a row. A bot in a death
                 // series or a death loop waits; the 8.1 rescue or a later check brings it there.
-                else if (!IsCautious() && !IsInDeathLoop())
+                // F4: on the island the walk follows the travel graph round the field (WalkToMachineByGraph).
+                else if (!IsCautious() && !IsInDeathLoop() &&
+                    (questFlight != sz::IslandPath || !WalkToMachineByGraph(machine.x, machine.y, machine.z, now)))
                     bot->GetMotionMaster()->MovePoint(0, machine.x, machine.y, machine.z, MOVE_PATHFINDING);
             }
             else if ((islandCandidate || HasRealPlayerMaster()) && freeToTravel)
             {
                 // PATH-01 Q1: with CustomRaceStartZones every goblin on its own leaves this way, not only roster members.
                 if (islandCandidate && sz::IslandLeaveAllowed(sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), startZones) &&
-                    !HasRealPlayerMaster() && gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now)))
+                    !HasRealPlayerMaster() && gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(),
+                        sz::IslandLeaveIdle(startZones, questProgress.IdleSeconds(now))) &&
+                    !sz::IslandLeaveBlocked(startZones, bot->GetLevel(), bot->IsCurrentQuest(sz::QuestSolutions, 0)))
                 {
                     float const dist = bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ);
                     if (dist <= gi::BoardDistance)
@@ -1409,7 +1431,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     }
                     // Same field: with CustomRaceStartZones the dying bot waits here too; off, 8.29 is unchanged.
                     else if (!startZones || (!IsCautious() && !IsInDeathLoop()))
-                        bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);
+                    {
+                        // F4: on, along the travel graph round the field; off, 8.29's straight walk.
+                        if (!startZones || !WalkToMachineByGraph(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, now))
+                            bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);
+                    }
                 }
                 else if (Player* const realMaster = HasRealPlayerMaster() ? GetMaster() : nullptr)
                 {
@@ -1539,6 +1565,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             // as before. With ResetOnProgressEvents only a level-up still resets the quest search stage - XP alone does not.
             if (questProgress.Update(snapshot, now))
             {
+                islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue
                 if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents &&
                         sPlayerbotAIConfig.S1For(bot->GetGUIDLow()), levelUp))
                     aiObjectContext->GetValue<int>("manual int", "quest search stage")->Set(0);
@@ -4351,6 +4378,100 @@ void PlayerbotAI::RecordDeathForSeries()
         sLog.outBasic("[DeathSeries] state=purpose_suppressed bot=%u level=%u purpose=%u minutes=%u map=%u zone=%u",
             bot->GetGUIDLow(), bot->GetLevel(), purpose, ai::death_series::PurposeSuppressSeconds / 60,
             bot->GetMapId(), bot->GetZoneId());
+}
+
+// twow-repo#575 (PATH-01 F4, AiPlayerbot.CustomRaceStartZones, option B): the straight walk to the island machine crossed the
+// scorpid field around the spirit healer (wave-0 A/B: 89 of 110 scorpid deaths carried 41169). The travel graph knows the
+// way round it (v3 dropped the link through the field, v3.3 adds the lumber-yard node 1861): one spline = a navmesh path
+// from the bot to its nearest node, then the route's stored walk-link points (complete links only), run like A20's
+// precomputed path. Unitless A* (no hearthstone / portal stubs, no node writes beyond getRoute's own); the shared graph lock
+// is held only while the points are copied. False: no graph walk - the caller walks straight as before, and one
+// machine_walk_fallback line (at most every 10 minutes per bot) names why.
+bool PlayerbotAI::WalkToMachineByGraph(float x, float y, float z, uint32 now)
+{
+    namespace sz = ai::start_zone;
+    if (!sz::UsesGraphWalk(sPlayerbotAIConfig.customRaceStartZones, bot->GetDistance(x, y, z)))
+        return false;
+    // The walk dispatched before is still on its way (another movement replaced it: re-plan).
+    if (now < machineWalkUntil && bot->IsMoving() && bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == POINT_MOTION_TYPE)
+        return true;
+
+    auto fallback = [&](char const* reason)
+    {
+        if (now >= machineWalkFallbackLog)
+        {
+            machineWalkFallbackLog = now + 600;
+            sLog.outBasic("[Travel] state=machine_walk_fallback bot=%u level=%u reason=%s", bot->GetGUIDLow(), bot->GetLevel(), reason);
+        }
+        return false;
+    };
+
+    WorldPosition const botPos(bot);
+    WorldPosition const machinePos(bot->GetMapId(), x, y, z);
+    std::vector<WorldPosition> route;
+    WorldPosition firstNode;
+    uint32 routeNodes = 0;
+    {
+        std::shared_lock<std::shared_timed_mutex> graphLock(sTravelNodeMap.m_nMapMtx, std::defer_lock);
+        if (!graphLock.try_lock_for(std::chrono::milliseconds(50)))
+            return fallback("lock");
+        std::vector<TravelNode*> const goals = sTravelNodeMap.getNodes(machinePos, sz::GraphWalkMachineNodeYards);
+        std::vector<TravelNode*> const starts = sTravelNodeMap.getNodes(botPos, sz::GraphWalkStartYards);
+        if (goals.empty() || starts.empty())
+            return fallback("no_node");
+        if (starts.front() == goals.front())
+            return fallback("at_machine_node");
+        firstNode = *starts.front()->getPosition();
+        TravelNodeRoute nodeRoute = sTravelNodeMap.getRoute(starts.front(), goals.front(), nullptr);
+        std::vector<TravelNode*> const& nodes = nodeRoute.getNodes();
+        for (size_t i = 0; i + 1 < nodes.size(); ++i)
+        {
+            auto const link = nodes[i]->getPaths()->find(nodes[i + 1]);
+            if (link == nodes[i]->getPaths()->end() || link->second.getPathType() != TravelNodePathType::walk ||
+                !link->second.getComplete())
+                return fallback("link");
+            std::vector<WorldPosition> const points = link->second.getPath();
+            if (points.empty())
+                return fallback("link");
+            route.insert(route.end(), route.empty() ? points.begin() : std::next(points.begin()), points.end());
+        }
+        routeNodes = uint32(nodes.size());
+        if (route.size() < 2)
+            return fallback("no_route");
+    }
+
+#ifdef MANGOSBOT_ZERO
+    // From the bot to the first node on the navmesh (nothing to add when it stands at the node).
+    std::vector<G3D::Vector3> pointPath;
+    if (botPos.distance(firstNode) > sz::GraphWalkNodeReach)
+    {
+        PathFinder prefix(bot);
+        prefix.calculate(firstNode.getX(), firstNode.getY(), firstNode.getZ());
+        if (!(prefix.getPathType() & PATHFIND_NORMAL) || prefix.getPath().size() < 2)
+            return fallback("prefix");
+        pointPath.assign(prefix.getPath().begin(), prefix.getPath().end());
+        pointPath.pop_back();   // the node itself is the route's first point
+    }
+    else
+        pointPath.push_back(G3D::Vector3(botPos.getX(), botPos.getY(), botPos.getZ()));
+    float prefixLength = 0.0f;
+    for (std::size_t i = 1; i < pointPath.size(); ++i)
+        prefixLength += (pointPath[i] - pointPath[i - 1]).length();
+    std::vector<G3D::Vector3> const routePoints = WorldPosition().toPointsArray(route);
+    std::size_t const routeStart = pointPath.size();
+    pointPath.insert(pointPath.end(), routePoints.begin(), routePoints.end());
+    for (std::size_t i = routeStart; i < pointPath.size(); ++i)
+        bot->UpdateAllowedPositionZ(pointPath[i].x, pointPath[i].y, pointPath[i].z);
+    float const length = prefixLength + WorldPosition().getPathLength(route);
+    float const speed = std::max(bot->GetSpeed(MOVE_RUN), 1.0f);
+    bot->GetMotionMaster()->MovePoint(0, x, y, z, MOVE_RUN_MODE | MOVE_PATHFINDING, pointPath, false, false);
+    machineWalkUntil = now + uint32(length / speed) + 10;
+    sLog.outBasic("[Travel] state=machine_walk bot=%u level=%u nodes=%u points=%u yd=%.0f", bot->GetGUIDLow(), bot->GetLevel(),
+        routeNodes, uint32(pointPath.size()), length);
+    return true;
+#else
+    return fallback("build");
+#endif
 }
 
 void PlayerbotAI::UpdateTankPathDiag(uint32 now)
