@@ -523,6 +523,67 @@ std::vector<int32> ai::NearProfessionTrainers(PlayerbotAI* ai, uint32 radius, Pr
     return inRadius.empty() ? inRadius : ProfessionTripTargets(ai, inRadius, TravelDestinationPurpose::Trainer, drops);
 }
 
+// P1-v (OB-00 26.10.2026, M1r run 3): GetPartitions passes every point through IsLocationLevelValid, whose fight gate (bot
+// level - 2 - deaths against the area level, an unknown area refused) applies to trainers and vendors too - a level 5-9 bot
+// never got the Goldshire trainer, the list came back empty and SetBestTarget failed without a line (20 requests, 0
+// targets). The entries are vetted already (ProfessionTripTargets: friendly, reachable, P1-u home zone); the same closest
+// partition per destination as GetPartitions, its nearest point, no fight gate.
+PartitionedTravelList ai::ProfessionTripPartitions(WorldPosition const& center, std::vector<uint32> const& partitions,
+    PlayerTravelInfo const& info, TravelDestinationPurpose purpose, std::vector<int32> const& entries, uint32 homeZone)
+{
+    // GetPartitions' default distance cap (pre-review: without it a level 10+ bot could get a trainer on the other continent).
+    float const maxDistance = 10000.0f;
+    PartitionedTravelList list;
+    sTravelMgr.GetPartitionsLock();
+    for (TravelDestination* destination : sTravelMgr.GetDestinations(info, uint32(purpose), entries, false, maxDistance))
+    {
+        std::pair<uint32, std::vector<WorldPosition*>> const range = destination->GetClosestPartition(center, partitions);
+        if (!range.first)
+            continue;
+
+        WorldPosition* nearest = nullptr;
+        float nearestDistance = 0.0f;
+        for (WorldPosition* position : range.second)
+        {
+            if (!position || (homeZone && !ai::profession_travel::SpawnInHomeZone(homeZone,
+                    { TerrainManager::GetZoneIdByAreaFlag(position->getAreaFlag(), position->getMapId()) })))
+                continue;
+            float const distance = position->distance(center);
+            if (distance > maxDistance)
+                continue;
+            if (!nearest || distance < nearestDistance)
+            {
+                nearest = position;
+                nearestDistance = distance;
+            }
+        }
+        // GetPartitions keeps only a point with a distance above 0 (a bot on the spot still gets its trip).
+        if (nearest)
+            list[range.first].push_back(TravelPoint(destination, nearest, std::max(nearestDistance, 0.1f)));
+    }
+    sTravelMgr.GetPartitionsLock(false);
+    return list;
+}
+
+void ai::ProfessionTripNoTarget(PlayerbotAI* ai, std::string const& travelPurpose, uint32 ranges, uint32 points,
+    std::string const& rejects)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    Player* bot = ai->GetBot();
+    bool const trainerTrip = travelPurpose != "tool vendor";
+    std::string const key = trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
+    char const* const kind = trainerTrip ? "trainer" : "tool";
+    char const* const path = travelPurpose == "trainer profession near" ? "near" : "gap";
+    sLog.outBasic("[ProfTravel] state=no_target kind=%s bot=%u level=%u cohort=%c ranges=%u points=%u path=%s rejects=%s",
+        kind, bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), ranges, points, path, rejects.c_str());
+
+    if (!AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
+        return;
+    SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, 0);
+    sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=no_target trip_s=0 hold_over_s=0 path=%s",
+        kind, bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), path);
+}
+
 EntryGuidps EntryGuidpsValue::Calculate()
 {
     EntryGuidps guidps;

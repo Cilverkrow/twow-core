@@ -1824,6 +1824,11 @@ AiPlayerbot.ProfessionTraining.Travel = 0
 # not the sub-area (Elwynn Forest with Northshire and Goldshire, not Stormwind City); without one there is no trip and the
 # entry counts as dropped_home_zone= on the request and gate lines (zone= = the bot's zone). Fixed, no key. Each trip that
 # gets a destination writes "[ProfTravel] state=target kind=... entry= zone= target_zone= map= target_map= distance= path=".
+# P1-v (OB-00 26.10.2026, M1r run 3: 20 requests, no target): a profession trip builds its destination list without the fight
+# gate of the generic search (bot level - 2 - deaths against the area level, an unknown area refused - it dropped every
+# trainer of a level 5-9 bot); the candidates are vetted already (friendly, reachable, home zone). A trip whose list gives
+# no target writes "[ProfTravel] state=no_target kind= ... ranges= points= path= rejects=" and ends at once with
+# "state=end ... reason=no_target" (before: "lost" an hour later). The hourly limit stays spent.
 AiPlayerbot.ProfessionTraining.NearRadius = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
@@ -1845,6 +1850,18 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # trainers (not hostile, a reachable spawn; P1-b2). "[ProfTravel] state=request kind=tool".
 # Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionUse.ToolBuy = 0
+# twow-repo#333 P1-v (OB-00 26.10.2026, BUG FIX behind a switch: it changes the RPG travel of every bot; profile 1 only after a
+# cand A/B with quest metrics and the owner's go): an RPG target (vendor, repairer, trainer, mailbox, auctioneer, named RPG
+# target) is "not possible" for a bot when its area is more than 5 levels above it. That area level was read at the default
+# position of GuidPosition(HIGHGUID_UNIT, entry) - map 0 at the origin, not the spawn - so one unrelated area decided for
+# every such target of every bot. With the mode on for the bot it is read at the spawn nearest to the bot (a sub-area
+# without a level takes its zone's); an unknown level never refuses, as before. Quest givers, takers and objectives have
+# their own checks and are not affected. With any mode set: "[RpgAreaLevel] state=trip purpose=Vendor|Repair|Trainer|AH|
+# Mail|GenericRpg bot= level= cohort= arm= entry= zone= target_area_level= distance=" per RPG trip (arm=1: the spawn rule
+# applies to the bot) and once per server run "[RpgAreaLevel] state=origin area_level=" (the level the old rule read).
+# Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other
+# value acts like 0.
+AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 0
 # RealReagents (twow-repo#485): under the item cheat (RndBotCheats "item") every
 # recipe counts as having its reagents, a random one is queued and the core
 # fails the cast silently. 1 = check reagents and tools in the bags and cast

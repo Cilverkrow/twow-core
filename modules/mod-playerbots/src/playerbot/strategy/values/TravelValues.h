@@ -267,4 +267,15 @@ namespace ai
     };
     std::vector<int32> NearProfessionTrainers(PlayerbotAI* ai, uint32 radius, ProfessionTripDrops* drops = nullptr,
         NearTrainerCounts* counts = nullptr);
+
+    // P1-v (M1r run 3: 20 requests, no target): the destination list of a profession trip, built like GetPartitions (closest
+    // partition per destination, its nearest point) but without the fight gate of IsLocationLevelValid; homeZone != 0 (P1-u)
+    // keeps only the points in that zone. Safe in the async request.
+    class PlayerTravelInfo;
+    PartitionedTravelList ProfessionTripPartitions(WorldPosition const& center, std::vector<uint32> const& partitions,
+        PlayerTravelInfo const& info, TravelDestinationPurpose purpose, std::vector<int32> const& entries, uint32 homeZone);
+    // P1-v: a profession trip whose list gave no target - one "[ProfTravel] state=no_target" line with the reject counts, and
+    // the open trip ends at once (reason=no_target) instead of an hour later as "lost". The hourly limit stays spent.
+    void ProfessionTripNoTarget(PlayerbotAI* ai, std::string const& travelPurpose, uint32 ranges, uint32 points,
+        std::string const& rejects);
 }

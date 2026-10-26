@@ -13,6 +13,7 @@
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
 #include <algorithm>
 #include <vector>
@@ -124,6 +125,10 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     // IsActive (F) read it only as a value. BandLadder 0 and every other bot: false / 0, as before.
     bandGiverFilter = ai->QuestBandGiverFilter();
     bandGreyLevel = bandGiverFilter ? MaNGOS::XP::GetGrayLevel(level) : 0;
+
+    // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the RPG area level bit, here on the bot thread; read by
+    // RpgTravelDestination::IsPossible only as a value. Mode 0: false for every bot, as before.
+    rpgAreaFromSpawn = ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, player->GetGUIDLow());
 }
 
 std::string EntryTravelDestination::GetShortName() const
@@ -604,8 +609,27 @@ bool RpgTravelDestination::IsPossible(const PlayerTravelInfo& info) const
     // spiral at the local high-level graveyard. Mirrors the grind-target level gate
     // (GrindTravelDestination::IsPossible). Margin matches the quest-level gate (+5).
     // getAreaLevel() returns -1/-2 for unknown areas; only reject on a real level.
-    int32 destAreaLevel = GuidPosition(HIGHGUID_UNIT, GetEntry()).getAreaLevel();
-    if (destAreaLevel > 0 && destAreaLevel > (int32)info.GetLevel() + 5)
+    // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn, RpgAreaLevelPolicy.h): GuidPosition(HIGHGUID_UNIT, entry)
+    // sits at the default position (map 0, origin), not at the spawn. With the switch on for the bot: the spawn nearest to it
+    // (its cached area flag; a sub-area without a level takes its zone's).
+    int32 destAreaLevel = 0;
+    if (info.UsesRpgAreaFromSpawn())
+    {
+        std::vector<WorldPosition*> const& spawns = GetPoints();
+        std::vector<bool> onBotMap;
+        std::vector<float> sqDistances;
+        for (WorldPosition* spawn : spawns)
+        {
+            onBotMap.push_back(spawn && spawn->getMapId() == info.GetPosition().getMapId());
+            sqDistances.push_back(spawn ? spawn->sqDistance2d(info.GetPosition()) : 0.0f);
+        }
+        std::size_t const nearest = ai::rpg_area_level::NearestSpawn(onBotMap, sqDistances);
+        if (nearest != ai::rpg_area_level::npos && spawns[nearest])
+            destAreaLevel = spawns[nearest]->getAreaLevelOrParent();
+    }
+    else
+        destAreaLevel = GuidPosition(HIGHGUID_UNIT, GetEntry()).getAreaLevel();
+    if (ai::rpg_area_level::TooHighForBot(destAreaLevel, info.GetLevel()))
         return false;
 
     //Horde pvp baracks
