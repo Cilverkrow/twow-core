@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "DestroyItemAction.h"
+#include "playerbot/DestroyItemPolicy.h"
 #include "playerbot/strategy/values/ItemCountValue.h"
 
 using namespace ai;
@@ -55,7 +56,14 @@ bool SmartDestroyItemAction::Execute(Event& event)
         std::set<Item*> items;
         FindItemsToTradeByQualityVisitor visitor(ITEM_QUALITY_POOR, 5);
         ai->InventoryIterateItems(&visitor, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);
-        items.insert(visitor.GetResult().begin(), visitor.GetResult().end());
+        // OB-10 26.10. (DestroyItemPolicy.h): one stack per item id - DestroyItem below destroys every stack of the id,
+        // a second Item* of the same id would be read after it was destroyed.
+        std::vector<Item*> const found(visitor.GetResult().begin(), visitor.GetResult().end());
+        std::vector<uint32> foundIds;
+        for (Item* stack : found)
+            foundIds.push_back(stack->GetProto()->ItemId);
+        for (std::size_t i : ai::destroy_item::FirstOfEachId(foundIds))
+            items.insert(found[i]);
 
         for (auto& item : items)
         {
