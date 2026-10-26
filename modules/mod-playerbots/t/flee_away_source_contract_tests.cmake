@@ -4,6 +4,8 @@
 # Pins: switch default 0, > 2 = off, parsed mode in [ConfigEcho]; pure policy; the new block in front of the unchanged old chase
 # branch (also pinned by the MFB contract), only with the switch; the MFB-W record in both new paths; FleeMultiplier's record
 # untouched; the dead-zone rule only for hunters whose pet is the enemy's victim, before the caster exemption; report only when on.
+# Scope (hunter restart A/B 26.10.2026, OB-00): Rotation.FleeAway.Scope default 0 (every bot, as before), > 2 = 0, echoed; the
+# block needs the mode AND the scope, a bot outside it is counted and takes the unchanged old chase; scope and out_of_scope in the line.
 # Every check runs once on the real sources and once per negative probe (a mutated copy that must fail).
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
@@ -71,6 +73,10 @@ function(check policy move_cpp range_h lastmove_h config_h config_cpp dist mgr_c
   need("${config_h}" "uint32 rotationFleeAway = 0;" "config member, default 0")
   need("${config_cpp}" "rotationFleeAway = config.GetIntDefault(\"AiPlayerbot.Rotation.FleeAway\", 0);   // twow-repo#602 (c)\n    if (rotationFleeAway > 2)\n        rotationFleeAway = 0;" "config read, > 2 = off")
   need("${config_cpp}" "{\"Rotation.FleeAway\", Value(rotationFleeAway)}," "parsed mode in [ConfigEcho] (owner rule #615)")
+  need("${dist}" "\nAiPlayerbot.Rotation.FleeAway.Scope = 0\n" "dist scope key, default 0 (every bot)")
+  need("${config_h}" "uint32 rotationFleeAwayScope = 0;" "scope member, default 0")
+  need("${config_cpp}" "rotationFleeAwayScope = config.GetIntDefault(\"AiPlayerbot.Rotation.FleeAway.Scope\", 0);   // twow-repo#602 (c) scope\n    if (rotationFleeAwayScope > 2)\n        rotationFleeAwayScope = 0;" "scope read, > 2 = 0")
+  need("${config_cpp}" "{\"Rotation.FleeAway.Scope\", Value(rotationFleeAwayScope)}," "parsed scope in [ConfigEcho]")
 
   # 2. Pure policy (std + the cohort rule only) and its rules.
   string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
@@ -84,13 +90,15 @@ function(check policy move_cpp range_h lastmove_h config_h config_cpp dist mgr_c
   need("${policy}" "float a = enemyToBot - enemyFacing;" "angle relative to the enemy's facing")
   need("${policy}" "return chasing && sameEnemy && sinceIssueMs < ReissueMs;" "keep only the same enemy's running chase inside ReissueMs")
   need("${policy}" "return targetDistance <= DeadZone + DeadZoneMargin + combatReach;" "dead zone")
+  need("${policy}" "        case 1:\n            return hunter;\n        case 2:\n            return hunter || petOut;\n        default:\n            return true;" "scope 1 hunters, 2 hunters + pet out, else every bot")
 
   # 3. Flee(): the new block in the chase branch of bots without a real master, in front of the unchanged old one.
   between("${move_cpp}" "    if (!ai->HasRealPlayerMaster() && !ai->IsRealPlayer(target))" "    // Generate a position to flee" chase)
   if(chase STREQUAL "")
     list(APPEND errors "chase branch not found")
   endif()
-  between("${chase}" "        if (ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow()))\n        {" "\n        }\n" block)
+  need("${chase}" "        bool fleeAway = ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow());\n        if (fleeAway && !ai::flee_away::InScope(sPlayerbotAIConfig.rotationFleeAwayScope, bot->getClass() == CLASS_HUNTER, bot->GetPet() != nullptr))\n        {\n            ai::flee_away::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0].outOfScope.fetch_add(1, std::memory_order_relaxed);\n            fleeAway = false;\n        }\n        if (fleeAway)\n        {" "the gate: mode and scope, a bot outside the scope counted and sent to the old chase")
+  between("${chase}" "        if (fleeAway)\n        {" "\n        }\n" block)
   if(block STREQUAL "")
     list(APPEND errors "FleeAway block (needs the switch) not found")
   endif()
@@ -117,6 +125,8 @@ function(check policy move_cpp range_h lastmove_h config_h config_cpp dist mgr_c
   # 5. Report once per minute after [MeleeFleeBreak], nothing when off.
   before("${mgr_cpp}" "    ReportMeleeFleeBreak();" "    ReportFleeAway();" "report after ReportMeleeFleeBreak")
   need("${mgr_cpp}" "if (!sPlayerbotAIConfig.rotationFleeAway || now < lastReport + 60)" "report only when on")
+  need("${mgr_cpp}" "if (!issued && !kept && !reaimed && !deadZoneFlee && !deadZoneQuiet && !outOfScope)" "out-of-scope passes count as activity")
+  need("${mgr_cpp}" "dead_zone_quiet=%llu scope=%u out_of_scope=%llu\"" "scope and out_of_scope at the end of the line")
 
   set(${out_var} "${errors}" PARENT_SCOPE)
 endfunction()
@@ -144,7 +154,14 @@ function(probe label var from to)
 endfunction()
 probe("default on" dist "\nAiPlayerbot.Rotation.FleeAway = 0\n" "\nAiPlayerbot.Rotation.FleeAway = 1\n")
 probe("unknown mode kept" config_cpp "    if (rotationFleeAway > 2)\n        rotationFleeAway = 0;" "")
-probe("block without the switch" move_cpp "        if (ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow()))\n        {" "        if (true)\n        {")
+probe("block without the switch" move_cpp "bool fleeAway = ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow());" "bool fleeAway = true;")
+probe("scope default narrowed" dist "\nAiPlayerbot.Rotation.FleeAway.Scope = 0\n" "\nAiPlayerbot.Rotation.FleeAway.Scope = 1\n")
+probe("unknown scope kept" config_cpp "    if (rotationFleeAwayScope > 2)\n        rotationFleeAwayScope = 0;" "")
+probe("scope ignored" move_cpp "if (fleeAway && !ai::flee_away::InScope(" "if (false && !ai::flee_away::InScope(")
+probe("scope 1 lets everybody in" policy "        case 1:\n            return hunter;" "        case 1:\n            return true;")
+probe("out of scope does not flee" move_cpp "            fleeAway = false;\n" "            return true;\n")
+probe("out of scope not counted" move_cpp "            ai::flee_away::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0].outOfScope.fetch_add(1, std::memory_order_relaxed);\n" "")
+probe("line without the scope" mgr_cpp " scope=%u out_of_scope=%llu\"" "\"")
 probe("world angle kept" move_cpp "ai::flee_away::RelativeAngle(target->GetAngle(bot), target->GetOrientation())" "WorldPosition(bot).getAngleTo(target)")
 probe("old chase changed" move_cpp "        mm->MoveChase(target, distance, WorldPosition(bot).getAngleTo(target));\n        RecordFleeBreakDispatch" "        mm->MoveChase(target, distance, 0.0f);\n        RecordFleeBreakDispatch")
 probe("kept chase not recorded" move_cpp "                count.kept.fetch_add(1, std::memory_order_relaxed);\n                RecordFleeBreakDispatch(ai, bot, lm, now);   // twow-repo#602 MFB-W\n" "                count.kept.fetch_add(1, std::memory_order_relaxed);\n")
