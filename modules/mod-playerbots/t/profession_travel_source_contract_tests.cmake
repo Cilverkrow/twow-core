@@ -77,6 +77,13 @@ require_text("${values_cpp}" "return ai::profession_travel::InQuestGap(now, back
 require_text("${values_cpp}" "reasonLasts && ProfessionTripTurnInWaiting(bot, AI_VALUE(TravelTarget*, \"travel target\"))," "a started trip ends when a turn-in opens")
 require_text("${values_cpp}" "ai::profession_travel::TripHolds(now, holdUntil));" "the hold ends at its hold-until time")
 require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=%s trip_s=%u hold_over_s=%u\"," "one end line per trip with hold_over_s")
+# P1-b3 (CLI-Deep R-f 25.10.2026): a lost trip counts to its last hold check that held, not to the next request.
+require_order("${values_cpp}" "SET_AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kHeldAtSuffix, int(now));\n        return true;" "SET_AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kOpenSuffix, 0);" "a hold check that still holds stores its time")
+require_text("${policy}" "return heldAt > startedAt ? heldAt : startedAt;" "lost end = the last hold that held, else the start")
+require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u seen_after_s=%u\"," "the lost line with its delay")
+require_order("${choose_cpp}" "uint32 const endedAt = std::min(now, ai::profession_travel::LostEndAt(startedAt," "                endedAt - startedAt,\n                ai::profession_travel::HoldOverSeconds(endedAt," "trip_s and hold_over_s of a lost trip count to its end")
+require_order("${choose_cpp}" "SET_AI_VALUE2(int, \"manual int\", key, int(now));\n        SET_AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kHeldAtSuffix, 0);" "        if (entries.empty())\n            return false;" "a new request clears the last hold time")
+forbid_text("${choose_cpp}" "ai::profession_travel::HoldOverSeconds(now, uint32(std::max(0, AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kBackoffEndSuffix)))));" "the old lost line counted to the next request")
 require_text("${policy}" "return afterBackoff < cap ? afterBackoff : cap;" "hold = backoff end + 10 min, at most 30 min")
 require_text("${policy}" "constexpr std::uint32_t kHoldAfterBackoffSeconds = 600;" "10 min after the backoff (CLI-Deep)")
 require_text("${values_cpp}" "if (!sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell))" "ranks only, no recipe trips")
