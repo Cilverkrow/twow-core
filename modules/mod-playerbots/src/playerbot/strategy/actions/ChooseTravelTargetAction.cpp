@@ -339,13 +339,13 @@ bool NoteNoRouteTurnIns(AiObjectContext* context, TravelTarget* travelTarget, bo
 enum class CandidateSkip
 {
     None,
+    SkillLocked,   // twow-repo#601 SkipSkillLockedObjectives (checked last in CandidateSkipOf; the enum order is not the check order)
     TurnInSuppressed,
     DeathSuppressed,
     QuestLoopSuppressed,
     OtherMapGather,
     OtherMapGrind,
     GatherPurposeSuppressed,
-    SkillLocked,
 };
 
 // twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives, QuestSkillLockPolicy.h): a game object quest objective whose lock
