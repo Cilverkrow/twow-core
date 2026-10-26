@@ -109,7 +109,9 @@ namespace ai
 
             // twow-repo#629 G1 (ReleaseVeto.h): a module keeps this corpse where it lies (DungeonClear.StayDeadInRun:
             // a dead member of an active dungeon run waits for the healer instead of releasing out of the instance).
-            if (ai::release_veto::Vetoed(bot))
+            // The predicate bounds the wait itself, by the seconds since the death (-1 = unknown).
+            time_t const vetoDeathTime = AI_VALUE(time_t, "death time");
+            if (ai::release_veto::Vetoed(bot, vetoDeathTime > 0 ? master_wait::SecondsSinceDeath(time(nullptr), vetoDeathTime, 0) : -1))
                 return false;
 
             if (!bot->GetGroup())

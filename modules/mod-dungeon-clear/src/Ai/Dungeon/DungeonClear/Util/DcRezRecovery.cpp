@@ -376,6 +376,22 @@ namespace DcRezRecovery
         return false;
     }
 
+    bool LivingRezzerOnMap(Player* bot)
+    {
+        Map* map = bot ? bot->FindMap() : nullptr;
+        Group* group = bot ? bot->GetGroup() : nullptr;
+        if (!map || !group)
+            return false;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (member && member != bot && member->IsInWorld() && member->FindMap() == map && member->IsAlive() &&
+                IsRezClass(member))
+                return true;
+        }
+        return false;
+    }
+
     bool IsElectedRezzer(Player* bot)
     {
         // Cheapest read first — this runs on every follower rung, every tick,

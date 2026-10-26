@@ -21,9 +21,13 @@ constexpr bool ClearDeathLoop(bool on, bool alive, bool inDungeon, bool runActiv
 // `.dc test` party (externally managed - the run flag may already be cleared after a wipe), stays a corpse in the dungeon
 // for the healer's post-combat rez; the core never auto-releases inside instances. Asked by the stock auto release
 // through playerbot/ReleaseVeto.h (no override of the stock action name - the 22.08. crash path).
-constexpr bool StayDead(bool on, bool inDungeon, bool runActive, bool testParty)
+// Bounded (pre-review 26.10.): only while a living rez-class member is on the same map, and only for maxSeconds
+// (DungeonClear.StayDeadMaxSecs) after the death; an unknown death time (deadSeconds < 0) releases. Otherwise a
+// wipe of a run no living bot can disable, or survivors none of whom can rez, would leave the corpses vetoed with no end.
+constexpr bool StayDead(bool on, bool inDungeon, bool runActive, bool testParty, bool rezzerAlive,
+                        long long deadSeconds, long long maxSeconds)
 {
-    return on && inDungeon && (runActive || testParty);
+    return on && inDungeon && (runActive || testParty) && rezzerAlive && deadSeconds >= 0 && deadSeconds < maxSeconds;
 }
 
 // One loot-yield evaluation (follow-tank, hold-at-camp, the tank's advance). The yield hands the tick to the loot actions

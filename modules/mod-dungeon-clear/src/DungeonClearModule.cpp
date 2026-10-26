@@ -70,6 +70,7 @@
 #include "DcAutoRun.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // CLI-GRP G1 dry-r3 (SuppressDeathLoopEvac), g1n (StayDeadInRun)
 #include "playerbot/ReleaseVeto.h"   // CLI-GRP g1n: the release veto (StayDeadInRun)
+#include "Ai/Dungeon/DungeonClear/Util/DcRezRecovery.h"   // CLI-GRP g1n: StayDeadInRun waits only for a living rezzer
 #include "Ai/Dungeon/DungeonClear/Data/DcRosterFile.h"
 
 // Per-class context registries — each owns its own shared static lists.
@@ -744,14 +745,16 @@ namespace
 {
     // CLI-GRP g1n 26.10.2026 (DungeonClear.StayDeadInRun, DcRunRobustPolicy.h): the release veto playerbots' stock auto
     // release asks (playerbot/ReleaseVeto.h). Called on the dead bot's own thread; the cheap checks first, the key only
-    // in a dungeon, the run lookup only with the key on.
-    bool StayDeadInRunVeto(Player* bot)
+    // in a dungeon, the run lookup only with the key on. Bounded: a living rezzer on this map and StayDeadMaxSecs.
+    bool StayDeadInRunVeto(Player* bot, std::int64_t deadSeconds)
     {
         Map* map = bot->FindMap();
         if (!map || !map->IsDungeon() || !DcSettings::GetBool(bot, "StayDeadInRun"))
             return false;
         return DcRunRobust::StayDead(true, true, DcStrategyGate::RunActive(bot),
-                                     sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow()));
+                                     sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow()),
+                                     DcRezRecovery::LivingRezzerOnMap(bot), deadSeconds,
+                                     DcSettings::GetUInt(bot, "StayDeadMaxSecs"));
     }
 }
 
