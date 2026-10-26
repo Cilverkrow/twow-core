@@ -140,6 +140,7 @@ set(entries
   "Rotation.DarkRuneGate|rotationDarkRuneGate"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "ProfessionTraining.Travel|professionTrainingTravel"
+  "ProfessionTraining.NearRadius|professionTrainingNearRadius"
   "ProfessionUse.ToolBuy|professionUseToolBuy"
   "Gather.QuestHerbFilter|gatherQuestHerbFilter"
   "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
