@@ -124,3 +124,56 @@ require_text("${manager}" "[BotGroup] kind=adhoc event=minute passes=%u candidat
 
 # Manager state is world-thread only (no per-tick lock).
 require_text("${manager_header}" "std::unordered_map<std::uint32_t, Track> tracks;  // world thread only" "world-thread state")
+
+# twow-repo#365 HelpUntilDone (owner 25.10.2026, default 0): whoever is done follows an open member until the group is done.
+read_source("aiplayerbot.conf.dist.in" config_template)
+require_text("${config_source}" "botGroupsAdhocHelpUntilDone = config.GetBoolDefault(\"AiPlayerbot.BotGroups.AdHoc.HelpUntilDone\", false);" "HelpUntilDone key, default 0")
+require_text("${config_template}" "AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0" "HelpUntilDone documented")
+require_text("${manager}" "facts.helpUntilDone = sPlayerbotAIConfig.botGroupsAdhocHelpUntilDone;" "the switch reaches the leave facts")
+require_text("${manager}" "if (HelpsGroup(facts) && helped)" "helper only with an open member to follow")
+require_text("${manager}" "            ai->SetQuestGroupRole(1);
+            ai->SetMaster(helped);
+            ai->RequestGroupAi(group_ai_refresh::Follower);" "the follower set on the bot's own thread, on every change")
+require_text("${manager}" "[BotGroup] kind=adhoc event=help bot=%u group=%u quest=%u objective=%u follows=%u first=%u thread=world" "help line")
+
+# OB-10 review #660 B1: the helper role goes on every way out - the manager's own helper set, never found by role (S7
+# followers carry role 1 too), a sweep of every helper not seen helping in the pass, and the release after a reload to 0.
+require_text("${manager_header}" "std::unordered_map<std::uint32_t, std::uint32_t> helpers;" "own helper set")
+require_text("${manager}" "        helpingPass.insert(bot->GetGUIDLow());" "a helper is marked when seen helping")
+require_text("${manager}" "    if (helpers.erase(bot->GetGUIDLow()))
+    {
+        ai->SetQuestGroupRole(0);
+        ai->SetMaster(nullptr);
+    }" "the ad-hoc leave drops the role of its own helpers only")
+forbid_text("${manager}" "GetQuestGroupRole() != 0" "a helper found by its role")
+forbid_text("${manager}" "GetQuestGroupRole() == 1" "a helper found by its role")
+require_text("${manager}" "    if (pass.next >= pass.guids.size())
+    {" "the pass end")
+require_order("${manager}" "    if (pass.next >= pass.guids.size())
+    {" "        SweepHelpers(bots);
+        helpingPass.clear();
+        Pairs(bots, now);" "the sweep once per pass after the leave rules of all slices (every exit path seen), before the pairs")
+string(FIND "${manager}" "void WorldThreadManager::ScanSlice(" ss_a)
+string(FIND "${manager}" "void WorldThreadManager::Pairs(" ss_b)
+if(ss_a EQUAL -1 OR ss_b EQUAL -1 OR NOT ss_a LESS ss_b)
+  message(FATAL_ERROR "#628 ad-hoc world thread: ScanSlice before Pairs not found")
+endif()
+math(EXPR ss_len "${ss_b} - ${ss_a}")
+string(SUBSTRING "${manager}" ${ss_a} ${ss_len} scan_slice_body)
+forbid_text("${scan_slice_body}" "SweepHelpers" "a sweep per slice (it would release the helpers of the other slices)")
+require_text("${manager}" "        facts.s7Owns = quest_groups::OwnsBot(it->first);" "S7 probe before the role is touched")
+require_order("${manager}" "        HelperExit const exit = DecideHelperExit(facts);" "            ai->SetQuestGroupRole(0);
+        if (exit == HelperExit::Release)" "the decision before any role change")
+require_text("${manager}" "        if (exit == HelperExit::RoleOnly || exit == HelperExit::Release)
+            ai->SetQuestGroupRole(0);" "role 0 only on RoleOnly and Release (Forget = S7 or logged out: untouched)")
+require_text("${manager}" "            ai->RequestGroupAi(group ? group_ai_refresh::JoinReset : group_ai_refresh::LeaveReset);" "release: the joined or the left strategies back")
+require_text("${manager}" "[BotGroup] kind=adhoc event=help_end bot=%u group=%u exit=%s in_group=%u thread=world" "help_end line")
+require_text("${mgr}" "        else if (ai::adhoc_group::WorldManager().HasHelpers())
+            ai::adhoc_group::WorldManager().ReleaseHelpers(GetAllBots());" "helpers released after a reload to 0")
+read_source("QuestGroupWorld.h" s7_header)
+read_source("QuestGroupWorld.cpp" s7_manager)
+require_text("${s7_header}" "bool Owns(std::uint32_t guid) const { return memberOf.count(guid) != 0 || staged.count(guid) != 0; }" "S7 ownership: its members and the bots in its StagedOps queues")
+require_text("${s7_manager}" "bool OwnsBot(std::uint32_t guid)
+{
+    return WorldManager().Owns(guid);
+}" "S7 ownership query")

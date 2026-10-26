@@ -158,6 +158,7 @@ set(entries
   "BotGroups.Enabled|botGroupsEnabled"
   "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
   "BotGroups.AdHoc.ScanSlices|botGroupsAdhocScanSlices"
+  "BotGroups.AdHoc.HelpUntilDone|botGroupsAdhocHelpUntilDone"
   "QuestGroups.Enable|questGroupsEnable"
   "QuestGroups.ScanSlices|questGroupsScanSlices"
   "QuestGroups.StagedOps|questGroupsStagedOps")

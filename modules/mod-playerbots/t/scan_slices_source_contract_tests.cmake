@@ -66,7 +66,11 @@ require_text("${policy}" "std::uint32_t const n = std::max<std::uint32_t>(1, sli
 require_text("${adhoc}" "ScanSlice(bots, scan_slice::SliceEnd(pass.guids.size(), pass.next, sPlayerbotAIConfig.botGroupsAdhocScanSlices), now);" "ad-hoc slice")
 require_text("${adhoc}" "    if (pass.next >= pass.guids.size())
     {
-        Pairs(bots, now);" "pairs once all slices are done")
+        // #365 HelpUntilDone: the leave rules of every slice ran, so every helper still helping was seen. Before the pairs:
+        // a released helper joins another group with its own strategies back.
+        SweepHelpers(bots);
+        helpingPass.clear();
+        Pairs(bots, now);" "pairs once all slices are done (after the #365 helper sweep)")
 region("${adhoc}" "void WorldThreadManager::ScanSlice(" "\n}\n" scan_slice)
 require_order("${scan_slice}" "if (CheckLeave(bot, group, now))" "ObjectiveKey const key = inAdhoc ? entry.key : CurrentObjective(bot);" "leave rules of the slice before its candidates (old order)")
 require_text("${scan_slice}" "pass.buckets[BucketKey(bot, key)].push_back({ bot->GetGUIDLow(), inAdhoc ? group->GetId() : 0u, key });" "candidate by id")

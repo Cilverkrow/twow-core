@@ -1168,6 +1168,11 @@ AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
 # pairs are formed once all slices are done. 0 or 1 = the whole pass in one update.
 # Only if the pass itself costs the world tick too much (minute line scan_us_max).
 AiPlayerbot.BotGroups.AdHoc.ScanSlices = 0
+# #365 (owner 25.10.2026, world-thread manager only - WorldThread = 1): 1 = a member whose own objective is done stays as a
+# helper while another member still works on it - follower role, it follows the nearest open member (re-picked when that one
+# is done), its idle clock is the group's freshest progress - and leaves with reason=group_done once nobody is left open.
+# "[BotGroup] kind=adhoc event=help" when a bot starts helping or switches whom it follows. 0 = leave at objective_done.
+AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never

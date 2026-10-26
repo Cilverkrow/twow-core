@@ -831,6 +831,7 @@ public:
     bool botGroupsAdhocWorldThread = false;
     // twow-repo#628: the manager pass spread over this many updates (0/1 = the whole pass in one update).
     uint32 botGroupsAdhocScanSlices = 0;
+    bool botGroupsAdhocHelpUntilDone = false;  // twow-repo#365 (owner 25.10.): whoever is done follows a member with the objective open until the group is done
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
