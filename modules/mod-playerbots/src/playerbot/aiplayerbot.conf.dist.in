@@ -1000,6 +1000,14 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 # Profile value for the roster: 3 / 3600.
 AiPlayerbot.QuestWorkTimeouts.Max = 0
 AiPlayerbot.QuestWorkTimeouts.CooldownSeconds = 3600
+# twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a quest objective that is a game object never went inactive (the "no living
+# target in sight" check is for creatures only), so at a looted, despawned consumable chest the bot stood in WORK until the work
+# timeout (cohort B: 266 game object work timeouts in 3 h). With GameObjectPresence the objective the bot is working at counts only
+# while a spawned object of its entry is in sight (lootable, being opened, or a chest waiting for its restock); else it ends as
+# destination_inactive, and
+# QuestLoop.InactiveAfterProgress / InactiveReselect / MaxFailures take over as for creatures.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.GameObjectPresence = 0
 
 # twow-repo#581 (QUEST-LOOP-01, owner 11.10.2026): bots looped on emptied quest camps (no living target in sight ->
 # 60 s cooldown -> same camp). QL-1: MaxFailures = N > 0: inactive drops and work timeouts of a quest's objectives

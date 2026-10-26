@@ -702,6 +702,13 @@ bool PlayerbotAIConfig::Initialize()
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
     questWorkTimeoutsMax = (uint32)config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.Max", 0);
     questWorkTimeoutsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.CooldownSeconds", 3600));
+    // twow-repo#601 GameObjectPresence: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopGameObjectPresence = config.GetIntDefault("AiPlayerbot.QuestLoop.GameObjectPresence", 0);
+    if (questLoopGameObjectPresence > 2)
+    {
+        sLog.outError("[QuestLoop] config key=GameObjectPresence value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopGameObjectPresence);
+        questLoopGameObjectPresence = 0;
+    }
     questLoopMaxFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.MaxFailures", 0)));
     questLoopWindowSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.WindowSeconds", 1800));
     questLoopCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.CooldownSeconds", 1800));
@@ -1727,6 +1734,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestGroups.Enable", Value(questGroupsEnable)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
             {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
+            {"QuestLoop.GameObjectPresence", Value(questLoopGameObjectPresence)},
             {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
