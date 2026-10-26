@@ -103,6 +103,7 @@ struct DcApproachState
 
     uint32 lastTargetEntry     = 0;  // committed boss entry the approach is for
     uint32 lootYieldStartMs    = 0;  // loot-yield commit anchor (getMSTime)
+    uint32 lootYieldAnchorSec  = 0;  // wall second of the loot-yield anchor (LootYieldReanchorAfterFight, DcRunRobustPolicy.h)
 
     // --- room-aggro skirt orbit latch -------------------------------------
     // When the room-clear must reach a trash pack on the far side of a boss's

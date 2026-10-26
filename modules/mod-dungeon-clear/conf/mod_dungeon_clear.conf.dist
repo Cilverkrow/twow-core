@@ -90,6 +90,52 @@ DungeonClear.Gate.ActiveRunOnly = 0
 DungeonClear.AutoRun = 0
 
 #
+#    DungeonClear.SuppressDeathLoopEvac
+#        BUG FIX (CLI-GRP, G1 dry-r3 25.10.2026, enable after the G1 rerun + owner go). A party member that died 4 times
+#        within 15 min at one spot (AiPlayerbot.DeathLoop.*) was evacuated by the stock playerbot death loop: revived at
+#        its race start point and removed from the group. For the run's tank that ended the run ("Left the dungeon -
+#        dungeon clear disabled"); a follower was teleported back by the geo fence into a NEW instance copy and was
+#        missing for the rest of the run. 1 = a bot alive in the dungeon of an active run (its own, or a groupmate's on
+#        the same map) keeps no death-loop history, so wipes and resurrections inside the run never add up to an
+#        evacuation. Cleared on the bot's own update. What still ends a run that keeps dying is the run's own wipe/rez
+#        decision (a wipe with no rezzer, or a rez timeout, disables the run; the stock death loop applies again after
+#        it) and, for `.dc test` runs, the harness watchdogs (TestRun.*: no progress, overall timeout).
+#        Not covered (stock rules left as they are): the hostile-area escape (AiPlayerbot.DeathLoop.Escape - a death in
+#        an area of the other faction counts as a loop at once, before the bot is alive again), the "death count > 15"
+#        repop, and AiPlayerbot.DeathLoop.MaxDeaths = 1. 0 = as before.
+#
+#        Default: 0
+#
+
+DungeonClear.SuppressDeathLoopEvac = 0
+
+#
+#    DungeonClear.LootYieldPartyCombatGate
+#        BUG FIX (CLI-GRP, G1 dry-r3). A follower (following the tank, or holding at camp) yields its follow for up to
+#        15 s to loot a corpse - also while the rest of the party is already in the next fight. 1 = no loot yield while
+#        anyone in the party is fighting (DcCombatFlag::AnyPartyEngagement): the bot keeps to the tank, the corpse waits.
+#        Not for the tank's own advance (it must not walk away from its party). 0 = as before.
+#
+#        Default: 0
+#
+
+DungeonClear.LootYieldPartyCombatGate = 0
+
+#
+#    DungeonClear.LootYieldReanchorAfterFight
+#        BUG FIX (CLI-GRP, G1 dry-r3). The loot-yield anchor was set before a fight and not reset during it (the yield is
+#        not evaluated in combat), so on the first tick after the fight every follower gave up the fresh corpses at once
+#        ("loot-yield timed out after 50000-116000ms"). 1 = a fight the bot started after the anchor (its combat start
+#        time, whole seconds, strictly after the anchor's second) sets the anchor anew, so the yield counts from the end
+#        of the fight. A wall-time gap is deliberately not used: a bot walking to a corpse is evaluated only every ~3 s
+#        and would be re-anchored for ever. Applies to following, holding at camp and the tank's advance. 0 = as before.
+#
+#        Default: 0
+#
+
+DungeonClear.LootYieldReanchorAfterFight = 0
+
+#
 #    DungeonClear.RecordDecisions
 #        Diagnostics. 0 (default): off. 1: append every boss-approach decision
 #        (the pure DecideApproach observation + the verdict the tank acted on) as

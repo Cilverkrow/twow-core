@@ -167,6 +167,13 @@ inline constexpr DcSettingDef kDcSettings[] =
     // twow-repo#629 B4/D2, CLI-GRP 25.10.2026.
     { "AutoRun",               DcType::Bool,   0,   0,   1,  false },
 
+    // Run robustness (G1 dry-r3 25.10.2026, CLI-GRP; server-only, default 0 = as before; DcRunRobustPolicy.h):
+    // a bot alive in the dungeon of an active run keeps no playerbot death-loop history (no evacuation out of the run),
+    // no loot yield while the party fights, and a loot-yield anchor gone stale over a fight is set anew.
+    { "SuppressDeathLoopEvac",    DcType::Bool,   0,   0,     1,  false },
+    { "LootYieldPartyCombatGate", DcType::Bool,   0,   0,     1,  false },
+    { "LootYieldReanchorAfterFight", DcType::Bool, 0,  0,     1,  false },
+
     // Diagnostics: record every boss-approach decision (the pure DecideApproach
     // observation + verdict) to a JSONL capture file for the offline replay
     // harness. OFF by default — turn it on only to freeze a live freeze/stutter

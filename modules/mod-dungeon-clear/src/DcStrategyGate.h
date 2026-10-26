@@ -118,6 +118,10 @@ namespace DcStrategyGate
     // from a DC trigger/action.
     void Reconcile(Player* bot);
 
+    // An active DC run for this bot on its map - its own, or a groupmate's on the same map (the rule Gate.ActiveRunOnly
+    // uses). Reads run flags only. CLI-GRP G1 dry-r3 (SuppressDeathLoopEvac, DcRunRobustPolicy.h).
+    bool RunActive(Player* bot);
+
     // Ask for stock "follow" to be stripped from one bot. Callable from ANY
     // thread: the request is only recorded, and carried out inside Reconcile(),
     // which runs from the player's own update hook - i.e. on the map thread
