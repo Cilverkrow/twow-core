@@ -1667,11 +1667,18 @@ void DcTestRunJob::SweepPartyGeometry()
                                     }
                                     // A personal bind to another copy of this map would outrank the group's (AddMember's
                                     // group-join reset normally drops it already; this covers a non-resettable one).
-                                    // The run's difficulty (the tank's), not a fixed NORMAL (OB-10 follow-up).
+                                    // The run's own difficulty flag (OB-10 follow-up), as UnbindFromMap names both. Today
+                                    // the compat shim (src/compat/InstanceSaveMgr.h) ignores it and drops every bind of
+                                    // the map, so this states the intent; it does not change the behaviour on 1.12.
                                     sInstanceSaveMgr->PlayerUnbindInstance(bot->GetObjectGuid(), _mapId,
-                                                                           tank->GetDifficulty(/*isRaid*/ false),
+                                                                           _heroic ? DUNGEON_DIFFICULTY_HEROIC
+                                                                                   : DUNGEON_DIFFICULTY_NORMAL,
                                                                            /*deleteFromDB*/ true);
                                 }
+                                else if (runGroup)
+                                    // Back in the run's group by any other way: the failure streak starts over
+                                    // ("5 in a row", pre-review).
+                                    _regroup.erase(slot.guid.GetCounter());
                                 LOG_INFO("playerbots.dungeonclear",
                                          "TESTRUN {} geo fence: {} left the dungeon — teleporting back to the tank",
                                          _record.runId, bot->GetName());

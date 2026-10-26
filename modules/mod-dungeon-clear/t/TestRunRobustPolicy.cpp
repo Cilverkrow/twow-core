@@ -131,5 +131,6 @@ TEST(DcRunRobust, GeoFenceRegroupRetriesEvery30sAndGivesUpAfter5Failures)
     RegroupState wrap;
     RegroupRecord(wrap, false, 0xFFFFF000u);                   // getMSTime wraps
     EXPECT_FALSE(RegroupMayTry(wrap, 0xFFFFF000u + 1000u));
+    EXPECT_FALSE(RegroupMayTry(wrap, 0xFFFFF000u + kRegroupRetryMs - 1));  // after the wrap, still early
     EXPECT_TRUE(RegroupMayTry(wrap, 0xFFFFF000u + kRegroupRetryMs));
 }
