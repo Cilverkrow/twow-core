@@ -1550,6 +1550,20 @@ bool TravelTarget::IsQuestLoopSuppressed(TravelDestination const* destination) c
     return it != questLoops.end() && quest_loop::IsSuppressed(it->second, WorldTimer::getMSTime());
 }
 
+// twow-repo#601 (QuestLoop.EmptyCampHold): the respawn of the spawn point a travel target points at - creature spawntimesecsmin,
+// game object spawntimesecsmin when positive (negative = spawned by a script only); 0 when the point is no spawn.
+static uint32 SpawnRespawnSeconds(WorldPosition const* point)
+{
+    GuidPosition const* spawn = dynamic_cast<GuidPosition const*>(point);
+    if (!spawn)
+        return 0;
+    if (CreatureData const* data = spawn->GetCreatureData())
+        return data->spawntimesecsmin;
+    if (GameObjectData const* data = spawn->GetGameObjectData())
+        return data->spawntimesecsmin > 0 ? uint32(data->spawntimesecsmin) : 0;
+    return 0;
+}
+
 bool TravelTarget::IsInactiveReselectMarked(TravelDestination const* destination) const
 {
     QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination);
@@ -1564,7 +1578,12 @@ bool TravelTarget::FallBackToInactiveCooldown()
     QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
     if (!objective || !bot)
         return false;
-    uint32 const leftMs = quest_loop::EmptyCampLeftMs(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime());
+    uint32 leftMs = quest_loop::EmptyCampLeftMs(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime());
+    // twow-repo#601 (QuestLoop.EmptyCampHold): a held camp keeps the search away up to its respawn, but the COOLDOWN back at it
+    // stays the old one (the cooldown just set), so the hold never makes the bot stand longer.
+    if (leftMs && ai::cohort::Applies(sPlayerbotAIConfig.questLoopEmptyCampHold, bot->GetGUIDLow()))
+        leftMs = quest_loop::FallbackCooldownMs(leftMs,
+            quest_loop::InactiveCooldownMs(tDestination->GetCooldownDelay(), sPlayerbotAIConfig.questLoopInactiveCooldownSeconds));
     if (!leftMs)
         return false;
     SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
@@ -2201,6 +2220,20 @@ void TravelTarget::CheckStatus()
                     quest_loop::MarkEmptyCamp(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime(), markMs);
                     sLog.outBasic("[QuestLoop] state=inactive_reselect bot=%u level=%u quest=%u target_entry=%d mark_ms=%u",
                         bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), markMs);
+                    // twow-repo#601 (QuestLoop.EmptyCampHold): the camp stays marked until its spawn point respawns (at most 900 s),
+                    // not only for the cooldown - its own slot again. Off, another cohort or a respawn within the cooldown: the mark
+                    // above as before.
+                    if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopEmptyCampHold, bot->GetGUIDLow()))
+                    {
+                        uint32 const respawnSeconds = SpawnRespawnSeconds(wPosition);
+                        uint32 const holdMs = quest_loop::EmptyCampHoldMs(markMs, respawnSeconds);
+                        if (holdMs > markMs)
+                        {
+                            quest_loop::MarkEmptyCamp(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime(), holdMs);
+                            sLog.outBasic("[QuestLoop] state=empty_camp_hold bot=%u level=%u quest=%u target_entry=%d respawn_s=%u base_ms=%u hold_ms=%u",
+                                bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), respawnSeconds, markMs, holdMs);
+                        }
+                    }
                     SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
                     inactiveReselectPending = true;
                     ai->GetAiObjectContext()->ClearValues("no active travel destinations");

@@ -162,6 +162,29 @@ int main()
         Require(zero.slots[0].untilMs == 1, "an end on 0 is kept as 1");
     }
 
+    // twow-repo#601 EmptyCampHold: the mark lasts the respawn, at least the base mark, at most 900 s; the fallback COOLDOWN stays
+    // the base mark.
+    {
+        Require(EmptyCampHoldMs(180000, 300) == 300000, "5 min respawn: held 5 min");
+        Require(EmptyCampHoldMs(180000, 900) == 900000 && EmptyCampHoldMs(180000, 901) == 900000, "cap 900 s");
+        Require(EmptyCampHoldMs(180000, 604800) == 900000, "a week's respawn: the cap (no overflow)");
+        Require(EmptyCampHoldMs(180000, 0xFFFFFFFFu) == 900000, "largest respawn: the cap (no overflow)");
+        Require(EmptyCampHoldMs(180000, 120) == 180000 && EmptyCampHoldMs(180000, 180) == 180000, "respawn within the base: the base");
+        Require(EmptyCampHoldMs(180000, 0) == 180000, "no spawn data: the base");
+        Require(EmptyCampHoldMs(1200000, 300) == 1200000 && EmptyCampHoldMs(1200000, 0xFFFFFFFFu) == 1200000, "a base above the cap stays");
+        Require(FallbackCooldownMs(895000, 180000) == 180000, "fallback right after a held mark: the base cooldown");
+        Require(FallbackCooldownMs(120000, 180000) == 120000 && FallbackCooldownMs(0, 180000) == 0, "fallback within the base: the time left");
+
+        // cand3-C bot 53: 41746 / 62633 marked at the drop, held, the re-pick 4 min later is skipped.
+        EmptyCamps camps;
+        std::uint32_t const t = 1000000;
+        MarkEmptyCamp(camps, 41746, 62633, t, 180000);
+        MarkEmptyCamp(camps, 41746, 62633, t, EmptyCampHoldMs(180000, 300));
+        Require(EmptyCampLeftMs(camps, 41746, 62633, t + 241000) == 59000, "re-pick at 4:01 skipped, 59 s left");
+        Require(camps.slots[1].untilMs == 0, "the hold takes the camp's own slot again");
+        Require(EmptyCampLeftMs(camps, 41746, 62633, t + 300000) == 0, "free again at the respawn");
+    }
+
     std::cout << "quest_loop_policy_tests passed\n";
     return 0;
 }
