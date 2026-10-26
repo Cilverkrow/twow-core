@@ -1345,6 +1345,13 @@ AiPlayerbot.QuestFirstProgression.BandStepAfterEmptySearches = 0
 # lead=normal.
 #   0 = off (default), 1..10; other values act like 0 (one error line).
 AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
+# twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis; rules agreed with CLI-Berufe): Copper Vein (Mining lock) is a source of a
+# quest item, and bots without Mining went there as a quest objective and could never open it (cohort B: 19 arrivals, 0 credit).
+# With SkipSkillLockedObjectives a game object quest objective is skipped when its lock opens only with profession skills the bot
+# lacks - skill, value >= max(1, lock value) or tool (Mining: the pick). A slot without a profession (open, kneeling, a key item)
+# keeps the object a target for every bot. After an empty quest search: [QuestFirstRoute] state=skill_locked bot= skipped=N.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives = 0
 # twow-repo#601 S5a F4 (OB-00 24.10.2026; owner D1 "rumstehen ist keine Option"): a failed quest search that does not step
 # leaves the bot standing through the route backoff (2, 4, 8, then 10 min). With BandLadder on, from this many failed
 # searches in a row on (the streak F1 counts), such a search sends the bot toward the hub the step would take until the
