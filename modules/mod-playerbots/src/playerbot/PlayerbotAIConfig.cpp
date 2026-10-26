@@ -616,6 +616,12 @@ bool PlayerbotAIConfig::Initialize()
     rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 0);   // twow-repo#630
     if (rotationReachPlayerMaster > 2)
         rotationReachPlayerMaster = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationReachDropEngagement = config.GetIntDefault("AiPlayerbot.Rotation.ReachDropEngagement", 0);   // twow-repo#630 follow-up
+    if (rotationReachDropEngagement > 2)
+        rotationReachDropEngagement = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationFollowUnstealth = config.GetIntDefault("AiPlayerbot.Rotation.FollowUnstealth", 0);   // twow-repo#630 follow-up
+    if (rotationFollowUnstealth > 2)
+        rotationFollowUnstealth = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationDarkRuneGate = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate", 0);   // twow-repo#602 ROT-01 3c
     if (rotationDarkRuneGate > 2)
         rotationDarkRuneGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -1686,6 +1692,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
+            {"Rotation.ReachDropEngagement", Value(rotationReachDropEngagement)},
+            {"Rotation.FollowUnstealth", Value(rotationFollowUnstealth)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},

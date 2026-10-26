@@ -1,5 +1,8 @@
 #pragma once
 #include "playerbot/strategy/triggers/GenericTriggers.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/ReachDropPolicy.h"   // twow-repo#630 follow-up (Rotation.ReachDropEngagement)
 
 namespace ai
 {
@@ -103,6 +106,29 @@ namespace ai
 
         bool IsActive() override
         {
+            // twow-repo#630 follow-up (Rotation.FollowUnstealth, ReachDropPolicy.h): following a real player outside combat,
+            // dungeons and battlegrounds the rogue drops stealth while the master moves or it still catches up (the 10 yd rule
+            // below never let it: follow outranked it). The stealth aura first - the rest only for a stealthed rogue.
+            if (ai->HasAura("stealth", bot) && ai->HasRealPlayerMaster() &&
+                ai::cohort::Applies(sPlayerbotAIConfig.rotationFollowUnstealth, bot->GetGUIDLow()))
+            {
+                Player* master = ai->GetMaster();
+                ai::reach_drop::FollowFacts facts;
+                facts.stealthed = true;
+                facts.inBattleground = bot->InBattleGround();
+                facts.inDungeon = bot->GetMap()->IsDungeon();
+                facts.hasAttackers = AI_VALUE(bool, "has attackers");
+                facts.enemyPlayers = AI_VALUE(bool, "has enemy player targets");
+                facts.nonCombat = ai->IsStateActive(BotState::BOT_STATE_NON_COMBAT);
+                facts.follows = ai->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT);
+                // The player's own movement flags (IsStopped reads movement-generator state, never set by a client).
+                facts.masterMoving = master && sServerFacade.isMoving(master);
+                facts.catchingUp = master && master->GetMapId() == bot->GetMapId() &&
+                    sServerFacade.GetDistance2d(bot, master) > sPlayerbotAIConfig.followDistance + ai::reach_drop::CatchUpYards;
+                if (ai::reach_drop::UnstealthFollowing(facts))
+                    return true;
+            }
+
             if (ai->HasAura("stealth", bot) && !bot->InBattleGround())
             {
                 if (!AI_VALUE(bool, "has attackers") && !AI_VALUE(bool, "has enemy player targets"))

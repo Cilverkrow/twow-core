@@ -16,6 +16,7 @@
 #include "playerbot/SpellListPolicy.h"
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for "S:engine init"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/ReachDropPolicy.h"   // twow-repo#630 follow-up (Rotation.ReachDropEngagement)
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace)
 #include "Maps/PathFinder.h"
@@ -537,6 +538,54 @@ bool PlayerbotAI::CheckReachProgress(Unit* target, float distance)
             bot->GetMapId(), bot->GetZoneId(), playerMaster ? "player" : "bot", ignoreSeconds, ai::cohort::Letter(bot->GetGUIDLow()));
     }
     return true;
+}
+
+// twow-repo#630 follow-up (AiPlayerbot.Rotation.ReachDropEngagement): the caller dropped only "current target"; every other
+// value that still names the target kept a stealthed rogue in combat (its own "attack target" counts as an attacker), so the
+// combat engine - without follow - never ended. Only for a real player's bot: a random bot's targets are its own business.
+void PlayerbotAI::DropUnreachableEngagement(Unit* target)
+{
+    if (!target || !HasRealPlayerMaster() || !ai::cohort::Applies(sPlayerbotAIConfig.rotationReachDropEngagement, bot->GetGUIDLow()))
+        return;
+
+    ObjectGuid const guid = target->GetObjectGuid();
+    ai::reach_drop::Held held;
+    Value<ObjectGuid>* attackTarget = aiObjectContext->GetValue<ObjectGuid>("attack target");
+    held.attackTarget = attackTarget->Get() == guid;
+    if (held.attackTarget)
+        attackTarget->Set(ObjectGuid());
+    Value<Unit*>* pullTarget = aiObjectContext->GetValue<Unit*>("pull target");
+    held.pullTarget = pullTarget->Get() == target;
+    if (held.pullTarget)
+    {
+        if (PullStrategy* pull = PullStrategy::Get(this))
+            pull->OnPullEnded();
+        pullTarget->Set(nullptr);
+    }
+    Value<Unit*>* oldTarget = aiObjectContext->GetValue<Unit*>("old target");
+    held.oldTarget = oldTarget->Get() == target;
+    if (held.oldTarget)
+        oldTarget->Set(nullptr);
+    held.selection = bot->GetSelectionGuid() == guid;
+    if (held.selection)
+        bot->SetSelectionGuid(ObjectGuid());
+    held.victim = bot->GetVictim() == target;
+    if (held.victim)
+        bot->AttackStop();
+    if (!held.Any())
+        return;
+
+    // The cached attacker values see the change at once (as OnCombatStarted does for a new target).
+    if (sPlayerbotAIConfig.perfAttackersSingleList)
+        aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers")->Reset();
+    else
+        aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers", 1)->Reset();
+    aiObjectContext->GetValue<bool>("has attackers")->Reset();
+
+    // Every such drop (player groups only, rare): a watch can count them (the [Unreachable] line has a 5 min budget per bot).
+    sLog.outBasic("[ReachDrop] bot=%u target_entry=%u attack=%u pull=%u old=%u selection=%u victim=%u cohort=%c",
+        bot->GetGUIDLow(), target->GetEntry(), held.attackTarget ? 1u : 0u, held.pullTarget ? 1u : 0u, held.oldTarget ? 1u : 0u,
+        held.selection ? 1u : 0u, held.victim ? 1u : 0u, ai::cohort::Letter(bot->GetGUIDLow()));
 }
 
 void PlayerbotAI::ReportIdle(uint32 idleSeconds)
