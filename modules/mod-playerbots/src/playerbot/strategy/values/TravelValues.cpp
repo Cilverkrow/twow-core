@@ -281,11 +281,18 @@ std::vector<int32> ai::PhaseOneProfessionTrainers(PlayerbotAI* ai, bool onlyUnle
         {
             // Ranks only (the spell teaches the skill, as GetTrainerSpellState's profession check): the bucket of a skill
             // also holds its recipes (Smelt Tin at mining 65, Heavy Linen Bandage at first aid 40), not worth a trip.
+            // P1-t (ProfessionTravelPolicy.h TeachesProfessionRank): learnedSpell is the teaching spell here, the rank is
+            // the spell it teaches.
 #ifdef MANGOSBOT_ZERO
-            if (!sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell))
+            uint32 const teaching = trainerSpell->learnedSpell;
 #else
-            if (!sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell[0]))
+            uint32 const teaching = trainerSpell->learnedSpell[0];
 #endif
+            SpellEntry const* teachingSpell = sServerFacade.LookupSpellInfo(teaching);
+            if (!teachingSpell || !ai::profession_travel::TeachesProfessionRank(teaching,
+                    { teachingSpell->Effect[0], teachingSpell->Effect[1], teachingSpell->Effect[2] },
+                    { teachingSpell->EffectTriggerSpell[0], teachingSpell->EffectTriggerSpell[1], teachingSpell->EffectTriggerSpell[2] },
+                    [](uint32 spell) { return sSpellMgr.IsProfessionSpell(spell); }))
                 continue;
 
             if (std::find(trainable.begin(), trainable.end(), trainerSpell) == trainable.end())
