@@ -4,6 +4,7 @@
 #include "QuestTurnInParkPolicy.h"
 #include "TransportStallPolicy.h"
 #include "DestinationDeathPolicy.h"
+#include "CampBlockPolicy.h"
 #include "QuestLoopPolicy.h"
 #include "AreaLevelPolicy.h"
 #include "PosStuckPolicy.h"
@@ -490,6 +491,10 @@ namespace ai
         // #307: only a target the bot is still travelling to or working at.
         bool IsActiveForDeathAttribution() const;
         bool IsDestinationDeathSuppressed(TravelDestination const* destination) const;
+        // Re-deaths at camps (AiPlayerbot.DestinationDeaths.CampBlock, CampBlockPolicy.h): records the death position of a roster
+        // bot with enough living attackers; a destination point near one is blocked for this bot for CampBlock.Seconds.
+        void OnCampDeath(uint32 attackers);
+        bool IsCampBlocked(WorldPosition const* position) const;
         // twow-repo#581 (QL-1): a quest objective whose quest this bot failed at too often lately.
         bool IsQuestLoopSuppressed(TravelDestination const* destination) const;
         // twow-repo#601 (QuestLoop.InactiveReselect): an objective whose camp this bot found empty lately (skipped by the search
@@ -542,6 +547,7 @@ namespace ai
         struct CommitTrace { uint32 nextAt = 0; uint32 repeats = 0; };
         std::map<std::string, CommitTrace> commitTrace;
         std::map<TravelDestination const*, destination_death::Record> destinationDeaths;
+        camp_block::Ring campDeaths;   // re-deaths at camps: the last CampBlockPolicy.h MaxDeaths death positions (bounded)
         // twow-repo#601 (QuestLoop.InactiveAfterProgress): the objective's count when the target was set, -1 = none.
         int32 objectiveCountAtStart = -1;
         // #405: quest objectives whose work phase ran out without progress
