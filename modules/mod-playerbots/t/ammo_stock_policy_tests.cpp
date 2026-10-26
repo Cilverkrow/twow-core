@@ -106,5 +106,13 @@ int main()
         }
         Require(carried == 20 && calls == 1, "thrown refill: one purchase call, 20 items");
     }
+
+    // P1-s (ThrownUsageFix): the thrown weapon is in the ranged slot, the ammo slot stays 0.
+    Require(ThrownSkipsAmmoRule(true, 1), "a single thrown weapon (TurtleWoW Crude Throwing Axe) leaves the ammo rule");
+    Require(!ThrownSkipsAmmoRule(true, 200), "a stacking thrown weapon keeps the ammo rule");
+    Require(!ThrownSkipsAmmoRule(false, 1), "switch off: unchanged");
+    Require(CurrentAmmoEntry(true, 0, 3111) == 3111, "thrown: the equipped ranged item counts, not the empty ammo slot");
+    Require(CurrentAmmoEntry(false, 0, 3111) == 0, "switch off: the ammo slot as before");
+    Require(CurrentAmmoEntry(false, 2512, 2504) == 2512, "arrows: the ammo slot");
     return 0;
 }
