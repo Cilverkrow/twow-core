@@ -35,6 +35,9 @@ If the two contradict each other, the stricter rule applies and the contradictio
   `CORE_SOURCE_DIR`), so `tests.cmake` does not change; start the file with `cmake_policy(VERSION 3.16)`.
 - **Config keys:** new keys go into `mangosd.conf.dist.in` / `aiplayerbot.conf.dist.in` with a **neutral default**
   (off/legacy behaviour). They are switched on in the twow-repo profile `config/canonical/profiles/funserver-test/`.
+  **An A/B switch's `[ConfigEcho]` entry goes in at its alphabetical place** in the echo list of
+  `PlayerbotAIConfig::Initialize` (sorted by key, not at the end); pin it in the feature's own contract.
+  `config_echo_source_contract` checks the order and the parse line, so it does not change for a new key.
 - **Diagnostics:** new behaviour logs a greppable line with a `[Prefix]` (for example `[ZoneEscape]`, `[ClassGrant]`).
 - **Performance:** nothing unbounded in per-tick paths. No AI context values keyed per creature, item or target
   (see twow-repo#351). Locks in hot paths use a short `std::mutex` or striped locks, **no `std::shared_mutex`**

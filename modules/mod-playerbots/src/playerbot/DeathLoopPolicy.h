@@ -105,6 +105,89 @@ inline bool RaceStartOverride(std::uint32_t race, StartPoint& out)
     return false;
 }
 
+// twow-repo#601/#602 G2 (OB-00 go 26.10.2026, switch AiPlayerbot.DeathLoop.FarEscape, default 0). Hunter A/B restart
+// (track A, 26.10. 02:42-04:03Z): five goblin hunters L3-4 died 48 times at the Blackstone Island spirit healer among
+// L4-7 mobs - revive, attack within a second, dead 1-40 s later, then ~10 min as a ghost before the next revive.
+// (1) The ghost time spreads the deaths so far apart that MaxDeaths 4 within 900 s fired twice. A death soon after
+//     a revive close to where the bot stood up is counted apart from the window: ShortLifeDeaths of them in a row,
+//     each revive within the radius of the first, are a loop.
+// (2) Both evacuations went to the goblins' homebind, the island start 380 yd from the graveyard (zone 5536; the
+//     server binds a character there at its first login, so the factory's Durotar bind never applied); the bots
+//     died again 51 s and 3 min later. An escape point on the loop's map closer than FarEscapeMinYards to the
+//     latest death, or in its zone, is replaced by the race's safe start, and the homebind is set there.
+constexpr std::uint32_t ShortLifeSeconds = 60;
+constexpr std::uint32_t ShortLifeDeaths = 3;
+constexpr float FarEscapeMinYards = 600.0f;
+
+struct ShortLife
+{
+    std::uint32_t reviveAt = 0;      // the latest revive (epoch s), 0 = none since the last death
+    std::uint32_t reviveMap = 0;
+    float reviveX = 0.0f;
+    float reviveY = 0.0f;
+    std::uint32_t streak = 0;        // deaths in a row soon after a revive at one place
+    std::uint32_t anchorMap = 0;     // where the first revive of the streak happened
+    float anchorX = 0.0f;
+    float anchorY = 0.0f;
+};
+
+inline void RecordRevive(ShortLife& life, std::uint32_t nowSeconds, std::uint32_t mapId, float x, float y)
+{
+    life.reviveAt = nowSeconds ? nowSeconds : 1;
+    life.reviveMap = mapId;
+    life.reviveX = x;
+    life.reviveY = y;
+}
+
+// A death ShortLifeSeconds or less after the latest revive and within radius of the revive point extends the
+// streak (restarted when the revive lay outside radius of the streak's first one); any other death ends it.
+// True when the streak reaches ShortLifeDeaths.
+inline bool RecordShortLifeDeath(ShortLife& life, std::uint32_t nowSeconds, std::uint32_t mapId, float x, float y, float radius)
+{
+    float const r2 = radius * radius;
+    float const dx = x - life.reviveX;
+    float const dy = y - life.reviveY;
+    bool const shortLife = life.reviveAt && nowSeconds >= life.reviveAt && nowSeconds - life.reviveAt <= ShortLifeSeconds &&
+        mapId == life.reviveMap && dx * dx + dy * dy <= r2;
+    life.reviveAt = 0;
+    if (!shortLife)
+    {
+        life.streak = 0;
+        return false;
+    }
+
+    float const ax = life.reviveX - life.anchorX;
+    float const ay = life.reviveY - life.anchorY;
+    if (life.streak && (life.reviveMap != life.anchorMap || ax * ax + ay * ay > r2))
+        life.streak = 0;
+    if (!life.streak)
+    {
+        life.anchorMap = life.reviveMap;
+        life.anchorX = life.reviveX;
+        life.anchorY = life.reviveY;
+    }
+    ++life.streak;
+    return life.streak >= ShortLifeDeaths;
+}
+
+inline bool IsShortLifeLoop(ShortLife const& life)
+{
+    return life.streak >= ShortLifeDeaths;
+}
+
+// The escape point lies at the loop: same map and closer than FarEscapeMinYards to the latest death, or in its zone.
+inline bool EscapeAtLoop(std::uint32_t loopMap, float loopX, float loopY, std::uint32_t loopZone,
+    std::uint32_t pointMap, float pointX, float pointY, std::uint32_t pointZone)
+{
+    if (pointMap != loopMap)
+        return false;
+    if (loopZone && pointZone == loopZone)
+        return true;
+    float const dx = pointX - loopX;
+    float const dy = pointY - loopY;
+    return dx * dx + dy * dy < FarEscapeMinYards * FarEscapeMinYards;
+}
+
 enum EscapeCount { EscapeDetected, EscapeEscaped, EscapeRebound, EscapeRepeat, EscapeHostileDeath, EscapeCounts };
 
 inline std::atomic<std::uint64_t>& EscapeCounter(EscapeCount count)
