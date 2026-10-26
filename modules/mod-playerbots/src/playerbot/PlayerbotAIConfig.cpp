@@ -842,6 +842,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestBand] config key=BandLadderSameZoneNext value=%u result=off (0 off, 1..10)", questFirstProgressionBandLadderSameZoneNext);
         questFirstProgressionBandLadderSameZoneNext = 0;
     }
+    // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);
+    if (questFirstProgressionSkipSkillLockedObjectives > 2)
+    {
+        sLog.outError("[QuestFirstRoute] config key=SkipSkillLockedObjectives value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionSkipSkillLockedObjectives);
+        questFirstProgressionSkipSkillLockedObjectives = 0;
+    }
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
     if (questFirstProgressionBandWalkAfterEmptySearches > 10)
@@ -1655,6 +1662,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.BandLadder", Value(questFirstProgressionBandLadder)},
             {"QuestFirstProgression.BandStepAfterEmptySearches", Value(questFirstProgressionBandStepAfterEmptySearches)},
             {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
+            {"QuestFirstProgression.SkipSkillLockedObjectives", Value(questFirstProgressionSkipSkillLockedObjectives)},
             {"QuestFirstProgression.BandWalkAfterEmptySearches", Value(questFirstProgressionBandWalkAfterEmptySearches)},
             {"QuestFirstProgression.ContestedObjectiveWait", Value(questFirstProgressionContestedObjectiveWait)},
             {"QuestFirstProgression.ContestedObjectiveWait.Kill", Value(questFirstProgressionContestedObjectiveWaitKill)},

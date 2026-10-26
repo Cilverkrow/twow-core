@@ -97,6 +97,7 @@ set(entries
   "QuestFirstProgression.BandLadder|questFirstProgressionBandLadder"
   "QuestFirstProgression.BandStepAfterEmptySearches|questFirstProgressionBandStepAfterEmptySearches"
   "QuestFirstProgression.BandLadderSameZoneNext|questFirstProgressionBandLadderSameZoneNext"
+  "QuestFirstProgression.SkipSkillLockedObjectives|questFirstProgressionSkipSkillLockedObjectives"
   "QuestFirstProgression.BandWalkAfterEmptySearches|questFirstProgressionBandWalkAfterEmptySearches"
   "QuestFirstProgression.ContestedObjectiveWait|questFirstProgressionContestedObjectiveWait"
   "QuestFirstProgression.ContestedObjectiveWait.Kill|questFirstProgressionContestedObjectiveWaitKill"
