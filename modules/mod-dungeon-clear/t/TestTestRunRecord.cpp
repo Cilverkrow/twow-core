@@ -176,9 +176,9 @@ TEST(DcTestRunRecordTest, BossRosterSerializesInProgressionOrder)
               std::string::npos);
 }
 
-TEST(DcTestRunRecordTest, SchemaIsTen)
+TEST(DcTestRunRecordTest, SchemaIsTwelve)
 {
-    EXPECT_NE(ToJsonl(SampleRecord()).find("\"schema\":10"), std::string::npos);
+    EXPECT_NE(ToJsonl(SampleRecord()).find("\"schema\":12"), std::string::npos);
 }
 
 // The gear ceiling a run was rolled to. Two runs of the same dungeon are only
@@ -225,6 +225,8 @@ TEST(DcTestRunRecordTest, RosterRunSerializesMarkedAgainstDetectedRole)
     tank.roleMismatch = true;
     tank.guid = 1234;
     tank.level = 70;
+    tank.avgIlvl = 61.3f;
+    tank.gearSlots = 15;
     tank.fromMap = 1;
     tank.fromX = -1.5f;
     tank.fromY = 2.5f;
@@ -237,6 +239,8 @@ TEST(DcTestRunRecordTest, RosterRunSerializesMarkedAgainstDetectedRole)
     EXPECT_NE(json.find("\"role\":\"tank\""), std::string::npos);
     EXPECT_NE(json.find("\"detectedRole\":\"dps\""), std::string::npos);
     EXPECT_NE(json.find("\"roleMismatch\":true"), std::string::npos);
+    // Schema 12: the realised gear, one decimal (G1 dry-r3 25.10.2026).
+    EXPECT_NE(json.find("\"avgIlvl\":61.3,\"gearSlots\":15"), std::string::npos);
     // Origin position is what makes a manual recall possible after the run.
     EXPECT_NE(json.find("\"from\":{\"map\":1"), std::string::npos);
 }
