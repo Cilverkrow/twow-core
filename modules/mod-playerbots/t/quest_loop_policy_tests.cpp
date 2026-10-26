@@ -61,6 +61,14 @@ int main()
     Require(InactiveCooldownMs(300000, 180) == 300000, "a longer destination cooldown stays");
     Require(InactiveCooldownMs(60000, 0) == 60000, "0 = as before");
 
+    // GiverTakerDone (twow-repo#601): only a taken (giver) or turned-in (taker) quest ends the trip as a success.
+    Require(GiverTakerTripDone(0, true, false), "giver: the quest is now in the log - taken");
+    Require(GiverTakerTripDone(0, false, true), "giver: the quest is done (rewarded) - nothing to take");
+    Require(!GiverTakerTripDone(0, false, false), "giver: not taken (no room, cannot accept) - the COOLDOWN as before");
+    Require(GiverTakerTripDone(1, false, true), "taker: turned in");
+    Require(GiverTakerTripDone(1, false, false), "taker: no longer in the log (abandoned) - nothing to turn in");
+    Require(!GiverTakerTripDone(1, true, false), "taker: still in the log (an item lost, not complete) - the COOLDOWN as before");
+
     // InactiveAfterProgress (twow-repo#601): only a grown count is progress; no count never is.
     Require(InactiveAfterProgress(0, 1), "0 -> 1 kill: progress");
     Require(InactiveAfterProgress(4, 7), "4 -> 7 items: progress");
@@ -69,6 +77,67 @@ int main()
     Require(!InactiveAfterProgress(-1, 4), "no count at the start: rule as before");
     Require(!InactiveAfterProgress(2, -1), "quest gone from the log: rule as before");
     Require(ProgressCooldownMs < InactiveCooldownMs(60000, 0), "the progress cooldown is shorter than the destination's");
+
+    // InactiveReselect (twow-repo#601): emptied camps per bot in a fixed ring, (quest, entry) for the cooldown.
+    {
+        EmptyCamps camps;
+        Require(!EmptyCampLeftMs(camps, 872, 3269, t), "nothing marked at the start");
+        MarkEmptyCamp(camps, 872, 3269, t, 180000);
+        Require(EmptyCampLeftMs(camps, 872, 3269, t + 1000) == 179000, "marked: time left");
+        Require(!EmptyCampLeftMs(camps, 872, 3270, t + 1000) && !EmptyCampLeftMs(camps, 873, 3269, t + 1000),
+            "another entry of the quest, or another quest at the entry: not marked");
+        Require(!EmptyCampLeftMs(camps, 872, 3269, t + 180000), "the mark ends with the cooldown");
+        MarkEmptyCamp(camps, 872, -3767, t, 60000);
+        Require(EmptyCampLeftMs(camps, 872, -3767, t) == 60000, "a game object entry (negative) is a key too");
+
+        // The same camp again: its own slot, renewed - no second slot.
+        EmptyCamps again;
+        MarkEmptyCamp(again, 1, 10, t, 1000);
+        MarkEmptyCamp(again, 1, 10, t + 500, 180000);
+        Require(EmptyCampLeftMs(again, 1, 10, t + 1500) == 179000, "renewed in its own slot");
+        int used = 0;
+        for (EmptyCamp const& camp : again.slots)
+            used += camp.untilMs ? 1 : 0;
+        Require(used == 1, "one slot per camp");
+
+        // Full ring: a run-out slot is reused first, else the one that runs out first gives way.
+        EmptyCamps ring;
+        for (std::uint32_t i = 0; i < EmptyCampSlots; ++i)
+            MarkEmptyCamp(ring, 100 + i, 1, t, 100000 + i * 1000);
+        MarkEmptyCamp(ring, 200, 1, t + 1000, 50000);
+        Require(EmptyCampLeftMs(ring, 200, 1, t + 1000) == 50000, "5th camp marked");
+        Require(!EmptyCampLeftMs(ring, 100, 1, t + 1000), "the one running out first gave way");
+        for (std::uint32_t i = 1; i < EmptyCampSlots; ++i)
+            Require(EmptyCampLeftMs(ring, 100 + i, 1, t + 1000) > 0, "the others stay");
+        // At t + 101500 camps 200 (slot 0) and 101 have run out, 102 and 103 not: a run-out slot takes the new camp, no live one.
+        MarkEmptyCamp(ring, 300, 1, t + 101500, 1000);
+        Require(EmptyCampLeftMs(ring, 300, 1, t + 101500) == 1000 && EmptyCampLeftMs(ring, 102, 1, t + 101500) == 500 &&
+            EmptyCampLeftMs(ring, 103, 1, t + 101500) == 1500, "a run-out slot is reused first");
+
+        // Full ring across the clock wrap: the end before the wrap runs out first and gives way (not the small number after it).
+        EmptyCamps across;
+        MarkEmptyCamp(across, 1, 1, nearWrap, 30000);            // ends before the wrap
+        MarkEmptyCamp(across, 2, 1, nearWrap, 2 * minute);       // ends after the wrap (small number)
+        MarkEmptyCamp(across, 3, 1, nearWrap, 3 * minute);
+        MarkEmptyCamp(across, 4, 1, nearWrap, 4 * minute);
+        MarkEmptyCamp(across, 5, 1, nearWrap + 1000, minute);
+        Require(!EmptyCampLeftMs(across, 1, 1, nearWrap + 1000) && EmptyCampLeftMs(across, 2, 1, nearWrap + 1000) > 0,
+            "eviction across the wrap takes the end that comes first");
+        // Equal ends: the lowest slot gives way.
+        EmptyCamps tie;
+        for (std::uint32_t i = 0; i < EmptyCampSlots; ++i)
+            MarkEmptyCamp(tie, 10 + i, 1, t, minute);
+        MarkEmptyCamp(tie, 20, 1, t, minute);
+        Require(tie.slots[0].quest == 20 && EmptyCampLeftMs(tie, 11, 1, t) > 0, "equal ends: slot 0 gives way");
+
+        // Clock wrap: a mark across the 32-bit wrap still holds; an end on 0 is no free slot.
+        EmptyCamps wrapped;
+        MarkEmptyCamp(wrapped, 5, 5, nearWrap, 2 * minute);
+        Require(EmptyCampLeftMs(wrapped, 5, 5, nearWrap + minute) == minute, "marked across the clock wrap");
+        EmptyCamps zero;
+        MarkEmptyCamp(zero, 6, 6, 0xFFFFFFFFu - 999u, 1000);
+        Require(zero.slots[0].untilMs == 1, "an end on 0 is kept as 1");
+    }
 
     std::cout << "quest_loop_policy_tests passed\n";
     return 0;

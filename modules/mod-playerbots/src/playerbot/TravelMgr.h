@@ -492,6 +492,11 @@ namespace ai
         bool IsDestinationDeathSuppressed(TravelDestination const* destination) const;
         // twow-repo#581 (QL-1): a quest objective whose quest this bot failed at too often lately.
         bool IsQuestLoopSuppressed(TravelDestination const* destination) const;
+        // twow-repo#601 (QuestLoop.InactiveReselect): an objective whose camp this bot found empty lately (skipped by the search
+        // and the refresh), and the way back to the old COOLDOWN when the search after it found no quest target.
+        bool IsInactiveReselectMarked(TravelDestination const* destination) const;
+        bool TakeInactiveReselectPending() { bool const pending = inactiveReselectPending; inactiveReselectPending = false; return pending; }
+        bool FallBackToInactiveCooldown();
         // #307 zone escape: the destination that led into a zone clearly above
         // the bot's level is skipped like a death-suppressed one.
         void SuppressCurrentDestination(uint32 durationMs);
@@ -545,6 +550,10 @@ namespace ai
         // twow-repo#581 (QL-1): objective failures (inactive / work timeout) per quest of this bot, bounded.
         std::map<uint32, quest_loop::Record> questLoops;
         void NoteQuestObjectiveFailure();
+        // twow-repo#601 (QuestLoop.InactiveReselect): emptied camps of this bot (fixed ring), and whether the current target ended
+        // through one (cleared by the next destination).
+        quest_loop::EmptyCamps emptyCamps;
+        bool inactiveReselectPending = false;
         // twow-repo#601 F5b (AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait): a work timeout at a contested objective is held back
         // briefly instead of counting toward QuestWorkTimeouts / QuestLoop. True when it handled the timeout.
         bool OnContestedObjectiveTimeout();

@@ -42,6 +42,7 @@
 
 #include "DcStrategyGate.h"
 #include "Ai/Dungeon/DungeonClear/Action/DcActionShared.h"
+#include "Ai/Dungeon/DungeonClear/Data/BossSpawnIndex.h"   // level=boss (CLI-GRP G1)
 #include "Ai/Dungeon/DungeonClear/Data/DungeonBossInfo.h"
 #include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 #include "Ai/Dungeon/DungeonClear/DcValueKeys.h"
@@ -52,6 +53,7 @@
 #include "Ai/Dungeon/DungeonClear/Util/DcTargeting.h"
 #include "TestRun/DcDiagSnapshot.h"
 #include "TestRun/DcTestComp.h"
+#include "TestRun/DcTestPlan.h"   // kLevelBoss
 
 // Characters that took a claim, were handed to AddPlayerBot and never entered
 // the world. The claim walks the player cache in guid order, so the first
@@ -125,6 +127,23 @@ namespace
         return std::string(buf) + "-" + std::to_string(++counter);
     }
 
+    // `level=boss` (DcTestPlan::kLevelBoss; CLI-GRP G1, owner 25.10.2026): the highest level among the dungeon's boss
+    // spawns (BossSpawnIndex, creature_template level_max), so the party meets its last boss at par. The registry's
+    // level when the index knows no boss on the map. Heroic runs read the heroic spawns.
+    uint32 BossTopLevel(uint32 mapId, bool heroic, uint32 fallback)
+    {
+        uint32 top = 0;
+        for (DungeonBossInfo const& b :
+             BossSpawnIndex::Get(mapId, heroic ? DUNGEON_DIFFICULTY_HEROIC : DUNGEON_DIFFICULTY_NORMAL))
+        {
+            if (b.kind != DungeonAnchorKind::Boss)
+                continue;
+            if (CreatureInfo const* info = sObjectMgr.GetCreatureTemplate(b.entry))
+                top = std::max<uint32>(top, info->level_max);
+        }
+        return top ? top : fallback;
+    }
+
     char const* ClassToken(uint8 classId)
     {
         switch (classId)
@@ -141,6 +160,28 @@ namespace
             case 11: return "druid";
         }
         return "unknown";
+    }
+
+    // G1 dry-r3 25.10.2026 (owner: "is it the gear?"): gearIlvl is only the
+    // ceiling the factory was given. This is what the member actually wears:
+    // the mean item level over its filled equipment slots (shirt and tabard
+    // left out - no stats) and how many such slots are filled.
+    void EquippedIlvl(Player* bot, float& mean, std::uint32_t& slots)
+    {
+        std::uint32_t sum = 0;
+        slots = 0;
+        for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        {
+            if (slot == EQUIPMENT_SLOT_BODY || slot == EQUIPMENT_SLOT_TABARD)
+                continue;
+            Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+            ItemPrototype const* proto = item ? item->GetProto() : nullptr;
+            if (!proto)
+                continue;
+            sum += proto->ItemLevel;
+            ++slots;
+        }
+        mean = slots ? float(sum) / float(slots) : 0.0f;
     }
 
     // Premade-spec template index for the wanted spec name — exact match
@@ -340,8 +381,13 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
     if (seed == 0)
         seed = rand32() | 1u;
 
-    uint32 const level = levelOverride ? std::min<uint32>(levelOverride, 80u)
-                                       : (heroic ? row.heroicLevel : row.recommendedLevel);
+    uint32 const registryLevel = heroic ? row.heroicLevel : row.recommendedLevel;
+    uint32 const level = levelOverride == DcTestPlan::kLevelBoss
+                             ? std::min<uint32>(BossTopLevel(row.mapId, heroic, registryLevel), 80u)
+                             : levelOverride ? std::min<uint32>(levelOverride, 80u) : registryLevel;
+    if (levelOverride == DcTestPlan::kLevelBoss)
+        LOG_INFO("playerbots.dungeonclear", "TESTRUN level=boss {} -> level {} (registry {})", row.token, level,
+                 registryLevel);
     job->InitIdentity(gm, row, level, heroic, seed, planId);
 
     // Resolve the gear ceiling against the conf once, here: a run that took 40
@@ -1044,6 +1090,13 @@ void DcTestRunJob::TickProvisioning(bool& provisionBudget)
     // drinks for classes without mana.
     factory.AddFood();   // public wrapper for InitFood
 
+    // The POOL path too (CLI-GRP G1 pilot 25.10.2026): Randomize() -> InitGuild drafted the claimed pool characters into
+    // fresh random guilds ("Random Guild <Pyreborne>, GM: Synap"). The claim skips every guilded character (the compat
+    // PlayerbotGuildMgr::IsRealGuild is always true on this core), so each run burned its five characters for every later
+    // claim: after one 3-run plan the 17-character Alliance pool had no tank left and every further plan aborted ("no
+    // available tank class"). A pool slot is guildless by construction (the claim took it so), so this restores it.
+    UndoUnwantedGuild(bot, slot);
+
     // Not inline: provisioning ticks in the world thread and this bot is
     // already logged in and thinking on its map thread. ResetStrategies
     // rebuilds the trigger list, which is what tore NextAction::clone apart.
@@ -1056,6 +1109,7 @@ void DcTestRunJob::TickProvisioning(bool& provisionBudget)
     entry.role = slot.role;
     entry.guid = slot.guid.GetRawValue();
     entry.level = bot->GetLevel();
+    EquippedIlvl(bot, entry.avgIlvl, entry.gearSlots);   // after the gear, ammo and food above
     _record.comp.push_back(entry);
 
     LOG_INFO("playerbots.dungeonclear",
@@ -1166,6 +1220,7 @@ void DcTestRunJob::TickProvisioningRoster()
         entry.roleMismatch = slot.role != std::string(detected);
         entry.guid = slot.guid.GetRawValue();
         entry.level = bot->GetLevel();
+        EquippedIlvl(bot, entry.avgIlvl, entry.gearSlots);   // a roster member wears its own gear
         entry.fromMap = bot->GetMapId();
         entry.fromX = bot->GetPositionX();
         entry.fromY = bot->GetPositionY();

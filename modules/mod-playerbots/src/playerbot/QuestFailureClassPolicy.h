@@ -60,7 +60,7 @@ inline std::uint32_t StructuralRejects(quest_search::RejectCounts const& rejects
 inline std::uint32_t TransientRejects(quest_search::RejectCounts const& rejects)
 {
     return rejects.turnInSuppressed + rejects.deathSuppressed + rejects.questLoopSuppressed + rejects.hubFilter +
-        rejects.rangeSkip + rejects.movedAway + rejects.resumeSkipped;
+        rejects.rangeSkip + rejects.movedAway + rejects.resumeSkipped + rejects.inactiveReselect;
 }
 
 inline std::uint32_t OtherRejects(quest_search::RejectCounts const& rejects)

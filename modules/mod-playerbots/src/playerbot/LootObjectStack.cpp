@@ -3,11 +3,41 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/SkinLootPolicy.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/GatherNodePolicy.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 
 using namespace ai;
 
 #define MAX_LOOT_OBJECT_COUNT 10
+
+namespace
+{
+// twow-repo#333 P1-f: the lock of a quest herb - a herbalism slot next to a skill slot no profession provides ("open
+// kneeling", lock 259), the same mark #414 uses for the gather travel targets (TravelMgr.cpp).
+bool IsQuestHerbLock(uint32 lockId)
+{
+    LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
+    if (!lockInfo)
+        return false;
+
+    bool lockHasHerbalism = false;
+    bool lockHasNonProfessionSkill = false;
+    for (int i = 0; i < 8; ++i)
+    {
+        if (lockInfo->Type[i] != LOCK_KEY_SKILL || !lockInfo->Index[i])
+            continue;
+
+        uint32 const skillId = SkillByLockType(LockType(lockInfo->Index[i]));
+        if (skillId == SKILL_HERBALISM)
+            lockHasHerbalism = true;
+        else if (skillId == 0)
+            lockHasNonProfessionSkill = true;
+    }
+
+    return ai::gather_node::IsQuestHerb(lockHasHerbalism, lockHasNonProfessionSkill);
+}
+}
 
 LootTarget::LootTarget(ObjectGuid guid) : guid(guid), asOfTime(time(0))
 {
@@ -301,6 +331,15 @@ bool LootObject::IsLootPossible(Player* bot)
                         return hasQuestItems || go->GetLootState() != GO_READY;
                     }
                 }
+            }
+
+            // twow-repo#333 P1-f (AiPlayerbot.Gather.QuestHerbFilter): a quest herb whose quest is not active is no herb.
+            // Before, it fell through to the herbalism check and a herbalist picked it on the way without the quest.
+            if (skillId == SKILL_HERBALISM && ai::cohort::Applies(sPlayerbotAIConfig.gatherQuestHerbFilter, bot->GetGUIDLow()))
+            {
+                bool const questHerb = IsQuestHerbLock(go->GetGOInfo()->GetLockId());
+                if (!ai::gather_node::QuestHerbLootable(questHerb, questHerb && go->ActivateToQuest(bot)))
+                    return false;
             }
 
             //Ignore objects that are currently in use.

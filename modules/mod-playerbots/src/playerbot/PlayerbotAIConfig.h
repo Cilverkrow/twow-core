@@ -205,6 +205,7 @@ public:
     std::vector<ai::ammo_stock::Tier> hunterAmmoTiers;
     bool hunterAmmoFillQuiver = false;
     uint32 thrownMaxCount = 0;
+    uint32 thrownUsageFix = 0;  // twow-repo#333 P1-s: a thrown weapon is judged against the ranged slot (modes 0/1/2)
     float randomBotMaxLevelChance;
     float randomBotRaceVariantChance;
     float randomBotRpgChance;
@@ -530,6 +531,7 @@ public:
     // a phase-one profession and to the vendor of its missing gathering tool; 0 off, 1 all, 2 cohort B (odd guid).
     uint32 professionTrainingTravel = 0;
     uint32 professionUseToolBuy = 0;
+    uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
     float professionUseGatherDistance = 0.0f;     // 0 = GatheringDistance
     bool professionUseCraft = false;
@@ -757,9 +759,16 @@ public:
     uint32 questLoopWindowSeconds = 1800;
     uint32 questLoopCooldownSeconds = 1800;
     uint32 questLoopInactiveCooldownSeconds = 0; // twow-repo#581 QL-2: minimum cooldown after an inactive objective (0 = off)
+    // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C gap analysis): a quest giver / taker trip that went inactive because its quest was
+    // taken / turned in ends at once instead of a 60 s COOLDOWN at the NPC. Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questLoopGiverTakerDone = 0;
     // twow-repo#601 (CLI-Deep 25.10.2026): an inactive objective whose count grew since the target was set is progress, not an
     // emptied camp - no QL-1, no QL-2, a 1 s cooldown. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopInactiveAfterProgress = 0;
+    // twow-repo#601 (CLI-Deep 25.10.2026, cr2-C gap analysis): an inactive objective without new credit (an emptied camp) is
+    // remembered for its QL-2 cooldown and the bot searches at once without it, instead of standing in COOLDOWN. Mode 0 off
+    // (default), 1 all, 2 cohort B.
+    uint32 questLoopInactiveReselect = 0;
     // twow-repo#485: game-object quest givers and takers spawned only by a script
     // (gameobject.spawntimesecsmin < 0, e.g. GO 270 of quest 310) are no travel targets.
     // false = old behaviour.

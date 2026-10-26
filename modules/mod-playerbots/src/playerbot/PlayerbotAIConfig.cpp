@@ -275,6 +275,9 @@ bool PlayerbotAIConfig::Initialize()
     hunterAmmoTiers = ai::ammo_stock::ParseTiers(config.GetStringDefault("AiPlayerbot.HunterAmmoTiers", ""));
     hunterAmmoFillQuiver = config.GetBoolDefault("AiPlayerbot.HunterAmmoFillQuiver", false);
     thrownMaxCount = (uint32)config.GetIntDefault("AiPlayerbot.ThrownMaxCount", 0);
+    thrownUsageFix = config.GetIntDefault("AiPlayerbot.ThrownUsageFix", 0);
+    if (thrownUsageFix > 2)
+        thrownUsageFix = 0;
     randomBotRpgChance = config.GetFloatDefault("AiPlayerbot.RandomBotRpgChance", 0.35f);
     usePotionChance = config.GetFloatDefault("AiPlayerbot.UsePotionChance", 1.0f);
     attackEmoteChance = config.GetFloatDefault("AiPlayerbot.AttackEmoteChance", 0.0f);
@@ -702,12 +705,26 @@ bool PlayerbotAIConfig::Initialize()
     questLoopWindowSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.WindowSeconds", 1800));
     questLoopCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.CooldownSeconds", 1800));
     questLoopInactiveCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveCooldownSeconds", 0)));
+    // twow-repo#601 GiverTakerDone: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopGiverTakerDone = config.GetIntDefault("AiPlayerbot.QuestLoop.GiverTakerDone", 0);
+    if (questLoopGiverTakerDone > 2)
+    {
+        sLog.outError("[QuestLoop] config key=GiverTakerDone value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopGiverTakerDone);
+        questLoopGiverTakerDone = 0;
+    }
     // twow-repo#601 InactiveAfterProgress: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questLoopInactiveAfterProgress = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveAfterProgress", 0);
     if (questLoopInactiveAfterProgress > 2)
     {
         sLog.outError("[QuestLoop] config key=InactiveAfterProgress value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopInactiveAfterProgress);
         questLoopInactiveAfterProgress = 0;
+    }
+    // twow-repo#601 InactiveReselect: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopInactiveReselect = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveReselect", 0);
+    if (questLoopInactiveReselect > 2)
+    {
+        sLog.outError("[QuestLoop] config key=InactiveReselect value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopInactiveReselect);
+        questLoopInactiveReselect = 0;
     }
     questFirstProgressionSkipScriptOnlyQuestTakers = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers", false);
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
@@ -1376,6 +1393,9 @@ bool PlayerbotAIConfig::Initialize()
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
+    gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 0);
+    if (gatherQuestHerbFilter > 2)
+        gatherQuestHerbFilter = 0;
     professionUseGatherDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionUse.GatherDistance", 0.0f));
     professionUseCraft = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Craft", false);
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
@@ -1676,20 +1696,24 @@ bool PlayerbotAIConfig::Initialize()
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
+            {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"QuestLoop.GameObjectPresence", Value(questLoopGameObjectPresence)},
+            {"ThrownUsageFix", Value(thrownUsageFix)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"ActivityTrace", Value(activityTrace)},
             {"EnableActionLog", Value(enableActionLog)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
+            {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
+            {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
