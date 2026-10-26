@@ -73,4 +73,36 @@ constexpr bool FoughtSince(bool on, std::uint32_t anchorSec, std::uint64_t comba
 {
     return on && anchorSec != 0 && combatStartSec > anchorSec;
 }
+
+// Test-run geo fence, re-add to the run's group (#708 follow-up, OB-10 review 26.10.2026): a member out of the group is
+// put back before it is teleported; a failing AddMember (a full group) used to be retried on every monitor tick, with
+// the member leaving any other group each time. Now at most every kRegroupRetryMs per member, and after
+// kRegroupMaxFailures failures in a row the run ends (FailAborted / FailSetup) instead of fencing a member forever.
+// Clock: getMSTime(), which wraps - compared by signed difference.
+constexpr std::uint32_t kRegroupRetryMs = 30000;
+constexpr std::uint32_t kRegroupMaxFailures = 5;
+
+struct RegroupState
+{
+    std::uint32_t failures = 0;
+    std::uint32_t nextTryMs = 0;
+};
+
+constexpr bool RegroupMayTry(RegroupState const& s, std::uint32_t nowMs)
+{
+    return s.failures == 0 || static_cast<std::int32_t>(nowMs - s.nextTryMs) >= 0;
+}
+
+// Records one attempt; true = give up (the run ends).
+inline bool RegroupRecord(RegroupState& s, bool ok, std::uint32_t nowMs)
+{
+    if (ok)
+    {
+        s = RegroupState();
+        return false;
+    }
+    ++s.failures;
+    s.nextTryMs = nowMs + kRegroupRetryMs;
+    return s.failures >= kRegroupMaxFailures;
+}
 }
