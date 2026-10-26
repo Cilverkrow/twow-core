@@ -42,6 +42,7 @@
 
 #include "DcStrategyGate.h"
 #include "Ai/Dungeon/DungeonClear/Action/DcActionShared.h"
+#include "Ai/Dungeon/DungeonClear/Data/BossSpawnIndex.h"   // level=boss (CLI-GRP G1)
 #include "Ai/Dungeon/DungeonClear/Data/DungeonBossInfo.h"
 #include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 #include "Ai/Dungeon/DungeonClear/DcValueKeys.h"
@@ -52,6 +53,7 @@
 #include "Ai/Dungeon/DungeonClear/Util/DcTargeting.h"
 #include "TestRun/DcDiagSnapshot.h"
 #include "TestRun/DcTestComp.h"
+#include "TestRun/DcTestPlan.h"   // kLevelBoss
 
 // Characters that took a claim, were handed to AddPlayerBot and never entered
 // the world. The claim walks the player cache in guid order, so the first
@@ -123,6 +125,23 @@ namespace
         if (!ToLocalTime(now, tmBuf) || std::strftime(buf, sizeof(buf), "tr-%Y%m%d-%H%M%S", &tmBuf) == 0)
             return "tr-time-unavailable-" + std::to_string(++fallbackCounter);
         return std::string(buf) + "-" + std::to_string(++counter);
+    }
+
+    // `level=boss` (DcTestPlan::kLevelBoss; CLI-GRP G1, owner 25.10.2026): the highest level among the dungeon's boss
+    // spawns (BossSpawnIndex, creature_template level_max), so the party meets its last boss at par. The registry's
+    // level when the index knows no boss on the map. Heroic runs read the heroic spawns.
+    uint32 BossTopLevel(uint32 mapId, bool heroic, uint32 fallback)
+    {
+        uint32 top = 0;
+        for (DungeonBossInfo const& b :
+             BossSpawnIndex::Get(mapId, heroic ? DUNGEON_DIFFICULTY_HEROIC : DUNGEON_DIFFICULTY_NORMAL))
+        {
+            if (b.kind != DungeonAnchorKind::Boss)
+                continue;
+            if (CreatureInfo const* info = sObjectMgr.GetCreatureTemplate(b.entry))
+                top = std::max<uint32>(top, info->level_max);
+        }
+        return top ? top : fallback;
     }
 
     char const* ClassToken(uint8 classId)
@@ -362,8 +381,13 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
     if (seed == 0)
         seed = rand32() | 1u;
 
-    uint32 const level = levelOverride ? std::min<uint32>(levelOverride, 80u)
-                                       : (heroic ? row.heroicLevel : row.recommendedLevel);
+    uint32 const registryLevel = heroic ? row.heroicLevel : row.recommendedLevel;
+    uint32 const level = levelOverride == DcTestPlan::kLevelBoss
+                             ? std::min<uint32>(BossTopLevel(row.mapId, heroic, registryLevel), 80u)
+                             : levelOverride ? std::min<uint32>(levelOverride, 80u) : registryLevel;
+    if (levelOverride == DcTestPlan::kLevelBoss)
+        LOG_INFO("playerbots.dungeonclear", "TESTRUN level=boss {} -> level {} (registry {})", row.token, level,
+                 registryLevel);
     job->InitIdentity(gm, row, level, heroic, seed, planId);
 
     // Resolve the gear ceiling against the conf once, here: a run that took 40
