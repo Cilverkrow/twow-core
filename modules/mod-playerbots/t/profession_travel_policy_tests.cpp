@@ -106,6 +106,35 @@ int main()
         Require(ReachCacheScope(false) == ReachCache::AskerMap, "no destination in this call: only for the asker's map");
     }
 
+    // 8) P1-n (OB-00 26.10., M1 FUTILE): the near trainer trip - no quest gap, an unlearned phase-one skill, within the radius.
+    {
+        Require(NearTripSkill(kHerbalism, false) && NearTripSkill(kFirstAid, false), "an unlearned phase-one skill: near trip");
+        Require(!NearTripSkill(kHerbalism, true), "learned once: the next rank is not a near trip");
+        Require(!NearTripSkill(185, false) && !NearTripSkill(171, false), "cooking / alchemy: no phase-one near trip");
+        Require(WithinNearRadius(0.0f, 300) && WithinNearRadius(300.0f, 300), "within 300 yd, the edge included");
+        Require(!WithinNearRadius(300.5f, 300), "beyond the radius");
+        Require(!WithinNearRadius(10.0f, 0), "radius 0: off");
+        Require(!WithinNearRadius(-1.0f, 300), "no distance: never");
+        Require(NearHoldUntil(1000) == 1000 + kNearHoldSeconds && kNearHoldSeconds == 600, "the near trip holds 10 min");
+        Require(NearHoldUntil(1000) - 1000 < kTripHoldSeconds, "shorter than the gap trip's cap");
+        Require(NearCheckDue(1000, 0) && NearCheckDue(1060, 1000) && !NearCheckDue(1059, 1000), "one near check per 60 s");
+        Require(ClampNearRadius(0) == 0 && ClampNearRadius(-5) == 0, "0 or less: off");
+        Require(ClampNearRadius(300) == 300 && ClampNearRadius(5000) == kMaxNearRadius, "at most 1000 yd");
+        Require(std::strcmp(kNearCheckValue, kNearTraceValue) != 0 && std::strcmp(kNearCheckValue, kTrainerTripValue) != 0,
+            "separate near values; the hourly limit is the trainer trip's");
+
+        // The gate: all passed -> start; otherwise the first gate that refused (the trace's result=).
+        Require(NearGateReason(true, true, false, false, true, true, true, true) == nullptr, "all gates passed: start");
+        Require(std::strcmp(NearGateReason(false, false, true, true, false, false, false, false), "not_eligible") == 0, "not eligible first");
+        Require(std::strcmp(NearGateReason(true, false, true, false, true, true, true, true), "cooldown") == 0, "the hourly limit");
+        Require(std::strcmp(NearGateReason(true, true, true, false, true, true, true, true), "turn_in") == 0, "an open turn-in goes first");
+        Require(std::strcmp(NearGateReason(true, true, false, true, true, true, true, true), "band") == 0, "a band walk goes first");
+        Require(std::strcmp(NearGateReason(true, true, false, false, false, true, true, true), "money") == 0, "money");
+        Require(std::strcmp(NearGateReason(true, true, false, false, true, false, false, false), "no_trainer") == 0, "nothing to learn");
+        Require(std::strcmp(NearGateReason(true, true, false, false, true, true, false, false), "not_near") == 0, "no trainer within the radius");
+        Require(std::strcmp(NearGateReason(true, true, false, false, true, true, true, false), "unreachable") == 0, "near but hostile / unreachable");
+    }
+
     std::cout << "profession_travel_policy_tests: OK\n";
     return 0;
 }

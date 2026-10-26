@@ -60,6 +60,8 @@ namespace ai
                 {
                     if (AI_VALUE(Unit*, "current target") == target)
                         SET_AI_VALUE(Unit*, "current target", nullptr);
+                    // twow-repo#630 follow-up (Rotation.ReachDropEngagement): under a real player all of the target goes.
+                    ai->DropUnreachableEngagement(target);
                     return false;
                 }
 

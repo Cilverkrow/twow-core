@@ -530,6 +530,7 @@ public:
     // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): gap-filler trips of a roster bot to the trainer of
     // a phase-one profession and to the vendor of its missing gathering tool; 0 off, 1 all, 2 cohort B (odd guid).
     uint32 professionTrainingTravel = 0;
+    uint32 professionTrainingNearRadius = 0;   // P1-n: yards, 0 = off - the near trainer trip of the same mode and cohort
     uint32 professionUseToolBuy = 0;
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
@@ -663,6 +664,8 @@ public:
     uint32 rotationDarkRuneGateRecheckSeconds = 10;  // ... the wait after a failed check
     uint32 rotationReachLosClose = 0;  // twow-repo#594 (Linalella, 23.10.): a hostile reach target out of sight is chased to half the distance until in sight, never inside the floor (ReachLosPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
     uint32 rotationReachPlayerMaster = 0;  // twow-repo#630 GRP-REACH-01: the reach progress check (hotfix 8.2) also for a bot with a real player as master, own target only, 30 s ignore; 0 off, 1 all, 2 cohort B (odd guid)
+    uint32 rotationReachDropEngagement = 0;  // twow-repo#630 follow-up (owner repro 25.10.): that drop also clears attack/pull/old target, selection and swing (combat ends, follow resumes; ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationFollowUnstealth = 0;  // twow-repo#630 follow-up: a rogue following a real player out of combat, dungeons and BGs drops stealth while the master moves or it catches up, above follow (ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
     bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
     bool perfPartyBuffKnownSpellGate = false;  // twow-repo#541 (audit A22): five party buff/cure triggers skip their party scan while the bot knows no rank of the action's spell (0 = off)
     bool perfLazyEngineInit = false;  // twow-repo#541 (audit A21): a strategy change rebuilds an engine that is not running (idle combat/non-combat, dead) only when it is activated (0 = off)
@@ -788,6 +791,9 @@ public:
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
     bool deathLoopEscape = false;   // twow-repo#541 A39 (owner 10.10.): hostile-area death = loop; never evacuate to a hostile homebind
+    // twow-repo#601/#602 G2 (OB-00 go 26.10.2026): short life after a revive is a loop; an evacuation point at the loop
+    // is replaced by the race's safe start (0 off, 1 all, 2 cohort B).
+    uint32 deathLoopFarEscape = 0;
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;
@@ -842,6 +848,7 @@ public:
     bool botGroupsAdhocWorldThread = false;
     // twow-repo#628: the manager pass spread over this many updates (0/1 = the whole pass in one update).
     uint32 botGroupsAdhocScanSlices = 0;
+    bool botGroupsAdhocHelpUntilDone = false;  // twow-repo#365 (owner 25.10.): whoever is done follows a member with the objective open until the group is done
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
@@ -918,6 +925,9 @@ public:
     // twow-repo#601 S5a F2: when every rung of the bot's band lies in the zone it stands in, the next band is a candidate
     // from this many levels below its min on (instead of 2). 0 = off (default), 1..10; other values act like 0.
     uint32 questFirstProgressionBandLadderSameZoneNext = 0;
+    // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a game object quest objective whose lock opens only with a profession
+    // skill the bot lacks (skill, value or tool) is no quest target. Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questFirstProgressionSkipSkillLockedObjectives = 0;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.

@@ -30,6 +30,7 @@
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/DirectTargetPolicy.h"
+#include "playerbot/ProfessionTravelPolicy.h"   // P1-n ClampNearRadius
 #include "playerbot/TransportBoardPolicy.h"
 #include "playerbot/ConfigEchoPolicy.h"
 #include "playerbot/R01CohortPolicy.h"
@@ -616,6 +617,12 @@ bool PlayerbotAIConfig::Initialize()
     rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 0);   // twow-repo#630
     if (rotationReachPlayerMaster > 2)
         rotationReachPlayerMaster = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationReachDropEngagement = config.GetIntDefault("AiPlayerbot.Rotation.ReachDropEngagement", 0);   // twow-repo#630 follow-up
+    if (rotationReachDropEngagement > 2)
+        rotationReachDropEngagement = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationFollowUnstealth = config.GetIntDefault("AiPlayerbot.Rotation.FollowUnstealth", 0);   // twow-repo#630 follow-up
+    if (rotationFollowUnstealth > 2)
+        rotationFollowUnstealth = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationDarkRuneGate = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate", 0);   // twow-repo#602 ROT-01 3c
     if (rotationDarkRuneGate > 2)
         rotationDarkRuneGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -736,6 +743,13 @@ bool PlayerbotAIConfig::Initialize()
     deathLoopWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DeathLoop.WindowSeconds", 900));
     deathLoopRadius = std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DeathLoop.Radius", 150.0f));
     deathLoopEscape = config.GetBoolDefault("AiPlayerbot.DeathLoop.Escape", false);
+    // twow-repo#601/#602 G2: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    deathLoopFarEscape = config.GetIntDefault("AiPlayerbot.DeathLoop.FarEscape", 0);
+    if (deathLoopFarEscape > 2)
+    {
+        sLog.outError("[DeathLoop] config key=FarEscape value=%u result=off (0 off, 1 all, 2 cohort B)", deathLoopFarEscape);
+        deathLoopFarEscape = 0;
+    }
     zoneEscapeEnabled = config.GetBoolDefault("AiPlayerbot.ZoneEscape.Enabled", false);
     zoneEscapeCooldownSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.ZoneEscape.CooldownSeconds", 600));
     zoneEscapeRetrySeconds = std::max<uint32>(15, config.GetIntDefault("AiPlayerbot.ZoneEscape.RetrySeconds", 60));
@@ -795,6 +809,7 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
     botGroupsAdhocScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanSlices", 0));
+    botGroupsAdhocHelpUntilDone = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.HelpUntilDone", false);   // twow-repo#365
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -851,6 +866,13 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[QuestBand] config key=BandLadderSameZoneNext value=%u result=off (0 off, 1..10)", questFirstProgressionBandLadderSameZoneNext);
         questFirstProgressionBandLadderSameZoneNext = 0;
+    }
+    // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);
+    if (questFirstProgressionSkipSkillLockedObjectives > 2)
+    {
+        sLog.outError("[QuestFirstRoute] config key=SkipSkillLockedObjectives value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionSkipSkillLockedObjectives);
+        questFirstProgressionSkipSkillLockedObjectives = 0;
     }
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
@@ -1401,6 +1423,8 @@ bool PlayerbotAIConfig::Initialize()
     professionTrainingTravel = config.GetIntDefault("AiPlayerbot.ProfessionTraining.Travel", 0);
     if (professionTrainingTravel > 2)
         professionTrainingTravel = 0;
+    // P1-n: yards, 0 = off, at most 1000 (ProfessionTravelPolicy.h ClampNearRadius); the mode and cohort of ProfessionTraining.Travel.
+    professionTrainingNearRadius = ai::profession_travel::ClampNearRadius(config.GetIntDefault("AiPlayerbot.ProfessionTraining.NearRadius", 0));
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1646,92 +1670,104 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#601 R01-A/B (owner rule 18.10., twow-repo#615): the parsed values of the A/B switches the test arms prove in
     // the running process (R01 steps, the switches the R01 arms pin, P3-a long, #342), one line per Initialize (start and
     // config reload; an arm takes the line of its own start). No key, no state. A new A/B switch adds its entry here: the
-    // config key without "AiPlayerbot." (FormatLine prints the full key) and the parsed member.
+    // config key without "AiPlayerbot." (FormatLine prints the full key) and the parsed member. The entries are sorted by
+    // key (byte order), so a new one goes in at its alphabetical place, not at the end: two PRs then only meet when their
+    // keys are neighbours. config_echo_source_contract checks the order; the feature's own contract pins its entry.
     {
         using ai::config_echo::Value;
         sLog.outString("%s", ai::config_echo::FormatLine({
-            {"QuestFirstProgression.Enabled", Value(questFirstProgressionEnabled)},
-            {"QuestFirstProgression.FailureClasses", Value(questFirstProgressionFailureClasses)},
-            {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
-            {"QuestFirstProgression.ResetOnProgressEvents", Value(questFirstProgressionResetOnProgressEvents)},
-            {"QuestFirstProgression.AbandonStructuralParked", Value(questFirstProgressionAbandonStructuralParked)},
-            {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
-            {"QuestFirstProgression.HubPreloopSameFilters", Value(questFirstProgressionHubPreloopSameFilters)},
-            {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
-            {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
-            {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
-            {"QuestFirstProgression.BandLadder", Value(questFirstProgressionBandLadder)},
-            {"QuestFirstProgression.BandStepAfterEmptySearches", Value(questFirstProgressionBandStepAfterEmptySearches)},
-            {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
-            {"QuestFirstProgression.BandWalkAfterEmptySearches", Value(questFirstProgressionBandWalkAfterEmptySearches)},
-            {"QuestFirstProgression.ContestedObjectiveWait", Value(questFirstProgressionContestedObjectiveWait)},
-            {"QuestFirstProgression.ContestedObjectiveWait.Kill", Value(questFirstProgressionContestedObjectiveWaitKill)},
-            {"QuestFirstProgression.BandQueuedFreeMinutes", Value(questFirstProgressionBandQueuedFreeMinutes)},
-            {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
-            {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
-            {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
-            {"QuestFeasibility.Enable", Value(questFeasibilityEnable)},
-            {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
-            {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
-            {"QuestFeasibility.SoloSkipGroupQuests", Value(questFeasibilitySoloSkipGroupQuests)},
-            {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
-            {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
-            {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
-            {"ZoneExit.TurnInTravelStallCountsCombat", Value(zoneExitTurnInTravelStallCountsCombat)},
-            {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
-            {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
+            {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
+            {"ActivityTrace", Value(activityTrace)},
+            {"BotGroups.AdHoc.HelpUntilDone", Value(botGroupsAdhocHelpUntilDone)},
+            {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
+            {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
+            {"BotGroups.Enabled", Value(botGroupsEnabled)},
+            {"BotUpdateTrace", Value(botUpdateTrace)},
+            {"CastWait.Preparing", Value(castWaitPreparing)},
+            {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
+            {"DeathLoop.Escape", Value(deathLoopEscape)},
+            {"DeathLoop.FarEscape", Value(deathLoopFarEscape)},
+            {"DeathLoop.MaxDeaths", Value(deathLoopMaxDeaths)},
+            {"DeathLoop.Radius", Value(deathLoopRadius)},
+            {"DeathLoop.WindowSeconds", Value(deathLoopWindowSeconds)},
+            {"DestinationDeaths.CampBlock", Value(destinationDeathsCampBlock)},
             {"DirectTargets.Enable", Value(directTargetsEnabled)},
             {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
             {"DirectTargets.FreshGrindFailures", Value(directTargetsFreshGrindFailures)},
-            {"Path.TaxiCancelForm", Value(pathTaxiCancelForm)},
+            {"EnableActionLog", Value(enableActionLog)},
+            {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
+            {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
+            {"Grind.GreyByLevel", Value(grindGreyByLevel)},
+            {"Grind.NeighbourAware", Value(grindNeighbourAware)},
+            {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
+            {"LogInGroupOnly", Value(logInGroupOnly)},
+            {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"Path.PartialNoop", Value(pathPartialNoop)},
-            {"Path.TransportEdgeTrace", Value(pathTransportEdgeTrace)},
-            {"Path.TransportDeckProbe", Value(pathTransportDeckProbe)},
-            {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
             {"Path.PosStuck", Value(pathPosStuck)},
             {"Path.PosStuck.Minutes", Value(pathPosStuckMinutes)},
+            {"Path.TaxiCancelForm", Value(pathTaxiCancelForm)},
             {"Path.TransportBoardFix", Value(pathTransportBoardFix)},
-            {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
-            {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
-            {"Rotation.RestGate", Value(rotationRestGate)},
-            {"Rotation.CastLosGate", Value(rotationCastLosGate)},
-            {"CastWait.Preparing", Value(castWaitPreparing)},
-            {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
-            {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
-            {"Rotation.OomBackoff", Value(rotationOomBackoff)},
-            {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
-            {"Rotation.FleeAway", Value(rotationFleeAway)},
-            {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
-            {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
-            {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
-            {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
+            {"Path.TransportDeckProbe", Value(pathTransportDeckProbe)},
+            {"Path.TransportEdgeTrace", Value(pathTransportEdgeTrace)},
+            {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
+            {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
+            {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
+            {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
+            {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
-            {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
-            {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
-            {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
-            {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
-            {"Loot.RoleWeights", Value(lootRoleWeights)},
-            {"ThrownUsageFix", Value(thrownUsageFix)},
-            {"BotUpdateTrace", Value(botUpdateTrace)},
-            {"ActivityTrace", Value(activityTrace)},
-            {"EnableActionLog", Value(enableActionLog)},
-            {"LogInGroupOnly", Value(logInGroupOnly)},
-            {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
-            {"Grind.GreyByLevel", Value(grindGreyByLevel)},
-            {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
-            {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
-            {"DestinationDeaths.CampBlock", Value(destinationDeathsCampBlock)},
-            {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
-            {"Grind.NeighbourAware", Value(grindNeighbourAware)},
-            {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
-            {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
-            {"BotGroups.Enabled", Value(botGroupsEnabled)},
-            {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
-            {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
+            {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
+            {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
+            {"QuestFeasibility.Enable", Value(questFeasibilityEnable)},
+            {"QuestFeasibility.SoloSkipGroupQuests", Value(questFeasibilitySoloSkipGroupQuests)},
+            {"QuestFirstProgression.AbandonStructuralParked", Value(questFirstProgressionAbandonStructuralParked)},
+            {"QuestFirstProgression.BandLadder", Value(questFirstProgressionBandLadder)},
+            {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
+            {"QuestFirstProgression.BandQueuedFreeMinutes", Value(questFirstProgressionBandQueuedFreeMinutes)},
+            {"QuestFirstProgression.BandStepAfterEmptySearches", Value(questFirstProgressionBandStepAfterEmptySearches)},
+            {"QuestFirstProgression.BandWalkAfterEmptySearches", Value(questFirstProgressionBandWalkAfterEmptySearches)},
+            {"QuestFirstProgression.ContestedObjectiveWait", Value(questFirstProgressionContestedObjectiveWait)},
+            {"QuestFirstProgression.ContestedObjectiveWait.Kill", Value(questFirstProgressionContestedObjectiveWaitKill)},
+            {"QuestFirstProgression.Enabled", Value(questFirstProgressionEnabled)},
+            {"QuestFirstProgression.FailureClasses", Value(questFirstProgressionFailureClasses)},
+            {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
+            {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
+            {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
+            {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
+            {"QuestFirstProgression.HubPreloopSameFilters", Value(questFirstProgressionHubPreloopSameFilters)},
+            {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
+            {"QuestFirstProgression.ResetOnProgressEvents", Value(questFirstProgressionResetOnProgressEvents)},
+            {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
+            {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
+            {"QuestFirstProgression.SkipSkillLockedObjectives", Value(questFirstProgressionSkipSkillLockedObjectives)},
+            {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
+            {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
             {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
+            {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
+            {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
+            {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
+            {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"Rotation.CastLosGate", Value(rotationCastLosGate)},
+            {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
+            {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
+            {"Rotation.FleeAway", Value(rotationFleeAway)},
+            {"Rotation.FollowUnstealth", Value(rotationFollowUnstealth)},
+            {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
+            {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
+            {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
+            {"Rotation.OomBackoff", Value(rotationOomBackoff)},
+            {"Rotation.ReachDropEngagement", Value(rotationReachDropEngagement)},
+            {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
+            {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
+            {"Rotation.RestGate", Value(rotationRestGate)},
+            {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
+            {"ThrownUsageFix", Value(thrownUsageFix)},
+            {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
+            {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
+            {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
+            {"ZoneExit.TurnInTravelStallCountsCombat", Value(zoneExitTurnInTravelStallCountsCombat)},
         }).c_str());
     }
 
