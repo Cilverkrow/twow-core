@@ -37,6 +37,9 @@ void NoteLeaderStuck(PlayerbotAI* ai);
 // Seconds the bot has waited for help on the quest / on its oldest waiting quest (0 = not waiting). Short mutex, rare calls.
 std::uint32_t QueuedAge(std::uint32_t guid, std::uint32_t questId);
 std::uint32_t OldestQueuedAge(std::uint32_t guid);
+// twow-repo#365 HelpUntilDone (OB-10 review #660 B1), world thread only: the bot belongs to a help group of this manager, so
+// its role is S7's (a member, or a bot in a StagedOps queue) - the ad-hoc manager leaves it alone when it drops a helper.
+bool OwnsBot(std::uint32_t guid);
 // twow-repo#628 fix, bot thread only (PlayerbotAI::ApplyGroupAiRequests): the follower or turn-in strategy set the manager posted.
 void ApplyRoleSet(PlayerbotAI* ai, bool turnIn);
 // The forced quest travel (objective objIdx 0..3, or the taker with -1). World thread with StagedOps 0; with StagedOps 1 the
@@ -59,6 +62,7 @@ struct SavedTravel
 class WorldThreadManager
 {
 public:
+    bool Owns(std::uint32_t guid) const { return memberOf.count(guid) != 0 || staged.count(guid) != 0; }
     void Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
     // Running groups are tended (and dissolved) even after Enable went to 0 by a config reload.
     bool HasGroups() const { return !groups.empty() || !forming.empty() || !releasing.empty(); }

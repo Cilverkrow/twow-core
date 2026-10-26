@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "QuestLoopPolicy.h"
+#include "QuestSkillLockPolicy.h"   // twow-repo#601 SkipSkillLockedObjectives (no own test target: the rule is a few lines)
 
 namespace
 {
@@ -21,6 +22,28 @@ int main()
 {
     using namespace ai::quest_loop;
     std::uint32_t const minute = 60000, window = 30 * minute, cooldown = 30 * minute;
+
+    // SkipSkillLockedObjectives (twow-repo#601, rules agreed with CLI-Berufe): a lock opens when ANY slot fits.
+    {
+        using ai::quest_skill_lock::Slot;
+        using ai::quest_skill_lock::Openable;
+        using ai::quest_skill_lock::ProfessionSlotMet;
+        Slot const mining[] = { { true, ProfessionSlotMet(false, 0, 1, false) } };
+        Require(!Openable(mining, 1), "Copper Vein without Mining: not openable");
+        Slot const miningNoPick[] = { { true, ProfessionSlotMet(true, 70, 1, false) } };
+        Require(!Openable(miningNoPick, 1), "Mining but no pick: not openable");
+        Slot const miner[] = { { true, ProfessionSlotMet(true, 70, 1, true) } };
+        Require(Openable(miner, 1), "Mining with the pick: the vein stays a target");
+        Require(!ProfessionSlotMet(true, 0, 0, true), "a skill value 0 never fits (max(1, lock value))");
+        Require(!ProfessionSlotMet(true, 74, 75, true) && ProfessionSlotMet(true, 75, 75, true), "the lock value counts");
+        Slot const herbKneel[] = { { true, false }, { false, true } };
+        Require(Openable(herbKneel, 2), "lock 259 (Herbalism + open kneeling): every bot can open it");
+        Slot const key[] = { { false, true } };
+        Require(Openable(key, 1), "a key item slot counts as openable");
+        Require(Openable(nullptr, 0), "a lock without slots: openable");
+        Slot const twoProfessions[] = { { true, false }, { true, true } };
+        Require(Openable(twoProfessions, 2), "one of two profession slots fits: openable");
+    }
 
     // Ysmara-like loop: an inactive drop about every 3 minutes - the 3rd suppresses for 30 min.
     Record r;

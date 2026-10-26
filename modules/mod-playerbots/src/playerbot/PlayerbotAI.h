@@ -742,7 +742,10 @@ public:
     // Hotfix 8.9 (twow-repo#474): [ItemUse] counters.
     ai::item_use::Trace& GetItemUseTrace() { return itemUseTrace; }
     bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
-    void ClearDeathLoop() { recentDeaths.clear(); lastDeathHostileArea = false; }
+    void ClearDeathLoop() { recentDeaths.clear(); lastDeathHostileArea = false; shortLife = ai::death_loop::ShortLife(); }
+    // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): a revive (short life after it) and the latest death.
+    void RecordReviveForLoop();
+    bool GetLatestLoopDeath(ai::death_loop::Death& death, uint32& zoneId) const;
     // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): when the last evacuation of this bot happened (repeat check).
     void MarkDeathLoopEscape(uint32 nowSeconds) { lastDeathLoopEscapeAt = nowSeconds; }
     uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
@@ -1054,6 +1057,9 @@ public:
     // Hotfix 8.2: one reach attempt at this distance; true when the target is now
     // ignored as unreachable (bots without a real player; with one only under Rotation.ReachPlayerMaster, twow-repo#630).
     bool CheckReachProgress(Unit* target, float distance);
+    // twow-repo#630 follow-up (Rotation.ReachDropEngagement): after that drop a bot with a real player as master lets go of the
+    // target entirely (attack/pull/old target, selection, swing), so its combat ends and follow resumes (ReachDropPolicy.h).
+    void DropUnreachableEngagement(Unit* target);
     bool IsUnreachableTarget(ObjectGuid guid) const { return unreachableTargets.Ignored(guid.GetRawValue(), uint32(time(nullptr))); }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
     // #421 C: set on the bot's thread, taken and acted on by the world thread.
@@ -1208,6 +1214,9 @@ protected:
     std::deque<ai::death_loop::Death> recentDeaths;
     bool lastDeathHostileArea = false;   // A39: the latest death lay in an area of the hostile faction
     uint32 lastDeathLoopEscapeAt = 0;    // A39: time of the last evacuation (repeat_after_escape)
+    ai::death_loop::ShortLife shortLife;   // G2: revive -> death streak (bot's own thread only)
+    ai::death_loop::Death lastLoopDeath;   // G2: the latest death (atSeconds 0 = none), the loop centre of an escape
+    uint32 lastLoopDeathZone = 0;
     // #422: deaths anywhere (cautious mode) and environmental gathering deaths.
     ai::death_series::Series deathSeries;
     ai::death_series::PurposeSuppression gatherDeaths;

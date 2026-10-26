@@ -109,6 +109,81 @@ inline bool MayStartTrip(bool applies, bool rosterOnItsOwn, std::uint32_t level,
     return applies && rosterOnItsOwn && level >= kMinLevel && cooldownOver;
 }
 
+// P1-n (OB-00 26.10.2026 after M1 FUTILE): the gap trip found almost no gap - 26 quest route rejections in 57 min for 30 bots,
+// most with a finished quest, 0 trainer requests in M1 and in cr2-C. "trainer profession near"
+// (AiPlayerbot.ProfessionTraining.NearRadius, yards, 0 = off) sends a bot that has not learned a planned phase-one skill yet to
+// a matching trainer within the radius - typically on a city or hub visit - without a quest gap. Relevance 6.36: above grind
+// (6.35) and the quest request (6.3), the detour is bounded by the radius. Not past an open turn-in, not during a band walk,
+// within the hourly limit of the trainer trip (the same "manual int").
+constexpr std::uint32_t kNearHoldSeconds = 600;
+// The near check walks the trainer destinations: at most once per bot and kNearCheckSeconds.
+constexpr std::uint32_t kNearCheckSeconds = 60;
+constexpr std::uint32_t kMaxNearRadius = 1000;
+
+// "Once" (OB-00): the near trip teaches only a phase-one skill the bot does not have yet; the next ranks stay with the local
+// trainer path and the gap trip.
+inline bool NearTripSkill(std::uint32_t skill, bool hasSkill)
+{
+    return IsPhaseOneSkill(skill) && !hasSkill;
+}
+
+inline bool WithinNearRadius(float distance, std::uint32_t nearRadius)
+{
+    return nearRadius > 0 && distance >= 0.0f && distance <= float(nearRadius);
+}
+
+// A near trip holds kNearHoldSeconds from its request (no backoff to follow); its whole time counts as hold_over_s.
+inline std::uint32_t NearHoldUntil(std::uint32_t now)
+{
+    return now + kNearHoldSeconds;
+}
+
+// "manual int" values: the time of the last near check and of the last gate trace line (0 = never).
+constexpr char const* kNearCheckValue = "profession near check at";
+constexpr char const* kNearTraceValue = "profession near trace at";
+// The result of the last destination walk (1 = a trainer within the radius), counted until the next walk.
+constexpr char const* kNearResultValue = "profession near found";
+// Appended to kTrainerTripValue: 1 = the open trip is a near trip (path=near on its request and end lines).
+constexpr char const* kNearSuffix = " near";
+
+// lastCheck = the time of the last near check (0 = never).
+inline bool NearCheckDue(std::uint32_t now, std::uint32_t lastCheck)
+{
+    return lastCheck == 0 || now >= lastCheck + kNearCheckSeconds;
+}
+
+// The config value: 0 or less = off, above kMaxNearRadius = kMaxNearRadius (a "near" trip is no continent walk).
+inline std::uint32_t ClampNearRadius(std::int32_t configured)
+{
+    if (configured <= 0)
+        return 0;
+    return std::uint32_t(configured) > kMaxNearRadius ? kMaxNearRadius : std::uint32_t(configured);
+}
+
+// The first gate of a near check that refused, for the "[ProfTravel] state=gate" trace (nullptr = all passed). eligible = the
+// switch applies, a roster bot on its own, level >= kMinLevel.
+inline char const* NearGateReason(bool eligible, bool cooldownOver, bool turnInWaiting, bool bandWalk, bool money, bool trainers,
+    bool nearTrainers, bool reachableTrainers)
+{
+    if (!eligible)
+        return "not_eligible";
+    if (!cooldownOver)
+        return "cooldown";
+    if (turnInWaiting)
+        return "turn_in";
+    if (bandWalk)
+        return "band";
+    if (!money)
+        return "money";
+    if (!trainers)
+        return "no_trainer";
+    if (!nearTrainers)
+        return "not_near";
+    if (!reachableTrainers)
+        return "unreachable";
+    return nullptr;
+}
+
 // The tool a learned gathering skill needs and the bags lack; 0 = none missing. Mining first.
 inline std::uint32_t MissingTool(bool mining, bool hasPick, bool skinning, bool hasKnife)
 {

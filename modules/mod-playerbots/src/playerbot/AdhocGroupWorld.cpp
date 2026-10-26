@@ -4,6 +4,7 @@
 #include "playerbot/GroupAiRefresh.h"
 #include "playerbot/ScanSlicePolicy.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/QuestGroupWorld.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "Group/Group.h"
@@ -168,6 +169,53 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
     facts.levelWindowSince = track.levelWindowSince;
     facts.lastProgress = track.lastProgress;
 
+    // twow-repo#365 HelpUntilDone (owner 25.10.2026): whoever is done stays and follows a member that still works on the
+    // objective, until no member does (Leave::GroupDone). The helper's idle clock is the group's freshest progress.
+    facts.helpUntilDone = sPlayerbotAIConfig.botGroupsAdhocHelpUntilDone;
+    Player* helped = nullptr;
+    if (facts.helpUntilDone && facts.objectiveDone && facts.questInProgress)
+    {
+        float best = 0.0f;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->getSource();
+            if (!member || member == bot || !GetBotAI(member) || member->GetMapId() != bot->GetMapId())
+                continue;
+            auto const mt = tracks.find(member->GetGUIDLow());
+            if (mt != tracks.end() && mt->second.group == group->GetId())
+                facts.lastProgress = std::max(facts.lastProgress, mt->second.lastProgress);
+            if (ObjectiveDone(member, entry.key))
+                continue;
+            facts.groupOpen = true;
+            float const d = sServerFacade.GetDistance2d(bot, member);
+            if (!helped || d < best)
+            {
+                helped = member;
+                best = d;
+            }
+        }
+    }
+    if (HelpsGroup(facts) && helped)
+    {
+        PlayerbotAI* ai = GetBotAI(bot);
+        helpingPass.insert(bot->GetGUIDLow());
+        auto const known = helpers.find(bot->GetGUIDLow());
+        bool const first = known == helpers.end() || known->second != group->GetId();
+        if (first || ai->GetMaster() != helped || ai->GetQuestGroupRole() != 1)
+        {
+            helpers[bot->GetGUIDLow()] = group->GetId();
+            // Role 1 = a follower (no LeaveFarAway, the stuck triggers and PosStuck spare it); the set on the bot's own thread,
+            // posted on every change: the logout of the followed member resets the helper's strategies (OnPlayerLogout).
+            ai->SetQuestGroupRole(1);
+            ai->SetMaster(helped);
+            ai->RequestGroupAi(group_ai_refresh::Follower);
+            if (sPlayerbotAIConfig.botGroupsDiagnostics)
+                sLog.outBasic("[BotGroup] kind=adhoc event=help bot=%u group=%u quest=%u objective=%u follows=%u first=%u thread=world",
+                    bot->GetGUIDLow(), group->GetId(), entry.key.questId, uint32(entry.key.objective), helped->GetGUIDLow(),
+                    first ? 1u : 0u);
+        }
+    }
+
     Leave const reason = DecideLeave(facts);
     if (reason == Leave::None)
         return false;
@@ -206,6 +254,12 @@ void WorldThreadManager::LeaveGroup(Player* bot, Group* group)
 
     if (sRandomPlayerbotMgr.IsFreeBot(bot))
         ai->SetMaster(nullptr);
+    // twow-repo#365 HelpUntilDone: a helper leaves its follower role behind (the reset below brings its own strategies back).
+    if (helpers.erase(bot->GetGUIDLow()))
+    {
+        ai->SetQuestGroupRole(0);
+        ai->SetMaster(nullptr);
+    }
     // twow-repo#628 fix: the strategy rebuild and the reset (~10 ms on the world thread in the C short test) on the bot's own thread.
     ai->RequestGroupAi(group_ai_refresh::LeaveReset);
 }
@@ -267,6 +321,54 @@ void WorldThreadManager::FlushMinute(std::uint32_t now)
     minute.start = now;
 }
 
+// twow-repo#365 HelpUntilDone (OB-10 review #660 B1): every helper not seen helping in this pass drops its follower role -
+// its group ended or is no ad-hoc group any more, it is no candidate any more, it is in another group or helps no longer.
+// Only the manager's own helpers, never by role (S7 followers carry role 1 too); a bot S7 owns now keeps its S7 role.
+void WorldThreadManager::SweepHelpers(std::map<std::uint32_t, Player*> const& bots)
+{
+    for (auto it = helpers.begin(); it != helpers.end();)
+    {
+        auto const found = bots.find(it->first);
+        Player* bot = found == bots.end() ? nullptr : found->second;
+        PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        Group* group = bot ? bot->GetGroup() : nullptr;
+
+        HelperFacts facts;
+        facts.loggedOut = !ai || !bot->GetSession();
+        facts.s7Owns = quest_groups::OwnsBot(it->first);
+        facts.transient = bot && (!bot->IsInWorld() || bot->IsBeingTeleported());
+        facts.helping = helpingPass.count(it->first) != 0;
+        facts.otherGroup = group && group->GetId() != it->second;
+        facts.realMaster = !facts.loggedOut && !facts.transient && ai->HasRealPlayerMaster();
+        HelperExit const exit = DecideHelperExit(facts);
+        if (exit == HelperExit::Keep)
+        {
+            ++it;
+            continue;
+        }
+
+        if (exit == HelperExit::RoleOnly || exit == HelperExit::Release)
+            ai->SetQuestGroupRole(0);
+        if (exit == HelperExit::Release)
+        {
+            // Its master as after an accept (the group leader), none without a group; the joined or the left strategies back.
+            Player* leader = group ? sObjectMgr.GetPlayer(group->GetLeaderGuid()) : nullptr;
+            ai->SetMaster(leader && leader != bot && GetBotAI(leader) ? leader : nullptr);
+            ai->RequestGroupAi(group ? group_ai_refresh::JoinReset : group_ai_refresh::LeaveReset);
+        }
+        if (sPlayerbotAIConfig.botGroupsDiagnostics)
+            sLog.outBasic("[BotGroup] kind=adhoc event=help_end bot=%u group=%u exit=%s in_group=%u thread=world", it->first,
+                it->second, HelperExitName(exit), group ? group->GetId() : 0u);
+        it = helpers.erase(it);
+    }
+}
+
+void WorldThreadManager::ReleaseHelpers(std::map<std::uint32_t, Player*> const& bots)
+{
+    helpingPass.clear();
+    SweepHelpers(bots);
+}
+
 void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
 {
     if (!pass.active)
@@ -302,6 +404,10 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
 
     if (pass.next >= pass.guids.size())
     {
+        // #365 HelpUntilDone: the leave rules of every slice ran, so every helper still helping was seen. Before the pairs:
+        // a released helper joins another group with its own strategies back.
+        SweepHelpers(bots);
+        helpingPass.clear();
         Pairs(bots, now);
         ++minute.passes;
         minute.slices = pass.updates;
