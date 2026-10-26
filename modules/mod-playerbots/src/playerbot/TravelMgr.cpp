@@ -1022,6 +1022,10 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
     if (sPlayerbotAIConfig.questLoopInactiveAfterProgress && tDestination1 != tDestination)
         objectiveCountAtStart = ObjectiveCountOf(bot, tDestination1);
 
+    // twow-repo#601 (QuestLoop.InactiveReselect): the fallback belongs to the target that ended through an emptied camp only.
+    if (tDestination1 != tDestination)
+        inactiveReselectPending = false;
+
     wPosition = wPosition1;
     tDestination = tDestination1;
 
@@ -1530,6 +1534,30 @@ bool TravelTarget::IsQuestLoopSuppressed(TravelDestination const* destination) c
         return false;
     auto const it = questLoops.find(objective->GetQuestId());
     return it != questLoops.end() && quest_loop::IsSuppressed(it->second, WorldTimer::getMSTime());
+}
+
+bool TravelTarget::IsInactiveReselectMarked(TravelDestination const* destination) const
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination);
+    return objective && quest_loop::EmptyCampLeftMs(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime()) > 0;
+}
+
+// twow-repo#601 (QuestLoop.InactiveReselect): the search right after an emptied camp (ChooseTravelTargetAction took the pending flag
+// before it set the status to NONE) found no quest target - back to the camp in COOLDOWN for the time left on its mark, as without
+// the switch. The destination is still the camp (no target was set); false when nothing is to restore.
+bool TravelTarget::FallBackToInactiveCooldown()
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    if (!objective || !bot)
+        return false;
+    uint32 const leftMs = quest_loop::EmptyCampLeftMs(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime());
+    if (!leftMs)
+        return false;
+    SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+    SetExpireIn(leftMs);
+    sLog.outBasic("[QuestLoop] state=inactive_reselect_fallback bot=%u level=%u quest=%u target_entry=%d cooldown_ms=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), leftMs);
+    return true;
 }
 
 bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destination) const
@@ -2134,6 +2162,21 @@ void TravelTarget::CheckStatus()
                 if (sPlayerbotAIConfig.questLoopInactiveCooldownSeconds)
                     SetExpireIn(quest_loop::InactiveCooldownMs(tDestination->GetCooldownDelay(), sPlayerbotAIConfig.questLoopInactiveCooldownSeconds));
                 NoteQuestObjectiveFailure();
+                // twow-repo#601 (QuestLoop.InactiveReselect): the emptied camp is remembered for the cooldown just set and the target ends,
+                // so the next search runs now and skips it (as does the refresh). A roster bot on its own only; off or another cohort: as
+                // before. No quest target found -> FallBackToInactiveCooldown (ChooseTravelTargetAction) restores this COOLDOWN.
+                if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopInactiveReselect, bot->GetGUIDLow()) &&
+                    sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())
+                {
+                    QuestObjectiveTravelDestination const* objective = static_cast<QuestObjectiveTravelDestination const*>(tDestination);
+                    uint32 const markMs = quest_loop::InactiveCooldownMs(tDestination->GetCooldownDelay(), sPlayerbotAIConfig.questLoopInactiveCooldownSeconds);
+                    quest_loop::MarkEmptyCamp(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime(), markMs);
+                    sLog.outBasic("[QuestLoop] state=inactive_reselect bot=%u level=%u quest=%u target_entry=%d mark_ms=%u",
+                        bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), markMs);
+                    SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                    inactiveReselectPending = true;
+                    ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+                }
             }
             if (progressRule)
                 objectiveCountAtStart = objectiveCountNow;

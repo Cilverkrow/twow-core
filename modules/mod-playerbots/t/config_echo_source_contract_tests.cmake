@@ -152,6 +152,7 @@ set(entries
   "Grind.QuestFirstOrder|grindQuestFirstOrder"
   "Grind.NeighbourAware|grindNeighbourAware"
   "QuestLoop.InactiveAfterProgress|questLoopInactiveAfterProgress"
+  "QuestLoop.InactiveReselect|questLoopInactiveReselect"
   "BotGroups.Enabled|botGroupsEnabled"
   "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
   "BotGroups.AdHoc.ScanSlices|botGroupsAdhocScanSlices"
