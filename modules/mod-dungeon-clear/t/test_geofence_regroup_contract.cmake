@@ -30,10 +30,42 @@ require_order("                                    if (bot->GetGroup())
                                         bot->RemoveFromGroup();"
               "                                    bool const back = runGroup->AddMember(bot->GetObjectGuid(), bot->GetName());"
               "leave any other group through the core's wrapper first")
+# The failed re-add block ends in continue - before any unbind or teleport (pre-review: pinning only "if (!back) {" let a
+# deleted continue pass, i.e. the #708 bug).
 require_order("                                    if (!back)
-                                        continue;"
+                                    {"
+              "                                        continue;
+                                    }
+                                    // A personal bind"
+              "failed re-add ends in continue")
+require_order("                                        continue;
+                                    }
+                                    // A personal bind"
               "                                    sInstanceSaveMgr->PlayerUnbindInstance(bot->GetObjectGuid(), _mapId,"
               "no unbind or teleport after a failed re-add")
+# #708 follow-up (OB-10 26.10.): the re-add is throttled per member (DcRunRobust::RegroupMayTry, gtest), checked BEFORE the
+# member leaves another group; the streak starts over when the member is back in the group by any other way; 5 failures
+# end the run right after the sweep in either tick.
+require_order("                                    if (!DcRunRobust::RegroupMayTry(rg, nowRg))
+                                        continue;"
+              "                                    if (bot->GetGroup())
+                                        bot->RemoveFromGroup();"
+              "throttle before leaving any other group")
+require_order("                                    bool const back = runGroup->AddMember(bot->GetObjectGuid(), bot->GetName());"
+              "                                    bool const giveUp = DcRunRobust::RegroupRecord(rg, back, nowRg);"
+              "every attempt recorded")
+require_order("                                else if (runGroup)" "                                    _regroup.erase(slot.guid.GetCounter());" "streak reset when back in the group")
+require_order("void DcTestRunJob::TickStarting()" "    SweepPartyGeometry();
+    if (!_regroupGiveUp.empty())" "give-up checked right after the sweep (starting)")
+require_order("    if (!_regroupGiveUp.empty())   // #708 follow-up: a member that cannot rejoin the run's group ends the set-up
+    {
+        FailSetup(_regroupGiveUp);
+        return;" "void DcTestRunJob::TickMonitoring(uint32 dt)" "give-up ends the set-up")
+require_order("void DcTestRunJob::TickMonitoring(uint32 dt)" "    SweepPartyGeometry();
+    if (!_regroupGiveUp.empty())   // #708 follow-up: a member that cannot rejoin the run's group ends the run
+    {
+        Finish(DcTestRun::Verdict::FailAborted, _regroupGiveUp);
+        return;" "give-up ends the run right after the sweep (monitoring)")
 string(FIND "${job}" "other->RemoveMember(bot->GetObjectGuid(), 0);" raw)
 if(NOT raw EQUAL -1)
   message(FATAL_ERROR "geo fence regroup: raw RemoveMember is back (leaks an emptied group)")

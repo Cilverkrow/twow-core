@@ -22,6 +22,7 @@
 #include "TestRun/DcTestRunRecord.h"
 #include "TestRun/DcTestRunVerdict.h"
 #include "TestRun/DcWipeContext.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // #708 follow-up: the geo fence regroup throttle
 
 class Player;
 
@@ -216,6 +217,10 @@ private:
     // (0 = in range). Drives the supervisor's distance fence; see
     // SweepPartyGeometry.
     std::unordered_map<uint32, uint32> _farSinceMs;
+    // Geo fence re-add to the run's group, per slot (DcRunRobust::RegroupMayTry/RegroupRecord: every 30 s at most, the
+    // run ends after 5 failures). The sweep only records the give-up; the tick that called it ends the run.
+    std::unordered_map<uint32, DcRunRobust::RegroupState> _regroup;
+    std::string _regroupGiveUp;
 
     // Geo fence + altitude sanity over all party slots. Shared by
     // TickStarting AND TickMonitoring: b75 accidentally left it only in
