@@ -159,6 +159,7 @@ set(entries
   "Grind.NeighbourAware|grindNeighbourAware"
   "QuestLoop.InactiveAfterProgress|questLoopInactiveAfterProgress"
   "QuestLoop.InactiveReselect|questLoopInactiveReselect"
+  "QuestLoop.EmptyCampHold|questLoopEmptyCampHold"
   "DeathLoop.MaxDeaths|deathLoopMaxDeaths"
   "DeathLoop.WindowSeconds|deathLoopWindowSeconds"
   "DeathLoop.Radius|deathLoopRadius"

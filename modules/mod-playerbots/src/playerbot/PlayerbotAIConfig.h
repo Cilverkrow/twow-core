@@ -769,6 +769,10 @@ public:
     // remembered for its QL-2 cooldown and the bot searches at once without it, instead of standing in COOLDOWN. Mode 0 off
     // (default), 1 all, 2 cohort B.
     uint32 questLoopInactiveReselect = 0;
+    // twow-repo#601 (CLI-Deep 26.10.2026, cand3-C: B went back to the same emptied camp 561 times after the 180 s mark, 83 %
+    // empty again): an emptied camp stays marked for the respawn of its spawn point, at most 900 s (needs InactiveReselect).
+    // Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questLoopEmptyCampHold = 0;
     // twow-repo#485: game-object quest givers and takers spawned only by a script
     // (gameobject.spawntimesecsmin < 0, e.g. GO 270 of quest 310) are no travel targets.
     // false = old behaviour.
