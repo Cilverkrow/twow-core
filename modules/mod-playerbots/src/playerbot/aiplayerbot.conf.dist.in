@@ -1686,8 +1686,13 @@ AiPlayerbot.Path.RescueSkipCustomStarts = 0
 # the bot's own start zone (for a goblin also Sparkwater Port) ignores area levels in the danger check. Exits: the
 # flying machines as scripted taxi links (311 / 322, also driven by quests 41169 / 41170 in the log), the high-elf ship
 # to Auberdine as a scripted move (41259 in the log, level 12, or level 10 and 15 minutes idle); flights 303 / 304 to
-# Light's Hope below level 50 and walking into the Plaguelands below level 20 are closed. Set together with
-# AiPlayerbot.Path.StartZoneExactBounds = 1 and AiPlayerbot.Path.RescueSkipCustomStarts = 1. 0 = off (default).
+# Light's Hope below level 50 and walking into the Plaguelands below level 20 are closed. Option B (owner 26.10.2026):
+# a goblin stays on its island up to level 9 - the quest rescue takes it to an island hub (the start, Rustgate Ridge), at
+# level 10 to the flying machine, without a hearthstone rebind; no 15-minute idle exit below level 10; once a goblin from
+# level 10 stands outside the island its hearthstone moves to Razor Hill ([Travel] state=island_rebind). The walk to the
+# island machine follows the travel graph round the scorpid field ([Travel] state=machine_walk; no route: straight as
+# before). Set together with AiPlayerbot.Path.StartZoneExactBounds = 1 and AiPlayerbot.Path.RescueSkipCustomStarts = 1.
+# 0 = off (default).
 AiPlayerbot.CustomRaceStartZones = 0
 # Hotfix 8.34 (twow-repo#544): with 1 a persistent roster bot on its own above level 10 runs back to
 # its corpse instead of taking the spirit healer just because the graveyard is in sight (the ghost

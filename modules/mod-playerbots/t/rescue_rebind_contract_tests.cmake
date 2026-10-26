@@ -5,7 +5,7 @@ string(FIND "${mgr}" "void RandomPlayerbotMgr::ProcessQuestRescues()" rescue_at)
 if (rescue_at EQUAL -1)
   message(FATAL_ERROR "rescue rebind: ProcessQuestRescues missing")
 endif()
-string(SUBSTRING "${mgr}" ${rescue_at} 4000 rescue)
+string(SUBSTRING "${mgr}" ${rescue_at} 6000 rescue)
 foreach (needle
     "ai::quest_search::RebindAtRescue(IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster(),"
     "bot->SetHomebindToLocation(target, area ? area->ID : 0);"

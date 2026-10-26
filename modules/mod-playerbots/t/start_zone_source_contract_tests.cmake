@@ -96,14 +96,44 @@ require_text("${movement}" "flew = bot->ActivateTaxiPathTo(entry, 0, true);" "E7
 require_text("${botai}" "if (startZones && freeToTravel && !HasRealPlayerMaster() && bot->getRace() == sz::GoblinRace && bot->GetMapId() == 1)" "Q1 gated")
 require_text("${botai}" "bot->IsCurrentQuest(sz::QuestBadNews, 0), bot->IsCurrentQuest(sz::QuestSolutions, 0));" "Q1 by quest log")
 require_text("${botai}" "sz::IslandLeaveAllowed(sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), startZones)" "8.29 roster rule kept off")
-require_text("${botai}" "gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now))" "8.29 leave rule")
+# F2 (option B): on, no 15-minute idle exit below level 10; off, 8.29's leave rule unchanged.
+require_text("${botai}" "gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(),
+                        sz::IslandLeaveIdle(startZones, questProgress.IdleSeconds(now)))" "8.29 leave rule, idle exit off with the switch")
 require_order("${botai}" "uint32 questFlight = 0;" "else if ((islandCandidate || HasRealPlayerMaster()) && freeToTravel)" "Q1 before 8.29")
 # Wave-0 A/B 16.10.: the walk to a machine waits while the bot is in a death series or a death loop (island scorpid
-# field); 8.29 is guarded only with the switch on, off it is unchanged.
-require_text("${botai}" "else if (!IsCautious() && !IsInDeathLoop())
-                    bot->GetMotionMaster()->MovePoint(0, machine.x, machine.y, machine.z, MOVE_PATHFINDING);" "Q1 walk guarded")
+# field); 8.29 is guarded only with the switch on, off it is unchanged. F4: on the island, with the switch, the walk follows
+# the travel graph; the straight MovePoint stays the fallback.
+require_text("${botai}" "else if (!IsCautious() && !IsInDeathLoop() &&
+                    (questFlight != sz::IslandPath || !WalkToMachineByGraph(machine.x, machine.y, machine.z, now)))
+                    bot->GetMotionMaster()->MovePoint(0, machine.x, machine.y, machine.z, MOVE_PATHFINDING);" "Q1 walk guarded, graph walk on the island")
 require_text("${botai}" "else if (!startZones || (!IsCautious() && !IsInDeathLoop()))
-                        bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);" "8.29 walk guarded only with the switch")
+                    {
+                        // F4: on, along the travel graph round the field; off, 8.29's straight walk.
+                        if (!startZones || !WalkToMachineByGraph(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, now))
+                            bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);" "8.29 walk guarded and graph walk only with the switch")
+# F4: the graph walk - gated, never blocking on the graph lock, unitless route, walk links only, one log line.
+require_text("${botai}" "if (!sz::UsesGraphWalk(sPlayerbotAIConfig.customRaceStartZones, bot->GetDistance(x, y, z)))\n        return false;" "F4 gated by the switch")
+require_text("${botai}" "if (!graphLock.try_lock_for(std::chrono::milliseconds(50)))\n            return fallback(\"lock\");" "F4 graph lock never blocks")
+require_text("${botai}" "TravelNodeRoute nodeRoute = sTravelNodeMap.getRoute(starts.front(), goals.front(), nullptr);" "F4 unitless route")
+require_text("${botai}" "link->second.getPathType() != TravelNodePathType::walk ||\n                !link->second.getComplete())" "F4 complete walk links only")
+require_text("${botai}" "auto const link = nodes[i]->getPaths()->find(nodes[i + 1]);" "F4 find, no operator[] (would write the graph)")
+forbid_text("${botai}" "getPathTo(nodes[" "F4 operator[] lookup (would write the graph)")
+require_text("${botai}" "if (!(prefix.getPathType() & PATHFIND_NORMAL) || prefix.getPath().size() < 2)" "F4 navmesh prefix to the first node")
+require_text("${botai}" "bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == POINT_MOTION_TYPE)\n        return true;" "F4 re-plan unless our point walk runs")
+require_text("${botai}" "[Travel] state=machine_walk bot=%u level=%u nodes=%u points=%u yd=%.0f" "F4 log line")
+require_text("${botai}" "[Travel] state=machine_walk_fallback bot=%u level=%u reason=%s" "F4 fallback line")
+# F2: no 8.29 exit while 41170 waits for its hand-in (L10), the hub rescue is marked and cleared by progress.
+require_text("${botai}" "!sz::IslandLeaveBlocked(startZones, bot->GetLevel(), bot->IsCurrentQuest(sz::QuestSolutions, 0)))" "F2 41170 keeps the goblin")
+require_text("${botai}" "if (questProgress.snapshot != snapshot)\n                islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue" "F2 progress clears the hub mark")
+require_text("${rnd_mgr}" "botAI->MarkIslandHubRescue();" "F2 hub rescue marked")
+# F2: the rescue keeps a goblin on its island (hub / machine) without a rebind; the hearthstone follows once it has left.
+require_text("${rnd_mgr}" "sz::IslandRescue const island = sz::IslandRescueOf(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), level," "F2 rescue gated")
+require_order("${rnd_mgr}" "sz::IslandRescueOf(" "targets.push_back(WorldLocation(1, gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ, 0.0f));" "F2 before the Durotar targets")
+require_text("${rnd_mgr}" "!ai::start_zone::RescueKeepsHomebind(sPlayerbotAIConfig.customRaceStartZones," "F2 no rebind at a start-zone target")
+require_text("${botai}" "if (startZones && bot->getRace() == sz::GoblinRace && freeToTravel && !HasRealPlayerMaster() &&\n                sz::RebindOffIsland(true," "F2 rebind off the island gated")
+require_text("${botai}" "[Travel] state=island_rebind bot=%u level=%u to_x=%.0f to_y=%.0f area=%u" "F2 rebind log line")
+# The switch proves itself in [ConfigEcho] (config_echo_source_contract checks order and parse line).
+require_text("${config_cpp}" "            {\"CustomRaceStartZones\", Value(customRaceStartZones)},\n" "echo entry")
 require_text("${botai}" "sz::ShipCandidate(startZones, bot->getRace(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY())" "S1 gated")
 require_text("${botai}" "bot->TeleportTo(sz::AuberdineMap, sz::AuberdineDockX, sz::AuberdineDockY, sz::AuberdineDockZ, bot->GetOrientation());" "S1 move")
 
