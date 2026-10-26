@@ -71,6 +71,8 @@ require_text("${training_policy}" "return !(persistentRosterMember && tradeTrain
 
 # Values: the cohort first, the gap values only read, the turn-in rule of 8.5, the hold names, before the generic trainer branch.
 require_text("${values_cpp}" "bool const applies = ai::cohort::Applies(mode, bot->GetGUIDLow());" "mode and cohort")
+# OB-10 26.10.: a bot in a group starts no gap trip (trainer and tool trip share this gate).
+require_text("${values_cpp}" "bool const rosterOnItsOwn = applies && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&\n        !ai->HasRealPlayerMaster() && !bot->GetGroup();" "no gap trip in a group")
 require_text("${values_cpp}" "AI_VALUE2(int, \"manual int\", \"quest route backoff until\")" "the backoff is read")
 forbid_text("${values_cpp}" "SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\"" "the backoff is never written here")
 require_text("${values_cpp}" "return ai::profession_travel::InQuestGap(now, backoffUntil, ProfessionTripTurnInWaiting(bot, travelTarget),\n        travelTarget->GetBandTripEnd());" "an open turn-in and a band walk come first")

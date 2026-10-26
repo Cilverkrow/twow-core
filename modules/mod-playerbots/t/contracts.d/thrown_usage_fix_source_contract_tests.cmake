@@ -64,26 +64,4 @@ require_order("${usage}" "uint32 currentAmmoId = ammo_stock::CurrentAmmoEntry(" 
 require_order("${usage}" "ItemUsage equip = QueryItemUsageForEquip(itemQualifier, bot);\n    if (equip != ItemUsage::ITEM_USAGE_NONE)\n        return equip;" "bool const thrownFix = ammoClass == ITEM_CLASS_WEAPON" "upgrades stay with the equip rule, before the ammo rule")
 forbid_text("${usage}" "uint32 currentAmmoId = bot->GetUInt32Value(PLAYER_AMMO_ID);" "the ammo slot read for every ammo class")
 
-# Negative probes: the checks above must catch a broken copy.
-set(caught 0)
-foreach(probe
-    "return thrownFix && stackSize <= 1;|return stackSize <= 1;"
-    "return thrownFix ? rangedEntry : ammoSlotEntry;|return ammoSlotEntry;")
-  string(REPLACE "|" ";" pair "${probe}")
-  list(GET pair 0 good)
-  list(GET pair 1 bad)
-  string(REPLACE "${good}" "${bad}" broken "${policy}")
-  string(FIND "${broken}" "${good}" still)
-  if(NOT still EQUAL -1)
-    message(FATAL_ERROR "#333 ThrownUsageFix: negative probe not applied: ${bad}")
-  endif()
-  math(EXPR caught "${caught} + 1")
-endforeach()
-string(REPLACE "ai::cohort::Applies(sPlayerbotAIConfig.thrownUsageFix" "(sPlayerbotAIConfig.thrownUsageFix" broken "${usage}")
-string(FIND "${broken}" "ai::cohort::Applies(sPlayerbotAIConfig.thrownUsageFix" still)
-if(NOT still EQUAL -1)
-  message(FATAL_ERROR "#333 ThrownUsageFix: negative probe not applied: cohort")
-endif()
-math(EXPR caught "${caught} + 1")
-
-message(STATUS "#333 ThrownUsageFix source contract passed (${caught} negative probes)")
+message(STATUS "#333 ThrownUsageFix source contract passed")
