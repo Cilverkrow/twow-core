@@ -135,6 +135,19 @@ TEST(DcTestPlanParseTest, FullArgLine)
     EXPECT_EQ(r.spec.seedBase, 7u);
 }
 
+// CLI-GRP G1 (owner 25.10.2026): level=boss = the highest boss of the dungeon, resolved per run.
+TEST(DcTestPlanParseTest, LevelBoss)
+{
+    ParseResult const r = ParseStartArgs("stockade total=10 level=boss");
+    ASSERT_TRUE(r.ok) << r.err;
+    EXPECT_EQ(r.spec.level, DcTestPlan::kLevelBoss);
+    EXPECT_EQ(DcTestPlan::LevelText(r.spec.level), "boss");
+    EXPECT_EQ(DcTestPlan::LevelText(24), "24");
+
+    ParseResult const bad = ParseStartArgs("stockade total=10 level=bosses");
+    EXPECT_FALSE(bad.ok);   // only the exact word; anything else is still a bad number
+}
+
 TEST(DcTestPlanParseTest, MinimalArgLineDefaultsRest)
 {
     ParseResult const r = ParseStartArgs("deadmines total=10");

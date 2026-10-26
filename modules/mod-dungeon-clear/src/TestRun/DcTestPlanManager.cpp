@@ -126,7 +126,7 @@ bool DcTestPlanManager::Start(DcTestPlan::Spec spec, Player* gm, std::string* ms
     LOG_INFO("playerbots.dungeonclear",
              "TESTPLAN START {} dungeon={} total={} concurrent={} level={} heroic={} seedBase={} "
              "gear={} gm={}",
-             spec.planId, spec.dungeonToken, spec.total, spec.concurrent, spec.level,
+             spec.planId, spec.dungeonToken, spec.total, spec.concurrent, DcTestPlan::LevelText(spec.level),
              spec.heroic ? 1 : 0, spec.seedBase, DcTestGearTiers::Describe(spec.gear),
              gm ? gm->GetName() : "<pending test driver>");
 
@@ -445,7 +445,8 @@ void DcTestPlanManager::Finalize(Plan& plan)
         h.dungeonName = row->name;
     h.total = plan.spec.total;
     h.concurrent = plan.spec.concurrent;
-    h.level = plan.spec.level;
+    // level=boss resolves per run (each record carries its level); the summary header keeps 0 = "not one fixed level".
+    h.level = plan.spec.level == DcTestPlan::kLevelBoss ? 0u : plan.spec.level;
     h.heroic = plan.spec.heroic;
     h.seedBase = plan.spec.seedBase;
     h.gearIlvl = plan.spec.gear.ilvl;
