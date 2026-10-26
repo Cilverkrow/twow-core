@@ -84,6 +84,9 @@ namespace ai
 		// bot thread (PlayerbotAI::QuestBandGiverFilter: switch first, then the scope and a usable ladder row for the bot's band);
 		// read by QuestRelationTravelDestination::IsPossible / IsActive only as values. false / 0 for every other bot.
 		bool HasBandGiverFilter() const { return bandGiverFilter; }
+		// twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the
+		// bot (RpgAreaLevelPolicy.h), set in the constructor on the bot thread; false for every bot with the switch off.
+		bool UsesRpgAreaFromSpawn() const { return rpgAreaFromSpawn; }
 		uint32 GetBandGreyLevel() const { return bandGreyLevel; }
 
 	private:
@@ -93,6 +96,7 @@ namespace ai
 		uint32 gapWindowLow = 0;    // twow-repo#601 S2 R3: 0 / 0 for every bot but the GrindMode 1 population
 		uint32 gapWindowHigh = 0;
 		bool bandGiverFilter = false;    // twow-repo#601 S5a: false for every bot but an in-scope BandLadder bot with a usable row
+		bool rpgAreaFromSpawn = false;   // twow-repo#333 P1-v: Travel.RpgAreaLevelFromSpawn applies to this bot
 		uint32 bandGreyLevel = 0;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };

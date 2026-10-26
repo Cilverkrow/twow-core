@@ -51,7 +51,9 @@ require_text("${values_cpp}" "!walked || counts.trainers > 0, !walked || counts.
 
 # Per spawn, not only per entry (review 26.10.): the request's partitions keep only the points in the bot's zone.
 require_text("${choose_cpp}" "uint32 const homeZone = ai::profession_travel::HomeZoneOnly(bot->GetLevel()) ? bot->GetZoneId() : 0;" "the zone of a request below level 10")
-require_order("${choose_cpp}" "PartitionedTravelList list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);" "{ TerrainManager::GetZoneIdByAreaFlag(position->getAreaFlag(), position->getMapId()) });" "the points outside the zone leave the partitions")
+# P1-v: the request's list is ProfessionTripPartitions (TravelValues.cpp), which drops the points outside the zone.
+require_text("${choose_cpp}" "return ProfessionTripPartitions(center, partitions, travelInfo, purpose, entries, homeZone);" "the request passes the zone to its list")
+require_text("${values_cpp}" "if (!position || (homeZone && !ai::profession_travel::SpawnInHomeZone(homeZone," "the points outside the zone leave the list")
 
 # Movement evidence (OB-00): the request line counts the home-zone drops, the target line names the destination.
 require_text("${choose_cpp}" "drops.homeZone, bot->GetZoneId());" "dropped_home_zone and zone on the request line")
