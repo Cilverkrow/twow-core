@@ -500,6 +500,7 @@ bool PlayerbotAIConfig::Initialize()
     lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     equipKeepWeaponsUnlessUpgrade = config.GetBoolDefault("AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade", false);
+    equipAfterRollWon = config.GetBoolDefault("AiPlayerbot.Equip.AfterRollWon", false);   // twow-repo#341 (owner repro 25.10.)
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
     parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
@@ -701,6 +702,13 @@ bool PlayerbotAIConfig::Initialize()
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
     questWorkTimeoutsMax = (uint32)config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.Max", 0);
     questWorkTimeoutsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestWorkTimeouts.CooldownSeconds", 3600));
+    // twow-repo#601 GameObjectPresence: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopGameObjectPresence = config.GetIntDefault("AiPlayerbot.QuestLoop.GameObjectPresence", 0);
+    if (questLoopGameObjectPresence > 2)
+    {
+        sLog.outError("[QuestLoop] config key=GameObjectPresence value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopGameObjectPresence);
+        questLoopGameObjectPresence = 0;
+    }
     questLoopMaxFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.MaxFailures", 0)));
     questLoopWindowSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.WindowSeconds", 1800));
     questLoopCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.CooldownSeconds", 1800));
@@ -1682,6 +1690,7 @@ bool PlayerbotAIConfig::Initialize()
             {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
             {"DirectTargets.FreshGrindFailures", Value(directTargetsFreshGrindFailures)},
             {"EnableActionLog", Value(enableActionLog)},
+            {"Equip.AfterRollWon", Value(equipAfterRollWon)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
@@ -1733,6 +1742,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
             {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
             {"QuestLoop.EmptyCampHold", Value(questLoopEmptyCampHold)},
+            {"QuestLoop.GameObjectPresence", Value(questLoopGameObjectPresence)},
             {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},

@@ -3417,6 +3417,25 @@ add_test(NAME keep_weapons_policy
   COMMAND keep_weapons_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#341 (AiPlayerbot.Equip.AfterRollWon): gear won by roll is equipped like looted gear.
+add_test(NAME equip_after_roll_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/equip_after_roll_source_contract_tests.cmake")
+
+add_executable(equip_after_roll_policy_tests
+  "${PB_MODULE_DIR}/t/equip_after_roll_policy_tests.cpp")
+
+target_include_directories(equip_after_roll_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(equip_after_roll_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME equip_after_roll_policy
+  COMMAND equip_after_roll_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#596 D (AiPlayerbot.Perf.BindAreaFromHomebind): no terrain lookup at the far home bind position.
 add_test(NAME bind_area_source_contract
   COMMAND "${CMAKE_COMMAND}"

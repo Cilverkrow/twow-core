@@ -81,6 +81,8 @@ require_text("${values_cpp}" "if (travelTarget->GetStatus() == TravelStatus::TRA
 require_text("${values_cpp}" "uint32(std::max(0, AI_VALUE2(int, \"manual int\", ai::profession_travel::kTrainerTripValue))));" "the hourly limit of the trainer trip")
 require_text("${values_cpp}" "turnIn = ProfessionTripTurnInWaiting(bot, travelTarget);" "an open turn-in goes first")
 require_text("${values_cpp}" "band = travelTarget->GetBandTripEnd() != 0;" "a band walk goes first")
+# OB-10 26.10.: a bot in a group starts no near trip (the gap trip has the same gate, profession_travel contract).
+require_text("${values_cpp}" "bool const rosterOnItsOwn = applies && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&\n        !bot->GetGroup();\n    bool const eligible = ai::profession_travel::MayStartTrip(applies, rosterOnItsOwn, bot->GetLevel(), true);" "no near trip in a group")
 require_order("${values_cpp}" "bool const cheapGates = eligible && cooldownOver && !turnIn && !band && money;" "SET_AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearCheckValue, int(now));" "the cheap gates before the walk slot is spent")
 require_order("${values_cpp}" "SET_AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearCheckValue, int(now));" "found = !ai::NearProfessionTrainers(ai, radius, &drops, &counts).empty();" "the check time before the destination walk")
 require_text("${values_cpp}" "found = AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearResultValue) != 0;" "between two walks the last result counts (pre-review)")

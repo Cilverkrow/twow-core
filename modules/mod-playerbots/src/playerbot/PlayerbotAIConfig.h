@@ -588,6 +588,7 @@ public:
     uint32 lootRoleWeights = 0;       // twow-repo#308 LOOT-ROLE-01: 1 = weight scale from the premade path from L1, quest reward by gain; 2 = and the owner stat table v2
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
     bool equipKeepWeaponsUnlessUpgrade = false;   // twow-repo#308 EQUIP-FLIP-01: hands come off only for a hand-item candidate in the bags
+    bool equipAfterRollWon = false;   // twow-repo#341 (owner repro 25.10.): a won Need/Greed roll on a weapon, armour piece or bag runs "equip upgrades" (the core stores it without SMSG_ITEM_PUSH_RESULT)
     bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
     bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
     bool parkCellSourceStats = false;  // twow-repo#541 P2 D0: [CellSource] minute line - continent cells by source (real players / bots / active non-players)
@@ -755,6 +756,9 @@ public:
     // #405: quest objectives whose work phase ran out Max times are skipped.
     uint32 questWorkTimeoutsMax = 0;
     uint32 questWorkTimeoutsCooldownSeconds = 3600;
+    // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a game object objective the bot works at counts only while a spawned,
+    // lootable object of its entry is in sight - else destination_inactive. Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questLoopGameObjectPresence = 0;
     uint32 questLoopMaxFailures = 0;             // twow-repo#581 QL-1: failures per bot x quest that skip its objectives (0 = off)
     uint32 questLoopWindowSeconds = 1800;
     uint32 questLoopCooldownSeconds = 1800;

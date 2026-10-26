@@ -228,6 +228,15 @@ AiPlayerbot.Loot.FeralFixedSpec = 1
 # off only when a weapon, shield or held item in the bags is an equip candidate. 0 = on every run, as before (bots took
 # their weapons off and on after every loot). A re-equip of the old main or off hand is no EquipAction event either way.
 AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade = 0
+# twow-repo#341 (BUG FIX, owner repro 25.10.2026: bots never put on gear they won by roll): a won Need/Greed roll is stored by
+# the core (Group::CountTheRoll) without SMSG_ITEM_PUSH_RESULT, the packet whose "item push result" runs "equip upgrades" -
+# looted gear was equipped, rolled gear stayed in the bags. 1 = SMSG_LOOT_ROLL_WON runs "equip upgrades" when this bot won
+# the roll and the item is a weapon, armour piece or bag (the equip rules of looted gear: AutoEquipUpgradeLoot gate, item
+# usage; without the "query item usage" report). Only the winner's own item, so a group bot never takes anything from the
+# player. A roll that ends in combat runs it in combat too, like looted gear; with Equip.KeepWeaponsUnlessUpgrade = 1 the
+# hands then come off only for a weapon candidate. Equipping binds a BoE item, as for looted gear. Read when the bot logs in
+# (the packet handler is registered only with 1). 0 = as before.
+AiPlayerbot.Equip.AfterRollWon = 0
 # twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
 # place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
 # faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
@@ -991,6 +1000,14 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 # Profile value for the roster: 3 / 3600.
 AiPlayerbot.QuestWorkTimeouts.Max = 0
 AiPlayerbot.QuestWorkTimeouts.CooldownSeconds = 3600
+# twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a quest objective that is a game object never went inactive (the "no living
+# target in sight" check is for creatures only), so at a looted, despawned consumable chest the bot stood in WORK until the work
+# timeout (cohort B: 266 game object work timeouts in 3 h). With GameObjectPresence the objective the bot is working at counts only
+# while a spawned object of its entry is in sight (lootable, being opened, or a chest waiting for its restock); else it ends as
+# destination_inactive, and
+# QuestLoop.InactiveAfterProgress / InactiveReselect / MaxFailures take over as for creatures.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.GameObjectPresence = 0
 
 # twow-repo#581 (QUEST-LOOP-01, owner 11.10.2026): bots looped on emptied quest camps (no living target in sight ->
 # 60 s cooldown -> same camp). QL-1: MaxFailures = N > 0: inactive drops and work timeouts of a quest's objectives

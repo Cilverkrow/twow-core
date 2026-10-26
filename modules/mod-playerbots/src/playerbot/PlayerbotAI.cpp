@@ -317,6 +317,10 @@ PlayerbotAI::PlayerbotAI(Player* bot) :
     botOutgoingPacketHandlers.AddHandler(SMSG_TEXT_EMOTE, "receive text emote");
     botOutgoingPacketHandlers.AddHandler(SMSG_EMOTE, "receive emote");
     botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_START_ROLL, "loot start roll", true);
+    // twow-repo#341 (Equip.AfterRollWon): a won roll stores the item without SMSG_ITEM_PUSH_RESULT (EquipAfterRollPolicy.h).
+    // Only with the switch, so 0 leaves every roll as before (no queued packet, no failed action); read when the bot logs in.
+    if (sPlayerbotAIConfig.equipAfterRollWon)
+        botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_ROLL_WON, "loot roll won", true);
     botOutgoingPacketHandlers.AddHandler(SMSG_SUMMON_REQUEST, "summon request");
     botOutgoingPacketHandlers.AddHandler(MSG_RAID_READY_CHECK, "ready check");
     botOutgoingPacketHandlers.AddHandler(SMSG_QUEST_CONFIRM_ACCEPT, "confirm quest");
@@ -4226,8 +4230,9 @@ void PlayerbotAI::RecordDeathForLoop()
     }
 
     // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): the latest death is the loop centre of an escape; a death
-    // soon after a revive close to it extends the short life streak (DeathLoopPolicy.h).
-    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()))
+    // soon after a revive close to it extends the short life streak (DeathLoopPolicy.h). A bot led by a real player follows its
+    // player: no streak (OB-10 review of #702).
+    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && !HasRealPlayerMaster())
     {
         lastLoopDeath = death;
         lastLoopDeathZone = bot->GetZoneId();
@@ -4241,7 +4246,7 @@ void PlayerbotAI::RecordDeathForLoop()
 
 void PlayerbotAI::RecordReviveForLoop()
 {
-    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()))
+    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && !HasRealPlayerMaster())
         death_loop::RecordRevive(shortLife, uint32(time(nullptr)), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
 }
 

@@ -73,9 +73,11 @@ require_order("${revive}" "bot->ResurrectPlayer(0.5f, !ai->HasCheat(BotCheatMask
 
 # 4. Record at death: switch + cohort, latest death kept, short life streak; the old record untouched.
 between("${ai_cpp}" "void PlayerbotAI::RecordDeathForLoop()" "\n}\n" record)
-require_order("${record}" "death_loop::Record(recentDeaths, death, DeathLoopSettings());" "if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()))" "old record first")
+require_order("${record}" "death_loop::Record(recentDeaths, death, DeathLoopSettings());" "if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && !HasRealPlayerMaster())" "old record first, never for a bot led by a real player")
 require_text("${record}" "death_loop::RecordShortLifeDeath(shortLife, death.atSeconds, death.mapId, death.x, death.y, sPlayerbotAIConfig.deathLoopRadius)" "short life uses the loop radius")
 require_text("${record}" "[DeathLoop] state=short_life guid=%u" "greppable short life line")
+between("${ai_cpp}" "void PlayerbotAI::RecordReviveForLoop()" "\n}\n" revive_stamp)
+require_text("${revive_stamp}" "if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && !HasRealPlayerMaster())" "revive stamp never for a bot led by a real player")
 
 # 5. Loop check: after the hostile death, before the window rule; switch-gated; the clear resets the streak.
 between("${ai_cpp}" "bool PlayerbotAI::IsInDeathLoop() const" "\n}\n" in_loop)
@@ -87,7 +89,7 @@ require_text("${ai_h}" "void ClearDeathLoop() { recentDeaths.clear(); lastDeathH
 between("${release}" "class RepopAction : public SpiritHealerAction" "class SelfResurrectAction" repop)
 require_order("${repop}" "[DeathLoop] state=escape guid=%u" "[DeathLoop] state=far_escape guid=%u" "after the A39 escape block")
 require_order("${repop}" "[DeathLoop] state=far_escape guid=%u" "bot->TeleportToHomebind();" "before the teleports")
-require_text("${repop}" "if (deathLoop && ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && ai->GetLatestLoopDeath(loopDeath, loopZone))" "gate")
+require_text("${repop}" "if (deathLoop && ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&\n                ai->GetLatestLoopDeath(loopDeath, loopZone))" "gate, never for a bot led by a real player (OB-10 review of #702)")
 require_text("${repop}" "bool known = death_loop::RaceStartOverride(bot->getRace(), start);" "goblin / high elf safe start first")
 require_text("${repop}" "!death_loop::EscapeAtLoop(loopDeath.mapId, loopDeath.x, loopDeath.y, loopZone, safeStart.mapid, safeStart.coord_x, safeStart.coord_y, zoneOf(safeStart));" "the safe start must lie away from the loop")
 require_text("${repop}" "bot->SetHomebindToLocation(safeStart, start.zone);\n                        defaultPlayerInfo = nullptr;" "homebind set, homebind branch used")

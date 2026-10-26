@@ -118,8 +118,9 @@ bool ProfessionTripTurnInWaiting(Player* bot, TravelTarget const* travelTarget)
 }
 
 // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): may this bot start a profession trip of this kind now?
-// The cheap gate first (mode, roster bot on its own, level, hourly limit), then the quest-first gap (CLI-Deep 25.10.):
-// the 8.1 quest route backoff runs, no open turn-in waits (the 8.5 rule of the gather purposes), no band walk runs.
+// The cheap gate first (mode, roster bot on its own: no real master, no group; level, hourly limit), then the quest-first
+// gap (CLI-Deep 25.10.): the 8.1 quest route backoff runs, no open turn-in waits (the 8.5 rule of the gather purposes), no
+// band walk runs.
 // The gap values are only read, never written.
 bool ProfessionTripStartable(PlayerbotAI* ai, uint32 mode, char const* tripValue)
 {
@@ -128,8 +129,9 @@ bool ProfessionTripStartable(PlayerbotAI* ai, uint32 mode, char const* tripValue
     uint32 const now = uint32(time(nullptr));
 
     bool const applies = ai::cohort::Applies(mode, bot->GetGUIDLow());
+    // OB-10 26.10. (P1-n review): not in a group - a trip of one member would pull it away from its group.
     bool const rosterOnItsOwn = applies && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
-        !ai->HasRealPlayerMaster();
+        !ai->HasRealPlayerMaster() && !bot->GetGroup();
     uint32 const startedAt = applies ? uint32(std::max(0, AI_VALUE2(int, "manual int", tripValue))) : 0;
     if (!ai::profession_travel::MayStartTrip(applies, rosterOnItsOwn, bot->GetLevel(),
             ai::profession_travel::CooldownOver(now, startedAt)))
@@ -179,7 +181,8 @@ bool ProfessionTripHolds(PlayerbotAI* ai, char const* tripValue, char const* kin
 }
 
 // P1-n (ProfessionTravelPolicy.h, AiPlayerbot.ProfessionTraining.NearRadius): may this bot start a near trainer trip now? No
-// quest gap needed; the open turn-in, the band walk, the money and the hourly limit as for the gap trip, at every calculation.
+// quest gap needed; the group, the open turn-in, the band walk, the money and the hourly limit as for the gap trip, at
+// every calculation.
 // Nothing while a travel target is prepared or active: the request could not act then (TravelActionMultiplier,
 // RequestTravelTargetAction::isUseful), and with Perf.TravelRequestGate 0 the value is read every tick. The destination walk
 // runs at most once per kNearCheckSeconds; between two walks its last result counts (pre-review: a false between the checks
@@ -199,7 +202,8 @@ bool ProfessionNearTripStartable(PlayerbotAI* ai)
 
     uint32 const now = uint32(time(nullptr));
     bool const applies = ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTravel, bot->GetGUIDLow());
-    bool const rosterOnItsOwn = applies && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+    bool const rosterOnItsOwn = applies && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
+        !bot->GetGroup();
     bool const eligible = ai::profession_travel::MayStartTrip(applies, rosterOnItsOwn, bot->GetLevel(), true);
     bool const cooldownOver = ai::profession_travel::CooldownOver(now,
         uint32(std::max(0, AI_VALUE2(int, "manual int", ai::profession_travel::kTrainerTripValue))));
