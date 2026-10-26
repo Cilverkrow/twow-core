@@ -4226,8 +4226,9 @@ void PlayerbotAI::RecordDeathForLoop()
     }
 
     // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): the latest death is the loop centre of an escape; a death
-    // soon after a revive close to it extends the short life streak (DeathLoopPolicy.h).
-    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()))
+    // soon after a revive close to it extends the short life streak (DeathLoopPolicy.h). A bot led by a real player follows its
+    // player: no streak (OB-10 review of #702).
+    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && !HasRealPlayerMaster())
     {
         lastLoopDeath = death;
         lastLoopDeathZone = bot->GetZoneId();
@@ -4241,7 +4242,7 @@ void PlayerbotAI::RecordDeathForLoop()
 
 void PlayerbotAI::RecordReviveForLoop()
 {
-    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()))
+    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && !HasRealPlayerMaster())
         death_loop::RecordRevive(shortLife, uint32(time(nullptr)), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
 }
 
