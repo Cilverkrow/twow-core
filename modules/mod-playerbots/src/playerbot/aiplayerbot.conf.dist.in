@@ -1744,6 +1744,17 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # delay of the line (P1-b3). Mode (in-realm A/B, cohort parity): 0 = as before (default),
 # 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionTraining.Travel = 0
+# twow-repo#333 Berufe P1-n (OB-00 26.10.2026 after M1 FUTILE: the quest-first gap was too rare - 0 trainer trips): with
+# ProfessionTraining.Travel on for the bot, a bot (level 5+, roster, on its own) that has not learned a phase-one skill of
+# its plan yet travels to a trainer of that skill with a spawn within NearRadius yards - typically on a city or hub visit -
+# without a quest gap ("request named travel target::trainer profession near" at 6.36, above grind 6.35 and the quest
+# request 6.3; an open turn-in and a band walk still go first). Only the first rank ("once"); the next ranks stay with the
+# local trainer path and the gap trip. Same trainer rules (GREEN, not hostile, reachable), money rule and hourly limit as
+# ProfessionTraining.Travel; the trip holds 10 min and its whole time counts as hold_over_s. "[ProfTravel] state=request
+# kind=trainer ... path=near"; with ProfessionTraining.Trace one "[ProfTravel] state=gate kind=trainer path=near ... result="
+# per bot and TraceCooldownSeconds (result=start or the first gate that refused: not_eligible, cooldown, turn_in, band,
+# money, no_trainer, not_near, unreachable). Yards, 0 = off (default), at most 1000.
+AiPlayerbot.ProfessionTraining.NearRadius = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.

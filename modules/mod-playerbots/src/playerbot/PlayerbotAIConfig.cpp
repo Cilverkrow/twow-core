@@ -30,6 +30,7 @@
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/DirectTargetPolicy.h"
+#include "playerbot/ProfessionTravelPolicy.h"   // P1-n ClampNearRadius
 #include "playerbot/TransportBoardPolicy.h"
 #include "playerbot/ConfigEchoPolicy.h"
 #include "playerbot/R01CohortPolicy.h"
@@ -1390,6 +1391,8 @@ bool PlayerbotAIConfig::Initialize()
     professionTrainingTravel = config.GetIntDefault("AiPlayerbot.ProfessionTraining.Travel", 0);
     if (professionTrainingTravel > 2)
         professionTrainingTravel = 0;
+    // P1-n: yards, 0 = off, at most 1000 (ProfessionTravelPolicy.h ClampNearRadius); the mode and cohort of ProfessionTraining.Travel.
+    professionTrainingNearRadius = ai::profession_travel::ClampNearRadius(config.GetIntDefault("AiPlayerbot.ProfessionTraining.NearRadius", 0));
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1697,6 +1700,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
