@@ -745,6 +745,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestLoop] config key=InactiveReselect value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopInactiveReselect);
         questLoopInactiveReselect = 0;
     }
+    // twow-repo#601 EmptyCampHold: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopEmptyCampHold = config.GetIntDefault("AiPlayerbot.QuestLoop.EmptyCampHold", 0);
+    if (questLoopEmptyCampHold > 2)
+    {
+        sLog.outError("[QuestLoop] config key=EmptyCampHold value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopEmptyCampHold);
+        questLoopEmptyCampHold = 0;
+    }
     questFirstProgressionSkipScriptOnlyQuestTakers = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers", false);
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
     specAuraEnabled = config.GetBoolDefault("AiPlayerbot.SpecAura.Enabled", false);
@@ -1756,6 +1763,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestGroups.Enable", Value(questGroupsEnable)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
             {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
+            {"QuestLoop.EmptyCampHold", Value(questLoopEmptyCampHold)},
             {"QuestLoop.GameObjectPresence", Value(questLoopGameObjectPresence)},
             {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
