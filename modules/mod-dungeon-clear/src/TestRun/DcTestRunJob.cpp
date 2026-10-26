@@ -1639,22 +1639,38 @@ void DcTestRunJob::SweepPartyGeometry()
                                 Group* runGroup = tank->GetGroup();
                                 if (runGroup && !runGroup->IsMember(bot->GetObjectGuid()))
                                 {
+                                    // #708 follow-up (OB-10): a failing re-add (a full group) is retried every 30 s at
+                                    // most, not on every monitor tick; after 5 failures in a row the run ends.
+                                    DcRunRobust::RegroupState& rg = _regroup[slot.guid.GetCounter()];
+                                    uint32 const nowRg = getMSTime();
+                                    if (!DcRunRobust::RegroupMayTry(rg, nowRg))
+                                        continue;
                                     // RemoveFromGroup, not a raw RemoveMember: the core's wrapper also unregisters and
                                     // deletes a group the removal emptied (pre-review).
                                     if (bot->GetGroup())
                                         bot->RemoveFromGroup();
                                     bool const back = runGroup->AddMember(bot->GetObjectGuid(), bot->GetName());
+                                    bool const giveUp = DcRunRobust::RegroupRecord(rg, back, nowRg);
                                     LOG_INFO("playerbots.dungeonclear",
-                                             "TESTRUN {} geo fence: {} was out of the run's group — re-added {}",
-                                             _record.runId, bot->GetName(), back ? "ok" : "FAILED - not teleported");
+                                             "TESTRUN {} geo fence: {} was out of the run's group — re-added {} (failures {}/{})",
+                                             _record.runId, bot->GetName(), back ? "ok" : "FAILED - not teleported",
+                                             rg.failures, DcRunRobust::kRegroupMaxFailures);
                                     // Without the group bind the teleport would open yet another copy of the map:
-                                    // try again next tick instead.
+                                    // try again later instead - or end the run once the member cannot rejoin.
                                     if (!back)
+                                    {
+                                        if (giveUp && _regroupGiveUp.empty())
+                                            _regroupGiveUp = Acore::StringFormat(
+                                                "{} could not rejoin the run's group ({} failed re-adds, geo fence)",
+                                                bot->GetName(), DcRunRobust::kRegroupMaxFailures);
                                         continue;
+                                    }
                                     // A personal bind to another copy of this map would outrank the group's (AddMember's
                                     // group-join reset normally drops it already; this covers a non-resettable one).
+                                    // The run's difficulty (the tank's), not a fixed NORMAL (OB-10 follow-up).
                                     sInstanceSaveMgr->PlayerUnbindInstance(bot->GetObjectGuid(), _mapId,
-                                                                           DUNGEON_DIFFICULTY_NORMAL, /*deleteFromDB*/ true);
+                                                                           tank->GetDifficulty(/*isRaid*/ false),
+                                                                           /*deleteFromDB*/ true);
                                 }
                                 LOG_INFO("playerbots.dungeonclear",
                                          "TESTRUN {} geo fence: {} left the dungeon — teleporting back to the tank",
@@ -1803,6 +1819,11 @@ void DcTestRunJob::TickStarting()
             DcStrategyGate::Reconcile(bot);
 
     SweepPartyGeometry();
+    if (!_regroupGiveUp.empty())   // #708 follow-up: a member that cannot rejoin the run's group ends the set-up
+    {
+        FailSetup(_regroupGiveUp);
+        return;
+    }
 
 
     AiObjectContext* ctx = tankAI->GetAiObjectContext();
@@ -2159,6 +2180,11 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
     // back to the tank and column-snap mid-air members, so the observation
     // below scores the repaired state.
     SweepPartyGeometry();
+    if (!_regroupGiveUp.empty())   // #708 follow-up: a member that cannot rejoin the run's group ends the run
+    {
+        Finish(DcTestRun::Verdict::FailAborted, _regroupGiveUp);
+        return;
+    }
 
     DcTestRun::Observation obs;
     obs.elapsedMs = _monitorMs;
