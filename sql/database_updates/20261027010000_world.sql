@@ -29,6 +29,13 @@
 -- End state on the train base 1839 / 6198 / 414092 (live 26.10.): 1864 / 6386 / 441012.
 -- Every new link has at least one end in 1839-1863 and the gate requires the range to be empty before, so the rollback by
 -- id range removes exactly the rows of this file.
+-- Live runbook (OB-10 / OB-00 26.10.2026):
+--   1. 'skipped' does not abort the file. On live, `SELECT @w0mig575;` right after it must read
+--      'w0mig575 state=applied nodes=25 links=188 paths=26920'; anything else stops the deploy until the cause is known.
+--   2. The rollback by id range holds only while no saveNodeStore has rewritten the graph (it renumbers the nodes by
+--      name). Before it, run this file again in a client session: `SELECT @w0mig575;` = 'state=replay' (G3: the 25 new
+--      keys still sit on 1839-1863) -> the range rollback below; any other state -> roll back by key instead (name,
+--      map_id and rounded x/y/z of the 25 new nodes from the node rows below, then their links and path points).
 -- Rollback (exact, mangosd stopped):
 --   DELETE FROM `ai_playerbot_travelnode_path` WHERE `node_id` BETWEEN 1839 AND 1863 OR `to_node_id` BETWEEN 1839 AND 1863;
 --   DELETE FROM `ai_playerbot_travelnode_link` WHERE `node_id` BETWEEN 1839 AND 1863 OR `to_node_id` BETWEEN 1839 AND 1863;
