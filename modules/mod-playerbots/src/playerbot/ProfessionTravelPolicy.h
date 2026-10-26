@@ -1,8 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace ai::profession_travel
 {
@@ -163,9 +165,10 @@ inline std::uint32_t ClampNearRadius(std::int32_t configured)
 }
 
 // The first gate of a near check that refused, for the "[ProfTravel] state=gate" trace (nullptr = all passed). eligible = the
-// switch applies, a roster bot on its own, level >= kMinLevel.
+// switch applies, a roster bot on its own, level >= kMinLevel. homeZoneTrainers (P1-u): a reachable trainer is left after the
+// home zone rule (always true from kHomeZoneBelowLevel on).
 inline char const* NearGateReason(bool eligible, bool cooldownOver, bool turnInWaiting, bool bandWalk, bool money, bool trainers,
-    bool nearTrainers, bool reachableTrainers)
+    bool nearTrainers, bool reachableTrainers, bool homeZoneTrainers)
 {
     if (!eligible)
         return "not_eligible";
@@ -183,7 +186,26 @@ inline char const* NearGateReason(bool eligible, bool cooldownOver, bool turnInW
         return "not_near";
     if (!reachableTrainers)
         return "unreachable";
+    if (!homeZoneTrainers)
+        return "home_zone";
     return nullptr;
+}
+
+// P1-u (owner 26.10.2026 via OB-00: early access to the professions yes, leaving the start area only for a profession no;
+// OB-00 go X = 10): below kHomeZoneBelowLevel a profession trip (trainer near or gap,
+// tool vendor) only goes to an entry with a spawn in the zone the bot stands in - the zone, not the sub-area (Elwynn Forest
+// with Northshire and Goldshire, not Stormwind City). Without one there is no trip; the bot learns from level 10 on, or on
+// its way as before (#306 local trainer path). A spawn of unknown zone (0) never counts.
+constexpr std::uint32_t kHomeZoneBelowLevel = 10;
+
+inline bool HomeZoneOnly(std::uint32_t level)
+{
+    return level < kHomeZoneBelowLevel;
+}
+
+inline bool SpawnInHomeZone(std::uint32_t botZone, std::vector<std::uint32_t> const& spawnZones)
+{
+    return botZone != 0 && std::find(spawnZones.begin(), spawnZones.end(), botZone) != spawnZones.end();
 }
 
 // P1-t (M1r FUTILE 26.10.2026, gate trace trainers=0 for all 30 bots): the rank filter of the trainer list asked

@@ -124,15 +124,15 @@ int main()
             "separate near values; the hourly limit is the trainer trip's");
 
         // The gate: all passed -> start; otherwise the first gate that refused (the trace's result=).
-        Require(NearGateReason(true, true, false, false, true, true, true, true) == nullptr, "all gates passed: start");
-        Require(std::strcmp(NearGateReason(false, false, true, true, false, false, false, false), "not_eligible") == 0, "not eligible first");
-        Require(std::strcmp(NearGateReason(true, false, true, false, true, true, true, true), "cooldown") == 0, "the hourly limit");
-        Require(std::strcmp(NearGateReason(true, true, true, false, true, true, true, true), "turn_in") == 0, "an open turn-in goes first");
-        Require(std::strcmp(NearGateReason(true, true, false, true, true, true, true, true), "band") == 0, "a band walk goes first");
-        Require(std::strcmp(NearGateReason(true, true, false, false, false, true, true, true), "money") == 0, "money");
-        Require(std::strcmp(NearGateReason(true, true, false, false, true, false, false, false), "no_trainer") == 0, "nothing to learn");
-        Require(std::strcmp(NearGateReason(true, true, false, false, true, true, false, false), "not_near") == 0, "no trainer within the radius");
-        Require(std::strcmp(NearGateReason(true, true, false, false, true, true, true, false), "unreachable") == 0, "near but hostile / unreachable");
+        Require(NearGateReason(true, true, false, false, true, true, true, true, true) == nullptr, "all gates passed: start");
+        Require(std::strcmp(NearGateReason(false, false, true, true, false, false, false, false, false), "not_eligible") == 0, "not eligible first");
+        Require(std::strcmp(NearGateReason(true, false, true, false, true, true, true, true, true), "cooldown") == 0, "the hourly limit");
+        Require(std::strcmp(NearGateReason(true, true, true, false, true, true, true, true, true), "turn_in") == 0, "an open turn-in goes first");
+        Require(std::strcmp(NearGateReason(true, true, false, true, true, true, true, true, true), "band") == 0, "a band walk goes first");
+        Require(std::strcmp(NearGateReason(true, true, false, false, false, true, true, true, true), "money") == 0, "money");
+        Require(std::strcmp(NearGateReason(true, true, false, false, true, false, false, false, true), "no_trainer") == 0, "nothing to learn");
+        Require(std::strcmp(NearGateReason(true, true, false, false, true, true, false, false, true), "not_near") == 0, "no trainer within the radius");
+        Require(std::strcmp(NearGateReason(true, true, false, false, true, true, true, false, false), "unreachable") == 0, "near but hostile / unreachable");
     }
 
     // 9) P1-t (M1r FUTILE 26.10.): the rank filter on the teaching spell. Values from tw_world spell_template / npc_trainer
@@ -153,6 +153,24 @@ int main()
         Require(!TeachesProfessionRank(2581, {44, 36, 0}, {2575, 0, 0}, isProfessionSpell), "a trigger counts only on a LEARN_SPELL effect");
         Require(TeachesProfessionRank(2581, {0, 0, 36}, {0, 0, 2575}, isProfessionSpell), "any of the three effects");
         Require(!TeachesProfessionRank(0, {36, 0, 0}, {0, 0, 0}, isProfessionSpell), "LEARN_SPELL without a trigger: nothing");
+    }
+
+    // 10) P1-u (owner 26.10. via OB-00, X = 10): below level 10 no profession trip out of the zone the bot stands in.
+    // Zone ids (AreaTable): 12 Elwynn Forest (Northshire and Goldshire are sub-areas of it), 1519 Stormwind City, 14 Durotar.
+    {
+        Require(kHomeZoneBelowLevel == 10, "X = 10 (OB-00 go)");
+        Require(HomeZoneOnly(5) && HomeZoneOnly(9), "level 5-9: home zone only");
+        Require(!HomeZoneOnly(10) && !HomeZoneOnly(30), "from level 10 on: as before");
+        Require(SpawnInHomeZone(12, {12}), "a Goldshire trainer for a Northshire bot: same zone");
+        Require(SpawnInHomeZone(12, {1519, 12}), "one spawn in the zone is enough");
+        Require(!SpawnInHomeZone(12, {1519}), "Stormwind City is not Elwynn Forest");
+        Require(!SpawnInHomeZone(14, {12, 1519}), "another zone");
+        Require(!SpawnInHomeZone(12, {}), "no spawn: no trip");
+        Require(!SpawnInHomeZone(0, {0}), "unknown zone (0) never counts");
+        Require(std::strcmp(NearGateReason(true, true, false, false, true, true, true, true, false), "home_zone") == 0,
+            "near, reachable, but outside the zone: home_zone");
+        Require(std::strcmp(NearGateReason(true, true, false, false, true, true, true, false, false), "unreachable") == 0,
+            "unreachable goes before home_zone");
     }
 
     std::cout << "profession_travel_policy_tests: OK\n";
