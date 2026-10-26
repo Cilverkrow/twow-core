@@ -104,6 +104,17 @@ endif()
 
 # 4. Base dump = end state
 file(STRINGS "${dump}" flights REGEX "^\t\\([0-9]+, [0-9]+, 4, [0-9]+, [^,]+, [^,]+, [^,]+, [^,]+, [^,]+, [^,]+, [^,]+\\)[,;]$")
+# twow-repo#575 F1 (20261027010000_world.sql): the wave-0 graph adds 4 flight links with an end in the fixed id range
+# 1839-1863 (Light's Hope <-> Alah'Thalas 303/304, Blackstone Island <-> Sparkwater Port 311/322). They are not part of
+# the M1 mapping; they are pinned here exactly and checked by contracts.d/travelnode_wave0_575_migration_tests.cmake.
+set(wave0 "${flights}")
+list(FILTER wave0 INCLUDE REGEX "^\t\\(([0-9]+, )?18(39|[45][0-9]|6[0-3]), ")
+list(FILTER flights EXCLUDE REGEX "^\t\\(([0-9]+, )?18(39|[45][0-9]|6[0-3]), ")
+string(REGEX MATCHALL "\\([0-9]+, [0-9]+, 4, [0-9]+," wave0_keys "${wave0}")
+list(SORT wave0_keys)
+if (NOT "${wave0_keys}" STREQUAL "(1843, 1847, 4, 311,;(1847, 1843, 4, 322,;(1856, 841, 4, 304,;(841, 1856, 4, 303,")
+  message(FATAL_ERROR "#575 dump: wave-0 flight links changed: ${wave0_keys}")
+endif()
 list(LENGTH flights n_flights)
 if (NOT n_flights EQUAL 270)
   message(FATAL_ERROR "#575 dump: expected 270 flight links, found ${n_flights}")
