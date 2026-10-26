@@ -153,6 +153,66 @@ int main()
         Require(s.samples[3] == 80000 && s.seconds[3][std::size_t(Kind::Grind)] == 80000, "concurrent adds");
     }
 
+    // twow-repo#601 StuckDetail: one line per episode, at the second stuck sample in a row; any other kind ends the episode.
+    {
+        StuckEpisode e;
+        Require(!e.Note(true), "first stuck sample: no line yet");
+        Require(e.Note(true), "second stuck sample in a row: the line");
+        Require(!e.Note(true) && !e.Note(true), "the same episode: no second line");
+        Require(!e.Note(false), "another kind ends the episode");
+        Require(!e.Note(true) && e.Note(true), "a new episode: the line again");
+        Require(!e.Note(false) && !e.Note(true) && !e.Note(false) && !e.Note(true), "single stuck samples: no line");
+        StuckEpisode longOne;
+        for (int i = 0; i < 300; ++i)
+            Require(longOne.Note(true) == (i == 1), "a long episode logs once, the counter stops at 255");
+    }
+
+    // StuckDetail limit: 30 lines a minute for all bots, the refused ones counted for the next line.
+    {
+        StuckDetailLimit limit;
+        std::uint32_t const t0 = 493512u * 60u;
+        for (std::uint32_t i = 0; i < StuckDetailPerMinute; ++i)
+            Require(limit.Take(t0 + i % 60), "30 lines in the minute");
+        Require(!limit.Take(t0 + 59) && !limit.Take(t0 + 30), "the 31st and 32nd line refused");
+        Require(limit.TakeDropped() == 2 && limit.TakeDropped() == 0, "refused lines counted once");
+        Require(limit.Take(t0 + 60), "the next minute starts afresh");
+        Require(limit.Take(0), "minute 0 is a minute too");
+    }
+
+    // StuckDetail limit, many threads within a started minute: exactly 30 pass, the rest counted (only the minute change itself
+    // may let a thread through once more - "about" in the policy).
+    {
+        StuckDetailLimit limit;
+        Require(limit.Take(600), "the minute started");
+        std::atomic<std::uint32_t> passed{ 1 };
+        std::vector<std::thread> threads;
+        for (int t = 0; t < 8; ++t)
+            threads.emplace_back([&limit, &passed] { for (int i = 0; i < 1000; ++i) if (limit.Take(600)) passed.fetch_add(1); });
+        for (std::thread& t : threads)
+            t.join();
+        Require(passed.load() == StuckDetailPerMinute && limit.TakeDropped() == 8000 + 1 - StuckDetailPerMinute, "concurrent limit");
+    }
+
+    // The engine trail: the newest executed action and the trigger after its newest push (Engine::LogAction layout).
+    {
+        TrailPick p = PickFromTrail("|T:no target|PUSH:move to loot - 7.000000 (trigger)|T:far from current loot|PUSH:fish::travel - "
+            "10.000000 (trigger)|T:can fish|PUSH:move to travel target - 1.000000 (trigger)|T:travel target traveling|"
+            "TIME:values 0us triggers 276us|A:fish - USELESS 2us|A:move to loot - PREREQ 3us|M:mmap 13us pts=1|A:move to loot - OK 104us");
+        Require(p.action == "move to loot" && p.trigger == "far from current loot", "cand3-C Thorra: move to loot, far from current loot");
+        p = PickFromTrail("|PUSH:move to travel target - 1.000000 (trigger)|T:travel target traveling|A:move to travel target - OK");
+        Require(p.action == "move to travel target" && p.trigger == "travel target traveling", "without the trace time");
+        p = PickFromTrail("|PUSH:travel - -199.000000 (default)|A:travel - OK 3us");
+        Require(p.action == "travel" && p.trigger == "-", "a default action has no trigger");
+        p = PickFromTrail("p - 1.0 (trigger)|T:old|A:attack anything - USELESS 21us|no actions executed");
+        Require(p.action == "-" && p.trigger == "-", "nothing executed in the trail");
+        p = PickFromTrail("");
+        Require(p.action == "-" && p.trigger == "-", "empty trail");
+        p = PickFromTrail("|PUSH:a - 1.0 (trigger)|T:first|PUSH:a - 2.0 (trigger)|T:second|A:a - OK");
+        Require(p.trigger == "second", "the newest push of the action");
+        p = PickFromTrail("|A:say \"hi\" - OK");
+        Require(p.action == "say 'hi'", "double quotes become single ones");
+    }
+
     std::cout << "bot_activity_policy_tests passed\n";
     return 0;
 }

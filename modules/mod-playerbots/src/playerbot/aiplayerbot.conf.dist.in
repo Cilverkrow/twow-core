@@ -2719,6 +2719,13 @@ AiPlayerbot.RandomBotUpdateInterval = 500
 # per 5-level band (empty bands left out). Log only, no behaviour change; at most one line per roster bot and hour plus
 # one a minute. 0 = off (default).
 AiPlayerbot.ActivityTrace = 0
+# twow-repo#601 (OB-00 26.10.2026): 1 = with ActivityTrace on, a roster bot that is stuck two samples in a row writes one line
+# for the episode (any other kind ends it): "[StuckDetail] bot= level= map= zone= x= y= dest=quest|grind|other quest= entry=
+# status= status_s= left_s= dist= moved= move_retries= motion= moving= state= action='' trigger='' dropped=" - the travel
+# target (quest, entry, yards to its point), the travel status with the seconds held and left, the move retries, the movement
+# generator, and the engine's newest executed action with the trigger that pushed it. At most 30 lines a minute for all bots;
+# dropped= counts the lines refused since the previous one. Log only, no behaviour change. 0 = off (default).
+AiPlayerbot.ActivityTrace.StuckDetail = 0
 # twow-repo#541: 1 = one [WorldBots] line per minute with what the bot manager cost the serial world
 # thread (UpdateSessions, ProcessBot loop incl. logins, rest; max pass, share in per mille, logins,
 # teleport ACK calls). Log only; persistent roster and free random-bot path. 0 = off (default).
