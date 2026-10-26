@@ -530,6 +530,7 @@ public:
     // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): gap-filler trips of a roster bot to the trainer of
     // a phase-one profession and to the vendor of its missing gathering tool; 0 off, 1 all, 2 cohort B (odd guid).
     uint32 professionTrainingTravel = 0;
+    uint32 professionTrainingNearRadius = 0;   // P1-n: yards, 0 = off - the near trainer trip of the same mode and cohort
     uint32 professionUseToolBuy = 0;
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
