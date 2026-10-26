@@ -148,6 +148,7 @@ set(entries
   "EnableActionLog|enableActionLog"
   "LogInGroupOnly|logInGroupOnly"
   "Grind.GreyByLevel|grindGreyByLevel"
+  "QuestLoop.GiverTakerDone|questLoopGiverTakerDone"
   "Grind.QuestFirstOrder|grindQuestFirstOrder"
   "Grind.NeighbourAware|grindNeighbourAware"
   "QuestLoop.InactiveAfterProgress|questLoopInactiveAfterProgress"
