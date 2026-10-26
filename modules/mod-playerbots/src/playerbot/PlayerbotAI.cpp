@@ -652,6 +652,11 @@ void PlayerbotAI::SampleActivity(uint32 now)
     state.helpFollower = questGroupRole.load() == 1;   // twow-repo#627 S7 follower: no own target
     state.moved = activityClock.Move(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
     ai::bot_activity::Kind const kind = ai::bot_activity::Classify(state);
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail): the second stuck sample in a row names the episode, within the
+    // per-minute limit. Off: nothing is read or written.
+    if (sPlayerbotAIConfig.activityTraceStuckDetail && stuckEpisode.Note(kind == ai::bot_activity::Kind::Stuck) &&
+        ai::bot_activity::StuckDetailGlobal().Take(now))
+        ReportStuckDetail(state);
 
     // the seconds since the last sample still belong to its hour; the line for that hour follows
     if (uint32 const credited = activityClock.Add(kind, now))
@@ -661,6 +666,37 @@ void PlayerbotAI::SampleActivity(uint32 now)
         sLog.outBasic("%s", ai::bot_activity::FormatLine(bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), activityClock).c_str());
         activityClock.StartHour(now);
     }
+}
+
+// twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail, OB-00 26.10.2026): what a stuck bot is doing - its target (kind, quest,
+// entry, yards to the target point), the travel status and how long it has held it, the move retries, the movement generator,
+// and the engine's newest executed action with the trigger that pushed it (BotActivityPolicy.h PickFromTrail).
+void PlayerbotAI::ReportStuckDetail(ai::bot_activity::State const& state)
+{
+    uint32 questId = 0, retries = 0;
+    int32 entry = 0, statusSeconds = -1, leftSeconds = -1;
+    float distance = -1.0f;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+    {
+        if (QuestTravelDestination const* quest = dynamic_cast<QuestTravelDestination const*>(target->GetDestination()))
+            questId = quest->GetQuestId();
+        entry = target->GetEntry();
+        retries = target->GetRetryCount(true);
+        statusSeconds = target->GetExpiredTime() / int32(IN_MILLISECONDS);
+        leftSeconds = target->GetTimeLeft() / int32(IN_MILLISECONDS);
+        if (WorldPosition const* point = target->GetPosition())
+            if (point->getMapId() == bot->GetMapId())
+                distance = point->distance(bot);
+    }
+    char const* const dest = state.dest == ai::bot_activity::Dest::Quest ? "quest" :
+        state.dest == ai::bot_activity::Dest::Grind ? "grind" : state.dest == ai::bot_activity::Dest::Other ? "other" : "none";
+    ai::bot_activity::TrailPick const pick = ai::bot_activity::PickFromTrail(currentEngine ? currentEngine->GetLastAction() : "");
+    sLog.outBasic("[StuckDetail] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f dest=%s quest=%u entry=%d status=%u status_s=%d left_s=%d"
+        " dist=%.0f moved=%.1f move_retries=%u motion=%u moving=%u state=%u action=\"%s\" trigger=\"%s\" dropped=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), dest,
+        questId, entry, uint32(state.status), statusSeconds, leftSeconds, distance, state.moved, retries,
+        uint32(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()), bot->IsMoving() ? 1u : 0u, uint32(currentState),
+        pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::StuckDetailGlobal().TakeDropped());
 }
 
 bool PlayerbotAI::IsInGroupWithRealPlayer()

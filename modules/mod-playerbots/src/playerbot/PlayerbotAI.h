@@ -973,6 +973,9 @@ protected:
     // twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace): one activity sample a minute, [BotActivity] per clock hour.
     ai::bot_activity::Clock activityClock;
     void SampleActivity(uint32 now);
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail): one [StuckDetail] line per stuck episode.
+    ai::bot_activity::StuckEpisode stuckEpisode;
+    void ReportStuckDetail(ai::bot_activity::State const& state);
     // Hotfix 8.2: targets this bot could not get closer to.
     ai::unreachable::Approach reachApproach;
     ai::unreachable::IgnoreList unreachableTargets;

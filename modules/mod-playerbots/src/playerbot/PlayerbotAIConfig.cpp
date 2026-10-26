@@ -513,6 +513,7 @@ bool PlayerbotAIConfig::Initialize()
     parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", false);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     activityTrace = config.GetBoolDefault("AiPlayerbot.ActivityTrace", false);   // twow-repo#601 R01 L1
+    activityTraceStuckDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckDetail", false);   // twow-repo#601 (OB-00 26.10.2026)
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
     botUpdateTraceTick = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTick", false);
@@ -1686,6 +1687,7 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outString("%s", ai::config_echo::FormatLine({
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"ActivityTrace", Value(activityTrace)},
+            {"ActivityTrace.StuckDetail", Value(activityTraceStuckDetail)},
             {"BotGroups.AdHoc.HelpUntilDone", Value(botGroupsAdhocHelpUntilDone)},
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
