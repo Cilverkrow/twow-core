@@ -1673,6 +1673,20 @@ add_test(NAME vendor_gear_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/vendor_gear_source_contract_tests.cmake")
 
+# OB-10 26.10.2026: smart destroy (grey only) keeps one stack per item id - no use after free.
+add_executable(destroy_item_policy_tests
+  "${PB_MODULE_DIR}/t/destroy_item_policy_tests.cpp")
+
+target_include_directories(destroy_item_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(destroy_item_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME destroy_item_policy
+  COMMAND destroy_item_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # OB-10 train 6: capped ammo / thrown weapon stock (142 Crude Throwing Axes).
 add_executable(ammo_stock_policy_tests
   "${PB_MODULE_DIR}/t/ammo_stock_policy_tests.cpp")
