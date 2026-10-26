@@ -42,18 +42,18 @@ int main()
 
     // 1) Every RejectCounts reason is in exactly one class sum (a new reason must be classified on purpose).
     {
-        // A 16th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below.
-        static_assert(sizeof(RejectCounts) == (15 + RejectCounts::InactiveReasons) * sizeof(std::uint32_t),
+        // A 17th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below.
+        static_assert(sizeof(RejectCounts) == (16 + RejectCounts::InactiveReasons) * sizeof(std::uint32_t),
             "classify the new reject reason (StructuralRejects / TransientRejects / OtherRejects)");
         RejectCounts all;
         all.turnInSuppressed = 1; all.deathSuppressed = 1; all.otherMapGather = 1; all.knownInactive = 1;
         all.hubFilter = 1; all.notActive = 1; all.enemyZone = 1; all.crossMap = 1; all.zoneLevel = 1;
         all.dangerMap = 1; all.rangeSkip = 1; all.movedAway = 1; all.resumeSkipped = 1;
-        all.questLoopSuppressed = 1; all.battlegroundQuest = 1;
+        all.questLoopSuppressed = 1; all.battlegroundQuest = 1; all.inactiveReselect = 1;
         Require(StructuralRejects(all) == 2, "structural: cross_map, zone_level");
-        Require(TransientRejects(all) == 7, "transient: turn-in/death/quest-loop suppression, hub, range skip, moved away, resume skip");
+        Require(TransientRejects(all) == 8, "transient: turn-in/death/quest-loop suppression, hub, range skip, moved away, resume skip, emptied camp");
         Require(OtherRejects(all) == 6, "other: other-map gather, known inactive, not active, enemy zone, danger map, battleground");
-        Require(StructuralRejects(all) + TransientRejects(all) + OtherRejects(all) == 15, "15 reasons, each counted once");
+        Require(StructuralRejects(all) + TransientRejects(all) + OtherRejects(all) == 16, "16 reasons, each counted once");
         // The P3-0 split of not_active is no extra reason: it is part of notActive.
         RejectCounts split;
         split.notActiveReason[RejectCounts::InactiveNoMark] = 5;
