@@ -110,3 +110,26 @@ TEST(DcRunRobust, StayDeadIsBoundedByALivingRezzerAndTheWaitCap)
     EXPECT_FALSE(StayDead(true, true, true, false, true, 600, 600));   // the cap: release
     EXPECT_FALSE(StayDead(true, true, true, true, true, -1, 600));     // unknown death time (logged in dead): release
 }
+
+TEST(DcRunRobust, GeoFenceRegroupRetriesEvery30sAndGivesUpAfter5Failures)
+{
+    using namespace DcRunRobust;
+    RegroupState s;
+    EXPECT_TRUE(RegroupMayTry(s, 1000));                       // first attempt at once
+    EXPECT_FALSE(RegroupRecord(s, false, 1000));               // failure 1
+    EXPECT_FALSE(RegroupMayTry(s, 1000 + kRegroupRetryMs - 1)); // not every monitor tick
+    EXPECT_TRUE(RegroupMayTry(s, 1000 + kRegroupRetryMs));
+    std::uint32_t t = 1000;
+    for (int i = 2; i < 5; ++i)
+        EXPECT_FALSE(RegroupRecord(s, false, t += kRegroupRetryMs)); // failures 2-4
+    EXPECT_TRUE(RegroupRecord(s, false, t += kRegroupRetryMs));      // failure 5: the run ends
+    RegroupState ok;
+    RegroupRecord(ok, false, 0);
+    EXPECT_FALSE(RegroupRecord(ok, true, 5000));               // a success resets the streak
+    EXPECT_EQ(ok.failures, 0u);
+    EXPECT_TRUE(RegroupMayTry(ok, 5001));
+    RegroupState wrap;
+    RegroupRecord(wrap, false, 0xFFFFF000u);                   // getMSTime wraps
+    EXPECT_FALSE(RegroupMayTry(wrap, 0xFFFFF000u + 1000u));
+    EXPECT_TRUE(RegroupMayTry(wrap, 0xFFFFF000u + kRegroupRetryMs));
+}

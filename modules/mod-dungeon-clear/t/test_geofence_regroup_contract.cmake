@@ -31,9 +31,24 @@ require_order("                                    if (bot->GetGroup())
               "                                    bool const back = runGroup->AddMember(bot->GetObjectGuid(), bot->GetName());"
               "leave any other group through the core's wrapper first")
 require_order("                                    if (!back)
-                                        continue;"
+                                    {"
               "                                    sInstanceSaveMgr->PlayerUnbindInstance(bot->GetObjectGuid(), _mapId,"
               "no unbind or teleport after a failed re-add")
+# #708 follow-up (OB-10 26.10.): the re-add is throttled per member (DcRunRobust::RegroupMayTry, gtest), checked BEFORE the
+# member leaves another group; 5 failures end the run after the sweep; the unbind uses the run's (tank's) difficulty.
+require_order("                                    if (!DcRunRobust::RegroupMayTry(rg, nowRg))
+                                        continue;"
+              "                                    if (bot->GetGroup())
+                                        bot->RemoveFromGroup();"
+              "throttle before leaving any other group")
+require_order("                                    bool const back = runGroup->AddMember(bot->GetObjectGuid(), bot->GetName());"
+              "                                    bool const giveUp = DcRunRobust::RegroupRecord(rg, back, nowRg);"
+              "every attempt recorded")
+require_order("                                    sInstanceSaveMgr->PlayerUnbindInstance(bot->GetObjectGuid(), _mapId,"
+              "                                                                           tank->GetDifficulty(/*isRaid*/ false),"
+              "unbind with the run's difficulty")
+require_order("void DcTestRunJob::TickStarting()" "        FailSetup(_regroupGiveUp);" "give-up ends the set-up")
+require_order("void DcTestRunJob::TickMonitoring(uint32 dt)" "        Finish(DcTestRun::Verdict::FailAborted, _regroupGiveUp);" "give-up ends the run")
 string(FIND "${job}" "other->RemoveMember(bot->GetObjectGuid(), 0);" raw)
 if(NOT raw EQUAL -1)
   message(FATAL_ERROR "geo fence regroup: raw RemoveMember is back (leaks an emptied group)")
