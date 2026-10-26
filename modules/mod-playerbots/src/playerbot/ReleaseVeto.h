@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 class Player;
 
 // twow-repo#629 G1 (CLI-GRP 26.10.2026): a module may keep a dead bot a corpse where the stock "auto release" would send
@@ -12,11 +14,13 @@ class Player;
 // function, the stock action calls it - no module-compiled copy of a stock inline class exists.
 namespace ai::release_veto
 {
-using Predicate = bool (*)(Player* bot);
+// deadSeconds: seconds since the observed death (AI value "death time"); -1 = unknown (e.g. the bot logged in dead).
+// A predicate must bound its veto itself (pre-review: a corpse with nobody left to raise it must still release).
+using Predicate = bool (*)(Player* bot, std::int64_t deadSeconds);
 
 // One predicate (the last registration wins; nullptr clears). Thread-safe; called from every dead bot's own thread.
 void Register(Predicate predicate);
 
 // True when the registered predicate keeps this bot a corpse. False without a predicate.
-bool Vetoed(Player* bot);
+bool Vetoed(Player* bot, std::int64_t deadSeconds);
 }

@@ -70,6 +70,12 @@ namespace DcRezRecovery
     // enabling is allowed and the recovery flow takes it from there.
     bool CanRecover(Player* bot);
 
+    // DungeonClear.StayDeadInRun (g1n 26.10.2026): true while a LIVING rez-class member of `bot`'s group stands on
+    // the same map object (this instance copy) - someone is left who can raise the corpse. Read-only, called on the
+    // dead bot's own thread; same-map members share it. Ignores PostCombatRez (its per-run override would be read
+    // cross-bot); the wait is capped by DungeonClear.StayDeadMaxSecs anyway.
+    bool LivingRezzerOnMap(Player* bot);
+
     // "Is THIS bot the one that has to walk to a corpse right now" — the
     // stand-down gate for every follower rung that moves (follow-tank /
     // scout-lag, hold-at-camp, heal-reposition). Tracks

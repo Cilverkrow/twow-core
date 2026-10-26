@@ -176,6 +176,8 @@ inline constexpr DcSettingDef kDcSettings[] =
     // g1n 26.10.2026: a dead member of an active run (or a .dc test party) stays a corpse in the dungeon - the release veto
     // playerbots asks (playerbot/ReleaseVeto.h); server-only, default 0.
     { "StayDeadInRun",            DcType::Bool,   0,   0,     1,  false },
+    // Its bound: seconds after the death the corpse waits at most (then the stock release; pre-review 26.10.).
+    { "StayDeadMaxSecs",          DcType::UInt, 600,  60,  3600,  false },
 
     // Diagnostics: record every boss-approach decision (the pure DecideApproach
     // observation + verdict) to a JSONL capture file for the offline replay

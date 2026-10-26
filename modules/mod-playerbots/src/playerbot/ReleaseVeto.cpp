@@ -14,9 +14,9 @@ void Register(Predicate predicate)
     g_predicate.store(predicate);
 }
 
-bool Vetoed(Player* bot)
+bool Vetoed(Player* bot, std::int64_t deadSeconds)
 {
     Predicate const predicate = g_predicate.load();
-    return bot && predicate && predicate(bot);
+    return bot && predicate && predicate(bot, deadSeconds);
 }
 }

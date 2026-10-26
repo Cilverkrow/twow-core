@@ -31,16 +31,22 @@ read_dc("src/Ai/Dungeon/DungeonClear/Settings/DcSettingsRegistry.h" registry)
 read_dc("conf/mod_dungeon_clear.conf.dist" conf)
 read_dc("src/DungeonClearModule.cpp" module)
 read_dc("src/Ai/Dungeon/DungeonClear/DungeonClearActionContext.h" context)
+read_dc("src/Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h" policy)
 
 # Key: registry row (server-only, default 0), documented with 0.
 require_text("${registry}" "{ \"StayDeadInRun\",            DcType::Bool,   0,   0,     1,  false }," "registry StayDeadInRun")
 require_text("${conf}" "DungeonClear.StayDeadInRun = 0" "conf StayDeadInRun")
+require_text("${registry}" "{ \"StayDeadMaxSecs\",          DcType::UInt, 600,  60,  3600,  false }," "registry StayDeadMaxSecs")
+require_text("${conf}" "DungeonClear.StayDeadMaxSecs = 600" "conf StayDeadMaxSecs")
 
 # Predicate: map and dungeon first, the key only in a dungeon, then the pure rule with the run and the test party.
-require_order("${module}" "bool StayDeadInRunVeto(Player* bot)" "        if (!map || !map->IsDungeon() || !DcSettings::GetBool(bot, \"StayDeadInRun\"))
+require_order("${module}" "bool StayDeadInRunVeto(Player* bot, std::int64_t deadSeconds)" "        if (!map || !map->IsDungeon() || !DcSettings::GetBool(bot, \"StayDeadInRun\"))
             return false;" "predicate guards")
-require_order("${module}" "            return false;
-        return DcRunRobust::StayDead(true, true, DcStrategyGate::RunActive(bot)," "sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow()));" "predicate rule")
+# Bounded (pre-review 26.10.): a living rezzer on this map and the wait cap, with the seconds playerbots passes in.
+require_order("${module}" "        return DcRunRobust::StayDead(true, true, DcStrategyGate::RunActive(bot),
+                                     sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow())," "                                     DcRezRecovery::LivingRezzerOnMap(bot), deadSeconds,
+                                     DcSettings::GetUInt(bot, \"StayDeadMaxSecs\"));" "predicate rule with its bounds")
+require_text("${policy}" "    return on && inDungeon && (runActive || testParty) && rezzerAlive && deadSeconds >= 0 && deadSeconds < maxSeconds;" "pure bounded rule")
 
 # Registration: once, in the module's AddSC, through the playerbots registry.
 require_order("${module}" "void AddSC_dungeon_clear_module()" "    ai::release_veto::Register(&StayDeadInRunVeto);" "registered in AddSC")

@@ -142,15 +142,28 @@ DungeonClear.LootYieldReanchorAfterFight = 0
 #        graveyard - for Frostmane OUTSIDE the instance - the DC gate stripped it, and the tank's death ended every run
 #        ("Left the dungeon - dungeon clear disabled"). 1 = a dead member of an active run (its own, or a groupmate's on
 #        the same map) or of a `.dc test` party stays a corpse in the dungeon until the healer's post-combat rez; the core
-#        never auto-releases inside instances. A wipe still ends the run through its rez decision (and a `.dc test` run
-#        through its watchdog, which revives and sends the party home). Done through playerbots' release veto
-#        (playerbot/ReleaseVeto.h), NOT the old override of the stock action name, which crashed the map pool on
-#        22.08.2026 (DC TUs built without the bot macros ran stock inline code without a return). 0 = stock release.
+#        never auto-releases inside instances. Bounded: the corpse waits only while a living rez class (priest, paladin,
+#        shaman, druid) of its group stands in the same instance, and at most DungeonClear.StayDeadMaxSecs after the
+#        death; after a wipe, with no rezzer left, or once the time is up it releases like stock. Done through
+#        playerbots' release veto (playerbot/ReleaseVeto.h), NOT the old override of the stock action name, which crashed
+#        the map pool on 22.08.2026 (DC TUs built without the bot macros ran stock inline code without a return).
+#        Only the stock auto release asks the veto. The death-loop repop of a dead bot still fires unless
+#        DungeonClear.SuppressDeathLoopEvac = 1 as well - enable both together. 0 = stock release.
 #
 #        Default: 0
 #
 
 DungeonClear.StayDeadInRun = 0
+
+#
+#    DungeonClear.StayDeadMaxSecs
+#        Seconds after its death a corpse kept by DungeonClear.StayDeadInRun waits for a rez at most, then it releases
+#        like stock (60..3600; the same 10 minutes the stock wait for a real master allows in dungeons).
+#
+#        Default: 600
+#
+
+DungeonClear.StayDeadMaxSecs = 600
 
 #
 #    DungeonClear.RecordDecisions
