@@ -307,3 +307,9 @@ if(BUILD_DUNGEON_CLEAR_FULL_TESTS AND TARGET game)
 elseif(BUILD_DUNGEON_CLEAR_FULL_TESTS)
     message(WARNING "BUILD_DUNGEON_CLEAR_FULL_TESTS is ON but there is no game target in this configuration; skipping dungeon_clear_tests_full")
 endif()
+
+# CLI-GRP G1 pilot 25.10.2026: pool runs undo the guild InitGuild drafted their characters into (source contract).
+add_test(NAME dungeon_clear_test_pool_guild_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_pool_guild_contract.cmake")
