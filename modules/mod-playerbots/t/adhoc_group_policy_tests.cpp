@@ -69,6 +69,62 @@ int main()
 
     Require(std::string(LeaveName(Leave::ObjectiveDone)) == "objective_done", "reason names for the log");
 
+    // twow-repo#365 HelpUntilDone (owner 25.10.2026): whoever is done helps until the group is done.
+    LeaveFacts help = done;
+    help.helpUntilDone = true;
+    help.groupOpen = true;
+    Require(HelpsGroup(help) && DecideLeave(help) == Leave::None, "done, a member still open: stay and help");
+    help.groupOpen = false;
+    Require(!HelpsGroup(help) && DecideLeave(help) == Leave::GroupDone, "done and nobody open: leave, group_done");
+    Require(std::string(LeaveName(Leave::GroupDone)) == "group_done", "group_done in the log");
+    LeaveFacts off = done;
+    off.groupOpen = true;
+    Require(!HelpsGroup(off) && DecideLeave(off) == Leave::ObjectiveDone, "switch off: leave at objective_done as before");
+    LeaveFacts helperIdle = help;
+    helperIdle.groupOpen = true;
+    helperIdle.lastProgress = 1000 - IdleSeconds;
+    Require(DecideLeave(helperIdle) == Leave::Idle, "a helper still leaves when the group made no progress for 10 min");
+    LeaveFacts helperTurnedIn = help;
+    helperTurnedIn.groupOpen = true;
+    helperTurnedIn.questInProgress = false;
+    Require(DecideLeave(helperTurnedIn) == Leave::QuestTurnedIn, "turned in: leave (no helper without the quest)");
+
+    // OB-10 review #660 B1: every way out of the help drops the follower role, except where it is no longer ours.
+    HelperFacts helping;
+    helping.helping = true;
+    Require(DecideHelperExit(helping) == HelperExit::Keep, "seen helping in this pass: keep");
+    HelperFacts groupEnded;   // the core disbanded its group (a group of one), it stands alone
+    Require(DecideHelperExit(groupEnded) == HelperExit::Release, "its group ended: role 0, master none, leave reset");
+    HelperFacts notAdhoc;     // still in that group, but the group left the registry
+    Require(DecideHelperExit(notAdhoc) == HelperExit::Release, "its group is no ad-hoc group any more: release in the group");
+    HelperFacts ineligible;   // no candidate any more (BG queue, roster): not seen helping
+    Require(DecideHelperExit(ineligible) == HelperExit::Release, "no candidate any more: release");
+    HelperFacts stopped;      // its objective open again: CheckLeave no longer sees it helping
+    Require(DecideHelperExit(stopped) == HelperExit::Release, "helps no longer but stays: release, its own quest again");
+    HelperFacts realMaster;
+    realMaster.realMaster = true;
+    Require(DecideHelperExit(realMaster) == HelperExit::RoleOnly, "a real player took it: only the role goes, the master stays");
+    HelperFacts other;
+    other.otherGroup = true;
+    Require(DecideHelperExit(other) == HelperExit::RoleOnly, "in another group: only the role goes (its accept did the rest)");
+    HelperFacts s7;
+    s7.otherGroup = true;
+    s7.s7Owns = true;
+    Require(DecideHelperExit(s7) == HelperExit::Forget, "S7 owns it now: its S7 role stays untouched");
+    s7.otherGroup = false;
+    s7.realMaster = true;
+    Require(DecideHelperExit(s7) == HelperExit::Forget, "S7 owns it: untouched whatever else holds");
+    HelperFacts gone;
+    gone.loggedOut = true;
+    gone.transient = true;
+    Require(DecideHelperExit(gone) == HelperExit::Forget, "logged out: forgotten, nothing touched (no AI left)");
+    HelperFacts teleport;
+    teleport.transient = true;
+    teleport.otherGroup = true;
+    Require(DecideHelperExit(teleport) == HelperExit::Keep, "teleporting: decided on a later pass");
+    Require(std::string(HelperExitName(HelperExit::RoleOnly)) == "role_only" &&
+        std::string(HelperExitName(HelperExit::Release)) == "release", "exit names for the log");
+
     // Pair cooldown: symmetric, time bound, bounded size.
     PairCooldownStore store;
     store.Block(7, 3, 700, 100);

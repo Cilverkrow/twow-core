@@ -25,6 +25,7 @@
 #include "playerbot/DirectTargetDestinations.h"
 #include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 Berufe P1-a / P1-b
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/QuestSkillLockPolicy.h"   // twow-repo#601 QuestFirstProgression.SkipSkillLockedObjectives
 #include "Guild/GuildMgr.h"
 #include "Formulas.h"
 #include <algorithm>
@@ -338,6 +339,7 @@ bool NoteNoRouteTurnIns(AiObjectContext* context, TravelTarget* travelTarget, bo
 enum class CandidateSkip
 {
     None,
+    SkillLocked,   // twow-repo#601 SkipSkillLockedObjectives (checked last in CandidateSkipOf; the enum order is not the check order)
     TurnInSuppressed,
     DeathSuppressed,
     QuestLoopSuppressed,
@@ -346,6 +348,40 @@ enum class CandidateSkip
     OtherMapGrind,
     GatherPurposeSuppressed,
 };
+
+// twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives, QuestSkillLockPolicy.h): a game object quest objective whose lock
+// opens only with profession skills this bot lacks (skill, value or tool) - Copper Vein for Blood Shard (889 / 5052) without Mining.
+// O(1): the template, the lock and its 8 slots; read only with the switch on for this bot.
+bool SkillLockedObjective(Player* bot, TravelDestination const* destination)
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination);
+    if (!objective || objective->GetEntry() >= 0)
+        return false;
+    GameObjectInfo const* info = sObjectMgr.GetGameObjectInfo(uint32(-objective->GetEntry()));
+    LockEntry const* lock = info && info->GetLockId() ? sLockStore.LookupEntry(info->GetLockId()) : nullptr;
+    if (!lock)
+        return false;
+
+    bool const hasPick = bot->HasItemCount(ai::profession_travel::kMiningPick, 1);
+    bool const hasKnife = bot->HasItemCount(ai::profession_travel::kSkinningKnife, 1);
+    ai::quest_skill_lock::Slot slots[8];
+    std::size_t count = 0;
+    for (int j = 0; j < 8; ++j)
+    {
+        if (lock->Type[j] == LOCK_KEY_ITEM)
+            slots[count++] = ai::quest_skill_lock::Slot{ false, true };
+        else if (lock->Type[j] == LOCK_KEY_SKILL)
+        {
+            uint32 const skill = SkillByLockType(LockType(lock->Index[j]));
+            if (skill == SKILL_NONE)
+                slots[count++] = ai::quest_skill_lock::Slot{ false, true };
+            else
+                slots[count++] = ai::quest_skill_lock::Slot{ true, ai::quest_skill_lock::ProfessionSlotMet(bot->HasSkill(skill),
+                    bot->GetSkillValue(skill), lock->Skill[j], ai::profession_travel::HasGatherTool(skill, hasPick, hasKnife)) };
+        }
+    }
+    return !ai::quest_skill_lock::Openable(slots, count);
+}
 
 CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelTarget const* persistentTarget,
     TravelTarget const* excludedTurnInTarget, TravelDestination* destination, WorldPosition* position)
@@ -382,6 +418,12 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
     // #422: a gathering purpose this bot died at twice without a killer.
     if (!target->IsForced() && ai->IsGatherPurposeSuppressed(uint32(destination->GetPurpose()) & gatherPurposes))
         return CandidateSkip::GatherPurposeSuppressed;
+
+    // twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives): no quest trip to an object this bot cannot open. A roster bot
+    // on its own only; off or another cohort: as before.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionSkipSkillLockedObjectives, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && SkillLockedObjective(bot, destination))
+        return CandidateSkip::SkillLocked;
 
     return CandidateSkip::None;
 }
@@ -761,6 +803,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // #421 A: which filters took every candidate.
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
                 uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format() + ai::contested_objective::FormatSources(lastSuppressSources));
+            // twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives): the objects this empty search skipped for a missing
+            // profession, as an own line (the rejected line stays as it is); never written with the switch off.
+            if (lastSkillLocked)
+                sLog.outBasic("[QuestFirstRoute] state=skill_locked bot=%u level=%u skipped=%u", bot->GetGUIDLow(), bot->GetLevel(), lastSkillLocked);
             // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
             uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
                 uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
@@ -1399,6 +1445,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     chooseBudgetExceeded = false;
     lastRejects = ai::quest_search::RejectCounts();
     lastSuppressSources = ai::contested_objective::SourceCounts{};
+    lastSkillLocked = 0;
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
@@ -1510,6 +1557,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 case CandidateSkip::GatherPurposeSuppressed:
                     ++lastRejects.deathSuppressed;
                     ++lastSuppressSources[ai::contested_objective::SourceGather];
+                    continue;
+                case CandidateSkip::SkillLocked:
+                    ai->TellDebug(requester, "Skipping quest object that needs a profession skill I lack.", "debug travel");
+                    ++lastSkillLocked;
                     continue;
                 case CandidateSkip::None:
                     break;
@@ -2632,21 +2683,32 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
     // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): the trainers of a GREEN phase-one rank, or the vendors
     // of the missing pick / knife. Before the generic "trainer" branch. The request time starts the 30-minute hold and
     // the hourly limit, also when no destination comes back (no request loop). One line per request.
-    else if (travelName == "trainer profession" || travelName == "tool vendor")
+    // P1-n (AiPlayerbot.ProfessionTraining.NearRadius): "trainer profession near" is a trainer trip to the trainers of an
+    // unlearned phase-one skill within the radius; it holds kNearHoldSeconds and counts its whole time as hold_over_s.
+    else if (travelName == "trainer profession" || travelName == "trainer profession near" || travelName == "tool vendor")
     {
-        bool const trainerTrip = travelName == "trainer profession";
+        bool const trainerTrip = travelName != "tool vendor";
+        bool const nearTrip = travelName == "trainer profession near";
         uint32 const tool = trainerTrip ? 0 : MissingGatherTool(ai);
         TravelDestinationPurpose const purpose = trainerTrip ? TravelDestinationPurpose::Trainer : TravelDestinationPurpose::Vendor;
         // P1-b2 (CLI-PATH 25.10.): GetPartitions checks neither the travel graph nor the faction - the hostile and the
         // unreachable entries go first (ProfessionTripTargets, ProfessionTravelPolicy.h ClassifyTripTarget).
         ProfessionTripDrops drops;
-        std::vector<int32> const entries = ProfessionTripTargets(ai,
-            trainerTrip ? PhaseOneProfessionTrainers(ai) : GatherToolVendors(ai, tool), purpose, &drops);
+        std::vector<int32> const entries = nearTrip ?
+            NearProfessionTrainers(ai, sPlayerbotAIConfig.professionTrainingNearRadius, &drops) :
+            ProfessionTripTargets(ai, trainerTrip ? PhaseOneProfessionTrainers(ai) : GatherToolVendors(ai, tool), purpose, &drops);
 
         std::string const key = trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
         uint32 const now = uint32(time(nullptr));
-        uint32 const backoffUntil = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
-        uint32 const holdUntil = ai::profession_travel::HoldUntil(now, backoffUntil);
+        uint32 const backoffUntil = nearTrip ? now : uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
+        uint32 const holdUntil = nearTrip ? ai::profession_travel::NearHoldUntil(now) : ai::profession_travel::HoldUntil(now, backoffUntil);
+        // A near start from a cached walk result whose trainers are gone by now: no trip, the hourly limit stays unspent and the
+        // next walk decides (no loop: the start condition walks at most once per kNearCheckSeconds).
+        if (nearTrip && entries.empty())
+        {
+            SET_AI_VALUE2(int, "manual int", ai::profession_travel::kNearResultValue, 0);
+            return false;
+        }
         // A trip of this kind still open (its target expired without the hold being evaluated again) ends here. P1-b3
         // (CLI-Deep R-f): trip_s and hold_over_s count to its last hold check that held, not to this request;
         // seen_after_s is the delay of this line.
@@ -2655,20 +2717,21 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
             uint32 const startedAt = std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key))));
             uint32 const endedAt = std::min(now, ai::profession_travel::LostEndAt(startedAt,
                 uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix)))));
-            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u seen_after_s=%u",
+            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u seen_after_s=%u path=%s",
                 trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
                 endedAt - startedAt,
                 ai::profession_travel::HoldOverSeconds(endedAt, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))),
-                now - endedAt);
+                now - endedAt, AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) ? "near" : "gap");
         }
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix, nearTrip ? 1 : 0);
         SET_AI_VALUE2(int, "manual int", key, int(now));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix, 0);
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix, int(holdUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix, int(backoffUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, entries.empty() ? 0 : 1);
-        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u",
+        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u path=%s",
             trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), tool,
-            uint32(entries.size()), drops.hostile, drops.unreachable, holdUntil - now);
+            uint32(entries.size()), drops.hostile, drops.unreachable, holdUntil - now, nearTrip ? "near" : "gap");
 
         if (entries.empty())
             return false;
@@ -2782,6 +2845,7 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         travelName == "guild order" ? "should travel named::guild order" :
         // twow-repo#333 Berufe P1-a / P1-b: the trip holds while its reason lasts, not only while the start gap does.
         travelName == "trainer profession" ? "should travel named::trainer profession hold" :
+        travelName == "trainer profession near" ? "should travel named::trainer profession near hold" :   // P1-n
         travelName == "tool vendor" ? "should travel named::tool vendor hold" :
         event.getSource());
     SET_AI_VALUE2(int, "manual int", "future travel relevance", relevance * 100);
@@ -2809,6 +2873,8 @@ bool RequestNamedTravelTargetAction::isAllowed() const
     else if (name == "reagent vendor")
         return true;
     else if (name == "trainer profession" || name == "tool vendor")   // twow-repo#333 Berufe P1-a / P1-b
+        return true;
+    else if (name == "trainer profession near")   // P1-n
         return true;
     else if (name == "guild order")
         return true;

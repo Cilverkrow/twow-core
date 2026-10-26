@@ -35,6 +35,9 @@ namespace ai
         ai::quest_search::RejectCounts lastRejects;
         // twow-repo#601 F5 (diagnostic): its death_suppressed skips by suppression source.
         ai::contested_objective::SourceCounts lastSuppressSources{};
+        // twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives): objects skipped because their lock needs a profession the bot
+        // lacks; an own [QuestFirstRoute] state=skill_locked line after an empty search, only when > 0.
+        uint32 lastSkillLocked = 0;
         // #421 B: no quest target - widen the quest search.
         void WidenQuestSearch(uint32 ranges);
         // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the band step from the empty quest search

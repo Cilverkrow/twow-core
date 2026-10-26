@@ -2047,6 +2047,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         // handles group opcodes on the world thread; Group::Create/Disband write the group map without a lock).
         if (sPlayerbotAIConfig.botGroupsEnabled && sPlayerbotAIConfig.botGroupsAdhocWorldThread)
             ai::adhoc_group::WorldManager().Update(GetAllBots(), uint32(time(nullptr)));
+        else if (ai::adhoc_group::WorldManager().HasHelpers())
+            ai::adhoc_group::WorldManager().ReleaseHelpers(GetAllBots());  // #365 HelpUntilDone after a reload to 0
         PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
         if (sPlayerbotAIConfig.worldBotsTrace)
             TraceWorldBots(desiredBots.size(), usSince(sessionsStart, sessionsEnd), usSince(processStart, processEnd),
