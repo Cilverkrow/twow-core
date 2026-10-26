@@ -4056,6 +4056,22 @@ add_test(NAME scan_slices_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/scan_slices_source_contract_tests.cmake")
 
+# twow-repo#629 G1: the out-of-line release veto (a module keeps a dead run member a corpse); contract in t/contracts.d.
+add_executable(release_veto_tests
+  "${PB_MODULE_DIR}/t/release_veto_tests.cpp"
+  "${PB_MODULE_DIR}/src/playerbot/ReleaseVeto.cpp")
+
+target_include_directories(release_veto_tests PRIVATE
+  "${PB_MODULE_DIR}/src"
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(release_veto_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME release_veto
+  COMMAND release_veto_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # --------------------------------------------------------------------------
 # t/contracts.d -- source contracts that register themselves (OB-00 25.10.2026).
 #

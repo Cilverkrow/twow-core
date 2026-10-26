@@ -204,6 +204,12 @@ add_test(NAME dungeon_clear_run_robust_contract
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/run_robust_contract.cmake")
 
+# CLI-GRP g1n 26.10.2026: StayDeadInRun through the playerbots release veto (rule: TestRunRobustPolicy).
+add_test(NAME dungeon_clear_stay_dead_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/stay_dead_contract.cmake")
+
 # Force-include the test prelude, mirroring what the shipping module does with
 # AcCompat.h but with a fraction of its reach — see DcTestPrelude.h for why the
 # module's headers need it and why AcCompat.h itself cannot be used here.

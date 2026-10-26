@@ -68,7 +68,9 @@
 #include "AiObjectContextAccess.h"
 #include "DcStrategyGate.h"
 #include "DcAutoRun.h"
-#include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // CLI-GRP G1 dry-r3 (SuppressDeathLoopEvac)
+#include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // CLI-GRP G1 dry-r3 (SuppressDeathLoopEvac), g1n (StayDeadInRun)
+#include "playerbot/ReleaseVeto.h"   // CLI-GRP g1n: the release veto (StayDeadInRun)
+#include "Ai/Dungeon/DungeonClear/Util/DcRezRecovery.h"   // CLI-GRP g1n: StayDeadInRun waits only for a living rezzer
 #include "Ai/Dungeon/DungeonClear/Data/DcRosterFile.h"
 
 // Per-class context registries — each owns its own shared static lists.
@@ -739,9 +741,29 @@ public:
 // aus diesem Modul und ist ohne LiveMap.File in der Konfiguration still.
 void AddSC_livemap_ticker();
 
+namespace
+{
+    // CLI-GRP g1n 26.10.2026 (DungeonClear.StayDeadInRun, DcRunRobustPolicy.h): the release veto playerbots' stock auto
+    // release asks (playerbot/ReleaseVeto.h). Called on the dead bot's own thread; the cheap checks first, the key only
+    // in a dungeon, the run lookup only with the key on. Bounded: a living rezzer on this map and StayDeadMaxSecs.
+    bool StayDeadInRunVeto(Player* bot, std::int64_t deadSeconds)
+    {
+        Map* map = bot->FindMap();
+        if (!map || !map->IsDungeon() || !DcSettings::GetBool(bot, "StayDeadInRun"))
+            return false;
+        return DcRunRobust::StayDead(true, true, DcStrategyGate::RunActive(bot),
+                                     sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow()),
+                                     DcRezRecovery::LivingRezzerOnMap(bot), deadSeconds,
+                                     DcSettings::GetUInt(bot, "StayDeadMaxSecs"));
+    }
+}
+
 void AddSC_dungeon_clear_module()
 {
     AddSC_livemap_ticker();
+
+    // Registered always; the predicate reads DungeonClear.StayDeadInRun on every call (0 = never vetoes).
+    ai::release_veto::Register(&StayDeadInRunVeto);
 
     new DungeonClearRegistrarWorldScript();
     new DungeonClearPullBrakeScript();
