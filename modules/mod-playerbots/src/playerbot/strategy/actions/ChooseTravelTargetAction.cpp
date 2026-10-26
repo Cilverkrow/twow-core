@@ -1130,6 +1130,15 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     if (ai::direct_targets::AnyBuilt())
         ai::direct_targets::OnChoice(ai, newTarget);
 
+    // twow-repo#333 P1-u (OB-00 26.10.2026): where a profession trip goes - the entry, its zone and distance, the movement
+    // evidence of the request line (which only counts the candidates).
+    if (futureTravelPurpose == "trainer profession" || futureTravelPurpose == "trainer profession near" || futureTravelPurpose == "tool vendor")
+        if (WorldPosition* targetPos = newTarget.GetPosition())
+            sLog.outBasic("[ProfTravel] state=target kind=%s bot=%u level=%u cohort=%c entry=%d zone=%u target_zone=%u map=%u target_map=%u distance=%.0f path=%s",
+                futureTravelPurpose == "tool vendor" ? "tool" : "trainer", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
+                newTarget.GetEntry(), bot->GetZoneId(), TerrainManager::GetZoneIdByAreaFlag(targetPos->getAreaFlag(), targetPos->getMapId()),
+                bot->GetMapId(), targetPos->getMapId(), newTarget.Distance(bot), futureTravelPurpose == "trainer profession near" ? "near" : "gap");
+
     setNewTarget(requester, &newTarget, travelTarget);
     
     return true;
@@ -2784,16 +2793,29 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix, int(holdUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix, int(backoffUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, entries.empty() ? 0 : 1);
-        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u path=%s",
+        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u path=%s dropped_home_zone=%u zone=%u",
             trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), tool,
-            uint32(entries.size()), drops.hostile, drops.unreachable, holdUntil - now, nearTrip ? "near" : "gap");
+            uint32(entries.size()), drops.hostile, drops.unreachable, holdUntil - now, nearTrip ? "near" : "gap",
+            drops.homeZone, bot->GetZoneId());
 
         if (entries.empty())
             return false;
 
-        *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [entries, purpose, partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center]()
+        // P1-u (ProfessionTravelPolicy.h HomeZoneOnly): below level 10 only the spawns in the bot's zone - an entry with spawns
+        // in and out of it (a vendor in Goldshire and Stormwind) is never reached through the one outside (review 26.10.).
+        uint32 const homeZone = ai::profession_travel::HomeZoneOnly(bot->GetLevel()) ? bot->GetZoneId() : 0;
+        *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [entries, purpose, partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, homeZone]()
             {
-                return sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);
+                PartitionedTravelList list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);
+                if (homeZone)
+                    for (auto& [partition, travelPoints] : list)
+                        travelPoints.erase(std::remove_if(travelPoints.begin(), travelPoints.end(), [homeZone](TravelPoint const& point)
+                            {
+                                WorldPosition const* position = std::get<1>(point);
+                                return !position || !ai::profession_travel::SpawnInHomeZone(homeZone,
+                                    { TerrainManager::GetZoneIdByAreaFlag(position->getAreaFlag(), position->getMapId()) });
+                            }), travelPoints.end());
+                return list;
             });
     }
     else if (travelName.find("trainer") == 0)

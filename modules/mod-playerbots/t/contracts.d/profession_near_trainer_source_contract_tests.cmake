@@ -62,7 +62,7 @@ require_text("${policy}" "return now + kNearHoldSeconds;" "the near hold from th
 require_text("${policy}" "constexpr std::uint32_t kNearHoldSeconds = 600;" "10 min hold")
 require_text("${policy}" "return lastCheck == 0 || now >= lastCheck + kNearCheckSeconds;" "one destination walk per check interval")
 # The gate order: eligible, hourly limit, turn-in, band walk, money, trainers, radius, reachable.
-require_text("${policy}" "    if (!eligible)\n        return \"not_eligible\";\n    if (!cooldownOver)\n        return \"cooldown\";\n    if (turnInWaiting)\n        return \"turn_in\";\n    if (bandWalk)\n        return \"band\";\n    if (!money)\n        return \"money\";\n    if (!trainers)\n        return \"no_trainer\";\n    if (!nearTrainers)\n        return \"not_near\";\n    if (!reachableTrainers)\n        return \"unreachable\";\n    return nullptr;" "the gate order")
+require_text("${policy}" "    if (!eligible)\n        return \"not_eligible\";\n    if (!cooldownOver)\n        return \"cooldown\";\n    if (turnInWaiting)\n        return \"turn_in\";\n    if (bandWalk)\n        return \"band\";\n    if (!money)\n        return \"money\";\n    if (!trainers)\n        return \"no_trainer\";\n    if (!nearTrainers)\n        return \"not_near\";\n    if (!reachableTrainers)\n        return \"unreachable\";\n    if (!homeZoneTrainers)\n        return \"home_zone\";\n    return nullptr;" "the gate order (P1-u: home_zone last)")
 
 # Trainers: unlearned skills only on request, the radius on the bot's map, then the P1-b2 filter.
 require_text("${values_h}" "std::vector<int32> NearProfessionTrainers(PlayerbotAI* ai, uint32 radius, ProfessionTripDrops* drops = nullptr," "shared near trainer list")
@@ -86,7 +86,7 @@ require_text("${values_cpp}" "bool const rosterOnItsOwn = applies && sRandomPlay
 require_order("${values_cpp}" "bool const cheapGates = eligible && cooldownOver && !turnIn && !band && money;" "SET_AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearCheckValue, int(now));" "the cheap gates before the walk slot is spent")
 require_order("${values_cpp}" "SET_AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearCheckValue, int(now));" "found = !ai::NearProfessionTrainers(ai, radius, &drops, &counts).empty();" "the check time before the destination walk")
 require_text("${values_cpp}" "found = AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearResultValue) != 0;" "between two walks the last result counts (pre-review)")
-require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=gate kind=trainer path=near bot=%u level=%u cohort=%c result=%s money=%u need=%u trainers=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u\"," "the gate trace")
+require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=gate kind=trainer path=near bot=%u level=%u cohort=%c result=%s money=%u need=%u trainers=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u\"," "the gate trace")
 require_text("${values_cpp}" "if (sPlayerbotAIConfig.professionTrainingTrace && eligible && (walked || !cheapGates) &&" "the trace only with ProfessionTraining.Trace, eligible bots, from a walk or a refusing cheap gate")
 require_text("${values_cpp}" "AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kNearSuffix) ? \"near\" : \"gap\");" "path= on the end line")
 
@@ -98,7 +98,7 @@ require_text("${choose_cpp}" "uint32 const holdUntil = nearTrip ? ai::profession
 require_order("${choose_cpp}" "now - endedAt, AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kNearSuffix) ? \"near\" : \"gap\");" "SET_AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kNearSuffix, nearTrip ? 1 : 0);" "the lost line names the old trip's path before the new one is stored")
 require_text("${choose_cpp}" "travelName == \"trainer profession near\" ? \"should travel named::trainer profession near hold\" :" "the near hold condition")
 require_text("${choose_cpp}" "else if (name == \"trainer profession near\")   // P1-n\n        return true;" "isAllowed")
-require_text("${choose_cpp}" "uint32(entries.size()), drops.hostile, drops.unreachable, holdUntil - now, nearTrip ? \"near\" : \"gap\");" "path= on the request line")
+require_text("${choose_cpp}" "uint32(entries.size()), drops.hostile, drops.unreachable, holdUntil - now, nearTrip ? \"near\" : \"gap\",\n            drops.homeZone, bot->GetZoneId());" "path= on the request line (P1-u: then the home zone fields)")
 
 # Strategy: only with both switches, at 6.36 - above grind 6.35 and the quest request 6.3.
 require_text("${strategy_cpp}" "if (sPlayerbotAIConfig.professionTrainingTravel && sPlayerbotAIConfig.professionTrainingNearRadius)\n        triggers.push_back(new TriggerNode(\n            travel_request::TriggerName(\"val::should travel named::trainer profession near\", gateRequests),\n            NextAction::array(0, new NextAction(\"request named travel target::trainer profession near\", 6.36f), NULL)));" "near row")

@@ -247,10 +247,12 @@ namespace ai
 
     // P1-b2 (CLI-PATH 25.10.): the entries a profession trip may go to - not hostile to the bot, one spawn reachable
     // (ProfessionTravelPolicy.h ClassifyTripTarget); the vendors of a tool. The dropped counts go to the [ProfTravel] line.
+    // P1-u: below level 10 also a spawn in the bot's zone (ProfessionTravelPolicy.h HomeZoneOnly).
     struct ProfessionTripDrops
     {
         uint32 hostile = 0;
         uint32 unreachable = 0;
+        uint32 homeZone = 0;   // P1-u: friendly and reachable, but no spawn in the bot's zone
     };
     std::vector<int32> ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32> const& entries, TravelDestinationPurpose purpose,
         ProfessionTripDrops* drops = nullptr);
