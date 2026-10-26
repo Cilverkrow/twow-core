@@ -81,104 +81,110 @@ forbid_text("${echo}" "sConfig" "a raw config read in the echo")
 forbid_text("${echo}" "\"AiPlayerbot." "a quoted full key in the echo (FormatLine adds the prefix)")
 require_text("${config_cpp}" "sLog.outString(\"%s\", ai::config_echo::FormatLine({" "echo printed with outString")
 
-# 3. Every echoed key: the entry names the key (without "AiPlayerbot.") and its parsed member, and that member is parsed from that key.
-#    Keys the R01-A/B arms prove (R01 steps + pins), P3-a long (CLI-PATH) and #342 (S3b / flights).
-set(entries
-  "QuestFirstProgression.Enabled|questFirstProgressionEnabled"
-  "QuestFirstProgression.FailureClasses|questFirstProgressionFailureClasses"
-  "QuestFirstProgression.FailureClasses.GroupNeeded|questFirstProgressionFailureClassesGroupNeeded"
-  "QuestFirstProgression.ResetOnProgressEvents|questFirstProgressionResetOnProgressEvents"
-  "QuestFirstProgression.AbandonStructuralParked|questFirstProgressionAbandonStructuralParked"
-  "QuestFirstProgression.TransientCountsAfter|questFirstProgressionTransientCountsAfter"
-  "QuestFirstProgression.HubPreloopSameFilters|questFirstProgressionHubPreloopSameFilters"
-  "QuestFirstProgression.GrindMode|questFirstProgressionGrindMode"
-  "QuestFirstProgression.GrindFallbackMinutes|questFirstProgressionGrindFallbackMinutes"
-  "QuestFirstProgression.GrindFallbackFailures|questFirstProgressionGrindFallbackFailures"
-  "QuestFirstProgression.BandLadder|questFirstProgressionBandLadder"
-  "QuestFirstProgression.BandStepAfterEmptySearches|questFirstProgressionBandStepAfterEmptySearches"
-  "QuestFirstProgression.BandLadderSameZoneNext|questFirstProgressionBandLadderSameZoneNext"
-  "QuestFirstProgression.SkipSkillLockedObjectives|questFirstProgressionSkipSkillLockedObjectives"
-  "QuestFirstProgression.BandWalkAfterEmptySearches|questFirstProgressionBandWalkAfterEmptySearches"
-  "QuestFirstProgression.ContestedObjectiveWait|questFirstProgressionContestedObjectiveWait"
-  "QuestFirstProgression.ContestedObjectiveWait.Kill|questFirstProgressionContestedObjectiveWaitKill"
-  "QuestFirstProgression.BandQueuedFreeMinutes|questFirstProgressionBandQueuedFreeMinutes"
-  "QuestFirstProgression.TurnInParkFailures|questFirstProgressionTurnInParkFailures"
-  "QuestFirstProgression.MinLevelForCrossMapQuestRoute|questFirstProgressionMinLevelForCrossMapQuestRoute"
-  "QuestRescue.KeepRequestWhenFull|questRescueKeepRequestWhenFull"
-  "QuestFeasibility.Enable|questFeasibilityEnable"
-  "QuestFeasibility.SoloSkipGroupQuests|questFeasibilitySoloSkipGroupQuests"
-  "ZoneExit.TurnInStallCounts|zoneExitTurnInStallCounts"
-  "ZoneExit.TurnInTravelStall|zoneExitTurnInTravelStall"
-  "ZoneExit.TurnInNearRadius|zoneExitTurnInNearRadius"
-  "ZoneExit.TurnInTravelStallCountsCombat|zoneExitTurnInTravelStallCountsCombat"
-  "QuestFirstProgression.S1Cohort|questFirstProgressionS1Cohort"
-  "QuestFirstProgression.S3Cohort|questFirstProgressionS3Cohort"
-  "DirectTargets.Enable|directTargetsEnabled"
-  "DirectTargets.FreshBackoffSeconds|directTargetsFreshBackoffSeconds"
-  "DirectTargets.FreshGrindFailures|directTargetsFreshGrindFailures"
-  "Path.TaxiCancelForm|pathTaxiCancelForm"
-  "Path.PartialNoop|pathPartialNoop"
-  "Path.TransportEdgeTrace|pathTransportEdgeTrace"
-  "Path.TransportDeckProbe|pathTransportDeckProbe"
-  "Path.TransportWaitTimeoutMin|pathTransportWaitTimeoutMin"
-  "Path.PosStuck|pathPosStuck"
-  "Path.PosStuck.Minutes|pathPosStuckMinutes"
-  "Path.TransportBoardFix|pathTransportBoardFix"
-  "Rotation.EmergencyLadder|rotationEmergencyLadder"
-  "Rotation.SpecFromPath|rotationSpecFromPath"
-  "Rotation.RestGate|rotationRestGate"
-  "Rotation.CastLosGate|rotationCastLosGate"
-  "CastWait.Preparing|castWaitPreparing"
-  "Rotation.HunterMeleeStart|rotationHunterMeleeStart"
-  "Rotation.MeleeFleeBreak|rotationMeleeFleeBreak"
-  "Rotation.OomBackoff|rotationOomBackoff"
-  "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
-  "Rotation.FleeAway|rotationFleeAway"
-  "Rotation.ReachLosClose|rotationReachLosClose"
-  "Rotation.ReachPlayerMaster|rotationReachPlayerMaster"
-  "Rotation.ReachDropEngagement|rotationReachDropEngagement"
-  "Rotation.FollowUnstealth|rotationFollowUnstealth"
-  "Equip.AfterRollWon|equipAfterRollWon"
-  "Rotation.DarkRuneGate|rotationDarkRuneGate"
-  "Gather.FishingSkillCheck|gatherFishingSkillCheck"
-  "ProfessionTraining.Travel|professionTrainingTravel"
-  "ProfessionTraining.NearRadius|professionTrainingNearRadius"
-  "ProfessionUse.ToolBuy|professionUseToolBuy"
-  "Gather.QuestHerbFilter|gatherQuestHerbFilter"
-  "Perf.BindAreaFromHomebind|perfBindAreaFromHomebind"
-  "Perf.RouteTimeTrace|perfRouteTimeTrace"
-  "Perf.DispatchPrecomputedPath|perfDispatchPrecomputedPath"
-  "Loot.RoleWeights|lootRoleWeights"
-  "ThrownUsageFix|thrownUsageFix"
-  "BotUpdateTrace|botUpdateTrace"
-  "ActivityTrace|activityTrace"
-  "EnableActionLog|enableActionLog"
-  "LogInGroupOnly|logInGroupOnly"
-  "Grind.GreyByLevel|grindGreyByLevel"
-  "QuestLoop.GiverTakerDone|questLoopGiverTakerDone"
-  "Grind.QuestFirstOrder|grindQuestFirstOrder"
-  "Grind.NeighbourAware|grindNeighbourAware"
-  "QuestLoop.InactiveAfterProgress|questLoopInactiveAfterProgress"
-  "QuestLoop.InactiveReselect|questLoopInactiveReselect"
-  "BotGroups.Enabled|botGroupsEnabled"
-  "BotGroups.AdHoc.WorldThread|botGroupsAdhocWorldThread"
-  "BotGroups.AdHoc.ScanSlices|botGroupsAdhocScanSlices"
-  "BotGroups.AdHoc.HelpUntilDone|botGroupsAdhocHelpUntilDone"
-  "QuestGroups.Enable|questGroupsEnable"
-  "QuestGroups.ScanSlices|questGroupsScanSlices"
-  "QuestGroups.StagedOps|questGroupsStagedOps")
-foreach(entry IN LISTS entries)
-  string(REPLACE "|" ";" parts "${entry}")
-  list(GET parts 0 key)
-  list(GET parts 1 member)
-  require_text("${echo}" "{\"${key}\", Value(${member})}," "echo entry for ${key}")
-  count_text("${echo}" "\"${key}\"" 1 "echo entry ${key}")
-  string(REPLACE "." "\\." key_re "${key}")
-  string(REGEX MATCH "\n    ${member} = [^\n]*\"AiPlayerbot\\.${key_re}\"" parsed "${config_cpp}")
-  if(parsed STREQUAL "")
-    message(FATAL_ERROR "#601 ConfigEcho: ${member} is not parsed from AiPlayerbot.${key}")
+# 3. Every echoed entry, generically: no hand list here, so a new switch PR does not touch this file (OB-00 26.10.2026; its
+#    own contract pins its entry). Each line of the echo block is one entry {"<key>", Value(<member>)}, with the key without
+#    "AiPlayerbot."; the member is parsed from exactly that key (a "<key>.count" entry echoes the parsed size of a list
+#    key: Value(uint32(<member>.size()))); the keys are sorted in byte order, each once, so a new entry goes in at its
+#    alphabetical place and two PRs only meet when their keys are neighbours. check_echo returns "" when all of that holds,
+#    else the reason; the negative probes after it reuse it.
+function(check_echo echo config_cpp out)
+  set(r "")
+  set(prev "")
+  set(n 0)
+  string(REPLACE "\n" ";" lines "${echo}")
+  list(REMOVE_AT lines 0)
+  foreach(line IN LISTS lines)
+    if(r OR line MATCHES "^ *$")
+      continue()
+    endif()
+    if(NOT line MATCHES "^            \\{\"([A-Za-z0-9.]+)\", Value\\(([A-Za-z0-9_]+|uint32\\(([A-Za-z0-9_]+)\\.size\\(\\)\\))\\)\\},$")
+      set(r "not an echo entry: '${line}'")
+      break()
+    endif()
+    set(key "${CMAKE_MATCH_1}")
+    set(member "${CMAKE_MATCH_2}")
+    set(parsed_key "${key}")
+    if(CMAKE_MATCH_3)
+      set(member "${CMAKE_MATCH_3}")
+      if(NOT key MATCHES "\\.count$")
+        set(r "${key}: a size echo needs a key ending in .count")
+        break()
+      endif()
+      string(REGEX REPLACE "\\.count$" "" parsed_key "${key}")
+    endif()
+    if(key STREQUAL prev)
+      set(r "${key} echoed twice")
+      break()
+    endif()
+    if(NOT prev STREQUAL "" AND NOT prev STRLESS key)
+      set(r "not sorted: ${key} after ${prev}")
+      break()
+    endif()
+    string(REPLACE "." "\\." key_re "${parsed_key}")
+    # The key is the first quoted string on the member's parse line (no other key read before it on that line).
+    string(REGEX MATCH "\n +${member} = [^\n\"]*\"AiPlayerbot\\.${key_re}\"" parsed "${config_cpp}")
+    if(parsed STREQUAL "")
+      set(r "${member} is not parsed from AiPlayerbot.${parsed_key}")
+      break()
+    endif()
+    set(prev "${key}")
+    math(EXPR n "${n} + 1")
+  endforeach()
+  if(NOT r AND n LESS 1)
+    set(r "no echo entry found")
   endif()
-endforeach()
+  set(${out} "${r}" PARENT_SCOPE)
+  set(${out}_count ${n} PARENT_SCOPE)
+endfunction()
+
+check_echo("${echo}" "${config_cpp}" e)
+if(e)
+  message(FATAL_ERROR "#601 ConfigEcho: ${e}")
+endif()
+set(n_entries ${e_count})
+
+# Negative probes on copies of the echo block: each must be caught, and for its own reason.
+set(caught 0)
+macro(expect_caught what reason)
+  check_echo("${probe}" "${config_cpp}" e)
+  if(NOT e)
+    message(FATAL_ERROR "#601 ConfigEcho: negative probe not caught: ${what}")
+  endif()
+  string(FIND "${e}" "${reason}" hit)
+  if(hit LESS 0)
+    message(FATAL_ERROR "#601 ConfigEcho: negative probe '${what}' caught for the wrong reason: ${e}")
+  endif()
+  math(EXPR caught "${caught} + 1")
+endmacro()
+# The first two entries of the block, whatever they are (a new key sorting first does not touch this file).
+string(REPLACE "\n" ";" probe_lines "${echo}")
+list(GET probe_lines 1 E_FIRST)
+list(GET probe_lines 2 E_SECOND)
+set(E_FIRST "${E_FIRST}\n")
+set(E_SECOND "${E_SECOND}\n")
+# a) two neighbours swapped (a new entry appended at the end looks the same)
+string(REPLACE "${E_FIRST}${E_SECOND}" "${E_SECOND}${E_FIRST}" probe "${echo}")
+expect_caught("neighbours swapped" "not sorted")
+# b) an entry twice
+string(REPLACE "${E_SECOND}" "${E_SECOND}${E_SECOND}" probe "${echo}")
+expect_caught("entry twice" "echoed twice")
+# c) an entry with a member that is not parsed from its key
+string(REPLACE "{\"ActivityTrace\", Value(activityTrace)}" "{\"ActivityTrace\", Value(botUpdateTrace)}" probe "${echo}")
+expect_caught("member of another key" "is not parsed from")
+# d) a size echo without .count
+string(REPLACE "{\"ActionLog.Guids.count\"" "{\"ActionLog.Guids\"" probe "${echo}")
+expect_caught("size echo without .count" "ending in .count")
+# e) something else in the block (a comment, a second statement)
+string(REPLACE "${E_SECOND}" "${E_SECOND}            // later\n" probe "${echo}")
+expect_caught("a comment in the block" "not an echo entry")
+# f) a new entry appended at the end, the old habit
+string(REPLACE "${E_FIRST}" "" probe "${echo}")
+string(FIND "${probe}" "},\n" last_end REVERSE)
+math(EXPR last_end "${last_end} + 3")
+string(SUBSTRING "${probe}" 0 ${last_end} probe_head)
+string(SUBSTRING "${probe}" ${last_end} -1 probe_tail)
+set(probe "${probe_head}${E_FIRST}${probe_tail}")
+expect_caught("appended at the end" "not sorted")
 # list keys echo their parsed size
 require_text("${echo}" "{\"QuestFeasibility.Blocklist.count\", Value(uint32(questFeasibilityBlocklist.size()))}," "Blocklist size")
 require_text("${echo}" "{\"QuestFeasibility.BlocklistWhileNoCustomStarts.count\", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))}," "BlocklistWhileNoCustomStarts size")
@@ -189,11 +195,5 @@ string(REGEX MATCH "
 if(parsed_guids STREQUAL "")
   message(FATAL_ERROR "#601 ConfigEcho: actionLogGuids is not parsed from AiPlayerbot.ActionLog.Guids")
 endif()
-# every entry in the echo is listed above (no unpinned entry slips in)
-string(REGEX MATCHALL "\\{\"[^\"]+\", " all_entries "${echo}")
-list(LENGTH all_entries n_entries)
-list(LENGTH entries n_listed)
-math(EXPR n_expected "${n_listed} + 3")
-if(NOT n_entries EQUAL n_expected)
-  message(FATAL_ERROR "#601 ConfigEcho: ${n_entries} echo entries, ${n_expected} pinned here - add the new entry to this contract")
-endif()
+
+message(STATUS "config_echo source contract passed (${n_entries} entries, sorted; ${caught} negative probes caught)")
