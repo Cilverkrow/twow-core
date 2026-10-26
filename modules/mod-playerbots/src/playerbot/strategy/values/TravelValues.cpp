@@ -235,18 +235,19 @@ bool ProfessionNearTripStartable(PlayerbotAI* ai)
         else
             found = AI_VALUE2(int, "manual int", ai::profession_travel::kNearResultValue) != 0;
     }
+    // P1-u: a walk whose reachable trainers all lay outside the bot's zone refuses as home_zone, not as unreachable.
     char const* const refused = ai::profession_travel::NearGateReason(eligible, cooldownOver, turnIn, band, money,
-        !walked || counts.trainers > 0, !walked || counts.inRadius > 0, found);
+        !walked || counts.trainers > 0, !walked || counts.inRadius > 0, !walked || found || drops.homeZone > 0, found);
 
     uint32 const tracedAt = uint32(std::max(0, AI_VALUE2(int, "manual int", ai::profession_travel::kNearTraceValue)));
     if (sPlayerbotAIConfig.professionTrainingTrace && eligible && (walked || !cheapGates) &&
         (tracedAt == 0 || now >= tracedAt + sPlayerbotAIConfig.professionTrainingTraceCooldownSeconds))
     {
         SET_AI_VALUE2(int, "manual int", ai::profession_travel::kNearTraceValue, int(now));
-        sLog.outBasic("[ProfTravel] state=gate kind=trainer path=near bot=%u level=%u cohort=%c result=%s money=%u need=%u trainers=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u",
+        sLog.outBasic("[ProfTravel] state=gate kind=trainer path=near bot=%u level=%u cohort=%c result=%s money=%u need=%u trainers=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u",
             bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), refused ? refused : "start", bot->GetMoney(),
             AI_VALUE2(uint32, "total money needed for", (uint32)NeedMoneyFor::skilltraining), counts.trainers, counts.inRadius,
-            drops.hostile, drops.unreachable, radius);
+            drops.hostile, drops.unreachable, radius, drops.homeZone, bot->GetZoneId());
     }
     return !refused;
 }
@@ -358,6 +359,39 @@ bool ProfessionTripDestinationReachable(TravelDestination const* destination, st
             return true;
     return false;
 }
+
+// P1-u: the zones of an entry's spawns, once per server run and side (its spawns stay). From the area flag the destination
+// points carry since the start ("entry guidps", FetchArea): no terrain lookup here. An entry without a destination for
+// this asker is not stored (asked again next time).
+using ProfessionTripZoneKey = std::tuple<int32, uint32, bool>;
+std::map<ProfessionTripZoneKey, std::vector<uint32>> professionTripZones;
+
+std::vector<uint32> ProfessionTripSpawnZones(Player* bot, int32 entry, TravelDestinationPurpose purpose)
+{
+    ProfessionTripZoneKey const key(entry, uint32(purpose), bot->GetTeam() == ALLIANCE);
+    {
+        std::lock_guard<std::mutex> lock(professionTripReachMutex);
+        auto const found = professionTripZones.find(key);
+        if (found != professionTripZones.end())
+            return found->second;
+    }
+
+    std::vector<uint32> zones;
+    bool hadDestination = false;
+    for (TravelDestination* destination : sTravelMgr.GetDestinations(PlayerTravelInfo(bot), uint32(purpose), { entry }, false, 0.0f))
+    {
+        hadDestination = true;
+        for (WorldPosition const* point : destination->GetPoints())
+            if (point)
+                zones.push_back(TerrainManager::GetZoneIdByAreaFlag(point->getAreaFlag(), point->getMapId()));
+    }
+    if (hadDestination)
+    {
+        std::lock_guard<std::mutex> lock(professionTripReachMutex);
+        professionTripZones[key] = zones;
+    }
+    return zones;
+}
 }
 
 std::vector<int32> ai::ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32> const& entries, TravelDestinationPurpose purpose,
@@ -434,6 +468,10 @@ std::vector<int32> ai::ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32>
         }
     }
 
+    // P1-u (ProfessionTravelPolicy.h HomeZoneOnly): below level 10 only an entry with a spawn in the bot's zone, for every
+    // profession trip (trainer near and gap, tool vendor).
+    bool const homeZoneOnly = ai::profession_travel::HomeZoneOnly(bot->GetLevel());
+    uint32 const botZone = homeZoneOnly ? bot->GetZoneId() : 0;
     for (int32 const entry : entries)
     {
         auto const found = reach.find(entry);
@@ -441,6 +479,12 @@ std::vector<int32> ai::ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32>
         switch (ai::profession_travel::ClassifyTripTarget(hostile, found != reach.end() && found->second))
         {
         case ai::profession_travel::TripTarget::Kept:
+            if (homeZoneOnly && !ai::profession_travel::SpawnInHomeZone(botZone, ProfessionTripSpawnZones(bot, entry, purpose)))
+            {
+                if (drops)
+                    ++drops->homeZone;
+                break;
+            }
             kept.push_back(entry);
             break;
         case ai::profession_travel::TripTarget::Hostile:
