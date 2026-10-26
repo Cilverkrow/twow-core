@@ -63,6 +63,9 @@ bool ReviveFromCorpseAction::Execute(Event& event)
     WorldPacket packet(CMSG_RECLAIM_CORPSE);
     packet << bot->GetObjectGuid();
     bot->GetSession()->HandleReclaimCorpseOpcode(packet);
+    // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): a death soon after this revive counts as a short life.
+    if (!sServerFacade.UnitIsDead(bot))
+        ai->RecordReviveForLoop();
 
     SET_AI_VALUE(bool, "corpse run", false);
     // Deliberately NOT resetting "death count" here. BestGraveyardValue only
@@ -404,6 +407,7 @@ bool SpiritHealerAction::Execute(Event& event)
         PlayerbotChatHandler ch(bot);
         bot->ResurrectPlayer(0.5f, !ai->HasCheat(BotCheatMask::repair));
         bot->DurabilityLossAll(0.25f, true);
+        ai->RecordReviveForLoop();   // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): short life after it
 
         bot->SpawnCorpseBones();
         bot->SaveToDB();
