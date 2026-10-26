@@ -750,6 +750,9 @@ public:
     // #405: quest objectives whose work phase ran out Max times are skipped.
     uint32 questWorkTimeoutsMax = 0;
     uint32 questWorkTimeoutsCooldownSeconds = 3600;
+    // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a game object objective the bot works at counts only while a spawned,
+    // lootable object of its entry is in sight - else destination_inactive. Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questLoopGameObjectPresence = 0;
     uint32 questLoopMaxFailures = 0;             // twow-repo#581 QL-1: failures per bot x quest that skip its objectives (0 = off)
     uint32 questLoopWindowSeconds = 1800;
     uint32 questLoopCooldownSeconds = 1800;
