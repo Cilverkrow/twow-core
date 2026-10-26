@@ -353,6 +353,7 @@ enum class CandidateSkip
     TurnInSuppressed,
     DeathSuppressed,
     QuestLoopSuppressed,
+    InactiveReselect,
     OtherMapGather,
     OtherMapGrind,
     GatherPurposeSuppressed,
@@ -371,6 +372,10 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
     // twow-repo#581 (QL-1): objectives of a quest this bot kept failing at (emptied camps) are skipped for a while.
     if (persistentTarget && persistentTarget->IsQuestLoopSuppressed(destination))
         return CandidateSkip::QuestLoopSuppressed;
+
+    // twow-repo#601 (QuestLoop.InactiveReselect): a camp this bot just found empty, while its mark lasts (never set with the switch off).
+    if (persistentTarget && persistentTarget->IsInactiveReselectMarked(destination))
+        return CandidateSkip::InactiveReselect;
 
     // #414: no gathering trips to another continent.
     uint32 const gatherPurposes = uint32(TravelDestinationPurpose::GatherSkinning) | uint32(TravelDestinationPurpose::GatherMining) |
@@ -687,6 +692,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (futureTravelPurpose == "quest")
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"), 0,
                 "future_destination_invalid");
+        travelTarget->TakeInactiveReselectPending();   // twow-repo#601 (QuestLoop.InactiveReselect): no stale fallback
         travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
         context->ClearValues("no active travel destinations");        
         return false;
@@ -697,6 +703,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     PartitionedTravelList destinationList = futureDestinations->get();
 
+    // twow-repo#601 (QuestLoop.InactiveReselect): whether this choice is the one right after an emptied camp - taken once per
+    // choice (any purpose), before the status goes to NONE below.
+    bool const reselectPending = travelTarget->TakeInactiveReselectPending();
     travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
 
     ai->TellDebug(ai->GetMaster(), "Got " + std::to_string(destinationList.size()) + " new destination ranges for " + futureTravelPurposeName, "debug travel");
@@ -742,6 +751,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (chooseBudgetExceeded)
             return false;
 
+        // twow-repo#601 (QuestLoop.InactiveReselect): the search right after an emptied camp found no quest target - the bot goes
+        // back to that camp in COOLDOWN for the time left, as without the switch (no widening, no empty-search count: the old
+        // COOLDOWN ran no search). Visible as the rejected line with inactive_reselect= and the fallback line.
+        if (reselectPending && futureTravelPurpose == "quest" && travelTarget->FallBackToInactiveCooldown())
+        {
+            TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
+                uint32(destinationList.size()), "inactive_reselect_fallback", lastRejects.Format() + ai::contested_objective::FormatSources(lastSuppressSources));
+            return false;
+        }
+
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
 
@@ -753,7 +772,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         {
             // #421 A: which filters took every candidate.
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
-                uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format());
+                uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format() + ai::contested_objective::FormatSources(lastSuppressSources));
             // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
             uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
                 uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
@@ -1391,6 +1410,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     uint32 candidateIndex = 0, checked = 0;
     chooseBudgetExceeded = false;
     lastRejects = ai::quest_search::RejectCounts();
+    lastSuppressSources = ai::contested_objective::SourceCounts{};
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     // Re-deaths at camps (DestinationDeaths.CampBlock): skipped candidates, quest destinations ranked lower and the kept fallback.
@@ -1485,10 +1505,16 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 case CandidateSkip::DeathSuppressed:
                     ai->TellDebug(requester, "Skipping destination after repeated deaths there.", "debug travel");
                     ++lastRejects.deathSuppressed;
+                    if (persistentTarget)   // twow-repo#601 F5 (diagnostic): which rule set the suppression
+                        ++lastSuppressSources[std::min<std::size_t>(persistentTarget->DestinationSuppressSource(destination), ai::contested_objective::SourceGather - 1)];
                     continue;
                 case CandidateSkip::QuestLoopSuppressed:
                     ai->TellDebug(requester, "Skipping quest objective after repeated failures.", "debug travel");
                     ++lastRejects.questLoopSuppressed;
+                    continue;
+                case CandidateSkip::InactiveReselect:
+                    ai->TellDebug(requester, "Skipping quest objective whose camp was just found empty.", "debug travel");
+                    ++lastRejects.inactiveReselect;
                     continue;
                 case CandidateSkip::OtherMapGather:
                     ai->TellDebug(requester, "Skipping gathering destination on another map.", "debug travel");
@@ -1499,6 +1525,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     continue;
                 case CandidateSkip::GatherPurposeSuppressed:
                     ++lastRejects.deathSuppressed;
+                    ++lastSuppressSources[ai::contested_objective::SourceGather];
                     continue;
                 case CandidateSkip::None:
                     break;
@@ -1963,6 +1990,13 @@ bool RefreshTravelTargetAction::Execute(Event& event)
         target->IsQuestLoopSuppressed(oldDestination))   // twow-repo#581 (QL-1)
     {
         ai->TellDebug(requester, "Old destination is on the death cooldown.", "debug travel");
+        return false;
+    }
+
+    // twow-repo#601 (QuestLoop.InactiveReselect): nor a camp this bot just found empty (never marked with the switch off).
+    if (target->IsInactiveReselectMarked(oldDestination))
+    {
+        ai->TellDebug(requester, "Old destination is a camp just found empty.", "debug travel");
         return false;
     }
 
@@ -2657,35 +2691,43 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
     {
         bool const trainerTrip = travelName == "trainer profession";
         uint32 const tool = trainerTrip ? 0 : MissingGatherTool(ai);
-        std::vector<int32> entries;
-        if (trainerTrip)
-            entries = PhaseOneProfessionTrainers(ai);
-        else if (tool)
-            for (int32 const entry : GAI_VALUE2(std::list<int32>, "item vendor list", tool))
-                entries.push_back(entry);
+        TravelDestinationPurpose const purpose = trainerTrip ? TravelDestinationPurpose::Trainer : TravelDestinationPurpose::Vendor;
+        // P1-b2 (CLI-PATH 25.10.): GetPartitions checks neither the travel graph nor the faction - the hostile and the
+        // unreachable entries go first (ProfessionTripTargets, ProfessionTravelPolicy.h ClassifyTripTarget).
+        ProfessionTripDrops drops;
+        std::vector<int32> const entries = ProfessionTripTargets(ai,
+            trainerTrip ? PhaseOneProfessionTrainers(ai) : GatherToolVendors(ai, tool), purpose, &drops);
 
         std::string const key = trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
         uint32 const now = uint32(time(nullptr));
         uint32 const backoffUntil = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
         uint32 const holdUntil = ai::profession_travel::HoldUntil(now, backoffUntil);
-        // A trip of this kind still open (its target expired without the hold being evaluated again) ends here.
+        // A trip of this kind still open (its target expired without the hold being evaluated again) ends here. P1-b3
+        // (CLI-Deep R-f): trip_s and hold_over_s count to its last hold check that held, not to this request;
+        // seen_after_s is the delay of this line.
         if (AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
-            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u",
+        {
+            uint32 const startedAt = std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key))));
+            uint32 const endedAt = std::min(now, ai::profession_travel::LostEndAt(startedAt,
+                uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix)))));
+            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u seen_after_s=%u",
                 trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
-                now - std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key)))),
-                ai::profession_travel::HoldOverSeconds(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))));
+                endedAt - startedAt,
+                ai::profession_travel::HoldOverSeconds(endedAt, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))),
+                now - endedAt);
+        }
         SET_AI_VALUE2(int, "manual int", key, int(now));
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix, 0);
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix, int(holdUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix, int(backoffUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, entries.empty() ? 0 : 1);
-        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u hold_s=%u",
+        sLog.outBasic("[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u",
             trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), tool,
-            uint32(entries.size()), holdUntil - now);
+            uint32(entries.size()), drops.hostile, drops.unreachable, holdUntil - now);
 
         if (entries.empty())
             return false;
 
-        TravelDestinationPurpose const purpose = trainerTrip ? TravelDestinationPurpose::Trainer : TravelDestinationPurpose::Vendor;
         *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [entries, purpose, partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center]()
             {
                 return sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)purpose, entries, false);

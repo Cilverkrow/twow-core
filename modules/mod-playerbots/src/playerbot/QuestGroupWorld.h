@@ -3,9 +3,11 @@
 #include "playerbot/QuestGroupPolicy.h"
 
 #include <cstdint>
+#include <deque>
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class Player;
@@ -37,6 +39,10 @@ std::uint32_t QueuedAge(std::uint32_t guid, std::uint32_t questId);
 std::uint32_t OldestQueuedAge(std::uint32_t guid);
 // twow-repo#628 fix, bot thread only (PlayerbotAI::ApplyGroupAiRequests): the follower or turn-in strategy set the manager posted.
 void ApplyRoleSet(PlayerbotAI* ai, bool turnIn);
+// The forced quest travel (objective objIdx 0..3, or the taker with -1). World thread with StagedOps 0; with StagedOps 1 the
+// manager posts it and the bot runs it here on its own thread (ApplyGroupAiRequests, ForceTravel). False: no destination
+// found or a search running (the manager forces again on a later pass).
+bool ForceQuestTravel(Player* bot, std::uint32_t questId, int objIdx);
 
 // A member's own travel target before the group, restored after it (no second TravelTarget: its constructor and SetTarget
 // have side effects). Not kept: temporary, group-copy, gap-window and band-trip targets.
@@ -55,7 +61,7 @@ class WorldThreadManager
 public:
     void Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
     // Running groups are tended (and dissolved) even after Enable went to 0 by a config reload.
-    bool HasGroups() const { return !groups.empty(); }
+    bool HasGroups() const { return !groups.empty() || !forming.empty() || !releasing.empty(); }
 
 private:
 
@@ -97,21 +103,79 @@ private:
         std::uint32_t dissolveUsMax = 0;
         std::uint32_t scanOnlyUsMax = 0;   // the quest-log index pass of all bots, without the formations
         std::uint32_t bots = 0;
+        std::uint32_t slices = 0;   // updates of the last finished scan
+        // twow-repo#627 S7 StagedOps sub-times (S7-A 25.10.: form_us_max 2.9-13.8 ms): the slowest invite opcode, accept
+        // action, group setup (loot, update, roles) and member release, and the longest operation queue.
+        std::uint32_t inviteUsMax = 0;
+        std::uint32_t acceptUsMax = 0;
+        std::uint32_t setupUsMax = 0;
+        std::uint32_t releaseUsMax = 0;
+        std::uint32_t queuedMax = 0;
+        std::uint32_t ops = 0;
+    };
+
+    // twow-repo#627 S7 (AiPlayerbot.QuestGroups.StagedOps, default 0): S7-A 25.10. broke the 2 ms guard with a formation of
+    // two bots (2.9-4.3 ms) and dissolutions (up to 4.5 ms) besides the scan. With 1 the manager does at most ONE group
+    // operation per update - one member's invite and accept, the setup of a formed group, or one member's release - from two
+    // queues (releases first), and the forced quest travel runs on the bot's own thread. Bots in a queue are no candidates.
+    struct StagedForm
+    {
+        std::uint32_t questId = 0;
+        std::vector<std::uint32_t> invitees;   // [0] = the leader
+        std::size_t next = 1;                  // the next invitee
+        std::vector<Member> joined;
+        Member leader;
+        std::uint32_t lo = 0;
+        std::uint32_t hi = 0;
+        bool mixed = false;
+        std::uint32_t groupId = 0;             // the core group, once the first member joined
+    };
+
+    struct StagedRelease
+    {
+        std::uint32_t groupId = 0;
+        Member member;
+        bool leaveGroup = true;   // still in the group: leave it (the release itself decides again)
+    };
+
+    // twow-repo#628 (AiPlayerbot.QuestGroups.ScanSlices, default 0): one scan - the quest logs of a slice of the bots per
+    // update, the formations once the last slice is done.
+    struct ScanRound
+    {
+        bool active = false;
+        std::vector<std::uint32_t> guids;   // the bots at the scan start, in map order
+        std::size_t next = 0;
+        std::uint32_t updates = 0;
+        std::unordered_map<std::uint64_t, std::vector<Candidate>> buckets;
+        std::unordered_map<std::uint64_t, bool> dropOnly;
     };
 
     void Tend(std::map<std::uint32_t, Player*> const& bots, HelpGroup& g, std::uint32_t now, Dissolve& out);
-    void Scan(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
+    void ScanBots(std::map<std::uint32_t, Player*> const& bots, std::size_t end, std::uint32_t now);
+    void FormRound(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
     bool FormOne(std::map<std::uint32_t, Player*> const& bots, std::vector<Candidate> const& members, std::uint32_t questId,
         std::uint32_t now);
     void DissolveGroup(std::map<std::uint32_t, Player*> const& bots, HelpGroup& g, Dissolve reason, std::uint32_t now);
     void Release(Player* bot, Member const& m, bool leaveGroup);
     void FlushMinute(std::uint32_t now);
+    // StagedOps
+    bool Staged() const;
+    void StageForm(std::map<std::uint32_t, Player*> const& bots, std::vector<Candidate> const& members, std::uint32_t questId,
+        std::uint32_t now);
+    void StageRelease(std::uint32_t groupId, Member const& m);
+    void StepOne(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
+    void FinishForm(std::map<std::uint32_t, Player*> const& bots, StagedForm& f, std::uint32_t now);
+    void Force(Player* bot, std::uint32_t questId, int objIdx, bool& forced);
 
     std::unordered_map<std::uint32_t, HelpGroup> groups;        // by core group id; world thread only
     std::unordered_map<std::uint32_t, std::uint32_t> memberOf;  // bot guid -> core group id
     std::uint32_t lastScan = 0;
     std::uint32_t passFormUs = 0;   // time in FormOne during the running scan
+    ScanRound round;
     Minute minute;
+    std::deque<StagedForm> forming;                 // StagedOps
+    std::deque<StagedRelease> releasing;
+    std::unordered_set<std::uint32_t> staged;      // bots in either queue
 };
 
 WorldThreadManager& WorldManager();

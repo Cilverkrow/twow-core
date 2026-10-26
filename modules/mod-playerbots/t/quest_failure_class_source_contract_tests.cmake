@@ -109,7 +109,7 @@ forbid_text("${config_h}" "QuestFailureClassPolicy.h" "policy in the botpch.h ch
 
 # ---- 1. Classification: every reason in exactly one class, the policy decides ---------------------
 require_text("${policy}" "inline std::uint32_t StructuralRejects(quest_search::RejectCounts const& rejects)\n{\n    return rejects.crossMap + rejects.zoneLevel;\n}" "structural = cross_map + zone_level")
-require_text("${policy}" "return rejects.turnInSuppressed + rejects.deathSuppressed + rejects.questLoopSuppressed + rejects.hubFilter +\n        rejects.rangeSkip + rejects.movedAway + rejects.resumeSkipped;" "transient = suppressions, hub filter, range skip, stale/resumed list")
+require_text("${policy}" "return rejects.turnInSuppressed + rejects.deathSuppressed + rejects.questLoopSuppressed + rejects.hubFilter +\n        rejects.rangeSkip + rejects.movedAway + rejects.resumeSkipped + rejects.inactiveReselect;" "transient = suppressions, hub filter, range skip, stale/resumed list")
 require_text("${policy}" "return rejects.otherMapGather + rejects.knownInactive + rejects.notActive + rejects.enemyZone + rejects.dangerMap +\n        rejects.battlegroundQuest;" "everything else = empty offer")
 region("${policy}" "inline Decision Classify(" "\n}\n" classify)
 require_order("${classify}" "if (!enabled)\n        return decision;" "decision.parkTakerless" "switch off: no class before any decision")

@@ -52,6 +52,10 @@ int main()
         Require(TripHolds(1000, 1840) && TripHolds(1839, 1840), "holds before its end");
         Require(!TripHolds(1840, 1840), "the hold ends");
         Require(HoldOverSeconds(1200, 1240) == 0 && HoldOverSeconds(1300, 1240) == 60, "seconds after the backoff end");
+        // P1-b3 (CLI-Deep R-f, cr2-C bot 3125): a trip held for 80 s, its lost line came two hours later.
+        Require(LostEndAt(1000, 1080) == 1080, "a lost trip ends at its last hold check that held");
+        Require(LostEndAt(1000, 0) == 1000 && LostEndAt(1000, 900) == 1000, "no hold check since this start: it ends at the start");
+        Require(HoldOverSeconds(LostEndAt(1000, 1080), 1035) == 45, "hold_over_s of a lost trip counts to its end, not to the line");
         Require(std::strcmp(EndReason(false, true, true), "done") == 0, "reason gone comes first");
         Require(std::strcmp(EndReason(true, true, true), "turn_in") == 0, "an open turn-in ends the trip");
         Require(std::strcmp(EndReason(true, false, false), "cap") == 0, "the hold ran out");
@@ -86,6 +90,20 @@ int main()
     // 6) The two value keys differ (two kinds, two limits).
     {
         Require(std::strcmp(kTrainerTripValue, kToolTripValue) != 0, "separate trip values");
+    }
+
+    // 7) P1-b2 (CLI-PATH 25.10.): a spawn on an open-world map with a travel node within 500 yd; hostile entries first.
+    {
+        Require(SpawnReachable(true, 0.0f) && SpawnReachable(true, kMaxNodeYards), "a node within 500 yd: reachable");
+        Require(!SpawnReachable(true, kMaxNodeYards + 16.0f), "Moonwhisper Coast (nearest node 516 yd): unreachable");
+        Require(!SpawnReachable(false, 0.0f), "an instance / battleground map (30, 42, 90): never");
+        Require(kMaxNodeYards == 500.0f, "CLI-PATH's rule");
+        Require(ClassifyTripTarget(false, true) == TripTarget::Kept, "friendly and reachable: kept");
+        Require(ClassifyTripTarget(true, true) == TripTarget::Hostile, "hostile: dropped");
+        Require(ClassifyTripTarget(true, false) == TripTarget::Hostile, "hostile counts first");
+        Require(ClassifyTripTarget(false, false) == TripTarget::Unreachable, "no reachable spawn: dropped");
+        Require(ReachCacheScope(true) == ReachCache::EveryAsker, "the node verdict on its destinations holds for every asker");
+        Require(ReachCacheScope(false) == ReachCache::AskerMap, "no destination in this call: only for the asker's map");
     }
 
     std::cout << "profession_travel_policy_tests: OK\n";

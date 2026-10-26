@@ -432,6 +432,14 @@ AiPlayerbot.HunterAmmoTiers =
 AiPlayerbot.HunterAmmoFillQuiver = 0
 AiPlayerbot.ThrownMaxCount = 0
 
+# twow-repo#333 P1-s (bug fix, CLI-BERUFE 26.10.2026): a thrown weapon sits in the ranged slot, not in the ammo slot,
+# so the ammo rule called every thrown weapon in the bags or at a vendor "equip". Rogues and warriors filled their bags
+# with 128-143 Crude Throwing Axes (TurtleWoW: single repairable items) that were never sold or destroyed and were bought
+# again. With the fix a single thrown weapon is judged by the equip rule only (upgrade or not) and spares count as vendor
+# goods; a stacking one is compared with the equipped ranged item. No log line.
+# Mode: 0 = as before (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.ThrownUsageFix = 0
+
 # Chance random bot has max level on first randomize (default 0.15)
 AiPlayerbot.RandomBotMaxLevelChance = 0.15
 
@@ -460,7 +468,7 @@ AiPlayerbot.RandomBotRpgChance = 0.8
 # Limit whithin what distance between other bots they teleport to points in zones around real player
 # AiPlayerbot.RandomBotTeleportNearPlayerMaxAmountRadius = 0
 
-# Bot transport use style: 0 = walk on transports (currently not available), 1 = teleport on transports and ride it, 2 = teleport from dock to dock bypassing transport.
+# Bot transport use style: 0 = walk on transports (currently not available), 1 = teleport on transports and ride it, 2 = the same as 1: teleport onto the transport at the dock and ride it (the old "dock to dock bypassing transport" does not exist: the path is cut before the transport run).
 # AiPlayerbot.TransportTeleportType = 2
 
 # Chance for bot to use potions
@@ -744,6 +752,25 @@ AiPlayerbot.Grind.GreyByLevel = 0
 # bot, 2 = only cohort B (odd low guid; cohort A stays as before). Any other value acts like 0.
 AiPlayerbot.Grind.QuestFirstOrder = 0
 
+# twow-repo#602 ROT-01 #2 (adds analysis 25.10.2026, OB-00): 75 % of the bot deaths in X3a had adds, 61 % of them from the
+# target's own camp; the grind pick ("attack anything", stage 2 of the grind target) chooses by distance only. With the switch
+# every stage-2 candidate of a solo free bot gets W = the weighted creatures of the bot's "possible targets" list that would join
+# a fight with it: same faction template within CreatureFamilyAssistanceRadius + 2 yd (assist on aggro), hostile within its own
+# aggro distance + 5 yd (on sight), the same AGGRO_TOGETHER creature group, and - for a ranged bot - friendly creatures within the
+# candidate's call_for_help_range + 2 yd of its run towards the bot (more than 10 yd from its spot). Weights in half points: grey
+# 1, normal 2, elite or bot level + 3 and above 4; W capped at 12, 5 yd per half point (at most 60 yd). The distance pick is
+# replaced by the candidate with the lowest distance + penalty among those with a strictly lower W and a strictly lower score.
+# Demote only: nothing is skipped and a pass with a pick keeps a pick; an equal W keeps the old pick. Never replaced or replacing:
+# candidates beyond SightDistance - 30 yd (their neighbours are partly outside the list); a replacement may be at most 1 level
+# above the distance pick and elite only if that one is. Attackers (stage 1), grouped bots, battlegrounds and bots with a real
+# master are not touched. No new grid search, no raycast, at most 64 list entries per pass.
+# "[GrindNeighbour] mode= cohort= passes= candidates= picks= changed= would_change= edge_pick= edge_skipped= guarded= churn=
+# churn_distance= capped= pick_w= new_w= extra_yd= nb_assist= nb_sight= nb_group= nb_cfh= us= cls=<class>:<picks>/<would>/<changed>,.."
+# once a minute per cohort with passes (increments; W sums in half points). Mode (in-realm A/B, cohort parity): 0 = as before
+# (default), 1 = every bot, 2 = only cohort B (odd low guid; cohort A computes the same in shadow), 3 = shadow only (every bot
+# computes and is counted, nobody's pick changes - the log-only run). Any other value acts like 0.
+AiPlayerbot.Grind.NeighbourAware = 0
+
 # Redirect all bot subsystem log output to a dedicated file so the main
 # server.log stays clean. Path is relative to the server's LogsDir setting.
 #
@@ -986,6 +1013,32 @@ AiPlayerbot.QuestLoop.MaxFailures = 0
 AiPlayerbot.QuestLoop.WindowSeconds = 1800
 AiPlayerbot.QuestLoop.CooldownSeconds = 1800
 AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
+# twow-repo#601 (CLI-Deep 26.10.2026, cr2-C gap analysis): a quest giver / taker destination goes inactive as soon as its job is done
+# (the quest taken / turned in), and that success sent the bot into the destination's 60 s COOLDOWN at the NPC (cohort B: 167 drops
+# at 4 yd, median 96 s to its next target). With GiverTakerDone such a trip ends at once: giver - the quest is in the log or
+# rewarded; taker - the quest is no longer in the log. [QuestCommit] event=drop reason=relation_done. No success (not taken, still in
+# the log): the COOLDOWN as before.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.GiverTakerDone = 0
+# twow-repo#601 (CLI-Deep 25.10.2026, root cause of the cand-v466r standing): an objective goes inactive as soon as no living
+# target of its entry is in sight - also right after the bot killed the visible ones. QL-1/QL-2 booked that normal progress as
+# an emptied camp (a failure + InactiveCooldownSeconds of standing; cohort B spent 32 % of its time between an inactive objective
+# and its next quest target). With InactiveAfterProgress an inactive objective whose count (kill / use credit, or quest items)
+# grew since the target was set counts as progress: no QL-1 failure, no QL-2 cooldown, a 1 s cooldown so the next search takes
+# the next spawn point at once; the count is taken again, so a second inactive drop without new credit is an emptied camp.
+# [QuestLoop] state=inactive_after_progress bot= quest= target_entry= count_from= count_to=.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.InactiveAfterProgress = 0
+# twow-repo#601 (CLI-Deep 25.10.2026, cr2-C gap analysis): an inactive objective WITHOUT new credit (an emptied camp) put the bot
+# into COOLDOWN for the whole QL-2 time (cohort B: 450 of 662 inactive drops, median 212 s standing); the quest search after it
+# found another target within 1 s, and a quarter of the bots went back to the same camp through the refresh. With
+# InactiveReselect the camp (quest, target entry) is remembered for that cooldown (InactiveCooldownSeconds, at least the
+# destination's own), the target ends and the next search runs at once - the search and the refresh skip the camp while it is
+# remembered (4 per bot). QL-1 counts the failure as before. If that search finds no quest target, the bot goes back to the camp
+# in COOLDOWN for the time left (as before). [QuestLoop] state=inactive_reselect bot= quest= target_entry= mark_ms=,
+# state=inactive_reselect_fallback ... cooldown_ms=; [QuestFirstRoute] state=rejected ... inactive_reselect=N.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.InactiveReselect = 0
 
 # twow-repo#485: with 1, quest givers and takers that are game objects spawned
 # only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
@@ -1131,6 +1184,11 @@ AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds = 600
 # free bot in its group. "leave far away" no longer drops a member of an ad-hoc
 # group; the ad-hoc leave rules decide. 0 = the old action path.
 AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
+# #628 (with WorldThread = 1): the manager pass - leave rules and candidates of all bots -
+# spread over this many manager updates (one every RandomBotUpdateInterval, ~0.4 s); the
+# pairs are formed once all slices are done. 0 or 1 = the whole pass in one update.
+# Only if the pass itself costs the world tick too much (minute line scan_us_max).
+AiPlayerbot.BotGroups.AdHoc.ScanSlices = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -1149,6 +1207,15 @@ AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
 # (even guid); candidates and partners both pass it (cohort-pure groups).
 AiPlayerbot.QuestGroups.Enable = 0
 AiPlayerbot.QuestGroups.ScanSeconds = 60
+# #628: the S7 scan (quest logs of all bots) spread over this many manager updates
+# (~0.4 s each); groups form once all slices are done. 0 or 1 = the whole scan at once.
+AiPlayerbot.QuestGroups.ScanSlices = 0
+# #627 (S7-A 25.10.2026: a formation of two bots cost 2.9-4.3 ms of the world tick, a dissolution up to 4.5 ms): 1 = at most
+# one group operation per manager update (~0.4 s) - one member's invite and accept, the setup of a formed group, or one
+# member's release, releases first - and the forced quest travel (destination search) on the bot's own thread. A group of
+# five then forms in ~2.5 s. Minute line: staged= invite_us_max= accept_us_max= setup_us_max= release_us_max= ops=
+# ops_queued_max=. 0 = everything in one update, as before (default).
+AiPlayerbot.QuestGroups.StagedOps = 0
 AiPlayerbot.QuestGroups.MaxSize = 5
 AiPlayerbot.QuestGroups.MaxSizeDrop = 3
 AiPlayerbot.QuestGroups.LevelWindow = 3
@@ -1335,6 +1402,20 @@ AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
 # the step (e.g. F1 = 3 with F4 = 1: two walks, then the step).
 #   0 = off (default), 1..10; other values act like 0 (one error line).
 AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches = 0
+# twow-repo#601 F5b (CLI-Deep 25.10.2026): ContestedObjectiveWait - in the QFO candidate most quest-objective work timeouts and quest-loop
+# failures fell on objectives that several bots worked at once (few spawns, long respawn); after QuestWorkTimeouts.Max timeouts the
+# objective was blocked for an hour and the bot stood in the quest backoff. With the switch a work timeout at a contested objective
+# (>= MinBots other roster bots within 40 yd of the bot) counts neither toward QuestWorkTimeouts nor toward QuestLoop: the objective
+# is held back for Seconds only (about a respawn), so the next search takes another objective or quest, and it comes back soon.
+# One line per case: [ContestedObjective] bot= quest= target_entry= kind=go|kill bots_near= min_bots= hold_seconds=.
+# Game-object objectives (loot per looter) by default; Kill = 1 adds creature objectives, but never for a bot in a group of roster
+# bots only (the ad-hoc / S7 group managers share the kill credit there).
+#   ContestedObjectiveWait: 0 = off (default), 1 = every quest-first roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+#   MinBots 1..20 (default 2), Seconds 30..1800 (default 300).
+AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait = 0
+AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.Kill = 0
+AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.MinBots = 2
+AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.Seconds = 300
 # twow-repo#627 S7 hook (OB-10 24.10.2026): the band step skips a bot whose quest log is too full (reason=log_full). With
 # BandLadder and S7 (QuestGroups.Enable) on, an open group quest the bot has waited on for help this many minutes (S7
 # queue age, counted from its first wait, also across failed groups) counts as a free slot for that gate. The quest
@@ -1529,6 +1610,15 @@ AiPlayerbot.Path.TransportDeckProbe = 0
 # twow-repo#342 (S3b): minutes at a dock (and aboard) before [TransportWait] wait_timeout / overrun (S1).
 # 1-240, default 15 (= the S1 900 s).
 AiPlayerbot.Path.TransportWaitTimeoutMin = 15
+# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE, A/B first, OB-10 / OB-00 acceptance): 1 = bots board ships and zeppelins. Together:
+# a boarding point counts when it hits the vessel's own deck model (the static-only check rejected every point); the
+# vessel at its stop within 20 yd of the dock opens boarding too (the old test needed 5 yd), at most one try per 5 s; a dock
+# hop without an entry takes the entry of the ride next to it in the route (a hop with no ride or lift next to it is walked);
+# a walking bot boards only within 20 yd of the dock (farther away it walks on); a failed boarding keeps the bot waiting (no
+# teleport onward); the bot gets off only at the arrival dock stored when it boarded (never at the departure side, never to
+# an unusable point); a bot that lost its ride (fell off) within 40 yd of the arrival dock moves on, else it searches one
+# route from where it is (none: the existing rescues); only vessels with a known entry are boarded. 0 = as before (default).
+AiPlayerbot.Path.TransportBoardFix = 0
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
 # twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a
@@ -1661,9 +1751,13 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # target::trainer profession" at 6.296, below the quest request 6.3, above Explore 6.29; with QuestFirstProgression.
 # GrindMode 1 the gap grind at 6.35 fills the gap first). A started trip holds while the rank is still to learn, until
 # the backoff of its start ended plus 10 min (never more than 30 min), and ends at once when a turn-in opens; at most one
-# trip per bot and hour. "[ProfTravel] state=request kind=trainer ... entries= hold_s=" per request (entries=0: no
+# trip per bot and hour. Only a trainer that is not hostile and has a spawn on an open-world map with a travel node within
+# 500 yd (2D) counts (P1-b2, CLI-PATH 25.10.: no trip to Blackstone Island, Alah'Thalas, an instance map ...). "[ProfTravel]
+# state=request kind=trainer ... entries= dropped_hostile= dropped_unreachable= hold_s=" per request (entries=0: no
 # trainer found) and "[ProfTravel] state=end kind=trainer ... reason=done|turn_in|cap|lost trip_s= hold_over_s=" when
-# the trip stops holding (hold_over_s = seconds after the backoff end). Mode (in-realm A/B, cohort parity): 0 = as before (default),
+# the trip stops holding (hold_over_s = seconds after the backoff end). reason=lost (another target took over) is written
+# at the next request of the kind, with trip_s / hold_over_s up to the last hold check that held and seen_after_s = the
+# delay of the line (P1-b3). Mode (in-realm A/B, cohort parity): 0 = as before (default),
 # 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionTraining.Travel = 0
 # Profession use (#333), persistent roster bots without a real-player master.
@@ -1682,7 +1776,8 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # travel to a vendor that sells it; "rpg buy" buys it there from the tradeskill budget (ItemUsage SKILL, as before).
 # Same gap rule, hold and hourly limit as ProfessionTraining.Travel ("request named travel target::tool vendor" at
 # 6.297). With the mode on for the bot, a mining/skinning gather purpose also needs its tool, so a bot without a pick no
-# longer travels to an ore vein to fail there until the 15-minute no-skill-up end. "[ProfTravel] state=request kind=tool".
+# longer travels to an ore vein to fail there until the 15-minute no-skill-up end. The same target filter as for the
+# trainers (not hostile, a reachable spawn; P1-b2). "[ProfTravel] state=request kind=tool".
 # Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionUse.ToolBuy = 0
 # RealReagents (twow-repo#485): under the item cheat (RndBotCheats "item") every
@@ -2609,6 +2704,13 @@ AiPlayerbot.BotUpdateTraceTriggers = 0
 # (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
 # could choose every fishing zone. 0 = as before (default).
 AiPlayerbot.Gather.FishingSkillCheck = 0
+# twow-repo#333 Berufe P1-f (owner 25.10.2026): the quest plants (Serpentbloom, Bloodpetal Sprout, Gloom Weed, Doom Weed,
+# Incendia Agave, Plant Bundle, Violet Tragan, Hyjalroot ...: lock 259, a herbalism slot next to "open kneeling", the loot
+# is a quest item) are picked only while one of the bot's quests wants them. Before, a herbalist without the quest picked
+# them on the way (passive gathering). The gather travel targets have left them out since #414. Real herbs (Peacebloom,
+# Silverleaf ...) stay as they are. No log line (the check runs on every loot scan).
+# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Gather.QuestHerbFilter = 0
 # twow-repo#596 D: 1 = the zone-escape trigger and the hearthstone check take the home bind's area from the area the core
 # stored at bind time, instead of a terrain lookup at the bind position (which loaded that far grid from disk again and
 # again: 126 ms per check for a bot whose bind spot nobody is near). Same area and level. 0 = terrain lookup (default).
@@ -2954,6 +3056,19 @@ AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
 # 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
 AiPlayerbot.Rotation.FleeAway = 0
 
+# twow-repo#602 ROT-01 3c-B (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): an
+# out-of-mana caster without a wand stood in combat for hours - every AI tick (~7/s) pushed its whole rotation, each spell and
+# "shoot" ended IMPOSSIBLE, nothing ran (x1b 23.10.: 16:49-22:12Z, ~100 MB/h action log). With the switch:
+# - a priest, mage or warlock below the "no mana" mark (5 %) without a wand walks into melee and attacks, and "enemy too close
+#   for spell" does not send it away from that melee (panic and "outnumbered" are unchanged);
+# - a combat pass that executed nothing while the bot is below the mark waits DelayMs instead of ReactDelay; the wait ends
+#   early once the mana is back at the mark or the health drops below LowHealth (no wait at all below LowHealth).
+# Out of combat the drink/rest decision is Rotation.RestGate (X1). "[OomBackoff] mode= fallback= stayed= backoffs= woken="
+# once a minute with the mode on. 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value
+# acts like 0.
+AiPlayerbot.Rotation.OomBackoff = 0
+AiPlayerbot.Rotation.OomBackoff.DelayMs = 1000
+
 # twow-repo#594 (Linalella, QFO-clean 23.10.2026, BUG FIX, profile 1 after the A/B): 1 = a hostile reach target the bot cannot see
 # (line of sight) is chased to min(distance x 0.5, 75 % of the range) instead of 75 % of the range, so a caster standing closer
 # than that walks around the corner until it sees the target (each tick halves the distance again). Without it a priest 20 yd
@@ -2975,6 +3090,18 @@ AiPlayerbot.Rotation.ReachLosClose = 0
 # ignore_s=30 cohort=" (one line per bot per 5 min, as before; bots without a player master log master=bot ignore_s=300).
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.ReachPlayerMaster = 0
+
+# twow-repo#602 ROT-01 3c (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): "low mana"
+# pushes "dark rune" (alternative "mana potion") on every evaluation, in the combat and the reaction engine. Without a rune in
+# the bags the action is impossible and dropped, so an out-of-mana priest pushed it 2-3 times per AI tick for hours (x1b
+# 23.10.: 16:49-22:12Z). With the switch "dark rune" is pushed only while the rune or the potion is usable (in the bags or the
+# item cheat without RosterConsumables.UseReal, no item cooldown, the rune's required level - the item cheat ignored it; 0 in
+# tw_world today - not a mage, not in an arena; the potion with RosterConsumables.ManaPotionPct). A failed check waits
+# RecheckSeconds.
+# "[DarkRuneGate] mode= checks= passed= blocked= waited=" once a minute with the mode on.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.DarkRuneGate = 0
+AiPlayerbot.Rotation.DarkRuneGate.RecheckSeconds = 10
 # twow-repo#541 (audit A18, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = the travel
 # request triggers (need travel purpose, should travel named, rpg quest, should get money/mail) do not compute
 # their condition while the bot's travel target is being prepared or is active. The request actions are rejected

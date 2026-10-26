@@ -497,9 +497,18 @@ namespace ai
         bool IsCampBlocked(WorldPosition const* position) const;
         // twow-repo#581 (QL-1): a quest objective whose quest this bot failed at too often lately.
         bool IsQuestLoopSuppressed(TravelDestination const* destination) const;
+        // twow-repo#601 (QuestLoop.InactiveReselect): an objective whose camp this bot found empty lately (skipped by the search
+        // and the refresh), and the way back to the old COOLDOWN when the search after it found no quest target.
+        bool IsInactiveReselectMarked(TravelDestination const* destination) const;
+        bool TakeInactiveReselectPending() { bool const pending = inactiveReselectPending; inactiveReselectPending = false; return pending; }
+        bool FallBackToInactiveCooldown();
         // #307 zone escape: the destination that led into a zone clearly above
         // the bot's level is skipped like a death-suppressed one.
         void SuppressCurrentDestination(uint32 durationMs);
+        // twow-repo#601 F5 (diagnostic): names the source of the suppression just set (destination_death::Source), and reads it back for
+        // the death_suppressed subsets of [QuestFirstRoute] state=rejected. A suppression without a tag counts as a death.
+        void TagCurrentSuppression(uint8 source);
+        uint8 DestinationSuppressSource(TravelDestination const* destination) const;
         // twow-repo#594 (AiPlayerbot.Path.PosStuck): the travel move just failed through PartialNoop (MoveToTravelTargetAction) -
         // that rule owns the case, the position guard restarts its window.
         void NotePartialNoopHit() { posStuck.Reset(); }
@@ -539,12 +548,21 @@ namespace ai
         std::map<std::string, CommitTrace> commitTrace;
         std::map<TravelDestination const*, destination_death::Record> destinationDeaths;
         camp_block::Ring campDeaths;   // re-deaths at camps: the last CampBlockPolicy.h MaxDeaths death positions (bounded)
+        // twow-repo#601 (QuestLoop.InactiveAfterProgress): the objective's count when the target was set, -1 = none.
+        int32 objectiveCountAtStart = -1;
         // #405: quest objectives whose work phase ran out without progress
         // (same counting rule as the destination deaths, own map).
         std::map<TravelDestination const*, destination_death::Record> workTimeouts;
         // twow-repo#581 (QL-1): objective failures (inactive / work timeout) per quest of this bot, bounded.
         std::map<uint32, quest_loop::Record> questLoops;
         void NoteQuestObjectiveFailure();
+        // twow-repo#601 (QuestLoop.InactiveReselect): emptied camps of this bot (fixed ring), and whether the current target ended
+        // through one (cleared by the next destination).
+        quest_loop::EmptyCamps emptyCamps;
+        bool inactiveReselectPending = false;
+        // twow-repo#601 F5b (AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait): a work timeout at a contested objective is held back
+        // briefly instead of counting toward QuestWorkTimeouts / QuestLoop. True when it handled the timeout.
+        bool OnContestedObjectiveTimeout();
         // twow-repo#485: parked turn-ins of this bot (at most 16 quests, in memory only).
         turnin_park::Book turnInParks;
         // twow-repo#601 S1: quests abandoned after two structural parks (at most 8, in memory only).
