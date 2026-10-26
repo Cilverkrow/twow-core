@@ -8,6 +8,7 @@
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/AiJitterPolicy.h"
 #include "playerbot/CombatIdlePolicy.h"
+#include "playerbot/OomBackoffPolicy.h"   // twow-repo#602 ROT-01 3c-B (Rotation.OomBackoff)
 #include "playerbot/BotActionLog.h"           // twow-repo#602: CAST_WAIT lines (AiPlayerbot.CastWait.Preparing)
 #include "playerbot/BotDialogueProvider.h"
 #include "playerbot/PerformanceMonitor.h"
@@ -405,6 +406,33 @@ void PlayerbotAI::StretchCombatIdle()
     aiInternalUpdateDelay = ai::combat_idle::StretchedDelay(sPlayerbotAIConfig.reactDelay);
     combatIdleVictim = victim->GetObjectGuid();
     ai::combat_idle::stretched.fetch_add(1, std::memory_order_relaxed);
+}
+
+// twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff, OomBackoffPolicy.h): the combat pass just executed nothing
+// while the bot is below the "no mana" mark (every spell and "shoot" impossible). The next pass waits DelayMs instead of
+// ReactDelay - not while casting, not below LowHealth, never shorter than a delay someone else set. UpdateAI ends the wait
+// early when the mana is back or the health drops. Own bot and own context only.
+void PlayerbotAI::BackoffOutOfMana(bool yieldSetDelay, bool minimal)
+{
+    if (!ai::oom_backoff::Applies(sPlayerbotAIConfig.rotationOomBackoff, bot->GetGUIDLow()))
+        return;
+
+    // The DoNextAction tail can switch engines (ResetStrategies) after the engine call: no backoff then.
+    if (currentEngine != engines[(uint8)BotState::BOT_STATE_COMBAT])
+        return;
+
+    bool const hasMana = aiObjectContext->GetValue<bool>("has mana", "self target")->Get();
+    uint8 const mana = aiObjectContext->GetValue<uint8>("mana", "self target")->Get();
+    if (!ai::oom_backoff::MayBackoff(true, combatIdleTick, yieldSetDelay, minimal, bot->IsNonMeleeSpellCasted(true, false, true),
+            hasMana, mana, uint32(bot->GetHealthPercent()), sPlayerbotAIConfig.lowHealth))
+        return;
+
+    if (aiInternalUpdateDelay >= sPlayerbotAIConfig.rotationOomBackoffDelayMs)
+        return;
+
+    aiInternalUpdateDelay = sPlayerbotAIConfig.rotationOomBackoffDelayMs;
+    oomBackoffPending = true;
+    ai::oom_backoff::backoffs.fetch_add(1, std::memory_order_relaxed);
 }
 
 PlayerbotAI::~PlayerbotAI()
@@ -1521,6 +1549,23 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         }
     }
 
+    // twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff): an out-of-mana backoff ends as soon as the mana is back at
+    // the "no mana" mark or the health dropped below LowHealth.
+    if (oomBackoffPending)
+    {
+        bool const hasMana = aiObjectContext->GetValue<bool>("has mana", "self target")->Get();
+        uint8 const mana = aiObjectContext->GetValue<uint8>("mana", "self target")->Get();
+        if (ai::oom_backoff::ShouldWake(true, hasMana, mana, uint32(bot->GetHealthPercent()), sPlayerbotAIConfig.lowHealth))
+        {
+            oomBackoffPending = false;
+            if (ai::oom_backoff::WakeResets(aiInternalUpdateDelay, sPlayerbotAIConfig.rotationOomBackoffDelayMs))
+            {
+                ResetAIInternalUpdateDelay();
+                ai::oom_backoff::woken.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    }
+
     // cancel logout in combat
     if (bot->IsStunnedByLogout() || bot->GetSession()->isLogingOut())
     {
@@ -1858,7 +1903,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             MANGOS_ASSERT(botPos.fDist(bot) < 500.0f);
         }
     }
-    else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport()) && !isMovingToTransport)
+    // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): a bot with a ride record (boarded by the fix) stands on the
+    // vessel's deck model; the fell-off check accepts that hit for it only. Off (or no ride record): the static test as before.
+    else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport(), sPlayerbotAIConfig.pathTransportBoardFix && MovementAction::HasFixedRide(this)) && !isMovingToTransport)
     {
         if (HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
         {
@@ -1948,6 +1995,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         }
 
         SC_PHASE("UpdateAI.UpdateAIInternal", bot ? bot->GetName() : "(null)");
+        oomBackoffPending = false;   // twow-repo#602 ROT-01 3c-B: a pass runs, so no backoff wait is pending any more
         // twow-repo#541 (audit A17): set by DoNextAction when the combat engine executed nothing.
         combatIdleTick = false;
         UpdateAIInternal(elapsed, minimal);
@@ -1968,6 +2016,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         // without an action while the bot auto-attacks waits 3x ReactDelay instead of ReactDelay.
         if (ai::combat_idle::MayStretch(sPlayerbotAIConfig.perfCombatIdleYield, combatIdleTick, yieldSetDelay, min) && !HasRealPlayerMaster())
             StretchCombatIdle();
+
+        // twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff, default 0, behaviour-changing): a combat pass without
+        // an action while the bot is out of mana waits DelayMs instead of ReactDelay.
+        if (sPlayerbotAIConfig.rotationOomBackoff && !HasRealPlayerMaster())
+            BackoffOutOfMana(yieldSetDelay, min);
     }
     SC_PHASE("UpdateAI.exit", bot ? bot->GetName() : "(null)");
 }
@@ -10794,4 +10847,13 @@ void PlayerbotAI::ApplyGroupAiRequests()
     }
     if (plan.follower || plan.turnIn)
         ai::quest_groups::ApplyRoleSet(this, plan.turnIn);
+    // S7 StagedOps: the destination search off the world thread; a released bot (role 0) is not forced any more.
+    if (plan.forceTravel && GetQuestGroupRole() != 0)
+    {
+        std::uint32_t questId = 0;
+        int objIdx = -1;
+        ai::group_ai_refresh::UnpackForce(questGroupForce.load(), questId, objIdx);
+        if (questId)
+            ai::quest_groups::ForceQuestTravel(bot, questId, objIdx);
+    }
 }

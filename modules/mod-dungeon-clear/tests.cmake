@@ -165,6 +165,7 @@ set(DC_TEST_FAST_SOURCES
     "${DC_MOD_PATH}/t/TestNeverTarget.cpp"
     "${DC_MOD_PATH}/t/TestPostCombatRez.cpp"
     "${DC_MOD_PATH}/t/TestRelevanceLadder.cpp"
+    "${DC_MOD_PATH}/t/TestRunRobustPolicy.cpp"
     "${DC_MOD_PATH}/t/TestScenarioDriver.cpp"
     "${DC_MOD_PATH}/t/TestSealedEncounter.cpp"
     "${DC_MOD_PATH}/t/TestSettingsRegistry.cpp"
@@ -196,6 +197,12 @@ target_include_directories(dungeon_clear_tests_fast PRIVATE
     "${DC_MOD_PATH}/src/Ai/Dungeon/DungeonClear/Util"
     "${DC_MOD_PATH}/t"
 )
+
+# CLI-GRP G1 dry-r3 25.10.2026: run robustness keys (rules: TestRunRobustPolicy; wiring: this source contract).
+add_test(NAME dungeon_clear_run_robust_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/run_robust_contract.cmake")
 
 # Force-include the test prelude, mirroring what the shipping module does with
 # AcCompat.h but with a fraction of its reach — see DcTestPrelude.h for why the
@@ -235,6 +242,12 @@ target_link_libraries(dungeon_clear_tests_fast PRIVATE
 set_target_properties(dungeon_clear_tests_fast PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
+
+# G1 dry-r3 25.10.2026: the record's realised gear per member, schema 12 (source contract; TestTestRunRecord is core-coupled).
+add_test(NAME dungeon_clear_test_run_record_ilvl_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_run_record_ilvl_contract.cmake")
 
 add_test(NAME dungeon_clear_fast
          COMMAND dungeon_clear_tests_fast
@@ -307,3 +320,9 @@ if(BUILD_DUNGEON_CLEAR_FULL_TESTS AND TARGET game)
 elseif(BUILD_DUNGEON_CLEAR_FULL_TESTS)
     message(WARNING "BUILD_DUNGEON_CLEAR_FULL_TESTS is ON but there is no game target in this configuration; skipping dungeon_clear_tests_full")
 endif()
+
+# CLI-GRP G1 pilot 25.10.2026: pool runs undo the guild InitGuild drafted their characters into (source contract).
+add_test(NAME dungeon_clear_test_pool_guild_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_pool_guild_contract.cmake")

@@ -7,6 +7,7 @@
 #include "Ai/Dungeon/DungeonClear/DcPullContext.h"
 #include "Ai/Dungeon/DungeonClear/Util/NavmeshSnap.h"
 #include "Ai/Dungeon/DungeonClear/Util/DcRun.h"
+#include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // CLI-GRP G1 dry-r3 (loot-yield re-anchor)
 
 #include <algorithm>
 #include <cmath>
@@ -723,8 +724,17 @@ DungeonClearAdvanceAction::Step DungeonClearAdvanceAction::TryLootYield(AdvanceS
     if (lootYield)
     {
         uint32 const now = getMSTime();
-        if (lootYieldStart == 0)
-            lootYieldStart = now;
+        // CLI-GRP G1 dry-r3 (DcRunRobustPolicy.h): an anchor set before a fight is set anew after it
+        // (LootYieldReanchorAfterFight, 0 = only the first loot tick anchors, as before). No party-combat gate for the
+        // tank: it must not advance away from its party.
+        DcApproachState& approach = context->GetValue<DcApproachState&>(DcKey::ApproachState)->Get();
+        bool const fought = DcRunRobust::FoughtSince(DcSettings::GetBool(bot, "LootYieldReanchorAfterFight"),
+            approach.lootYieldAnchorSec, uint64(botAI->GetCombatStartTime()));
+        DcRunRobust::LootYieldStep const step =
+            DcRunRobust::EvaluateLootYield(true, false, false, lootYieldStart, fought, now, DC_LOOT_YIELD_TIMEOUT_MS);
+        lootYieldStart = step.start;
+        if (step.anchored)
+            approach.lootYieldAnchorSec = uint32(time(nullptr));
 
         if (now - lootYieldStart >= DC_LOOT_YIELD_TIMEOUT_MS)
         {

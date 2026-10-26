@@ -847,6 +847,17 @@ static bool VesselAtStopNear(GenericTransport* transport, WorldPosition const& d
     return false;
 }
 
+// twow-repo#342 (S3b-1, CLI-Deep nit): VesselAtStopNear at most once per StopCheckMs per bot, vessel and dock; the board
+// gate, the exit gate and the deck probe share the stored answer (the bot's own record, bot thread).
+static bool VesselAtStopNearPaced(GenericTransport* transport, WorldPosition const& dock, transport_board::StopCheck& check)
+{
+    uint32 const nowMs = WorldTimer::getMSTime();
+    if (!transport_board::StopCheckFresh(check, transport->GetEntry(), dock.getMapId(), dock.getX(), dock.getY(), nowMs))
+        transport_board::NoteStopCheck(check, transport->GetEntry(), dock.getMapId(), dock.getX(), dock.getY(), nowMs,
+            VesselAtStopNear(transport, dock));
+    return check.answer;
+}
+
 // The summary of the previous window first (rolled like LogTransportEdge), then the probe counted in the new window, the
 // line within the probe's own budget (dropped ones counted for the summary).
 static void LogTransportBoardLine(std::string const& line)
@@ -854,7 +865,7 @@ static void LogTransportBoardLine(std::string const& line)
     transport_board::Counters& counters = transport_board::SharedCounters();
     transport_board::Snapshot snapshot;
     if (counters.Roll(uint64(time(nullptr)), snapshot))
-        sLog.outBasic("%s", transport_board::FormatSummary(snapshot).c_str());
+        sLog.outBasic("%s", transport_board::FormatSummary(snapshot, sPlayerbotAIConfig.pathTransportBoardFix).c_str());
     counters.Account();
     if (counters.Take())
         sLog.outBasic("%s", line.c_str());
@@ -862,12 +873,15 @@ static void LogTransportBoardLine(std::string const& line)
 
 // Every dock wait tick and after a failed boarding: keeps the bot's wait record (handed entry + dock) and probes once per
 // wait, from the wait branch only while the vessel stands at its stop near the dock (needStop). Counted with its line.
+// S3b-1: the stop test is paced (VesselAtStopNearPaced), so a waiting bot does not walk the key frames every tick.
 static void NoteDeckProbe(PlayerbotAI* ai, GenericTransport* transport, uint32 entry, WorldPosition const& dock, bool needStop)
 {
-    transport_board::DeckWait& deck = ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportDeck;
+    LastMovement& lastMove = ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get();
+    transport_board::DeckWait& deck = lastMove.transportDeck;
     if (!transport_board::DeckProbeOpen(deck, entry, dock.getMapId(), dock.getX(), dock.getY(), WorldTimer::getMSTime()))
         return;
-    if (!transport || transport->GetMapId() != dock.getMapId() || (needStop && !VesselAtStopNear(transport, dock)))
+    if (!transport || transport->GetMapId() != dock.getMapId() ||
+        (needStop && !VesselAtStopNearPaced(transport, dock, lastMove.transportBoard.stop)))
         return;
     GameObjectInfo const* info = sGOStorage.LookupEntry<GameObjectInfo>(transport->GetEntry());
     if (!info)
@@ -878,13 +892,219 @@ static void NoteDeckProbe(PlayerbotAI* ai, GenericTransport* transport, uint32 e
         WorldPosition::GetTransporFloorOffset(transport->GetEntry()), probe));
 }
 
-bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge)
+// twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix, default 0): the boarding fix. Everything below is reached only
+// with the switch on (BoardFor answers nullptr off, the callers test the switch before the ride-record blocks). State in the
+// bot's LastMovement (transportBoard, bot thread); counters relaxed atomics. D7: the deck ray and the stop test read the
+// vessel without the map tree lock; the vessel relocates its model in sTransportMgr.Update on the world thread before the
+// map (bot) update. A torn read would cost the fell-off check a ride (the recovery below then acts), any other gate one tick.
+
+static transport_board::Point PointOf(WorldPosition const& p)
+{
+    return transport_board::PointOf(p.getMapId(), p.getX(), p.getY(), p.getZ());
+}
+
+static WorldPosition PositionOf(transport_board::Point const& p)
+{
+    return p.set ? WorldPosition(p.map, p.x, p.y, p.z) : WorldPosition();
+}
+
+// The bot stands on the vessel it boarded with the fix.
+static bool FixedRideOf(Player* bot, LastMovement const& lastMove)
+{
+    GenericTransport* const on = bot->GetTransport();
+    return on && lastMove.transportBoard.ride.set && lastMove.transportBoard.ride.entry == on->GetEntry();
+}
+
+bool MovementAction::HasFixedRide(PlayerbotAI* ai)
+{
+    return FixedRideOf(ai->GetBot(), ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get());
+}
+
+// The caller's S3b state for UseTransport, nullptr unless the fix is on. Per call: runEnd (path[at] is the last point of its
+// NODE_TRANSPORT run: no boarding from the arrival side) and, off the vessel, the run's tail (arrival dock = the run's last
+// point, exit = the point after it) that a boarding stores in the ride record. Bounded by MaxRunScan, no node lookup; a run
+// whose end the scan does not reach gets no tail (no ride record: the legacy aboard flow, as S1's ScanRun calls it unknown).
+// walker (HandleSpecialMovement): the bot's position, so the board gate opens only near the dock (WalkerNearDock).
+static transport_board::BotState* BoardFor(PlayerbotAI* ai, std::vector<PathNodePoint> const& path, std::size_t at, bool walker)
+{
+    if (!sPlayerbotAIConfig.pathTransportBoardFix)
+        return nullptr;
+    transport_board::BotState& board = ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportBoard;
+    board.runEnd = false;
+    board.exited = false;
+    board.pending = transport_board::Tail();
+    board.walker = walker ? PointOf(WorldPosition(ai->GetBot())) : transport_board::Point();
+    if (at >= path.size() || ai->GetBot()->GetTransport())
+        return &board;
+    std::size_t last = at;
+    while (last + 1 < path.size() && last - at < transport_edge::MaxRunScan)
+    {
+        transport_edge::RunPoint next;
+        next.transport = path[last + 1].type == PathNodeType::NODE_TRANSPORT;
+        next.entry = path[last + 1].entry;
+        if (transport_edge::EndsRun(next, path[at].entry))
+            break;
+        ++last;
+    }
+    board.runEnd = last == at;
+    if (last - at >= transport_edge::MaxRunScan)   // the run's end not reached: no tail (never a mid-ride point as arrival)
+        return &board;
+    board.pending.arrival = PointOf(path[last].point);
+    board.pending.exit = PointOf(last + 1 < path.size() ? path[last + 1].point : path[last].point);
+    return &board;
+}
+
+// Aboard a fixed ride the stored path starts at that ride's arrival dock whatever re-planned or cleared it (review 1 HIGH-2):
+// found in the path and cut to (a linear scan; after the first cut or rebuild the dock is the front), or rebuilt as
+// { arrival, exit }.
+static void KeepRideTail(LastMovement& lastMove)
+{
+    transport_board::Ride const& ride = lastMove.transportBoard.ride;
+    std::vector<PathNodePoint>& points = lastMove.lastPath.getPath();
+    for (std::size_t i = 0; i < points.size(); ++i)
+    {
+        PathNodePoint const point = points[i];
+        if (!transport_board::IsArrival(ride, point.type == PathNodeType::NODE_TRANSPORT, point.entry, point.point.getMapId(),
+                point.point.getX(), point.point.getY()))
+            continue;
+        if (i)
+            lastMove.lastPath.cutTo(point, false);
+        return;
+    }
+    TravelPath tail;
+    tail.addPoint(PositionOf(ride.arrival), PathNodeType::NODE_TRANSPORT, ride.entry);
+    tail.addPoint(PositionOf(ride.exit.set ? ride.exit : ride.arrival));
+    lastMove.setPath(tail);
+}
+
+// A fixed ride ended in UseTransport (MoveOffTransport placed the bot); the rest of its run at the front of the stored path
+// (the arrival dock and any transport point of that ride, or an unfilled hop, right after it) leaves it, so no transport point
+// of the finished ride stays in front (a bot off the vessel at a run end would wait there). No second teleport.
+static void EndFixedRide(LastMovement& lastMove, uint32 entry)
+{
+    std::vector<PathNodePoint>& points = lastMove.lastPath.getPath();
+    std::size_t n = 0;
+    while (n < points.size() && points[n].type == PathNodeType::NODE_TRANSPORT && (points[n].entry == entry || !points[n].entry))
+        ++n;
+    points.erase(points.begin(), points.begin() + n);
+    lastMove.lastTransportEntry = 0;
+}
+
+// Board gate with the fix: the legacy 5 yd test, or the vessel at its stop within StopRadiusYards of the handed dock (paced);
+// never entry 0, never the run's last point (the arrival side), only on the dock's map; a walking bot only within
+// BoardFromDockYards of the dock (review 18.10.: no deck teleport from up to ReactDistance away).
+static bool FixBoardOpen(GenericTransport* transport, uint32 entry, uint32 botMap, WorldPosition const& dock,
+    transport_board::BotState& board, bool legacyNear)
+{
+    if (!transport || dock.getMapId() != botMap || dock.getMapId() != transport->GetMapId())
+        return false;
+    if (!transport_board::WalkerNearDock(board.walker, PointOf(dock)))
+        return false;
+    return transport_board::BoardOpen(entry, board.runEnd, legacyNear,
+        entry && !board.runEnd && !legacyNear && VesselAtStopNearPaced(transport, dock, board.stop));
+}
+
+// Exit of a fixed ride: dock / exit are the stored arrival dock and exit point. Open only on the to side of the ride (S1
+// ExitSide from the boarding point to the arrival dock), with the vessel on the dock's map and at that dock (legacy 5 yd or
+// at its stop near it). An unusable stored exit (unset, (0,0,0), another map, > MaxExitFromDockYards) is replaced by the
+// dock; without a usable dock there is no exit (never WorldPosition(), never another map).
+static bool FixExitOpen(GenericTransport* transport, WorldPosition const& dock, WorldPosition& exit,
+    transport_board::BotState& board, bool legacyNear)
+{
+    if (!transport_board::PointUsable(PointOf(dock)) || dock.getMapId() != transport->GetMapId())
+        return false;
+    transport_edge::Side const side = transport_board::RideSide(board.ride, transport->GetMapId(), transport->GetPositionX(),
+        transport->GetPositionY());
+    bool const atStop = side == transport_edge::Side::To && !legacyNear && VesselAtStopNearPaced(transport, dock, board.stop);
+    if (!transport_board::ExitOpen(side, legacyNear, atStop))
+        return false;
+    if (!transport_board::ExitUsable(PointOf(exit), PointOf(dock)))
+        exit = dock;
+    return true;
+}
+
+// After a boarding try with the fix: aboard now = the ride record (the vessel, where it stood, the run's tail); the honest
+// answer (false = nothing boarded, keep waiting: no silent true that teleports the bot onward).
+static bool BoardAnswer(Player* bot, transport_board::BotState& board, bool moved, bool doTeleport)
+{
+    GenericTransport* const on = bot->GetTransport();
+    if (on && board.pending.arrival.set)
+        board.ride = transport_board::RideOf(on->GetEntry(), on->GetMapId(), on->GetPositionX(), on->GetPositionY(), board.pending);
+    return transport_board::Boarded(on != nullptr, doTeleport, moved);
+}
+
+// One [TransportBoard] state=stranded line per lost-ride recovery: the summary of the previous window first, the recovery
+// counted in its own window, the line within the shared S3b budget (dropped ones counted).
+static void LogTransportRecovery(Player* bot, transport_board::Ride const& ride, transport_board::Recovery kind, WorldPosition const& at,
+    std::uint64_t searchUs)
+{
+    transport_board::Counters& counters = transport_board::SharedCounters();
+    transport_board::Snapshot snapshot;
+    if (counters.Roll(uint64(time(nullptr)), snapshot))
+        sLog.outBasic("%s", transport_board::FormatSummary(snapshot, true).c_str());
+    counters.AccountRecovery(kind);
+    if (counters.Take())
+        sLog.outBasic("%s", transport_board::FormatRecovery(bot->GetGUIDLow(), ride, kind, at.getMapId(), at.getX(), at.getY(), searchUs).c_str());
+}
+
+// OB-10 #1 / #3: the ride record is set but the bot is not on that vessel (fell off, put off, teleported away); only an
+// episode with a ride record gets here. The record is cleared first, so this runs once per lost ride.
+// - within RecoverNearYards of the arrival dock or the exit: the run end leaves the stored path, the bot continues after it;
+// - else one route search from the bot's own position to the stored path's end (getFullPath, as ResolveMovePath);
+// - no route (or no stored path): the stored path is dropped and the existing rescues act (ZoneEscape, #587), no new one.
+// true = the caller waits this tick (no route, or the bot is still being teleported: the record is kept for the next tick).
+static bool RecoverLostRide(PlayerbotAI* ai, LastMovement& lastMove)
+{
+    Player* const bot = ai->GetBot();
+    if (bot->IsBeingTeleported())
+        return true;
+    transport_board::Ride const lost = lastMove.transportBoard.ride;
+    lastMove.transportBoard.ride = transport_board::Ride();
+    lastMove.lastTransportEntry = 0;
+    WorldPosition const at(bot);
+    transport_board::Recovery kind = transport_board::Recovery::NoRoute;
+    std::uint64_t searchUs = 0;   // OB-10 18.10.: the synchronous search's duration in the line (ABBA-1: > 50 ms often -> async)
+    if (transport_board::RecoverNear(lost, at.getMapId(), at.getX(), at.getY()))
+    {
+        kind = transport_board::Recovery::Near;
+        std::vector<PathNodePoint>& points = lastMove.lastPath.getPath();
+        for (std::size_t i = 0; i < points.size(); ++i)
+        {
+            PathNodePoint const point = points[i];
+            if (!transport_board::IsArrival(lost, point.type == PathNodeType::NODE_TRANSPORT, point.entry, point.point.getMapId(),
+                    point.point.getX(), point.point.getY()))
+                continue;
+            points.erase(points.begin(), points.begin() + i);   // up to the arrival dock
+            break;
+        }
+        EndFixedRide(lastMove, lost.entry);   // and the rest of the run: the bot continues after it
+    }
+    else if (!lastMove.lastPath.empty())
+    {
+        std::uint64_t const searchStartUs = ai::bot_update::NowUs();
+        TravelPath route = sTravelNodeMap.getFullPath(at, lastMove.lastPath.getBack(), bot);
+        searchUs = ai::bot_update::SinceUs(searchStartUs);
+        if (!route.empty())
+        {
+            kind = transport_board::Recovery::Search;
+            lastMove.setPath(route);
+        }
+    }
+    if (kind == transport_board::Recovery::NoRoute)
+        lastMove.lastPath.clear();
+    LogTransportRecovery(bot, lost, kind, at, searchUs);
+    return kind == transport_board::Recovery::NoRoute;
+}
+
+bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge, transport_board::BotState* board)
 {
     AiObjectContext* context = ai->GetAiObjectContext();
     Player* bot = ai->GetBot();
     WorldPosition botPos(bot);
     // twow-repo#342 (S1, AiPlayerbot.Path.TransportEdgeTrace): off = this one test; no state, no counters, no lines.
     bool const edgeTrace = sPlayerbotAIConfig.pathTransportEdgeTrace && edge;
+    // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): board = the caller's S3b state (BoardFor: nullptr off).
+    bool const boardFix = board && sPlayerbotAIConfig.pathTransportBoardFix;
 
     GenericTransport* transport = bot->GetTransport();
 
@@ -895,8 +1115,22 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         if (transportName.empty())
             transportName = data->name;
 
-        if (dockPosition.mapid == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
+        // twow-repo#342 (S3b-1): a ride boarded by the fix ends only at the arrival dock stored at boarding, on the exit point
+        // stored with it (FixExitOpen); the handed points are not used. Any other ride as before (legacyExit).
+        bool const fixedRide = boardFix && board->ride.set && board->ride.entry == transport->GetEntry();
+        if (fixedRide)
         {
+            dockPosition = PositionOf(board->ride.arrival);
+            exitPosition = PositionOf(board->ride.exit);
+        }
+        bool const legacyExit = dockPosition.mapid == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE;
+        if (fixedRide ? FixExitOpen(transport, dockPosition, exitPosition, *board, legacyExit) : legacyExit)
+        {
+            if (fixedRide)   // twow-repo#342 (S3b-1): the fixed ride ends here; the caller drops its run end
+            {
+                board->ride = transport_board::Ride();
+                board->exited = true;
+            }
             bool const leftTransport = MoveOffTransport(ai, exitPosition, doTeleport);
             if (edgeTrace)   // twow-repo#342 (S1): state=arrive or fail exit_origin (side of botPos), ok = MoveOffTransport's answer
                 TraceTransportArrive(bot, *edge, botPos, leftTransport);
@@ -904,7 +1138,9 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
             return true;
         }
 
-        if (urand(0, 50))
+        // twow-repo#342 (S3b-1): with the fix no re-teleport across the deck (each one logged BoardTransport again); urand
+        // stays first, so the RNG order is the same off.
+        if (urand(0, 50) && !(boardFix && doTeleport))
             MoveOnTransport(ai, transport, doTeleport);
 
         ai->TellDebug(ai->GetMaster(), "Waiting ontop of transport " + transportName + " at " + std::to_string((uint32)dockPosition.fDist(transport)) + "y from docking.", "debug move");
@@ -936,7 +1172,10 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
             transportName = data->name;
     }
 
-    if (transport && dockPosition.mapid == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
+    // twow-repo#342 (S3b-1): with TransportBoardFix the vessel at its stop near the handed dock opens too (FixBoardOpen), at
+    // most one try per BoardRetryMs per ride; off: the legacy 5 yd test alone (legacyBoard).
+    bool const legacyBoard = transport && dockPosition.mapid == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE;
+    if (boardFix ? (FixBoardOpen(transport, entry, bot->GetMapId(), dockPosition, *board, legacyBoard) && transport_board::BoardTryDue(*board, entry, WorldTimer::getMSTime())) : legacyBoard)
     {
         transport_edge::PointRejects rejects;
         bool const moved = MoveOnTransport(ai, transport, doTeleport, edgeTrace ? &rejects : nullptr);
@@ -949,7 +1188,9 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         if (sPlayerbotAIConfig.pathTransportDeckProbe && !bot->GetTransport() && (doTeleport || !moved))
             NoteDeckProbe(ai, transport, entry, dockPosition, false);
 
-        return true;
+        // twow-repo#342 (S3b-1): with the fix the ride record of a boarding and the honest answer (false = keep waiting when
+        // nothing was boarded); off: true as before.
+        return boardFix ? BoardAnswer(bot, *board, moved, doTeleport) : true;
     }
 
     if (transportName.empty())
@@ -992,6 +1233,17 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
 
     if (bot->IsTaxiFlying())
         return false;
+
+    // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix): a ride boarded with the fix. Aboard: the stored path starts at
+    // its arrival dock (review 1 HIGH-2). Lost (fell off / put off): the recovery of OB-10 #1, once per lost ride.
+    if (sPlayerbotAIConfig.pathTransportBoardFix && lastMove.transportBoard.ride.set)
+    {
+        GenericTransport* const on = bot->GetTransport();
+        if (!transport_board::RideLost(lastMove.transportBoard.ride, on != nullptr, on ? on->GetEntry() : 0))
+            KeepRideTail(lastMove);
+        else if (RecoverLostRide(ai, lastMove))
+            return true;
+    }
 
     if (lastMove.lastPath.empty())
         return false;
@@ -1044,7 +1296,8 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
         if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1)
             edge = TransportEdgeFor(bot, lastMove.transportEdge, path, 0, true);
 
-        bool didTransport = UseTransport(ai, nextStep->entry, nextStep->point, exitPos, true, edge);
+        transport_board::BotState* const board = BoardFor(ai, path, 0, false);   // twow-repo#342 (S3b-1): nullptr unless the fix is on; teleport steps: no walker gate
+        bool didTransport = UseTransport(ai, nextStep->entry, nextStep->point, exitPos, true, edge, board);
 
         if (!didTransport) //We did not board yet or are on the transport so just wait.
         {
@@ -1071,8 +1324,19 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
             return true;
         }
 
+        // twow-repo#342 (S3b-1, review 2 #9 / review 1 L-7): a fixed ride ended; MoveOffTransport already placed the bot on the
+        // stored exit, so no second teleport, and an empty rest is never dereferenced.
+        if (board && board->exited)
+        {
+            EndFixedRide(lastMove, nextStep->entry);
+            return true;
+        }
+
         //Ready to exit
         lastMove.lastPath.cutTo(*nextStep, true); //Removing boarding point.
+
+        if (sPlayerbotAIConfig.pathTransportBoardFix && path.empty())   // twow-repo#342 (S3b-1): the run was the path's tail
+            return true;
 
         nextStep = path.begin();
 
@@ -1131,6 +1395,31 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
 bool MovementAction::WaitForTransport()
 {
     LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
+
+    // twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix, OB-10 #2): a ride boarded with the fix (by MinimalMove or by
+    // HandleSpecialMovement) is driven by its ride record, which replaces lastTransportEntry: the stored path starts at the
+    // arrival dock (KeepRideTail), UseTransport exits only there, and a lost ride gets the recovery of OB-10 #1. Without a
+    // ride record (fix off, master follow) the old flow below runs unchanged.
+    if (sPlayerbotAIConfig.pathTransportBoardFix && lastMove.transportBoard.ride.set)
+    {
+        lastMove.lastTransportEntry = 0;
+        GenericTransport* const on = bot->GetTransport();
+        if (transport_board::RideLost(lastMove.transportBoard.ride, on != nullptr, on ? on->GetEntry() : 0))
+            return RecoverLostRide(ai, lastMove);
+        KeepRideTail(lastMove);
+        TravelPath ridePath = lastMove.lastPath;
+        PathNodePoint const rideDock = ridePath.getPath().front();
+        PathNodePoint const rideExit = ridePath.getPath().size() < 2 ? rideDock : *std::next(ridePath.getPath().begin());
+        transport_edge::State* edge = nullptr;
+        if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): aboard a fixed ride, the stored episode key
+            edge = TransportEdgeFor(bot, lastMove.transportEdge, ridePath.getPath(), 0, false);
+        transport_board::BotState* const board = BoardFor(ai, ridePath.getPath(), 0, false);
+        if (!UseTransport(ai, rideDock.entry, rideDock.point, rideExit.point, sPlayerbotAIConfig.transportTeleportType > 0, edge, board))
+            return true;
+        if (board && board->exited)   // the fixed ride ended; its run end leaves the stored path
+            EndFixedRide(lastMove, rideDock.entry);
+        return false;
+    }
 
     // Check if we need to resume transport journey
     if (!lastMove.lastTransportEntry)
@@ -1364,7 +1653,8 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
         transport_edge::State* edge = nullptr;
         if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1)
             edge = TransportEdgeFor(bot, TransportEdgeState(ai), path.getPath(), 1, false);
-        bool usedTransport = UseTransport(ai, nextPoint.entry, nextPoint.point, WorldPosition(), sPlayerbotAIConfig.transportTeleportType > 0, edge);
+        transport_board::BotState* const board = BoardFor(ai, path.getPath(), 1, true);   // twow-repo#342 (S3b-1): nullptr unless the fix is on; a walker
+        bool usedTransport = UseTransport(ai, nextPoint.entry, nextPoint.point, WorldPosition(), sPlayerbotAIConfig.transportTeleportType > 0, edge, board);
         if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
             LogTransportWait(bot, nextPoint.entry, nextPoint.point);
 
@@ -1382,7 +1672,8 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
         transport_edge::State* edge = nullptr;
         if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1)
             edge = TransportEdgeFor(bot, TransportEdgeState(ai), path.getPath(), 0, false);
-        bool usedTransport = UseTransport(ai, currentPoint.entry, currentPoint.point, nextPoint.point, sPlayerbotAIConfig.transportTeleportType > 0, edge);
+        transport_board::BotState* const board = BoardFor(ai, path.getPath(), 0, true);   // twow-repo#342 (S3b-1): nullptr unless the fix is on; a walker
+        bool usedTransport = UseTransport(ai, currentPoint.entry, currentPoint.point, nextPoint.point, sPlayerbotAIConfig.transportTeleportType > 0, edge, board);
         if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
             LogTransportWait(bot, currentPoint.entry, currentPoint.point);
 
@@ -1395,6 +1686,11 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
         }
         else
         {
+            if (board && board->exited)   // twow-repo#342 (S3b-1): a fixed ride ended (the bot is placed): no second teleport
+            {
+                EndFixedRide(AI_VALUE(LastMovement&, "last movement"), currentPoint.entry);
+                return true;
+            }
             if (!bot->GetTransport())
                 return bot->TeleportTo(nextPoint.point.getMapId(), nextPoint.point.getX(), nextPoint.point.getY(), nextPoint.point.getZ(), nextPoint.point.getO(), 0) ? true : false;
 

@@ -154,6 +154,17 @@ int main()
             counts.Format().find("not_active_reasons=impossible:0,map:0,no_mark:2,") != std::string::npos,
             "reasons appended, the total stays");
     }
+    {
+        // twow-repo#601 (QuestLoop.InactiveReselect): the emptied-camp skips only appear when counted.
+        RejectCounts counts;
+        Require(counts.Format().find("inactive_reselect") == std::string::npos, "no emptied-camp skip: the rejected line is unchanged");
+        counts.inactiveReselect = 3;
+        counts.notActive = 1;
+        counts.notActiveReason[RejectCounts::InactiveMap] = 1;
+        std::string const line = counts.Format();
+        Require(line.find(" battleground_quest=0 inactive_reselect=3 not_active_reasons=") != std::string::npos,
+            "counted after battleground_quest, before the not_active split");
+    }
 
     std::cout << "quest_search_policy_tests passed\n";
     return 0;

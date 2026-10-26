@@ -275,6 +275,9 @@ bool PlayerbotAIConfig::Initialize()
     hunterAmmoTiers = ai::ammo_stock::ParseTiers(config.GetStringDefault("AiPlayerbot.HunterAmmoTiers", ""));
     hunterAmmoFillQuiver = config.GetBoolDefault("AiPlayerbot.HunterAmmoFillQuiver", false);
     thrownMaxCount = (uint32)config.GetIntDefault("AiPlayerbot.ThrownMaxCount", 0);
+    thrownUsageFix = config.GetIntDefault("AiPlayerbot.ThrownUsageFix", 0);
+    if (thrownUsageFix > 2)
+        thrownUsageFix = 0;
     randomBotRpgChance = config.GetFloatDefault("AiPlayerbot.RandomBotRpgChance", 0.35f);
     usePotionChance = config.GetFloatDefault("AiPlayerbot.UsePotionChance", 1.0f);
     attackEmoteChance = config.GetFloatDefault("AiPlayerbot.AttackEmoteChance", 0.0f);
@@ -603,12 +606,20 @@ bool PlayerbotAIConfig::Initialize()
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationOomBackoff = config.GetIntDefault("AiPlayerbot.Rotation.OomBackoff", 0);   // twow-repo#602 ROT-01 3c-B
+    if (rotationOomBackoff > 2)
+        rotationOomBackoff = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationOomBackoffDelayMs = config.GetIntDefault("AiPlayerbot.Rotation.OomBackoff.DelayMs", 1000);
     rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
     if (rotationReachLosClose > 2)
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 0);   // twow-repo#630
     if (rotationReachPlayerMaster > 2)
         rotationReachPlayerMaster = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationDarkRuneGate = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate", 0);   // twow-repo#602 ROT-01 3c
+    if (rotationDarkRuneGate > 2)
+        rotationDarkRuneGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationDarkRuneGateRecheckSeconds = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate.RecheckSeconds", 10);
     perfTravelRequestGate = config.GetBoolDefault("AiPlayerbot.Perf.TravelRequestGate", false);
     perfPartyBuffKnownSpellGate = config.GetBoolDefault("AiPlayerbot.Perf.PartyBuffKnownSpellGate", false);
     perfLazyEngineInit = config.GetBoolDefault("AiPlayerbot.Perf.LazyEngineInit", false);
@@ -697,6 +708,27 @@ bool PlayerbotAIConfig::Initialize()
     questLoopWindowSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.WindowSeconds", 1800));
     questLoopCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.CooldownSeconds", 1800));
     questLoopInactiveCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveCooldownSeconds", 0)));
+    // twow-repo#601 GiverTakerDone: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopGiverTakerDone = config.GetIntDefault("AiPlayerbot.QuestLoop.GiverTakerDone", 0);
+    if (questLoopGiverTakerDone > 2)
+    {
+        sLog.outError("[QuestLoop] config key=GiverTakerDone value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopGiverTakerDone);
+        questLoopGiverTakerDone = 0;
+    }
+    // twow-repo#601 InactiveAfterProgress: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopInactiveAfterProgress = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveAfterProgress", 0);
+    if (questLoopInactiveAfterProgress > 2)
+    {
+        sLog.outError("[QuestLoop] config key=InactiveAfterProgress value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopInactiveAfterProgress);
+        questLoopInactiveAfterProgress = 0;
+    }
+    // twow-repo#601 InactiveReselect: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopInactiveReselect = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveReselect", 0);
+    if (questLoopInactiveReselect > 2)
+    {
+        sLog.outError("[QuestLoop] config key=InactiveReselect value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopInactiveReselect);
+        questLoopInactiveReselect = 0;
+    }
     questFirstProgressionSkipScriptOnlyQuestTakers = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.SkipScriptOnlyQuestTakers", false);
     deathLoopMaxDeaths = (uint32)config.GetIntDefault("AiPlayerbot.DeathLoop.MaxDeaths", 0);
     specAuraEnabled = config.GetBoolDefault("AiPlayerbot.SpecAura.Enabled", false);
@@ -762,8 +794,11 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
+    botGroupsAdhocScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanSlices", 0));
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
+    questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
+    questGroupsStagedOps = config.GetBoolDefault("AiPlayerbot.QuestGroups.StagedOps", false);   // twow-repo#627
     questGroupsMaxSize = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSize", 5)));
     questGroupsMaxSizeDrop = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSizeDrop", 3)));
     questGroupsLevelWindow = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.LevelWindow", 3);
@@ -824,6 +859,16 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestBand] config key=BandWalkAfterEmptySearches value=%u result=off (0 off, 1..10)", questFirstProgressionBandWalkAfterEmptySearches);
         questFirstProgressionBandWalkAfterEmptySearches = 0;
     }
+    // twow-repo#601 F5b (ContestedObjectiveWait): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questFirstProgressionContestedObjectiveWait = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait", 0);
+    if (questFirstProgressionContestedObjectiveWait > 2)
+    {
+        sLog.outError("[ContestedObjective] config key=ContestedObjectiveWait value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionContestedObjectiveWait);
+        questFirstProgressionContestedObjectiveWait = 0;
+    }
+    questFirstProgressionContestedObjectiveWaitKill = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.Kill", false);
+    questFirstProgressionContestedObjectiveWaitMinBots = std::min<uint32>(20, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.MinBots", 2)));
+    questFirstProgressionContestedObjectiveWaitSeconds = std::min<uint32>(1800, std::max<uint32>(30, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.ContestedObjectiveWait.Seconds", 300)));
     // twow-repo#627 S7 hook: queued group quests count as free slots for the band log gate, 0 = off, 1..240 minutes.
     questFirstProgressionBandQueuedFreeMinutes = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandQueuedFreeMinutes", 0);
     if (questFirstProgressionBandQueuedFreeMinutes > 240)
@@ -879,6 +924,9 @@ bool PlayerbotAIConfig::Initialize()
     pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
     pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", 15));
+    pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", false);
+    if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)
+        sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
     pathRescueSkipCustomStarts = config.GetBoolDefault("AiPlayerbot.Path.RescueSkipCustomStarts", false);
     customRaceStartZones = config.GetBoolDefault("AiPlayerbot.CustomRaceStartZones", false);
@@ -1168,6 +1216,9 @@ bool PlayerbotAIConfig::Initialize()
     grindQuestFirstOrder = config.GetIntDefault("AiPlayerbot.Grind.QuestFirstOrder", 0);   // twow-repo#601 decision order
     if (grindQuestFirstOrder > 2)
         grindQuestFirstOrder = 0;   // an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    grindNeighbourAware = config.GetIntDefault("AiPlayerbot.Grind.NeighbourAware", 0);   // twow-repo#602 #2
+    if (grindNeighbourAware > 3)
+        grindNeighbourAware = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 shadow only)
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");
@@ -1353,6 +1404,9 @@ bool PlayerbotAIConfig::Initialize()
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
+    gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 0);
+    if (gatherQuestHerbFilter > 2)
+        gatherQuestHerbFilter = 0;
     professionUseGatherDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionUse.GatherDistance", 0.0f));
     professionUseCraft = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Craft", false);
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
@@ -1610,6 +1664,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.BandStepAfterEmptySearches", Value(questFirstProgressionBandStepAfterEmptySearches)},
             {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
             {"QuestFirstProgression.BandWalkAfterEmptySearches", Value(questFirstProgressionBandWalkAfterEmptySearches)},
+            {"QuestFirstProgression.ContestedObjectiveWait", Value(questFirstProgressionContestedObjectiveWait)},
+            {"QuestFirstProgression.ContestedObjectiveWait.Kill", Value(questFirstProgressionContestedObjectiveWaitKill)},
             {"QuestFirstProgression.BandQueuedFreeMinutes", Value(questFirstProgressionBandQueuedFreeMinutes)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
@@ -1634,6 +1690,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
             {"Path.PosStuck", Value(pathPosStuck)},
             {"Path.PosStuck.Minutes", Value(pathPosStuckMinutes)},
+            {"Path.TransportBoardFix", Value(pathTransportBoardFix)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.RestGate", Value(rotationRestGate)},
@@ -1641,29 +1698,40 @@ bool PlayerbotAIConfig::Initialize()
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
+            {"Rotation.OomBackoff", Value(rotationOomBackoff)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
             {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
+            {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
+            {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
+            {"ThrownUsageFix", Value(thrownUsageFix)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"ActivityTrace", Value(activityTrace)},
             {"EnableActionLog", Value(enableActionLog)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
+            {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
             {"DestinationDeaths.CampBlock", Value(destinationDeathsCampBlock)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
+            {"Grind.NeighbourAware", Value(grindNeighbourAware)},
+            {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
+            {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
+            {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
+            {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
+            {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
         }).c_str());
     }
 

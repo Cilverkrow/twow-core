@@ -6,6 +6,7 @@
 #include "playerbot/strategy/values/PositionValue.h"
 #include "playerbot/strategy/values/AoeValues.h"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/DarkRuneGatePolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/EmergencyLadderTrace.h"
 #include "playerbot/MeleeFleeBreakPolicy.h"
@@ -23,6 +24,36 @@ bool NoManaTrigger::IsActive()
 bool LowManaTrigger::IsActive()
 {
     return AI_VALUE2(bool, "has mana", "self target") && AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.lowMana;
+}
+
+// twow-repo#602 ROT-01 3c (DarkRuneGatePolicy.h): the actions decide themselves whether they are usable (bags or item cheat
+// under #485 UseReal, item cooldown, required level, class, #485 ManaPotionPct). "mana potion" counts too: it is the
+// alternative of the "dark rune" node and so the only way most classes drink a mana potion in combat. While neither is
+// usable, the check waits RecheckSeconds.
+bool LowManaConsumableTrigger::IsActive()
+{
+    namespace drg = ai::dark_rune_gate;
+    int64 const now = int64(time(nullptr));
+    if (!drg::Due(now, nextCheck))
+    {
+        drg::waited.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    if (!(AI_VALUE2(bool, "has mana", "self target") && AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.lowMana))
+        return false;
+    drg::checks.fetch_add(1, std::memory_order_relaxed);
+    for (char const* name : { "dark rune", "mana potion" })
+    {
+        Action* action = context->GetAction(name);
+        if (action && action->isPossible() && action->isUseful())
+        {
+            drg::passed.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+    }
+    drg::blocked.fetch_add(1, std::memory_order_relaxed);
+    nextCheck = drg::NextCheck(now, sPlayerbotAIConfig.rotationDarkRuneGateRecheckSeconds);
+    return false;
 }
 
 bool MediumManaTrigger::IsActive()

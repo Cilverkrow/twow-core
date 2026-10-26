@@ -31,7 +31,12 @@ namespace ai
         static bool MinimalMove(PlayerbotAI* ai);
         // twow-repo#342 (S1): edge (optional) = the bot's transport edge state with the key of the caller's path as current
         // key, for AiPlayerbot.Path.TransportEdgeTrace; nullptr or the trace off = no state, no counters, no lines.
-        static bool UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge = nullptr);
+        // twow-repo#342 (S3b-1): board (optional) = the caller's S3b state (BoardFor), only with AiPlayerbot.Path.TransportBoardFix
+        // on; nullptr = the legacy board / exit flow.
+        static bool UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition dockPosition, WorldPosition exitPosition, bool doTeleport, transport_edge::State* edge = nullptr, transport_board::BotState* board = nullptr);
+        // twow-repo#342 (S3b-1): the bot stands on the vessel it boarded with the fix (ride record); PlayerbotAI's fell-off check
+        // then accepts the deck hit. The caller tests AiPlayerbot.Path.TransportBoardFix first.
+        static bool HasFixedRide(PlayerbotAI* ai);
         // twow-repo#342 (S1): fail reason=fell_off (PlayerbotAI, both RemovePassenger branches) / reason=stall_abandon (TravelMgr) for the bot's running
         // transport edge episode; the callers test AiPlayerbot.Path.TransportEdgeTrace first.
         static void TraceTransportEdgeFellOff(PlayerbotAI* ai);

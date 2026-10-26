@@ -24,4 +24,21 @@ inline bool StaysOnMap(bool gatherPurpose, unsigned botMap, unsigned targetMap)
 {
     return !gatherPurpose || botMap == targetMap;
 }
+
+// twow-repo#333 Berufe P1-f (owner 25.10.2026 via OB-00: "Quest-Kräuter nur mit der passenden Quest"): the quest plants
+// (OB-50: Bloodpetal Sprout, Serpentbloom, Incendia Agave, Plant Bundle, Hyjalroot, Gloom Weed, Doom Weed, Violet Tragan -
+// all lock 259) have a herbalism slot next to "open kneeling", and their loot is a quest item. #414 keeps them out of the
+// gather travel targets (IsGatherNode); the passive pick did not: LootObject::Refresh takes the herbalism slot, so a herbalist
+// without the quest picked them on the way. The raw lock skill 0 is no mark of its own - Peacebloom and Silverleaf
+// (lock 29) have it too; the "open kneeling" slot is.
+inline bool IsQuestHerb(bool lockHasHerbalism, bool lockHasNonProfessionSkill)
+{
+    return lockHasHerbalism && lockHasNonProfessionSkill;
+}
+
+// A quest herb is picked only while one of the bot's quests wants it (GameObject::ActivateToQuest).
+inline bool QuestHerbLootable(bool questHerb, bool activeForQuest)
+{
+    return !questHerb || activeForQuest;
+}
 }

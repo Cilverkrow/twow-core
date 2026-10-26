@@ -400,12 +400,16 @@ bool UseAction::Execute(Event& event)
             targetGameObject = ai->GetGameObject(*gos.begin());
         }
 
+        // twow-repo#601 cr2-C GO diagnosis (CLI-Deep 26.10.2026): the name search is only the fallback without a game object link, and
+        // it matches a name that CONTAINS the text. It ran after the link and tested find() as a bool (true = NOT found), so the
+        // nearest unrelated object replaced the linked one: the key path of OpenLootAction ("use <key item> <chest>") cast the Digging
+        // Claw (5166) on that object - BAD_TARGETS (lock key item does not fit), Silithid Mound (quest 868) never opened.
         float closest = 9999.0f;
-        std::list<ObjectGuid> nearestGOs = AI_VALUE(std::list<ObjectGuid>, "nearest game objects no los");
+        std::list<ObjectGuid> nearestGOs = targetGameObject ? std::list<ObjectGuid>() : AI_VALUE(std::list<ObjectGuid>, "nearest game objects no los");
         for (const ObjectGuid& goGUID : nearestGOs)
         {
             GameObject* go = ai->GetGameObject(goGUID);
-            if (go && std::string(go->GetName()).find(useName))
+            if (go && std::string(go->GetName()).find(useName) != std::string::npos)
             {
                 const float distance = bot->GetDistance(go);
                 if (distance < closest)

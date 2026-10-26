@@ -67,6 +67,14 @@ inline std::uint32_t HoldOverSeconds(std::uint32_t now, std::uint32_t backoffUnt
     return now > backoffUntil ? now - backoffUntil : 0;
 }
 
+// P1-b3 (CLI-Deep R-f 25.10.2026): the end time of a trip whose target went away without a failed hold check (another
+// target took over). Its "reason=lost" line is only written at the next request of the kind, often an hour later, so it
+// counts to the last hold check that still held (heldAt), or to the start when none ran.
+inline std::uint32_t LostEndAt(std::uint32_t startedAt, std::uint32_t heldAt)
+{
+    return heldAt > startedAt ? heldAt : startedAt;
+}
+
 // Why a started trip stops holding (the [ProfTravel] state=end reason): its reason is gone (rank learned / tool in
 // the bags), a turn-in opened, or the hold ran out.
 inline char const* EndReason(bool reasonLasts, bool turnInWaiting, bool holds)
@@ -84,6 +92,7 @@ inline char const* EndReason(bool reasonLasts, bool turnInWaiting, bool holds)
 constexpr char const* kHoldUntilSuffix = " hold until";
 constexpr char const* kBackoffEndSuffix = " backoff end";
 constexpr char const* kOpenSuffix = " open";
+constexpr char const* kHeldAtSuffix = " held at";
 
 inline bool CooldownOver(std::uint32_t now, std::uint32_t startedAt)
 {
@@ -118,5 +127,50 @@ inline bool HasGatherTool(std::uint32_t skill, bool hasPick, bool hasKnife)
     if (skill == kSkinning)
         return hasKnife;
     return true;
+}
+
+// P1-b2 (CLI-PATH 25.10.2026, path/tool-vendors-reachability.tsv + trainers-reachability.tsv): GetPartitions checks neither
+// the travel graph nor the faction, so a trip went to a vendor or trainer the bot cannot reach (a zone without travel nodes:
+// Blackstone Island, Alah'Thalas, Moonwhisper Coast, Tel'Abim ... - the nearest node 516-2,548 yd away; an instance or
+// battleground map 30 / 42 / 90) or that is hostile (RpgTravelDestination::IsActive drops it only after the choice), and held
+// for nothing. A spawn is reachable on an open-world map with a playerbot travel node within kMaxNodeYards (2D, CLI-PATH's rule).
+// Deliberately open world only: the two trainers CLI-PATH rates reachable through in-instance travel nodes (Annora 11073 in
+// Uldaman, map 70; Henry Stern 8696 in Razorfen Downs, map 129) are dropped - a dungeon walk is no quest-gap filler.
+constexpr float kMaxNodeYards = 500.0f;
+
+inline bool SpawnReachable(bool openWorldMap, float nearestNodeYards)
+{
+    return openWorldMap && nearestNodeYards <= kMaxNodeYards;
+}
+
+enum class TripTarget
+{
+    Kept,
+    Hostile,
+    Unreachable
+};
+
+// A trip target entry: hostile first (no trip to an enemy at all), then reachable = one of its spawns is.
+inline TripTarget ClassifyTripTarget(bool hostile, bool anySpawnReachable)
+{
+    if (hostile)
+        return TripTarget::Hostile;
+    if (!anySpawnReachable)
+        return TripTarget::Unreachable;
+    return TripTarget::Kept;
+}
+
+// Whom one lookup's verdict holds for (CLI-PATH review 25.10.): the node rule's verdict on an entry's destinations for
+// every asker; "no destination in this call" only for the asker's map - GetDestinations drops a destination by the asker's
+// distance (DistanceTo == FLT_MAX), so another map must ask again instead of inheriting a permanent drop.
+enum class ReachCache
+{
+    EveryAsker,
+    AskerMap
+};
+
+inline ReachCache ReachCacheScope(bool hadDestination)
+{
+    return hadDestination ? ReachCache::EveryAsker : ReachCache::AskerMap;
 }
 }
