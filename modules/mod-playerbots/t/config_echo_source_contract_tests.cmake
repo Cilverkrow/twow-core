@@ -133,6 +133,7 @@ set(entries
   "Rotation.OomBackoff|rotationOomBackoff"
   "Rotation.MeleeFleeBreak.Ranged|rotationMeleeFleeBreakRanged"
   "Rotation.FleeAway|rotationFleeAway"
+  "Rotation.FleeAway.Scope|rotationFleeAwayScope"
   "Rotation.ReachLosClose|rotationReachLosClose"
   "Rotation.ReachPlayerMaster|rotationReachPlayerMaster"
   "Rotation.DarkRuneGate|rotationDarkRuneGate"

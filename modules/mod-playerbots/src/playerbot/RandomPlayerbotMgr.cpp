@@ -1367,7 +1367,8 @@ void ReportMeleeFleeBreak()
 
 // twow-repo#602 (c) (AiPlayerbot.Rotation.FleeAway): one [FleeAway] line per minute and cohort with activity - flee chases issued
 // with the relative angle, passes that kept the running chase, re-aims of the same enemy after ReissueMs, and the hunter dead-zone
-// evaluations (flee inside / quiet outside) while the pet holds the enemy. Nothing is written when off.
+// evaluations (flee inside / quiet outside) while the pet holds the enemy, then the scope and the passes outside it (old chase,
+// Rotation.FleeAway.Scope). Nothing is written when off.
 void ReportFleeAway()
 {
     static uint32 lastReport = 0;
@@ -1380,11 +1381,12 @@ void ReportFleeAway()
     {
         ai::flee_away::Counters& c = ai::flee_away::counters[cohort];
         unsigned long long const issued = take(c.issued), kept = take(c.kept), reaimed = take(c.reaimed),
-            deadZoneFlee = take(c.deadZoneFlee), deadZoneQuiet = take(c.deadZoneQuiet);
-        if (!issued && !kept && !reaimed && !deadZoneFlee && !deadZoneQuiet)
+            deadZoneFlee = take(c.deadZoneFlee), deadZoneQuiet = take(c.deadZoneQuiet), outOfScope = take(c.outOfScope);
+        if (!issued && !kept && !reaimed && !deadZoneFlee && !deadZoneQuiet && !outOfScope)
             continue;
-        sLog.outBasic("[FleeAway] mode=%u cohort=%c issued=%llu kept=%llu reaimed=%llu dead_zone_flee=%llu dead_zone_quiet=%llu",
-            sPlayerbotAIConfig.rotationFleeAway, cohort ? 'B' : 'A', issued, kept, reaimed, deadZoneFlee, deadZoneQuiet);
+        sLog.outBasic("[FleeAway] mode=%u cohort=%c issued=%llu kept=%llu reaimed=%llu dead_zone_flee=%llu dead_zone_quiet=%llu scope=%u out_of_scope=%llu",
+            sPlayerbotAIConfig.rotationFleeAway, cohort ? 'B' : 'A', issued, kept, reaimed, deadZoneFlee, deadZoneQuiet,
+            sPlayerbotAIConfig.rotationFleeAwayScope, outOfScope);
     }
 }
 

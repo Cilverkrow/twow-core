@@ -3034,6 +3034,11 @@ AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
 # minute and cohort (issued, kept, reaimed, dead_zone_flee, dead_zone_quiet).
 # 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
 AiPlayerbot.Rotation.FleeAway = 0
+# twow-repo#602 ROT-01 (c) scope (hunter restart A/B 26.10.2026): which bots of Rotation.FleeAway's cohort get the new flee. In the
+# restart, cohort B's casters and warriors died about 1.9x as often as cohort A's in the 4th hour, mostly with 2+ attackers. A bot
+# outside the scope keeps the old flee chase; its passes are counted as out_of_scope in the [FleeAway] line. The hunter dead zone
+# is hunter-only in every scope. 0 = every bot (as before, default), 1 = hunters only, 2 = hunters and bots with their pet out.
+AiPlayerbot.Rotation.FleeAway.Scope = 0
 
 # twow-repo#602 ROT-01 3c-B (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): an
 # out-of-mana caster without a wand stood in combat for hours - every AI tick (~7/s) pushed its whole rotation, each spell and
