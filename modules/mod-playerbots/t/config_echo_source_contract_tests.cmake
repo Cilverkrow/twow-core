@@ -143,6 +143,7 @@ set(entries
   "Perf.RouteTimeTrace|perfRouteTimeTrace"
   "Perf.DispatchPrecomputedPath|perfDispatchPrecomputedPath"
   "Loot.RoleWeights|lootRoleWeights"
+  "QuestLoop.GameObjectPresence|questLoopGameObjectPresence"
   "BotUpdateTrace|botUpdateTrace"
   "ActivityTrace|activityTrace"
   "EnableActionLog|enableActionLog"
