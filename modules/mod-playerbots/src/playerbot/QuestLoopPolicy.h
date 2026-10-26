@@ -60,6 +60,16 @@ namespace ai::quest_loop
         return countAtStart >= 0 && countNow > countAtStart;
     }
 
+    // twow-repo#601 cr2-C gap analysis (CLI-Deep 26.10.2026, AiPlayerbot.QuestLoop.GiverTakerDone): a quest giver / taker destination
+    // goes inactive as soon as its job is done - the giver offers nothing more once the quest is taken, the taker once it is turned in -
+    // and that success sent the bot into the destination's 60 s COOLDOWN at the NPC (cohort B: 167 drops at 4 yd, median 96 s to the
+    // next target). Done = giver (relation 0): the quest is in the log or rewarded; taker (relation 1): the quest is no longer in the
+    // log. Anything else (not taken, still in the log) is no success: the COOLDOWN path as before.
+    inline bool GiverTakerTripDone(std::uint8_t relation, bool questInLog, bool questRewarded)
+    {
+        return relation == 0 ? (questInLog || questRewarded) : !questInLog;
+    }
+
     // QL-2: the cooldown after an inactive objective, never shorter than the destination's own.
     inline std::uint32_t InactiveCooldownMs(std::uint32_t destinationCooldownMs, std::uint32_t minSeconds)
     {

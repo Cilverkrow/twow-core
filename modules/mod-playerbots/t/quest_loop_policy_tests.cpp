@@ -61,6 +61,14 @@ int main()
     Require(InactiveCooldownMs(300000, 180) == 300000, "a longer destination cooldown stays");
     Require(InactiveCooldownMs(60000, 0) == 60000, "0 = as before");
 
+    // GiverTakerDone (twow-repo#601): only a taken (giver) or turned-in (taker) quest ends the trip as a success.
+    Require(GiverTakerTripDone(0, true, false), "giver: the quest is now in the log - taken");
+    Require(GiverTakerTripDone(0, false, true), "giver: the quest is done (rewarded) - nothing to take");
+    Require(!GiverTakerTripDone(0, false, false), "giver: not taken (no room, cannot accept) - the COOLDOWN as before");
+    Require(GiverTakerTripDone(1, false, true), "taker: turned in");
+    Require(GiverTakerTripDone(1, false, false), "taker: no longer in the log (abandoned) - nothing to turn in");
+    Require(!GiverTakerTripDone(1, true, false), "taker: still in the log (an item lost, not complete) - the COOLDOWN as before");
+
     // InactiveAfterProgress (twow-repo#601): only a grown count is progress; no count never is.
     Require(InactiveAfterProgress(0, 1), "0 -> 1 kill: progress");
     Require(InactiveAfterProgress(4, 7), "4 -> 7 items: progress");

@@ -754,6 +754,9 @@ public:
     uint32 questLoopWindowSeconds = 1800;
     uint32 questLoopCooldownSeconds = 1800;
     uint32 questLoopInactiveCooldownSeconds = 0; // twow-repo#581 QL-2: minimum cooldown after an inactive objective (0 = off)
+    // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C gap analysis): a quest giver / taker trip that went inactive because its quest was
+    // taken / turned in ends at once instead of a 60 s COOLDOWN at the NPC. Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questLoopGiverTakerDone = 0;
     // twow-repo#601 (CLI-Deep 25.10.2026): an inactive objective whose count grew since the target was set is progress, not an
     // emptied camp - no QL-1, no QL-2, a 1 s cooldown. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopInactiveAfterProgress = 0;

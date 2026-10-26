@@ -695,6 +695,13 @@ bool PlayerbotAIConfig::Initialize()
     questLoopWindowSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.WindowSeconds", 1800));
     questLoopCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestLoop.CooldownSeconds", 1800));
     questLoopInactiveCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveCooldownSeconds", 0)));
+    // twow-repo#601 GiverTakerDone: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopGiverTakerDone = config.GetIntDefault("AiPlayerbot.QuestLoop.GiverTakerDone", 0);
+    if (questLoopGiverTakerDone > 2)
+    {
+        sLog.outError("[QuestLoop] config key=GiverTakerDone value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopGiverTakerDone);
+        questLoopGiverTakerDone = 0;
+    }
     // twow-repo#601 InactiveAfterProgress: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questLoopInactiveAfterProgress = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveAfterProgress", 0);
     if (questLoopInactiveAfterProgress > 2)
@@ -1679,6 +1686,7 @@ bool PlayerbotAIConfig::Initialize()
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
+            {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
