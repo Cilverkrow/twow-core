@@ -523,6 +523,37 @@ bool QuestObjectiveTravelDestination::IsActive(Player* bot, const PlayerTravelIn
         }
     }
 
+    // twow-repo#601 cr2-C GO diagnosis (CLI-Deep 26.10.2026, AiPlayerbot.QuestLoop.GameObjectPresence): the check above is for creatures
+    // only, so a game object objective never went inactive - at a looted and despawned consumable chest (60-300 s respawn, several
+    // bots per spot) the bot stood in WORK until the work timeout (cohort B: 266 GO work timeouts in 3 h). With the switch the
+    // objective the bot is working at counts only while a spawned, lootable (or just being opened) object of its entry is in sight; else it
+    // ends as destination_inactive (InactiveAfterProgress / InactiveReselect / QL-1 take over). Only the current target in WORK:
+    // one list per check, no value per object. A roster bot on its own only; off or another cohort: as before.
+    if (GetEntry() < 0 && ai::cohort::Applies(sPlayerbotAIConfig.questLoopGameObjectPresence, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && !IsOut(botPos))
+    {
+        TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
+        if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK && target->GetEntry() == GetEntry())
+        {
+            std::list<ObjectGuid> gameObjects = AI_VALUE(std::list<ObjectGuid>, "nearest game objects no los");
+            for (ObjectGuid const& guid : gameObjects)
+            {
+                if (guid.GetEntry() != uint32(-GetEntry()))
+                    continue;
+                GameObject* go = ai->GetGameObject(guid);
+                // in use (this bot or another one is opening it) still counts, and so does a non-consumable chest waiting for its
+                // restock (GO_NOT_READY until chestRestockTime, then GO_READY again - pre-review 26.10.); only a despawned one does not
+                if (!go || !go->IsSpawned())
+                    continue;
+                bool const restocking = go->GetGoType() == GAMEOBJECT_TYPE_CHEST && !go->GetGOInfo()->chest.consumable &&
+                    go->GetGOInfo()->chest.chestRestockTime;
+                if (go->GetLootState() != GO_NOT_READY || restocking)
+                    return true;
+            }
+            return false;
+        }
+    }
+
     return true;
 }
 

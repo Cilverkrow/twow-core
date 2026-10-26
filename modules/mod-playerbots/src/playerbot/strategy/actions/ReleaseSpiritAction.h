@@ -303,10 +303,12 @@ namespace ai
             // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): an evacuation point at the loop - on its map closer
             // than FarEscapeMinYards to the latest death, or in its zone - is replaced by the race's safe start (Goblin /
             // High Elf: Durotar / Elwynn, the others: their race start), and the homebind is set there. The goblins'
-            // homebind on Blackstone Island lay 380 yd from the graveyard they died at.
+            // homebind on Blackstone Island lay 380 yd from the graveyard they died at. Never for a bot led by a real player: its
+            // homebind is its player's business (OB-10 review of #702).
             death_loop::Death loopDeath;
             uint32 loopZone = 0;
-            if (deathLoop && ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && ai->GetLatestLoopDeath(loopDeath, loopZone))
+            if (deathLoop && ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
+                ai->GetLatestLoopDeath(loopDeath, loopZone))
             {
                 auto zoneOf = [](WorldLocation const& location) -> uint32
                 {
