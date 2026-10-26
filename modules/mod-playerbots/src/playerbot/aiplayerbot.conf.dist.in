@@ -3074,6 +3074,23 @@ AiPlayerbot.Rotation.ReachLosClose = 0
 # ignore_s=30 cohort=" (one line per bot per 5 min, as before; bots without a player master log master=bot ignore_s=300).
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.ReachPlayerMaster = 0
+# twow-repo#630 follow-up (BUG FIX, owner repro 25.10.2026 on C; enable with ReachPlayerMaster after the test-realm repro + owner
+# go): the drop of ReachPlayerMaster cleared only the bot's "current target". A rogue sent with "attack" while stealthed kept the
+# target as its "attack target", which counts as an attacker, so it never left combat (no follow there) and stood stealthed in
+# front of the target until "follow". With the mode on, when a bot with a real player as master drops an unreachable target, it
+# also clears that target from "attack target", "pull target" (ending the pull), "old target", its selection and a running swing:
+# combat ends and follow resumes. "[ReachDrop] bot= target_entry= attack= pull= old= selection= victim= cohort=" for every such
+# drop that cleared something (player groups only, rare). Needs ReachPlayerMaster on (no drop without it).
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.ReachDropEngagement = 0
+# twow-repo#630 follow-up (owner repro 25.10.2026: the rogue followed in stealth after "follow"): a rogue following a real player
+# outside combat, dungeons and battlegrounds drops stealth while the player moves or the rogue is still catching up (farther than
+# FollowDistance + 5 yd); standing together it keeps stealth. Before, unstealth fired only beyond 10 yd of the master target and
+# follow outranked it, so the rogue followed slowed and invisible. In a dungeon, a battleground or with an attacker near the stock
+# rule stays. Known: Stealth's cooldown starts when it breaks, so a pull within ~10 s after opens without Cheap Shot/Ambush.
+# Own switch (an A/B tells it apart from ReachDropEngagement). Read when the strategies are built (a reload takes effect with the
+# next strategy reset). 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.FollowUnstealth = 0
 
 # twow-repo#602 ROT-01 3c (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): "low mana"
 # pushes "dark rune" (alternative "mana potion") on every evaluation, in the combat and the reaction engine. Without a rune in

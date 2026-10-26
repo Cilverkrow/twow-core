@@ -1054,6 +1054,9 @@ public:
     // Hotfix 8.2: one reach attempt at this distance; true when the target is now
     // ignored as unreachable (bots without a real player; with one only under Rotation.ReachPlayerMaster, twow-repo#630).
     bool CheckReachProgress(Unit* target, float distance);
+    // twow-repo#630 follow-up (Rotation.ReachDropEngagement): after that drop a bot with a real player as master lets go of the
+    // target entirely (attack/pull/old target, selection, swing), so its combat ends and follow resumes (ReachDropPolicy.h).
+    void DropUnreachableEngagement(Unit* target);
     bool IsUnreachableTarget(ObjectGuid guid) const { return unreachableTargets.Ignored(guid.GetRawValue(), uint32(time(nullptr))); }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
     // #421 C: set on the bot's thread, taken and acted on by the world thread.

@@ -135,6 +135,8 @@ set(entries
   "Rotation.FleeAway|rotationFleeAway"
   "Rotation.ReachLosClose|rotationReachLosClose"
   "Rotation.ReachPlayerMaster|rotationReachPlayerMaster"
+  "Rotation.ReachDropEngagement|rotationReachDropEngagement"
+  "Rotation.FollowUnstealth|rotationFollowUnstealth"
   "Rotation.DarkRuneGate|rotationDarkRuneGate"
   "Gather.FishingSkillCheck|gatherFishingSkillCheck"
   "ProfessionTraining.Travel|professionTrainingTravel"
