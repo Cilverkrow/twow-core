@@ -143,6 +143,7 @@ set(entries
   "Perf.RouteTimeTrace|perfRouteTimeTrace"
   "Perf.DispatchPrecomputedPath|perfDispatchPrecomputedPath"
   "Loot.RoleWeights|lootRoleWeights"
+  "ThrownUsageFix|thrownUsageFix"
   "BotUpdateTrace|botUpdateTrace"
   "ActivityTrace|activityTrace"
   "EnableActionLog|enableActionLog"

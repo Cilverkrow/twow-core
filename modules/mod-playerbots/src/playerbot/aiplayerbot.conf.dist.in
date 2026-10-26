@@ -432,6 +432,14 @@ AiPlayerbot.HunterAmmoTiers =
 AiPlayerbot.HunterAmmoFillQuiver = 0
 AiPlayerbot.ThrownMaxCount = 0
 
+# twow-repo#333 P1-s (bug fix, CLI-BERUFE 26.10.2026): a thrown weapon sits in the ranged slot, not in the ammo slot,
+# so the ammo rule called every thrown weapon in the bags or at a vendor "equip". Rogues and warriors filled their bags
+# with 128-143 Crude Throwing Axes (TurtleWoW: single repairable items) that were never sold or destroyed and were bought
+# again. With the fix a single thrown weapon is judged by the equip rule only (upgrade or not) and spares count as vendor
+# goods; a stacking one is compared with the equipped ranged item. No log line.
+# Mode: 0 = as before (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.ThrownUsageFix = 0
+
 # Chance random bot has max level on first randomize (default 0.15)
 AiPlayerbot.RandomBotMaxLevelChance = 0.15
 

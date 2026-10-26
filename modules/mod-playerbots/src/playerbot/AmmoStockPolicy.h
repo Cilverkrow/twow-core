@@ -99,6 +99,24 @@ inline std::uint32_t TargetCount(Settings const& settings, Facts const& facts)
     return target;
 }
 
+// twow-repo#333 P1-s (AiPlayerbot.ThrownUsageFix, CLI-BERUFE 26.10.2026): a thrown weapon sits in the ranged slot, never
+// in the ammo slot, so PLAYER_AMMO_ID stays 0 and the ammo rule called every thrown weapon in the bags or at a vendor
+// "equip". Bags filled with 128-143 Crude Throwing Axes (TurtleWoW: Stackable 1, repairable, not used up), never sold
+// (not VENDOR), never destroyed (EQUIP is kept), bought again as an "upgrade", and the same axe re-equipped 286 times in
+// 3 hours. With the fix (thrownFix = thrown weapon and the switch applies to the bot):
+// - a single (non-stacking) thrown weapon leaves the ammo rule: the equip rule above decides upgrades, the spares fall
+//   through to the vendor / no-use rule;
+// - a stacking one compares with the equipped ranged item instead of the ammo slot.
+inline bool ThrownSkipsAmmoRule(bool thrownFix, std::uint32_t stackSize)
+{
+    return thrownFix && stackSize <= 1;
+}
+
+inline std::uint32_t CurrentAmmoEntry(bool thrownFix, std::uint32_t ammoSlotEntry, std::uint32_t rangedEntry)
+{
+    return thrownFix ? rangedEntry : ammoSlotEntry;
+}
+
 // Units (vendor batches of buyCount) for one purchase: the missing amount in
 // one transaction, at most one stack, at least one unit, at most 255 (the
 // vendor packet field), and no more than the money pays for.
