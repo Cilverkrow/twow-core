@@ -241,7 +241,8 @@ namespace ai
     // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h), shared by "should travel named" and the request:
     // the trainers that teach this bot a GREEN rank of a phase-one profession now, and the gathering tool it lacks
     // (0 = none missing).
-    std::vector<int32> PhaseOneProfessionTrainers(PlayerbotAI* ai);
+    // onlyUnlearned (P1-n): only the skills the bot does not have yet (their first rank).
+    std::vector<int32> PhaseOneProfessionTrainers(PlayerbotAI* ai, bool onlyUnlearned = false);
     uint32 MissingGatherTool(PlayerbotAI* ai);
 
     // P1-b2 (CLI-PATH 25.10.): the entries a profession trip may go to - not hostile to the bot, one spawn reachable
@@ -254,4 +255,14 @@ namespace ai
     std::vector<int32> ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32> const& entries, TravelDestinationPurpose purpose,
         ProfessionTripDrops* drops = nullptr);
     std::vector<int32> GatherToolVendors(PlayerbotAI* ai, uint32 tool);
+
+    // P1-n (OB-00 26.10., AiPlayerbot.ProfessionTraining.NearRadius): the reachable, not hostile trainers of a phase-one skill
+    // the bot has not learned yet with a spawn within the radius (ProfessionTravelPolicy.h NearTripSkill / WithinNearRadius).
+    struct NearTrainerCounts
+    {
+        uint32 trainers = 0;   // trainers of an unlearned phase-one skill, anywhere
+        uint32 inRadius = 0;   // of these, with a spawn within the radius on the bot's map
+    };
+    std::vector<int32> NearProfessionTrainers(PlayerbotAI* ai, uint32 radius, ProfessionTripDrops* drops = nullptr,
+        NearTrainerCounts* counts = nullptr);
 }

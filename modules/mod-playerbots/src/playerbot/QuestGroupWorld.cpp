@@ -339,6 +339,11 @@ QueueStore& Queue()
     return store;
 }
 
+bool OwnsBot(std::uint32_t guid)
+{
+    return WorldManager().Owns(guid);
+}
+
 std::uint32_t QueuedAge(std::uint32_t guid, std::uint32_t questId)
 {
     return Queue().QueuedAge(guid, questId, std::uint32_t(time(nullptr)));

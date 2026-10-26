@@ -150,6 +150,13 @@ void TravelStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
         triggers.push_back(new TriggerNode(
             travel_request::TriggerName("val::should travel named::trainer profession", gateRequests),
             NextAction::array(0, new NextAction("request named travel target::trainer profession", 6.296f), NULL)));
+    // P1-n (AiPlayerbot.ProfessionTraining.NearRadius, OB-00 26.10.2026 after M1 FUTILE: the gap was too rare): a trainer of an
+    // unlearned phase-one skill within the radius, no gap needed - above grind (6.35) and the quest request (6.3), below the
+    // fixed targets; the radius bounds the detour, an open turn-in and a band walk still go first (the value checks them).
+    if (sPlayerbotAIConfig.professionTrainingTravel && sPlayerbotAIConfig.professionTrainingNearRadius)
+        triggers.push_back(new TriggerNode(
+            travel_request::TriggerName("val::should travel named::trainer profession near", gateRequests),
+            NextAction::array(0, new NextAction("request named travel target::trainer profession near", 6.36f), NULL)));
 
     triggers.push_back(new TriggerNode(
         "val::not::travel target active",

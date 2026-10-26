@@ -1439,6 +1439,25 @@ add_test(NAME unreachable_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/unreachable_source_contract_tests.cmake")
 
+# twow-repo#630 follow-up: the drop under a real player clears the whole engagement, a following rogue drops stealth.
+add_executable(reach_drop_policy_tests
+  "${PB_MODULE_DIR}/t/reach_drop_policy_tests.cpp")
+
+target_include_directories(reach_drop_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(reach_drop_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME reach_drop_policy
+  COMMAND reach_drop_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME reach_drop_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/reach_drop_source_contract_tests.cmake")
+
 # Hotfix 8.1: [TankPath] diagnostic for bots on a tank path.
 add_executable(tank_path_diag_policy_tests
   "${PB_MODULE_DIR}/t/tank_path_diag_policy_tests.cpp")
@@ -1653,6 +1672,20 @@ add_test(NAME vendor_gear_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/vendor_gear_source_contract_tests.cmake")
+
+# OB-10 26.10.2026: smart destroy (grey only) keeps one stack per item id - no use after free.
+add_executable(destroy_item_policy_tests
+  "${PB_MODULE_DIR}/t/destroy_item_policy_tests.cpp")
+
+target_include_directories(destroy_item_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(destroy_item_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME destroy_item_policy
+  COMMAND destroy_item_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # OB-10 train 6: capped ammo / thrown weapon stock (142 Crude Throwing Axes).
 add_executable(ammo_stock_policy_tests
