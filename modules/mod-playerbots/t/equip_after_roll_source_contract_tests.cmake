@@ -38,6 +38,8 @@ read_source("aiplayerbot.conf.dist.in" config_template)
 require_text("${config_cpp}" "equipAfterRollWon = config.GetBoolDefault(\"AiPlayerbot.Equip.AfterRollWon\", false);" "key, default 0")
 require_text("${config_h}" "bool equipAfterRollWon = false;" "member default 0")
 require_text("${config_template}" "AiPlayerbot.Equip.AfterRollWon = 0" "key documented")
+# ConfigEcho (#710: the switch's own contract pins its entry; config_echo checks the block's order generically).
+require_text("${config_cpp}" "            {\"Equip.AfterRollWon\", Value(equipAfterRollWon)}," "echo entry")
 
 # Packet -> trigger -> "equip upgrades".
 require_text("${ai_cpp}" "    if (sPlayerbotAIConfig.equipAfterRollWon)

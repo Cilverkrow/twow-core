@@ -1059,6 +1059,13 @@ AiPlayerbot.DeathLoop.Radius = 150
 # their safe start (Durotar / Elwynn), the other races to their race start, and the homebind is reset there.
 # [DeathLoop] state=minute counts detected / escaped / rebound / repeat_after_escape / hostile_death. 0 = off.
 AiPlayerbot.DeathLoop.Escape = 0
+# twow-repo#601/#602 G2 (OB-00 go 26.10.2026): (a) a bot that dies 3 times in a row at most 60 s after a revive,
+# within DeathLoop.Radius of where it stood up, is in a death loop whatever the window says (the ghost time between
+# two revives keeps such deaths ~10 min apart); [DeathLoop] state=short_life. (b) An evacuation point (homebind or
+# spawn) on the loop's map closer than 600 yd to the latest death, or in its zone, is replaced by the race's safe
+# start (Goblin / High Elf: Durotar / Elwynn, the others: their race start) and the homebind is set there;
+# [DeathLoop] state=far_escape. 0 = off, 1 = all bots, 2 = cohort B (odd guids).
+AiPlayerbot.DeathLoop.FarEscape = 0
 
 # #357 O-12 (owner 2026-09-27, variant A): roster shamans on premade path 7.1
 # "enhancement" or 7.3 "shaman tank" get the reworked Enhancement talents as

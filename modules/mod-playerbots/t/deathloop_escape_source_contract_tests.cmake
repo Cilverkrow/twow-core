@@ -60,7 +60,7 @@ require_order("${record}" "if (sPlayerbotAIConfig.deathLoopEscape)" "lastDeathHo
 require_text("${record}" "death_loop::RepeatAfterEscape(death.atSeconds, lastDeathLoopEscapeAt, sPlayerbotAIConfig.deathLoopWindowSeconds)" "repeat after escape counted")
 between("${ai_cpp}" "bool PlayerbotAI::IsInDeathLoop() const" "\n}\n" in_loop)
 require_order("${in_loop}" "if (sPlayerbotAIConfig.deathLoopEscape && lastDeathHostileArea)\n        return true;" "return death_loop::IsLoop(recentDeaths" "hostile death before the old loop check")
-require_text("${ai_h}" "void ClearDeathLoop() { recentDeaths.clear(); lastDeathHostileArea = false; }" "evacuation clears the hostile flag")
+require_text("${ai_h}" "void ClearDeathLoop() { recentDeaths.clear(); lastDeathHostileArea = false;" "evacuation clears the hostile flag")
 
 # Evacuation: decided before the teleport, homebind reset when it lies in a hostile area.
 between("${repop_h}" "class RepopAction : public SpiritHealerAction" "class SelfResurrectAction" repop)
