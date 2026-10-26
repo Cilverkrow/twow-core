@@ -253,6 +253,12 @@ add_test(NAME dungeon_clear_fast
          COMMAND dungeon_clear_tests_fast
          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# G1 dry 25.10.2026: a test driver still being written is a login in flight, not a refusal (source contract).
+add_test(NAME dungeon_clear_test_driver_pending_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_driver_pending_contract.cmake")
+
 # ---------------------------------------------------------------------------
 # Full suite: the tests that instantiate real core types.
 #
