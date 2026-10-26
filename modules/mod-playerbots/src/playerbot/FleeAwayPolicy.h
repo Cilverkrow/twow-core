@@ -30,7 +30,7 @@ inline bool Applies(std::uint32_t mode, std::uint32_t guidLow)
 // restart, cohort B's non-hunters (casters, warriors) died about 1.9x as often as cohort A's in the 4th hour, mostly with 2+
 // attackers, spread over many bots - the switch applied to every bot without a real master. The scope limits (a) and (b) to the
 // classes the analysis was about; a bot outside it takes the unchanged old chase. (c) is hunter-only anyway.
-// 0 = every bot (as before, default), 1 = hunters only, 2 = hunters and bots with their pet out; unknown values act like 0.
+// 0 = every bot (as before, default), 1 = hunters only, 2 = hunters and bots with a living pet out; unknown values act like 0.
 inline bool InScope(std::uint32_t scope, bool hunter, bool petOut)
 {
     switch (scope)
