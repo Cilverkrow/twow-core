@@ -110,6 +110,24 @@ namespace ai::quest_loop
         return 0;
     }
 
+    // twow-repo#601 (CLI-Deep 26.10.2026, AiPlayerbot.QuestLoop.EmptyCampHold): the 180 s mark ran out long before the camp came
+    // back - cand3-C cohort B re-committed to the same camp 561 times 3-30 min after the mark, 83 % of these trips found it empty
+    // again. With the switch the mark lasts the respawn of the spawn point, at least the base mark, at most EmptyCampHoldMaxSeconds
+    // (a base mark above the cap stays); respawn 0 (no spawn data) keeps the base mark.
+    constexpr std::uint32_t EmptyCampHoldMaxSeconds = 900;
+
+    inline std::uint32_t EmptyCampHoldMs(std::uint32_t baseMs, std::uint32_t respawnSeconds)
+    {
+        return std::max(baseMs, std::min(respawnSeconds, EmptyCampHoldMaxSeconds) * 1000u);
+    }
+
+    // The COOLDOWN back at the camp when the search right after the drop found no quest target: the time left on the mark, never
+    // more than the base mark (a held camp must not hold the bot).
+    inline std::uint32_t FallbackCooldownMs(std::uint32_t leftMs, std::uint32_t baseMs)
+    {
+        return std::min(leftMs, baseMs);
+    }
+
     // Marks (quest, entry) for durationMs: its own slot again, else a free or run-out one, else the one that runs out first.
     inline void MarkEmptyCamp(EmptyCamps& camps, std::uint32_t quest, std::int32_t entry, std::uint32_t nowMs, std::uint32_t durationMs)
     {

@@ -1056,6 +1056,15 @@ AiPlayerbot.QuestLoop.InactiveAfterProgress = 0
 # state=inactive_reselect_fallback ... cooldown_ms=; [QuestFirstRoute] state=rejected ... inactive_reselect=N.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.QuestLoop.InactiveReselect = 0
+# twow-repo#601 (CLI-Deep 26.10.2026, cand3-C): with InactiveReselect the emptied camp was remembered for 180 s only - cohort B went
+# back to the same camp 341 times 3-10 min and 220 times 10-30 min later, 83 % of these trips found it empty again (8.3 % of the
+# B time). With EmptyCampHold the mark lasts the respawn of the spawn point the bot went to (creature / game object
+# spawntimesecsmin), at least the InactiveReselect mark and at most 900 s; a point without spawn data keeps the old mark. If the
+# search right after the drop finds no quest target, the bot still goes back in COOLDOWN for the old time only (no longer
+# standing). Needs InactiveReselect. [QuestLoop] state=empty_camp_hold bot= quest= target_entry= respawn_s= base_ms= hold_ms=
+# when the hold is longer than the old mark.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.EmptyCampHold = 0
 
 # twow-repo#485: with 1, quest givers and takers that are game objects spawned
 # only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
