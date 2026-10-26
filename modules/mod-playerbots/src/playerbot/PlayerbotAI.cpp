@@ -4224,6 +4224,34 @@ void PlayerbotAI::RecordDeathForLoop()
         if (death_loop::RepeatAfterEscape(death.atSeconds, lastDeathLoopEscapeAt, sPlayerbotAIConfig.deathLoopWindowSeconds))
             death_loop::EscapeCounter(death_loop::EscapeRepeat).fetch_add(1, std::memory_order_relaxed);
     }
+
+    // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): the latest death is the loop centre of an escape; a death
+    // soon after a revive close to it extends the short life streak (DeathLoopPolicy.h).
+    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()))
+    {
+        lastLoopDeath = death;
+        lastLoopDeathZone = bot->GetZoneId();
+        uint32 const aliveSeconds = shortLife.reviveAt && death.atSeconds >= shortLife.reviveAt ? death.atSeconds - shortLife.reviveAt : 0;
+        if (death_loop::RecordShortLifeDeath(shortLife, death.atSeconds, death.mapId, death.x, death.y, sPlayerbotAIConfig.deathLoopRadius))
+            sLog.outBasic("[DeathLoop] state=short_life guid=%u level=%u map=%u zone=%u deaths=%u alive_s=%u max_alive_s=%u radius=%.0f",
+                bot->GetGUIDLow(), bot->GetLevel(), death.mapId, lastLoopDeathZone, shortLife.streak, aliveSeconds,
+                death_loop::ShortLifeSeconds, sPlayerbotAIConfig.deathLoopRadius);
+    }
+}
+
+void PlayerbotAI::RecordReviveForLoop()
+{
+    if (ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()))
+        death_loop::RecordRevive(shortLife, uint32(time(nullptr)), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+}
+
+bool PlayerbotAI::GetLatestLoopDeath(death_loop::Death& death, uint32& zoneId) const
+{
+    if (!lastLoopDeath.atSeconds)
+        return false;
+    death = lastLoopDeath;
+    zoneId = lastLoopDeathZone;
+    return true;
 }
 
 void PlayerbotAI::RecordDeathForSeries()
@@ -4310,6 +4338,11 @@ bool PlayerbotAI::IsInDeathLoop() const
 {
     // twow-repo#541 A39: with DeathLoop.Escape a death among the hostile faction's guards needs no repeat.
     if (sPlayerbotAIConfig.deathLoopEscape && lastDeathHostileArea)
+        return true;
+    // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): ShortLifeDeaths deaths in a row soon after a revive, the
+    // latest within the window (a bot revived without the repop does not stay in the loop).
+    if (death_loop::IsShortLifeLoop(shortLife) && uint32(time(nullptr)) - lastLoopDeath.atSeconds <= sPlayerbotAIConfig.deathLoopWindowSeconds &&
+        ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()))
         return true;
     return death_loop::IsLoop(recentDeaths, uint32(time(nullptr)), DeathLoopSettings());
 }
