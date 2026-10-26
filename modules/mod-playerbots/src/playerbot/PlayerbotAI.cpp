@@ -4222,7 +4222,10 @@ void PlayerbotAI::RecordDeathForLoop()
     // loop at once; a death soon after an evacuation means the evacuation did not break the loop.
     if (sPlayerbotAIConfig.deathLoopEscape)
     {
-        lastDeathHostileArea = WorldPosition(bot).isEnemyHomeZoneFor(bot->GetTeam());
+        // twow-repo#629 G1 (AiPlayerbot.DeathLoop.HostileAreaOutsideDungeons): not inside a dungeon (DeathLoopPolicy.h).
+        Map const* map = bot->FindMap();
+        lastDeathHostileArea = death_loop::HostileAreaDeath(WorldPosition(bot).isEnemyHomeZoneFor(bot->GetTeam()),
+            map && map->IsDungeon(), sPlayerbotAIConfig.deathLoopHostileAreaOutsideDungeons);
         if (lastDeathHostileArea)
             death_loop::EscapeCounter(death_loop::EscapeHostileDeath).fetch_add(1, std::memory_order_relaxed);
         if (death_loop::RepeatAfterEscape(death.atSeconds, lastDeathLoopEscapeAt, sPlayerbotAIConfig.deathLoopWindowSeconds))

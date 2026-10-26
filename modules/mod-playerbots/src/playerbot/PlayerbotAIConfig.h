@@ -785,6 +785,7 @@ public:
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
     bool deathLoopEscape = false;   // twow-repo#541 A39 (owner 10.10.): hostile-area death = loop; never evacuate to a hostile homebind
+    bool deathLoopHostileAreaOutsideDungeons = false;   // twow-repo#629 G1 (owner go 26.10.): no hostile-area loop in dungeons
     // twow-repo#601/#602 G2 (OB-00 go 26.10.2026): short life after a revive is a loop; an evacuation point at the loop
     // is replaced by the race's safe start (0 off, 1 all, 2 cohort B).
     uint32 deathLoopFarEscape = 0;

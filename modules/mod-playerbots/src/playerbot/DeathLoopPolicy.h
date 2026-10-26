@@ -79,6 +79,16 @@ inline bool RepeatAfterEscape(std::uint32_t nowSeconds, std::uint32_t lastEscape
     return lastEscapeSeconds && nowSeconds >= lastEscapeSeconds && nowSeconds - lastEscapeSeconds <= windowSeconds;
 }
 
+// twow-repo#629 G1 (CLI-GRP g1n 26.10.2026, owner go, switch AiPlayerbot.DeathLoop.HostileAreaOutsideDungeons,
+// default 0): a dungeon run in the hostile faction's territory (Wailing Caverns for Alliance bots, map 43 in the
+// Barrens) marked every death there a hostile-area death loop - 19 evacuations with deaths=1 out of the instance in one
+// g1n run. The guards A39 is about stand outside; with the switch a death inside a dungeon or raid is no hostile-area
+// death. The other loop rules (window, short life) still apply.
+inline bool HostileAreaDeath(bool enemyHomeZone, bool inDungeon, bool outsideDungeonsOnly)
+{
+    return enemyHomeZone && !(outsideDungeonsOnly && inDungeon);
+}
+
 // Safe start of the two races RandomPlayerbotFactory rebinds (their real start zones are player-only on Turtle);
 // the same coordinates as RandomPlayerbotFactory::CreateRandomBot (contract-checked).
 struct StartPoint
