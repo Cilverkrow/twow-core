@@ -25,6 +25,7 @@
 #include "playerbot/DirectTargetDestinations.h"
 #include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 Berufe P1-a / P1-b
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/QuestSkillLockPolicy.h"   // twow-repo#601 QuestFirstProgression.SkipSkillLockedObjectives
 #include "Guild/GuildMgr.h"
 #include "Formulas.h"
 #include <algorithm>
@@ -338,6 +339,7 @@ bool NoteNoRouteTurnIns(AiObjectContext* context, TravelTarget* travelTarget, bo
 enum class CandidateSkip
 {
     None,
+    SkillLocked,   // twow-repo#601 SkipSkillLockedObjectives (checked last in CandidateSkipOf; the enum order is not the check order)
     TurnInSuppressed,
     DeathSuppressed,
     QuestLoopSuppressed,
@@ -346,6 +348,40 @@ enum class CandidateSkip
     OtherMapGrind,
     GatherPurposeSuppressed,
 };
+
+// twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives, QuestSkillLockPolicy.h): a game object quest objective whose lock
+// opens only with profession skills this bot lacks (skill, value or tool) - Copper Vein for Blood Shard (889 / 5052) without Mining.
+// O(1): the template, the lock and its 8 slots; read only with the switch on for this bot.
+bool SkillLockedObjective(Player* bot, TravelDestination const* destination)
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination);
+    if (!objective || objective->GetEntry() >= 0)
+        return false;
+    GameObjectInfo const* info = sObjectMgr.GetGameObjectInfo(uint32(-objective->GetEntry()));
+    LockEntry const* lock = info && info->GetLockId() ? sLockStore.LookupEntry(info->GetLockId()) : nullptr;
+    if (!lock)
+        return false;
+
+    bool const hasPick = bot->HasItemCount(ai::profession_travel::kMiningPick, 1);
+    bool const hasKnife = bot->HasItemCount(ai::profession_travel::kSkinningKnife, 1);
+    ai::quest_skill_lock::Slot slots[8];
+    std::size_t count = 0;
+    for (int j = 0; j < 8; ++j)
+    {
+        if (lock->Type[j] == LOCK_KEY_ITEM)
+            slots[count++] = ai::quest_skill_lock::Slot{ false, true };
+        else if (lock->Type[j] == LOCK_KEY_SKILL)
+        {
+            uint32 const skill = SkillByLockType(LockType(lock->Index[j]));
+            if (skill == SKILL_NONE)
+                slots[count++] = ai::quest_skill_lock::Slot{ false, true };
+            else
+                slots[count++] = ai::quest_skill_lock::Slot{ true, ai::quest_skill_lock::ProfessionSlotMet(bot->HasSkill(skill),
+                    bot->GetSkillValue(skill), lock->Skill[j], ai::profession_travel::HasGatherTool(skill, hasPick, hasKnife)) };
+        }
+    }
+    return !ai::quest_skill_lock::Openable(slots, count);
+}
 
 CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelTarget const* persistentTarget,
     TravelTarget const* excludedTurnInTarget, TravelDestination* destination, WorldPosition* position)
@@ -382,6 +418,12 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
     // #422: a gathering purpose this bot died at twice without a killer.
     if (!target->IsForced() && ai->IsGatherPurposeSuppressed(uint32(destination->GetPurpose()) & gatherPurposes))
         return CandidateSkip::GatherPurposeSuppressed;
+
+    // twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives): no quest trip to an object this bot cannot open. A roster bot
+    // on its own only; off or another cohort: as before.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionSkipSkillLockedObjectives, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && SkillLockedObjective(bot, destination))
+        return CandidateSkip::SkillLocked;
 
     return CandidateSkip::None;
 }
@@ -761,6 +803,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // #421 A: which filters took every candidate.
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
                 uint32(destinationList.size()), "no_active_route_candidate", lastRejects.Format() + ai::contested_objective::FormatSources(lastSuppressSources));
+            // twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives): the objects this empty search skipped for a missing
+            // profession, as an own line (the rejected line stays as it is); never written with the switch off.
+            if (lastSkillLocked)
+                sLog.outBasic("[QuestFirstRoute] state=skill_locked bot=%u level=%u skipped=%u", bot->GetGUIDLow(), bot->GetLevel(), lastSkillLocked);
             // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
             uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
                 uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
@@ -1399,6 +1445,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     chooseBudgetExceeded = false;
     lastRejects = ai::quest_search::RejectCounts();
     lastSuppressSources = ai::contested_objective::SourceCounts{};
+    lastSkillLocked = 0;
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
@@ -1510,6 +1557,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 case CandidateSkip::GatherPurposeSuppressed:
                     ++lastRejects.deathSuppressed;
                     ++lastSuppressSources[ai::contested_objective::SourceGather];
+                    continue;
+                case CandidateSkip::SkillLocked:
+                    ai->TellDebug(requester, "Skipping quest object that needs a profession skill I lack.", "debug travel");
+                    ++lastSkillLocked;
                     continue;
                 case CandidateSkip::None:
                     break;

@@ -911,6 +911,9 @@ public:
     // twow-repo#601 S5a F2: when every rung of the bot's band lies in the zone it stands in, the next band is a candidate
     // from this many levels below its min on (instead of 2). 0 = off (default), 1..10; other values act like 0.
     uint32 questFirstProgressionBandLadderSameZoneNext = 0;
+    // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a game object quest objective whose lock opens only with a profession
+    // skill the bot lacks (skill, value or tool) is no quest target. Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questFirstProgressionSkipSkillLockedObjectives = 0;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.
