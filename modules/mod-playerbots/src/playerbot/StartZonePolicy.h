@@ -189,6 +189,85 @@ inline bool IslandLeaveAllowed(bool rosterMember, bool on)
     return rosterMember || on;
 }
 
+// F2 (twow-repo#575 option B, owner 26.10.2026): on, the quest rescue keeps a goblin that is still on Blackstone Island
+// there - up to level 9 at a hub of the island (the start, Rustgate Ridge), at level 10 at the flying machine, where 8.29
+// takes the flight. A goblin with 41169 in the log goes to the machine (its way to Sparkwater), one with 41170 up to level 10
+// to a hub (it hands in at Taxxlo on Rustgate Ridge). A second hub rescue without any progress since the first (the island
+// has nothing left for it), or a machine target the bot already stands at: Durotar. Off, or off the island: Sparkwater
+// Port / Razor Hill as before (hotfix 8.29).
+enum class IslandRescue : std::uint8_t
+{
+    Durotar = 0,
+    Hub,
+    Machine,
+};
+
+inline IslandRescue IslandRescueOf(bool on, std::uint32_t race, std::uint32_t level, bool onIsland, bool carriesBadNews,
+    bool carriesSolutions, bool hubRescueWithoutProgress, bool atMachine)
+{
+    if (!on || race != GoblinRace || !onIsland)
+        return IslandRescue::Durotar;
+    if (carriesBadNews)
+        return atMachine ? IslandRescue::Durotar : IslandRescue::Machine;
+    if (hubRescueWithoutProgress)
+        return IslandRescue::Durotar;
+    if (level < StartAreaMaxLevel || (carriesSolutions && level <= StartAreaMaxLevel))
+        return IslandRescue::Hub;
+    return atMachine ? IslandRescue::Durotar : IslandRescue::Machine;
+}
+
+// F2: on, a goblin up to level 10 with 41170 in the log does not leave the island by 8.29 - it came back to hand it in
+// at Taxxlo (else 8.29 sends a level-10 goblin straight back to the machine).
+inline bool IslandLeaveBlocked(bool on, std::uint32_t level, bool carriesSolutions)
+{
+    return on && carriesSolutions && level <= StartAreaMaxLevel;
+}
+
+// F2: the island hubs of the rescue - the goblin start (homebind, travel node 1839) and the innkeeper on Rustgate Ridge
+// (1841, next to Taxxlo Rustgate); a hub this close to the bot is left out (the bot found nothing there).
+constexpr float IslandStartX = -233.0f, IslandStartY = -7177.0f, IslandStartZ = 16.5f;
+constexpr float IslandInnX = -345.5f, IslandInnY = -7448.6f, IslandInnZ = 75.8f;
+constexpr float IslandRescueMinYards = 50.0f;
+
+// F2: on, a goblin leaves its island at level 10 (8.29) or with 41169 (Q1), not after 15 minutes without progress below
+// level 10 - such a goblin gets the island rescue instead (IslandRescueOf). The idle time 8.29 sees: 0 when on.
+inline std::uint32_t IslandLeaveIdle(bool on, std::uint32_t idleSeconds)
+{
+    return on ? 0 : idleSeconds;
+}
+
+// F2: on, a rescue to a point of a custom start zone keeps the hearthstone where it is - the island hubs and the machine,
+// and by the same rule a hub-ladder rescue into the goblin or high-elf start zone (5536 / 5225 / 2040): a bot below the
+// end of its start chain is still at home there.
+inline bool RescueKeepsHomebind(bool on, StartTeam target)
+{
+    return on && target != StartTeam::None;
+}
+
+// F2: on, the hearthstone follows a goblin off the island once it has left: from level 10, homebind still on the island,
+// the bot outside it (it flew to Sparkwater) - it binds at Razor Hill, as the rescue teleport did before. Not while
+// 41170 takes it back (level 10 with 41170 in the log).
+inline bool RebindOffIsland(bool on, std::uint32_t race, std::uint32_t level, bool homeOnIsland, bool onIsland,
+    bool carriesSolutions)
+{
+    return on && race == GoblinRace && homeOnIsland && !onIsland && level >= StartAreaMaxLevel &&
+        !(carriesSolutions && level <= StartAreaMaxLevel);
+}
+
+// F4: on, the walk to the island machine follows the travel graph (wave-0 nodes; v3.3 routes round the scorpid field)
+// instead of one straight path through it. Within GraphWalkDirectYards of the machine the bot walks straight; a bot
+// farther than GraphWalkNodeReach from the nearest node (searched within GraphWalkStartYards) walks to that node first.
+// No node, no walk route, or no graph lock within 50 ms: the straight walk as before.
+constexpr float GraphWalkDirectYards = 60.0f;
+constexpr float GraphWalkStartYards = 250.0f;
+constexpr float GraphWalkNodeReach = 10.0f;
+constexpr float GraphWalkMachineNodeYards = 15.0f;
+
+inline bool UsesGraphWalk(bool on, float distToMachine)
+{
+    return on && distToMachine > GraphWalkDirectYards;
+}
+
 // S1: the high-elf ship (Windrunner, transport 176250, path 323) has no link in the travel graph yet. On, a high elf
 // in its start zone with 41259 "Journey to Auberdine" in the log, or from level 12, or from level 10 after 15 minutes
 // without progress, walks to the Alah'Thalas pier and is moved to the Auberdine pier ([Travel] state=ship_scripted).

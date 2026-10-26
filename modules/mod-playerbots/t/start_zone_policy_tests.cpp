@@ -107,6 +107,38 @@ int main()
     Require(IslandLeaveAllowed(true, false) && !IslandLeaveAllowed(false, false) && IslandLeaveAllowed(false, true),
         "8.29 roster rule, every bot when on");
 
+    // F2 (option B): the rescue keeps a goblin on its island, the hearthstone follows only once it has left.
+    Require(IslandRescueOf(true, 9, 3, true, false, false, false, false) == IslandRescue::Hub &&
+        IslandRescueOf(true, 9, 9, true, false, false, false, false) == IslandRescue::Hub, "L3 / L9 on the island: hub");
+    Require(IslandRescueOf(true, 9, 10, true, false, false, false, false) == IslandRescue::Machine, "L10 on the island: machine");
+    Require(IslandRescueOf(true, 9, 10, true, false, false, false, true) == IslandRescue::Durotar, "L10 at the machine: Durotar");
+    Require(IslandRescueOf(true, 9, 4, true, true, false, false, false) == IslandRescue::Machine, "41169: machine");
+    Require(IslandRescueOf(true, 9, 4, true, true, false, false, true) == IslandRescue::Durotar, "41169 at the machine: Durotar");
+    Require(IslandRescueOf(true, 9, 10, true, false, true, false, false) == IslandRescue::Hub, "L10 with 41170: hub (Taxxlo)");
+    Require(IslandRescueOf(true, 9, 11, true, false, true, false, false) == IslandRescue::Machine, "L11 with 41170: machine");
+    Require(IslandRescueOf(true, 9, 3, true, false, false, true, false) == IslandRescue::Durotar, "second hub rescue, no progress");
+    Require(IslandRescueOf(false, 9, 3, true, false, false, false, false) == IslandRescue::Durotar, "off: Durotar");
+    Require(IslandRescueOf(true, 9, 3, false, false, false, false, false) == IslandRescue::Durotar, "off the island: Durotar");
+    Require(IslandRescueOf(true, 2, 3, true, false, false, false, false) == IslandRescue::Durotar, "orc: Durotar");
+    Require(IslandLeaveBlocked(true, 10, true) && !IslandLeaveBlocked(true, 11, true) && !IslandLeaveBlocked(true, 10, false) &&
+        !IslandLeaveBlocked(false, 10, true), "8.29 waits for the 41170 hand-in up to L10");
+    Require(TeamOfPoint(1, IslandStartX, IslandStartY) == StartTeam::Horde && TeamOfPoint(1, IslandInnX, IslandInnY) == StartTeam::Horde,
+        "island hubs lie in the island box");
+    Require(RescueKeepsHomebind(true, StartTeam::Horde) && RescueKeepsHomebind(true, StartTeam::Alliance), "start-zone target: keep");
+    Require(!RescueKeepsHomebind(true, StartTeam::None) && !RescueKeepsHomebind(false, StartTeam::Horde), "inn / off: rebind as before");
+    Require(IslandLeaveIdle(true, 3600) == 0 && IslandLeaveIdle(false, 3600) == 3600, "on: no idle exit below L10");
+    Require(RebindOffIsland(true, 9, 10, true, false, false), "L10 in Durotar, island home: rebind");
+    Require(RebindOffIsland(true, 9, 14, true, false, true), "L14 with 41170: rebind (no return above L10)");
+    Require(!RebindOffIsland(true, 9, 10, true, false, true), "L10 with 41170: it flies back, keep");
+    Require(!RebindOffIsland(true, 9, 5, true, false, false), "L5 on the 41169 trip: keep");
+    Require(!RebindOffIsland(true, 9, 10, true, true, false), "still on the island: keep");
+    Require(!RebindOffIsland(true, 9, 10, false, false, false), "home already off the island");
+    Require(!RebindOffIsland(false, 9, 10, true, false, false) && !RebindOffIsland(true, 2, 10, true, false, false), "off / orc");
+
+    // F4: the graph walk to the island machine, straight close to it.
+    Require(UsesGraphWalk(true, 500.0f) && !UsesGraphWalk(true, GraphWalkDirectYards) && !UsesGraphWalk(false, 500.0f),
+        "graph walk only on and away from the machine");
+
     // S1: the ship.
     Require(ShipCandidate(true, 10, 0, 3762.0f, -2366.0f), "high elf in the highlands");
     Require(!ShipCandidate(false, 10, 0, 3762.0f, -2366.0f) && !ShipCandidate(true, 1, 0, 3762.0f, -2366.0f), "off / human");
