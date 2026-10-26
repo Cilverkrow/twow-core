@@ -151,6 +151,7 @@ set(entries
   "ThrownUsageFix|thrownUsageFix"
   "BotUpdateTrace|botUpdateTrace"
   "ActivityTrace|activityTrace"
+  "ActivityTrace.StuckDetail|activityTraceStuckDetail"
   "EnableActionLog|enableActionLog"
   "LogInGroupOnly|logInGroupOnly"
   "Grind.GreyByLevel|grindGreyByLevel"

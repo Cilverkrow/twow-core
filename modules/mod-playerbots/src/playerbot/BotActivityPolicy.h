@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace ai::bot_activity
 {
@@ -202,6 +203,121 @@ inline std::string FormatLine(std::uint32_t bot, std::uint32_t level, std::uint3
         line += std::string(" ") + KindName(Kind(i)) + "=" + std::to_string(c.seconds[i]);
     line += " gap=" + std::to_string(c.gap);
     return line;
+}
+
+// twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail, OB-00 26.10.2026): in cand3-C the quest cohort was stuck 21 % of its
+// time, and no log said why (no position or reason per minute). With the switch a bot that is stuck StuckDetailSamples
+// samples in a row writes one [StuckDetail] line for the episode; a sample of any other kind ends it. At most
+// StuckDetailPerMinute lines a minute for all bots (about: two threads at a minute change may each pass once more); a refused
+// line is counted and the next line carries the count (dropped=). Log only.
+constexpr std::uint8_t StuckDetailSamples = 2;
+constexpr std::uint32_t StuckDetailPerMinute = 30;
+
+// Per bot (its own update thread only).
+struct StuckEpisode
+{
+    std::uint8_t samples = 0;
+
+    // -> true at the sample that makes the episode (StuckDetailSamples stuck samples in a row), once per episode
+    bool Note(bool stuck)
+    {
+        if (!stuck)
+        {
+            samples = 0;
+            return false;
+        }
+        if (samples < 255)
+            ++samples;
+        return samples == StuckDetailSamples;
+    }
+};
+
+// Any thread. Relaxed atomics only, no lock.
+class StuckDetailLimit
+{
+public:
+    // -> true while the minute of `now` has a line left
+    bool Take(std::uint32_t now)
+    {
+        std::uint32_t const key = now / SampleSeconds + 1;   // 0 = no minute yet
+        std::uint32_t seen = minute.load(std::memory_order_relaxed);
+        if (seen != key && minute.compare_exchange_strong(seen, key, std::memory_order_relaxed))
+            used.store(0, std::memory_order_relaxed);
+        if (used.fetch_add(1, std::memory_order_relaxed) < StuckDetailPerMinute)
+            return true;
+        dropped.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+
+    // -> the lines refused since the last call
+    std::uint32_t TakeDropped() { return dropped.exchange(0, std::memory_order_relaxed); }
+
+private:
+    std::atomic<std::uint32_t> minute{ 0 };
+    std::atomic<std::uint32_t> used{ 0 };
+    std::atomic<std::uint32_t> dropped{ 0 };
+};
+
+inline StuckDetailLimit& StuckDetailGlobal()
+{
+    static StuckDetailLimit limit;
+    return limit;
+}
+
+// What the engine last did, from its trail (Engine::LogAction: "|PUSH:<action> - <relevance> (<kind>)|T:<trigger>|...|A:<action>
+// - OK [<n>us]"; a trigger is logged after the actions it pushed). action = the newest executed action, trigger = the first trigger
+// after the newest push of that action before it. "-" when the trail does not hold one. Double quotes become single ones.
+struct TrailPick
+{
+    std::string action = "-";
+    std::string trigger = "-";
+};
+
+inline TrailPick PickFromTrail(std::string const& trail)
+{
+    std::vector<std::string> entries;
+    for (std::size_t start = 0; start <= trail.size();)
+    {
+        std::size_t const end = trail.find('|', start);
+        std::size_t const stop = end == std::string::npos ? trail.size() : end;
+        if (stop > start)
+            entries.push_back(trail.substr(start, stop - start));
+        if (end == std::string::npos)
+            break;
+        start = end + 1;
+    }
+    TrailPick pick;
+    std::size_t done = entries.size();
+    for (std::size_t i = entries.size(); i-- > 0;)
+    {
+        std::size_t const ok = entries[i].find(" - OK");
+        if (entries[i].compare(0, 2, "A:") == 0 && ok != std::string::npos)
+        {
+            pick.action = entries[i].substr(2, ok - 2);
+            done = i;
+            break;
+        }
+    }
+    if (done == entries.size())
+        return pick;
+    std::string const push = "PUSH:" + pick.action + " - ";
+    for (std::size_t i = done; i-- > 0;)
+    {
+        if (entries[i].compare(0, push.size(), push) != 0)
+            continue;
+        for (std::size_t j = i + 1; j < done; ++j)
+            if (entries[j].compare(0, 2, "T:") == 0)
+            {
+                pick.trigger = entries[j].substr(2);
+                break;
+            }
+        break;
+    }
+    for (std::string* text : { &pick.action, &pick.trigger })
+        for (char& c : *text)
+            if (c == '"')
+                c = '\'';
+    return pick;
 }
 
 struct Snapshot
