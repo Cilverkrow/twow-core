@@ -5,6 +5,22 @@
 
 using namespace ai;
 
+// twow-repo#333 (OB-00 26.10.2026, P1-s smoke): a destroyed item was invisible - no bot_events line, no
+// character_destroyed_items row - so bag and economy checks saw only sells. One "DestroyItemAction" event per destroyed
+// stack: info1 = name, count and reason (command, smart, smart_gray, all_gray), info2 = item id (the last field, as SellAction).
+// Call it before bot->DestroyItem: the item is gone afterwards.
+static void LogDestroyEvent(PlayerbotAI* ai, Item* item, char const* reason)
+{
+    if (!sPlayerbotAIConfig.hasLog("bot_events.csv"))
+        return;
+    ItemPrototype const* proto = item->GetProto();
+    if (!proto)
+        return;
+    sPlayerbotAIConfig.logEvent(ai, "DestroyItemAction",
+        std::string(proto->Name1) + " count=" + std::to_string(item->GetCount()) + " reason=" + reason,
+        std::to_string(proto->ItemId));
+}
+
 bool DestroyItemAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
@@ -20,7 +36,7 @@ bool DestroyItemAction::Execute(Event& event)
     return true;
 }
 
-void DestroyItemAction::DestroyItem(FindItemVisitor* visitor, Player* requester)
+void DestroyItemAction::DestroyItem(FindItemVisitor* visitor, Player* requester, char const* reason)
 {
     ai->InventoryIterateItems(visitor, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);
     std::list<Item*> items = visitor->GetResult();
@@ -28,6 +44,7 @@ void DestroyItemAction::DestroyItem(FindItemVisitor* visitor, Player* requester)
     {
 		Item* item = *i;
         std::ostringstream out; out << chat->formatItem(item) << " destroyed";
+        LogDestroyEvent(ai, item, reason);
         bot->DestroyItem(item->GetBagSlot(),item->GetSlot(), true);
         ai->TellPlayer(requester, out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
     }
@@ -63,7 +80,7 @@ bool SmartDestroyItemAction::Execute(Event& event)
                 continue;
 
             FindItemByIdVisitor visitor(item->GetProto()->ItemId);
-            DestroyItem(&visitor, requester);
+            DestroyItem(&visitor, requester, "smart_gray");
 
             bagSpace = AI_VALUE(uint8, "bag space");
 
@@ -103,7 +120,7 @@ bool SmartDestroyItemAction::Execute(Event& event)
                 continue;
 
             FindItemByIdVisitor visitor(item);
-            DestroyItem(&visitor, requester);
+            DestroyItem(&visitor, requester, "smart");
 
             bagSpace = AI_VALUE(uint8, "bag space");
 
@@ -135,6 +152,7 @@ bool DestroyAllGrayItemsAction::Execute(Event& event)
                         {
                             std::ostringstream out; out << ai->GetChatHelper()->formatItem(pItem->GetProto()) << " destroyed";
                             sLog.outDetail("%s via DestroyAllGrayItemsAction", out.str().c_str());
+                            LogDestroyEvent(ai, pItem, "all_gray");
                             bot->DestroyItem(pItem->GetBagSlot(), pItem->GetSlot(), true);
                             ai->TellPlayer(requester, out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
 
@@ -156,6 +174,7 @@ bool DestroyAllGrayItemsAction::Execute(Event& event)
                 {
                     std::ostringstream out; out << ai->GetChatHelper()->formatItem(pItem->GetProto()) << " destroyed";
                     sLog.outDetail("%s via DestroyAllGrayItemsAction", out.str().c_str());
+                    LogDestroyEvent(ai, pItem, "all_gray");
                     bot->DestroyItem(pItem->GetBagSlot(), pItem->GetSlot(), true);
                     ai->TellPlayer(requester, out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
 

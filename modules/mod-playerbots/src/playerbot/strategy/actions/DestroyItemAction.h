@@ -22,7 +22,7 @@ namespace ai
 #endif
 
     protected:
-        void DestroyItem(FindItemVisitor* visitor, Player* requester);
+        void DestroyItem(FindItemVisitor* visitor, Player* requester, char const* reason = "command");
     };
 
     class SmartDestroyItemAction : public DestroyItemAction 
