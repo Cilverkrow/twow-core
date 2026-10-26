@@ -14,6 +14,8 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
+#include "playerbot/CohortPolicy.h"     // twow-repo#601/#602 G2: DeathLoop.FarEscape mode 2 = cohort B
+#include <cmath>
 // The base class. Came in through botpch.h inside the bot library; a module
 // including this header from outside has no botpch.
 #include "GenericActions.h"
@@ -296,6 +298,63 @@ namespace ai
                 sLog.outBasic("[DeathLoop] state=escape guid=%u race=%u level=%u hostile_home=%u rebound=%u to_map=%u safe=%u",
                     bot->GetGUIDLow(), uint32(bot->getRace()), bot->GetLevel(), hostileHome ? 1u : 0u, rebound ? 1u : 0u,
                     destination.getMapId(), safe ? 1u : 0u);
+            }
+
+            // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): an evacuation point at the loop - on its map closer
+            // than FarEscapeMinYards to the latest death, or in its zone - is replaced by the race's safe start (Goblin /
+            // High Elf: Durotar / Elwynn, the others: their race start), and the homebind is set there. The goblins'
+            // homebind on Blackstone Island lay 380 yd from the graveyard they died at.
+            death_loop::Death loopDeath;
+            uint32 loopZone = 0;
+            if (deathLoop && ai::cohort::Applies(sPlayerbotAIConfig.deathLoopFarEscape, bot->GetGUIDLow()) && ai->GetLatestLoopDeath(loopDeath, loopZone))
+            {
+                auto zoneOf = [](WorldLocation const& location) -> uint32
+                {
+                    AreaTableEntry const* area = WorldPosition(location).GetArea();
+                    return area ? (area->zone ? area->zone : area->ID) : 0;
+                };
+                WorldLocation const point = defaultPlayerInfo
+                    ? WorldLocation(defaultPlayerInfo->mapId, defaultPlayerInfo->positionX, defaultPlayerInfo->positionY, defaultPlayerInfo->positionZ)
+                    : WorldLocation(bot->GetHomebindMapId(), bot->GetHomebindX(), bot->GetHomebindY(), bot->GetHomebindZ());
+                uint32 const pointZone = zoneOf(point);
+                if (death_loop::EscapeAtLoop(loopDeath.mapId, loopDeath.x, loopDeath.y, loopZone, point.mapid, point.coord_x, point.coord_y, pointZone))
+                {
+                    death_loop::StartPoint start;
+                    bool known = death_loop::RaceStartOverride(bot->getRace(), start);
+                    if (!known)
+                    {
+                        if (PlayerInfo const* raceInfo = sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass()))
+                        {
+                            start = death_loop::StartPoint{ raceInfo->mapId, raceInfo->positionX, raceInfo->positionY, raceInfo->positionZ, raceInfo->areaId };
+                            known = true;
+                        }
+                    }
+                    WorldLocation const safeStart(start.map, start.x, start.y, start.z, 0.0f);
+                    bool const moved = known &&
+                        !death_loop::EscapeAtLoop(loopDeath.mapId, loopDeath.x, loopDeath.y, loopZone, safeStart.mapid, safeStart.coord_x, safeStart.coord_y, zoneOf(safeStart));
+                    if (moved)
+                    {
+                        bot->SetHomebindToLocation(safeStart, start.zone);
+                        defaultPlayerInfo = nullptr;   // the homebind branch below teleports to the safe start
+                    }
+                    // The race start itself lies at the loop (a start area graveyard): a homebind away from the loop and
+                    // not in a hostile area takes its place, unchanged.
+                    bool homebind = false;
+                    WorldLocation const home(bot->GetHomebindMapId(), bot->GetHomebindX(), bot->GetHomebindY(), bot->GetHomebindZ());
+                    if (!moved && defaultPlayerInfo)
+                    {
+                        homebind = !death_loop::EscapeAtLoop(loopDeath.mapId, loopDeath.x, loopDeath.y, loopZone, home.mapid, home.coord_x, home.coord_y, zoneOf(home)) &&
+                            !WorldPosition(home).isEnemyHomeZoneFor(bot->GetTeam());
+                        if (homebind)
+                            defaultPlayerInfo = nullptr;
+                    }
+                    float const dx = point.coord_x - loopDeath.x;
+                    float const dy = point.coord_y - loopDeath.y;
+                    sLog.outBasic("[DeathLoop] state=far_escape guid=%u race=%u level=%u map=%u zone=%u point_zone=%u point_dist=%.0f min_dist=%.0f moved=%u homebind=%u to_map=%u",
+                        bot->GetGUIDLow(), uint32(bot->getRace()), bot->GetLevel(), loopDeath.mapId, loopZone, pointZone,
+                        point.mapid == loopDeath.mapId ? std::sqrt(dx * dx + dy * dy) : -1.0f, death_loop::FarEscapeMinYards,
+                        moved ? 1u : 0u, homebind ? 1u : 0u, moved ? start.map : homebind ? home.mapid : point.mapid);
+                }
             }
 
             // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): the repop (critic C08) counted only, both teleports below
