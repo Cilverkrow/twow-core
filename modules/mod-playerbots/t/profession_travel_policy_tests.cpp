@@ -135,6 +135,26 @@ int main()
         Require(std::strcmp(NearGateReason(true, true, false, false, true, true, true, false), "unreachable") == 0, "near but hostile / unreachable");
     }
 
+    // 9) P1-t (M1r FUTILE 26.10.): the rank filter on the teaching spell. Values from tw_world spell_template / npc_trainer
+    // (test DB C): the trainer spell teaches via LEARN_SPELL (36), its own effect 2 is SKILL_STEP (44); only the taught
+    // spell has effect 2 SKILL (118), which IsProfessionSpell asks.
+    {
+        auto const isProfessionSpell = [](std::uint32_t spell)
+        {
+            return spell == 2366 || spell == 2575 || spell == 8613 || spell == 3273;   // Herb Gathering, Mining, Skinning, First Aid
+        };
+        Require(TeachesProfessionRank(2372, {36, 44, 0}, {2366, 0, 0}, isProfessionSpell), "Apprentice Herbalist teaches Herb Gathering");
+        Require(TeachesProfessionRank(2581, {36, 44, 0}, {2575, 0, 0}, isProfessionSpell), "Apprentice Miner teaches Mining");
+        Require(TeachesProfessionRank(8615, {36, 44, 0}, {8613, 0, 0}, isProfessionSpell), "Apprentice Skinning teaches Skinning");
+        Require(TeachesProfessionRank(3279, {36, 44, 0}, {3273, 0, 0}, isProfessionSpell), "Apprentice First Aid teaches First Aid");
+        Require(!isProfessionSpell(2581) && !isProfessionSpell(2372), "the old filter: the teaching spell itself is no profession spell");
+        Require(TeachesProfessionRank(2575, {33, 118, 0}, {0, 0, 0}, isProfessionSpell), "the taught spell itself (cmangos learnedSpell)");
+        Require(!TeachesProfessionRank(2658, {36, 0, 0}, {2657, 0, 0}, isProfessionSpell), "a recipe (Smelt Copper) teaches no rank");
+        Require(!TeachesProfessionRank(2581, {44, 36, 0}, {2575, 0, 0}, isProfessionSpell), "a trigger counts only on a LEARN_SPELL effect");
+        Require(TeachesProfessionRank(2581, {0, 0, 36}, {0, 0, 2575}, isProfessionSpell), "any of the three effects");
+        Require(!TeachesProfessionRank(0, {36, 0, 0}, {0, 0, 0}, isProfessionSpell), "LEARN_SPELL without a trigger: nothing");
+    }
+
     std::cout << "profession_travel_policy_tests: OK\n";
     return 0;
 }
