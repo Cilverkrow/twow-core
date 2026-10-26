@@ -332,3 +332,9 @@ add_test(NAME dungeon_clear_test_pool_guild_contract
          COMMAND "${CMAKE_COMMAND}"
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/test_pool_guild_contract.cmake")
+
+# CLI-GRP G1 25.10.2026: the geo fence regroups a member before it teleports it back; the pool claim records guildBefore.
+add_test(NAME dungeon_clear_test_geofence_regroup_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_geofence_regroup_contract.cmake")

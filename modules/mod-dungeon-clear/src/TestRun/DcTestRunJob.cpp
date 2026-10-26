@@ -539,6 +539,9 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
             return nullptr;
         }
         slot.guid = guid;
+        // OB-10 review #686: the pool path records it too, so UndoUnwantedGuild only ever removes the guild the harness's
+        // own provisioning drafted (always 0 today - the claim takes guildless characters only - but stated, not implied).
+        slot.guildBefore = sCharacterCache->GetCharacterGuildIdByGuid(guid);
         usedClasses.insert(slot.classId);
         // A character parked inside a dungeon map by an earlier broken
         // run logs BACK IN there - and a login into an instance whose
@@ -1628,6 +1631,31 @@ void DcTestRunJob::SweepPartyGeometry()
                             if (tankMap->IsDungeon() && bot != tank && bot->IsAlive() &&
                                 !bot->IsBeingTeleported())
                             {
+                                // Back into the run's group FIRST (CLI-GRP G1 dry-r3/pilot 25.10.2026): the stock
+                                // death-loop "repop" removes a bot from its group, and a teleport without the group
+                                // bind lands it in a NEW instance copy (instance 102 next to the tank's 101) - out of
+                                // the run for good, while the fence kept re-teleporting it. World thread (the monitor),
+                                // like the grouping above.
+                                Group* runGroup = tank->GetGroup();
+                                if (runGroup && !runGroup->IsMember(bot->GetObjectGuid()))
+                                {
+                                    // RemoveFromGroup, not a raw RemoveMember: the core's wrapper also unregisters and
+                                    // deletes a group the removal emptied (pre-review).
+                                    if (bot->GetGroup())
+                                        bot->RemoveFromGroup();
+                                    bool const back = runGroup->AddMember(bot->GetObjectGuid(), bot->GetName());
+                                    LOG_INFO("playerbots.dungeonclear",
+                                             "TESTRUN {} geo fence: {} was out of the run's group — re-added {}",
+                                             _record.runId, bot->GetName(), back ? "ok" : "FAILED - not teleported");
+                                    // Without the group bind the teleport would open yet another copy of the map:
+                                    // try again next tick instead.
+                                    if (!back)
+                                        continue;
+                                    // A personal bind to another copy of this map would outrank the group's (AddMember's
+                                    // group-join reset normally drops it already; this covers a non-resettable one).
+                                    sInstanceSaveMgr->PlayerUnbindInstance(bot->GetObjectGuid(), _mapId,
+                                                                           DUNGEON_DIFFICULTY_NORMAL, /*deleteFromDB*/ true);
+                                }
                                 LOG_INFO("playerbots.dungeonclear",
                                          "TESTRUN {} geo fence: {} left the dungeon — teleporting back to the tank",
                                          _record.runId, bot->GetName());
