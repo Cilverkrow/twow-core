@@ -609,6 +609,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationFleeAwayScope = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway.Scope", 0);   // twow-repo#602 (c) scope
+    if (rotationFleeAwayScope > 2)
+        rotationFleeAwayScope = 0;   // an unknown scope is every bot, as before (0 all, 1 hunters, 2 hunters + pet out)
     rotationOomBackoff = config.GetIntDefault("AiPlayerbot.Rotation.OomBackoff", 0);   // twow-repo#602 ROT-01 3c-B
     if (rotationOomBackoff > 2)
         rotationOomBackoff = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -1775,6 +1778,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.FleeAway", Value(rotationFleeAway)},
+            {"Rotation.FleeAway.Scope", Value(rotationFleeAwayScope)},
             {"Rotation.FollowUnstealth", Value(rotationFollowUnstealth)},
             {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},

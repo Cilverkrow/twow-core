@@ -4164,7 +4164,16 @@ bool MovementAction::Flee(Unit *target)
         // relative to it (straight away from the enemy on the bot's side), and a flee chase of the same enemy is kept for
         // ReissueMs instead of being re-issued with a new angle every pass (the old test below compares GetChaseOffset, which
         // reads 0, and GetChaseTarget is the bot's victim). Its own block in front of the unchanged old one (off path).
-        if (ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow()))
+        // Rotation.FleeAway.Scope (26.10.): a bot of the mode's cohort outside the scope takes the old chase, counted as out_of_scope.
+        // Only scope 2 asks for the pet: GetPet() resets a stale pet guid, so scopes 0 and 1 leave the old path untouched.
+        bool fleeAway = ai::flee_away::Applies(sPlayerbotAIConfig.rotationFleeAway, bot->GetGUIDLow());
+        if (fleeAway && !ai::flee_away::InScope(sPlayerbotAIConfig.rotationFleeAwayScope, bot->getClass() == CLASS_HUNTER,
+                sPlayerbotAIConfig.rotationFleeAwayScope == 2 && bot->GetPet() && bot->GetPet()->IsAlive()))
+        {
+            ai::flee_away::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0].outOfScope.fetch_add(1, std::memory_order_relaxed);
+            fleeAway = false;
+        }
+        if (fleeAway)
         {
             LastMovement& lm = AI_VALUE(LastMovement&, "last movement");
             ai::flee_away::Counters& count = ai::flee_away::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0];
