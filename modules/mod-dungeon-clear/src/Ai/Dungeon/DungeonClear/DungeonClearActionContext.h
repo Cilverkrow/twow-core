@@ -89,6 +89,14 @@ public:
         // DungeonClear.PreventBotRelease; inert (defers to stock) when that flag
         // is off or the bot is outside an instance. Last-registration-wins, so
         // this replaces the playerbots creator for every bot of this class.
+        // REPLACED (CLI-GRP 26.10.2026) by the release veto - playerbot/ReleaseVeto.h,
+        // DungeonClear.StayDeadInRun, registered in AddSC_dungeon_clear_module. The
+        // likely cause of the crash above: on 22.08. the DC TUs were built without
+        // CMANGOS/MANGOSBOT_ZERO/ENABLE_PLAYERBOTS (fixed 556140ba / 1a449953), so the
+        // stock inline AutoReleaseSpiritAction::isUseful this override calls fell off
+        // the end of ServerFacade::UnitIsDead - for every dead bot on the server. The
+        // veto keeps that decision in code the playerbots library compiles. Leave this
+        // creator disabled.
         // creators["auto release"] = &DungeonClearActionContext::auto_release;
     }
 

@@ -89,3 +89,13 @@ TEST(DcRunRobust, NoYieldWhileThePartyFightsWithTheGate)
     s = EvaluateLootYield(true, false, true, 0, false, 7000, kTimeout);
     EXPECT_TRUE(s.yield);     // fight over: yield as usual
 }
+
+TEST(DcRunRobust, StayDeadOnlyInADungeonWithAnActiveRunOrATestParty)
+{
+    using DcRunRobust::StayDead;
+    EXPECT_TRUE(StayDead(true, true, true, false));     // a dead member of an active run
+    EXPECT_TRUE(StayDead(true, true, false, true));     // a .dc test party after a wipe cleared the run flag
+    EXPECT_FALSE(StayDead(false, true, true, true));    // key off: the stock release as before
+    EXPECT_FALSE(StayDead(true, false, true, true));    // open world: stock
+    EXPECT_FALSE(StayDead(true, true, false, false));   // a dungeon without a run (a player's group): stock
+}

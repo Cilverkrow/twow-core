@@ -68,7 +68,8 @@
 #include "AiObjectContextAccess.h"
 #include "DcStrategyGate.h"
 #include "DcAutoRun.h"
-#include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // CLI-GRP G1 dry-r3 (SuppressDeathLoopEvac)
+#include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // CLI-GRP G1 dry-r3 (SuppressDeathLoopEvac), g1n (StayDeadInRun)
+#include "playerbot/ReleaseVeto.h"   // CLI-GRP g1n: the release veto (StayDeadInRun)
 #include "Ai/Dungeon/DungeonClear/Data/DcRosterFile.h"
 
 // Per-class context registries — each owns its own shared static lists.
@@ -739,9 +740,27 @@ public:
 // aus diesem Modul und ist ohne LiveMap.File in der Konfiguration still.
 void AddSC_livemap_ticker();
 
+namespace
+{
+    // CLI-GRP g1n 26.10.2026 (DungeonClear.StayDeadInRun, DcRunRobustPolicy.h): the release veto playerbots' stock auto
+    // release asks (playerbot/ReleaseVeto.h). Called on the dead bot's own thread; the cheap checks first, the key only
+    // in a dungeon, the run lookup only with the key on.
+    bool StayDeadInRunVeto(Player* bot)
+    {
+        Map* map = bot->FindMap();
+        if (!map || !map->IsDungeon() || !DcSettings::GetBool(bot, "StayDeadInRun"))
+            return false;
+        return DcRunRobust::StayDead(true, true, DcStrategyGate::RunActive(bot),
+                                     sRandomPlayerbotMgr.IsExternallyManaged(bot->GetGUIDLow()));
+    }
+}
+
 void AddSC_dungeon_clear_module()
 {
     AddSC_livemap_ticker();
+
+    // Registered always; the predicate reads DungeonClear.StayDeadInRun on every call (0 = never vetoes).
+    ai::release_veto::Register(&StayDeadInRunVeto);
 
     new DungeonClearRegistrarWorldScript();
     new DungeonClearPullBrakeScript();
