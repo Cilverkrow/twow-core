@@ -317,6 +317,10 @@ PlayerbotAI::PlayerbotAI(Player* bot) :
     botOutgoingPacketHandlers.AddHandler(SMSG_TEXT_EMOTE, "receive text emote");
     botOutgoingPacketHandlers.AddHandler(SMSG_EMOTE, "receive emote");
     botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_START_ROLL, "loot start roll", true);
+    // twow-repo#341 (Equip.AfterRollWon): a won roll stores the item without SMSG_ITEM_PUSH_RESULT (EquipAfterRollPolicy.h).
+    // Only with the switch, so 0 leaves every roll as before (no queued packet, no failed action); read when the bot logs in.
+    if (sPlayerbotAIConfig.equipAfterRollWon)
+        botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_ROLL_WON, "loot roll won", true);
     botOutgoingPacketHandlers.AddHandler(SMSG_SUMMON_REQUEST, "summon request");
     botOutgoingPacketHandlers.AddHandler(MSG_RAID_READY_CHECK, "ready check");
     botOutgoingPacketHandlers.AddHandler(SMSG_QUEST_CONFIRM_ACCEPT, "confirm quest");

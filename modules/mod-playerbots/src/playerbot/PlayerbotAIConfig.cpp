@@ -500,6 +500,7 @@ bool PlayerbotAIConfig::Initialize()
     lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     equipKeepWeaponsUnlessUpgrade = config.GetBoolDefault("AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade", false);
+    equipAfterRollWon = config.GetBoolDefault("AiPlayerbot.Equip.AfterRollWon", false);   // twow-repo#341 (owner repro 25.10.)
     parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
     parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
     parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
@@ -1675,6 +1676,7 @@ bool PlayerbotAIConfig::Initialize()
             {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
             {"DirectTargets.FreshGrindFailures", Value(directTargetsFreshGrindFailures)},
             {"EnableActionLog", Value(enableActionLog)},
+            {"Equip.AfterRollWon", Value(equipAfterRollWon)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
