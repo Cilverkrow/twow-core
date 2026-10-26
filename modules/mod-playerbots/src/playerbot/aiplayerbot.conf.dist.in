@@ -1062,6 +1062,13 @@ AiPlayerbot.DeathLoop.Radius = 150
 # their safe start (Durotar / Elwynn), the other races to their race start, and the homebind is reset there.
 # [DeathLoop] state=minute counts detected / escaped / rebound / repeat_after_escape / hostile_death. 0 = off.
 AiPlayerbot.DeathLoop.Escape = 0
+# twow-repo#601/#602 G2 (OB-00 go 26.10.2026): (a) a bot that dies 3 times in a row at most 60 s after a revive,
+# within DeathLoop.Radius of where it stood up, is in a death loop whatever the window says (the ghost time between
+# two revives keeps such deaths ~10 min apart); [DeathLoop] state=short_life. (b) An evacuation point (homebind or
+# spawn) on the loop's map closer than 600 yd to the latest death, or in its zone, is replaced by the race's safe
+# start (Goblin / High Elf: Durotar / Elwynn, the others: their race start) and the homebind is set there;
+# [DeathLoop] state=far_escape. 0 = off, 1 = all bots, 2 = cohort B (odd guids).
+AiPlayerbot.DeathLoop.FarEscape = 0
 
 # #357 O-12 (owner 2026-09-27, variant A): roster shamans on premade path 7.1
 # "enhancement" or 7.3 "shaman tank" get the reworked Enhancement talents as
@@ -1189,6 +1196,11 @@ AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
 # pairs are formed once all slices are done. 0 or 1 = the whole pass in one update.
 # Only if the pass itself costs the world tick too much (minute line scan_us_max).
 AiPlayerbot.BotGroups.AdHoc.ScanSlices = 0
+# #365 (owner 25.10.2026, world-thread manager only - WorldThread = 1): 1 = a member whose own objective is done stays as a
+# helper while another member still works on it - follower role, it follows the nearest open member (re-picked when that one
+# is done), its idle clock is the group's freshest progress - and leaves with reason=group_done once nobody is left open.
+# "[BotGroup] kind=adhoc event=help" when a bot starts helping or switches whom it follows. 0 = leave at objective_done.
+AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -1391,6 +1403,13 @@ AiPlayerbot.QuestFirstProgression.BandStepAfterEmptySearches = 0
 # lead=normal.
 #   0 = off (default), 1..10; other values act like 0 (one error line).
 AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
+# twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis; rules agreed with CLI-Berufe): Copper Vein (Mining lock) is a source of a
+# quest item, and bots without Mining went there as a quest objective and could never open it (cohort B: 19 arrivals, 0 credit).
+# With SkipSkillLockedObjectives a game object quest objective is skipped when its lock opens only with profession skills the bot
+# lacks - skill, value >= max(1, lock value) or tool (Mining: the pick). A slot without a profession (open, kneeling, a key item)
+# keeps the object a target for every bot. After an empty quest search: [QuestFirstRoute] state=skill_locked bot= skipped=N.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives = 0
 # twow-repo#601 S5a F4 (OB-00 24.10.2026; owner D1 "rumstehen ist keine Option"): a failed quest search that does not step
 # leaves the bot standing through the route backoff (2, 4, 8, then 10 min). With BandLadder on, from this many failed
 # searches in a row on (the streak F1 counts), such a search sends the bot toward the hub the step would take until the
@@ -1760,6 +1779,17 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # delay of the line (P1-b3). Mode (in-realm A/B, cohort parity): 0 = as before (default),
 # 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionTraining.Travel = 0
+# twow-repo#333 Berufe P1-n (OB-00 26.10.2026 after M1 FUTILE: the quest-first gap was too rare - 0 trainer trips): with
+# ProfessionTraining.Travel on for the bot, a bot (level 5+, roster, on its own) that has not learned a phase-one skill of
+# its plan yet travels to a trainer of that skill with a spawn within NearRadius yards - typically on a city or hub visit -
+# without a quest gap ("request named travel target::trainer profession near" at 6.36, above grind 6.35 and the quest
+# request 6.3; an open turn-in and a band walk still go first). Only the first rank ("once"); the next ranks stay with the
+# local trainer path and the gap trip. Same trainer rules (GREEN, not hostile, reachable), money rule and hourly limit as
+# ProfessionTraining.Travel; the trip holds 10 min and its whole time counts as hold_over_s. "[ProfTravel] state=request
+# kind=trainer ... path=near"; with ProfessionTraining.Trace one "[ProfTravel] state=gate kind=trainer path=near ... result="
+# per bot and TraceCooldownSeconds (result=start or the first gate that refused: not_eligible, cooldown, turn_in, band,
+# money, no_trainer, not_near, unreachable). Yards, 0 = off (default), at most 1000.
+AiPlayerbot.ProfessionTraining.NearRadius = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
@@ -3090,6 +3120,23 @@ AiPlayerbot.Rotation.ReachLosClose = 0
 # ignore_s=30 cohort=" (one line per bot per 5 min, as before; bots without a player master log master=bot ignore_s=300).
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.ReachPlayerMaster = 0
+# twow-repo#630 follow-up (BUG FIX, owner repro 25.10.2026 on C; enable with ReachPlayerMaster after the test-realm repro + owner
+# go): the drop of ReachPlayerMaster cleared only the bot's "current target". A rogue sent with "attack" while stealthed kept the
+# target as its "attack target", which counts as an attacker, so it never left combat (no follow there) and stood stealthed in
+# front of the target until "follow". With the mode on, when a bot with a real player as master drops an unreachable target, it
+# also clears that target from "attack target", "pull target" (ending the pull), "old target", its selection and a running swing:
+# combat ends and follow resumes. "[ReachDrop] bot= target_entry= attack= pull= old= selection= victim= cohort=" for every such
+# drop that cleared something (player groups only, rare). Needs ReachPlayerMaster on (no drop without it).
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.ReachDropEngagement = 0
+# twow-repo#630 follow-up (owner repro 25.10.2026: the rogue followed in stealth after "follow"): a rogue following a real player
+# outside combat, dungeons and battlegrounds drops stealth while the player moves or the rogue is still catching up (farther than
+# FollowDistance + 5 yd); standing together it keeps stealth. Before, unstealth fired only beyond 10 yd of the master target and
+# follow outranked it, so the rogue followed slowed and invisible. In a dungeon, a battleground or with an attacker near the stock
+# rule stays. Known: Stealth's cooldown starts when it breaks, so a pull within ~10 s after opens without Cheap Shot/Ambush.
+# Own switch (an A/B tells it apart from ReachDropEngagement). Read when the strategies are built (a reload takes effect with the
+# next strategy reset). 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.FollowUnstealth = 0
 
 # twow-repo#602 ROT-01 3c (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): "low mana"
 # pushes "dark rune" (alternative "mana potion") on every evaluation, in the combat and the reaction engine. Without a rune in
