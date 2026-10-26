@@ -1090,6 +1090,13 @@ void DcTestRunJob::TickProvisioning(bool& provisionBudget)
     // drinks for classes without mana.
     factory.AddFood();   // public wrapper for InitFood
 
+    // The POOL path too (CLI-GRP G1 pilot 25.10.2026): Randomize() -> InitGuild drafted the claimed pool characters into
+    // fresh random guilds ("Random Guild <Pyreborne>, GM: Synap"). The claim skips every guilded character (the compat
+    // PlayerbotGuildMgr::IsRealGuild is always true on this core), so each run burned its five characters for every later
+    // claim: after one 3-run plan the 17-character Alliance pool had no tank left and every further plan aborted ("no
+    // available tank class"). A pool slot is guildless by construction (the claim took it so), so this restores it.
+    UndoUnwantedGuild(bot, slot);
+
     // Not inline: provisioning ticks in the world thread and this bot is
     // already logged in and thinking on its map thread. ResetStrategies
     // rebuilds the trigger list, which is what tore NextAction::clone apart.
