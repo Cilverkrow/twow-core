@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace ai::profession_travel
@@ -182,6 +184,27 @@ inline char const* NearGateReason(bool eligible, bool cooldownOver, bool turnInW
     if (!reachableTrainers)
         return "unreachable";
     return nullptr;
+}
+
+// P1-t (M1r FUTILE 26.10.2026, gate trace trainers=0 for all 30 bots): the rank filter of the trainer list asked
+// IsProfessionSpell of TrainerSpell::learnedSpell. In this core learnedSpell is a union alias of spell - the trainer's
+// teaching spell (2581 Apprentice Miner: LEARN_SPELL 2575, effect 2 SKILL_STEP), not the taught one (2575 Mining: effect 2
+// SKILL) - so every rank was dropped and no trip could start. A trainer spell teaches a rank when it is a profession spell
+// itself (cmangos: learnedSpell is the taught spell) or one of its LEARN_SPELL effects teaches one (the core's own
+// GetTrainerSpellState walks EffectTriggerSpell the same way). A recipe (Smelt Tin) teaches a spell without a SKILL effect.
+constexpr std::uint32_t kSpellEffectLearnSpell = 36;
+constexpr std::size_t kSpellEffects = 3;
+
+template <typename IsProfessionSpell>
+inline bool TeachesProfessionRank(std::uint32_t spell, std::array<std::uint32_t, kSpellEffects> const& effects,
+    std::array<std::uint32_t, kSpellEffects> const& triggers, IsProfessionSpell isProfessionSpell)
+{
+    if (isProfessionSpell(spell))
+        return true;
+    for (std::size_t i = 0; i < kSpellEffects; ++i)
+        if (effects[i] == kSpellEffectLearnSpell && triggers[i] && isProfessionSpell(triggers[i]))
+            return true;
+    return false;
 }
 
 // The tool a learned gathering skill needs and the bags lack; 0 = none missing. Mining first.
