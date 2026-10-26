@@ -625,6 +625,9 @@ bool StoreLootAction::IsLootAllowed(ItemQualifier& itemQualifier, PlayerbotAI *a
             return true;
     }
 
+    // twow-repo#601 (LootSlotPolicy.h QuestItemNeed): turned down only when no quest in the log needs more of it - not as soon as one
+    // of several quests that require it has enough.
+    ai::loot_slot::QuestItemNeed questNeed;
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 entry = ai->GetBot()->GetQuestSlotQuestId(slot);
@@ -639,11 +642,12 @@ bool StoreLootAction::IsLootAllowed(ItemQualifier& itemQualifier, PlayerbotAI *a
                 if (ai->GetMaster() && sPlayerbotAIConfig.syncQuestWithPlayer)
                     return false; //Quest is autocomplete for the bot so no item needed.
 
-                if (AI_VALUE2(uint32, "item count", proto->Name1) >= quest->ReqItemCount[i])
-                    return false;
+                ai::loot_slot::AddQuestNeed(questNeed, AI_VALUE2(uint32, "item count", proto->Name1), quest->ReqItemCount[i]);
             }
         }
     }
+    if (ai::loot_slot::QuestItemSatisfied(questNeed))
+        return false;
 
     //if (proto->Bonding == BIND_QUEST_ITEM ||  //Still testing if it works ok without these lines.
     //    proto->Bonding == BIND_QUEST_ITEM1 || //Eventually this has to be removed.
