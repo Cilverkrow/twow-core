@@ -34,6 +34,14 @@ int main()
     Require(!Applies(2, 8) && Applies(2, 9), "mode 2 applies to cohort B only");
     Require(!Applies(3, 9), "an unknown mode applies to nobody");
 
+    // Scope (26.10.): 0 every bot, 1 hunters only, 2 hunters and bots with their pet out; unknown values act like 0.
+    Require(InScope(0, false, false) && InScope(0, true, true), "scope 0: every bot");
+    Require(InScope(1, true, false) && InScope(1, true, true), "scope 1: hunters with or without a pet");
+    Require(!InScope(1, false, false) && !InScope(1, false, true), "scope 1: no other class, pet or not");
+    Require(InScope(2, true, false) && InScope(2, false, true), "scope 2: hunters and bots with their pet out");
+    Require(!InScope(2, false, false), "scope 2: no petless non-hunter");
+    Require(InScope(3, false, false), "an unknown scope: every bot, as before");
+
     // (a) The core places the chase point at enemy facing + angle: with the relative angle that is the enemy-to-bot direction.
     float const toBot = 1.0f, facing = 2.5f;
     float const rel = RelativeAngle(toBot, facing);
@@ -57,7 +65,8 @@ int main()
     Require(InDeadZone(11.5f, 2.5f) && !InDeadZone(12.0f, 2.5f), "plus the combat reach");
 
     // Counters start at zero.
-    Require(counters[0].issued.load() == 0 && counters[1].deadZoneQuiet.load() == 0, "counters start at 0");
+    Require(counters[0].issued.load() == 0 && counters[1].deadZoneQuiet.load() == 0 && counters[1].outOfScope.load() == 0,
+        "counters start at 0");
 
     std::cout << "flee_away_policy tests passed\n";
     return 0;
