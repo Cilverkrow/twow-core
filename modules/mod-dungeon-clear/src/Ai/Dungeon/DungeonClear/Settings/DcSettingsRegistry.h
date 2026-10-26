@@ -173,6 +173,9 @@ inline constexpr DcSettingDef kDcSettings[] =
     { "SuppressDeathLoopEvac",    DcType::Bool,   0,   0,     1,  false },
     { "LootYieldPartyCombatGate", DcType::Bool,   0,   0,     1,  false },
     { "LootYieldReanchorAfterFight", DcType::Bool, 0,  0,     1,  false },
+    // g1n 26.10.2026: a dead member of an active run (or a .dc test party) stays a corpse in the dungeon - the release veto
+    // playerbots asks (playerbot/ReleaseVeto.h); server-only, default 0.
+    { "StayDeadInRun",            DcType::Bool,   0,   0,     1,  false },
 
     // Diagnostics: record every boss-approach decision (the pure DecideApproach
     // observation + verdict) to a JSONL capture file for the offline replay

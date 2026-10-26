@@ -136,6 +136,23 @@ DungeonClear.LootYieldPartyCombatGate = 0
 DungeonClear.LootYieldReanchorAfterFight = 0
 
 #
+#    DungeonClear.StayDeadInRun
+#        BUG FIX (CLI-GRP, g1n 26.10.2026; enable only after the crash probe of the G1 PREREG). A dead bot ran the stock
+#        playerbot "auto release" right away (a bot-only group has no real master to wait for): its spirit went to the
+#        graveyard - for Frostmane OUTSIDE the instance - the DC gate stripped it, and the tank's death ended every run
+#        ("Left the dungeon - dungeon clear disabled"). 1 = a dead member of an active run (its own, or a groupmate's on
+#        the same map) or of a `.dc test` party stays a corpse in the dungeon until the healer's post-combat rez; the core
+#        never auto-releases inside instances. A wipe still ends the run through its rez decision (and a `.dc test` run
+#        through its watchdog, which revives and sends the party home). Done through playerbots' release veto
+#        (playerbot/ReleaseVeto.h), NOT the old override of the stock action name, which crashed the map pool on
+#        22.08.2026 (DC TUs built without the bot macros ran stock inline code without a return). 0 = stock release.
+#
+#        Default: 0
+#
+
+DungeonClear.StayDeadInRun = 0
+
+#
 #    DungeonClear.RecordDecisions
 #        Diagnostics. 0 (default): off. 1: append every boss-approach decision
 #        (the pure DecideApproach observation + the verdict the tank acted on) as

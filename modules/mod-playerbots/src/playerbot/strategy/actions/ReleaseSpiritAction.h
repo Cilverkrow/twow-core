@@ -6,6 +6,7 @@
 #include "playerbot/strategy/values/LastMovementValue.h"
 #include "ReviveFromCorpseAction.h"
 #include "playerbot/MasterWaitPolicy.h"
+#include "playerbot/ReleaseVeto.h"   // twow-repo#629 G1 (DungeonClear.StayDeadInRun)
 #include "playerbot/TravelMgr.h"
 
 #include "playerbot/BotSlots.h"
@@ -104,6 +105,11 @@ namespace ai
                 return !bot->GetCorpse() || !bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST);
 
             if (bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))
+                return false;
+
+            // twow-repo#629 G1 (ReleaseVeto.h): a module keeps this corpse where it lies (DungeonClear.StayDeadInRun:
+            // a dead member of an active dungeon run waits for the healer instead of releasing out of the instance).
+            if (ai::release_veto::Vetoed(bot))
                 return false;
 
             if (!bot->GetGroup())
