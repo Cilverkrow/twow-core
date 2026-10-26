@@ -124,7 +124,7 @@ require_text("${botai}" "[Travel] state=machine_walk bot=%u level=%u nodes=%u po
 require_text("${botai}" "[Travel] state=machine_walk_fallback bot=%u level=%u reason=%s" "F4 fallback line")
 # F2: no 8.29 exit while 41170 waits for its hand-in (L10), the hub rescue is marked and cleared by progress.
 require_text("${botai}" "!sz::IslandLeaveBlocked(startZones, bot->GetLevel(), bot->IsCurrentQuest(sz::QuestSolutions, 0)))" "F2 41170 keeps the goblin")
-require_text("${botai}" "islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue" "F2 progress clears the hub mark")
+require_text("${botai}" "if (questProgress.snapshot != snapshot)\n                islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue" "F2 progress clears the hub mark")
 require_text("${rnd_mgr}" "botAI->MarkIslandHubRescue();" "F2 hub rescue marked")
 # F2: the rescue keeps a goblin on its island (hub / machine) without a rebind; the hearthstone follows once it has left.
 require_text("${rnd_mgr}" "sz::IslandRescue const island = sz::IslandRescueOf(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), level," "F2 rescue gated")
