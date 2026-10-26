@@ -21,13 +21,24 @@
 
 namespace DcTestPlan
 {
+    // `level=boss` (CLI-GRP G1, owner 25.10.2026: "the bots to the end level of the dungeon"): every child run takes the
+    // highest level among the dungeon's boss spawns (DcTestRunJob::Create), so the party meets its last boss at par.
+    // Carried through Spec::level and the run start as this sentinel; never a real level.
+    constexpr std::uint32_t kLevelBoss = 0xFFFFFFFFu;
+
+    // The level for logs and messages: the number, or "boss".
+    inline std::string LevelText(std::uint32_t level)
+    {
+        return level == kLevelBoss ? std::string("boss") : std::to_string(level);
+    }
+
     struct Spec
     {
         std::string planId;        // "tp-…", assigned by the manager
         std::string dungeonToken;  // DcTestDungeonRegistry token
         std::uint32_t total = 0;       // runs to complete (failures count)
         std::uint32_t concurrent = 0;  // plan-local in-flight cap
-        std::uint32_t level = 0;       // 0 = registry default for the difficulty
+        std::uint32_t level = 0;       // 0 = registry default for the difficulty, kLevelBoss = the highest boss
         bool heroic = false;           // children run at DUNGEON_DIFFICULTY_HEROIC
         std::uint32_t seedBase = 0;    // 0 = random comp per run;
                                        // N = child i replays seed N+i
@@ -111,7 +122,7 @@ namespace DcTestPlan
         return c.activeNow == 0 && (stopping || c.succeeded + c.failed >= s.total);
     }
 
-    // `.dc test plan start <token> [heroic] total=N [concurrent=N] [level=N]
+    // `.dc test plan start <token> [heroic] total=N [concurrent=N] [level=N|boss]
     // [seed=N] [ilvl=N|none] [quality=N|epic|…]`. Fills the whole Spec except
     // planId. ok is false with a usage-shaped err on a missing token/total, a
     // duplicate bare word, or a malformed key=value.

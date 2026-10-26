@@ -101,8 +101,12 @@ namespace DcTestRunRecord
             AppendEscaped(s, c.spec);
             s << ",\"role\":";
             AppendEscaped(s, c.role);
+            char ilvl[16];   // one decimal, without touching the stream's float format
+            std::snprintf(ilvl, sizeof(ilvl), "%.1f", c.avgIlvl);
             s << ",\"guid\":" << c.guid
               << ",\"level\":" << c.level
+              << ",\"avgIlvl\":" << ilvl
+              << ",\"gearSlots\":" << c.gearSlots
               << ",\"detectedRole\":";
             AppendEscaped(s, c.detectedRole);
             s << ",\"roleMismatch\":" << (c.roleMismatch ? "true" : "false")

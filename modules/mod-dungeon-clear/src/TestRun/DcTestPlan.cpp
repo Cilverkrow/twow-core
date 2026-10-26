@@ -29,7 +29,7 @@ namespace DcTestPlan
         {
             out.ok = false;
             out.err = why +
-                " — usage: .dc test plan start <dungeon> [heroic] total=N [concurrent=N] [level=N]"
+                " — usage: .dc test plan start <dungeon> [heroic] total=N [concurrent=N] [level=N|boss]"
                 " [seed=N] [ilvl=N|none] [quality=rare|epic|…]";
             return out;
         };
@@ -74,6 +74,12 @@ namespace DcTestPlan
                     return usage("bad quality in '" + word +
                                  "' (normal|uncommon|rare|epic|legendary, or 1-5)");
                 out.spec.gear.quality = q;
+                continue;
+            }
+            // level=boss (CLI-GRP G1): the highest boss of the dungeon, resolved per run (kLevelBoss).
+            if (key == "level" && val == "boss")
+            {
+                out.spec.level = kLevelBoss;
                 continue;
             }
 

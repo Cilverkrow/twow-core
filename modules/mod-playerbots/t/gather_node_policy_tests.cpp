@@ -34,6 +34,14 @@ int main()
     Require(!StaysOnMap(true, 0, 1), "#414: no herb trip from Tirisfal (0) to Darkshore (1)");
     Require(StaysOnMap(false, 0, 1), "quest travel may still cross maps");
 
+    // twow-repo#333 P1-f: a quest herb (lock 259: herbalism next to "open kneeling") only with its quest.
+    Require(IsQuestHerb(true, true), "Gloom Weed / Hyjalroot (lock 259) are quest herbs");
+    Require(!IsQuestHerb(true, false), "Peacebloom / Silverleaf (lock 29, raw skill 0 too) stay herbs");
+    Require(!IsQuestHerb(false, true), "no herbalism slot: no quest herb");
+    Require(!QuestHerbLootable(true, false), "a quest herb without its quest is not picked");
+    Require(QuestHerbLootable(true, true), "a quest herb with its quest active is picked");
+    Require(QuestHerbLootable(false, false), "a real herb needs no quest");
+
     std::cout << "gather_node_policy_tests passed\n";
     return 0;
 }

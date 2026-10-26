@@ -8,6 +8,7 @@
 
 #include "playerbot/RandomItemMgr.h"
 #include "playerbot/AmmoStockPolicy.h"
+#include "playerbot/CohortPolicy.h"
 #include "playerbot/RidingStagesBotPolicy.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
@@ -468,9 +469,14 @@ if ((proto->Class == ITEM_CLASS_PROJECTILE ||
                     break;
             }
 
-            if (proto->Class == ammoClass && proto->SubClass == subClass)
+            // twow-repo#333 P1-s (AiPlayerbot.ThrownUsageFix, AmmoStockPolicy.h): a thrown weapon is in the ranged slot.
+            bool const thrownFix = ammoClass == ITEM_CLASS_WEAPON &&
+                ai::cohort::Applies(sPlayerbotAIConfig.thrownUsageFix, bot->GetGUIDLow());
+
+            if (proto->Class == ammoClass && proto->SubClass == subClass &&
+                !ammo_stock::ThrownSkipsAmmoRule(thrownFix, proto->GetMaxStackSize()))
             {
-                uint32 currentAmmoId = bot->GetUInt32Value(PLAYER_AMMO_ID);
+                uint32 currentAmmoId = ammo_stock::CurrentAmmoEntry(thrownFix, bot->GetUInt32Value(PLAYER_AMMO_ID), pItem->GetEntry());
                 const ItemPrototype* currentAmmoProto = nullptr;
                 if (currentAmmoId)
                     currentAmmoProto = sObjectMgr.GetItemPrototype(currentAmmoId);

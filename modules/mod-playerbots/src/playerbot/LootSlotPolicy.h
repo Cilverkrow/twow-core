@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace ai::loot_slot
 {
@@ -21,5 +22,27 @@ inline bool MayTake(bool questSlot, bool isBlocked, bool sharedAllowed)
     if (questSlot)
         return true;  // resolved per player by Loot::LootItemInSlot (looted -> null)
     return !isBlocked && sharedAllowed;
+}
+
+// twow-repo#601 cr2-C GO diagnosis (CLI-Deep 26.10.2026): a quest item that several quests in the log require was turned down as
+// soon as ONE of them had enough - Blood Shard 5075 (Spirit of the Wind 889 needs 10, Blood Shards of Agamaggan 5052 needs 1): with
+// one shard and 5052 in the log no further shard was looted (38x loot_not_allowed on a needed item), 889 could never be done. Every
+// quest that requires the item adds its need; the item counts as satisfied only when at least one requires it and none needs more.
+struct QuestItemNeed
+{
+    bool required = false;
+    bool needsMore = false;
+};
+
+inline void AddQuestNeed(QuestItemNeed& need, std::uint32_t have, std::uint32_t required)
+{
+    need.required = true;
+    if (have < required)
+        need.needsMore = true;
+}
+
+inline bool QuestItemSatisfied(QuestItemNeed const& need)
+{
+    return need.required && !need.needsMore;
 }
 }

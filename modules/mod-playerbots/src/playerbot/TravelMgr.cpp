@@ -54,6 +54,20 @@ int32 ObjectiveCountOf(Player* bot, TravelDestination const* destination)
     uint8 const index = objective->GetObjective();
     return quest->ReqItemCount[index] > 0 ? int32(it->second.m_itemcount[index]) : int32(it->second.m_creatureOrGOcount[index]);
 }
+
+// twow-repo#601 (QuestLoop.GiverTakerDone): a giver / taker destination whose quest this bot has taken (giver) or turned in (taker);
+// in the log = incomplete or complete and not rewarded. False for every other destination.
+bool GiverTakerTripDone(Player* bot, TravelDestination const* destination)
+{
+    QuestRelationTravelDestination const* relation = dynamic_cast<QuestRelationTravelDestination const*>(destination);
+    if (!bot || !relation)
+        return false;
+    uint32 const questId = relation->GetQuestId();
+    bool const rewarded = bot->GetQuestRewardStatus(questId);
+    QuestStatus const status = bot->GetQuestStatus(questId);
+    bool const inLog = !rewarded && (status == QUEST_STATUS_INCOMPLETE || status == QUEST_STATUS_COMPLETE);
+    return quest_loop::GiverTakerTripDone(relation->GetRelation(), inLog, rewarded);
+}
 }
 
 // Penqle's Singleton<> requires an explicit instantiation in a .cpp file.
@@ -1053,6 +1067,10 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
     if (sPlayerbotAIConfig.questLoopInactiveAfterProgress && tDestination1 != tDestination)
         objectiveCountAtStart = ObjectiveCountOf(bot, tDestination1);
 
+    // twow-repo#601 (QuestLoop.InactiveReselect): the fallback belongs to the target that ended through an emptied camp only.
+    if (tDestination1 != tDestination)
+        inactiveReselectPending = false;
+
     wPosition = wPosition1;
     tDestination = tDestination1;
 
@@ -1561,6 +1579,30 @@ bool TravelTarget::IsQuestLoopSuppressed(TravelDestination const* destination) c
         return false;
     auto const it = questLoops.find(objective->GetQuestId());
     return it != questLoops.end() && quest_loop::IsSuppressed(it->second, WorldTimer::getMSTime());
+}
+
+bool TravelTarget::IsInactiveReselectMarked(TravelDestination const* destination) const
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination);
+    return objective && quest_loop::EmptyCampLeftMs(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime()) > 0;
+}
+
+// twow-repo#601 (QuestLoop.InactiveReselect): the search right after an emptied camp (ChooseTravelTargetAction took the pending flag
+// before it set the status to NONE) found no quest target - back to the camp in COOLDOWN for the time left on its mark, as without
+// the switch. The destination is still the camp (no target was set); false when nothing is to restore.
+bool TravelTarget::FallBackToInactiveCooldown()
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    if (!objective || !bot)
+        return false;
+    uint32 const leftMs = quest_loop::EmptyCampLeftMs(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime());
+    if (!leftMs)
+        return false;
+    SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+    SetExpireIn(leftMs);
+    sLog.outBasic("[QuestLoop] state=inactive_reselect_fallback bot=%u level=%u quest=%u target_entry=%d cooldown_ms=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), leftMs);
+    return true;
 }
 
 bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destination) const
@@ -2140,6 +2182,20 @@ void TravelTarget::CheckStatus()
                 ai->GetAiObjectContext()->ClearValues("no active travel destinations");
                 return;
             }
+            // twow-repo#601 (QuestLoop.GiverTakerDone): a quest giver trip whose quest is now taken, or a taker trip whose quest is turned
+            // in, went inactive because it succeeded - it ends at once (EXPIRED, drop reason=relation_done): a success, no 60 s
+            // COOLDOWN, no failure. A roster bot on its own only (a group trip judges a member's quest log: as before); off, another
+            // cohort or no success: the COOLDOWN path below as before.
+            if (destinationInactive && ai::cohort::Applies(sPlayerbotAIConfig.questLoopGiverTakerDone, bot->GetGUIDLow()) &&
+                sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && !groupMember &&
+                GiverTakerTripDone(bot, tDestination))
+            {
+                ai->TellDebug(ai->GetMaster(), "The quest giver or taker trip ends because its quest was taken or turned in.", "debug travel");
+                TraceQuestCommit(tDestination, "drop", "relation_done");
+                SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+                return;
+            }
             ai->TellDebug(ai->GetMaster(), "The target is cooling down because the destination was no longer active or the conditions are no longer true.", "debug travel");
             TraceQuestCommit(tDestination, "drop", destinationInactive ? "destination_inactive" : "conditions_inactive");
             forced = false;
@@ -2165,6 +2221,21 @@ void TravelTarget::CheckStatus()
                 if (sPlayerbotAIConfig.questLoopInactiveCooldownSeconds)
                     SetExpireIn(quest_loop::InactiveCooldownMs(tDestination->GetCooldownDelay(), sPlayerbotAIConfig.questLoopInactiveCooldownSeconds));
                 NoteQuestObjectiveFailure();
+                // twow-repo#601 (QuestLoop.InactiveReselect): the emptied camp is remembered for the cooldown just set and the target ends,
+                // so the next search runs now and skips it (as does the refresh). A roster bot on its own only; off or another cohort: as
+                // before. No quest target found -> FallBackToInactiveCooldown (ChooseTravelTargetAction) restores this COOLDOWN.
+                if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopInactiveReselect, bot->GetGUIDLow()) &&
+                    sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())
+                {
+                    QuestObjectiveTravelDestination const* objective = static_cast<QuestObjectiveTravelDestination const*>(tDestination);
+                    uint32 const markMs = quest_loop::InactiveCooldownMs(tDestination->GetCooldownDelay(), sPlayerbotAIConfig.questLoopInactiveCooldownSeconds);
+                    quest_loop::MarkEmptyCamp(emptyCamps, objective->GetQuestId(), objective->GetEntry(), WorldTimer::getMSTime(), markMs);
+                    sLog.outBasic("[QuestLoop] state=inactive_reselect bot=%u level=%u quest=%u target_entry=%d mark_ms=%u",
+                        bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), markMs);
+                    SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                    inactiveReselectPending = true;
+                    ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+                }
             }
             if (progressRule)
                 objectiveCountAtStart = objectiveCountNow;

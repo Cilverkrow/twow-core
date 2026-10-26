@@ -432,6 +432,14 @@ AiPlayerbot.HunterAmmoTiers =
 AiPlayerbot.HunterAmmoFillQuiver = 0
 AiPlayerbot.ThrownMaxCount = 0
 
+# twow-repo#333 P1-s (bug fix, CLI-BERUFE 26.10.2026): a thrown weapon sits in the ranged slot, not in the ammo slot,
+# so the ammo rule called every thrown weapon in the bags or at a vendor "equip". Rogues and warriors filled their bags
+# with 128-143 Crude Throwing Axes (TurtleWoW: single repairable items) that were never sold or destroyed and were bought
+# again. With the fix a single thrown weapon is judged by the equip rule only (upgrade or not) and spares count as vendor
+# goods; a stacking one is compared with the equipped ranged item. No log line.
+# Mode: 0 = as before (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.ThrownUsageFix = 0
+
 # Chance random bot has max level on first randomize (default 0.15)
 AiPlayerbot.RandomBotMaxLevelChance = 0.15
 
@@ -1001,6 +1009,13 @@ AiPlayerbot.QuestLoop.MaxFailures = 0
 AiPlayerbot.QuestLoop.WindowSeconds = 1800
 AiPlayerbot.QuestLoop.CooldownSeconds = 1800
 AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
+# twow-repo#601 (CLI-Deep 26.10.2026, cr2-C gap analysis): a quest giver / taker destination goes inactive as soon as its job is done
+# (the quest taken / turned in), and that success sent the bot into the destination's 60 s COOLDOWN at the NPC (cohort B: 167 drops
+# at 4 yd, median 96 s to its next target). With GiverTakerDone such a trip ends at once: giver - the quest is in the log or
+# rewarded; taker - the quest is no longer in the log. [QuestCommit] event=drop reason=relation_done. No success (not taken, still in
+# the log): the COOLDOWN as before.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.GiverTakerDone = 0
 # twow-repo#601 (CLI-Deep 25.10.2026, root cause of the cand-v466r standing): an objective goes inactive as soon as no living
 # target of its entry is in sight - also right after the bot killed the visible ones. QL-1/QL-2 booked that normal progress as
 # an emptied camp (a failure + InactiveCooldownSeconds of standing; cohort B spent 32 % of its time between an inactive objective
@@ -1010,6 +1025,16 @@ AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
 # [QuestLoop] state=inactive_after_progress bot= quest= target_entry= count_from= count_to=.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.QuestLoop.InactiveAfterProgress = 0
+# twow-repo#601 (CLI-Deep 25.10.2026, cr2-C gap analysis): an inactive objective WITHOUT new credit (an emptied camp) put the bot
+# into COOLDOWN for the whole QL-2 time (cohort B: 450 of 662 inactive drops, median 212 s standing); the quest search after it
+# found another target within 1 s, and a quarter of the bots went back to the same camp through the refresh. With
+# InactiveReselect the camp (quest, target entry) is remembered for that cooldown (InactiveCooldownSeconds, at least the
+# destination's own), the target ends and the next search runs at once - the search and the refresh skip the camp while it is
+# remembered (4 per bot). QL-1 counts the failure as before. If that search finds no quest target, the bot goes back to the camp
+# in COOLDOWN for the time left (as before). [QuestLoop] state=inactive_reselect bot= quest= target_entry= mark_ms=,
+# state=inactive_reselect_fallback ... cooldown_ms=; [QuestFirstRoute] state=rejected ... inactive_reselect=N.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.InactiveReselect = 0
 
 # twow-repo#485: with 1, quest givers and takers that are game objects spawned
 # only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of
@@ -1717,7 +1742,9 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # 500 yd (2D) counts (P1-b2, CLI-PATH 25.10.: no trip to Blackstone Island, Alah'Thalas, an instance map ...). "[ProfTravel]
 # state=request kind=trainer ... entries= dropped_hostile= dropped_unreachable= hold_s=" per request (entries=0: no
 # trainer found) and "[ProfTravel] state=end kind=trainer ... reason=done|turn_in|cap|lost trip_s= hold_over_s=" when
-# the trip stops holding (hold_over_s = seconds after the backoff end). Mode (in-realm A/B, cohort parity): 0 = as before (default),
+# the trip stops holding (hold_over_s = seconds after the backoff end). reason=lost (another target took over) is written
+# at the next request of the kind, with trip_s / hold_over_s up to the last hold check that held and seen_after_s = the
+# delay of the line (P1-b3). Mode (in-realm A/B, cohort parity): 0 = as before (default),
 # 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionTraining.Travel = 0
 # Profession use (#333), persistent roster bots without a real-player master.
@@ -2664,6 +2691,13 @@ AiPlayerbot.BotUpdateTraceTriggers = 0
 # (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
 # could choose every fishing zone. 0 = as before (default).
 AiPlayerbot.Gather.FishingSkillCheck = 0
+# twow-repo#333 Berufe P1-f (owner 25.10.2026): the quest plants (Serpentbloom, Bloodpetal Sprout, Gloom Weed, Doom Weed,
+# Incendia Agave, Plant Bundle, Violet Tragan, Hyjalroot ...: lock 259, a herbalism slot next to "open kneeling", the loot
+# is a quest item) are picked only while one of the bot's quests wants them. Before, a herbalist without the quest picked
+# them on the way (passive gathering). The gather travel targets have left them out since #414. Real herbs (Peacebloom,
+# Silverleaf ...) stay as they are. No log line (the check runs on every loot scan).
+# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Gather.QuestHerbFilter = 0
 # twow-repo#596 D: 1 = the zone-escape trigger and the hearthstone check take the home bind's area from the area the core
 # stored at bind time, instead of a terrain lookup at the bind position (which loaded that far grid from disk again and
 # again: 126 ms per check for a bot whose bind spot nobody is near). Same area and level. 0 = terrain lookup (default).

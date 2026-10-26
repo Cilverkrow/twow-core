@@ -341,6 +341,7 @@ enum class CandidateSkip
     TurnInSuppressed,
     DeathSuppressed,
     QuestLoopSuppressed,
+    InactiveReselect,
     OtherMapGather,
     OtherMapGrind,
     GatherPurposeSuppressed,
@@ -359,6 +360,10 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
     // twow-repo#581 (QL-1): objectives of a quest this bot kept failing at (emptied camps) are skipped for a while.
     if (persistentTarget && persistentTarget->IsQuestLoopSuppressed(destination))
         return CandidateSkip::QuestLoopSuppressed;
+
+    // twow-repo#601 (QuestLoop.InactiveReselect): a camp this bot just found empty, while its mark lasts (never set with the switch off).
+    if (persistentTarget && persistentTarget->IsInactiveReselectMarked(destination))
+        return CandidateSkip::InactiveReselect;
 
     // #414: no gathering trips to another continent.
     uint32 const gatherPurposes = uint32(TravelDestinationPurpose::GatherSkinning) | uint32(TravelDestinationPurpose::GatherMining) |
@@ -675,6 +680,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (futureTravelPurpose == "quest")
             TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"), 0,
                 "future_destination_invalid");
+        travelTarget->TakeInactiveReselectPending();   // twow-repo#601 (QuestLoop.InactiveReselect): no stale fallback
         travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
         context->ClearValues("no active travel destinations");        
         return false;
@@ -685,6 +691,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     PartitionedTravelList destinationList = futureDestinations->get();
 
+    // twow-repo#601 (QuestLoop.InactiveReselect): whether this choice is the one right after an emptied camp - taken once per
+    // choice (any purpose), before the status goes to NONE below.
+    bool const reselectPending = travelTarget->TakeInactiveReselectPending();
     travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
 
     ai->TellDebug(ai->GetMaster(), "Got " + std::to_string(destinationList.size()) + " new destination ranges for " + futureTravelPurposeName, "debug travel");
@@ -729,6 +738,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // #416: out of time, not out of targets - the next list goes on.
         if (chooseBudgetExceeded)
             return false;
+
+        // twow-repo#601 (QuestLoop.InactiveReselect): the search right after an emptied camp found no quest target - the bot goes
+        // back to that camp in COOLDOWN for the time left, as without the switch (no widening, no empty-search count: the old
+        // COOLDOWN ran no search). Visible as the rejected line with inactive_reselect= and the fallback line.
+        if (reselectPending && futureTravelPurpose == "quest" && travelTarget->FallBackToInactiveCooldown())
+        {
+            TraceQuestRouteRejection(bot, AI_VALUE2(std::string, "manual string", "future travel condition"),
+                uint32(destinationList.size()), "inactive_reselect_fallback", lastRejects.Format() + ai::contested_objective::FormatSources(lastSuppressSources));
+            return false;
+        }
 
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
@@ -1477,6 +1496,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     ai->TellDebug(requester, "Skipping quest objective after repeated failures.", "debug travel");
                     ++lastRejects.questLoopSuppressed;
                     continue;
+                case CandidateSkip::InactiveReselect:
+                    ai->TellDebug(requester, "Skipping quest objective whose camp was just found empty.", "debug travel");
+                    ++lastRejects.inactiveReselect;
+                    continue;
                 case CandidateSkip::OtherMapGather:
                     ai->TellDebug(requester, "Skipping gathering destination on another map.", "debug travel");
                     ++lastRejects.otherMapGather;
@@ -1912,6 +1935,13 @@ bool RefreshTravelTargetAction::Execute(Event& event)
         target->IsQuestLoopSuppressed(oldDestination))   // twow-repo#581 (QL-1)
     {
         ai->TellDebug(requester, "Old destination is on the death cooldown.", "debug travel");
+        return false;
+    }
+
+    // twow-repo#601 (QuestLoop.InactiveReselect): nor a camp this bot just found empty (never marked with the switch off).
+    if (target->IsInactiveReselectMarked(oldDestination))
+    {
+        ai->TellDebug(requester, "Old destination is a camp just found empty.", "debug travel");
         return false;
     }
 
@@ -2617,13 +2647,22 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         uint32 const now = uint32(time(nullptr));
         uint32 const backoffUntil = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
         uint32 const holdUntil = ai::profession_travel::HoldUntil(now, backoffUntil);
-        // A trip of this kind still open (its target expired without the hold being evaluated again) ends here.
+        // A trip of this kind still open (its target expired without the hold being evaluated again) ends here. P1-b3
+        // (CLI-Deep R-f): trip_s and hold_over_s count to its last hold check that held, not to this request;
+        // seen_after_s is the delay of this line.
         if (AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
-            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u",
+        {
+            uint32 const startedAt = std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key))));
+            uint32 const endedAt = std::min(now, ai::profession_travel::LostEndAt(startedAt,
+                uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix)))));
+            sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u seen_after_s=%u",
                 trainerTrip ? "trainer" : "tool", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
-                now - std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key)))),
-                ai::profession_travel::HoldOverSeconds(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))));
+                endedAt - startedAt,
+                ai::profession_travel::HoldOverSeconds(endedAt, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))),
+                now - endedAt);
+        }
         SET_AI_VALUE2(int, "manual int", key, int(now));
+        SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix, 0);
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix, int(holdUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix, int(backoffUntil));
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, entries.empty() ? 0 : 1);
