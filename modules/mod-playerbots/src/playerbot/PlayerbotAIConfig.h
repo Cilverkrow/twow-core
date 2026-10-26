@@ -784,6 +784,9 @@ public:
     uint32 deathLoopWindowSeconds = 900;
     float deathLoopRadius = 150.0f;
     bool deathLoopEscape = false;   // twow-repo#541 A39 (owner 10.10.): hostile-area death = loop; never evacuate to a hostile homebind
+    // twow-repo#601/#602 G2 (OB-00 go 26.10.2026): short life after a revive is a loop; an evacuation point at the loop
+    // is replaced by the race's safe start (0 off, 1 all, 2 cohort B).
+    uint32 deathLoopFarEscape = 0;
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;

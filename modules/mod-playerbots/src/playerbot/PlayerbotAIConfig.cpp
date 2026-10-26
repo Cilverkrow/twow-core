@@ -733,6 +733,13 @@ bool PlayerbotAIConfig::Initialize()
     deathLoopWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DeathLoop.WindowSeconds", 900));
     deathLoopRadius = std::max(10.0f, config.GetFloatDefault("AiPlayerbot.DeathLoop.Radius", 150.0f));
     deathLoopEscape = config.GetBoolDefault("AiPlayerbot.DeathLoop.Escape", false);
+    // twow-repo#601/#602 G2: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    deathLoopFarEscape = config.GetIntDefault("AiPlayerbot.DeathLoop.FarEscape", 0);
+    if (deathLoopFarEscape > 2)
+    {
+        sLog.outError("[DeathLoop] config key=FarEscape value=%u result=off (0 off, 1 all, 2 cohort B)", deathLoopFarEscape);
+        deathLoopFarEscape = 0;
+    }
     zoneEscapeEnabled = config.GetBoolDefault("AiPlayerbot.ZoneEscape.Enabled", false);
     zoneEscapeCooldownSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.ZoneEscape.CooldownSeconds", 600));
     zoneEscapeRetrySeconds = std::max<uint32>(15, config.GetIntDefault("AiPlayerbot.ZoneEscape.RetrySeconds", 60));
@@ -1727,6 +1734,11 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
+            {"DeathLoop.MaxDeaths", Value(deathLoopMaxDeaths)},
+            {"DeathLoop.WindowSeconds", Value(deathLoopWindowSeconds)},
+            {"DeathLoop.Radius", Value(deathLoopRadius)},
+            {"DeathLoop.Escape", Value(deathLoopEscape)},
+            {"DeathLoop.FarEscape", Value(deathLoopFarEscape)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
