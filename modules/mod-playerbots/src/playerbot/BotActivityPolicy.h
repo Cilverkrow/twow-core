@@ -194,14 +194,19 @@ struct Clock
 };
 
 // "[BotActivity] bot=12 level=14 zone=40 hour=493512 quest=1800 grind=300 grind_idle=0 stuck=60 combat=840 other=120
-// idle=420 dead=0 parked=0 group=0 gap=0" - seconds of the clock hour `hour` (unix time / 3600).
-inline std::string FormatLine(std::uint32_t bot, std::uint32_t level, std::uint32_t zone, Clock const& c)
+// idle=420 dead=0 parked=0 group=0 gap=0 quest_log=14 quest_done=3" - seconds of the clock hour `hour` (unix time / 3600).
+// twow-repo#601 quest acceptance (OB-00 27.10.2026): quest_log= the occupied quest log slots (of 20) and quest_done= those
+// complete and not yet handed in, at the end of the hour; left out with questLog < 0.
+inline std::string FormatLine(std::uint32_t bot, std::uint32_t level, std::uint32_t zone, Clock const& c,
+    std::int32_t questLog = -1, std::int32_t questDone = 0)
 {
     std::string line = "[BotActivity] bot=" + std::to_string(bot) + " level=" + std::to_string(level) + " zone=" +
         std::to_string(zone) + " hour=" + std::to_string(c.hour);
     for (std::size_t i = 0; i < KindCount; ++i)
         line += std::string(" ") + KindName(Kind(i)) + "=" + std::to_string(c.seconds[i]);
     line += " gap=" + std::to_string(c.gap);
+    if (questLog >= 0)
+        line += " quest_log=" + std::to_string(questLog) + " quest_done=" + std::to_string(questDone);
     return line;
 }
 

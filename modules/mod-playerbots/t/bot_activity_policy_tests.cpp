@@ -121,6 +121,9 @@ int main()
         std::string const line = FormatLine(12, 14, 40, c);
         Require(line == "[BotActivity] bot=12 level=14 zone=40 hour=500000 quest=60 grind=0 grind_idle=0 stuck=0 combat=90 other=0 "
             "idle=120 dead=0 parked=0 group=0 gap=3240", "hour line");
+        // twow-repo#601 quest acceptance: the quest log fields at the end, left out without a count.
+        Require(FormatLine(12, 14, 40, c, 18, 3) == line + " quest_log=18 quest_done=3", "hour line with the quest log");
+        Require(FormatLine(12, 14, 40, c, 0, 0) == line + " quest_log=0 quest_done=0", "an empty quest log is written");
         c.StartHour(t1);
         Require(c.hour == 500001u && c.gap == 0 && c.seconds[std::size_t(Kind::Quest)] == 0, "fresh hour");
         Require(c.Add(Kind::Grind, t1 + 60) == 60 && !c.HourDone(t1 + 60), "credit in the new hour");

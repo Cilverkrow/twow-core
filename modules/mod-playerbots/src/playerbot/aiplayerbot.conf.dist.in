@@ -2762,7 +2762,8 @@ AiPlayerbot.RandomBotUpdateInterval = 500
 # quest giver, objective or taker), grind (active grind target), other (any other active target, or a taxi flight) or
 # idle (alive, no combat, no active target). The seconds since the last sample go to that kind; a gap over 120 s (bot
 # not updated) counts as gap. One line per bot and clock hour, "[BotActivity] bot= level= zone= hour=<unix time/3600>
-# quest= grind= grind_idle= stuck= combat= other= idle= dead= parked= gap=" (seconds), and one line per minute,
+# quest= grind= grind_idle= stuck= combat= other= idle= dead= parked= gap=" (seconds) "quest_log= quest_done=" (occupied
+# quest log slots of 20 and the complete ones not yet handed in, at the end of the hour), and one line per minute,
 # "[BotActivityMin] L10-14=<samples>/<quest>/<grind>/<grind_idle>/<stuck>/<combat>/<other>/<idle>/<dead>/<parked> ..."
 # per 5-level band (empty bands left out). Log only, no behaviour change; at most one line per roster bot and hour plus
 # one a minute. 0 = off (default).
